@@ -37,11 +37,11 @@ A better approach: an external system observes what the agent is doing, determin
 
 This achieves ~83% line reduction on real sessions (measured: 110K → 18K lines on a 24-hour autonomous session).
 
-**Stage 2: LLM-driven relevance rating.** When the filtered transcript grows, a hook calls `on_transcript_change.py`, which:
-1. Selects the most recent entries within a token budget (default 16K tokens)
-2. Sends them to a cheap, fast LLM (mistral-nemo via OpenRouter) to distill the agent's current goals
-3. Sends the goals + 14 playbook summaries to the same LLM, asking for 1-10 relevance ratings
-4. Reads and outputs the full content of every playbook scoring above threshold (default 8/10)
+**Stage 2: LLM-driven sparse selection.** When the filtered transcript grows, a hook calls `on_transcript_change.py`, which:
+1. Selects the most recent entries within a token budget (default 4K tokens)
+2. Sends them to Small 3.2 via OpenRouter to distill the agent's current goals
+3. Sends the goals + 14 playbook summaries to Small 2603 with reasoning enabled, asking it to select 0-3 relevant playbooks
+4. Reads and outputs the full content of every selected playbook
 
 **Stage 3: Context injection.** The hook's stdout is injected back into the agent's conversation via the AI tool's native hook system. The mechanism varies by tool (see §3 below).
 
@@ -142,8 +142,8 @@ Six runtime state files total:
 - **Compaction awareness**: The dedup system understands when the LLM's context has been compressed and allows re-injection of playbooks that were likely lost.
 
 ### Costs
-- **External LLM dependency**: The relevance rating requires an OpenRouter API key and network access. If unavailable, the hook exits silently (no playbooks injected, but no errors either).
-- **Latency**: Two LLM calls per invocation add latency. Mitigated by using a fast, cheap model (mistral-nemo) and by the noise filter suppressing most invocations.
+- **External LLM dependency**: The sparse selection requires an OpenRouter API key and network access. If unavailable, the hook exits silently (no playbooks injected, but no errors either).
+- **Latency**: Two LLM calls per invocation add latency. Step 1 uses Small 3.2 (fast distillation); step 2 uses Small 2603 with reasoning enabled (longer timeout, ~854 reasoning tokens observed). The token budget is halved (4K vs 8K), partially offsetting the cost of the reasoning model.
 - **State files**: Five gitignored runtime files (filtered transcript, PID file, filter state, poll state, injection state).
 - **Vendor hook bugs**: Claude Code's `FileChanged` hook does not fire (v2.1.83–v2.1.87+), requiring `PostToolUse` polling as a workaround. Two of three Cursor feedback hooks are non-functional (regressions since v2.0.64). Both workarounds add per-tool-call overhead (one `stat()` call) but no meaningful latency.
 - **Heuristic dedup**: The compaction + token-distance dedup is a heuristic. It's possible to re-inject a playbook the LLM still has (wasted tokens) or fail to re-inject one it lost (missed context). The heuristic errs on the side of re-injection.
@@ -155,16 +155,16 @@ All parameters are environment variables with sensible defaults:
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `OPENROUTER_API_KEY` | (required) | API authentication |
-| `TRANSCRIPT_MODEL` | `mistralai/mistral-nemo` | LLM for goal distillation and rating |
-| `TRANSCRIPT_MAX_TOKENS` | `8000` | Token budget for transcript window |
-| `TRANSCRIPT_THRESHOLD` | `8` | Minimum relevance score (1-10) to inject a playbook |
+| `TRANSCRIPT_DISTILL_MODEL` | `mistralai/mistral-small-3.2-24b-instruct` | LLM for goal distillation (step 1) |
+| `TRANSCRIPT_SELECT_MODEL` | `mistralai/mistral-small-2603` | LLM for playbook selection with reasoning (step 2) |
+| `TRANSCRIPT_MAX_TOKENS` | `4000` | Token budget for transcript window |
 | `TRANSCRIPT_DEDUP_TOKENS` | `50000` | Token distance before allowing re-injection |
 | `TRANSCRIPT_TRAINING_LOG` | `.agent/.training-data.jsonl` | Path for finetuning data collection (ChatML JSONL) |
-| `TRANSCRIPT_PARSE_OUTCOME_LOG` | `.agent/.parse-outcomes.jsonl` | Path for parse-outcome sidecar (records rating parse failures) |
+| `TRANSCRIPT_PARSE_OUTCOME_LOG` | `.agent/.parse-outcomes.jsonl` | Path for parse-outcome sidecar (dormant — parse_selection has no parse failures) |
 
 ### Training data collection for local model replacement
 
-The pipeline depends on an external LLM (mistral-nemo via OpenRouter), which conflicts with hypergumbo's local-first philosophy. To enable eventual replacement with a finetuned local model, the pipeline logs every successful LLM input/output pair to `.agent/.training-data.jsonl` (gitignored).
+The pipeline depends on external LLMs (Small 3.2 and Small 2603 via OpenRouter), which conflicts with hypergumbo's local-first philosophy. To enable eventual replacement with a finetuned local model, the pipeline logs every successful LLM input/output pair to `.agent/.training-data.jsonl` (gitignored).
 
 Each line is a JSON object in the ChatML format expected by HuggingFace SFTTrainer / Unsloth:
 
@@ -172,7 +172,7 @@ Each line is a JSON object in the ChatML format expected by HuggingFace SFTTrain
 {
   "step": "goal_distillation",
   "event_id": "a1b2c3d4-...",
-  "model": "mistralai/mistral-nemo",
+  "model": "mistralai/mistral-small-3.2-24b-instruct",
   "messages": [
     {"role": "user", "content": "<prompt>"},
     {"role": "assistant", "content": "<response>"}
@@ -180,26 +180,17 @@ Each line is a JSON object in the ChatML format expected by HuggingFace SFTTrain
 }
 ```
 
-The `step` field (`goal_distillation` or `relevance_rating`) allows filtering or weighting the two tasks independently during training. The `model` field tracks which model produced the response, so data quality can be assessed if the upstream model changes. The `event_id` (UUID v4) is present on `relevance_rating` entries and serves as a join key to the parse-outcome sidecar (see below).
+The `step` field (`goal_distillation` or `sparse_selection`) allows filtering or weighting the two tasks independently during training. The `model` field tracks which model produced the response (step 1 uses `DISTILL_MODEL`, step 2 uses `SELECT_MODEL`), so data quality can be assessed if the upstream models change. The `event_id` (UUID v4) is present on `sparse_selection` entries and serves as a join key to the parse-outcome sidecar (see below).
 
-**Target local model:** Qwen2.5-0.5B-Instruct (Apache-2.0, 0.5B parameters). At this size, full finetuning (not LoRA/QLoRA) is feasible on consumer hardware (~4-6 GB VRAM). Inference at runtime would use llama.cpp or llama-cpp-python, eliminating the OpenRouter dependency entirely.
+**Target local model:** Qwen2.5-0.5B-Instruct (Apache-2.0, 0.5B parameters). At this size, full finetuning (not LoRA/QLoRA) is feasible on consumer hardware (~4-6 GB VRAM). Inference at runtime would use llama.cpp or llama-cpp-python, eliminating the OpenRouter dependency entirely. Note: the new pipeline relies on reasoning for the selection step, which a 0.5B model cannot do. The distillation step remains a candidate for local replacement.
 
 Logging is best-effort (OSError silently caught) and only fires on non-dry-run successful responses, so it never interferes with the pipeline. The log path is configurable via the `TRANSCRIPT_TRAINING_LOG` environment variable.
 
-### Parse-outcome sidecar
+### Parse-outcome sidecar (dormant)
 
-The training data log records the raw LLM response *before* it is parsed into per-playbook scores. `parse_ratings()` uses two regex patterns per playbook ID; if neither matches (garbled ID, unexpected format, score outside 1-10), that playbook is silently treated as score 0. This is correct behavior (no erroneous rankings), but the failure is invisible.
+**This subsystem is dormant** since the migration from `parse_ratings` (regex-based score extraction) to `parse_selection` (exact playbook ID matching). The new parser checks whether each known playbook ID appears in the LLM response text — a playbook is either mentioned or not, making parse misses structurally impossible.
 
-To surface parse failures without polluting the training data, a separate sidecar file (`.agent/.parse-outcomes.jsonl`) records which playbook IDs failed to parse for each `relevance_rating` event. Entries share the `event_id` UUID with the corresponding training data entry, enabling offline joins:
-
-```json
-{"event_id": "a1b2c3d4-...", "parse_misses": ["vpr-usage", "pre-work-playbook"]}
-```
-
-The sidecar is only written when there are actual misses (no entry = clean parse). This data is useful for:
-1. Monitoring whether the LLM's output format is drifting (increasing miss rates)
-2. Identifying playbook IDs that are systematically hard to parse (naming issues)
-3. Filtering training data: examples with high miss counts may be lower quality for finetuning
+The sidecar infrastructure (`log_parse_outcome`, `TRANSCRIPT_PARSE_OUTCOME_LOG`) is retained for backward compatibility with existing `.parse-outcomes.jsonl` files and in case future changes reintroduce fragile parsing. The `log_parse_outcome` function is no longer called in normal operation.
 
 ### G-Vendi-guided data selection and finetuning pipeline
 

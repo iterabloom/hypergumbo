@@ -3,22 +3,22 @@
 playbooks/SOPs are relevant to the agent's current goals and injects
 their full content back into the session.
 
-Step 1: Send recent transcript entries to mistral-nemo via OpenRouter
-        to distill the agent's current goals.
-Step 2: Rate each playbook's relevance to those goals (1-10).
-Step 3: Read and output the full content of every playbook rated above
-        the confidence threshold.
+Step 1: Send recent transcript entries to a distillation model
+        (Small 3.2 via OpenRouter) to distill the agent's current goals.
+Step 2: Send goals + playbook summaries to a reasoning model
+        (Small 2603 via OpenRouter) to select 0-3 relevant playbooks.
+Step 3: Read and output the full content of every selected playbook.
 
 stdout is injected back into the agent's conversation as context.
 
 Requires: OPENROUTER_API_KEY environment variable.
 
 Configuration (environment variables):
-  OPENROUTER_API_KEY     — required
-  TRANSCRIPT_MODEL       — model to use (default: mistralai/mistral-nemo)
-  TRANSCRIPT_MAX_TOKENS  — token budget for transcript window (default: 8000)
-  TRANSCRIPT_THRESHOLD   — minimum confidence to include a playbook (default: 8)
-  TRANSCRIPT_DEDUP_TOKENS — suppress re-injection within this many tokens (default: 50000)
+  OPENROUTER_API_KEY        — required
+  TRANSCRIPT_DISTILL_MODEL  — model for goal distillation (default: mistralai/mistral-small-3.2-24b-instruct)
+  TRANSCRIPT_SELECT_MODEL   — model for playbook selection with reasoning (default: mistralai/mistral-small-2603)
+  TRANSCRIPT_MAX_TOKENS     — token budget for transcript window (default: 4000)
+  TRANSCRIPT_DEDUP_TOKENS   — suppress re-injection within this many tokens (default: 50000)
 """
 
 import datetime
@@ -35,9 +35,9 @@ import uuid
 # ---------------------------------------------------------------------------
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = os.environ.get("TRANSCRIPT_MODEL", "mistralai/mistral-nemo")
-MAX_TOKENS = int(os.environ.get("TRANSCRIPT_MAX_TOKENS", "8000"))
-THRESHOLD = int(os.environ.get("TRANSCRIPT_THRESHOLD", "8"))
+DISTILL_MODEL = os.environ.get("TRANSCRIPT_DISTILL_MODEL", "mistralai/mistral-small-3.2-24b-instruct")
+SELECT_MODEL = os.environ.get("TRANSCRIPT_SELECT_MODEL", "mistralai/mistral-small-2603")
+MAX_TOKENS = int(os.environ.get("TRANSCRIPT_MAX_TOKENS", "4000"))
 DEDUP_TOKENS = int(os.environ.get("TRANSCRIPT_DEDUP_TOKENS", "50000"))
 CHARS_PER_TOKEN = 4.4
 
@@ -45,9 +45,9 @@ CHARS_PER_TOKEN = 4.4
 # Set TRANSCRIPT_TRAINING_LOG to a path to enable. Default: .agent/.training-data.jsonl
 TRAINING_LOG = os.environ.get("TRANSCRIPT_TRAINING_LOG", "")
 
-# Parse outcome sidecar: records which playbook IDs failed to parse from the
-# LLM's relevance_rating response.  Entries share an event_id with the
-# corresponding training-data entry so the two files can be joined offline.
+# Parse outcome sidecar: dormant since migration from parse_ratings to
+# parse_selection.  parse_selection uses exact ID matching, making parse
+# misses structurally impossible.  Kept for backward compatibility.
 PARSE_OUTCOME_LOG = os.environ.get("TRANSCRIPT_PARSE_OUTCOME_LOG", "")
 
 # Playbook registry: (id, path relative to repo root, one-line summary)
@@ -146,14 +146,14 @@ PLAYBOOKS = [
 # Helpers
 # ---------------------------------------------------------------------------
 
-def openrouter_chat(prompt: str, max_completion_tokens: int = 1024) -> str:
-    """Send a single-turn chat to OpenRouter and return the response text."""
+def openrouter_distill(prompt: str, max_completion_tokens: int = 1024) -> str:
+    """Call Small 3.2 for goal distillation (no reasoning)."""
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
     if not api_key:
         return ""
 
     payload = json.dumps({
-        "model": MODEL,
+        "model": DISTILL_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_completion_tokens,
     }).encode()
@@ -168,6 +168,35 @@ def openrouter_chat(prompt: str, max_completion_tokens: int = 1024) -> str:
     )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read())
+            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    except (urllib.error.URLError, json.JSONDecodeError, KeyError, IndexError):
+        return ""
+
+
+def openrouter_select(prompt: str, max_completion_tokens: int = 9144) -> str:
+    """Call 2603 with reasoning for playbook selection."""
+    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    if not api_key:
+        return ""
+
+    payload = json.dumps({
+        "model": SELECT_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_completion_tokens": max_completion_tokens,
+        "reasoning": {"enabled": True},
+    }).encode()
+
+    req = urllib.request.Request(
+        OPENROUTER_URL,
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.loads(resp.read())
             return data.get("choices", [{}])[0].get("message", {}).get("content", "")
     except (urllib.error.URLError, json.JSONDecodeError, KeyError, IndexError):
@@ -197,6 +226,7 @@ def _truncate_to_budget(prompt: str, response: str, max_tokens: int) -> tuple[st
 
 def log_training_example(
     repo_root: str, step: str, prompt: str, response: str,
+    model: str,
     extra: dict | None = None,
 ) -> None:
     """Append a ChatML training example to the training log.
@@ -223,7 +253,7 @@ def log_training_example(
     obj = {
         "timestamp": datetime.datetime.now().isoformat(),
         "step": step,
-        "model": MODEL,
+        "model": model,
         "messages": [
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": response},
@@ -285,29 +315,15 @@ def select_recent_entries(transcript_path: str) -> str:
     return b"".join(selected).decode("utf-8", errors="replace")
 
 
-def parse_ratings(ratings_text: str) -> dict[str, int]:
-    """Parse the LLM's ratings response into {playbook_id: score}.
-
-    Preferred format is ``<id>: <score>`` (one per line).
-    Falls back to ``<score>/<max> <id>`` for robustness.
-    """
-    results: dict[str, int] = {}
+def parse_selection(text: str) -> list[str]:
+    """Extract playbook IDs mentioned in the sparse selection response."""
+    selected = []
     for pb_id, _, _ in PLAYBOOKS:
-        # Preferred: "experiment-design-playbook: 8" (prompt asks for this)
-        # Fallback: "8/10 experiment-design-playbook"
-        # No further fallback — greedy digit grab risks matching stray numbers.
-        patterns = [
-            rf"{re.escape(pb_id)}\s*[:]\s*(\d+)",
-            rf"(\d+)\s*/\s*10\s*.*?{re.escape(pb_id)}",
-        ]
-        for pattern in patterns:
-            m = re.search(pattern, ratings_text, re.IGNORECASE)
-            if m:
-                score = int(m.group(1))
-                if 1 <= score <= 10:
-                    results[pb_id] = score
-                    break
-    return results
+        if pb_id in text.lower() or pb_id.replace("-", " ") in text.lower():
+            selected.append(pb_id)
+    if re.search(r'\bnone\b', text.lower()) and not selected:
+        return []
+    return selected
 
 
 def read_playbook(repo_root: str, rel_path: str) -> str:
@@ -516,45 +532,37 @@ def main() -> None:
         print(file=sys.stderr)
         agent_goals = "(DRY RUN — goals would be distilled by LLM)"
     else:
-        agent_goals = openrouter_chat(step1_prompt)
+        agent_goals = openrouter_distill(step1_prompt)
         if not agent_goals:
             if verbose:
                 print("[step 1] LLM returned empty response", file=sys.stderr)
             sys.exit(0)
-        log_training_example(repo_root, "goal_distillation", step1_prompt, agent_goals)
+        log_training_example(
+            repo_root, "goal_distillation", step1_prompt, agent_goals,
+            model=DISTILL_MODEL,
+        )
 
     if verbose:
         print(f"[step 1] Agent goals: {agent_goals[:200]}", file=sys.stderr)
 
-    # Step 2: Rate playbook relevance
+    # Step 2: Sparse playbook selection
     playbook_list = "\n".join(
-        f"{i+1}. {pb_id}: {summary}"
-        for i, (pb_id, _, summary) in enumerate(PLAYBOOKS)
+        f"- {pb_id}: {summary}"
+        for pb_id, _, summary in PLAYBOOKS
     )
     step2_prompt = (
         f"An agentic coder has the following goal:\n\n{agent_goals}\n\n"
-        "Below are filenames and content summaries for several SOPs, protocols, or guidance documents that might "
-        "be relevant to the agent's goal. For each document, please rate on a "
-        "scale of 1 to 10, with 10 being the most confident, how sure you are "
-        "that the document would help the agent complete its goal. Reply with "
-        "one line per document in exactly this format:\n\n"
-        "  <document-name>: <score>\n\n"
-        "For example:\n"
-        "  watering-succulents: 1\n"
-        "  bread-dough-hydration: 10\n"
-        "  bicycle-tire-pressure: 2\n"
-        "  origami-crane-folding: 9\n"
-        "  banjo-tuning-guide: 3\n"
-        "  sourdough-starter-care: 8\n"
-        "  knitting-cable-stitch: 4\n"
-        "  hamster-wheel-sizing: 7\n"
-        "  umbrella-repair-manual: 5\n"
-        "  vintage-typewriter-ribbon: 6\n\n"
+        "Below are 14 guidance documents. Select ONLY documents that address "
+        "something the agent is concretely about to do right now, based on the "
+        "goal above. Do NOT select documents that are merely \"generally useful.\" "
+        "If the goal does not clearly indicate a specific activity that a document "
+        "covers, say \"none\". Selecting 0 is the correct answer most of the time.\n\n"
+        "Reply with ONLY the document names (0 to 3), one per line.\n\n"
         + playbook_list
     )
 
     if verbose:
-        print(f"[step 2] Relevance rating prompt: {len(step2_prompt):,} chars", file=sys.stderr)
+        print(f"[step 2] Sparse selection prompt: {len(step2_prompt):,} chars", file=sys.stderr)
 
     if dry_run:
         print(f"[dry-run] Step 2 prompt ({len(step2_prompt):,} chars):", file=sys.stderr)
@@ -568,33 +576,29 @@ def main() -> None:
             print(f"  {status}: {pb_path}", file=sys.stderr)
         sys.exit(0)
 
-    ratings_text = openrouter_chat(step2_prompt)
-    if not ratings_text:
+    selection_text = openrouter_select(step2_prompt)
+    if not selection_text:
         if verbose:
             print("[step 2] LLM returned empty response", file=sys.stderr)
         sys.exit(0)
     event_id = str(uuid.uuid4())
     log_training_example(
-        repo_root, "relevance_rating", step2_prompt, ratings_text,
+        repo_root, "sparse_selection", step2_prompt, selection_text,
+        model=SELECT_MODEL,
         extra={"event_id": event_id},
     )
 
     if verbose:
-        print(f"[step 2] Raw ratings:\n{ratings_text}", file=sys.stderr)
+        print(f"[step 2] Raw selection:\n{selection_text}", file=sys.stderr)
 
-    ratings = parse_ratings(ratings_text)
-    all_ids = {pb_id for pb_id, _, _ in PLAYBOOKS}
-    parse_misses = sorted(all_ids - ratings.keys())
-    if parse_misses:
-        log_parse_outcome(repo_root, event_id, parse_misses)
+    selected = parse_selection(selection_text)
 
     if verbose:
-        print(f"[step 2] Parsed ratings: {ratings}", file=sys.stderr)
+        print(f"[step 2] Selected playbooks: {selected}", file=sys.stderr)
 
-    # Step 3: Collect playbooks above threshold, skipping recently injected ones
+    # Step 3: Collect selected playbooks, skipping recently injected ones
     # (Reuse the dedup state computed in step 0a — compaction/token-distance
     # boundaries haven't changed since then.)
-
 
     if verbose:
         compact_offset = inj_state.get("last_compact_offset", 0)
@@ -607,26 +611,26 @@ def main() -> None:
     relevant = []
     skipped = []
     for pb_id, pb_path, pb_summary in PLAYBOOKS:
-        score = ratings.get(pb_id, 0)
-        if score >= THRESHOLD:
-            if pb_id in already:
-                skipped.append((pb_id, score))
-                continue
-            content = read_playbook(repo_root, pb_path)
-            if content:
-                relevant.append((pb_id, score, content))
-            elif verbose:
-                print(f"[step 3] {pb_id} scored {score} but file missing: {pb_path}",
-                      file=sys.stderr)
+        if pb_id not in selected:
+            continue
+        if pb_id in already:
+            skipped.append(pb_id)
+            continue
+        content = read_playbook(repo_root, pb_path)
+        if content:
+            relevant.append((pb_id, content))
+        elif verbose:
+            print(f"[step 3] {pb_id} selected but file missing: {pb_path}",
+                  file=sys.stderr)
 
     if verbose and skipped:
         print(f"[step 3] Skipped (recently injected): "
-              f"{', '.join(f'{pid}({s})' for pid, s in skipped)}", file=sys.stderr)
+              f"{', '.join(sorted(skipped))}", file=sys.stderr)
 
     if not relevant:
         if verbose:
-            print(f"[step 3] No playbooks to inject ({THRESHOLD}/10 threshold, "
-                  f"{len(skipped)} deduped)", file=sys.stderr)
+            print(f"[step 3] No playbooks to inject "
+                  f"({len(skipped)} deduped)", file=sys.stderr)
         # Save state even if nothing to inject (compaction tracking still matters)
         if not dry_run:
             save_injection_state(repo_root, inj_state)
@@ -635,20 +639,19 @@ def main() -> None:
     # Record injection offsets before outputting
     current_size = (os.path.getsize(transcript_path)
                     if os.path.exists(transcript_path) else 0)
-    for pb_id, score, content in relevant:
+    for pb_id, content in relevant:
         inj_state["injections"][pb_id] = current_size
 
     if not dry_run:
         save_injection_state(repo_root, inj_state)
 
     # Output: injected into the agent's conversation
-    print(f"[Transcript Analysis — {len(relevant)} relevant playbook(s) "
-          f"(threshold: {THRESHOLD}/10)]")
+    print(f"[Transcript Analysis — {len(relevant)} relevant playbook(s)]")
     if dry_run:
         print(f"Agent goals: {agent_goals}")
     print()
-    for pb_id, score, content in relevant:
-        print(f"--- {pb_id} (relevance: {score}/10) ---")
+    for pb_id, content in relevant:
+        print(f"--- {pb_id} ---")
         print(content)
         print()
 

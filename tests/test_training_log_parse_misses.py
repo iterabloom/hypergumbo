@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for parse-outcome sidecar logging (ADR-0018).
+"""Tests for training data logging and parse-outcome sidecar (ADR-0018).
 
 The training data log (`.training-data.jsonl`) records raw LLM I/O and is
 written *before* the response is parsed.  A separate sidecar file
@@ -9,8 +9,9 @@ offline.
 
 This test file covers:
 - log_training_example: the ``extra`` kwarg (used for event_id)
-- log_parse_outcome: sidecar file creation and content
-- End-to-end: parse_ratings → miss detection → sidecar logging
+- log_parse_outcome: sidecar file creation and content (dormant since
+  migration to parse_selection)
+- parse_selection integration tests
 """
 
 from __future__ import annotations
@@ -60,7 +61,8 @@ class TestLogTrainingExampleExtra:
         hook_mod.TRAINING_LOG = str(log_path)
         try:
             hook_mod.log_training_example(
-                str(tmp_path), "relevance_rating", "prompt", "response",
+                str(tmp_path), "sparse_selection", "prompt", "response",
+                model="test-model",
                 extra={"event_id": "abc-123"},
             )
         finally:
@@ -68,7 +70,8 @@ class TestLogTrainingExampleExtra:
 
         entry = json.loads(log_path.read_text().strip())
         assert entry["event_id"] == "abc-123"
-        assert entry["step"] == "relevance_rating"
+        assert entry["step"] == "sparse_selection"
+        assert entry["model"] == "test-model"
         assert entry["messages"][0]["content"] == "prompt"
 
     def test_no_extra_when_none(self, hook_mod, tmp_path: Path) -> None:
@@ -78,6 +81,7 @@ class TestLogTrainingExampleExtra:
         try:
             hook_mod.log_training_example(
                 str(tmp_path), "goal_distillation", "prompt", "response",
+                model="test-model",
             )
         finally:
             hook_mod.TRAINING_LOG = orig_log
@@ -91,7 +95,8 @@ class TestLogTrainingExampleExtra:
         hook_mod.TRAINING_LOG = str(log_path)
         try:
             hook_mod.log_training_example(
-                str(tmp_path), "relevance_rating", "prompt", "response",
+                str(tmp_path), "sparse_selection", "prompt", "response",
+                model="test-model",
                 extra={},
             )
         finally:
@@ -107,7 +112,13 @@ class TestLogTrainingExampleExtra:
 
 
 class TestLogParseOutcome:
-    """log_parse_outcome writes parse misses to a sidecar JSONL file."""
+    """log_parse_outcome writes parse misses to a sidecar JSONL file.
+
+    Note: This functionality is dormant since the migration from parse_ratings
+    to parse_selection. parse_selection uses exact ID matching, making parse
+    misses structurally impossible. Tests are retained for backward
+    compatibility and in case future changes reintroduce fragile parsing.
+    """
 
     def test_writes_misses_with_event_id(self, hook_mod, tmp_path: Path) -> None:
         sidecar = tmp_path / "outcomes.jsonl"
@@ -165,88 +176,43 @@ class TestLogParseOutcome:
 
 
 # ---------------------------------------------------------------------------
-# End-to-end: parse_ratings → miss detection
+# parse_selection integration tests
 # ---------------------------------------------------------------------------
 
 
-class TestParseMissesIntegration:
-    """parse_ratings + miss computation + sidecar logging work together."""
+class TestParseSelectionIntegration:
+    """parse_selection integration tests."""
 
-    def test_all_parsed_no_sidecar(self, hook_mod, tmp_path: Path) -> None:
-        """When every playbook parses, no sidecar entry is written."""
-        sidecar = tmp_path / "outcomes.jsonl"
-        orig = hook_mod.PARSE_OUTCOME_LOG
-        hook_mod.PARSE_OUTCOME_LOG = str(sidecar)
-        try:
-            lines = [f"{pb_id}: 5" for pb_id, _, _ in hook_mod.PLAYBOOKS]
-            ratings_text = "\n".join(lines)
-            ratings = hook_mod.parse_ratings(ratings_text)
-            all_ids = {pb_id for pb_id, _, _ in hook_mod.PLAYBOOKS}
-            misses = sorted(all_ids - ratings.keys())
-            assert misses == []
-            if misses:  # pragma: no cover
-                hook_mod.log_parse_outcome(str(tmp_path), "evt-1", misses)
-        finally:
-            hook_mod.PARSE_OUTCOME_LOG = orig
+    def test_all_ids_selected(self, hook_mod) -> None:
+        """All playbook IDs mentioned in text are returned."""
+        text = "\n".join(pb_id for pb_id, _, _ in hook_mod.PLAYBOOKS)
+        result = hook_mod.parse_selection(text)
+        assert len(result) == len(hook_mod.PLAYBOOKS)
+        for pb_id, _, _ in hook_mod.PLAYBOOKS:
+            assert pb_id in result
 
-        assert not sidecar.exists()
-
-    def test_some_missing_writes_sidecar(self, hook_mod, tmp_path: Path) -> None:
-        """Partial parse failures produce a sidecar entry with the missed IDs."""
-        sidecar = tmp_path / "outcomes.jsonl"
-        orig = hook_mod.PARSE_OUTCOME_LOG
-        hook_mod.PARSE_OUTCOME_LOG = str(sidecar)
-        try:
-            included = [pb_id for pb_id, _, _ in hook_mod.PLAYBOOKS[:3]]
-            lines = [f"{pb_id}: 8" for pb_id in included]
-            ratings_text = "\n".join(lines)
-            ratings = hook_mod.parse_ratings(ratings_text)
-            all_ids = {pb_id for pb_id, _, _ in hook_mod.PLAYBOOKS}
-            misses = sorted(all_ids - ratings.keys())
-            assert len(misses) == len(hook_mod.PLAYBOOKS) - 3
-            if misses:
-                hook_mod.log_parse_outcome(str(tmp_path), "evt-1", misses)
-        finally:
-            hook_mod.PARSE_OUTCOME_LOG = orig
-
-        entry = json.loads(sidecar.read_text().strip())
-        assert entry["event_id"] == "evt-1"
-        assert len(entry["parse_misses"]) == len(hook_mod.PLAYBOOKS) - 3
+    def test_subset_selected(self, hook_mod) -> None:
+        """Only mentioned playbook IDs are returned."""
+        included = [pb_id for pb_id, _, _ in hook_mod.PLAYBOOKS[:3]]
+        text = "\n".join(included)
+        result = hook_mod.parse_selection(text)
+        assert len(result) == 3
         for pb_id in included:
-            assert pb_id not in entry["parse_misses"]
+            assert pb_id in result
+        for pb_id, _, _ in hook_mod.PLAYBOOKS[3:]:
+            assert pb_id not in result
 
-    def test_empty_response_all_missing(self, hook_mod) -> None:
-        """An empty LLM response means every playbook is a parse miss."""
-        ratings = hook_mod.parse_ratings("")
-        all_ids = {pb_id for pb_id, _, _ in hook_mod.PLAYBOOKS}
-        misses = sorted(all_ids - ratings.keys())
-        assert misses == sorted(all_ids)
+    def test_empty_response_selects_none(self, hook_mod) -> None:
+        """An empty LLM response selects no playbooks."""
+        assert hook_mod.parse_selection("") == []
 
-    def test_garbled_id_is_a_miss(self, hook_mod) -> None:
-        """A mangled playbook ID in the response counts as a miss."""
+    def test_garbled_id_not_matched(self, hook_mod) -> None:
+        """A mangled playbook ID (underscores instead of hyphens) is not matched."""
         first_id = hook_mod.PLAYBOOKS[0][0]
         garbled = first_id.replace("-", "_")
-        lines = [f"{garbled}: 8"]
-        for pb_id, _, _ in hook_mod.PLAYBOOKS[1:]:
-            lines.append(f"{pb_id}: 5")
-        ratings_text = "\n".join(lines)
-        ratings = hook_mod.parse_ratings(ratings_text)
-        all_ids = {pb_id for pb_id, _, _ in hook_mod.PLAYBOOKS}
-        misses = sorted(all_ids - ratings.keys())
-        assert first_id in misses
-        assert len(misses) == 1
-
-    def test_out_of_range_score_is_a_miss(self, hook_mod) -> None:
-        """A score outside 1-10 fails validation, so the ID is a miss."""
-        first_id = hook_mod.PLAYBOOKS[0][0]
-        lines = [f"{first_id}: 0"]  # 0 is outside 1-10
-        for pb_id, _, _ in hook_mod.PLAYBOOKS[1:]:
-            lines.append(f"{pb_id}: 5")
-        ratings_text = "\n".join(lines)
-        ratings = hook_mod.parse_ratings(ratings_text)
-        all_ids = {pb_id for pb_id, _, _ in hook_mod.PLAYBOOKS}
-        misses = sorted(all_ids - ratings.keys())
-        assert first_id in misses
+        text = garbled
+        result = hook_mod.parse_selection(text)
+        assert first_id not in result
 
     def test_joinable_via_event_id(self, hook_mod, tmp_path: Path) -> None:
         """Training data entry and sidecar entry share the same event_id."""
@@ -259,7 +225,8 @@ class TestParseMissesIntegration:
         try:
             event_id = "join-test-uuid"
             hook_mod.log_training_example(
-                str(tmp_path), "relevance_rating", "prompt", "response",
+                str(tmp_path), "sparse_selection", "prompt", "response",
+                model="test-model",
                 extra={"event_id": event_id},
             )
             hook_mod.log_parse_outcome(str(tmp_path), event_id, ["missed-pb"])

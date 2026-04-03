@@ -248,6 +248,10 @@ with open('$FAILOVER_FILE', 'w') as f:
     f.write('\n')
 "
 
+	# Install failover git-status shim
+	source "$SCRIPT_DIR/lib/failover-git-shim.sh"
+	failover_shim_install
+
 	echo ""
 	echo "✅ CI failover engaged"
 	echo "   auto-pr, merge-pr, and ci-debug now target self-hosted Forgejo"
@@ -829,6 +833,10 @@ for pr in prs:
 	# Remove flag file and PR_PENDING
 	rm -f "$FAILOVER_FILE"
 	rm -f "$REPO_ROOT/.git/PR_PENDING"
+
+	# Remove failover git-status shim
+	source "$SCRIPT_DIR/lib/failover-git-shim.sh"
+	failover_shim_uninstall
 
 	echo ""
 	echo "====================================================================="

@@ -3,7 +3,7 @@
 
 Tests invariants for:
 - filter_new_lines: noise reduction, monotonic offset, idempotency
-- parse_ratings: score range, preferred format priority, no false positives
+- parse_selection: exact ID matching, hyphen-to-space fallback, "none" keyword
 - recently_injected: compaction invalidation, token-distance eviction
 - select_recent_entries: token budget compliance, order preservation
 
@@ -101,38 +101,6 @@ def transcript_sequence(draw: st.DrawFn) -> list[dict]:
     return draw(st.lists(transcript_line(), min_size=1, max_size=50))
 
 
-# For parse_ratings: playbook IDs from the real registry
-SAMPLE_PB_IDS = [
-    "experiment-design-playbook",
-    "bakeoff-broad-priorities",
-    "coverage-and-test-placement",
-    "ci-debug-protocol",
-    "vpr-usage",
-]
-
-
-@st.composite
-def preferred_ratings_text(draw: st.DrawFn) -> tuple[str, dict[str, int]]:
-    """Generate ratings in the preferred '<id>: <score>' format with expected results."""
-    lines = []
-    expected: dict[str, int] = {}
-    for pb_id in SAMPLE_PB_IDS:
-        score = draw(st.integers(min_value=1, max_value=10))
-        lines.append(f"{pb_id}: {score}")
-        expected[pb_id] = score
-    return "\n".join(lines), expected
-
-
-@st.composite
-def slash_ratings_text(draw: st.DrawFn) -> tuple[str, dict[str, int]]:
-    """Generate ratings in '<score>/10 <id>' fallback format."""
-    lines = []
-    expected: dict[str, int] = {}
-    for pb_id in SAMPLE_PB_IDS:
-        score = draw(st.integers(min_value=1, max_value=10))
-        lines.append(f"{score}/10 {pb_id}")
-        expected[pb_id] = score
-    return "\n".join(lines), expected
 
 
 # ---------------------------------------------------------------------------
@@ -325,81 +293,66 @@ class TestFilterNewLines:
 
 
 # ---------------------------------------------------------------------------
-# parse_ratings tests
+# parse_selection tests
 # ---------------------------------------------------------------------------
 
-class TestParseRatings:
-    """Property tests for on_transcript_change.py's parse_ratings."""
+class TestParseSelection:
+    """Tests for on_transcript_change.py's parse_selection."""
 
-    @given(text_and_expected=preferred_ratings_text())
-    @settings(max_examples=50)
-    def test_preferred_format_parsed_correctly(
-        self, text_and_expected: tuple[str, dict[str, int]], hook_mod: Any,
-    ) -> None:
-        """The '<id>: <score>' format is parsed with exact scores."""
-        text, expected = text_and_expected
-        result = hook_mod.parse_ratings(text)
-        for pb_id, score in expected.items():
-            assert result.get(pb_id) == score
+    def test_exact_id_match(self, hook_mod: Any) -> None:
+        """Exact playbook ID in text is selected."""
+        text = "experiment-design-playbook\ncoverage-and-test-placement"
+        result = hook_mod.parse_selection(text)
+        assert "experiment-design-playbook" in result
+        assert "coverage-and-test-placement" in result
 
-    @given(text_and_expected=slash_ratings_text())
-    @settings(max_examples=50)
-    def test_slash_format_parsed(
-        self, text_and_expected: tuple[str, dict[str, int]], hook_mod: Any,
-    ) -> None:
-        """The '<score>/10 <id>' fallback format is parsed correctly."""
-        text, expected = text_and_expected
-        result = hook_mod.parse_ratings(text)
-        for pb_id, score in expected.items():
-            assert result.get(pb_id) == score
+    def test_hyphen_to_space_match(self, hook_mod: Any) -> None:
+        """Playbook ID with hyphens replaced by spaces is matched."""
+        text = "experiment design playbook"
+        result = hook_mod.parse_selection(text)
+        assert "experiment-design-playbook" in result
 
-    @given(text_and_expected=preferred_ratings_text())
-    @settings(max_examples=50)
-    def test_scores_always_in_valid_range(
-        self, text_and_expected: tuple[str, dict[str, int]], hook_mod: Any,
-    ) -> None:
-        """Every parsed score is between 1 and 10 inclusive."""
-        text, _ = text_and_expected
-        result = hook_mod.parse_ratings(text)
-        for score in result.values():
-            assert 1 <= score <= 10
+    def test_none_keyword_empty_list(self, hook_mod: Any) -> None:
+        """The word 'none' with no IDs yields empty list."""
+        assert hook_mod.parse_selection("none") == []
+
+    def test_none_with_ids_still_returns_ids(self, hook_mod: Any) -> None:
+        """'none' in text alongside actual IDs returns those IDs."""
+        text = "none of the others, but experiment-design-playbook is relevant"
+        result = hook_mod.parse_selection(text)
+        assert "experiment-design-playbook" in result
 
     def test_empty_string_returns_empty(self, hook_mod: Any) -> None:
-        """Empty input yields no ratings."""
-        assert hook_mod.parse_ratings("") == {}
+        """Empty input yields empty list."""
+        assert hook_mod.parse_selection("") == []
+
+    def test_whitespace_only_returns_empty(self, hook_mod: Any) -> None:
+        """Whitespace-only input yields empty list."""
+        assert hook_mod.parse_selection("   \n  ") == []
 
     def test_garbage_returns_empty(self, hook_mod: Any) -> None:
-        """Unrelated text yields no ratings."""
-        assert hook_mod.parse_ratings("the quick brown fox jumps over the lazy dog") == {}
+        """Unrelated text yields empty list."""
+        assert hook_mod.parse_selection("the quick brown fox jumps over the lazy dog") == []
 
-    def test_out_of_range_scores_rejected(self, hook_mod: Any) -> None:
-        """Scores outside 1-10 are not returned."""
-        text = "experiment-design-playbook: 0\nbakeoff-broad-priorities: 11"
-        result = hook_mod.parse_ratings(text)
-        assert "experiment-design-playbook" not in result
-        assert "bakeoff-broad-priorities" not in result
+    def test_returns_list(self, hook_mod: Any) -> None:
+        """Return type is list[str]."""
+        result = hook_mod.parse_selection("experiment-design-playbook")
+        assert isinstance(result, list)
 
-    def test_numbered_list_does_not_steal_ordinal(self, hook_mod: Any) -> None:
-        """A numbered list prefix must not be confused with the score.
+    def test_all_playbooks_selectable(self, hook_mod: Any) -> None:
+        """Every registered playbook can be selected."""
+        text = "\n".join(pb_id for pb_id, _, _ in hook_mod.PLAYBOOKS)
+        result = hook_mod.parse_selection(text)
+        assert len(result) == len(hook_mod.PLAYBOOKS)
 
-        This was the original bug: '3. experiment-design-playbook: 8' could
-        match 3 (the list ordinal) instead of 8 (the actual score).
-        """
-        text = (
-            "1. experiment-design-playbook: 8\n"
-            "2. bakeoff-broad-priorities: 3\n"
-            "3. coverage-and-test-placement: 9\n"
-        )
-        result = hook_mod.parse_ratings(text)
-        assert result.get("experiment-design-playbook") == 8
-        assert result.get("bakeoff-broad-priorities") == 3
-        assert result.get("coverage-and-test-placement") == 9
-
-    def test_preferred_format_takes_priority(self, hook_mod: Any) -> None:
-        """When both '<id>: <score>' and '<score>/10 <id>' appear, preferred wins."""
-        text = "5/10 experiment-design-playbook: 9"
-        result = hook_mod.parse_ratings(text)
-        assert result.get("experiment-design-playbook") == 9
+    def test_more_than_three_still_parsed(self, hook_mod: Any) -> None:
+        """Response with >3 playbooks still parses all of them."""
+        ids = [pb_id for pb_id, _, _ in hook_mod.PLAYBOOKS[:5]]
+        text = "\n".join(ids)
+        result = hook_mod.parse_selection(text)
+        assert len(result) == 5
+        for pb_id in ids:
+            assert pb_id in result
 
 
 # ---------------------------------------------------------------------------

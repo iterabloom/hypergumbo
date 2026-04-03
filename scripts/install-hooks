@@ -165,6 +165,14 @@ if [[ ! -f "AUTONOMOUS_MODE.txt" ]] && [[ -f "AUTONOMOUS_MODE.txt.default" ]]; t
   echo "✅ Created AUTONOMOUS_MODE.txt from default (set to FALSE)"
 fi
 
+# -----------------------------
+# Install failover git-status shim if failover is active
+# -----------------------------
+if [[ -f "$repo_root/.git/CI_FAILOVER_ACTIVE" ]]; then
+  source "$repo_root/scripts/lib/failover-git-shim.sh"
+  failover_shim_install
+fi
+
 echo "✅ Git hooks installed for this clone"
 echo "   core.hooksPath=$(git config --local --get core.hooksPath)"
 echo "   diff.tracker.textconv=$(git config --local --get diff.tracker.textconv)"
