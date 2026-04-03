@@ -815,12 +815,15 @@ class TestSVGInjection:
         """Cell dimensions are extracted from Textual's SVG structure."""
         from hypergumbo_tracker.tui import TrackerApp
 
-        # Realistic SVG with Textual's background rects and text elements
+        # Realistic SVG with Textual's background rects and text elements.
+        # Includes the large terminal background rect (height=1707) that
+        # must be skipped when extracting line-level cell geometry.
         svg = (
             '<svg class="rich-terminal" viewBox="0 0 3056 1758.0">'
-            '<rect x="0" y="123.5" width="3037.8" height="24.4"/>'
-            '<rect x="0" y="147.9" width="3037.8" height="24.4"/>'
-            '<rect x="0" y="172.3" width="3037.8" height="24.4"/>'
+            '<rect x="0" y="0" width="3037.8" height="1707.0"/>'
+            '<rect x="0" y="1.5" width="3037.8" height="24.4"/>'
+            '<rect x="0" y="25.9" width="3037.8" height="24.4"/>'
+            '<rect x="0" y="50.3" width="3037.8" height="24.4"/>'
             '<text x="12.2" y="20" textLength="12.2">X</text>'
             '</svg>'
         )
@@ -840,8 +843,8 @@ class TestSVGInjection:
         assert "<rect " in result
         # With cell_w=12.2, x = 10*12.2 = 122.0
         assert 'x="122.0"' in result
-        # With cell_h=24.4, y_offset=123.5, y = 5*24.4 + 123.5 = 245.5
-        assert 'y="245.5"' in result
+        # With cell_h=24.4, y_offset=1.5, y = 5*24.4 + 1.5 = 123.5
+        assert 'y="123.5"' in result
 
     def test_no_arrowhead_defs_without_arrows(self, tmp_path: Path) -> None:
         """SVG defs with arrowhead marker are only added when arrows exist."""

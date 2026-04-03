@@ -3365,16 +3365,17 @@ class TrackerApp(App):
 
         cell_w, cell_h, y_offset = 12.2, 24.4, 0.0  # defaults
 
-        # Cell height: spacing between consecutive background rects
+        # Cell height: find the small repeating background rects (one per
+        # terminal line).  Skip the first large rect (terminal background)
+        # by filtering for heights < 50px — line rects are ~24px.
         bg_rects = re.findall(
             r'<rect x="[\d.]+" y="([\d.]+)" width="[\d.]+" height="([\d.]+)"',
             svg[:10000],
         )
-        if len(bg_rects) >= 3:
-            # First rect with full width is the content area start
-            y_positions = [float(y) for y, _h in bg_rects]
-            cell_h = float(bg_rects[0][1])  # rect height = cell height
-            y_offset = y_positions[0]  # first content rect y = title bar height
+        line_rects = [(float(y), float(h)) for y, h in bg_rects if float(h) < 50]
+        if len(line_rects) >= 2:
+            cell_h = line_rects[0][1]  # height of a line rect
+            y_offset = line_rects[0][0]  # y of first line = title bar height
 
         # Cell width: look for single-character text elements with textLength
         single_chars = re.findall(
