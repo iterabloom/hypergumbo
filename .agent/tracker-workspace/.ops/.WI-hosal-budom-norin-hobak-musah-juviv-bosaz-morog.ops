@@ -28,3 +28,18 @@
   nonce: '9913'  # 9913
   set:  # 9913
     parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 9913
+- op: update  # 4c9e
+  at: '2026-04-03T20:55:53Z'  # 4c9e
+  by: agent  # 4c9e
+  actor: jgstern_agent  # 4c9e
+  clock: 3  # 4c9e
+  nonce: 4c9e  # 4c9e
+  set:  # 4c9e
+    status: done  # 4c9e
+- op: discuss  # 79c8
+  at: '2026-04-03T20:55:53Z'  # 79c8
+  by: agent  # 79c8
+  actor: jgstern_agent  # 79c8
+  clock: 4  # 79c8
+  nonce: 79c8  # 79c8
+  message: "Implemented in PR #110. StaticFiles mount at / as fallback. API routes take precedence. 5 tests."  # 79c8

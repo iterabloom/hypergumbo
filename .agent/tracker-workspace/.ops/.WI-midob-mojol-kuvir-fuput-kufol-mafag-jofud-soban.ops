@@ -27,3 +27,18 @@
   nonce: 2ef1  # 2ef1
   set:  # 2ef1
     parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 2ef1
+- op: update  # 9ad3
+  at: '2026-04-03T20:35:27Z'  # 9ad3
+  by: agent  # 9ad3
+  actor: jgstern_agent  # 9ad3
+  clock: 3  # 9ad3
+  nonce: 9ad3  # 9ad3
+  set:  # 9ad3
+    status: done  # 9ad3
+- op: discuss  # d726
+  at: '2026-04-03T20:35:27Z'  # d726
+  by: agent  # d726
+  actor: jgstern_agent  # d726
+  clock: 4  # d726
+  nonce: d726  # d726
+  message: "Implemented in PR #109. torrc.example with v3 onion service config and x25519 client authorization documentation."  # d726
