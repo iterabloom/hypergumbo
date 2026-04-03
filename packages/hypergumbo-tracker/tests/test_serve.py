@@ -507,6 +507,25 @@ class TestCmdServeForegound:
         assert "stale" in captured.out.lower()
 
 
+class TestStopServerTimeout:
+    """Test the timeout path when a process doesn't exit after SIGTERM."""
+
+    def test_stop_returns_true_even_if_process_lingers(self, tmp_path: Path) -> None:
+        """stop_server returns True even if process doesn't exit within timeout."""
+        from hypergumbo_tracker.serve import stop_server
+
+        pid_path = tmp_path / "htrac-serve.pid"
+        pid_path.write_text(f"{os.getpid()}\n")
+
+        with patch("os.kill") as mock_kill, \
+             patch("hypergumbo_tracker.serve.is_pid_alive", return_value=True), \
+             patch("time.sleep"):  # Skip actual sleeping
+            mock_kill.side_effect = None
+            result = stop_server(pid_path)
+
+        assert result is True
+
+
 class TestDefaultPidPath:
     """Tests for default PID file path resolution."""
 
