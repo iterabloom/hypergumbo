@@ -227,6 +227,62 @@ class TestAnnotationCanvas:
 
 
 # ---------------------------------------------------------------------------
+# render_line tests
+# ---------------------------------------------------------------------------
+
+
+class TestCanvasRenderLine:
+    """Tests for _AnnotationCanvas.render_line() with background lines."""
+
+    def _make_canvas(
+        self, width: int = 40, height: int = 10,
+        bg_lines: list[str] | None = None,
+    ) -> _AnnotationCanvas:
+        canvas = _AnnotationCanvas(background_lines=bg_lines)
+        type(canvas).size = property(lambda self: Size(width, height))
+        canvas.refresh = lambda *a, **kw: None  # type: ignore[assignment]
+        return canvas
+
+    def test_render_line_shows_background(self) -> None:
+        """Non-annotation cells show background text."""
+        canvas = self._make_canvas(10, 3, bg_lines=["ABCDEFGHIJ", "0123456789", "XXXXXXXXXX"])
+        strip = canvas.render_line(1)
+        assert strip.text == "0123456789"
+
+    def test_render_line_annotation_overrides_background(self) -> None:
+        """Annotation chars override background at their positions."""
+        canvas = self._make_canvas(10, 3, bg_lines=["ABCDEFGHIJ"])
+        canvas._rects = [(2, 0, 5, 0, "#ff3333")]
+        strip = canvas.render_line(0)
+        text = strip.text
+        assert text[0] == "A"
+        assert text[1] == "B"
+        # Positions 2-5 are annotation chars (rect border)
+        assert text[2] == "█"
+        assert text[6] == "G"
+
+    def test_render_line_out_of_range(self) -> None:
+        """Out-of-range y returns blank strip."""
+        canvas = self._make_canvas(10, 3)
+        strip = canvas.render_line(-1)
+        assert strip.text == " " * 10
+        strip2 = canvas.render_line(5)
+        assert strip2.text == " " * 10
+
+    def test_render_line_no_background_uses_spaces(self) -> None:
+        """Without background lines, non-annotation cells are spaces."""
+        canvas = self._make_canvas(10, 3)
+        strip = canvas.render_line(0)
+        assert strip.text == " " * 10
+
+    def test_render_line_short_background_pads_with_spaces(self) -> None:
+        """Background lines shorter than width pad with spaces."""
+        canvas = self._make_canvas(10, 3, bg_lines=["ABC"])
+        strip = canvas.render_line(0)
+        assert strip.text == "ABC       "
+
+
+# ---------------------------------------------------------------------------
 # AnnotationScreen unit tests
 # ---------------------------------------------------------------------------
 
