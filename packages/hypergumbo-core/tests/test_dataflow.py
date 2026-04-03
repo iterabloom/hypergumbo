@@ -1171,6 +1171,97 @@ class TestGoLibraryPatterns:
         assert len(sites) == 0
 
 
+# ==================== RUST LIBRARY PATTERNS TESTS ====================
+
+
+class TestRustLibraryPatterns:
+    """Tests for Rust name-based dataflow heuristics.
+
+    Rust methods like .write_all(), .push(), .insert() on &mut self are
+    state-mutating operations. Without library_patterns, these edges have
+    no access_mode (the bakeoff-deep assessment of pyo3-file showed all
+    26 access_mode annotations as 'read' — this was a gap in rust.yaml).
+    """
+
+    def _load_rust_config(self):
+        from pathlib import Path
+        rust_yaml = (
+            Path(__file__).parent.parent
+            / "src" / "hypergumbo_core" / "dataflow_patterns" / "rust.yaml"
+        )
+        return load_dataflow_config(rust_yaml)
+
+    def test_rust_config_has_library_patterns(self) -> None:
+        """Rust dataflow config should include library_patterns."""
+        config = self._load_rust_config()
+        assert config.language == "rust"
+        assert len(config.library_patterns) > 0
+
+    def test_write_method_calls(self) -> None:
+        """Rust .write_all(), .push(), .insert() should match as write."""
+        config = self._load_rust_config()
+        content = (
+            "fn process(buf: &mut Vec<u8>, file: &mut File) {\n"
+            "    buf.push(42);\n"
+            "    buf.extend(other);\n"
+            "    file.write_all(&data).unwrap();\n"
+            "    file.flush().unwrap();\n"
+            "    map.insert(key, value);\n"
+            "}\n"
+        )
+        sites = scan_library_patterns(content, config)
+        write_sites = [s for s in sites if s.access_mode == "write"]
+        assert len(write_sites) >= 4, (
+            f"Expected >=4 write sites for push/extend/write_all/flush/insert, got {len(write_sites)}: "
+            f"{[(s.access_mode, s.line) for s in sites]}"
+        )
+
+    def test_read_method_calls(self) -> None:
+        """Rust .get(), .read(), .contains() should match as read."""
+        config = self._load_rust_config()
+        content = (
+            "fn lookup(map: &HashMap<String, i32>, file: &File) {\n"
+            "    let v = map.get(&key);\n"
+            "    file.read(&mut buf).unwrap();\n"
+            "    if map.contains(&key) { }\n"
+            "}\n"
+        )
+        sites = scan_library_patterns(content, config)
+        read_sites = [s for s in sites if s.access_mode == "read"]
+        assert len(read_sites) >= 2, (
+            f"Expected >=2 read sites for get/read/contains, got {len(read_sites)}: "
+            f"{[(s.access_mode, s.line) for s in sites]}"
+        )
+
+    def test_delete_method_calls(self) -> None:
+        """Rust .remove() and .drop() should match as delete."""
+        config = self._load_rust_config()
+        content = (
+            "fn cleanup(map: &mut HashMap<String, i32>) {\n"
+            "    map.remove(&key);\n"
+            "    drop(handle);\n"
+            "}\n"
+        )
+        sites = scan_library_patterns(content, config)
+        delete_sites = [s for s in sites if s.access_mode == "delete"]
+        assert len(delete_sites) >= 1, (
+            f"Expected >=1 delete sites for remove/drop, got {len(delete_sites)}: "
+            f"{[(s.access_mode, s.line) for s in sites]}"
+        )
+
+    def test_non_matching_methods_ignored(self) -> None:
+        """Normal method calls like .unwrap(), .expect() should not match."""
+        config = self._load_rust_config()
+        content = (
+            "fn process() {\n"
+            "    let val = result.unwrap();\n"
+            "    let other = option.expect(\"failed\");\n"
+            "}\n"
+        )
+        sites = scan_library_patterns(content, config)
+        assert len(sites) == 0
+
+
 # ==================== DATAFLOW SITE TESTS ====================
 
 

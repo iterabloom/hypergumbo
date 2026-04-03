@@ -43,6 +43,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Unresolved edges for `ctypes.CDLL(None)` and `ffi.dlopen(None)`**: When Python calls C stdlib functions via the system C library (no repo-local C symbols), the pyffi linker now emits unresolved edges with a `python:C_stdlib:0-0:<name>:unresolved` pseudo-namespace. The io_boundary tagger redirects these to the C catalog, enabling IO primitive tagging (fopen, popen, fwrite, etc.) for Python FFI code — same pattern as cgo.
 - If a C function exists repo-locally, the resolved edge is preferred over the unresolved one.
 
+#### Rust dataflow access modes
+
+- **Library patterns for Rust** (`rust.yaml`): Added `library_patterns` section with 44 method-name heuristics for classifying call edge access modes. Write patterns: `write`, `write_all`, `flush`, `push`, `insert`, `extend`, `send`, etc. Read patterns: `get`, `read`, `contains`, `find`, `iter`, `clone`, etc. Delete patterns: `remove`, `drop`. Previously all Rust call edges had no access_mode annotation.
+
 #### `io-boundaries` CLI
 
 - Enriched text output: per-primitive counts, call-site locations, entry-point traces, high-risk highlighting.
