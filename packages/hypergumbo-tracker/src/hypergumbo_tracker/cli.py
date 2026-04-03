@@ -1427,6 +1427,45 @@ def _cmd_tui(args: argparse.Namespace, ts: TrackerSet) -> int:
     return EXIT_SUCCESS
 
 
+def _cmd_serve(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'serve' subcommand — start/stop/status the web server."""
+    from hypergumbo_tracker.serve import (
+        DEFAULT_PORT,
+        default_pid_path,
+        get_server_status,
+        run_server,
+        stop_server,
+    )
+
+    tracker_root = Path(args.tracker_root_resolved)
+    pid_path = default_pid_path(tracker_root)
+
+    if args.stop:
+        if stop_server(pid_path):
+            print("Server stopped.")
+            return EXIT_SUCCESS
+        print("No running server found.", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    if args.status:
+        status = get_server_status(pid_path)
+        if getattr(args, "json", False):
+            import json
+            print(json.dumps(status))
+        elif status["running"]:
+            print(f"Server running (PID {status['pid']})")
+        elif "stale_pid" in status:
+            print(f"Not running (stale PID file: {status['stale_pid']})")
+        else:
+            print("Not running.")
+        return EXIT_SUCCESS
+
+    port = args.port or DEFAULT_PORT
+    print(f"Starting htrac serve on 127.0.0.1:{port}")
+    run_server(port=port, pid_path=pid_path)
+    return EXIT_SUCCESS
+
+
 # ---------------------------------------------------------------------------
 # Argparse setup
 # ---------------------------------------------------------------------------
@@ -1656,6 +1695,28 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # --- tui ---
     sub.add_parser("tui", help="Launch interactive TUI (requires textual)")
+
+    # --- serve ---
+    p_serve = sub.add_parser(
+        "serve",
+        help="Start web server for remote access (requires starlette, uvicorn)",
+    )
+    p_serve.add_argument(
+        "--background", action="store_true",
+        help="Daemonize and write PID file",
+    )
+    p_serve.add_argument(
+        "--stop", action="store_true",
+        help="Stop a running serve process",
+    )
+    p_serve.add_argument(
+        "--status", action="store_true",
+        help="Show status of running serve process",
+    )
+    p_serve.add_argument(
+        "--port", type=int, default=None,
+        help="Port to bind (default: 7380)",
+    )
 
     # --- deps ---
     p_deps = sub.add_parser("deps", help="Show dependency graph for an item")
@@ -2150,6 +2211,40 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(_cmd_migrate(args))
     if args.command == "sync":
         raise SystemExit(_cmd_sync(args))
+    if args.command == "serve" and (args.stop or args.status):
+        # --stop and --status don't need TrackerSet, but need tracker_root for PID path
+        from hypergumbo_tracker.serve import (
+            DEFAULT_PORT,
+            default_pid_path,
+            get_server_status,
+            stop_server,
+        )
+
+        if args.tracker_root:
+            tracker_root = Path(args.tracker_root)
+        else:
+            tracker_root = _find_tracker_root()
+        pid_path = default_pid_path(tracker_root)
+
+        if args.stop:
+            if stop_server(pid_path):
+                print("Server stopped.")
+                raise SystemExit(EXIT_SUCCESS)
+            print("No running server found.", file=sys.stderr)
+            raise SystemExit(EXIT_USER_ERROR)
+
+        # --status
+        status = get_server_status(pid_path)
+        if getattr(args, "json", False):
+            import json
+            print(json.dumps(status))
+        elif status["running"]:
+            print(f"Server running (PID {status['pid']})")
+        elif "stale_pid" in status:
+            print(f"Not running (stale PID file: {status['stale_pid']})")
+        else:
+            print("Not running.")
+        raise SystemExit(EXIT_SUCCESS)
 
     # Discover tracker root
     try:
@@ -2216,6 +2311,7 @@ def main(argv: list[str] | None = None) -> None:
         "fork-setup": _cmd_fork_setup,
         "tui": _cmd_tui,
         "batch": _cmd_batch,
+        "serve": _cmd_serve,
     }
 
     handler = handler_map.get(args.command)

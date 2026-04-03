@@ -47,6 +47,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Library patterns for Rust** (`rust.yaml`): Added `library_patterns` section with 44 method-name heuristics for classifying call edge access modes. Write patterns: `write`, `write_all`, `flush`, `push`, `insert`, `extend`, `send`, etc. Read patterns: `get`, `read`, `contains`, `find`, `iter`, `clone`, etc. Delete patterns: `remove`, `drop`. Previously all Rust call edges had no access_mode annotation.
 
+#### htrac serve skeleton (ADR-0019 Part A)
+
+- **`htrac serve` command**: Starlette/uvicorn server skeleton bound to 127.0.0.1 only. `/health` endpoint returns `{"status": "ok", "pid": ..., "uptime_seconds": ...}`. PID file management for `--background`/`--stop`/`--status`. Default port 7380.
+- **Optional dependencies**: `starlette`, `uvicorn`, `httpx` under `[serve]` extras in pyproject.toml.
+
 #### `io-boundaries` CLI
 
 - Enriched text output: per-primitive counts, call-site locations, entry-point traces, high-risk highlighting.
