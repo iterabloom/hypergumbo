@@ -3357,14 +3357,37 @@ class TrackerApp(App):
         path = self._pending_screenshot_path
         svg = self._pending_svg
 
-        # Build SVG annotation group
-        # Textual SVGs use 8.65px cell width and 18px cell height
-        cell_w, cell_h = 8.65, 18.0
+        # Build SVG annotation group.
+        # Extract actual cell geometry from the SVG rather than
+        # hardcoding — Textual's cell dimensions depend on font size
+        # and the SVG includes a title bar offset.
+        import re
+
+        cell_w, cell_h, y_offset = 12.2, 24.4, 0.0  # defaults
+
+        # Cell height: spacing between consecutive background rects
+        bg_rects = re.findall(
+            r'<rect x="[\d.]+" y="([\d.]+)" width="[\d.]+" height="([\d.]+)"',
+            svg[:10000],
+        )
+        if len(bg_rects) >= 3:
+            # First rect with full width is the content area start
+            y_positions = [float(y) for y, _h in bg_rects]
+            cell_h = float(bg_rects[0][1])  # rect height = cell height
+            y_offset = y_positions[0]  # first content rect y = title bar height
+
+        # Cell width: look for single-character text elements with textLength
+        single_chars = re.findall(
+            r'<text[^>]*?textLength="([\d.]+)"[^>]*?>[^<]</text>',
+            svg[:15000],
+        )
+        if single_chars:
+            cell_w = float(single_chars[0])
         elements: list[str] = []
         for ann in annotations:
             if isinstance(ann, RectAnnotation):
                 x = ann.cell_x1 * cell_w
-                y = ann.cell_y1 * cell_h
+                y = ann.cell_y1 * cell_h + y_offset
                 w = (ann.cell_x2 - ann.cell_x1) * cell_w
                 h = (ann.cell_y2 - ann.cell_y1) * cell_h
                 elements.append(
@@ -3375,9 +3398,9 @@ class TrackerApp(App):
                 )
             elif isinstance(ann, ArrowAnnotation):
                 x1 = ann.from_x * cell_w + cell_w / 2
-                y1 = ann.from_y * cell_h + cell_h / 2
+                y1 = ann.from_y * cell_h + y_offset + cell_h / 2
                 x2 = ann.to_x * cell_w + cell_w / 2
-                y2 = ann.to_y * cell_h + cell_h / 2
+                y2 = ann.to_y * cell_h + y_offset + cell_h / 2
                 elements.append(
                     f'<line x1="{x1:.1f}" y1="{y1:.1f}" '
                     f'x2="{x2:.1f}" y2="{y2:.1f}" '
@@ -3386,7 +3409,7 @@ class TrackerApp(App):
                 )
             elif isinstance(ann, LabelAnnotation):
                 x = ann.cell_x * cell_w
-                y = ann.cell_y * cell_h + cell_h * 0.75  # baseline offset
+                y = ann.cell_y * cell_h + y_offset + cell_h * 0.75
                 text = sanitize_label_text(ann.text)
                 elements.append(
                     f'<text x="{x:.1f}" y="{y:.1f}" '
