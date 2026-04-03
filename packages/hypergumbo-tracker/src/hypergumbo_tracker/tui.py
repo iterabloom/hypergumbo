@@ -1585,7 +1585,7 @@ class _AnnotationCanvas(Widget):
             return Strip([Segment(" " * width)])
 
         grid = self._build_grid()
-        if y >= len(grid):
+        if y >= len(grid):  # pragma: no cover — defensive for size change between calls
             return Strip([Segment(" " * width)])
 
         # Get background line (frozen screen content)
@@ -3315,8 +3315,8 @@ class TrackerApp(App):
         try:
             strips = self.screen.render_lines(screen_region)
             bg_lines = [strip.text for strip in strips]
-        except Exception:
-            bg_lines = []  # pragma: no cover — defensive for render failure
+        except Exception:  # pragma: no cover — defensive for render failure
+            bg_lines = []  # pragma: no cover
 
         # Open annotation mode
         self._pending_screenshot_path = path
