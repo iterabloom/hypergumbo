@@ -27,3 +27,18 @@
   nonce: ca9b  # ca9b
   set:  # ca9b
     parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # ca9b
+- op: update  # 2ef2
+  at: '2026-04-03T19:02:04Z'  # 2ef2
+  by: agent  # 2ef2
+  actor: jgstern_agent  # 2ef2
+  clock: 3  # 2ef2
+  nonce: 2ef2  # 2ef2
+  set:  # 2ef2
+    status: done  # 2ef2
+- op: discuss  # e616
+  at: '2026-04-03T19:02:04Z'  # e616
+  by: agent  # e616
+  actor: jgstern_agent  # e616
+  clock: 4  # e616
+  nonce: e616  # e616
+  message: "Implemented in PR #103. PasswordVerifier with bcrypt (real + duress, timing-safe). RateLimiter with per-credential exponential backoff and lockout. 15 tests."  # e616
