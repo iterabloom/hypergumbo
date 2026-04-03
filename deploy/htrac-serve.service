@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: MPL-2.0
+# systemd unit file for htrac serve (ADR-0019)
+#
+# Install:
+#   sudo cp deploy/htrac-serve.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now htrac-serve
+#
+# The service runs as a dedicated user (htrac) and binds to 127.0.0.1:7380.
+# External access is provided by a Tor onion service (see deploy/torrc.example)
+# that forwards to the local listener.
+
+[Unit]
+Description=htrac tracker server (ADR-0019)
+Documentation=https://codeberg.org/admin-josh/hypergumbo/src/branch/dev/docs/adr/0019-remote-access-transport.md
+After=network.target
+Wants=tor.service
+
+[Service]
+Type=simple
+User=htrac
+Group=htrac
+WorkingDirectory=/home/htrac
+Environment=HOME=/home/htrac
+
+# The tracker root (.agent/) must be accessible to this user
+ExecStart=/home/htrac/.local/bin/htrac serve --tracker-root /home/htrac/.agent
+ExecStop=/home/htrac/.local/bin/htrac serve --stop --tracker-root /home/htrac/.agent
+
+# Restart on crash, but not on clean exit (--stop sends SIGTERM)
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/htrac/.agent
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+MemoryDenyWriteExecute=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=htrac-serve
+
+[Install]
+WantedBy=multi-user.target
