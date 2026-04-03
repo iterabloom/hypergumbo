@@ -29,6 +29,7 @@ Why This Design
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import signal
 import time
@@ -51,6 +52,8 @@ PID_FILENAME = "htrac-serve.pid"
 # Module-level state set by create_app()
 _start_time: float = time.monotonic()
 _tracker_set: TrackerSet | None = None
+_ws_clients: set[WebSocket] = set()
+_watcher_task: asyncio.Task | None = None
 
 
 def _item_to_dict(item: Any) -> dict[str, Any]:
@@ -231,6 +234,9 @@ async def _ws_handler(websocket: WebSocket) -> None:
         "items": [_item_to_dict(i) for i in items],
     })
 
+    # Register client for broadcast
+    _ws_clients.add(websocket)
+
     # Message loop
     try:
         while True:
@@ -239,6 +245,8 @@ async def _ws_handler(websocket: WebSocket) -> None:
             await websocket.send_json(response)
     except Exception:  # WebSocket disconnect or JSON decode error
         pass
+    finally:
+        _ws_clients.discard(websocket)
 
 
 def _handle_ws_message(msg: dict[str, Any]) -> dict[str, Any]:
@@ -284,6 +292,97 @@ def _handle_ws_message(msg: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Filesystem watcher for CLI/TUI coexistence
+# ---------------------------------------------------------------------------
+
+
+async def broadcast_state_snapshot() -> None:
+    """Push a fresh state_snapshot to all connected WebSocket clients.
+
+    Called when the filesystem watcher detects ops file changes (CLI/TUI wrote
+    new ops) or after a WebSocket mutation command.
+    """
+    if _tracker_set is None or not _ws_clients:
+        return
+    items = _tracker_set.list_items()
+    snapshot = {
+        "type": "state_snapshot",
+        "items": [_item_to_dict(i) for i in items],
+    }
+    stale: list[WebSocket] = []
+    for ws in _ws_clients.copy():
+        try:
+            await ws.send_json(snapshot)
+        except Exception:
+            stale.append(ws)
+    for ws in stale:
+        _ws_clients.discard(ws)
+
+
+def get_watch_paths() -> list[Path]:
+    """Return the ops directories to watch for filesystem changes.
+
+    These are the directories where CLI/TUI write .ops files. When any file
+    in these directories changes, the watcher triggers a state recompile and
+    WebSocket broadcast.
+    """
+    if _tracker_set is None:
+        return []
+    paths = []
+    for store in [_tracker_set.canonical, _tracker_set.workspace, _tracker_set.stealth]:
+        ops_dir = store._ops_dir
+        if ops_dir.exists():
+            paths.append(ops_dir)
+    return paths
+
+
+async def _watch_ops_files(stop_event: asyncio.Event) -> None:
+    """Background coroutine that watches ops directories for changes.
+
+    Uses ``watchfiles.awatch`` for async, Rust-backed filesystem notifications.
+    On any change, broadcasts a fresh state_snapshot to all WebSocket clients.
+    """
+    import watchfiles
+
+    paths = get_watch_paths()
+    if not paths:
+        return
+
+    try:
+        async for _changes in watchfiles.awatch(*paths, stop_event=stop_event):
+            await broadcast_state_snapshot()
+    except Exception:  # pragma: no cover — defensive for watcher errors
+        pass
+
+
+async def start_watcher() -> None:
+    """Start the filesystem watcher background task."""
+    global _watcher_task
+    if _watcher_task is not None:
+        return
+    _stop_event = asyncio.Event()
+    _watcher_task = asyncio.create_task(_watch_ops_files(_stop_event))
+    # Store stop event on the task for cleanup
+    _watcher_task._stop_event = _stop_event  # type: ignore[attr-defined]
+
+
+async def stop_watcher() -> None:
+    """Stop the filesystem watcher background task."""
+    global _watcher_task
+    if _watcher_task is None:
+        return
+    stop_event = getattr(_watcher_task, "_stop_event", None)
+    if stop_event is not None:
+        stop_event.set()
+    _watcher_task.cancel()
+    try:
+        await _watcher_task
+    except (asyncio.CancelledError, Exception):
+        pass
+    _watcher_task = None
+
+
+# ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
 
@@ -302,6 +401,17 @@ def create_app(*, tracker_set: TrackerSet | None = None) -> Starlette:
     _start_time = time.monotonic()
     _tracker_set = tracker_set
 
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def lifespan(app: Starlette):  # type: ignore[type-arg]
+        """Manage watcher lifecycle: start on startup, stop on shutdown."""
+        if tracker_set is not None:
+            await start_watcher()
+        yield
+        if tracker_set is not None:
+            await stop_watcher()
+
     routes = [
         Route("/health", _health, methods=["GET"]),
         Route("/api/items", _api_list_items, methods=["GET"]),
@@ -312,7 +422,7 @@ def create_app(*, tracker_set: TrackerSet | None = None) -> Starlette:
         Route("/api/ready", _api_ready, methods=["GET"]),
         WebSocketRoute("/ws", _ws_handler),
     ]
-    return Starlette(routes=routes)
+    return Starlette(routes=routes, lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
