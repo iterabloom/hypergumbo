@@ -30,7 +30,7 @@ ambiguous_names:
 
 fs_read:
   - module: stdio
-    functions: [fopen, fread, fgets, fgetc, fscanf, getc, getchar, scanf]
+    functions: [fopen, fread, fgets, fgetc, fscanf, getc, getchar, scanf, fseek, rewind, ungetc, ftell]
   - module: unistd
     functions: [read, readlink, access, stat, lstat, fstat]
   - module: dirent
@@ -40,8 +40,8 @@ fs_read:
 
 fs_write:
   - module: stdio
-    functions: [fopen, fwrite, fputs, fputc, fprintf, putc, putchar, printf, remove, rename, tmpfile, tmpnam]
-    notes: "tmpfile/tmpnam create temp files on the filesystem"
+    functions: [fopen, fwrite, fputs, fputc, fprintf, putc, putchar, printf, remove, rename, tmpfile, tmpnam, fclose, fflush]
+    notes: "tmpfile/tmpnam create temp files on the filesystem; fclose releases file handle; fflush forces write"
   - module: stdlib
     functions: [mkstemp, mkdtemp, mkostemp, mkstemps]
     notes: "POSIX temp file/dir creation"

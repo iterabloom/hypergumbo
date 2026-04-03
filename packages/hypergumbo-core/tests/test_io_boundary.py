@@ -174,6 +174,21 @@ class TestLoadCatalog:
         assert catalog.lookup("stdio.tmpfile").boundary == "fs_write"
         assert catalog.lookup("stdlib.mkstemp").boundary == "fs_write"
 
+    def test_c_catalog_file_lifecycle_functions(self) -> None:
+        """C catalog includes fclose, fflush, fseek, rewind, ungetc (bakeoff finding)."""
+        catalog = load_catalog("c")
+        # fclose releases a file handle — classified as fs_write (resource cleanup)
+        assert catalog.lookup("stdio.fclose").boundary == "fs_write"
+        # fflush forces buffered data to disk
+        assert catalog.lookup("stdio.fflush").boundary == "fs_write"
+        # fseek/rewind reposition the file cursor — classified as fs_read
+        assert catalog.lookup("stdio.fseek").boundary == "fs_read"
+        assert catalog.lookup("stdio.rewind").boundary == "fs_read"
+        # ungetc pushes back a character into the read buffer
+        assert catalog.lookup("stdio.ungetc").boundary == "fs_read"
+        # ftell reports file position
+        assert catalog.lookup("stdio.ftell").boundary == "fs_read"
+
     def test_c_catalog_has_all_boundary_types(self) -> None:
         catalog = load_catalog("c")
         boundaries = {p.boundary for p in catalog.primitives}
