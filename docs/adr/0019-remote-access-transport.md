@@ -2,7 +2,48 @@
 # ADR-0019: Remote Access Transport
 
 Date: 2026-03-30
+Revised: 2026-04-03
 Status: Proposed
+
+## Phasing
+
+This ADR is split into two parts. **Part A** is the MVP — the minimum needed to check on agents from a phone over the internet. **Part B** is everything else, deferred until Part A is working.
+
+### Part A (MVP)
+
+The core value proposition: see what agents are doing from a phone, over Tor.
+
+| Component | What | How |
+|-----------|------|-----|
+| Server | `htrac serve` | Python (Starlette + uvicorn), binds to `127.0.0.1` |
+| Transport | Tor onion service | External Tor daemon, `torrc` config |
+| Client | Orbot + Safari (iOS) | Orbot in per-app VPN mode routing only Safari through Tor |
+| Auth | YubiKey + password | `py_webauthn` for WebAuthn/FIDO2, `bcrypt` for password |
+| Duress | Duress module | User-implemented `DuressHandler` Protocol |
+| Frontend | BlockSuite web app | Document editor + infinite canvas/whiteboard, served as static assets |
+| Live sync | WebSocket | Typed JSON messages, `state_snapshot` on connect, events on change |
+| File watching | `watchfiles` | Detects CLI/TUI writes, pushes to WebSocket clients |
+| Coexistence | CLI + TUI + serve | All use same flock-based ops files, no IPC needed |
+
+Part A auth is **two-factor** (YubiKey + password). Face ID requires a native iOS app and is deferred to Part B.
+
+### Part B (stretch goals)
+
+Everything below improves performance, adds native platform integration, or enables multi-machine federation. None of it is needed to use the web UI over Tor from a phone.
+
+| Component | What | Depends on |
+|-----------|------|------------|
+| WireGuard optimization | Direct UDP path, bulk traffic off Tor | STUN/TURN |
+| STUN/TURN | NAT traversal for WireGuard | Pluggable, self-hosted `coturn` |
+| Native iOS app | Swift shell + `WKWebView` | Shared Rust core |
+| Native desktop app | Tauri (Rust) | Shared Rust core |
+| Shared Rust core | `arti` (Tor client), `boringtun`, Ed25519, local proxy | Rust cross-compilation infra |
+| Face ID | Client-side biometric gate (third auth factor) | Native iOS app |
+| Federation (ADR-0021) | Multi-machine compiled-view sync | Ed25519 node identity, `htrac serve` |
+| Machine-to-machine auth | Ed25519-signed sync requests | Federation |
+| Local proxy | Transport-transparent `localhost` proxy | Shared Rust core |
+
+Sections below are labeled **[Part A]** or **[Part B]** to indicate which phase they belong to. All Part B content remains as the north-star architecture.
 
 ## Context
 
@@ -12,7 +53,9 @@ hypergumbo-tracker runs on a Linux VM in a homelab. The VM can only make **outgo
 
 ### The auth invariant
 
-The system must enforce: **the phone cannot access the agent's tracker unless the user has (1) plugged in a YubiKey, (2) entered a password, (3) passed Face ID, and (4) not entered the duress password — all within the configured session TTL (default 15 minutes).** This is a hard security boundary, not a nice-to-have. It rules out static credentials, long-lived tokens, and any auth scheme that doesn't prove physical hardware presence and voluntary intent at interaction time.
+The full system enforces: **the phone cannot access the agent's tracker unless the user has (1) plugged in a YubiKey, (2) entered a password, (3) passed Face ID, and (4) not entered the duress password — all within the configured session TTL (default 15 minutes).** This is a hard security boundary, not a nice-to-have. It rules out static credentials, long-lived tokens, and any auth scheme that doesn't prove physical hardware presence and voluntary intent at interaction time.
+
+**Part A delivers factors 1, 2, and 4** (YubiKey, password, duress detection). Factor 3 (Face ID) requires a native iOS app and is deferred to Part B. With Orbot + Safari, the browser handles WebAuthn natively — no native app needed for YubiKey support.
 
 The four factors cover four distinct threat scenarios:
 
@@ -37,7 +80,7 @@ The current access path is an SSH tunnel to the VM via a terminal client. This w
 
 ## Decision
 
-### Transport: Tor + WireGuard, both valued
+### Transport: Tor + WireGuard, both valued [Part A: Tor only; Part B: adds WireGuard]
 
 **Design philosophy:** Tor is the always-available foundation — valued infrastructure, not a crutch. WireGuard is an automatic optimization that moves bulk traffic off the Tor network when a direct path exists. Using WireGuard when possible is good citizenship: it frees volunteer relay capacity for people who need anonymity, while htrac users need private reachability, not anonymity.
 
@@ -47,7 +90,7 @@ The current access path is an SSH tunnel to the VM via a terminal client. This w
 - This path requires only outgoing connections from the VM. No inbound ports, no public IP, no DNS.
 - Tor is used for initial bootstrap (endpoint exchange for WireGuard), as the fallback when WireGuard can't establish a path, and as the primary transport when the user wants location privacy (traveling, hostile network).
 
-**WireGuard (automatic optimization):**
+**WireGuard (automatic optimization) [Part B]:**
 - The client discovers its current public UDP mapping via a **STUN reflector** (see below).
 - The client sends its candidate endpoint to the VM over the Tor control channel.
 - Both sides attempt WireGuard handshake with `PersistentKeepalive`.
@@ -56,7 +99,7 @@ The current access path is an SSH tunnel to the VM via a terminal client. This w
 
 **Transport selection is automatic.** The user does not choose or see which path is active, except optionally via a status indicator. The system always starts on Tor, attempts WireGuard upgrade in the background, and falls back to Tor if WireGuard drops.
 
-### NAT traversal: STUN and TURN
+### NAT traversal: STUN and TURN [Part B]
 
 WireGuard needs to know the client's public IP:port to establish a direct UDP path. Any **STUN-compatible UDP reflector** can answer this question — it receives a UDP packet and replies with the observed source address.
 
@@ -76,9 +119,9 @@ Properties of any STUN reflector:
 
 The NAT traversal strategy becomes: STUN first (direct path, zero relay cost) → TURN fallback (relayed path, adds latency but works on any NAT) → Tor fallback (always available, highest latency). `coturn` supports both STUN and TURN in a single deployment, so a self-hosted `coturn` instance covers both tiers. TURN relay credentials are short-lived (generated per-session by `htrac serve` using a shared secret with the TURN server) to prevent unauthorized relay use.
 
-### Server: `htrac serve`
+### Server: `htrac serve` [Part A]
 
-`htrac serve` is the web server that the transport connects to and that auth protects. It runs as a long-lived process on the VM, serving both the web UI and the federation API (ADR-0021).
+`htrac serve` is the web server that the transport connects to and that auth protects. It runs as a long-lived process on the VM, serving the web UI (Part A) and the federation API (ADR-0021, Part B).
 
 **Architecture: one backend, multiple frontends.**
 
@@ -147,7 +190,7 @@ htrac serve --status           # running? PID? uptime? connected clients?
 - Multiple clients: supported. All see the same state via the event bus. Concurrent writes are serialized by the core engine (same flock-based locking as the CLI).
 - SSH tunnel drops: the browser in `WKWebView` reconnects when the tunnel is re-established. The WebSocket protocol handles reconnect via `state_snapshot`.
 
-**Federation API (ADR-0021):**
+**Federation API (ADR-0021) [Part B]:**
 
 The same server process also handles federation:
 
@@ -161,13 +204,13 @@ Federation API requests are authenticated via Ed25519-signed requests (machine-t
 
 **Integration point for ADR-0020 and ADR-0021.** `htrac serve` is the shared backend for the web UI (which renders SVG screenshots natively, replacing the Chafa pipeline in ADR-0020), the federation compiled-view feed and write-at-origin API (ADR-0021), and the WebSocket event bus that connects all clients. The CLI and TUI operate independently of `htrac serve` — they use the same Store/TrackerSet via flock. `htrac serve` is required only for web access, federation sync, and real-time multi-client updates.
 
-### Authentication: four-factor with duress detection
+### Authentication: four-factor with duress detection [Part A: two-factor + duress; Part B: adds Face ID]
 
 `htrac serve` implements authentication directly — no external IdP, no Pomerium, no companion binary. Auth lives in the same Python process as the tracker.
 
 **Factor sequence:**
 
-1. **Face ID** (iOS system level). The app requires biometric auth before presenting any UI. This happens in the iOS app via `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` before the app shows its own login screen. The server never sees biometric data — Face ID is a client-side gate.
+1. **Face ID** (iOS system level) **[Part B]**. The app requires biometric auth before presenting any UI. This happens in the iOS app via `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` before the app shows its own login screen. The server never sees biometric data — Face ID is a client-side gate. Requires a native iOS app — not available in Part A (Orbot + Safari).
 
 2. **YubiKey** (WebAuthn/FIDO2). The app opens `ASWebAuthenticationSession` to the server's `/auth/webauthn` endpoint. The server issues a challenge; the YubiKey signs it. `py_webauthn` verifies the response. This proves physical possession of the registered hardware token. Note: `ASWebAuthenticationSession` bounces the user to a Safari system sheet and back — a brief context switch on every authentication. With the 15-minute session TTL, this happens frequently. This is the intended security/convenience tradeoff.
 
@@ -223,7 +266,7 @@ The user writes their own handler module (a single Python file, not committed to
 - The module has access to the `TrackerSet`, the federation peer list, and the network transport layer — it can do anything the server can do.
 - Timing: `on_duress_login` and `filter_response` must complete within the same latency envelope as normal operations. The framework enforces a timeout to prevent a slow module from creating a detectable timing difference.
 
-### Machine-to-machine authentication
+### Machine-to-machine authentication [Part B]
 
 Node-to-node connections (for federation sync per ADR-0021) use a separate auth mechanism from human access. The human with the YubiKey is the **root of trust** for the entire federation — they decide which machines can talk to each other.
 
@@ -276,20 +319,28 @@ What the attacker **cannot** do without the YubiKey:
 
 **Detection and response:** The human's primary mitigation is revocation. Once a compromise is detected, the human authenticates on the phone app (four-factor) and sends `revoke-peer` to all nodes that trusted the compromised node. Revocation is immediate. The window of exposure is the time between compromise and revocation. The duress module (if the compromise involves coercion of the human) provides an additional response path — but that is user-defined and deliberately unspecified (see above).
 
-### Client apps: one web frontend, shared Rust core, two native shells
+### Client apps [Part A: Orbot + Safari; Part B: native shells + shared Rust core]
+
+**Part A client: Orbot + Safari.** No native app needed. Orbot (iOS App Store) provides a Tor VPN in per-app mode — route only Safari through Tor, leaving all other phone traffic unaffected. Safari handles WebAuthn natively (FIDO2 security keys work in Safari). The `.onion` URL is bookmarked in Safari. Static assets are cached by the browser after first load; a service worker provides belt-and-suspenders caching even if Tor Browser or privacy-focused browsers clear HTTP cache aggressively. The frontend is optimistic-update / local-first, so canvas interactions render at 60fps+ regardless of Tor latency (~1-3s round-trip); sync to server happens in the background.
+
+**Part B client: native shells + shared Rust core.** The remainder of this section describes the north-star architecture for dedicated native apps.
+
+#### One web frontend, shared Rust core, two native shells
 
 The UI is a **web frontend** — a single codebase of HTML/CSS/JS/TypeScript with canvas libraries for rich interactions (diagramming, annotation, entity relationships, Apple Pencil support). It runs identically in every context. The native shells are thin wrappers that provide transport orchestration and auth gating — they contain no UI code. A **shared Rust core** implements the transport layer once, used by both platforms.
 
-**Web frontend (shared across all platforms):**
+**Web frontend (shared across all platforms) [Part A]:**
 
-- Served as static assets by `htrac serve` (or bundled with the native shells)
+- Built on **BlockSuite** — the engine behind AFFiNE, providing both a block-based document editor (Notion-like) and an infinite canvas/whiteboard ("edgeless mode") in one framework. Native persistence format is Yjs (CRDT), which gives offline-first and eventual sync over WebSocket for free.
+- Served as static assets by `htrac serve` (or bundled with the native shells in Part B)
 - Connects to `htrac serve` via WebSocket for real-time state sync
-- Canvas/SVG for diagramming, annotation, spatial layout (Excalidraw, tldraw, Konva, D3, or similar)
+- Edgeless mode for diagramming, annotation, spatial layout; block mode for structured discussion, checklists, code
 - Responsive layout: full canvas workspace on desktop/iPad, triage-optimized on phone
 - Apple Pencil support via standard pointer events in the browser/webview
 - All canvas interactions are client-side (local rendering at 120fps); structured data is sent to the server on save
+- Service worker caches the app shell in Cache Storage — survives aggressive cache clears, ensures only the first load is heavy over Tor
 
-**Shared Rust core (transport layer):**
+**Shared Rust core (transport layer) [Part B]:**
 
 A single Rust static library implements the transport layer for both platforms:
 
@@ -314,7 +365,7 @@ The transport *state machine* — start on Tor, attempt WireGuard upgrade via ST
 - **FFI boundary discipline.** Rust panics across FFI are undefined behavior. Every C-exported function must catch panics at the boundary and return a result type. Debugging requires correlating Swift and Rust stack frames.
 - **Binary size.** `arti` adds ~5-15MB to the iOS binary (statically linked). `boringtun` is not included on iOS (WireGuard is handled by the native Network Extension), reducing the iOS binary delta. Acceptable for most apps but notable.
 
-**Desktop shell: Tauri (Rust)**
+**Desktop shell: Tauri (Rust) [Part B]**
 
 | Component | Role |
 |-----------|------|
@@ -326,7 +377,7 @@ Tauri produces small binaries (~5-10MB plus the shared core), uses the system we
 
 WebAuthn works natively in the system webview on macOS (Safari's WebKit supports FIDO2 security keys). No bounce to an external browser session needed on desktop.
 
-**iOS/iPadOS shell: Swift + WKWebView**
+**iOS/iPadOS shell: Swift + WKWebView [Part B]**
 
 A thin native shell (~500-800 lines of Swift) that handles platform integration and auth. Transport logic lives in the shared Rust core. The web frontend does all the UI work.
 
@@ -344,7 +395,7 @@ Note: `NEPacketTunnelProvider` is the **sole WireGuard implementation on iOS**. 
 
 The same app binary runs on iPhone and iPad. The only difference is screen real estate — the web frontend adapts via responsive CSS. On iPad, the full canvas workspace with Apple Pencil support is available. On iPhone, the layout optimizes for triage, status updates, and discussion.
 
-**Local proxy (both platforms):**
+**Local proxy (both platforms) [Part B]:**
 
 Each native shell (Tauri and iOS) runs a local HTTP/WebSocket proxy on `127.0.0.1:<port>`. The system webview (`WKWebView` on iOS, WebKit/WebKitGTK on desktop) always connects to `localhost` — never directly to the onion address or WireGuard tunnel IP. The proxy handles transport selection (Tor vs WireGuard), failover, and reconnection transparently.
 
@@ -355,7 +406,16 @@ This architecture solves two problems:
 
 The proxy is implemented in the shared Rust core (see above) — one implementation, used by both Tauri and the iOS shell.
 
-**Product flow (iOS/iPadOS):**
+**Product flow (Part A — Orbot + Safari):**
+1. Open Orbot, enable per-app VPN mode (Safari only). Other phone traffic is unaffected.
+2. Open Safari, navigate to bookmarked `.onion` URL.
+3. Safari presents **YubiKey WebAuthn** challenge. Plug in YubiKey (Lightning/NFC), tap to sign.
+4. On WebAuthn success, enter **password** (real or duress). Both produce a successful login.
+5. Web app loads. BlockSuite edgeless canvas and block editor render tracker state. If duress: the server silently filters responses per the duress module. The UI looks normal.
+6. Live updates via WebSocket — CLI/TUI writes appear in real time (via `watchfiles` on server).
+7. Session expires after configured TTL (default 15 minutes); browser re-prompts for full auth.
+
+**Product flow (Part B — native iOS/iPadOS app):**
 1. App launches. Immediately presents **Face ID** via `LAContext`. Fails → app stays locked.
 2. On biometric success, establishes Tor control channel to the onion service.
 3. Presents **YubiKey WebAuthn** login via `ASWebAuthenticationSession`. Server issues challenge, YubiKey signs it.
@@ -367,7 +427,7 @@ The proxy is implemented in the shared Rust core (see above) — one implementat
 9. If WireGuard fails or drops, falls back to Tor transparently.
 10. Session expires after the configured TTL (default 15 minutes); app re-prompts for full four-factor auth.
 
-**Peer provisioning via the iOS app:**
+**Peer provisioning via the iOS app [Part B]:**
 The phone/iPad app also serves as the provisioning device for federation (ADR-0021). After authenticating (with the real password, not duress), the human can:
 - Scan a QR code from a new node's TUI to register its Ed25519 public key.
 - Send `register-peer` / `revoke-peer` commands to existing nodes.
@@ -383,12 +443,17 @@ This makes the phone + YubiKey the single root of trust for the entire federatio
 
 ### Server-side deployment
 
-The full server-side stack on the VM:
+**Part A stack** on the VM:
 
 ```
 systemd
 ├── htrac-serve.service        # htrac serve --background
-├── tor.service                # publishes onion service, forwards to htrac
+└── tor.service                # publishes onion service, forwards to htrac
+```
+
+**Part B** adds WireGuard:
+
+```
 └── wg-quick@htrac.service     # WireGuard interface (optional)
 ```
 
@@ -423,41 +488,50 @@ systemd
 
 ### Dependencies
 
-**Server (Python, pip-installable):**
-- `aiohttp` or `uvicorn` + `starlette` — async HTTP/WebSocket server
+**Part A — Server (Python, pip-installable as `hypergumbo-tracker[serve]`):**
+- `starlette` + `uvicorn` — async HTTP/WebSocket server
 - `py_webauthn` — WebAuthn/FIDO2 registration and authentication
 - `bcrypt` — password hashing (real and duress passwords)
-- `PyNaCl` or `cryptography` — Ed25519 node identity keys, session token generation
+- `watchfiles` — filesystem watching (Rust-based, async-native, cross-platform)
 - `cairosvg` — SVG rasterization for inline previews (see ADR-0020, optional)
 
-**System (not bundled):**
+**Part A — System (not bundled):**
 - Tor daemon — publishes onion service
-- WireGuard tools — tunnel management
 - systemd — process supervision for `htrac serve`
 
-**Shared Rust core (static library, used by both desktop and iOS):**
+**Part A — Web frontend (JS/TS):**
+- BlockSuite — document editor + infinite canvas/whiteboard (Yjs-backed)
+- Vite — build toolchain
+- Service worker — app shell caching for Tor latency
+
+**Part A — Client:**
+- Orbot (iOS App Store) — Tor VPN in per-app mode
+- Safari — WebAuthn/FIDO2, standard browser caching
+
+**Part B — Server additions:**
+- `PyNaCl` or `cryptography` — Ed25519 node identity keys (for federation)
+
+**Part B — System additions:**
+- WireGuard tools — tunnel management
+
+**Part B — Shared Rust core (static library, used by both desktop and iOS):**
 - `arti` — Tor client
 - `boringtun` — WireGuard (desktop only; iOS uses native `NEPacketTunnelProvider`)
 - `stun_codec` or custom — STUN NAT discovery
 - `ed25519-dalek` — node identity and request signing
 - `hyper` or custom — local HTTP/WebSocket proxy
 
-**Desktop client (Tauri):**
+**Part B — Desktop client (Tauri):**
 - Rust toolchain — Tauri backend + shared core (in-process, native)
 - System webview (WebKit on macOS, WebKitGTK on Linux)
 
-**iOS/iPadOS client (Swift shell):**
+**Part B — iOS/iPadOS client (Swift shell):**
 - Xcode + Apple Developer account
 - Shared Rust core (via XCFramework, C FFI)
 - `NEPacketTunnelProvider` for WireGuard (native Swift, OS-level VPN interface)
 - `WKWebView` for web frontend
 
-**Web frontend (JS/TS, shared):**
-- Canvas/diagramming library (Excalidraw, tldraw, Konva, D3, or similar)
-- WebSocket client library
-- Build toolchain (Vite, esbuild, or similar)
-
-**External (not bundled, pluggable):**
+**Part B — External (not bundled, pluggable):**
 - STUN/TURN server — any public or self-hosted reflector/relay for WireGuard NAT discovery and traversal (e.g., `coturn` for both)
 
 ### Open questions
@@ -467,7 +541,7 @@ systemd
 - **Tor client on iOS:** Resolved: `arti` is embedded via the shared Rust core (C FFI through XCFramework). This is the same approach used by Signal and other apps that embed Rust on iOS. Adds ~5-15MB to binary size. App Store review risk is accepted based on precedent.
 - **Duress module distribution:** Users need guidance on writing effective handlers without that guidance itself becoming a roadmap for attackers. Consider a separate, access-controlled document or in-person knowledge transfer rather than public docs.
 - **Session continuity across transport switch.** Resolved: the local proxy architecture eliminates this concern. `WKWebView` always connects to `localhost` — the proxy handles transport switches transparently. Cookie domain is always `localhost`, so session cookies survive transport changes.
-- **Face ID fallback.** If the device doesn't have Face ID (older iPhone, iPad without TrueDepth), should the app accept Touch ID? Passcode? Or refuse to run? Recommendation: accept any `LAPolicy.deviceOwnerAuthenticationWithBiometrics` result, which covers both Face ID and Touch ID. Do not fall back to passcode — that weakens the biometric factor to a knowledge factor.
-- **Web frontend framework choice.** The ADR specifies canvas libraries (Excalidraw, tldraw, Konva, D3) but not the application framework (React, Svelte, vanilla, etc.). This affects bundle size, developer experience, and ecosystem compatibility with the chosen canvas library. Decide during implementation.
+- **Face ID fallback [Part B].** If the device doesn't have Face ID (older iPhone, iPad without TrueDepth), should the app accept Touch ID? Passcode? Or refuse to run? Recommendation: accept any `LAPolicy.deviceOwnerAuthenticationWithBiometrics` result, which covers both Face ID and Touch ID. Do not fall back to passcode — that weakens the biometric factor to a knowledge factor. Not relevant for Part A (no native app).
+- **Web frontend framework choice.** Resolved: **BlockSuite** — provides both block-based document editing and infinite canvas/whiteboard in one framework, backed by Yjs CRDTs. Gives offline-first and eventual sync over WebSocket for free. No separate application framework needed (React, Svelte, etc.) — BlockSuite is the application framework.
 - **Tauri on Linux without WebKitGTK.** Some headless Linux servers (where `htrac serve` runs) may not have WebKitGTK. The Tauri desktop app is a *client* — it runs on the user's desktop machine, not on the server VM. But if someone wants to run the desktop client on the same Linux box via X forwarding, WebKitGTK becomes a dependency. Clarify that the Tauri app is for desktop client machines, not servers.
 - **App Store review for Tor.** Apple has historically been cautious about apps that embed Tor functionality. The app should frame Tor as a privacy/connectivity feature, not an anonymity tool. The STUN reflector + WireGuard as primary data path (with Tor as fallback) may help the review narrative.
