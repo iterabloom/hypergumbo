@@ -38,6 +38,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Haskell** (`haskell.yaml`): Prelude, System.IO, Network.Socket, System.Process, Data.IORef, Control.Concurrent.
 - **Swift**: 14 server-side primitives (AsyncHTTPClient, NIOSSL, distributed tracing), SwiftNIO channel/file I/O, 7 swift-log level methods.
 
+#### Python FFI C stdlib tracing (WI-dokum)
+
+- **Unresolved edges for `ctypes.CDLL(None)` and `ffi.dlopen(None)`**: When Python calls C stdlib functions via the system C library (no repo-local C symbols), the pyffi linker now emits unresolved edges with a `python:C_stdlib:0-0:<name>:unresolved` pseudo-namespace. The io_boundary tagger redirects these to the C catalog, enabling IO primitive tagging (fopen, popen, fwrite, etc.) for Python FFI code — same pattern as cgo.
+- If a C function exists repo-locally, the resolved edge is preferred over the unresolved one.
+
 #### `io-boundaries` CLI
 
 - Enriched text output: per-primitive counts, call-site locations, entry-point traces, high-risk highlighting.

@@ -669,6 +669,11 @@ def _resolve_ffi_catalog(
     and redirects to the ``c`` catalog, dropping the module hint because
     ``"C"`` is Go's import alias, not a C header/module name.
 
+    Python's pyffi linker uses ``python:C_stdlib:0-0:<name>:unresolved``
+    for calls through ``ctypes.CDLL(None)`` or ``ffi.dlopen(None)``.
+    Same redirect: the ``python`` catalog has Python-native IO, but these
+    calls target C stdlib functions.
+
     Returns:
         (catalog, adjusted_module_hint) — the catalog to use for lookup
         and the module hint (``None`` when the pseudo-namespace module
@@ -676,6 +681,10 @@ def _resolve_ffi_catalog(
     """
     # Go cgo → C stdlib: go:C:0-0:<name>:unresolved
     if lang == "go" and module_hint == "C":
+        return catalogs.get("c"), None
+
+    # Python ctypes.CDLL(None) / ffi.dlopen(None) → C stdlib
+    if lang == "python" and module_hint == "C_stdlib":
         return catalogs.get("c"), None
 
     return catalogs.get(lang), module_hint

@@ -1090,6 +1090,229 @@ class TestPyO3PythonStyleNameMatching:
         assert "encode" in ffi_edge.dst
 
 
+class TestPyFFIStdlibUnresolvedEdges:
+    """Tests for C stdlib unresolved edges via ffi.dlopen(None) / ctypes.CDLL(None).
+
+    When Python uses ffi.dlopen(None) or ctypes.CDLL(None), it loads the system
+    C library. There are no repo-local C symbols to match. The linker should
+    emit unresolved edges (like the cgo pattern) so the io_boundary tagger can
+    redirect to the C catalog and tag IO primitives.
+    """
+
+    def test_cffi_dlopen_none_creates_unresolved_edges(self, tmp_path: Path) -> None:
+        """ffi.dlopen(None) + lib.fopen() creates an unresolved edge to C stdlib."""
+        from hypergumbo_core.linkers.pyffi import (
+            PYFFI_STDLIB_PREFIX,
+            link_pyffi,
+        )
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text(
+            "from cffi import FFI\n"
+            "ffi = FFI()\n"
+            "ffi.cdef('void *fopen(const char *, const char *);')\n"
+            "lib = ffi.dlopen(None)\n"
+            "lib.fopen('test.txt', 'r')\n"
+        )
+
+        py_func = _make_python_symbol(
+            "app", kind="module", path=str(py_file), start_line=1, end_line=5
+        )
+
+        result = link_pyffi(
+            repo_root=tmp_path,
+            python_symbols=[py_func],
+            c_symbols=[],  # No repo-local C symbols
+            rust_symbols=[],
+            edges=[],
+        )
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.edge_type == "ffi_bridge"
+        assert edge.dst == f"{PYFFI_STDLIB_PREFIX}fopen:unresolved"
+        assert edge.evidence_type == "cffi_stdlib_call"
+        assert edge.meta is not None
+        assert edge.meta.get("access_mode") == "write"
+        assert edge.meta.get("dest_access_mode") == "read"
+
+    def test_ctypes_cdll_none_creates_unresolved_edges(self, tmp_path: Path) -> None:
+        """ctypes.CDLL(None) + lib.popen() creates an unresolved edge to C stdlib."""
+        from hypergumbo_core.linkers.pyffi import (
+            PYFFI_STDLIB_PREFIX,
+            link_pyffi,
+        )
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text(
+            "import ctypes\n"
+            "libc = ctypes.CDLL(None)\n"
+            "libc.popen('ls', 'r')\n"
+        )
+
+        py_func = _make_python_symbol(
+            "app", kind="module", path=str(py_file), start_line=1, end_line=3
+        )
+
+        result = link_pyffi(
+            repo_root=tmp_path,
+            python_symbols=[py_func],
+            c_symbols=[],
+            rust_symbols=[],
+            edges=[],
+        )
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.edge_type == "ffi_bridge"
+        assert edge.dst == f"{PYFFI_STDLIB_PREFIX}popen:unresolved"
+        assert edge.evidence_type == "ctypes_stdlib_call"
+
+    def test_stdlib_and_local_c_coexist(self, tmp_path: Path) -> None:
+        """dlopen(None) stdlib calls + dlopen('./lib.so') local calls both produce edges."""
+        from hypergumbo_core.linkers.pyffi import (
+            PYFFI_STDLIB_PREFIX,
+            link_pyffi,
+        )
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text(
+            "from cffi import FFI\n"
+            "ffi = FFI()\n"
+            "libc = ffi.dlopen(None)\n"
+            "mylib = ffi.dlopen('./libcustom.so')\n"
+            "libc.fwrite('data', 1, 4, None)\n"
+            "mylib.custom_func(42)\n"
+        )
+
+        py_func = _make_python_symbol(
+            "app", kind="module", path=str(py_file), start_line=1, end_line=6
+        )
+        c_func = _make_c_symbol("custom_func", path="custom.c")
+
+        result = link_pyffi(
+            repo_root=tmp_path,
+            python_symbols=[py_func],
+            c_symbols=[c_func],
+            rust_symbols=[],
+            edges=[],
+        )
+
+        assert len(result.edges) == 2
+        dst_set = {e.dst for e in result.edges}
+        # One resolved edge to repo-local C, one unresolved stdlib edge
+        assert c_func.id in dst_set
+        assert f"{PYFFI_STDLIB_PREFIX}fwrite:unresolved" in dst_set
+
+    def test_stdlib_prefers_resolved_when_c_symbol_exists(self, tmp_path: Path) -> None:
+        """If a C symbol is repo-local AND called via dlopen(None), emit resolved edge."""
+        from hypergumbo_core.linkers.pyffi import link_pyffi
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text(
+            "from cffi import FFI\n"
+            "ffi = FFI()\n"
+            "lib = ffi.dlopen(None)\n"
+            "lib.my_custom()\n"
+        )
+
+        py_func = _make_python_symbol(
+            "app", kind="module", path=str(py_file), start_line=1, end_line=4
+        )
+        c_func = _make_c_symbol("my_custom", path="custom.c")
+
+        result = link_pyffi(
+            repo_root=tmp_path,
+            python_symbols=[py_func],
+            c_symbols=[c_func],
+            rust_symbols=[],
+            edges=[],
+        )
+
+        assert len(result.edges) == 1
+        # Should resolve to the repo-local C symbol, not unresolved
+        assert result.edges[0].dst == c_func.id
+
+    def test_stdlib_multiple_calls(self, tmp_path: Path) -> None:
+        """Multiple C stdlib calls from dlopen(None) each get an unresolved edge."""
+        from hypergumbo_core.linkers.pyffi import (
+            PYFFI_STDLIB_PREFIX,
+            link_pyffi,
+        )
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text(
+            "import ctypes\n"
+            "libc = ctypes.CDLL(None)\n"
+            "libc.fopen('test', 'r')\n"
+            "libc.fwrite('data', 1, 4, None)\n"
+        )
+
+        py_func = _make_python_symbol(
+            "app", kind="module", path=str(py_file), start_line=1, end_line=4
+        )
+
+        result = link_pyffi(
+            repo_root=tmp_path,
+            python_symbols=[py_func],
+            c_symbols=[],
+            rust_symbols=[],
+            edges=[],
+        )
+
+        assert len(result.edges) == 2
+        dst_set = {e.dst for e in result.edges}
+        assert f"{PYFFI_STDLIB_PREFIX}fopen:unresolved" in dst_set
+        assert f"{PYFFI_STDLIB_PREFIX}fwrite:unresolved" in dst_set
+
+    def test_stdlib_deduplicates_same_call(self, tmp_path: Path) -> None:
+        """Same stdlib call twice from same enclosing symbol produces only one edge."""
+        from hypergumbo_core.linkers.pyffi import link_pyffi
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text(
+            "import ctypes\n"
+            "libc = ctypes.CDLL(None)\n"
+            "libc.fopen('a', 'r')\n"
+            "libc.fopen('b', 'r')\n"
+        )
+
+        py_func = _make_python_symbol(
+            "app", kind="module", path=str(py_file), start_line=1, end_line=4
+        )
+
+        result = link_pyffi(
+            repo_root=tmp_path,
+            python_symbols=[py_func],
+            c_symbols=[],
+            rust_symbols=[],
+            edges=[],
+        )
+
+        assert len(result.edges) == 1
+
+    def test_io_boundary_tagger_resolves_pyffi_stdlib(self) -> None:
+        """The io_boundary tagger redirects pyffi stdlib edges to the C catalog."""
+        from hypergumbo_core.io_boundary import _resolve_ffi_catalog
+        from hypergumbo_core.linkers.pyffi import PYFFI_STDLIB_PREFIX
+
+        # Simulate what tag_io_boundaries does: extract lang and module_hint
+        # from "python:C_stdlib:0-0:fopen:unresolved"
+        dummy_dst = f"{PYFFI_STDLIB_PREFIX}fopen:unresolved"
+        parts = dummy_dst.split(":")
+        lang = parts[0]  # "python"
+        module_hint = parts[1]  # "C_stdlib"
+
+        # Create a fake C catalog
+        class FakeCatalog:
+            pass
+        catalogs = {"c": FakeCatalog(), "python": FakeCatalog()}
+
+        catalog, adjusted_hint = _resolve_ffi_catalog(lang, module_hint, catalogs)
+        assert catalog is catalogs["c"], "Should redirect to C catalog"
+        assert adjusted_hint is None, "Module hint should be dropped"
+
+
 class TestPyO3CrateNameAnnotation:
     """Tests for PyO3 matching when the annotation name is 'pyo3' (crate name).
 
