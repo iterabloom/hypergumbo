@@ -1,0 +1,21 @@
+- op: create  # a3d4
+  at: '2026-04-03T08:25:09Z'  # a3d4
+  by: agent  # a3d4
+  actor: jgstern_agent  # a3d4
+  clock: 1  # a3d4
+  nonce: a3d4  # a3d4
+  data:  # a3d4
+    kind: work_item  # a3d4
+    title: "iOS/macOS native app: Swift shell with Face ID, YubiKey, password auth"  # a3d4
+    status: needs_human_review  # a3d4
+    priority: 2  # a3d4
+    parent:  # a3d4
+    tags:  # a3d4
+    - adr-0019  # a3d4
+    - ios  # a3d4
+    before: []  # a3d4
+    duplicate_of: []  # a3d4
+    not_duplicate_of: []  # a3d4
+    pr_ref:  # a3d4
+    description: "PLACEHOLDER — requires iOS development expertise and Apple Developer account. Native Swift shell (~500-800 LOC): LAContext for Face ID/Touch ID, ASAuthorizationSecurityKeyCredentialProvider for native FIDO2 YubiKey, native password field, localhost HTTP proxy (URLSession → Orbot/SOCKS), WKWebView rendering BlockSuite from localhost, WKHTTPCookieStore for session cookie injection. Universal binary (iPhone + iPad + macOS). See docs/adr/0019-remote-access-transport.md §Part A iOS/macOS shell."  # a3d4
+    fields: {}  # a3d4

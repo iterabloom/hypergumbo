@@ -1,0 +1,21 @@
+- op: create  # 1e3c
+  at: '2026-04-03T08:25:07Z'  # 1e3c
+  by: agent  # 1e3c
+  actor: jgstern_agent  # 1e3c
+  clock: 1  # 1e3c
+  nonce: 1e3c  # 1e3c
+  data:  # 1e3c
+    kind: work_item  # 1e3c
+    title: "htrac serve: WebAuthn/FIDO2 registration and authentication (py_webauthn)"  # 1e3c
+    status: todo_soft  # 1e3c
+    priority: 2  # 1e3c
+    parent:  # 1e3c
+    tags:  # 1e3c
+    - adr-0019  # 1e3c
+    - auth  # 1e3c
+    before: []  # 1e3c
+    duplicate_of: []  # 1e3c
+    not_duplicate_of: []  # 1e3c
+    pr_ref:  # 1e3c
+    description: "Implement /auth/webauthn endpoint: server issues challenge, client (native app) sends signed assertion, py_webauthn verifies. YubiKey registration flow. Proves physical possession of registered hardware token. See docs/adr/0019-remote-access-transport.md §Authentication factor 2."  # 1e3c
+    fields: {}  # 1e3c

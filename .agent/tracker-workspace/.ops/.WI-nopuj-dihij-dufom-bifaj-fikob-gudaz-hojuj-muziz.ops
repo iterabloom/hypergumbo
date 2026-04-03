@@ -1,0 +1,21 @@
+- op: create  # 2da1
+  at: '2026-04-03T08:25:09Z'  # 2da1
+  by: agent  # 2da1
+  actor: jgstern_agent  # 2da1
+  clock: 1  # 2da1
+  nonce: 2da1  # 2da1
+  data:  # 2da1
+    kind: work_item  # 2da1
+    title: "BlockSuite frontend: tracker item rendering and interaction"  # 2da1
+    status: todo_soft  # 2da1
+    priority: 2  # 2da1
+    parent:  # 2da1
+    tags:  # 2da1
+    - adr-0019  # 2da1
+    - frontend  # 2da1
+    before: []  # 2da1
+    duplicate_of: []  # 2da1
+    not_duplicate_of: []  # 2da1
+    pr_ref:  # 2da1
+    description: "Render tracker items in BlockSuite block mode: item details, status, discussion threads, checklists. Support update/discuss/lock actions via WebSocket commands. Edgeless mode for spatial layout and diagramming. See docs/adr/0019-remote-access-transport.md §Web frontend."  # 2da1
+    fields: {}  # 2da1

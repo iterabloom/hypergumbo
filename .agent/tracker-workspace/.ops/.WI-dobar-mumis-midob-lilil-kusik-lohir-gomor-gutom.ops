@@ -1,0 +1,21 @@
+- op: create  # d197
+  at: '2026-04-03T08:25:08Z'  # d197
+  by: agent  # d197
+  actor: jgstern_agent  # d197
+  clock: 1  # d197
+  nonce: d197  # d197
+  data:  # d197
+    kind: work_item  # d197
+    title: "htrac serve: duress module interface (DuressHandler Protocol)"  # d197
+    status: todo_soft  # d197
+    priority: 2  # d197
+    parent:  # d197
+    tags:  # d197
+    - adr-0019  # d197
+    - auth  # d197
+    before: []  # d197
+    duplicate_of: []  # d197
+    not_duplicate_of: []  # d197
+    pr_ref:  # d197
+    description: "Define DuressHandler Protocol: on_duress_login(session, context) called once per duress session, filter_response(session, response) called on every response. User implements their own handler (gitignored, not tracked). Loaded from config.yaml auth.duress_module at startup. Timeout enforcement to prevent timing side-channel. See docs/adr/0019-remote-access-transport.md §Duress session behavior."  # d197
+    fields: {}  # d197

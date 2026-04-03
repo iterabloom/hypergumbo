@@ -1,0 +1,21 @@
+- op: create  # e243
+  at: '2026-04-03T08:25:07Z'  # e243
+  by: agent  # e243
+  actor: jgstern_agent  # e243
+  clock: 1  # e243
+  nonce: e243  # e243
+  data:  # e243
+    kind: work_item  # e243
+    title: "htrac serve: password verification with bcrypt (real + duress)"  # e243
+    status: todo_soft  # e243
+    priority: 2  # e243
+    parent:  # e243
+    tags:  # e243
+    - adr-0019  # e243
+    - auth  # e243
+    before: []  # e243
+    duplicate_of: []  # e243
+    not_duplicate_of: []  # e243
+    pr_ref:  # e243
+    description: "Server stores bcrypt hashes for both real and duress passwords. After WebAuthn success, verify password. Real password → normal session. Duress password → session tagged server-side as duress (indistinguishable token). Rate limiting per WebAuthn credential with exponential backoff. Configurable max failures before credential lockout. See docs/adr/0019-remote-access-transport.md §Authentication factor 3-4."  # e243
+    fields: {}  # e243

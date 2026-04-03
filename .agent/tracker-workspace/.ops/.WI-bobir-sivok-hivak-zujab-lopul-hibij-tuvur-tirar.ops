@@ -1,0 +1,21 @@
+- op: create  # ae24
+  at: '2026-04-03T08:25:11Z'  # ae24
+  by: agent  # ae24
+  actor: jgstern_agent  # ae24
+  clock: 1  # ae24
+  nonce: ae24  # ae24
+  data:  # ae24
+    kind: work_item  # ae24
+    title: "End-to-end integration test: CLI write → watchfiles → WebSocket push"  # ae24
+    status: todo_soft  # ae24
+    priority: 3  # ae24
+    parent:  # ae24
+    tags:  # ae24
+    - adr-0019  # ae24
+    - testing  # ae24
+    before: []  # ae24
+    duplicate_of: []  # ae24
+    not_duplicate_of: []  # ae24
+    pr_ref:  # ae24
+    description: "Integration test verifying the full coexistence path: CLI writes an op → watchfiles detects change → server recompiles → WebSocket client receives event with updated state. Validates sub-second latency claim. See docs/adr/0019-remote-access-transport.md §CLI/server coexistence."  # ae24
+    fields: {}  # ae24

@@ -1,0 +1,21 @@
+- op: create  # 2028
+  at: '2026-04-03T08:25:06Z'  # 2028
+  by: agent  # 2028
+  actor: jgstern_agent  # 2028
+  clock: 1  # 2028
+  nonce: '2028'  # 2028
+  data:  # 2028
+    kind: work_item  # 2028
+    title: "htrac serve: core engine integration (TrackerSet + command handlers)"  # 2028
+    status: todo_soft  # 2028
+    priority: 2  # 2028
+    parent:  # 2028
+    tags:  # 2028
+    - adr-0019  # 2028
+    - server  # 2028
+    before: []  # 2028
+    duplicate_of: []  # 2028
+    not_duplicate_of: []  # 2028
+    pr_ref:  # 2028
+    description: "Wire htrac serve to the existing TrackerSet with flock-based locking. Command handlers (add, update, discuss, lock, etc.) callable from HTTP/WebSocket adapter. Same core as CLI/TUI — no separate state. Event bus: state changes push to all subscribers. See docs/adr/0019-remote-access-transport.md §Server architecture."  # 2028
+    fields: {}  # 2028

@@ -1,0 +1,22 @@
+- op: create  # 43b5
+  at: '2026-04-03T08:25:10Z'  # 43b5
+  by: agent  # 43b5
+  actor: jgstern_agent  # 43b5
+  clock: 1  # 43b5
+  nonce: 43b5  # 43b5
+  data:  # 43b5
+    kind: work_item  # 43b5
+    title: "htrac serve: static asset serving for BlockSuite frontend"  # 43b5
+    status: todo_soft  # 43b5
+    priority: 2  # 43b5
+    parent:  # 43b5
+    tags:  # 43b5
+    - adr-0019  # 43b5
+    - server  # 43b5
+    - frontend  # 43b5
+    before: []  # 43b5
+    duplicate_of: []  # 43b5
+    not_duplicate_of: []  # 43b5
+    pr_ref:  # 43b5
+    description: "Serve built BlockSuite static assets from htrac serve. Starlette StaticFiles mount or equivalent. Assets built by Vite, served at a known path. Must work behind Tor (high latency first load — service worker caches app shell for subsequent loads). See docs/adr/0019-remote-access-transport.md §Web frontend, §Server."  # 43b5
+    fields: {}  # 43b5

@@ -1,0 +1,21 @@
+- op: create  # 19de
+  at: '2026-04-03T08:25:08Z'  # 19de
+  by: agent  # 19de
+  actor: jgstern_agent  # 19de
+  clock: 1  # 19de
+  nonce: 19de  # 19de
+  data:  # 19de
+    kind: work_item  # 19de
+    title: "htrac serve: auth config schema in config.yaml"  # 19de
+    status: todo_soft  # 19de
+    priority: 3  # 19de
+    parent:  # 19de
+    tags:  # 19de
+    - adr-0019  # 19de
+    - auth  # 19de
+    before: []  # 19de
+    duplicate_of: []  # 19de
+    not_duplicate_of: []  # 19de
+    pr_ref:  # 19de
+    description: "Define config.yaml schema for auth section: session_ttl_minutes, duress_module path, brute_force rate limit params (base delay, max delay, max consecutive failures), WebAuthn RP ID/origin. Validate on startup. See docs/adr/0019-remote-access-transport.md §Session management, §Password brute-force protection."  # 19de
+    fields: {}  # 19de

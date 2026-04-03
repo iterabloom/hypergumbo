@@ -1,0 +1,21 @@
+- op: create  # c9af
+  at: '2026-04-03T08:25:06Z'  # c9af
+  by: agent  # c9af
+  actor: jgstern_agent  # c9af
+  clock: 1  # c9af
+  nonce: c9af  # c9af
+  data:  # c9af
+    kind: work_item  # c9af
+    title: "htrac serve: watchfiles integration for CLI/TUI coexistence"  # c9af
+    status: todo_soft  # c9af
+    priority: 2  # c9af
+    parent:  # c9af
+    tags:  # c9af
+    - adr-0019  # c9af
+    - server  # c9af
+    before: []  # c9af
+    duplicate_of: []  # c9af
+    not_duplicate_of: []  # c9af
+    pr_ref:  # c9af
+    description: "Use watchfiles (Rust-based, async-native) to detect when CLI or TUI writes ops files. On change: recompile TrackerSet state, push updated state to connected WebSocket clients. Sub-second latency. No IPC — just flock + inotify. See docs/adr/0019-remote-access-transport.md §CLI/server coexistence."  # c9af
+    fields: {}  # c9af

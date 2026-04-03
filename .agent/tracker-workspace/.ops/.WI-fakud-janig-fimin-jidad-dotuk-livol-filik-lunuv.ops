@@ -1,0 +1,21 @@
+- op: create  # 1854
+  at: '2026-04-03T08:25:06Z'  # 1854
+  by: agent  # 1854
+  actor: jgstern_agent  # 1854
+  clock: 1  # 1854
+  nonce: '1854'  # 1854
+  data:  # 1854
+    kind: work_item  # 1854
+    title: "htrac serve: WebSocket protocol (state_snapshot, command, event, error)"  # 1854
+    status: todo_soft  # 1854
+    priority: 2  # 1854
+    parent:  # 1854
+    tags:  # 1854
+    - adr-0019  # 1854
+    - server  # 1854
+    before: []  # 1854
+    duplicate_of: []  # 1854
+    not_duplicate_of: []  # 1854
+    pr_ref:  # 1854
+    description: "Implement typed JSON WebSocket messages: client→server 'command' (invoke tracker ops), server→client 'event' (state change), 'state_snapshot' (full state on connect/reconnect), 'error' (structured error). Define formal message schema before implementation. See docs/adr/0019-remote-access-transport.md §WebSocket protocol."  # 1854
+    fields: {}  # 1854

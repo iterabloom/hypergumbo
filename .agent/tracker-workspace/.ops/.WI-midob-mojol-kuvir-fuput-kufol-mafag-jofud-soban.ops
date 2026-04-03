@@ -1,0 +1,21 @@
+- op: create  # 34e5
+  at: '2026-04-03T08:25:08Z'  # 34e5
+  by: agent  # 34e5
+  actor: jgstern_agent  # 34e5
+  clock: 1  # 34e5
+  nonce: '34e5'  # 34e5
+  data:  # 34e5
+    kind: work_item  # 34e5
+    title: "Tor onion service: torrc configuration and documentation"  # 34e5
+    status: todo_soft  # 34e5
+    priority: 3  # 34e5
+    parent:  # 34e5
+    tags:  # 34e5
+    - adr-0019  # 34e5
+    - transport  # 34e5
+    before: []  # 34e5
+    duplicate_of: []  # 34e5
+    not_duplicate_of: []  # 34e5
+    pr_ref:  # 34e5
+    description: "Document torrc config for publishing v3 onion service forwarding to htrac serve local listener (127.0.0.1 or Unix socket). Enable v3 client authorization (x25519 keypair). Outbound-only — no inbound ports, no public IP, no DNS. See docs/adr/0019-remote-access-transport.md §Transport: Tor."  # 34e5
+    fields: {}  # 34e5

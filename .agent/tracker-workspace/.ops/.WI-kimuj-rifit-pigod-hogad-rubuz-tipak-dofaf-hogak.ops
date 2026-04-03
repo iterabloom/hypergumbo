@@ -1,0 +1,21 @@
+- op: create  # 1de2
+  at: '2026-04-03T08:25:09Z'  # 1de2
+  by: agent  # 1de2
+  actor: jgstern_agent  # 1de2
+  clock: 1  # 1de2
+  nonce: 1de2  # 1de2
+  data:  # 1de2
+    kind: work_item  # 1de2
+    title: "BlockSuite web frontend: project scaffold and build pipeline"  # 1de2
+    status: todo_soft  # 1de2
+    priority: 2  # 1de2
+    parent:  # 1de2
+    tags:  # 1de2
+    - adr-0019  # 1de2
+    - frontend  # 1de2
+    before: []  # 1de2
+    duplicate_of: []  # 1de2
+    not_duplicate_of: []  # 1de2
+    pr_ref:  # 1de2
+    description: "Set up BlockSuite + Vite project for the htrac web frontend. Block-based document editor + infinite canvas (edgeless mode). Build as static assets served by htrac serve. Service worker for app shell caching (critical for Tor latency — only first load is heavy). See docs/adr/0019-remote-access-transport.md §Web frontend."  # 1de2
+    fields: {}  # 1de2

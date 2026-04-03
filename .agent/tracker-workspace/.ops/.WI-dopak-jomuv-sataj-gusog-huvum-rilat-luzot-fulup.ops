@@ -1,0 +1,21 @@
+- op: create  # a87f
+  at: '2026-04-03T08:25:07Z'  # a87f
+  by: agent  # a87f
+  actor: jgstern_agent  # a87f
+  clock: 1  # a87f
+  nonce: a87f  # a87f
+  data:  # a87f
+    kind: work_item  # a87f
+    title: "htrac serve: session management (in-memory, configurable TTL)"  # a87f
+    status: todo_soft  # a87f
+    priority: 2  # a87f
+    parent:  # a87f
+    tags:  # a87f
+    - adr-0019  # a87f
+    - auth  # a87f
+    before: []  # a87f
+    duplicate_of: []  # a87f
+    not_duplicate_of: []  # a87f
+    pr_ref:  # a87f
+    description: "Opaque cryptographically random session tokens, stored server-side only. Configurable TTL (default 15 min, fixed window — no interaction reset). Session record: creation time, expiry, auth class (normal/duress), client fingerprint. All sessions invalidated on restart. Cookie-based delivery. See docs/adr/0019-remote-access-transport.md §Session management."  # a87f
+    fields: {}  # a87f

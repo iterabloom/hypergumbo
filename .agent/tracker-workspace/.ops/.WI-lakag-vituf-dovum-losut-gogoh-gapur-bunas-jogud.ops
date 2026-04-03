@@ -1,0 +1,21 @@
+- op: create  # bbe0
+  at: '2026-04-03T08:25:05Z'  # bbe0
+  by: agent  # bbe0
+  actor: jgstern_agent  # bbe0
+  clock: 1  # bbe0
+  nonce: bbe0  # bbe0
+  data:  # bbe0
+    kind: work_item  # bbe0
+    title: "htrac serve: Starlette/uvicorn skeleton with health endpoint"  # bbe0
+    status: todo_soft  # bbe0
+    priority: 2  # bbe0
+    parent:  # bbe0
+    tags:  # bbe0
+    - adr-0019  # bbe0
+    - server  # bbe0
+    before: []  # bbe0
+    duplicate_of: []  # bbe0
+    not_duplicate_of: []  # bbe0
+    pr_ref:  # bbe0
+    description: "Create htrac serve command in hypergumbo-tracker. Starlette + uvicorn, binds 127.0.0.1 only. PID file, --background/--stop/--status flags. /health endpoint. Graceful shutdown (drain WebSocket, flush ops). Logs to file or journald. See docs/adr/0019-remote-access-transport.md §Server."  # bbe0
+    fields: {}  # bbe0

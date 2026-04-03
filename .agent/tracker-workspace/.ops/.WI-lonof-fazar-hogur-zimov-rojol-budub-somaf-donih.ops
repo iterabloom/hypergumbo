@@ -1,0 +1,22 @@
+- op: create  # d95c
+  at: '2026-04-03T08:25:06Z'  # d95c
+  by: agent  # d95c
+  actor: jgstern_agent  # d95c
+  clock: 1  # d95c
+  nonce: d95c  # d95c
+  data:  # d95c
+    kind: work_item  # d95c
+    title: "htrac serve: systemd unit file and deployment config"  # d95c
+    status: todo_soft  # d95c
+    priority: 3  # d95c
+    parent:  # d95c
+    tags:  # d95c
+    - adr-0019  # d95c
+    - server  # d95c
+    - ops  # d95c
+    before: []  # d95c
+    duplicate_of: []  # d95c
+    not_duplicate_of: []  # d95c
+    pr_ref:  # d95c
+    description: "Create htrac-serve.service systemd unit for process supervision. Document deployment: systemd manages htrac serve, Tor daemon publishes onion service forwarding to htrac local listener. See docs/adr/0019-remote-access-transport.md §Server-side deployment."  # d95c
+    fields: {}  # d95c

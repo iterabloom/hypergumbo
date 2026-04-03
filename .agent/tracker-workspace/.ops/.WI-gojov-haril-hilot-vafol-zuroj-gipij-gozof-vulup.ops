@@ -1,0 +1,21 @@
+- op: create  # 8f55
+  at: '2026-04-03T08:25:09Z'  # 8f55
+  by: agent  # 8f55
+  actor: jgstern_agent  # 8f55
+  clock: 1  # 8f55
+  nonce: 8f55  # 8f55
+  data:  # 8f55
+    kind: work_item  # 8f55
+    title: "BlockSuite frontend: WebSocket client for live state sync"  # 8f55
+    status: todo_soft  # 8f55
+    priority: 2  # 8f55
+    parent:  # 8f55
+    tags:  # 8f55
+    - adr-0019  # 8f55
+    - frontend  # 8f55
+    before: []  # 8f55
+    duplicate_of: []  # 8f55
+    not_duplicate_of: []  # 8f55
+    pr_ref:  # 8f55
+    description: "WebSocket client connecting to htrac serve. Handle state_snapshot on connect/reconnect, event messages for live updates, command messages for user actions. Responsive layout: full canvas on iPad/desktop, triage-optimized on phone. See docs/adr/0019-remote-access-transport.md §WebSocket protocol, §Web frontend."  # 8f55
+    fields: {}  # 8f55

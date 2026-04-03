@@ -1,0 +1,21 @@
+- op: create  # 40da
+  at: '2026-04-03T08:25:10Z'  # 40da
+  by: agent  # 40da
+  actor: jgstern_agent  # 40da
+  clock: 1  # 40da
+  nonce: 40da  # 40da
+  data:  # 40da
+    kind: work_item  # 40da
+    title: "htrac serve: pyproject.toml extras for serve dependencies"  # 40da
+    status: todo_soft  # 40da
+    priority: 3  # 40da
+    parent:  # 40da
+    tags:  # 40da
+    - adr-0019  # 40da
+    - packaging  # 40da
+    before: []  # 40da
+    duplicate_of: []  # 40da
+    not_duplicate_of: []  # 40da
+    pr_ref:  # 40da
+    description: "Add hypergumbo-tracker[serve] extras in pyproject.toml: starlette, uvicorn, py_webauthn, bcrypt, watchfiles. Optional cairosvg for SVG preview (ADR-0020). See docs/adr/0019-remote-access-transport.md §Dependencies."  # 40da
+    fields: {}  # 40da
