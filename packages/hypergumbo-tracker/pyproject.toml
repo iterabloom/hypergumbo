@@ -28,6 +28,7 @@ dependencies = [
   "httpx>=0.27",
   "watchfiles>=1.0",
   "bcrypt>=4.0",
+  "webauthn>=2.0",
 ]
 
 [project.optional-dependencies]
