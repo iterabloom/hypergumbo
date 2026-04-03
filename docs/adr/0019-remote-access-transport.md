@@ -2,7 +2,7 @@
 # ADR-0019: Remote Access Transport
 
 Date: 2026-03-30
-Revised: 2026-04-03
+Revised: 2026-04-03 (native app replaces Orbot+Safari for Part A)
 Status: Proposed
 
 ## Phasing
@@ -17,15 +17,18 @@ The core value proposition: see what agents are doing from a phone, over Tor.
 |-----------|------|-----|
 | Server | `htrac serve` | Python (Starlette + uvicorn), binds to `127.0.0.1` |
 | Transport | Tor onion service | External Tor daemon, `torrc` config |
-| Client | Orbot + Safari (iOS) | Orbot in per-app VPN mode routing only Safari through Tor |
-| Auth | YubiKey + password | `py_webauthn` for WebAuthn/FIDO2, `bcrypt` for password |
+| Client | Native iOS/macOS app | Minimal Swift shell (~500-800 LOC) + `WKWebView` |
+| Auth | Face ID + YubiKey + password | `LAContext` (biometric), `ASAuthorizationSecurityKeyCredentialProvider` (FIDO2), `bcrypt` (password) |
 | Duress | Duress module | User-implemented `DuressHandler` Protocol |
 | Frontend | BlockSuite web app | Document editor + infinite canvas/whiteboard, served as static assets |
 | Live sync | WebSocket | Typed JSON messages, `state_snapshot` on connect, events on change |
 | File watching | `watchfiles` | Detects CLI/TUI writes, pushes to WebSocket clients |
+| Localhost proxy | In-app HTTP proxy | Swift `URLSession` routes through Orbot VPN (or SOCKS); `WKWebView` connects to `localhost` |
 | Coexistence | CLI + TUI + serve | All use same flock-based ops files, no IPC needed |
 
-Part A auth is **two-factor** (YubiKey + password). Face ID requires a native iOS app and is deferred to Part B.
+Part A auth is **three-factor** (Face ID + YubiKey + password) plus duress detection. A native app is required because Safari does not treat `.onion` origins as secure contexts — WebAuthn's browser API (`navigator.credentials`) requires HTTPS or `localhost`. The native `AuthenticationServices` framework bypasses this restriction entirely, and a localhost proxy gives `WKWebView` a secure context for service workers and WebSocket.
+
+**Why BlockSuite for the MVP frontend:** BlockSuite is heavier than a minimal read-only dashboard would require. It is chosen deliberately: the operator plans to use BlockSuite in a separate project and wants to build working knowledge of the framework in a lower-stakes context first. The htrac frontend serves as that learning vehicle. The investment pays forward.
 
 ### Part B (stretch goals)
 
@@ -35,15 +38,13 @@ Everything below improves performance, adds native platform integration, or enab
 |-----------|------|------------|
 | WireGuard optimization | Direct UDP path, bulk traffic off Tor | STUN/TURN |
 | STUN/TURN | NAT traversal for WireGuard | Pluggable, self-hosted `coturn` |
-| Native iOS app | Swift shell + `WKWebView` | Shared Rust core |
-| Native desktop app | Tauri (Rust) | Shared Rust core |
 | Shared Rust core | `arti` (Tor client), `boringtun`, Ed25519, local proxy | Rust cross-compilation infra |
-| Face ID | Client-side biometric gate (third auth factor) | Native iOS app |
+| Native desktop app | Tauri (Rust) | Shared Rust core |
 | Federation (ADR-0021) | Multi-machine compiled-view sync | Ed25519 node identity, `htrac serve` |
 | Machine-to-machine auth | Ed25519-signed sync requests | Federation |
-| Local proxy | Transport-transparent `localhost` proxy | Shared Rust core |
+| Embedded Tor client | `arti` replaces Orbot dependency | Shared Rust core |
 
-Sections below are labeled **[Part A]** or **[Part B]** to indicate which phase they belong to. All Part B content remains as the north-star architecture.
+Part A delivers the native iOS/macOS shell with Orbot-based Tor routing (no embedded Tor client). Part B replaces Orbot with an embedded `arti` Tor client (via shared Rust core), adds WireGuard optimization, and adds a Tauri desktop shell. Sections below are labeled **[Part A]** or **[Part B]** to indicate which phase they belong to. All Part B content remains as the north-star architecture.
 
 ## Context
 
@@ -55,7 +56,7 @@ hypergumbo-tracker runs on a Linux VM in a homelab. The VM can only make **outgo
 
 The full system enforces: **the phone cannot access the agent's tracker unless the user has (1) plugged in a YubiKey, (2) entered a password, (3) passed Face ID, and (4) not entered the duress password — all within the configured session TTL (default 15 minutes).** This is a hard security boundary, not a nice-to-have. It rules out static credentials, long-lived tokens, and any auth scheme that doesn't prove physical hardware presence and voluntary intent at interaction time.
 
-**Part A delivers factors 1, 2, and 4** (YubiKey, password, duress detection). Factor 3 (Face ID) requires a native iOS app and is deferred to Part B. With Orbot + Safari, the browser handles WebAuthn natively — no native app needed for YubiKey support.
+**Part A delivers all four factors.** The native iOS/macOS app provides Face ID via `LAContext`, YubiKey via native `AuthenticationServices` (not browser WebAuthn), password entry via native UI, and duress detection server-side. No browser secure context is needed — the entire auth flow is native.
 
 The four factors cover four distinct threat scenarios:
 
@@ -77,6 +78,7 @@ The current access path is an SSH tunnel to the VM via a terminal client. This w
 - **Tailscale/ZeroTier/overlay network:** Requires an external coordination service. Violates the self-hosted constraint.
 - **WireGuard with phone as server:** Phone is behind NAT/CGNAT, changes networks frequently, and has no stable public endpoint. Wrong hub for the mesh.
 - **Pomerium as auth proxy:** Designed for teams with IdPs and multi-service meshes. For a single-user governance tool, it adds ~134MB of Go binary, IdP integration, TLS certificate management, and route configuration. Replaced by `py_webauthn` in the Python app itself (see Decision).
+- **Orbot + Safari (no native app):** Evaluated as the original Part A plan. Safari does not treat `.onion` addresses as secure contexts — that is a Tor Browser-specific patch (Tor trac #21537) that was never merged into WebKit. Without a secure context, the browser WebAuthn API (`navigator.credentials`) is unavailable, blocking YubiKey auth entirely. Obtaining a TLS certificate for the `.onion` address (Harica DV or DigiCert EV, per CA/B Forum Ballot SC27v3) would provide HTTPS and thus a secure context, but adds certificate lifecycle management and cost. A native app avoids the problem entirely: `ASAuthorizationSecurityKeyCredentialProvider` works at the OS level regardless of origin, and the localhost proxy gives `WKWebView` a secure context for all web APIs. The native app also enables Face ID (which requires `LAContext`) and eliminates the `ASWebAuthenticationSession` Safari-bounce UX friction.
 
 ## Decision
 
@@ -204,17 +206,17 @@ Federation API requests are authenticated via Ed25519-signed requests (machine-t
 
 **Integration point for ADR-0020 and ADR-0021.** `htrac serve` is the shared backend for the web UI (which renders SVG screenshots natively, replacing the Chafa pipeline in ADR-0020), the federation compiled-view feed and write-at-origin API (ADR-0021), and the WebSocket event bus that connects all clients. The CLI and TUI operate independently of `htrac serve` — they use the same Store/TrackerSet via flock. `htrac serve` is required only for web access, federation sync, and real-time multi-client updates.
 
-### Authentication: four-factor with duress detection [Part A: two-factor + duress; Part B: adds Face ID]
+### Authentication: four-factor with duress detection [Part A]
 
-`htrac serve` implements authentication directly — no external IdP, no Pomerium, no companion binary. Auth lives in the same Python process as the tracker.
+`htrac serve` implements authentication directly — no external IdP, no Pomerium, no companion binary. Auth lives in the same Python process as the tracker. The native iOS/macOS app handles all client-side auth — no browser APIs are involved.
 
 **Factor sequence:**
 
-1. **Face ID** (iOS system level) **[Part B]**. The app requires biometric auth before presenting any UI. This happens in the iOS app via `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` before the app shows its own login screen. The server never sees biometric data — Face ID is a client-side gate. Requires a native iOS app — not available in Part A (Orbot + Safari).
+1. **Face ID** (iOS/macOS system level) **[Part A]**. The app requires biometric auth before presenting any UI. This happens via `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` before the app shows its own login screen. The server never sees biometric data — Face ID is a client-side gate. On macOS, Touch ID serves the same role.
 
-2. **YubiKey** (WebAuthn/FIDO2). The app opens `ASWebAuthenticationSession` to the server's `/auth/webauthn` endpoint. The server issues a challenge; the YubiKey signs it. `py_webauthn` verifies the response. This proves physical possession of the registered hardware token. Note: `ASWebAuthenticationSession` bounces the user to a Safari system sheet and back — a brief context switch on every authentication. With the 15-minute session TTL, this happens frequently. This is the intended security/convenience tradeoff.
+2. **YubiKey** (FIDO2, native API) **[Part A]**. The app uses `ASAuthorizationSecurityKeyCredentialProvider` (Apple's native `AuthenticationServices` framework) to present the YubiKey challenge. The server issues a challenge via its `/auth/webauthn` HTTP endpoint; the app passes it to the native FIDO2 API; the YubiKey signs it (NFC tap, Lightning, or USB-C); the app sends the signed assertion back to the server; `py_webauthn` verifies it. This proves physical possession of the registered hardware token. Unlike the browser-based `ASWebAuthenticationSession` flow (which bounces to a Safari system sheet), the native FIDO2 API keeps the user entirely within the app — no context switch, no Safari dependency, and no requirement for a secure web origin.
 
-3. **Password**. After WebAuthn succeeds, the app presents a password field. The password is sent to the server over the already-authenticated channel. The server accepts either the **real password** or the **duress password** — both are valid credentials that produce a successful login.
+3. **Password**. After WebAuthn succeeds, the app presents a native password field (not in `WKWebView`). The password is sent to the server over the already-authenticated channel. The server accepts either the **real password** or the **duress password** — both are valid credentials that produce a successful login.
 
 4. **Duress detection** (server-side, invisible). The server stores bcrypt hashes for both passwords. On password verification:
    - If the real password was used: issue a normal session token.
@@ -319,13 +321,30 @@ What the attacker **cannot** do without the YubiKey:
 
 **Detection and response:** The human's primary mitigation is revocation. Once a compromise is detected, the human authenticates on the phone app (four-factor) and sends `revoke-peer` to all nodes that trusted the compromised node. Revocation is immediate. The window of exposure is the time between compromise and revocation. The duress module (if the compromise involves coercion of the human) provides an additional response path — but that is user-defined and deliberately unspecified (see above).
 
-### Client apps [Part A: Orbot + Safari; Part B: native shells + shared Rust core]
+### Client apps [Part A: native iOS/macOS shell; Part B: shared Rust core + Tauri desktop]
 
-**Part A client: Orbot + Safari.** No native app needed. Orbot (iOS App Store) provides a Tor VPN in per-app mode — route only Safari through Tor, leaving all other phone traffic unaffected. Safari handles WebAuthn natively (FIDO2 security keys work in Safari). The `.onion` URL is bookmarked in Safari. Static assets are cached by the browser after first load; a service worker provides belt-and-suspenders caching even if Tor Browser or privacy-focused browsers clear HTTP cache aggressively. The frontend is optimistic-update / local-first, so canvas interactions render at 60fps+ regardless of Tor latency (~1-3s round-trip); sync to server happens in the background.
+**Part A client: native iOS/macOS app (Swift).** A minimal native shell (~500-800 lines of Swift) that handles auth, localhost proxying, and hosts `WKWebView` for the BlockSuite frontend. Tor connectivity is provided by Orbot (iOS App Store) in VPN mode — the app's `URLSession` traffic routes through Orbot's tunnel transparently. The app does not embed a Tor client; it relies on Orbot being active.
 
-**Part B client: native shells + shared Rust core.** The remainder of this section describes the north-star architecture for dedicated native apps.
+**Why a native app in Part A (not Part B):** The original plan was Orbot + Safari with no native app. This was abandoned because Safari does not treat `.onion` origins as secure contexts (a Tor Browser-specific WebKit patch, never upstreamed), which blocks the browser WebAuthn API entirely. A native app bypasses this: `ASAuthorizationSecurityKeyCredentialProvider` works at the OS level regardless of origin, and a localhost proxy gives `WKWebView` a secure context for service workers, WebSocket, and all other web APIs. The native app also enables Face ID (`LAContext`) in Part A rather than deferring it, and eliminates the `ASWebAuthenticationSession` Safari-bounce that the old Part B design required for WebAuthn.
 
-#### One web frontend, shared Rust core, two native shells
+#### Part A iOS/macOS shell
+
+| Component | Role |
+|-----------|------|
+| `LAContext` (LocalAuthentication) | Face ID / Touch ID biometric gate (client-side, before any network activity) |
+| `ASAuthorizationSecurityKeyCredentialProvider` | Native FIDO2 — YubiKey challenge/response without browser involvement |
+| Password field (native `UITextField`/`NSSecureTextField`) | Real password or duress password entry |
+| Localhost HTTP proxy | Swift `URLSession` forwards requests to `.onion` server via Orbot's VPN; binds `127.0.0.1` only |
+| `WKWebView` | Renders the BlockSuite frontend from `http://localhost:<port>` (secure context) |
+| `WKHTTPCookieStore` | Injects session cookie from native auth flow into `WKWebView` |
+
+The app is a single universal binary (iPhone + iPad + macOS via Catalyst or native macOS target). Screen adaptation is handled by the BlockSuite frontend's responsive CSS: full canvas workspace on iPad/macOS, triage-optimized on iPhone.
+
+**Tor routing in Part A:** The app does not embed a Tor client. It relies on Orbot (iOS) or a local Tor SOCKS proxy (macOS) to route traffic. On iOS, Orbot runs as a VPN — all app traffic (or per-app if configured) routes through Tor automatically. On macOS, the localhost proxy can be configured to use a SOCKS5 proxy (`127.0.0.1:9050` from a local Tor daemon). This is a pragmatic choice: embedding `arti` (Rust Tor client) requires cross-compilation infrastructure and FFI discipline that Part B's shared Rust core handles properly. Part A avoids that complexity.
+
+**Part B replaces Orbot dependency:** The shared Rust core (see below) embeds `arti`, eliminating the Orbot/external-Tor requirement. The localhost proxy is reimplemented in Rust (single implementation for both iOS and desktop). The Swift shell shrinks — it no longer needs its own proxy logic, just the FFI bridge to the Rust core.
+
+#### One web frontend, shared Rust core, two native shells [Part B]
 
 The UI is a **web frontend** — a single codebase of HTML/CSS/JS/TypeScript with canvas libraries for rich interactions (diagramming, annotation, entity relationships, Apple Pencil support). It runs identically in every context. The native shells are thin wrappers that provide transport orchestration and auth gating — they contain no UI code. A **shared Rust core** implements the transport layer once, used by both platforms.
 
@@ -377,21 +396,22 @@ Tauri produces small binaries (~5-10MB plus the shared core), uses the system we
 
 WebAuthn works natively in the system webview on macOS (Safari's WebKit supports FIDO2 security keys). No bounce to an external browser session needed on desktop.
 
-**iOS/iPadOS shell: Swift + WKWebView [Part B]**
+**iOS/iPadOS shell: Swift + WKWebView [Part A → Part B evolution]**
 
-A thin native shell (~500-800 lines of Swift) that handles platform integration and auth. Transport logic lives in the shared Rust core. The web frontend does all the UI work.
+Part A delivers the native iOS/macOS shell with auth, localhost proxy, and `WKWebView` (see "Part A iOS/macOS shell" above). Part B evolves this shell by replacing the Swift localhost proxy with the shared Rust core and adding WireGuard support.
 
-| Component | Role |
-|-----------|------|
-| Shared Rust core (via C FFI) | Tor, STUN, Ed25519, local proxy (no `boringtun` — WireGuard is native) |
-| `LAContext` (LocalAuthentication) | Face ID / Touch ID biometric gate (client-side, before any network activity) |
-| `ASWebAuthenticationSession` | YubiKey WebAuthn challenge (bounces to system browser sheet — required because `WKWebView` does not support FIDO2 security keys) |
-| Password field (native UI) | Real password or duress password entry |
-| `WKWebView` | Renders the web frontend — same code as desktop |
-| `NEPacketTunnelProvider` extension | WireGuard tunnel (native Swift — OS-level VPN interface, separate from app-level proxy) |
-| App Groups shared container | Transport state, session tokens, endpoint candidates, peer provisioning |
+| Component | Part A | Part B |
+|-----------|--------|--------|
+| Biometric auth | `LAContext` (Face ID / Touch ID) | Same |
+| YubiKey auth | `ASAuthorizationSecurityKeyCredentialProvider` (native FIDO2) | Same |
+| Password field | Native UI | Same |
+| Tor routing | Orbot VPN (external) | `arti` via shared Rust core (embedded) |
+| Localhost proxy | Swift `URLSession` → Orbot/SOCKS | Shared Rust core (`hyper`) |
+| WireGuard | Not available | `NEPacketTunnelProvider` (native Swift) |
+| STUN/Ed25519 | Not available | Shared Rust core |
+| `WKWebView` | Renders frontend from `localhost` | Same |
 
-Note: `NEPacketTunnelProvider` is the **sole WireGuard implementation on iOS**. It runs in a separate process (Network Extension), conforms to Apple's VPN API, and handles all WireGuard tunnel management natively in Swift. The Rust core does not include `boringtun` on iOS — it handles Tor, STUN discovery, Ed25519, and the local proxy, and queries WireGuard tunnel status from the Network Extension via the App Groups shared container. This is a deliberate platform split: WireGuard tunnel management is `boringtun` (Rust, in-process) on desktop and `NEPacketTunnelProvider` (Swift, Network Extension) on iOS. The failover state machine in the Rust core is platform-agnostic — it uses the abstract tunnel status interface regardless of which implementation is active.
+Note: `NEPacketTunnelProvider` is the **sole WireGuard implementation on iOS** (Part B). It runs in a separate process (Network Extension), conforms to Apple's VPN API, and handles all WireGuard tunnel management natively in Swift. The Rust core does not include `boringtun` on iOS — it handles Tor, STUN discovery, Ed25519, and the local proxy, and queries WireGuard tunnel status from the Network Extension via the App Groups shared container. This is a deliberate platform split: WireGuard tunnel management is `boringtun` (Rust, in-process) on desktop and `NEPacketTunnelProvider` (Swift, Network Extension) on iOS. The failover state machine in the Rust core is platform-agnostic — it uses the abstract tunnel status interface regardless of which implementation is active.
 
 The same app binary runs on iPhone and iPad. The only difference is screen real estate — the web frontend adapts via responsive CSS. On iPad, the full canvas workspace with Apple Pencil support is available. On iPhone, the layout optimizes for triage, status updates, and discussion.
 
@@ -406,22 +426,23 @@ This architecture solves two problems:
 
 The proxy is implemented in the shared Rust core (see above) — one implementation, used by both Tauri and the iOS shell.
 
-**Product flow (Part A — Orbot + Safari):**
-1. Open Orbot, enable per-app VPN mode (Safari only). Other phone traffic is unaffected.
-2. Open Safari, navigate to bookmarked `.onion` URL.
-3. Safari presents **YubiKey WebAuthn** challenge. Plug in YubiKey (Lightning/NFC), tap to sign.
-4. On WebAuthn success, enter **password** (real or duress). Both produce a successful login.
-5. Web app loads. BlockSuite edgeless canvas and block editor render tracker state. If duress: the server silently filters responses per the duress module. The UI looks normal.
-6. Live updates via WebSocket — CLI/TUI writes appear in real time (via `watchfiles` on server).
-7. Session expires after configured TTL (default 15 minutes); browser re-prompts for full auth.
+**Product flow (Part A — native iOS app + Orbot):**
+1. Ensure Orbot is running (VPN mode). Other phone traffic routes normally or through Tor depending on Orbot config.
+2. Open the htrac app. Immediately presents **Face ID** via `LAContext`. Fails → app stays locked.
+3. On biometric success, app starts localhost proxy and tests connectivity to the `.onion` server via Orbot's tunnel.
+4. App presents **YubiKey** challenge via native `ASAuthorizationSecurityKeyCredentialProvider`. Tap YubiKey (NFC) or plug in (Lightning/USB-C). OS-level FIDO2 prompt — no Safari bounce.
+5. On FIDO2 success, app presents a native **password field**. Enter real password or duress password. Both produce a successful login.
+6. App receives session cookie, injects it into `WKWebView` via `WKHTTPCookieStore`, loads BlockSuite frontend from `http://localhost:<port>`. If duress: the server silently filters responses per the duress module. The UI looks normal.
+7. Live updates via WebSocket (localhost → Orbot → Tor → server). CLI/TUI writes appear in real time (via `watchfiles` on server).
+8. Session expires after configured TTL (default 15 minutes); app re-prompts for full three-factor auth (Face ID + YubiKey + password).
 
-**Product flow (Part B — native iOS/iPadOS app):**
+**Product flow (Part B — native app + embedded Tor + WireGuard):**
 1. App launches. Immediately presents **Face ID** via `LAContext`. Fails → app stays locked.
-2. On biometric success, establishes Tor control channel to the onion service.
-3. Presents **YubiKey WebAuthn** login via `ASWebAuthenticationSession`. Server issues challenge, YubiKey signs it.
-4. On WebAuthn success, app presents a **password field** (native UI, not in WKWebView).
+2. On biometric success, shared Rust core establishes Tor connection via embedded `arti` (no Orbot dependency).
+3. App presents **YubiKey** challenge via native `ASAuthorizationSecurityKeyCredentialProvider`. Same OS-level FIDO2 flow as Part A.
+4. On FIDO2 success, app presents a **password field** (native UI, not in WKWebView).
 5. User enters either the real password or the duress password. Both produce a successful login. The server determines which was used and tags the session accordingly.
-6. App receives session cookie, loads `WKWebView` with the web frontend. If duress: the server silently filters responses per the duress module. The UI looks normal.
+6. App receives session cookie, loads `WKWebView` with the web frontend from localhost proxy. If duress: the server silently filters responses per the duress module. The UI looks normal.
 7. In background, the app contacts the STUN reflector, discovers its public UDP mapping, and sends the candidate to the VM over the Tor channel.
 8. Both sides attempt WireGuard handshake. If successful, the local proxy routes traffic through the WireGuard tunnel. `WKWebView` stays connected to `localhost` — the switch is invisible. Bulk traffic moves off Tor.
 9. If WireGuard fails or drops, falls back to Tor transparently.
@@ -468,7 +489,7 @@ systemd
 
 - **Rich UI everywhere** — desktop diagramming with full canvas, iPad with Apple Pencil, phone for triage — all from one web frontend codebase.
 - **No inbound ports on the VM.** Both Tor and WireGuard initiate outbound connections only.
-- **Four-factor auth** with hardware presence (YubiKey), knowledge (password), biometric (Face ID), and voluntary intent (duress detection). Each factor defeats a distinct threat.
+- **Four-factor auth from day one** — hardware presence (YubiKey), knowledge (password), biometric (Face ID), and voluntary intent (duress detection). Each factor defeats a distinct threat. The native app delivers all four factors in Part A, not just two.
 - **Duress resilience.** Under coercion, the system accepts a valid-looking login but triggers a user-defined, deliberately unspecified response.
 - **Good Tor citizenship.** Tor is valued infrastructure, always available. WireGuard automatically takes bulk traffic off volunteer relays when a direct path exists.
 - **No managed infrastructure required.** STUN/TURN is pluggable — any public or self-hosted server works. `coturn` handles both STUN and TURN in a single deployment. No proprietary service dependency.
@@ -478,7 +499,9 @@ systemd
 
 ### Costs
 
-- **Shared Rust core + two native shells.** The transport layer is implemented once in Rust and shared via FFI. The Tauri desktop shell uses it natively; the iOS shell calls it via C bridge. The Swift shell is small (~500-800 lines) but still requires iOS development expertise and an Apple Developer account. The shared core adds cross-compilation infrastructure (XCFramework packaging for iOS targets) and FFI boundary discipline (panic catching, result types). App Store review for embedded Rust is an accepted risk with established precedent (Signal, 1Password, Firefox).
+- **Native iOS/macOS app required in Part A.** The Swift shell is small (~500-800 lines) but requires iOS development expertise and an Apple Developer account ($99/year). TestFlight distribution avoids App Store review for personal use. The Part A shell is pure Swift (no Rust, no FFI) — the complexity of cross-compilation and FFI boundary discipline is deferred to Part B when the shared Rust core is introduced.
+- **Orbot dependency in Part A.** The iOS app relies on Orbot for Tor routing. If Orbot is unavailable, the iOS path is blocked until Part B embeds `arti`. The macOS path (local Tor daemon) has no external app dependency.
+- **Shared Rust core + two native shells (Part B).** The transport layer is implemented once in Rust and shared via FFI. The Tauri desktop shell uses it natively; the iOS shell calls it via C bridge. The shared core adds cross-compilation infrastructure (XCFramework packaging for iOS targets) and FFI boundary discipline (panic catching, result types). App Store review for embedded Rust is an accepted risk with established precedent (Signal, 1Password, Firefox).
 - **Web frontend is the largest piece of new code.** The canvas/diagramming UI, WebSocket client, responsive layout, and offline-capable state management are substantial — this is a real web application, not a simple dashboard.
 - **Four-factor auth UX** adds friction to every session. The configurable TTL (default 15 minutes) means re-authenticating frequently. This is the intended tradeoff — security over convenience. Users who want less friction can increase the TTL in `config.yaml`.
 - **Duress module** shifts implementation burden to the user. The framework provides the hooks (`on_duress_login`, `filter_response`) but the user must write a handler that produces a convincing session. No default implementation is shipped — shipping one would document the behavior.
@@ -504,9 +527,12 @@ systemd
 - Vite — build toolchain
 - Service worker — app shell caching for Tor latency
 
-**Part A — Client:**
-- Orbot (iOS App Store) — Tor VPN in per-app mode
-- Safari — WebAuthn/FIDO2, standard browser caching
+**Part A — iOS/macOS client (Swift shell):**
+- Xcode + Apple Developer account ($99/year; TestFlight for personal use avoids App Store review)
+- `AuthenticationServices` framework — native FIDO2 (`ASAuthorizationSecurityKeyCredentialProvider`)
+- `LocalAuthentication` framework — Face ID / Touch ID (`LAContext`)
+- `WKWebView` — renders BlockSuite frontend from localhost
+- Orbot (iOS, App Store) or local Tor daemon (macOS) — provides Tor routing for the app's network traffic
 
 **Part B — Server additions:**
 - `PyNaCl` or `cryptography` — Ed25519 node identity keys (for federation)
@@ -525,11 +551,10 @@ systemd
 - Rust toolchain — Tauri backend + shared core (in-process, native)
 - System webview (WebKit on macOS, WebKitGTK on Linux)
 
-**Part B — iOS/iPadOS client (Swift shell):**
-- Xcode + Apple Developer account
-- Shared Rust core (via XCFramework, C FFI)
+**Part B — iOS/iPadOS client (evolves Part A shell):**
+- Shared Rust core (via XCFramework, C FFI) — replaces Swift localhost proxy, adds embedded Tor
 - `NEPacketTunnelProvider` for WireGuard (native Swift, OS-level VPN interface)
-- `WKWebView` for web frontend
+- Orbot no longer required (Tor is embedded via `arti`)
 
 **Part B — External (not bundled, pluggable):**
 - STUN/TURN server — any public or self-hosted reflector/relay for WireGuard NAT discovery and traversal (e.g., `coturn` for both)
@@ -541,7 +566,8 @@ systemd
 - **Tor client on iOS:** Resolved: `arti` is embedded via the shared Rust core (C FFI through XCFramework). This is the same approach used by Signal and other apps that embed Rust on iOS. Adds ~5-15MB to binary size. App Store review risk is accepted based on precedent.
 - **Duress module distribution:** Users need guidance on writing effective handlers without that guidance itself becoming a roadmap for attackers. Consider a separate, access-controlled document or in-person knowledge transfer rather than public docs.
 - **Session continuity across transport switch.** Resolved: the local proxy architecture eliminates this concern. `WKWebView` always connects to `localhost` — the proxy handles transport switches transparently. Cookie domain is always `localhost`, so session cookies survive transport changes.
-- **Face ID fallback [Part B].** If the device doesn't have Face ID (older iPhone, iPad without TrueDepth), should the app accept Touch ID? Passcode? Or refuse to run? Recommendation: accept any `LAPolicy.deviceOwnerAuthenticationWithBiometrics` result, which covers both Face ID and Touch ID. Do not fall back to passcode — that weakens the biometric factor to a knowledge factor. Not relevant for Part A (no native app).
+- **Biometric fallback [Part A].** If the device doesn't have Face ID (older iPhone, iPad without TrueDepth, macOS without Touch ID), should the app accept Touch ID? Passcode? Or refuse to run? Recommendation: accept any `LAPolicy.deviceOwnerAuthenticationWithBiometrics` result, which covers both Face ID and Touch ID. Do not fall back to passcode — that weakens the biometric factor to a knowledge factor. On macOS without Touch ID, this factor is unavailable — the app should warn and proceed with two-factor (YubiKey + password) rather than refuse to run.
 - **Web frontend framework choice.** Resolved: **BlockSuite** — provides both block-based document editing and infinite canvas/whiteboard in one framework, backed by Yjs CRDTs. Gives offline-first and eventual sync over WebSocket for free. No separate application framework needed (React, Svelte, etc.) — BlockSuite is the application framework.
 - **Tauri on Linux without WebKitGTK.** Some headless Linux servers (where `htrac serve` runs) may not have WebKitGTK. The Tauri desktop app is a *client* — it runs on the user's desktop machine, not on the server VM. But if someone wants to run the desktop client on the same Linux box via X forwarding, WebKitGTK becomes a dependency. Clarify that the Tauri app is for desktop client machines, not servers.
-- **App Store review for Tor.** Apple has historically been cautious about apps that embed Tor functionality. The app should frame Tor as a privacy/connectivity feature, not an anonymity tool. The STUN reflector + WireGuard as primary data path (with Tor as fallback) may help the review narrative.
+- **App Store review for Tor.** Apple has historically been cautious about apps that embed Tor functionality. Part A avoids this entirely — the app does not embed Tor; it relies on Orbot (already in the App Store) for routing. Part B embeds `arti` via the shared Rust core, which would face review. The app should frame Tor as a privacy/connectivity feature, not an anonymity tool. The STUN reflector + WireGuard as primary data path (with Tor as fallback) may help the review narrative. For personal use, TestFlight distribution avoids App Store review entirely.
+- **Orbot availability (Part A).** Part A depends on Orbot being installed and active for iOS Tor routing. If Orbot is removed from the App Store or the user doesn't want to install it, the macOS path (local Tor daemon + SOCKS proxy) still works. An alternative on iOS would be to embed a minimal Tor client — but that pulls in Part B complexity. For Part A, Orbot is an accepted external dependency.
