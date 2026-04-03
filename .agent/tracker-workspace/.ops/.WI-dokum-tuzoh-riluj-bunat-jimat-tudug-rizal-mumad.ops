@@ -34,3 +34,17 @@
   clock: 3  # 6dab
   nonce: 6dab  # 6dab
   message: "what are the pros/cons of these options? is this related to multi-fidelity analysis?"  # 6dab
+- op: discuss  # 06f6
+  at: '2026-04-03T05:07:15Z'  # 06f6
+  by: agent  # 06f6
+  actor: jgstern_agent  # 06f6
+  clock: 4  # 06f6
+  nonce: 06f6  # 06f6
+  message: "Pros/cons of the two options:\n\n**Option A — pyffi linker creates unresolved edges (like cgo pattern):**\n- Pro: Consistent with how cgo already handles C stdlib (go:C:0-0:fopen:unresolved). The io_boundary tagger already knows how to follow ffi_bridge edges and redirect catalog lookups (INV-kagob fix).\n- Pro: One fix covers all C stdlib functions — no need to enumerate Python-side names.\n- Con: Requires pyffi linker to detect ffi.dlopen(None) / ctypes.CDLL(None) as 'C stdlib' and synthesize pseudo-namespace edges (py:C:0-0:fopen:unresolved). The linker currently only matches against repo-local symbols.\n- Con: The unresolved edges clutter the behavior map with symbols that have no repo-local definition.\n\n**Option B — Python-side IO catalog for ctypes/cffi calls:**\n- Pro: No linker changes needed — just add entries like ctypes.CDLL.fopen, ffi.cdef.fwrite to the Python IO catalog.\n- Pro: Simpler for the user — IO boundaries show up as Python calls, not cross-language edges.\n- Con: Must enumerate every C stdlib function that Python code might call. Incomplete by nature.\n- Con: Loses the FFI provenance — the behavior map doesn't show these are actually C calls through FFI.\n\n**Relation to multi-fidelity:** Yes, this is related. The current pyffi linker operates at Tier 2 (linker-inferred edges). Option A stays at Tier 2 with synthesized edges. Option B would be Tier 1 (catalog-based tagging). The multi-fidelity design supports both — the provenance field would distinguish them. Option A is more architecturally consistent with how cgo already works.\n\nRecommendation: Option A (pyffi creates unresolved edges), since the pattern is proven by cgo and the io_boundary tagger already handles catalog redirects via _resolve_ffi_catalog()."  # 06f6
+- op: discuss  # 761a
+  at: '2026-04-03T07:00:53Z'  # 761a
+  by: human  # 761a
+  actor: jgstern  # 761a
+  clock: 5  # 761a
+  nonce: 761a  # 761a
+  message: "ok let's go with option A"  # 761a

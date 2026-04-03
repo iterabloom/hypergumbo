@@ -71,3 +71,10 @@
   clock: 8  # de07
   nonce: de07  # de07
   message: "PR number/commit please?"  # de07
+- op: discuss  # 4fe0
+  at: '2026-04-03T05:06:17Z'  # 4fe0
+  by: agent  # 4fe0
+  actor: jgstern_agent  # 4fe0
+  clock: 9  # 4fe0
+  nonce: 4fe0  # 4fe0
+  message: "Screenshot capture was implemented as part of the annotation mode commit: 9caf0e03 (feat(tui): annotation mode for screenshot markup (ADR-0020 Part 1)). Screenshot save path fixes in follow-up commits: 80ec044e, c3be9758, 452cd8af, dd185320. All merged to dev via auto-pr."  # 4fe0

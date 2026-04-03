@@ -134,3 +134,24 @@
   clock: 16  # 09ee
   nonce: 09ee  # 09ee
   message: "yes option A please"  # 09ee
+- op: discuss  # 797b
+  at: '2026-04-03T05:07:38Z'  # 797b
+  by: agent  # 797b
+  actor: jgstern_agent  # 797b
+  clock: 17  # 797b
+  nonce: 797b  # 797b
+  message: "Acknowledged — implementing Option A:\n\n1. **pre-push hook**: If CI_FAILOVER_ACTIVE exists, verify push target is selfh (block if origin). Verify branch merge-base with dev is fresh (warn if >10 commits behind).\n2. **session-start hook**: Add open-PR listing via scripts/list-my-prs for awareness.\n\nBoth touch governance files (.githooks/**, .agent/hooks/**/session-start.sh), so the implementation will be submitted for human review before merge."  # 797b
+- op: discuss  # 5237
+  at: '2026-04-03T06:56:56Z'  # 5237
+  by: human  # 5237
+  actor: jgstern  # 5237
+  clock: 18  # 5237
+  nonce: '5237'  # 5237
+  message: "i approve using auto-pr"  # 5237
+- op: discuss  # dedf
+  at: '2026-04-03T06:57:23Z'  # dedf
+  by: human  # dedf
+  actor: jgstern  # dedf
+  clock: 19  # dedf
+  nonce: dedf  # dedf
+  message: "(for changes touching governance for this item)"  # dedf

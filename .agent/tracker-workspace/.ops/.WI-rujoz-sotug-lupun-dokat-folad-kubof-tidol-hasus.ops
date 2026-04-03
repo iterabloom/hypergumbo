@@ -1,0 +1,29 @@
+- op: create  # 3693
+  at: '2026-04-03T04:10:31Z'  # 3693
+  by: agent  # 3693
+  actor: jgstern_agent  # 3693
+  clock: 1  # 3693
+  nonce: '3693'  # 3693
+  data:  # 3693
+    kind: work_item  # 3693
+    title: "Save screenshots in tracker-workspace and auto-create tracker items"  # 3693
+    status: todo_soft  # 3693
+    priority: 2  # 3693
+    parent:  # 3693
+    tags:  # 3693
+    - adr-0020  # 3693
+    - tui  # 3693
+    before: []  # 3693
+    duplicate_of: []  # 3693
+    not_duplicate_of: []  # 3693
+    pr_ref:  # 3693
+    description: "Screenshots should be saved to .agent/tracker-workspace/screenshots/ (not .agent/screenshots/) so they inherit the same group ownership (project-dev, 2775) as ops files. The /tmp fallback should be removed once this works.\n\nTaking a screenshot should create a brand new tracker item (not associate with the currently selected item — that item might be about hypergumbo the analyzer, not the tracker). Flow:\n1. User presses S, draws annotations, confirms\n2. SVG saved to .agent/tracker-workspace/screenshots/screenshot-<timestamp>.svg\n3. A new work_item is auto-created via TrackerSet with title \"Screenshot <timestamp>\", status needs_human_review, and the SVG path embedded in the description or first discussion entry\n4. The TUI shows a notification: \"Screenshot saved, tracker item WI-xxxxx created\"\n5. The user can then navigate to that item and add context via discussion\n\nThis creates a ticket-like workflow where screenshots are first-class tracker items. The inline preview (ADR-0020 Part 2) will render them when cairosvg+chafa are available. Labels from WI-gikut (numbered markers + text) become the annotation content within the item.\n\nKey files:\n- packages/hypergumbo-tracker/src/hypergumbo_tracker/annotations.py (screenshot_path)\n- packages/hypergumbo-tracker/src/hypergumbo_tracker/tui.py (action_capture_screenshot, _on_annotation_result)"  # 3693
+    fields: {}  # 3693
+- op: update  # f80c
+  at: '2026-04-03T07:07:53Z'  # f80c
+  by: human  # f80c
+  actor: jgstern  # f80c
+  clock: 2  # f80c
+  nonce: f80c  # f80c
+  set:  # f80c
+    parent: WI-dosos-nimoh-bikar-dujir-vadan-janib-rosoh-nanup  # f80c

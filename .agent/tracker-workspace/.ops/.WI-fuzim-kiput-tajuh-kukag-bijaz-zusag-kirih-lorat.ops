@@ -55,3 +55,10 @@
   clock: 6  # 53f3
   nonce: 53f3  # 53f3
   message: "PR numbers/ commit ids please?"  # 53f3
+- op: discuss  # 84db
+  at: '2026-04-03T05:05:57Z'  # 84db
+  by: agent  # 84db
+  actor: jgstern_agent  # 84db
+  clock: 7  # 84db
+  nonce: 84db  # 84db
+  message: "Primary commit: 9caf0e03 (feat(tui): annotation mode for screenshot markup (ADR-0020 Part 1)). Follow-up fixes for canvas rendering and SVG geometry: 2f0bee1c, de2e4ff7, 83b46ea3, 33265aed, 5108d0ce, 2d5e3c6b, e040a7e1. All merged to dev via auto-pr fast-forward."  # 84db

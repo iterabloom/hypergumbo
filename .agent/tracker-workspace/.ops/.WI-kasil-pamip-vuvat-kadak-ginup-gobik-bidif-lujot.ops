@@ -19,3 +19,11 @@
     pr_ref:  # 3626
     description: "Screenshots should be saved to .agent/tracker-workspace/screenshots/ (not .agent/screenshots/) so they inherit the same group ownership (project-dev, 2775) as ops files — both jgstern and jgstern_agent can write there. The /tmp fallback should be removed once this works.\n\nBeyond fixing the path, screenshots should be tied to tracker items:\n1. Save SVG to .agent/tracker-workspace/screenshots/<item-id>-<timestamp>.svg\n2. Auto-create a discussion entry on the selected tracker item: \"Screenshot: .agent/tracker-workspace/screenshots/<filename>.svg\" (using the existing TrackerSet.discuss API)\n3. When viewing the item in the TUI, the discussion renderer (ADR-0020 Part 2 inline preview) already detects .svg paths and shows placeholders — once cairosvg+chafa are available, it will render an ASCII art preview\n4. This creates a ticket-like workflow: screenshot → attached to item → viewable by both agent and human\n\nThe screenshot_path helper in annotations.py needs updating, and action_capture_screenshot needs to call self._tracker_set.discuss() after saving.\n\nKey files:\n- packages/hypergumbo-tracker/src/hypergumbo_tracker/annotations.py (screenshot_path)\n- packages/hypergumbo-tracker/src/hypergumbo_tracker/tui.py (action_capture_screenshot, _on_annotation_result)"  # 3626
     fields: {}  # 3626
+- op: update  # 0fce
+  at: '2026-04-03T07:05:04Z'  # 0fce
+  by: human  # 0fce
+  actor: jgstern  # 0fce
+  clock: 2  # 0fce
+  nonce: 0fce  # 0fce
+  set:  # 0fce
+    status: deleted  # 0fce

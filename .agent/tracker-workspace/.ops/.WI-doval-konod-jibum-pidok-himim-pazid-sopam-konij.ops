@@ -42,3 +42,10 @@
   clock: 4  # eca5
   nonce: eca5  # eca5
   message: "PR number/commit id please?"  # eca5
+- op: discuss  # fe4f
+  at: '2026-04-03T05:05:26Z'  # fe4f
+  by: agent  # fe4f
+  actor: jgstern_agent  # fe4f
+  clock: 5  # fe4f
+  nonce: fe4f  # fe4f
+  message: "Commit 2ff232e0 (feat(go): narrow interface dispatch via concrete initializer type). This was merged to dev directly via auto-pr — no standalone PR number since auto-pr uses fast-forward merge."  # fe4f
