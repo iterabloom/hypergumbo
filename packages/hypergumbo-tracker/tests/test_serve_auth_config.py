@@ -70,6 +70,20 @@ class TestAuthConfig:
         cfg = AuthConfig.from_dict(None)
         assert cfg.session_ttl_minutes == 15
 
+    def test_from_dict_invalid_rate_limit_type(self) -> None:
+        """Non-dict rate_limit is treated as empty."""
+        from hypergumbo_tracker.serve_auth_config import AuthConfig
+
+        cfg = AuthConfig.from_dict({"rate_limit": "not-a-dict"})
+        assert cfg.rate_limit_base_delay == 2.0
+
+    def test_from_dict_invalid_webauthn_type(self) -> None:
+        """Non-dict webauthn is treated as empty."""
+        from hypergumbo_tracker.serve_auth_config import AuthConfig
+
+        cfg = AuthConfig.from_dict({"webauthn": 42})
+        assert cfg.webauthn_rp_id == "localhost"
+
     def test_validate_ttl_positive(self) -> None:
         """session_ttl_minutes must be positive."""
         from hypergumbo_tracker.serve_auth_config import AuthConfig
