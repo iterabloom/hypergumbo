@@ -2214,7 +2214,6 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "serve" and (args.stop or args.status):
         # --stop and --status don't need TrackerSet, but need tracker_root for PID path
         from hypergumbo_tracker.serve import (
-            DEFAULT_PORT,
             default_pid_path,
             get_server_status,
             stop_server,
