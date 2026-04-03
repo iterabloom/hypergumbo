@@ -35,3 +35,10 @@
   nonce: 726e  # 726e
   set:  # 726e
     priority: 4  # 726e
+- op: discuss  # 84fa
+  at: '2026-04-03T22:09:12Z'  # 84fa
+  by: agent  # 84fa
+  actor: jgstern_agent  # 84fa
+  clock: 4  # 84fa
+  nonce: 84fa  # 84fa
+  message: "Further investigation from bakeoff deep-20260403 pyo3-file assessment:\n\nThe pyo3-file assessment confirmed: io_boundary_quality=1/5, zero IO tags for an IO-centric library. The pyffi linker Phase 2 (_find_pyo3_symbols) works correctly when annotations are present — the issue is upstream in the Rust analyzer.\n\nRoot cause: The Rust analyzer (rust.py) extracts annotations from #[attr] decorators, but the matching is based on tree-sitter AST node types. For PyO3, the proc macros (#[pyfunction], #[pymethods]) are outer attributes on fn/impl items. The tree-sitter Rust grammar may not expose these as distinct annotation nodes for all function patterns.\n\nFix approach: Debug the Rust analyzer's attribute extraction on a real PyO3 crate (pyo3-file) to identify which AST patterns produce annotations and which don't. The fix is likely a tree-sitter query pattern adjustment, not architectural."  # 84fa

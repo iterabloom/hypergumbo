@@ -49,3 +49,18 @@
   clock: 5  # 69b1
   nonce: 69b1  # 69b1
   message: "Acknowledged. Will reference ADR-0020 when implementing."  # 69b1
+- op: update  # 1522
+  at: '2026-04-03T23:11:02Z'  # 1522
+  by: agent  # 1522
+  actor: jgstern_agent  # 1522
+  clock: 6  # 1522
+  nonce: '1522'  # 1522
+  set:  # 1522
+    status: done  # 1522
+- op: discuss  # abf2
+  at: '2026-04-03T23:11:02Z'  # abf2
+  by: agent  # abf2
+  actor: jgstern_agent  # abf2
+  clock: 7  # abf2
+  nonce: abf2  # abf2
+  message: "Already implemented in tui.py AnnotationScreen: mouse drag for rects (on_mouse_down/move/up), L key + click for labels, A key + drag for arrows, U for undo. All gesture modes with status bar feedback."  # abf2

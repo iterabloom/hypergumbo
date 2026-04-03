@@ -49,3 +49,18 @@
   clock: 5  # 0f7b
   nonce: 0f7b  # 0f7b
   message: "Acknowledged. Will reference ADR-0020 when implementing."  # 0f7b
+- op: update  # e19e
+  at: '2026-04-03T23:11:17Z'  # e19e
+  by: agent  # e19e
+  actor: jgstern_agent  # e19e
+  clock: 6  # e19e
+  nonce: e19e  # e19e
+  set:  # e19e
+    status: done  # e19e
+- op: discuss  # be6c
+  at: '2026-04-03T23:11:17Z'  # be6c
+  by: agent  # be6c
+  actor: jgstern_agent  # be6c
+  clock: 7  # be6c
+  nonce: be6c  # be6c
+  message: "Already implemented in tui.py AnnotationScreen: _nudge() with arrow key bindings (action_nudge_up/down/left/right), Enter confirms (action_confirm), Escape discards (action_discard)."  # be6c
