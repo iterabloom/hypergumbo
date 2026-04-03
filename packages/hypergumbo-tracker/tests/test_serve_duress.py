@@ -109,6 +109,16 @@ class TestLoadDuressHandler:
         handler = load_duress_handler("/nonexistent/path/duress.py")
         assert isinstance(handler, NullDuressHandler)
 
+    def test_load_returns_null_on_non_python_file(self, tmp_path: Path) -> None:
+        """Returns NullDuressHandler for a non-Python file (spec is None)."""
+        from hypergumbo_tracker.serve_duress import NullDuressHandler, load_duress_handler
+
+        bin_file = tmp_path / "duress.bin"
+        bin_file.write_bytes(b"\x00\x01\x02\x03")
+
+        handler = load_duress_handler(str(bin_file))
+        assert isinstance(handler, NullDuressHandler)
+
     def test_load_returns_null_on_bad_module(self, tmp_path: Path) -> None:
         """Returns NullDuressHandler when module has no 'handler' attribute."""
         from hypergumbo_tracker.serve_duress import NullDuressHandler, load_duress_handler
