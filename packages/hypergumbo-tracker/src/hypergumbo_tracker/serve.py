@@ -1,14 +1,17 @@
 # SPDX-License-Identifier: MPL-2.0
-"""Starlette/uvicorn server skeleton for htrac serve (ADR-0019).
+"""Starlette/uvicorn server for htrac serve (ADR-0019).
 
-Provides a lightweight HTTP server bound to 127.0.0.1 with a /health endpoint.
-External access is routed through Tor onion service or native iOS/macOS app;
-the server never binds to 0.0.0.0.
+Provides an HTTP server bound to 127.0.0.1 with a ``/health`` endpoint and
+REST API routes for TrackerSet operations (list, get, ready, add, update,
+discuss). External access is routed through Tor onion service or native
+iOS/macOS app; the server never binds to 0.0.0.0.
 
 How It Works
 ------------
-``create_app()`` returns a Starlette application with a ``/health`` endpoint
-that reports server status and PID. The app is run via uvicorn (``run_server``).
+``create_app(tracker_set=ts)`` returns a Starlette application wired to
+the given TrackerSet. API routes delegate to TrackerSet methods and serialize
+results via ``_item_to_dict``. If no TrackerSet is provided, API routes
+return HTTP 503.
 
 PID file management supports ``--background``, ``--stop``, and ``--status``
 flags: ``write_pid_file`` / ``read_pid_file`` / ``remove_pid_file`` handle
@@ -16,6 +19,7 @@ the lifecycle, and ``stop_server`` sends SIGTERM to a running instance.
 
 Why This Design
 ---------------
+- Same core engine (TrackerSet) as CLI and TUI — no separate state.
 - Starlette is async-native, lightweight, and supports WebSocket (needed for
   real-time state sync in future WI-fakud).
 - uvicorn is the standard ASGI server for Starlette.
@@ -29,15 +33,64 @@ import os
 import signal
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+if TYPE_CHECKING:
+    from hypergumbo_tracker.trackerset import TrackerSet
+
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7380  # "htrac" on a phone keypad: 4-8-7-2-2 → 7380
 PID_FILENAME = "htrac-serve.pid"
+
+# Module-level state set by create_app()
+_start_time: float = time.monotonic()
+_tracker_set: TrackerSet | None = None
+
+
+def _item_to_dict(item: Any) -> dict[str, Any]:
+    """Convert CompiledItem to a JSON-serializable dict."""
+    return {
+        "id": item.id,
+        "kind": item.kind,
+        "title": item.title,
+        "status": item.status,
+        "priority": item.priority,
+        "parent": item.parent,
+        "tags": item.tags,
+        "before": item.before,
+        "pr_ref": item.pr_ref,
+        "description": item.description,
+        "fields": item.fields,
+        "locked_fields": sorted(item.locked_fields),
+        "discussion": [
+            {"by": d.by, "actor": d.actor, "at": d.at,
+             "message": d.message, "is_summary": d.is_summary}
+            for d in item.discussion
+        ],
+        "frozen": item.frozen,
+        "tier": item.tier.value if item.tier else None,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+    }
+
+
+def _require_tracker(request: Request) -> JSONResponse | None:
+    """Return a 503 response if no TrackerSet is configured, else None."""
+    if _tracker_set is None:
+        return JSONResponse(
+            {"error": "No tracker configured"}, status_code=503,
+        )
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
 
 
 async def _health(request: Request) -> JSONResponse:
@@ -49,20 +102,133 @@ async def _health(request: Request) -> JSONResponse:
     })
 
 
-_start_time: float = time.monotonic()
+async def _api_list_items(request: Request) -> JSONResponse:
+    """GET /api/items — list all items."""
+    err = _require_tracker(request)
+    if err:
+        return err
+    items = _tracker_set.list_items()  # type: ignore[union-attr]
+    return JSONResponse({"items": [_item_to_dict(i) for i in items]})
 
 
-def create_app() -> Starlette:
+async def _api_get_item(request: Request) -> JSONResponse:
+    """GET /api/items/{id} — get a single item by ID."""
+    err = _require_tracker(request)
+    if err:
+        return err
+    item_id = request.path_params["item_id"]
+    try:
+        item = _tracker_set.get(item_id)  # type: ignore[union-attr]
+    except Exception:
+        return JSONResponse({"error": "Item not found"}, status_code=404)
+    return JSONResponse(_item_to_dict(item))
+
+
+async def _api_ready(request: Request) -> JSONResponse:
+    """GET /api/ready — list actionable items sorted by priority."""
+    err = _require_tracker(request)
+    if err:
+        return err
+    items = _tracker_set.ready()  # type: ignore[union-attr]
+    return JSONResponse({"items": [_item_to_dict(i) for i in items]})
+
+
+async def _api_add_item(request: Request) -> JSONResponse:
+    """POST /api/items — create a new item."""
+    err = _require_tracker(request)
+    if err:
+        return err
+    body = await request.json()
+    kind = body.get("kind")
+    title = body.get("title")
+    if not kind or not title:
+        return JSONResponse(
+            {"error": "Missing required fields: kind, title"}, status_code=400,
+        )
+    from hypergumbo_tracker.models import Tier
+    tier_str = body.get("tier", "workspace")
+    try:
+        tier = Tier(tier_str)
+    except ValueError:
+        return JSONResponse(
+            {"error": f"Invalid tier: {tier_str}"}, status_code=400,
+        )
+    item_id = _tracker_set.add(  # type: ignore[union-attr]
+        kind=kind, title=title, tier=tier,
+        status=body.get("status"),
+        priority=body.get("priority"),
+        description=body.get("description", ""),
+        tags=body.get("tags"),
+    )
+    return JSONResponse({"id": item_id}, status_code=201)
+
+
+async def _api_update_item(request: Request) -> JSONResponse:
+    """POST /api/items/{id}/update — update item fields."""
+    err = _require_tracker(request)
+    if err:
+        return err
+    item_id = request.path_params["item_id"]
+    body = await request.json()
+    try:
+        _tracker_set.get(item_id)  # type: ignore[union-attr] — verify exists
+    except Exception:
+        return JSONResponse({"error": "Item not found"}, status_code=404)
+    set_fields: dict[str, Any] = {}
+    for key in ("status", "priority", "title", "description", "tags", "pr_ref"):
+        if key in body:
+            set_fields[key] = body[key]
+    _tracker_set.update(item_id, set_fields=set_fields)  # type: ignore[union-attr]
+    return JSONResponse({"ok": True})
+
+
+async def _api_discuss_item(request: Request) -> JSONResponse:
+    """POST /api/items/{id}/discuss — add a discussion message."""
+    err = _require_tracker(request)
+    if err:
+        return err
+    item_id = request.path_params["item_id"]
+    body = await request.json()
+    message = body.get("message")
+    if not message:
+        return JSONResponse(
+            {"error": "Missing required field: message"}, status_code=400,
+        )
+    try:
+        _tracker_set.get(item_id)  # type: ignore[union-attr] — verify exists
+    except Exception:
+        return JSONResponse({"error": "Item not found"}, status_code=404)
+    _tracker_set.discuss(item_id, message)  # type: ignore[union-attr]
+    return JSONResponse({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# App factory
+# ---------------------------------------------------------------------------
+
+
+def create_app(*, tracker_set: TrackerSet | None = None) -> Starlette:
     """Create the Starlette application with routes.
+
+    Args:
+        tracker_set: Optional TrackerSet to wire into the API routes.
+            If None, API routes return 503 but /health still works.
 
     Returns a configured Starlette app. Does not start the server;
     use ``run_server()`` for that.
     """
-    global _start_time
+    global _start_time, _tracker_set
     _start_time = time.monotonic()
+    _tracker_set = tracker_set
 
     routes = [
         Route("/health", _health, methods=["GET"]),
+        Route("/api/items", _api_list_items, methods=["GET"]),
+        Route("/api/items", _api_add_item, methods=["POST"]),
+        Route("/api/items/{item_id}", _api_get_item, methods=["GET"]),
+        Route("/api/items/{item_id}/update", _api_update_item, methods=["POST"]),
+        Route("/api/items/{item_id}/discuss", _api_discuss_item, methods=["POST"]),
+        Route("/api/ready", _api_ready, methods=["GET"]),
     ]
     return Starlette(routes=routes)
 

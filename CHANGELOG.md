@@ -50,7 +50,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### htrac serve skeleton (ADR-0019 Part A)
 
 - **`htrac serve` command**: Starlette/uvicorn server skeleton bound to 127.0.0.1 only. `/health` endpoint returns `{"status": "ok", "pid": ..., "uptime_seconds": ...}`. PID file management for `--background`/`--stop`/`--status`. Default port 7380.
-- **Optional dependencies**: `starlette`, `uvicorn`, `httpx` under `[serve]` extras in pyproject.toml.
+- **REST API endpoints**: `GET /api/items`, `GET /api/items/{id}`, `GET /api/ready`, `POST /api/items` (create), `POST /api/items/{id}/update`, `POST /api/items/{id}/discuss`. Wired to TrackerSet — same core engine as CLI/TUI.
+- **Dependencies**: `starlette`, `uvicorn`, `httpx` added to base tracker dependencies.
 
 #### `io-boundaries` CLI
 
