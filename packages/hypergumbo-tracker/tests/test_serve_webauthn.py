@@ -101,6 +101,13 @@ class TestWebAuthnManager:
         opt2 = mgr.generate_registration_options(user_id="u1", user_name="admin")
         assert opt1["challenge"] != opt2["challenge"]
 
+    def test_no_pending_challenge_initially(self) -> None:
+        """No pending challenge before any generation."""
+        from hypergumbo_tracker.serve_webauthn import WebAuthnManager
+
+        mgr = WebAuthnManager(rp_id="localhost", rp_name="htrac", origin="https://localhost")
+        assert mgr.get_pending_challenge() is None
+
     def test_pending_challenge_stored(self) -> None:
         """Registration challenge is stored for later verification."""
         from hypergumbo_tracker.serve_webauthn import WebAuthnManager
