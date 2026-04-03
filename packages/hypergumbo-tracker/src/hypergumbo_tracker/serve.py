@@ -38,7 +38,8 @@ from typing import TYPE_CHECKING, Any
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Route
+from starlette.routing import Route, WebSocketRoute
+from starlette.websockets import WebSocket
 
 if TYPE_CHECKING:
     from hypergumbo_tracker.trackerset import TrackerSet
@@ -203,6 +204,86 @@ async def _api_discuss_item(request: Request) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# WebSocket protocol
+# ---------------------------------------------------------------------------
+
+
+async def _ws_handler(websocket: WebSocket) -> None:
+    """WebSocket endpoint for real-time tracker state sync.
+
+    Protocol:
+    - On connect: sends ``state_snapshot`` with all current items.
+    - Client sends ``command`` messages to invoke tracker operations.
+    - Server replies with ``result`` (for reads), ``event`` (for mutations),
+      or ``error`` (on failure).
+    """
+    await websocket.accept()
+
+    if _tracker_set is None:
+        await websocket.send_json({"type": "error", "message": "No tracker configured"})
+        await websocket.close()
+        return
+
+    # Send initial state snapshot
+    items = _tracker_set.list_items()
+    await websocket.send_json({
+        "type": "state_snapshot",
+        "items": [_item_to_dict(i) for i in items],
+    })
+
+    # Message loop
+    try:
+        while True:
+            msg = await websocket.receive_json()
+            response = _handle_ws_message(msg)
+            await websocket.send_json(response)
+    except Exception:  # WebSocket disconnect or JSON decode error
+        pass
+
+
+def _handle_ws_message(msg: dict[str, Any]) -> dict[str, Any]:
+    """Dispatch a WebSocket command message and return a response dict."""
+    if not isinstance(msg, dict) or "type" not in msg:
+        return {"type": "error", "message": "Missing 'type' field"}
+
+    if msg["type"] != "command":
+        return {"type": "error", "message": f"Unknown message type: {msg['type']}"}
+
+    action = msg.get("action", "")
+    try:
+        if action == "list":
+            items = _tracker_set.list_items()  # type: ignore[union-attr]
+            return {"type": "result", "items": [_item_to_dict(i) for i in items]}
+
+        if action == "show":
+            item = _tracker_set.get(msg["item_id"])  # type: ignore[union-attr]
+            return {"type": "result", "item": _item_to_dict(item)}
+
+        if action == "ready":
+            items = _tracker_set.ready()  # type: ignore[union-attr]
+            return {"type": "result", "items": [_item_to_dict(i) for i in items]}
+
+        if action == "update":
+            item_id = msg["item_id"]
+            set_fields = msg.get("set_fields", {})
+            _tracker_set.update(item_id, set_fields=set_fields)  # type: ignore[union-attr]
+            return {"type": "event", "action": "updated", "item_id": item_id}
+
+        if action == "discuss":
+            item_id = msg["item_id"]
+            message = msg["message"]
+            _tracker_set.discuss(item_id, message)  # type: ignore[union-attr]
+            return {"type": "event", "action": "discussed", "item_id": item_id}
+
+        return {"type": "error", "message": f"Unknown action: {action}"}
+
+    except KeyError as e:
+        return {"type": "error", "message": f"Missing field: {e}"}
+    except Exception as e:
+        return {"type": "error", "message": str(e)}
+
+
+# ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
 
@@ -229,6 +310,7 @@ def create_app(*, tracker_set: TrackerSet | None = None) -> Starlette:
         Route("/api/items/{item_id}/update", _api_update_item, methods=["POST"]),
         Route("/api/items/{item_id}/discuss", _api_discuss_item, methods=["POST"]),
         Route("/api/ready", _api_ready, methods=["GET"]),
+        WebSocketRoute("/ws", _ws_handler),
     ]
     return Starlette(routes=routes)
 

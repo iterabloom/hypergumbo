@@ -51,6 +51,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **`htrac serve` command**: Starlette/uvicorn server skeleton bound to 127.0.0.1 only. `/health` endpoint returns `{"status": "ok", "pid": ..., "uptime_seconds": ...}`. PID file management for `--background`/`--stop`/`--status`. Default port 7380.
 - **REST API endpoints**: `GET /api/items`, `GET /api/items/{id}`, `GET /api/ready`, `POST /api/items` (create), `POST /api/items/{id}/update`, `POST /api/items/{id}/discuss`. Wired to TrackerSet — same core engine as CLI/TUI.
+- **WebSocket protocol** (`/ws`): Real-time state sync via typed JSON messages. `state_snapshot` on connect, `command` for tracker operations (list, show, update, discuss), `event` for mutation notifications, `error` for structured failures.
 - **Dependencies**: `starlette`, `uvicorn`, `httpx` added to base tracker dependencies.
 
 #### `io-boundaries` CLI
