@@ -199,6 +199,31 @@ class TestLoadCatalog:
         assert catalog.lookup_with_module("Debug", None) is None
         assert catalog.lookup_with_module("Error", None) is None
 
+    def test_go_catalog_tls_smtp(self) -> None:
+        """TLS and SMTP operations are net_send boundaries."""
+        catalog = load_catalog("go")
+        # TLS
+        hit = catalog.lookup_with_module("Dial", "crypto/tls")
+        assert hit is not None, "crypto/tls.Dial should be net_send"
+        assert hit.boundary == "net_send"
+
+        # SMTP
+        hit = catalog.lookup_with_module("SendMail", "net/smtp")
+        assert hit is not None, "net/smtp.SendMail should be net_send"
+        assert hit.boundary == "net_send"
+
+        # SMTP client methods with module context
+        hit = catalog.lookup_with_module("Mail", "net/smtp")
+        assert hit is not None
+        assert hit.boundary == "net_send"
+
+        # Data is ambiguous without context (gin.Context.Data vs template.Data)
+        assert catalog.lookup_with_module("Data", None) is None
+        # But with gin context, it matches
+        hit = catalog.lookup_with_module("Data", "gin")
+        assert hit is not None
+        assert hit.boundary == "net_send"
+
     def test_go_catalog_stdlib_log(self) -> None:
         """log.Printf etc. are classified as ipc_send."""
         catalog = load_catalog("go")

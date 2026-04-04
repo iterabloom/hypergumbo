@@ -33,6 +33,9 @@ ambiguous_names:
   - Warn          # slog.Warn vs any .Warn() method
   - Error         # slog.Error vs error.Error(), any .Error() method
   - Log           # slog.Log vs any .Log() method
+  - Data          # gin.Context.Data vs template.Data, any .Data() method
+  - Mail          # smtp.Client.Mail vs any .Mail() method
+  - Handshake     # tls.Conn.Handshake vs any .Handshake() method
 
 fs_read:
   - module: os
@@ -75,6 +78,16 @@ net_send:
     functions: [Dial, DialTCP, DialUDP, DialUnix, DialTimeout]
   - module: net.Conn
     methods: [Write]
+  - module: crypto/tls
+    functions: [Dial, DialWithDialer, Client]
+    notes: "TLS connection establishment"
+  - module: crypto/tls.Conn
+    methods: [Write, Handshake]
+  - module: net/smtp
+    functions: [NewClient, Dial, SendMail]
+    notes: "SMTP email sending"
+  - module: net/smtp.Client
+    methods: [Mail, Rcpt, Data, Close]
   - module: net/http
     functions: [Get, Post, PostForm, Head, NewRequest]
   - module: net/http.Client

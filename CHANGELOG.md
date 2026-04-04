@@ -29,6 +29,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Impact**: IO boundary detection can now classify `http.Client.Do()` as `net_send`, `io.ReadAll()` calls via `io` module, and other stdlib method calls that were previously blocked by the `ambiguous_names` guard due to missing module context.
 - **Go IO catalog**: Added `testing.T.TempDir` and `testing.B.TempDir` as `fs_write` boundaries. With qualified-type tracking, `t.TempDir()` calls now correctly resolve to the `testing` module — the catalog needed a matching entry. Also removes 6 false positives where `bytes.Buffer.WriteString`, `strings.Builder.WriteString`, and `kingpin.Command()` were previously misclassified as IO operations via the `external` module hint fallback.
 - **Go IO catalog: logging**: Added `log` (Printf, Fatal, Panic families) and `log/slog` (Debug, Info, Warn, Error, Log, NewTextHandler, NewJSONHandler) as `ipc_send` boundaries. Go's stdlib logging packages write to stderr by default. Also added `Debug`, `Info`, `Warn`, `Error`, `Log` to `ambiguous_names` to prevent false positives on non-logging types.
+- **Go IO catalog: TLS/SMTP**: Added `crypto/tls` (Dial, DialWithDialer, Client, Conn.Write/Handshake) and `net/smtp` (NewClient, Dial, SendMail, Client.Mail/Rcpt/Data/Close) as `net_send` boundaries. Added `Data`, `Mail`, `Handshake` to `ambiguous_names`. Fixes false positive where `gin.Context.Data` matched on `template.Data` structs without module context.
 
 #### Interface dispatch narrowing (WI-doval)
 
