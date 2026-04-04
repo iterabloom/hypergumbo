@@ -54,7 +54,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Objective-C** (`objc.yaml`): 90+ Foundation/Cocoa primitives (filesystem, networking, Core Data, subprocess, IPC).
 - **Scala** (`scala.yaml`): scala.io, cats-effect, ZIO, sttp/http4s/akka-http, fs2, Slick/Doobie/Quill. Inherits Java catalog.
 - **Haskell** (`haskell.yaml`): Prelude, System.IO, Network.Socket, System.Process, Data.IORef, Control.Concurrent.
-- **Swift**: 14 server-side primitives (AsyncHTTPClient, NIOSSL, distributed tracing), SwiftNIO channel/file I/O, 7 swift-log level methods.
+- **Swift** (`swift.yaml`): Foundation IO catalog (FileManager, URLSession, Process, NotificationCenter). 14 server-side primitives (AsyncHTTPClient, NIOSSL, distributed tracing). SwiftNIO channel/file I/O (`NonBlockingFileIO`, `Channel`, `ChannelHandlerContext`). 7 swift-log Logger level methods. Ambiguous names for generic identifiers (write, read, Data, URL).
 
 #### Ruby FFI unresolved edges (WI-valiv)
 
@@ -109,12 +109,57 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Framework & entrypoint detection
 
 - Hummingbird added to Swift framework list.
+- SwiftUI App, UIApplicationDelegate/NSApplicationDelegate, UIViewController/NSViewController, ParsableCommand (Swift Argument Parser), and XCTestCase entrypoint patterns (`swiftui.yaml`).
+- Hummingbird route/middleware/application patterns (`hummingbird.yaml`).
 - Middleware concept (59+ YAML patterns) now mapped to `middleware_handler` entrypoints.
 - Haskell `main :: IO ()` and Erlang `main/0`/`start/0` entrypoints.
 
 #### Tier classification
 
 - Swift `.build/` → tier 4. DocC `.docc/` → tier 2 (was tier 1; fixes 33% inflation in TCA).
+
+#### Rust def/use extractor enhancements
+
+- Borrow alias tracking: `let y = &mut x` records `x` as a use of `y`.
+- `ref`/`ref mut` patterns in match arms now bind variables correctly.
+- Dereference assignments (`*ptr = val`) generate defines for `ptr`.
+
+#### Transcript sync and local model pipeline (ADR-0018)
+
+- **Vendor-agnostic session transcript sync**: Background `inotifywait` watcher mirrors the active AI tool's session transcript to `.agent/.current_session_transcript.jsonl`, filtering ~83% of noise. Supports Claude Code, Codex CLI, Gemini CLI, and Cursor.
+- **LLM-driven playbook injection**: Sends recent transcript entries to a local LLM to identify agent goals and rate playbook relevance. High-scoring playbooks are injected into the conversation as context.
+- **Sparse-selection pipeline**: Two-model architecture (Small 3.2 for distillation, Small 2603 with reasoning for playbook selection). Token budget halved from 8K to 4K.
+- **14 playbooks extracted** from AGENTS.md into `.agent/agent_playbooks_protocols_sops_skills/` with inline summaries and "For more explanation" pointers.
+- **Compaction-aware injection dedup**: Tracks injections in a state file, invalidates when `compact_boundary` events appear, applies token-distance window (50K default).
+- **G-Vendi finetuning pipeline** (`scripts/finetune-transcript-model`): Training data collection in ChatML format, G-Vendi diversity score (arXiv:2505.20161) with CountSketch gradient projection for data selection, three-phase pipeline (select/train/quantize) targeting Qwen2.5-0.5B-Instruct IQ4_XS GGUF.
+- **Parse-outcome sidecar log**: UUID-keyed `.parse-outcomes.jsonl` for tracking playbook parsing failures.
+
+#### Autonomous mode management
+
+- **Session-start hook**: Prompts for BROAD/DEEP/OFF mode selection when autonomous mode is OFF or has a stale PID. Vendor-agnostic with thin adapters per AI tool.
+- **Session-end hook**: Disables autonomous mode (`loop-toggle off`) when the user ends their session. Shared logic in `_shared/session_end_logic.sh`.
+- **Circuit breaker reset**: `loop-toggle` now deduplicates the last hash in the stop-hook hash file when activating a mode, preventing stale state from auto-approving stops.
+
+#### CI resilience
+
+- **Stale-pending detection in auto-pr**: `poll_ci()` detects when all CI jobs remain pending after 5 minutes (exit code 3). Auto-pr closes the PR, waits with exponential backoff (2/4/8/16 min), and repushes. Up to 4 retries.
+- **Stale-pending detection in tracker sync**: Same mitigation applied to `_poll_ci`/`do_sync` — 90-second timeout, close/wait/repush with up to 2 retries.
+- **Tracker sync PR verification**: Stop hook's stale-PR audit calls `verify-tracker-pr` to check safety before recommending close.
+
+#### Tracker governance
+
+- **`deprecated_statuses`**: `KindConfig` now supports statuses accepted when reading historical ops but rejected on new create/update. Enables status renames without rewriting append-only ops.
+- **Invariant statuses**: `satisfied` (confirmed with positive evidence) and `pending_validation` (fix deployed, not yet validated — blocks stopping). Replaces ambiguous `holding`.
+
+#### Reverse slice seed selection
+
+- **Library export boost** (1.4×): `library_export`-tagged symbols in the entrypoints section are boosted in rslice seed scoring. Ensures reverse slices answer "who calls this library's public API?" (WI-bosik).
+- **Architectural concept boost** (1.3×): Middleware, controller, application, and model symbols boosted over pure hub nodes (OutputBuffer.append, Iterator.next).
+
+#### I/O boundary catalog additions
+
+- **C**: `fclose`, `fflush`, `fseek`, `rewind`, `ungetc`, `ftell` (stdio lifecycle). `tmpfile`, `tmpnam`, `mkstemp`, `mkdtemp`, `mkostemp`, `mkstemps` (temp files).
+- **Go**: `http.Transport.RoundTrip` (net_send). `golang.org/x/sys/execabs.Command` (subprocess).
 
 #### Other
 
@@ -189,6 +234,81 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Python
 
 - Unresolved method calls emit `unresolved_variable_method_call` edges (0.40 confidence) instead of being dropped.
+
+#### C dataflow
+
+- `returns` section added to C dataflow YAML (was missing — Go, Java, C++, Rust, Python, TypeScript all had it). Return statement edges now get `access_mode="read"`.
+
+#### auto-pr & tracker sync
+
+- **Gate timing race** (INV-rahib): `PR_PENDING` gate now created before push (was after), closing a window where tracker sync could advance dev mid-flight. Added re-check before push and proactive fetch+rebase after CI poll.
+- **Variable name bug**: `$PUSH_REMOTE` (undefined uppercase) → `$push_remote`; hardcoded `"dev"` → `$BASE_BRANCH` in hung-run retry.
+- **Tracker `pending_sync_lines` failover**: Now checks `.git/CI_FAILOVER_ACTIVE` and prefers `selfh/dev` as diff base. Previously all ops synced via selfh showed as "pending" relative to stale `origin/dev` (e.g., 435 lines when true delta was near zero).
+
+#### CI & release scripts
+
+- **CI rootdir pinning**: Added `--rootdir=.` to CI pytest invocations. When all manifest tests belong to one package, pytest selected the package subdirectory as rootdir, breaking repo-root-relative paths (0 items collected).
+- **ci-debug SIGPIPE**: `_find_job_from_log_probe` used `curl | head -1` under `set -o pipefail`, sending SIGPIPE to curl (exit 141). Now uses `curl -r 0-1023` (HTTP range request) instead of piping.
+- **ci-debug Forgejo API fallback**: `/actions/runs` endpoint doesn't exist on Forgejo 11.x. Falls back to `/actions/tasks` to discover run numbers, then probes job logs. Transparent to Codeberg (tries `/runs` first).
+- **ci-debug ops-exclusion failover**: Fetches `selfh/dev` during failover so ops-exclusion diff matches CI's base SHA.
+- **Empty manifest for docs+CI-only PRs**: Generates empty targeted manifest when no Python source files changed.
+- **Release: smart-test version handling**: Version-only `__init__.py` diffs now generate targeted manifests (one test per package) instead of falling back to full-suite.
+- **Release: branch creation order**: `prepare-release` creates feature branch before committing (was after).
+- **Release: tracker flush**: Flushes pending tracker ops before clean-tree check.
+- **`requests` upgraded to 2.33.0** for CVE-2026-25645.
+
+#### Hooks
+
+- **Stale-PR audit failover** (WI-soboh): `_stale_pr_audit()` now calls `apply_failover_overrides()`. Previously queried origin (Codeberg) during failover instead of selfh.
+- **Circuit breaker TOCTOU**: Two `tail` reads of the hash file could see different data if a concurrent hook appended between them. Now snapshots once into a variable.
+- **Circuit breaker off-by-one**: Hash was appended before the check, so current stop counted toward the 5-event threshold. Now checks first, then appends.
+- **Circuit breaker deactivation**: Mechanically runs `loop-toggle off` when circuit breaker trips.
+- **Pre-push failover verification** (INV-bifud): Blocks pushes to origin when `.git/CI_FAILOVER_ACTIVE` exists.
+
+#### TUI
+
+- Duplicate startup message on TUI exit suppressed. Auto-sync no longer fires on exit without mutations.
+- Screenshot path resolved against tracker root instead of cwd.
+- Per-user fallback directory (`/tmp/<uid>-htrac-screenshots/`) for screenshot permission errors.
+- SVG cell geometry extracted from actual SVG instead of hardcoded 8.65×18px. Background rect (height=1707px) filtered.
+- Screen-absolute coordinates for annotation placement (was widget-relative).
+- Merged-render annotation canvas replays frozen `Strip` objects from compositor.
+
+#### Bakeoff threshold tuning
+
+- `io_tag_rate`: Log-linear scaling starts at 500 nodes (was 10K). `warn_min` lowered to 0.1%.
+- `dataflow_slice_ratio`: Skipped when `access_mode_coverage < 30%` (low annotation makes 100% ratio expected).
+- `limit_hit_frequency`: `good_max` scaled by log-linear boost for large repos (35K+ nodes).
+- `tier1_pct`: `good_max` raised to 100% for single-language library repos.
+- `cross_language_io_pct`: Now checks per-chain source language vs primitive catalog language. FFI repos (Go→C) detected correctly (was always 0%).
+- Polyglot threshold: Repos where the second language is <5% of nodes no longer trigger cross-language IO warnings.
+
+#### Transcript pipeline (ADR-0018)
+
+- **Session state reset**: All per-session transcript state cleared on session start. Session token embedded in state files for stale-state self-healing.
+- **Poll race condition**: State marker now written after hook succeeds (was before). Shrink-across-sessions detected and reset.
+- **Goal injection removed**: Cheap LLM's goal summary no longer injected into agent context (wasted tokens, risked bias).
+- **Rating parser robustness**: Greedy third-fallback regex removed. Hook wiring gaps fixed for Cursor and Codex CLI.
+- **Transcript window**: Reduced from 16K to 8K tokens (~17s prefill vs ~5 min). Training entries truncated to budget.
+
+### Changed
+
+- **Bakeoff script rename**: `bakeoff` → `bakeoff-broad`, `bakeoff-features` → `bakeoff-deep`, `bakeoff-reflect` → `bakeoff-broad-reflect`, `bakeoff-features-reflect` → `bakeoff-deep-reflect`. All references updated across AGENTS.md, ADRs, hooks, and scripts.
+- **Cooldown prompt restructure**: Process Retrospective promoted to Section 1. Gates discouraging analysis/tooling work during CI waits removed.
+- **State file fallbacks removed**: `last_stop_check.json` uses primary location only (`~/hypergumbo_lab_notebook/guidance_log/`). Legacy paths no longer checked.
+
+### Documentation
+
+- **ADR-0017** (Taint-Zone Dataflow Analysis): Proposed and accepted. Python-first extractor ordering.
+- **ADR-0019** (Remote Access Transport): Part A/B split. Revised to native iOS/macOS app (Safari lacks secure context for `.onion` origins). TURN relay fallback for symmetric NAT.
+- **ADR-0020** (TUI Screenshot Annotation): Proposed.
+- **ADR-0021** (Tracker Federation): Proposed. "Node" terminology replaced with "machine" in prose.
+- **Deployment guide** (`docs/DEPLOYMENT.md`): Architecture diagram, systemd setup, Tor onion service config, auth, CLI coexistence.
+- **Torrc example** (`deploy/torrc.example`): v3 onion service with x25519 client authorization.
+- **Governance docs**: Autonomous mode management, circuit breaker, and ADR index (`docs/adr/README.md`).
+- **Deprecated invariant ledger removed**: Superseded by structured tracker (ADR-0013). References updated.
+- **Agent playbooks**: Changelog audit playbook, playbook creation guide, bakeoff artifact guide added.
+- **Spec updates**: ADR-0017 taint_flow constraint in §3 verify-claims. Dataflow non-goal narrowed in §2. ADR-0014/0015 synced with implementation state.
 
 ## [2.4.0] - 2026-03-21
 
