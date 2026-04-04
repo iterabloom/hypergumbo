@@ -21,6 +21,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **SVG injection**: Annotations are mapped from cell coordinates to SVG pixels (8.65px × 18px per cell) and injected as a `<g class="annotations">` group before `</svg>`. Label text is XML-sanitized to prevent injection. Arrow annotations include `<defs>` with arrowhead marker.
 - **Inline SVG preview** (Part 2): Discussion entries referencing `.svg` files show `[screenshot: filename.svg]` placeholders. Preview module (`preview.py`) provides the SVG→PNG→ANSI pipeline via optional `cairosvg` + `chafa`. Graceful degradation when either is missing.
 
+#### Go qualified-type parameter tracking for IO boundary detection
+
+- **Qualified type extraction**: `_type_identifier_from_node` now handles `qualified_type` AST nodes (e.g. `http.Client`) and `pointer_type` wrapping `qualified_type` (e.g. `*http.Client`). Previously these returned `None`, losing the type information.
+- **Parameter type propagation**: Function parameters with package-qualified types (e.g. `client *http.Client`) are now added to `var_types` with the full qualified name, enabling the typed-receiver call path.
+- **Module hint recovery**: When a typed-receiver lookup fails (external type not in local/global symbols), the package prefix is extracted from the qualified type and mapped through `import_aliases` to set `import_path_hint`. This produces unresolved edges like `go:net/http:0-0:Do:unresolved` instead of `go:external:0-0:Do:unresolved`.
+- **Impact**: IO boundary detection can now classify `http.Client.Do()` as `net_send`, `io.ReadAll()` calls via `io` module, and other stdlib method calls that were previously blocked by the `ambiguous_names` guard due to missing module context.
+
 #### Interface dispatch narrowing (WI-doval)
 
 - **Go `var` declaration with concrete initializer**: `var n Notifier = &DiscordNotifier{}` now tracks the concrete type (`DiscordNotifier`) instead of the declared interface type (`Notifier`). Calls on `n` resolve to the concrete type's method, eliminating spurious `dispatches_to` edges from the type_hierarchy linker.

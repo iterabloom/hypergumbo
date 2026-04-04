@@ -1272,7 +1272,9 @@ def _extract_go_var_types(
             for child in node.children:
                 if child.type == "identifier" and name_node is None:
                     name_node = child
-                elif child.type in ("type_identifier", "pointer_type"):
+                elif child.type in (
+                    "type_identifier", "pointer_type", "qualified_type",
+                ):
                     type_node = child
                 elif child.type == "expression_list":
                     init_node = child
@@ -1327,7 +1329,9 @@ def _extract_go_var_types(
             for child in node.children:
                 if child.type == "identifier" and name_node is None:
                     name_node = child
-                elif child.type in ("type_identifier", "pointer_type"):
+                elif child.type in (
+                    "type_identifier", "pointer_type", "qualified_type",
+                ):
                     type_node = child
 
             if name_node is None or type_node is None:
@@ -1472,16 +1476,28 @@ def _type_identifier_from_node(
     """Extract the type name from a type node, stripping pointer indirection.
 
     Handles:
-    - ``type_identifier`` → direct type name
-    - ``pointer_type`` → unwrap * to get type_identifier
+    - ``type_identifier`` → direct type name (e.g. ``Client``)
+    - ``qualified_type`` → package-qualified name (e.g. ``http.Client``)
+    - ``pointer_type`` → unwrap ``*`` then extract from child
+      (supports ``*Client``, ``*http.Client``)
+
+    Returning the full qualified name (``http.Client``) is critical for
+    IO boundary detection: the package prefix can be mapped through
+    import_aliases to recover the full import path (e.g. ``net/http``),
+    which the IO boundary catalog needs to classify method calls like
+    ``client.Do()`` as ``net_send``.
     """
     if type_node.type == "type_identifier":
+        return node_text(type_node, source)
+    elif type_node.type == "qualified_type":
         return node_text(type_node, source)
     elif type_node.type == "pointer_type":
         for child in type_node.children:
             if child.type == "type_identifier":
                 return node_text(child, source)
-    return None
+            elif child.type == "qualified_type":
+                return node_text(child, source)
+    return None  # pragma: no cover - pointer to non-named type (e.g. *func(), *chan)
 
 
 def _extract_function_reference_edges(
@@ -1795,6 +1811,28 @@ def _extract_edges_from_file(
                                             origin_run_id=run.execution_id,
                                         ))
                                         callee_name = None  # Already resolved
+                                # Fallback: if receiver_type is a qualified
+                                # type like "http.Client", extract the package
+                                # prefix and recover the import path.  This
+                                # sets import_path_hint so the unresolved edge
+                                # gets the correct module hint (e.g. net/http)
+                                # instead of "external", enabling IO boundary
+                                # detection to classify the call.
+                                elif "." in receiver_type:
+                                    pkg_prefix = receiver_type.split(".")[0]
+                                    if pkg_prefix in import_aliases:
+                                        full_import_path = import_aliases[
+                                            pkg_prefix
+                                        ]
+                                        if module_path:
+                                            import_path_hint = (
+                                                _strip_module_prefix(
+                                                    full_import_path,
+                                                    module_path,
+                                                )
+                                            )
+                                        else:
+                                            import_path_hint = full_import_path
                         # Chained field access: r.integration.Notify()
                         # Walk selector chain through field_type_registry
                         # to resolve the receiver type.

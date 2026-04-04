@@ -4475,8 +4475,15 @@ func doWork(mu *sync.Mutex) {
             assert "DirLocker.Lock" not in edge.dst, (
                 f"mu.Lock() should NOT resolve to DirLocker.Lock, got {edge.dst}"
             )
-            assert edge.evidence_type == "stdlib_method_call", (
-                f"stdlib method collision should have evidence_type='stdlib_method_call', "
+            # With qualified-type parameter tracking, *sync.Mutex propagates
+            # the module hint through import_aliases, so the edge goes through
+            # the unresolved_method_call path (with correct module hint 'sync')
+            # instead of the stdlib_method_call guard.  Both are correct — the
+            # key invariant is that DirLocker.Lock is NOT chosen.
+            assert edge.evidence_type in (
+                "stdlib_method_call", "unresolved_method_call",
+            ), (
+                f"stdlib method collision should produce unresolved edge, "
                 f"got '{edge.evidence_type}'"
             )
             assert edge.confidence <= 0.50, (
@@ -4599,8 +4606,13 @@ func saveData(m *sync.Map) {
             assert "DownTrackSpreader.Store" not in edge.dst, (
                 f"m.Store() should NOT resolve to DownTrackSpreader.Store, got {edge.dst}"
             )
-            assert edge.evidence_type == "stdlib_method_call", (
-                f"Expected evidence_type='stdlib_method_call', got '{edge.evidence_type}'"
+            # With qualified-type parameter tracking, *sync.Map propagates
+            # module hint, so the edge may go through unresolved_method_call
+            # path instead of stdlib_method_call.  Both are correct.
+            assert edge.evidence_type in (
+                "stdlib_method_call", "unresolved_method_call",
+            ), (
+                f"Expected unresolved edge, got '{edge.evidence_type}'"
             )
 
     def test_load_single_candidate_produces_unresolved(
@@ -6220,3 +6232,130 @@ func init() {
         ctx = add_cmd_ctxs[0]
         assert ctx.kind == "call"
         assert ctx.metadata.get("child_command") == "serveCmd"
+
+
+class TestGoQualifiedTypeParameterEdges:
+    """Tests that function parameters with qualified types (e.g. *http.Client)
+    propagate module information to unresolved method call edges.
+
+    Invariant: When a function parameter has a package-qualified type (like
+    *http.Client), method calls on that parameter must produce unresolved
+    edges with the correct module hint (e.g. net/http) — NOT 'external'.
+    This is critical because IO boundary detection uses the module hint to
+    classify edges (e.g. http.Client.Do → net_send), and the ambiguous_names
+    guard rejects method names like 'Do' without module context.
+    """
+
+    def test_qualified_param_type_propagates_module_hint(
+        self, tmp_path: Path,
+    ) -> None:
+        """client.Do() with *http.Client param → edge dst contains 'net/http'.
+
+        The Go analyzer should extract the package prefix from the qualified
+        type, map it through import_aliases, and embed the full import path
+        in the unresolved edge ID.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+import "net/http"
+
+func doRequest(client *http.Client, req *http.Request) {
+    client.Do(req)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        do_edges = [e for e in call_edges if "Do" in e.dst]
+        assert len(do_edges) >= 1, (
+            f"Expected at least one edge to 'Do', got edges: "
+            f"{[e.dst for e in call_edges]}"
+        )
+        # The edge dst must contain 'net/http', not 'external'
+        do_edge = do_edges[0]
+        assert "net/http" in do_edge.dst, (
+            f"Expected 'net/http' in edge dst for client.Do() with "
+            f"*http.Client param, got: {do_edge.dst}"
+        )
+        assert "external" not in do_edge.dst, (
+            f"Edge dst should not contain 'external' when receiver type is "
+            f"known via qualified param type, got: {do_edge.dst}"
+        )
+
+    def test_non_pointer_qualified_param_propagates_hint(
+        self, tmp_path: Path,
+    ) -> None:
+        """Method call on non-pointer qualified param also gets module hint.
+
+        http.Client (without *) should also work.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+import "net/http"
+
+func doRequest(client http.Client) {
+    client.Do(nil)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        do_edges = [e for e in call_edges if "Do" in e.dst]
+        assert len(do_edges) >= 1, (
+            f"Expected at least one edge to 'Do', got edges: "
+            f"{[e.dst for e in call_edges]}"
+        )
+        assert "net/http" in do_edges[0].dst, (
+            f"Expected 'net/http' in dst, got: {do_edges[0].dst}"
+        )
+
+    def test_qualified_param_with_go_mod_strips_module_prefix(
+        self, tmp_path: Path,
+    ) -> None:
+        """When go.mod exists, module prefix is stripped from import path hint.
+
+        If the repo has go.mod with module path 'github.com/example/myapp',
+        the import_path_hint should still be the full import path (since
+        net/http is not a prefix of the module path), preserving the
+        'net/http' module hint for IO boundary detection.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_mod = tmp_path / "go.mod"
+        go_mod.write_text("module github.com/example/myapp\n\ngo 1.21\n")
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+import "net/http"
+
+func doRequest(client *http.Client, req *http.Request) {
+    client.Do(req)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        do_edges = [e for e in call_edges if "Do" in e.dst]
+        assert len(do_edges) >= 1, (
+            f"Expected at least one edge to 'Do', got edges: "
+            f"{[e.dst for e in call_edges]}"
+        )
+        # net/http is not a prefix of github.com/example/myapp, so
+        # _strip_module_prefix returns the full import path unchanged
+        assert "net/http" in do_edges[0].dst, (
+            f"Expected 'net/http' in dst with go.mod present, "
+            f"got: {do_edges[0].dst}"
+        )
