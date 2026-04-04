@@ -19,3 +19,18 @@
     pr_ref:  # 6c12
     description: "The _stale_pr_audit() function in .agent/hooks/_shared/stop_logic.sh calls load_env and detect_api_base but does NOT call apply_failover_overrides(). During CI failover, this queries origin (Codeberg) instead of selfh. PR #2690 keeps appearing as stale across sessions. Fix: add apply_failover_overrides() after detect_api_base at ~line 360."  # 6c12
     fields: {}  # 6c12
+- op: update  # 1cbf
+  at: '2026-04-04T18:41:07Z'  # 1cbf
+  by: agent  # 1cbf
+  actor: jgstern_agent  # 1cbf
+  clock: 2  # 1cbf
+  nonce: 1cbf  # 1cbf
+  set:  # 1cbf
+    status: done  # 1cbf
+- op: discuss  # c144
+  at: '2026-04-04T18:41:07Z'  # c144
+  by: agent  # c144
+  actor: jgstern_agent  # c144
+  clock: 3  # c144
+  nonce: c144  # c144
+  message: "Fixed in PR #134. Root cause: _stale_pr_audit() in stop_logic.sh did not call apply_failover_overrides() after detect_api_base, so it always queried origin (Codeberg) even during failover. One-line fix: added apply_failover_overrides() call."  # c144

@@ -27,3 +27,18 @@
   nonce: 8f54  # 8f54
   set:  # 8f54
     parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 8f54
+- op: update  # af5a
+  at: '2026-04-04T19:14:28Z'  # af5a
+  by: agent  # af5a
+  actor: jgstern_agent  # af5a
+  clock: 3  # af5a
+  nonce: af5a  # af5a
+  set:  # af5a
+    status: done  # af5a
+- op: discuss  # f89f
+  at: '2026-04-04T19:14:28Z'  # f89f
+  by: agent  # f89f
+  actor: jgstern_agent  # f89f
+  clock: 4  # f89f
+  nonce: f89f  # f89f
+  message: "Implemented in PR #135. ItemList renders sorted items with status badges. ItemDetail shows description, tags, discussion thread, interactive status change and discuss form via WebSocket commands."  # f89f
