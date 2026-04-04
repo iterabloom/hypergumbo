@@ -12,6 +12,12 @@
 - **Governance Files:** Changes to `.githooks/**`, `.agent/**`, `scripts/install-hooks`, `scripts/auto-pr`, `scripts/merge-pr`, `scripts/contribute`, `scripts/ci-debug`, `scripts/ci-failover`, `scripts/lib/forgejo-api.sh`, `CODEOWNERS`, `AUTONOMOUS_MODE.txt.default`, `ALLOWED_WEBSITES.md` and `AGENTS.md` require human approval. Do NOT self-merge PRs touching these files.
   - **Approval workflow:** When a task requires changes to governance files, do NOT create a PR preemptively. Instead: (1) set the tracker item to `needs_human_review`, (2) add a discussion message explaining the proposed change and requesting explicit approval, (3) only proceed with implementation via `auto-pr` after human approval is received. This prevents orphaned PRs sitting unmerged.
 
+## Architecture & Context
+- **Goal:** Local-first CLI that profiles a repo and emits an agent-friendly "behavior map".
+- **Stack:** Python 3.10+, standard library preferred where possible.
+- **Core:** `packages/hypergumbo-core/src/hypergumbo_core/` contains the CLI, IR, sketch, slice, and linkers. Language analyzers are in the `hypergumbo-lang-*` packages.
+- **Specs:** See `docs/hypergumbo-spec.md` and `CHANGELOG.md` for the design contract and implementation state and progress.
+
 ## Premature Stopping Prevention (Autonomous Mode Only)
 When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP (any non-OFF value), you are authorized for indefinite continuous work.
   - Before ANY stopping point: check todo list - if items remain, continue
@@ -209,14 +215,29 @@ When CI fails but tests pass locally, use `ci-debug runs/status/analyze-deps`. F
 ## Testing Optional Dependencies
 For PyPI-available tree-sitter grammars: add to pyproject.toml, write real tests, no mocking. For build-from-source grammars (built via `scripts/build-source-grammars`): write real tests calling the analyzer directly, plus a mock test only for the unavailability code path. Never use `pytest.mark.skipif` as an escape hatch. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/optional-dependency-testing-playbook.md`.)
 
-## Architecture & Context
-- **Goal:** Local-first CLI that profiles a repo and emits an agent-friendly "behavior map".
-- **Stack:** Python 3.10+, standard library preferred where possible.
-- **Core:** `packages/hypergumbo-core/src/hypergumbo_core/` contains the CLI, IR, sketch, slice, and linkers. Language analyzers are in the `hypergumbo-lang-*` packages.
-- **Specs:** See `docs/hypergumbo-spec.md` and `CHANGELOG.md` for the design contract and implementation state and progress.
-
 ## Modifying This Document
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
 
-<!-- CANARY: agents-policy-v2026-03-29.0 -->
+### Creating a New Playbook
+A playbook (also called SOP, protocol, procedure, or skill) is a plain-language description of a repeatable behavior, optionally interleaved with code or pseudocode. When a behavior is too detailed to inline fully in AGENTS.md but important enough to enforce, extract it into a playbook. The process has three steps:
+
+1. **Create the file.** Add a markdown file to `.agent/agent_playbooks_protocols_sops_skills/` using kebab-case naming with a descriptive suffix: `<topic>-playbook.md`, `<topic>-protocol.md`, `<topic>-guide.md`, etc. This file is the single source of truth — write the full explanation here.
+
+2. **Reference it in AGENTS.md.** Add a 1-3 sentence essentialization at the appropriate location in this file, ending with `(For more explanation, please read \`.agent/agent_playbooks_protocols_sops_skills/<filename>.md\`.)`. This essentialization is always in the agent's context window, so it must capture the core rule concisely. The full file is loaded on demand.
+
+3. **Register it in the transcript-change hook.** Add a tuple to the `PLAYBOOKS` list in `.agent/hooks/_shared/on_transcript_change.py`:
+   ```python
+   ("<kebab-case-id>",
+    ".agent/agent_playbooks_protocols_sops_skills/<filename>.md",
+    "Multi-sentence expanded summary. More detailed than the AGENTS.md "
+    "essentialization, but still a summary — not the full file. This text "
+    "is what the hook uses to decide whether to inject the playbook into "
+    "the agent's context based on the current transcript."),
+   ```
+
+**Why three levels of detail:** AGENTS.md (always loaded, brief) gives the agent the rule. The hook summary (loaded contextually, expanded) gives the agent enough detail to follow the procedure when it's relevant. The playbook file (loaded on demand, full) gives the complete explanation with examples, rationale, and edge cases.
+
+**Governance note:** AGENTS.md and `.agent/hooks/` are governance files. Changes to them require human approval — do not self-merge PRs that touch these files. The playbook markdown file itself is not a governance file (it only takes effect when referenced from one).
+
+<!-- CANARY: agents-policy-v2026-04-04.0 -->
