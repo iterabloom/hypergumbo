@@ -174,6 +174,42 @@ class TestLoadCatalog:
         assert hit is not None, "testing.T.TempDir should be in the Go IO catalog"
         assert hit.boundary == "fs_write"
 
+    def test_go_catalog_slog_logging(self) -> None:
+        """log/slog functions are classified as ipc_send.
+
+        Go's structured logging writes to stderr by default. Package-level
+        functions (slog.Debug, slog.Info etc.) and Logger methods should
+        be detected with module context.
+        """
+        catalog = load_catalog("go")
+        # Package-level slog functions
+        hit = catalog.lookup_with_module("Debug", "log/slog")
+        assert hit is not None, "slog.Debug should be in the Go IO catalog"
+        assert hit.boundary == "ipc_send"
+
+        hit = catalog.lookup_with_module("Info", "log/slog")
+        assert hit is not None
+        assert hit.boundary == "ipc_send"
+
+        hit = catalog.lookup_with_module("Error", "log/slog")
+        assert hit is not None
+        assert hit.boundary == "ipc_send"
+
+        # Without module context, Debug/Info/Error are ambiguous
+        assert catalog.lookup_with_module("Debug", None) is None
+        assert catalog.lookup_with_module("Error", None) is None
+
+    def test_go_catalog_stdlib_log(self) -> None:
+        """log.Printf etc. are classified as ipc_send."""
+        catalog = load_catalog("go")
+        hit = catalog.lookup_with_module("Printf", "log")
+        assert hit is not None
+        assert hit.boundary == "ipc_send"
+
+        hit = catalog.lookup_with_module("Fatal", "log")
+        assert hit is not None
+        assert hit.boundary == "ipc_send"
+
     def test_load_c_catalog(self) -> None:
         catalog = load_catalog("c")
         assert catalog.language == "c"

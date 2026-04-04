@@ -28,6 +28,11 @@ ambiguous_names:
   - HTML          # gin.Context.HTML vs template.HTML (not IO)
   - XML           # gin.Context.XML vs encoding/xml (not IO)
   - Send          # net.UdpSocket.Send vs channel send
+  - Debug         # slog.Debug vs any .Debug() method
+  - Info          # slog.Info vs any .Info() method
+  - Warn          # slog.Warn vs any .Warn() method
+  - Error         # slog.Error vs error.Error(), any .Error() method
+  - Log           # slog.Log vs any .Log() method
 
 fs_read:
   - module: os
@@ -144,6 +149,15 @@ ipc_send:
   - module: fmt
     functions: [Print, Println, Printf, Fprint, Fprintln, Fprintf]
     notes: "When writing to os.Stdout/Stderr"
+  - module: log
+    functions: [Print, Println, Printf, Fatal, Fatalln, Fatalf, Panic, Panicln, Panicf]
+    notes: "Go stdlib log package — writes to stderr by default"
+  - module: log/slog
+    functions: [Debug, Info, Warn, Error, Log, NewTextHandler, NewJSONHandler]
+    notes: "Go stdlib structured logging — writes to stderr by default"
+  - module: log/slog.Logger
+    methods: [Debug, Info, Warn, Error, Log]
+    notes: "slog.Logger instance methods"
 
 ipc_recv:
   - module: os
