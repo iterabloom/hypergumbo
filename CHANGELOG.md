@@ -76,6 +76,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Service worker** (`service-worker.js`): Cache-first for static assets, network-first for API/WS. App shell precaching on install. Cache versioning with old-cache cleanup on activate. Critical for Tor latency — only the first load is heavy.
 - **Vite dev proxy**: `/api`, `/ws`, `/health` proxied to `http://127.0.0.1:7380` during development.
 - **BlockSuite compat workarounds**: Vite plugin patches upstream icon name typo (`CheckBoxCkeckSolidIcon` → `CheckBoxCheckSolidIcon`) and `simple-xml-to-json` CJS default export interop.
+- **Tracker item list and detail** (WI-gojov, WI-nopuj): Lit web components render tracker items from WebSocket state. Two-panel layout (list + detail) with responsive CSS: full view on desktop/iPad, single-panel on phone. Item list sorted by priority with status badges. Detail view shows description, tags, parent, discussion thread. Interactive status change and discuss actions via WebSocket commands.
 
 #### htrac serve skeleton (ADR-0019 Part A)
 

@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>htrac</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      :root {
+        --bg: #1a1a2e;
+        --bg-elevated: #16213e;
+        --bg-hover: #1f2b47;
+        --bg-selected: #1a3a5c;
+        --text: #e0e0e0;
+        --text-muted: #888;
+        --border: #2a2a4a;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: var(--bg); color: var(--text); overflow: hidden; }
+      #app { width: 100vw; height: 100vh; }
+    </style>
   </head>
   <body>
     <div id="app"></div>

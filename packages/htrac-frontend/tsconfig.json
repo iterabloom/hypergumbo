@@ -11,7 +11,8 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "useDefineForClassFields": true
+    "useDefineForClassFields": false,
+    "experimentalDecorators": true
   },
   "include": ["src"]
 }
