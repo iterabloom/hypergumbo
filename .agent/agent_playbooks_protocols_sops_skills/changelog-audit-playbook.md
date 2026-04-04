@@ -35,9 +35,11 @@ git log "$LAST_TAG"..HEAD --format='--- %h %s%n%b' \
 
 ### Phase 2: Organization and Concision
 
-**Goal:** Make the Unreleased section easier to scan and understand without losing information.
+**Goal:** Make the Unreleased section easier to scan and understand without losing information. The Unreleased section's level of detail should be comparable to that of the released per-version sections — and no more.
 
 Run this phase after Phase 1 is complete (or independently if completeness is not a concern).
+
+**Step 0 — Calibrate against released sections.** Before touching the Unreleased section, read the most recent 2-3 released version sections (e.g., `## [2.4.0]`, `## [2.3.0]`). These are the style and detail-level target. The Unreleased section should feel like it belongs in the same document at the same granularity. If a released section describes a feature in one bullet, the Unreleased section should not describe a comparable feature in five bullets with implementation sub-details. Completeness is highly valued — every piece of work should be represented — but verbosity is not completeness. A single concise bullet that captures the *effect* of a feature is better than a multi-paragraph breakdown of its internal architecture. Save implementation details for commit messages and ADRs.
 
 **Step 1 — Re-read the Unreleased section in full.** Ask these specific questions:
 

@@ -145,9 +145,12 @@ PLAYBOOKS = [
      "compare against git log from the last release tag to HEAD, chunking the log to avoid "
      "context overload; identify merged work missing from the changelog — all commit types "
      "matter (features, fixes, CI, tests, refactors, docs, infra). Phase 2 (organization): "
-     "merge duplicate entries, normalize granularity toward feature-level descriptions, group "
-     "related items, reorder by significance. Never remove information; concision means fewer "
-     "words, not less content. Budget: max 3 rounds of organization edits."),
+     "calibrate detail level against recent released sections — Unreleased should match their "
+     "granularity, not exceed it. Completeness is valued but verbosity is not completeness; "
+     "one concise bullet per feature beats a multi-paragraph breakdown. Merge duplicate entries, "
+     "normalize granularity toward feature-level descriptions, group related items, reorder by "
+     "significance. Never remove information; concision means fewer words, not less content. "
+     "Budget: max 3 rounds of organization edits."),
 ]
 
 
