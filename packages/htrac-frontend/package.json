@@ -1,0 +1,22 @@
+{
+  "name": "htrac-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "BlockSuite web frontend for htrac serve (ADR-0019)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@blocksuite/blocks": "0.17.33",
+    "@blocksuite/presets": "0.17.33",
+    "@blocksuite/store": "0.17.33"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.0",
+    "vite": "~6.0.0"
+  }
+}

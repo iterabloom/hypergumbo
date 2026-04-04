@@ -54,6 +54,10 @@ node_modules/
 package.json
 package-lock.json
 
+# htrac-frontend: allow tracked JS/TS project files
+!packages/htrac-frontend/package.json
+!packages/htrac-frontend/package-lock.json
+
 # Hypergumbo cache
 .hypergumbo_cache/
 .ci/pytest-output.log

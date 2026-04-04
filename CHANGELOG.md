@@ -69,6 +69,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Library patterns for Rust** (`rust.yaml`): Added `library_patterns` section with 44 method-name heuristics for classifying call edge access modes. Write patterns: `write`, `write_all`, `flush`, `push`, `insert`, `extend`, `send`, etc. Read patterns: `get`, `read`, `contains`, `find`, `iter`, `clone`, etc. Delete patterns: `remove`, `drop`. Previously all Rust call edges had no access_mode annotation.
 
+#### BlockSuite web frontend scaffold (WI-kimuj, ADR-0019 Part A)
+
+- **`htrac-frontend` package**: Vite + TypeScript project in `packages/htrac-frontend/`. BlockSuite 0.17.33 (PageEditor + EdgelessEditor). Builds to static assets served by `htrac serve --static-dir`.
+- **WebSocket client** (`ws-client.ts`): Connects to `/ws`, handles `state_snapshot`/`event`/`result`/`error` messages. Exponential backoff reconnect (1s to 30s). Typed `TrackerItem` interface matching server `_item_to_dict` format.
+- **Service worker** (`service-worker.js`): Cache-first for static assets, network-first for API/WS. App shell precaching on install. Cache versioning with old-cache cleanup on activate. Critical for Tor latency — only the first load is heavy.
+- **Vite dev proxy**: `/api`, `/ws`, `/health` proxied to `http://127.0.0.1:7380` during development.
+- **BlockSuite compat workarounds**: Vite plugin patches upstream icon name typo (`CheckBoxCkeckSolidIcon` → `CheckBoxCheckSolidIcon`) and `simple-xml-to-json` CJS default export interop.
+
 #### htrac serve skeleton (ADR-0019 Part A)
 
 - **`htrac serve` command**: Starlette/uvicorn server skeleton bound to 127.0.0.1 only. `/health` endpoint returns `{"status": "ok", "pid": ..., "uptime_seconds": ...}`. PID file management for `--background`/`--stop`/`--status`. Default port 7380.
