@@ -29,6 +29,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Rotate prior session transcripts before clearing state.
+# .last_session_transcript.jsonl = previous session (the one to retrospect on)
+# .second_to_last_transcript.jsonl = two sessions ago (for comparison)
+LAST="$REPO_ROOT/.agent/.last_session_transcript.jsonl"
+SECOND="$REPO_ROOT/.agent/.second_to_last_transcript.jsonl"
+if [[ -f "$LAST" ]]; then
+    mv -f "$LAST" "$SECOND"
+fi
+if [[ -f "$DEST" && -s "$DEST" ]]; then
+    mv -f "$DEST" "$LAST"
+fi
+
 # Reset ALL per-session state for a fresh session.
 # Convention: any file in .agent/ matching .transcript-* is per-session
 # transient state and gets blown away here.  New state files that follow

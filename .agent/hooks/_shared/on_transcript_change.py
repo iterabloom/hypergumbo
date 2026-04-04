@@ -151,6 +151,20 @@ PLAYBOOKS = [
      "normalize granularity toward feature-level descriptions, group related items, reorder by "
      "significance. Never remove information; concision means fewer words, not less content. "
      "Budget: max 3 rounds of organization edits."),
+
+    ("agentic-session-retrospective",
+     ".agent/agent_playbooks_protocols_sops_skills/agentic-session-retrospective.md",
+     "Structured post-hoc analysis of an agent's decision-making during an autonomous session. "
+     "Evaluates how the agent decided what to build — not what it built. Five phases: (1) read "
+     ".agent/.last_session_transcript.jsonl (rotated on session start, vendor-agnostic), "
+     "(2) reconstruct the decision "
+     "sequence as a timeline with branching points, (3) analyze infrastructure interactions — "
+     "stop hook steering, CI/merge overhead, tracker task selection, playbook injection relevance, "
+     "AGENTS.md compliance, bakeoff integration, (4) quantify time/token allocation across feature "
+     "work, CI overhead, research, compliance, error recovery, and idle time, (5) synthesize "
+     "findings as structured proposals (what happened, impact, root cause, proposed improvement, "
+     "category) and record in the lab notebook. Creates tracker items for actionable improvements. "
+     "Time box: 30-60 minutes total."),
 ]
 
 
