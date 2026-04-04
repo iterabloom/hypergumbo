@@ -35,3 +35,18 @@
   nonce: aa56  # aa56
   set:  # aa56
     parent: ''  # aa56
+- op: update  # 00bc
+  at: '2026-04-04T03:58:44Z'  # 00bc
+  by: agent  # 00bc
+  actor: jgstern_agent  # 00bc
+  clock: 4  # 00bc
+  nonce: 00bc  # 00bc
+  set:  # 00bc
+    status: done  # 00bc
+- op: discuss  # a832
+  at: '2026-04-04T03:58:44Z'  # a832
+  by: agent  # a832
+  actor: jgstern_agent  # a832
+  clock: 5  # a832
+  nonce: a832  # a832
+  message: "Fixed in PR #123. Replaced broken on_key raw keystroke capture with Textual Input widget. Added numbered markers, Input submit handling, and dynamic SVG font size."  # a832

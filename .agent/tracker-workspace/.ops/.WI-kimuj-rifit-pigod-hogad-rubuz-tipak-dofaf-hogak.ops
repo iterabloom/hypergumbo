@@ -27,3 +27,18 @@
   nonce: '9989'  # 9989
   set:  # 9989
     parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 9989
+- op: update  # 33c5
+  at: '2026-04-04T04:01:56Z'  # 33c5
+  by: agent  # 33c5
+  actor: jgstern_agent  # 33c5
+  clock: 3  # 33c5
+  nonce: 33c5  # 33c5
+  set:  # 33c5
+    priority: 4  # 33c5
+- op: discuss  # 5d3c
+  at: '2026-04-04T04:01:56Z'  # 5d3c
+  by: agent  # 5d3c
+  actor: jgstern_agent  # 5d3c
+  clock: 4  # 5d3c
+  nonce: 5d3c  # 5d3c
+  message: "Deprioritized during DEEP mode. Frontend scaffold (Vite+BlockSuite+TS) is outside hypergumbo-core analysis focus."  # 5d3c
