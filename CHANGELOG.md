@@ -12,36 +12,16 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
-#### TUI screenshot annotation mode (ADR-0020 Part 1)
+#### TUI screenshot annotation mode (ADR-0020)
 
-- **AnnotationScreen modal**: Press `S` in the TUI to capture a screenshot, then enter annotation mode. Draw rectangles via mouse drag, place text labels via `L` + click + type. `U` undoes the last annotation. `Enter` confirms and injects `<rect>`/`<text>` SVG elements into the screenshot. `Escape` discards.
-- **Arrow drawing**: `A` key switches to arrow mode. Drag from start to end to draw an arrow. Arrows render as `─`/`│` lines with directional heads (`▶▼◀▲`). SVG injection uses `<line>` with `<marker>` arrowheads.
-- **Arrow key adjustment**: After drawing any annotation, press `←↑↓→` to nudge it by 1 cell. Mitigates SSH mouse coordinate drift (ADR-0020 §1 step 4).
-- **_AnnotationCanvas widget**: Full-screen character grid overlay that renders committed rects (solid `█`), draft rects (dashed `░`), arrows, and text labels in real-time during annotation.
-- **SVG injection**: Annotations are mapped from cell coordinates to SVG pixels (8.65px × 18px per cell) and injected as a `<g class="annotations">` group before `</svg>`. Label text is XML-sanitized to prevent injection. Arrow annotations include `<defs>` with arrowhead marker.
-- **Inline SVG preview** (Part 2): Discussion entries referencing `.svg` files show `[screenshot: filename.svg]` placeholders. Preview module (`preview.py`) provides the SVG→PNG→ANSI pipeline via optional `cairosvg` + `chafa`. Graceful degradation when either is missing.
+- **Annotation overlay**: Press `S` to capture a screenshot, then annotate with rectangles (`R` + drag), arrows (`A` + drag), and numbered text labels (`L` + click). Arrow key nudge (±1 cell) mitigates SSH mouse coordinate drift. Annotations injected as SVG elements; label text XML-sanitized.
+- **Inline SVG preview**: Discussion entries referencing `.svg` files show placeholders. SVG→PNG→ANSI pipeline via optional `cairosvg` + `chafa` with graceful degradation.
+- **Label UX redesign** (WI-gikut): Replaced raw keystroke capture with Textual `Input` widget for full editing support. Numbered markers provide visual feedback before text entry.
 
-#### Go qualified-type parameter tracking for IO boundary detection
+#### Go qualified-type parameter tracking
 
-- **Qualified type extraction**: `_type_identifier_from_node` now handles `qualified_type` AST nodes (e.g. `http.Client`) and `pointer_type` wrapping `qualified_type` (e.g. `*http.Client`). Previously these returned `None`, losing the type information.
-- **Parameter type propagation**: Function parameters with package-qualified types (e.g. `client *http.Client`) are now added to `var_types` with the full qualified name, enabling the typed-receiver call path.
-- **Module hint recovery**: When a typed-receiver lookup fails (external type not in local/global symbols), the package prefix is extracted from the qualified type and mapped through `import_aliases` to set `import_path_hint`. This produces unresolved edges like `go:net/http:0-0:Do:unresolved` instead of `go:external:0-0:Do:unresolved`.
-- **Impact**: IO boundary detection can now classify `http.Client.Do()` as `net_send`, `io.ReadAll()` calls via `io` module, and other stdlib method calls that were previously blocked by the `ambiguous_names` guard due to missing module context.
-- **Go IO catalog**: Added `testing.T.TempDir` and `testing.B.TempDir` as `fs_write` boundaries. With qualified-type tracking, `t.TempDir()` calls now correctly resolve to the `testing` module — the catalog needed a matching entry. Also removes 6 false positives where `bytes.Buffer.WriteString`, `strings.Builder.WriteString`, and `kingpin.Command()` were previously misclassified as IO operations via the `external` module hint fallback.
-- **Go IO catalog: logging**: Added `log` (Printf, Fatal, Panic families) and `log/slog` (Debug, Info, Warn, Error, Log, NewTextHandler, NewJSONHandler) as `ipc_send` boundaries. Go's stdlib logging packages write to stderr by default. Also added `Debug`, `Info`, `Warn`, `Error`, `Log` to `ambiguous_names` to prevent false positives on non-logging types.
-- **Go IO catalog: TLS/SMTP**: Added `crypto/tls` (Dial, DialWithDialer, Client, Conn.Write/Handshake) and `net/smtp` (NewClient, Dial, SendMail, Client.Mail/Rcpt/Data/Close) as `net_send` boundaries. Added `Data`, `Mail`, `Handshake` to `ambiguous_names`. Fixes false positive where `gin.Context.Data` matched on `template.Data` structs without module context.
-- **Go field chain module hint recovery**: Struct fields with package-qualified types (e.g. `client *http.Client`) now store the full qualified name in the field_type_registry. When `_resolve_field_chain` resolves `n.client` to `http.Client` and the typed_field_call lookup fails (external type), the package prefix is extracted and mapped through `import_aliases` to set the module hint. This enables IO boundary detection for chained field access patterns like `n.client.Do(req)` in notification integrations (opsgenie, jira).
-
-#### Annotation label UX redesign (WI-gikut)
-
-- **Input widget for label text**: Replaced broken raw keystroke capture (`on_key`) with a Textual `Input` widget. Users now get full editing (backspace, cursor movement) and visual feedback while typing label text.
-- **Numbered markers**: Label clicks place numbered markers (`[1]`, `[2]`, ...) on the canvas immediately, providing visual feedback before text is entered. Confirmed labels display as `[N] text`.
-- **Input submit handling**: `on_input_submitted` event from the Input widget triggers label confirmation, replacing the fragile `on_key` character accumulation.
-- **Dynamic SVG font size**: Label `<text>` elements now use `cell_h * 0.8` as font-size (derived from the SVG grid) instead of hardcoded `14px`.
-
-#### Interface dispatch narrowing (WI-doval)
-
-- **Go `var` declaration with concrete initializer**: `var n Notifier = &DiscordNotifier{}` now tracks the concrete type (`DiscordNotifier`) instead of the declared interface type (`Notifier`). Calls on `n` resolve to the concrete type's method, eliminating spurious `dispatches_to` edges from the type_hierarchy linker.
+- **Qualified type propagation**: Function parameters and struct fields with package-qualified types (e.g. `client *http.Client`) now carry full module hints through to unresolved edges and field chain access. IO boundary detection can now classify `http.Client.Do()` as `net_send` and chained patterns like `n.client.Do(req)` — previously blocked by `ambiguous_names` guard due to missing module context.
+- **Interface dispatch narrowing** (WI-doval): `var n Notifier = &DiscordNotifier{}` now tracks the concrete type, eliminating spurious `dispatches_to` edges.
 
 #### Taint-flow analysis (ADR-0017)
 
@@ -56,40 +36,23 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Haskell** (`haskell.yaml`): Prelude, System.IO, Network.Socket, System.Process, Data.IORef, Control.Concurrent.
 - **Swift** (`swift.yaml`): Foundation IO catalog (FileManager, URLSession, Process, NotificationCenter). 14 server-side primitives (AsyncHTTPClient, NIOSSL, distributed tracing). SwiftNIO channel/file I/O (`NonBlockingFileIO`, `Channel`, `ChannelHandlerContext`). 7 swift-log Logger level methods. Ambiguous names for generic identifiers (write, read, Data, URL).
 
-#### Ruby FFI unresolved edges (WI-valiv)
+#### FFI unresolved edges for IO tracing
 
-- **Unresolved edges for `attach_function` to external libraries**: When Ruby FFI gem binds to functions in external shared libraries (e.g., libzmq, libc), the ruby_ffi linker now emits unresolved edges with a `ruby:C_ffi:0-0:<name>:unresolved` pseudo-namespace. The io_boundary tagger redirects these to the C catalog for IO primitive tagging.
+- **Ruby FFI** (WI-valiv): `attach_function` to external libraries emits `ruby:C_ffi:0-0:<name>:unresolved` edges, redirected to C catalog for IO tagging.
+- **Python FFI** (WI-dokum): `ctypes.CDLL(None)` and `ffi.dlopen(None)` emit `python:C_stdlib:0-0:<name>:unresolved` edges. Repo-local C symbols still produce resolved edges when available.
 
-#### Python FFI C stdlib tracing (WI-dokum)
+#### Dataflow access mode patterns
 
-- **Unresolved edges for `ctypes.CDLL(None)` and `ffi.dlopen(None)`**: When Python calls C stdlib functions via the system C library (no repo-local C symbols), the pyffi linker now emits unresolved edges with a `python:C_stdlib:0-0:<name>:unresolved` pseudo-namespace. The io_boundary tagger redirects these to the C catalog, enabling IO primitive tagging (fopen, popen, fwrite, etc.) for Python FFI code — same pattern as cgo.
-- If a C function exists repo-locally, the resolved edge is preferred over the unresolved one.
+- **Rust** (`rust.yaml`): 44 method-name heuristics (write/read/delete). Previously all Rust call edges had no access_mode.
+- **Go** (`go.yaml`): 30 regex patterns (15 write, 15 read) for mutating method calls (WI-satuv).
+- **Erlang**: Name-based heuristics (get_*/set_*, ETS/Mnesia ops, gen_server call/cast).
 
-#### Rust dataflow access modes
+#### htrac serve and web frontend (ADR-0019 Part A)
 
-- **Library patterns for Rust** (`rust.yaml`): Added `library_patterns` section with 44 method-name heuristics for classifying call edge access modes. Write patterns: `write`, `write_all`, `flush`, `push`, `insert`, `extend`, `send`, etc. Read patterns: `get`, `read`, `contains`, `find`, `iter`, `clone`, etc. Delete patterns: `remove`, `drop`. Previously all Rust call edges had no access_mode annotation.
-
-#### BlockSuite web frontend scaffold (WI-kimuj, ADR-0019 Part A)
-
-- **`htrac-frontend` package**: Vite + TypeScript project in `packages/htrac-frontend/`. BlockSuite 0.17.33 (PageEditor + EdgelessEditor). Builds to static assets served by `htrac serve --static-dir`.
-- **WebSocket client** (`ws-client.ts`): Connects to `/ws`, handles `state_snapshot`/`event`/`result`/`error` messages. Exponential backoff reconnect (1s to 30s). Typed `TrackerItem` interface matching server `_item_to_dict` format.
-- **Service worker** (`service-worker.js`): Cache-first for static assets, network-first for API/WS. App shell precaching on install. Cache versioning with old-cache cleanup on activate. Critical for Tor latency — only the first load is heavy.
-- **Vite dev proxy**: `/api`, `/ws`, `/health` proxied to `http://127.0.0.1:7380` during development.
-- **BlockSuite compat workarounds**: Vite plugin patches upstream icon name typo (`CheckBoxCkeckSolidIcon` → `CheckBoxCheckSolidIcon`) and `simple-xml-to-json` CJS default export interop.
-- **Tracker item list and detail** (WI-gojov, WI-nopuj): Lit web components render tracker items from WebSocket state. Two-panel layout (list + detail) with responsive CSS: full view on desktop/iPad, single-panel on phone. Item list sorted by priority with status badges. Detail view shows description, tags, parent, discussion thread. Interactive status change and discuss actions via WebSocket commands.
-
-#### htrac serve skeleton (ADR-0019 Part A)
-
-- **`htrac serve` command**: Starlette/uvicorn server skeleton bound to 127.0.0.1 only. `/health` endpoint returns `{"status": "ok", "pid": ..., "uptime_seconds": ...}`. PID file management for `--background`/`--stop`/`--status`. Default port 7380.
-- **REST API endpoints**: `GET /api/items`, `GET /api/items/{id}`, `GET /api/ready`, `POST /api/items` (create), `POST /api/items/{id}/update`, `POST /api/items/{id}/discuss`. Wired to TrackerSet — same core engine as CLI/TUI.
-- **WebSocket protocol** (`/ws`): Real-time state sync via typed JSON messages. `state_snapshot` on connect, `command` for tracker operations (list, show, update, discuss), `event` for mutation notifications, `error` for structured failures.
-- **WebAuthn/FIDO2**: `WebAuthnManager` for hardware security key registration and authentication. Challenge generation, credential storage (in-memory), pending challenge tracking. Supports ES256 and RS256 algorithms.
-- **Auth config schema**: `AuthConfig` dataclass parsed from `config.yaml` `auth` section. Session TTL, duress module path, rate limit params (base delay, max failures), WebAuthn RP config. Validated at startup.
-- **Duress module interface**: `DuressHandler` Protocol with `on_duress_login` (async, once per session) and `filter_response` (sync, every response). `NullDuressHandler` default. `load_duress_handler()` loads from Python file path. Timeout enforcement via `call_on_duress_login()`.
-- **Password verification**: `PasswordVerifier` with bcrypt hashes for real + duress passwords. Both checked every time to prevent timing side-channels. `RateLimiter` with per-credential exponential backoff and configurable max-failure lockout.
-- **Session management**: In-memory `SessionStore` with crypto-random tokens (`secrets.token_urlsafe`), configurable TTL (default 15 min, fixed window), auth class (normal/duress), client fingerprint. All sessions invalidated on restart.
-- **Filesystem watcher**: `watchfiles` integration detects CLI/TUI ops file changes and auto-broadcasts `state_snapshot` to all WebSocket clients. Sub-second latency, no IPC — uses flock + inotify coexistence model.
-- **Dependencies**: `starlette`, `uvicorn`, `httpx`, `watchfiles` added to base tracker dependencies.
+- **`htrac serve` command**: Starlette/uvicorn server bound to 127.0.0.1:7380. REST API (`/api/items`, `/api/ready`, create/update/discuss endpoints) and WebSocket (`/ws`) protocol for real-time state sync. Same TrackerSet engine as CLI/TUI. PID file management for `--background`/`--stop`/`--status`.
+- **Auth stack**: WebAuthn/FIDO2 hardware key auth (ES256, RS256). Bcrypt password verification with timing-safe dual-check (real + duress). Per-credential rate limiting with exponential backoff. In-memory session store with configurable TTL. `DuressHandler` protocol for user-defined duress behavior. `AuthConfig` from `config.yaml`.
+- **Filesystem watcher**: `watchfiles` detects CLI/TUI ops file changes and auto-broadcasts state to all WebSocket clients. Sub-second latency, no IPC.
+- **Web frontend** (WI-kimuj): Vite + TypeScript + BlockSuite in `packages/htrac-frontend/`. Lit web components for tracker item list and detail views (WI-gojov, WI-nopuj) with responsive two-panel layout. Service worker for cache-first Tor-friendly loading. WebSocket client with exponential backoff reconnect.
 
 #### `io-boundaries` CLI
 
@@ -103,7 +66,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Objective-C**: Cocoa/UIKit lifecycle patterns (`cocoa.yaml`). Method `parent_base_classes` propagation.
 - **Scala**: Play Framework routes parser. IOApp/ZIOAppDefault/Scalatra entrypoint detection.
 - **Haskell**: Typeclass instance `implements` edges. Dataflow access_mode patterns.
-- **Erlang**: `gen_server:call/cast` dispatch linking. Dataflow access_mode heuristics (ETS, Mnesia).
+- **Erlang**: `gen_server:call/cast` dispatch linking.
 - **Go**: Cobra `AddCommand()` command tree detection.
 
 #### Framework & entrypoint detection
@@ -126,13 +89,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Transcript sync and local model pipeline (ADR-0018)
 
-- **Vendor-agnostic session transcript sync**: Background `inotifywait` watcher mirrors the active AI tool's session transcript to `.agent/.current_session_transcript.jsonl`, filtering ~83% of noise. Supports Claude Code, Codex CLI, Gemini CLI, and Cursor.
-- **LLM-driven playbook injection**: Sends recent transcript entries to a local LLM to identify agent goals and rate playbook relevance. High-scoring playbooks are injected into the conversation as context.
-- **Sparse-selection pipeline**: Two-model architecture (Small 3.2 for distillation, Small 2603 with reasoning for playbook selection). Token budget halved from 8K to 4K.
-- **14 playbooks extracted** from AGENTS.md into `.agent/agent_playbooks_protocols_sops_skills/` with inline summaries and "For more explanation" pointers.
-- **Compaction-aware injection dedup**: Tracks injections in a state file, invalidates when `compact_boundary` events appear, applies token-distance window (50K default).
-- **G-Vendi finetuning pipeline** (`scripts/finetune-transcript-model`): Training data collection in ChatML format, G-Vendi diversity score (arXiv:2505.20161) with CountSketch gradient projection for data selection, three-phase pipeline (select/train/quantize) targeting Qwen2.5-0.5B-Instruct IQ4_XS GGUF.
-- **Parse-outcome sidecar log**: UUID-keyed `.parse-outcomes.jsonl` for tracking playbook parsing failures.
+- **Vendor-agnostic transcript sync**: Background watcher mirrors session transcripts to `.agent/.current_session_transcript.jsonl` (~83% noise filtered). Supports Claude Code, Codex CLI, Gemini CLI, Cursor.
+- **LLM-driven playbook injection**: Two-model sparse-selection pipeline rates playbook relevance and injects high-scoring ones into conversation context. Compaction-aware dedup with token-distance window. 14 playbooks extracted from AGENTS.md.
+- **G-Vendi finetuning pipeline** (`scripts/finetune-transcript-model`): Diversity-guided data selection (arXiv:2505.20161) for local Qwen2.5-0.5B-Instruct model. Parse-outcome sidecar log for tracking failures.
 
 #### Autonomous mode management
 
@@ -159,7 +118,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### I/O boundary catalog additions
 
 - **C**: `fclose`, `fflush`, `fseek`, `rewind`, `ungetc`, `ftell` (stdio lifecycle). `tmpfile`, `tmpnam`, `mkstemp`, `mkdtemp`, `mkostemp`, `mkstemps` (temp files).
-- **Go**: `http.Transport.RoundTrip` (net_send). `golang.org/x/sys/execabs.Command` (subprocess).
+- **Go**: `http.Transport.RoundTrip` (net_send). `golang.org/x/sys/execabs.Command` (subprocess). `testing.T.TempDir`/`testing.B.TempDir` (fs_write). `log`/`log/slog` families (ipc_send). `crypto/tls` Dial/Client and `net/smtp` NewClient/Dial/SendMail (net_send). Removes 6 false positives (`bytes.Buffer.WriteString`, `strings.Builder.WriteString`, `kingpin.Command()`).
 
 #### Other
 
@@ -168,50 +127,26 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
-#### FFI bridge edges missing access_mode (INV-zogun)
+#### FFI IO boundary tracing (INV-kagob, INV-zogun)
 
-- **All FFI linkers now annotate bridge edges with `access_mode=write, dest_access_mode=read`**: cgo, JNI, PyFFI, N-API, Lua FFI, and Ruby FFI linkers all create cross-language bridge edges. Previously none of them set `access_mode`, leaving 100% of FFI edges unannotated for dataflow. Tier 1 automatic annotation (AST-based) cannot work across language boundaries, so the linker itself must set it (Tier 2). Fixed: 9 `Edge.create()` calls across 6 linkers. Validated on chai2010/cgo: 0→38 edges now have access_mode.
-
-#### FFI IO boundary catalog redirect (INV-kagob)
-
-- **Go cgo → C stdlib IO tracing**: `tag_io_boundaries()` now recognizes the `go:C:` pseudo-namespace from cgo calls and redirects catalog lookup to the C catalog. Previously, `Go code → C.fopen()` produced a `calls` edge to `go:C:0-0:fopen:unresolved`; the tagger extracted `lang="go"`, consulted the Go catalog (which has `os.Open` but not `fopen`), and found nothing. Now the `_resolve_ffi_catalog()` function detects `module_hint == "C"` and redirects to the `c` catalog without module filtering. Validated on chai2010/cgo: 0→7 IO edges (`fopen`, `fread`, `fwrite`, `fgetc`, `fgets`, `fputc`, `fputs`).
-
-#### Go dataflow library patterns (WI-satuv)
-
-- **Go `library_patterns` for mutating method calls**: Added 30 regex patterns (15 write, 15 read) to `go.yaml`. Methods like `.Set(`, `.Add(`, `.Delete(` are now annotated `access_mode=write`; `.Get(`, `.Find(`, `.Lookup(` as `read`. Previously Go had no `library_patterns` section, so method calls on pointer receivers had no access_mode, making dataflow slices undirected.
-
-#### Java System.in/out/err false positives (WI-tojuz)
-
-- **Added `in`, `out`, `err` to Java `ambiguous_names`**: JPA `CriteriaBuilder.in()` produced edges to `java:external:0-0:in:unresolved` that matched `System.in` (ipc_recv) without module context, causing 20 false positives in keycloak. `out` and `err` had the same risk (scope expansion from `in`).
+- All 6 FFI linkers (cgo, JNI, PyFFI, N-API, Lua FFI, Ruby FFI) now annotate bridge edges with `access_mode=write, dest_access_mode=read`. Validated: chai2010/cgo 0→38 annotated edges.
+- `cgo_bridge` and `ffi_bridge` added to IO boundary tag and trace sets. IO chains now cross Go→C and Python→Rust boundaries (go-sqlite3: 116 edges, polars: 5,617 edges previously had zero IO metadata).
+- FFI catalog redirect: `go:C:` pseudo-namespace from cgo redirected to C catalog. Validated: chai2010/cgo 0→7 IO edges.
 
 #### Dataflow slice quality (INV-jahov)
 
-- **Position-aware access_mode classification**: `annotate_dataflow()` now uses tree-sitter child field names to distinguish LHS (write) from RHS (read) in assignments. Previously `build_node_type_map()` collapsed positional YAML rules into a single mode per node type, so `{write: left, read: right}` produced 100% "write" annotations. Now `build_positional_map()` preserves the child→mode mapping and `_classify_by_position()` resolves via byte-range containment.
-- **Python AST path**: `annotate_dataflow_ast()` reclassifies call edges on assignment/augmented-assignment lines as "read" (the call produces a value consumed by the assignment RHS). Non-call edges keep their statement mode (write/mutate).
-- **Returns section loaded**: `DataflowConfig` now loads the `returns` YAML section (previously silently dropped). Return/yield statements correctly classify edges as "read".
-- **Net effect**: Dataflow slices are now tighter than structural slices. Forward slice follows only write/mutate edges; reverse slice follows only read edges. Previously both followed all edges identically because every annotation was "write".
+- **Position-aware access_mode**: Tree-sitter child field names distinguish LHS (write) from RHS (read) in assignments. Python AST reclassifies call edges on assignment lines as "read". `returns` YAML section now loaded (was silently dropped). Net effect: dataflow slices are tighter than structural slices — forward follows write/mutate, reverse follows read.
 
-#### Java annotation extraction edge cases (INV-nimik)
+#### Java annotation and route fixes (INV-nimik, WI-tojuz)
 
-- **JAX-RS `@Path(value="/foo")` kwargs extraction**: jax-rs.yaml `extract_path` now uses `args[0]|kwargs.value` (matching Spring's approach). `@Path(value="/users")` was silently producing empty paths because only positional args were checked. Same fix applied to Micronaut's `@Controller` and `@Get`/`@Post`/etc. annotations.
-- **Generic return type extraction**: `_extract_java_return_type_name()` now extracts the outer type name from generic return types (e.g., `Response<User>` → `Response`, `CompletionStage<Response>` → `CompletionStage`). Previously only simple identifiers were extracted, so methods returning generic types had no `return_type` in metadata, breaking subresource locator detection.
-
-#### Route empty path normalization (INV-nimik)
-
-- **Empty route paths normalized to `/`**: `make_route_stable_id()` and `materialize_route_symbols()` now normalize empty string paths to `"/"`. Routes from annotations like `@GetMapping("")` or sub-resource locators without explicit paths now get proper stable IDs and display as `"GET /"` instead of `"GET route"`.
-
-#### I/O boundary FFI tracing (INV-kagob)
-
-- **`cgo_bridge` and `ffi_bridge` edges now traced**: Added to both `call_types` in `tag_io_boundaries()` and `_TRACEABLE_TYPES` in `_trace_entry_points()`. IO chains now cross Go→C (cgo) and Python→Rust (PyO3/cffi) boundaries. Previously 116 cgo_bridge edges in go-sqlite3 and 5,617 ffi_bridge edges in polars had zero IO boundary metadata.
+- JAX-RS `@Path(value="/foo")` kwargs extraction (was only checking positional args). Same fix for Micronaut. Generic return type extraction (`Response<User>` → `Response`) for subresource locator detection.
+- Empty route paths normalized to `"/"` in stable IDs and materialized symbols.
+- `in`, `out`, `err` added to Java `ambiguous_names` (20 false positives in keycloak from JPA `CriteriaBuilder.in()`).
 
 #### I/O boundary detection
 
-- **Ambiguous name filtering for 10 catalogs**: Go, Rust, Python, Java, C, JavaScript, Erlang, Haskell, Objective-C now have `ambiguous_names` lists (Scala and Swift already had them). Bare method names like `.String()`, `.Run()`, `.put()`, `.read()`, `.write()` no longer produce false-positive IO boundary matches without module context. Measured: age net_send 4→0, net_recv 14→0; polars net_send 285→89 (69% reduction).
-- **JavaScript `remove`/`rename` added to `ambiguous_names`**: `Deno.remove` was falsely matching `useFieldArray().remove()` from react-hook-form and `Array.remove()` as `fs_write` IO boundaries. Keycloak bakeoff: 8 false `fs_write` chains from React components eliminated.
-- Case-insensitive module matching (camelCase receiver hints now match PascalCase catalog modules).
-- ObjC catalog key bridging (`objc:` prefix vs `objective-c` language field).
-- Scala fs2/akka ops reclassified from `net_recv` to `fs_read`/`fs_write` (YAML indentation fix).
-- Haskell qualified calls use `external` sentinel instead of `?` for short-name fallback.
+- **Ambiguous name filtering for 10 catalogs** (INV-tapat): Go, Rust, Python, Java, C, JavaScript, Erlang, Haskell, Objective-C. Measured: polars net_send 285→89 (69% reduction). JavaScript `remove`/`rename` added (8 false `fs_write` chains eliminated in keycloak).
+- Case-insensitive module matching. ObjC catalog key bridging. Scala fs2/akka ops reclassified from `net_recv` to `fs_read`/`fs_write`. Haskell `external` sentinel for short-name fallback.
 
 #### Symbol resolution
 
@@ -259,11 +194,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Hooks
 
-- **Stale-PR audit failover** (WI-soboh): `_stale_pr_audit()` now calls `apply_failover_overrides()`. Previously queried origin (Codeberg) during failover instead of selfh.
-- **Circuit breaker TOCTOU**: Two `tail` reads of the hash file could see different data if a concurrent hook appended between them. Now snapshots once into a variable.
-- **Circuit breaker off-by-one**: Hash was appended before the check, so current stop counted toward the 5-event threshold. Now checks first, then appends.
-- **Circuit breaker deactivation**: Mechanically runs `loop-toggle off` when circuit breaker trips.
-- **Pre-push failover verification** (INV-bifud): Blocks pushes to origin when `.git/CI_FAILOVER_ACTIVE` exists.
+- **Stale-PR audit failover** (WI-soboh): Now respects `CI_FAILOVER_ACTIVE`, querying selfh instead of origin.
+- **Circuit breaker**: Fixed TOCTOU race (two `tail` reads) and off-by-one (current stop counted toward threshold). Mechanically runs `loop-toggle off` on trip.
+- **Pre-push failover verification** (INV-bifud): Blocks pushes to origin during failover.
 
 #### TUI
 
@@ -276,20 +209,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Bakeoff threshold tuning
 
-- `io_tag_rate`: Log-linear scaling starts at 500 nodes (was 10K). `warn_min` lowered to 0.1%.
-- `dataflow_slice_ratio`: Skipped when `access_mode_coverage < 30%` (low annotation makes 100% ratio expected).
-- `limit_hit_frequency`: `good_max` scaled by log-linear boost for large repos (35K+ nodes).
-- `tier1_pct`: `good_max` raised to 100% for single-language library repos.
-- `cross_language_io_pct`: Now checks per-chain source language vs primitive catalog language. FFI repos (Go→C) detected correctly (was always 0%).
-- Polyglot threshold: Repos where the second language is <5% of nodes no longer trigger cross-language IO warnings.
+- `io_tag_rate`: Log-linear scaling from 500 nodes (was 10K), `warn_min` 0.1%. `dataflow_slice_ratio`: Skipped when `access_mode_coverage < 30%`. `limit_hit_frequency`: Log-linear boost for 35K+ node repos.
+- `tier1_pct`: 100% for single-language library repos. `cross_language_io_pct`: Per-chain source vs catalog language (FFI repos now detected correctly). Polyglot threshold: <5% secondary language ignored.
 
 #### Transcript pipeline (ADR-0018)
 
-- **Session state reset**: All per-session transcript state cleared on session start. Session token embedded in state files for stale-state self-healing.
-- **Poll race condition**: State marker now written after hook succeeds (was before). Shrink-across-sessions detected and reset.
-- **Goal injection removed**: Cheap LLM's goal summary no longer injected into agent context (wasted tokens, risked bias).
-- **Rating parser robustness**: Greedy third-fallback regex removed. Hook wiring gaps fixed for Cursor and Codex CLI.
-- **Transcript window**: Reduced from 16K to 8K tokens (~17s prefill vs ~5 min). Training entries truncated to budget.
+- Session state now cleared on session start with session-token self-healing. Poll race condition fixed (state marker written after hook succeeds). Goal injection removed (wasted tokens, risked bias).
+- Rating parser: greedy fallback regex removed. Hook wiring gaps fixed for Cursor and Codex CLI. Transcript window reduced from 16K to 8K tokens.
 
 ### Changed
 

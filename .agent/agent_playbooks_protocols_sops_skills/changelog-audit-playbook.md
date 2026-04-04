@@ -8,24 +8,29 @@ Periodic audit of the `[Unreleased]` section of `CHANGELOG.md` to ensure it is c
 
 **Step 1 — Read the Unreleased section.** Read `CHANGELOG.md` from the `## [Unreleased]` header down to the next `## [` header (the previous release). Build a mental inventory of what's covered.
 
-**Step 2 — Gather the commit log.** The commit range is from the latest release tag to HEAD:
+**Step 2 — Check for recent prior audits.** Before reading the full commit log, check whether a recent audit already covered most of the range:
 
 ```bash
 # Find the latest release tag
 LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
 
-# Get commit subjects and bodies, excluding tracker noise
-git log "$LAST_TAG"..HEAD --format='--- %h %s%n%b' \
+# Check if a prior audit exists since the last tag
+git log "$LAST_TAG"..HEAD --oneline --grep='changelog.*audit\|audit.*changelog' | head -5
+```
+
+If a recent audit commit exists (e.g., `docs(changelog): audit Unreleased section`), only check commits *since that audit* for missing items. Reading 2000+ lines of commits that were already audited is pure waste. Set the log range to `<audit-commit>..HEAD` instead of `<last-tag>..HEAD`.
+
+**Step 3 — Gather and scan the commit log.**
+
+```bash
+git log "$RANGE_START"..HEAD --format='--- %h %s%n%b' \
   -- ':!.agent/tracker/.ops' ':!.agent/tracker-workspace/.ops' \
   > /tmp/changelog-audit-commits.log
 ```
 
-**Step 3 — Work through the log strategically.** The commit log may contain hundreds of entries. Do not try to hold it all in context at once. Instead:
+Read the log in chunks (200-300 lines). For each chunk, note commits whose subject indicates user-visible work (`feat:`, `fix:`, `refactor:`, `test:`, `ci:`, `docs:`, `perf:`). Check whether each is already represented in the Unreleased section. "Represented" means the *effect* is documented, not necessarily that the exact commit is mentioned. Collect missing items grouped by conventional-commit prefix.
 
-1. Read the log in chunks (200-300 lines at a time).
-2. For each chunk, note commits whose subject indicates user-visible work: `feat:`, `fix:`, `refactor:`, `test:`, `ci:`, `docs:`, `perf:`. Every category matters — infrastructure, CI, test improvements, and refactors are real work that belongs in the changelog.
-3. For each noted commit, check whether its substance is already represented in the Unreleased section. "Represented" means the *effect* is documented, not necessarily that the exact commit is mentioned.
-4. Collect a list of missing items. Group them by conventional-commit prefix.
+**Time box:** If the prior audit was recent and the range has <20 commits, Phase 1 should take under 5 minutes. If you're spending 15+ minutes on Phase 1 and finding nothing missing, stop — the section is complete.
 
 **Step 4 — Add missing items.** For each missing item, write a concise changelog entry in the appropriate subsection (Added, Fixed, Changed, etc.). Match the style and detail level of surrounding entries. Place it under the most relevant existing heading, or create a new heading if none fits.
 
@@ -56,9 +61,15 @@ Run this phase after Phase 1 is complete (or independently if completeness is no
 
 This prevents drift — if you start editing without a plan, you risk reorganizing endlessly.
 
-**Step 3 — Implement revisions.** Apply the enumerated revisions. Do not make additional changes beyond what you enumerated. If you notice more improvements while editing, write them down and do a second pass rather than expanding scope mid-edit.
+**Step 3 — Implement revisions subsection by subsection.** Do NOT attempt to rewrite the entire Unreleased section in one edit. Work top to bottom:
 
-**Budget:** Spend no more than 3 rounds of organization edits. If the section still feels messy after 3 rounds, it's good enough. Diminishing returns are real.
+1. Pick the next subsection heading (e.g., `#### Go qualified-type tracking`).
+2. Apply your planned revision for that subsection as one `Edit` call.
+3. Move to the next subsection.
+
+This prevents context-window overload from holding a 200+ line section in working memory. Each edit is small, self-contained, and verifiable. If you need to move content between subsections (e.g., merging IO catalog items), do the deletion and insertion as two sequential edits.
+
+**Budget:** Spend no more than 3 rounds of organization edits. If the section still feels messy after 3 rounds, it's good enough. Diminishing returns are real. The entire Phase 2 should take 10-15 minutes — if you've been editing for 20+ minutes, stop.
 
 ### Guard Rails
 
