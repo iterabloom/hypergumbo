@@ -65,6 +65,9 @@ Priority: reflect → aggregate → slice quality → reverse slice → supply c
 ### Bakeoff Artifacts
 Artifacts stored in `~/hypergumbo_lab_notebook/bakeoff_artifacts/` as timestamped session directories (broad-* or deep-*). Auto-discovered by latest timestamp, never overwritten. Env var overrides available. Each session contains state.json, cohorts/, out/, diag/, and reflect/ subdirectories. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/bakeoff-artifacts-guide.md`.)
 
+### Bakeoff Process Health Audit
+Periodically assess the bakeoff feedback loop itself — session convergence trends, reflect pipeline completion rates, signal-to-action flow, and BROAD/DEEP balance. Uses a sliding time window (start at 1 week, expand by 1 week until at least 2 sessions are found). Produces a structured health verdict (HEALTHY / NEEDS_ATTENTION / UNHEALTHY) with recommended actions. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/bakeoff-process-health-audit-playbook.md`.)
+
 
 ## Tracker (Structured Governance)
 The project uses a YAML-backed structured tracker (ADR-0013) in `.agent/tracker/`. Key rules:

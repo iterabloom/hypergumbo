@@ -165,6 +165,14 @@ PLAYBOOKS = [
      "findings as structured proposals (what happened, impact, root cause, proposed improvement, "
      "category) and record in the lab notebook. Creates tracker items for actionable improvements. "
      "Time box: 30-60 minutes total."),
+
+    ("bakeoff-process-health-audit",
+     ".agent/agent_playbooks_protocols_sops_skills/bakeoff-process-health-audit-playbook.md",
+     "Meta-assessment of the bakeoff feedback loop: session convergence trends, reflect "
+     "pipeline completion rates (prompts→assessments→summaries), signal-to-action flow "
+     "(are findings becoming tracker items and PRs?), recurring concern detection, and "
+     "BROAD/DEEP mode balance. Uses a sliding time window (1 week, expanding by 1 week "
+     "until at least 2 sessions are found). Produces a structured health verdict."),
 ]
 
 
