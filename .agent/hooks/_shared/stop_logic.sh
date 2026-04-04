@@ -358,6 +358,7 @@ if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
     source "$api_lib"
     load_env 2>/dev/null || return 0
     detect_api_base 2>/dev/null || return 0
+    apply_failover_overrides 2>/dev/null  # Respect CI_FAILOVER_ACTIVE
 
     # Fetch open PRs (silently fail if no connectivity)
     if ! api_get "$API_BASE/pulls?state=open&sort=recentupdate&limit=50" 2>/dev/null; then
