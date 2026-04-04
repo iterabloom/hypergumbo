@@ -4,7 +4,9 @@
 Structured work tracker for AI agent governance. Append-only YAML op-logs
 that are git-merge-safe, causally ordered, and support field-level access
 control. Agents get structured task selection; humans get locks, tier control,
-and a TUI.
+a TUI, and a web interface.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Setup
 
@@ -18,10 +20,10 @@ source .venv/bin/activate   # or wherever your venv lives
 pip install hypergumbo-tracker
 ```
 
-### 2. Create an agent user (optional)
+### 2. Create an agent user
 
-The tracker uses `os.getuid()` to distinguish agents from humans. For real
-enforcement (not just convention), run the agent as a separate OS user:
+The tracker uses `os.getuid()` to distinguish agents from humans. Run the
+agent as a separate OS user for OS-enforced access control:
 
 ```bash
 # As the human user (needs sudo)
@@ -41,10 +43,6 @@ traversal access:
 # As the human user (needs sudo)
 sudo chmod o+rx /home/myproject_agent
 ```
-
-Single-user works fine — governance becomes a social contract instead of
-OS-enforced. If your username matches an agent pattern (e.g. `*_agent`),
-edit `actor_resolution.agent_usernames` in `config.yaml`.
 
 ### 3. Run the wizard
 
@@ -68,8 +66,8 @@ The wizard handles common pitfalls automatically:
   include the detected group name.
 - **Config owned by wrong user?** Auto-fixes when run as human.
 
-If you did step 2 (two-user setup), set group ownership on the directories
-it created so both users can write to ops files:
+Set group ownership on the directories the wizard created so both users can
+write to ops files:
 
 ```bash
 # As the human user (needs sudo)
@@ -113,18 +111,25 @@ tracker records `by: agent` on each operation, and human-only commands
 
 ```bash
 htrac ready                    # What should I work on?
+htrac check-messages           # Any unread human messages?
 htrac update :1 --status in_progress   # Claim the top item
 htrac add --kind work_item --title "Add Dart analyzer" --priority 1
-htrac update INV-lusab --status done --pr-ref "PR #42"
+htrac update INV-lusab --status done --note "Fixed in PR #42"
 htrac show INV-lusab           # Full item details
 htrac list --status todo_hard  # Filtered listing
 htrac discuss INV-lusab "Root cause confirmed in parser.py"
+htrac deps INV-lusab           # Dependency graph view
+htrac batch < commands.txt     # Bulk operations
 ```
 
 **Positional aliases:** `htrac ready` and `htrac list` assign shortcuts `:1`,
 `:2`, etc. to their output rows. Use them in the next command (e.g.
 `htrac update :1 --status in_progress`). Aliases reset after any non-list
 command.
+
+**`--note`** on `update` is shorthand for a follow-up `discuss` entry — e.g.
+`htrac update WI-foo --status done --note "Fixed in PR #42"` updates status
+and records why in one command.
 
 Use `htrac <command> --help` for all options. Use `--json` on any command for
 machine-readable output.
@@ -144,9 +149,35 @@ htrac discuss INV-lusab --clear  # Clear discussion (human-only)
 
 The TUI supports three layouts (compact/standard/wide) based on terminal size.
 Keybindings: `q` quit, `f` filter, `d` discuss, `m` move tier, `n` new item,
-`e` edit, `l` lock/unlock.
+`e` edit, `l` lock/unlock, `S` screenshot. Screenshot mode supports annotation
+with rectangles (`R` + drag), arrows (`A` + drag), and numbered text labels
+(`L` + click).
 
 Both users can read all items — the access control only applies to writes.
+
+## Web interface
+
+`htrac serve` starts a local web server for browser-based access:
+
+```bash
+htrac serve                    # Foreground on 127.0.0.1:7380
+htrac serve --background       # Daemonize
+htrac serve --status           # Check if running
+htrac serve --stop             # Shut down
+```
+
+The server exposes a REST API (`/api/items`, `/api/ready`, create/update/discuss
+endpoints) and a WebSocket (`/ws`) for real-time state sync. A filesystem
+watcher detects CLI/TUI ops file changes and auto-broadcasts to all connected
+clients.
+
+**Auth:** WebAuthn/FIDO2 hardware key authentication (ES256, RS256) and bcrypt
+password verification. Per-credential rate limiting with exponential backoff.
+Configure in `config.yaml` under `auth`.
+
+The web frontend (Vite + TypeScript + BlockSuite) lives in
+`packages/htrac-frontend/`. It uses a service worker for cache-first loading
+and reconnects to WebSocket with exponential backoff.
 
 ## Core concepts
 
@@ -171,6 +202,10 @@ Move items between tiers: `promote`, `demote`, `stealth`, `unstealth`.
 
 **Dependencies:** `X.before = [Y]` means finish X before Y. The `ready`
 command respects this.
+
+**Auto-sync:** When pending ops exceed a threshold (default 40 lines), the
+tracker automatically commits, pushes, polls CI, and merges — keeping tracker
+state synced across branches without manual intervention.
 
 ## Stop hook integration
 

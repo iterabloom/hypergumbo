@@ -12,12 +12,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
-#### TUI screenshot annotation mode (ADR-0020)
-
-- **Annotation overlay**: Press `S` to capture a screenshot, then annotate with rectangles (`R` + drag), arrows (`A` + drag), and numbered text labels (`L` + click). Arrow key nudge (±1 cell) mitigates SSH mouse coordinate drift. Annotations injected as SVG elements; label text XML-sanitized.
-- **Inline SVG preview**: Discussion entries referencing `.svg` files show placeholders. SVG→PNG→ANSI pipeline via optional `cairosvg` + `chafa` with graceful degradation.
-- **Label UX redesign** (WI-gikut): Replaced raw keystroke capture with Textual `Input` widget for full editing support. Numbered markers provide visual feedback before text entry.
-
 #### Go qualified-type parameter tracking
 
 - **Qualified type propagation**: Function parameters and struct fields with package-qualified types (e.g. `client *http.Client`) now carry full module hints through to unresolved edges and field chain access. IO boundary detection can now classify `http.Client.Do()` as `net_send` and chained patterns like `n.client.Do(req)` — previously blocked by `ambiguous_names` guard due to missing module context.
@@ -46,13 +40,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Rust** (`rust.yaml`): 44 method-name heuristics (write/read/delete). Previously all Rust call edges had no access_mode.
 - **Go** (`go.yaml`): 30 regex patterns (15 write, 15 read) for mutating method calls (WI-satuv).
 - **Erlang**: Name-based heuristics (get_*/set_*, ETS/Mnesia ops, gen_server call/cast).
-
-#### htrac serve and web frontend (ADR-0019 Part A)
-
-- **`htrac serve` command**: Starlette/uvicorn server bound to 127.0.0.1:7380. REST API (`/api/items`, `/api/ready`, create/update/discuss endpoints) and WebSocket (`/ws`) protocol for real-time state sync. Same TrackerSet engine as CLI/TUI. PID file management for `--background`/`--stop`/`--status`.
-- **Auth stack**: WebAuthn/FIDO2 hardware key auth (ES256, RS256). Bcrypt password verification with timing-safe dual-check (real + duress). Per-credential rate limiting with exponential backoff. In-memory session store with configurable TTL. `DuressHandler` protocol for user-defined duress behavior. `AuthConfig` from `config.yaml`.
-- **Filesystem watcher**: `watchfiles` detects CLI/TUI ops file changes and auto-broadcasts state to all WebSocket clients. Sub-second latency, no IPC.
-- **Web frontend** (WI-kimuj): Vite + TypeScript + BlockSuite in `packages/htrac-frontend/`. Lit web components for tracker item list and detail views (WI-gojov, WI-nopuj) with responsive two-panel layout. Service worker for cache-first Tor-friendly loading. WebSocket client with exponential backoff reconnect.
 
 #### `io-boundaries` CLI
 
@@ -105,11 +92,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Stale-pending detection in tracker sync**: Same mitigation applied to `_poll_ci`/`do_sync` — 90-second timeout, close/wait/repush with up to 2 retries.
 - **Tracker sync PR verification**: Stop hook's stale-PR audit calls `verify-tracker-pr` to check safety before recommending close.
 
-#### Tracker governance
-
-- **`deprecated_statuses`**: `KindConfig` now supports statuses accepted when reading historical ops but rejected on new create/update. Enables status renames without rewriting append-only ops.
-- **Invariant statuses**: `satisfied` (confirmed with positive evidence) and `pending_validation` (fix deployed, not yet validated — blocks stopping). Replaces ambiguous `holding`.
-
 #### Reverse slice seed selection
 
 - **Library export boost** (1.4×): `library_export`-tagged symbols in the entrypoints section are boosted in rslice seed scoring. Ensures reverse slices answer "who calls this library's public API?" (WI-bosik).
@@ -123,7 +105,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Other
 
 - `sketch --require-section`: force specific sections into output regardless of token budget.
-- Tracker: `ORT_ENABLE_EXTENDED` fixes `SimplifiedLayerNormFusion` bug with quantized ModernBERT.
 
 ### Fixed
 
@@ -198,15 +179,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Circuit breaker**: Fixed TOCTOU race (two `tail` reads) and off-by-one (current stop counted toward threshold). Mechanically runs `loop-toggle off` on trip.
 - **Pre-push failover verification** (INV-bifud): Blocks pushes to origin during failover.
 
-#### TUI
-
-- Duplicate startup message on TUI exit suppressed. Auto-sync no longer fires on exit without mutations.
-- Screenshot path resolved against tracker root instead of cwd.
-- Per-user fallback directory (`/tmp/<uid>-htrac-screenshots/`) for screenshot permission errors.
-- SVG cell geometry extracted from actual SVG instead of hardcoded 8.65×18px. Background rect (height=1707px) filtered.
-- Screen-absolute coordinates for annotation placement (was widget-relative).
-- Merged-render annotation canvas replays frozen `Strip` objects from compositor.
-
 #### Bakeoff threshold tuning
 
 - `io_tag_rate`: Log-linear scaling from 500 nodes (was 10K), `warn_min` 0.1%. `dataflow_slice_ratio`: Skipped when `access_mode_coverage < 30%`. `limit_hit_frequency`: Log-linear boost for 35K+ node repos.
@@ -226,11 +198,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Documentation
 
 - **ADR-0017** (Taint-Zone Dataflow Analysis): Proposed and accepted. Python-first extractor ordering.
-- **ADR-0019** (Remote Access Transport): Part A/B split. Revised to native iOS/macOS app (Safari lacks secure context for `.onion` origins). TURN relay fallback for symmetric NAT.
-- **ADR-0020** (TUI Screenshot Annotation): Proposed.
-- **ADR-0021** (Tracker Federation): Proposed. "Node" terminology replaced with "machine" in prose.
-- **Deployment guide** (`docs/DEPLOYMENT.md`): Architecture diagram, systemd setup, Tor onion service config, auth, CLI coexistence.
-- **Torrc example** (`deploy/torrc.example`): v3 onion service with x25519 client authorization.
 - **Governance docs**: Autonomous mode management, circuit breaker, and ADR index (`docs/adr/README.md`).
 - **Deprecated invariant ledger removed**: Superseded by structured tracker (ADR-0013). References updated.
 - **Agent playbooks**: Changelog audit playbook, playbook creation guide, bakeoff artifact guide added.
@@ -275,11 +242,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Runtime memory pressure guard**: Monitors RSS, skips analyzers before OOM
 - **Dataflow annotation line index**: ~47% faster Java analysis
 
-#### Tracker
-
-- **Batch command** (`tracker batch`), **inverse blocking flags** (`--add-blocked-by`), **dependency graph view** (`tracker deps`)
-- **Verbose update confirmations**, **setup wizard improvements**, **auto-create config template**
-
 ### Changed
 
 - **Weighted import inclusion in ranking**: Import edges now included at reduced weight (0.3) instead of excluded entirely. Widely-imported core types rise in rankings while call edges still dominate.
@@ -294,7 +256,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Test-edge filter**: Phantom source symbol import edges no longer leak through to inflate centrality
 - **`rank_files()` consistency**: Now uses same centrality parameters as `rank_symbols()`
 - **Erlang local call resolution**: Intra-module calls without explicit module qualification now resolved
-- **Tracker short prefix resolution**: `--remove-before`, `--remove-duplicate-of`, `--remove-not-duplicate-of` now resolve short ID prefixes
 
 ### Performance
 
@@ -330,16 +291,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Jupyter** (`.ipynb`): Extracts Python symbols and call edges from notebook code cells. Strips IPython magics/shell commands, tracks cross-cell line offsets.
 - **Blade** (`.blade.php`), **Gnuplot** (`.gnuplot`, `.gp`, `.plt`), **Handlebars** (`.hbs`), **Just** (`justfile`), **Mermaid** (`.mmd`), **QML** (`.qml`): New regex-based analyzers for templates, build files, diagrams, and Qt components.
 
-#### Tracker
-
-- **TUI startup diagnostics**: Prints item count, per-tier breakdown, and load time before and after the TUI (e.g., `htrac: 298 items (12 canonical, 286 workspace) loaded in 0.43s`).
-- **Sync logging**: Always-on file logging in `.agent/.sync-logs/` with 30-day garbage collection.
-
 ### Fixed
 
 - **`slice --files` crash** when `--max-hops` not passed (`int < None` TypeError). Broken since 2.2.0 — caused `smart-test` to silently fall back to full test suite on every run.
-- **Tracker sync pending-line inflation**: count grew by ~22 per cycle instead of resetting to 0. Fixed by fast-forwarding local dev after sync.
-- **Tracker sync cleanup**: `unlink()` OSError no longer halts cleanup; checkout/merge failures now logged.
 - **`dev-install`** now calls `install-hooks` automatically (was a separate manual step).
 
 ## [2.2.0] - 2026-03-12
@@ -561,7 +515,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - smart-test improvements, infra-only PR skip, shared Forgejo API lib, parallel coverage, retry-aware `merge-pr`.
 - Three-way stop hook, post-compaction recovery, pre-push hook, fail-closed tracker, fork workflow hardening.
-- Standardized pass IDs via `make_pass_id()`. Generalized symbol identity (ADR-0014): location `id`, signature `stable_id`, CST `shape_id`. Tracker `update --note` and unread message warning.
+- Standardized pass IDs via `make_pass_id()`. Generalized symbol identity (ADR-0014): location `id`, signature `stable_id`, CST `shape_id`.
 
 ### Fixed
 
