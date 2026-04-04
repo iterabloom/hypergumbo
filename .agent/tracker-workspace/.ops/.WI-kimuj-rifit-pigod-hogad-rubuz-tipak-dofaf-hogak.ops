@@ -42,3 +42,40 @@
   clock: 4  # 5d3c
   nonce: 5d3c  # 5d3c
   message: "Deprioritized during DEEP mode. Frontend scaffold (Vite+BlockSuite+TS) is outside hypergumbo-core analysis focus."  # 5d3c
+- op: discuss  # 6242
+  at: '2026-04-04T17:09:11Z'  # 6242
+  by: human  # 6242
+  actor: jgstern  # 6242
+  clock: 5  # 6242
+  nonce: '6242'  # 6242
+  message: "this should be a priority"  # 6242
+- op: update  # 0dcd
+  at: '2026-04-04T17:09:18Z'  # 0dcd
+  by: human  # 0dcd
+  actor: jgstern  # 0dcd
+  clock: 6  # 0dcd
+  nonce: 0dcd  # 0dcd
+  set:  # 0dcd
+    priority: 2  # 0dcd
+- op: discuss  # aa9b
+  at: '2026-04-04T17:16:26Z'  # aa9b
+  by: agent  # aa9b
+  actor: jgstern_agent  # aa9b
+  clock: 7  # aa9b
+  nonce: aa9b  # aa9b
+  message: "Acknowledged. Promoting BlockSuite frontend scaffold to active priority. Will start implementation after completing pending bakeoff reflect/aggregate (DEEP mode protocol requires clearing those first to avoid stale data)."  # aa9b
+- op: update  # 5607
+  at: '2026-04-04T18:26:18Z'  # 5607
+  by: agent  # 5607
+  actor: jgstern_agent  # 5607
+  clock: 8  # 5607
+  nonce: '5607'  # 5607
+  set:  # 5607
+    status: done  # 5607
+- op: discuss  # 9ab6
+  at: '2026-04-04T18:26:18Z'  # 9ab6
+  by: agent  # 9ab6
+  actor: jgstern_agent  # 9ab6
+  clock: 9  # 9ab6
+  nonce: 9ab6  # 9ab6
+  message: "Implemented in PR #132. Scaffold includes: Vite+TS build, BlockSuite 0.17.33 (PageEditor+EdgelessEditor), WebSocket client for htrac serve protocol, service worker for app shell caching, dev proxy config. Builds to dist/ for static serving."  # 9ab6

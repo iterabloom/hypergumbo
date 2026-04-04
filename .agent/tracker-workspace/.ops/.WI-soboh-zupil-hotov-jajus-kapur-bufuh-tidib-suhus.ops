@@ -1,0 +1,21 @@
+- op: create  # 6c12
+  at: '2026-04-04T18:35:58Z'  # 6c12
+  by: agent  # 6c12
+  actor: jgstern_agent  # 6c12
+  clock: 1  # 6c12
+  nonce: 6c12  # 6c12
+  data:  # 6c12
+    kind: work_item  # 6c12
+    title: "Stop hook stale-PR audit ignores CI_FAILOVER_ACTIVE, queries wrong remote"  # 6c12
+    status: needs_human_review  # 6c12
+    priority: 2  # 6c12
+    parent:  # 6c12
+    tags:  # 6c12
+    - hooks  # 6c12
+    - ci-failover  # 6c12
+    before: []  # 6c12
+    duplicate_of: []  # 6c12
+    not_duplicate_of: []  # 6c12
+    pr_ref:  # 6c12
+    description: "The _stale_pr_audit() function in .agent/hooks/_shared/stop_logic.sh calls load_env and detect_api_base but does NOT call apply_failover_overrides(). During CI failover, this queries origin (Codeberg) instead of selfh. PR #2690 keeps appearing as stale across sessions. Fix: add apply_failover_overrides() after detect_api_base at ~line 360."  # 6c12
+    fields: {}  # 6c12
