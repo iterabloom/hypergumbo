@@ -566,12 +566,15 @@ def _extract_struct_field_types(
             if type_name not in _GO_BUILTINS:
                 field_types[field_name] = type_name
         elif actual_type.type == "qualified_type":
-            # pkg.Type → use the unqualified type name
+            # pkg.Type → store the full qualified name (e.g. "http.Client")
+            # so that chained field call resolution can recover the import
+            # path from the package prefix for IO boundary detection.
+            full_text = node_text(actual_type, source)
             tid = find_child_by_type(actual_type, "type_identifier")
             if tid:
                 type_name = node_text(tid, source)
                 if type_name not in _GO_BUILTINS:
-                    field_types[field_name] = type_name
+                    field_types[field_name] = full_text
 
     return field_types
 
@@ -1866,6 +1869,25 @@ def _extract_edges_from_file(
                                         origin_run_id=run.execution_id,
                                     ))
                                     callee_name = None  # Already resolved
+                                # Fallback: if resolved_type is a qualified
+                                # type like "http.Client" (from a struct field
+                                # with package-qualified type), extract the
+                                # package prefix and recover the import path.
+                                elif "." in resolved_type:
+                                    pkg_prefix = resolved_type.split(".")[0]
+                                    if pkg_prefix in import_aliases:
+                                        full_import_path = import_aliases[
+                                            pkg_prefix
+                                        ]
+                                        if module_path:
+                                            import_path_hint = (
+                                                _strip_module_prefix(
+                                                    full_import_path,
+                                                    module_path,
+                                                )
+                                            )
+                                        else:
+                                            import_path_hint = full_import_path
                         # Chained call: pkg.Func(args).Method()
                         # e.g. json.NewEncoder(w).Encode(data) — propagate
                         # the import path from the inner call's package prefix

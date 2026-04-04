@@ -5781,8 +5781,8 @@ type Handler struct{}
         # Only handler should be present (non-builtin)
         assert fields == {"handler": "Handler"}
 
-    def test_qualified_type_uses_unqualified_name(self, tmp_path: Path) -> None:
-        """pkg.Type fields use the unqualified type name."""
+    def test_qualified_type_uses_qualified_name(self, tmp_path: Path) -> None:
+        """pkg.Type fields store the full qualified name for module hint recovery."""
         result = self._parse_file(tmp_path, """\
 package main
 
@@ -5793,10 +5793,10 @@ type Server struct {
 }
 """)
         fields = result.class_field_types.get("Server", {})
-        assert fields.get("client") == "Client"
+        assert fields.get("client") == "http.Client"
 
     def test_pointer_to_qualified_type(self, tmp_path: Path) -> None:
-        """*pkg.Type fields unwrap pointer and extract unqualified name."""
+        """*pkg.Type fields unwrap pointer and keep qualified name."""
         result = self._parse_file(tmp_path, """\
 package main
 
@@ -5807,7 +5807,7 @@ type Server struct {
 }
 """)
         fields = result.class_field_types.get("Server", {})
-        assert fields.get("client") == "Client"
+        assert fields.get("client") == "http.Client"
 
     def test_embedding_excluded(self, tmp_path: Path) -> None:
         """Embedded types (no field name) are not included in class_field_types."""
@@ -6359,3 +6359,72 @@ func doRequest(client *http.Client, req *http.Request) {
             f"Expected 'net/http' in dst with go.mod present, "
             f"got: {do_edges[0].dst}"
         )
+
+    def test_field_chain_qualified_type_propagates_module_hint(
+        self, tmp_path: Path,
+    ) -> None:
+        """n.client.Do() with struct field *http.Client → edge dst has net/http.
+
+        When a struct field has a package-qualified type (e.g. *http.Client),
+        _resolve_field_chain should return the qualified name, and the
+        typed_field_call fallback should extract the import path from
+        the package prefix.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+import "net/http"
+
+type Notifier struct {
+    client *http.Client
+}
+
+func (n *Notifier) Send(req *http.Request) {
+    n.client.Do(req)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        do_edges = [e for e in call_edges if "Do" in e.dst]
+        assert len(do_edges) >= 1, (
+            f"Expected at least one edge to 'Do', got edges: "
+            f"{[e.dst for e in call_edges]}"
+        )
+        assert "net/http" in do_edges[0].dst, (
+            f"Expected 'net/http' in edge dst for n.client.Do() "
+            f"with *http.Client field, got: {do_edges[0].dst}"
+        )
+
+    def test_field_chain_with_go_mod(self, tmp_path: Path) -> None:
+        """Field chain module hint works with go.mod (module_path set)."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_mod = tmp_path / "go.mod"
+        go_mod.write_text("module github.com/example/app\n\ngo 1.21\n")
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+import "net/http"
+
+type Client struct {
+    http *http.Client
+}
+
+func (c *Client) Fetch(req *http.Request) {
+    c.http.Do(req)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        do_edges = [e for e in call_edges if "Do" in e.dst]
+        assert len(do_edges) >= 1
+        assert "net/http" in do_edges[0].dst
