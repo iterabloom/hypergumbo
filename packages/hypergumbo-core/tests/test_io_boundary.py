@@ -161,6 +161,19 @@ class TestLoadCatalog:
         expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
         assert expected.issubset(boundaries)
 
+    def test_go_catalog_testing_tempdir(self) -> None:
+        """testing.T.TempDir is fs_write (creates a temp directory).
+
+        When qualified-type tracking identifies t.TempDir() as a testing.T
+        method, the IO boundary catalog must classify it as fs_write.
+        Previously this was incorrectly matched to io/ioutil.TempDir via
+        the 'external' module hint fallback.
+        """
+        catalog = load_catalog("go")
+        hit = catalog.lookup_with_module("TempDir", "testing")
+        assert hit is not None, "testing.T.TempDir should be in the Go IO catalog"
+        assert hit.boundary == "fs_write"
+
     def test_load_c_catalog(self) -> None:
         catalog = load_catalog("c")
         assert catalog.language == "c"

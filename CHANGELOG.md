@@ -27,6 +27,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Parameter type propagation**: Function parameters with package-qualified types (e.g. `client *http.Client`) are now added to `var_types` with the full qualified name, enabling the typed-receiver call path.
 - **Module hint recovery**: When a typed-receiver lookup fails (external type not in local/global symbols), the package prefix is extracted from the qualified type and mapped through `import_aliases` to set `import_path_hint`. This produces unresolved edges like `go:net/http:0-0:Do:unresolved` instead of `go:external:0-0:Do:unresolved`.
 - **Impact**: IO boundary detection can now classify `http.Client.Do()` as `net_send`, `io.ReadAll()` calls via `io` module, and other stdlib method calls that were previously blocked by the `ambiguous_names` guard due to missing module context.
+- **Go IO catalog**: Added `testing.T.TempDir` and `testing.B.TempDir` as `fs_write` boundaries. With qualified-type tracking, `t.TempDir()` calls now correctly resolve to the `testing` module — the catalog needed a matching entry. Also removes 6 false positives where `bytes.Buffer.WriteString`, `strings.Builder.WriteString`, and `kingpin.Command()` were previously misclassified as IO operations via the `external` module hint fallback.
 
 #### Interface dispatch narrowing (WI-doval)
 

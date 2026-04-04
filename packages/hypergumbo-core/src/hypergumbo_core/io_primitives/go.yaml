@@ -53,6 +53,12 @@ fs_write:
     functions: [WriteFile, TempFile, TempDir]
   - module: io
     functions: [WriteString]
+  - module: testing.T
+    methods: [TempDir]
+    notes: "Go testing stdlib — creates temp dir scoped to test"
+  - module: testing.B
+    methods: [TempDir]
+    notes: "Go benchmark stdlib — creates temp dir scoped to benchmark"
   - module: syscall
     functions: [Write, Pwrite, Mkdir, Rmdir, Unlink, Rename, Chmod, Fchmod, Chown, Fchown, Truncate, Ftruncate]
   - module: unix
