@@ -429,15 +429,30 @@ class TestAnnotationScreen:
         assert screen._drag_start == (10, 5)
 
     def test_mouse_down_in_label_mode_sets_position(self) -> None:
-        """MouseDown in label mode sets the label placement position."""
+        """MouseDown in label mode sets position and shows numbered marker."""
         screen = AnnotationScreen("<svg></svg>")
         screen._mode = "label"
+        mock_canvas = MagicMock()
+        mock_input = MagicMock()
         mock_status = MagicMock()
-        screen.query_one = MagicMock(return_value=mock_status)
+
+        def _query_one(selector: str, cls: type | None = None) -> object:
+            if selector == "#label-input":
+                return mock_input
+            return mock_status
+
+        type(screen).canvas = property(lambda self: mock_canvas)
+        screen.query_one = _query_one
         event = _mouse_event(15, 8)
         screen.on_mouse_down(event)
         assert screen._label_pending is True
         assert screen._label_pos == (15, 8)
+        assert screen._label_marker == 1
+        # Should show numbered marker on canvas
+        mock_canvas.add_label.assert_called_once_with(15, 8, "[1]")
+        # Should show Input widget
+        assert mock_input.display is True
+        del type(screen).canvas
 
     def test_mouse_move_updates_draft_rect(self) -> None:
         """MouseMove while dragging updates the draft rect."""
@@ -484,60 +499,108 @@ class TestAnnotationScreen:
         mock_canvas.commit_rect.assert_not_called()
 
     def test_confirm_with_pending_label(self) -> None:
-        """Confirm with a pending label commits the label first."""
+        """Confirm with a pending label reads from Input and commits."""
         screen = AnnotationScreen("<svg></svg>")
         screen._label_pending = True
         screen._label_pos = (10, 5)
-        screen._label_text_buf = "Bug here"
+        screen._label_marker = 1
         screen._mode = "label"
         mock_canvas = MagicMock()
+        mock_canvas._labels = [(10, 5, "[1]", "#ff3333")]
+        mock_input = MagicMock()
+        mock_input.value = "Bug here"
         mock_status = MagicMock()
 
-        # Override the canvas property and query_one for status bar
+        def _query_one(selector: str, cls: type | None = None) -> object:
+            if selector == "#label-input":
+                return mock_input
+            return mock_status
+
         type(screen).canvas = property(lambda self: mock_canvas)
-        screen.query_one = MagicMock(return_value=mock_status)
+        screen.query_one = _query_one
         screen.dismiss = MagicMock()
         screen.action_confirm()
-        mock_canvas.add_label.assert_called_once_with(10, 5, "Bug here")
+        # The marker label should be updated with the text
+        assert mock_canvas._labels[-1] == (
+            10, 5, "[1] Bug here", "#ff3333",
+        )
         assert screen._label_pending is False
         assert screen._mode == "rect"
         # Should NOT dismiss — just commits the label
         screen.dismiss.assert_not_called()
-        # Restore property to avoid polluting other tests
+        # Input should be hidden
+        assert mock_input.display is False
         del type(screen).canvas
 
-    def test_on_key_captures_printable_chars(self) -> None:
-        """on_key captures printable characters when label is pending."""
+    def test_on_input_submitted_commits_label(self) -> None:
+        """Input.Submitted when label pending triggers action_confirm."""
         screen = AnnotationScreen("<svg></svg>")
         screen._label_pending = True
-        screen._label_text_buf = ""
-        event = MagicMock()
-        event.character = "H"
-        screen.on_key(event)
-        event.character = "i"
-        screen.on_key(event)
-        assert screen._label_text_buf == "Hi"
+        screen._label_pos = (10, 5)
+        screen._label_marker = 1
+        screen._mode = "label"
+        mock_canvas = MagicMock()
+        mock_canvas._labels = [(10, 5, "[1]", "#ff3333")]
+        mock_input = MagicMock()
+        mock_input.value = "Fix this"
+        mock_input.id = "label-input"
+        mock_status = MagicMock()
 
-    def test_on_key_ignores_when_not_pending(self) -> None:
-        """on_key does nothing when no label is pending."""
+        def _query_one(selector: str, cls: type | None = None) -> object:
+            if selector == "#label-input":
+                return mock_input
+            return mock_status
+
+        type(screen).canvas = property(lambda self: mock_canvas)
+        screen.query_one = _query_one
+        screen.dismiss = MagicMock()
+
+        # Simulate Input.Submitted event
+        event = MagicMock()
+        event.input = mock_input
+        screen.on_input_submitted(event)
+
+        assert screen._label_pending is False
+        assert mock_canvas._labels[-1] == (
+            10, 5, "[1] Fix this", "#ff3333",
+        )
+        del type(screen).canvas
+
+    def test_on_input_submitted_ignores_non_label(self) -> None:
+        """Input.Submitted from non-label input is ignored."""
         screen = AnnotationScreen("<svg></svg>")
+        screen._label_pending = True
+        event = MagicMock()
+        event.input = MagicMock()
+        event.input.id = "other-input"
+        # Should not crash or change state
+        screen.on_input_submitted(event)
+        assert screen._label_pending is True
+
+    def test_label_counter_increments(self) -> None:
+        """Each label click increments the numbered marker counter."""
+        screen = AnnotationScreen("<svg></svg>")
+        screen._mode = "label"
+        mock_canvas = MagicMock()
+        mock_input = MagicMock()
+        mock_status = MagicMock()
+
+        def _query_one(selector: str, cls: type | None = None) -> object:
+            if selector == "#label-input":
+                return mock_input
+            return mock_status
+
+        type(screen).canvas = property(lambda self: mock_canvas)
+        screen.query_one = _query_one
+
+        screen.on_mouse_down(_mouse_event(5, 3))
+        assert screen._label_marker == 1
+        # Reset pending for second click
         screen._label_pending = False
-        event = MagicMock()
-        event.character = "X"
-        screen.on_key(event)
-        assert not hasattr(screen, "_label_text_buf") or screen._label_text_buf == ""
-
-    def test_on_key_creates_buf_if_missing(self) -> None:
-        """on_key initializes _label_text_buf if it doesn't exist."""
-        screen = AnnotationScreen("<svg></svg>")
-        screen._label_pending = True
-        # Intentionally don't set _label_text_buf
-        if hasattr(screen, "_label_text_buf"):
-            del screen._label_text_buf
-        event = MagicMock()
-        event.character = "A"
-        screen.on_key(event)
-        assert screen._label_text_buf == "A"
+        screen.on_mouse_down(_mouse_event(10, 7))
+        assert screen._label_marker == 2
+        assert mock_canvas.add_label.call_count == 2
+        del type(screen).canvas
 
     def test_arrow_mode_switch(self) -> None:
         """action_arrow_mode switches to arrow mode."""

@@ -32,6 +32,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Go IO catalog: TLS/SMTP**: Added `crypto/tls` (Dial, DialWithDialer, Client, Conn.Write/Handshake) and `net/smtp` (NewClient, Dial, SendMail, Client.Mail/Rcpt/Data/Close) as `net_send` boundaries. Added `Data`, `Mail`, `Handshake` to `ambiguous_names`. Fixes false positive where `gin.Context.Data` matched on `template.Data` structs without module context.
 - **Go field chain module hint recovery**: Struct fields with package-qualified types (e.g. `client *http.Client`) now store the full qualified name in the field_type_registry. When `_resolve_field_chain` resolves `n.client` to `http.Client` and the typed_field_call lookup fails (external type), the package prefix is extracted and mapped through `import_aliases` to set the module hint. This enables IO boundary detection for chained field access patterns like `n.client.Do(req)` in notification integrations (opsgenie, jira).
 
+#### Annotation label UX redesign (WI-gikut)
+
+- **Input widget for label text**: Replaced broken raw keystroke capture (`on_key`) with a Textual `Input` widget. Users now get full editing (backspace, cursor movement) and visual feedback while typing label text.
+- **Numbered markers**: Label clicks place numbered markers (`[1]`, `[2]`, ...) on the canvas immediately, providing visual feedback before text is entered. Confirmed labels display as `[N] text`.
+- **Input submit handling**: `on_input_submitted` event from the Input widget triggers label confirmation, replacing the fragile `on_key` character accumulation.
+- **Dynamic SVG font size**: Label `<text>` elements now use `cell_h * 0.8` as font-size (derived from the SVG grid) instead of hardcoded `14px`.
+
 #### Interface dispatch narrowing (WI-doval)
 
 - **Go `var` declaration with concrete initializer**: `var n Notifier = &DiscordNotifier{}` now tracks the concrete type (`DiscordNotifier`) instead of the declared interface type (`Notifier`). Calls on `n` resolve to the concrete type's method, eliminating spurious `dispatches_to` edges from the type_hierarchy linker.

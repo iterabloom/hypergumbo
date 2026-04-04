@@ -1661,6 +1661,12 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
         color: $text;
         text-align: center;
     }
+
+    #label-input {
+        height: 1;
+        dock: bottom;
+        display: none;
+    }
     """
 
     def __init__(
@@ -1670,10 +1676,11 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
         super().__init__()
         self._svg_content = svg_content
         self._frozen_strips = frozen_strips or []
-        self._mode: str = "rect"  # "rect" or "label"
+        self._mode: str = "rect"  # "rect", "arrow", or "label"
         self._dragging = False
         self._drag_start: tuple[int, int] | None = None
         self._label_pending = False
+        self._label_counter = 0  # Numbered markers: 1, 2, 3, ...
 
     _STATUS_TEXT = "  \\[R]ect  |  \\[A]rrow  |  \\[L]abel  |  \\[U]ndo  |  ←↑↓→=Nudge  |  Enter=Confirm  |  Esc=Discard  "
 
@@ -1681,6 +1688,10 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
         yield _AnnotationCanvas(
             frozen_strips=self._frozen_strips,
             id="annotation-canvas",
+        )
+        yield Input(
+            placeholder="Type label text, then press Enter",
+            id="label-input",
         )
         yield Static(self._STATUS_TEXT, id="annotation-status")
 
@@ -1697,10 +1708,21 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
         """
         if self._mode == "label":
             self._label_pending = True
+            self._label_counter += 1
             self._label_pos = (event.screen_x, event.screen_y)
-            self.query_one("#annotation-status", Static).update(
-                "  Type label text, then press Enter  "
+            self._label_marker = self._label_counter
+            # Show numbered marker on canvas immediately
+            marker_text = f"[{self._label_marker}]"
+            self.canvas.add_label(
+                event.screen_x, event.screen_y, marker_text,
             )
+            # Show Input widget, hide status bar
+            label_input = self.query_one("#label-input", Input)
+            status = self.query_one("#annotation-status", Static)
+            status.display = False
+            label_input.display = True
+            label_input.value = ""
+            label_input.focus()
         else:
             self._dragging = True
             self._drag_start = (event.screen_x, event.screen_y)
@@ -1735,14 +1757,27 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
 
     def action_confirm(self) -> None:
         """Confirm annotations and return them."""
-        if self._label_pending and hasattr(self, "_label_text_buf"):
-            # Commit pending label first
-            x, y = self._label_pos
-            self.canvas.add_label(x, y, self._label_text_buf)
+        if self._label_pending:
+            # Read text from Input widget and update the marker label
+            label_input = self.query_one("#label-input", Input)
+            text = label_input.value.strip()
+            if text and self.canvas._labels:
+                # Replace the numbered placeholder with marker+legend
+                x, y = self._label_pos
+                marker = self._label_marker
+                self.canvas._labels[-1] = (
+                    x, y, f"[{marker}] {text}", "#ff3333",
+                )
+                self.canvas._render_canvas()
             self._label_pending = False
-            del self._label_text_buf
             self._mode = "rect"
-            self.query_one("#annotation-status", Static).update(self._STATUS_TEXT)
+            # Hide Input, restore status bar
+            label_input.display = False
+            label_input.value = ""
+            self.query_one("#annotation-status", Static).display = True
+            self.query_one("#annotation-status", Static).update(
+                self._STATUS_TEXT,
+            )
             return
         annotations = self.canvas.get_annotations()
         self.dismiss(annotations if annotations else None)
@@ -1762,9 +1797,8 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
     def action_label_mode(self) -> None:
         """Switch to label placement mode."""
         self._mode = "label"
-        self._label_text_buf = ""
         self.query_one("#annotation-status", Static).update(
-            "  LABEL MODE: Click to place, type text, Enter to confirm  "
+            "  LABEL MODE: Click to place numbered marker  "
         )
 
     def _nudge(self, dx: int, dy: int) -> None:
@@ -1816,17 +1850,10 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
             canvas._rects.pop()
             canvas._render_canvas()
 
-    def on_key(self, event: object) -> None:
-        """Capture keystrokes for label text input."""
-        if not self._label_pending:
-            return
-        if not hasattr(event, "character"):
-            return  # pragma: no cover
-        char = event.character  # type: ignore[attr-defined]
-        if char and len(char) == 1 and char.isprintable():
-            if not hasattr(self, "_label_text_buf"):
-                self._label_text_buf = ""
-            self._label_text_buf += char
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle Enter in label Input widget — commit the label."""
+        if self._label_pending and event.input.id == "label-input":
+            self.action_confirm()
 
 
 # ---------------------------------------------------------------------------
@@ -3412,9 +3439,12 @@ class TrackerApp(App):
                 x = ann.cell_x * cell_w
                 y = ann.cell_y * cell_h + y_offset + cell_h * 0.75
                 text = sanitize_label_text(ann.text)
+                # Use cell_h as font size (matches SVG grid) instead
+                # of hardcoded 14px (WI-gikut fix)
+                font_size = cell_h * 0.8
                 elements.append(
                     f'<text x="{x:.1f}" y="{y:.1f}" '
-                    f'fill="{ann.color}" font-size="14" '
+                    f'fill="{ann.color}" font-size="{font_size:.1f}" '
                     f'font-family="monospace">{text}</text>'
                 )
 
