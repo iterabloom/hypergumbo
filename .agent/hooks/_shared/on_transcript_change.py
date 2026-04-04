@@ -139,6 +139,15 @@ PLAYBOOKS = [
      "mocking. For build-from-source grammars (built via scripts/build-source-grammars): "
      "write real tests that call the analyzer directly, plus a mock test only for the "
      "unavailability code path. Never use pytest.mark.skipif as an escape hatch."),
+    ("changelog-audit-playbook",
+     ".agent/agent_playbooks_protocols_sops_skills/changelog-audit-playbook.md",
+     "Two-phase audit of the [Unreleased] section of CHANGELOG.md. Phase 1 (completeness): "
+     "compare against git log from the last release tag to HEAD, chunking the log to avoid "
+     "context overload; identify merged work missing from the changelog — all commit types "
+     "matter (features, fixes, CI, tests, refactors, docs, infra). Phase 2 (organization): "
+     "merge duplicate entries, normalize granularity toward feature-level descriptions, group "
+     "related items, reorder by significance. Never remove information; concision means fewer "
+     "words, not less content. Budget: max 3 rounds of organization edits."),
 ]
 
 
