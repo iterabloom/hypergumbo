@@ -41,3 +41,10 @@
   clock: 4  # 7cde
   nonce: 7cde  # 7cde
   message: "This is a feature gap (no external module nodes exist), not a structural defect. The tier classifier correctly classifies all existing nodes. Downgrading from todo_hard to todo_soft."  # 7cde
+- op: discuss  # 8099
+  at: '2026-04-04T19:23:37Z'  # 8099
+  by: agent  # 8099
+  actor: jgstern_agent  # 8099
+  clock: 5  # 8099
+  nonce: '8099'  # 8099
+  message: "Design direction: language-agnostic DependencyManifest in supply_chain.py. Each analyzer returns a manifest mapping module paths to direct/indirect (Go: go.mod require, JS: package.json deps vs devDeps, Python: pyproject.toml deps, Rust: Cargo.toml deps vs dev-deps). _create_boundary_nodes_for_dangling_edges in ir.py consults the manifest to set tier 2 (direct) or tier 3 (indirect/stdlib). This avoids baking Go-specific logic into the core."  # 8099
