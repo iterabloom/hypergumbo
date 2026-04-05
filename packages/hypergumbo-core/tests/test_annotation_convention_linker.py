@@ -395,3 +395,87 @@ class TestAnnotationConventionRegistry:
         anno_results = [r for name, r in results if name == "annotation-convention"]
         assert len(anno_results) == 1
         assert len(anno_results[0].edges) >= 1
+
+
+class TestDirectiveFiltering:
+    """Tests for comment-prefix requirement and test-file skipping."""
+
+    def test_rejects_directive_in_docstring(self, tmp_path: Path) -> None:
+        """@hg: inside a docstring (no comment prefix) should not match."""
+        f = tmp_path / "src" / "linker.py"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(
+            '"""\n'
+            "- ``@hg:route <method> <path>`` — creates a route symbol\n"
+            '"""\n'
+        )
+        sites = scan_file_for_annotations(f, "src/linker.py")
+        assert sites == []
+
+    def test_rejects_directive_in_string_literal(self, tmp_path: Path) -> None:
+        """@hg: inside a string literal (preceded by quote) should not match."""
+        f = tmp_path / "src" / "example.py"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(
+            'description = "@hg:publishes some_channel"\n'
+        )
+        sites = scan_file_for_annotations(f, "src/example.py")
+        assert sites == []
+
+    def test_accepts_bare_start_of_line(self, tmp_path: Path) -> None:
+        """@hg: at start of line (inside block comment body) should match."""
+        f = tmp_path / "src" / "handler.c"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(
+            "/*\n"
+            "@hg:route POST /api/users\n"
+            "*/\n"
+        )
+        sites = scan_file_for_annotations(f, "src/handler.c")
+        assert len(sites) == 1
+        assert sites[0].directive == "route"
+        assert sites[0].argument == "POST /api/users"
+
+    def test_accepts_indented_bare_start_of_line(self, tmp_path: Path) -> None:
+        """Indented @hg: at start of line should match."""
+        f = tmp_path / "src" / "handler.c"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("  @hg:publishes event_name\n")
+        sites = scan_file_for_annotations(f, "src/handler.c")
+        assert len(sites) == 1
+        assert sites[0].directive == "publishes"
+
+    def test_accepts_block_comment_continuation_star(self, tmp_path: Path) -> None:
+        """Java-style block comment continuation (* @hg:...) should match."""
+        f = tmp_path / "src" / "Handler.java"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(
+            "/**\n"
+            " * @hg:subscribes order.placed\n"
+            " */\n"
+        )
+        sites = scan_file_for_annotations(f, "src/Handler.java")
+        assert len(sites) == 1
+        assert sites[0].directive == "subscribes"
+
+    def test_skips_test_files(self, tmp_path: Path) -> None:
+        """Directives in test files should be ignored by link_annotations."""
+        test_file = tmp_path / "tests" / "test_events.ts"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.write_text("// @hg:publishes test.channel\n")
+
+        syms = [_make_sym("tests/test_events.ts")]
+        result = link_annotations(tmp_path, syms)
+        assert len(result.edges) == 0
+        assert len(result.symbols) == 0
+
+    def test_non_test_files_still_scanned(self, tmp_path: Path) -> None:
+        """Non-test files should still be scanned normally."""
+        src_file = tmp_path / "src" / "events.ts"
+        src_file.parent.mkdir(parents=True, exist_ok=True)
+        src_file.write_text("// @hg:route GET /events\n")
+
+        syms = [_make_sym("src/events.ts")]
+        result = link_annotations(tmp_path, syms)
+        assert len(result.symbols) == 1
+        assert result.symbols[0].kind == "route"

@@ -1321,6 +1321,13 @@ def cmd_slice(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    if not result.entry_nodes:
+        print(
+            f"Error: No symbol found matching '{query.entrypoint}'",
+            file=sys.stderr,
+        )
+        return 1
+
     # Rank slice nodes by importance (centrality + tier weighting).
     # For reverse slices, downweight test file callers so production callers
     # rank higher — matches the 90% entrypoint penalty (0.1 multiplier).
