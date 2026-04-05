@@ -7,6 +7,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-04
+
 ### Added
 
 #### TUI screenshot annotation mode (ADR-0020)

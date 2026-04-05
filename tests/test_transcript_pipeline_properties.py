@@ -21,7 +21,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from hypothesis import given, settings
@@ -421,7 +421,7 @@ class TestRecentlyInjected:
             transcript_size = os.path.getsize(transcript)
 
             pb_ids = [f"pb-{i}" for i in range(pb_count)]
-            injections = {pid: transcript_size for pid in pb_ids}
+            injections = dict.fromkeys(pb_ids, transcript_size)
             self._make_state(d, {
                 "injections": injections,
                 "last_compact_offset": 0,
@@ -532,7 +532,6 @@ class TestRecentlyInjected:
         transcript = self._make_transcript(str(tmp_path), [
             {"type": "user_message", "content": "new session"},
         ])
-        transcript_size = os.path.getsize(transcript)
 
         # Write state with OLD session token and large byte offsets
         agent_dir = tmp_path / ".agent"
@@ -806,7 +805,7 @@ class TestSessionResetInvariant:
     # All per-session state files that the pipeline creates.
     # If you add a new .transcript-* file, add it here — the test will
     # verify the glob catches it.
-    PER_SESSION_FILES = [
+    PER_SESSION_FILES: ClassVar[list[str]] = [
         ".transcript-sync.pid",
         ".transcript-sync-state.json",
         ".transcript-poll-state",
@@ -815,7 +814,7 @@ class TestSessionResetInvariant:
     ]
 
     # Files that must NOT be cleared on session start.
-    PERSISTENT_FILES = [
+    PERSISTENT_FILES: ClassVar[list[str]] = [
         ".training-data.jsonl",
         ".current_session_transcript.jsonl",  # Cleared separately by explicit rm
     ]
