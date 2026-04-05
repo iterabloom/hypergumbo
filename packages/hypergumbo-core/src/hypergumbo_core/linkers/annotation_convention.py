@@ -25,9 +25,11 @@ directives create standalone symbols. Confidence is 0.95.
 
 Language Agnostic
 -----------------
-Works in any language with ``//``, ``#``, ``--``, or ``/* */`` style comments.
-The scanner uses a simple regex that matches ``@hg:directive`` anywhere in
-a line — it doesn't need to understand comment syntax per-language.
+Works in any language with ``//``, ``#``, ``--``, ``/* */``, ``;``, ``%``,
+or ``!`` style comments. The scanner requires a recognized comment prefix
+before ``@hg:`` or the directive must appear at the start of a line (for
+bare lines inside block comments). Test files are skipped to avoid matching
+directives embedded in test fixture strings.
 
 Why This Design
 ---------------
@@ -46,6 +48,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..paths import is_test_file
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -58,11 +61,14 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("annotation-convention-linker")
 
-# Matches @hg: directives in comments. Language-agnostic: matches the directive
-# regardless of comment syntax (// # -- /* etc.).
+# Matches @hg: directives in comments. Requires either a recognized comment
+# prefix (// # -- /* * ; ;; % !) or start-of-line (with optional whitespace)
+# before the directive. This prevents matching inside string literals and
+# docstrings while remaining language-agnostic.
 # Group 1: directive name (publishes, subscribes, route, dispatches)
 # Group 2: arguments (channel name, route spec, etc.)
 _HG_DIRECTIVE_PATTERN = re.compile(
+    r"""(?:(?://|/\*|\*|#|--|;;?|%|!)\s*|^\s*)"""
     r"""@hg:(publishes|subscribes|route|dispatches)\s+(.+?)(?:\s*$|\s*\*/)""",
     re.MULTILINE,
 )
@@ -151,6 +157,8 @@ def link_annotations(
 
     for abs_path, rel_path in file_paths:
         if not abs_path.exists():
+            continue
+        if is_test_file(rel_path):
             continue
         sites = scan_file_for_annotations(abs_path, rel_path)
         for site in sites:

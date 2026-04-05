@@ -722,12 +722,51 @@ def test_cmd_slice_auto_runs_analysis(tmp_path: Path, capsys) -> None:
 
     result = cmd_slice(args)
 
-    # Auto-runs analysis and succeeds (even if slice is empty due to no matching entry)
-    assert result == 0
+    # Auto-runs analysis, but "foo" matches no symbol → error exit
+    assert result == 1
 
     _, err = capsys.readouterr()
-    # Should indicate analysis was auto-run
+    # Should indicate analysis was auto-run and entry not found
     assert "No cached results found, running analysis" in err
+    assert "No symbol found matching 'foo'" in err
+
+
+def test_cmd_slice_no_matching_entry_errors(tmp_path: Path, capsys) -> None:
+    """Test slice command reports error when entry spec matches no symbol."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-2:bar:function",
+                "name": "bar",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
+            }
+        ],
+        "edges": [],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "nonexistent"
+    args.out = str(tmp_path / "slice.json")
+    args.input = None
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+
+    result = cmd_slice(args)
+
+    assert result == 1
+    _, err = capsys.readouterr()
+    assert "No symbol found matching 'nonexistent'" in err
 
 
 def test_cmd_slice_reads_existing_results(tmp_path: Path, capsys) -> None:
