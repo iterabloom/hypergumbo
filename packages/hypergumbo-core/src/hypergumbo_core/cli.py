@@ -1271,7 +1271,12 @@ def cmd_slice(args: argparse.Namespace) -> int:
         entry_parts = entry.split(":")
         short_name = entry_parts[-2] if len(entry_parts) >= 2 else entry_parts[0]
         safe_name = _sanitize_filename_part(short_name)
-        out_path = Path(f"slice.{safe_name}.json")
+        # Write to cache dir (like `run`) so slice output doesn't pollute
+        # the repo root or bust the results cache via untracked-file hash.
+        from .sketch_embeddings import _get_results_cache_dir
+
+        cache_dir = _get_results_cache_dir(repo_root)
+        out_path = cache_dir / f"slice.{safe_name}.json"
     else:
         out_path = Path(out_path_arg)
 

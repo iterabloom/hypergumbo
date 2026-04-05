@@ -16,6 +16,8 @@ That's it. Paste the output into ChatGPT, Claude, or any LLM. You get:
 - Entry points (routes, CLI commands, main functions)
 - Source code for important files
 
+Works with Python, Go, Rust, TypeScript, Java, C/C++, Ruby, and [60+ more languages](LANGUAGES.md) — detected automatically.
+
 First run takes 10-60 seconds (analyzing). Subsequent runs are instant (cached).
 
 ---
@@ -62,6 +64,9 @@ hypergumbo explain "UserService" --no-source  # Omit source code
 # Browse symbols by connectivity
 hypergumbo symbols
 hypergumbo symbols -x --limit 50
+
+# See which language analyzers are active for this repo
+hypergumbo catalog
 ```
 
 ---
@@ -85,6 +90,76 @@ List entry points detected in the codebase:
 ```bash
 hypergumbo slice --list-entries
 ```
+
+Only follow actual data dependencies (tighter than structural slicing):
+
+```bash
+hypergumbo slice --entry "processPayment" --dataflow
+```
+
+`--dataflow` follows only write-to-read edges — useful when you want to trace where a value actually flows, not everything structurally reachable.
+
+---
+
+## I/O Boundaries
+
+Find every place your code touches the outside world — filesystem, network, subprocesses, environment variables:
+
+```bash
+hypergumbo io-boundaries
+```
+
+Group results by source file instead of boundary type:
+
+```bash
+hypergumbo io-boundaries --by-file
+```
+
+Filter to a specific boundary type:
+
+```bash
+hypergumbo io-boundaries --boundary net_send
+```
+
+Exclude test files:
+
+```bash
+hypergumbo io-boundaries -x
+```
+
+For polyglot repos, I/O is traced across language boundaries (Python→Rust, Go→C, etc.) automatically. Use `--json` for scripting or CI integration.
+
+---
+
+## Verify Security Claims
+
+Codify what your code should and shouldn't do, then check automatically.
+
+Create a `security-claims.yaml` file:
+
+```yaml
+claims:
+  - id: SC-001
+    text: "No subprocess calls"
+    constraint:
+      boundary: subprocess
+      must_not_exist: true
+
+  - id: TF-001
+    text: "Plaintext must not reach the filesystem"
+    constraint:
+      taint_flow:
+        source_taint: plaintext
+        prohibited_sink_zone: host_fs
+```
+
+Then verify:
+
+```bash
+hypergumbo verify-claims --claims security-claims.yaml
+```
+
+Exit code 1 means violations were found. Use `--json` for CI pipelines.
 
 ---
 
@@ -135,6 +210,30 @@ hypergumbo . -t 8000 > context.md
 
 Then paste `context.md` into Claude Code, Cursor, or Copilot. Source code is included by default.
 
+### Security Audit
+
+```bash
+# What touches the network?
+hypergumbo io-boundaries --boundary net_send
+
+# Enforce it in CI
+hypergumbo verify-claims --claims security-claims.yaml --json
+echo $?  # 0 = all claims confirmed, 1 = violations found
+```
+
+### Polyglot Repo
+
+```bash
+# Analyze a mixed Go/C or Python/Rust repo — no configuration needed
+hypergumbo .
+
+# See which analyzers are active
+hypergumbo catalog
+
+# I/O that crosses FFI boundaries is traced automatically
+hypergumbo io-boundaries
+```
+
 ---
 
 ## Large Codebases
@@ -148,6 +247,9 @@ hypergumbo . -x
 # First-party code only (skip node_modules, vendor, etc.)
 hypergumbo run . --first-party-only
 hypergumbo .  # Uses the filtered results
+
+# Skip specific directories
+hypergumbo . --exclude "generated/**" --exclude "vendor/**"
 ```
 
 ---
@@ -185,3 +287,9 @@ hypergumbo run .
 | What does X call? | `hypergumbo slice --entry "X"` |
 | Browse symbols | `hypergumbo symbols` |
 | Test coverage | `hypergumbo test-coverage` |
+| Find all I/O operations | `hypergumbo io-boundaries` |
+| Filter I/O by type | `hypergumbo io-boundaries --boundary net_send` |
+| Verify security claims | `hypergumbo verify-claims --claims claims.yaml` |
+| Data-dependency slice | `hypergumbo slice --entry "X" --dataflow` |
+| Skip specific paths | `hypergumbo . --exclude "vendor/**"` |
+| See active analyzers | `hypergumbo catalog` |

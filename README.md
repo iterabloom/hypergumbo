@@ -120,6 +120,8 @@ hypergumbo . -t 8000   # detailed with many symbols
 hypergumbo [path]              # Markdown sketch (default)
 hypergumbo run [path]          # Full JSON behavior map
 hypergumbo slice --entry X     # Subgraph from entry point
+hypergumbo io-boundaries       # Find all I/O (filesystem, network, subprocess, env)
+hypergumbo verify-claims ...   # Verify security claims against analysis
 hypergumbo routes [path]       # List HTTP routes
 hypergumbo search <query>      # Search symbols
 hypergumbo symbols [path]      # Browse symbols with connectivity
@@ -130,8 +132,8 @@ hypergumbo catalog             # List analysis passes
 
 Useful flags:
 ```bash
-hypergumbo . -x                # exclude test files (faster)
-hypergumbo . --with-source     # append full source code
+hypergumbo . -x                # exclude test files (cleaner output)
+hypergumbo . --no-source       # omit source code (included by default)
 hypergumbo . --no-progress     # hide progress indicator (on by default)
 hypergumbo --help --all        # comprehensive help for all commands
 ```
@@ -150,6 +152,9 @@ See `hypergumbo --help` for all options.
 - **Language analyzers**: Python, JS/TS, Java, Rust, Go, C/C++, and [many more](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md)
 - **Cross-language linkers**: JNI, HTTP, WebSocket, gRPC, GraphQL, message queues ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md))
 - **Framework patterns**: FastAPI, Django, Rails, Spring Boot, Phoenix, Express, and [many more](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/FRAMEWORKS.md)
+- **I/O boundary detection**: Maps every call chain that reaches the filesystem, network, subprocesses, or environment — across FFI boundaries
+- **Taint-flow analysis**: Traces data from sensitive sources (crypto keys, plaintext) to sinks (filesystem, network), with sanitizer awareness
+- **Supply chain tiers**: Classifies code as first-party, internal, external, or derived for dependency-aware analysis
 
 ## How It Works
 
@@ -157,7 +162,9 @@ See `hypergumbo --help` for all options.
 2. **Analyze**: Run language-specific analyzers to extract symbols and edges
 3. **Link**: Connect symbols across language boundaries (JS fetch → Python route)
 4. **Enrich**: Detect frameworks via YAML pattern matching
-5. **Output**: Generate Markdown sketch or JSON behavior map
+5. **Classify**: Assign supply chain tiers (first-party, internal, external, derived)
+6. **Trace I/O**: Map call chains to I/O boundaries; run taint-flow analysis
+7. **Output**: Generate Markdown sketch or JSON behavior map
 
 ### The Internal Representation
 
