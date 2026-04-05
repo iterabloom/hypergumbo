@@ -18,3 +18,12 @@
     pr_ref:  # 6973
     description: "Phase 1 skeleton. (1) Add tree-sitter-tlaplus~=1.5.0 to packages/hypergumbo-lang-extended1/pyproject.toml dependencies. (2) Add 'hypergumbo_lang_extended1.tlaplus' to ANALYZER_MODULES in __init__.py, after 'lean' in the 'Proof assistants and formal verification' group. Ref: ~/hypergumbo_lab_notebook/tla_plan.md §Files to Modify"  # 6973
     fields: {}  # 6973
+- op: update  # 9cb8
+  at: '2026-04-05T19:30:04Z'  # 9cb8
+  by: agent  # 9cb8
+  actor: jgstern_agent  # 9cb8
+  clock: 2  # 9cb8
+  nonce: 9cb8  # 9cb8
+  set: {}  # 9cb8
+  add:  # 9cb8
+    before: [WI-jarok-bamom-muzor-janib-fuvik-honid-dulok-kosib]  # 9cb8

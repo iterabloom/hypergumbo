@@ -18,3 +18,12 @@
     pr_ref:  # 7332
     description: "Phase 4 (TDD). Extract import edges: (1) EXTENDS: iterate 'identifier_ref' children of 'extends' node. One 'imports' edge per module, confidence 0.95, evidence_type 'extends', target format 'tlaplus:{module}:0-0:module:module'. (2) INSTANCE: find_child_by_type(node, 'identifier_ref') on 'instance' node. 'imports' edge, confidence 0.90, evidence_type 'instance'. Ignore WITH substitutions — only need module name. Source is file node (or enclosing operator if inside local_definition). Write tests: test_detect_extends, test_detect_instance. Ref: ~/hypergumbo_lab_notebook/tla_plan.md §Edge Extraction"  # 7332
     fields: {}  # 7332
+- op: update  # 52fa
+  at: '2026-04-05T19:30:05Z'  # 52fa
+  by: agent  # 52fa
+  actor: jgstern_agent  # 52fa
+  clock: 2  # 52fa
+  nonce: 52fa  # 52fa
+  set: {}  # 52fa
+  add:  # 52fa
+    before: [WI-tilum-bojaz-jipun-dilol-govis-harin-jatad-luzar]  # 52fa

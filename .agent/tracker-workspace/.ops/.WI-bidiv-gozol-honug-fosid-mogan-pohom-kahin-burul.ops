@@ -18,3 +18,12 @@
     pr_ref:  # 1928
     description: "Phase 3 (TDD). Extract: (1) Named theorems from 'theorem' nodes — find_child_by_type(node, 'identifier'), skip if None (unnamed). (2) Named assumptions from 'assumption' nodes — same pattern. (3) LOCAL operators: detect 'local_definition' parent on 'operator_definition', set meta {'is_local': True}. (4) RECURSIVE operators: record names from 'recursive_declaration' -> 'operator_declaration' -> 'identifier' child in a set, then set meta {'is_recursive': True} on the matching 'operator_definition'. (5) PlusCal: detect 'pcal_algorithm' inside 'block_comment', emit single operator symbol with meta {'is_pluscal': True}. Scoping: LET...IN defs are NOT top-level symbols. Write tests: test_detect_named_theorem, test_detect_assumption, test_local_operator_has_meta, test_recursive_operator_meta. Ref: ~/hypergumbo_lab_notebook/tla_plan.md §Symbol Extraction, §Meta flags"  # 1928
     fields: {}  # 1928
+- op: update  # 135b
+  at: '2026-04-05T19:30:05Z'  # 135b
+  by: agent  # 135b
+  actor: jgstern_agent  # 135b
+  clock: 2  # 135b
+  nonce: 135b  # 135b
+  set: {}  # 135b
+  add:  # 135b
+    before: [WI-vokuv-zudap-pilaz-luzig-jifog-nopol-jajuf-vujaz]  # 135b

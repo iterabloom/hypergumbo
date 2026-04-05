@@ -18,3 +18,12 @@
     pr_ref:  # b99e
     description: "Phase 2 (TDD). Extract: (1) operators from 'operator_definition' nodes, name via find_child_by_type(node, 'identifier'). (2) constants from 'constant_declaration' — each 'identifier' child is a separate symbol. (3) variables from 'variable_declaration' — each 'identifier' child is a separate symbol. Key: use 'identifier' nodes (not 'identifier_ref') for declarations. Write tests: test_detect_operator, test_detect_zero_param_operator, test_detect_constants, test_detect_variables. Ref: ~/hypergumbo_lab_notebook/tla_plan.md §Symbol Extraction"  # b99e
     fields: {}  # b99e
+- op: update  # ea68
+  at: '2026-04-05T19:30:05Z'  # ea68
+  by: agent  # ea68
+  actor: jgstern_agent  # ea68
+  clock: 2  # ea68
+  nonce: ea68  # ea68
+  set: {}  # ea68
+  add:  # ea68
+    before: [WI-bidiv-gozol-honug-fosid-mogan-pohom-kahin-burul]  # ea68
