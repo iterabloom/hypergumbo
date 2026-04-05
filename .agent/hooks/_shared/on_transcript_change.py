@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Transcript change hook — two-step LLM pipeline that identifies which
 playbooks/SOPs are relevant to the agent's current goals and injects
 their full content back into the session.
@@ -173,6 +174,16 @@ PLAYBOOKS = [
      "(are findings becoming tracker items and PRs?), recurring concern detection, and "
      "BROAD/DEEP mode balance. Uses a sliding time window (1 week, expanding by 1 week "
      "until at least 2 sessions are found). Produces a structured health verdict."),
+
+    ("self-analysis-dogfooding",
+     ".agent/agent_playbooks_protocols_sops_skills/self-analysis-dogfooding-playbook.md",
+     "Run hypergumbo on its own codebase to validate Python analysis quality and catch "
+     "regressions. Covers: generating baseline artifacts (run, sketch, io-boundaries, "
+     "symbols, routes), inspecting behavior map sanity (orphan rate, key symbols, IO "
+     "boundary categories), validating slices and explain output against known architecture, "
+     "diffing against prior baselines to detect regressions. Useful before refactoring shared "
+     "modules, after changing analyzers or linkers, and when investigating bakeoff signals. "
+     "Does not substitute for bakeoff on diverse repos."),
 ]
 
 
@@ -586,7 +597,7 @@ def main() -> None:
     )
     step2_prompt = (
         f"An agentic coder has the following goal:\n\n{agent_goals}\n\n"
-        "Below are 14 guidance documents. Select ONLY documents that address "
+        "Below are 18 guidance documents. Select ONLY documents that address "
         "something the agent is concretely about to do right now, based on the "
         "goal above. Do NOT select documents that are merely \"generally useful.\" "
         "If the goal does not clearly indicate a specific activity that a document "
