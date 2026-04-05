@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hypergumbo-lang-common"
-version = "2.5.0"
+version = "2.5.1"
 description = "Common domain-specific language analyzers for hypergumbo"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,7 +18,7 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
 ]
 dependencies = [
-  "hypergumbo-core==2.5.0",
+  "hypergumbo-core==2.5.1",
   # Tree-sitter grammars for common languages
   "tree-sitter-haskell~=0.23.1",
   "tree-sitter-ocaml~=0.24.2",
