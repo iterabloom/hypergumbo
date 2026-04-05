@@ -39,13 +39,13 @@ hypergumbo run . --out /tmp/hg-self-analysis.json
 hypergumbo . -t 8000 > /tmp/hg-self-sketch.md
 
 # IO boundaries
-hypergumbo io-boundaries . --json > /tmp/hg-self-io.json
+hypergumbo io-boundaries --json > /tmp/hg-self-io.json
 
 # Routes (should find click CLI commands)
-hypergumbo routes . > /tmp/hg-self-routes.txt
+hypergumbo routes > /tmp/hg-self-routes.txt
 
 # Key symbols
-hypergumbo symbols . --top 30 > /tmp/hg-self-symbols.txt
+hypergumbo symbols --limit 30 -x > /tmp/hg-self-symbols.txt
 ```
 
 ## Step 2: Inspect and Validate
@@ -69,8 +69,8 @@ print(f'Edges: {len(edges)}')
 node_ids = {n['id'] for n in nodes}
 connected = set()
 for e in edges:
-    connected.add(e.get('source'))
-    connected.add(e.get('target'))
+    connected.add(e.get('src'))
+    connected.add(e.get('dst'))
 orphans = node_ids - connected
 print(f'Orphans: {len(orphans)} / {len(nodes)} ({100*len(orphans)/max(len(nodes),1):.0f}%)')
 "
