@@ -1,0 +1,20 @@
+- op: create  # 5ee0
+  at: '2026-04-05T19:27:31Z'  # 5ee0
+  by: agent  # 5ee0
+  actor: jgstern_agent  # 5ee0
+  clock: 1  # 5ee0
+  nonce: 5ee0  # 5ee0
+  data:  # 5ee0
+    kind: work_item  # 5ee0
+    title: "TLA+: analyzer skeleton and module symbol extraction"  # 5ee0
+    status: todo_soft  # 5ee0
+    priority: 3  # 5ee0
+    parent: WI-jurin-sosuj-napav-nizur-fokog-vigob-pitur-zoduf  # 5ee0
+    tags:  # 5ee0
+    - tlaplus  # 5ee0
+    before: []  # 5ee0
+    duplicate_of: []  # 5ee0
+    not_duplicate_of: []  # 5ee0
+    pr_ref:  # 5ee0
+    description: "Phase 1 (TDD). Create packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/tlaplus.py with TLAPlusAnalyzer class (lang='tlaplus', file_patterns=['*.tla'], grammar_module='tree_sitter_tlaplus', create_file_symbols=True). Follow Agda pattern: private _extract_symbols_from_file() and _extract_edges_from_file(), thin class methods, module-level _analyzer, @register_analyzer('tlaplus'). Implement module symbol extraction (AST node type 'module', name via find_child_by_type(node, 'identifier')). Write tests: test_is_tlaplus_tree_sitter_available, test_detect_module. Ref: ~/hypergumbo_lab_notebook/tla_plan.md §Class Structure, §Symbol Extraction"  # 5ee0
+    fields: {}  # 5ee0

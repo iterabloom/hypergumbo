@@ -1,0 +1,20 @@
+- op: create  # 3ad4
+  at: '2026-04-05T19:27:33Z'  # 3ad4
+  by: agent  # 3ad4
+  actor: jgstern_agent  # 3ad4
+  clock: 1  # 3ad4
+  nonce: 3ad4  # 3ad4
+  data:  # 3ad4
+    kind: work_item  # 3ad4
+    title: "TLA+: 100% coverage and package coverage check"  # 3ad4
+    status: todo_soft  # 3ad4
+    priority: 3  # 3ad4
+    parent: WI-jurin-sosuj-napav-nizur-fokog-vigob-pitur-zoduf  # 3ad4
+    tags:  # 3ad4
+    - tlaplus  # 3ad4
+    before: []  # 3ad4
+    duplicate_of: []  # 3ad4
+    not_duplicate_of: []  # 3ad4
+    pr_ref:  # 3ad4
+    description: "Verify 100% test coverage on tlaplus.py. Run pytest for the extended1 package. Run ./scripts/check-package-coverage to verify extended1 at 100% in isolation. Ensure all tests are in packages/hypergumbo-lang-extended1/tests/test_tlaplus.py (same package as code). Mark defensive code paths with '# pragma: no cover'. Ref: ~/hypergumbo_lab_notebook/tla_plan.md §Verification steps 1-3"  # 3ad4
+    fields: {}  # 3ad4

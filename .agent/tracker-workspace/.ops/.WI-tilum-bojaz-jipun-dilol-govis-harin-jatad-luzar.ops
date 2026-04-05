@@ -1,0 +1,20 @@
+- op: create  # 2863
+  at: '2026-04-05T19:27:32Z'  # 2863
+  by: agent  # 2863
+  actor: jgstern_agent  # 2863
+  clock: 1  # 2863
+  nonce: '2863'  # 2863
+  data:  # 2863
+    kind: work_item  # 2863
+    title: "TLA+: reference edge extraction from operator bodies"  # 2863
+    status: todo_soft  # 2863
+    priority: 3  # 2863
+    parent: WI-jurin-sosuj-napav-nizur-fokog-vigob-pitur-zoduf  # 2863
+    tags:  # 2863
+    - tlaplus  # 2863
+    before: []  # 2863
+    duplicate_of: []  # 2863
+    not_duplicate_of: []  # 2863
+    pr_ref:  # 2863
+    description: "Phase 5 (TDD). Walk all 'identifier_ref' descendants of each operator_definition/theorem/assumption. For each, resolver.lookup(name) against global registry. Skip self-references. Deduplicate with seen_ref_pairs: set[tuple[str, str]]. Edge type 'references', confidence 0.80. Key insight: identifier (declarations) vs identifier_ref (references) — the name child of operator_definition is 'identifier', so walking 'identifier_ref' descendants naturally excludes it. Parameter names and LET-bound names won't be in registry so are skipped. Primed variables (x') parse as separate identifier_ref + prime nodes — no stripping needed. Write tests: test_operator_body_references, test_no_self_reference, test_deduplication. Ref: ~/hypergumbo_lab_notebook/tla_plan.md §Edge Extraction, §Reference extraction logic, §Primed variables"  # 2863
+    fields: {}  # 2863
