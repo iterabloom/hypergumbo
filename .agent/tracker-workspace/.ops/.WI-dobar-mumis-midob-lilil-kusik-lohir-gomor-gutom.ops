@@ -1,0 +1,44 @@
+- op: create  # d197
+  at: '2026-04-03T08:25:08Z'  # d197
+  by: agent  # d197
+  actor: jgstern_agent  # d197
+  clock: 1  # d197
+  nonce: d197  # d197
+  data:  # d197
+    kind: work_item  # d197
+    title: "htrac serve: duress module interface (DuressHandler Protocol)"  # d197
+    status: todo_soft  # d197
+    priority: 2  # d197
+    parent:  # d197
+    tags:  # d197
+    - adr-0019  # d197
+    - auth  # d197
+    before: []  # d197
+    duplicate_of: []  # d197
+    not_duplicate_of: []  # d197
+    pr_ref:  # d197
+    description: "Define DuressHandler Protocol: on_duress_login(session, context) called once per duress session, filter_response(session, response) called on every response. User implements their own handler (gitignored, not tracked). Loaded from config.yaml auth.duress_module at startup. Timeout enforcement to prevent timing side-channel. See docs/adr/0019-remote-access-transport.md §Duress session behavior."  # d197
+    fields: {}  # d197
+- op: update  # 64f1
+  at: '2026-04-03T08:26:56Z'  # 64f1
+  by: agent  # 64f1
+  actor: jgstern_agent  # 64f1
+  clock: 2  # 64f1
+  nonce: 64f1  # 64f1
+  set:  # 64f1
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 64f1
+- op: update  # 0c57
+  at: '2026-04-03T19:25:29Z'  # 0c57
+  by: agent  # 0c57
+  actor: jgstern_agent  # 0c57
+  clock: 3  # 0c57
+  nonce: 0c57  # 0c57
+  set:  # 0c57
+    status: done  # 0c57
+- op: discuss  # e520
+  at: '2026-04-03T19:25:29Z'  # e520
+  by: agent  # e520
+  actor: jgstern_agent  # e520
+  clock: 4  # e520
+  nonce: e520  # e520
+  message: "Implemented in PR #104 (pending merge). DuressHandler Protocol, NullDuressHandler, load_duress_handler(), call_on_duress_login() with timeout. 12 tests."  # e520

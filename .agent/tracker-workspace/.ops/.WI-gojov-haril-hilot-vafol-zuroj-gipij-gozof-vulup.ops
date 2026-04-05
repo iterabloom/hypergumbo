@@ -1,0 +1,44 @@
+- op: create  # 8f55
+  at: '2026-04-03T08:25:09Z'  # 8f55
+  by: agent  # 8f55
+  actor: jgstern_agent  # 8f55
+  clock: 1  # 8f55
+  nonce: 8f55  # 8f55
+  data:  # 8f55
+    kind: work_item  # 8f55
+    title: "BlockSuite frontend: WebSocket client for live state sync"  # 8f55
+    status: todo_soft  # 8f55
+    priority: 2  # 8f55
+    parent:  # 8f55
+    tags:  # 8f55
+    - adr-0019  # 8f55
+    - frontend  # 8f55
+    before: []  # 8f55
+    duplicate_of: []  # 8f55
+    not_duplicate_of: []  # 8f55
+    pr_ref:  # 8f55
+    description: "WebSocket client connecting to htrac serve. Handle state_snapshot on connect/reconnect, event messages for live updates, command messages for user actions. Responsive layout: full canvas on iPad/desktop, triage-optimized on phone. See docs/adr/0019-remote-access-transport.md §WebSocket protocol, §Web frontend."  # 8f55
+    fields: {}  # 8f55
+- op: update  # 6879
+  at: '2026-04-03T08:26:56Z'  # 6879
+  by: agent  # 6879
+  actor: jgstern_agent  # 6879
+  clock: 2  # 6879
+  nonce: '6879'  # 6879
+  set:  # 6879
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 6879
+- op: update  # d6da
+  at: '2026-04-04T19:14:28Z'  # d6da
+  by: agent  # d6da
+  actor: jgstern_agent  # d6da
+  clock: 3  # d6da
+  nonce: d6da  # d6da
+  set:  # d6da
+    status: done  # d6da
+- op: discuss  # f988
+  at: '2026-04-04T19:14:28Z'  # f988
+  by: agent  # f988
+  actor: jgstern_agent  # f988
+  clock: 4  # f988
+  nonce: f988  # f988
+  message: "Implemented in PR #135. WebSocket client connects to /ws with exponential backoff reconnect, handles state_snapshot/event/command protocol. Lit TrackerApp component renders two-panel responsive layout with live state updates."  # f988

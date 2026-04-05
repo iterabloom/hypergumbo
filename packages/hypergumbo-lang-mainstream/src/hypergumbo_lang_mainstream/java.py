@@ -247,9 +247,9 @@ def _extract_java_return_type_name(signature: str | None) -> str | None:
     """Extract simple return type name from a Java method signature.
 
     Parses signatures like "(int a, int b) Client" and returns "Client".
-    Only handles simple (non-generic, non-array, non-primitive) return types.
-    Returns None for void methods (no return type in signature),
-    primitive types, array types, and generic types.
+    For generic types like "(int a) Response<User>", extracts the outer type
+    name "Response".  Returns None for void methods (no return type in
+    signature), primitive types, and array types.
 
     Args:
         signature: Method signature string from Symbol.signature.
@@ -264,10 +264,15 @@ def _extract_java_return_type_name(signature: str | None) -> str | None:
     if paren_idx < 0 or paren_idx == len(signature) - 1:
         return None
     ret_part = signature[paren_idx + 1:].strip()
-    # Only handle simple class names (identifiers starting with uppercase)
-    # Excludes: int, boolean, byte[], List<T>, int[]
+    # Handle simple class names (identifiers starting with uppercase)
     if ret_part and ret_part.isidentifier() and ret_part[0].isupper():
         return ret_part
+    # Handle generic types: extract outer type name before '<'
+    # e.g., Response<User> -> Response, CompletionStage<Response> -> CompletionStage
+    if "<" in ret_part:
+        outer = ret_part[:ret_part.index("<")]
+        if outer and outer.isidentifier() and outer[0].isupper():
+            return outer
     return None
 
 

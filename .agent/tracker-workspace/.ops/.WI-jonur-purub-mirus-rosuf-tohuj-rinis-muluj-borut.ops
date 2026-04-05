@@ -1,0 +1,34 @@
+- op: create  # 126b
+  at: '2026-03-30T21:48:45Z'  # 126b
+  by: agent  # 126b
+  actor: jgstern_agent  # 126b
+  clock: 1  # 126b
+  nonce: 126b  # 126b
+  data:  # 126b
+    kind: work_item  # 126b
+    title: "Add process_exec IO boundary type (os/exec.Command, execabs.Command)"  # 126b
+    status: todo_soft  # 126b
+    priority: 3  # 126b
+    parent:  # 126b
+    tags: []  # 126b
+    before: []  # 126b
+    duplicate_of: []  # 126b
+    not_duplicate_of: []  # 126b
+    pr_ref:  # 126b
+    description: "Bakeoff assessment (deep-20260330-164900, age): age's plugin system uses execabs.Command but no process_exec boundary type exists. Add os/exec.Command, execabs.Command, subprocess.Popen (already partially covered) to IO catalogs."  # 126b
+    fields: {}  # 126b
+- op: update  # 1c9a
+  at: '2026-03-30T21:57:55Z'  # 1c9a
+  by: agent  # 1c9a
+  actor: jgstern_agent  # 1c9a
+  clock: 2  # 1c9a
+  nonce: 1c9a  # 1c9a
+  set:  # 1c9a
+    status: done  # 1c9a
+- op: discuss  # edff
+  at: '2026-03-30T21:57:55Z'  # edff
+  by: agent  # edff
+  actor: jgstern_agent  # edff
+  clock: 3  # edff
+  nonce: edff  # edff
+  message: "Fixed in PR #2644. Added golang.org/x/sys/execabs (Command, CommandContext, LookPath) to Go subprocess IO catalog. os/exec was already present — execabs wraps it with PATH-attack prevention."  # edff

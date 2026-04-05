@@ -32,3 +32,11 @@
   clock: 3  # 7796
   nonce: '7796'  # 7796
   message: "Fixed in PR #2146. Root cause: react.yaml used decorator matching but createRoot() is a call expression, not a decorator. Fix: JS/TS analyzer emits UsageContext records for SPA bootstrap calls, react.yaml updated to usage-based patterns."  # 7796
+- op: update  # f1f3
+  at: '2026-03-25T04:23:59Z'  # f1f3
+  by: agent  # f1f3
+  actor: jgstern_agent  # f1f3
+  clock: 4  # f1f3
+  nonce: f1f3  # f1f3
+  set:  # f1f3
+    parent: INV-risag-zokap-fizon-vovuk-sifok-nihob-guzis-kilav  # f1f3

@@ -1,0 +1,34 @@
+- op: create  # 458b
+  at: '2026-03-30T21:46:54Z'  # 458b
+  by: agent  # 458b
+  actor: jgstern_agent  # 458b
+  clock: 1  # 458b
+  nonce: 458b  # 458b
+  data:  # 458b
+    kind: work_item  # 458b
+    title: "Tier-1 slice drops nodes reachable only via dispatches_to edges"  # 458b
+    status: todo_soft  # 458b
+    priority: 3  # 458b
+    parent:  # 458b
+    tags: []  # 458b
+    before: []  # 458b
+    duplicate_of: []  # 458b
+    not_duplicate_of: []  # 458b
+    pr_ref:  # 458b
+    description: "Bakeoff assessment (deep-20260330-164900, age): tier-1 forward slice silently drops 11 tier-1 nodes reachable via dispatches_to from interface methods. The tier filter likely prunes before resolving interface dispatch. Fix: resolve dispatches_to edges before applying tier filter in slice BFS."  # 458b
+    fields: {}  # 458b
+- op: update  # 78b8
+  at: '2026-03-30T21:51:04Z'  # 78b8
+  by: agent  # 78b8
+  actor: jgstern_agent  # 78b8
+  clock: 2  # 78b8
+  nonce: 78b8  # 78b8
+  set:  # 78b8
+    status: done  # 78b8
+- op: discuss  # cbea
+  at: '2026-03-30T21:51:04Z'  # cbea
+  by: agent  # cbea
+  actor: jgstern_agent  # cbea
+  clock: 3  # cbea
+  nonce: cbea  # cbea
+  message: "Not a bug. The 11 'dropped' nodes are at depth 8-9, and tier1 slice uses hops=7 (vs full slice hops=10). They're excluded by the hop limit, not the tier filter. The tier filter correctly defaults missing supply_chain_tier to 1. Closing as invalid."  # cbea

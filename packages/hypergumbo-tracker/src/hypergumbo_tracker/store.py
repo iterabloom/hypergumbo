@@ -919,8 +919,16 @@ class Store:
                     else "todo_hard"
                 )
 
-        # Check per-kind allowed_statuses
+        # Check per-kind allowed_statuses (reject deprecated with helpful message)
         if kind_config.allowed_statuses is not None and status not in kind_config.allowed_statuses:
+            if (
+                kind_config.deprecated_statuses is not None
+                and status in kind_config.deprecated_statuses
+            ):
+                raise ValueError(
+                    f"Status '{status}' is deprecated for kind '{kind}'. "
+                    f"Use one of: {kind_config.allowed_statuses}"
+                )
             raise ValueError(
                 f"Status '{status}' is not allowed for kind '{kind}'. "
                 f"Allowed: {kind_config.allowed_statuses}"
@@ -1077,7 +1085,7 @@ class Store:
                     f"Status '{new_status}' requires human authority."
                 )
 
-        # Check per-kind allowed_statuses
+        # Check per-kind allowed_statuses (reject deprecated with helpful message)
         if set_fields and "status" in set_fields:
             ops = _parse_ops_file(item_path)
             compiled = compile_ops(ops, item_id)
@@ -1085,6 +1093,15 @@ class Store:
             if kind_config and kind_config.allowed_statuses is not None:
                 new_status = set_fields["status"]
                 if new_status not in kind_config.allowed_statuses:
+                    if (
+                        kind_config.deprecated_statuses is not None
+                        and new_status in kind_config.deprecated_statuses
+                    ):
+                        raise ValueError(
+                            f"Status '{new_status}' is deprecated for kind "
+                            f"'{compiled.kind}'. "
+                            f"Use one of: {kind_config.allowed_statuses}"
+                        )
                     raise ValueError(
                         f"Status '{new_status}' is not allowed for kind "
                         f"'{compiled.kind}'. "

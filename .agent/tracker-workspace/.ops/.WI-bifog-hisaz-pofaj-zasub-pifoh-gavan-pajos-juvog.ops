@@ -1,0 +1,103 @@
+- op: create  # b855
+  at: '2026-03-23T14:14:09Z'  # b855
+  by: agent  # b855
+  actor: jgstern_agent  # b855
+  clock: 1  # b855
+  nonce: b855  # b855
+  data:  # b855
+    kind: work_item  # b855
+    title: "ADR-0017 Phase 2b: Rust extractor hard patterns (borrow aliases, ref/ref mut, macros)"  # b855
+    status: todo_soft  # b855
+    priority: 3  # b855
+    parent:  # b855
+    tags:  # b855
+    - adr-0017  # b855
+    - phase-2b  # b855
+    before: []  # b855
+    duplicate_of: []  # b855
+    not_duplicate_of: []  # b855
+    pr_ref:  # b855
+    description: "Extensions to Rust def/use extractor (~300-500 additional lines). Borrow alias tracking (let y = &mut x; *y = val → mutates x). ref/ref mut bindings in match arms. Macro invocation analysis beyond conservative overapproximation. Prioritized by Phase 2 precision measurement. See ADR-0017 §1c."  # b855
+    fields: {}  # b855
+- op: update  # 0c71
+  at: '2026-03-23T14:17:41Z'  # 0c71
+  by: agent  # 0c71
+  actor: jgstern_agent  # 0c71
+  clock: 2  # 0c71
+  nonce: 0c71  # 0c71
+  set:  # 0c71
+    status: needs_human_review  # 0c71
+- op: discuss  # 4682
+  at: '2026-03-23T14:17:41Z'  # 4682
+  by: agent  # 4682
+  actor: jgstern_agent  # 4682
+  clock: 3  # 4682
+  nonce: '4682'  # 4682
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 4682
+- op: update  # 20ef
+  at: '2026-03-25T04:15:55Z'  # 20ef
+  by: agent  # 20ef
+  actor: jgstern_agent  # 20ef
+  clock: 4  # 20ef
+  nonce: 20ef  # 20ef
+  set:  # 20ef
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 20ef
+- op: update  # 021d
+  at: '2026-03-25T07:50:12Z'  # 021d
+  by: agent  # 021d
+  actor: jgstern_agent  # 021d
+  clock: 5  # 021d
+  nonce: 021d  # 021d
+  set:  # 021d
+    status: todo_soft  # 021d
+- op: discuss  # 2634
+  at: '2026-03-25T07:50:12Z'  # 2634
+  by: agent  # 2634
+  actor: jgstern_agent  # 2634
+  clock: 6  # 2634
+  nonce: '2634'  # 2634
+  message: "ADR-0017 accepted. Phase 2b. Retitled: Rust def/use extractor (was 'hard patterns only')."  # 2634
+- op: update  # 5d3e
+  at: '2026-03-26T09:02:01Z'  # 5d3e
+  by: agent  # 5d3e
+  actor: jgstern_agent  # 5d3e
+  clock: 7  # 5d3e
+  nonce: 5d3e  # 5d3e
+  set:  # 5d3e
+    priority: 4  # 5d3e
+- op: discuss  # ed88
+  at: '2026-03-26T09:02:01Z'  # ed88
+  by: agent  # ed88
+  actor: jgstern_agent  # ed88
+  clock: 8  # ed88
+  nonce: ed88  # ed88
+  message: "Deprioritized to P4. Borrow aliases and ref/ref mut are niche Rust precision improvements. Phase 3 function summaries (WI-bizom) have broader interprocedural impact — better ROI for DEEP mode."  # ed88
+- op: update  # 58fe
+  at: '2026-03-26T21:57:24Z'  # 58fe
+  by: agent  # 58fe
+  actor: jgstern_agent  # 58fe
+  clock: 9  # 58fe
+  nonce: 58fe  # 58fe
+  set:  # 58fe
+    status: done  # 58fe
+- op: discuss  # dd3d
+  at: '2026-03-26T21:57:24Z'  # dd3d
+  by: agent  # dd3d
+  actor: jgstern_agent  # dd3d
+  clock: 10  # dd3d
+  nonce: dd3d  # dd3d
+  message: "Implemented dereference assignments (*ptr = val), ref/ref mut patterns in match arms, and borrow tracking in let bindings. PR pending."  # dd3d
+- op: discuss  # 97a4
+  at: '2026-03-30T15:04:56Z'  # 97a4
+  by: human  # 97a4
+  actor: jgstern  # 97a4
+  clock: 11  # 97a4
+  nonce: 97a4  # 97a4
+  message: "Please check the PR number for this."  # 97a4
+- op: discuss  # a2b4
+  at: '2026-03-30T15:35:45Z'  # a2b4
+  by: agent  # a2b4
+  actor: jgstern_agent  # a2b4
+  clock: 12  # a2b4
+  nonce: a2b4  # a2b4
+  message: "The initial Rust def/use extractor was PR #2582 (feat(cfg): Rust def/use extractor for core patterns, ADR-0017 §1c Phase 2, commit b8fc35d1). The borrow alias and ref pattern extension was PR #2604 (feat(rust): borrow alias tracking and ref patterns, commit 03dee372)."  # a2b4

@@ -1,0 +1,21 @@
+- op: create  # 86f5
+  at: '2026-04-03T08:25:05Z'  # 86f5
+  by: agent  # 86f5
+  actor: jgstern_agent  # 86f5
+  clock: 1  # 86f5
+  nonce: 86f5  # 86f5
+  data:  # 86f5
+    kind: work_item  # 86f5
+    title: "ADR-0019 Part A: Remote access MVP (Tor + native app + BlockSuite)"  # 86f5
+    status: needs_human_review  # 86f5
+    priority: 1  # 86f5
+    parent:  # 86f5
+    tags:  # 86f5
+    - adr-0019  # 86f5
+    - epic  # 86f5
+    before: []  # 86f5
+    duplicate_of: []  # 86f5
+    not_duplicate_of: []  # 86f5
+    pr_ref:  # 86f5
+    description: "Epic for ADR-0019 Part A — remote access to hypergumbo-tracker from a phone over Tor. Core value: see what agents are doing from a phone. Components: htrac serve (Python/Starlette), Tor onion service, native iOS/macOS app (Swift), four-factor auth, BlockSuite web frontend, WebSocket live sync. See docs/adr/0019-remote-access-transport.md."  # 86f5
+    fields: {}  # 86f5

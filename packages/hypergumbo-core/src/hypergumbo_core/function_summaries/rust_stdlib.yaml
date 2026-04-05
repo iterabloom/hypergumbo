@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017 §4b: Function summaries for Rust stdlib/common crates
+#
+# Declares data flow through Rust stdlib and common crate functions
+# for interprocedural taint propagation.
+
+summaries:
+  - function: "Vec::push"
+    param_to_self: {0: true}
+    mutates_self: true
+
+  - function: "Vec::extend"
+    param_to_self: {0: true}
+    mutates_self: true
+
+  - function: "String::from"
+    param_to_return: {0: true}
+
+  - function: "String::as_str"
+    param_to_return: {}
+    # Return inherits taint from self
+
+  - function: "String::push_str"
+    param_to_self: {0: true}
+    mutates_self: true
+
+  - function: "std::fs::write"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "std::fs::read_to_string"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "aes_gcm::Aes256Gcm::encrypt"
+    param_to_return: {1: true}
+    sanitizes:
+      1:
+        from: plaintext
+        to: ciphertext
+
+  - function: "aes_gcm::Aes256Gcm::decrypt"
+    param_to_return: {1: true}
+
+  - function: "serde_json::to_string"
+    param_to_return: {0: true}
+
+  - function: "serde_json::from_str"
+    param_to_return: {0: true}

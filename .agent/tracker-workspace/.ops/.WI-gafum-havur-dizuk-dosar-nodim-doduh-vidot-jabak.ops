@@ -1,0 +1,74 @@
+- op: create  # 6509
+  at: '2026-03-23T14:14:10Z'  # 6509
+  by: agent  # 6509
+  actor: jgstern_agent  # 6509
+  clock: 1  # 6509
+  nonce: '6509'  # 6509
+  data:  # 6509
+    kind: work_item  # 6509
+    title: "ADR-0017: Update spec §2 non-goal for dataflow analysis scope"  # 6509
+    status: todo_soft  # 6509
+    priority: 4  # 6509
+    parent:  # 6509
+    tags:  # 6509
+    - adr-0017  # 6509
+    - docs  # 6509
+    before: []  # 6509
+    duplicate_of: []  # 6509
+    not_duplicate_of: []  # 6509
+    pr_ref:  # 6509
+    description: "When ADR-0017 is accepted, update docs/hypergumbo-spec.md §2 non-goal from 'we never do this' to 'we don't attempt this for all languages; extractors add it where demand justifies it.' See ADR-0017 Context §1."  # 6509
+    fields: {}  # 6509
+- op: update  # 983d
+  at: '2026-03-23T14:17:41Z'  # 983d
+  by: agent  # 983d
+  actor: jgstern_agent  # 983d
+  clock: 2  # 983d
+  nonce: 983d  # 983d
+  set:  # 983d
+    status: needs_human_review  # 983d
+- op: discuss  # 29b9
+  at: '2026-03-23T14:17:41Z'  # 29b9
+  by: agent  # 29b9
+  actor: jgstern_agent  # 29b9
+  clock: 3  # 29b9
+  nonce: 29b9  # 29b9
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 29b9
+- op: update  # b8e4
+  at: '2026-03-25T04:15:55Z'  # b8e4
+  by: agent  # b8e4
+  actor: jgstern_agent  # b8e4
+  clock: 4  # b8e4
+  nonce: b8e4  # b8e4
+  set:  # b8e4
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # b8e4
+- op: update  # 7def
+  at: '2026-03-25T07:53:27Z'  # 7def
+  by: agent  # 7def
+  actor: jgstern_agent  # 7def
+  clock: 5  # 7def
+  nonce: 7def  # 7def
+  set:  # 7def
+    status: todo_soft  # 7def
+- op: discuss  # 4223
+  at: '2026-03-25T07:53:27Z'  # 4223
+  by: agent  # 4223
+  actor: jgstern_agent  # 4223
+  clock: 6  # 4223
+  nonce: '4223'  # 4223
+  message: "ADR-0017 accepted. Update spec non-goal."  # 4223
+- op: update  # c1ad
+  at: '2026-03-25T14:06:17Z'  # c1ad
+  by: agent  # c1ad
+  actor: jgstern_agent  # c1ad
+  clock: 7  # c1ad
+  nonce: c1ad  # c1ad
+  set:  # c1ad
+    status: done  # c1ad
+- op: discuss  # ca47
+  at: '2026-03-25T14:06:17Z'  # ca47
+  by: agent  # ca47
+  actor: jgstern_agent  # ca47
+  clock: 8  # ca47
+  nonce: ca47  # ca47
+  message: "Updated in PR #2549 (merged). §2 non-goal changed from blanket dataflow exclusion to per-language approach. §3 verify-claims documents taint_flow constraint type."  # ca47

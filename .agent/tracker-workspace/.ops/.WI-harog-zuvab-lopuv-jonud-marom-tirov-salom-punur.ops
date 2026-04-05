@@ -47,3 +47,11 @@
   clock: 5  # fb39
   nonce: fb39  # fb39
   message: "Investigation shows tier classification IS working. Correct JSON path is supply_chain.tier (nested), not supply_chain_tier (top-level). candle: 8495 tier-1, 2054 tier-2, 434 tier-3. guacamole-client: 3154 tier-1, 2712 tier-2, 234 tier-3. codex-acp: 193 tier-1, 27 tier-3. All three LLM assessment claims (no cross-file edges, no trait impl, no tier classification) were factually wrong. Earlier verification also used wrong key path."  # fb39
+- op: update  # 8335
+  at: '2026-03-25T04:23:59Z'  # 8335
+  by: agent  # 8335
+  actor: jgstern_agent  # 8335
+  clock: 6  # 8335
+  nonce: '8335'  # 8335
+  set:  # 8335
+    parent: INV-mogud-jurul-fisiv-jupaz-sujos-hufis-dadov-luzar  # 8335

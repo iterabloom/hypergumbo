@@ -107,3 +107,11 @@
   clock: 13  # a6de
   nonce: a6de  # a6de
   message: "Struct designated initializer function pointer tracking merged in PR #2402. Detects .field = func patterns in C struct initializers and creates dispatches_to edges. Records field name in meta for future indirect call resolution. Combined with existing dispatch table detection, this should reduce the C orphan rate in callback-heavy codebases like haproxy."  # a6de
+- op: update  # 7f79
+  at: '2026-03-25T04:23:57Z'  # 7f79
+  by: agent  # 7f79
+  actor: jgstern_agent  # 7f79
+  clock: 14  # 7f79
+  nonce: 7f79  # 7f79
+  set:  # 7f79
+    parent: INV-bolil-mirid-pakim-lujun-kivas-vifuk-butof-vihif  # 7f79

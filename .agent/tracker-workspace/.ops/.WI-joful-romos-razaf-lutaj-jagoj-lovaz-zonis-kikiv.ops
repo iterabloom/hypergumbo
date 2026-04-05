@@ -1,0 +1,44 @@
+- op: create  # 1e3c
+  at: '2026-04-03T08:25:07Z'  # 1e3c
+  by: agent  # 1e3c
+  actor: jgstern_agent  # 1e3c
+  clock: 1  # 1e3c
+  nonce: 1e3c  # 1e3c
+  data:  # 1e3c
+    kind: work_item  # 1e3c
+    title: "htrac serve: WebAuthn/FIDO2 registration and authentication (py_webauthn)"  # 1e3c
+    status: todo_soft  # 1e3c
+    priority: 2  # 1e3c
+    parent:  # 1e3c
+    tags:  # 1e3c
+    - adr-0019  # 1e3c
+    - auth  # 1e3c
+    before: []  # 1e3c
+    duplicate_of: []  # 1e3c
+    not_duplicate_of: []  # 1e3c
+    pr_ref:  # 1e3c
+    description: "Implement /auth/webauthn endpoint: server issues challenge, client (native app) sends signed assertion, py_webauthn verifies. YubiKey registration flow. Proves physical possession of registered hardware token. See docs/adr/0019-remote-access-transport.md §Authentication factor 2."  # 1e3c
+    fields: {}  # 1e3c
+- op: update  # 1f6e
+  at: '2026-04-03T08:26:55Z'  # 1f6e
+  by: agent  # 1f6e
+  actor: jgstern_agent  # 1f6e
+  clock: 2  # 1f6e
+  nonce: 1f6e  # 1f6e
+  set:  # 1f6e
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 1f6e
+- op: update  # 0ac8
+  at: '2026-04-03T23:07:34Z'  # 0ac8
+  by: agent  # 0ac8
+  actor: jgstern_agent  # 0ac8
+  clock: 3  # 0ac8
+  nonce: 0ac8  # 0ac8
+  set:  # 0ac8
+    status: done  # 0ac8
+- op: discuss  # 9c27
+  at: '2026-04-03T23:07:34Z'  # 9c27
+  by: agent  # 9c27
+  actor: jgstern_agent  # 9c27
+  clock: 4  # 9c27
+  nonce: 9c27  # 9c27
+  message: "Implemented in PR #116. WebAuthnManager with challenge generation, in-memory credential storage, ES256/RS256 support. 12 tests."  # 9c27

@@ -1548,6 +1548,157 @@ public class AccountResource {
         assert route_concept.get("path") == "/JaxrsResource.ACCOUNTS_PATH/{id}"
 
 
+    def test_jaxrs_path_with_named_value_kwarg(self, tmp_path: Path) -> None:
+        """JAX-RS @Path(value="/users") should extract path from kwargs.value."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
+
+        java_file = tmp_path / "UserResource.java"
+        java_file.write_text("""
+@Path(value = "/users")
+public class UserResource {
+    @GET
+    public List<User> getUsers() {
+        return userService.findAll();
+    }
+
+    @GET
+    @Path(value = "/{id}")
+    public User getById(@PathParam("id") Long id) {
+        return userService.findById(id);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        enriched = enrich_symbols(result.symbols, {"jax-rs"})
+
+        # Class should have resource_path with /users from kwargs.value
+        cls = next((s for s in enriched if s.kind == "class"), None)
+        assert cls is not None
+        path_concept = next(
+            (c for c in cls.meta.get("concepts", []) if c.get("concept") == "resource_path"),
+            None,
+        )
+        assert path_concept is not None
+        assert path_concept.get("path") == "/users"
+
+        # getUsers() should inherit class path
+        get_method = next(
+            (s for s in enriched if s.kind == "method" and "getUsers" in s.name), None
+        )
+        assert get_method is not None
+        route_concept = next(
+            (c for c in get_method.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route_concept is not None
+        assert route_concept.get("path") == "/users"
+
+        # getById() should combine class + method paths from kwargs.value
+        get_by_id = next(
+            (s for s in enriched if s.kind == "method" and "getById" in s.name), None
+        )
+        assert get_by_id is not None
+        route_concept = next(
+            (c for c in get_by_id.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route_concept is not None
+        assert route_concept.get("path") == "/users/{id}"
+
+    def test_jaxrs_subresource_locator_with_generic_return_type(self, tmp_path: Path) -> None:
+        """Subresource locator returning a generic type should chain paths.
+
+        Methods like `Class<TokenEndpoint> token()` should have return_type
+        extracted so subresource locator path chaining works.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
+
+        clear_pattern_cache()
+
+        java_file = tmp_path / "ProtocolService.java"
+        java_file.write_text("""
+@Path("/protocol")
+public class ProtocolService {
+    @Path("token")
+    public TokenEndpoint token() {
+        return new TokenEndpoint();
+    }
+}
+""")
+        target_file = tmp_path / "TokenEndpoint.java"
+        target_file.write_text("""
+public class TokenEndpoint {
+    @GET
+    @Path("access")
+    public String getAccessToken() { return null; }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        enriched = enrich_symbols(result.symbols, {"jax-rs"})
+
+        # The target method should have the full chained path
+        target_method = next(
+            (s for s in enriched if s.kind == "method" and "getAccessToken" in s.name), None
+        )
+        assert target_method is not None
+        route_concept = next(
+            (c for c in target_method.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route_concept is not None
+        assert route_concept.get("path") == "/protocol/token/access"
+
+
+class TestJavaGenericReturnTypeExtraction:
+    """Tests for extracting return_type from methods with generic return types.
+
+    Methods returning generic types like Response<T>, CompletionStage<Response>,
+    etc. should have the outer type name stored in return_type metadata.
+    """
+
+    def test_generic_return_type_extracts_outer_name(self, tmp_path: Path) -> None:
+        """Response<User> should store return_type='Response'."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Service.java"
+        java_file.write_text("""
+public class Service {
+    public Response<User> getUser() { return null; }
+    public CompletionStage<Response> asyncGet() { return null; }
+    public Optional<String> findName() { return null; }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        user_method = next(
+            (s for s in result.symbols if "getUser" in s.name and s.kind == "method"), None
+        )
+        assert user_method is not None
+        assert user_method.meta is not None
+        assert user_method.meta.get("return_type") == "Response"
+
+        async_method = next(
+            (s for s in result.symbols if "asyncGet" in s.name and s.kind == "method"), None
+        )
+        assert async_method is not None
+        assert async_method.meta is not None
+        assert async_method.meta.get("return_type") == "CompletionStage"
+
+        find_method = next(
+            (s for s in result.symbols if "findName" in s.name and s.kind == "method"), None
+        )
+        assert find_method is not None
+        assert find_method.meta is not None
+        assert find_method.meta.get("return_type") == "Optional"
+
+
 class TestJavaModifiersCapture:
     """Tests for Java method modifier capture in the modifiers field."""
 

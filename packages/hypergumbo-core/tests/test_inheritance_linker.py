@@ -606,6 +606,44 @@ class TestInheritanceLinker:
         assert result.edges[0].dst == "sym:Logging"
         assert result.edges[0].edge_type == "implements"
 
+    def test_objc_protocol_creates_implements_edge(self) -> None:
+        """ObjC class conforming to a protocol creates implements edge."""
+        protocol = Symbol(
+            id="objc:MBProgressHUD.h:10-15:MBProgressHUDDelegate:protocol",
+            name="MBProgressHUDDelegate",
+            kind="protocol",
+            language="objective-c",
+            path="/MBProgressHUD.h",
+            span=Span(start_line=10, end_line=15, start_col=0, end_col=0),
+            origin="objective-c-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        cls = Symbol(
+            id="objc:ViewController.m:1-20:ViewController:class",
+            name="ViewController",
+            kind="class",
+            language="objective-c",
+            path="/ViewController.m",
+            span=Span(start_line=1, end_line=20, start_col=0, end_col=0),
+            origin="objective-c-v1",
+            origin_run_id="test-run",
+            meta={"base_classes": ["UIViewController", "MBProgressHUDDelegate"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[protocol, cls],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+
+        # Should have at least 1 implements edge to the protocol
+        implements_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(implements_edges) == 1
+        assert implements_edges[0].dst == protocol.id
+        assert implements_edges[0].src == cls.id
+
     def test_trait_extends_trait(self) -> None:
         """Trait extending another trait creates implements edge."""
         base_trait = Symbol(

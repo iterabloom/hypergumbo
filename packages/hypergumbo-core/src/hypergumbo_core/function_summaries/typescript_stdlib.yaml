@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017 §4b: Function summaries for TypeScript/JavaScript stdlib
+#
+# Declares data flow through stdlib functions for interprocedural taint
+# propagation. Each entry describes which parameters flow to the return
+# value, which mutate self/receiver, and sanitization effects.
+
+summaries:
+  - function: "Buffer.from"
+    param_to_return: {0: true}
+
+  - function: "JSON.stringify"
+    param_to_return: {0: true}
+
+  - function: "JSON.parse"
+    param_to_return: {0: true}
+
+  - function: "String.prototype.slice"
+    param_to_return: {}
+    mutates_self: false
+    # Return value inherits taint from self (receiver), not params
+
+  - function: "Array.prototype.map"
+    param_to_return: {0: true}
+    callback:
+      param_index: 1
+      caller_to_callback_args:
+        "0": [0]
+      callback_return_to_outer_return: true
+
+  - function: "Array.prototype.forEach"
+    param_to_return: {}
+    callback:
+      param_index: 1
+      caller_to_callback_args:
+        "0": [0]
+      callback_return_to_outer_return: false
+
+  - function: "Array.prototype.filter"
+    param_to_return: {0: true}
+    callback:
+      param_index: 1
+      caller_to_callback_args:
+        "0": [0]
+      callback_return_to_outer_return: false
+
+  - function: "Promise.prototype.then"
+    param_to_return: {}
+    callback:
+      param_index: 0
+      caller_to_callback_args:
+        "self": [0]
+      callback_return_to_outer_return: true
+
+  - function: "console.log"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "crypto.subtle.encrypt"
+    param_to_return: {1: true}
+    sanitizes:
+      1:
+        from: plaintext
+        to: ciphertext
+
+  - function: "crypto.subtle.decrypt"
+    param_to_return: {1: true}

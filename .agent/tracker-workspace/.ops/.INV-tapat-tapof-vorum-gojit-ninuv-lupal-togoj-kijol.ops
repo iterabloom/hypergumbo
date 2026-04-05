@@ -1,0 +1,103 @@
+- op: create  # a67b
+  at: '2026-03-30T09:26:41Z'  # a67b
+  by: agent  # a67b
+  actor: jgstern_agent  # a67b
+  clock: 1  # a67b
+  nonce: a67b  # a67b
+  data:  # a67b
+    kind: invariant  # a67b
+    title: "IO boundary classifier matches bare method names without receiver type verification"  # a67b
+    status: violated  # a67b
+    priority: 1  # a67b
+    parent:  # a67b
+    tags: []  # a67b
+    before: []  # a67b
+    duplicate_of: []  # a67b
+    not_duplicate_of: []  # a67b
+    pr_ref:  # a67b
+    description: "Identified across 3 DEEP bakeoffs (57 repos). Go: .String()→gin.Context.String, .Run()→gin.Engine.Run. Rust: .put()→reqwest, .read_to_end()→TcpStream. Python: .write()→asyncio.StreamWriter. Java: .put()→RestTemplate.put. Sessions: deep-20260330-035757, -043124, -044609."  # a67b
+    fields:  # a67b
+      statement: "IO boundary classification must verify the receiver type (or at minimum the containing module/import), not just the method name, because common method names (.String, .Run, .read, .put, .write) appear on unrelated types and produce false positives"  # a67b
+      root_cause: "match_edge_to_primitive in io_boundary.py matches callee name against IO primitive catalog without checking the receiver type or import context"  # a67b
+- op: update  # bfba
+  at: '2026-03-30T09:54:40Z'  # bfba
+  by: agent  # bfba
+  actor: jgstern_agent  # bfba
+  clock: 2  # bfba
+  nonce: bfba  # bfba
+  set:  # bfba
+    status: holding  # bfba
+- op: discuss  # bfa7
+  at: '2026-03-30T09:54:40Z'  # bfa7
+  by: agent  # bfa7
+  actor: jgstern_agent  # bfa7
+  clock: 3  # bfa7
+  nonce: bfa7  # bfa7
+  message: "Fixed in PR #2628. Added ambiguous_names lists to 10 IO primitive catalogs (Go, Rust, Python, Java, C, JS, Erlang, Haskell, ObjC). 20 new tests. Bare method names no longer match without module context. Holding: needs re-validation via bakeoff to confirm false positive reduction."  # bfa7
+- op: update  # 4b3d
+  at: '2026-03-30T15:13:29Z'  # 4b3d
+  by: human  # 4b3d
+  actor: jgstern  # 4b3d
+  clock: 4  # 4b3d
+  nonce: 4b3d  # 4b3d
+  set:  # 4b3d
+    status: violated  # 4b3d
+- op: update  # 39f3
+  at: '2026-03-30T15:14:01Z'  # 39f3
+  by: human  # 39f3
+  actor: jgstern  # 39f3
+  clock: 5  # 39f3
+  nonce: 39f3  # 39f3
+  set:  # 39f3
+    priority: 2  # 39f3
+- op: discuss  # 4d8a
+  at: '2026-03-30T15:14:07Z'  # 4d8a
+  by: human  # 4d8a
+  actor: jgstern  # 4d8a
+  clock: 6  # 4d8a
+  nonce: 4d8a  # 4d8a
+  message: "if something needs re-validation then it shouldn't be \"holding\"; it should be presumed \"violated\"."  # 4d8a
+- op: update  # 572f
+  at: '2026-03-30T15:30:37Z'  # 572f
+  by: agent  # 572f
+  actor: jgstern_agent  # 572f
+  clock: 7  # 572f
+  nonce: 572f  # 572f
+  set:  # 572f
+    status: violated  # 572f
+- op: discuss  # b71a
+  at: '2026-03-30T15:30:37Z'  # b71a
+  by: agent  # b71a
+  actor: jgstern_agent  # b71a
+  clock: 8  # b71a
+  nonce: b71a  # b71a
+  message: "Corrected per human feedback: holding is wrong if re-validation is needed. Status set back to violated. PR #2628 added ambiguous_names to 10 catalogs. Validation bakeoff (deep-20260330-060143) showed age net_send 4→0, net_recv 14→0; polars net_send 285→89. But the fix needs full curriculum re-run to confirm no regressions and measure overall impact before closing."  # b71a
+- op: discuss  # 462c
+  at: '2026-03-30T15:36:33Z'  # 462c
+  by: agent  # 462c
+  actor: jgstern_agent  # 462c
+  clock: 9  # 462c
+  nonce: 462c  # 462c
+  message: "Agreed. Status reverted to violated. The ambiguous_names fix (PR #2628) is deployed and validation bakeoff (deep-20260330-060143) shows significant improvement (age: net_send 4→0, net_recv 14→0; polars: net_send 285→89, 69% reduction). But full curriculum re-run needed to confirm no regressions before closing. Will re-run the polyglot-IO curriculum against current code in the next DEEP session."  # 462c
+- op: discuss  # 3dc3
+  at: '2026-03-30T18:21:47Z'  # 3dc3
+  by: agent  # 3dc3
+  actor: jgstern_agent  # 3dc3
+  clock: 10  # 3dc3
+  nonce: 3dc3  # 3dc3
+  message: "Additional concurrent test: pushing tracker ops closer to auto-sync threshold while auto-pr polls CI."  # 3dc3
+- op: update  # 77d1
+  at: '2026-03-30T20:58:10Z'  # 77d1
+  by: agent  # 77d1
+  actor: jgstern_agent  # 77d1
+  clock: 11  # 77d1
+  nonce: 77d1  # 77d1
+  set:  # 77d1
+    status: holding  # 77d1
+- op: discuss  # 6b5c
+  at: '2026-03-30T20:58:10Z'  # 6b5c
+  by: agent  # 6b5c
+  actor: jgstern_agent  # 6b5c
+  clock: 12  # 6b5c
+  nonce: 6b5c  # 6b5c
+  message: "Validated in DEEP bakeoff session deep-20260330-164900. age: access_mode_coverage 41%, io_tag_rate 8.5% (net_send/net_recv false positives eliminated per prior session). polars: access_mode_coverage 24.9%, io_tag_rate 0.5% (69% reduction from pre-fix). go-sqlite3: cross_language_io_pct 100%. All repos show correct ambiguous_names filtering. Holding: monitor for regressions in future bakeoffs."  # 6b5c

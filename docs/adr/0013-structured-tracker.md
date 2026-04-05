@@ -1627,7 +1627,7 @@ tracker-validate:
     always() &&
     needs.changes.outputs.tracker_data == 'true' &&
     needs.stop-the-line.result != 'failure'
-  runs-on: codeberg-small-lazy
+  runs-on: self-hosted
   steps:
     - uses: actions/checkout@v4
     - name: Set up Python
@@ -1696,7 +1696,7 @@ Add a lightweight parallel test job alongside `test-core`, `test-mainstream`, `t
 test-tracker:
   needs: [changes]
   if: needs.changes.outputs.code == 'true'
-  runs-on: codeberg-small-lazy
+  runs-on: self-hosted
   outputs:
     coverage: ${{ steps.tests.outputs.coverage }}
   steps:

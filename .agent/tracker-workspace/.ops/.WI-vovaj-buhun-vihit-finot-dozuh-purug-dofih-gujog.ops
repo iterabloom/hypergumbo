@@ -36,3 +36,11 @@
   clock: 3  # 69d1
   nonce: 69d1  # 69d1
   message: "Merged PR #2254. Added Phase 5: Rust→TS event direction (emit/emit_all/emit_to → listen/once). Creates ipc_event edges. Supports Tauri v1 and v2 APIs. 8 tests, 100% coverage."  # 69d1
+- op: update  # a095
+  at: '2026-03-25T04:23:57Z'  # a095
+  by: agent  # a095
+  actor: jgstern_agent  # a095
+  clock: 4  # a095
+  nonce: a095  # a095
+  set:  # a095
+    parent: INV-hikak-guvof-mugog-mulup-suful-nipab-hikib-rapan  # a095

@@ -39,3 +39,11 @@
   clock: 4  # 1baf
   nonce: 1baf  # 1baf
   message: "Fixed in PR #1846. Root cause: format_tiered_behavior_map received unfiltered all_symbols including boundary nodes. When no high-confidence entrypoints existed, boundary nodes dominated connectivity selection. Fix adds external_boundary check to eligible_symbols filter."  # 1baf
+- op: update  # 4e2f
+  at: '2026-03-25T04:23:59Z'  # 4e2f
+  by: agent  # 4e2f
+  actor: jgstern_agent  # 4e2f
+  clock: 5  # 4e2f
+  nonce: 4e2f  # 4e2f
+  set:  # 4e2f
+    parent: INV-posun-jovup-pusug-fuhuj-dotuh-sojum-sorom-kutug  # 4e2f

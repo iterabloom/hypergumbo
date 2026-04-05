@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017: Built-in taint sanitizer catalog — encryption.
+#
+# Encryption functions that convert plaintext to ciphertext.
+# After passing through a sanitizer, data is safe for untrusted zones.
+description: "Encryption converts plaintext to ciphertext"
+transforms:
+  - input_taint: plaintext
+    output_taint: ciphertext
+    functions:
+      python:
+        - cryptography.fernet.Fernet.encrypt
+        - cryptography.hazmat.primitives.ciphers.aead.AESGCM.encrypt
+        - cryptography.hazmat.primitives.ciphers.aead.AESCCM.encrypt
+        - cryptography.hazmat.primitives.ciphers.aead.ChaCha20Poly1305.encrypt
+      typescript:
+        - crypto.subtle.encrypt
+      rust:
+        - aes_gcm::Aes256Gcm::encrypt
+        - ring::aead::SealingKey::seal_in_place
+      go:
+        - crypto/cipher.AEAD.Seal
+      java:
+        - javax.crypto.Cipher.doFinal
+
+  - input_taint: key_material
+    output_taint: derived_key
+    functions:
+      typescript:
+        - crypto.subtle.deriveKey
+        - crypto.subtle.deriveBits
+      rust:
+        - hkdf::Hkdf::expand

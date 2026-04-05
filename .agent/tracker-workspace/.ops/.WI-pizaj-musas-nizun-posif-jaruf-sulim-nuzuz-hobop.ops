@@ -18,3 +18,11 @@
     justification:  # 1225
     description: "The dev branch protection required status check pattern is currently '*CI* (pull_request)'. This was set as a quick fix to allow both 'CI / pytest (pull_request)' (from ci.yml) and 'Tracker CI / tracker-ci (pull_request)' (from tracker-ci.yml) to satisfy the merge requirement. The wildcard is too broad — any status context containing 'CI' would satisfy it, which could mask real failures if a new workflow accidentally matches. Options: (1) rename both jobs to share a specific context like 'gate (pull_request)' and use that as the pattern, (2) have tracker-ci.yml post a status with the exact same context as ci.yml's pytest job, (3) use a more targeted glob like 'CI / pytest*' plus 'Tracker CI*'. This requires human action in the Codeberg repo settings UI."  # 1225
     fields: {}  # 1225
+- op: update  # 211b
+  at: '2026-03-25T04:15:55Z'  # 211b
+  by: agent  # 211b
+  actor: jgstern_agent  # 211b
+  clock: 2  # 211b
+  nonce: 211b  # 211b
+  set:  # 211b
+    parent: INV-rahib-gobop-zozum-kopil-noguh-tifof-nibol-dudup  # 211b

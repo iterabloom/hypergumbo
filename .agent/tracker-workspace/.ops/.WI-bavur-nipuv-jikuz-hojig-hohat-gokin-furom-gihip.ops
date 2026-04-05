@@ -1,0 +1,44 @@
+- op: create  # 2028
+  at: '2026-04-03T08:25:06Z'  # 2028
+  by: agent  # 2028
+  actor: jgstern_agent  # 2028
+  clock: 1  # 2028
+  nonce: '2028'  # 2028
+  data:  # 2028
+    kind: work_item  # 2028
+    title: "htrac serve: core engine integration (TrackerSet + command handlers)"  # 2028
+    status: todo_soft  # 2028
+    priority: 2  # 2028
+    parent:  # 2028
+    tags:  # 2028
+    - adr-0019  # 2028
+    - server  # 2028
+    before: []  # 2028
+    duplicate_of: []  # 2028
+    not_duplicate_of: []  # 2028
+    pr_ref:  # 2028
+    description: "Wire htrac serve to the existing TrackerSet with flock-based locking. Command handlers (add, update, discuss, lock, etc.) callable from HTTP/WebSocket adapter. Same core as CLI/TUI — no separate state. Event bus: state changes push to all subscribers. See docs/adr/0019-remote-access-transport.md §Server architecture."  # 2028
+    fields: {}  # 2028
+- op: update  # fea5
+  at: '2026-04-03T08:26:55Z'  # fea5
+  by: agent  # fea5
+  actor: jgstern_agent  # fea5
+  clock: 2  # fea5
+  nonce: fea5  # fea5
+  set:  # fea5
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # fea5
+- op: update  # f226
+  at: '2026-04-03T16:21:54Z'  # f226
+  by: agent  # f226
+  actor: jgstern_agent  # f226
+  clock: 3  # f226
+  nonce: f226  # f226
+  set:  # f226
+    status: done  # f226
+- op: discuss  # aaec
+  at: '2026-04-03T16:21:54Z'  # aaec
+  by: agent  # aaec
+  actor: jgstern_agent  # aaec
+  clock: 4  # aaec
+  nonce: aaec  # aaec
+  message: "Implemented in PR #98. REST API endpoints: GET /api/items, GET /api/items/{id}, GET /api/ready, POST /api/items, POST /api/items/{id}/update, POST /api/items/{id}/discuss. Wired to TrackerSet — same core engine as CLI/TUI."  # aaec

@@ -32,3 +32,11 @@
   clock: 3  # 8642
   nonce: '8642'  # 8642
   message: "Investigation shows cross-file call resolution is working well. Average cross-file ratio is ~57% across 23 repos (range: 7-86%). The LLM assessments claiming 'no cross-file edges' were inaccurate. candle: 71%, zed: 66%, livekit: 86%, tmux: 69%. Only codex-acp (7%) shows weak cross-file resolution, likely due to small codebase with many external crate calls."  # 8642
+- op: update  # 30ca
+  at: '2026-03-25T04:24:00Z'  # 30ca
+  by: agent  # 30ca
+  actor: jgstern_agent  # 30ca
+  clock: 4  # 30ca
+  nonce: 30ca  # 30ca
+  set:  # 30ca
+    parent: INV-kobad-kopil-dagan-nusan-fazag-vumig-ridut-rokih  # 30ca

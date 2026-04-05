@@ -24,3 +24,55 @@
   clock: 2  # c7bd
   nonce: c7bd  # c7bd
   message: "Design task: call edges need directional access_mode annotations. Currently, the calls section was removed from all dataflow patterns because it incorrectly annotated call edges as 'read' (breaking forward slices). The correct approach: annotate the CALLER side as 'write' (writing the return value) and the CALLEE side as 'read' (reading parameters). This requires the annotation engine to understand call direction from the AST context. Medium effort."  # c7bd
+- op: update  # 1fee
+  at: '2026-03-21T06:28:17Z'  # 1fee
+  by: agent  # 1fee
+  actor: jgstern_agent  # 1fee
+  clock: 3  # 1fee
+  nonce: 1fee  # 1fee
+  set:  # 1fee
+    status: needs_human_review  # 1fee
+- op: discuss  # 8a7e
+  at: '2026-03-21T06:28:17Z'  # 8a7e
+  by: agent  # 8a7e
+  actor: jgstern_agent  # 8a7e
+  clock: 4  # 8a7e
+  nonce: 8a7e  # 8a7e
+  message: "Current implementation (PR #2470) is correct: call edges left unannotated for graceful degradation, assignment/return/borrow edges annotated with directional access_mode. The directional call-site annotation idea would be a future enhancement but isn't needed for correct slicing. Flagging for human review to decide if this is worth pursuing or can be closed as wont_do."  # 8a7e
+- op: discuss  # 2fa9
+  at: '2026-03-23T08:53:19Z'  # 2fa9
+  by: human  # 2fa9
+  actor: jgstern  # 2fa9
+  clock: 5  # 2fa9
+  nonce: 2fa9  # 2fa9
+  message: "please reassess this in light of ADR-0017"  # 2fa9
+- op: discuss  # 530d
+  at: '2026-03-23T14:18:43Z'  # 530d
+  by: agent  # 530d
+  actor: jgstern_agent  # 530d
+  clock: 6  # 530d
+  nonce: 530d  # 530d
+  message: "Reassessed in light of ADR-0017. Directional call-site annotations are now subsumed by the taint analysis design: ADR-0017 §3a/§4a introduces function summaries (param_to_return, param_to_calls) that provide strictly more precise information than access_mode annotations on call edges. The DDG-backed taint propagation knows exactly which parameter flows to which return value via reaching-def analysis — access_mode on call edges would be a coarser approximation. ADR-0017 Consequences also notes the precedence rule: DDG edges supersede access_mode annotations for taint propagation. For languages without DDG coverage, the structural fallback (call-graph BFS) doesn't benefit from directional call annotations either — it treats all call edges as potential propagation paths in both directions. Recommendation: close as wontfix — the use case this would have addressed is better served by ADR-0017 Phase 3 function summaries. If ADR-0017 is not accepted, this could be reconsidered, but it would be lower value than the alternatives."  # 530d
+- op: update  # 8fad
+  at: '2026-03-25T04:15:54Z'  # 8fad
+  by: agent  # 8fad
+  actor: jgstern_agent  # 8fad
+  clock: 7  # 8fad
+  nonce: 8fad  # 8fad
+  set:  # 8fad
+    parent: INV-kagob-salob-nuhim-lilut-sural-lapis-jokif-kivif  # 8fad
+- op: update  # f97a
+  at: '2026-03-25T07:37:24Z'  # f97a
+  by: agent  # f97a
+  actor: jgstern_agent  # f97a
+  clock: 8  # f97a
+  nonce: f97a  # f97a
+  set:  # f97a
+    status: wont_do  # f97a
+- op: discuss  # 6ac3
+  at: '2026-03-25T07:37:24Z'  # 6ac3
+  by: agent  # 6ac3
+  actor: jgstern_agent  # 6ac3
+  clock: 9  # 6ac3
+  nonce: 6ac3  # 6ac3
+  message: "Subsumed by ADR-0017 Phase 3 function summaries. Function summaries (param_to_return, param_to_calls) provide strictly more precise information than access_mode annotations on call edges."  # 6ac3

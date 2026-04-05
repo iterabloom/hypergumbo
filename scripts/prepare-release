@@ -141,6 +141,19 @@ if [[ "$CURRENT_BRANCH" != "dev" ]]; then
 fi
 echo -e "${GREEN}✓${NC} On dev branch"
 
+# Flush pending tracker ops so they don't dirty the tree
+if [[ -x "$SCRIPT_DIR/tracker" ]] && [[ -d ".agent/tracker-workspace/.ops" ]]; then
+    PENDING=$(find .agent/tracker-workspace/.ops -name '*.ops' -newer .agent/tracker-workspace/.ops 2>/dev/null | head -1)
+    if [[ -n "$PENDING" ]] || [[ -n "$(git status --porcelain -- '.agent/tracker-workspace/.ops/')" ]]; then
+        echo "  Flushing pending tracker ops..."
+        if ! $DRY_RUN; then
+            "$SCRIPT_DIR/tracker" sync --timeout 120 || echo -e "${YELLOW}!${NC} Tracker sync failed (non-fatal) — continuing"
+        else
+            echo -e "${BLUE}[dry-run]${NC} scripts/tracker sync"
+        fi
+    fi
+fi
+
 # Check for uncommitted changes
 if [[ -n "$(git status --porcelain)" ]]; then
     echo -e "${RED}Error: Uncommitted changes detected${NC}"
@@ -235,6 +248,17 @@ echo ""
 echo "━━━ Step 4: Commit changes ━━━"
 # ─────────────────────────────────────────────────────────────
 
+# Create feature branch before committing — dev is protected and auto-pr
+# requires a feature branch.  Branching here keeps dev clean if something
+# fails in later steps.
+RELEASE_BRANCH="release/v$VERSION"
+if ! $DRY_RUN; then
+    git checkout -b "$RELEASE_BRANCH"
+    echo -e "${GREEN}✓${NC} Created branch: $RELEASE_BRANCH"
+else
+    echo -e "${BLUE}[dry-run]${NC} Would create branch: $RELEASE_BRANCH"
+fi
+
 COMMIT_MSG="chore: release $VERSION"
 if [[ -n "$TRACKER_VERSION" ]]; then
     COMMIT_MSG="chore: release $VERSION (tracker $TRACKER_VERSION)"
@@ -274,12 +298,8 @@ echo "━━━ Step 6: Push release commit to dev ━━━"
 # ─────────────────────────────────────────────────────────────
 
 if ! $DRY_RUN; then
-    # dev is a protected branch — push via refs/for/ (creates a PR that
-    # CI validates and we can then merge).  auto-pr handles the full
-    # push → poll → merge cycle but requires a feature branch, so we
-    # use the lightweight refs/for/ approach here and merge immediately.
-    RELEASE_BRANCH="release-${VERSION}-prep"
-    git checkout -b "$RELEASE_BRANCH"
+    # Feature branch was created in Step 4.  auto-pr pushes, polls CI,
+    # and merges to dev, then switches back to dev and cleans up the branch.
     if ./scripts/auto-pr; then
         echo -e "${GREEN}✓${NC} Release commit merged to dev via auto-pr"
     else
@@ -287,7 +307,6 @@ if ! $DRY_RUN; then
         echo "Try manually: ./scripts/auto-pr or git push origin HEAD:refs/for/dev/$RELEASE_BRANCH"
         exit 1
     fi
-    # auto-pr switches back to dev after merge
 else
     echo -e "${BLUE}[dry-run]${NC} Would push release commit to dev via auto-pr"
 fi

@@ -1,0 +1,74 @@
+- op: create  # 1930
+  at: '2026-03-23T14:14:08Z'  # 1930
+  by: agent  # 1930
+  actor: jgstern_agent  # 1930
+  clock: 1  # 1930
+  nonce: '1930'  # 1930
+  data:  # 1930
+    kind: work_item  # 1930
+    title: "ADR-0017 Phase 2: Field-sensitivity lite for taint propagation"  # 1930
+    status: todo_soft  # 1930
+    priority: 3  # 1930
+    parent:  # 1930
+    tags:  # 1930
+    - adr-0017  # 1930
+    - phase-2  # 1930
+    before: []  # 1930
+    duplicate_of: []  # 1930
+    not_duplicate_of: []  # 1930
+    pr_ref:  # 1930
+    description: "Limited field sensitivity: x tainted → x.field, x.method(), x[key] inherit taint. obj.field = tainted → obj.field tainted but obj.other_field not. Aliased refs via assignment chain covered by reaching defs. No indirect aliasing (container.get). Covers CRDT method-chain pattern. See ADR-0017 §7a."  # 1930
+    fields: {}  # 1930
+- op: update  # 3823
+  at: '2026-03-23T14:17:40Z'  # 3823
+  by: agent  # 3823
+  actor: jgstern_agent  # 3823
+  clock: 2  # 3823
+  nonce: '3823'  # 3823
+  set:  # 3823
+    status: needs_human_review  # 3823
+- op: discuss  # de93
+  at: '2026-03-23T14:17:40Z'  # de93
+  by: agent  # de93
+  actor: jgstern_agent  # de93
+  clock: 3  # de93
+  nonce: de93  # de93
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # de93
+- op: update  # c86f
+  at: '2026-03-25T04:15:55Z'  # c86f
+  by: agent  # c86f
+  actor: jgstern_agent  # c86f
+  clock: 4  # c86f
+  nonce: c86f  # c86f
+  set:  # c86f
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # c86f
+- op: update  # c00e
+  at: '2026-03-25T07:50:03Z'  # c00e
+  by: agent  # c00e
+  actor: jgstern_agent  # c00e
+  clock: 5  # c00e
+  nonce: c00e  # c00e
+  set:  # c00e
+    status: todo_soft  # c00e
+- op: discuss  # fb7d
+  at: '2026-03-25T07:50:03Z'  # fb7d
+  by: agent  # fb7d
+  actor: jgstern_agent  # fb7d
+  clock: 6  # fb7d
+  nonce: fb7d  # fb7d
+  message: "ADR-0017 accepted. Phase 2."  # fb7d
+- op: update  # 775a
+  at: '2026-03-26T09:01:25Z'  # 775a
+  by: agent  # 775a
+  actor: jgstern_agent  # 775a
+  clock: 7  # 775a
+  nonce: 775a  # 775a
+  set:  # 775a
+    status: done  # 775a
+- op: discuss  # cde7
+  at: '2026-03-26T09:01:25Z'  # cde7
+  by: agent  # cde7
+  actor: jgstern_agent  # cde7
+  clock: 8  # cde7
+  nonce: cde7  # cde7
+  message: "Implemented in PR #2586. is_field_tainted() with field-sensitivity lite rules. x tainted → x.field inherits. obj.field tainted ≠ obj tainted. 64 tests, 100% coverage."  # cde7

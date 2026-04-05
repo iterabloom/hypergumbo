@@ -1,0 +1,80 @@
+- op: create  # f8b6
+  at: '2026-03-31T09:07:51Z'  # f8b6
+  by: agent  # f8b6
+  actor: jgstern_agent  # f8b6
+  clock: 1  # f8b6
+  nonce: f8b6  # f8b6
+  data:  # f8b6
+    kind: work_item  # f8b6
+    title: "Screenshot capture: keypress-triggered save_screenshot() to SVG"  # f8b6
+    status: needs_human_review  # f8b6
+    priority: 2  # f8b6
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # f8b6
+    tags:  # f8b6
+    - adr-0020  # f8b6
+    before: []  # f8b6
+    duplicate_of: []  # f8b6
+    not_duplicate_of: []  # f8b6
+    pr_ref:  # f8b6
+    description: "Bind a key (e.g. S) in the TUI to call Textual save_screenshot(), writing the current screen as SVG to .agent/screenshots/<item-id>-<timestamp>.svg. Preserves original SVG alongside any future annotated version."  # f8b6
+    fields: {}  # f8b6
+- op: update  # 7672
+  at: '2026-03-31T09:18:41Z'  # 7672
+  by: agent  # 7672
+  actor: jgstern_agent  # 7672
+  clock: 2  # 7672
+  nonce: '7672'  # 7672
+  set: {}  # 7672
+  add:  # 7672
+    before: [WI-zozos-polot-pokor-vukut-tolud-ramis-hupum-vakih]  # 7672
+- op: update  # f7c7
+  at: '2026-03-31T09:28:23Z'  # f7c7
+  by: agent  # f7c7
+  actor: jgstern_agent  # f7c7
+  clock: 3  # f7c7
+  nonce: f7c7  # f7c7
+  set:  # f7c7
+    status: todo_soft  # f7c7
+- op: discuss  # 4867
+  at: '2026-03-31T09:29:57Z'  # 4867
+  by: human  # 4867
+  actor: jgstern  # 4867
+  clock: 4  # 4867
+  nonce: '4867'  # 4867
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 4867
+- op: discuss  # 780a
+  at: '2026-03-31T09:40:25Z'  # 780a
+  by: agent  # 780a
+  actor: jgstern_agent  # 780a
+  clock: 5  # 780a
+  nonce: 780a  # 780a
+  message: "Acknowledged. Will reference ADR-0020 when implementing."  # 780a
+- op: update  # 9b60
+  at: '2026-04-02T10:22:57Z'  # 9b60
+  by: agent  # 9b60
+  actor: jgstern_agent  # 9b60
+  clock: 6  # 9b60
+  nonce: 9b60  # 9b60
+  set:  # 9b60
+    status: done  # 9b60
+- op: discuss  # f711
+  at: '2026-04-02T10:22:57Z'  # f711
+  by: agent  # f711
+  actor: jgstern_agent  # f711
+  clock: 7  # f711
+  nonce: f711  # f711
+  message: "Implemented in PR on branch jgstern-agent/feat/tui-annotation-mode. Screenshot capture with annotation overlay, mouse rect drawing, label placement, SVG injection."  # f711
+- op: discuss  # de07
+  at: '2026-04-02T14:46:59Z'  # de07
+  by: human  # de07
+  actor: jgstern  # de07
+  clock: 8  # de07
+  nonce: de07  # de07
+  message: "PR number/commit please?"  # de07
+- op: discuss  # 4fe0
+  at: '2026-04-03T05:06:17Z'  # 4fe0
+  by: agent  # 4fe0
+  actor: jgstern_agent  # 4fe0
+  clock: 9  # 4fe0
+  nonce: 4fe0  # 4fe0
+  message: "Screenshot capture was implemented as part of the annotation mode commit: 9caf0e03 (feat(tui): annotation mode for screenshot markup (ADR-0020 Part 1)). Screenshot save path fixes in follow-up commits: 80ec044e, c3be9758, 452cd8af, dd185320. All merged to dev via auto-pr."  # 4fe0

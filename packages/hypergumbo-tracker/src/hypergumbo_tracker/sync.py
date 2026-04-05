@@ -92,7 +92,8 @@ class SyncResult:
         pr_url: Full URL to the merged PR.
         files_synced: Number of tracker files committed.
         error: Human-readable error if success is False.
-        exit_code: Process exit code (0=success, 1=user error, 2=timeout).
+        exit_code: Process exit code (0=success, 1=user error, 2=timeout,
+            3=stale-pending / hung runner).
     """
 
     success: bool
@@ -354,6 +355,7 @@ def _poll_ci(
     head_sha: str,
     poll_interval: int = 10,
     timeout: int = 600,
+    stale_pending_threshold: int = 90,
 ) -> str:
     """Poll CI status until terminal state or timeout.
 
@@ -362,17 +364,27 @@ def _poll_ci(
     only one remains pending for >60s, treat it as success (Scenario A from
     the auto-pr design).
 
+    Stale-pending detection: if no job has left the pending state after
+    ``stale_pending_threshold`` seconds, returns ``"stale_pending"`` so the
+    caller can retry (close PR, repush).  Tracker CI completes in ~1 min,
+    so 90s of all-pending is a strong signal of a hung runner or dispatch
+    failure.
+
     Args:
         api_base: Forgejo API base URL.
         token: API bearer token.
         head_sha: Commit SHA to poll status for.
         poll_interval: Seconds between polls.
         timeout: Maximum seconds to wait.
+        stale_pending_threshold: Seconds before declaring stale-pending.
 
     Returns:
-        ``"success"``, ``"failure"``, or ``"timeout"``.
+        ``"success"``, ``"failure"``, ``"timeout"``, or
+        ``"stale_pending"``.
     """
     deadline = time.monotonic() + timeout
+    start = time.monotonic()
+    any_job_started = False
 
     while time.monotonic() < deadline:
         status_code, body = _api_call(
@@ -398,6 +410,17 @@ def _poll_ci(
         if state == "failure" or state == "error":
             return "failure"
 
+        # Track whether any job has left pending state
+        if not any_job_started:
+            if any(s.get("status") != "pending" for s in statuses):
+                any_job_started = True
+            elif time.monotonic() - start >= stale_pending_threshold:
+                _log(
+                    f"stale-pending: no CI jobs started after "
+                    f"{stale_pending_threshold}s — possible hung runner"
+                )
+                return "stale_pending"
+
         # Sole-holdout bypass: if all but one context succeeded and we've
         # been waiting long enough, treat as success
         if len(statuses) > 1:
@@ -415,6 +438,17 @@ def _poll_ci(
 def _log(msg: str) -> None:
     """Write a sync diagnostic message to stderr and the sync log file."""
     write_log(msg)
+
+
+def _close_pr(api_base: str, token: str, pr_num: int) -> bool:
+    """Close a PR without merging (used to cancel hung CI runs)."""
+    status, _ = _api_call(
+        "PATCH",
+        f"{api_base}/pulls/{pr_num}",
+        token,
+        data={"state": "closed"},
+    )
+    return status == 200
 
 
 def _check_pr_merged(
@@ -568,14 +602,20 @@ def pending_sync_lines(repo_root: Path) -> int:
     """
     total = 0
 
-    # 0. Determine diff base: prefer origin/dev (the sync target),
-    #    fall back to HEAD if origin/dev doesn't exist.
+    # 0. Determine diff base: prefer the authoritative remote's dev branch.
+    #    During failover (.git/CI_FAILOVER_ACTIVE exists), selfh is
+    #    authoritative and origin is stale — diffing against origin/dev
+    #    inflates the pending count with ops already synced via selfh.
     diff_base = "HEAD"
-    rev_result = _git(
-        repo_root, "rev-parse", "--verify", "origin/dev", check=False,
-    )
-    if rev_result.returncode == 0 and rev_result.stdout.strip():
-        diff_base = "origin/dev"
+    failover_active = (repo_root / ".git" / "CI_FAILOVER_ACTIVE").is_file()
+    remotes = ["selfh/dev", "origin/dev"] if failover_active else ["origin/dev"]
+    for remote_ref in remotes:
+        rev_result = _git(
+            repo_root, "rev-parse", "--verify", remote_ref, check=False,
+        )
+        if rev_result.returncode == 0 and rev_result.stdout.strip():
+            diff_base = remote_ref
+            break
 
     # 1. Tracked changes (staged + unstaged) relative to diff base
     numstat_args = ["diff", diff_base, "--numstat", "--"]
@@ -968,14 +1008,62 @@ def do_sync(
         # 11. Update gate file with PR number
         gate_file.write_text(f"{pr_num}\n")
 
-        # 12. Poll CI
-        ci_result = _poll_ci(
-            preflight.api_base,
-            preflight.forgejo_token,
-            head_sha,
-            poll_interval=ci_poll_interval,
-            timeout=ci_timeout,
-        )
+        # 12. Poll CI (with hung-run retry)
+        max_hung_retries = 2
+        hung_backoff = 30  # seconds; shorter than auto-pr (tracker CI is fast)
+        ci_result = ""
+        for hung_attempt in range(max_hung_retries + 1):
+            ci_result = _poll_ci(
+                preflight.api_base,
+                preflight.forgejo_token,
+                head_sha,
+                poll_interval=ci_poll_interval,
+                timeout=ci_timeout,
+            )
+            if ci_result != "stale_pending":
+                break
+            if hung_attempt >= max_hung_retries:
+                break
+            # Hung-run retry: close PR, wait, repush to trigger fresh CI
+            wait_secs = hung_backoff * (2 ** hung_attempt)
+            _log(
+                f"stale-pending retry {hung_attempt + 1}/{max_hung_retries}: "
+                f"closing PR #{pr_num}, waiting {wait_secs}s, repushing"
+            )
+            _close_pr(preflight.api_base, preflight.forgejo_token, pr_num)
+            time.sleep(wait_secs)
+            # Repush (force) to trigger a new CI run on a fresh PR
+            push_result = _git(
+                repo_root,
+                "-c", f"credential.helper={cred_helper}",
+                "push", preflight.push_remote, push_ref,
+                "-o", f"title={push_title}",
+                "-o", "description=Automated tracker data sync",
+                check=False,
+            )
+            if push_result.returncode != 0:  # pragma: no cover
+                return SyncResult(
+                    success=False,
+                    pr_number=pr_num,
+                    error="repush failed after stale-pending retry",
+                    exit_code=1,
+                )
+            time.sleep(2)
+            pr_info = _find_open_pr(
+                preflight.api_base,
+                preflight.forgejo_token,
+                sync_branch,
+                title=push_title,
+            )
+            if pr_info is None:  # pragma: no cover
+                return SyncResult(
+                    success=False,
+                    error="could not find PR after stale-pending repush",
+                    exit_code=1,
+                )
+            pr_num, head_sha = pr_info
+            gate_file.write_text(f"{pr_num}\n")
+
         if ci_result == "failure":
             return SyncResult(
                 success=False,
@@ -989,6 +1077,16 @@ def do_sync(
                 pr_number=pr_num,
                 error=f"CI timed out after {ci_timeout}s",
                 exit_code=2,
+            )
+        if ci_result == "stale_pending":
+            return SyncResult(
+                success=False,
+                pr_number=pr_num,
+                error=(
+                    f"CI hung: no jobs started after "
+                    f"{max_hung_retries + 1} attempts"
+                ),
+                exit_code=3,
             )
 
         # 13. Rebase if dev advanced during CI polling

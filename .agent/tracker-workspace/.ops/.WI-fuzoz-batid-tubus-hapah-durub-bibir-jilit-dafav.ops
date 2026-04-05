@@ -1,0 +1,34 @@
+- op: create  # 9b11
+  at: '2026-03-25T22:10:32Z'  # 9b11
+  by: agent  # 9b11
+  actor: jgstern_agent  # 9b11
+  clock: 1  # 9b11
+  nonce: 9b11  # 9b11
+  data:  # 9b11
+    kind: work_item  # 9b11
+    title: "Fix circuit breaker TOCTOU race and off-by-one in stop hook"  # 9b11
+    status: needs_human_review  # 9b11
+    priority: 2  # 9b11
+    parent:  # 9b11
+    tags: []  # 9b11
+    before: []  # 9b11
+    duplicate_of: []  # 9b11
+    not_duplicate_of: []  # 9b11
+    pr_ref:  # 9b11
+    description: "Two bugs in stop_logic.sh: (1) TOCTOU race between two separate tail reads. (2) Off-by-one: hash appended before check. Fix applied locally, needs governance review."  # 9b11
+    fields: {}  # 9b11
+- op: update  # dad7
+  at: '2026-03-25T22:21:36Z'  # dad7
+  by: agent  # dad7
+  actor: jgstern_agent  # dad7
+  clock: 2  # dad7
+  nonce: dad7  # dad7
+  set:  # dad7
+    status: done  # dad7
+- op: discuss  # a0eb
+  at: '2026-03-25T22:21:36Z'  # a0eb
+  by: agent  # a0eb
+  actor: jgstern_agent  # a0eb
+  clock: 3  # a0eb
+  nonce: a0eb  # a0eb
+  message: "Fixed in PR #2565. Snapshot tail once to fix TOCTOU race, check prior history before appending to fix off-by-one, added current-hash match guard."  # a0eb

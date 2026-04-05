@@ -1,0 +1,80 @@
+- op: create  # 277c
+  at: '2026-03-31T09:11:22Z'  # 277c
+  by: agent  # 277c
+  actor: jgstern_agent  # 277c
+  clock: 1  # 277c
+  nonce: 277c  # 277c
+  data:  # 277c
+    kind: work_item  # 277c
+    title: "Cell-to-SVG coordinate mapping and SVG annotation injection"  # 277c
+    status: needs_human_review  # 277c
+    priority: 2  # 277c
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # 277c
+    tags:  # 277c
+    - adr-0020  # 277c
+    before: []  # 277c
+    duplicate_of: []  # 277c
+    not_duplicate_of: []  # 277c
+    pr_ref:  # 277c
+    description: "Linear transform from Textual cell coords to SVG coords: svg_x = cell_col * cell_width_px + offset_x, svg_y = cell_row * cell_height_px + offset_y. Inject vector elements (<rect>, <text>, <line>, <polygon>) into the SVG as a <g class=\"annotations\"> group. Preserve original SVG alongside annotated version."  # 277c
+    fields: {}  # 277c
+- op: update  # 967b
+  at: '2026-03-31T09:19:50Z'  # 967b
+  by: agent  # 967b
+  actor: jgstern_agent  # 967b
+  clock: 2  # 967b
+  nonce: 967b  # 967b
+  set: {}  # 967b
+  add:  # 967b
+    before: [WI-baguv-sofup-furin-bulad-vitot-pahuz-hovin-tutam]  # 967b
+- op: update  # 587b
+  at: '2026-03-31T09:28:23Z'  # 587b
+  by: agent  # 587b
+  actor: jgstern_agent  # 587b
+  clock: 3  # 587b
+  nonce: 587b  # 587b
+  set:  # 587b
+    status: todo_soft  # 587b
+- op: discuss  # 03c5
+  at: '2026-03-31T09:30:56Z'  # 03c5
+  by: human  # 03c5
+  actor: jgstern  # 03c5
+  clock: 4  # 03c5
+  nonce: 03c5  # 03c5
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 03c5
+- op: discuss  # 2883
+  at: '2026-03-31T09:40:25Z'  # 2883
+  by: agent  # 2883
+  actor: jgstern_agent  # 2883
+  clock: 5  # 2883
+  nonce: '2883'  # 2883
+  message: "Acknowledged. Will reference ADR-0020 when implementing."  # 2883
+- op: update  # c67b
+  at: '2026-03-31T11:39:03Z'  # c67b
+  by: agent  # c67b
+  actor: jgstern_agent  # c67b
+  clock: 6  # c67b
+  nonce: c67b  # c67b
+  set:  # c67b
+    status: done  # c67b
+- op: discuss  # 5a16
+  at: '2026-03-31T11:39:03Z'  # 5a16
+  by: agent  # 5a16
+  actor: jgstern_agent  # 5a16
+  clock: 7  # 5a16
+  nonce: 5a16  # 5a16
+  message: "PR pending (SVG injection branch). cell_to_svg() maps Textual cells to SVG pixels. annotation_to_svg_element() generates rect/line/text SVG. inject_annotations_into_svg() inserts annotation group before </svg>."  # 5a16
+- op: discuss  # ebc6
+  at: '2026-04-01T00:15:28Z'  # ebc6
+  by: human  # ebc6
+  actor: jgstern  # ebc6
+  clock: 8  # ebc6
+  nonce: ebc6  # ebc6
+  message: "please provide a PR or commit?"  # ebc6
+- op: discuss  # 71a1
+  at: '2026-04-01T09:00:45Z'  # 71a1
+  by: agent  # 71a1
+  actor: jgstern_agent  # 71a1
+  clock: 9  # 71a1
+  nonce: 71a1  # 71a1
+  message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). This commit added cell-to-SVG coordinate mapping using Rich export constants, SVG annotation element generation, and injection. Pushed directly to dev (no separate PR)."  # 71a1

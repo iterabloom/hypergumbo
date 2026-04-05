@@ -91,3 +91,11 @@
   clock: 10  # 66b1
   nonce: 66b1  # 66b1
   message: "The reverse dataflow fix is commit 5a1a886b ('fix: handle reverse slicing in --dataflow mode (ADR-0015)'). It was merged to dev via fast-forward, so there's no merge commit with a PR number. The Forgejo API is currently unreachable (HTTP 000) so I can't look up the PR number from the remote. The fix is listed in CHANGELOG.md under [Unreleased] > Fixed."  # 66b1
+- op: update  # bb99
+  at: '2026-03-25T04:15:54Z'  # bb99
+  by: agent  # bb99
+  actor: jgstern_agent  # bb99
+  clock: 11  # bb99
+  nonce: bb99  # bb99
+  set:  # bb99
+    parent: INV-kagob-salob-nuhim-lilut-sural-lapis-jokif-kivif  # bb99

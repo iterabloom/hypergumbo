@@ -4,9 +4,33 @@
 # Maps C standard library and POSIX functions to I/O boundary types.
 language: c
 
+# Function names that are too generic to match without module context.
+# C has no namespaces, so bare names like read/write/open/close are always
+# ambiguous — they could be libc IO or a project-local function with the same name.
+ambiguous_names:
+  - read          # unistd read vs project-local read()
+  - write         # unistd write vs project-local write()
+  - open          # fcntl open vs project-local open()
+  - close         # unistd close vs project-local close()
+  - send          # socket send vs project-local send()
+  - recv          # socket recv vs project-local recv()
+  - connect       # socket connect vs project-local connect()
+  - bind          # socket bind vs project-local bind()
+  - listen        # socket listen vs project-local listen()
+  - accept        # socket accept vs project-local accept()
+  - stat          # sys/stat stat vs project-local stat()
+  - link          # unistd link vs project-local link()
+  - rename        # stdio rename vs project-local rename()
+  - remove        # stdio remove vs project-local remove()
+  - truncate      # unistd truncate vs project-local truncate()
+  - exec          # unistd exec vs project-local exec()
+  - wait          # sys/wait wait vs project-local wait()
+  - fork          # unistd fork vs project-local fork()
+  - system        # stdlib system vs project-local system()
+
 fs_read:
   - module: stdio
-    functions: [fopen, fread, fgets, fgetc, fscanf, getc, getchar, scanf]
+    functions: [fopen, fread, fgets, fgetc, fscanf, getc, getchar, scanf, fseek, rewind, ungetc, ftell]
   - module: unistd
     functions: [read, readlink, access, stat, lstat, fstat]
   - module: dirent
@@ -16,7 +40,11 @@ fs_read:
 
 fs_write:
   - module: stdio
-    functions: [fopen, fwrite, fputs, fputc, fprintf, putc, putchar, printf, remove, rename]
+    functions: [fopen, fwrite, fputs, fputc, fprintf, putc, putchar, printf, remove, rename, tmpfile, tmpnam, fclose, fflush]
+    notes: "tmpfile/tmpnam create temp files on the filesystem; fclose releases file handle; fflush forces write"
+  - module: stdlib
+    functions: [mkstemp, mkdtemp, mkostemp, mkstemps]
+    notes: "POSIX temp file/dir creation"
   - module: unistd
     functions: [write, unlink, rmdir, truncate, ftruncate, link, symlink, chown, chmod]
   - module: sys/stat

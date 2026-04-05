@@ -5,6 +5,9 @@
 [tool.pytest.ini_options]
 # Include BRANCHES_*.py files for branch coverage tests (default is test_*.py and *_test.py)
 python_files = ["test_*.py", "*_test.py", "BRANCHES_*.py"]
+markers = [
+    "torch: tests requiring PyTorch (deselect in CI with -m 'not torch')",
+]
 # Required for hypergumbo-tracker's Textual TUI tests (async pilot tests)
 asyncio_mode = "auto"
 # Tracker tests import a shared 'helpers' module from their tests/ directory

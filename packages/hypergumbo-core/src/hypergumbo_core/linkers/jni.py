@@ -256,6 +256,8 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="jni_naming_convention",
+                access_mode="write",
+                dest_access_mode="read",
             )
             edges.append(edge)
 

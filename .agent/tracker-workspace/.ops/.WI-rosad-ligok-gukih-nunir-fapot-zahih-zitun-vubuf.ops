@@ -1,0 +1,34 @@
+- op: create  # 1e71
+  at: '2026-03-24T00:29:09Z'  # 1e71
+  by: agent  # 1e71
+  actor: jgstern_agent  # 1e71
+  clock: 1  # 1e71
+  nonce: '1e71'  # 1e71
+  data:  # 1e71
+    kind: work_item  # 1e71
+    title: "Haskell: detect 'main :: IO ()' as entrypoint instead of test functions"  # 1e71
+    status: todo_soft  # 1e71
+    priority: 2  # 1e71
+    parent:  # 1e71
+    tags: []  # 1e71
+    before: []  # 1e71
+    duplicate_of: []  # 1e71
+    not_duplicate_of: []  # 1e71
+    pr_ref:  # 1e71
+    description: ""  # 1e71
+    fields: {}  # 1e71
+- op: update  # c7ab
+  at: '2026-03-24T00:33:22Z'  # c7ab
+  by: agent  # c7ab
+  actor: jgstern_agent  # c7ab
+  clock: 2  # c7ab
+  nonce: c7ab  # c7ab
+  set:  # c7ab
+    status: wont_do  # c7ab
+- op: discuss  # be2e
+  at: '2026-03-24T00:33:22Z'  # be2e
+  by: agent  # be2e
+  actor: jgstern_agent  # be2e
+  clock: 3  # be2e
+  nonce: be2e  # be2e
+  message: "Duplicate of WI-nupuj."  # be2e

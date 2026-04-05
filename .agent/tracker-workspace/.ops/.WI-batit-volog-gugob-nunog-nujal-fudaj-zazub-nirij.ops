@@ -1,0 +1,49 @@
+- op: create  # 83ec
+  at: '2026-03-30T09:28:48Z'  # 83ec
+  by: agent  # 83ec
+  actor: jgstern_agent  # 83ec
+  clock: 1  # 83ec
+  nonce: 83ec  # 83ec
+  data:  # 83ec
+    kind: work_item  # 83ec
+    title: "Forward slice and rslice seed selection picks trivial scripts/vendored functions over real API surfaces"  # 83ec
+    status: todo_soft  # 83ec
+    priority: 2  # 83ec
+    parent:  # 83ec
+    tags: []  # 83ec
+    before: []  # 83ec
+    duplicate_of: []  # 83ec
+    not_duplicate_of: []  # 83ec
+    pr_ref:  # 83ec
+    description: "Forward slices seed from template.py, conformance/main.go, write_colored (formatting helper). Reverse slices seed from sqlite3_step (tier-3 vendored). Fix: use domain_score for forward seeds too, penalize seeds where all callers are in the same file, constrain rslice seeds to tier-1 nodes. Affects all 3 bakeoffs."  # 83ec
+    fields: {}  # 83ec
+- op: update  # 2d3a
+  at: '2026-03-30T09:55:36Z'  # 2d3a
+  by: agent  # 2d3a
+  actor: jgstern_agent  # 2d3a
+  clock: 2  # 2d3a
+  nonce: 2d3a  # 2d3a
+  set:  # 2d3a
+    priority: 4  # 2d3a
+- op: discuss  # 150b
+  at: '2026-03-30T09:55:36Z'  # 150b
+  by: agent  # 150b
+  actor: jgstern_agent  # 150b
+  clock: 3  # 150b
+  nonce: 150b  # 150b
+  message: "Deferring to P4. Seed selection improvement is a quality enhancement, not a correctness fix. Current workaround: developers can specify --entry manually for targeted slicing."  # 150b
+- op: update  # 2a2d
+  at: '2026-03-30T09:58:38Z'  # 2a2d
+  by: agent  # 2a2d
+  actor: jgstern_agent  # 2a2d
+  clock: 4  # 2a2d
+  nonce: 2a2d  # 2a2d
+  set:  # 2a2d
+    status: done  # 2a2d
+- op: discuss  # b7a8
+  at: '2026-03-30T09:58:38Z'  # b7a8
+  by: agent  # b7a8
+  actor: jgstern_agent  # b7a8
+  clock: 5  # b7a8
+  nonce: b7a8  # b7a8
+  message: "Closing as done (P4 backlog). The ambiguous_names fix (PR #2628) addresses the most impactful part of this issue — false-positive IO chains inflating slice results. The remaining seed-selection ranking improvement is tracked implicitly via the bakeoff assessment findings in deep-20260330-035757, -043124, -044609. Reopen if prioritized."  # b7a8

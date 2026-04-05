@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017: Built-in taint sink catalog — host filesystem writes.
+#
+# Functions that write data to the host filesystem. Tainted data
+# (plaintext, key material) should not reach these sinks in
+# untrusted-host scenarios.
+description: "Writes to the host filesystem"
+zone: host_fs
+trust_level: untrusted
+
+sinks:
+  python:
+    - module: builtins
+      functions: [open]
+    - module: pathlib.Path
+      methods: [write_text, write_bytes, open]
+    - module: shutil
+      functions: [copy, copy2, copyfile, move]
+    - module: os
+      functions: [write]
+
+  typescript:
+    - module: fs
+      functions: [writeFile, writeFileSync, appendFile, appendFileSync, createWriteStream]
+    - module: fs/promises
+      functions: [writeFile, appendFile]
+
+  rust:
+    - module: std::fs
+      functions: [write, File::create, File::write_all, OpenOptions::open]
+    - module: tokio::fs
+      functions: [write, File::create]
+
+  go:
+    - module: os
+      functions: [WriteFile, Create, OpenFile]
+      methods: [File.Write, File.WriteString, File.WriteAt]
+    - module: io/ioutil
+      functions: [WriteFile]
+
+  java:
+    - module: java.io
+      methods: [FileOutputStream.write, FileWriter.write, BufferedWriter.write]
+    - module: java.nio.file
+      methods: [Files.write, Files.writeString, Files.copy, Files.move]

@@ -190,6 +190,7 @@ class EntrypointKind(Enum):
     CONTROLLER = "controller"  # Generic controller from concept metadata
     BACKGROUND_TASK = "background_task"  # Async/background task
     WEBSOCKET_HANDLER = "websocket_handler"  # WebSocket event handler
+    MIDDLEWARE_HANDLER = "middleware_handler"  # HTTP middleware handler
     EVENT_HANDLER = "event_handler"  # Event/message handler
     SCHEDULED_TASK = "scheduled_task"  # Cron/scheduled job
     # Library entry points (exported API)
@@ -299,6 +300,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "scheduled_task" -> SCHEDULED_TASK (cron/periodic job)
     - "websocket_handler" -> WEBSOCKET_HANDLER (WebSocket event handler)
     - "websocket_gateway" -> WEBSOCKET_HANDLER (NestJS WebSocket gateway)
+    - "middleware" -> MIDDLEWARE_HANDLER (HTTP middleware handler)
     - "event_handler" -> EVENT_HANDLER (event/message handler)
     - "command" -> CLI_COMMAND (CLI command handler)
     - "liveview" -> CONTROLLER (Phoenix LiveView - real-time UI)
@@ -433,6 +435,25 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label=label,
                 ))
                 added_kinds.add(EntrypointKind.WEBSOCKET_HANDLER)
+
+            # Middleware concept -> MIDDLEWARE_HANDLER
+            # Middleware intercepts HTTP requests/responses and is a
+            # primary entry point in web frameworks (Express, Koa, Vapor,
+            # Hummingbird, Django, etc.)
+            elif concept_type == "middleware":
+                if EntrypointKind.MIDDLEWARE_HANDLER in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} middleware"
+                else:
+                    label = "HTTP middleware"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.MIDDLEWARE_HANDLER,
+                    confidence=0.95,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.MIDDLEWARE_HANDLER)
 
             # Event handler concept -> EVENT_HANDLER
             elif concept_type == "event_handler":
@@ -752,6 +773,43 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label=label,
                 ))
                 added_kinds.add(EntrypointKind.EVENT_HANDLER)
+
+            # Application concept -> MAIN_FUNCTION
+            # Used by http4s.yaml (extends IOApp, extends IOApp.Simple),
+            # zio.yaml (extends ZIOAppDefault), and similar patterns where
+            # a class/object IS the application entry point.
+            elif concept_type == "application":
+                if EntrypointKind.MAIN_FUNCTION in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} application"
+                else:
+                    label = "Application entrypoint"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.MAIN_FUNCTION,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.MAIN_FUNCTION)
+
+            # Servlet concept -> CONTROLLER
+            # Used by scalatra.yaml (extends ScalatraServlet/ScalatraFilter),
+            # servlet.yaml (extends HttpServlet).
+            elif concept_type == "servlet":
+                if EntrypointKind.CONTROLLER in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} servlet"
+                else:
+                    label = "Servlet"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CONTROLLER,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.CONTROLLER)
 
     # --- Pass 2: Direct route symbol detection ---
     # Go (and potentially other analyzers) create symbols with kind="route"

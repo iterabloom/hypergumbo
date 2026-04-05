@@ -17,13 +17,13 @@ patterns:
   # @Controller("/api") defines the base path for all method routes
   - concept: controller
     decorator: "^Controller$"
-    extract_path: "args[0]"
+    extract_path: "args[0]|kwargs.value"
 
   # Micronaut HTTP method annotations
   # Method routes inherit path prefix from class-level @Controller (prefix_from_parent)
   - concept: route
     decorator: "^(Get|Post|Put|Delete|Patch|Head|Options)$"
-    extract_path: "args[0]"
+    extract_path: "args[0]|kwargs.value"
     extract_method: "decorator_name_upper"
     prefix_from_parent: "controller"
 

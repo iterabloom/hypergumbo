@@ -170,6 +170,62 @@ instance Printable Person where
         assert instance.kind == "instance"
 
 
+class TestHaskellTypeclassImplementsEdges:
+    """Tests for typeclass instance → typeclass 'implements' edges."""
+
+    def test_instance_creates_implements_edge(self, tmp_path: Path) -> None:
+        """Instance declaration should create an 'implements' edge to its typeclass."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Types.hs", """
+data Color = Red | Green | Blue
+
+class Renderable a where
+    render :: a -> String
+
+instance Renderable Color where
+    render Red = "red"
+    render Green = "green"
+    render Blue = "blue"
+""")
+        result = analyze_haskell(tmp_path)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl_edges) >= 1, (
+            f"Expected 'implements' edge from instance to typeclass, "
+            f"got edge types: {[e.edge_type for e in result.edges]}"
+        )
+        # The edge should go from the instance to the class
+        edge = impl_edges[0]
+        assert "Renderable" in edge.dst, (
+            f"Expected 'Renderable' in implements edge dst, got: {edge.dst}"
+        )
+
+    def test_multiple_instances_create_implements_edges(self, tmp_path: Path) -> None:
+        """Multiple instances of the same typeclass create separate edges."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Types.hs", """
+data Dog = Dog String
+data Cat = Cat String
+
+class Animal a where
+    speak :: a -> String
+
+instance Animal Dog where
+    speak (Dog name) = name ++ " barks"
+
+instance Animal Cat where
+    speak (Cat name) = name ++ " meows"
+""")
+        result = analyze_haskell(tmp_path)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl_edges) == 2, (
+            f"Expected 2 'implements' edges, got {len(impl_edges)}"
+        )
+
+
 class TestHaskellImportEdges:
     """Tests for Haskell import edge extraction."""
 
@@ -256,6 +312,61 @@ main = print (helper 5)
         # Call to helper should be resolved
         helper_calls = [e for e in call_edges if "helper" in e.dst]
         assert len(helper_calls) >= 1
+
+
+class TestHaskellWhereClauseScoping:
+    """Tests that where-clause bindings are NOT extracted as top-level symbols."""
+
+    def test_where_clause_bindings_excluded(self, tmp_path: Path) -> None:
+        """Local bindings in where clauses should not become top-level symbols."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+topLevel :: Int -> Int
+topLevel x = helper x + 1
+  where
+    helper y = y * 2
+    localBind = 42
+
+main :: IO ()
+main = print (topLevel 5)
+""")
+        result = analyze_haskell(tmp_path)
+        non_file_symbols = [s for s in result.symbols if s.kind != "file"]
+        names = {s.name for s in non_file_symbols}
+
+        # Module-level functions should be extracted
+        assert "topLevel" in names
+        assert "main" in names
+
+        # Where-clause local bindings should NOT be extracted
+        assert "helper" not in names, (
+            f"Where-clause binding 'helper' should not be a top-level symbol, "
+            f"but found: {names}"
+        )
+        assert "localBind" not in names, (
+            f"Where-clause binding 'localBind' should not be a top-level symbol, "
+            f"but found: {names}"
+        )
+
+    def test_let_in_do_bindings_excluded(self, tmp_path: Path) -> None:
+        """Local let bindings in do-notation should not become top-level symbols."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+main :: IO ()
+main = do
+    let result = 42
+    print result
+""")
+        result = analyze_haskell(tmp_path)
+        non_file_symbols = [s for s in result.symbols if s.kind != "file"]
+        names = {s.name for s in non_file_symbols}
+
+        assert "main" in names
+        assert "result" not in names, (
+            "Do-notation let binding 'result' should not be a top-level symbol"
+        )
 
 
 class TestHaskellEdgeCases:
@@ -385,6 +496,115 @@ helper x = x + 1
         assert funcs[0].signature is None
 
 
+class TestHaskellExternalEdges:
+    """Tests for external edge creation for I/O boundary matching."""
+
+    def test_io_primitives_not_excluded_from_edges(self, tmp_path: Path) -> None:
+        """putStrLn and print should produce call edges, not be silently dropped."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+greet :: String -> IO ()
+greet name = putStrLn name
+
+main :: IO ()
+main = do
+    print "hello"
+    greet "world"
+""")
+
+        result = analyze_haskell(tmp_path)
+
+        edges = result.edges
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        # main should have a call edge to print
+        assert any("print" in e.dst for e in call_edges), (
+            f"Expected call edge to 'print', got: {[e.dst for e in call_edges]}"
+        )
+        # greet should have a call edge to putStrLn
+        assert any("putStrLn" in e.dst for e in call_edges), (
+            f"Expected call edge to 'putStrLn', got: {[e.dst for e in call_edges]}"
+        )
+
+    def test_qualified_unresolved_call_uses_module_hint(self, tmp_path: Path) -> None:
+        """Qualified unresolved calls should carry module name, not '?'."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+module Main where
+
+import qualified System.IO as SIO
+
+doRead :: IO ()
+doRead = SIO.hGetContents SIO.stdin
+""")
+
+        result = analyze_haskell(tmp_path)
+
+        edges = result.edges
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        # Should have an external edge with System.IO as module hint
+        hget_edges = [e for e in call_edges if "hGetContents" in e.dst]
+        assert len(hget_edges) >= 1, (
+            f"Expected edge to hGetContents, got: {[e.dst for e in call_edges]}"
+        )
+        # The module hint should be System.IO, not ?
+        edge = hget_edges[0]
+        assert "System.IO" in edge.dst, (
+            f"Expected 'System.IO' in edge dst, got: {edge.dst}"
+        )
+
+    def test_readFile_creates_external_edge(self, tmp_path: Path) -> None:
+        """Unresolved call to readFile creates an external edge matchable by I/O catalog."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Main.hs", """
+main :: IO ()
+main = do
+    content <- readFile "input.txt"
+    writeFile "output.txt" content
+""")
+
+        result = analyze_haskell(tmp_path)
+
+        edges = result.edges
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        # Should have edges to readFile and writeFile
+        assert any("readFile" in e.dst for e in call_edges), (
+            f"Expected edge to readFile, got: {[e.dst for e in call_edges]}"
+        )
+        assert any("writeFile" in e.dst for e in call_edges), (
+            f"Expected edge to writeFile, got: {[e.dst for e in call_edges]}"
+        )
+
+
+    def test_unresolved_edges_matchable_by_io_catalog(self, tmp_path: Path) -> None:
+        """External edges for unqualified calls should be matchable by I/O catalog.
+
+        The module_hint in the symbol ID must be 'external' (not '?') so
+        lookup_with_module falls back to unfiltered short-name matching.
+        """
+        from hypergumbo_lang_common.haskell import analyze_haskell
+        from hypergumbo_core.io_boundary import load_catalog, tag_io_boundaries
+
+        make_haskell_file(tmp_path, "Main.hs", """
+main :: IO ()
+main = do
+    content <- readFile "input.txt"
+    writeFile "output.txt" content
+    putStrLn "done"
+""")
+
+        result = analyze_haskell(tmp_path)
+        catalog = load_catalog("haskell")
+        tagged = tag_io_boundaries(result.edges, {"haskell": catalog})
+        assert tagged >= 2, (
+            f"Expected at least 2 I/O tagged edges (readFile, writeFile), "
+            f"got {tagged}. External edge dsts: "
+            f"{[e.dst for e in result.edges if 'external' in e.dst or '?' in e.dst]}"
+        )
+
+
 class TestHaskellImportAliases:
     """Tests for import alias extraction and qualified call resolution."""
 
@@ -438,3 +658,101 @@ lookup_ key = M.lookup key M.empty
         assert not result.skipped
         symbols = [s for s in result.symbols if s.kind == "function"]
         assert any(s.name == "lookup_" for s in symbols)
+
+
+class TestHaskellShortNamePenalty:
+    """Short callee names get confidence penalties to reduce false positives.
+
+    Haskell FP code idiomatically uses single-letter names (f, g, x, n) for
+    lambda parameters and local bindings. When these names match global symbols
+    via suffix matching, the resulting edges are almost always false positives.
+    The analyzer applies a confidence penalty to make these easily filterable.
+    """
+
+    def test_penalty_function_single_letter(self) -> None:
+        """Single-letter names get heavy penalty (0.15x)."""
+        from hypergumbo_lang_common.haskell import _short_name_penalty
+
+        assert _short_name_penalty("f") == 0.15
+        assert _short_name_penalty("g") == 0.15
+        assert _short_name_penalty("x") == 0.15
+        assert _short_name_penalty("n") == 0.15
+
+    def test_penalty_function_two_letter(self) -> None:
+        """Two-letter names get moderate penalty (0.50x)."""
+        from hypergumbo_lang_common.haskell import _short_name_penalty
+
+        assert _short_name_penalty("fn") == 0.50
+        assert _short_name_penalty("xs") == 0.50
+
+    def test_penalty_function_normal_names(self) -> None:
+        """Names with 3+ characters get no penalty (1.0x)."""
+        from hypergumbo_lang_common.haskell import _short_name_penalty
+
+        assert _short_name_penalty("map") == 1.0
+        assert _short_name_penalty("helper") == 1.0
+        assert _short_name_penalty("processItems") == 1.0
+
+    def test_penalty_function_empty_string(self) -> None:
+        """Empty string gets heavy penalty."""
+        from hypergumbo_lang_common.haskell import _short_name_penalty
+
+        assert _short_name_penalty("") == 0.15
+
+    def test_single_letter_call_gets_low_confidence(self, tmp_path: Path) -> None:
+        """A call to `f` where `f` resolves to a global symbol gets low confidence."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        # File A defines a function named `f`
+        make_haskell_file(tmp_path, "Target.hs", """
+module Target where
+
+f :: Int -> Int
+f x = x + 1
+""")
+
+        # File B calls `f`
+        make_haskell_file(tmp_path, "Main.hs", """
+module Main where
+
+import Target
+
+main :: IO ()
+main = print (f 42)
+""")
+
+        result = analyze_haskell(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        f_edges = [e for e in call_edges if e.dst.endswith(":f:function")]
+        assert len(f_edges) >= 1
+        # Single-letter penalty: 0.85 * resolver_conf * 0.15
+        # Should be well below the normal ~0.68 threshold
+        for edge in f_edges:
+            assert edge.confidence < 0.20
+
+    def test_normal_name_call_gets_full_confidence(self, tmp_path: Path) -> None:
+        """A call to a normal-length name gets no penalty."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        make_haskell_file(tmp_path, "Utils.hs", """
+module Utils where
+
+helper :: Int -> Int
+helper x = x + 1
+""")
+
+        make_haskell_file(tmp_path, "Main.hs", """
+module Main where
+
+import Utils
+
+main :: IO ()
+main = print (helper 42)
+""")
+
+        result = analyze_haskell(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        helper_edges = [e for e in call_edges if "helper" in e.dst]
+        assert len(helper_edges) >= 1
+        for edge in helper_edges:
+            assert edge.confidence > 0.50

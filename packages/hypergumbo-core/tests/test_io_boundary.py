@@ -11,7 +11,9 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.io_boundary import (
+    HIGH_RISK_PRIMITIVES,
     BoundaryMap,
+    BoundaryMapEntry,
     IoBoundaryCatalog,
     IoChain,
     IoPrimitive,
@@ -19,6 +21,7 @@ from hypergumbo_core.io_boundary import (
     _extract_module_hint,
     _module_matches,
     compute_boundary_map,
+    is_high_risk,
     load_catalog,
     match_edge_to_primitive,
     tag_io_boundaries,
@@ -158,12 +161,107 @@ class TestLoadCatalog:
         expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
         assert expected.issubset(boundaries)
 
+    def test_go_catalog_testing_tempdir(self) -> None:
+        """testing.T.TempDir is fs_write (creates a temp directory).
+
+        When qualified-type tracking identifies t.TempDir() as a testing.T
+        method, the IO boundary catalog must classify it as fs_write.
+        Previously this was incorrectly matched to io/ioutil.TempDir via
+        the 'external' module hint fallback.
+        """
+        catalog = load_catalog("go")
+        hit = catalog.lookup_with_module("TempDir", "testing")
+        assert hit is not None, "testing.T.TempDir should be in the Go IO catalog"
+        assert hit.boundary == "fs_write"
+
+    def test_go_catalog_slog_logging(self) -> None:
+        """log/slog functions are classified as ipc_send.
+
+        Go's structured logging writes to stderr by default. Package-level
+        functions (slog.Debug, slog.Info etc.) and Logger methods should
+        be detected with module context.
+        """
+        catalog = load_catalog("go")
+        # Package-level slog functions
+        hit = catalog.lookup_with_module("Debug", "log/slog")
+        assert hit is not None, "slog.Debug should be in the Go IO catalog"
+        assert hit.boundary == "ipc_send"
+
+        hit = catalog.lookup_with_module("Info", "log/slog")
+        assert hit is not None
+        assert hit.boundary == "ipc_send"
+
+        hit = catalog.lookup_with_module("Error", "log/slog")
+        assert hit is not None
+        assert hit.boundary == "ipc_send"
+
+        # Without module context, Debug/Info/Error are ambiguous
+        assert catalog.lookup_with_module("Debug", None) is None
+        assert catalog.lookup_with_module("Error", None) is None
+
+    def test_go_catalog_tls_smtp(self) -> None:
+        """TLS and SMTP operations are net_send boundaries."""
+        catalog = load_catalog("go")
+        # TLS
+        hit = catalog.lookup_with_module("Dial", "crypto/tls")
+        assert hit is not None, "crypto/tls.Dial should be net_send"
+        assert hit.boundary == "net_send"
+
+        # SMTP
+        hit = catalog.lookup_with_module("SendMail", "net/smtp")
+        assert hit is not None, "net/smtp.SendMail should be net_send"
+        assert hit.boundary == "net_send"
+
+        # SMTP client methods with module context
+        hit = catalog.lookup_with_module("Mail", "net/smtp")
+        assert hit is not None
+        assert hit.boundary == "net_send"
+
+        # Data is ambiguous without context (gin.Context.Data vs template.Data)
+        assert catalog.lookup_with_module("Data", None) is None
+        # But with gin context, it matches
+        hit = catalog.lookup_with_module("Data", "gin")
+        assert hit is not None
+        assert hit.boundary == "net_send"
+
+    def test_go_catalog_stdlib_log(self) -> None:
+        """log.Printf etc. are classified as ipc_send."""
+        catalog = load_catalog("go")
+        hit = catalog.lookup_with_module("Printf", "log")
+        assert hit is not None
+        assert hit.boundary == "ipc_send"
+
+        hit = catalog.lookup_with_module("Fatal", "log")
+        assert hit is not None
+        assert hit.boundary == "ipc_send"
+
     def test_load_c_catalog(self) -> None:
         catalog = load_catalog("c")
         assert catalog.language == "c"
         assert len(catalog.primitives) > 0
         assert catalog.lookup("stdio.fopen").boundary == "fs_read"
         assert catalog.lookup("unistd.fork").boundary == "subprocess"
+
+    def test_c_catalog_tmpfile(self) -> None:
+        """C catalog includes tmpfile/mkstemp temp file creation."""
+        catalog = load_catalog("c")
+        assert catalog.lookup("stdio.tmpfile").boundary == "fs_write"
+        assert catalog.lookup("stdlib.mkstemp").boundary == "fs_write"
+
+    def test_c_catalog_file_lifecycle_functions(self) -> None:
+        """C catalog includes fclose, fflush, fseek, rewind, ungetc (bakeoff finding)."""
+        catalog = load_catalog("c")
+        # fclose releases a file handle — classified as fs_write (resource cleanup)
+        assert catalog.lookup("stdio.fclose").boundary == "fs_write"
+        # fflush forces buffered data to disk
+        assert catalog.lookup("stdio.fflush").boundary == "fs_write"
+        # fseek/rewind reposition the file cursor — classified as fs_read
+        assert catalog.lookup("stdio.fseek").boundary == "fs_read"
+        assert catalog.lookup("stdio.rewind").boundary == "fs_read"
+        # ungetc pushes back a character into the read buffer
+        assert catalog.lookup("stdio.ungetc").boundary == "fs_read"
+        # ftell reports file position
+        assert catalog.lookup("stdio.ftell").boundary == "fs_read"
 
     def test_c_catalog_has_all_boundary_types(self) -> None:
         catalog = load_catalog("c")
@@ -207,10 +305,11 @@ class TestLoadCatalog:
         assert len(catalog.primitives) > 0
         assert catalog.lookup("java.io.FileInputStream.read") is not None
 
-    def test_scala_alias_loads_java_catalog(self) -> None:
-        """Scala uses the Java IO catalog via alias."""
+    def test_scala_loads_own_catalog_with_java_parent(self) -> None:
+        """Scala has its own catalog merged with Java parent."""
         catalog = load_catalog("scala")
         assert len(catalog.primitives) > 0
+        assert catalog.language == "scala"
 
     def test_groovy_alias_loads_java_catalog(self) -> None:
         """Groovy uses the Java IO catalog via alias."""
@@ -238,6 +337,38 @@ class TestLoadCatalog:
         assert "fs_read" in boundaries
         assert "net_send" in boundaries
 
+    def test_erlang_catalog_loads(self) -> None:
+        """Erlang I/O catalog covers OTP stdlib, networking, ETS/Mnesia, and process primitives."""
+        catalog = load_catalog("erlang")
+        assert len(catalog.primitives) > 0
+        boundaries = {p.boundary for p in catalog.primitives}
+        assert "fs_read" in boundaries
+        assert "fs_write" in boundaries
+        assert "net_send" in boundaries
+        assert "net_recv" in boundaries
+        assert "db_read" in boundaries
+        assert "db_write" in boundaries
+        assert "process_send" in boundaries
+
+    def test_erlang_catalog_lookups(self) -> None:
+        """Key Erlang I/O primitives are findable by short name and module hint."""
+        catalog = load_catalog("erlang")
+        # Short name lookup
+        assert catalog.lookup("read_file") is not None
+        assert catalog.lookup("read_file").boundary == "fs_read"
+        # Module-hinted lookup for disambiguation
+        tcp_send = catalog.lookup_with_module("send", "gen_tcp")
+        assert tcp_send is not None
+        assert tcp_send.boundary == "net_send"
+        # ETS lookup
+        ets_insert = catalog.lookup_with_module("insert", "ets")
+        assert ets_insert is not None
+        assert ets_insert.boundary == "db_write"
+        # gen_server:call is process send
+        gs_call = catalog.lookup_with_module("call", "gen_server")
+        assert gs_call is not None
+        assert gs_call.boundary == "process_send"
+
     def test_catalog_from_yaml(self, tmp_path: Path) -> None:
         yaml_content = """\
 language: testlang
@@ -260,6 +391,93 @@ net_send:
         assert catalog.lookup("io.read_file").boundary == "fs_read"
         assert catalog.lookup("io.Path.read_text").boundary == "fs_read"
         assert catalog.lookup("net.send").boundary == "net_send"
+
+    def test_haskell_catalog_loads(self) -> None:
+        """Haskell I/O catalog covers file I/O, network, process, env, and logging."""
+        catalog = load_catalog("haskell")
+        assert catalog.language == "haskell"
+        assert len(catalog.primitives) > 0
+        boundaries = {p.boundary for p in catalog.primitives}
+        assert "fs_read" in boundaries
+        assert "fs_write" in boundaries
+        assert "net_send" in boundaries
+        assert "net_recv" in boundaries
+        assert "subprocess" in boundaries
+        assert "env_read" in boundaries
+        assert "logging" in boundaries
+
+    def test_haskell_catalog_lookups(self) -> None:
+        """Key Haskell I/O primitives are findable by short name and module hint."""
+        catalog = load_catalog("haskell")
+        # Prelude I/O
+        assert catalog.lookup("readFile") is not None
+        assert catalog.lookup("readFile").boundary == "fs_read"
+        assert catalog.lookup("writeFile") is not None
+        assert catalog.lookup("writeFile").boundary == "fs_write"
+        # Module-hinted lookup
+        sock_send = catalog.lookup_with_module("send", "Network.Socket")
+        assert sock_send is not None
+        assert sock_send.boundary == "net_send"
+        # Process
+        assert catalog.lookup("callProcess") is not None
+        assert catalog.lookup("callProcess").boundary == "subprocess"
+        # Environment
+        assert catalog.lookup("getArgs") is not None
+        assert catalog.lookup("getArgs").boundary == "env_read"
+        # Logging (putStrLn is in Prelude)
+        putstrln = catalog.lookup_with_module("putStrLn", "Prelude")
+        assert putstrln is not None
+        assert putstrln.boundary == "logging"
+
+    def test_haskell_catalog_has_all_boundary_types(self) -> None:
+        catalog = load_catalog("haskell")
+        boundaries = {p.boundary for p in catalog.primitives}
+        expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
+        assert expected.issubset(boundaries)
+
+    def test_load_objc_catalog(self) -> None:
+        catalog = load_catalog("objc")
+        assert catalog.language == "objc"
+        assert len(catalog.primitives) > 0
+
+    def test_objc_catalog_has_all_boundary_types(self) -> None:
+        catalog = load_catalog("objc")
+        boundaries = {p.boundary for p in catalog.primitives}
+        expected = {
+            "fs_read", "fs_write", "net_send", "net_recv",
+            "db_read", "db_write", "subprocess", "env_read",
+            "logging", "ipc_send", "ipc_recv",
+        }
+        assert expected.issubset(boundaries), (
+            f"Missing boundaries: {expected - boundaries}"
+        )
+
+    def test_objc_catalog_lookups(self) -> None:
+        """ObjC catalog matches Foundation I/O selectors."""
+        catalog = load_catalog("objc")
+        # NSFileManager fs_write
+        hit = catalog.lookup("removeItemAtPath:error:")
+        assert hit is not None
+        assert hit.boundary == "fs_write"
+        # NSURLSession net_send
+        hit2 = catalog.lookup("dataTaskWithRequest:completionHandler:")
+        assert hit2 is not None
+        assert hit2.boundary == "net_send"
+        # NSManagedObjectContext db_read
+        hit3 = catalog.lookup("executeFetchRequest:error:")
+        assert hit3 is not None
+        assert hit3.boundary == "db_read"
+        # NSLog logging
+        hit4 = catalog.lookup("NSLog")
+        assert hit4 is not None
+        assert hit4.boundary == "logging"
+
+    def test_objective_c_alias_loads_objc_catalog(self) -> None:
+        """The 'objective-c' alias resolves to the 'objc' catalog."""
+        catalog = load_catalog("objective-c")
+        assert len(catalog.primitives) > 0
+        hit = catalog.lookup("removeItemAtPath:error:")
+        assert hit is not None
 
 
 class TestMatchEdgeToPrimitive:
@@ -344,6 +562,24 @@ class TestModuleMatches:
     def test_go_slash_vs_dot(self) -> None:
         assert _module_matches("os/exec", "os.exec.Cmd") is True
 
+    def test_case_insensitive_swift_variable_receiver(self) -> None:
+        """Swift variable names (camelCase) should match PascalCase catalog modules."""
+        # Variable 'channel' should match catalog module 'Channel'
+        assert _module_matches("Channel", "channel") is True
+
+    def test_case_insensitive_context_matches_handler_context(self) -> None:
+        """Variable 'context' should match 'ChannelHandlerContext'."""
+        assert _module_matches("ChannelHandlerContext", "context") is True
+
+    def test_case_insensitive_fileio_matches_nonblockingfileio(self) -> None:
+        """Variable 'fileIO' should match 'NonBlockingFileIO'."""
+        assert _module_matches("NonBlockingFileIO", "fileIO") is True
+
+    def test_case_insensitive_preserves_rejection(self) -> None:
+        """Unrelated modules should still not match even case-insensitively."""
+        assert _module_matches("Channel", "request") is False
+        assert _module_matches("FileManager", "logger") is False
+
 
 class TestExtractModuleHint:
     """Tests for _extract_module_hint helper."""
@@ -379,6 +615,21 @@ class TestExtractCalleeName:
     def test_bare_name(self) -> None:
         sid = "nodelimiters"
         assert _extract_callee_name(sid) == "nodelimiters"
+
+    def test_objc_colon_selector_unresolved(self) -> None:
+        """ObjC selectors with colons are extracted correctly from unresolved edges."""
+        sid = "objc:external:0-0:removeItemAtPath:error::unresolved"
+        assert _extract_callee_name(sid) == "removeItemAtPath:error:"
+
+    def test_objc_colon_selector_resolved(self) -> None:
+        """ObjC selectors with colons are extracted correctly from resolved edges."""
+        sid = "objc:/path/file.m:10-20:Manager.removeItemAtPath:error::method"
+        assert _extract_callee_name(sid) == "Manager.removeItemAtPath:error:"
+
+    def test_objc_simple_selector(self) -> None:
+        """Simple ObjC selectors (no colons) still work."""
+        sid = "objc:external:0-0:defaultManager:unresolved"
+        assert _extract_callee_name(sid) == "defaultManager"
 
 
 class TestTagIoBoundaries:
@@ -494,6 +745,30 @@ class TestTagIoBoundaries:
         assert count == 1
         assert edge.meta["io_boundary"] == "fs_read"
 
+    def test_cgo_bridge_edge_traced(self) -> None:
+        """cgo_bridge edges are included in boundary tagging."""
+        catalog = load_catalog("c")
+        edge = self._make_edge(
+            src="go:/app/main.go:1:OpenDB:function",
+            dst="c:external:0-0:fopen:unresolved",
+            edge_type="cgo_bridge",
+        )
+        count = tag_io_boundaries([edge], {"c": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "fs_read"
+
+    def test_ffi_bridge_edge_traced(self) -> None:
+        """ffi_bridge edges are included in boundary tagging."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="rust:/lib.rs:1:read_file:function",
+            dst="python:/stdlib/os.py:1:os.listdir:function",
+            edge_type="ffi_bridge",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "fs_read"
+
     def test_ipc_calls_edge_traced(self) -> None:
         """ipc_calls edges are traced for I/O boundary tagging."""
         catalog = load_catalog("python")
@@ -505,6 +780,75 @@ class TestTagIoBoundaries:
         count = tag_io_boundaries([edge], {"python": catalog})
         assert count == 1
         assert edge.meta["io_boundary"] == "subprocess"
+
+    def test_cgo_stdlib_call_uses_c_catalog(self) -> None:
+        """Go cgo calls to C stdlib (go:C:0-0:fopen) use the C catalog.
+
+        When Go code calls C.fopen() via cgo, the Go analyzer emits a
+        plain 'calls' edge to go:C:0-0:fopen:unresolved. The cgo linker
+        does NOT create a cgo_bridge edge because fopen is in libc, not
+        a repo-local C function. The IO boundary tagger must recognize
+        the go:C: pseudo-namespace and redirect to the C catalog.
+        """
+        c_catalog = load_catalog("c")
+        go_catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/app/file.go:57-59:OpenFile:function",
+            dst="go:C:0-0:fopen:unresolved",
+            edge_type="calls",
+        )
+        count = tag_io_boundaries(
+            [edge], {"go": go_catalog, "c": c_catalog}
+        )
+        assert count == 1
+        assert edge.meta["io_boundary"] == "fs_read"
+        assert "fopen" in edge.meta["io_primitive"]
+
+    def test_cgo_stdlib_fwrite_uses_c_catalog(self) -> None:
+        """Go cgo C.fwrite() is tagged as fs_write via C catalog."""
+        c_catalog = load_catalog("c")
+        go_catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/app/file.go:89-99:File.Write:method",
+            dst="go:C:0-0:fwrite:unresolved",
+            edge_type="calls",
+        )
+        count = tag_io_boundaries(
+            [edge], {"go": go_catalog, "c": c_catalog}
+        )
+        assert count == 1
+        assert edge.meta["io_boundary"] == "fs_write"
+
+    def test_cgo_stdlib_socket_uses_c_catalog(self) -> None:
+        """Go cgo C.socket() is tagged as net_send via C catalog."""
+        c_catalog = load_catalog("c")
+        go_catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/app/net.go:10-20:Connect:function",
+            dst="go:C:0-0:socket:unresolved",
+            edge_type="calls",
+        )
+        count = tag_io_boundaries(
+            [edge], {"go": go_catalog, "c": c_catalog}
+        )
+        assert count == 1
+        assert edge.meta is not None
+        assert "net" in edge.meta["io_boundary"]
+
+    def test_cgo_non_io_function_not_tagged(self) -> None:
+        """Go cgo C.strlen() is NOT tagged (not an IO primitive)."""
+        c_catalog = load_catalog("c")
+        go_catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/app/util.go:5:Len:function",
+            dst="go:C:0-0:strlen:unresolved",
+            edge_type="calls",
+        )
+        count = tag_io_boundaries(
+            [edge], {"go": go_catalog, "c": c_catalog}
+        )
+        assert count == 0
+        assert edge.meta is None
 
 
 class TestModuleQualifiedMatching:
@@ -804,6 +1148,38 @@ class TestEntryPointTracing:
         assert fs_entry is not None
         assert "java_main" in fs_entry.entry_points
 
+    def test_cgo_bridge_edge_traced_to_entrypoint(self) -> None:
+        """Entry-point trace crosses cgo_bridge edges (Go→C)."""
+        catalog = load_catalog("c")
+        edges = [
+            self._make_edge(src="go_main", dst="go_wrapper"),
+            self._make_edge(src="go_wrapper", dst="c_impl", edge_type="cgo_bridge"),
+            self._make_edge(src="c_impl", dst="c:external:0-0:fopen:unresolved"),
+        ]
+        entrypoint_ids = {"go_main"}
+
+        bmap = compute_boundary_map(edges, {"c": catalog}, entrypoint_ids=entrypoint_ids)
+        assert bmap.total_io_edges >= 1
+        fs_entry = bmap.entries.get("fs_read")
+        assert fs_entry is not None
+        assert "go_main" in fs_entry.entry_points
+
+    def test_ffi_bridge_edge_traced_to_entrypoint(self) -> None:
+        """Entry-point trace crosses ffi_bridge edges (Python→Rust)."""
+        catalog = load_catalog("python")
+        edges = [
+            self._make_edge(src="py_main", dst="py_wrapper"),
+            self._make_edge(src="py_wrapper", dst="rust_impl", edge_type="ffi_bridge"),
+            self._make_edge(src="rust_impl", dst="python:os:0-0:listdir:function"),
+        ]
+        entrypoint_ids = {"py_main"}
+
+        bmap = compute_boundary_map(edges, {"python": catalog}, entrypoint_ids=entrypoint_ids)
+        assert bmap.total_io_edges >= 1
+        fs_entry = bmap.entries.get("fs_read")
+        assert fs_entry is not None
+        assert "py_main" in fs_entry.entry_points
+
     def test_unreachable_entry_point_excluded(self) -> None:
         """Entrypoints that can't reach IO are not included."""
         catalog = load_catalog("python")
@@ -817,3 +1193,944 @@ class TestEntryPointTracing:
         fs_entry = bmap.entries["fs_read"]
         assert "main_io" in fs_entry.entry_points
         assert "main_noio" not in fs_entry.entry_points
+
+
+class TestHighRiskPrimitives:
+    """Tests for the high-risk primitive classification."""
+
+    def test_is_high_risk_subprocess(self) -> None:
+        assert is_high_risk("subprocess.Popen") is True
+        assert is_high_risk("subprocess.run") is True
+        assert is_high_risk("os.execv") is True
+
+    def test_is_high_risk_destructive_fs(self) -> None:
+        assert is_high_risk("shutil.rmtree") is True
+        assert is_high_risk("os.remove") is True
+
+    def test_is_high_risk_network(self) -> None:
+        assert is_high_risk("urllib.request.urlopen") is True
+        assert is_high_risk("socket.socket.send") is True
+
+    def test_not_high_risk(self) -> None:
+        assert is_high_risk("os.listdir") is False
+        assert is_high_risk("pathlib.Path.read_text") is False
+        assert is_high_risk("os.walk") is False
+
+    def test_high_risk_go(self) -> None:
+        assert is_high_risk("os/exec.Command") is True
+
+    def test_high_risk_java(self) -> None:
+        assert is_high_risk("java.lang.ProcessBuilder.start") is True
+
+    def test_high_risk_rust(self) -> None:
+        assert is_high_risk("std::process::Command.spawn") is True
+
+    def test_high_risk_javascript(self) -> None:
+        assert is_high_risk("child_process.exec") is True
+        assert is_high_risk("child_process.spawn") is True
+
+    def test_high_risk_c(self) -> None:
+        assert is_high_risk("unistd.fork") is True
+        assert is_high_risk("stdlib.system") is True
+
+    def test_frozenset_immutable(self) -> None:
+        assert isinstance(HIGH_RISK_PRIMITIVES, frozenset)
+
+
+class TestIoChainToDict:
+    """Tests for IoChain.to_dict() serialization."""
+
+    def test_basic_serialization(self) -> None:
+        chain = IoChain(
+            boundary="fs_read",
+            primitive="os.listdir",
+            io_edge_src="python:/a.py:1-5:f:function",
+            io_edge_dst="python:/os.py:100:os.listdir:function",
+            entry_points=["main"],
+        )
+        d = chain.to_dict()
+        assert d["boundary"] == "fs_read"
+        assert d["primitive"] == "os.listdir"
+        assert d["io_edge_src"] == "python:/a.py:1-5:f:function"
+        assert d["io_edge_dst"] == "python:/os.py:100:os.listdir:function"
+        assert d["entry_points"] == ["main"]
+        assert d["high_risk"] is False
+
+    def test_high_risk_chain(self) -> None:
+        chain = IoChain(
+            boundary="subprocess",
+            primitive="subprocess.Popen",
+            io_edge_src="python:/a.py:1:f:function",
+            io_edge_dst="python:/sub.py:1:subprocess.Popen:function",
+        )
+        d = chain.to_dict()
+        assert d["high_risk"] is True
+
+
+class TestBoundaryMapEntryEnriched:
+    """Tests for enriched BoundaryMapEntry.to_dict()."""
+
+    def test_includes_primitive_counts(self) -> None:
+        entry = BoundaryMapEntry(boundary="fs_read")
+        entry.chains = [
+            IoChain("fs_read", "os.listdir", "s1", "d1"),
+            IoChain("fs_read", "os.listdir", "s2", "d2"),
+            IoChain("fs_read", "os.walk", "s3", "d3"),
+        ]
+        entry.primitives_used = ["os.listdir", "os.walk"]
+        d = entry.to_dict()
+        assert d["primitive_counts"] == {"os.listdir": 2, "os.walk": 1}
+
+    def test_includes_chains(self) -> None:
+        entry = BoundaryMapEntry(boundary="subprocess")
+        entry.chains = [
+            IoChain("subprocess", "subprocess.run", "s1", "d1"),
+        ]
+        entry.primitives_used = ["subprocess.run"]
+        d = entry.to_dict()
+        assert len(d["chains"]) == 1
+        assert d["chains"][0]["primitive"] == "subprocess.run"
+
+    def test_has_high_risk_true(self) -> None:
+        entry = BoundaryMapEntry(boundary="subprocess")
+        entry.chains = [
+            IoChain("subprocess", "subprocess.Popen", "s1", "d1"),
+            IoChain("subprocess", "os.system", "s2", "d2"),
+        ]
+        d = entry.to_dict()
+        assert d["has_high_risk"] is True
+
+    def test_has_high_risk_false(self) -> None:
+        entry = BoundaryMapEntry(boundary="fs_read")
+        entry.chains = [
+            IoChain("fs_read", "os.listdir", "s1", "d1"),
+        ]
+        d = entry.to_dict()
+        assert d["has_high_risk"] is False
+
+    def test_backward_compatible_fields(self) -> None:
+        """Existing fields (boundary, chain_count, entry_points, primitives_used) preserved."""
+        entry = BoundaryMapEntry(
+            boundary="fs_read",
+            chains=[IoChain("fs_read", "os.listdir", "s1", "d1")],
+            entry_points=["main"],
+            primitives_used=["os.listdir"],
+        )
+        d = entry.to_dict()
+        assert d["boundary"] == "fs_read"
+        assert d["chain_count"] == 1
+        assert d["entry_points"] == ["main"]
+        assert d["primitives_used"] == ["os.listdir"]
+
+
+class TestScalaCatalog:
+    """Tests for the standalone Scala I/O catalog with Java parent merging."""
+
+    def test_scala_loads_own_catalog(self) -> None:
+        """Scala has its own catalog (not just an alias to Java)."""
+        catalog = load_catalog("scala")
+        assert catalog.language == "scala"
+        # Scala-specific entries should exist
+        scala_modules = {p.module for p in catalog.primitives}
+        assert any("scala.io" in m for m in scala_modules), (
+            "Scala catalog should include scala.io entries"
+        )
+
+    def test_scala_inherits_java_entries(self) -> None:
+        """Scala catalog merges Java entries via parent inheritance."""
+        catalog = load_catalog("scala")
+        # Java stdlib entries should be available through inheritance
+        assert catalog.lookup("java.io.FileInputStream.read") is not None
+
+    def test_scala_has_effect_system_entries(self) -> None:
+        """Scala catalog covers cats-effect and ZIO I/O primitives."""
+        catalog = load_catalog("scala")
+        scala_modules = {p.module for p in catalog.primitives}
+        # At least one effect system should be present
+        has_cats_effect = any("cats.effect" in m for m in scala_modules)
+        has_zio = any("zio" in m for m in scala_modules)
+        assert has_cats_effect or has_zio, (
+            f"Expected cats-effect or ZIO entries, got modules: "
+            f"{sorted(m for m in scala_modules if 'scala' in m.lower() or 'cats' in m.lower() or 'zio' in m.lower())}"
+        )
+
+    def test_scala_has_http_client_entries(self) -> None:
+        """Scala catalog covers Scala HTTP client libraries."""
+        catalog = load_catalog("scala")
+        scala_modules = {p.module for p in catalog.primitives}
+        has_sttp = any("sttp" in m for m in scala_modules)
+        has_http4s = any("http4s" in m for m in scala_modules)
+        has_akka_http = any("akka.http" in m or "pekko.http" in m for m in scala_modules)
+        assert has_sttp or has_http4s or has_akka_http, (
+            "Scala catalog should include at least one Scala HTTP client library"
+        )
+
+    def test_scala_has_streaming_entries(self) -> None:
+        """Scala catalog covers streaming I/O libraries (fs2, akka/pekko streams)."""
+        catalog = load_catalog("scala")
+        scala_modules = {p.module for p in catalog.primitives}
+        has_fs2 = any("fs2" in m for m in scala_modules)
+        has_akka_stream = any("akka.stream" in m or "pekko.stream" in m for m in scala_modules)
+        assert has_fs2 or has_akka_stream, (
+            "Scala catalog should include streaming I/O entries"
+        )
+
+    def test_fs2_file_ops_are_fs_not_net(self) -> None:
+        """fs2.io.file.Files operations should be fs_read/fs_write, NOT net_recv."""
+        catalog = load_catalog("scala")
+        readAll = catalog.lookup("fs2.io.file.Files.readAll")
+        assert readAll is not None
+        assert readAll.boundary == "fs_read", (
+            f"fs2.io.file.Files.readAll should be fs_read, got {readAll.boundary}"
+        )
+        writeAll = catalog.lookup("fs2.io.file.Files.writeAll")
+        assert writeAll is not None
+        assert writeAll.boundary == "fs_write", (
+            f"fs2.io.file.Files.writeAll should be fs_write, got {writeAll.boundary}"
+        )
+        createDir = catalog.lookup("fs2.io.file.Files.createDirectory")
+        assert createDir is not None
+        assert createDir.boundary == "fs_write", (
+            f"fs2.io.file.Files.createDirectory should be fs_write, got {createDir.boundary}"
+        )
+
+    def test_scala_has_db_entries(self) -> None:
+        """Scala catalog covers database access libraries."""
+        catalog = load_catalog("scala")
+        boundaries = {p.boundary for p in catalog.primitives}
+        assert "db_read" in boundaries or "db_write" in boundaries, (
+            "Scala catalog should include database boundary entries"
+        )
+
+    def test_scala_catalog_all_boundary_types(self) -> None:
+        """Scala catalog covers all major boundary types."""
+        catalog = load_catalog("scala")
+        boundaries = {p.boundary for p in catalog.primitives}
+        # Scala should have at least these from its own + Java parent
+        expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
+        assert expected.issubset(boundaries), (
+            f"Missing boundaries: {expected - boundaries}"
+        )
+
+    def test_scala_own_entries_override_java(self) -> None:
+        """When Scala has the same qualified name as Java, Scala's entry wins."""
+        catalog = load_catalog("scala")
+        # Scala.io.Source.fromFile should come from scala.yaml, not java.yaml
+        hit = catalog.lookup("scala.io.Source.fromFile")
+        assert hit is not None
+        assert hit.boundary == "fs_read"
+
+
+class TestAmbiguousNameFiltering:
+    """Tests for ambiguous short-name filtering on unresolved externals.
+
+    Generic method names like 'bind', 'start', 'exec' produce false positives
+    when matched against unresolved external calls (module_hint='external').
+    Catalogs with an ambiguous_names list should reject these matches.
+    """
+
+    def _make_edge(self, src: str, dst: str, edge_type: str = "calls"):
+        from dataclasses import dataclass
+        from typing import Optional, Dict, Any
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(src=src, dst=dst, edge_type=edge_type, meta=None)
+
+    def test_scala_bind_not_matched_as_socket(self) -> None:
+        """Scala's monadic 'bind' should NOT match java.net.ServerSocket.bind."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:core/src/main/scala/cats/Monad.scala:10:flatMap:method",
+            dst="scala:external:0-0:bind:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 0, "Generic 'bind' should not match ServerSocket.bind for unresolved externals"
+
+    def test_scala_start_not_matched_as_process(self) -> None:
+        """Scala's 'start' should NOT match java.lang.ProcessBuilder.start."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:core/src/main/scala/cats/Eval.scala:10:loop:method",
+            dst="scala:external:0-0:start:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 0, "Generic 'start' should not match ProcessBuilder.start for unresolved externals"
+
+    def test_scala_exec_not_matched_as_runtime(self) -> None:
+        """Scala's 'exec' (e.g., ExecutionContext.exec) should NOT match Runtime.exec."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:core/src/main/scala/Effect.scala:10:run:method",
+            dst="scala:external:0-0:exec:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 0, "Generic 'exec' should not match Runtime.exec for unresolved externals"
+
+    def test_scala_specific_names_still_match(self) -> None:
+        """Distinctive I/O names should still match even for unresolved externals."""
+        catalog = load_catalog("scala")
+        # readAllBytes is specific enough to not be ambiguous
+        edge = self._make_edge(
+            src="scala:IO.scala:10:readFile:method",
+            dst="scala:external:0-0:readAllBytes:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 1, "Specific name 'readAllBytes' should still match for unresolved externals"
+
+    def test_scala_resolved_call_with_module_still_matches(self) -> None:
+        """Resolved calls with proper module context should still match even for ambiguous names."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:Main.scala:10:main:method",
+            dst="scala:java.net.ServerSocket:0-0:bind:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 1, "Ambiguous name 'bind' should match when module context confirms ServerSocket"
+
+    def test_scala_mkstring_not_matched_as_source(self) -> None:
+        """Scala's collection mkString should NOT match scala.io.Source.mkString."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:Main.scala:10:show:method",
+            dst="scala:external:0-0:mkString:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 0, "Generic 'mkString' should not match Source.mkString for unresolved externals"
+
+    def test_scala_getOrElse_not_matched_as_sysprops(self) -> None:
+        """Scala's Option.getOrElse should NOT match SystemProperties.getOrElse."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:Config.scala:10:get:method",
+            dst="scala:external:0-0:getOrElse:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 0, "Generic 'getOrElse' should not match SystemProperties for unresolved externals"
+
+    def test_scala_foreach_not_matched_as_sql(self) -> None:
+        """Scala's collection foreach should NOT match scalikejdbc.SQL.foreach."""
+        catalog = load_catalog("scala")
+        edge = self._make_edge(
+            src="scala:Handler.scala:10:process:method",
+            dst="scala:external:0-0:foreach:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"scala": catalog})
+        assert count == 0, "Generic 'foreach' should not match SQL.foreach for unresolved externals"
+
+    def test_go_external_still_works(self) -> None:
+        """Go catalog: distinctive names like 'Open' still match without module context."""
+        catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/a.go:1:main:function",
+            dst="go:external:0-0:Open:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 1, "Go external matching should still work for distinctive names"
+
+    # --- Go ambiguous names ---
+
+    def test_go_bare_run_not_matched(self) -> None:
+        """Go: bare 'Run' should NOT match gin.Engine.Run without module context."""
+        catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/main.go:10:TestFoo:function",
+            dst="go:external:0-0:Run:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 0, "Bare 'Run' is ambiguous (testing.T.Run, cobra.Command.Run)"
+
+    def test_go_bare_string_not_matched(self) -> None:
+        """Go: bare 'String' should NOT match gin.Context.String without module context."""
+        catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/main.go:10:handler:function",
+            dst="go:external:0-0:String:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 0, "Bare 'String' is ambiguous (fmt.Stringer.String)"
+
+    def test_go_bare_read_not_matched(self) -> None:
+        """Go: bare 'Read' should NOT match net.Conn.Read without module context."""
+        catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/main.go:10:process:function",
+            dst="go:external:0-0:Read:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 0, "Bare 'Read' is ambiguous (io.Reader.Read on many types)"
+
+    def test_go_bare_write_not_matched(self) -> None:
+        """Go: bare 'Write' should NOT match net.Conn.Write without module context."""
+        catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/main.go:10:process:function",
+            dst="go:external:0-0:Write:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 0, "Bare 'Write' is ambiguous (io.Writer.Write on many types)"
+
+    def test_go_qualified_run_still_matches(self) -> None:
+        """Go: 'Run' with gin.Engine module context should still match."""
+        catalog = load_catalog("go")
+        edge = self._make_edge(
+            src="go:/main.go:10:main:function",
+            dst="go:gin.Engine:0-0:Run:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"go": catalog})
+        assert count == 1, "Qualified 'Run' on gin.Engine should match"
+
+    # --- Rust ambiguous names ---
+
+    def test_rust_bare_put_not_matched(self) -> None:
+        """Rust: bare 'put' should NOT match reqwest::Client.put without module context."""
+        catalog = load_catalog("rust")
+        edge = self._make_edge(
+            src="rust:src/main.rs:10:process:function",
+            dst="rust:external:0-0:put:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"rust": catalog})
+        assert count == 0, "Bare 'put' is ambiguous (HashMap.insert pattern)"
+
+    def test_rust_bare_read_to_end_not_matched(self) -> None:
+        """Rust: bare 'read_to_end' should NOT match TcpStream without module context."""
+        catalog = load_catalog("rust")
+        edge = self._make_edge(
+            src="rust:src/main.rs:10:load:function",
+            dst="rust:external:0-0:read_to_end:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"rust": catalog})
+        assert count == 0, "Bare 'read_to_end' is ambiguous (Read trait on Vec, Cursor, etc.)"
+
+    def test_rust_distinctive_read_dir_still_matches(self) -> None:
+        """Rust: distinctive 'read_dir' should still match without module context."""
+        catalog = load_catalog("rust")
+        edge = self._make_edge(
+            src="rust:src/main.rs:10:load:function",
+            dst="rust:external:0-0:read_dir:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"rust": catalog})
+        assert count == 1, "Distinctive 'read_dir' should match even without module context"
+
+    # --- Python ambiguous names ---
+
+    def test_python_bare_write_not_matched(self) -> None:
+        """Python: bare 'write' should NOT match asyncio.StreamWriter without module context."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:src/app.py:10:process:function",
+            dst="python:external:0-0:write:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 0, "Bare 'write' is ambiguous (io.StringIO.write, any .write())"
+
+    def test_python_bare_read_not_matched(self) -> None:
+        """Python: bare 'read' should NOT match asyncio.StreamReader without module context."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:src/app.py:10:process:function",
+            dst="python:external:0-0:read:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 0, "Bare 'read' is ambiguous (io.BytesIO.read, any .read())"
+
+    def test_python_bare_run_not_matched(self) -> None:
+        """Python: bare 'run' should NOT match subprocess.run without module context."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:src/app.py:10:main:function",
+            dst="python:external:0-0:run:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 0, "Bare 'run' is ambiguous (asyncio.run, flask.Flask.run, etc.)"
+
+    def test_python_qualified_run_still_matches(self) -> None:
+        """Python: 'run' with subprocess module context should still match."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:src/app.py:10:main:function",
+            dst="python:subprocess:0-0:run:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1, "Qualified 'run' on subprocess should match"
+
+    # --- Java ambiguous names ---
+
+    def test_java_bare_put_not_matched(self) -> None:
+        """Java: bare 'put' should NOT match RestTemplate.put without module context."""
+        catalog = load_catalog("java")
+        edge = self._make_edge(
+            src="java:src/Main.java:10:process:method",
+            dst="java:external:0-0:put:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"java": catalog})
+        assert count == 0, "Bare 'put' is ambiguous (Map.put, ByteBuffer.put)"
+
+    def test_java_bare_read_not_matched(self) -> None:
+        """Java: bare 'read' should NOT match FileInputStream.read without module context."""
+        catalog = load_catalog("java")
+        edge = self._make_edge(
+            src="java:src/Main.java:10:process:method",
+            dst="java:external:0-0:read:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"java": catalog})
+        assert count == 0, "Bare 'read' is ambiguous (ByteBuffer.read, any .read())"
+
+    def test_java_qualified_read_still_matches(self) -> None:
+        """Java: 'read' with FileInputStream module context should still match."""
+        catalog = load_catalog("java")
+        edge = self._make_edge(
+            src="java:src/Main.java:10:load:method",
+            dst="java:java.io.FileInputStream:0-0:read:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"java": catalog})
+        assert count == 1, "Qualified 'read' on FileInputStream should match"
+
+    # --- C ambiguous names ---
+
+    def test_c_bare_read_not_matched(self) -> None:
+        """C: bare 'read' should NOT match unistd read without module context."""
+        catalog = load_catalog("c")
+        edge = self._make_edge(
+            src="c:src/main.c:10:process:function",
+            dst="c:external:0-0:read:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"c": catalog})
+        assert count == 0, "Bare 'read' is ambiguous in C (project-local read() functions)"
+
+    def test_c_bare_write_not_matched(self) -> None:
+        """C: bare 'write' should NOT match unistd write without module context."""
+        catalog = load_catalog("c")
+        edge = self._make_edge(
+            src="c:src/main.c:10:process:function",
+            dst="c:external:0-0:write:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"c": catalog})
+        assert count == 0, "Bare 'write' is ambiguous in C (project-local write() functions)"
+
+    # --- JavaScript ambiguous names ---
+
+    def test_js_bare_send_not_matched(self) -> None:
+        """JS: bare 'send' should NOT match socket.send without module context."""
+        catalog = load_catalog("javascript")
+        edge = self._make_edge(
+            src="javascript:src/app.js:10:handler:function",
+            dst="javascript:external:0-0:send:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"javascript": catalog})
+        assert count == 0, "Bare 'send' is ambiguous (express.Response.send, EventEmitter)"
+
+    def test_js_bare_listen_not_matched(self) -> None:
+        """JS: bare 'listen' should NOT match net.Server.listen without module context."""
+        catalog = load_catalog("javascript")
+        edge = self._make_edge(
+            src="javascript:src/app.js:10:main:function",
+            dst="javascript:external:0-0:listen:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"javascript": catalog})
+        assert count == 0, "Bare 'listen' is ambiguous (EventEmitter.on pattern)"
+
+    def test_js_distinctive_readFile_still_matches(self) -> None:
+        """JS: distinctive name 'readFile' should still match without module context."""
+        catalog = load_catalog("javascript")
+        edge = self._make_edge(
+            src="javascript:src/app.js:10:load:function",
+            dst="javascript:external:0-0:readFile:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"javascript": catalog})
+        assert count == 1, "Distinctive 'readFile' should match even without module context"
+
+    def test_js_bare_remove_not_matched(self) -> None:
+        """JS: bare 'remove' should NOT match Deno.remove without module context.
+
+        react-hook-form's useFieldArray().remove() and Array operations use
+        'remove' extensively.  Without module context, this must not be tagged
+        as Deno fs_write.
+        """
+        catalog = load_catalog("javascript")
+        edge = self._make_edge(
+            src="javascript:src/components/Form.tsx:42:FormComponent:function",
+            dst="javascript:external:0-0:remove:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"javascript": catalog})
+        assert count == 0, "Bare 'remove' is ambiguous (Array.remove, react-hook-form, etc.)"
+
+
+class TestCatalogMerge:
+    """Tests for catalog parent merging."""
+
+    def test_merge_adds_parent_entries(self) -> None:
+        """Merging a parent catalog adds its entries."""
+        child = IoBoundaryCatalog(
+            language="scala",
+            primitives=[
+                IoPrimitive("fs_read", "scala.io.Source", "fromFile", "method"),
+            ],
+        )
+        parent = IoBoundaryCatalog(
+            language="java",
+            primitives=[
+                IoPrimitive("fs_read", "java.io.File", "exists", "method"),
+            ],
+        )
+        merged = child.merge(parent)
+        assert merged.language == "scala"
+        assert len(merged.primitives) == 2
+        assert merged.lookup("scala.io.Source.fromFile") is not None
+        assert merged.lookup("java.io.File.exists") is not None
+
+    def test_merge_child_wins_on_conflict(self) -> None:
+        """When both catalogs have the same qualified name, child's entry wins."""
+        child = IoBoundaryCatalog(
+            language="scala",
+            primitives=[
+                IoPrimitive("net_send", "some.module", "send", "method", "scala version"),
+            ],
+        )
+        parent = IoBoundaryCatalog(
+            language="java",
+            primitives=[
+                IoPrimitive("net_recv", "some.module", "send", "method", "java version"),
+            ],
+        )
+        merged = child.merge(parent)
+        hit = merged.lookup("some.module.send")
+        assert hit is not None
+        assert hit.boundary == "net_send"  # child's version
+        assert hit.notes == "scala version"
+
+    def test_merge_preserves_ambiguous_names(self) -> None:
+        """Merging inherits ambiguous_names from both catalogs."""
+        child = IoBoundaryCatalog(
+            language="scala",
+            primitives=[],
+            ambiguous_names=frozenset({"bind"}),
+        )
+        parent = IoBoundaryCatalog(
+            language="java",
+            primitives=[],
+            ambiguous_names=frozenset({"exec"}),
+        )
+        merged = child.merge(parent)
+        assert "bind" in merged.ambiguous_names
+        assert "exec" in merged.ambiguous_names
+
+
+class TestSwiftCatalog:
+    """Tests for the Swift I/O primitive catalog."""
+
+    def test_swift_catalog_loads(self) -> None:
+        """Swift catalog should load without errors."""
+        catalog = load_catalog("swift")
+        assert catalog.language == "swift"
+        assert len(catalog.primitives) > 0
+
+    def test_swift_has_fs_read(self) -> None:
+        """Swift catalog covers FileManager read operations."""
+        catalog = load_catalog("swift")
+        fs_reads = [p for p in catalog.primitives if p.boundary == "fs_read"]
+        names = {p.name for p in fs_reads}
+        assert "fileExists" in names
+        assert "contentsOfDirectory" in names
+
+    def test_swift_has_fs_write(self) -> None:
+        """Swift catalog covers FileManager write operations."""
+        catalog = load_catalog("swift")
+        fs_writes = [p for p in catalog.primitives if p.boundary == "fs_write"]
+        names = {p.name for p in fs_writes}
+        assert "createFile" in names
+        assert "removeItem" in names
+        assert "moveItem" in names
+
+    def test_swift_has_net_send(self) -> None:
+        """Swift catalog covers URLSession network send."""
+        catalog = load_catalog("swift")
+        net_sends = [p for p in catalog.primitives if p.boundary == "net_send"]
+        names = {p.name for p in net_sends}
+        assert "dataTask" in names
+        assert "uploadTask" in names
+
+    def test_swift_has_net_recv(self) -> None:
+        """Swift catalog covers network receive operations."""
+        catalog = load_catalog("swift")
+        net_recvs = [p for p in catalog.primitives if p.boundary == "net_recv"]
+        names = {p.name for p in net_recvs}
+        assert "downloadTask" in names
+
+    def test_swift_has_subprocess(self) -> None:
+        """Swift catalog covers Process operations."""
+        catalog = load_catalog("swift")
+        subprocs = [p for p in catalog.primitives if p.boundary == "subprocess"]
+        names = {p.name for p in subprocs}
+        assert "waitUntilExit" in names
+
+    def test_swift_has_logging(self) -> None:
+        """Swift catalog covers print and NSLog."""
+        catalog = load_catalog("swift")
+        logs = [p for p in catalog.primitives if p.boundary == "logging"]
+        names = {p.name for p in logs}
+        assert "print" in names
+        assert "NSLog" in names
+
+    def test_swift_has_env_read(self) -> None:
+        """Swift catalog covers ProcessInfo."""
+        catalog = load_catalog("swift")
+        env_reads = [p for p in catalog.primitives if p.boundary == "env_read"]
+        names = {p.name for p in env_reads}
+        assert "processInfo" in names
+
+    def test_swift_all_boundary_types(self) -> None:
+        """Swift catalog covers the major boundary types."""
+        catalog = load_catalog("swift")
+        boundaries = {p.boundary for p in catalog.primitives}
+        expected = {"fs_read", "fs_write", "net_send", "net_recv",
+                    "subprocess", "env_read", "logging"}
+        assert expected.issubset(boundaries), (
+            f"Missing boundaries: {expected - boundaries}"
+        )
+
+    def test_swift_ambiguous_names_block_unqualified_match(self) -> None:
+        """Generic names like 'write' should not match without module context."""
+        catalog = load_catalog("swift")
+        # 'write' is in ambiguous_names — should not match for unresolved externals
+        hit = catalog.lookup_with_module("write", module_hint="external")
+        assert hit is None, "Generic 'write' should not match for external module hint"
+
+    def test_swift_ambiguous_names_include_common_generics(self) -> None:
+        """Verify that very common generic names are marked as ambiguous."""
+        catalog = load_catalog("swift")
+        for name in ["write", "read", "run", "Data", "String", "URL", "send"]:
+            assert name in catalog.ambiguous_names, (
+                f"'{name}' should be in ambiguous_names to prevent false positives"
+            )
+
+    def test_java_in_out_err_are_ambiguous(self) -> None:
+        """System.in/out/err are ambiguous — must not match without module context.
+
+        JPA CriteriaBuilder.in(), PrintWriter.out(), etc. produce edges like
+        java:external:0-0:in:unresolved. Without ambiguous_names, 'in' matches
+        System.in (ipc_recv), causing 20 false positives in keycloak.
+        """
+        catalog = load_catalog("java")
+        for name in ["in", "out", "err"]:
+            assert name in catalog.ambiguous_names, (
+                f"'{name}' should be in ambiguous_names to prevent false positives "
+                f"(e.g., JPA .in() matching System.in)"
+            )
+
+    def test_java_in_blocked_for_external(self) -> None:
+        """'in' should NOT match for unresolved external calls."""
+        catalog = load_catalog("java")
+        hit = catalog.lookup_with_module("in", module_hint="external")
+        assert hit is None, (
+            "'in' matched as System.in for external module hint — "
+            "this causes false ipc_recv on JPA .in() calls"
+        )
+
+    def test_java_in_matches_with_system_module(self) -> None:
+        """'in' SHOULD match when module context is System."""
+        catalog = load_catalog("java")
+        hit = catalog.lookup_with_module("in", module_hint="System")
+        assert hit is not None
+        assert hit.boundary == "ipc_recv"
+
+    def test_swift_distinctive_names_match_unresolved(self) -> None:
+        """Distinctive I/O names should match even for unresolved externals."""
+        catalog = load_catalog("swift")
+        # fileExists is specific to FileManager — should match
+        hit = catalog.lookup_with_module("fileExists", module_hint="external")
+        assert hit is not None
+        assert hit.boundary == "fs_read"
+
+    def test_swift_print_matches_as_logging(self) -> None:
+        """Swift print() should be tagged as logging."""
+        catalog = load_catalog("swift")
+        hit = catalog.lookup_with_module("print", module_hint="external")
+        assert hit is not None
+        assert hit.boundary == "logging"
+
+    def test_swift_io_tagging_on_edges(self) -> None:
+        """End-to-end: tag_io_boundaries tags Swift unresolved call edges."""
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str = "calls"
+            meta: Optional[Dict[str, Any]] = None
+
+        catalog = load_catalog("swift")
+        edges = [
+            MockEdge(
+                src="swift:Sources/App/Network.swift:10:fetch:method",
+                dst="swift:external:0-0:dataTask:unresolved",
+            ),
+            MockEdge(
+                src="swift:Sources/App/Util.swift:5:log:method",
+                dst="swift:external:0-0:print:unresolved",
+            ),
+            MockEdge(
+                src="swift:Sources/App/IO.swift:20:check:method",
+                dst="swift:external:0-0:fileExists:unresolved",
+            ),
+            # Generic 'write' should NOT be tagged (ambiguous)
+            MockEdge(
+                src="swift:Sources/App/Writer.swift:15:save:method",
+                dst="swift:external:0-0:write:unresolved",
+            ),
+        ]
+        count = tag_io_boundaries(edges, {"swift": catalog})
+        assert count == 3, f"Expected 3 tagged edges, got {count}"
+        assert edges[0].meta["io_boundary"] == "net_send"
+        assert edges[1].meta["io_boundary"] == "logging"
+        assert edges[2].meta["io_boundary"] == "fs_read"
+        assert edges[3].meta is None  # 'write' should not be tagged
+
+    def test_swift_has_swiftnio_server_primitives(self) -> None:
+        """Swift catalog covers SwiftNIO server infrastructure."""
+        catalog = load_catalog("swift")
+        net_recvs = {p.name for p in catalog.primitives if p.boundary == "net_recv"}
+        net_sends = {p.name for p in catalog.primitives if p.boundary == "net_send"}
+        process = {p.name for p in catalog.primitives if p.boundary == "process_send"}
+        # Event loop group creation is server infrastructure
+        assert "MultiThreadedEventLoopGroup" in net_recvs
+        # Graceful shutdown is process lifecycle
+        assert "syncShutdownGracefully" in process
+        # HTTP client request construction
+        assert "HTTPClientRequest" in net_sends
+
+    def test_swift_has_websocket_handlers(self) -> None:
+        """Swift catalog covers WebSocket event handlers."""
+        catalog = load_catalog("swift")
+        net_recvs = {p.name for p in catalog.primitives if p.boundary == "net_recv"}
+        assert "onText" in net_recvs
+        assert "onBinary" in net_recvs
+
+    def test_swift_has_tls_primitives(self) -> None:
+        """Swift catalog covers NIO TLS/SSL primitives."""
+        catalog = load_catalog("swift")
+        net_sends = {p.name for p in catalog.primitives if p.boundary == "net_send"}
+        assert "NIOSSLContext" in net_sends
+        assert "NIOSSLCertificate" in net_sends
+
+    def test_swift_has_nio_channel_operations(self) -> None:
+        """Swift catalog covers NIO async channel and pipeline operations."""
+        catalog = load_catalog("swift")
+        net_sends = {p.name for p in catalog.primitives if p.boundary == "net_send"}
+        net_recvs = {p.name for p in catalog.primitives if p.boundary == "net_recv"}
+        # NIOAsyncChannel is a bidirectional IO channel
+        assert "NIOAsyncChannel" in net_recvs
+        # Pipeline handler addition
+        assert "addHandler" in net_sends
+
+    def test_swift_has_tracing_primitives(self) -> None:
+        """Swift catalog covers distributed tracing span operations."""
+        catalog = load_catalog("swift")
+        logging = {p.name for p in catalog.primitives if p.boundary == "logging"}
+        assert "startSpan" in logging
+        assert "endSpan" in logging
+
+    def test_swift_server_io_tagging_on_edges(self) -> None:
+        """End-to-end: tag_io_boundaries tags server-side Swift IO edges."""
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str = "calls"
+            meta: Optional[Dict[str, Any]] = None
+
+        catalog = load_catalog("swift")
+        edges = [
+            MockEdge(
+                src="swift:Sources/App/Server.swift:10:setup:method",
+                dst="swift:external:0-0:MultiThreadedEventLoopGroup:unresolved",
+            ),
+            MockEdge(
+                src="swift:Sources/App/Server.swift:15:teardown:method",
+                dst="swift:external:0-0:syncShutdownGracefully:unresolved",
+            ),
+            MockEdge(
+                src="swift:Sources/App/WS.swift:20:handle:method",
+                dst="swift:external:0-0:onText:unresolved",
+            ),
+            MockEdge(
+                src="swift:Sources/App/TLS.swift:5:configure:method",
+                dst="swift:external:0-0:NIOSSLContext:unresolved",
+            ),
+            MockEdge(
+                src="swift:Sources/App/Client.swift:8:fetch:method",
+                dst="swift:external:0-0:HTTPClientRequest:unresolved",
+            ),
+        ]
+        count = tag_io_boundaries(edges, {"swift": catalog})
+        assert count == 5, f"Expected 5 tagged edges, got {count}"
+        assert edges[0].meta["io_boundary"] == "net_recv"
+        assert edges[1].meta["io_boundary"] == "process_send"
+        assert edges[2].meta["io_boundary"] == "net_recv"
+        assert edges[3].meta["io_boundary"] == "net_send"
+        assert edges[4].meta["io_boundary"] == "net_send"
+
+    def test_swift_has_logger_methods(self) -> None:
+        """Swift catalog covers swift-log Logger level methods."""
+        catalog = load_catalog("swift")
+        logs = {p.name for p in catalog.primitives if p.boundary == "logging"}
+        for method in ["debug", "info", "warning", "error", "critical", "notice", "trace"]:
+            assert method in logs, f"Logger.{method} missing from Swift logging catalog"
+
+    def test_swift_variable_name_module_hint_matches(self) -> None:
+        """Variable-name module hints (camelCase) should match PascalCase catalog modules.
+
+        In Swift, the analyzer extracts the receiver variable name as the module
+        hint (e.g., 'context' from 'context.writeAndFlush()'). The catalog uses
+        PascalCase type names (e.g., 'ChannelHandlerContext'). Case-insensitive
+        substring matching must bridge this gap.
+        """
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str = "calls"
+            meta: Optional[Dict[str, Any]] = None
+
+        catalog = load_catalog("swift")
+        edges = [
+            # context.writeAndFlush() → ChannelHandlerContext.writeAndFlush
+            MockEdge(
+                src="swift:Sources/App/Handler.swift:10:handle:method",
+                dst="swift:context:0-0:writeAndFlush:unresolved",
+            ),
+            # channel.addHandler() → Channel.addHandler
+            MockEdge(
+                src="swift:Sources/App/Pipeline.swift:20:setup:method",
+                dst="swift:channel:0-0:addHandler:unresolved",
+            ),
+            # fileIO.openFile() → NonBlockingFileIO.openFile
+            MockEdge(
+                src="swift:Sources/App/IO.swift:30:readFile:method",
+                dst="swift:fileIO:0-0:openFile:unresolved",
+            ),
+            # logger.debug() → Logger.debug (logging)
+            MockEdge(
+                src="swift:Sources/App/Service.swift:40:process:method",
+                dst="swift:logger:0-0:debug:unresolved",
+            ),
+        ]
+        count = tag_io_boundaries(edges, {"swift": catalog})
+        assert count == 4, f"Expected 4 tagged edges, got {count}"
+        assert edges[0].meta["io_boundary"] == "net_send"
+        assert edges[1].meta["io_boundary"] == "net_send"
+        assert edges[2].meta["io_boundary"] == "fs_read"
+        assert edges[3].meta["io_boundary"] == "logging"

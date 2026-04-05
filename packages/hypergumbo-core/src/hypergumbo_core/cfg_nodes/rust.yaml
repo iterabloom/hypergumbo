@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017 §1d: CFG node mapping for Rust (tree-sitter-rust grammar)
+#
+# Maps tree-sitter-rust node types to generic control-flow categories.
+# Includes the early_return semantic hook for the ? operator.
+#
+# Child references: "field:name" → child_by_field_name("name"),
+#                   "type:name" → first child with .type == "name"
+language: rust
+grammar: tree-sitter-rust
+
+conditional:
+  - node_type: if_expression
+    condition_child: "field:condition"
+    true_child: "field:consequence"
+    false_child: "field:alternative"
+  - node_type: if_let_expression
+    condition_child: "field:pattern"
+    true_child: "field:consequence"
+    false_child: "field:alternative"
+
+loop:
+  - node_type: loop_expression
+    body_child: "field:body"
+    infinite: true
+  - node_type: while_expression
+    condition_child: "field:condition"
+    body_child: "field:body"
+  - node_type: while_let_expression
+    condition_child: "field:pattern"
+    body_child: "field:body"
+  - node_type: for_expression
+    body_child: "field:body"
+
+break_statement: [break_expression]
+continue_statement: [continue_expression]
+return_statement: [return_expression]
+
+early_return:
+  - node_type: try_expression
+    semantics: return_on_err
+    ok_defines: true
+    err_edge: exit
+
+switch:
+  - node_type: match_expression
+    scrutinee_child: "field:value"
+    arms_child: "field:body"
+    arm_type: match_arm
+
+# Rust uses Result/? instead of try/catch
+try_catch: []

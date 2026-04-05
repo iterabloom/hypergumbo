@@ -313,6 +313,9 @@ if [[ -f "$PRE_PUSH_HOOK" ]]; then
   echo "PRE-PUSH HOOK TESTS"
   echo "========================================================"
 
+  # Create a clean .git dir without CI_FAILOVER_ACTIVE for non-failover tests
+  CLEAN_GIT_DIR="$(mktemp -d -t hypergumbo-clean-git.XXXXXX)"
+
   # Helper: simulate pre-push stdin (local_ref local_sha remote_ref remote_sha)
   run_pre_push_test() {
     local test_name="$1"
@@ -324,7 +327,7 @@ if [[ -f "$PRE_PUSH_HOOK" ]]; then
     echo "--------------------------------------------------------"
     echo "TEST: $test_name"
 
-    if echo "$stdin_line" | "$PRE_PUSH_HOOK" "origin" "https://example.com" >/dev/null 2>&1; then
+    if echo "$stdin_line" | GIT_DIR="$CLEAN_GIT_DIR" "$PRE_PUSH_HOOK" "origin" "https://example.com" >/dev/null 2>&1; then
       if [[ "$expect_block" == "allow" ]]; then
         echo "  PASS (push allowed as expected)"
         ((PASS_COUNT++))
@@ -347,6 +350,77 @@ if [[ -f "$PRE_PUSH_HOOK" ]]; then
   run_pre_push_test "Pre-push: block push to main" "refs/heads/main" "block"
   run_pre_push_test "Pre-push: allow push to feature branch" "refs/heads/jgstern/feat/test" "allow"
   run_pre_push_test "Pre-push: allow push to refs/for/dev (Forgejo PR)" "refs/for/dev/my-branch" "allow"
+
+  rm -rf "$CLEAN_GIT_DIR"
+
+  # 7c. Failover remote verification tests
+  # --------------------------------------------------------------------------
+  echo ""
+  echo "========================================================"
+  echo "PRE-PUSH FAILOVER REMOTE VERIFICATION TESTS"
+  echo "========================================================"
+
+  # Helper: test failover-aware pre-push with a fake .git dir for CI_FAILOVER_ACTIVE
+  FAILOVER_SANDBOX="$(mktemp -d -t hypergumbo-failover-test.XXXXXX)"
+  # Create a minimal git repo structure so the hook can find CI_FAILOVER_ACTIVE
+  mkdir -p "$FAILOVER_SANDBOX/.git"
+
+  run_failover_push_test() {
+    local test_name="$1"
+    local remote_name="$2"
+    local remote_ref="$3"
+    local failover_active="$4"  # "true" or "false"
+    local expect_result="$5"    # "block" or "allow"
+
+    local stdin_line="refs/heads/test abc123 $remote_ref def456"
+
+    echo "--------------------------------------------------------"
+    echo "TEST: $test_name"
+
+    # Set or remove CI_FAILOVER_ACTIVE
+    if [[ "$failover_active" == "true" ]]; then
+      echo "selfh" > "$FAILOVER_SANDBOX/.git/CI_FAILOVER_ACTIVE"
+    else
+      rm -f "$FAILOVER_SANDBOX/.git/CI_FAILOVER_ACTIVE"
+    fi
+
+    # Run the hook with GIT_DIR pointing to our sandbox .git
+    if echo "$stdin_line" | GIT_DIR="$FAILOVER_SANDBOX/.git" "$PRE_PUSH_HOOK" "$remote_name" "https://example.com" >/dev/null 2>&1; then
+      if [[ "$expect_result" == "allow" ]]; then
+        echo "  ✅ PASS (push allowed as expected)"
+        ((PASS_COUNT++))
+      else
+        echo "  ❌ FAIL (push should have been blocked)"
+        ((FAIL_COUNT++))
+      fi
+    else
+      if [[ "$expect_result" == "block" ]]; then
+        echo "  ✅ PASS (push blocked as expected)"
+        ((PASS_COUNT++))
+      else
+        echo "  ❌ FAIL (push should have been allowed)"
+        ((FAIL_COUNT++))
+      fi
+    fi
+  }
+
+  # During failover: push to origin should be BLOCKED
+  run_failover_push_test "Failover: block push to origin" \
+    "origin" "refs/for/dev/my-branch" "true" "block"
+
+  # During failover: push to selfh should be ALLOWED
+  run_failover_push_test "Failover: allow push to selfh" \
+    "selfh" "refs/for/dev/my-branch" "true" "allow"
+
+  # No failover: push to origin should be ALLOWED (feature branch)
+  run_failover_push_test "No failover: allow push to origin" \
+    "origin" "refs/for/dev/my-branch" "false" "allow"
+
+  # During failover: push to selfh on protected branch still BLOCKED
+  run_failover_push_test "Failover: block push to selfh/dev (protected)" \
+    "selfh" "refs/heads/dev" "true" "block"
+
+  rm -rf "$FAILOVER_SANDBOX"
 fi
 
 # 8. Stop hook state file tests
@@ -374,9 +448,6 @@ if [[ -f "$STOP_HOOK" ]]; then
   # Enable autonomous mode and loop sentinel
   echo "BROAD" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
   touch "$STOP_TEST_DIR/.agent/LOOP"
-
-  # Empty invariant ledger (no TODOs — skip Path 1)
-  echo "" > "$STOP_TEST_DIR/.agent/invariant-ledger.md"
 
   # Provide stop_reflect.md and cooldown_prompt.md
   echo "Reflect here" > "$STOP_TEST_DIR/.agent/stop_reflect.md"
@@ -423,14 +494,11 @@ TRACKER_STUB
   FAKE_HOME="$(mktemp -d -t hypergumbo-fakehome.XXXXXX)"
   mkdir -p "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log"
 
-  # SCENARIO 8a: New filename (last_stop_check.json) with recent timestamp → cooldown
+  # SCENARIO 8a: last_stop_check.json with recent timestamp → cooldown
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8a: Stop hook reads last_stop_check.json (cooldown)"
   RECENT_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
-  # Remove old sandbox fallback files
-  rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
-  rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 
   OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
   if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
@@ -442,29 +510,10 @@ TRACKER_STUB
     ((FAIL_COUNT++))
   fi
 
-  # SCENARIO 8b: Backward compat — only stop_hook_state.json exists → cooldown
-  echo "--------------------------------------------------------"
-  echo "TEST: Scenario 8b: Stop hook falls back to stop_hook_state.json (backward compat)"
-  rm -f "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
-  rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
-  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$STOP_TEST_DIR/.agent/stop_hook_state.json"
-
-  OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
-  if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
-    echo "  ✅ PASS (cooldown triggered from stop_hook_state.json fallback)"
-    ((PASS_COUNT++))
-  else
-    echo "  ❌ FAIL (expected cooldown block from stop_hook_state.json fallback)"
-    echo "  Output: $OUTPUT"
-    ((FAIL_COUNT++))
-  fi
-
   # SCENARIO 8c: Neither file exists → full reflection (Path 3)
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8c: No state file → full reflection checklist"
   rm -f "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
-  rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
-  rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 
   OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
   if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Stale reflection"; then
@@ -482,8 +531,6 @@ TRACKER_STUB
   # Use a PID that definitely doesn't exist (max pid + 1 style)
   echo "BROAD pid=999999999" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
   rm -f "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
-  rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
-  rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
 
   OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
   if echo "$OUTPUT" | grep -q '"decision":"block"'; then
@@ -521,24 +568,6 @@ TRACKER_STUB
 
   # Reset for remaining tests
   echo "BROAD" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
-
-  # SCENARIO 8d: New file takes priority over old file
-  echo "--------------------------------------------------------"
-  echo "TEST: Scenario 8d: last_stop_check.json takes priority over stop_hook_state.json"
-  # New file: recent timestamp → cooldown (in $HOME location, which is checked first)
-  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
-  # Old file: epoch timestamp → would be stale (Path 3) if read
-  printf '{"last_completed_utc": "1970-01-01T00:00:00Z"}\n' > "$STOP_TEST_DIR/.agent/stop_hook_state.json"
-
-  OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
-  if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
-    echo "  ✅ PASS (new file takes priority — cooldown from last_stop_check.json)"
-    ((PASS_COUNT++))
-  else
-    echo "  ❌ FAIL (expected cooldown from last_stop_check.json, not stale fallback)"
-    echo "  Output: $OUTPUT"
-    ((FAIL_COUNT++))
-  fi
 
   rm -rf "$STOP_TEST_DIR" "$FAKE_HOME"
 else

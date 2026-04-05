@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": ".agent/hooks/cursor/session-start.sh",
+        "type": "command",
+        "timeout": 5
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": ".agent/hooks/cursor/session-end.sh",
+        "type": "command",
+        "timeout": 5
+      }
+    ],
+    "stop": [
+      {
+        "command": ".agent/hooks/cursor/stop.sh",
+        "type": "command"
+      },
+      {
+        "command": ".agent/hooks/cursor/stop-transcript.sh",
+        "type": "command",
+        "timeout": 30
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": ".agent/hooks/cursor/after-agent-response-transcript.sh",
+        "type": "command",
+        "timeout": 30
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": ".agent/hooks/cursor/post-tool-use-transcript.sh",
+        "type": "command",
+        "timeout": 30
+      }
+    ]
+  }
+}

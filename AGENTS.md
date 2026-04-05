@@ -12,27 +12,65 @@
 - **Governance Files:** Changes to `.githooks/**`, `.agent/**`, `scripts/install-hooks`, `scripts/auto-pr`, `scripts/merge-pr`, `scripts/contribute`, `scripts/ci-debug`, `scripts/ci-failover`, `scripts/lib/forgejo-api.sh`, `CODEOWNERS`, `AUTONOMOUS_MODE.txt.default`, `ALLOWED_WEBSITES.md` and `AGENTS.md` require human approval. Do NOT self-merge PRs touching these files.
   - **Approval workflow:** When a task requires changes to governance files, do NOT create a PR preemptively. Instead: (1) set the tracker item to `needs_human_review`, (2) add a discussion message explaining the proposed change and requesting explicit approval, (3) only proceed with implementation via `auto-pr` after human approval is received. This prevents orphaned PRs sitting unmerged.
 
+## Architecture & Context
+- **Goal:** Local-first CLI that profiles a repo and emits an agent-friendly "behavior map".
+- **Stack:** Python 3.10+, standard library preferred where possible.
+- **Core:** `packages/hypergumbo-core/src/hypergumbo_core/` contains the CLI, IR, sketch, slice, and linkers. Language analyzers are in the `hypergumbo-lang-*` packages.
+- **Specs:** See `docs/hypergumbo-spec.md` and `CHANGELOG.md` for the design contract and implementation state and progress.
+
 ## Premature Stopping Prevention (Autonomous Mode Only)
-  When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP (any non-OFF value):
-  - NEVER output a "summary" or "status report" as a final action
+When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP (any non-OFF value), you are authorized for indefinite continuous work.
   - Before ANY stopping point: check todo list - if items remain, continue
   - Before ANY stopping point: check the tracker for blocking items (`scripts/tracker count-todos`). See "Scope Expansion Commitment Protocol" for which statuses block stopping and how to handle each.
   - Before ANY stopping point: complete the reflection protocol in `.agent/stop_reflect.md`
-  - Follow the below section titled "Autonomous Development Mode Stipulations"
-  - "Profoundly stuck" means: all priority queue items attempted, all tests failing, no clear path forward, AND no unfixed root causes you could address
-  - **Circuit breaker:** The stop hook approves stopping after 5 identical stop events with no progress (prevents death spirals). Progress is measured by file changes in sentinel directories (configured in `.agent/tracker/config.yaml` under `stop_hook.progress_sentinel_dirs`), not by tracker updates. This means merging a PR, editing source files, or writing lab notebook entries all count as progress and reset the breaker. If the circuit breaker fires, persist stalled items to `last_stop_check.json` notes so they survive context compaction.
   - **Lazy-load guidance:** The stop hook writes full guidance to `~/hypergumbo_lab_notebook/guidance_log/` and returns only a short pointer (1-2 lines). This applies to all three stop paths: TODO blocking, cooldown, and full reflection. When the hook fires, read the file path it provides to get the full instructions.
-  - To reiterate: If AUTONOMOUS_MODE.txt contains TRUE, BROAD, or DEEP, you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations".
-  - Use `./scripts/loop-toggle` to manage autonomous mode:
-    - `./scripts/loop-toggle off` - Disable autonomous mode
-    - `./scripts/loop-toggle broad` - Enable BROAD mode (coverage breadth, fast iteration)
-    - `./scripts/loop-toggle deep` - Enable DEEP mode (feature usefulness, larger repos)
-    - `./scripts/loop-toggle status` - Show current mode
-  - Backward compatibility: TRUE is treated as BROAD.
+
+### Mode Selection
+| Mode | Focus | Bakeoff Script | When to Use |
+|------|-------|----------------|-------------|
+| **BROAD** | Coverage breadth | `scripts/bakeoff-broad` | Default (TRUE is treated as BROAD). Ensure comprehensive linker, framework, and call graph detection |
+| **DEEP** | Feature usefulness | `scripts/bakeoff-deep` | Test slice/reverse-slice/tier on larger repos (20-200MB) |
+
+- **BROAD** answers: "Are we detecting all the linker edges, framework patterns, and call relationships?"
+- **DEEP** answers: "Are hypergumbo's outputs useful to developers?"
+
+Use **BROAD** mode (the default) when coverage gaps remain — missing linker edges, unrecognized framework patterns, or incomplete call graphs. Use **DEEP** mode once you've converged on coverage breadth (no manifestly obvious gaps) and want to assess feature quality: slice limits, supply chain tiers, graph centrality, or qualitative readiness for a release.
+
+- **One thing at a time.** Finish your current task — including its PR merge — before starting the next one. Do not start coding a new feature while a bakeoff is running, while CI is pending, or while `auto-pr` is in flight. The editable install means your in-progress edits affect every `hypergumbo` invocation in the process, including background bakeoffs. Waiting for results is not wasted time — it produces better decisions about what to do next.
+- **Always TDD:** Red → Green → Refactor. Write failing tests first.
+- **Always structural:** Assume bugs are structural until proven otherwise. See "Structural Fix Protocol" above and ADR-0008.
+- **Always PR:** Every feature gets its own PR. Prefer `./scripts/auto-pr` for blocking CI-poll-merge workflow; use manual PR for more control.
+- **Always 100% coverage:** No exceptions. Mark defensive code paths with `# pragma: no cover`.
+- **Maintain the tracker:** When you discover a violated invariant, create a tracker item (`scripts/tracker add --kind invariant ...`). When you fix a root cause (not a workaround), update the item status. For invariants: use `satisfied` (with positive evidence the invariant holds), `pending_validation` (fix deployed but not yet validated by bakeoff), or `violated` (still broken). Do NOT use `holding` (deprecated) — it is ambiguous and will be rejected by the tracker.
+
+- **Periodically and frequently test on real repos:** Use the lab journal/notebook (`$HOME/hypergumbo_lab_notebook/notebookjournal_<MMDDYYYY_HHMM>.md`) to record your observations and ideas as you experiment with various hypergumbo settings on various real-world projects. If you notice obvious bugs during experimentation, you don't necessarily need to stop right away to fix the bug. Just be sure to note it prominently in your lab notebookjournal. When you feel you have done enough experiments, review and analyze the entire notebookjournal file, and use your analysis to plan your next actions. Think about how to make hypergumbo more useful both to agentic LLMs such as yourself and human software developers.
+
+Always run a 1-repo mini trial before full experiments to validate setup and estimate runtime. If extrapolated single-command wall-clock time exceeds 8 hours, document the design in the lab notebook instead of running it. Do not draw conclusions from mini-trials — they are only for smoke testing and timing. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/experiment-design-playbook.md`.)
+
+- **Keep CHANGELOG.md, pyproject.toml, `docs/hypergumbo-spec.md` updated:** Document what's implemented and bump the version to the extent appropriate just before each PR.
+- **Changelog audit:** Periodically audit the `[Unreleased]` section of `CHANGELOG.md` for completeness and organization. Phase 1: compare the section against `git log <last-tag>..HEAD` to find missing items (all commit types matter — features, fixes, CI, tests, refactors, docs). Phase 2: calibrate detail level against the most recent released sections — the Unreleased section should match their granularity, not exceed it. Completeness is valued but verbosity is not completeness; one concise bullet per feature beats a multi-paragraph architecture breakdown. Merge duplicates, normalize granularity, group related entries, reorder by significance. Do not remove information; concision means fewer words, not less content. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/changelog-audit-playbook.md`.)
+- **Agentic session retrospective:** After an autonomous session, analyze the agent's decision-making and infrastructure interactions (not what was built, but how it decided what to build). Consumes `.agent/.last_session_transcript.jsonl` (vendor-agnostic, rotated on session start). Produces a lab notebook entry with structured findings and proposed improvements to AGENTS.md, hooks, scripts, or playbooks. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/agentic-session-retrospective.md`.)
+- **Adjust specs based on experiments:** If experiments reveal better approaches, update `docs/hypergumbo-spec.md`.
+- **If you run out of items from the main spec, look at §20 Future Work for what to tackle next.**
+
+### Priority Queues:
+Both modes share the same top priority: actionable tracker items (`scripts/tracker ready`). See "Scope Expansion Commitment Protocol" for status definitions and agent behavior for each.
+
+### BROAD Mode Priority Queue:
+Priority: reflect → aggregate → linkers → frameworks. Use `bakeoff-broad cycle` for run+diagnose+reflect. Reflect agents only read artifacts, so they can overlap with the next cohort's run. When blocked (CI pending, bakeoff running), aggregate prior sessions or investigate diagnostics. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/bakeoff-broad-priorities.md`.)
+
+### DEEP Mode Priority Queue:
+Priority: reflect → aggregate → slice quality → reverse slice → supply chain tiers → centrality → linkers. Use `bakeoff-deep cycle`. Compare sessions with `bakeoff-deep compare`. Includes introspection subcommands (status, active) and curriculum-based cohort selection. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/bakeoff-deep-priorities.md`.)
+
+### Bakeoff Artifacts
+Artifacts stored in `~/hypergumbo_lab_notebook/bakeoff_artifacts/` as timestamped session directories (broad-* or deep-*). Auto-discovered by latest timestamp, never overwritten. Env var overrides available. Each session contains state.json, cohorts/, out/, diag/, and reflect/ subdirectories. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/bakeoff-artifacts-guide.md`.)
+
+### Bakeoff Process Health Audit
+Periodically assess the bakeoff feedback loop itself — session convergence trends, reflect pipeline completion rates, signal-to-action flow, and BROAD/DEEP balance. Uses a sliding time window (start at 1 week, expand by 1 week until at least 2 sessions are found). Produces a structured health verdict (HEALTHY / NEEDS_ATTENTION / UNHEALTHY) with recommended actions. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/bakeoff-process-health-audit-playbook.md`.)
+
 
 ## Tracker (Structured Governance)
 The project uses a YAML-backed structured tracker (ADR-0013) in `.agent/tracker/`. Key rules:
-
 - **Agent Context Protection:** Always use `scripts/tracker show <ID>` or `scripts/tracker show <ID> --json` to read tracker item state. Always refuse to read files ending in `.ops`. These are internal operation logs that will pollute your context window with historical data you don't need. The CLI compiles ops into current state — that's what you want.
 - **Auto-Sync:** NEVER manually commit or push tracker `.ops` files. The tracker has a built-in auto-sync mechanism (`_maybe_auto_sync`) that automatically creates branches, commits, pushes, polls CI, and merges when pending ops exceed the threshold (40 lines). Do NOT include `.agent/tracker-workspace/.ops/` or `.agent/tracker/.ops/` in feature branch commits.
 - **Task Selection:** Use `scripts/tracker ready` (not `list`) to pick your next work item. `ready` filters to actionable items sorted by priority.
@@ -47,7 +85,7 @@ The project uses a YAML-backed structured tracker (ADR-0013) in `.agent/tracker/
   ```bash
   git log --oneline -- ':!.agent/tracker/.ops' ':!.agent/tracker-workspace/.ops'
   ```
-- **Resolution Rationale:** When changing a tracker item to a resolved state (`done`, `holding`, `wontfix`), always record WHY by following up with a discussion entry:
+- **Resolution Rationale:** When changing a tracker item to a resolved state (`done`, `satisfied`, `wont_do`), always record WHY by following up with a discussion entry:
   ```bash
   scripts/tracker update WI-foo --status done
   scripts/tracker discuss WI-foo "Fixed in PR #1234. Root cause was X, fix does Y."
@@ -65,45 +103,20 @@ When documenting status, coverage, or completion:
 - **BANNED:** "in most cases", "typically", "usually"
   - State the actual scope. Which cases? Under what conditions?
 - **REQUIRED:** Concrete enumeration over vague claims
-  - ❌ "All major languages are supported"
-  - ✅ "Supported: Java, Python, JS/TS, Ruby, Kotlin. Not supported: C#, Scala, Swift, PHP, Go, C++."
+  - NO: "All major languages are supported"
+  - YES: "Supported: Java, Python, JS/TS, Ruby, Kotlin. Not supported: C#, Scala, Swift, PHP, Go, C++."
 - **REQUIRED:** Explicit gaps over implicit completeness
-  - ❌ "META-001 is 100% fixed"
-  - ✅ "META-001: 5/13 languages done. Missing: C#, Scala, Swift, PHP, Groovy, C++, Objective-C, Apex."
+  - NO: "META-001 is 100% fixed"
+  - YES: "META-001: 5/13 languages done. Missing: C#, Scala, Swift, PHP, Groovy, C++, Objective-C, Apex."
 
 No weak shit. If you don't know, say you don't know. If you haven't checked, say you haven't checked.
 
 ## Required Checks
-- **100% Coverage:** No code may be committed without full test coverage. Verify with:
-  - **Fast (parallel):** `pytest -n auto --cov-fail-under=100`
-  - **Debug (sequential):** `pytest --cov-fail-under=100`
-  - Coverage paths are configured in `pyproject.toml` and `scripts/smart-test`
-  - **No excuses:** If coverage drops below 100%, it is YOUR responsibility to fix it—even if you didn't cause it. "Not my fault" is not an acceptable response. Any coverage gap you encounter is technical debt that must be addressed before proceeding. Investigate the cause, fix it, and move on. This prevents debt accumulation.
-  - **Embedding-dependent code:** When `sentence-transformers` isn't available, `smart-test` automatically uses `.coveragerc.no-embeddings` which excludes embedding-only code paths. This is expected. But in a properly configured dev environment (`./scripts/dev-install`), embeddings SHOULD be available.
-  - **Per-package isolation:** CI tests each package in isolation. Local combined runs can mask coverage gaps. Before pushing, run `./scripts/check-package-coverage` to verify each package achieves 100% independently.
-- **Test Placement Guidelines:** Tests must be in the same package as the code they cover.
-  - **Why:** CI runs each package's tests in isolation. A test in `hypergumbo-core` that exercises code in `hypergumbo-lang-mainstream` won't contribute to mainstream's coverage in CI.
-  - **Rule:** If your test file imports from `hypergumbo_lang_foo`, the test belongs in `packages/hypergumbo-lang-foo/tests/`.
-  - **Subprocess tests don't contribute to coverage:** Tests that invoke `subprocess.run([sys.executable, "-m", "hypergumbo", ...])` won't contribute to pytest-cov coverage. Call functions directly when possible. Use subprocess tests only for true integration testing (verifying CLI args, exit codes, etc.), not for coverage.
-  - **Verify before pushing:** Run `./scripts/check-package-coverage` to catch cross-package coverage issues locally.
+- **100% Coverage Guidelines and Test Placement Guidelines:** 100% coverage required — no exceptions. Tests must live in the same package as the code they cover (CI tests packages in isolation). Subprocess tests do not contribute to coverage. Run `check-package-coverage` before pushing to catch cross-package gaps. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/coverage-and-test-placement.md`.)
 - **Property Tests:** Tests verify invariants (valid IDs, confidence ranges, schema compliance) rather than exact "golden" output. We can't know a priori what the correct analysis is for complex repos.
 - **Linting:** Ensure code adheres to PEP 8.
 - **Module Docstrings:** Each `.py` file should have a substantive module docstring explaining *how it works* and *why*, not just *what* it exports. Capture implementation rationale that would otherwise be lost.
-- **Structural Fix Protocol (ADR-0008):** When fixing a bakeoff signal or bug:
-  1. **Assume structural:** The bug likely affects multiple languages/frameworks/stages
-  2. **Name the invariant:** "In this system, X must always be true because Y depends on it"
-  3. **Scope expansion:** Check same-language-different-construct, different-language-same-pattern, different-pipeline-stage
-  4. **Distinguish fix from workaround:** Does your change bypass a problematic code path, or fix/remove it?
-  5. **If workaround:** Create a tracker item (`scripts/tracker add --kind invariant ...`) with status `violated`, then fix the root cause
-- **Scope Expansion Commitment Protocol:** When a structural fix identifies analogous issues in other languages, constructs, or pipeline stages:
-  1. **Create tracker items immediately** using `scripts/tracker add`:
-     - `violated` — invariant violations, anything structural; use for items of kind `invariant` or `meta_invariant`. Investigate deeply, assume structural.
-     - `todo_hard` — defects, *potential* invariant violations, anything potentially structural. **When in doubt, use this.** The circuit breaker prevents death spirals, so err on the side of taking things too seriously. Use for items of kind `work_item`. Investigate deeply, assume structural.
-     - `todo_soft` — clearly non-defect backlog (CI config, test coverage, nice-to-haves, scope expansion work from the Commitment Protocol). For `work_item`-kind items. Address freely.
-     - `needs_human_review` — governance proposals, architectural questions, or anything requiring human judgment. Does NOT block stopping. For any kind of item. Do not work on these (other than to update their data using `scripts/tracker`) — they await human triage.
-  2. **Hook enforcement:** `todo_hard`, `todo_soft`, and `violated` items block the stop hook (queried via `scripts/tracker count-todos`) and surface via `scripts/tracker ready`. Circuit breaker: 5 firings with no file changes in sentinel dirs → approve.
-  3. **Act or deprioritize:** Either fix the item or set it to lowest priority (P4) with a justification note.
-  4. **Track to completion:** When done, update the item's status to `done`/`holding`/etc with a PR reference.
+- **Structural Fix and Scope Expansion Protocol:** When fixing bugs, assume structural: name the violated invariant, check for analogues across languages/constructs/pipeline stages, distinguish root-cause fixes from workarounds. Create tracker items immediately. When in doubt, use `todo_hard` — the circuit breaker prevents death spirals. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/structural-fix-scope-expansion-protocol.md`.)
 - **Signing & Identity:**
   1. Check `git config user.name` and `git config user.email` **before** creating any commit.
   2. If they are blank, **STOP**. You are **strictly forbidden** from generating, inferring, or guessing an identity. You must ask the user to run:
@@ -111,53 +124,9 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
   3. Once configured, all commits must use `git commit -s` to satisfy the DCO.
 
 ### Running Tests (smart-test)
-
-**IMPORTANT:** Always use `pytest` (aliased to `smart-test`) for running tests. Do NOT bypass it with:
-- `command pytest`
-- `python -m pytest`
-- `.venv/bin/pytest`
-- `SMART_TEST_ACTIVE=1 pytest`
-
-These escape hatches exist for debugging but waste tokens by producing ~4000 lines of raw output.
-
-**smart-test provides:**
-1. **Compact summary** - Only shows test result, failures, and coverage gaps (~20 lines vs ~4000)
-2. **Full log saved** - Complete output in `.ci/pytest-output.log` for debugging
-3. **Affected test selection** - Runs only tests that depend on changed files (when stable hypergumbo is installed)
-
-**Usage:**
-```bash
-pytest                      # Compact summary (default)
-pytest --raw                # Stream full output (rare, for debugging)
-pytest --full               # Run all tests, not just affected
-pytest --verbose            # Show test selection reasoning
-```
-
-**The compact summary shows:**
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-❌ ================ 5770 passed, 98 warnings in 317.89s =================
-
-COVERAGE:
-packages/.../cli.py      1378      7    99%   805-807, 811, 844, 876, 914
-packages/.../bash.py      191      1    99%   78
-TOTAL                   33003     10    99%
-FAIL Required test coverage of 100% not reached. Total coverage: 99.97%
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Full output: .ci/pytest-output.log
-Targeted run (14 test files, 3 changed sources). Full suite runs in CI every 4 hours (not post-merge); running it now would be wasteful.
-```
-
-The Missing column shows exact line numbers to fix. **Do NOT re-run tests** just to find missing lines. The "Targeted run" message means smart-test already validated 100% coverage for your changed files — do NOT follow up with `pytest --full`.
-
-### Always Commit `.ci/affected-tests.txt`
-
-The file `.ci/affected-tests.txt` is generated by `smart-test` and **must be committed** with every PR. This enables smart test selection in CI (see ADR-0010): CI reads the committed manifest to determine which tests to run, avoiding expensive hypergumbo installation in CI. The manifest includes a `Mode:` field (`targeted` or `full-suite`) so CI can display appropriate messaging.
-
-Even when only the timestamp comment changes, commit it anyway. Distinguishing "real" changes from timestamp-only changes isn't worth the extra logic, and CI may depend on the file being fresh.
+Always use the `pytest` alias (which invokes smart-test), never `python -m pytest` or direct pytest. Provides compact ~20-line summary; full output saved to `.ci/pytest-output.log`. Runs only tests affected by changed files. Commit `.ci/affected-tests.txt` with every PR for CI smart test selection. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/smart-test-playbook.md`.)
 
 ### Output Capture for Long-Running Commands
-
 **NEVER** pipe the output of long-running commands through `| tail -N` or `| head -N` as the primary capture method. Truncated output loses critical information (error messages, coverage gaps, CI failures) and forces expensive re-runs.
 
 **Required pattern:**
@@ -173,7 +142,7 @@ some-long-command > /tmp/cmd-output.log 2>&1
 - `pytest` / `smart-test`
 - `./scripts/auto-pr`
 - `./scripts/release-check`
-- `./scripts/bakeoff` and `./scripts/bakeoff-features` (all subcommands)
+- `./scripts/bakeoff-broad` and `./scripts/bakeoff-deep` (all subcommands)
 - `./scripts/ci-debug`
 - Any command that takes more than a few seconds to run
 
@@ -181,81 +150,15 @@ some-long-command > /tmp/cmd-output.log 2>&1
 
 **Why:** Re-running a 15-minute command because `| tail -30` missed the relevant lines is pure waste. Capturing to a file costs nothing and enables targeted searching after the fact.
 
+
 ## Pre-Work Checklist
-Run these checks before starting any new feature or task:
-```bash
-# 1. Ensure no auto-pr is in flight (manual PRs don't create this file)
-test -f .git/PR_PENDING && echo "STOP: auto-pr awaiting merge" && exit 1
-
-# 2. Flush any queued PRs if remote is available
-./scripts/auto-pr list  # Check if any PRs are queued
-./scripts/auto-pr flush # Push them if remote is back
-
-# 3. Sync with dev and main
-git checkout main && git pull origin main
-git checkout dev && git pull origin dev
-
-# 4. Check current progress (at your careful discretion, use `head`, `tail`, `sed`, `grep`, etc, for efficient reading)
-cat docs/hypergumbo-spec.md
-cat CHANGELOG.md
-
-# 5. Create feature branch
-git checkout -b <author>/feat/<short-name>
-```
+Before starting any new feature: verify no auto-pr is in flight (PR_PENDING gate), flush queued vPRs if remote is available, **determine the authoritative remote** (check `.git/CI_FAILOVER_ACTIVE` — use `selfh` if present, `origin` otherwise), sync dev from that remote, review the spec and changelog for current progress, then create a feature branch with the naming convention author/[feat|fix|docs|refactor]/description. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md`.)
 
 ## Post-Compaction State Recovery
-When context has been compressed, you may have lost awareness of in-progress work.
-
-**Recover state:**
-```bash
-cat ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json 2>/dev/null
-```
-This file records: current branch (should be `dev` after a clean merge), last PR number/state, pending TODOs (hard/soft), free-text notes about what to do next, and the active bakeoff session. Use it to orient yourself before starting new work.
-
-If the JSON contains a `guidance_file` field, read that file for the most recent stop hook guidance (TODO details, circuit breaker status).
-
-If the JSON contains `bakeoff_session_path` and `bakeoff_session_type`, these identify the most recent bakeoff session. Use the session path to resume work on the correct session (e.g., `./scripts/bakeoff status --workdir <path>` or `./scripts/bakeoff-features status --workdir <path>`).
-
-**Keep notes fresh:** Update `last_stop_check.json` notes after key milestones, not just at reflection time. This ensures context survives compaction:
-- After a PR merge: record what was merged and what's next
-- After a bakeoff completes: record findings and next steps
-- After tracker item status changes: record what was resolved and why
-- After hitting an obstacle: record what's blocked and alternative approaches
-
-```bash
-# Update notes (works whether or not the file exists — seeds from {} if missing)
-jq -n --arg n "Merged PR #NNNN (feat X). Next: WI-yyyy." \
-  --argjson existing "$(cat ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json 2>/dev/null || echo '{}')" \
-  '$existing + {notes: $n}' \
-  > /tmp/lsc.json && mv /tmp/lsc.json ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json
-```
-
-Also check for pending work items:
-```bash
-./scripts/tracker ready
-```
-
-**smart-test reminder:** Always use `pytest` (aliased to `smart-test`) for running tests. NEVER use `python -m pytest`, `.venv/bin/pytest`, or `command pytest` — these bypass smart-test and produce ~4000 lines of raw output instead of the compact ~20-line summary.
+After context compaction, recover state from `last_stop_check.json` which records: current branch, last PR number/state, pending hard/soft TODOs, free-text notes, and active bakeoff session path. Check `guidance_file` for recent stop hook output. Run `tracker ready` for pending work items. Keep notes fresh after key milestones. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/recover-state-playbook.md`.)
 
 ## Pre-Commit Checklist
-Run these checks before every commit:
-```bash
-# 1. Verify git identity is configured
-git config user.name && git config user.email
-
-# 2. Run tests with coverage (must be 100%)
-pytest -n auto --cov-fail-under=100
-
-# 3. If feature status changed: Update CHANGELOG.md. Update emoji indicators in `docs/hypergumbo-spec.md`.
-
-# 4. If fixing a bakeoff signal: Check tracker for blocking items (see ADR-0008)
-./scripts/tracker count-todos --hard  # todo_hard items (structural issues)
-./scripts/tracker count-todos --soft  # todo_soft items (backlog)
-# If count > 0, review with `./scripts/tracker ready` and address or deprioritize before committing
-
-# 5. Commit with sign-off
-git commit -s -m "feat: description"
-```
+Before every commit: verify git identity (user.name/user.email), run tests with 100% coverage (`pytest -n auto --cov-fail-under=100`), update CHANGELOG.md and spec status indicators if feature status changed, check tracker for open items if fixing a bakeoff signal, then commit with sign-off (`git commit -s`). (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/pre-commit-playbook.md`.)
 
 ## Workflow (Trunk-Based XP)
 - **Primary Goal:** Keep `dev` green and deployable at all times.
@@ -291,19 +194,7 @@ git commit -s -m "feat: description"
   - Before starting new work: `test -f .git/PR_PENDING && echo "WAIT"`
   - If file exists, wait for `auto-pr` to complete before starting new work.
   - Manual PRs do not create this gate; use `./scripts/ci-debug status` to check CI.
-- **vPR Queue (offline resilience):**
-  - When remote is unavailable, `auto-pr` queues as a vPR (virtual PR) in `.git/PR_QUEUE`.
-  - vPRs form a linear chain: each new vPR branches from the previous one.
-  - Flush pushes ALL vPRs as a single atomic PR (no race conditions with other contributors).
-  - Commands:
-    - `./scripts/auto-pr list` — Show queued vPRs
-    - `./scripts/auto-pr status` — Show queue status and next steps
-    - `./scripts/auto-pr flush` — Push all vPRs as single PR
-  - To add more changes while queue is non-empty:
-    ```bash
-    tip=$(./scripts/auto-pr status | grep "Queue tip" | awk '{print $3}')
-    git checkout -b author/feat/next-change "$tip"
-    ```
+- **vPR Queue (offline resilience):** When remote is unavailable, `auto-pr` queues virtual PRs in `.git/PR_QUEUE` as a linear chain. Flush pushes all as a single atomic PR. Commands: `auto-pr list`, `auto-pr status`, `auto-pr flush`. To add changes while queue is non-empty, branch from the queue tip. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/vpr-usage.md`.)
 - **CI Interaction Policy:**
   - **NEVER** write bash loops that poll CI via curl/wget/api calls.
   - **NEVER** call the Forgejo API directly outside of approved scripts.
@@ -312,8 +203,8 @@ git commit -s -m "feat: description"
     - **Exit 0:** Success — PR merged or vPR queued. If vPR queued, run `./scripts/auto-pr flush` when remote is available.
     - **Exit 1:** Failure. Run `./scripts/ci-debug status` to diagnose, fix the issue, then either re-run `./scripts/auto-pr` or `./scripts/merge-pr <PR_NUM> --wait-for-ci`.
     - **Exit 2:** Timeout (CI stuck or slow). Try `./scripts/merge-pr <PR_NUM> --wait-for-ci --timeout 3600`, or if CI already passed, `./scripts/merge-pr <PR_NUM>` to merge immediately. If CI remains stuck, follow Scenario B.
+    - **Exit 3:** Hung (no CI jobs started after 5 min). `auto-pr` already retried with exponential backoff (close PR, wait, repush — up to 4 times). All retries failed, meaning CI runners may be down. Follow Scenario B. Do NOT manually kill processes, clear PR_PENDING, or start new branches.
   - **Scenario B (CI stuck after timeout):** Do NOT accumulate more changes to git-tracked hypergumbo code. Run `./scripts/ci-debug status` once per hour (manually, not in a loop). When CI recovers, use `./scripts/merge-pr <PR_NUM>` to merge. It is fine to wait.
-
 - **Fixing Build:** If `dev` breaks, **revert first**, then fix.
 - **Fast Feedback:** During development, run only relevant tests (e.g., `pytest tests/test_cli.py`) to move fast.
 
@@ -321,337 +212,37 @@ git commit -s -m "feat: description"
 External contributors: see `docs/CONTRIBUTOR_MODE.AGENTS.md` for fork-based workflow instructions.
 
 ## Release Workflow (Agent + Human)
-
-Releases use a two-step workflow that separates agent preparation from human authorization.
-
-### Agent Preparation
-```bash
-# Agent runs this to prepare everything
-./scripts/prepare-release 0.8.0
-
-# This script:
-# 1. Bumps version in pyproject.toml and __init__.py
-# 2. Updates CHANGELOG.md ([Unreleased] → [0.8.0])
-# 3. Commits: "chore: release 0.8.0"
-# 4. Runs ./scripts/release-check (all validations)
-# 5. Pushes to dev
-# 6. Creates PR: dev → main
-# 7. Outputs handoff instructions
-```
-
-### Human Actions (Required)
-```bash
-# 1. Review and merge the PR on Codeberg web UI
-
-# 2. After PR merged, human runs:
-./scripts/tag-release 0.8.0
-
-# This script:
-# 1. Switches to main and pulls latest
-# 2. Verifies version matches
-# 3. Creates GPG-signed tag: git tag -s v0.8.0
-# 4. Pushes tag (triggers release workflow)
-```
-
-### Why Two Steps?
-- **Branch protection:** main branch cannot be pushed to directly
-- **GPG signing:** Tag must be signed with human's GPG key
-- **Authorization:** Human explicitly approves the release
-
-### Scripts Reference
-| Script | Who | Purpose |
-|--------|-----|---------|
-| `./scripts/prepare-release VERSION` | Agent | Prepare everything, create PR |
-| `./scripts/tag-release VERSION` | Human | Sign and push tag after PR merge |
-| `./scripts/release VERSION` | Either | Legacy single-step (detects protection) |
-| `./scripts/release-check` | Either | Validate release readiness |
-| `./scripts/bump-version VERSION` | Either | Just bump version (part of prepare-release) |
+Agent runs `prepare-release VERSION` (bumps version, updates changelog, runs release-check, creates dev-to-main PR). Human merges the PR and runs `tag-release VERSION` to create a GPG-signed tag, triggering the release CI workflow. Separation ensures branch protection and human authorization. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/release-workflow.md`.)
 
 ## CI Debugging Protocol
-When CI fails but tests pass locally, use `./scripts/ci-debug`:
-
-```bash
-# List recent CI runs (shows status, commit SHA)
-./scripts/ci-debug runs
-
-# Check status of current commit
-./scripts/ci-debug status
-
-# Analyze tree-sitter dependencies (finds missing packages)
-./scripts/ci-debug analyze-deps
-```
-
-**CI workflow topology:**
-- **`ci.yml`**: Fast per-PR check (smart-test on changed packages). Gates merge.
-- **`full-suite.yml`**: Periodic validation (every 4 hours + manual dispatch). Runs all packages in parallel. Does NOT trigger on push to dev — with 20+ merges/day and singleton concurrency, the queue never clears. Stop-the-line fires from scheduled runs, so there may be a delay between a breaking merge and the andon cord — this is expected, not a bug.
-- **`nightly.yml`**: Runs at 11 PM UTC. Multi-Python matrix (3.10–3.13) and integration tests. Sets commit statuses (`nightly/test-matrix`, `nightly/integration-tests`) so release.yml can skip them when the release SHA was already covered. `ci-debug status` works for nightly runs too.
-- **`release.yml`**: Triggered by version tag push or manual dispatch. Security audit is a hard gate before publish. Test-matrix and integration-tests are deferred: if nightly already covered the SHA they're skipped, otherwise they run post-publish as verification.
-
-**Common root causes**:
-- **Missing dependencies**: Analyzer uses a package not listed in `pyproject.toml`
-- **Version mismatch**: CI has different package versions than local
-- **Platform differences**: Some packages don't have wheels for CI's platform
-
-**Dependency verification**:
-- Use `./scripts/ci-debug analyze-deps` to compare imports vs pyproject.toml
-- Use `pip index versions tree-sitter-<lang>` to verify package exists on PyPI
-
-**The escape hatch policy** (see ADR 0002):
-- Tests assume dependencies work; they do NOT skip when dependencies fail
-- If a dependency breaks upstream, pin to a known-good version in `pyproject.toml`
-- Document the pin with a comment
-- Never hide failures with pytest.skip() patterns
+When CI fails but tests pass locally, use `ci-debug runs/status/analyze-deps`. Four CI workflows: ci.yml (per-PR smart-test), full-suite (every 4 hours), nightly (multi-Python matrix + integration), release (on tag). Common root causes: missing pyproject.toml deps, version mismatches, platform differences. Never poll CI manually. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/ci-debug-protocol.md`.)
 
 ## Testing Optional Dependencies
-
-When testing analyzers that depend on optional tree-sitter grammars:
-
-### For PyPI-available grammars (e.g., tree-sitter-agda)
-- Add the dependency to `pyproject.toml` and install it in CI
-- Write tests that directly call the analyzer; no mocking needed
-- Example: `tests/test_agda.py`
-
-### For build-from-source grammars (e.g., tree-sitter-lean, tree-sitter-wolfram)
-These grammars are built from source in CI via `scripts/build-source-grammars`.
-
-**DO NOT use pytest.mark.skipif escape hatches.** Write real tests that:
-1. Directly call the analyzer with real files
-2. Assert on real parsing results
-3. Use mocking ONLY for testing the "unavailable" code path
-
-```python
-# Real test - uses actual tree-sitter parsing
-def test_detect_def(self, tmp_path: Path) -> None:
-    make_lean_file(tmp_path, "Example.lean", "def double := 2")
-    result = analyze_lean(tmp_path)
-    assert not result.skipped
-    func = next((s for s in result.symbols if s.name == "double"), None)
-    assert func is not None
-
-# Mock test - only for testing unavailability handling
-def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
-    with patch.object(lean_module, "is_lean_tree_sitter_available", return_value=False):
-        with pytest.warns(UserWarning, match="Lean analysis skipped"):
-            result = lean_module.analyze_lean(tmp_path)
-    assert result.skipped is True
-```
-
-**Examples:** `tests/test_lean.py`, `tests/test_wolfram.py`
-
-### Adding a new build-from-source grammar
-1. Add build steps to `scripts/build-source-grammars`
-2. CI will automatically build it before running tests
-3. Write real tests (not mocked) for the analyzer
-
-## Architecture & Context
-- **Goal:** Local-first CLI that profiles a repo and emits an agent-friendly "behavior map".
-- **Stack:** Python 3.10+, standard library preferred where possible.
-- **Core:** `packages/hypergumbo-core/src/hypergumbo_core/` contains the CLI, IR, sketch, slice, and linkers. Language analyzers are in the `hypergumbo-lang-*` packages.
-- **Specs:** See `docs/hypergumbo-spec.md` and `CHANGELOG.md` for the design contract and implementation state and progress.
-- **ADRs:** See `docs/adr/` for architectural decisions. Key ADRs:
-  - ADR-0001: Portable agent instructions (this file as canonical source)
-  - ADR-0003: YAML-driven framework patterns
-  - ADR-0008: Autonomous governance and vendor-agnostic hooks
-  - ADR-0009: Feature-focused bakeoff suite (DEEP mode)
-
-## Autonomous Development Mode Stipulations
-When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP, you are authorized for indefinite continuous work.
-
-### Mode Selection
-| Mode | Focus | Bakeoff Script | When to Use |
-|------|-------|----------------|-------------|
-| **BROAD** | Coverage breadth | `scripts/bakeoff` | Default. Ensure comprehensive linker, framework, and call graph detection |
-| **DEEP** | Feature usefulness | `scripts/bakeoff-features` | Test slice/reverse-slice/tier on larger repos (20-200MB) |
-
-- **BROAD** answers: "Are we detecting all the linker edges, framework patterns, and call relationships?"
-- **DEEP** answers: "Are hypergumbo's outputs useful to developers?"
-
-Use **BROAD** mode (the default) when coverage gaps remain — missing linker edges, unrecognized framework patterns, or incomplete call graphs. Use **DEEP** mode once you've converged on coverage breadth (no manifestly obvious gaps) and want to assess feature quality: slice limits, supply chain tiers, graph centrality, or qualitative readiness for a release.
-
-- **One thing at a time.** Finish your current task — including its PR merge — before starting the next one. Do not start coding a new feature while a bakeoff is running, while CI is pending, or while `auto-pr` is in flight. The editable install means your in-progress edits affect every `hypergumbo` invocation in the process, including background bakeoffs. Waiting for results is not wasted time — it produces better decisions about what to do next.
-- **Always TDD:** Red → Green → Refactor. Write failing tests first.
-- **Always structural:** Assume bugs are structural until proven otherwise. See "Structural Fix Protocol" above and ADR-0008.
-- **Always PR:** Every feature gets its own PR. Prefer `./scripts/auto-pr` for blocking CI-poll-merge workflow; use manual PR for more control.
-- **Always 100% coverage:** No exceptions. Mark defensive code paths with `# pragma: no cover`.
-- **Maintain the tracker:** When you discover a violated invariant, create a tracker item (`scripts/tracker add --kind invariant ...`). When you fix a root cause (not a workaround), update the item status to `done`/`holding`/etc.
-- **Periodically and frequently test on real repos:** Use the lab journal/notebook (`$HOME/hypergumbo_lab_notebook/notebookjournal_<MMDDYYYY_HHMM>.md`) to record your observations and ideas as you experiment with various hypergumbo settings on various real-world projects. If you notice obvious bugs during experimentation, you don't necessarily need to stop right away to fix the bug. Just be sure to note it prominently in your lab notebookjournal. When you feel you have done enough experiments, review and analyze the entire notebookjournal file, and use your analysis to plan your next actions. Think about how to make hypergumbo more useful both to agentic LLMs such as yourself and human software developers.
-- **Run mini trial runs before full experiments:** Always run a minimal trial first (1 repo, 1 budget, 1 method) to validate the experimental setup works end-to-end and to estimate runtime. Use the trial timing to extrapolate full experiment duration. This prevents accidentally launching experiments that would take days or weeks to complete. Include modest verbosity in experiment scripts (progress messages, completion counts) to provide a heartbeat indicating the experiment is still running.
-- **8-hour rule for experiments:** This applies to individual commands whose wall-clock execution time would plausibly exceed 8 hours — it does not limit the duration of autonomous mode itself. The concern is avoiding single commands that lock up the machine for extended periods and risk producing nothing informative. If extrapolated runtime for a single command exceeds 8 hours, do NOT run it immediately. Instead, document the experiment design and estimated runtime in a "Long-Running Experiment Ideas" section of your lab notebook for later discussion with the user. The user can then decide whether to run it overnight, parallelize it, or simplify the design.
-- **Do NOT draw conclusions from mini-trials:** Mini-trials are only for smoke testing (does the setup work?) and ballpark runtime estimation. The sample size is far too small for meaningful conclusions. Save analysis for the full experiment results.
-- **Avoid premature timeouts in bakeoff:** Large, popular repos may take significant time to analyze. Do not use short timeouts that would cause false failures. If a repo genuinely takes too long, note it in the lab notebook and investigate optimization opportunities rather than masking the issue with aggressive timeouts.
-- **Keep CHANGELOG.md, pyproject.toml, `docs/hypergumbo-spec.md` updated:** Document what's implemented and bump the version to the extent appropriate just before each PR.
-- **Adjust specs based on experiments:** If experiments reveal better approaches, update `docs/hypergumbo-spec.md`.
-- **If you run out of items from the main spec, look at §20 Future Work for what to tackle next.**
-
-### Priority Queues:
-Both modes share the same top priority: actionable tracker items (`scripts/tracker ready`). See "Scope Expansion Commitment Protocol" for status definitions and agent behavior for each.
-
-### BROAD Mode Priority Queue:
-1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-reflect` then `./scripts/bakeoff-reflect aggregate` to synthesize findings. This is the primary feedback signal for coverage gaps — do not skip it. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
-2. **Aggregate across sessions:** When prior sessions have reflect data, run `./scripts/bakeoff-reflect aggregate` to surface cross-session trends. If `./scripts/bakeoff status` shows unaggregated assessments, aggregate before starting new work.
-3. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
-4. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
-
-**Pipeline overlap guidance:** Reflect assessment agents (LLM-driven) only read artifacts and source code — they do NOT invoke hypergumbo. This means you can safely overlap reflect with the next cohort's `run`:
-
-- **Sequential workflow (any agent):** `run → diagnose → reflect → [complete assessments] → aggregate → next cohort`. Simpler, works everywhere.
-- **Overlapped workflow (agents with concurrency):** Launch reflect agents for Cohort N, then immediately `run` Cohort N+1 while assessments complete in background. Only `run` needs exclusive access to the editable install. This is where the throughput multiplier lives — a 5-cohort curriculum can overlap all reflect phases.
-
-**When blocked** (CI pending, pre-commit hook gate, `run` in progress): aggregate prior sessions, update lab notebook, investigate diagnostic findings. Use `./scripts/bakeoff status` to find unaggregated assessments, or check for assessment files directly.
-
-BROAD mode scripts:
-```bash
-# Initialize a new bakeoff session (creates timestamped dir in canonical default)
-./scripts/bakeoff init --pool ~/repos
-
-# Select next cohort (5 smallest unused repos)
-./scripts/bakeoff cohort --count 5
-
-# Or select cohort — explicit repos (for curriculum-based workflows)
-./scripts/bakeoff cohort --repos repo-a,repo-b,repo-c
-
-# Run hypergumbo on current cohort
-./scripts/bakeoff run
-./scripts/bakeoff run --all          # All unanalyzed cohorts (batch)
-./scripts/bakeoff run --some 3       # Up to 3 unanalyzed cohorts
-
-# Diagnose and generate issue report
-./scripts/bakeoff diagnose
-./scripts/bakeoff diagnose --all     # All cohorts in session
-./scripts/bakeoff diagnose --some 3  # Latest 3 cohorts
-
-# Full cycle: run + diagnose + reflect
-./scripts/bakeoff cycle
-./scripts/bakeoff cycle --all        # Batch: run + diagnose + reflect all
-./scripts/bakeoff cycle --skip-reflect  # Fast iteration: run + diagnose only
-
-# Session introspection
-./scripts/bakeoff status            # Convergence status and cohort breakdown
-./scripts/bakeoff issues --format json  # Machine-readable issue list
-./scripts/bakeoff questions         # Diagnostic questions for analysis
-
-# LLM-driven qualitative assessment
-./scripts/bakeoff-reflect              # Generate assessment prompts (latest cohort)
-./scripts/bakeoff-reflect reflect --all  # Generate prompts for all cohorts
-./scripts/bakeoff-reflect aggregate    # Synthesize findings across repos
-```
-
-**Batch workflow (multi-cohort curriculum):**
-```bash
-# Option A: cycle --all (sequential, simpler)
-./scripts/bakeoff cycle --all        # run + diagnose + reflect for each cohort
-./scripts/bakeoff-reflect aggregate  # synthesize after all assessments complete
-
-# Option B: manual pipeline (allows overlap between cohorts)
-./scripts/bakeoff run --all          # run all cohorts
-./scripts/bakeoff diagnose --all     # diagnose all cohorts
-./scripts/bakeoff-reflect reflect --all  # generate all prompts
-# [complete assessments — sequential or parallel]
-./scripts/bakeoff-reflect aggregate  # synthesize findings
-```
-
-### DEEP Mode Priority Queue:
-When in DEEP mode, focus on feature quality rather than coverage breadth:
-1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-features-reflect` then `./scripts/bakeoff-features-reflect aggregate` to assess developer usefulness. This IS the mode's core feedback loop — reflecting on whether outputs help developers is the entire point of DEEP mode. Do not skip it. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
-2. **Aggregate across sessions:** Run `./scripts/bakeoff-features-reflect aggregate --all` and `./scripts/bakeoff-features compare <A> <B>` to track improvement trajectories. If `./scripts/bakeoff-features status` shows unaggregated assessments, aggregate before starting new work.
-3. **Slice quality:** Does forward slice capture actual dependencies?
-4. **Reverse slice:** Does it correctly identify callers?
-5. **Supply chain tiers:** Is tier classification accurate for monorepos?
-6. **Centrality ranking:** Do top-ranked symbols match developer intuition?
-7. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
-
-**Pipeline overlap guidance:** Same as BROAD mode — reflect agents only read artifacts, so you can overlap reflect with the next cohort's `run`. See BROAD mode guidance above for sequential vs overlapped workflows.
-
-**When blocked:** Aggregate prior sessions (`./scripts/bakeoff-features-reflect aggregate`), compare sessions (`./scripts/bakeoff-features compare <A> <B>`), or update lab notebook.
-
-DEEP mode scripts:
-```bash
-# Initialize and run feature bakeoff (no --workdir needed — uses canonical default)
-./scripts/bakeoff-features init --pool ~/repos
-# → Creates ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-YYYYMMDD-HHMMSS/
-
-# Auto-select cohort by size/complexity
-./scripts/bakeoff-features cohort --count 4 --min-size 20 --max-size 200
-
-# Or use explicit repos (for curriculum-based workflows)
-./scripts/bakeoff-features cohort --repos repo-a,repo-b,repo-c
-
-./scripts/bakeoff-features run               # Current cohort only
-./scripts/bakeoff-features run --all         # All unanalyzed cohorts (batch)
-./scripts/bakeoff-features run --some 3      # Up to 3 unanalyzed cohorts
-./scripts/bakeoff-features diagnose          # Latest cohort only
-./scripts/bakeoff-features diagnose --all    # All cohorts in session
-./scripts/bakeoff-features diagnose --some 3 # Latest 3 cohorts
-
-# Full cycle: run + diagnose + reflect
-./scripts/bakeoff-features cycle                 # Current cohort
-./scripts/bakeoff-features cycle --all           # Batch: run + diagnose + reflect all
-./scripts/bakeoff-features cycle --skip-reflect  # Fast iteration: run + diagnose only
-
-# Session introspection
-./scripts/bakeoff-features status           # Per-cohort breakdown: output/diagnose/reflect status
-./scripts/bakeoff-features active           # Machine-friendly key=value (for stop hooks)
-./scripts/bakeoff-features compare A B      # Side-by-side metric/score deltas between sessions
-
-# LLM-driven qualitative assessment
-./scripts/bakeoff-features-reflect              # Generate assessment prompts (latest cohort)
-./scripts/bakeoff-features-reflect reflect --all  # Generate prompts for all cohorts
-./scripts/bakeoff-features-reflect aggregate    # Synthesize findings across repos
-```
-
-**Batch workflow (multi-cohort curriculum):**
-```bash
-# Option A: cycle --all (sequential, simpler)
-./scripts/bakeoff-features cycle --all
-./scripts/bakeoff-features-reflect aggregate
-
-# Option B: manual pipeline (allows overlap between cohorts)
-./scripts/bakeoff-features run --all
-./scripts/bakeoff-features diagnose --all
-./scripts/bakeoff-features-reflect reflect --all
-# [complete assessments — sequential or parallel]
-./scripts/bakeoff-features-reflect aggregate
-```
-
-**Introspection subcommands:**
-- **`status`**: Shows per-cohort breakdown (output, diagnostics, LLM assessment status) and overall verdict summary. Use to see what's done and what remains in a session.
-- **`active`**: Machine-friendly key=value output for stop hooks. Prints workdir, session name, cohort counts, convergence, and worst-repo details. Exit 1 if no session.
-- **`compare <A> <B>`**: Side-by-side comparison of two sessions. Shows per-repo metric deltas (nodes, edges, orphan rate, tier1%, avg slice nodes), verdict changes, and LLM score differences. Sessions can be full paths or dir names under `bakeoff_artifacts/`.
-
-**Curricula:** Pre-planned cohort sequences live in `~/hypergumbo_lab_notebook/curricula/`.
-Check there before auto-selecting — if a curriculum exists for the current work, follow its
-cohort commands in order. See ADR-0009 §2b for the curriculum concept.
-
-### Bakeoff Artifacts
-
-Both `scripts/bakeoff` and `scripts/bakeoff-features` store artifacts in a canonical default location:
-
-```
-~/hypergumbo_lab_notebook/bakeoff_artifacts/
-├── broad-20260206-183000/   # bakeoff session (timestamped)
-│   ├── state.json
-│   ├── cohorts/
-│   ├── out/
-│   ├── diag/
-│   └── reflect/            # LLM assessment prompts and results
-├── deep-20260206-190000/    # bakeoff-features session (timestamped)
-│   ├── state.json
-│   ├── cohorts/
-│   ├── out/
-│   ├── diag/
-│   └── reflect/            # LLM assessment prompts and results
-└── ...
-```
-
-Key design decisions:
-- **`init` creates timestamped session directories** — prior bakeoff artifacts are never overwritten
-- **Subsequent commands auto-discover the latest session** — no need to remember the full path
-- **Every subcommand prints the resolved workdir** — always visible which session is active
-- **Env vars still work for overrides:** `BAKEOFF_WORKDIR` (broad) and `BAKEOFF_FEATURES_WORKDIR` (deep)
-- **Artifacts persist across sessions** — mine them before running new bakeoffs
+For PyPI-available tree-sitter grammars: add to pyproject.toml, write real tests, no mocking. For build-from-source grammars (built via `scripts/build-source-grammars`): write real tests calling the analyzer directly, plus a mock test only for the unavailability code path. Never use `pytest.mark.skipif` as an escape hatch. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/optional-dependency-testing-playbook.md`.)
 
 ## Modifying This Document
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
 
-<!-- CANARY: agents-policy-v2026-03-20.0 -->
+### Creating a New Playbook
+A playbook (also called SOP, protocol, procedure, or skill) is a plain-language description of a repeatable behavior, optionally interleaved with code or pseudocode. When a behavior is too detailed to inline fully in AGENTS.md but important enough to enforce, extract it into a playbook. The process has three steps:
+
+1. **Create the file.** Add a markdown file to `.agent/agent_playbooks_protocols_sops_skills/` using kebab-case naming with a descriptive suffix: `<topic>-playbook.md`, `<topic>-protocol.md`, `<topic>-guide.md`, etc. This file is the single source of truth — write the full explanation here.
+
+2. **Reference it in AGENTS.md.** Add a 1-3 sentence essentialization at the appropriate location in this file, ending with `(For more explanation, please read \`.agent/agent_playbooks_protocols_sops_skills/<filename>.md\`.)`. This essentialization is always in the agent's context window, so it must capture the core rule concisely. The full file is loaded on demand.
+
+3. **Register it in the transcript-change hook.** Add a tuple to the `PLAYBOOKS` list in `.agent/hooks/_shared/on_transcript_change.py`:
+   ```python
+   ("<kebab-case-id>",
+    ".agent/agent_playbooks_protocols_sops_skills/<filename>.md",
+    "Multi-sentence expanded summary. More detailed than the AGENTS.md "
+    "essentialization, but still a summary — not the full file. This text "
+    "is what the hook uses to decide whether to inject the playbook into "
+    "the agent's context based on the current transcript."),
+   ```
+
+**Why three levels of detail:** AGENTS.md (always loaded, brief) gives the agent the rule. The hook summary (loaded contextually, expanded) gives the agent enough detail to follow the procedure when it's relevant. The playbook file (loaded on demand, full) gives the complete explanation with examples, rationale, and edge cases.
+
+**Governance note:** AGENTS.md and `.agent/hooks/` are governance files. Changes to them require human approval — do not self-merge PRs that touch these files. The playbook markdown file itself is not a governance file (it only takes effect when referenced from one).
+
+<!-- CANARY: agents-policy-v2026-04-04.0 -->

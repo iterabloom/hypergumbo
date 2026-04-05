@@ -174,13 +174,13 @@ show_status() {
             echo -e "Mode: ${GREEN}BROAD${NC}"
             echo "  AUTONOMOUS_MODE.txt = BROAD (or TRUE)"
             echo "  Focus: Parse correctness, fast iteration"
-            echo "  Bakeoff: scripts/bakeoff"
+            echo "  Bakeoff: scripts/bakeoff-broad"
             ;;
         DEEP)
             echo -e "Mode: ${CYAN}DEEP${NC}"
             echo "  AUTONOMOUS_MODE.txt = DEEP"
             echo "  Focus: Feature usefulness, larger repos"
-            echo "  Bakeoff: scripts/bakeoff-features"
+            echo "  Bakeoff: scripts/bakeoff-deep"
             ;;
     esac
 
@@ -220,6 +220,34 @@ show_status() {
     echo "  ./scripts/loop-toggle deep   # Feature usefulness bakeoff"
 }
 
+reset_circuit_breaker() {
+    # Reset the stop-hook circuit breaker so a fresh autonomous session
+    # doesn't immediately trip on stale hashes from the prior session.
+    #
+    # Strategy: read the last hash, remove ALL occurrences of it from the
+    # file, then append it back once. This resets the consecutive-identical
+    # count to 1 (below the threshold of 5) while preserving history of
+    # other hashes.
+    local repo_name="${REPO_ROOT##*/}"
+    local hash_file="/tmp/${repo_name}_stop_hashes"
+    if [[ ! -f "$hash_file" ]]; then
+        return
+    fi
+
+    local last_hash
+    last_hash=$(tail -n 1 "$hash_file" 2>/dev/null)
+    if [[ -z "$last_hash" ]]; then
+        return
+    fi
+
+    # Remove all lines matching the last hash, then append it once
+    local tmp_file
+    tmp_file=$(mktemp)
+    grep -vxF "$last_hash" "$hash_file" > "$tmp_file" 2>/dev/null || true
+    echo "$last_hash" >> "$tmp_file"
+    mv "$tmp_file" "$hash_file"
+}
+
 enable_loop_sentinel() {
     # Enable .agent/LOOP (rename back if disabled, or create)
     if [[ -f "$DISABLED_LOOP" ]]; then
@@ -254,6 +282,7 @@ set_mode_broad() {
         echo "BROAD" > "$MODE_FILE"
     fi
     enable_loop_sentinel
+    reset_circuit_breaker
 
     echo -e "${GREEN}✓${NC} Autonomous mode set to ${GREEN}BROAD${NC}"
     echo "  - AUTONOMOUS_MODE.txt set to BROAD"
@@ -265,7 +294,7 @@ set_mode_broad() {
     echo "  - .agent/LOOP sentinel active"
     echo ""
     echo "Focus: Parse correctness, call graph quality, route detection"
-    echo "Use: ./scripts/bakeoff for automated testing"
+    echo "Use: ./scripts/bakeoff-broad for automated testing"
 }
 
 set_mode_deep() {
@@ -277,6 +306,7 @@ set_mode_deep() {
         echo "DEEP" > "$MODE_FILE"
     fi
     enable_loop_sentinel
+    reset_circuit_breaker
 
     echo -e "${GREEN}✓${NC} Autonomous mode set to ${CYAN}DEEP${NC}"
     echo "  - AUTONOMOUS_MODE.txt set to DEEP"
@@ -288,8 +318,8 @@ set_mode_deep() {
     echo "  - .agent/LOOP sentinel active"
     echo ""
     echo "Focus: Feature usefulness, slice quality, developer perspective"
-    echo "Use: ./scripts/bakeoff-features for feature testing"
-    echo "     ./scripts/bakeoff-features-reflect for LLM assessment"
+    echo "Use: ./scripts/bakeoff-deep for feature testing"
+    echo "     ./scripts/bakeoff-deep-reflect for LLM assessment"
 }
 
 toggle_mode() {
@@ -352,8 +382,8 @@ case "${1:-toggle}" in
         echo "When autonomous mode is active:"
         echo "  - AGENTS.md priority queue guides work"
         echo "  - Governance hooks enforce reflection before stopping"
-        echo "  - BROAD uses scripts/bakeoff"
-        echo "  - DEEP uses scripts/bakeoff-features"
+        echo "  - BROAD uses scripts/bakeoff-broad"
+        echo "  - DEEP uses scripts/bakeoff-deep"
         ;;
     *)
         echo "Unknown command: $1" >&2

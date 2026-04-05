@@ -218,6 +218,7 @@ find_open_pr() {
 poll_ci() {
 	local head_sha="$1"
 	local timeout="${CI_TIMEOUT_SECONDS:-2400}"
+	local stale_pending_threshold="${CI_STALE_PENDING_SECONDS:-300}"  # 5 min default
 	local start_time elapsed
 	start_time=$(date +%s)
 
@@ -225,6 +226,9 @@ poll_ci() {
 	local ci_complete_sole_holdout_since=0
 	local poll_count=0
 	local prev_summary=""
+
+	# Track whether any job has left pending state (stale-pending detection)
+	local any_job_started=false
 
 	while true; do
 		elapsed=$(( $(date +%s) - start_time ))
@@ -248,6 +252,45 @@ poll_ci() {
 
 		local state
 		state=$(echo "$API_RESPONSE" | json_field "state")
+
+		# Stale-pending detection: if no job has ever left pending state
+		# and we've been waiting longer than the threshold, the CI run
+		# likely never started (hung runner, dispatch failure).
+		if [[ "$any_job_started" == "false" && $elapsed -ge $stale_pending_threshold ]]; then
+			local has_non_pending
+			has_non_pending=$(echo "$API_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    statuses = data.get('statuses', [])
+    non_pending = [s for s in statuses if s.get('status') != 'pending']
+    print('yes' if non_pending else 'no')
+except Exception:
+    print('unknown')
+" 2>/dev/null || echo "unknown")
+			if [[ "$has_non_pending" == "yes" ]]; then
+				any_job_started=true
+			elif [[ "$has_non_pending" == "no" ]]; then
+				echo ""
+				echo "⚠️  No CI jobs have started after ${stale_pending_threshold}s — possible hung runner (exit code 3)"
+				return 3
+			fi
+		elif [[ "$any_job_started" == "false" ]]; then
+			# Check if any job has started (so we don't re-check after it's set)
+			local _check_started
+			_check_started=$(echo "$API_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    non_pending = [s for s in data.get('statuses', []) if s.get('status') != 'pending']
+    print('yes' if non_pending else 'no')
+except Exception:
+    print('no')
+" 2>/dev/null || echo "no")
+			if [[ "$_check_started" == "yes" ]]; then
+				any_job_started=true
+			fi
+		fi
 
 		if [[ "$state" == "success" ]]; then
 			echo ""
@@ -463,57 +506,125 @@ fetch_job_log() {
 	local web_base
 	web_base=$(echo "$API_BASE" | sed 's|/api/v1/repos/|/|')
 
-	# Step 1: Find run_number (index_in_repo) for this commit
-	local runs_response
-	runs_response=$(curl -sS --http1.1 --max-time 15 \
-		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
-		"$API_BASE/actions/runs?head_sha=$head_sha" 2>/dev/null) || return 1
-
-	local run_info
-	run_info=$(echo "$runs_response" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    runs = data.get('workflow_runs', data if isinstance(data, list) else [])
-    # Prefer ci.yml (exact match) over tracker-ci.yml / full-suite.yml.
-    # ci.yml has the pytest job; tracker-ci.yml has only tracker validation.
-    ci_runs = [r for r in runs if str(r.get('workflow_id', '')) == 'ci.yml']
-    pick = ci_runs[0] if ci_runs else (runs[0] if runs else None)
-    if pick:
-        print(f'{pick[\"id\"]} {pick.get(\"index_in_repo\", \"\")}')
-except Exception:
-    pass
-" 2>/dev/null)
-
-	local run_id run_number
-	read -r run_id run_number <<< "$run_info"
+	# Step 1: Find run_number for this commit.
+	# Try /actions/runs first (Codeberg / Forgejo 12+), then fall back to
+	# /actions/tasks (Forgejo 11.x / gitea-1.22 which lacks the runs endpoint).
+	local run_number=""
+	run_number=$(_find_run_number_via_runs "$head_sha" 2>/dev/null) \
+		|| run_number=$(_find_run_number_via_tasks "$head_sha" 2>/dev/null) \
+		|| true
 
 	if [[ -z "$run_number" ]]; then
 		echo "Could not find CI run for commit ${head_sha:0:8}" >&2
 		return 1
 	fi
 
-	# Step 2: Get job list from the HTML page's embedded JSON
+	# Step 2: Find the job index within the run.
+	# Try parsing embedded JSON from the HTML page (Codeberg), then fall back
+	# to probing log first-lines (self-hosted Forgejo where the page is a SPA).
+	local job_index="" job_name=""
+	read -r job_index job_name < <(
+		_find_job_from_html "$web_base" "$run_number" "$target_name" 2>/dev/null \
+		|| _find_job_from_log_probe "$web_base" "$run_number" "$target_name" 2>/dev/null \
+		|| echo ""
+	)
+
+	if [[ -z "$job_index" ]]; then
+		echo "Could not find job${target_name:+ matching '$target_name'} in run $run_number" >&2
+		return 1
+	fi
+
+	echo "Fetching log for job '$job_name' (run #$run_number, index $job_index)..." >&2
+
+	# Step 3: Download log via web route
+	curl -sSL --http1.1 --max-time 60 \
+		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
+		"$web_base/actions/runs/$run_number/jobs/$job_index/logs" 2>/dev/null
+}
+
+# ------------------------------------------------------------------
+# _find_run_number_via_runs HEAD_SHA
+#   Find run_number via /actions/runs (Codeberg / Forgejo 12+).
+#   Prints run_number on success, returns 1 on failure.
+# ------------------------------------------------------------------
+_find_run_number_via_runs() {
+	local head_sha="$1"
+	local runs_response
+	runs_response=$(curl -sS --http1.1 --max-time 15 \
+		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
+		"$API_BASE/actions/runs?head_sha=$head_sha" 2>/dev/null) || return 1
+
+	echo "$runs_response" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    runs = data.get('workflow_runs', data if isinstance(data, list) else [])
+    ci_runs = [r for r in runs if str(r.get('workflow_id', '')) == 'ci.yml']
+    pick = ci_runs[0] if ci_runs else (runs[0] if runs else None)
+    if pick and pick.get('index_in_repo'):
+        print(pick['index_in_repo'])
+    else:
+        sys.exit(1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null
+}
+
+# ------------------------------------------------------------------
+# _find_run_number_via_tasks HEAD_SHA
+#   Fallback: find run_number via /actions/tasks (Forgejo 11.x).
+#   This endpoint exists on older Forgejo where /actions/runs does not.
+#   Prints run_number on success, returns 1 on failure.
+# ------------------------------------------------------------------
+_find_run_number_via_tasks() {
+	local head_sha="$1"
+	local tasks_response
+	tasks_response=$(curl -sS --http1.1 --max-time 15 \
+		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
+		"$API_BASE/actions/tasks?limit=100" 2>/dev/null) || return 1
+
+	echo "$tasks_response" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    tasks = data.get('workflow_runs', data if isinstance(data, list) else [])
+    # Filter to matching SHA; prefer ci.yml
+    matching = [t for t in tasks if t.get('head_sha', '').startswith('$head_sha')]
+    ci_tasks = [t for t in matching if t.get('workflow_id') == 'ci.yml']
+    pick = ci_tasks[0] if ci_tasks else (matching[0] if matching else None)
+    if pick and pick.get('run_number'):
+        print(pick['run_number'])
+    else:
+        sys.exit(1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null
+}
+
+# ------------------------------------------------------------------
+# _find_job_from_html WEB_BASE RUN_NUMBER TARGET_NAME
+#   Parse job list from the run page's embedded JSON (Codeberg).
+#   Prints "INDEX NAME" on success, returns 1 on failure.
+# ------------------------------------------------------------------
+_find_job_from_html() {
+	local web_base="$1" run_number="$2" target_name="$3"
 	local page_html
 	page_html=$(curl -sSL --http1.1 --max-time 15 \
 		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
 		"$web_base/actions/runs/$run_number/jobs/0" 2>/dev/null) || return 1
 
-	local job_index job_name
-	read -r job_index job_name < <(echo "$page_html" | python3 -c "
+	echo "$page_html" | python3 -c "
 import sys, json, html, re
 
 page = html.unescape(sys.stdin.read())
-target = '${target_name}'.lower()
+target = '$target_name'.lower()
 
-# Extract JSON blob containing jobs from the decoded HTML
 match = re.search(r'\"jobs\":\s*\[(\{.*?\}(?:,\{.*?\})*)\]', page)
 if not match:
     sys.exit(1)
 
 jobs = json.loads('[' + match.group(1) + ']')
 
-# Match by name, or pick first failed job, or first job
 best = None
 first = None
 for i, j in enumerate(jobs):
@@ -531,19 +642,82 @@ if best is None:
 
 if best:
     print(f'{best[0]} {best[1]}')
-" 2>/dev/null)
+else:
+    sys.exit(1)
+" 2>/dev/null
+}
 
-	if [[ -z "$job_index" ]]; then
-		echo "Could not find job${target_name:+ matching '$target_name'} in run $run_number" >&2
-		return 1
+# ------------------------------------------------------------------
+# _find_job_from_log_probe WEB_BASE RUN_NUMBER TARGET_NAME
+#   Fallback: probe log first-lines to find the job index.
+#   Each Forgejo job log starts with a line containing "of job <name>".
+#   Prints "INDEX NAME" on success, returns 1 on failure.
+# ------------------------------------------------------------------
+_find_job_from_log_probe() {
+	local web_base="$1" run_number="$2" target_name="$3"
+	local target_lower
+	target_lower=$(echo "$target_name" | tr '[:upper:]' '[:lower:]')
+
+	local best_index="" best_name=""
+	local first_failed_index="" first_failed_name=""
+	local first_index="" first_name=""
+	local empty_count=0 named_count=0
+
+	for idx in $(seq 0 20); do
+		# Fetch first line of log. Avoid pipe (curl | head) because
+		# set -o pipefail + SIGPIPE causes false failures.  Instead,
+		# capture a bounded chunk and extract the first line.
+		local raw_chunk="" first_line=""
+		raw_chunk=$(curl -sS --http1.1 --max-time 5 -r 0-1023 \
+			-H "Authorization: token ${FORGEJO_TOKEN:-}" \
+			"$web_base/actions/runs/$run_number/jobs/$idx/logs" 2>/dev/null) || true
+		first_line=$(echo "$raw_chunk" | head -1)
+
+		# Empty response: log not ready or job index gap — skip, don't
+		# stop.  Self-hosted Forgejo may return empty for valid indices
+		# whose logs haven't been flushed yet.
+		if [[ -z "$first_line" ]]; then
+			empty_count=$((empty_count + 1))
+			continue
+		fi
+
+		# Extract job name: "received task NNN of job <name>, be triggered by"
+		local name
+		name=$(echo "$first_line" | sed -n 's/.*of job \([^,]*\),.*/\1/p')
+		if [[ -z "$name" ]]; then
+			continue
+		fi
+		named_count=$((named_count + 1))
+
+		# Track first job seen
+		if [[ -z "$first_index" ]]; then
+			first_index="$idx"
+			first_name="$name"
+		fi
+
+		# Target match (case-insensitive substring)
+		local name_lower
+		name_lower=$(echo "$name" | tr '[:upper:]' '[:lower:]')
+		if [[ -n "$target_lower" && "$name_lower" == *"$target_lower"* ]]; then
+			echo "$idx $name"
+			return 0
+		fi
+	done
+
+	# No target match — return first job if no target was specified
+	if [[ -z "$target_lower" && -n "$first_index" ]]; then
+		echo "$first_index $first_name"
+		return 0
 	fi
 
-	echo "Fetching log for job '$job_name' (run #$run_number, index $job_index)..." >&2
+	# Diagnostic for debugging probe failures
+	if [[ $named_count -eq 0 && $empty_count -gt 0 ]]; then
+		echo "Log probe: all $empty_count responses empty (logs may not be ready yet)" >&2
+	elif [[ $named_count -gt 0 ]]; then
+		echo "Log probe: found $named_count jobs but none matching '$target_name'" >&2
+	fi
 
-	# Step 3: Download log via web route with attempt number
-	curl -sSL --http1.1 --max-time 60 \
-		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
-		"$web_base/actions/runs/$run_number/jobs/$job_index/attempt/1/logs" 2>/dev/null
+	return 1
 }
 
 # ------------------------------------------------------------------

@@ -1,0 +1,66 @@
+- op: create  # 518d
+  at: '2026-03-31T09:09:20Z'  # 518d
+  by: agent  # 518d
+  actor: jgstern_agent  # 518d
+  clock: 1  # 518d
+  nonce: 518d  # 518d
+  data:  # 518d
+    kind: work_item  # 518d
+    title: "Annotation gestures: rectangle drag, label placement, arrow drawing"  # 518d
+    status: needs_human_review  # 518d
+    priority: 2  # 518d
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # 518d
+    tags:  # 518d
+    - adr-0020  # 518d
+    before: []  # 518d
+    duplicate_of: []  # 518d
+    not_duplicate_of: []  # 518d
+    pr_ref:  # 518d
+    description: "Mouse-driven annotation on the frozen overlay: drag to draw rectangles, click to place labels (with text input), drag to draw arrows. Each gesture creates an Annotation dataclass instance. Rendered as styled characters on the Textual overlay in real time."  # 518d
+    fields: {}  # 518d
+- op: update  # eb78
+  at: '2026-03-31T09:18:42Z'  # eb78
+  by: agent  # eb78
+  actor: jgstern_agent  # eb78
+  clock: 2  # eb78
+  nonce: eb78  # eb78
+  set: {}  # eb78
+  add:  # eb78
+    before: [WI-lapob-lidob-tulid-tifuh-jivur-botus-gapaj-buzoh]  # eb78
+- op: update  # cc71
+  at: '2026-03-31T09:28:23Z'  # cc71
+  by: agent  # cc71
+  actor: jgstern_agent  # cc71
+  clock: 3  # cc71
+  nonce: cc71  # cc71
+  set:  # cc71
+    status: todo_soft  # cc71
+- op: discuss  # 8a4a
+  at: '2026-03-31T09:30:39Z'  # 8a4a
+  by: human  # 8a4a
+  actor: jgstern  # 8a4a
+  clock: 4  # 8a4a
+  nonce: 8a4a  # 8a4a
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 8a4a
+- op: discuss  # 69b1
+  at: '2026-03-31T09:40:24Z'  # 69b1
+  by: agent  # 69b1
+  actor: jgstern_agent  # 69b1
+  clock: 5  # 69b1
+  nonce: 69b1  # 69b1
+  message: "Acknowledged. Will reference ADR-0020 when implementing."  # 69b1
+- op: update  # 1522
+  at: '2026-04-03T23:11:02Z'  # 1522
+  by: agent  # 1522
+  actor: jgstern_agent  # 1522
+  clock: 6  # 1522
+  nonce: '1522'  # 1522
+  set:  # 1522
+    status: done  # 1522
+- op: discuss  # abf2
+  at: '2026-04-03T23:11:02Z'  # abf2
+  by: agent  # abf2
+  actor: jgstern_agent  # abf2
+  clock: 7  # abf2
+  nonce: abf2  # abf2
+  message: "Already implemented in tui.py AnnotationScreen: mouse drag for rects (on_mouse_down/move/up), L key + click for labels, A key + drag for arrows, U for undo. All gesture modes with status bar feedback."  # abf2

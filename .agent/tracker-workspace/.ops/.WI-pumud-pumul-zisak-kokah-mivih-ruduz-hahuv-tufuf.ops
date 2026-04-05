@@ -1,0 +1,83 @@
+- op: create  # 11c6
+  at: '2026-03-23T14:14:09Z'  # 11c6
+  by: agent  # 11c6
+  actor: jgstern_agent  # 11c6
+  clock: 1  # 11c6
+  nonce: 11c6  # 11c6
+  data:  # 11c6
+    kind: work_item  # 11c6
+    title: "ADR-0017 Phase 3: Function summary inference from DDG"  # 11c6
+    status: todo_soft  # 11c6
+    priority: 3  # 11c6
+    parent:  # 11c6
+    tags:  # 11c6
+    - adr-0017  # 11c6
+    - phase-3  # 11c6
+    before: []  # 11c6
+    duplicate_of: []  # 11c6
+    not_duplicate_of: []  # 11c6
+    pr_ref:  # 11c6
+    description: "Infer FunctionSummary from DDG: param_to_return (does param N flow to return?), param_to_param (mutation across params), param_to_calls (param N flows to call arg K of callee F), return_sources. Walk forward through DDG edges from each parameter. Conservative defaults for functions without DDG. See ADR-0017 §4a."  # 11c6
+    fields: {}  # 11c6
+- op: update  # 3f62
+  at: '2026-03-23T14:15:24Z'  # 3f62
+  by: agent  # 3f62
+  actor: jgstern_agent  # 3f62
+  clock: 2  # 3f62
+  nonce: 3f62  # 3f62
+  set: {}  # 3f62
+  add:  # 3f62
+    before: [WI-bivaf-nujas-fugir-lugug-safud-vukor-zupog-tubug]  # 3f62
+- op: update  # 841b
+  at: '2026-03-23T14:17:41Z'  # 841b
+  by: agent  # 841b
+  actor: jgstern_agent  # 841b
+  clock: 3  # 841b
+  nonce: 841b  # 841b
+  set:  # 841b
+    status: needs_human_review  # 841b
+- op: discuss  # 322e
+  at: '2026-03-23T14:17:41Z'  # 322e
+  by: agent  # 322e
+  actor: jgstern_agent  # 322e
+  clock: 4  # 322e
+  nonce: 322e  # 322e
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 322e
+- op: update  # 7fa5
+  at: '2026-03-25T04:15:55Z'  # 7fa5
+  by: agent  # 7fa5
+  actor: jgstern_agent  # 7fa5
+  clock: 5  # 7fa5
+  nonce: 7fa5  # 7fa5
+  set:  # 7fa5
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 7fa5
+- op: update  # f4a8
+  at: '2026-03-25T07:51:56Z'  # f4a8
+  by: agent  # f4a8
+  actor: jgstern_agent  # f4a8
+  clock: 6  # f4a8
+  nonce: f4a8  # f4a8
+  set:  # f4a8
+    status: todo_soft  # f4a8
+- op: discuss  # 24ce
+  at: '2026-03-25T07:51:56Z'  # 24ce
+  by: agent  # 24ce
+  actor: jgstern_agent  # 24ce
+  clock: 7  # 24ce
+  nonce: 24ce  # 24ce
+  message: "ADR-0017 accepted. Phase 3."  # 24ce
+- op: update  # 9742
+  at: '2026-03-26T09:41:04Z'  # 9742
+  by: agent  # 9742
+  actor: jgstern_agent  # 9742
+  clock: 8  # 9742
+  nonce: '9742'  # 9742
+  set:  # 9742
+    status: done  # 9742
+- op: discuss  # faf2
+  at: '2026-03-26T09:41:04Z'  # faf2
+  by: agent  # faf2
+  actor: jgstern_agent  # faf2
+  clock: 9  # faf2
+  nonce: faf2  # faf2
+  message: "Implemented in PR #2589. infer_summary() with transitive DDG forward walk. Tracks param_to_return via BFS with re-definition tracking. 31 tests, 100% coverage."  # faf2

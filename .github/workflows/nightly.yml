@@ -27,7 +27,7 @@ jobs:
         python-version: ['3.10', '3.11', '3.12', '3.13']
       fail-fast: false
 
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     container: python:${{ matrix.python-version }}-bookworm
     timeout-minutes: 15
     env:
@@ -224,7 +224,7 @@ jobs:
   # Integration tests
   # ─────────────────────────────────────────────────────────────
   integration-tests:
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     timeout-minutes: 30
     env:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
@@ -266,7 +266,7 @@ jobs:
   report:
     needs: [test-matrix, test-matrix-retry, integration-tests]
     if: always()
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
 
     steps:
       - name: Set commit statuses

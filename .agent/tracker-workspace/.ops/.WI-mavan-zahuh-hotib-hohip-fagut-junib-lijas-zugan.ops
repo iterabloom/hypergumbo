@@ -1,0 +1,42 @@
+- op: create  # 62ec
+  at: '2026-03-24T19:35:59Z'  # 62ec
+  by: agent  # 62ec
+  actor: jgstern_agent  # 62ec
+  clock: 1  # 62ec
+  nonce: 62ec  # 62ec
+  data:  # 62ec
+    kind: work_item  # 62ec
+    title: "Swift: short-name collision in method resolution (append, filter, get)"  # 62ec
+    status: todo_soft  # 62ec
+    priority: 3  # 62ec
+    parent:  # 62ec
+    tags: []  # 62ec
+    before: []  # 62ec
+    duplicate_of: []  # 62ec
+    not_duplicate_of: []  # 62ec
+    pr_ref:  # 62ec
+    description: "All 8 Swift bakeoff repos show false-positive call edges from name-only matching. append→Array.append mismatches to MDocMacro.append, filter→Collection.filter mismatches to Baseline.filter. Need confidence penalty or disambiguation for very common Swift method names."  # 62ec
+    fields: {}  # 62ec
+- op: update  # 0d0f
+  at: '2026-03-25T04:23:57Z'  # 0d0f
+  by: agent  # 0d0f
+  actor: jgstern_agent  # 0d0f
+  clock: 2  # 0d0f
+  nonce: 0d0f  # 0d0f
+  set:  # 0d0f
+    parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # 0d0f
+- op: update  # 8a21
+  at: '2026-03-25T05:26:09Z'  # 8a21
+  by: agent  # 8a21
+  actor: jgstern_agent  # 8a21
+  clock: 3  # 8a21
+  nonce: 8a21  # 8a21
+  set:  # 8a21
+    status: done  # 8a21
+- op: discuss  # c4ff
+  at: '2026-03-25T05:26:09Z'  # c4ff
+  by: agent  # c4ff
+  actor: jgstern_agent  # c4ff
+  clock: 4  # c4ff
+  nonce: c4ff  # c4ff
+  message: "Fixed by registering methods by qualified name only. Bare calls fall through to NameResolver with ambiguity handling."  # c4ff

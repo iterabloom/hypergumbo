@@ -1,0 +1,50 @@
+- op: create  # 5294
+  at: '2026-04-04T04:19:19Z'  # 5294
+  by: agent  # 5294
+  actor: jgstern_agent  # 5294
+  clock: 1  # 5294
+  nonce: '5294'  # 5294
+  data:  # 5294
+    kind: work_item  # 5294
+    title: "Go tier2/tier3 classification via go.mod parsing"  # 5294
+    status: todo_hard  # 5294
+    priority: 3  # 5294
+    parent:  # 5294
+    tags:  # 5294
+    - go  # 5294
+    - supply-chain  # 5294
+    before: []  # 5294
+    duplicate_of: []  # 5294
+    not_duplicate_of: []  # 5294
+    pr_ref:  # 5294
+    description: "Current state: all Go source is tier1, no tier2 for go.mod deps, no tier3 for stdlib. Root cause: external module symbols don't exist as nodes (unresolved edges skipped in slice.py:552). Fix: create lightweight external-symbol nodes classified by go.mod require directives (tier2=direct dep, tier3=indirect/stdlib), or handle unresolved edges in slice tier filter. Assessment score: 2/5."  # 5294
+    fields: {}  # 5294
+- op: discuss  # 5e15
+  at: '2026-04-04T04:19:33Z'  # 5e15
+  by: agent  # 5e15
+  actor: jgstern_agent  # 5e15
+  clock: 2  # 5e15
+  nonce: '5e15'  # 5e15
+  message: "Discovered during DEEP bakeoff session 2026-04-03. alertmanager: 2081 tier1, 801 tier2 (tests only), 49 tier3 (npm). tier1 and tier2 slices are identical (162 nodes each). The tier1/tier2 slices cover the SAME 162 nodes because all Go production code is tier1 and there are no tier2 Go nodes (only test files are tier2)."  # 5e15
+- op: update  # 3a0f
+  at: '2026-04-04T04:29:35Z'  # 3a0f
+  by: agent  # 3a0f
+  actor: jgstern_agent  # 3a0f
+  clock: 3  # 3a0f
+  nonce: 3a0f  # 3a0f
+  set:  # 3a0f
+    status: todo_soft  # 3a0f
+- op: discuss  # 7cde
+  at: '2026-04-04T04:29:35Z'  # 7cde
+  by: agent  # 7cde
+  actor: jgstern_agent  # 7cde
+  clock: 4  # 7cde
+  nonce: 7cde  # 7cde
+  message: "This is a feature gap (no external module nodes exist), not a structural defect. The tier classifier correctly classifies all existing nodes. Downgrading from todo_hard to todo_soft."  # 7cde
+- op: discuss  # 8099
+  at: '2026-04-04T19:23:37Z'  # 8099
+  by: agent  # 8099
+  actor: jgstern_agent  # 8099
+  clock: 5  # 8099
+  nonce: '8099'  # 8099
+  message: "Design direction: language-agnostic DependencyManifest in supply_chain.py. Each analyzer returns a manifest mapping module paths to direct/indirect (Go: go.mod require, JS: package.json deps vs devDeps, Python: pyproject.toml deps, Rust: Cargo.toml deps vs dev-deps). _create_boundary_nodes_for_dangling_edges in ir.py consults the manifest to set tier 2 (direct) or tier 3 (indirect/stdlib). This avoids baking Go-specific logic into the core."  # 8099

@@ -1,0 +1,92 @@
+- op: create  # 18b6
+  at: '2026-03-23T14:14:06Z'  # 18b6
+  by: agent  # 18b6
+  actor: jgstern_agent  # 18b6
+  clock: 1  # 18b6
+  nonce: 18b6  # 18b6
+  data:  # 18b6
+    kind: work_item  # 18b6
+    title: "ADR-0017 Phase 1: Structural taint-flow propagation (call-graph BFS)"  # 18b6
+    status: todo_soft  # 18b6
+    priority: 2  # 18b6
+    parent:  # 18b6
+    tags:  # 18b6
+    - adr-0017  # 18b6
+    - phase-1  # 18b6
+    before: []  # 18b6
+    duplicate_of: []  # 18b6
+    not_duplicate_of: []  # 18b6
+    pr_ref:  # 18b6
+    description: "Taint propagation via call-graph BFS with dominance-based sanitizer checking. Two-phase BFS: (1) compute reachable nodes from taint source without passing through sanitizers, (2) check if any sink is in that set. Fallback path for languages without def/use extractors. See ADR-0017 §3b."  # 18b6
+    fields: {}  # 18b6
+- op: update  # 131b
+  at: '2026-03-23T14:15:23Z'  # 131b
+  by: agent  # 131b
+  actor: jgstern_agent  # 131b
+  clock: 2  # 131b
+  nonce: 131b  # 131b
+  set: {}  # 131b
+  add:  # 131b
+    before: [WI-fisik-binub-vobip-lulub-fapob-likok-tujig-posul]  # 131b
+- op: update  # d94e
+  at: '2026-03-23T14:15:23Z'  # d94e
+  by: agent  # d94e
+  actor: jgstern_agent  # d94e
+  clock: 3  # d94e
+  nonce: d94e  # d94e
+  set: {}  # d94e
+  add:  # d94e
+    before: [WI-ruhol-tizol-vusuf-raluh-zurum-lifav-kopuv-vabor]  # d94e
+- op: update  # f9fa
+  at: '2026-03-23T14:17:40Z'  # f9fa
+  by: agent  # f9fa
+  actor: jgstern_agent  # f9fa
+  clock: 4  # f9fa
+  nonce: f9fa  # f9fa
+  set:  # f9fa
+    status: needs_human_review  # f9fa
+- op: discuss  # 07f2
+  at: '2026-03-23T14:17:40Z'  # 07f2
+  by: agent  # 07f2
+  actor: jgstern_agent  # 07f2
+  clock: 5  # 07f2
+  nonce: 07f2  # 07f2
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 07f2
+- op: update  # 2e97
+  at: '2026-03-25T04:15:55Z'  # 2e97
+  by: agent  # 2e97
+  actor: jgstern_agent  # 2e97
+  clock: 6  # 2e97
+  nonce: '2e97'  # 2e97
+  set:  # 2e97
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 2e97
+- op: update  # 8c0b
+  at: '2026-03-25T07:41:58Z'  # 8c0b
+  by: agent  # 8c0b
+  actor: jgstern_agent  # 8c0b
+  clock: 7  # 8c0b
+  nonce: 8c0b  # 8c0b
+  set:  # 8c0b
+    status: todo_soft  # 8c0b
+- op: discuss  # 8c2f
+  at: '2026-03-25T07:41:58Z'  # 8c2f
+  by: agent  # 8c2f
+  actor: jgstern_agent  # 8c2f
+  clock: 8  # 8c2f
+  nonce: 8c2f  # 8c2f
+  message: "ADR-0017 accepted. Phase 1."  # 8c2f
+- op: update  # 2ee9
+  at: '2026-03-25T08:58:36Z'  # 2ee9
+  by: agent  # 2ee9
+  actor: jgstern_agent  # 2ee9
+  clock: 9  # 2ee9
+  nonce: 2ee9  # 2ee9
+  set:  # 2ee9
+    status: done  # 2ee9
+- op: discuss  # 2961
+  at: '2026-03-25T08:58:36Z'  # 2961
+  by: agent  # 2961
+  actor: jgstern_agent  # 2961
+  clock: 10  # 2961
+  nonce: '2961'  # 2961
+  message: "Implemented in feat/taint-flow-phase1. Two-phase BFS: reachable set from source without sanitizers, check sink presence. Dominance-based sanitizer checking. 41 tests, 100% coverage."  # 2961

@@ -1,0 +1,246 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0016: I/O primitive catalog for Objective-C
+#
+# Maps Foundation, UIKit, and common framework APIs to I/O boundary types.
+# Selectors use ObjC colon notation (e.g., "removeItemAtPath:error:").
+# All selectors with colons MUST be quoted to avoid YAML key-value parsing.
+#
+# Note: C-level I/O (fopen, read, write, socket, etc.) is covered by c.yaml.
+# This catalog covers ObjC-specific Foundation/Cocoa wrappers.
+language: objc
+
+# Selector names that are too generic to match without class context.
+# ObjC message sends use short selectors that appear on many classes.
+ambiguous_names:
+  - read          # NSFileHandle read vs any read
+  - write         # NSFileHandle write vs any write
+  - open          # NSFileHandle open vs any open
+  - close         # NSFileHandle close vs any close
+  - send          # NSURLSession send vs any send
+  - start         # NSURLSessionTask start vs any start
+  - data          # NSData.data vs any .data property
+  - run           # NSRunLoop.run vs any run
+  - get           # NSURLSession GET vs NSDictionary.objectForKey
+  - delete        # NSFileManager delete vs any delete
+  - connect       # NSStream connect vs any connect
+
+fs_read:
+  - module: NSFileManager
+    methods:
+      - "fileExistsAtPath:"
+      - "fileExistsAtPath:isDirectory:"
+      - "contentsOfDirectoryAtPath:error:"
+      - "contentsOfDirectoryAtURL:includingPropertiesForKeys:options:error:"
+      - "subpathsOfDirectoryAtPath:error:"
+      - "subpathsAtPath:"
+      - "attributesOfItemAtPath:error:"
+      - "attributesOfFileSystemForPath:error:"
+      - "contentsAtPath:"
+      - "isReadableFileAtPath:"
+      - "isWritableFileAtPath:"
+      - "isExecutableFileAtPath:"
+      - "isDeletableFileAtPath:"
+      - "contentsEqualAtPath:andPath:"
+      - "destinationOfSymbolicLinkAtPath:error:"
+  - module: NSData
+    methods:
+      - "dataWithContentsOfFile:"
+      - "dataWithContentsOfFile:options:error:"
+      - "dataWithContentsOfURL:"
+      - "dataWithContentsOfURL:options:error:"
+      - "initWithContentsOfFile:"
+      - "initWithContentsOfURL:"
+    notes: "NSData file/URL constructors cross I/O boundary"
+  - module: NSString
+    methods:
+      - "stringWithContentsOfFile:encoding:error:"
+      - "stringWithContentsOfURL:encoding:error:"
+      - "initWithContentsOfFile:encoding:error:"
+      - "initWithContentsOfURL:encoding:error:"
+  - module: NSFileHandle
+    methods:
+      - "fileHandleForReadingAtPath:"
+      - "fileHandleForReadingFromURL:error:"
+      - "readDataOfLength:"
+      - readDataToEndOfFile
+      - availableData
+  - module: NSInputStream
+    methods:
+      - "inputStreamWithFileAtPath:"
+      - "inputStreamWithURL:"
+      - "read:maxLength:"
+  - module: NSBundle
+    methods:
+      - "pathForResource:ofType:"
+      - "pathForResource:ofType:inDirectory:"
+      - "URLForResource:withExtension:"
+      - "URLForResource:withExtension:subdirectory:"
+
+fs_write:
+  - module: NSFileManager
+    methods:
+      - "createFileAtPath:contents:attributes:"
+      - "createDirectoryAtPath:withIntermediateDirectories:attributes:error:"
+      - "createDirectoryAtURL:withIntermediateDirectories:attributes:error:"
+      - "removeItemAtPath:error:"
+      - "removeItemAtURL:error:"
+      - "moveItemAtPath:toPath:error:"
+      - "moveItemAtURL:toURL:error:"
+      - "copyItemAtPath:toPath:error:"
+      - "copyItemAtURL:toURL:error:"
+      - "createSymbolicLinkAtPath:withDestinationPath:error:"
+      - "setAttributes:ofItemAtPath:error:"
+  - module: NSData
+    methods:
+      - "writeToFile:atomically:"
+      - "writeToFile:options:error:"
+      - "writeToURL:atomically:"
+      - "writeToURL:options:error:"
+  - module: NSString
+    methods:
+      - "writeToFile:atomically:encoding:error:"
+      - "writeToURL:atomically:encoding:error:"
+  - module: NSFileHandle
+    methods:
+      - "fileHandleForWritingAtPath:"
+      - "fileHandleForWritingToURL:error:"
+      - "fileHandleForUpdatingAtPath:"
+      - "fileHandleForUpdatingURL:error:"
+      - "writeData:"
+      - "truncateFileAtOffset:"
+      - "seekToFileOffset:"
+      - synchronizeFile
+  - module: NSOutputStream
+    methods:
+      - "outputStreamToFileAtPath:append:"
+      - "write:maxLength:"
+
+net_send:
+  - module: NSURLSession
+    methods:
+      - "dataTaskWithRequest:completionHandler:"
+      - "dataTaskWithRequest:"
+      - "uploadTaskWithRequest:fromData:completionHandler:"
+      - "uploadTaskWithRequest:fromData:"
+      - "uploadTaskWithRequest:fromFile:completionHandler:"
+      - "uploadTaskWithRequest:fromFile:"
+      - "uploadTaskWithStreamedRequest:"
+    notes: "Dual-classified with net_recv; request implies both send and receive"
+  - module: NSURLConnection
+    methods:
+      - "sendSynchronousRequest:returningResponse:error:"
+      - "sendAsynchronousRequest:queue:completionHandler:"
+      - "connectionWithRequest:delegate:"
+      - "initWithRequest:delegate:"
+    notes: "Deprecated but still widely used in older codebases"
+  - module: NSMutableURLRequest
+    methods:
+      - "requestWithURL:"
+      - "initWithURL:"
+      - "setHTTPBody:"
+      - "setHTTPMethod:"
+
+net_recv:
+  - module: NSURLSession
+    methods:
+      - "dataTaskWithURL:completionHandler:"
+      - "dataTaskWithURL:"
+      - "downloadTaskWithURL:completionHandler:"
+      - "downloadTaskWithURL:"
+      - "downloadTaskWithRequest:completionHandler:"
+      - "downloadTaskWithRequest:"
+      - "downloadTaskWithResumeData:completionHandler:"
+  - module: NSURLConnection
+    methods:
+      - "sendSynchronousRequest:returningResponse:error:"
+      - "sendAsynchronousRequest:queue:completionHandler:"
+    notes: "Dual-classified with net_send"
+
+db_read:
+  - module: NSManagedObjectContext
+    methods:
+      - "executeFetchRequest:error:"
+      - "countForFetchRequest:error:"
+      - "objectWithID:"
+      - "existingObjectWithID:error:"
+      - "objectRegisteredForID:"
+    notes: "Core Data fetch operations"
+  - module: NSFetchRequest
+    methods:
+      - "fetchRequestWithEntityName:"
+    notes: "Core Data fetch request creation"
+  - module: NSPersistentStoreCoordinator
+    methods:
+      - "addPersistentStoreWithType:configuration:URL:options:error:"
+
+db_write:
+  - module: NSManagedObjectContext
+    methods:
+      - "save:"
+      - "deleteObject:"
+      - "insertNewObjectForEntityForName:inManagedObjectContext:"
+    notes: "Core Data write operations"
+  - module: NSPersistentStoreCoordinator
+    methods:
+      - "removePersistentStore:error:"
+      - "migratePersistentStore:toURL:options:withType:error:"
+
+subprocess:
+  - module: NSTask
+    methods:
+      - launch
+      - "launchAndReturnError:"
+      - waitUntilExit
+      - terminate
+      - interrupt
+    notes: "NSTask is macOS-only; equivalent to subprocess.run in Python"
+
+env_read:
+  - module: NSProcessInfo
+    methods:
+      - environment
+      - processName
+      - hostName
+      - operatingSystemVersionString
+      - physicalMemory
+      - processorCount
+  - module: NSBundle
+    methods:
+      - bundleIdentifier
+      - infoDictionary
+      - "objectForInfoDictionaryKey:"
+    notes: "App bundle metadata access"
+
+logging:
+  - module: Foundation
+    functions:
+      - NSLog
+    notes: "The standard Objective-C logging function"
+  - module: os_log
+    functions:
+      - os_log
+      - os_log_error
+      - os_log_fault
+      - os_log_debug
+      - os_log_info
+    notes: "Apple unified logging (macOS 10.12+, iOS 10+)"
+
+ipc_send:
+  - module: NSNotificationCenter
+    methods:
+      - "postNotificationName:object:"
+      - "postNotificationName:object:userInfo:"
+      - "postNotification:"
+    notes: "In-process pub/sub; classified as IPC for boundary analysis"
+  - module: NSDistributedNotificationCenter
+    methods:
+      - "postNotificationName:object:userInfo:deliverImmediately:"
+    notes: "Cross-process notification (macOS only)"
+
+ipc_recv:
+  - module: NSNotificationCenter
+    methods:
+      - "addObserverForName:object:queue:usingBlock:"
+      - "addObserver:selector:name:object:"
+      - "removeObserver:"
+      - "removeObserver:name:object:"

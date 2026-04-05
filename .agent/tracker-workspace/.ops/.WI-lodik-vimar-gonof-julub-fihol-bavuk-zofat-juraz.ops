@@ -35,3 +35,11 @@
   clock: 3  # 252c
   nonce: 252c  # 252c
   message: "Fixed: materialize_route_symbols() creates kind=route IR nodes from enriched concept=route metadata. Runs after enrich_symbols(), before linker phase. Go/JS analyzers unaffected (deduplication)."  # 252c
+- op: update  # c55e
+  at: '2026-03-25T04:23:58Z'  # c55e
+  by: agent  # c55e
+  actor: jgstern_agent  # c55e
+  clock: 4  # c55e
+  nonce: c55e  # c55e
+  set:  # c55e
+    parent: INV-nimik-zudat-pafil-hipuf-hisif-sunip-kopib-puluj  # c55e

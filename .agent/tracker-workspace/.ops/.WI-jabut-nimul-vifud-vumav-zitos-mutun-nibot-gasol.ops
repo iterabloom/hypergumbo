@@ -32,3 +32,11 @@
   clock: 3  # a396
   nonce: a396  # a396
   message: "Fixed by unwrapping generic_function nodes (turbofish) and stripping type arguments from scoped names. PublicParams::<E1,E2>::setup() now resolves to PublicParams::setup, and x.collect::<Vec<i32>>() is properly detected as a method call."  # a396
+- op: update  # fa6a
+  at: '2026-03-25T04:23:57Z'  # fa6a
+  by: agent  # fa6a
+  actor: jgstern_agent  # fa6a
+  clock: 4  # fa6a
+  nonce: fa6a  # fa6a
+  set:  # fa6a
+    parent: INV-bolil-mirid-pakim-lujun-kivas-vifuk-butof-vihif  # fa6a

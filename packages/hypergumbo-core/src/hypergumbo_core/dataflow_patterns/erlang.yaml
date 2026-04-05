@@ -1,8 +1,46 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # ADR-0015: Dataflow patterns for Erlang (tree-sitter grammar)
+#
+# Erlang's naming conventions encode intent: get_/fetch_/read_ functions
+# retrieve data, set_/put_/write_/store_ functions persist data. These
+# heuristics improve dataflow slice quality for OTP applications.
 language: erlang
 
 assignments:
   - node_type: match_expression
     write: left
     read: right
+
+# Name-based heuristics for common Erlang function naming conventions
+library_patterns:
+  # Read patterns: functions that retrieve/fetch data
+  - match: '\b(?:get|fetch|read|lookup|find)_\w+\('
+    access_mode: read
+  - match: '\bets:lookup\b'
+    access_mode: read
+  - match: '\bets:select\b'
+    access_mode: read
+  - match: '\bmnesia:read\b'
+    access_mode: read
+  - match: '\bgen_server:call\b'
+    access_mode: read
+  - match: '\bfile:read_file\b'
+    access_mode: read
+  - match: '\bfile:consult\b'
+    access_mode: read
+
+  # Write patterns: functions that persist/modify data
+  - match: '\b(?:set|put|write|store|save|insert|update|delete|remove)_\w+\('
+    access_mode: write
+  - match: '\bets:insert\b'
+    access_mode: write
+  - match: '\bets:delete\b'
+    access_mode: delete
+  - match: '\bmnesia:write\b'
+    access_mode: write
+  - match: '\bmnesia:delete\b'
+    access_mode: delete
+  - match: '\bfile:write_file\b'
+    access_mode: write
+  - match: '\bgen_server:cast\b'
+    access_mode: write

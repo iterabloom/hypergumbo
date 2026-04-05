@@ -144,13 +144,24 @@ except Exception:
     CURRENT_HASH="no-sentinel-dirs-$$"
   fi
 
+  # Check prior history BEFORE appending current hash.  This avoids an
+  # off-by-one (the current stop shouldn't count toward the threshold —
+  # it should only trip after HASH_THRESHOLD *prior* identical stops) and
+  # a TOCTOU race (two separate `tail` reads could see different data if
+  # another hook fires between them).
+  if [[ -f "$HASH_FILE" ]]; then
+    LAST_N=$(tail -n "$HASH_THRESHOLD" "$HASH_FILE")
+    TAIL_COUNT=$(printf '%s\n' "$LAST_N" | wc -l)
+    UNIQUE_HASHES=$(printf '%s\n' "$LAST_N" | sort -u)
+    UNIQUE_COUNT=$(printf '%s\n' "$UNIQUE_HASHES" | wc -l)
+    if [[ "$TAIL_COUNT" -ge "$HASH_THRESHOLD" && "$UNIQUE_COUNT" -eq 1 && "$UNIQUE_HASHES" == "$CURRENT_HASH" ]]; then
+      CIRCUIT_BREAKER_TRIPPED=true
+    fi
+  fi
+
+  # Record current hash AFTER the check
   if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
     echo "$CURRENT_HASH" >> "$HASH_FILE"
-  fi
-  TAIL_COUNT=$(tail -n "$HASH_THRESHOLD" "$HASH_FILE" | wc -l)
-  UNIQUE_COUNT=$(tail -n "$HASH_THRESHOLD" "$HASH_FILE" | sort -u | wc -l)
-  if [[ "$TAIL_COUNT" -ge "$HASH_THRESHOLD" && "$UNIQUE_COUNT" -eq 1 ]]; then
-    CIRCUIT_BREAKER_TRIPPED=true
   fi
 fi
 
@@ -218,16 +229,16 @@ except Exception:
     if [[ "$BAKEOFF_SUMMARY" == CONVERGED* ]]; then
       BAKEOFF_CONVERGENCE_LINE="$BAKEOFF_SUMMARY"
       if [[ "$_SESSION_TYPE" == "broad" ]]; then
-        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session is CONVERGED — no critical/high issues.\nNext steps:\n  1. Run LLM assessment (if not done): ./scripts/bakeoff-reflect\n  2. Aggregate findings: ./scripts/bakeoff-reflect aggregate\n  3. Select a new cohort: ./scripts/bakeoff cohort --count 5\n  4. Or move to other work items (tracker ready)\nDuring idle time (CI pending, bakeoff running): aggregate prior sessions.'
+        BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session is CONVERGED — no critical/high issues.\nNext steps:\n  1. Run LLM assessment (if not done): ./scripts/bakeoff-broad-reflect\n  2. Aggregate findings: ./scripts/bakeoff-broad-reflect aggregate\n  3. Select a new cohort: ./scripts/bakeoff-broad cohort --count 5\n  4. Or move to other work items (tracker ready)\nDuring idle time (CI pending, bakeoff running): aggregate prior sessions.'
       else
-        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session is CONVERGED — all repos GOOD.\nNext steps:\n  1. Run LLM assessment (if not done): ./scripts/bakeoff-features-reflect\n  2. Aggregate findings: ./scripts/bakeoff-features-reflect aggregate\n  3. Compare with prior sessions: ./scripts/bakeoff-features compare <A> <B>\n  4. Select a new cohort: ./scripts/bakeoff-features cohort --count 4\n  5. Or move to other work items (tracker ready)\nDuring idle time (CI pending, bakeoff running): aggregate prior sessions.'
+        BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session is CONVERGED — all repos GOOD.\nNext steps:\n  1. Run LLM assessment (if not done): ./scripts/bakeoff-deep-reflect\n  2. Aggregate findings: ./scripts/bakeoff-deep-reflect aggregate\n  3. Compare with prior sessions: ./scripts/bakeoff-deep compare <A> <B>\n  4. Select a new cohort: ./scripts/bakeoff-deep cohort --count 4\n  5. Or move to other work items (tracker ready)\nDuring idle time (CI pending, bakeoff running): aggregate prior sessions.'
       fi
     elif [[ "$BAKEOFF_SUMMARY" == NEEDS_WORK* ]]; then
       BAKEOFF_CONVERGENCE_LINE="$BAKEOFF_SUMMARY"
       if [[ "$_SESSION_TYPE" == "broad" ]]; then
-        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session has outstanding issues.\nInvestigate:\n  1. View issues: ./scripts/bakeoff issues --format json\n  2. Run LLM assessment for deeper analysis: ./scripts/bakeoff-reflect\n  3. Diagnose latest: ./scripts/bakeoff diagnose\n  4. Fix issues, then re-run: ./scripts/bakeoff cycle\nDuring idle time: ./scripts/bakeoff-reflect aggregate'
+        BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session has outstanding issues.\nInvestigate:\n  1. View issues: ./scripts/bakeoff-broad issues --format json\n  2. Run LLM assessment for deeper analysis: ./scripts/bakeoff-broad-reflect\n  3. Diagnose latest: ./scripts/bakeoff-broad diagnose\n  4. Fix issues, then re-run: ./scripts/bakeoff-broad cycle\nDuring idle time: ./scripts/bakeoff-broad-reflect aggregate'
       else
-        BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session has outstanding issues.\nInvestigate:\n  1. Check status: ./scripts/bakeoff-features status\n  2. Run LLM assessment for deeper analysis: ./scripts/bakeoff-features-reflect\n  3. Diagnose repos: ./scripts/bakeoff-features diagnose\n  4. Fix issues, then re-run: ./scripts/bakeoff-features cycle\nDuring idle time: ./scripts/bakeoff-features-reflect aggregate'
+        BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session has outstanding issues.\nInvestigate:\n  1. Check status: ./scripts/bakeoff-deep status\n  2. Run LLM assessment for deeper analysis: ./scripts/bakeoff-deep-reflect\n  3. Diagnose repos: ./scripts/bakeoff-deep diagnose\n  4. Fix issues, then re-run: ./scripts/bakeoff-deep cycle\nDuring idle time: ./scripts/bakeoff-deep-reflect aggregate'
       fi
     fi
   fi
@@ -279,14 +290,6 @@ fi
 
 # --- Cooldown & reflection: compute elapsed time, write guidance files ---
 STATE_FILE="$GUIDANCE_LOG_DIR/last_stop_check.json"
-# Backward compat: fall back to old locations if new one doesn't exist
-if [[ ! -f "$STATE_FILE" ]]; then
-  if [[ -f "$REPO_ROOT/.agent/last_stop_check.json" ]]; then
-    STATE_FILE="$REPO_ROOT/.agent/last_stop_check.json"
-  elif [[ -f "$REPO_ROOT/.agent/stop_hook_state.json" ]]; then
-    STATE_FILE="$REPO_ROOT/.agent/stop_hook_state.json"
-  fi
-fi
 
 ELAPSED_MIN=9999  # Default: stale (will trigger Path 3)
 if [[ -f "$STATE_FILE" ]]; then
@@ -355,6 +358,7 @@ if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
     source "$api_lib"
     load_env 2>/dev/null || return 0
     detect_api_base 2>/dev/null || return 0
+    apply_failover_overrides 2>/dev/null  # Respect CI_FAILOVER_ACTIVE
 
     # Fetch open PRs (silently fail if no connectivity)
     if ! api_get "$API_BASE/pulls?state=open&sort=recentupdate&limit=50" 2>/dev/null; then
@@ -365,20 +369,22 @@ if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
     now_epoch=$(date +%s)
     local threshold=$((6 * 3600))  # 6 hours in seconds
 
-    # Parse PRs: filter to those older than 6 hours
-    local stale_prs
-    stale_prs=$(python3 -c "
+    # Parse PRs: filter to those older than 6 hours, collect tracker sync PR numbers
+    local stale_prs tracker_sync_prs
+    read -r stale_prs tracker_sync_prs < <(python3 -c "
 import json, sys, datetime
 now = $now_epoch
 threshold = $threshold
 prs = json.loads(sys.stdin.read())
 if not isinstance(prs, list):
+    print('', '')
     sys.exit(0)
+lines = []
+tracker_nums = []
 for pr in prs:
     created = pr.get('created_at', '')
     if not created:
         continue
-    # Parse ISO 8601 timestamp
     try:
         dt = datetime.datetime.fromisoformat(created.replace('Z', '+00:00'))
         age_s = now - int(dt.timestamp())
@@ -395,12 +401,46 @@ for pr in prs:
             ci_note = ' [NOT MERGEABLE]'
         elif mergeable is True:
             ci_note = ' [mergeable]'
-        print(f'- PR #{num} ({age_h}h old){ci_note}: {title}')
-        print(f'  Branch: {branch}')
+        lines.append(f'- PR #{num} ({age_h}h old){ci_note}: {title}')
+        lines.append(f'  Branch: {branch}')
+        # Detect tracker sync PRs for verify-tracker-pr integration
+        if title.startswith('tracker: sync'):
+            tracker_nums.append(str(num))
+# Output: stale_prs text (newline-escaped) | tracker PR numbers (comma-separated)
+import base64
+stale_text = '\n'.join(lines) if lines else ''
+tracker_text = ','.join(tracker_nums)
+# Use base64 to avoid newline issues with read
+print(base64.b64encode(stale_text.encode()).decode(), tracker_text)
 " <<< "$API_RESPONSE" 2>/dev/null) || return 0
 
+    # Decode base64-encoded stale PRs text
+    stale_prs=$(echo "$stale_prs" | base64 -d 2>/dev/null) || stale_prs=""
+
+    # For tracker sync PRs, run verify-tracker-pr to check if safe to close
+    local verify_script="$REPO_ROOT/scripts/verify-tracker-pr"
+    local tracker_verdicts=""
+    if [[ -n "$tracker_sync_prs" && -x "$verify_script" ]]; then
+      IFS=',' read -ra _tracker_nums <<< "$tracker_sync_prs"
+      for _pr_num in "${_tracker_nums[@]}"; do
+        [[ -z "$_pr_num" ]] && continue
+        local _verdict
+        if "$verify_script" "$_pr_num" > /dev/null 2>&1; then
+          tracker_verdicts+=$'\n'"  **PR #${_pr_num}: ✅ safe to close** (local ops are a superset)"
+        else
+          tracker_verdicts+=$'\n'"  **PR #${_pr_num}: ⚠️ NOT safe to close** — merge first or reconcile"
+        fi
+      done
+    fi
+
     if [[ -n "$stale_prs" ]]; then
-      STALE_PR_SECTION=$(printf '\n\n## STALE PULL REQUESTS\nThe following open PRs are older than 6 hours. Consider: merge (if CI green),\nrebase + re-push (if out of date), fix (if CI failed), or close (if superseded).\n\n%s\n' "$stale_prs")
+      local header="The following open PRs are older than 6 hours. Consider: merge (if CI green),"
+      header+=$'\n'"rebase + re-push (if out of date), fix (if CI failed), or close (if superseded)."
+      if [[ -n "$tracker_verdicts" ]]; then
+        header+=$'\n\n'"**Tracker sync PR safety check** (via \`scripts/verify-tracker-pr\`):"
+        header+="$tracker_verdicts"
+      fi
+      STALE_PR_SECTION=$(printf '\n\n## STALE PULL REQUESTS\n%s\n\n%s\n' "$header" "$stale_prs")
     fi
   }
   _stale_pr_audit

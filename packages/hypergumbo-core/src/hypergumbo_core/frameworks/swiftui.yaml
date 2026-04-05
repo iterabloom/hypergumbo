@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SwiftUI and iOS/macOS app lifecycle patterns (ADR-0003 v1.1.x)
+#
+# Detects native Swift application entry points across Apple platforms:
+# - SwiftUI apps: struct conforming to App protocol
+# - UIKit apps: class conforming to UIApplicationDelegate
+# - AppKit apps: class conforming to NSApplicationDelegate
+# - View controllers: common UI entry points
+# - ParsableCommand: Swift Argument Parser CLI entry points
+
+id: swiftui
+language: swift
+
+detect:
+  - import_prefix: "SwiftUI"
+  - import_prefix: "UIKit"
+  - import_prefix: "AppKit"
+  - base_class: "^App$"
+  - base_class: "^UIApplicationDelegate$"
+
+patterns:
+  # SwiftUI App protocol conformance (iOS 14+, macOS 11+)
+  - concept: application
+    base_class: "^App$"
+
+  # UIKit application delegate
+  - concept: application
+    base_class: "^UIApplicationDelegate$"
+
+  # AppKit application delegate (macOS)
+  - concept: application
+    base_class: "^NSApplicationDelegate$"
+
+  # UIKit view controllers (common UI entry points)
+  - concept: controller
+    base_class: "^UIViewController$"
+  - concept: controller
+    base_class: "^UITableViewController$"
+  - concept: controller
+    base_class: "^UICollectionViewController$"
+  - concept: controller
+    base_class: "^UINavigationController$"
+  - concept: controller
+    base_class: "^UITabBarController$"
+
+  # AppKit view controllers (macOS)
+  - concept: controller
+    base_class: "^NSViewController$"
+  - concept: controller
+    base_class: "^NSWindowController$"
+
+  # SwiftUI views are not entrypoints (too numerous), but the App struct is.
+
+  # Swift Argument Parser CLI entry points
+  - concept: application
+    base_class: "^ParsableCommand$"
+  - concept: application
+    base_class: "^AsyncParsableCommand$"
+
+  # XCTestCase — test lifecycle (lower confidence)
+  - concept: test_class
+    base_class: "^XCTestCase$"
+
+linkers: []

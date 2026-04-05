@@ -27,3 +27,26 @@
   set: {}  # f99c
   add:  # f99c
     tags: [someday]  # f99c
+- op: update  # 83a5
+  at: '2026-03-25T04:15:56Z'  # 83a5
+  by: agent  # 83a5
+  actor: jgstern_agent  # 83a5
+  clock: 3  # 83a5
+  nonce: 83a5  # 83a5
+  set:  # 83a5
+    parent: INV-rahib-gobop-zozum-kopil-noguh-tifof-nibol-dudup  # 83a5
+- op: update  # 2b8f
+  at: '2026-03-25T07:37:24Z'  # 2b8f
+  by: agent  # 2b8f
+  actor: jgstern_agent  # 2b8f
+  clock: 4  # 2b8f
+  nonce: 2b8f  # 2b8f
+  set:  # 2b8f
+    status: wont_do  # 2b8f
+- op: discuss  # 3bbe
+  at: '2026-03-25T07:37:24Z'  # 3bbe
+  by: agent  # 3bbe
+  actor: jgstern_agent  # 3bbe
+  clock: 5  # 3bbe
+  nonce: 3bbe  # 3bbe
+  message: "Deferred indefinitely (someday). Current scripts (auto-pr, ci-debug, merge-pr) are sufficient."  # 3bbe

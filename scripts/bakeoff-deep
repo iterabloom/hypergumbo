@@ -1,0 +1,3208 @@
+#!/usr/bin/env python3
+"""
+bakeoff-deep - Feature-focused hypergumbo bakeoff runner
+
+This script orchestrates a deep bakeoff cycle focused on testing hypergumbo's
+advanced features (slice, reverse-slice, supply chain, graph operations) on
+diverse, larger repositories.
+
+## Philosophy: Different From Regular Bakeoff
+
+This is a **separate bakeoff loop**, not integrated into `scripts/bakeoff-broad`:
+- **Different repo profiles:** Feature testing needs heavier repos (20-200MB)
+  where slice limits actually matter
+- **Different cadence:** Regular bakeoff for quick regression; feature bakeoff
+  less often (includes expensive LLM reasoning)
+- **Different artifacts:** Produces slice/reverse-slice/tier outputs not needed
+  by regular bakeoff
+- **Separation of concerns:** Regular bakeoff: "does hypergumbo parse correctly?"
+  Feature bakeoff: "are outputs useful to developers?"
+
+## Usage
+
+    # Initialize a new feature bakeoff session (creates timestamped dir in canonical default)
+    ./scripts/bakeoff-deep init --pool ~/repos
+
+    # Select cohort — auto-selection (larger repos than regular bakeoff)
+    ./scripts/bakeoff-deep cohort --count 4 --min-size 20 --max-size 200
+
+    # Or select cohort — explicit repos (for curriculum-based workflows)
+    ./scripts/bakeoff-deep cohort --repos repo-a,repo-b,repo-c
+
+    # Run feature battery on cohort
+    ./scripts/bakeoff-deep run
+
+    # Generate diagnostic report with quality metrics
+    ./scripts/bakeoff-deep diagnose
+
+    # Check session status
+    ./scripts/bakeoff-deep status
+
+    # Full cycle: run + diagnose
+    ./scripts/bakeoff-deep cycle
+
+## Quality Metrics
+
+Slice Quality:
+| Metric              | Good Range  | Warning       |
+|---------------------|-------------|---------------|
+| avg_slice_nodes     | 20-2000*    | <5 or >5000   |
+| slice_coverage_pct  | 0.1-20%     | <0.01% or >50%|
+| limit_hit_frequency | <50%        | >80%          |
+| cross_file_ratio    | >20%        | <5%           |
+
+*avg_slice_nodes good_min scales to max(5, total_nodes*0.1) for repos <200 nodes.
+
+Supply Chain:
+| Metric     | Good Range | Warning        |
+|------------|------------|----------------|
+| tier1_pct  | 15-100%    | <5%            |
+| tier4_pct  | 0-5%       | >10%           |
+
+Graph:
+| Metric          | Good Range | Warning        |
+|-----------------|------------|----------------|
+| centrality_gini | 30%-85%    | <10% or >95%   |
+| orphan_rate     | <15%       | >35%           | (non-test code nodes)
+
+Environment:
+    BAKEOFF_FEATURES_WORKDIR: Override workdir location
+    BAKEOFF_FEATURES_POOL: Override repo pool location
+"""
+
+import argparse
+import datetime
+import glob
+import gzip
+import hashlib
+import json
+import math
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import Optional
+
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+DEFAULT_COHORT_SIZE = 4
+DEFAULT_MIN_SIZE_MB = 20
+DEFAULT_MAX_SIZE_MB = 200
+MIN_FILE_COUNT = 500  # Minimum files for complexity
+DEFAULT_BAKEOFF_DIR = os.path.expanduser("~/hypergumbo_lab_notebook/bakeoff_artifacts")
+
+# Issue severity levels
+SEVERITY_CRITICAL = "CRITICAL"
+SEVERITY_HIGH = "HIGH"
+SEVERITY_MEDIUM = "MEDIUM"
+SEVERITY_LOW = "LOW"
+
+# Node kinds that represent callable/structural code symbols (for orphan rate).
+# Excludes documentation (section, link, code_block), CSS (class_selector, rule_set),
+# build config (dependency, devDependency, tsconfig, requirement, etc.),
+# and data declarations (variable) — variables/fields/parameters are naturally
+# not connected by call edges and would inflate the orphan rate.
+# Also excludes: directive (Vue template annotations like v-if, @click, :src —
+# not callable code), scalar (GraphQL scalar types — no call edges),
+# type (TypeScript type aliases — type-level declarations, not callable),
+# interface (TypeScript/Java interface declarations — structural types, may have
+# implements/extends edges but are not callable code themselves; on GrowthBook
+# 2,133 type+interface nodes were 100% orphaned, inflating rate from ~23% to 39%).
+_CODE_NODE_KINDS = frozenset({
+    "function", "method", "class", "module", "struct",
+    "enum", "trait", "constructor", "getter", "setter",
+    "route", "export", "service",
+    "event_subscriber", "event_publisher", "websocket_endpoint",
+    "http_client", "mq_subscriber", "mq_publisher", "rpc",
+    "subprocess_call", "graphql_resolver", "db_query",
+})
+
+# Path segments that indicate test files. Used to filter entrypoints before
+# slicing with --exclude-tests (test-file entries yield empty slices).
+# Covers: Python (tests/, test_), JS (__tests__/, spec/, _test.),
+# JVM (Test*.java, *IT.java, *Tests.java, src/test/, src/integration/),
+# Go (unittest/), C/Perl (t/, test-*.c).
+#
+# IMPORTANT: Each directory-name pattern MUST require a trailing `/` to
+# avoid false positives on partial matches.  Without this, `/spec` inside
+# `/special_repos/` (the bakeoff pool path) matched, filtering out ALL
+# entrypoints and producing zero forward slices for every repo in the pool.
+_TEST_PATH_RE = re.compile(
+    r'(?:^|/)(tests?|spec|__tests__|test-[^/]+|unittest)/' # dirs (incl. test-artifacts/)
+    r'|(?:^|/)(t)/'                                   # t/ (C/Perl convention)
+    r'|(?:^|/)test_[^/]'                               # test_ prefix files
+    r'|(?:^|/)integration/'                            # integration test dirs
+    r'|_test\.'                                        # Go: *_test.go
+    r'|\.(?:test|spec)\.'                              # JS/TS: *.test.js, *.spec.ts
+    r'|/Test[A-Z][^/]*\.java'                          # JVM: TestFoo.java
+    r'|/[A-Z]\w*(?:IT|Tests?)\.(?:java|scala|kt)'     # JVM: FooIT.java, FooTest.java
+    r'|(?:^|/)tests\.rs$'                                # Rust: co-located test module
+    r'|(?:^|/)testonly[/.]'                             # Rust: testonly/ dirs and testonly.rs
+)
+
+# Annotation names that indicate a test function/method.
+# Covers Rust (#[test], #[tokio::test], #[actix_rt::test], #[async_std::test]),
+# Java/Kotlin (@Test, @org.junit.Test), and C# ([TestMethod], [Fact], [Theory]).
+_TEST_ANNOTATION_NAMES = frozenset({
+    "test", "Test",
+    "tokio::test", "actix_rt::test", "async_std::test",
+    "org.junit.Test", "org.junit.jupiter.api.Test",
+    "TestMethod", "Fact", "Theory",
+})
+
+
+def _is_test_node(node: dict) -> bool:
+    """Check if a node is test code by path or annotation.
+
+    Extends file-path matching with annotation-based detection so that
+    Rust ``#[test]``/``#[cfg(test)]`` functions in non-test files (e.g.
+    ``src/lib.rs``) are correctly identified as test nodes.  This prevents
+    test functions from appearing as rslice seed candidates and ensures
+    edges from test functions don't inflate production in-degree.
+    """
+    if _TEST_PATH_RE.search(node.get("path", "")):
+        return True
+    meta = node.get("meta") or {}
+    for key in ("decorators", "annotations"):
+        for dec in (meta.get(key) or []):
+            name = dec.get("name", "")
+            if name in _TEST_ANNOTATION_NAMES:
+                return True
+            # Rust #[cfg(test)] — "cfg" with "test" in args
+            if name == "cfg":
+                for arg in (dec.get("args") or []):
+                    if isinstance(arg, str) and "test" in arg:
+                        return True
+    return False
+
+
+# Quality thresholds
+QUALITY_THRESHOLDS = {
+    "avg_slice_nodes": {"good_min": 20, "good_max": 2000, "warn_min": 5, "warn_max": 5000},
+    "slice_coverage_pct": {"good_min": 0.1, "good_max": 20, "warn_min": 0.01, "warn_max": 50},
+    "limit_hit_frequency": {"good_max": 50, "warn_max": 80},
+    "cross_file_ratio": {"good_min": 20, "warn_min": 5},
+    # Monorepos with many internal packages (e.g., hypergumbo with 100+ lang
+    # packages depending on core) naturally have low tier-1 percentages because
+    # sibling packages are classified as tier-2 (internal_dep). A 15% floor
+    # accommodates these structures while still flagging repos where almost
+    # everything is third-party. Single-language library repos (e.g., Swift
+    # packages like Alamofire, SwiftyJSON) legitimately have 100% tier 1.
+    "tier1_pct": {"good_min": 15, "good_max": 100, "warn_min": 5, "warn_max": 100},
+    "tier4_pct": {"good_max": 5, "warn_max": 10},
+    "centrality_gini": {"good_min": 30, "good_max": 85, "warn_min": 10, "warn_max": 95},
+    # Polyglot repos have a structural orphan floor from languages without
+    # cross-language edges (e.g., alertmanager: Elm 241, Jsonnet 94 orphans
+    # that would need Go-Elm HTTP or Jsonnet-Go config linkers to connect).
+    "orphan_rate": {"good_max": 20, "warn_max": 35},
+    # IO boundary: 5-60% of call edges tagged is healthy. good_min scales down
+    # for larger repos (see assess_metric). warn_min is a hard floor for FAIL:
+    # <0.1% means essentially zero IO detection, suggesting a catalog gap or
+    # analyzer bug. Previously 1%, but large Java/Go repos (50K+ nodes) with
+    # 100K+ call edges legitimately have 0.5-1% IO rates.
+    "io_tag_rate": {"good_min": 5, "good_max": 60, "warn_min": 0.1, "warn_max": 80},
+    # Dataflow slice should be meaningfully tighter than regular slice (ratio <90%)
+    # but not degenerate (ratio >10%). Ratio of 100% means --dataflow adds no value.
+    # Stored as 0-1 ratio but assessed as percentage (multiplied by 100 in metric_assessments).
+    "dataflow_slice_ratio": {"good_min": 10, "good_max": 90, "warn_min": 1, "warn_max": 99},
+    # Access mode annotations on 10-80% of edges is healthy. <2% means dataflow
+    # YAML is missing patterns; >95% suggests annotation is too aggressive.
+    "access_mode_coverage": {"good_min": 10, "good_max": 80, "warn_min": 2, "warn_max": 95},
+    # Cross-language IO: at least 5% of IO chains should traverse a linker edge
+    # in polyglot repos. Only assessed when repo has 2+ languages.
+    "cross_language_io_pct": {"good_min": 5, "warn_min": 1},
+}
+
+# Recommended larger repos for feature testing (diverse languages)
+RECOMMENDED_REPOS = [
+    # Python
+    {"name": "django", "url": "https://github.com/django/django", "lang": "python"},
+    {"name": "flask", "url": "https://github.com/pallets/flask", "lang": "python"},
+    {"name": "fastapi", "url": "https://github.com/tiangolo/fastapi", "lang": "python"},
+    # JavaScript/TypeScript
+    {"name": "express", "url": "https://github.com/expressjs/express", "lang": "javascript"},
+    {"name": "next.js", "url": "https://github.com/vercel/next.js", "lang": "typescript"},
+    {"name": "nest", "url": "https://github.com/nestjs/nest", "lang": "typescript"},
+    # Go
+    {"name": "gin", "url": "https://github.com/gin-gonic/gin", "lang": "go"},
+    {"name": "fiber", "url": "https://github.com/gofiber/fiber", "lang": "go"},
+    # Ruby
+    {"name": "rails", "url": "https://github.com/rails/rails", "lang": "ruby"},
+    {"name": "sinatra", "url": "https://github.com/sinatra/sinatra", "lang": "ruby"},
+    # Java/Kotlin
+    {"name": "spring-boot", "url": "https://github.com/spring-projects/spring-boot", "lang": "java"},
+    {"name": "ktor", "url": "https://github.com/ktorio/ktor", "lang": "kotlin"},
+    # Rust
+    {"name": "actix-web", "url": "https://github.com/actix/actix-web", "lang": "rust"},
+    {"name": "axum", "url": "https://github.com/tokio-rs/axum", "lang": "rust"},
+    # Elixir
+    {"name": "phoenix", "url": "https://github.com/phoenixframework/phoenix", "lang": "elixir"},
+]
+
+
+# =============================================================================
+# hg.json compression helpers
+# =============================================================================
+
+# Derived artifacts that indicate hg.json has been fully processed.
+# If all of these exist, hg.json is no longer needed for derivation.
+_DERIVED_ARTIFACTS = ("entries.txt", "symbols.txt", "routes.txt")
+
+
+def _find_hg_json(repo_out: str) -> "str | None":
+    """Find hg.json or hg.json.gz in a repo output directory.
+
+    Prefers plain hg.json over hg.json.gz when both exist.
+    Returns the full path, or None if neither exists.
+    """
+    plain = os.path.join(repo_out, "hg.json")
+    if os.path.exists(plain):
+        return plain
+    gz = os.path.join(repo_out, "hg.json.gz")
+    if os.path.exists(gz):
+        return gz
+    return None
+
+
+def _has_hg_json(repo_out: str) -> bool:
+    """Check if a repo output directory has hg.json (plain or compressed)."""
+    return _find_hg_json(repo_out) is not None
+
+
+def _open_hg_json(path: str) -> dict:
+    """Read and parse hg.json or hg.json.gz transparently.
+
+    Args:
+        path: Full path to hg.json or hg.json.gz file.
+
+    Returns:
+        Parsed JSON data as a dict.
+    """
+    if path.endswith(".gz"):
+        with gzip.open(path, "rt") as f:
+            return json.load(f)
+    else:
+        with open(path) as f:
+            return json.load(f)
+
+
+def _should_compress_repo(repo_out: str, min_age_hours: float = 8.0) -> bool:
+    """Check if a repo's hg.json is eligible for compression.
+
+    Eligible when:
+    1. Plain hg.json exists (not already compressed)
+    2. All derived artifacts exist
+    3. The newest derived artifact is at least min_age_hours old
+    """
+    plain = os.path.join(repo_out, "hg.json")
+    if not os.path.exists(plain):
+        return False
+
+    now = time.time()
+    for artifact in _DERIVED_ARTIFACTS:
+        art_path = os.path.join(repo_out, artifact)
+        if not os.path.exists(art_path):
+            return False
+        age_hours = (now - os.path.getmtime(art_path)) / 3600
+        if age_hours < min_age_hours:
+            return False
+
+    return True
+
+
+def _compress_hg_json(hg_path: str) -> bool:
+    """Compress hg.json to hg.json.gz and remove the original.
+
+    Returns True if compression succeeded, False if file doesn't exist.
+    """
+    if not os.path.exists(hg_path):
+        return False
+
+    gz_path = hg_path + ".gz"
+    with open(hg_path, "rb") as f_in:
+        with gzip.open(gz_path, "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+
+    os.remove(hg_path)
+    return True
+
+
+# =============================================================================
+# Data structures
+# =============================================================================
+
+@dataclass
+class RepoInfo:
+    """Information about a repository."""
+    name: str
+    path: str
+    size_bytes: int
+    size_mb: float
+    file_count: int = 0
+    languages: list = field(default_factory=list)
+    complexity_score: float = 0.0
+
+
+@dataclass
+class FeatureMetrics:
+    """Metrics collected from feature testing."""
+    # Slice metrics
+    avg_slice_nodes: float = 0.0
+    slice_coverage_pct: float = 0.0
+    limit_hit_count: int = 0
+    limit_hit_frequency: float = 0.0
+    cross_file_ratio: float = 0.0
+    avg_slice_depth: float = 0.0
+
+    # Supply chain metrics
+    tier1_pct: float = 0.0
+    tier2_pct: float = 0.0
+    tier3_pct: float = 0.0
+    tier4_pct: float = 0.0
+
+    # Graph metrics
+    total_nodes: int = 0
+    total_edges: int = 0
+    orphan_count: int = 0
+    orphan_rate: float = 0.0
+    centrality_gini: float = 0.0
+    max_in_degree: int = 0
+    max_out_degree: int = 0
+
+    # Entrypoint metrics
+    entrypoint_count: int = 0
+    entrypoints_in_tests: int = 0
+    entrypoints_test_ratio: float = 0.0
+
+    # IO boundary metrics
+    io_tag_rate: float = 0.0
+    io_boundary_types_found: int = 0
+    cross_language_io_pct: float = 0.0
+
+    # Dataflow metrics
+    dataflow_slice_ratio: float = 1.0
+    access_mode_coverage: float = 0.0
+
+    # Verify-claims metrics (0 if no claims file)
+    claims_total: int = 0
+    claims_confirmed: int = 0
+    claims_violated: int = 0
+    claim_verdict_pct: float = 0.0  # % of claims with definitive verdict
+
+
+@dataclass
+class RepoVerdict:
+    """Assessment verdict for a repository."""
+    repo_name: str
+    verdict: str  # GOOD, WARN, FAIL
+    highlights: list = field(default_factory=list)
+    concerns: list = field(default_factory=list)
+    metrics: dict = field(default_factory=dict)
+
+
+@dataclass
+class CohortReflectStatus:
+    """Tracks LLM assessment status for a single cohort."""
+    cohort_number: int
+    has_prompts: bool = False
+    has_assessments: bool = False
+    has_summary: bool = False
+    assessment_count: int = 0
+    repo_count: int = 0
+
+
+@dataclass
+class BakeoffFeaturesState:
+    """Persistent state for a feature bakeoff session."""
+    session_id: str
+    pool_path: str
+    workdir: str
+    current_cohort: list = field(default_factory=list)
+    cohort_number: int = 0
+    iteration: int = 0
+    tested_repos: list = field(default_factory=list)
+    verdicts: list = field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+    hypergumbo_code_hash: str = ""
+    reflect_statuses: list = field(default_factory=list)
+
+
+# =============================================================================
+# Utility functions
+# =============================================================================
+
+def compute_hypergumbo_code_hash() -> str:
+    """Compute SHA-256 hash of hypergumbo source files.
+
+    Hashes all .py files under packages/hypergumbo-*/src/ and framework
+    YAML files. Used to detect when hypergumbo code hasn't changed between
+    bakeoff iterations, allowing skip of redundant re-analysis.
+    """
+    h = hashlib.sha256()
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    packages_dir = os.path.join(repo_root, "packages")
+
+    if not os.path.isdir(packages_dir):
+        return ""
+
+    source_files = []
+    for dirpath, _dirnames, filenames in os.walk(packages_dir):
+        # Only hash src/ directories (not tests/)
+        if "/src/" not in dirpath and "\\src\\" not in dirpath:
+            continue
+        for f in filenames:
+            if f.endswith((".py", ".yaml", ".yml")):
+                source_files.append(os.path.join(dirpath, f))
+
+    # Sort for deterministic ordering
+    for fpath in sorted(source_files):
+        try:
+            with open(fpath, "rb") as fp:
+                h.update(fp.read())
+        except OSError:
+            pass
+
+    return h.hexdigest()[:16]  # Short hash is sufficient
+
+
+def get_dir_size(path: str) -> int:
+    """Get directory size in bytes."""
+    total = 0
+    try:
+        for entry in os.scandir(path):
+            if entry.is_file(follow_symlinks=False):
+                total += entry.stat().st_size
+            elif entry.is_dir(follow_symlinks=False):
+                total += get_dir_size(entry.path)
+    except PermissionError:
+        pass
+    return total
+
+
+def count_files(path: str) -> int:
+    """Count files in a directory, excluding hidden and vendor dirs."""
+    count = 0
+    skip_dirs = {".git", "node_modules", "vendor", "deps", "__pycache__", ".venv", "venv"}
+    try:
+        for root, dirs, files in os.walk(path):
+            # Skip hidden and vendor directories
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d not in skip_dirs]
+            count += len(files)
+    except PermissionError:
+        pass
+    return count
+
+
+def detect_languages(repo_path: str) -> list:
+    """Detect primary languages in a repo by file extensions."""
+    ext_count = {}
+    lang_map = {
+        ".py": "python", ".js": "javascript", ".ts": "typescript",
+        ".go": "go", ".rs": "rust", ".c": "c", ".cpp": "cpp", ".h": "c",
+        ".java": "java", ".kt": "kotlin", ".scala": "scala",
+        ".rb": "ruby", ".php": "php", ".swift": "swift",
+        ".cs": "csharp", ".fs": "fsharp", ".ex": "elixir", ".erl": "erlang",
+    }
+
+    skip_dirs = {".git", "node_modules", "vendor", "deps", "__pycache__"}
+
+    try:
+        for root, dirs, files in os.walk(repo_path):
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d not in skip_dirs]
+            for f in files:
+                ext = os.path.splitext(f)[1].lower()
+                if ext in lang_map:
+                    lang = lang_map[ext]
+                    ext_count[lang] = ext_count.get(lang, 0) + 1
+    except PermissionError:
+        pass
+
+    sorted_langs = sorted(ext_count.items(), key=lambda x: x[1], reverse=True)
+    return [lang for lang, _ in sorted_langs[:3]]
+
+
+def compute_complexity_score(repo: RepoInfo) -> float:
+    """Compute a complexity score for repo selection.
+
+    Higher scores indicate more interesting repos for feature testing.
+    """
+    score = 0.0
+
+    # Size bonus (larger = more interesting, up to a point)
+    if 20 <= repo.size_mb <= 50:
+        score += 1.0
+    elif 50 < repo.size_mb <= 100:
+        score += 2.0
+    elif 100 < repo.size_mb <= 200:
+        score += 1.5
+
+    # File count bonus
+    if repo.file_count >= 500:
+        score += 1.0
+    if repo.file_count >= 1000:
+        score += 1.0
+    if repo.file_count >= 2000:
+        score += 0.5
+
+    # Multi-language bonus
+    if len(repo.languages) >= 2:
+        score += 1.0
+    if len(repo.languages) >= 3:
+        score += 0.5
+
+    return score
+
+
+def load_state(workdir: str) -> Optional[BakeoffFeaturesState]:
+    """Load bakeoff state from workdir."""
+    state_path = os.path.join(workdir, "state.json")
+    if not os.path.exists(state_path):
+        return None
+
+    with open(state_path, "r") as f:
+        data = json.load(f)
+
+    return BakeoffFeaturesState(
+        session_id=data.get("session_id", ""),
+        pool_path=data.get("pool_path", ""),
+        workdir=data.get("workdir", workdir),
+        current_cohort=data.get("current_cohort", []),
+        cohort_number=data.get("cohort_number", 0),
+        iteration=data.get("iteration", 0),
+        tested_repos=data.get("tested_repos", []),
+        verdicts=[RepoVerdict(**v) for v in data.get("verdicts", [])],
+        created_at=data.get("created_at", ""),
+        updated_at=data.get("updated_at", ""),
+        hypergumbo_code_hash=data.get("hypergumbo_code_hash", ""),
+        reflect_statuses=[CohortReflectStatus(**rs) for rs in data.get("reflect_statuses", [])],
+    )
+
+
+def scan_reflect_statuses(workdir: str) -> list:
+    """Scan reflect directory and build per-cohort reflect status.
+
+    Returns a list of CohortReflectStatus for each cohort that has
+    output in the out/ directory. Checks for prompts, assessments,
+    and summary files in the reflect/ directory.
+    """
+    out_dir = os.path.join(workdir, "out")
+    reflect_dir = os.path.join(workdir, "reflect")
+    statuses = []
+
+    if not os.path.isdir(out_dir):
+        return statuses
+
+    for cohort_dir in sorted(glob.glob(os.path.join(out_dir, "cohort-*"))):
+        cohort_name = os.path.basename(cohort_dir)
+        # Extract cohort number
+        try:
+            cohort_num = int(cohort_name.split("-")[1])
+        except (IndexError, ValueError):
+            continue
+
+        # Find latest iteration in output
+        iter_dirs = sorted(glob.glob(os.path.join(cohort_dir, "iter-*")))
+        if not iter_dirs:
+            continue
+        latest_iter = os.path.basename(iter_dirs[-1])
+        repos = [d for d in os.listdir(iter_dirs[-1])
+                 if os.path.isdir(os.path.join(iter_dirs[-1], d))]
+        repo_count = len(repos)
+
+        # Check reflect directory for this cohort/iteration
+        reflect_iter = os.path.join(reflect_dir, cohort_name, latest_iter)
+        has_prompts = False
+        has_assessments = False
+        has_summary = False
+        assessment_count = 0
+
+        if os.path.isdir(reflect_iter):
+            prompts = glob.glob(os.path.join(reflect_iter, "*.prompt.md"))
+            assessments = glob.glob(os.path.join(reflect_iter, "*.assessment.yaml"))
+            # Also check new format (*.yaml excluding summary/report)
+            new_assessments = [f for f in glob.glob(os.path.join(reflect_iter, "*.yaml"))
+                               if not os.path.basename(f) in ("summary.yaml", "report.yaml")
+                               and not f.endswith(".assessment.yaml")]
+            has_prompts = len(prompts) > 0
+            assessment_count = len(assessments) + len(new_assessments)
+            has_assessments = assessment_count > 0
+            has_summary = os.path.exists(os.path.join(reflect_iter, "summary.yaml"))
+
+        statuses.append(CohortReflectStatus(
+            cohort_number=cohort_num,
+            has_prompts=has_prompts,
+            has_assessments=has_assessments,
+            has_summary=has_summary,
+            assessment_count=assessment_count,
+            repo_count=repo_count,
+        ))
+
+    return statuses
+
+
+def save_state(state: BakeoffFeaturesState):
+    """Save bakeoff state to workdir."""
+    state.updated_at = datetime.datetime.now().isoformat()
+    state_path = os.path.join(state.workdir, "state.json")
+
+    data = asdict(state)
+    with open(state_path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Memory safety: prevent OOM/swap thrashing from large analyses
+# ---------------------------------------------------------------------------
+
+# Minimum available memory (in MB) required before launching an analysis.
+# If available memory is below this, the repo is skipped with a warning.
+# Default 4096 MB (4 GB) — enough headroom for a ~200MB repo analysis
+# plus OS/system overhead on a 22GB machine with 512MB swap.
+MIN_AVAILABLE_MEMORY_MB = int(os.environ.get("BAKEOFF_MIN_MEMORY_MB", "4096"))
+
+# Rolling memory profile store: tracks actual memory usage per repo
+# so estimates improve over time (similar to test timing store).
+_MEMORY_PROFILE_PATH = os.path.join(
+    os.path.expanduser("~"), "hypergumbo_lab_notebook", "memory_profiles.json",
+)
+_MEMORY_PROFILE_MAX_ENTRIES = 5  # Keep last N observations per repo
+
+
+def _load_memory_profiles() -> dict:
+    """Load the memory profile store (repo_name → list of observations)."""
+    try:
+        with open(_MEMORY_PROFILE_PATH) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_memory_profiles(profiles: dict) -> None:
+    """Save the memory profile store."""
+    os.makedirs(os.path.dirname(_MEMORY_PROFILE_PATH), exist_ok=True)
+    with open(_MEMORY_PROFILE_PATH, "w") as f:
+        json.dump(profiles, f, indent=2)
+
+
+def record_memory_observation(
+    repo_name: str,
+    repo_size_mb: float,
+    pre_available_mb: int,
+    post_available_mb: int,
+    duration_s: float = 0.0,
+    file_count: int = 0,
+    dominant_language: str = "",
+) -> None:
+    """Record an observation of memory used by analyzing a repo.
+
+    Stores the delta (pre - post) as an estimate of actual memory consumed,
+    plus repo metadata (size, files, language, duration) for model building.
+    Keeps a rolling buffer of the last N observations per repo.
+    """
+    delta_mb = pre_available_mb - post_available_mb
+    if delta_mb < 0:
+        delta_mb = 0  # Memory was freed by GC/cache during analysis
+
+    profiles = _load_memory_profiles()
+    entries = profiles.setdefault(repo_name, [])
+    entries.append({
+        "repo_size_mb": round(repo_size_mb, 1),
+        "memory_used_mb": delta_mb,
+        "duration_s": round(duration_s, 1),
+        "file_count": file_count,
+        "dominant_language": dominant_language,
+        "timestamp": datetime.datetime.now().isoformat(),
+    })
+    # Keep only last N entries
+    profiles[repo_name] = entries[-_MEMORY_PROFILE_MAX_ENTRIES:]
+    _save_memory_profiles(profiles)
+
+
+def get_estimated_memory_mb(repo_name: str, repo_size_mb: float) -> int:
+    """Estimate memory needed for a repo, using historical data if available.
+
+    If we have prior observations for this repo, use the max observed.
+    Otherwise fall back to the heuristic (repo_size_mb * 20, min 512 MB).
+    """
+    profiles = _load_memory_profiles()
+    entries = profiles.get(repo_name, [])
+    if entries:
+        max_observed = max(e.get("memory_used_mb", 0) for e in entries)
+        # Use max observed + 20% safety margin
+        return max(512, int(max_observed * 1.2))
+    # No history — use heuristic
+    return max(512, int(repo_size_mb * 20))
+
+
+def get_memory_snapshot() -> dict:
+    """Return a memory snapshot dict from /proc/meminfo.
+
+    Keys: available_mb, total_mb, free_mb, swap_total_mb, swap_free_mb.
+    Falls back to empty dict on non-Linux or read failure.
+    """
+    snap = {}
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                parts = line.split()
+                key, val_kb = parts[0].rstrip(":"), int(parts[1])
+                if key == "MemAvailable":
+                    snap["available_mb"] = val_kb // 1024
+                elif key == "MemTotal":
+                    snap["total_mb"] = val_kb // 1024
+                elif key == "MemFree":
+                    snap["free_mb"] = val_kb // 1024
+                elif key == "SwapTotal":
+                    snap["swap_total_mb"] = val_kb // 1024
+                elif key == "SwapFree":
+                    snap["swap_free_mb"] = val_kb // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return snap
+
+
+def check_memory_before_analysis(
+    repo_name: str,
+    repo_size_mb: float,
+    min_mb: int = MIN_AVAILABLE_MEMORY_MB,
+) -> tuple[str | None, dict]:
+    """Check if enough memory is available to analyze a repo.
+
+    The check compares available memory against the *estimated need* for
+    this specific repo.  It does NOT enforce a flat floor — a 5 MB repo
+    can run with 1 GB free even though a 200 MB repo cannot.
+
+    Returns (skip_reason_or_None, memory_snapshot).  The snapshot is always
+    returned so callers can log it for data collection (building a model of
+    actual memory usage vs. repo size over time).
+    """
+    snap = get_memory_snapshot()
+    available_mb = snap.get("available_mb", 999999)
+
+    # Use historical data if available, else heuristic
+    estimated_need_mb = get_estimated_memory_mb(repo_name, repo_size_mb)
+
+    # Add a safety margin: need estimated + 1 GB headroom for OS/other processes.
+    # This is the key check — it's repo-proportional, not a flat floor.
+    required_mb = estimated_need_mb + 1024
+
+    snap["required_mb"] = required_mb
+    snap["estimated_need_mb"] = estimated_need_mb
+    snap["repo_size_mb"] = round(repo_size_mb, 1)
+
+    if available_mb < required_mb:
+        reason = (
+            f"Skipping {repo_name}: {available_mb} MB available, "
+            f"need ~{required_mb} MB (repo {repo_size_mb:.0f} MB + 1 GB headroom). "
+            f"Set BAKEOFF_MIN_MEMORY_MB to override."
+        )
+        return reason, snap
+    return None, snap
+
+
+def run_cmd(cmd: list, cwd: str = None, timeout: int = 3600) -> tuple:
+    """Run a command and return (returncode, stdout, stderr)."""
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        return -1, "", "Command timed out"
+    except Exception as e:
+        return -1, "", str(e)
+
+
+_COUNT_METRICS = {"avg_slice_nodes"}  # Metrics that are counts, not percentages
+
+# Minimum fraction of nodes for a secondary language to count as polyglot.
+# Repos where the second-most-common language has < 5% of nodes are not
+# meaningfully polyglot (e.g., Swift repo with 22 C header nodes out of 2334).
+_POLYGLOT_MIN_SECONDARY_FRACTION = 0.05
+
+
+def is_meaningfully_polyglot(lang_count: dict, total_nodes: int) -> bool:
+    """Check whether a repo is genuinely polyglot for cross-language IO assessment.
+
+    Returns True only if the second-most-common language has at least 5% of all
+    nodes. This prevents false positives on repos that are 99% one language with
+    incidental build/config files in another (e.g., Vapor: 99% Swift + 1% C headers).
+    """
+    if len(lang_count) < 2 or total_nodes <= 0:
+        return False
+    sorted_counts = sorted(lang_count.values(), reverse=True)
+    second_lang_fraction = sorted_counts[1] / total_nodes
+    return second_lang_fraction >= _POLYGLOT_MIN_SECONDARY_FRACTION
+
+
+def assess_metric(
+    name: str,
+    value: float,
+    *,
+    total_nodes: int | None = None,
+    access_mode_coverage: float | None = None,
+) -> tuple:
+    """Assess a metric against thresholds. Returns (status, message).
+
+    For ``avg_slice_nodes``, the ``good_min`` threshold scales down for small
+    repos (< 200 nodes) using ``max(warn_min, total_nodes * 0.1)``.  A repo
+    with 72 nodes cannot realistically average 20 nodes per slice.
+
+    For ``io_tag_rate``, the ``good_min`` threshold scales down continuously
+    from 5% (at 1K nodes) to ~0.3% (at 100K+ nodes) using log-linear scaling.
+    All repos get scaling — the prior 10K threshold left mid-sized repos
+    (3K-10K nodes like mitmproxy and tokenizers) with an unrealistically high
+    5% requirement.
+
+    For ``dataflow_slice_ratio``, assessment is skipped (returns GOOD) when
+    ``access_mode_coverage`` is below 30%.  Low annotation coverage means most
+    edges lack access_mode metadata, so --dataflow mode follows them
+    unconditionally — producing a ratio near 100% is expected, not a defect.
+    """
+    thresholds = QUALITY_THRESHOLDS.get(name, {})
+    unit = "" if name in _COUNT_METRICS else "%"
+
+    # Check good range
+    good_min = thresholds.get("good_min")
+    good_max = thresholds.get("good_max")
+
+    # Scale avg_slice_nodes threshold for small repos
+    if name == "avg_slice_nodes" and good_min is not None and total_nodes is not None:
+        floor = thresholds.get("warn_min", 5)
+        scaled = max(floor, total_nodes * 0.1)
+        good_min = min(good_min, scaled)
+
+    # Scale io_tag_rate threshold continuously for all repo sizes.
+    # IO edges are a small fraction of total edges in any non-trivial repo,
+    # and the fraction shrinks as repos grow (more internal plumbing edges).
+    # Log-linear from 5% at 500 nodes down to ~0.3% at 100K+ nodes.
+    # Prior scaling only kicked in above 10K nodes, leaving mid-sized repos
+    # (3K-10K like mitmproxy) with an unrealistically high 5% threshold.
+    if name == "io_tag_rate" and good_min is not None and total_nodes is not None:
+        if total_nodes > 500:
+            import math
+            # Log-scale: 5% at 500, ~2.5% at 5K, ~1.8% at 10K, ~0.3% at 100K
+            scale_factor = max(0.05, 1.0 - math.log10(total_nodes / 500) * 0.45)
+            good_min = max(0.3, good_min * scale_factor)
+
+    # Skip dataflow_slice_ratio assessment when access_mode coverage is low.
+    # With <30% annotation coverage, the 100% ratio is expected behavior.
+    if name == "dataflow_slice_ratio" and access_mode_coverage is not None:
+        if access_mode_coverage < 30.0:
+            return ("GOOD", None)
+
+    # Scale limit_hit_frequency threshold up for large repos.
+    # Large repos with deeply interconnected call graphs (gvisor: 35K nodes,
+    # netty: 49K nodes) naturally hit slice limits more often because the
+    # call graph is broader. Forward slices from any entrypoint fan out
+    # quickly, hitting --max-files or --max-hops. This is expected behavior,
+    # not a quality issue.
+    # Scale: 50% at <10K nodes, up to ~70% at 35K, ~75% at 100K.
+    if name == "limit_hit_frequency" and good_max is not None and total_nodes is not None:
+        if total_nodes > 10000:
+            import math
+            # Log-scale increase: +25% at 100K nodes
+            scale_boost = min(25.0, math.log10(total_nodes / 10000) * 25.0)
+            good_max = good_max + scale_boost
+
+    if good_min is not None and value < good_min:
+        return ("WARN", f"LOW_{name.upper()}: {value:.1f}{unit} < {good_min:.1f}{unit}")
+    if good_max is not None and value > good_max:
+        return ("WARN", f"HIGH_{name.upper()}: {value:.1f}{unit} > {good_max:.1f}{unit}")
+
+    # Check warning thresholds
+    warn_min = thresholds.get("warn_min")
+    warn_max = thresholds.get("warn_max")
+
+    if warn_min is not None and value < warn_min:
+        return ("FAIL", f"CRITICAL_LOW_{name.upper()}: {value:.1f}{unit} < {warn_min:.1f}{unit}")
+    if warn_max is not None and value > warn_max:
+        return ("FAIL", f"CRITICAL_HIGH_{name.upper()}: {value:.1f}{unit} > {warn_max:.1f}{unit}")
+
+    return ("GOOD", None)
+
+
+def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
+    """Pick domain-relevant symbols as reverse slice seeds.
+
+    Pure in-degree ranking selects infrastructure sinks (die, strbuf_release,
+    GetEngine) that produce massive, useless reverse slices covering 50-70%
+    of the codebase.  Good seeds are functions with both callers (high in-degree)
+    AND callees (meaningful out-degree) — indicating domain logic rather than
+    utility wrappers.
+
+    Scoring: ``base * lang_weight * route_boost`` where:
+      - base = ``effective_in * min(1.0, out_degree / 10)``
+        where effective_in uses sqrt-diminishing returns above a knee (50):
+        ``in_deg if in_deg <= 50 else 50 + sqrt(in_deg - 50)``.
+        This penalises infrastructure symbols (UserFriendlyError, join) with
+        very high in-degree while preserving domain function scores.
+      - lang_weight = fraction of codebase in this language, normalised so the
+        dominant language = 1.0.  This prevents bash/shell utility functions
+        from outscoring primary-language entrypoints in polyglot repos.
+      - route_boost = 1.5 for HTTP route/entrypoint symbols (they're thin
+        dispatchers with low out-degree but are high-value reverse-slice seeds).
+
+    Returns empty list if hg.json can't be read or has no edges.
+    """
+    try:
+        data = _open_hg_json(hg_json)
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    nodes = data.get("nodes", [])
+    edges = data.get("edges", [])
+    if not edges:
+        return []
+
+    # Build node lookup and identify test nodes (by path AND annotation).
+    # Annotation-based detection catches Rust #[test]/#[cfg(test)] functions
+    # in non-test files (e.g. src/lib.rs) that path-only regex misses.
+    node_map = {n["id"]: n for n in nodes}
+    test_node_ids = {n["id"] for n in nodes if _is_test_node(n)}
+
+    # Compute in-degree (prod-only and total) and out-degree per node.
+    # prod_in_degree excludes edges from test nodes so that production
+    # functions called mostly from tests don't outrank functions called
+    # from production code.
+    in_degree: dict = {}
+    prod_in_degree: dict = {}
+    out_degree: dict = {}
+    for e in edges:
+        src = e.get("src") or e.get("source")
+        dst = e.get("dst") or e.get("target")
+        if dst:
+            in_degree[dst] = in_degree.get(dst, 0) + 1
+            if src not in test_node_ids:
+                prod_in_degree[dst] = prod_in_degree.get(dst, 0) + 1
+        if src:
+            out_degree[src] = out_degree.get(src, 0) + 1
+
+    # ---- Language-dominance weighting ----
+    # Count callable nodes per language (only seed_kinds, skip tests).
+    # Normalise so the dominant language gets weight 1.0 and minority
+    # languages get a proportional fraction.  This prevents e.g. bash
+    # utility functions (5% of codebase, high out-degree) from outscoring
+    # Java HTTP handlers (70% of codebase, lower out-degree).
+    seed_kinds = {"function", "method", "class", "constructor", "route"}
+    lang_counts: dict[str, int] = {}
+    for n in nodes:
+        if n.get("kind", "") in seed_kinds:
+            lang = n.get("language", "unknown")
+            lang_counts[lang] = lang_counts.get(lang, 0) + 1
+    max_lang_count = max(lang_counts.values()) if lang_counts else 1
+
+    # Out-degree threshold: functions with out-degree >= this value get full
+    # weight.  Below this, score is proportionally reduced.  Value of 10
+    # aggressively filters pure sinks (out=0-1) and utility wrappers (out=2-3)
+    # while accepting functions that make meaningful calls (out>=10).
+    _OUT_THRESHOLD = 10
+
+    # Minimum out-degree to be a candidate at all.  Functions with fewer
+    # than 3 callees are infrastructure sinks (die, strbuf_release, GetEngine)
+    # or thin wrappers, not domain logic hubs.
+    _MIN_OUT_DEGREE = 3
+
+    # In-degree diminishing returns: above _IN_DEGREE_KNEE, additional
+    # callers contribute sqrt-scaled benefit instead of linear.  This
+    # penalises infrastructure symbols (UserFriendlyError in=200,
+    # join in=150) without a hard cutoff, while domain functions
+    # (in=20-50) keep their full linear score.
+    #
+    #   effective_in(30)  = 30      (linear, domain function)
+    #   effective_in(100) = 50 + sqrt(50)*~7 = 85   (moderate compression)
+    #   effective_in(200) = 50 + sqrt(150)*~12 = 62  (wait, let's compute)
+    #
+    # Formula: in_deg if in_deg <= knee, else knee + sqrt(in_deg - knee)
+    # At in=200: 50 + sqrt(150) ≈ 62.  At in=500: 50 + sqrt(450) ≈ 71.
+    # This compresses the 200→500 range into 62→71, preventing mega-hubs
+    # from dominating over moderate-in-degree domain functions.
+    _IN_DEGREE_KNEE = 50
+
+    # Route boost: HTTP entrypoints are high-value reverse-slice seeds
+    # ("who calls this API?") but score low because they're thin dispatchers
+    # with low out-degree.  A 1.5x boost compensates.
+    _ROUTE_BOOST = 1.5
+
+    # Architectural concept boost: middleware, controller, and application
+    # symbols are architecturally meaningful in framework repos even with
+    # moderate in-degree.  DEEP bakeoff assessment showed OutputBuffer.append
+    # outranking FileMiddleware.handle for Hummingbird because pure hub
+    # scoring ignores architectural role.
+    _CONCEPT_BOOST = 1.3
+    _BOOSTED_CONCEPTS = {"middleware", "controller", "application", "model"}
+
+    # API handler boost: symbols targeted by routes_to edges are API handler
+    # implementations (e.g., API.getAlertsHandler, API.postAlertsHandler).
+    # These have low in-degree (called only from route registration) but
+    # high out-degree (they implement the API by calling many domain
+    # functions).  For seed selection, their out-degree is the valuable
+    # signal — reverse-slicing from a handler shows "what does this API
+    # endpoint touch?".
+    #
+    # The boost replaces the pure in-degree base with a bidirectional
+    # formula: max(capped_in, out_deg / 2) * out_factor.  This lets
+    # postAlertsHandler (in=3, out=23) compete with Integration.Notify
+    # (in=18, out=12).
+    _API_HANDLER_BOOST = 1.5
+
+    # Library export boost: entrypoint symbols tagged as library_export
+    # represent the public API surface — the functions external consumers
+    # call.  For library repos (age, polars, tokenizers), reverse-slicing
+    # from Encrypt/Decrypt is more useful than from internal bech32.Encode.
+    # DEEP bakeoff assessment (deep-20260330-164900) showed domain_score
+    # picking Encode (in=11) over Encrypt (in=17) because Encode had
+    # better out-degree ratio.  This boost compensates.
+    _LIBRARY_EXPORT_BOOST = 1.4
+
+    # Identify library_export entrypoints for boosting.
+    library_export_ids: set = set()
+    for ep in data.get("entrypoints", []):
+        if ep.get("kind") == "library_export":
+            sid = ep.get("symbol_id", "")
+            if sid:
+                library_export_ids.add(sid)
+
+    # Identify API handler targets: nodes that are dst of routes_to edges.
+    api_handler_ids: set = set()
+    for e in edges:
+        if e.get("type") == "routes_to":
+            dst = e.get("dst") or e.get("target")
+            if dst:
+                api_handler_ids.add(dst)
+
+    candidates = []
+    for node_id, in_deg in in_degree.items():
+        node = node_map.get(node_id)
+        if not node:
+            continue
+        kind = node.get("kind", "")
+        if kind not in seed_kinds:
+            continue
+        if node_id in test_node_ids:
+            continue
+        name = node.get("name", "")
+        entry = node.get("id", "")
+        if not entry:
+            continue
+        out_deg = out_degree.get(node_id, 0)
+        # Hard filter: skip pure sinks and thin wrappers entirely.
+        if out_deg < _MIN_OUT_DEGREE:
+            continue
+        # Use production in-degree for scoring: callers from test files
+        # don't indicate architectural importance.
+        prod_in = prod_in_degree.get(node_id, 0)
+        # Diminishing returns above knee: sqrt scaling compresses
+        # infrastructure symbols (in=200→eff=62) vs domain (in=30→eff=30).
+        if prod_in <= _IN_DEGREE_KNEE:
+            effective_in = float(prod_in)
+        else:
+            effective_in = _IN_DEGREE_KNEE + math.sqrt(prod_in - _IN_DEGREE_KNEE)
+
+        # API handlers get a bidirectional base score that rewards their
+        # high out-degree (they call many domain functions).
+        if node_id in api_handler_ids:
+            base_score = max(effective_in, out_deg / 2) * min(1.0, out_deg / _OUT_THRESHOLD) * _API_HANDLER_BOOST
+        else:
+            base_score = effective_in * min(1.0, out_deg / _OUT_THRESHOLD)
+
+        # Language-dominance weight: dominant language = 1.0, others proportional.
+        lang = node.get("language", "unknown")
+        lang_weight = lang_counts.get(lang, 1) / max_lang_count
+
+        # Route, architectural concept, and library export boosts.
+        concept_boost = 1.0
+        meta = node.get("meta") or {}
+        concepts = meta.get("concepts") or []
+        if kind == "route":
+            concept_boost = _ROUTE_BOOST
+        else:
+            for c in concepts:
+                if isinstance(c, dict):
+                    cname = c.get("concept", "")
+                    if cname == "route":
+                        concept_boost = max(concept_boost, _ROUTE_BOOST)
+                    elif cname in _BOOSTED_CONCEPTS:
+                        concept_boost = max(concept_boost, _CONCEPT_BOOST)
+
+        # Library export boost: public API functions are high-value rslice
+        # seeds for library repos ("who calls Encrypt?").
+        if node_id in library_export_ids:
+            concept_boost = max(concept_boost, _LIBRARY_EXPORT_BOOST)
+
+        score = base_score * lang_weight * concept_boost
+        candidates.append((score, prod_in, entry, name))
+
+    # Sort by score descending, then prod in-degree descending, name for stability
+    candidates.sort(key=lambda x: (-x[0], -x[1], x[3]))
+
+    # Name-based deduplication: allow at most 1 seed per method name.
+    # Without this, 19 Notifier.Notify variants crowd out other
+    # architectural axes (API handlers, dispatchers, etc.).
+    result = []
+    seen_names: set = set()
+    for score, in_deg, entry, name in candidates:
+        if len(result) >= count:
+            break
+        if name in seen_names:
+            continue
+        seen_names.add(name)
+        result.append(entry)
+
+    # Language-diversity guarantee: ensure each major language (≥10% of
+    # callable nodes) has at least one seed.  Without this, polyglot repos
+    # like polis (JS+TS+Python+Clojure) can end up with all seeds from one
+    # language, giving zero reverse-slice coverage of other major services.
+    if result and lang_counts:
+        total_callable = sum(lang_counts.values())
+        major_langs = {
+            lang for lang, cnt in lang_counts.items()
+            if cnt / total_callable >= 0.10
+        }
+        result_langs = set()
+        for entry_id in result:
+            node = node_map.get(entry_id)
+            if node:
+                result_langs.add(node.get("language", "unknown"))
+        missing_langs = major_langs - result_langs
+        if missing_langs:
+            # Build per-language top candidates (not already in result)
+            result_set = set(result)
+            for mlang in missing_langs:
+                best = None
+                for score, in_deg, entry, name in candidates:
+                    if entry in result_set:
+                        continue
+                    node = node_map.get(entry)
+                    if node and node.get("language") == mlang:
+                        best = entry
+                        break
+                if best and len(result) >= count:
+                    # Replace a seed from an over-represented language
+                    # (one that has >1 seeds), searching from lowest score.
+                    lang_seed_count: dict[str, int] = {}
+                    for eid in result:
+                        n = node_map.get(eid)
+                        if n:
+                            l = n.get("language", "unknown")
+                            lang_seed_count[l] = lang_seed_count.get(l, 0) + 1
+                    replaced = False
+                    for idx in range(len(result) - 1, -1, -1):
+                        n = node_map.get(result[idx])
+                        if not n:
+                            continue
+                        l = n.get("language", "unknown")
+                        if lang_seed_count.get(l, 0) > 1:
+                            result_set.discard(result[idx])
+                            result[idx] = best
+                            result_set.add(best)
+                            lang_seed_count[l] -= 1
+                            replaced = True
+                            break
+                    if not replaced:
+                        # All languages have exactly 1 seed — can't replace
+                        # without losing another language.  Skip this one.
+                        pass
+                elif best:
+                    result.append(best)
+                    result_set.add(best)
+
+    if result:
+        return result
+
+    # Relaxed fallback: drop the _MIN_OUT_DEGREE requirement.
+    # Some repos (library crates, utility libs) have no functions with both
+    # high in-degree AND out-degree >= 3.  In that case, use language-weighted
+    # in-degree ranking restricted to callable kinds and non-test paths.
+    relaxed = []
+    for node_id, in_deg in in_degree.items():
+        node = node_map.get(node_id)
+        if not node:
+            continue
+        kind = node.get("kind", "")
+        if kind not in seed_kinds:
+            continue
+        if node_id in test_node_ids:
+            continue
+        entry = node.get("id", "")
+        if not entry:
+            continue
+        name = node.get("name", "")
+        lang = node.get("language", "unknown")
+        lang_weight = lang_counts.get(lang, 1) / max_lang_count
+        eff_in = float(in_deg) if in_deg <= _IN_DEGREE_KNEE else _IN_DEGREE_KNEE + math.sqrt(in_deg - _IN_DEGREE_KNEE)
+        weighted_in = eff_in * lang_weight
+        relaxed.append((weighted_in, in_deg, entry, name))
+
+    relaxed.sort(key=lambda x: (-x[0], -x[1], x[3]))
+    return [entry for _, _, entry, _ in relaxed[:count]]
+
+
+# =============================================================================
+# Commands
+# =============================================================================
+
+def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_FEATURES_WORKDIR",
+                    auto_discover: bool = True) -> str:
+    """Resolve workdir from CLI arg, env var, or canonical default.
+
+    Resolution order: CLI --workdir > env var > canonical default.
+
+    When *auto_discover* is True (default), if the resolved directory has
+    no state.json but contains session subdirectories (broad-*/deep-*),
+    returns the most recent one.  Set *auto_discover* to False in
+    ``cmd_init`` to avoid nesting new sessions inside existing ones.
+    """
+    workdir = args_workdir or os.environ.get(env_var) or DEFAULT_BAKEOFF_DIR
+    workdir = os.path.abspath(os.path.expanduser(workdir))
+
+    if not auto_discover:
+        return workdir
+
+    # If the workdir itself has state.json, use it directly
+    if os.path.exists(os.path.join(workdir, "state.json")):
+        return workdir
+
+    # Otherwise, look for the most recent session subdirectory
+    if os.path.isdir(workdir):
+        sessions = []
+        for entry in os.scandir(workdir):
+            if entry.is_dir() and (entry.name.startswith("broad-") or entry.name.startswith("deep-")):
+                state_path = os.path.join(entry.path, "state.json")
+                if os.path.exists(state_path):
+                    sessions.append(entry.path)
+        if sessions:
+            sessions.sort()
+            return sessions[-1]
+
+    return workdir
+
+
+def _find_latest_session(base_workdir: str, prefix: str = "deep-") -> Optional[str]:
+    """Find the most recent session directory under *base_workdir*.
+
+    Returns the path to the latest ``{prefix}*`` subdirectory that contains
+    a ``state.json``, or ``None`` if no session exists.
+    """
+    if not os.path.isdir(base_workdir):
+        return None
+    sessions = []
+    for entry in os.scandir(base_workdir):
+        if entry.is_dir() and entry.name.startswith(prefix):
+            if os.path.exists(os.path.join(entry.path, "state.json")):
+                sessions.append(entry.path)
+    if not sessions:
+        return None
+    sessions.sort()
+    return sessions[-1]
+
+
+def cmd_init(args):
+    """Initialize a new feature bakeoff session.
+
+    Always creates a new timestamped session by default. Use ``--resume``
+    to explicitly continue working with the most recent existing session.
+
+    Previous behavior (silent reuse) was dangerous: it encouraged deleting
+    completed outputs to "re-run" instead of creating a new session for
+    before/after comparison.
+    """
+    pool_path = os.path.abspath(os.path.expanduser(args.pool))
+    base_workdir = resolve_workdir(args.workdir, auto_discover=False)
+
+    if not os.path.isdir(pool_path):
+        print(f"Error: Pool directory does not exist: {pool_path}", file=sys.stderr)
+        return 1
+
+    # Explicit resume: reuse existing session
+    if getattr(args, "resume", False):
+        existing = _find_latest_session(base_workdir, prefix="deep-")
+        if existing:
+            state = load_state(existing)
+            if state:
+                if state.pool_path != pool_path:
+                    print(f"Warning: --pool {pool_path} differs from session pool "
+                          f"{state.pool_path}", file=sys.stderr)
+                # Count existing outputs
+                out_dir = os.path.join(existing, "out")
+                completed = 0
+                if os.path.isdir(out_dir):
+                    completed = len([d for d in os.listdir(out_dir)
+                                     if os.path.isdir(os.path.join(out_dir, d))
+                                     and os.listdir(os.path.join(out_dir, d))])
+                print(f"Resuming existing session: {state.session_id}")
+                print(f"  Workdir: {existing}")
+                print(f"  Pool: {state.pool_path}")
+                print(f"  Cohorts: {state.cohort_number}")
+                if completed:
+                    print(f"  Completed outputs: {completed} cohort(s)")
+                    print()
+                    print("NOTE: This session has completed outputs. Subsequent")
+                    print("`run` commands will skip cohorts that already have output.")
+                    print("To re-run with code changes, create a NEW session instead:")
+                    print(f"  ./scripts/bakeoff-deep init --pool {pool_path}")
+                    print("Then use `bakeoff-deep compare <old> <new>` to compare.")
+                print()
+                print("Next: Run `bakeoff-deep cohort` to select repos for testing")
+                return 0
+        print("No existing session found. Creating a new one.")
+
+    # Backward compat: --force is now the default behavior, accept silently
+    # (flag kept so existing scripts/docs don't break)
+
+    # Create timestamped session directory to prevent artifact overwrites
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    workdir = os.path.join(base_workdir, f"deep-{timestamp}")
+
+    os.makedirs(workdir, exist_ok=True)
+    os.makedirs(os.path.join(workdir, "cohorts"), exist_ok=True)
+    os.makedirs(os.path.join(workdir, "out"), exist_ok=True)
+    os.makedirs(os.path.join(workdir, "diag"), exist_ok=True)
+
+    session_id = hashlib.sha256(f"{pool_path}:{workdir}:{time.time()}".encode()).hexdigest()[:12]
+
+    state = BakeoffFeaturesState(
+        session_id=session_id,
+        pool_path=pool_path,
+        workdir=workdir,
+        created_at=datetime.datetime.now().isoformat(),
+    )
+    save_state(state)
+
+    print(f"Initialized feature bakeoff session: {session_id}")
+    print(f"  Pool: {pool_path}")
+    print(f"  Workdir: {workdir}")
+    print()
+    print("Next: Run `bakeoff-deep cohort` to select repos for testing")
+    return 0
+
+
+def cmd_cohort(args):
+    """Select next cohort of repos (larger, complex repos)."""
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found. Run `bakeoff-deep init` first.", file=sys.stderr)
+        return 1
+
+    pool_path = os.environ.get("BAKEOFF_FEATURES_POOL", state.pool_path)
+
+    explicit_repos = getattr(args, "repos", None)
+    if explicit_repos:
+        # Explicit repo selection: bypass size/complexity filters
+        repo_names = [n.strip() for n in explicit_repos.split(",") if n.strip()]
+        print(f"Pool: {pool_path}")
+        print(f"  Explicit repos: {', '.join(repo_names)}")
+        print()
+
+        cohort = []
+        missing = []
+        for name in repo_names:
+            repo_path = os.path.join(pool_path, name)
+            if not os.path.isdir(repo_path):
+                missing.append(name)
+                continue
+            size_bytes = get_dir_size(repo_path)
+            size_mb = size_bytes / (1024 * 1024)
+            file_count = count_files(repo_path)
+            languages = detect_languages(repo_path)
+            repo = RepoInfo(
+                name=name,
+                path=repo_path,
+                size_bytes=size_bytes,
+                size_mb=size_mb,
+                file_count=file_count,
+                languages=languages,
+            )
+            repo.complexity_score = compute_complexity_score(repo)
+            cohort.append(repo)
+
+        if missing:
+            print(f"Error: repos not found in pool: {', '.join(missing)}", file=sys.stderr)
+            return 1
+
+        if not cohort:
+            print("Error: no repos specified", file=sys.stderr)
+            return 1
+    else:
+        # Auto-selection: filter by size/complexity, pick for language diversity
+        min_size_mb = args.min_size or DEFAULT_MIN_SIZE_MB
+        max_size_mb = args.max_size or DEFAULT_MAX_SIZE_MB
+        count = args.count or DEFAULT_COHORT_SIZE
+
+        print(f"Scanning pool: {pool_path}")
+        print(f"  Size range: {min_size_mb}MB - {max_size_mb}MB")
+        print()
+
+        available = []
+
+        for entry in os.scandir(pool_path):
+            if not entry.is_dir():
+                continue
+            if entry.name.startswith("."):
+                continue
+            if entry.name in state.tested_repos:
+                continue
+
+            size_bytes = get_dir_size(entry.path)
+            size_mb = size_bytes / (1024 * 1024)
+
+            # Filter by size
+            if size_mb < min_size_mb or size_mb > max_size_mb:
+                continue
+
+            file_count = count_files(entry.path)
+
+            # Filter by file count (need enough complexity)
+            if file_count < MIN_FILE_COUNT:
+                continue
+
+            languages = detect_languages(entry.path)
+
+            repo = RepoInfo(
+                name=entry.name,
+                path=entry.path,
+                size_bytes=size_bytes,
+                size_mb=size_mb,
+                file_count=file_count,
+                languages=languages,
+            )
+            repo.complexity_score = compute_complexity_score(repo)
+            available.append(repo)
+
+        # Sort by complexity score (highest first), then by size
+        available.sort(key=lambda r: (-r.complexity_score, r.size_mb))
+
+        # Strategic selection: try to get language diversity
+        cohort = []
+        seen_langs = set()
+
+        # Phase 1: Pick repos that add new primary languages
+        for r in available:
+            if len(cohort) >= count:
+                break
+            primary_lang = r.languages[0] if r.languages else None
+            if primary_lang and primary_lang not in seen_langs:
+                cohort.append(r)
+                seen_langs.add(primary_lang)
+
+        # Phase 2: Fill remaining slots with highest complexity repos
+        for r in available:
+            if len(cohort) >= count:
+                break
+            if r not in cohort:
+                cohort.append(r)
+
+        if not cohort:
+            print("No repos matching criteria found in pool!")
+            print(f"  Criteria: {min_size_mb}MB - {max_size_mb}MB, {MIN_FILE_COUNT}+ files")
+            return 1
+
+    dry_run = getattr(args, "dry_run", False)
+
+    if dry_run:
+        # Show what would be selected without mutating state
+        print(f"\n[DRY RUN] Would select cohort #{state.cohort_number + 1} ({len(cohort)} repos):")
+        print()
+        for r in cohort:
+            langs = ", ".join(r.languages[:2]) if r.languages else "unknown"
+            print(f"  {r.name:40s} {r.size_mb:6.1f}MB  {r.file_count:5d} files  [{langs}]  (score: {r.complexity_score:.1f})")
+
+        remaining = len(available) - len(cohort) if not explicit_repos else 0
+        print(f"\nRemaining in pool: {remaining}")
+        return 0
+
+    # Update state
+    state.cohort_number += 1
+    state.iteration = 0
+    state.current_cohort = [r.name for r in cohort]
+    state.tested_repos.extend(r.name for r in cohort)
+    save_state(state)
+
+    # Write cohort metadata
+    cohort_dir = os.path.join(workdir, "cohorts", f"cohort-{state.cohort_number:03d}")
+    os.makedirs(cohort_dir, exist_ok=True)
+
+    if explicit_repos:
+        criteria = {"explicit": [r.name for r in cohort]}
+    else:
+        criteria = {
+            "min_size_mb": min_size_mb,
+            "max_size_mb": max_size_mb,
+            "min_file_count": MIN_FILE_COUNT,
+        }
+
+    metadata = {
+        "cohort_number": state.cohort_number,
+        "created_at": datetime.datetime.now().isoformat(),
+        "criteria": criteria,
+        "repos": [asdict(r) for r in cohort],
+    }
+    with open(os.path.join(cohort_dir, "metadata.json"), "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print(f"\nSelected cohort #{state.cohort_number} ({len(cohort)} repos):")
+    print()
+    for r in cohort:
+        langs = ", ".join(r.languages[:2]) if r.languages else "unknown"
+        print(f"  {r.name:40s} {r.size_mb:6.1f}MB  {r.file_count:5d} files  [{langs}]  (score: {r.complexity_score:.1f})")
+
+    if not explicit_repos:
+        print()
+        print(f"Remaining in pool: {len(available) - len(cohort)}")
+    print()
+    print("Next: Run `bakeoff-deep run` to test features on these repos")
+    return 0
+
+
+def _load_cohort_metadata(workdir: str, cohort_num: int) -> list | None:
+    """Load repo list from cohort metadata file. Returns None if not found."""
+    meta_path = os.path.join(workdir, "cohorts", f"cohort-{cohort_num:03d}", "metadata.json")
+    try:
+        with open(meta_path) as f:
+            data = json.load(f)
+        return [r["name"] for r in data.get("repos", [])]
+    except (OSError, json.JSONDecodeError, KeyError):
+        return None
+
+
+def cmd_run(args):
+    """Run feature battery on current cohort, or all cohorts with --all."""
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found. Run `bakeoff-deep init` first.", file=sys.stderr)
+        return 1
+
+    if not state.current_cohort:
+        print("Error: No cohort selected. Run `bakeoff-deep cohort` first.", file=sys.stderr)
+        return 1
+
+    pool_path = os.environ.get("BAKEOFF_FEATURES_POOL", state.pool_path)
+    current_hash = compute_hypergumbo_code_hash()
+
+    # --all / --some N: run multiple cohorts in batch.
+    #   --all:    every cohort with metadata but no output
+    #   --some N: up to N unanalyzed cohorts (same filter, capped)
+    batch_count = None
+    if getattr(args, "all", False):
+        batch_count = float("inf")
+    elif getattr(args, "some", None):
+        batch_count = args.some
+
+    if batch_count is not None:
+        cohorts_base = os.path.join(workdir, "cohorts")
+        if not os.path.isdir(cohorts_base):
+            print("Error: No cohorts directory found.", file=sys.stderr)
+            return 1
+        cohort_nums = sorted(
+            int(d.split("-")[1])
+            for d in os.listdir(cohorts_base)
+            if d.startswith("cohort-") and os.path.isdir(os.path.join(cohorts_base, d))
+        )
+        if not cohort_nums:
+            print("Error: No cohorts found.", file=sys.stderr)
+            return 1
+        label = "all" if batch_count == float("inf") else f"up to {batch_count}"
+        print(f"Running {label} of {len(cohort_nums)} cohort(s)")
+        overall_rc = 0
+        ran_count = 0
+        for cohort_num in cohort_nums:
+            if ran_count >= batch_count:
+                break
+            repos = _load_cohort_metadata(workdir, cohort_num)
+            if not repos:
+                print(f"\n[cohort-{cohort_num:03d}] No metadata — skipping")
+                continue
+            # Check if already analysed at current code hash
+            out_dir = os.path.join(workdir, "out", f"cohort-{cohort_num:03d}")
+            if os.path.isdir(out_dir) and os.listdir(out_dir):
+                print(f"\n[cohort-{cohort_num:03d}] Already has output — skipping.")
+                print(f"  To re-run with code changes, create a NEW session:")
+                print(f"    ./scripts/bakeoff-deep init --pool {pool_path}")
+                print(f"  Then compare: ./scripts/bakeoff-deep compare <old-session> <new-session>")
+                print()
+                print(f"  IMPORTANT NOTE: If you are tempted to DELETE the existing output")
+                print(f"  directory to force a re-run, STOP. You are about to ERASE RESULTS")
+                print(f"  OF A SCIENCE EXPERIMENT. Unless you are REALLY CERTAIN you know what")
+                print(f"  you're doing, create a new session instead. Bakeoff artifacts are DATA,")
+                print(f"  not temp files — they exist for before/after comparison.")
+                continue
+            # Temporarily point state at this cohort
+            state.cohort_number = cohort_num
+            state.current_cohort = repos
+            state.iteration = 0
+            state.iteration += 1
+            state.hypergumbo_code_hash = current_hash
+            iter_dir = os.path.join(out_dir, f"iter-{state.iteration:03d}")
+            os.makedirs(iter_dir, exist_ok=True)
+            save_state(state)
+            print(f"\n{'='*60}")
+            print(f"Cohort #{cohort_num} ({len(repos)} repos), iteration #{state.iteration}")
+            print(f"Output: {iter_dir}")
+            print(f"{'='*60}")
+            rc = _run_cohort_repos(repos, pool_path, iter_dir, workdir=workdir)
+            ran_count += 1
+            if rc != 0:
+                overall_rc = rc
+        print(f"\nBatch complete: ran {ran_count} cohort(s)")
+        return overall_rc
+
+    # No-change check: skip re-analysis when hypergumbo source unchanged
+    if current_hash and current_hash == state.hypergumbo_code_hash and state.iteration > 0:
+        prev_dir = os.path.join(
+            workdir, "out",
+            f"cohort-{state.cohort_number:03d}",
+            f"iter-{state.iteration:03d}",
+        )
+        if os.path.isdir(prev_dir):
+            print(f"⏭️  Skipping: hypergumbo code unchanged (hash {current_hash})")
+            print(f"   Previous results: {prev_dir}")
+            print("   To force re-run, delete the previous iteration directory.")
+            return 0
+
+    # Increment iteration
+    state.iteration += 1
+    state.hypergumbo_code_hash = current_hash
+    out_dir = os.path.join(workdir, "out", f"cohort-{state.cohort_number:03d}", f"iter-{state.iteration:03d}")
+    os.makedirs(out_dir, exist_ok=True)
+    save_state(state)
+
+    print(f"Feature bakeoff run: cohort #{state.cohort_number}, iteration #{state.iteration}")
+    print(f"Output: {out_dir}")
+    if current_hash:
+        print(f"Code hash: {current_hash}")
+    print()
+
+    return _run_cohort_repos(state.current_cohort, pool_path, out_dir, workdir=workdir)
+
+
+def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = "") -> int:
+    """Run the full feature battery on a list of repos.
+
+    This is the inner loop shared by single-cohort ``run`` and batch ``run --all``.
+    For each repo it runs: hypergumbo analysis, entrypoints, forward slices,
+    reverse slices (domain-scored seeds), tier-bounded slices, symbols, and routes.
+    All outputs go under *out_dir/<repo_name>/*.
+
+    Returns 0 on success (individual repo failures are logged but not fatal).
+    """
+    for repo_name in repos:
+        repo_path = os.path.join(pool_path, repo_name)
+        repo_out = os.path.join(out_dir, repo_name)
+        os.makedirs(repo_out, exist_ok=True)
+
+        print(f"[{repo_name}]")
+        start_time = time.time()
+
+        hg_json = os.path.join(repo_out, "hg.json")
+
+        # Memory safety: check before launching analysis
+        repo_size_mb = get_dir_size(repo_path) / (1024 * 1024)
+        skip_reason, mem_snap = check_memory_before_analysis(repo_name, repo_size_mb)
+        mem_record = {"pre_analysis": mem_snap, "skipped": skip_reason is not None}
+        if skip_reason:
+            print(f"  ⚠️  {skip_reason}")
+            with open(os.path.join(repo_out, "run.exit"), "w") as f:
+                f.write("-2")
+            with open(os.path.join(repo_out, "run.err"), "w") as f:
+                f.write(skip_reason)
+            with open(os.path.join(repo_out, "memory.json"), "w") as f:
+                json.dump(mem_record, f, indent=2)
+            continue
+
+        # 1. Full analysis
+        print("  run...", end=" ", flush=True)
+        rc, stdout, stderr = run_cmd(
+            ["hypergumbo", "run", repo_path, "--out", hg_json],
+            timeout=None,  # No timeout — large repos (100MB+) can take hours
+        )
+        # Capture post-analysis memory snapshot and duration for model building
+        post_snap = get_memory_snapshot()
+        run_duration_s = time.time() - start_time
+        pre_avail = mem_snap.get("available_mb", 0)
+        post_avail = post_snap.get("available_mb", 0)
+        mem_record["post_analysis"] = post_snap
+        mem_record["run_duration_s"] = round(run_duration_s, 1)
+        mem_record["memory_delta_mb"] = pre_avail - post_avail
+        with open(os.path.join(repo_out, "memory.json"), "w") as f:
+            json.dump(mem_record, f, indent=2)
+
+        # Record to rolling profile store (for future estimates)
+        if rc == 0:
+            _fc = count_files(repo_path) if os.path.isdir(repo_path) else 0
+            _langs = detect_languages(repo_path) if os.path.isdir(repo_path) else []
+
+            # Extract graph stats from output for profile enrichment
+            _graph_nodes = 0
+            _graph_edges = 0
+            _output_size_mb = 0.0
+            if os.path.exists(hg_json):
+                _output_size_mb = os.path.getsize(hg_json) / (1024 * 1024)
+                try:
+                    with open(hg_json) as _f:
+                        _hg = json.load(_f)
+                    _graph_nodes = len(_hg.get("nodes", _hg.get("symbols", [])))
+                    _graph_edges = len(_hg.get("edges", []))
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+            record_memory_observation(
+                repo_name, repo_size_mb, pre_avail, post_avail,
+                duration_s=run_duration_s,
+                file_count=_fc,
+                dominant_language=_langs[0] if _langs else "",
+            )
+            # Also store graph stats in the memory.json for this run
+            mem_record["graph_nodes"] = _graph_nodes
+            mem_record["graph_edges"] = _graph_edges
+            mem_record["output_size_mb"] = round(_output_size_mb, 1)
+            with open(os.path.join(repo_out, "memory.json"), "w") as f:
+                json.dump(mem_record, f, indent=2)
+
+        with open(os.path.join(repo_out, "run.exit"), "w") as f:
+            f.write(str(rc))
+        if stderr:
+            with open(os.path.join(repo_out, "run.err"), "w") as f:
+                f.write(stderr)
+        print("OK" if rc == 0 else f"FAIL({rc})")
+
+        if rc != 0:
+            print(f"  Skipping feature tests due to run failure")
+            continue
+
+        # 2. List entrypoints
+        print("  list-entries...", end=" ", flush=True)
+        rc, stdout, stderr = run_cmd(
+            ["hypergumbo", "slice", "--input", hg_json, "--list-entries"],
+        )
+        with open(os.path.join(repo_out, "entries.txt"), "w") as f:
+            f.write(stdout)
+        print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # Parse entrypoints for slice tests, filtering out test-file entries
+        # since we slice with --exclude-tests (test entries yield empty slices)
+        entries = []
+        try:
+            for line in stdout.split("\n"):
+                line = line.strip()
+                if re.match(r'^[a-z]+:\S', line):
+                    if not _TEST_PATH_RE.search(line):
+                        entries.append(line)
+        except Exception:
+            pass
+
+        # 3. Forward slices (top entries, up to 5)
+        # Use --exclude-tests to focus on production dependencies
+        # Note: Don't use --exclude-utility here - entry points may be in utility
+        # dirs (e.g., docs_src for FastAPI) but their dependencies are still useful
+        # Use --max-hops 10 and --max-files 200 for quality assessment.
+        # Default 3 hops is too shallow for large repos (10K+ nodes), and the
+        # default 100-file limit naturally constrains output size even at high
+        # hop counts. Using 200 files in bakeoff to measure quality potential.
+        # Use --hub-threshold 100 (vs default 50) for enterprise Java repos
+        # where service interfaces commonly have 50-100+ outgoing edges.
+        # WI-sivun: cohort-019 forward slices stopped at 18-66 nodes because
+        # intermediate service hubs exceeded the default threshold.
+        for i, entry in enumerate(entries[:5]):
+            safe_name = entry.replace("/", "_").replace(":", "_")[:50]
+            print(f"  slice[{entry[:30]}]...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "slice",
+                "--input", hg_json,
+                "--entry", entry,
+                "--inline",
+                "--exclude-tests",
+                "--exclude-imports",
+                "--hub-threshold", "100",
+                "--max-hops", "10",
+                "--max-files", "200",
+                "--out", os.path.join(repo_out, f"slice.{i}.json"),
+            ])
+            with open(os.path.join(repo_out, f"slice.{i}.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 4. Reverse slices (top 3 high-in-degree symbols)
+        # Use high-in-degree non-test symbols as reverse-slice seeds. For
+        # library repos, entrypoints are overwhelmingly test methods (e.g.,
+        # iceberg: 6905/6912 test entries), making them poor reverse-slice
+        # seeds that produce trivial 2-node results.  High-in-degree symbols
+        # (Schema, Types.get, Table.refresh) are the core API surface —
+        # "who calls this?" is the interesting question for developers.
+        # Fall back to entrypoints if no high-in-degree seeds found.
+        # Do NOT use --exclude-tests here: for library repos, callers live in
+        # tests/examples — excluding them yields empty slices.
+        rslice_seeds = pick_reverse_slice_seeds(hg_json, count=3)
+        rslice_method = "domain_score"
+        if rslice_seeds:
+            print(f"  reverse-slice seeds: {len(rslice_seeds)} domain-scored symbols")
+        else:
+            rslice_seeds = entries[:3]
+            rslice_method = "entrypoints"
+            print("  reverse-slice seeds: falling back to entrypoints (no high-degree symbols found)")
+        # Save seed info for diagnostics
+        with open(os.path.join(repo_out, "rslice_seeds.json"), "w") as f:
+            json.dump({"method": rslice_method, "seeds": rslice_seeds}, f, indent=2)
+        for i, entry in enumerate(rslice_seeds):
+            print(f"  reverse-slice[{entry[:30]}]...", end=" ", flush=True)
+            # Reverse slices need more permissive parameters than forward slices:
+            # - hub_threshold 200 (vs 50 forward): in reverse direction, hub pruning
+            #   severs cross-layer edges.  Find (in=710) is the seed (exempt), but
+            #   intermediate nodes like model helpers (in=60-100) get pruned, trapping
+            #   the traversal in models/ and never reaching routers/ or services/.
+            # - max_files 500 (vs 200 forward): a layered app (models+services+routers)
+            #   spans many directories.  200 files fills up within a single layer,
+            #   preventing cross-layer discovery.
+            rslice_base_args = [
+                "hypergumbo", "slice",
+                "--input", hg_json,
+                "--entry", entry,
+                "--reverse",
+                "--inline",
+                "--max-hops", "10",
+                "--max-files", "500",
+                "--hub-threshold", "200",
+            ]
+            # Full reverse slice (includes test callers)
+            rc, stdout, stderr = run_cmd(
+                rslice_base_args + ["--out", os.path.join(repo_out, f"rslice.{i}.json")]
+            )
+            with open(os.path.join(repo_out, f"rslice.{i}.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})", end=" ", flush=True)
+
+            # Production-only reverse slice (excludes test callers).
+            # This is actionable for refactoring: shows only production code
+            # that depends on the seed symbol.
+            print(f"prod...", end=" ", flush=True)
+            rc2, _, _ = run_cmd(
+                rslice_base_args + [
+                    "--exclude-tests",
+                    "--exclude-utility",
+                    "--out", os.path.join(repo_out, f"rslice.{i}.prod.json"),
+                ]
+            )
+            with open(os.path.join(repo_out, f"rslice.{i}.prod.exit"), "w") as f:
+                f.write(str(rc2))
+            print("OK" if rc2 == 0 else f"FAIL({rc2})")
+
+        # 4b. Domain-scored forward slices from high-out-degree methods.
+        # Reverse-slice seeds are high IN-degree (many callers) — great for
+        # reverse slicing but often empty in forward direction (getters,
+        # abstract interfaces). For forward slicing, we want high OUT-degree
+        # non-test methods: functions that CALL many other functions (e.g.,
+        # resolveConfig, SslHandler.channelRead, main processing pipelines).
+        # Load graph data for out-degree computation
+        try:
+            with open(hg_json) as _f:
+                _hg_data = json.load(_f)
+            nodes = _hg_data.get("nodes", [])
+            raw_edges = _hg_data.get("edges", [])
+        except (json.JSONDecodeError, OSError):
+            nodes = []
+            raw_edges = []
+        # Build out-degree index from edges (O(E) once)
+        _out_deg: dict[str, int] = {}
+        for e in raw_edges:
+            if e.get("type") == "calls":
+                src = e.get("src", "")
+                _out_deg[src] = _out_deg.get(src, 0) + 1
+        # Find high-out-degree non-test methods
+        from hypergumbo_core.paths import is_test_file, is_utility_file
+        fwd_candidates: list[tuple[str, int]] = []
+        for n in nodes:
+            if n.get("kind") not in ("function", "method"):
+                continue
+            sym_id = n.get("id", "")
+            path = n.get("path", "")
+            if path and (is_test_file(path) or is_utility_file(path)):
+                continue
+            out_deg = _out_deg.get(sym_id, 0)
+            if out_deg > 5:
+                fwd_candidates.append((sym_id, out_deg))
+        fwd_candidates.sort(key=lambda x: -x[1])
+        fwd_seeds = [sym_id for sym_id, _ in fwd_candidates[:3]]
+        if not fwd_seeds:
+            fwd_seeds = [s for s in rslice_seeds[:3] if ":method" in s or ":function" in s]
+        for i, seed in enumerate(fwd_seeds[:3]):
+            print(f"  domain-slice[{seed[:30]}]...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "slice",
+                "--input", hg_json,
+                "--entry", seed,
+                "--inline",
+                "--exclude-tests",
+                "--exclude-imports",
+                "--hub-threshold", "100",
+                "--max-hops", "10",
+                "--max-files", "200",
+                "--out", os.path.join(repo_out, f"dslice.{i}.json"),
+            ])
+            with open(os.path.join(repo_out, f"dslice.{i}.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 5. Tier-bounded slices
+        # Use --exclude-tests so --entry auto doesn't pick a test main()
+        for tier in [1, 2]:
+            print(f"  slice[tier={tier}]...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "slice",
+                "--input", hg_json,
+                "--entry", "auto",
+                "--max-tier", str(tier),
+                "--exclude-tests",
+                "--inline",
+                "--out", os.path.join(repo_out, f"slice.tier{tier}.json"),
+            ])
+            with open(os.path.join(repo_out, f"slice.tier{tier}.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 6. Symbols report (exclude test code for cleaner rankings)
+        print("  symbols...", end=" ", flush=True)
+        rc, stdout, stderr = run_cmd([
+            "hypergumbo", "symbols",
+            "--input", hg_json,
+            "--all",
+            "-x",  # Exclude test files for more useful centrality rankings
+        ])
+        with open(os.path.join(repo_out, "symbols.txt"), "w") as f:
+            f.write(stdout)
+        print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 7. Routes
+        print("  routes...", end=" ", flush=True)
+        rc, stdout, stderr = run_cmd([
+            "hypergumbo", "routes",
+            "--input", hg_json,
+            "--exclude-tests",
+        ])
+        with open(os.path.join(repo_out, "routes.txt"), "w") as f:
+            f.write(stdout)
+        print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 8. IO boundaries
+        print("  io-boundaries...", end=" ", flush=True)
+        rc, stdout, stderr = run_cmd([
+            "hypergumbo", "io-boundaries",
+            "--input", hg_json,
+            "--json",
+        ])
+        with open(os.path.join(repo_out, "io-boundaries.txt"), "w") as f:
+            f.write(stdout)
+        with open(os.path.join(repo_out, "io-boundaries.exit"), "w") as f:
+            f.write(str(rc))
+        print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 9. Dataflow slices (parallel to regular slices for comparison)
+        # Uses the same top entry as slice.0 so the ratio is meaningful
+        if entries:
+            entry = entries[0]
+            print(f"  dataflow-slice[{entry[:30]}]...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "slice",
+                "--input", hg_json,
+                "--entry", entry,
+                "--dataflow",
+                "--inline",
+                "--exclude-tests",
+                "--exclude-imports",
+                "--hub-threshold", "100",
+                "--max-hops", "10",
+                "--max-files", "200",
+                "--out", os.path.join(repo_out, "slice.dataflow.0.json"),
+            ])
+            with open(os.path.join(repo_out, "slice.dataflow.0.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
+        # 10. Verify claims (if claims YAML exists for this repo)
+        claims_file = os.path.join(workdir, "claims", f"{repo_name}.yaml")
+        if os.path.exists(claims_file):
+            print("  verify-claims...", end=" ", flush=True)
+            rc, stdout, stderr = run_cmd([
+                "hypergumbo", "verify-claims",
+                "--input", hg_json,
+                "--claims", claims_file,
+                "--json",
+            ])
+            with open(os.path.join(repo_out, "verify-claims.txt"), "w") as f:
+                f.write(stdout)
+            with open(os.path.join(repo_out, "verify-claims.exit"), "w") as f:
+                f.write(str(rc))
+            print("OK" if rc == 0 else f"FAIL({rc})")
+
+        elapsed = time.time() - start_time
+        with open(os.path.join(repo_out, "time.txt"), "w") as f:
+            f.write(f"{elapsed:.1f}s\n")
+        print(f"  done ({elapsed:.1f}s)")
+        print()
+
+    print(f"Run complete. Output: {out_dir}")
+    print()
+    print("Next: Run `bakeoff-deep diagnose` to analyze results")
+    return 0
+
+
+def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
+    """Diagnose a single cohort's results, returning verdicts.
+
+    Args:
+        workdir: Session workdir path.
+        out_dir: Path to cohort output directory.
+        diag_dir: Path to write diagnostic report.
+        repo_names: List of repo names in the cohort.
+
+    Returns:
+        List of RepoVerdict for each repo.
+    """
+    os.makedirs(diag_dir, exist_ok=True)
+    verdicts = []
+
+    for repo_name in repo_names:
+        repo_out = os.path.join(out_dir, repo_name)
+        hg_path = _find_hg_json(repo_out)
+
+        if hg_path is None:
+            print(f"[{repo_name}] Skipped (no hg.json)")
+            verdicts.append(RepoVerdict(
+                repo_name=repo_name,
+                verdict="SKIP",
+                concerns=["Analysis failed - no hg.json"],
+            ))
+            continue
+
+        print(f"[{repo_name}]")
+
+        try:
+            data = _open_hg_json(hg_path)
+        except Exception as e:
+            print(f"  Error reading hg.json: {e}")
+            verdicts.append(RepoVerdict(
+                repo_name=repo_name,
+                verdict="FAIL",
+                concerns=[f"Failed to parse hg.json: {e}"],
+            ))
+            continue
+
+        nodes = data.get("nodes", [])
+        edges = data.get("edges", [])
+        entrypoints = data.get("entrypoints", [])
+
+        # Compute metrics
+        metrics = FeatureMetrics()
+        metrics.total_nodes = len(nodes)
+        metrics.total_edges = len(edges)
+        metrics.entrypoint_count = len(entrypoints)
+
+        # Compute orphan rate (non-test code nodes with no edges).
+        # Only counts code-relevant node kinds (functions, methods, classes, etc.)
+        # to avoid inflating the metric with documentation/CSS/config nodes.
+        # Excludes test files: test functions are naturally orphaned (called by
+        # test runner, not by application code) and inflate the orphan rate.
+        code_nodes = [
+            n for n in nodes
+            if n.get("kind") in _CODE_NODE_KINDS
+            and not _is_test_node(n)
+        ]
+        code_node_ids = {n.get("id") for n in code_nodes}
+        connected_nodes = set()
+        for e in edges:
+            connected_nodes.add(e.get("src"))
+            connected_nodes.add(e.get("dst"))
+        orphan_code_ids = code_node_ids - connected_nodes
+        metrics.orphan_count = len(orphan_code_ids)
+        metrics.orphan_rate = (metrics.orphan_count / len(code_nodes) * 100) if code_nodes else 0
+
+        # Compute in/out degree distribution
+        in_degree = {}
+        out_degree = {}
+        for e in edges:
+            src = e.get("src")
+            tgt = e.get("dst")
+            out_degree[src] = out_degree.get(src, 0) + 1
+            in_degree[tgt] = in_degree.get(tgt, 0) + 1
+
+        if in_degree:
+            metrics.max_in_degree = max(in_degree.values())
+        if out_degree:
+            metrics.max_out_degree = max(out_degree.values())
+
+        # Compute centrality Gini coefficient (measure of inequality)
+        degrees = [in_degree.get(n.get("id"), 0) + out_degree.get(n.get("id"), 0) for n in nodes]
+        if degrees and sum(degrees) > 0:
+            degrees_sorted = sorted(degrees)
+            n = len(degrees_sorted)
+            total = sum(degrees_sorted)
+            cum_sum = 0
+            gini_sum = 0
+            for i, d in enumerate(degrees_sorted):
+                cum_sum += d
+                gini_sum += (2 * (i + 1) - n - 1) * d
+            metrics.centrality_gini = gini_sum / (n * total) if total > 0 else 0
+
+        # Supply chain tier distribution
+        tier_counts = {1: 0, 2: 0, 3: 0, 4: 0}
+        for n in nodes:
+            supply_chain = n.get("supply_chain") or {}
+            tier = supply_chain.get("tier", 0)
+            if tier in tier_counts:
+                tier_counts[tier] += 1
+
+        total_tiered = sum(tier_counts.values())
+        if total_tiered > 0:
+            metrics.tier1_pct = tier_counts[1] / total_tiered * 100
+            metrics.tier2_pct = tier_counts[2] / total_tiered * 100
+            metrics.tier3_pct = tier_counts[3] / total_tiered * 100
+            metrics.tier4_pct = tier_counts[4] / total_tiered * 100
+
+        # Analyze slice outputs (both forward and reverse slices contribute
+        # to avg_slice_nodes).  Library repos often have small forward slices
+        # (entrypoints are utility scripts) but meaningful reverse slices
+        # (tracing callers of core functions).  Exclude .prod.json variants
+        # (production-only filtered copies) and tier-filtered slices.
+        slice_files = [
+            f for f in os.listdir(repo_out)
+            if (f.startswith("slice.") or f.startswith("rslice."))
+            and f.endswith(".json")
+            and ".prod." not in f
+            and ".tier" not in f
+            and f != "rslice_seeds.json"
+        ]
+        slice_node_counts = []
+        slice_max_depths = []
+        cross_file_edges = 0
+        total_slice_edges = 0
+        slices_with_limits = 0
+        slices_with_truncation = 0
+        total_slices = 0
+        # Truncation limits indicate the slice was cut short before
+        # exploring all reachable nodes.  hop_limit and hub_pruned are
+        # benign stopping conditions (natural depth boundary / intentional
+        # quality pruning), not truncation.
+        _TRUNCATION_LIMITS = {"file_limit", "tier_limit"}
+
+        for sf in slice_files:
+            try:
+                with open(os.path.join(repo_out, sf)) as f:
+                    slice_data = json.load(f)
+                    feature = slice_data.get("feature", {})
+                    slice_nodes = feature.get("nodes", [])
+                    slice_edges = feature.get("edges", [])
+                    limits_hit = feature.get("limits_hit", [])
+                    slice_node_counts.append(len(slice_nodes))
+                    total_slices += 1
+                    node_depths = feature.get("node_depths", {})
+                    if node_depths:
+                        slice_max_depths.append(max(node_depths.values()))
+                    if limits_hit:
+                        slices_with_limits += 1
+                    if _TRUNCATION_LIMITS & set(limits_hit):
+                        slices_with_truncation += 1
+
+                    # Count cross-file edges
+                    # Edge format: "lang:/path/to/file.py:lines:name:kind"
+                    for e in slice_edges:
+                        total_slice_edges += 1
+                        src = e.get("src", "")
+                        dst = e.get("dst", "")
+                        # Extract file path (between first : and second :)
+                        src_file = src.split(":")[1] if ":" in src else ""
+                        dst_file = dst.split(":")[1] if ":" in dst else ""
+                        if src_file and dst_file and src_file != dst_file:
+                            cross_file_edges += 1
+            except Exception:
+                pass
+
+        if slice_node_counts:
+            avg_slice_size = sum(slice_node_counts) / len(slice_node_counts)
+            metrics.avg_slice_nodes = avg_slice_size
+        if slice_max_depths:
+            metrics.avg_slice_depth = sum(slice_max_depths) / len(slice_max_depths)
+            metrics.slice_coverage_pct = (avg_slice_size / len(nodes) * 100) if nodes else 0
+
+        if total_slices > 0:
+            metrics.limit_hit_count = slices_with_truncation
+            metrics.limit_hit_frequency = (slices_with_truncation / total_slices * 100)
+
+        if total_slice_edges > 0:
+            metrics.cross_file_ratio = cross_file_edges / total_slice_edges * 100
+
+        # Entrypoint test ratio — count entrypoints with test_function kind
+        test_entrypoints = sum(1 for e in entrypoints if e.get("kind") == "test_function")
+        metrics.entrypoints_in_tests = test_entrypoints
+        metrics.entrypoints_test_ratio = (test_entrypoints / len(entrypoints) * 100) if entrypoints else 0
+
+        # IO boundary and dataflow metrics
+        calls_total = sum(1 for e in edges if e.get("type") == "calls")
+        access_mode_tagged = sum(
+            1 for e in edges if (e.get("meta") or {}).get("access_mode")
+        )
+        metrics.access_mode_coverage = (access_mode_tagged / len(edges) * 100) if edges else 0.0
+
+        # io_tag_rate: computed from io-boundaries artifact (total_io_edges)
+        # rather than hg.json edge metadata, because tag_io_boundaries()
+        # produces a separate boundary map at query time — it does not
+        # persist io_boundary metadata into the serialized behavior map.
+        # Count distinct IO boundary types from io-boundaries output
+        io_boundaries_path = os.path.join(repo_out, "io-boundaries.txt")
+        if os.path.exists(io_boundaries_path):
+            try:
+                io_data = json.loads(open(io_boundaries_path).read())
+                boundaries = io_data.get("boundaries", {})
+                metrics.io_boundary_types_found = sum(
+                    1 for b in boundaries.values()
+                    if b.get("chain_count", 0) > 0
+                )
+                # io_tag_rate from artifact total
+                total_io_chains = io_data.get("total_io_edges", 0)
+                if calls_total > 0:
+                    metrics.io_tag_rate = total_io_chains / calls_total * 100
+                # Cross-language IO: check if IO primitives from multiple
+                # language catalogs appear. Each primitive's module prefix
+                # indicates the source language (e.g., java.io.* = Java,
+                # stdio.* = C, os.* = Python/Go).
+                _PRIMITIVE_LANG_PREFIXES = {
+                    "java.": "java", "javax.": "java",
+                    "io.netty.": "java", "okhttp3.": "java",
+                    "org.springframework.": "java",
+                    "stdio.": "c", "unistd.": "c", "sys/socket.": "c",
+                    "dirent.": "c", "stdlib.": "c",
+                    "std::": "rust", "tokio::": "rust", "hyper::": "rust",
+                    "reqwest::": "rust", "axum::": "rust", "actix_web::": "rust",
+                    "os.": "go_or_python", "io.": "go_or_python",
+                    "net.": "go", "net/": "go", "filepath.": "go",
+                    "syscall.": "go", "unix.": "go",
+                    "gin.": "go", "echo.": "go", "fiber.": "go",
+                    "grpc.": "go", "fmt.": "go", "bufio.": "go",
+                    "fs.": "js", "http.": "js_or_go", "https.": "js",
+                    "child_process.": "js", "process.": "js",
+                    "express.": "js", "axios.": "js", "fastify.": "js",
+                    "pathlib.": "python", "subprocess.": "python",
+                }
+                def _prim_lang(prim: str) -> str | None:
+                    """Get the catalog language for a primitive name."""
+                    for prefix, lang in _PRIMITIVE_LANG_PREFIXES.items():
+                        if prim.startswith(prefix):
+                            return lang
+                    return None
+
+                def _edge_src_lang(src_id: str) -> str | None:
+                    """Extract source language from edge src id (e.g. 'go:file.go:...' → 'go')."""
+                    if ":" in src_id:
+                        return src_id.split(":")[0]
+                    return None
+
+                def _is_cross_lang_chain(chain: dict) -> bool:
+                    """A chain is cross-language if src language differs from primitive catalog."""
+                    src_lang = _edge_src_lang(chain.get("io_edge_src", ""))
+                    prim = chain.get("primitive", "")
+                    catalog_lang = _prim_lang(prim)
+                    if src_lang and catalog_lang:
+                        # Normalize ambiguous catalogs
+                        if catalog_lang in ("go_or_python", "js_or_go"):
+                            return False  # Can't determine, don't count
+                        return src_lang != catalog_lang
+                    return False
+
+                # Count chains where edge source language differs from
+                # primitive catalog language (e.g. Go calling C stdio via cgo).
+                cross_lang_chains = 0
+                for boundary_entry in boundaries.values():
+                    for chain in boundary_entry.get("chains", []):
+                        if _is_cross_lang_chain(chain):
+                            cross_lang_chains += 1
+                if total_io_chains > 0:
+                    metrics.cross_language_io_pct = cross_lang_chains / total_io_chains * 100
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # Dataflow slice ratio — compare dataflow slice size to regular slice
+        regular_slice_path = os.path.join(repo_out, "slice.0.json")
+        dataflow_slice_path = os.path.join(repo_out, "slice.dataflow.0.json")
+        if os.path.exists(regular_slice_path) and os.path.exists(dataflow_slice_path):
+            try:
+                with open(regular_slice_path) as f:
+                    regular_nodes = len(json.load(f).get("feature", {}).get("nodes", []))
+                with open(dataflow_slice_path) as f:
+                    dataflow_nodes = len(json.load(f).get("feature", {}).get("nodes", []))
+                if regular_nodes > 0:
+                    metrics.dataflow_slice_ratio = dataflow_nodes / regular_nodes
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # Verify-claims metrics
+        claims_output_path = os.path.join(repo_out, "verify-claims.txt")
+        if os.path.exists(claims_output_path):
+            try:
+                claims_data = json.loads(open(claims_output_path).read())
+                verdicts_list = claims_data if isinstance(claims_data, list) else claims_data.get("verdicts", [])
+                metrics.claims_total = len(verdicts_list)
+                metrics.claims_confirmed = sum(1 for v in verdicts_list if v.get("verdict") == "confirmed")
+                metrics.claims_violated = sum(1 for v in verdicts_list if v.get("verdict") == "violated")
+                decided = metrics.claims_confirmed + metrics.claims_violated
+                if metrics.claims_total > 0:
+                    metrics.claim_verdict_pct = decided / metrics.claims_total * 100
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # Generate verdict
+        highlights = []
+        concerns = []
+
+        # Assess metrics
+        metric_assessments = [
+            ("avg_slice_nodes", metrics.avg_slice_nodes),
+            ("slice_coverage_pct", metrics.slice_coverage_pct),
+            ("limit_hit_frequency", metrics.limit_hit_frequency),
+            ("cross_file_ratio", metrics.cross_file_ratio),
+            ("tier1_pct", metrics.tier1_pct),
+            ("tier4_pct", metrics.tier4_pct),
+            ("centrality_gini", metrics.centrality_gini * 100),  # Convert to percentage
+            ("orphan_rate", metrics.orphan_rate),
+            ("io_tag_rate", metrics.io_tag_rate),
+            ("access_mode_coverage", metrics.access_mode_coverage),
+        ]
+        # Only assess dataflow_slice_ratio if a dataflow slice was produced
+        if os.path.exists(os.path.join(repo_out, "slice.dataflow.0.json")):
+            metric_assessments.append(("dataflow_slice_ratio", metrics.dataflow_slice_ratio * 100))
+        # Only assess cross_language_io_pct for genuinely polyglot repos.
+        # Requires the second-most-common language to have >= 5% of nodes.
+        # This prevents false WARNs on repos that are 99% one language with
+        # incidental build/config files in another (e.g., Swift + 1% C headers).
+        lang_count = {}
+        for n in nodes:
+            lang = n.get("language", "")
+            if lang:
+                lang_count[lang] = lang_count.get(lang, 0) + 1
+        if (is_meaningfully_polyglot(lang_count, len(nodes))
+                and metrics.io_boundary_types_found > 0):
+            metric_assessments.append(("cross_language_io_pct", metrics.cross_language_io_pct))
+
+        verdict_status = "GOOD"
+        for metric_name, value in metric_assessments:
+            status, msg = assess_metric(
+                metric_name, value,
+                total_nodes=metrics.total_nodes,
+                access_mode_coverage=metrics.access_mode_coverage,
+            )
+            if status == "FAIL":
+                verdict_status = "FAIL"
+                if msg:
+                    concerns.append(msg)
+            elif status == "WARN":
+                if verdict_status == "GOOD":
+                    verdict_status = "WARN"
+                if msg:
+                    concerns.append(msg)
+
+        # Add highlights
+        if metrics.total_edges > 0:
+            highlights.append(f"Graph: {metrics.total_nodes} nodes, {metrics.total_edges} edges")
+        if metrics.tier1_pct > 0:
+            highlights.append(f"Supply chain: {metrics.tier1_pct:.0f}% tier1 (first-party)")
+        if metrics.entrypoint_count > 0:
+            highlights.append(f"Found {metrics.entrypoint_count} entrypoints")
+
+        verdicts.append(RepoVerdict(
+            repo_name=repo_name,
+            verdict=verdict_status,
+            highlights=highlights,
+            concerns=concerns,
+            metrics=asdict(metrics),
+        ))
+
+        print(f"  Verdict: {verdict_status}")
+        for h in highlights[:2]:
+            print(f"    + {h}")
+        for c in concerns[:2]:
+            print(f"    - {c}")
+        print()
+
+    return verdicts
+
+
+def cmd_diagnose(args):
+    """Diagnose issues and generate quality metrics report.
+
+    Iterates over all cohort output directories in the session, diagnosing
+    each one and producing per-cohort reports plus a combined summary.
+    When only one cohort exists, the behavior is identical to the original
+    single-cohort mode.
+    """
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found.", file=sys.stderr)
+        return 1
+
+    # Discover cohort output directories
+    out_base = os.path.join(workdir, "out")
+    if not os.path.isdir(out_base):
+        print(f"Error: No output found at {out_base}. Run `bakeoff-deep run` first.", file=sys.stderr)
+        return 1
+
+    all_cohort_dirs = sorted(
+        d for d in os.listdir(out_base)
+        if d.startswith("cohort-") and os.path.isdir(os.path.join(out_base, d))
+    )
+
+    if not all_cohort_dirs:
+        print("Error: No cohort output directories found.", file=sys.stderr)
+        return 1
+
+    # --all / --some N: diagnose multiple cohorts; default: latest only
+    if getattr(args, "all", False):
+        cohort_dirs = all_cohort_dirs
+        print(f"Diagnosing all {len(cohort_dirs)} cohort(s)")
+    elif getattr(args, "some", None):
+        cohort_dirs = all_cohort_dirs[-args.some:]
+        print(f"Diagnosing latest {len(cohort_dirs)} cohort(s)")
+    else:
+        cohort_dirs = [all_cohort_dirs[-1]]
+        if len(all_cohort_dirs) > 1:
+            print(f"Diagnosing latest cohort only ({cohort_dirs[0]}). Use --all for all {len(all_cohort_dirs)} cohorts.")
+    print()
+
+    all_verdicts = []
+
+    for cohort_dir_name in cohort_dirs:
+        cohort_path = os.path.join(out_base, cohort_dir_name)
+        # Find the latest iteration for this cohort
+        iter_dirs = sorted(
+            d for d in os.listdir(cohort_path)
+            if d.startswith("iter-") and os.path.isdir(os.path.join(cohort_path, d))
+        )
+        if not iter_dirs:
+            continue
+
+        latest_iter = iter_dirs[-1]
+        out_dir = os.path.join(cohort_path, latest_iter)
+        diag_dir = os.path.join(workdir, "diag", cohort_dir_name, latest_iter)
+
+        # Discover repos from the output directory (list subdirs containing hg.json)
+        repo_names = sorted(
+            d for d in os.listdir(out_dir)
+            if os.path.isdir(os.path.join(out_dir, d))
+            and _has_hg_json(os.path.join(out_dir, d))
+        )
+        # Also include repos that failed (no hg.json but have a directory)
+        all_repo_dirs = sorted(
+            d for d in os.listdir(out_dir)
+            if os.path.isdir(os.path.join(out_dir, d))
+        )
+        repo_names = all_repo_dirs if all_repo_dirs else repo_names
+
+        if not repo_names:
+            continue
+
+        print(f"Diagnosing: {out_dir}")
+        print(f"Output: {diag_dir}")
+        print()
+
+        verdicts = _diagnose_cohort(workdir, out_dir, diag_dir, repo_names)
+        all_verdicts.extend(verdicts)
+
+        # Write per-cohort YAML report
+        import yaml
+        report = {
+            "session_id": state.session_id,
+            "cohort": cohort_dir_name,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "repos": [asdict(v) for v in verdicts],
+        }
+
+        report_path = os.path.join(diag_dir, "report.yaml")
+        with open(report_path, "w") as f:
+            yaml.dump(report, f, default_flow_style=False, sort_keys=False)
+
+    # Update state with all verdicts and reflect status
+    state.verdicts = all_verdicts
+    state.reflect_statuses = scan_reflect_statuses(workdir)
+    save_state(state)
+
+    # Combined summary
+    good_count = sum(1 for v in all_verdicts if v.verdict == "GOOD")
+    warn_count = sum(1 for v in all_verdicts if v.verdict == "WARN")
+    fail_count = sum(1 for v in all_verdicts if v.verdict == "FAIL")
+
+    print("=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    print(f"  Cohorts: {len(cohort_dirs)}  Repos: {len(all_verdicts)}")
+    print(f"  GOOD: {good_count}  WARN: {warn_count}  FAIL: {fail_count}")
+    print()
+    print("Next: Run `bakeoff-deep-reflect` for developer-perspective assessment")
+    return 0
+
+
+def cmd_compress(args):
+    """Compress hg.json files to hg.json.gz to reclaim disk space.
+
+    Scans all cohort output directories for hg.json files where derived
+    artifacts (entries.txt, symbols.txt, routes.txt) exist and have been
+    around for at least 8 hours. Qualifying hg.json files are gzipped
+    in-place (hg.json -> hg.json.gz), typically achieving 5-10x compression.
+
+    All code that reads hg.json uses _find_hg_json/_open_hg_json, so
+    compressed files are transparently readable by diagnose, run, etc.
+    """
+    workdir = resolve_workdir(getattr(args, "workdir", None))
+    if workdir is None:
+        print("Error: No active session found.", file=sys.stderr)
+        return 1
+
+    dry_run = getattr(args, "dry_run", False)
+    print(f"Session: {workdir}")
+    if dry_run:
+        print("DRY RUN — no files will be modified")
+    print()
+
+    out_base = os.path.join(workdir, "out")
+    if not os.path.isdir(out_base):
+        print("No output directories found.")
+        return 0
+
+    compressed_count = 0
+    skipped_count = 0
+    total_saved = 0
+
+    for cohort_dir in sorted(os.listdir(out_base)):
+        cohort_path = os.path.join(out_base, cohort_dir)
+        if not os.path.isdir(cohort_path):
+            continue
+
+        for iter_dir in sorted(os.listdir(cohort_path)):
+            iter_path = os.path.join(cohort_path, iter_dir)
+            if not iter_dir.startswith("iter-") or not os.path.isdir(iter_path):
+                continue
+
+            for repo_name in sorted(os.listdir(iter_path)):
+                repo_out = os.path.join(iter_path, repo_name)
+                if not os.path.isdir(repo_out):
+                    continue
+
+                if _should_compress_repo(repo_out):
+                    hg_path = os.path.join(repo_out, "hg.json")
+                    original_size = os.path.getsize(hg_path)
+
+                    if dry_run:
+                        print(f"  Would compress: {cohort_dir}/{iter_dir}/{repo_name}"
+                              f" ({original_size / 1024 / 1024:.1f} MB)")
+                        compressed_count += 1
+                        total_saved += original_size  # approximate
+                    else:
+                        _compress_hg_json(hg_path)
+                        gz_path = hg_path + ".gz"
+                        gz_size = os.path.getsize(gz_path)
+                        saved = original_size - gz_size
+                        total_saved += saved
+                        compressed_count += 1
+                        ratio = original_size / gz_size if gz_size > 0 else 0
+                        print(f"  Compressed: {cohort_dir}/{iter_dir}/{repo_name}"
+                              f" ({original_size / 1024 / 1024:.1f} MB → "
+                              f"{gz_size / 1024 / 1024:.1f} MB, {ratio:.1f}x)")
+                else:
+                    skipped_count += 1
+
+    print()
+    if compressed_count == 0:
+        print("No eligible hg.json files found (need derived artifacts 8+ hours old).")
+    else:
+        verb = "Would compress" if dry_run else "Compressed"
+        print(f"{verb}: {compressed_count} file(s), "
+              f"~{total_saved / 1024 / 1024:.1f} MB saved")
+    if skipped_count > 0:
+        print(f"Skipped: {skipped_count} (already compressed, too recent, or no derived artifacts)")
+
+    return 0
+
+
+def cmd_status(args):
+    """Show comprehensive feature bakeoff session status.
+
+    Displays session metadata, per-cohort breakdown (output, diagnostics,
+    and LLM assessment status), and overall verdict summary. Designed so
+    agents and humans can quickly determine what has been done and what
+    remains in a session.
+    """
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found.", file=sys.stderr)
+        return 1
+
+    hash_display = state.hypergumbo_code_hash[:12] + "..." if state.hypergumbo_code_hash else "(not recorded)"
+    print(f"Feature Bakeoff Session: {state.session_id}")
+    print(f"  Pool:      {state.pool_path}")
+    print(f"  Workdir:   {state.workdir}")
+    print(f"  Created:   {state.created_at}")
+    print(f"  Code hash: {hash_display}")
+    print()
+
+    # --- Per-cohort breakdown ---
+    out_dir = os.path.join(workdir, "out")
+    diag_dir = os.path.join(workdir, "diag")
+    reflect_dir = os.path.join(workdir, "reflect")
+
+    cohort_dirs = sorted(glob.glob(os.path.join(out_dir, "cohort-*"))) if os.path.isdir(out_dir) else []
+
+    if cohort_dirs:
+        print(f"{'Cohort':<10} {'Repos':<6} {'Output':<8} {'Diagnose':<10} {'Reflect':<9} {'Aggregate':<10}")
+        print("-" * 60)
+        total_repos = 0
+        for cd in cohort_dirs:
+            cohort_name = os.path.basename(cd)
+            # Find latest iteration
+            iter_dirs = sorted(glob.glob(os.path.join(cd, "iter-*")))
+            if not iter_dirs:
+                continue
+            latest_iter = iter_dirs[-1]
+            iter_name = os.path.basename(latest_iter)
+            repos = [d for d in os.listdir(latest_iter)
+                     if os.path.isdir(os.path.join(latest_iter, d))]
+            total_repos += len(repos)
+
+            # Check diagnose
+            diag_report = os.path.join(diag_dir, cohort_name, iter_name, "report.yaml")
+            has_diag = "done" if os.path.exists(diag_report) else "--"
+
+            # Check reflect (prompts + assessments)
+            reflect_iter = os.path.join(reflect_dir, cohort_name, iter_name)
+            if os.path.isdir(reflect_iter):
+                prompts = glob.glob(os.path.join(reflect_iter, "*.prompt.md"))
+                assessments = glob.glob(os.path.join(reflect_iter, "*.assessment.yaml"))
+                if assessments:
+                    has_reflect = f"{len(assessments)}/{len(repos)}"
+                elif prompts:
+                    has_reflect = "prompts"
+                else:
+                    has_reflect = "--"
+                summary_file = os.path.join(reflect_iter, "summary.yaml")
+                has_aggregate = "done" if os.path.exists(summary_file) else "--"
+            else:
+                has_reflect = "--"
+                has_aggregate = "--"
+
+            print(f"{cohort_name:<10} {len(repos):<6} done     {has_diag:<10} {has_reflect:<9} {has_aggregate:<10}")
+
+        print()
+        print(f"Total repos analyzed: {total_repos}")
+    else:
+        print("No cohort outputs found.")
+
+    # --- Overall verdict summary (from state.json) ---
+    if state.verdicts:
+        good = sum(1 for v in state.verdicts if v.verdict == "GOOD")
+        warn = sum(1 for v in state.verdicts if v.verdict == "WARN")
+        fail = sum(1 for v in state.verdicts if v.verdict == "FAIL")
+        print()
+        print(f"Latest verdicts (cohort {state.cohort_number}): {good} GOOD, {warn} WARN, {fail} FAIL")
+        for v in state.verdicts:
+            if v.verdict in ("FAIL", "WARN") and v.concerns:
+                print(f"  {v.repo_name} ({v.verdict}): {v.concerns[0]}")
+
+    # --- Overall LLM assessment summary ---
+    overall_summary = os.path.join(reflect_dir, "overall-summary.yaml")
+    if os.path.exists(overall_summary):
+        try:
+            import yaml
+            with open(overall_summary) as f:
+                summary = yaml.safe_load(f)
+            verdicts_dict = summary.get("verdicts", {})
+            if verdicts_dict:
+                print()
+                parts = [f"{k}: {v}" for k, v in verdicts_dict.items()]
+                print(f"LLM Assessment: {', '.join(parts)}")
+            scores = summary.get("score_statistics", {})
+            if scores:
+                mean_overall = scores.get("overall_mean")
+                if mean_overall is not None:
+                    print(f"  Mean score: {mean_overall:.1f}/100")
+        except Exception:
+            pass
+
+    # --- Unaggregated assessment check ---
+    if cohort_dirs and os.path.isdir(reflect_dir):
+        unagg_count = 0
+        for cd in cohort_dirs:
+            cohort_name = os.path.basename(cd)
+            iter_dirs = sorted(glob.glob(os.path.join(cd, "iter-*")))
+            if not iter_dirs:
+                continue
+            iter_name = os.path.basename(iter_dirs[-1])
+            reflect_iter = os.path.join(reflect_dir, cohort_name, iter_name)
+            if os.path.isdir(reflect_iter):
+                has_assessments = glob.glob(
+                    os.path.join(reflect_iter, "*.assessment.yaml"))
+                summary_file = os.path.join(reflect_iter, "summary.yaml")
+                if has_assessments and not os.path.exists(summary_file):
+                    unagg_count += 1
+        if unagg_count > 0:
+            print()
+            print(f"  {unagg_count} cohort(s) have assessments but no"
+                  f" summary.yaml.")
+            print("  Run: ./scripts/bakeoff-deep-reflect aggregate")
+
+    print()
+    print(f"Current cohort: #{state.cohort_number}, iteration: {state.iteration}")
+    print(f"  Repos: {', '.join(state.current_cohort)}")
+    print(f"Tested repos total: {len(state.tested_repos)}")
+
+    return 0
+
+
+def cmd_active(args):
+    """Print the resolved active session path and convergence status.
+
+    Machine-friendly output for integration with stop hooks and other
+    tooling. Prints one line per field, key=value format. Returns exit
+    code 1 if no session found.
+    """
+    workdir = resolve_workdir(args.workdir)
+    state = load_state(workdir)
+
+    if not state:
+        print("active=false", file=sys.stderr)
+        return 1
+
+    print(f"workdir={workdir}")
+    print(f"session_id={state.session_id}")
+    print(f"cohort_number={state.cohort_number}")
+    print(f"iteration={state.iteration}")
+    print(f"code_hash={state.hypergumbo_code_hash}")
+
+    # Compute convergence from verdicts
+    if state.verdicts:
+        good = sum(1 for v in state.verdicts if v.verdict == "GOOD")
+        warn = sum(1 for v in state.verdicts if v.verdict == "WARN")
+        fail = sum(1 for v in state.verdicts if v.verdict == "FAIL")
+        if fail == 0 and warn == 0:
+            print(f"convergence=CONVERGED good={good}")
+        else:
+            print(f"convergence=NEEDS_WORK good={good} warn={warn} fail={fail}")
+    else:
+        print("convergence=UNKNOWN")
+
+    return 0
+
+
+def _collect_diag_metrics(session_dir):
+    """Collect per-repo metrics from all diagnose reports in a session.
+
+    Returns dict mapping repo_name → {metric_name: value, verdict: str}.
+    Scans all cohorts and iterations, taking the latest iteration per cohort.
+    """
+    import yaml
+    diag_dir = os.path.join(session_dir, "diag")
+    if not os.path.isdir(diag_dir):
+        return {}
+
+    repo_metrics = {}
+    for cohort_dir in sorted(glob.glob(os.path.join(diag_dir, "cohort-*"))):
+        iter_dirs = sorted(glob.glob(os.path.join(cohort_dir, "iter-*")))
+        if not iter_dirs:
+            continue
+        report_path = os.path.join(iter_dirs[-1], "report.yaml")
+        if not os.path.exists(report_path):
+            continue
+        try:
+            with open(report_path) as f:
+                report = yaml.safe_load(f)
+            for repo in report.get("repos", []):
+                name = repo.get("repo_name", "")
+                if name:
+                    repo_metrics[name] = {
+                        "verdict": repo.get("verdict", "?"),
+                        **repo.get("metrics", {}),
+                    }
+        except Exception:
+            continue
+    return repo_metrics
+
+
+def _collect_reflect_scores(session_dir):
+    """Collect per-repo LLM assessment scores from reflect directory.
+
+    Returns dict mapping repo_name → {refactoring, new_feature,
+    understanding, overall_score}. Handles both numeric and ternary formats.
+    """
+    import yaml
+    reflect_dir = os.path.join(session_dir, "reflect")
+    if not os.path.isdir(reflect_dir):
+        return {}
+
+    repo_scores = {}
+    for cohort_dir in sorted(glob.glob(os.path.join(reflect_dir, "cohort-*"))):
+        iter_dirs = sorted(glob.glob(os.path.join(cohort_dir, "iter-*")))
+        if not iter_dirs:
+            continue
+        # Check both old format (*.assessment.yaml) and new format (*.yaml, excluding summary/report)
+        yaml_files = glob.glob(os.path.join(iter_dirs[-1], "*.assessment.yaml"))
+        yaml_files += [f for f in glob.glob(os.path.join(iter_dirs[-1], "*.yaml"))
+                       if not f.endswith(("summary.yaml", "report.yaml", ".assessment.yaml"))]
+        for assessment_path in yaml_files:
+            try:
+                with open(assessment_path) as f:
+                    data = yaml.safe_load(f)
+                # Numeric format: scores.refactoring, scores.new_feature, etc.
+                if "scores" in data and isinstance(data["scores"], dict):
+                    name = data.get("repo", os.path.basename(assessment_path).replace(".assessment.yaml", ""))
+                    repo_scores[name] = {
+                        "overall_score": data.get("overall_score"),
+                        **data["scores"],
+                    }
+                # Old format: developer_assessment with task_scores
+                elif "developer_assessment" in data:
+                    da = data["developer_assessment"]
+                    name = da.get("repo", os.path.basename(assessment_path).replace(".assessment.yaml", ""))
+                    ts = da.get("task_scores", {})
+                    if ts:
+                        r_score = ts.get("refactoring_score")
+                        n_score = ts.get("new_feature_score")
+                        u_score = ts.get("understanding_score")
+                        numeric = [s for s in (r_score, n_score, u_score) if s is not None]
+                        overall = sum(numeric) / len(numeric) if numeric else None
+                        repo_scores[name] = {
+                            "overall_score": ts.get("overall_mean", overall),
+                            "refactoring": r_score,
+                            "new_feature": n_score,
+                            "understanding": u_score,
+                        }
+            except Exception:
+                continue
+    return repo_scores
+
+
+def cmd_compare(args):
+    """Compare two bakeoff sessions side-by-side.
+
+    Shows per-repo metric deltas, verdict changes, and LLM score
+    differences for repos common to both sessions. Useful for measuring
+    the impact of hypergumbo code changes on analysis quality.
+    """
+    session_a = args.session_a
+    session_b = args.session_b
+
+    # Resolve session paths
+    base_dir = os.path.expanduser("~/hypergumbo_lab_notebook/bakeoff_artifacts")
+    for prefix in ("", base_dir + "/"):
+        if os.path.isdir(prefix + session_a):
+            session_a = prefix + session_a
+            break
+    for prefix in ("", base_dir + "/"):
+        if os.path.isdir(prefix + session_b):
+            session_b = prefix + session_b
+            break
+
+    # Handle nested session dirs (e.g., deep-postfix-validation/deep-YYYYMMDD-HHMMSS)
+    for sess_var in ("a", "b"):
+        sess_path = session_a if sess_var == "a" else session_b
+        state_path = os.path.join(sess_path, "state.json")
+        if not os.path.exists(state_path):
+            # Try to find state.json in subdirectories (up to 3 levels)
+            candidates = sorted(glob.glob(os.path.join(sess_path, "**", "state.json"), recursive=True))
+            if candidates:
+                resolved = os.path.dirname(candidates[-1])
+                if sess_var == "a":
+                    session_a = resolved
+                else:
+                    session_b = resolved
+
+    state_a = load_state(session_a)
+    state_b = load_state(session_b)
+
+    if not state_a:
+        print(f"Error: No session found at {session_a}", file=sys.stderr)
+        return 1
+    if not state_b:
+        print(f"Error: No session found at {session_b}", file=sys.stderr)
+        return 1
+
+    hash_a = state_a.hypergumbo_code_hash[:12] if state_a.hypergumbo_code_hash else "?"
+    hash_b = state_b.hypergumbo_code_hash[:12] if state_b.hypergumbo_code_hash else "?"
+    same_code = "same" if hash_a == hash_b and hash_a != "?" else "different" if hash_a != "?" and hash_b != "?" else "unknown"
+
+    print(f"Session A: {os.path.basename(session_a)} (hash: {hash_a})")
+    print(f"Session B: {os.path.basename(session_b)} (hash: {hash_b})")
+    print(f"Code: {same_code}")
+    print()
+
+    # Collect metrics
+    metrics_a = _collect_diag_metrics(session_a)
+    metrics_b = _collect_diag_metrics(session_b)
+    scores_a = _collect_reflect_scores(session_a)
+    scores_b = _collect_reflect_scores(session_b)
+
+    common_repos = sorted(set(metrics_a.keys()) & set(metrics_b.keys()))
+    only_a = sorted(set(metrics_a.keys()) - set(metrics_b.keys()))
+    only_b = sorted(set(metrics_b.keys()) - set(metrics_a.keys()))
+
+    if not common_repos:
+        print("No common repos between sessions.")
+        if only_a:
+            print(f"Only in A: {', '.join(only_a)}")
+        if only_b:
+            print(f"Only in B: {', '.join(only_b)}")
+        return 0
+
+    # Key metrics to compare
+    key_metrics = ["orphan_rate", "avg_slice_nodes", "cross_file_ratio", "centrality_gini"]
+
+    # Print header
+    header = f"{'Repo':<25} {'Verdict':<12}"
+    for m in key_metrics:
+        short = m.replace("_rate", "").replace("_nodes", "").replace("_ratio", "R").replace("_gini", "")
+        header += f" {short:>10}"
+    if any(r in scores_a or r in scores_b for r in common_repos):
+        header += f" {'LLM':>6}"
+    print(header)
+    print("-" * len(header))
+
+    # Aggregate deltas
+    metric_deltas = {m: [] for m in key_metrics}
+    score_deltas = []
+
+    for repo in common_repos:
+        ma = metrics_a.get(repo, {})
+        mb = metrics_b.get(repo, {})
+        va = ma.get("verdict", "?")
+        vb = mb.get("verdict", "?")
+        verdict_str = f"{va}->{vb}" if va != vb else va
+
+        row = f"{repo:<25} {verdict_str:<12}"
+        for m in key_metrics:
+            val_a = ma.get(m)
+            val_b = mb.get(m)
+            if val_a is not None and val_b is not None:
+                delta = val_b - val_a
+                metric_deltas[m].append(delta)
+                sign = "+" if delta > 0 else ""
+                row += f" {sign}{delta:>9.1f}"
+            else:
+                row += f" {'--':>10}"
+
+        # LLM score delta
+        sa = scores_a.get(repo, {}).get("overall_score")
+        sb = scores_b.get(repo, {}).get("overall_score")
+        if sa is not None and sb is not None:
+            delta = sb - sa
+            score_deltas.append(delta)
+            sign = "+" if delta > 0 else ""
+            row += f" {sign}{delta:>5.1f}"
+        elif any(r in scores_a or r in scores_b for r in common_repos):
+            row += f" {'--':>6}"
+
+        print(row)
+
+    # Aggregate summary
+    print()
+    print("Aggregate deltas (B - A, mean):")
+    for m in key_metrics:
+        if metric_deltas[m]:
+            mean_d = sum(metric_deltas[m]) / len(metric_deltas[m])
+            sign = "+" if mean_d > 0 else ""
+            print(f"  {m}: {sign}{mean_d:.2f}")
+    if score_deltas:
+        mean_s = sum(score_deltas) / len(score_deltas)
+        sign = "+" if mean_s > 0 else ""
+        print(f"  LLM overall: {sign}{mean_s:.2f}")
+
+    if only_a:
+        print(f"\nOnly in A ({len(only_a)}): {', '.join(only_a)}")
+    if only_b:
+        print(f"\nOnly in B ({len(only_b)}): {', '.join(only_b)}")
+
+    return 0
+
+
+def cmd_cycle(args):
+    """Run full cycle: run + diagnose + reflect.
+
+    Runs feature analysis, generates diagnostic report, then generates
+    LLM assessment prompts via bakeoff-deep-reflect.  Use
+    --skip-reflect to run only run + diagnose (for fast iteration when
+    you plan to reflect manually later).
+    """
+    rc = cmd_run(args)
+    if rc != 0:
+        return rc
+    rc = cmd_diagnose(args)
+    if rc != 0:
+        return rc
+    if getattr(args, "skip_reflect", False):
+        return 0
+    # Run reflect as subprocess (separate script).
+    # Pass --all/--some through so batch cycles reflect on all cohorts,
+    # not just the latest.
+    workdir = resolve_workdir(getattr(args, "workdir", None))
+    reflect_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "bakeoff-deep-reflect")
+    cmd = [sys.executable, reflect_script, "reflect", "--workdir", workdir]
+    if getattr(args, "all", False):
+        cmd.append("--all")
+    elif getattr(args, "some", None):
+        cmd.extend(["--some", str(args.some)])
+    print(f"\n=== Running bakeoff-deep-reflect ===\n")
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        print("Warning: bakeoff-deep-reflect failed (non-fatal)", file=sys.stderr)
+    return 0
+
+
+def cmd_recommend(args):
+    """Show recommended repos for feature bakeoff testing."""
+    print("Recommended repos for feature-focused bakeoff:")
+    print()
+
+    by_lang = {}
+    for r in RECOMMENDED_REPOS:
+        lang = r["lang"]
+        by_lang.setdefault(lang, []).append(r)
+
+    for lang, repos in sorted(by_lang.items()):
+        print(f"  {lang.upper()}")
+        for r in repos:
+            print(f"    {r['name']:20s} {r['url']}")
+        print()
+
+    print("Clone these repos into your pool directory, then run:")
+    print("  bakeoff-deep init --pool <pool> --workdir <workdir>")
+    print("  bakeoff-deep cohort --min-size 20 --max-size 200")
+    return 0
+
+
+# =============================================================================
+# Main
+# =============================================================================
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Feature-focused hypergumbo bakeoff runner",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Command")
+
+    # init
+    p_init = subparsers.add_parser("init", help="Initialize feature bakeoff session")
+    p_init.add_argument("--pool", required=True, help="Path to repo pool")
+    p_init.add_argument("--workdir", help=f"Working directory for outputs (default: {DEFAULT_BAKEOFF_DIR})")
+    p_init.add_argument("--resume", action="store_true",
+                         help="Resume the most recent existing session instead of creating a new one")
+    p_init.add_argument("--force", action="store_true",
+                         help="(deprecated, now default behavior) Create a new session")
+
+    # cohort
+    p_cohort = subparsers.add_parser("cohort", help="Select next cohort (larger repos)")
+    p_cohort.add_argument("--count", type=int, help=f"Number of repos (default: {DEFAULT_COHORT_SIZE})")
+    p_cohort.add_argument("--min-size", type=int, help=f"Min repo size in MB (default: {DEFAULT_MIN_SIZE_MB})")
+    p_cohort.add_argument("--max-size", type=int, help=f"Max repo size in MB (default: {DEFAULT_MAX_SIZE_MB})")
+    p_cohort.add_argument("--repos", help="Comma-separated list of repo names to use (bypasses auto-selection)")
+    p_cohort.add_argument("--dry-run", action="store_true", dest="dry_run",
+                          help="Show what would be selected without saving (safe for scripting loops)")
+    p_cohort.add_argument("--workdir", help="Override workdir")
+
+    # run
+    p_run = subparsers.add_parser("run", help="Run feature battery on cohort")
+    p_run.add_argument("--workdir", help="Override workdir")
+    p_run.add_argument("--all", action="store_true",
+                        help="Run all cohorts that have metadata but no output yet (batch mode)")
+    p_run.add_argument("--some", type=int, metavar="N",
+                        help="Run up to N unanalyzed cohorts (like --all but capped)")
+
+    # diagnose
+    p_diag = subparsers.add_parser("diagnose", help="Generate quality metrics report")
+    p_diag.add_argument("--workdir", help="Override workdir")
+    p_diag.add_argument("--all", action="store_true", help="Diagnose all cohorts (default: latest only)")
+    p_diag.add_argument("--some", type=int, metavar="N",
+                        help="Diagnose up to N cohorts (latest N, like --all but capped)")
+
+    # status
+    p_status = subparsers.add_parser(
+        "status", help="Show session status",
+        description="Show per-cohort breakdown: output (run), diagnostics (diagnose), "
+                    "and LLM assessment (reflect) status. Also shows overall verdict "
+                    "summary and reflect_statuses. Use to see what's done and what remains.")
+    p_status.add_argument("--workdir", help="Override workdir")
+
+    # active (machine-friendly)
+    p_active = subparsers.add_parser(
+        "active", help="Print active session path and convergence (machine-friendly)",
+        description="Machine-friendly key=value output for stop hooks and automation. "
+                    "Prints: workdir, session name, total/completed cohorts, convergence "
+                    "status, and worst-repo details. Exit code 1 if no session found.")
+    p_active.add_argument("--workdir", help="Override workdir")
+
+    # compare
+    p_compare = subparsers.add_parser(
+        "compare", help="Compare two sessions side-by-side",
+        description="Side-by-side comparison of two bakeoff sessions. Shows per-repo "
+                    "metric deltas (node count, edge count, orphan rate, tier1%%, avg "
+                    "slice nodes), verdict changes, and LLM assessment score differences. "
+                    "Sessions can be full paths or directory names under bakeoff_artifacts/.")
+    p_compare.add_argument("session_a", help="First session (path or dir name under bakeoff_artifacts)")
+    p_compare.add_argument("session_b", help="Second session (path or dir name under bakeoff_artifacts)")
+
+    # cycle
+    p_cycle = subparsers.add_parser("cycle",
+                                    help="Run full cycle (run + diagnose + reflect)")
+    p_cycle.add_argument("--workdir", help="Override workdir")
+    p_cycle.add_argument("--skip-reflect", action="store_true", dest="skip_reflect",
+                        help="Skip the reflect step (run + diagnose only)")
+
+    # compress
+    p_compress = subparsers.add_parser("compress", help="Gzip hg.json files with old derived artifacts")
+    p_compress.add_argument("--workdir", help="Override workdir")
+    p_compress.add_argument("--dry-run", action="store_true", dest="dry_run",
+                            help="Show what would be compressed without actually compressing")
+
+    # recommend
+    subparsers.add_parser("recommend", help="Show recommended repos for testing")
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    commands = {
+        "init": cmd_init,
+        "cohort": cmd_cohort,
+        "run": cmd_run,
+        "diagnose": cmd_diagnose,
+        "compress": cmd_compress,
+        "status": cmd_status,
+        "active": cmd_active,
+        "compare": cmd_compare,
+        "cycle": cmd_cycle,
+        "recommend": cmd_recommend,
+    }
+
+    return commands[args.command](args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

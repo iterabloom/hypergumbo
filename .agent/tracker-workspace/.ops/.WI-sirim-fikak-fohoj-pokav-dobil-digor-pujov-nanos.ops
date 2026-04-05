@@ -39,3 +39,11 @@
   clock: 4  # f2fe
   nonce: f2fe  # f2fe
   message: "Fixed in PR #1721. Per-language demotion: only demote library_export entries when their own language has semantic entrypoints. Prevents minority-language main() from suppressing dominant-language exports."  # f2fe
+- op: update  # a7df
+  at: '2026-03-25T04:23:59Z'  # a7df
+  by: agent  # a7df
+  actor: jgstern_agent  # a7df
+  clock: 5  # a7df
+  nonce: a7df  # a7df
+  set:  # a7df
+    parent: INV-mahap-jazam-tojon-hakij-pipun-vurug-mokan-bubol  # a7df

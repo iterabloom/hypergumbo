@@ -35,3 +35,11 @@
   clock: 3  # 9243
   nonce: '9243'  # 9243
   message: "Fixed in PR #1516. Root cause: _extract_attribute_edges resolved built-in Rust attribute names (test, cfg, inline, etc.) against global_symbols, creating false decorated_by edges when user functions had matching names. Fix: _BUILTIN_RUST_ATTRIBUTES frozenset (45 entries) skips resolution for compiler-provided and common ecosystem attribute names."  # 9243
+- op: update  # 6d9b
+  at: '2026-03-25T04:23:56Z'  # 6d9b
+  by: agent  # 6d9b
+  actor: jgstern_agent  # 6d9b
+  clock: 4  # 6d9b
+  nonce: 6d9b  # 6d9b
+  set:  # 6d9b
+    parent: INV-nogas-vavob-dalok-fafuj-vimum-jumik-sadur-lomim  # 6d9b

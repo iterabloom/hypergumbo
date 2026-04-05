@@ -3159,12 +3159,14 @@ class TestVariableMethodCalls:
         )
         assert get_client_edge is not None, "Expected call edge for get_client"
 
-        # No annotation → no resolution
+        # No annotation → no type-resolved edge, but unresolved edge is emitted
         send_request_edge = next(
             (e for e in call_edges if "send_request" in e["dst"]),
             None
         )
-        assert send_request_edge is None, "Should NOT resolve stub.send_request() without annotation"
+        assert send_request_edge is not None, "Should emit unresolved edge for stub.send_request()"
+        assert "unresolved" in send_request_edge["dst"]
+        assert send_request_edge["confidence"] == 0.40
 
     def test_return_type_generic_not_tracked(self, tmp_path: Path) -> None:
         """Generic return types like Optional[X] are not tracked."""
@@ -3194,12 +3196,14 @@ class TestVariableMethodCalls:
         data = json.loads(out_path.read_text())
 
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
-        # Generic return type → no resolution for method call
+        # Generic return type → no type-resolved edge, but unresolved edge emitted
         send_request_edge = next(
             (e for e in call_edges if "send_request" in e["dst"]),
             None
         )
-        assert send_request_edge is None, "Generic return types should not enable type inference"
+        assert send_request_edge is not None, "Should emit unresolved edge for stub.send_request()"
+        assert "unresolved" in send_request_edge["dst"]
+        assert send_request_edge["confidence"] == 0.40
 
     def test_return_type_local_class(self, tmp_path: Path) -> None:
         """Return type resolved from same file as caller."""
@@ -3292,7 +3296,9 @@ class TestVariableMethodCalls:
             (e for e in call_edges if "process" in e["dst"]),
             None
         )
-        assert process_edge is None, "Unknown return type class should not resolve"
+        assert process_edge is not None, "Should emit unresolved edge for t.process()"
+        assert "unresolved" in process_edge["dst"]
+        assert process_edge["confidence"] == 0.40
 
     def test_module_level_module_qualified_call(self, tmp_path: Path) -> None:
         """Module-level code with module.func() calls should emit edges from <module> node."""
@@ -3363,7 +3369,7 @@ class TestVariableMethodCalls:
         assert method_edge is not None, "Expected call edge for process method"
 
     def test_unresolved_variable_method_call(self, tmp_path: Path) -> None:
-        """Unresolved variable method calls should not emit edges."""
+        """Unresolved variable method calls emit low-confidence edges."""
         main_file = tmp_path / "main.py"
         main_file.write_text(
             "def run(external_client):\n"
@@ -3375,12 +3381,15 @@ class TestVariableMethodCalls:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        # Should have no calls edges (method call can't be resolved)
+        # Should emit unresolved edge for the method call (enables IO/taint analysis)
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
-        assert len(call_edges) == 0, "Should not have calls edges for unresolved variable"
+        assert len(call_edges) == 1, "Should have 1 unresolved call edge"
+        assert "unknown_method" in call_edges[0]["dst"]
+        assert "unresolved" in call_edges[0]["dst"]
+        assert call_edges[0]["confidence"] == 0.40
 
     def test_unresolved_constructor_no_type_tracking(self, tmp_path: Path) -> None:
-        """Unresolved constructor calls should not track variable type."""
+        """Unresolved constructor calls with subsequent method calls emit edges."""
         main_file = tmp_path / "main.py"
         main_file.write_text(
             "def run():\n"
@@ -3393,10 +3402,12 @@ class TestVariableMethodCalls:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        # Should have no edges (neither instantiates nor calls)
+        # Should emit unresolved edge for the method call (enables IO/taint analysis)
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
         inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
-        assert len(call_edges) == 0, "Should not have calls edges for unresolved constructor"
+        unresolved_calls = [e for e in call_edges if "unresolved" in e["dst"]]
+        assert len(unresolved_calls) == 1, "Should have 1 unresolved call edge for do_something"
+        assert "do_something" in unresolved_calls[0]["dst"]
         assert len(inst_edges) == 0, "Should not have instantiates edges for unresolved constructor"
 
     def test_imported_class_method_call(self, tmp_path: Path) -> None:

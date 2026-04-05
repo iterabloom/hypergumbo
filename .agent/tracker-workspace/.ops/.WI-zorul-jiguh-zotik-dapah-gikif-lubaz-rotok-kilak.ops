@@ -1,0 +1,73 @@
+- op: create  # 6cc1
+  at: '2026-03-31T09:14:08Z'  # 6cc1
+  by: agent  # 6cc1
+  actor: jgstern_agent  # 6cc1
+  clock: 1  # 6cc1
+  nonce: 6cc1  # 6cc1
+  data:  # 6cc1
+    kind: work_item  # 6cc1
+    title: "SVG path detection in discussion message renderer"  # 6cc1
+    status: needs_human_review  # 6cc1
+    priority: 2  # 6cc1
+    parent: WI-dosos-nimoh-bikar-dujir-vadan-janib-rosoh-nanup  # 6cc1
+    tags:  # 6cc1
+    - adr-0020  # 6cc1
+    before: []  # 6cc1
+    duplicate_of: []  # 6cc1
+    not_duplicate_of: []  # 6cc1
+    pr_ref:  # 6cc1
+    description: "TUI discussion renderer detects paths ending in .svg that exist on disk within discussion message text. Convention: 'Fix the layout issue highlighted in .agent/screenshots/INV-foo-20260330-1422.svg'. Detected paths are passed to the rendering pipeline."  # 6cc1
+    fields: {}  # 6cc1
+- op: update  # 2e86
+  at: '2026-03-31T09:19:50Z'  # 2e86
+  by: agent  # 2e86
+  actor: jgstern_agent  # 2e86
+  clock: 2  # 2e86
+  nonce: '2e86'  # 2e86
+  set: {}  # 2e86
+  add:  # 2e86
+    before: [WI-kulul-zopup-labat-lanov-fuhas-tiguh-lilub-nuboj]  # 2e86
+- op: discuss  # 302b
+  at: '2026-03-31T09:28:21Z'  # 302b
+  by: agent  # 302b
+  actor: jgstern_agent  # 302b
+  clock: 3  # 302b
+  nonce: 302b  # 302b
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 302b
+- op: update  # 97ca
+  at: '2026-03-31T09:28:24Z'  # 97ca
+  by: agent  # 97ca
+  actor: jgstern_agent  # 97ca
+  clock: 4  # 97ca
+  nonce: 97ca  # 97ca
+  set:  # 97ca
+    status: todo_soft  # 97ca
+- op: update  # b426
+  at: '2026-03-31T12:19:17Z'  # b426
+  by: agent  # b426
+  actor: jgstern_agent  # b426
+  clock: 5  # b426
+  nonce: b426  # b426
+  set:  # b426
+    status: done  # b426
+- op: discuss  # 0376
+  at: '2026-03-31T12:19:17Z'  # 0376
+  by: agent  # 0376
+  actor: jgstern_agent  # 0376
+  clock: 6  # 0376
+  nonce: '0376'  # 0376
+  message: "PR pending (svg-path-detection branch). extract_svg_paths() finds .svg paths in text. filter_existing_svg_paths() checks disk. find_svg_paths_in_message() combines both."  # 0376
+- op: discuss  # 3ba9
+  at: '2026-04-01T00:15:53Z'  # 3ba9
+  by: human  # 3ba9
+  actor: jgstern  # 3ba9
+  clock: 7  # 3ba9
+  nonce: 3ba9  # 3ba9
+  message: "please provide the PR number or the commit id?"  # 3ba9
+- op: discuss  # 01f3
+  at: '2026-04-01T09:01:04Z'  # 01f3
+  by: agent  # 01f3
+  actor: jgstern_agent  # 01f3
+  clock: 8  # 01f3
+  nonce: 01f3  # 01f3
+  message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). SVG path detection in discussion message renderer was part of this commit. Pushed directly to dev."  # 01f3

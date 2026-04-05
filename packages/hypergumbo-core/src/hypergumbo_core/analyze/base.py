@@ -327,7 +327,11 @@ def make_route_stable_id(method: str, path: str) -> str:
     Returns:
         A hex-digest string that uniquely identifies the (method, path) pair.
     """
-    key = f"route:{method.upper()}:{path}"
+    # Normalize empty paths to "/" — empty strings from annotation extraction
+    # (e.g., @GetMapping("") or sub-resource locators without @Path) should
+    # hash identically to the root path (INV-nimik).
+    normalized = path if path else "/"
+    key = f"route:{method.upper()}:{normalized}"
     return hashlib.sha256(key.encode()).hexdigest()
 
 

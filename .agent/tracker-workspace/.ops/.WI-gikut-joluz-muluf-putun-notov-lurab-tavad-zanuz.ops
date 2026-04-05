@@ -1,0 +1,52 @@
+- op: create  # 1b93
+  at: '2026-04-03T04:00:16Z'  # 1b93
+  by: agent  # 1b93
+  actor: jgstern_agent  # 1b93
+  clock: 1  # 1b93
+  nonce: 1b93  # 1b93
+  data:  # 1b93
+    kind: work_item  # 1b93
+    title: "Redesign annotation label UX: numbered markers with text input"  # 1b93
+    status: todo_soft  # 1b93
+    priority: 2  # 1b93
+    parent:  # 1b93
+    tags:  # 1b93
+    - adr-0020  # 1b93
+    - tui  # 1b93
+    before: []  # 1b93
+    duplicate_of: []  # 1b93
+    not_duplicate_of: []  # 1b93
+    pr_ref:  # 1b93
+    description: "The current label workflow is broken. Raw keystroke capture via on_key does not work reliably in Textual (keys get intercepted by bindings), there is no visual feedback when the user clicks to place a label, typed text is not displayed, and the SVG font size is wrong (14px vs the actual 20px from the SVG).\n\nDesign:\n1. User presses L to enter label mode\n2. User clicks — a numbered marker (1, 2, 3...) appears at the click position on the canvas via _build_annotations_for_line\n3. The status bar is replaced by a Textual Input widget where the user types the label text\n4. Enter confirms — stores (marker_number, position, text) as the label annotation\n5. SVG rendering: numbered circle marker at the click position + a legend block below the annotations group mapping numbers to text, using the SVG font size extracted from the SVG (20px, not hardcoded 14px)\n6. The marker should be large enough to read (matching SVG font size)\n\nThe current on_key-based text capture, _label_text_buf, and _label_pending machinery should be replaced entirely with this Input-based approach.\n\nKey files:\n- packages/hypergumbo-tracker/src/hypergumbo_tracker/tui.py (AnnotationScreen: action_label_mode, on_mouse_down label branch, action_confirm label branch, on_key; _on_annotation_result SVG injection for LabelAnnotation)\n- packages/hypergumbo-tracker/src/hypergumbo_tracker/annotations.py (LabelAnnotation dataclass)\n- packages/hypergumbo-tracker/tests/test_tui_annotation.py (label-related tests)"  # 1b93
+    fields: {}  # 1b93
+- op: update  # f236
+  at: '2026-04-03T07:06:32Z'  # f236
+  by: human  # f236
+  actor: jgstern  # f236
+  clock: 2  # f236
+  nonce: f236  # f236
+  set:  # f236
+    parent: WI-dosos-nimoh-bikar-dujir-vadan-janib-rosoh-nanup  # f236
+- op: update  # aa56
+  at: '2026-04-03T07:08:17Z'  # aa56
+  by: human  # aa56
+  actor: jgstern  # aa56
+  clock: 3  # aa56
+  nonce: aa56  # aa56
+  set:  # aa56
+    parent: ''  # aa56
+- op: update  # 00bc
+  at: '2026-04-04T03:58:44Z'  # 00bc
+  by: agent  # 00bc
+  actor: jgstern_agent  # 00bc
+  clock: 4  # 00bc
+  nonce: 00bc  # 00bc
+  set:  # 00bc
+    status: done  # 00bc
+- op: discuss  # a832
+  at: '2026-04-04T03:58:44Z'  # a832
+  by: agent  # a832
+  actor: jgstern_agent  # a832
+  clock: 5  # a832
+  nonce: a832  # a832
+  message: "Fixed in PR #123. Replaced broken on_key raw keystroke capture with Textual Input widget. Added numbered markers, Input submit handling, and dynamic SVG font size."  # a832

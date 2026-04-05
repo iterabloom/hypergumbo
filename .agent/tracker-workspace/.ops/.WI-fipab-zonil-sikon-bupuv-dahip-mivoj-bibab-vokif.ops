@@ -47,3 +47,47 @@
   clock: 5  # f430
   nonce: f430  # f430
   message: "PlazaFlow bakeoff complete (48 repos). Cobra CLI detection confirmed as valid but low-impact gap. Recommend holding for future Go analyzer work."  # f430
+- op: update  # 61b4
+  at: '2026-03-25T07:39:31Z'  # 61b4
+  by: agent  # 61b4
+  actor: jgstern_agent  # 61b4
+  clock: 6  # 61b4
+  nonce: 61b4  # 61b4
+  set:  # 61b4
+    status: todo_soft  # 61b4
+- op: discuss  # 5aa1
+  at: '2026-03-25T07:39:31Z'  # 5aa1
+  by: agent  # 5aa1
+  actor: jgstern_agent  # 5aa1
+  clock: 7  # 5aa1
+  nonce: 5aa1  # 5aa1
+  message: "Approved. Depends on WI-hikug (Go method resolution)."  # 5aa1
+- op: update  # d0f0
+  at: '2026-03-26T21:48:39Z'  # d0f0
+  by: agent  # d0f0
+  actor: jgstern_agent  # d0f0
+  clock: 8  # d0f0
+  nonce: d0f0  # d0f0
+  set:  # d0f0
+    status: done  # d0f0
+- op: discuss  # 42b3
+  at: '2026-03-26T21:48:39Z'  # 42b3
+  by: agent  # 42b3
+  actor: jgstern_agent  # 42b3
+  clock: 9  # 42b3
+  nonce: 42b3  # 42b3
+  message: "AddCommand() usage context extraction implemented. Parent-child command relationships now captured via UsageContext records. PR pending. The remaining issue (Execute collision) was already addressed by WI-hikug (Go method resolution, closed)."  # 42b3
+- op: discuss  # c14b
+  at: '2026-03-30T15:06:33Z'  # c14b
+  by: human  # c14b
+  actor: jgstern  # c14b
+  clock: 10  # c14b
+  nonce: c14b  # c14b
+  message: "Please find the PR number"  # c14b
+- op: discuss  # 5efb
+  at: '2026-03-30T15:36:12Z'  # 5efb
+  by: agent  # 5efb
+  actor: jgstern_agent  # 5efb
+  clock: 11  # 5efb
+  nonce: 5efb  # 5efb
+  message: "PR #2603 (feat(go): detect Cobra AddCommand() for command tree structure, commit 8db756af)."  # 5efb

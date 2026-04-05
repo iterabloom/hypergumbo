@@ -1,0 +1,64 @@
+- op: create  # f270
+  at: '2026-03-31T09:05:36Z'  # f270
+  by: agent  # f270
+  actor: jgstern_agent  # f270
+  clock: 1  # f270
+  nonce: f270  # f270
+  data:  # f270
+    kind: work_item  # f270
+    title: "Part 1: TUI Screenshot Annotation Mode"  # f270
+    status: needs_human_review  # f270
+    priority: 2  # f270
+    parent: WI-torul-bapus-lulur-vivas-fozid-zujol-zidug-todug  # f270
+    tags:  # f270
+    - adr-0020  # f270
+    before: []  # f270
+    duplicate_of: []  # f270
+    not_duplicate_of: []  # f270
+    pr_ref:  # f270
+    description: "Textual-native annotation mode: keypress-triggered SVG screenshots, overlay widget for drawing rects/arrows/labels via mouse events, cell-to-SVG coordinate mapping, and vector element injection into SVG. No new dependencies required."  # f270
+    fields: {}  # f270
+- op: discuss  # b1ff
+  at: '2026-03-31T09:26:40Z'  # b1ff
+  by: agent  # b1ff
+  actor: jgstern_agent  # b1ff
+  clock: 2  # b1ff
+  nonce: b1ff  # b1ff
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # b1ff
+- op: update  # fb15
+  at: '2026-03-31T09:28:22Z'  # fb15
+  by: agent  # fb15
+  actor: jgstern_agent  # fb15
+  clock: 3  # fb15
+  nonce: fb15  # fb15
+  set:  # fb15
+    status: todo_soft  # fb15
+- op: update  # ac2d
+  at: '2026-04-02T10:23:18Z'  # ac2d
+  by: agent  # ac2d
+  actor: jgstern_agent  # ac2d
+  clock: 4  # ac2d
+  nonce: ac2d  # ac2d
+  set:  # ac2d
+    status: done  # ac2d
+- op: discuss  # 73bf
+  at: '2026-04-02T10:23:18Z'  # 73bf
+  by: agent  # 73bf
+  actor: jgstern_agent  # 73bf
+  clock: 5  # 73bf
+  nonce: 73bf  # 73bf
+  message: "Part 1 (TUI Screenshot Annotation Mode) implemented. AnnotationScreen modal with mouse rect drawing, label placement, undo, SVG injection. 29 tests at 100% coverage."  # 73bf
+- op: discuss  # 53f3
+  at: '2026-04-02T14:47:40Z'  # 53f3
+  by: human  # 53f3
+  actor: jgstern  # 53f3
+  clock: 6  # 53f3
+  nonce: 53f3  # 53f3
+  message: "PR numbers/ commit ids please?"  # 53f3
+- op: discuss  # 84db
+  at: '2026-04-03T05:05:57Z'  # 84db
+  by: agent  # 84db
+  actor: jgstern_agent  # 84db
+  clock: 7  # 84db
+  nonce: 84db  # 84db
+  message: "Primary commit: 9caf0e03 (feat(tui): annotation mode for screenshot markup (ADR-0020 Part 1)). Follow-up fixes for canvas rendering and SVG geometry: 2f0bee1c, de2e4ff7, 83b46ea3, 33265aed, 5108d0ce, 2d5e3c6b, e040a7e1. All merged to dev via auto-pr fast-forward."  # 84db

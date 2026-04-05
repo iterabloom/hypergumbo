@@ -7,7 +7,7 @@ Implemented
 
 ## Context
 
-The hypergumbo test suite has grown to 5700+ tests across 108 language analyzers. CI runs on resource-constrained runners (`codeberg-small-lazy`, limited to `-n 2` parallelism) are timing out or taking too long. We need faster feedback without:
+The hypergumbo test suite has grown to 5700+ tests across 108 language analyzers. CI runs on a self-hosted runner (limited to `-n 2` parallelism) were timing out or taking too long. We need faster feedback without:
 
 1. Abusing the CI compute allocation
 2. Compromising on 100% test coverage
@@ -207,8 +207,8 @@ fast-ci:
         STATUS_JSON=$(curl -s "$API_BASE/commits/$BASE_SHA/status")
 
         # Check only the aggregate job — it is the authoritative verdict.
-        # Individual jobs like test-core may fail due to Codeberg runner
-        # timeouts while their retries (on self-hosted) succeed.
+        # Individual jobs like test-core may fail due to runner
+        # timeouts while their retries succeed.
         RESULT=$(echo "$STATUS_JSON" | python3 -c '
         import json, sys, re
         d = json.load(sys.stdin)
@@ -278,8 +278,20 @@ fast-ci:
         done
 
     - name: Run affected tests
-      run: pytest $(cat .ci/affected-tests.txt) --cov=packages --cov-fail-under=100
+      run: pytest --rootdir=. $(cat .ci/affected-tests.txt) --cov=packages --cov-fail-under=100
 ```
+
+#### Pytest Rootdir Pinning
+
+**Invariant:** CI must invoke pytest with `--rootdir=.` to ensure the repo root is used regardless of which packages appear in the manifest.
+
+**Why:** Manifest paths are repo-root-relative (`packages/hypergumbo-tracker/tests/test_tui.py`). When all selected tests belong to a single package, pytest's rootdir detection algorithm finds that package's `pyproject.toml` and uses the package subdirectory as rootdir. The repo-root-relative paths then fail to resolve, producing `0 items collected`.
+
+Multi-package manifests avoid this by accident: the shared prefix (`packages/`) has no `pyproject.toml`, so pytest falls back to the repo root. Single-package PRs break silently.
+
+**Fix:** Add `--rootdir=.` to the CI pytest invocation. This is a one-line change in `ci.yml` that makes the behavior explicit rather than relying on pytest's heuristic.
+
+**Discovery:** 2026-04-02. Five consecutive CI failures on tracker-only PRs before the rootdir interaction was identified. Workaround was padding manifests with a cross-package test file — fragile and incorrect.
 
 #### Full Suite (Lazy, Singleton, Non-blocking)
 

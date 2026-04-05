@@ -1,0 +1,91 @@
+- op: create  # e05b
+  at: '2026-03-31T09:15:24Z'  # e05b
+  by: agent  # e05b
+  actor: jgstern_agent  # e05b
+  clock: 1  # e05b
+  nonce: e05b  # e05b
+  data:  # e05b
+    kind: work_item  # e05b
+    title: "SVG→PNG→ANSI rendering pipeline (cairosvg + Chafa + Rich)"  # e05b
+    status: needs_human_review  # e05b
+    priority: 2  # e05b
+    parent: WI-dosos-nimoh-bikar-dujir-vadan-janib-rosoh-nanup  # e05b
+    tags:  # e05b
+    - adr-0020  # e05b
+    before: []  # e05b
+    duplicate_of: []  # e05b
+    not_duplicate_of: []  # e05b
+    pr_ref:  # e05b
+    description: "Pipeline: SVG → PNG via cairosvg.svg2png() at controlled resolution (fit to panel width) → ANSI via Chafa (sized to panel width) → Rich Text via Text.from_ansi() → Textual widget inline in discussion entry. Both cairosvg and chafa are optional dependencies."  # e05b
+    fields: {}  # e05b
+- op: update  # f307
+  at: '2026-03-31T09:19:50Z'  # f307
+  by: agent  # f307
+  actor: jgstern_agent  # f307
+  clock: 2  # f307
+  nonce: f307  # f307
+  set: {}  # f307
+  add:  # f307
+    before: [WI-zufis-jodas-momag-pakob-dufan-nudof-sizub-ditif]  # f307
+- op: update  # c450
+  at: '2026-03-31T09:20:38Z'  # c450
+  by: agent  # c450
+  actor: jgstern_agent  # c450
+  clock: 3  # c450
+  nonce: c450  # c450
+  set: {}  # c450
+  add:  # c450
+    before: [WI-kubub-lupug-tiduk-tujit-najuj-bopug-guvul-mufum]  # c450
+- op: update  # 01f0
+  at: '2026-03-31T09:20:38Z'  # 01f0
+  by: agent  # 01f0
+  actor: jgstern_agent  # 01f0
+  clock: 4  # 01f0
+  nonce: 01f0  # 01f0
+  set: {}  # 01f0
+  add:  # 01f0
+    before: [WI-kivos-zopul-salim-najun-sipit-vutub-jisub-pukaz]  # 01f0
+- op: discuss  # e18c
+  at: '2026-03-31T09:28:22Z'  # e18c
+  by: agent  # e18c
+  actor: jgstern_agent  # e18c
+  clock: 5  # e18c
+  nonce: e18c  # e18c
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # e18c
+- op: update  # f214
+  at: '2026-03-31T09:28:24Z'  # f214
+  by: agent  # f214
+  actor: jgstern_agent  # f214
+  clock: 6  # f214
+  nonce: f214  # f214
+  set:  # f214
+    status: todo_soft  # f214
+- op: update  # c3e3
+  at: '2026-03-31T12:52:15Z'  # c3e3
+  by: agent  # c3e3
+  actor: jgstern_agent  # c3e3
+  clock: 7  # c3e3
+  nonce: c3e3  # c3e3
+  set:  # c3e3
+    status: done  # c3e3
+- op: discuss  # eae9
+  at: '2026-03-31T12:52:15Z'  # eae9
+  by: agent  # eae9
+  actor: jgstern_agent  # eae9
+  clock: 8  # eae9
+  nonce: eae9  # eae9
+  message: "Implemented in preview_pipeline.py (PR pending). render_svg_preview() with graceful degradation, PreviewCache, collapsed_placeholder()."  # eae9
+- op: discuss  # b86a
+  at: '2026-04-01T00:16:27Z'  # b86a
+  by: human  # b86a
+  actor: jgstern  # b86a
+  clock: 9  # b86a
+  nonce: b86a  # b86a
+  message: "please provide the PR number or the commit hash?"  # b86a
+- op: discuss  # cbad
+  at: '2026-04-01T09:01:20Z'  # cbad
+  by: agent  # cbad
+  actor: jgstern_agent  # cbad
+  clock: 10  # cbad
+  nonce: cbad  # cbad
+  message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). SVG→PNG→ANSI rendering pipeline (cairosvg + Chafa + Rich) was part of this commit. Pushed directly to dev."  # cbad

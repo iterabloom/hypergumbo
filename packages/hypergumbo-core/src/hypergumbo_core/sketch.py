@@ -5606,6 +5606,7 @@ def generate_sketch(
     cached_results: Optional[dict] = None,
     with_source: bool = False,
     stats_out: Optional[SketchStats] = None,
+    require_sections: Optional[List[str]] = None,
 ) -> str:
     """Generate a token-budgeted Markdown sketch of the repository.
 
@@ -5656,6 +5657,13 @@ def generate_sketch(
             representativeness metrics. Tracks what fraction of the codebase's
             "importance" is captured in each section. Used for the "How
             Representative Is This Sketch?" table.
+        require_sections: If provided, a list of section names that must
+            appear in the output regardless of budget pressure. The budget
+            threshold for these sections is lowered to 0, ensuring they are
+            included even when the token budget is tight. Valid names:
+            "Entry Points", "Data Models", "Source Files", "Key Symbols",
+            "Additional Files", "Source Files Content",
+            "Additional Files Content".
 
     Returns:
         Markdown-formatted sketch string.
@@ -5670,6 +5678,17 @@ def generate_sketch(
     def _log(msg: str) -> None:
         if verbose:  # pragma: no cover
             print(f"[sketch] {msg}", file=sys.stderr)
+
+    # Normalize require_sections into a set for O(1) lookup
+    _required: frozenset[str] = frozenset(require_sections or [])
+
+    def _section_ok(name: str, remaining: int, threshold: int = 50) -> bool:
+        """Check whether a section should be rendered.
+
+        If the section is in ``require_sections``, the threshold is 0.
+        """
+        effective_threshold = 0 if name in _required else threshold
+        return remaining > effective_threshold
 
     # Initialize progress reporter
     prog = SketchProgress()
@@ -5961,7 +5980,7 @@ def generate_sketch(
     entrypoint_files: set[str] = set()
     entrypoints: list[Entrypoint] = []
 
-    if remaining_tokens > 50 and symbols:
+    if _section_ok("Entry Points", remaining_tokens) and symbols:
         entrypoints = detect_entrypoints(symbols, edges)
         if entrypoints:  # pragma: no cover - requires framework patterns to detect entrypoints
             # Build symbol lookup for extracting file paths
@@ -6003,7 +6022,7 @@ def generate_sketch(
     # Section 5: Data Models (if we have analysis results and budget)
     # ADR-0005: Data Models come after Entry Points, before Source Files
     datamodels: list = []  # Initialize for structure tree update
-    if remaining_tokens > 50 and symbols:
+    if _section_ok("Data Models", remaining_tokens) and symbols:
         datamodels = detect_datamodels(symbols, edges)
         if datamodels:
             # Data Models get 20% of remaining budget (ADR-0005)
@@ -6070,7 +6089,7 @@ def generate_sketch(
 
     # Section 6: Source files (if we have budget >= 50 tokens remaining)
     # Files are now ordered by symbol importance density when scores available
-    if remaining_tokens > 50 and source_files:
+    if _section_ok("Source Files", remaining_tokens) and source_files:
         # ADR-0005: --with-source mode reduces file listing budget to prioritize code
         if with_source:
             # With source: shrink file listings to 10% to leave room for actual code
@@ -6184,7 +6203,7 @@ def generate_sketch(
     # These are files NOT in source_files, ordered by hybrid semantic + centrality
     prog.start_phase("embedding")
     additional_files_selected: list[Path] = []  # Track for Additional Files Content section
-    if remaining_tokens > 50:
+    if _section_ok("Additional Files", remaining_tokens):
         # ADR-0005: --with-source mode reduces Additional Files budget
         if with_source:
             # With source: shrink to 5% to leave room for actual code
@@ -6252,7 +6271,7 @@ def generate_sketch(
         current_tokens = estimate_tokens(current_sketch)
         remaining_tokens = max_tokens - current_tokens
 
-        if remaining_tokens > 100:  # Need meaningful space for source content
+        if _section_ok("Source Files Content", remaining_tokens, 100):
             source_content_lines = [_section_header("Source Files Content", exclude_tests), ""]
 
             # Order source files by density if available
@@ -6355,7 +6374,7 @@ def generate_sketch(
         current_tokens = estimate_tokens(current_sketch)
         remaining_tokens = max_tokens - current_tokens
 
-        if remaining_tokens > 100:  # Need meaningful space for content
+        if _section_ok("Additional Files Content", remaining_tokens, 100):
             # Use cached centrality scores if available
             cached_centrality = None
             if (

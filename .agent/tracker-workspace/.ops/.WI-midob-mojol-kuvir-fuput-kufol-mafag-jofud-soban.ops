@@ -1,0 +1,44 @@
+- op: create  # 34e5
+  at: '2026-04-03T08:25:08Z'  # 34e5
+  by: agent  # 34e5
+  actor: jgstern_agent  # 34e5
+  clock: 1  # 34e5
+  nonce: '34e5'  # 34e5
+  data:  # 34e5
+    kind: work_item  # 34e5
+    title: "Tor onion service: torrc configuration and documentation"  # 34e5
+    status: todo_soft  # 34e5
+    priority: 3  # 34e5
+    parent:  # 34e5
+    tags:  # 34e5
+    - adr-0019  # 34e5
+    - transport  # 34e5
+    before: []  # 34e5
+    duplicate_of: []  # 34e5
+    not_duplicate_of: []  # 34e5
+    pr_ref:  # 34e5
+    description: "Document torrc config for publishing v3 onion service forwarding to htrac serve local listener (127.0.0.1 or Unix socket). Enable v3 client authorization (x25519 keypair). Outbound-only — no inbound ports, no public IP, no DNS. See docs/adr/0019-remote-access-transport.md §Transport: Tor."  # 34e5
+    fields: {}  # 34e5
+- op: update  # 2ef1
+  at: '2026-04-03T08:26:56Z'  # 2ef1
+  by: agent  # 2ef1
+  actor: jgstern_agent  # 2ef1
+  clock: 2  # 2ef1
+  nonce: 2ef1  # 2ef1
+  set:  # 2ef1
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 2ef1
+- op: update  # 9ad3
+  at: '2026-04-03T20:35:27Z'  # 9ad3
+  by: agent  # 9ad3
+  actor: jgstern_agent  # 9ad3
+  clock: 3  # 9ad3
+  nonce: 9ad3  # 9ad3
+  set:  # 9ad3
+    status: done  # 9ad3
+- op: discuss  # d726
+  at: '2026-04-03T20:35:27Z'  # d726
+  by: agent  # d726
+  actor: jgstern_agent  # d726
+  clock: 4  # d726
+  nonce: d726  # d726
+  message: "Implemented in PR #109. torrc.example with v3 onion service config and x25519 client authorization documentation."  # d726

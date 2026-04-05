@@ -167,7 +167,7 @@ deletions:
 
 #### Shared classification machinery
 
-A single module (`dataflow.py`, estimated ~200-300 lines) provides:
+A single module (`dataflow.py`, ~380 lines) provides:
 
 1. **YAML loader**: reads `dataflow/*.yaml` files, builds a per-language lookup table of node types to access-mode rules.
 
@@ -233,18 +233,17 @@ The two-tier design matches the natural boundary: language analyzers have AST co
 
 #### Coverage: analyzers outside the base class
 
-104 of 114 language analyzers subclass `TreeSitterAnalyzer` and get automatic annotation. 10 do not:
+104 of 118 language analyzers subclass `TreeSitterAnalyzer` and get automatic annotation. 11 do not (3 added since the original count of 114):
 
 | Analyzer | Approach | Dataflow action needed |
 |----------|----------|----------------------|
-| **py.py** | Python `ast` module | Needs its own `annotate_dataflow` integration — Python is the highest-priority language for dataflow (module globals, test isolation, framework state). The `ast` module provides richer context than tree-sitter (resolved names, scope info), so the Python-specific classifier may produce better results than the generic YAML-driven one. |
-| **jupyter.py** | `ast` + JSON | Inherits Python's dataflow needs. Shares py.py's `ast`-based classifier after cell extraction. |
+| **py.py** | Python `ast` module | Uses `annotate_dataflow_ast()` — classifies `ast.Assign` as write, `ast.AugAssign` as mutate, `ast.Delete` as delete, `ast.Return`/`ast.Yield` as read. |
+| **jupyter.py** | `ast` + JSON | Shares py.py's `ast`-based classifier after cell extraction. |
 | **html.py** | Regex | No action needed — only creates `script_src` edges (file-level references, no read/write semantics). |
 | **manifest_targets.py** | Regex | No action needed — build target declarations only. |
+| **play_routes.py** | Regex | No action needed — Play Framework route declarations only. |
 | **handlebars.py, blade.py** | Regex | Low priority — template partial/directive references. Could eventually classify `@yield` as read and `@section` as write to model template inheritance dataflow. |
 | **just.py, qml.py, gnuplot.py, mermaid.py** | Regex | No action needed — primarily declaration extraction with minimal call edges. |
-
-**Implementation order for non-base-class analyzers:** py.py first (highest value), jupyter.py second (shares py.py's classifier), others only if specific use cases demand it.
 
 ### 6. Slice integration
 
@@ -264,7 +263,7 @@ Several existing linkers already detect dataflow patterns with bespoke Python co
 | Event sourcing | `event_publishes` / `event_subscribes` | write / read on event channel |
 | Message queue | `mq_publishes` / `mq_subscribes` | write / read on topic |
 | WebSocket | `websocket_message` | write / read on event name |
-| Yjs (planned) | `crdt_publishes` / `crdt_subscribes` | write / read on CRDT key |
+| Yjs CRDT | `crdt_publishes` / `crdt_subscribes` | write / read on CRDT key |
 
 With dataflow YAMLs, these patterns could be expressed declaratively in the `library_patterns` section of the relevant language's dataflow YAML — or in dedicated per-library YAMLs (e.g., `dataflow/yjs.yaml`, `dataflow/kafka.yaml`). The existing linkers would remain as-is for backward compatibility, but new pub/sub patterns could be added via YAML without writing Python code.
 

@@ -1,0 +1,44 @@
+- op: create  # bbe0
+  at: '2026-04-03T08:25:05Z'  # bbe0
+  by: agent  # bbe0
+  actor: jgstern_agent  # bbe0
+  clock: 1  # bbe0
+  nonce: bbe0  # bbe0
+  data:  # bbe0
+    kind: work_item  # bbe0
+    title: "htrac serve: Starlette/uvicorn skeleton with health endpoint"  # bbe0
+    status: todo_soft  # bbe0
+    priority: 2  # bbe0
+    parent:  # bbe0
+    tags:  # bbe0
+    - adr-0019  # bbe0
+    - server  # bbe0
+    before: []  # bbe0
+    duplicate_of: []  # bbe0
+    not_duplicate_of: []  # bbe0
+    pr_ref:  # bbe0
+    description: "Create htrac serve command in hypergumbo-tracker. Starlette + uvicorn, binds 127.0.0.1 only. PID file, --background/--stop/--status flags. /health endpoint. Graceful shutdown (drain WebSocket, flush ops). Logs to file or journald. See docs/adr/0019-remote-access-transport.md §Server."  # bbe0
+    fields: {}  # bbe0
+- op: update  # ddca
+  at: '2026-04-03T08:26:55Z'  # ddca
+  by: agent  # ddca
+  actor: jgstern_agent  # ddca
+  clock: 2  # ddca
+  nonce: ddca  # ddca
+  set:  # ddca
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # ddca
+- op: update  # 42ba
+  at: '2026-04-03T11:52:57Z'  # 42ba
+  by: agent  # 42ba
+  actor: jgstern_agent  # 42ba
+  clock: 3  # 42ba
+  nonce: 42ba  # 42ba
+  set:  # 42ba
+    status: done  # 42ba
+- op: discuss  # c4bc
+  at: '2026-04-03T11:52:57Z'  # c4bc
+  by: agent  # c4bc
+  actor: jgstern_agent  # c4bc
+  clock: 4  # c4bc
+  nonce: c4bc  # c4bc
+  message: "Implemented in PR #96 (pending merge). Starlette/uvicorn skeleton with /health endpoint, PID file management (--background/--stop/--status), 127.0.0.1 binding, CLI integration with early-exit for stop/status."  # c4bc

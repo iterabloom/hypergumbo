@@ -700,6 +700,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         cached_results=cached_results,
         with_source=with_source,
         stats_out=stats,
+        require_sections=getattr(args, "require_sections", None) or None,
     )
 
     # Secret scanning (opt-out with --no-secret-scan)
@@ -2885,6 +2886,10 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         catalog = load_catalog(lang)
         if catalog.primitives:
             catalogs[lang] = catalog
+            # Also key by the catalog's base language so edge-prefix lookups
+            # work (e.g., nodes say "objective-c" but edges use "objc:" prefix)
+            if catalog.language != lang:
+                catalogs[catalog.language] = catalog
 
     # Extract entrypoint IDs for reverse-trace
     entrypoint_ids = {
@@ -2895,30 +2900,216 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     # Compute boundary map with entrypoint tracing
     bmap = compute_boundary_map(edges, catalogs, entrypoint_ids=entrypoint_ids or None)
 
+    # Build node lookup for human-readable caller names
+    nodes_by_id: Dict[str, Any] = {n["id"]: n for n in behavior_map.get("nodes", [])}
+
+    # Apply boundary/primitive/exclude-tests filters
+    boundary_filter = getattr(args, "boundary", None)
+    primitive_filter = getattr(args, "primitive", None)
+    exclude_tests = getattr(args, "exclude_tests", False)
+
+    from .io_boundary import BoundaryMapEntry
+
+    filtered_entries: Dict[str, BoundaryMapEntry] = {}
+    for btype, entry in bmap.entries.items():
+        if boundary_filter and btype != boundary_filter:
+            continue
+
+        chains = entry.chains
+
+        # Filter by primitive
+        if primitive_filter:
+            chains = [c for c in chains if c.primitive == primitive_filter]
+
+        # Filter out chains where the source symbol is in a test file
+        if exclude_tests:
+            def _is_test_chain(chain: Any) -> bool:
+                src_node = nodes_by_id.get(chain.io_edge_src)
+                if src_node:
+                    return _is_test_node(src_node.get("path", ""), src_node.get("meta"))
+                return False
+            chains = [c for c in chains if not _is_test_chain(c)]
+
+        if not chains and (primitive_filter or exclude_tests):
+            continue
+
+        if primitive_filter or exclude_tests:
+            filtered_entries[btype] = BoundaryMapEntry(
+                boundary=entry.boundary,
+                chains=chains,
+                entry_points=sorted({ep for c in chains for ep in c.entry_points}),
+                primitives_used=sorted({c.primitive for c in chains}),
+            )
+        else:
+            filtered_entries[btype] = entry
+
     # Output
     if getattr(args, "json_output", False):
-        print(json.dumps(bmap.to_dict(), indent=2, sort_keys=True))
+        if boundary_filter or primitive_filter or exclude_tests:
+            filtered_total = sum(len(e.chains) for e in filtered_entries.values())
+            output = {
+                "total_io_edges": filtered_total,
+                "boundaries": {
+                    k: v.to_dict() for k, v in sorted(filtered_entries.items())
+                },
+            }
+        else:
+            output = bmap.to_dict()
+        print(json.dumps(output, indent=2, sort_keys=True))
+    elif getattr(args, "by_file", False):
+        _print_io_boundaries_by_file(filtered_entries, nodes_by_id, repo_root)
     else:
-        if bmap.total_io_edges == 0:
-            print("No I/O boundary calls detected.")
-            return 0
-
-        print(f"I/O Boundary Map ({bmap.total_io_edges} boundary calls)\n")
-        for boundary_type in sorted(bmap.entries.keys()):
-            entry = bmap.entries[boundary_type]
-            print(f"  {boundary_type}: {len(entry.chains)} call(s)")
-            for prim in entry.primitives_used:
-                print(f"    - {prim}")
-        print()
+        _print_io_boundaries_by_type(filtered_entries, nodes_by_id, bmap, repo_root)
 
     return 0
 
 
-def cmd_verify_claims(args: argparse.Namespace) -> int:
-    """Verify security claims against I/O boundary map (ADR-0016 Phase 3).
+def _format_io_caller(
+    symbol_id: str,
+    nodes_by_id: Dict[str, Any],
+    repo_root: Optional[Path] = None,
+) -> str:
+    """Format a symbol ID into a readable 'name (file:line)' string.
 
-    Loads claims from a YAML file, computes the I/O boundary map, and
-    checks each claim. Returns exit code 1 if any claim is violated.
+    Looks up the symbol in the node index for structured data; falls back
+    to parsing the symbol ID string directly.
+    """
+    node = nodes_by_id.get(symbol_id)
+    if node:
+        name = node.get("name", "?")
+        fpath = node.get("path", "")
+        line = node.get("span", {}).get("start_line", "")
+        display_path = _relativize(fpath, repo_root)
+        if display_path and line:
+            return f"{name} ({display_path}:{line})"
+        if display_path:
+            return f"{name} ({display_path})"
+        return name
+
+    # Fallback: parse from symbol ID
+    parts = symbol_id.split(":")
+    if len(parts) >= 5:
+        name = parts[-2]
+        raw_path = _extract_path_from_symbol_id(symbol_id)
+        display_path = _relativize(raw_path, repo_root) if raw_path else ""
+        span = parts[2] if len(parts) >= 3 else ""
+        line = span.split("-")[0] if "-" in span else span
+        if display_path and line:
+            return f"{name} ({display_path}:{line})"
+        if display_path:  # pragma: no cover — path extraction requires span pattern
+            return f"{name} ({display_path})"
+        return name
+    return symbol_id
+
+
+def _relativize(path: str, repo_root: Optional[Path]) -> str:
+    """Make a path relative to repo_root if possible, for shorter display."""
+    if not path or not repo_root:
+        return path
+    try:
+        return str(Path(path).relative_to(repo_root))
+    except ValueError:
+        return path
+
+
+def _print_io_boundaries_by_type(
+    entries: Dict[str, Any],
+    nodes_by_id: Dict[str, Any],
+    bmap: Any,
+    repo_root: Path,
+) -> None:
+    """Print I/O boundaries grouped by boundary type with call-site detail."""
+    from .io_boundary import is_high_risk
+
+    if not entries:
+        print("No I/O boundary calls detected.")
+        return
+
+    total = sum(len(e.chains) for e in entries.values())
+    print(f"I/O Boundary Map ({total} boundary calls)\n")
+
+    for boundary_type in sorted(entries.keys()):
+        entry = entries[boundary_type]
+        has_risk = any(is_high_risk(c.primitive) for c in entry.chains)
+        risk_marker = " [HIGH RISK]" if has_risk else ""
+        print(f"  {boundary_type}: {len(entry.chains)} call(s){risk_marker}")
+
+        # Per-primitive counts and call sites
+        prim_counts: Dict[str, int] = {}
+        chains_by_prim: Dict[str, list] = {}
+        for chain in entry.chains:
+            prim_counts[chain.primitive] = prim_counts.get(chain.primitive, 0) + 1
+            chains_by_prim.setdefault(chain.primitive, []).append(chain)
+
+        for prim in sorted(prim_counts.keys()):
+            count = prim_counts[prim]
+            risk_flag = " *** HIGH RISK ***" if is_high_risk(prim) else ""
+            print(f"    {prim} ({count}){risk_flag}")
+            for chain in chains_by_prim[prim]:
+                caller = _format_io_caller(chain.io_edge_src, nodes_by_id, repo_root)
+                print(f"      <- {caller}")
+                if chain.entry_points:
+                    ep_names = [
+                        _format_io_caller(ep, nodes_by_id, repo_root)
+                        for ep in chain.entry_points
+                    ]
+                    print(f"         reachable from: {', '.join(ep_names)}")
+
+        if entry.entry_points:
+            print(f"    ({len(entry.entry_points)} entry point(s) reach this boundary)")
+        print()
+
+
+def _print_io_boundaries_by_file(
+    entries: Dict[str, Any],
+    nodes_by_id: Dict[str, Any],
+    repo_root: Path,
+) -> None:
+    """Print I/O boundaries grouped by source file."""
+    from collections import defaultdict
+
+    from .io_boundary import is_high_risk
+
+    if not entries:
+        print("No I/O boundary calls detected.")
+        return
+
+    # Group all chains by source file
+    chains_by_file: Dict[str, list] = defaultdict(list)
+    for entry in entries.values():
+        for chain in entry.chains:
+            raw_path = _extract_path_from_symbol_id(chain.io_edge_src)
+            display_path = _relativize(raw_path, repo_root) if raw_path else "unknown"
+            chains_by_file[display_path].append(chain)
+
+    total = sum(len(v) for v in chains_by_file.values())
+    print(f"I/O Boundary Map by File ({total} boundary calls)\n")
+
+    for filepath in sorted(chains_by_file.keys()):
+        file_chains = chains_by_file[filepath]
+        has_risk = any(is_high_risk(c.primitive) for c in file_chains)
+        risk_marker = " [HIGH RISK]" if has_risk else ""
+        print(f"  {filepath}: {len(file_chains)} call(s){risk_marker}")
+        for chain in file_chains:
+            caller = _format_io_caller(chain.io_edge_src, nodes_by_id, repo_root)
+            risk_flag = " *** HIGH RISK ***" if is_high_risk(chain.primitive) else ""
+            print(f"    [{chain.boundary}] {chain.primitive} <- {caller}{risk_flag}")
+            if chain.entry_points:
+                ep_names = [
+                    _format_io_caller(ep, nodes_by_id, repo_root)
+                    for ep in chain.entry_points
+                ]
+                print(f"      reachable from: {', '.join(ep_names)}")
+        print()
+
+
+def cmd_verify_claims(args: argparse.Namespace) -> int:
+    """Verify security claims against I/O boundary map and taint flow.
+
+    Loads claims from a YAML file, computes the I/O boundary map, runs
+    taint-flow analysis if needed, and checks each claim. Returns exit
+    code 1 if any claim is violated. Supports boundary constraints
+    (ADR-0016) and taint-flow constraints (ADR-0017).
     """
     repo_root = Path(args.path).resolve()
     claims_path = Path(args.claims)
@@ -2983,6 +3174,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         catalog = load_catalog(lang)
         if catalog.primitives:
             catalogs[lang] = catalog
+            if catalog.language != lang:
+                catalogs[catalog.language] = catalog
 
     # Extract entrypoint IDs for reverse-trace
     vc_entrypoint_ids = {
@@ -2991,8 +3184,32 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     }
     bmap = compute_boundary_map(edges, catalogs, entrypoint_ids=vc_entrypoint_ids or None)
 
+    # Run taint-flow analysis if any claims have taint_flow constraints
+    taint_findings = None
+    has_taint_claims = any(c.constraint_taint_flow is not None for c in claims)
+    if has_taint_claims:
+        from .taint import load_builtin_taint_catalog, propagate_taint_structural
+        taint_catalog = load_builtin_taint_catalog()
+
+        # Also load project-local taint catalogs if specified in claims file
+        # (future: --taint-sources, --taint-sinks, --taint-sanitizers args)
+
+        # Collect all sources, sinks, sanitizers across languages
+        all_sources = []
+        all_sinks = []
+        all_sanitizers = []
+        for lang in languages:
+            all_sources.extend(taint_catalog.sources_for_language(lang))
+            all_sinks.extend(taint_catalog.sinks_for_language(lang))
+            all_sanitizers.extend(taint_catalog.sanitizers_for_language(lang))
+
+        if all_sources and all_sinks:
+            taint_findings = propagate_taint_structural(
+                raw_edges, all_sources, all_sinks, all_sanitizers,
+            )
+
     # Verify claims
-    verdicts = _verify(claims, bmap)
+    verdicts = _verify(claims, bmap, taint_findings=taint_findings)
 
     # Output
     if getattr(args, "json_output", False):
@@ -3430,6 +3647,17 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         help="Analyze translated docs for this locale instead of English "
              "(e.g., --locale ja-jp). By default, translated documentation "
              "directories are excluded to avoid processing duplicate content.",
+    )
+    p_sketch.add_argument(
+        "--require-section",
+        action="append",
+        default=[],
+        dest="require_sections",
+        metavar="NAME",
+        help="Require a section even under budget pressure "
+             "(repeatable; e.g., --require-section 'Key Symbols'). "
+             "Valid: Entry Points, Data Models, Source Files, Key Symbols, "
+             "Additional Files, Source Files Content, Additional Files Content",
     )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True, language_proportional=True)
 
@@ -4252,9 +4480,12 @@ without re-running the full analysis."""
     # hypergumbo io-boundaries
     io_boundaries_epilog = """\
 Examples:
-  hypergumbo io-boundaries .                    # Show I/O boundary map
-  hypergumbo io-boundaries . --json             # JSON output
-  hypergumbo io-boundaries . --input hg.json    # From existing analysis
+  hypergumbo io-boundaries .                          # Show I/O boundary map
+  hypergumbo io-boundaries . --json                   # JSON output
+  hypergumbo io-boundaries . --input hg.json          # From existing analysis
+  hypergumbo io-boundaries . --by-file                # Group by file
+  hypergumbo io-boundaries . --boundary subprocess    # Filter to subprocess calls
+  hypergumbo io-boundaries . --primitive os.execv     # Filter to specific primitive
 
 Identifies call edges that reach I/O primitives (filesystem, network,
 subprocess, environment) and groups them by boundary type. See ADR-0016."""
@@ -4281,12 +4512,38 @@ subprocess, environment) and groups them by boundary type. See ADR-0016."""
         dest="json_output",
         help="Output as JSON",
     )
+    p_io.add_argument(
+        "--by-file",
+        action="store_true",
+        dest="by_file",
+        help="Group output by source file instead of boundary type",
+    )
+    p_io.add_argument(
+        "--boundary",
+        default=None,
+        metavar="TYPE",
+        help="Filter to a specific boundary type (e.g., fs_write, subprocess)",
+    )
+    p_io.add_argument(
+        "--primitive",
+        default=None,
+        metavar="NAME",
+        help="Filter to a specific primitive (e.g., subprocess.run, os.execv)",
+    )
+    p_io.add_argument(
+        "-x",
+        "--exclude-tests",
+        action="store_true",
+        dest="exclude_tests",
+        default=False,
+        help="Exclude I/O boundary chains originating from test files",
+    )
     p_io.set_defaults(func=cmd_io_boundaries)
 
     # hypergumbo verify-claims
     p_vc = sub.add_parser(
         "verify-claims",
-        help="Verify security claims against I/O boundary map (ADR-0016)",
+        help="Verify security claims against I/O boundary map and taint flow",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_vc.add_argument(

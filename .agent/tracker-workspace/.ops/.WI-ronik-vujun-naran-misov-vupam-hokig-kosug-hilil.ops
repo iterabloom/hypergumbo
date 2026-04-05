@@ -34,3 +34,11 @@
   clock: 3  # 067d
   nonce: 067d  # 067d
   message: "Fixed: frontend UI files (.tsx/.jsx/.vue/.svelte, components/views/pages dirs, React/Vue/Angular imports) get 0.05 confidence on route classification, effectively suppressing false positives."  # 067d
+- op: update  # ad9a
+  at: '2026-03-25T04:23:58Z'  # ad9a
+  by: agent  # ad9a
+  actor: jgstern_agent  # ad9a
+  clock: 4  # ad9a
+  nonce: ad9a  # ad9a
+  set:  # ad9a
+    parent: INV-nimik-zudat-pafil-hipuf-hisif-sunip-kopib-puluj  # ad9a

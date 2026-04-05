@@ -1,0 +1,44 @@
+- op: create  # e243
+  at: '2026-04-03T08:25:07Z'  # e243
+  by: agent  # e243
+  actor: jgstern_agent  # e243
+  clock: 1  # e243
+  nonce: e243  # e243
+  data:  # e243
+    kind: work_item  # e243
+    title: "htrac serve: password verification with bcrypt (real + duress)"  # e243
+    status: todo_soft  # e243
+    priority: 2  # e243
+    parent:  # e243
+    tags:  # e243
+    - adr-0019  # e243
+    - auth  # e243
+    before: []  # e243
+    duplicate_of: []  # e243
+    not_duplicate_of: []  # e243
+    pr_ref:  # e243
+    description: "Server stores bcrypt hashes for both real and duress passwords. After WebAuthn success, verify password. Real password → normal session. Duress password → session tagged server-side as duress (indistinguishable token). Rate limiting per WebAuthn credential with exponential backoff. Configurable max failures before credential lockout. See docs/adr/0019-remote-access-transport.md §Authentication factor 3-4."  # e243
+    fields: {}  # e243
+- op: update  # ca9b
+  at: '2026-04-03T08:26:55Z'  # ca9b
+  by: agent  # ca9b
+  actor: jgstern_agent  # ca9b
+  clock: 2  # ca9b
+  nonce: ca9b  # ca9b
+  set:  # ca9b
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # ca9b
+- op: update  # 2ef2
+  at: '2026-04-03T19:02:04Z'  # 2ef2
+  by: agent  # 2ef2
+  actor: jgstern_agent  # 2ef2
+  clock: 3  # 2ef2
+  nonce: 2ef2  # 2ef2
+  set:  # 2ef2
+    status: done  # 2ef2
+- op: discuss  # e616
+  at: '2026-04-03T19:02:04Z'  # e616
+  by: agent  # e616
+  actor: jgstern_agent  # e616
+  clock: 4  # e616
+  nonce: e616  # e616
+  message: "Implemented in PR #103. PasswordVerifier with bcrypt (real + duress, timing-safe). RateLimiter with per-credential exponential backoff and lockout. 15 tests."  # e616

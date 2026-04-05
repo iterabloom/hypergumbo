@@ -48,3 +48,11 @@
   clock: 5  # e3eb
   nonce: e3eb  # e3eb
   message: "Fixed in PR #2389. Local function calls now resolve via base_name lookup before falling back to global resolver. Root cause: functions registered as 'a/1' (with arity) but calls use bare 'a'. Tested on rabbitmq: a/1 in rabbit_priority_queue gets 6 edges (was 0). Should significantly reduce the 45% Erlang orphan rate."  # e3eb
+- op: update  # 9534
+  at: '2026-03-25T04:24:00Z'  # 9534
+  by: agent  # 9534
+  actor: jgstern_agent  # 9534
+  clock: 6  # 9534
+  nonce: '9534'  # 9534
+  set:  # 9534
+    parent: INV-kobad-kopil-dagan-nusan-fazag-vumig-ridut-rokih  # 9534

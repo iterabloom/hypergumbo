@@ -140,6 +140,20 @@ patterns:
     symbol_kind: "^function$"
     language: "^haxe$"
 
+  # Haskell: main :: IO () — standard entry point
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^haskell$"
+
+  # Erlang: main/0 or start/0 — common CLI entry points
+  # OTP applications use -behaviour(application) start/2 which is framework-level,
+  # but standalone scripts use main() or start().
+  - concept: main_function
+    symbol_name: "^(main|start)$"
+    symbol_kind: "^function$"
+    language: "^erlang$"
+
   # Circom: component main = Template() = Template() — circuit entry point
   - concept: main_function
     symbol_name: "^main$"

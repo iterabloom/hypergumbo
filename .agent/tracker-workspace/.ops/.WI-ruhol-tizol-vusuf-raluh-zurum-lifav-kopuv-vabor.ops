@@ -1,0 +1,92 @@
+- op: create  # 8eb9
+  at: '2026-03-23T14:14:07Z'  # 8eb9
+  by: agent  # 8eb9
+  actor: jgstern_agent  # 8eb9
+  clock: 1  # 8eb9
+  nonce: 8eb9  # 8eb9
+  data:  # 8eb9
+    kind: work_item  # 8eb9
+    title: "ADR-0017 Phase 1b: Precision measurement of structural taint flow"  # 8eb9
+    status: todo_soft  # 8eb9
+    priority: 2  # 8eb9
+    parent:  # 8eb9
+    tags:  # 8eb9
+    - adr-0017  # 8eb9
+    - phase-1b  # 8eb9
+    before: []  # 8eb9
+    duplicate_of: []  # 8eb9
+    not_duplicate_of: []  # 8eb9
+    pr_ref:  # 8eb9
+    description: "Measure false positive rate of structural taint flow. If PlazaFlow code available: run TF-001 through TF-004, manually classify findings. If not: build ~500-1000 line reference impl or use open-source Rust+TS projects. Decision gate: >80% precision = Phase 2 lower priority; <50% = Phase 2 high priority. See ADR-0017 §9."  # 8eb9
+    fields: {}  # 8eb9
+- op: update  # 00f0
+  at: '2026-03-23T14:15:23Z'  # 00f0
+  by: agent  # 00f0
+  actor: jgstern_agent  # 00f0
+  clock: 2  # 00f0
+  nonce: 00f0  # 00f0
+  set: {}  # 00f0
+  add:  # 00f0
+    before: [WI-guguh-bumut-pinuh-vinav-mojad-fogov-posas-vagum]  # 00f0
+- op: update  # 19cb
+  at: '2026-03-23T14:15:23Z'  # 19cb
+  by: agent  # 19cb
+  actor: jgstern_agent  # 19cb
+  clock: 3  # 19cb
+  nonce: 19cb  # 19cb
+  set: {}  # 19cb
+  add:  # 19cb
+    before: [WI-dojup-jagir-zohuf-sozul-tahak-holul-padat-larit]  # 19cb
+- op: update  # 2459
+  at: '2026-03-23T14:17:40Z'  # 2459
+  by: agent  # 2459
+  actor: jgstern_agent  # 2459
+  clock: 4  # 2459
+  nonce: '2459'  # 2459
+  set:  # 2459
+    status: needs_human_review  # 2459
+- op: discuss  # 9b9a
+  at: '2026-03-23T14:17:40Z'  # 9b9a
+  by: agent  # 9b9a
+  actor: jgstern_agent  # 9b9a
+  clock: 5  # 9b9a
+  nonce: 9b9a  # 9b9a
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 9b9a
+- op: update  # 2473
+  at: '2026-03-25T04:15:55Z'  # 2473
+  by: agent  # 2473
+  actor: jgstern_agent  # 2473
+  clock: 6  # 2473
+  nonce: '2473'  # 2473
+  set:  # 2473
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 2473
+- op: update  # 2259
+  at: '2026-03-25T07:43:15Z'  # 2259
+  by: agent  # 2259
+  actor: jgstern_agent  # 2259
+  clock: 7  # 2259
+  nonce: '2259'  # 2259
+  set:  # 2259
+    status: todo_soft  # 2259
+- op: discuss  # 3eff
+  at: '2026-03-25T07:43:15Z'  # 3eff
+  by: agent  # 3eff
+  actor: jgstern_agent  # 3eff
+  clock: 8  # 3eff
+  nonce: 3eff  # 3eff
+  message: "ADR-0017 accepted. Phase 1b (decision gate)."  # 3eff
+- op: update  # 3909
+  at: '2026-03-25T14:22:24Z'  # 3909
+  by: agent  # 3909
+  actor: jgstern_agent  # 3909
+  clock: 9  # 3909
+  nonce: '3909'  # 3909
+  set:  # 3909
+    status: done  # 3909
+- op: discuss  # 3a15
+  at: '2026-03-25T14:22:24Z'  # 3a15
+  by: agent  # 3a15
+  actor: jgstern_agent  # 3a15
+  clock: 10  # 3a15
+  nonce: 3a15  # 3a15
+  message: "Measured on reference impl: 50% precision (3/6 true positives). Root causes: same-function source+sanitizer (structural limitation, needs DDG), missing catalog entries for key_material sanitizers. Matches ADR-0017 prediction. Findings in lab notebook 03252026_1430. Decision gate: Phase 2 is borderline — catalog improvements could push precision above 50%."  # 3a15

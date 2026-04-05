@@ -1,0 +1,83 @@
+- op: create  # 47c2
+  at: '2026-03-23T14:14:10Z'  # 47c2
+  by: agent  # 47c2
+  actor: jgstern_agent  # 47c2
+  clock: 1  # 47c2
+  nonce: 47c2  # 47c2
+  data:  # 47c2
+    kind: work_item  # 47c2
+    title: "ADR-0017 Phase 3: TypeScript def/use extractor"  # 47c2
+    status: todo_soft  # 47c2
+    priority: 3  # 47c2
+    parent:  # 47c2
+    tags:  # 47c2
+    - adr-0017  # 47c2
+    - phase-3  # 47c2
+    before: []  # 47c2
+    duplicate_of: []  # 47c2
+    not_duplicate_of: []  # 47c2
+    pr_ref:  # 47c2
+    description: "DefUseExtractor for TypeScript (~600-1000 lines, most complex due to destructuring, optional chaining, spread, computed properties, hoisting, class fields, decorators, JSX). Enables DDG precision on source side of PlazaFlow TS↔Rust bridges. See ADR-0017 §1c, §1e."  # 47c2
+    fields: {}  # 47c2
+- op: update  # 02ed
+  at: '2026-03-23T14:15:24Z'  # 02ed
+  by: agent  # 02ed
+  actor: jgstern_agent  # 02ed
+  clock: 2  # 02ed
+  nonce: 02ed  # 02ed
+  set: {}  # 02ed
+  add:  # 02ed
+    before: [WI-bivaf-nujas-fugir-lugug-safud-vukor-zupog-tubug]  # 02ed
+- op: update  # 4f82
+  at: '2026-03-23T14:17:41Z'  # 4f82
+  by: agent  # 4f82
+  actor: jgstern_agent  # 4f82
+  clock: 3  # 4f82
+  nonce: 4f82  # 4f82
+  set:  # 4f82
+    status: needs_human_review  # 4f82
+- op: discuss  # df8b
+  at: '2026-03-23T14:17:41Z'  # df8b
+  by: agent  # df8b
+  actor: jgstern_agent  # df8b
+  clock: 4  # df8b
+  nonce: df8b  # df8b
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # df8b
+- op: update  # 87fa
+  at: '2026-03-25T04:15:54Z'  # 87fa
+  by: agent  # 87fa
+  actor: jgstern_agent  # 87fa
+  clock: 5  # 87fa
+  nonce: 87fa  # 87fa
+  set:  # 87fa
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 87fa
+- op: update  # ad2d
+  at: '2026-03-25T07:53:27Z'  # ad2d
+  by: agent  # ad2d
+  actor: jgstern_agent  # ad2d
+  clock: 6  # ad2d
+  nonce: ad2d  # ad2d
+  set:  # ad2d
+    status: todo_soft  # ad2d
+- op: discuss  # 6338
+  at: '2026-03-25T07:53:27Z'  # 6338
+  by: agent  # 6338
+  actor: jgstern_agent  # 6338
+  clock: 7  # 6338
+  nonce: '6338'  # 6338
+  message: "ADR-0017 accepted. Phase 3."  # 6338
+- op: update  # 36b3
+  at: '2026-03-26T09:58:57Z'  # 36b3
+  by: agent  # 36b3
+  actor: jgstern_agent  # 36b3
+  clock: 8  # 36b3
+  nonce: 36b3  # 36b3
+  set:  # 36b3
+    status: done  # 36b3
+- op: discuss  # aab7
+  at: '2026-03-26T09:58:57Z'  # aab7
+  by: agent  # aab7
+  actor: jgstern_agent  # aab7
+  clock: 9  # aab7
+  nonce: aab7  # aab7
+  message: "Implemented in PR #2590. TypeScript def/use extractor (146 lines) handling declarations, destructuring, assignments, member/subscript writes, for..of/in, return. 28 tests, 100% coverage."  # aab7

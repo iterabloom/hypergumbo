@@ -1,0 +1,83 @@
+- op: create  # 32d4
+  at: '2026-03-23T14:14:08Z'  # 32d4
+  by: agent  # 32d4
+  actor: jgstern_agent  # 32d4
+  clock: 1  # 32d4
+  nonce: 32d4  # 32d4
+  data:  # 32d4
+    kind: work_item  # 32d4
+    title: "ADR-0017 Phase 2: DDG-backed taint propagation"  # 32d4
+    status: todo_soft  # 32d4
+    priority: 3  # 32d4
+    parent:  # 32d4
+    tags:  # 32d4
+    - adr-0017  # 32d4
+    - phase-2  # 32d4
+    before: []  # 32d4
+    duplicate_of: []  # 32d4
+    not_duplicate_of: []  # 32d4
+    pr_ref:  # 32d4
+    description: "Forward graph walk on computed DDG edges for taint propagation. Match call sites against taint source catalogs, propagate through DDG edges, apply sanitizer transforms. Mixed-coverage analysis: DDG segments provide variable-level precision, non-DDG segments bridged with structural reachability. Critical path segments determine verdict confidence. See ADR-0017 §3a, §3c-3d."  # 32d4
+    fields: {}  # 32d4
+- op: update  # bab7
+  at: '2026-03-23T14:15:24Z'  # bab7
+  by: agent  # bab7
+  actor: jgstern_agent  # bab7
+  clock: 2  # bab7
+  nonce: bab7  # bab7
+  set: {}  # bab7
+  add:  # bab7
+    before: [WI-zavit-gojuk-nakat-lilag-silat-pakaz-niniz-jipid]  # bab7
+- op: update  # 9023
+  at: '2026-03-23T14:17:40Z'  # 9023
+  by: agent  # 9023
+  actor: jgstern_agent  # 9023
+  clock: 3  # 9023
+  nonce: '9023'  # 9023
+  set:  # 9023
+    status: needs_human_review  # 9023
+- op: discuss  # bb8e
+  at: '2026-03-23T14:17:40Z'  # bb8e
+  by: agent  # bb8e
+  actor: jgstern_agent  # bb8e
+  clock: 4  # bb8e
+  nonce: bb8e  # bb8e
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # bb8e
+- op: update  # f06c
+  at: '2026-03-25T04:15:55Z'  # f06c
+  by: agent  # f06c
+  actor: jgstern_agent  # f06c
+  clock: 5  # f06c
+  nonce: f06c  # f06c
+  set:  # f06c
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # f06c
+- op: update  # dd29
+  at: '2026-03-25T07:48:10Z'  # dd29
+  by: agent  # dd29
+  actor: jgstern_agent  # dd29
+  clock: 6  # dd29
+  nonce: dd29  # dd29
+  set:  # dd29
+    status: todo_soft  # dd29
+- op: discuss  # 7f71
+  at: '2026-03-25T07:48:10Z'  # 7f71
+  by: agent  # 7f71
+  actor: jgstern_agent  # 7f71
+  clock: 7  # 7f71
+  nonce: 7f71  # 7f71
+  message: "ADR-0017 accepted. Phase 2."  # 7f71
+- op: update  # 9d36
+  at: '2026-03-26T08:37:01Z'  # 9d36
+  by: agent  # 9d36
+  actor: jgstern_agent  # 9d36
+  clock: 8  # 9d36
+  nonce: 9d36  # 9d36
+  set:  # 9d36
+    status: done  # 9d36
+- op: discuss  # 4262
+  at: '2026-03-26T08:37:01Z'  # 4262
+  by: agent  # 4262
+  actor: jgstern_agent  # 4262
+  clock: 9  # 4262
+  nonce: '4262'  # 4262
+  message: "Implemented in PR #2583. propagate_taint_ddg() with mixed-coverage verdict (precise when both source+sink have DDG, approximate otherwise). Sanitizer bare-name indexing fix. 54 tests, 100% coverage."  # 4262

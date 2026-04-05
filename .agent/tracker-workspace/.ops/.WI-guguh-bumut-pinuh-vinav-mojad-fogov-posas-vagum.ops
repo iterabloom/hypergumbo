@@ -1,0 +1,119 @@
+- op: create  # d885
+  at: '2026-03-23T14:14:07Z'  # d885
+  by: agent  # d885
+  actor: jgstern_agent  # d885
+  clock: 1  # d885
+  nonce: d885  # d885
+  data:  # d885
+    kind: work_item  # d885
+    title: "ADR-0017 Phase 2: CFG data structures and fringe-based builder"  # d885
+    status: todo_soft  # d885
+    priority: 3  # d885
+    parent:  # d885
+    tags:  # d885
+    - adr-0017  # d885
+    - phase-2  # d885
+    before: []  # d885
+    duplicate_of: []  # d885
+    not_duplicate_of: []  # d885
+    pr_ref:  # d885
+    description: "Language-parameterized CFG builder (~700-1000 lines Python). BasicBlock, CfgStatement, CfgEdge, FunctionCfg data structures. Fringe-based recursive algorithm (same as Joern CfgCreator). Handles: sequential, if/else, loops, break/continue, return, try/catch, switch/match. Semantic hooks: early_return_on_error (Rust ?), context_manager (Python with), deferred_execution (Go defer). See ADR-0017 §1a."  # d885
+    fields: {}  # d885
+- op: update  # 869a
+  at: '2026-03-23T14:15:23Z'  # 869a
+  by: agent  # 869a
+  actor: jgstern_agent  # 869a
+  clock: 2  # 869a
+  nonce: 869a  # 869a
+  set: {}  # 869a
+  add:  # 869a
+    before: [WI-lijuz-bukat-lakat-damuh-kodij-gafuf-kiman-nulun]  # 869a
+- op: update  # c1a6
+  at: '2026-03-23T14:15:23Z'  # c1a6
+  by: agent  # c1a6
+  actor: jgstern_agent  # c1a6
+  clock: 3  # c1a6
+  nonce: c1a6  # c1a6
+  set: {}  # c1a6
+  add:  # c1a6
+    before: [WI-tugal-rumop-rutil-tunah-guboh-fakit-pigir-morut]  # c1a6
+- op: update  # a48a
+  at: '2026-03-23T14:15:24Z'  # a48a
+  by: agent  # a48a
+  actor: jgstern_agent  # a48a
+  clock: 4  # a48a
+  nonce: a48a  # a48a
+  set: {}  # a48a
+  add:  # a48a
+    before: [WI-zatam-sunaf-gufum-tulov-nuhoh-sipov-hozad-porig]  # a48a
+- op: update  # 9553
+  at: '2026-03-23T14:15:24Z'  # 9553
+  by: agent  # 9553
+  actor: jgstern_agent  # 9553
+  clock: 5  # 9553
+  nonce: '9553'  # 9553
+  set: {}  # 9553
+  add:  # 9553
+    before: [WI-nofus-nilod-tagok-garir-vobuh-lobip-talum-zofot]  # 9553
+- op: update  # d104
+  at: '2026-03-23T14:15:24Z'  # d104
+  by: agent  # d104
+  actor: jgstern_agent  # d104
+  clock: 6  # d104
+  nonce: d104  # d104
+  set: {}  # d104
+  add:  # d104
+    before: [WI-gomad-lupib-jaton-bivas-hidak-dimum-limih-sisob]  # d104
+- op: update  # 622c
+  at: '2026-03-23T14:17:40Z'  # 622c
+  by: agent  # 622c
+  actor: jgstern_agent  # 622c
+  clock: 7  # 622c
+  nonce: 622c  # 622c
+  set:  # 622c
+    status: needs_human_review  # 622c
+- op: discuss  # 4115
+  at: '2026-03-23T14:17:40Z'  # 4115
+  by: agent  # 4115
+  actor: jgstern_agent  # 4115
+  clock: 8  # 4115
+  nonce: '4115'  # 4115
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 4115
+- op: update  # ae6c
+  at: '2026-03-25T04:15:54Z'  # ae6c
+  by: agent  # ae6c
+  actor: jgstern_agent  # ae6c
+  clock: 9  # ae6c
+  nonce: ae6c  # ae6c
+  set:  # ae6c
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # ae6c
+- op: update  # 539f
+  at: '2026-03-25T07:46:28Z'  # 539f
+  by: agent  # 539f
+  actor: jgstern_agent  # 539f
+  clock: 10  # 539f
+  nonce: 539f  # 539f
+  set:  # 539f
+    status: todo_soft  # 539f
+- op: discuss  # 4fd9
+  at: '2026-03-25T07:46:28Z'  # 4fd9
+  by: agent  # 4fd9
+  actor: jgstern_agent  # 4fd9
+  clock: 11  # 4fd9
+  nonce: 4fd9  # 4fd9
+  message: "ADR-0017 accepted. Phase 2."  # 4fd9
+- op: update  # 8620
+  at: '2026-03-26T06:32:19Z'  # 8620
+  by: agent  # 8620
+  actor: jgstern_agent  # 8620
+  clock: 12  # 8620
+  nonce: '8620'  # 8620
+  set:  # 8620
+    status: done  # 8620
+- op: discuss  # 5d91
+  at: '2026-03-26T06:32:19Z'  # 5d91
+  by: agent  # 5d91
+  actor: jgstern_agent  # 5d91
+  clock: 13  # 5d91
+  nonce: 5d91  # 5d91
+  message: "Implemented in PR #2575. CFG builder (1226 lines), Python+Rust YAML mappings, 80 tests at 100% coverage. Handles all ADR-0017 §1a control-flow categories plus 3 semantic hooks."  # 5d91

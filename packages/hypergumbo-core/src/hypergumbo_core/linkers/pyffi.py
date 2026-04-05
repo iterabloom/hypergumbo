@@ -8,7 +8,7 @@ between Python code that imports PyO3-annotated Rust functions.
 
 How It Works
 ------------
-Three FFI mechanisms are detected by scanning Python source files:
+Four FFI mechanisms are detected by scanning Python source files:
 
 1. **ctypes**: Scans for ``ctypes.CDLL`` / ``ctypes.cdll.LoadLibrary`` patterns,
    then finds ``lib.funcname()`` attribute calls on the loaded library variable.
@@ -17,7 +17,14 @@ Three FFI mechanisms are detected by scanning Python source files:
 2. **cffi**: Scans for ``ffi.dlopen()`` / ``ffi.verify()`` patterns, then finds
    ``lib.funcname()`` attribute calls. Same name-matching as ctypes.
 
-3. **PyO3**: Finds Rust symbols with ``pyfunction`` or ``pymethods`` in their
+3. **C stdlib via ctypes/cffi**: When ``ctypes.CDLL(None)`` or ``ffi.dlopen(None)``
+   loads the system C library (no repo-local C symbols to match), the linker
+   emits unresolved edges with a pseudo-namespace prefix
+   (``python:C_stdlib:0-0:<name>:unresolved``). This follows the cgo pattern
+   (``go:C:0-0:<name>:unresolved``) so the io_boundary tagger can redirect
+   to the C catalog and tag IO primitives like fopen, popen, fwrite.
+
+4. **PyO3**: Finds Rust symbols with ``pyfunction`` or ``pymethods`` in their
    decorators metadata. When Python code has unresolved call edges whose name
    matches a PyO3-annotated Rust function, creates ffi_bridge edges.
 
@@ -28,6 +35,8 @@ Why This Design
   means these calls don't produce typed call edges from the analyzer
 - PyO3 detection piggybacks on the Rust analyzer's decorator metadata
 - Simple name matching is sufficient: ctypes/cffi use the raw C function name
+- C stdlib unresolved edges follow the same pattern as cgo, enabling reuse
+  of the io_boundary tagger's ``_resolve_ffi_catalog()`` redirect
 """
 from __future__ import annotations
 
@@ -47,6 +56,11 @@ from .registry import (
 
 PASS_ID = make_pass_id("pyffi-linker")
 
+# Pseudo-namespace prefix for C stdlib calls via ctypes.CDLL(None) or ffi.dlopen(None).
+# Follows the cgo pattern (go:C:0-0:<name>:unresolved) so the io_boundary tagger can
+# redirect to the C catalog via _resolve_ffi_catalog().
+PYFFI_STDLIB_PREFIX = "python:C_stdlib:0-0:"
+
 # Regex patterns for detecting ctypes library loading
 # Matches: ctypes.CDLL(...), ctypes.cdll.LoadLibrary(...), ctypes.WinDLL(...),
 #          ctypes.OleDLL(...), ctypes.PyDLL(...)
@@ -63,6 +77,18 @@ _CFFI_LOAD_RE = re.compile(
 # Regex for detecting cffi import (from cffi import FFI)
 _CFFI_IMPORT_RE = re.compile(
     r'(?:from\s+cffi\s+import|import\s+cffi)',
+)
+
+# Regex for detecting ctypes loading of system C library (None argument)
+# Matches: ctypes.CDLL(None), ctypes.cdll.LoadLibrary(None), ctypes.PyDLL(None)
+_CTYPES_STDLIB_RE = re.compile(
+    r'(\w+)\s*=\s*ctypes\.(?:CDLL|cdll\.LoadLibrary|WinDLL|OleDLL|PyDLL)\s*\(\s*None\s*\)',
+)
+
+# Regex for detecting cffi loading of system C library (None argument)
+# Matches: ffi.dlopen(None)
+_CFFI_STDLIB_RE = re.compile(
+    r'(\w+)\s*=\s*\w+\.dlopen\s*\(\s*None\s*\)',
 )
 
 # Regex for detecting attribute calls on a variable: var.funcname(
@@ -88,7 +114,10 @@ def _scan_python_file_for_ffi_calls(
     """Scan a Python file for ctypes/cffi attribute calls on loaded libraries.
 
     Returns a list of (func_name, evidence_type, line_number) tuples.
-    evidence_type is 'ctypes_call' or 'cffi_call'.
+    evidence_type is one of: 'ctypes_call', 'cffi_call', 'ctypes_stdlib_call',
+    'cffi_stdlib_call'. The stdlib variants indicate calls through
+    ctypes.CDLL(None) or ffi.dlopen(None), which load the system C library
+    rather than a repo-local shared object.
     """
     try:
         content = file_path.read_text(encoding="utf-8", errors="replace")
@@ -105,14 +134,29 @@ def _scan_python_file_for_ffi_calls(
     has_cffi = bool(_CFFI_IMPORT_RE.search(content))
 
     for line_num, line in enumerate(lines, start=1):
-        # Detect ctypes library loading
+        # Detect ctypes stdlib loading (CDLL(None)) — check before general CDLL
+        ctypes_stdlib_match = _CTYPES_STDLIB_RE.search(line)
+        if ctypes_stdlib_match:
+            var_name = ctypes_stdlib_match.group(1)
+            lib_vars[var_name] = "ctypes_stdlib_call"
+            continue
+
+        # Detect ctypes library loading (non-None argument)
         ctypes_match = _CTYPES_LOAD_RE.search(line)
         if ctypes_match:
             var_name = ctypes_match.group(1)
             lib_vars[var_name] = "ctypes_call"
             continue
 
-        # Detect cffi library loading (only if cffi is imported)
+        # Detect cffi stdlib loading (dlopen(None)) — check before general dlopen
+        if has_cffi:
+            cffi_stdlib_match = _CFFI_STDLIB_RE.search(line)
+            if cffi_stdlib_match:
+                var_name = cffi_stdlib_match.group(1)
+                lib_vars[var_name] = "cffi_stdlib_call"
+                continue
+
+        # Detect cffi library loading (non-None argument, only if cffi is imported)
         if has_cffi:
             cffi_match = _CFFI_LOAD_RE.search(line)
             if cffi_match:
@@ -229,7 +273,10 @@ def link_pyffi(
         ffi_calls = _scan_python_file_for_ffi_calls(py_path)
 
         for func_name, evidence_type, line_num in ffi_calls:
-            if func_name not in c_lookup:
+            is_stdlib = evidence_type in ("ctypes_stdlib_call", "cffi_stdlib_call")
+
+            # For non-stdlib calls, require a repo-local C symbol
+            if not is_stdlib and func_name not in c_lookup:
                 continue
 
             # Find the enclosing Python symbol for this file
@@ -259,17 +306,56 @@ def link_pyffi(
                 continue
             seen_edges.add(dedup_key)
 
-            c_sym = c_lookup[func_name]
-            result_edges.append(Edge.create(
-                src=src_sym.id,
-                dst=c_sym.id,
-                edge_type="ffi_bridge",
-                line=line_num,
-                confidence=0.85,
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-                evidence_type=evidence_type,
-            ))
+            if is_stdlib and func_name in c_lookup:
+                # Stdlib loader but function exists repo-locally — prefer resolved
+                dst = c_lookup[func_name].id
+                # Remap evidence_type to non-stdlib variant for resolved edges
+                resolved_evidence = (
+                    "ctypes_call" if evidence_type == "ctypes_stdlib_call"
+                    else "cffi_call"
+                )
+                result_edges.append(Edge.create(
+                    src=src_sym.id,
+                    dst=dst,
+                    edge_type="ffi_bridge",
+                    line=line_num,
+                    confidence=0.85,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type=resolved_evidence,
+                    access_mode="write",
+                    dest_access_mode="read",
+                ))
+            elif is_stdlib:
+                # Stdlib call with no repo-local match — emit unresolved edge
+                dst = f"{PYFFI_STDLIB_PREFIX}{func_name}:unresolved"
+                result_edges.append(Edge.create(
+                    src=src_sym.id,
+                    dst=dst,
+                    edge_type="ffi_bridge",
+                    line=line_num,
+                    confidence=0.75,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type=evidence_type,
+                    access_mode="write",
+                    dest_access_mode="read",
+                ))
+            else:
+                # Non-stdlib call with repo-local C symbol
+                c_sym = c_lookup[func_name]
+                result_edges.append(Edge.create(
+                    src=src_sym.id,
+                    dst=c_sym.id,
+                    edge_type="ffi_bridge",
+                    line=line_num,
+                    confidence=0.85,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type=evidence_type,
+                    access_mode="write",
+                    dest_access_mode="read",
+                ))
 
     # --- Phase 2: Match PyO3 Rust symbols to Python unresolved calls ---
     pyo3_lookup = _find_pyo3_symbols(rust_symbols)
@@ -306,6 +392,8 @@ def link_pyffi(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="pyo3_bridge",
+                access_mode="write",
+                dest_access_mode="read",
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

@@ -35,6 +35,52 @@ import yaml
 
 
 # ---------------------------------------------------------------------------
+# High-risk primitives
+# ---------------------------------------------------------------------------
+
+HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
+    # Destructive filesystem
+    "shutil.rmtree", "os.rmdir", "os.remove", "os.unlink",
+    "pathlib.Path.unlink", "pathlib.Path.rmdir",
+    # Subprocess / code execution — Python
+    "subprocess.Popen", "subprocess.run", "subprocess.call",
+    "subprocess.check_call", "subprocess.check_output",
+    "os.system", "os.popen", "os.execv", "os.execve", "os.execvp",
+    "os.execvpe", "os.execl", "os.execle", "os.execlp", "os.execlpe",
+    "os.fork", "os.forkpty",
+    "os.spawnl", "os.spawnle", "os.spawnlp", "os.spawnlpe",
+    "os.spawnv", "os.spawnve", "os.spawnvp", "os.spawnvpe",
+    # Network outbound — Python
+    "urllib.request.urlopen", "urllib.request.Request",
+    "socket.socket.connect", "socket.socket.send", "socket.socket.sendall",
+    # Go
+    "os/exec.Command", "os/exec.CommandContext",
+    # Java
+    "java.lang.ProcessBuilder.start", "java.lang.Runtime.exec",
+    # Rust
+    "std::process::Command.spawn", "std::process::Command.output",
+    "std::process::Command.status",
+    # JavaScript / Node
+    "child_process.exec", "child_process.execSync",
+    "child_process.spawn", "child_process.spawnSync",
+    # C
+    "unistd.exec", "unistd.execl", "unistd.fork",
+    "stdlib.system", "stdio.popen",
+})
+
+
+def is_high_risk(primitive_name: str) -> bool:
+    """Check whether a primitive is classified as high-risk.
+
+    High-risk primitives include destructive filesystem operations
+    (rmtree, unlink), subprocess/code execution (Popen, exec*), and
+    outbound network calls (urlopen, socket.send). The classification
+    covers Python, Go, Java, Rust, JavaScript, and C primitives.
+    """
+    return primitive_name in HIGH_RISK_PRIMITIVES
+
+
+# ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
 
@@ -73,6 +119,7 @@ class IoBoundaryCatalog:
 
     language: str
     primitives: list[IoPrimitive] = field(default_factory=list)
+    ambiguous_names: frozenset[str] = field(default_factory=frozenset)
     _by_qualified: dict[str, IoPrimitive] = field(
         default_factory=dict, repr=False,
     )
@@ -154,8 +201,29 @@ class IoBoundaryCatalog:
             # primitive (e.g., crypto/rand.Read is not net.Conn.Read)
             return None
 
-        # No module context — fall back to first match
+        # No module context — fall back to first match unless ambiguous
+        if self.ambiguous_names and name in self.ambiguous_names:
+            return None
         return hits[0]
+
+    def merge(self, parent: IoBoundaryCatalog) -> IoBoundaryCatalog:
+        """Merge a parent catalog into this one. Self's entries take precedence.
+
+        Used for language inheritance (e.g. Scala inherits from Java):
+        Scala-specific entries override Java entries with the same qualified
+        name, while Java entries not present in Scala are added.
+        """
+        existing_qnames = {p.qualified_name for p in self.primitives}
+        merged_primitives = list(self.primitives) + [
+            p for p in parent.primitives
+            if p.qualified_name not in existing_qnames
+        ]
+        merged_ambiguous = self.ambiguous_names | parent.ambiguous_names
+        return IoBoundaryCatalog(
+            language=self.language,
+            primitives=merged_primitives,
+            ambiguous_names=merged_ambiguous,
+        )
 
     @classmethod
     def from_yaml(cls, path: Path) -> IoBoundaryCatalog:
@@ -172,7 +240,9 @@ class IoBoundaryCatalog:
 
         boundary_types = [
             "fs_read", "fs_write", "net_send", "net_recv",
-            "ipc_recv", "ipc_send", "env_read", "subprocess",
+            "ipc_recv", "ipc_send", "env_read", "env_write",
+            "subprocess", "db_read", "db_write",
+            "process_send", "logging",
         ]
 
         for boundary in boundary_types:
@@ -210,7 +280,12 @@ class IoBoundaryCatalog:
                         notes=notes,
                     ))
 
-        catalog = cls(language=language, primitives=primitives)
+        ambiguous = frozenset(data.get("ambiguous_names", []))
+        catalog = cls(
+            language=language,
+            primitives=primitives,
+            ambiguous_names=ambiguous,
+        )
         return catalog
 
 
@@ -226,10 +301,17 @@ _CATALOG_DIR = Path(__file__).parent / "io_primitives"
 _CATALOG_ALIASES: dict[str, str] = {
     "cpp": "c",
     "typescript": "javascript",
-    # JVM languages share the Java IO catalog
+    # JVM languages that lack their own catalog share the Java IO catalog
     "kotlin": "java",
-    "scala": "java",
     "groovy": "java",
+    # Objective-C nodes have language="objective-c" but edge prefixes use "objc"
+    "objective-c": "objc",
+}
+
+# Languages with their own catalog that also inherit from a parent.
+# The child catalog takes precedence; parent entries fill in the gaps.
+_CATALOG_PARENTS: dict[str, str] = {
+    "scala": "java",
 }
 
 
@@ -238,6 +320,9 @@ def load_catalog(language: str) -> IoBoundaryCatalog:
 
     Looks for ``io_primitives/<language>.yaml`` relative to this module.
     Falls back to language aliases (e.g. cpp → c) if no exact match.
+    When a language has a parent catalog (e.g. scala → java), the child
+    catalog is loaded first and then merged with the parent so that
+    child entries take precedence while parent entries fill in gaps.
     Returns an empty catalog if no catalog is found.
     """
     path = _CATALOG_DIR / f"{language}.yaml"
@@ -247,7 +332,17 @@ def load_catalog(language: str) -> IoBoundaryCatalog:
             path = _CATALOG_DIR / f"{alias}.yaml"
     if not path.exists():
         return IoBoundaryCatalog(language=language)
-    return IoBoundaryCatalog.from_yaml(path)
+    catalog = IoBoundaryCatalog.from_yaml(path)
+
+    # Merge parent catalog if defined (e.g. scala inherits java entries)
+    parent_lang = _CATALOG_PARENTS.get(language)
+    if parent_lang:
+        parent_path = _CATALOG_DIR / f"{parent_lang}.yaml"
+        if parent_path.exists():
+            parent_catalog = IoBoundaryCatalog.from_yaml(parent_path)
+            catalog = catalog.merge(parent_catalog)
+
+    return catalog
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +385,17 @@ class IoChain:
     io_edge_dst: str
     entry_points: list[str] = field(default_factory=list)
 
+    def to_dict(self) -> dict:
+        """Serialize to JSON-friendly dict including high-risk flag."""
+        return {
+            "boundary": self.boundary,
+            "primitive": self.primitive,
+            "io_edge_src": self.io_edge_src,
+            "io_edge_dst": self.io_edge_dst,
+            "entry_points": self.entry_points,
+            "high_risk": is_high_risk(self.primitive),
+        }
+
 
 @dataclass
 class BoundaryMapEntry:
@@ -308,12 +414,25 @@ class BoundaryMapEntry:
     primitives_used: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        """Serialize to JSON-friendly dict."""
+        """Serialize to JSON-friendly dict.
+
+        Includes per-primitive counts, per-chain detail, and a
+        high-risk flag indicating whether any chain uses a high-risk
+        primitive (destructive fs, subprocess, outbound network).
+        """
+        prim_counts: dict[str, int] = {}
+        for chain in self.chains:
+            prim_counts[chain.primitive] = prim_counts.get(chain.primitive, 0) + 1
         return {
             "boundary": self.boundary,
             "chain_count": len(self.chains),
             "entry_points": self.entry_points,
             "primitives_used": self.primitives_used,
+            "primitive_counts": prim_counts,
+            "chains": [c.to_dict() for c in self.chains],
+            "has_high_risk": any(
+                is_high_risk(c.primitive) for c in self.chains
+            ),
         }
 
 
@@ -359,6 +478,7 @@ def _trace_entry_points(
         "calls", "instantiates", "dispatches_to", "references",
         # FFI bridge edges
         "native_bridge", "wasm_bridge", "wasm_load", "bridge_invokes",
+        "cgo_bridge", "ffi_bridge",
         "ipc_calls", "ipc_event", "grpc_calls", "implements_rpc",
     })
     reverse_graph: dict[str, set[str]] = {}
@@ -468,17 +588,25 @@ def compute_boundary_map(
 def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
     """Check if a catalog entry's module matches the edge's module hint.
 
-    Uses substring matching in both directions to handle different
-    naming conventions:
+    Uses case-insensitive substring matching in both directions to handle
+    different naming conventions:
     - Go: catalog has ``net.Conn``, edge has ``net.Conn`` → match
     - Go: catalog has ``os``, edge has ``os`` → match
     - Go: catalog has ``net.Conn``, edge has ``crypto/rand`` → no match
     - Rust: catalog has ``std::fs``, edge has ``std::fs::File`` → match
     - Java: catalog has ``java.io``, edge has ``java.io.FileInputStream`` → match
+    - Swift: catalog has ``Channel``, edge has ``channel`` → match
+    - Swift: catalog has ``ChannelHandlerContext``, edge has ``context`` → match
+    - Swift: catalog has ``NonBlockingFileIO``, edge has ``fileIO`` → match
+
+    Case-insensitive comparison is necessary because Swift's tree-sitter
+    analyzer extracts receiver variable names (camelCase) as module hints,
+    while the catalog uses PascalCase type names.
     """
-    # Normalize: treat :: and / as . for uniform comparison
-    cm = catalog_module.replace("::", ".").replace("/", ".")
-    em = edge_module_hint.replace("::", ".").replace("/", ".")
+    # Normalize: treat :: and / as . for uniform comparison, casefold for
+    # cross-convention matching (Swift camelCase vars vs PascalCase types)
+    cm = catalog_module.replace("::", ".").replace("/", ".").casefold()
+    em = edge_module_hint.replace("::", ".").replace("/", ".").casefold()
     return cm in em or em in cm
 
 
@@ -505,19 +633,65 @@ def _extract_module_hint(edge_dst: str) -> str | None:
 def _extract_callee_name(edge_dst: str) -> str:
     """Extract a callable name from an edge destination symbol ID.
 
-    Symbol IDs have the format:
-        ``language:path:span:name:kind``
+    Symbol IDs have the format ``language:path:span:name:kind``.  The *name*
+    field may itself contain colons (e.g., Objective-C selectors like
+    ``removeItemAtPath:error:``).
 
-    We extract the ``name`` part (4th colon-separated field from the end).
-    For method calls the name may be ``ClassName.method_name``.
+    Strategy: split off the *kind* (last field) from the right, then take
+    everything after the first three fields (lang, path, span) as the name.
     """
-    parts = edge_dst.split(":")
-    if len(parts) >= 2:
-        # The name is the second-to-last field before the kind
-        # Example: "python:/path/to/file.py:10-12:os.listdir:function"
-        # → name = "os.listdir"
-        return parts[-2] if len(parts) >= 2 else edge_dst
-    return edge_dst
+    # Split off kind from the right
+    last_colon = edge_dst.rfind(":")
+    if last_colon < 0:
+        return edge_dst
+    rest = edge_dst[:last_colon]
+
+    # rest = "lang:path:span:name_possibly_with_colons"
+    # Split into at most 4 parts: lang, path, span, name(remainder)
+    parts = rest.split(":", 3)
+    if len(parts) >= 4:
+        return parts[3]
+    # Fewer fields — return the last segment (handles minimal IDs like "a:b")
+    return parts[-1] if parts else edge_dst
+
+
+def _resolve_ffi_catalog(
+    lang: str,
+    module_hint: str | None,
+    catalogs: dict[str, "IoBoundaryCatalog"],
+) -> tuple["IoBoundaryCatalog | None", str | None]:
+    """Redirect FFI pseudo-namespace lookups to the actual target catalog.
+
+    Go's cgo pseudo-package ``C`` produces edges like
+    ``go:C:0-0:fopen:unresolved`` when calling C stdlib functions.  The
+    ``go`` catalog contains Go-native IO (``os.Open``, ``net.Listen``),
+    not C stdlib entries.  This function detects the ``go:C:`` prefix
+    and redirects to the ``c`` catalog, dropping the module hint because
+    ``"C"`` is Go's import alias, not a C header/module name.
+
+    Python's pyffi linker uses ``python:C_stdlib:0-0:<name>:unresolved``
+    for calls through ``ctypes.CDLL(None)`` or ``ffi.dlopen(None)``.
+    Same redirect: the ``python`` catalog has Python-native IO, but these
+    calls target C stdlib functions.
+
+    Returns:
+        (catalog, adjusted_module_hint) — the catalog to use for lookup
+        and the module hint (``None`` when the pseudo-namespace module
+        is not a real module in the target language).
+    """
+    # Go cgo → C stdlib: go:C:0-0:<name>:unresolved
+    if lang == "go" and module_hint == "C":
+        return catalogs.get("c"), None
+
+    # Python ctypes.CDLL(None) / ffi.dlopen(None) → C stdlib
+    if lang == "python" and module_hint == "C_stdlib":
+        return catalogs.get("c"), None
+
+    # Ruby FFI gem attach_function → C stdlib/external lib
+    if lang == "ruby" and module_hint == "C_ffi":
+        return catalogs.get("c"), None
+
+    return catalogs.get(lang), module_hint
 
 
 def tag_io_boundaries(
@@ -528,6 +702,7 @@ def tag_io_boundaries(
         "calls", "imports",
         # FFI edges — trace I/O boundaries across language boundaries
         "wasm_bridge", "wasm_load", "bridge_invokes",
+        "cgo_bridge", "ffi_bridge",
         "ipc_calls", "ipc_event",
         "grpc_calls", "implements_rpc",
     }),
@@ -537,6 +712,12 @@ def tag_io_boundaries(
     For each call-type edge, extracts the callee name from the destination
     symbol ID, looks it up in the appropriate language catalog, and stamps
     ``io_boundary`` and ``io_primitive`` into ``edge.meta`` if matched.
+
+    When the destination belongs to an FFI pseudo-namespace (e.g.,
+    ``go:C:0-0:fopen:unresolved`` for cgo calls), the lookup is
+    redirected to the actual target-language catalog (``c`` in this case)
+    so C stdlib IO primitives are recognized even when the cgo linker
+    could not resolve the call to a repo-local C symbol.
 
     Args:
         edges: List of Edge objects to scan (mutated in place).
@@ -557,13 +738,18 @@ def tag_io_boundaries(
         dst_parts = edge.dst.split(":")
         lang = dst_parts[0]
 
-        catalog = catalogs.get(lang)
+        callee = _extract_callee_name(edge.dst)
+        module_hint = _extract_module_hint(edge.dst)
+
+        # Try FFI pseudo-namespace redirect first (e.g., go:C: → c catalog),
+        # then fall back to the primary language catalog.
+        catalog, adjusted_hint = _resolve_ffi_catalog(
+            lang, module_hint, catalogs,
+        )
         if catalog is None:
             continue
 
-        callee = _extract_callee_name(edge.dst)
-        module_hint = _extract_module_hint(edge.dst)
-        match = catalog.lookup_with_module(callee, module_hint)
+        match = catalog.lookup_with_module(callee, adjusted_hint)
         if match is None:
             continue
 

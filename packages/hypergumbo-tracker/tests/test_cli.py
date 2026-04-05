@@ -3786,14 +3786,13 @@ class TestAutoSync:
                         _maybe_auto_sync(tmp_path)
                         mock_sync.assert_not_called()
 
-    def test_tui_triggers_auto_sync(
+    def test_tui_no_sync_without_mutations(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """TUI is a mutation command, so auto-sync check runs after."""
+        """TUI should NOT trigger auto-sync when no mutations occurred."""
         tracker_root = _setup_tracker(tmp_path)
         _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
-        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "0")
 
         with patch(
             "hypergumbo_tracker.cli._detect_screen_altscreen_off",
@@ -3806,14 +3805,72 @@ class TestAutoSync:
             with pytest.raises(SystemExit) as exc:
                 main(["--tracker-root", str(tracker_root), "tui"])
             assert exc.value.code == EXIT_SUCCESS
+            mock_sync.assert_not_called()
+
+    def test_tui_syncs_when_mutations_occurred(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """TUI should trigger auto-sync when ops lines increased during session."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+
+        # Simulate pending_sync_lines returning 10 before TUI, 50 after
+        # (i.e., the TUI session wrote 40 new ops lines).
+        call_count = 0
+
+        def fake_pending_lines(repo_root: Path) -> int:
+            nonlocal call_count
+            call_count += 1
+            return 10 if call_count == 1 else 50
+
+        with patch(
+            "hypergumbo_tracker.cli._detect_screen_altscreen_off",
+            return_value=False,
+        ), patch(
+            "hypergumbo_tracker.tui.TrackerApp.run",
+        ), patch(
+            "hypergumbo_tracker.sync.pending_sync_lines",
+            side_effect=fake_pending_lines,
+        ), patch(
+            "hypergumbo_tracker.cli._maybe_auto_sync",
+        ) as mock_sync:
+            with pytest.raises(SystemExit) as exc:
+                main(["--tracker-root", str(tracker_root), "tui"])
+            assert exc.value.code == EXIT_SUCCESS
             mock_sync.assert_called_once_with(tracker_root)
+
+    def test_tui_no_sync_when_git_unavailable(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """TUI gracefully skips sync check when git rev-parse fails."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+
+        with patch(
+            "hypergumbo_tracker.cli._detect_screen_altscreen_off",
+            return_value=False,
+        ), patch(
+            "hypergumbo_tracker.tui.TrackerApp.run",
+        ), patch(
+            "subprocess.run",
+            side_effect=FileNotFoundError("git not found"),
+        ), patch(
+            "hypergumbo_tracker.cli._maybe_auto_sync",
+        ) as mock_sync:
+            with pytest.raises(SystemExit) as exc:
+                main(["--tracker-root", str(tracker_root), "tui"])
+            assert exc.value.code == EXIT_SUCCESS
+            mock_sync.assert_not_called()
 
     def test_mutation_commands_set(self) -> None:
         """_MUTATION_COMMANDS contains expected commands."""
         assert "add" in _MUTATION_COMMANDS
         assert "update" in _MUTATION_COMMANDS
         assert "discuss" in _MUTATION_COMMANDS
-        assert "tui" in _MUTATION_COMMANDS
+        # TUI handles auto-sync internally, not via _MUTATION_COMMANDS
+        assert "tui" not in _MUTATION_COMMANDS
         # Read-only commands should NOT be in the set
         assert "list" not in _MUTATION_COMMANDS
         assert "show" not in _MUTATION_COMMANDS

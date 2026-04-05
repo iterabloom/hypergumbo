@@ -39,3 +39,11 @@
   clock: 4  # 45f4
   nonce: 45f4  # 45f4
   message: "Fixed in PR #2013. _handle_dot_call() now checks if module name (or alias expansion) is a known module prefix before using NameResolver. External modules skip to unresolved edge, preventing bare-name false positives."  # 45f4
+- op: update  # 91ba
+  at: '2026-03-25T04:23:57Z'  # 91ba
+  by: agent  # 91ba
+  actor: jgstern_agent  # 91ba
+  clock: 5  # 91ba
+  nonce: 91ba  # 91ba
+  set:  # 91ba
+    parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # 91ba

@@ -519,6 +519,88 @@ class TestSemanticEntryDetection:
         assert len(ws_eps) == 1
         assert ws_eps[0].confidence >= 0.95
 
+    def test_detect_middleware_concept(self) -> None:
+        """Symbol with middleware concept is detected as middleware entrypoint."""
+        sym = make_symbol(
+            "TracingMiddleware.handle",
+            path="Sources/Hummingbird/Middleware/TracingMiddleware.swift",
+            meta={
+                "concepts": [
+                    {"concept": "middleware", "framework": "hummingbird"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        mw_eps = [e for e in entrypoints
+                  if e.kind == EntrypointKind.MIDDLEWARE_HANDLER]
+        assert len(mw_eps) == 1
+        assert mw_eps[0].symbol_id == sym.id
+        assert mw_eps[0].confidence >= 0.95
+        assert "middleware" in mw_eps[0].label.lower()
+
+    def test_detect_middleware_concept_with_framework(self) -> None:
+        """Middleware entrypoint label includes framework name."""
+        sym = make_symbol(
+            "authMiddleware",
+            path="src/middleware/auth.ts",
+            meta={
+                "concepts": [
+                    {"concept": "middleware", "framework": "express"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        mw_eps = [e for e in entrypoints
+                  if e.kind == EntrypointKind.MIDDLEWARE_HANDLER]
+        assert len(mw_eps) == 1
+        assert "Express" in mw_eps[0].label
+
+    def test_detect_middleware_no_framework(self) -> None:
+        """Middleware without framework uses generic label."""
+        sym = make_symbol(
+            "logMiddleware",
+            path="src/middleware/log.py",
+            meta={
+                "concepts": [
+                    {"concept": "middleware"}
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        mw_eps = [e for e in entrypoints
+                  if e.kind == EntrypointKind.MIDDLEWARE_HANDLER]
+        assert len(mw_eps) == 1
+        assert mw_eps[0].label == "HTTP middleware"
+
+    def test_middleware_dedup(self) -> None:
+        """Multiple middleware concepts produce only one entrypoint per symbol."""
+        sym = make_symbol(
+            "corsMiddleware",
+            path="src/middleware/cors.ts",
+            meta={
+                "concepts": [
+                    {"concept": "middleware", "framework": "express"},
+                    {"concept": "middleware", "framework": "koa"},
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        mw_eps = [e for e in entrypoints
+                  if e.kind == EntrypointKind.MIDDLEWARE_HANDLER]
+        assert len(mw_eps) == 1
+
     def test_detect_event_handler_concept(self) -> None:
         """Symbol with event_handler concept is detected as event handler entrypoint."""
         sym = make_symbol(
@@ -3930,3 +4012,195 @@ class TestDiversityCap:
         eps = [self._make_ep(EntrypointKind.HTTP_ROUTE, i) for i in range(5)]
         result = _diversity_cap(eps, 50)
         assert len(result) == 5
+
+
+class TestApplicationConceptDetection:
+    """Tests for 'application' concept -> MAIN_FUNCTION mapping.
+
+    Covers cats-effect IOApp, ZIO ZIOAppDefault, and generic application
+    patterns for Scala functional apps.
+    """
+
+    def test_application_concept_ioapp(self) -> None:
+        """application concept with http4s framework -> MAIN_FUNCTION."""
+        sym = make_symbol(
+            "Main",
+            path="src/Main.scala",
+            kind="object",
+            language="scala",
+            meta={"concepts": [
+                {"concept": "application", "framework": "http4s"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+        assert "http4s" in ep[0].label.lower()
+
+    def test_application_concept_zio(self) -> None:
+        """application concept with zio framework -> MAIN_FUNCTION."""
+        sym = make_symbol(
+            "MyApp",
+            path="src/MyApp.scala",
+            kind="object",
+            language="scala",
+            meta={"concepts": [
+                {"concept": "application", "framework": "zio"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+        assert "zio" in ep[0].label.lower()
+
+    def test_application_concept_generic(self) -> None:
+        """application concept without framework -> MAIN_FUNCTION."""
+        sym = make_symbol(
+            "App",
+            path="src/App.scala",
+            kind="object",
+            language="scala",
+            meta={"concepts": [
+                {"concept": "application"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+        assert "application" in ep[0].label.lower()
+
+
+    def test_application_concept_dedup(self) -> None:
+        """Only one MAIN_FUNCTION entrypoint per symbol even with multiple application concepts."""
+        sym = make_symbol(
+            "Main",
+            path="src/Main.scala",
+            kind="object",
+            language="scala",
+            meta={"concepts": [
+                {"concept": "application", "framework": "http4s"},
+                {"concept": "application", "framework": "cats-effect"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1  # dedup
+
+
+class TestServletConceptDetection:
+    """Tests for 'servlet' concept -> CONTROLLER mapping."""
+
+    def test_servlet_concept_scalatra(self) -> None:
+        """servlet concept with scalatra framework -> CONTROLLER."""
+        sym = make_symbol(
+            "ApiServlet",
+            path="src/ApiServlet.scala",
+            kind="class",
+            language="scala",
+            meta={"concepts": [
+                {"concept": "servlet", "framework": "scalatra"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+        assert "scalatra" in ep[0].label.lower()
+
+    def test_servlet_concept_generic(self) -> None:
+        """servlet concept without framework -> CONTROLLER with generic label."""
+        sym = make_symbol(
+            "MyServlet",
+            path="src/MyServlet.java",
+            kind="class",
+            language="java",
+            meta={"concepts": [
+                {"concept": "servlet"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ep) == 1
+        assert "servlet" in ep[0].label.lower()
+
+    def test_servlet_concept_dedup(self) -> None:
+        """Only one CONTROLLER entrypoint per symbol even with multiple servlet concepts."""
+        sym = make_symbol(
+            "ApiServlet",
+            path="src/ApiServlet.scala",
+            kind="class",
+            language="scala",
+            meta={"concepts": [
+                {"concept": "servlet", "framework": "scalatra"},
+                {"concept": "servlet", "framework": "jakarta"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ep) == 1  # dedup
+
+
+class TestSwiftApplicationConcept:
+    """Tests for Swift app entrypoint detection via swiftui.yaml patterns."""
+
+    def test_swiftui_app_concept(self) -> None:
+        """SwiftUI App conformance -> MAIN_FUNCTION entrypoint."""
+        sym = make_symbol(
+            "MyApp",
+            path="Sources/App/MyApp.swift",
+            kind="struct",
+            language="swift",
+            meta={"concepts": [
+                {"concept": "application", "framework": "swiftui"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+        assert ep[0].confidence >= 0.90
+
+    def test_uikit_app_delegate_concept(self) -> None:
+        """UIApplicationDelegate conformance -> MAIN_FUNCTION entrypoint."""
+        sym = make_symbol(
+            "AppDelegate",
+            path="Sources/App/AppDelegate.swift",
+            kind="class",
+            language="swift",
+            meta={"concepts": [
+                {"concept": "application", "framework": "swiftui"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1
+
+    def test_swift_view_controller_concept(self) -> None:
+        """UIViewController subclass -> CONTROLLER entrypoint."""
+        sym = make_symbol(
+            "DetailViewController",
+            path="Sources/App/DetailViewController.swift",
+            kind="class",
+            language="swift",
+            meta={"concepts": [
+                {"concept": "controller", "framework": "swiftui"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ep) == 1
+
+    def test_parsable_command_concept(self) -> None:
+        """ParsableCommand conformance -> MAIN_FUNCTION entrypoint."""
+        sym = make_symbol(
+            "MyCLI",
+            path="Sources/CLI/MyCLI.swift",
+            kind="struct",
+            language="swift",
+            meta={"concepts": [
+                {"concept": "application", "framework": "swiftui"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        assert len(ep) == 1

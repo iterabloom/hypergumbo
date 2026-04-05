@@ -1,0 +1,51 @@
+- op: create  # fa33
+  at: '2026-04-01T22:11:32Z'  # fa33
+  by: agent  # fa33
+  actor: jgstern_agent  # fa33
+  clock: 1  # fa33
+  nonce: fa33  # fa33
+  data:  # fa33
+    kind: work_item  # fa33
+    title: "Per-call-site interface dispatch narrowing in type_hierarchy linker"  # fa33
+    status: todo_soft  # fa33
+    priority: 2  # fa33
+    parent:  # fa33
+    tags:  # fa33
+    - linker  # fa33
+    - dispatch  # fa33
+    - go  # fa33
+    before: []  # fa33
+    duplicate_of: []  # fa33
+    not_duplicate_of: []  # fa33
+    pr_ref:  # fa33
+    description: "Bakeoff finding (alertmanager, score 65.7): type_hierarchy linker broadcasts dispatches_to from every interface method to ALL implementors. 28 spurious edges in alertmanager (email/jira/discord all → discord.Notify). The Go analyzer already narrows for typed_receiver_call (local concrete vars), but misses interface-typed declarations with concrete RHS (var n Notifier = &SlackNotifier{}). Fix: either expand Go analyzer var_types to track concrete RHS through interface declarations, or add meta.concrete_receiver to call edges for the linker to consume."  # fa33
+    fields: {}  # fa33
+- op: update  # 9f29
+  at: '2026-04-02T14:15:07Z'  # 9f29
+  by: agent  # 9f29
+  actor: jgstern_agent  # 9f29
+  clock: 2  # 9f29
+  nonce: 9f29  # 9f29
+  set:  # 9f29
+    status: done  # 9f29
+- op: discuss  # 14ed
+  at: '2026-04-02T14:15:07Z'  # 14ed
+  by: agent  # 14ed
+  actor: jgstern_agent  # 14ed
+  clock: 3  # 14ed
+  nonce: 14ed  # 14ed
+  message: "Go analyzer now extracts concrete type from var declarations with initializer (e.g. var n Notifier = &DiscordNotifier{}). Calls resolve to concrete type, eliminating spurious dispatches_to edges. PR in flight on branch jgstern-agent/feat/interface-dispatch-narrowing."  # 14ed
+- op: discuss  # eca5
+  at: '2026-04-02T14:49:08Z'  # eca5
+  by: human  # eca5
+  actor: jgstern  # eca5
+  clock: 4  # eca5
+  nonce: eca5  # eca5
+  message: "PR number/commit id please?"  # eca5
+- op: discuss  # fe4f
+  at: '2026-04-03T05:05:26Z'  # fe4f
+  by: agent  # fe4f
+  actor: jgstern_agent  # fe4f
+  clock: 5  # fe4f
+  nonce: fe4f  # fe4f
+  message: "Commit 2ff232e0 (feat(go): narrow interface dispatch via concrete initializer type). This was merged to dev directly via auto-pr — no standalone PR number since auto-pr uses fast-forward merge."  # fe4f

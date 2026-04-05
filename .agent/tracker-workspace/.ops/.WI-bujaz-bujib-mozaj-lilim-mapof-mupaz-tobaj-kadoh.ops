@@ -83,3 +83,11 @@
   clock: 10  # 7f0b
   nonce: 7f0b  # 7f0b
   message: "Implemented in PR #1543. Added repair-agent-perms.sh shared script + sourced from post-checkout and post-merge hooks. Detects two-user setup via shared group on .agent/tracker* dirs. Fixes g+rw on files, g+rwxs on dirs owned by current user. Silent/best-effort. PR requires human approval (governance files)."  # 7f0b
+- op: update  # d607
+  at: '2026-03-25T04:15:55Z'  # d607
+  by: agent  # d607
+  actor: jgstern_agent  # d607
+  clock: 11  # d607
+  nonce: d607  # d607
+  set:  # d607
+    parent: INV-rahib-gobop-zozum-kopil-noguh-tifof-nibol-dudup  # d607

@@ -420,13 +420,17 @@ class KindConfig:
       the kind's fields dict accepts arbitrary keys with no validation.
     allowed_statuses: Optional list of statuses valid for this kind. If None,
       all global statuses are valid. Used to restrict invariant-kind items to
-      perpetual-truth statuses (holding, violated, needs_human_review, deleted).
+      perpetual-truth statuses (satisfied, violated, needs_human_review, deleted).
+    deprecated_statuses: Optional list of statuses that are accepted when reading
+      historical ops but rejected on new create/update operations. This allows
+      renaming statuses without rewriting the append-only ops log.
     """
 
     prefix: str
     description: str = ""
     fields_schema: dict[str, FieldSchema] | None = None
     allowed_statuses: list[str] | None = None
+    deprecated_statuses: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -500,11 +504,17 @@ def _parse_config_dict(raw: dict[str, Any]) -> TrackerConfig:
             raise ConfigValidationError(
                 f"Kind '{kind_name}': allowed_statuses must be a list"
             )
+        raw_deprecated = kind_spec.get("deprecated_statuses")
+        if raw_deprecated is not None and not isinstance(raw_deprecated, list):
+            raise ConfigValidationError(
+                f"Kind '{kind_name}': deprecated_statuses must be a list"
+            )
         kinds[kind_name] = KindConfig(
             prefix=kind_spec.get("prefix", kind_name.upper()[:3]),
             description=kind_spec.get("description", ""),
             fields_schema=_parse_fields_schema(kind_spec.get("fields_schema")),
             allowed_statuses=raw_allowed,
+            deprecated_statuses=raw_deprecated,
         )
 
     # Parse statuses
@@ -561,7 +571,7 @@ def _parse_config_dict(raw: dict[str, Any]) -> TrackerConfig:
             f"{human_only_blocking_overlap}"
         )
 
-    # Validate per-kind allowed_statuses
+    # Validate per-kind allowed_statuses and deprecated_statuses
     for kind_name, kind_config in kinds.items():
         if kind_config.allowed_statuses is not None:
             for s in kind_config.allowed_statuses:
@@ -569,6 +579,21 @@ def _parse_config_dict(raw: dict[str, Any]) -> TrackerConfig:
                     raise ConfigValidationError(
                         f"Kind '{kind_name}': allowed_statuses references "
                         f"unknown status '{s}'"
+                    )
+        if kind_config.deprecated_statuses is not None:
+            for s in kind_config.deprecated_statuses:
+                if s not in status_set:
+                    raise ConfigValidationError(
+                        f"Kind '{kind_name}': deprecated_statuses references "
+                        f"unknown status '{s}'"
+                    )
+            # Deprecated must not overlap with allowed
+            if kind_config.allowed_statuses is not None:
+                overlap = set(kind_config.deprecated_statuses) & set(kind_config.allowed_statuses)
+                if overlap:
+                    raise ConfigValidationError(
+                        f"Kind '{kind_name}': deprecated_statuses and "
+                        f"allowed_statuses overlap: {overlap}"
                     )
 
     # Parse actor resolution

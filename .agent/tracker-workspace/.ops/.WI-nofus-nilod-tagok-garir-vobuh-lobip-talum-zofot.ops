@@ -1,0 +1,74 @@
+- op: create  # a434
+  at: '2026-03-23T14:14:08Z'  # a434
+  by: agent  # a434
+  actor: jgstern_agent  # a434
+  clock: 1  # a434
+  nonce: a434  # a434
+  data:  # a434
+    kind: work_item  # a434
+    title: "ADR-0017 Phase 2: Targeted analysis selection"  # a434
+    status: todo_soft  # a434
+    priority: 3  # a434
+    parent:  # a434
+    tags:  # a434
+    - adr-0017  # a434
+    - phase-2  # a434
+    before: []  # a434
+    duplicate_of: []  # a434
+    not_duplicate_of: []  # a434
+    pr_ref:  # a434
+    description: "DDG analysis invoked on targeted functions only (2-10% of codebase): IO-critical functions (on paths between entrypoints and IO primitives), taint-relevant functions (handling catalog sources/sinks), claim-relevant functions. Budget cap: 500 functions (configurable via --max-ddg-targets), prioritized by centrality rank. See ADR-0017 §1c."  # a434
+    fields: {}  # a434
+- op: update  # 7f8b
+  at: '2026-03-23T14:17:40Z'  # 7f8b
+  by: agent  # 7f8b
+  actor: jgstern_agent  # 7f8b
+  clock: 2  # 7f8b
+  nonce: 7f8b  # 7f8b
+  set:  # 7f8b
+    status: needs_human_review  # 7f8b
+- op: discuss  # 69b1
+  at: '2026-03-23T14:17:40Z'  # 69b1
+  by: agent  # 69b1
+  actor: jgstern_agent  # 69b1
+  clock: 3  # 69b1
+  nonce: 69b1  # 69b1
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 69b1
+- op: update  # 0874
+  at: '2026-03-25T04:15:55Z'  # 0874
+  by: agent  # 0874
+  actor: jgstern_agent  # 0874
+  clock: 4  # 0874
+  nonce: '0874'  # 0874
+  set:  # 0874
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 0874
+- op: update  # eef0
+  at: '2026-03-25T07:48:10Z'  # eef0
+  by: agent  # eef0
+  actor: jgstern_agent  # eef0
+  clock: 5  # eef0
+  nonce: eef0  # eef0
+  set:  # eef0
+    status: todo_soft  # eef0
+- op: discuss  # e7fb
+  at: '2026-03-25T07:48:10Z'  # e7fb
+  by: agent  # e7fb
+  actor: jgstern_agent  # e7fb
+  clock: 6  # e7fb
+  nonce: e7fb  # e7fb
+  message: "ADR-0017 accepted. Phase 2."  # e7fb
+- op: update  # a7d1
+  at: '2026-03-26T07:35:01Z'  # a7d1
+  by: agent  # a7d1
+  actor: jgstern_agent  # a7d1
+  clock: 7  # a7d1
+  nonce: a7d1  # a7d1
+  set:  # a7d1
+    status: done  # a7d1
+- op: discuss  # cdf5
+  at: '2026-03-26T07:35:01Z'  # cdf5
+  by: agent  # cdf5
+  actor: jgstern_agent  # cdf5
+  clock: 8  # cdf5
+  nonce: cdf5  # cdf5
+  message: "Implemented in PR #2579. select_ddg_targets() selects IO-critical, taint-relevant, and high-centrality functions. Tier-filtered, budget-capped at 500. 122 tests, 100% coverage."  # cdf5

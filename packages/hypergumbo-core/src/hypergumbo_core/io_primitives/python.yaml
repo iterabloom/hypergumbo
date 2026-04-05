@@ -7,6 +7,35 @@
 # etc.) are detected transitively — they ultimately call these primitives.
 language: python
 
+# Method names that are too generic to match without module context.
+# Python duck-typing means .read(), .write(), .close() appear on many objects.
+ambiguous_names:
+  - read          # file.read vs io.BytesIO.read, any .read()
+  - readline      # file.readline vs any .readline()
+  - readlines     # file.readlines vs any .readlines()
+  - write         # file.write vs io.StringIO.write, any .write()
+  - writelines    # file.writelines vs any .writelines()
+  - close         # file.close vs any .close()
+  - send          # socket.send vs generator.send, queue.send
+  - recv          # socket.recv vs multiprocessing.Pipe.recv
+  - get           # requests.get vs dict.get, queue.get
+  - post          # requests.post vs any .post()
+  - put           # requests.put vs dict.__setitem__, queue.put
+  - delete        # requests.delete vs dict.__delitem__
+  - head          # requests.head vs any .head()
+  - patch         # requests.patch vs any .patch()
+  - request       # requests.request vs any .request()
+  - run           # subprocess.run vs asyncio.run, flask.Flask.run, any .run()
+  - open          # builtins.open vs any .open() method
+  - connect       # socket.connect vs sqlite3.connect, any .connect()
+  - accept        # socket.accept vs any .accept()
+  - listen        # socket.listen vs any .listen()
+  - bind          # socket.bind vs any .bind()
+  - start         # Process.start vs any .start()
+  - next          # Scanner.next vs builtins.next()
+  - dump          # json.dump vs any .dump()
+  - input         # fileinput.input vs builtins.input (not IO boundary)
+
 fs_read:
   - module: builtins
     functions: [open]

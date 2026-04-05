@@ -1,0 +1,34 @@
+- op: create  # 131b
+  at: '2026-03-26T21:10:46Z'  # 131b
+  by: agent  # 131b
+  actor: jgstern_agent  # 131b
+  clock: 1  # 131b
+  nonce: 131b  # 131b
+  data:  # 131b
+    kind: work_item  # 131b
+    title: "IO boundaries --exclude-tests flag"  # 131b
+    status: todo_soft  # 131b
+    priority: 3  # 131b
+    parent:  # 131b
+    tags: []  # 131b
+    before: []  # 131b
+    duplicate_of: []  # 131b
+    not_duplicate_of: []  # 131b
+    pr_ref:  # 131b
+    description: "DEEP bakeoff assessment: IO boundaries output is heavily polluted with test code (91% test pollution in logging for Hummingbird). Add --exclude-tests flag to io-boundaries command, filtering chains where io_edge_src is in a test file."  # 131b
+    fields: {}  # 131b
+- op: update  # ebff
+  at: '2026-03-26T21:30:57Z'  # ebff
+  by: agent  # ebff
+  actor: jgstern_agent  # ebff
+  clock: 2  # ebff
+  nonce: ebff  # ebff
+  set:  # ebff
+    status: done  # ebff
+- op: discuss  # cdd0
+  at: '2026-03-26T21:30:57Z'  # cdd0
+  by: agent  # cdd0
+  actor: jgstern_agent  # cdd0
+  clock: 3  # cdd0
+  nonce: cdd0  # cdd0
+  message: "Implemented in PR #2600. Added -x/--exclude-tests flag to io-boundaries command. Filters chains where source symbol is in a test file."  # cdd0

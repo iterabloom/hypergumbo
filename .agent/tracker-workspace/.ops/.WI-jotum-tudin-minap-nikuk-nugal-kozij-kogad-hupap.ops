@@ -120,3 +120,11 @@
   clock: 15  # 5563
   nonce: '5563'  # 5563
   message: "Fixed in PR #2441. tag_io_boundaries() now uses module-qualified matching: extracts module_hint from edge dst and checks against catalog entry modules. crypto/rand.Read no longer matches net.Conn.Read. Applies to all 6 languages with IO catalogs. Falls back to name-only matching when module context is 'external'."  # 5563
+- op: update  # 9157
+  at: '2026-03-25T04:15:54Z'  # 9157
+  by: agent  # 9157
+  actor: jgstern_agent  # 9157
+  clock: 16  # 9157
+  nonce: '9157'  # 9157
+  set:  # 9157
+    parent: INV-kagob-salob-nuhim-lilut-sural-lapis-jokif-kivif  # 9157

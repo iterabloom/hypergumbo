@@ -39,3 +39,11 @@
   clock: 4  # 2311
   nonce: '2311'  # 2311
   message: "Fixed in PR #2453. Added third-party/, thirdparty/, external/, deps/ to EXTERNAL_DEP_PATTERNS. Rocksdb's third-party/gtest-1.8.1/ now correctly classified as tier 3."  # 2311
+- op: update  # a509
+  at: '2026-03-25T04:23:59Z'  # a509
+  by: agent  # a509
+  actor: jgstern_agent  # a509
+  clock: 5  # a509
+  nonce: a509  # a509
+  set:  # a509
+    parent: INV-mogud-jurul-fisiv-jupaz-sujos-hufis-dadov-luzar  # a509

@@ -934,6 +934,26 @@ let package = Package(
     assert "vapor" in data["profile"]["frameworks"]
 
 
+def test_detects_swift_hummingbird_framework(tmp_path: Path) -> None:
+    """Should detect Hummingbird framework from Package.swift."""
+    (tmp_path / "main.swift").write_text("import Hummingbird\n")
+    (tmp_path / "Package.swift").write_text("""// swift-tools-version:5.9
+import PackageDescription
+
+let package = Package(
+    name: "myapp",
+    dependencies: [
+        .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0")
+    ]
+)""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "hummingbird" in data["profile"]["frameworks"]
+
+
 # Scala framework detection tests
 
 

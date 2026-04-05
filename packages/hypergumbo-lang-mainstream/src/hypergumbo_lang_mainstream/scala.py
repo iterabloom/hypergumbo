@@ -61,6 +61,22 @@ if TYPE_CHECKING:
 PASS_ID = make_pass_id("scala")
 
 
+def _short_name_penalty(name: str) -> float:
+    """Confidence penalty for short callee names in Scala call resolution.
+
+    Single-letter names (f, g, x, n) are almost always lambda parameters
+    or local defs in Scala FP code, not cross-file calls. Two-letter names
+    (fn, xs) are also often parameters. Applying a penalty makes false
+    positive edges easily filterable by downstream consumers.
+    """
+    n = len(name)
+    if n <= 1:
+        return 0.15
+    if n == 2:
+        return 0.50
+    return 1.0
+
+
 def find_scala_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Scala files in the repository."""
     yield from find_files(repo_root, ["*.scala"])
@@ -669,13 +685,14 @@ def _extract_edges_from_file(
                         path_hint = import_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
+                            conf = 0.80 * lookup_result.confidence * _short_name_penalty(callee_name)
                             edges.append(Edge.create(
                                 src=current_function.id,
                                 dst=lookup_result.symbol.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="function_call",
-                                confidence=0.80 * lookup_result.confidence,
+                                confidence=conf,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                             ))

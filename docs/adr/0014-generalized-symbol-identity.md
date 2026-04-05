@@ -2,8 +2,8 @@
 # ADR-0014: Generalized Symbol Identity (stable_id / shape_id)
 
 Date: 2026-02-20
-Updated: 2026-03-19
-Status: Accepted. Phase 0: 11/11 complete (Go mount point fixed). Phase 1 shape_id: all 20 mainstream analyzers wired + 19 extended1 + Python + 2 common (HLSL, Dart) = ~42 of ~70 code-language analyzers; remaining gaps are niche languages (13 extended1 without, 9 common without). Phase 2 untyped stable_id: all 20 mainstream + 19 extended1 + 7 common = ~46+ of ~70; remaining gaps are niche languages. Phase 3 typed stable_id: 12 analyzers (methods/constructors only).
+Updated: 2026-03-27
+Status: Accepted. Phase 0: 11/11 complete (Go mount point fixed). Phase 1 shape_id: all 20 mainstream analyzers wired (12 via node_for_symbol, 7 via direct compute_shape_id call, Python via ast override) + 19 extended1 + 1 common (HLSL) = ~41 of ~70 code-language analyzers; remaining gaps are niche languages (13 extended1 without, 10 common without, Dart not yet wired). Phase 2 untyped stable_id: 9 mainstream + 19 extended1 + 7 common = 35 using untyped tier; 11 mainstream + 1 common (Dart) upgraded to Phase 3 typed tier; combined ~47 of ~70. Phase 3 typed stable_id: 12 analyzers (methods/constructors only).
 
 ## Context
 
@@ -234,19 +234,24 @@ The `containing_stable_id` component is computed recursively: a method's `stable
 
 | What | Where |
 |------|-------|
-| Spec §6 identity field semantics | `docs/hypergumbo-spec.md:269-344` |
-| Symbol class (`stable_id`, `shape_id` fields) | `ir.py:226-227` |
-| Scheme version constants | `schema.py:72-73` |
-| Python `_compute_stable_id()` | `py.py:836-877` |
-| Python `_compute_shape_id()` / `_ast_structure()` | `py.py:880-910` |
-| Python Django CBV override | `py.py:1441-1443` |
-| `iter_tree()` utility | `base.py:200-222` |
-| Go route `stable_id` (Gin/Echo) | `go.py:1186` |
-| Go route `stable_id` (Gorilla) | `go.py:1231` |
-| JS/TS Express route `stable_id` | `js_ts.py:1978` |
-| JS/TS NestJS route `stable_id` | `js_ts.py:2211` |
-| WGSL entry-point `stable_id` | `wgsl.py:232` |
-| Hack reversed field order | `hack.py:89` |
-| Smithy reversed field order | `smithy.py:62` |
-| Build-from-source grammars | `scripts/build-source-grammars:105` |
+| Spec §6 identity field semantics | `docs/hypergumbo-spec.md:285` |
+| Symbol class (`stable_id`, `shape_id` fields) | `ir.py:237-238` |
+| Scheme version constants | `schema.py:73-74` |
+| Python `_compute_stable_id()` | `py.py:1227` |
+| Python `_compute_shape_id()` / `_ast_structure()` | `py.py:1277` / `py.py:1263` |
+| Python Django CBV route identity | `py.py:1831-1833` |
+| `iter_tree()` utility | `base.py:937` |
+| `ArityFlags` dataclass | `base.py:162` |
+| `classify_parameter_flags()` | `base.py:1523` |
+| `compute_shape_id()` (generic CST walker) | `base.py:1424` |
+| `compute_stable_id()` (untyped tier) | `base.py:1599` |
+| `make_route_stable_id()` | `base.py:315` |
+| `make_entry_stable_id()` | `base.py:334` |
+| `make_typed_stable_id()` | `base.py:353` |
+| Go routes (fixed, uses `make_route_stable_id`) | `go.py` (multiple call sites) |
+| JS/TS routes (fixed, uses `make_route_stable_id`) | `js_ts.py` (multiple call sites) |
+| WGSL entry points (fixed, uses `make_entry_stable_id`) | `wgsl.py:234` |
+| Hack (fixed, uses `compute_stable_id`) | `hack.py` (multiple call sites) |
+| Smithy (fixed, uses `compute_stable_id`) | `smithy.py` (multiple call sites) |
+| Pinned build-from-source grammars | `scripts/build-source-grammars:27-33` |
 | Lab notebook analysis | `~/hypergumbo_lab_notebook/notebookjournal_02202026_stable_shape_id_analysis.md` |

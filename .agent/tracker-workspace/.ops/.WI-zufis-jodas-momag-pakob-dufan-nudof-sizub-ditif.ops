@@ -1,0 +1,64 @@
+- op: create  # e4d2
+  at: '2026-03-31T09:15:57Z'  # e4d2
+  by: agent  # e4d2
+  actor: jgstern_agent  # e4d2
+  clock: 1  # e4d2
+  nonce: e4d2  # e4d2
+  data:  # e4d2
+    kind: work_item  # e4d2
+    title: "Inline preview caching keyed on (svg_path, mtime, panel_width)"  # e4d2
+    status: needs_human_review  # e4d2
+    priority: 2  # e4d2
+    parent: WI-dosos-nimoh-bikar-dujir-vadan-janib-rosoh-nanup  # e4d2
+    tags:  # e4d2
+    - adr-0020  # e4d2
+    before: []  # e4d2
+    duplicate_of: []  # e4d2
+    not_duplicate_of: []  # e4d2
+    pr_ref:  # e4d2
+    description: "Cache ANSI output keyed on (svg_path, svg_mtime, panel_width). Rasterization and Chafa invocation happen once per unique combination. Cache invalidated when SVG is modified (re-annotated) or panel width changes significantly."  # e4d2
+    fields: {}  # e4d2
+- op: discuss  # cf40
+  at: '2026-03-31T09:28:22Z'  # cf40
+  by: agent  # cf40
+  actor: jgstern_agent  # cf40
+  clock: 2  # cf40
+  nonce: cf40  # cf40
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # cf40
+- op: update  # 448f
+  at: '2026-03-31T09:28:24Z'  # 448f
+  by: agent  # 448f
+  actor: jgstern_agent  # 448f
+  clock: 3  # 448f
+  nonce: 448f  # 448f
+  set:  # 448f
+    status: todo_soft  # 448f
+- op: update  # 0852
+  at: '2026-03-31T12:52:15Z'  # 0852
+  by: agent  # 0852
+  actor: jgstern_agent  # 0852
+  clock: 4  # 0852
+  nonce: '0852'  # 0852
+  set:  # 0852
+    status: done  # 0852
+- op: discuss  # f38b
+  at: '2026-03-31T12:52:15Z'  # f38b
+  by: agent  # f38b
+  actor: jgstern_agent  # f38b
+  clock: 5  # f38b
+  nonce: f38b  # f38b
+  message: "Implemented in preview_pipeline.py (PR pending). render_svg_preview() with graceful degradation, PreviewCache, collapsed_placeholder()."  # f38b
+- op: discuss  # 2bec
+  at: '2026-04-01T00:16:38Z'  # 2bec
+  by: human  # 2bec
+  actor: jgstern  # 2bec
+  clock: 6  # 2bec
+  nonce: 2bec  # 2bec
+  message: "please provide the PR number or the commit hash?"  # 2bec
+- op: discuss  # 6826
+  at: '2026-04-01T09:01:29Z'  # 6826
+  by: agent  # 6826
+  actor: jgstern_agent  # 6826
+  clock: 7  # 6826
+  nonce: '6826'  # 6826
+  message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). Preview caching keyed on (svg_path, mtime, panel_width) was part of this commit. Pushed directly to dev."  # 6826

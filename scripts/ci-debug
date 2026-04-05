@@ -59,7 +59,14 @@ cmd_runs() {
   echo "Recent CI runs for $REPO_SLUG:"
   echo "---"
 
-  if ! api_get "$API_BASE/actions/runs?limit=300"; then
+  # Try /actions/runs (Codeberg / Forgejo 12+), fall back to /actions/tasks
+  # (Forgejo 11.x / gitea-1.22 which lacks the runs endpoint).
+  local got_runs=false
+  if api_get "$API_BASE/actions/runs?limit=300"; then
+    got_runs=true
+  elif api_get "$API_BASE/actions/tasks?limit=100"; then
+    got_runs=true
+  else
     echo "❌ Failed to fetch runs (HTTP $API_HTTP_CODE)"
     exit 1
   fi
@@ -69,13 +76,21 @@ import sys, json
 try:
     data = json.load(sys.stdin)
     runs = data.get('workflow_runs', [])
-    for r in runs[-15:]:
-        sha = r.get('commit_sha', '')[:8]
-        status = r.get('status')
-        ref = r.get('prettyref', 'N/A')
-        id = r.get('id')
+    # Deduplicate by run_number (tasks endpoint returns one entry per job)
+    seen = set()
+    unique = []
+    for r in runs:
+        key = r.get('run_number', r.get('id'))
+        if key not in seen:
+            seen.add(key)
+            unique.append(r)
+    for r in unique[-15:]:
+        sha = r.get('head_sha', r.get('commit_sha', ''))[:8]
+        status = r.get('status', '?')
+        name = r.get('display_title', r.get('name', 'N/A'))[:20]
+        run_num = r.get('run_number', r.get('id', '?'))
         marker = '✅' if status == 'success' else '❌' if status == 'failure' else '⏳'
-        print(f'{marker} {id}: {status:10} {ref:15} @ {sha}')
+        print(f'{marker} #{run_num}: {status:10} {name:20} @ {sha}')
 except (json.JSONDecodeError, KeyError, TypeError) as e:
     print(f'Error parsing response: {e}')
 "

@@ -4,6 +4,39 @@
 # Maps Go standard library functions to I/O boundary types.
 language: go
 
+# Method names that are too generic to match without module context.
+# When the edge has no module_hint (or "external"), these names are skipped
+# to avoid false positives like t.Run() → gin.Engine.Run.
+ambiguous_names:
+  - Read          # io.Reader.Read vs any .Read() method
+  - Write         # io.Writer.Write vs any .Write() method
+  - Run           # gin.Engine.Run vs testing.T.Run, cobra.Command.Run
+  - Start         # echo.Echo.Start vs any .Start() method
+  - String        # gin.Context.String vs fmt.Stringer.String
+  - Close         # net.Conn.Close vs any .Close() method
+  - Do            # http.Client.Do vs any .Do() method
+  - Get           # http.Client.Get vs map.Get, cache.Get
+  - Post          # http.Client.Post vs forum.Post
+  - Head          # http.Client.Head vs list.Head
+  - Serve         # grpc.Server.Serve vs any .Serve() method
+  - Accept        # net.Listener.Accept vs any .Accept() method
+  - Listen        # net.Listen vs any .Listen() method
+  - Dial          # net.Dial vs any .Dial() method
+  - DialContext   # grpc.DialContext vs any .DialContext() method
+  - Output        # exec.Cmd.Output vs any .Output() method
+  - JSON          # gin.Context.JSON vs encoding/json (not IO)
+  - HTML          # gin.Context.HTML vs template.HTML (not IO)
+  - XML           # gin.Context.XML vs encoding/xml (not IO)
+  - Send          # net.UdpSocket.Send vs channel send
+  - Debug         # slog.Debug vs any .Debug() method
+  - Info          # slog.Info vs any .Info() method
+  - Warn          # slog.Warn vs any .Warn() method
+  - Error         # slog.Error vs error.Error(), any .Error() method
+  - Log           # slog.Log vs any .Log() method
+  - Data          # gin.Context.Data vs template.Data, any .Data() method
+  - Mail          # smtp.Client.Mail vs any .Mail() method
+  - Handshake     # tls.Conn.Handshake vs any .Handshake() method
+
 fs_read:
   - module: os
     functions: [Open, ReadFile, ReadDir, Stat, Lstat, Readlink]
@@ -28,6 +61,12 @@ fs_write:
     functions: [WriteFile, TempFile, TempDir]
   - module: io
     functions: [WriteString]
+  - module: testing.T
+    methods: [TempDir]
+    notes: "Go testing stdlib — creates temp dir scoped to test"
+  - module: testing.B
+    methods: [TempDir]
+    notes: "Go benchmark stdlib — creates temp dir scoped to benchmark"
   - module: syscall
     functions: [Write, Pwrite, Mkdir, Rmdir, Unlink, Rename, Chmod, Fchmod, Chown, Fchown, Truncate, Ftruncate]
   - module: unix
@@ -39,10 +78,22 @@ net_send:
     functions: [Dial, DialTCP, DialUDP, DialUnix, DialTimeout]
   - module: net.Conn
     methods: [Write]
+  - module: crypto/tls
+    functions: [Dial, DialWithDialer, Client]
+    notes: "TLS connection establishment"
+  - module: crypto/tls.Conn
+    methods: [Write, Handshake]
+  - module: net/smtp
+    functions: [NewClient, Dial, SendMail]
+    notes: "SMTP email sending"
+  - module: net/smtp.Client
+    methods: [Mail, Rcpt, Data, Close]
   - module: net/http
     functions: [Get, Post, PostForm, Head, NewRequest]
   - module: net/http.Client
     methods: [Do, Get, Post, Head]
+  - module: net/http.Transport
+    methods: [RoundTrip]
   # Gin/Echo/Fiber/Chi frameworks (response writing)
   - module: gin.Context
     methods: [JSON, String, HTML, XML, YAML, Data, IndentedJSON]
@@ -92,6 +143,9 @@ subprocess:
     functions: [Command, CommandContext, LookPath]
   - module: os/exec.Cmd
     methods: [Run, Start, Output, CombinedOutput]
+  - module: golang.org/x/sys/execabs
+    functions: [Command, CommandContext, LookPath]
+    notes: "execabs wraps os/exec with PATH-attack prevention"
   - module: syscall
     functions: [Exec, ForkExec]
 
@@ -108,6 +162,15 @@ ipc_send:
   - module: fmt
     functions: [Print, Println, Printf, Fprint, Fprintln, Fprintf]
     notes: "When writing to os.Stdout/Stderr"
+  - module: log
+    functions: [Print, Println, Printf, Fatal, Fatalln, Fatalf, Panic, Panicln, Panicf]
+    notes: "Go stdlib log package — writes to stderr by default"
+  - module: log/slog
+    functions: [Debug, Info, Warn, Error, Log, NewTextHandler, NewJSONHandler]
+    notes: "Go stdlib structured logging — writes to stderr by default"
+  - module: log/slog.Logger
+    methods: [Debug, Info, Warn, Error, Log]
+    notes: "slog.Logger instance methods"
 
 ipc_recv:
   - module: os

@@ -1,0 +1,29 @@
+- op: create  # 1a79
+  at: '2026-04-03T08:25:10Z'  # 1a79
+  by: agent  # 1a79
+  actor: jgstern_agent  # 1a79
+  clock: 1  # 1a79
+  nonce: 1a79  # 1a79
+  data:  # 1a79
+    kind: work_item  # 1a79
+    title: "iOS/macOS app: Xcode project setup, provisioning, TestFlight"  # 1a79
+    status: needs_human_review  # 1a79
+    priority: 3  # 1a79
+    parent:  # 1a79
+    tags:  # 1a79
+    - adr-0019  # 1a79
+    - ios  # 1a79
+    before: []  # 1a79
+    duplicate_of: []  # 1a79
+    not_duplicate_of: []  # 1a79
+    pr_ref:  # 1a79
+    description: "PLACEHOLDER — requires Apple Developer account ($99/year). Xcode project, signing, provisioning profiles. TestFlight distribution for personal use (avoids App Store review). Universal binary target. See docs/adr/0019-remote-access-transport.md §Costs."  # 1a79
+    fields: {}  # 1a79
+- op: update  # db2d
+  at: '2026-04-03T08:26:56Z'  # db2d
+  by: agent  # db2d
+  actor: jgstern_agent  # db2d
+  clock: 2  # db2d
+  nonce: db2d  # db2d
+  set:  # db2d
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # db2d

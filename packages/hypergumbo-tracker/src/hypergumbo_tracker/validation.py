@@ -294,7 +294,11 @@ def validate_ops_file(
             item_id = filepath.stem.lstrip(".")
             try:
                 compiled = compile_ops(ops, item_id)
-                if compiled.status not in kind_config.allowed_statuses:
+                # Accept both allowed and deprecated statuses in historical data
+                valid_statuses = set(kind_config.allowed_statuses)
+                if kind_config.deprecated_statuses:
+                    valid_statuses.update(kind_config.deprecated_statuses)
+                if compiled.status not in valid_statuses:
                     result.errors.append(
                         f"{fname}: compiled status {compiled.status!r} not "
                         f"allowed for kind {item_kind!r}. "

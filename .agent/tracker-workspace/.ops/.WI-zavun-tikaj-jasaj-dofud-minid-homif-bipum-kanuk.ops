@@ -39,3 +39,11 @@
   clock: 4  # 300c
   nonce: 300c  # 300c
   message: "Fixed in PR #2446. _trace_entry_points() now follows native_bridge, wasm_bridge, ipc_calls, grpc_calls, and other FFI edge types when building the reverse call graph for IO boundary entry-point attribution."  # 300c
+- op: update  # aaf9
+  at: '2026-03-25T04:15:54Z'  # aaf9
+  by: agent  # aaf9
+  actor: jgstern_agent  # aaf9
+  clock: 5  # aaf9
+  nonce: aaf9  # aaf9
+  set:  # aaf9
+    parent: INV-kagob-salob-nuhim-lilut-sural-lapis-jokif-kivif  # aaf9

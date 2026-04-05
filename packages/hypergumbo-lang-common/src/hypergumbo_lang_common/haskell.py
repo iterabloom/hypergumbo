@@ -7,7 +7,7 @@ This analyzer uses tree-sitter to parse Haskell files and extract:
 - Type class definitions
 - Instance declarations
 - Import statements
-- Function call relationships
+- Function call relationships (including external edges for I/O boundary matching)
 
 If tree-sitter with Haskell support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -18,9 +18,12 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, data types, type classes, instances with signatures
 2. Pass 2: Extract call edges and import edges using NameResolver
 
-The base class handles grammar checking, parser creation, file discovery,
-and result assembly. This module provides only the Haskell-specific extraction
-logic.
+Unresolved calls (especially to Prelude and stdlib functions like readFile,
+writeFile, putStrLn) produce external edges in the format
+``haskell:{module}:0-0:{name}:function`` so the I/O boundary tagging pass
+(ADR-0016) can match them against ``io_primitives/haskell.yaml``. Qualified
+calls resolved through import aliases carry the full module name as the
+module hint for precise matching.
 
 Why This Design
 ---------------
@@ -29,6 +32,7 @@ Why This Design
 - Uses tree-sitter-haskell package for grammar (grammar_module)
 - Two-pass allows cross-file call resolution
 - Same pattern as other tree-sitter analyzers for consistency
+- External edges bridge Haskell's stdlib to the I/O boundary catalog
 
 Haskell-Specific Considerations
 -------------------------------
@@ -37,6 +41,8 @@ Haskell-Specific Considerations
 - Type classes define interfaces, instances implement them
 - import statements bring modules into scope (qualified or unqualified)
 - Function application uses whitespace (no parens needed)
+- Only ``return`` is excluded from call edges (monadic lift, not a real call);
+  I/O primitives like putStrLn, print, readFile are kept as edges
 """
 from __future__ import annotations
 
@@ -62,6 +68,22 @@ if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("haskell")
+
+
+def _short_name_penalty(name: str) -> float:
+    """Confidence penalty for short callee names in Haskell call resolution.
+
+    Single-letter names (f, g, x, n) are almost always lambda parameters
+    or local bindings in Haskell FP code, not cross-file calls. Two-letter
+    names (fn, xs) are also often parameters. Applying a penalty makes
+    false positive edges easily filterable by downstream consumers.
+    """
+    n = len(name)
+    if n <= 1:
+        return 0.15
+    if n == 2:
+        return 0.50
+    return 1.0
 
 
 def find_haskell_files(repo_root: Path) -> Iterator[Path]:
@@ -187,9 +209,14 @@ def _extract_symbols_from_file(
         ))
 
     # Second pass: extract symbols
+    # Only extract module-level definitions — where-clause local bindings
+    # (parent chain includes local_binds) produce orphan symbols since
+    # they have no external callers.
     for node in iter_tree(tree.root_node):
         if node.type == "function":
-            # Function with pattern matching
+            # Function with pattern matching — only module-level
+            if node.parent and node.parent.type != "declarations":
+                continue
             name = _get_function_name(node, source)
             if name:
                 # Look up type signature
@@ -197,7 +224,9 @@ def _extract_symbols_from_file(
                 add_symbol(node, name, "function", signature=sig)
 
         elif node.type == "bind":
-            # Simple binding (like main = ...)
+            # Simple binding (like main = ...) — only module-level
+            if node.parent and node.parent.type != "declarations":
+                continue
             name = _get_function_name(node, source)
             if name:
                 sig = type_signatures.get(name)
@@ -298,7 +327,7 @@ def _extract_edges_from_file(
     run_id: str,
     import_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
-    """Extract call and import edges from a parsed Haskell file.
+    """Extract call, import, and implements edges from a parsed Haskell file.
 
     Args:
         import_aliases: Optional dict mapping module aliases to full paths.
@@ -306,6 +335,7 @@ def _extract_edges_from_file(
     Detects:
     - import: Import statements
     - apply: Function application (calls)
+    - instance: Typeclass instance → typeclass 'implements' edges
     """
     if import_aliases is None:  # pragma: no cover - defensive default
         import_aliases = {}
@@ -332,6 +362,41 @@ def _extract_edges_from_file(
                     confidence=0.95,
                 )
                 edges.append(edge)
+
+        elif node.type == "instance":
+            # Typeclass instance → typeclass 'implements' edge
+            name_node = find_child_by_type(node, "name")
+            if name_node:
+                class_name = node_text(name_node, source)
+                # Build instance symbol name to find the src symbol
+                type_patterns = find_child_by_type(node, "type_patterns")
+                type_name = ""
+                if type_patterns:
+                    inner_name = find_child_by_type(type_patterns, "name")
+                    if inner_name:
+                        type_name = node_text(inner_name, source)
+                instance_name = f"{class_name} {type_name}".strip()
+                instance_sym = local_symbols.get(instance_name)
+                if instance_sym:
+                    # Try to resolve the typeclass
+                    class_lookup = resolver.lookup(class_name)
+                    if class_lookup.found and class_lookup.symbol:
+                        class_sym = class_lookup.symbol
+                    else:
+                        # Look in local symbols (same-file typeclass)
+                        class_sym = local_symbols.get(class_name)  # pragma: no cover
+                    if class_sym:
+                        edge = Edge.create(
+                            src=instance_sym.id,
+                            dst=class_sym.id,
+                            edge_type="implements",
+                            line=node.start_point[0] + 1,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                            evidence_type="typeclass_instance",
+                            confidence=0.90,
+                        )
+                        edges.append(edge)
 
         elif node.type == "apply":
             # Function application
@@ -362,7 +427,10 @@ def _extract_edges_from_file(
                     if innermost.children and innermost.children[0].type == "variable":  # pragma: no cover
                         callee_name = node_text(innermost.children[0], source)  # pragma: no cover
 
-                if callee_name and callee_name not in ("print", "putStrLn", "return"):
+                # Skip 'return' (monadic lift, not a real call) but keep
+                # I/O primitives like putStrLn, print, readFile, writeFile
+                # so they produce edges matchable by the I/O boundary catalog.
+                if callee_name and callee_name != "return":
                     # Find the caller (enclosing function)
                     caller = _find_enclosing_function_haskell(
                         node, source, local_symbols
@@ -372,7 +440,7 @@ def _extract_edges_from_file(
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
-                            confidence = 0.85 * lookup_result.confidence
+                            confidence = 0.85 * lookup_result.confidence * _short_name_penalty(callee_name)
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -385,16 +453,24 @@ def _extract_edges_from_file(
                             )
                             edges.append(edge)
                         else:
-                            # Unresolved call - create edge to unknown target
-                            unresolved_id = f"haskell:?:0-0:{callee_name}:function"
+                            # Unresolved call — create edge to synthetic
+                            # external node so I/O boundary tagging can match
+                            # stdlib calls (readFile, putStrLn, etc.).
+                            # Use module hint from qualified import when
+                            # available, otherwise "external" so the I/O
+                            # boundary tagger uses unfiltered short-name
+                            # matching (not "?" which would fail module
+                            # filtering and return None).
+                            module_hint = path_hint if path_hint else "external"
+                            ext_id = f"haskell:{module_hint}:0-0:{callee_name}:function"
                             edge = Edge.create(
                                 src=caller.id,
-                                dst=unresolved_id,
+                                dst=ext_id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
-                                evidence_type="function_application",
+                                evidence_type="function_application_external",
                                 confidence=0.50,
                             )
                             edges.append(edge)

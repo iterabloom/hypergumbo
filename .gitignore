@@ -31,6 +31,16 @@ AUTONOMOUS_MODE.txt
 .agent/LOOP
 .agent/disabled.LOOP
 .agent/last_stop_check.json
+.agent/invariant-ledger.md
+.agent/.current_session_transcript.jsonl
+.agent/.last_session_transcript.jsonl
+.agent/.second_to_last_transcript.jsonl
+.agent/.transcript-sync.pid
+.agent/.transcript-sync-state.json
+.agent/.transcript-poll-state
+.agent/.transcript-injection-state.json
+.agent/.transcript-session-token
+hook-canary.txt
 
 # Coverage
 .coverage
@@ -46,6 +56,10 @@ node_modules/
 package.json
 package-lock.json
 
+# htrac-frontend: allow tracked JS/TS project files
+!packages/htrac-frontend/package.json
+!packages/htrac-frontend/package-lock.json
+
 # Hypergumbo cache
 .hypergumbo_cache/
 .ci/pytest-output.log
@@ -56,3 +70,7 @@ package-lock.json
 !**/config.yaml.template
 .agent/.cache-*.db
 .agent/.sync-logs/
+.agent/.training-data.jsonl
+.agent/.training-data-selected.jsonl
+.agent/finetuned-model/
+.agent/transcript-model.gguf

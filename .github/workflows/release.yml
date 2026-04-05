@@ -28,7 +28,7 @@ jobs:
   # nightly/integration-tests contexts set by nightly.yml.
   # ─────────────────────────────────────────────────────────────
   check-nightly:
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     outputs:
       matrix_covered: ${{ steps.check.outputs.matrix_covered }}
       integration_covered: ${{ steps.check.outputs.integration_covered }}
@@ -71,7 +71,7 @@ jobs:
   # Security audit (always runs — hard gate before publish)
   # ─────────────────────────────────────────────────────────────
   security-audit:
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4
@@ -133,7 +133,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   build-and-publish:
     needs: [security-audit]
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4
@@ -302,7 +302,7 @@ jobs:
         python-version: ['3.10', '3.11', '3.12', '3.13']
       fail-fast: false
 
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     container: python:${{ matrix.python-version }}-bookworm
     timeout-minutes: 15
     env:
@@ -506,7 +506,7 @@ jobs:
   post-publish-integration:
     needs: [check-nightly, build-and-publish]
     if: needs.check-nightly.outputs.integration_covered != 'true'
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     container: python:3.11-bookworm
     timeout-minutes: 30
     env:

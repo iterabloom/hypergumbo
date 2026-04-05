@@ -1,0 +1,34 @@
+- op: create  # 7a88
+  at: '2026-03-24T19:36:05Z'  # 7a88
+  by: agent  # 7a88
+  actor: jgstern_agent  # 7a88
+  clock: 1  # 7a88
+  nonce: 7a88  # 7a88
+  data:  # 7a88
+    kind: work_item  # 7a88
+    title: "Swift: extract computed properties and subscript accessors as nodes"  # 7a88
+    status: todo_soft  # 7a88
+    priority: 3  # 7a88
+    parent:  # 7a88
+    tags: []  # 7a88
+    before: []  # 7a88
+    duplicate_of: []  # 7a88
+    not_duplicate_of: []  # 7a88
+    pr_ref:  # 7a88
+    description: "SwiftyJSON, Kingfisher, TCA assessments all note that computed properties (json.arrayValue, json.stringValue) and subscript accessors (json[key]) are not captured as callable nodes. This is the primary API pattern for many Swift libraries."  # 7a88
+    fields: {}  # 7a88
+- op: update  # 9a30
+  at: '2026-03-25T04:57:31Z'  # 9a30
+  by: agent  # 9a30
+  actor: jgstern_agent  # 9a30
+  clock: 2  # 9a30
+  nonce: 9a30  # 9a30
+  set:  # 9a30
+    status: done  # 9a30
+- op: discuss  # cbef
+  at: '2026-03-25T04:57:31Z'  # cbef
+  by: agent  # cbef
+  actor: jgstern_agent  # cbef
+  clock: 3  # cbef
+  nonce: cbef  # cbef
+  message: "Implemented in PR (pending). Computed properties extracted as 'property' kind, subscripts as 'subscript' kind. Call edges inside bodies attributed correctly."  # cbef

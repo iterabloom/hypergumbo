@@ -640,6 +640,56 @@ class TestPattern:
         assert result["concept"] == "init_method"
         assert result["matched_method_name"] == "__init__"
 
+    def test_cocoa_uiview_lifecycle_hook(self) -> None:
+        """Cocoa pattern matches UIView lifecycle methods."""
+        pattern = Pattern(
+            concept="lifecycle_hook",
+            parent_base_class=r"^(UIView|UIControl|UIButton|UILabel|UIImageView)$",
+            method_name=r"^layoutSubviews$",
+        )
+
+        symbol = Symbol(
+            id="objc:MBProgressHUD.m:50-60:MBProgressHUD.layoutSubviews:method",
+            name="MBProgressHUD.layoutSubviews",
+            kind="method",
+            language="objective-c",
+            path="MBProgressHUD.m",
+            span=Span(50, 60, 0, 0),
+            meta={
+                "parent_base_classes": ["UIView"],
+            },
+        )
+
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "lifecycle_hook"
+        assert result["matched_parent_base_class"] == "UIView"
+        assert result["matched_method_name"] == "layoutSubviews"
+
+    def test_cocoa_uiviewcontroller_viewDidLoad(self) -> None:
+        """Cocoa pattern matches UIViewController viewDidLoad."""
+        pattern = Pattern(
+            concept="lifecycle_hook",
+            parent_base_class=r"^(UIViewController|UITableViewController)$",
+            method_name=r"^viewDidLoad$",
+        )
+
+        symbol = Symbol(
+            id="objc:MyVC.m:10-20:MyVC.viewDidLoad:method",
+            name="MyVC.viewDidLoad",
+            kind="method",
+            language="objective-c",
+            path="MyVC.m",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "parent_base_classes": ["UIViewController"],
+            },
+        )
+
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "lifecycle_hook"
+
     def test_pattern_parent_base_class_only(self) -> None:
         """Pattern matches by parent_base_class without method_name constraint."""
         pattern = Pattern(
@@ -8782,6 +8832,67 @@ class TestMainFunctionPatterns:
         assert concepts[0]["concept"] == "main_function"
         assert concepts[0]["framework"] == "main-functions"
 
+    def test_enrich_symbols_with_haskell_main_function(self) -> None:
+        """enrich_symbols enriches Haskell main function with main_function concept."""
+        symbol = Symbol(
+            id="haskell:app/Main.hs:5-8:main:function",
+            name="main",
+            kind="function",
+            language="haskell",
+            path="app/Main.hs",
+            span=Span(5, 8, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_enrich_symbols_with_erlang_main_function(self) -> None:
+        """enrich_symbols enriches Erlang main/start function with main_function concept."""
+        symbol = Symbol(
+            id="erlang:src/my_app.erl:10-15:main:function",
+            name="main",
+            kind="function",
+            language="erlang",
+            path="src/my_app.erl",
+            span=Span(10, 15, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+
+    def test_enrich_symbols_with_erlang_start_function(self) -> None:
+        """enrich_symbols enriches Erlang start function with main_function concept."""
+        symbol = Symbol(
+            id="erlang:src/my_app.erl:1-5:start:function",
+            name="start",
+            kind="function",
+            language="erlang",
+            path="src/my_app.erl",
+            span=Span(1, 5, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+
     def test_symbol_name_only_pattern(self) -> None:
         """Pattern with only symbol_name (no symbol_kind or language) matches."""
         pattern = Pattern(
@@ -13443,6 +13554,76 @@ class TestHttp4sPatterns:
         assert len(results) == 1
         assert results[0]["concept"] == "application"
 
+    def test_http4s_ioapp_simple_base_class(self) -> None:
+        """http4s IOApp.Simple trait matches application pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("http4s")
+
+        symbol = Symbol(
+            id="test:Main.scala:1:Main:object",
+            name="Main",
+            kind="class",
+            language="scala",
+            path="Main.scala",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["IOApp.Simple"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "application"
+
+
+class TestZioPatterns:
+    """Tests for ZIO framework pattern matching."""
+
+    def test_zio_app_default_base_class(self) -> None:
+        """ZIO ZIOAppDefault matches application pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("zio")
+
+        symbol = Symbol(
+            id="test:Main.scala:1:Main:object",
+            name="Main",
+            kind="class",
+            language="scala",
+            path="Main.scala",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["ZIOAppDefault"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "application"
+
+    def test_zio_app_base_class(self) -> None:
+        """ZIO ZIOApp matches application pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("zio")
+
+        symbol = Symbol(
+            id="test:App.scala:1:MyApp:object",
+            name="MyApp",
+            kind="class",
+            language="scala",
+            path="App.scala",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["ZIOApp"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "application"
+
 
 class TestVertxPatterns:
     """Tests for Vert.x framework pattern matching."""
@@ -17957,13 +18138,13 @@ class TestMaterializeRouteSymbols:
         assert routes[0].stable_id is not None
         assert len(routes[0].stable_id) == 64  # sha256 hex
 
-    def test_no_path_still_creates_route(self) -> None:
-        """Route with method but no path still gets materialized."""
+    def test_no_path_normalized_to_root(self) -> None:
+        """Route with method but no path gets normalized to '/' (INV-nimik)."""
         handler = self._make_handler("deleteItem", "DELETE")
         routes = materialize_route_symbols([handler])
         assert len(routes) == 1
-        assert routes[0].name == "DELETE route"
-        assert routes[0].stable_id is None  # No path → no stable_id
+        assert routes[0].name == "DELETE /"
+        assert routes[0].stable_id is not None  # Normalized path → has stable_id
 
     def test_no_method_skips(self) -> None:
         """Route concept without a method is skipped."""
@@ -19038,3 +19219,95 @@ class TestWebAudioPatterns:
         results = match_usage_patterns(ctx, [pattern_def])
         connections = [r for r in results if r["concept"] == "audio_graph_connection"]
         assert len(connections) == 1
+
+
+class TestSwiftUIPatterns:
+    """Tests for swiftui.yaml framework patterns."""
+
+    def test_swiftui_yaml_loads(self) -> None:
+        """swiftui.yaml loads correctly."""
+        pattern_def = load_framework_patterns("swiftui")
+        assert pattern_def is not None
+        assert pattern_def.id == "swiftui"
+        assert pattern_def.language == "swift"
+        assert len(pattern_def.patterns) >= 5
+
+    def test_swiftui_app_protocol_pattern(self) -> None:
+        """App protocol conformance enriches symbol with application concept."""
+        symbol = Symbol(
+            id="swift:Sources/App/MyApp.swift:1-10:MyApp:struct",
+            name="MyApp",
+            kind="struct",
+            language="swift",
+            path="Sources/App/MyApp.swift",
+            span=Span(1, 10, 0, 100),
+            meta={"base_classes": ["App"]},
+        )
+        pattern_def = load_framework_patterns("swiftui")
+        assert pattern_def is not None
+        results = match_patterns(symbol, [pattern_def])
+        app_concepts = [r for r in results if r["concept"] == "application"]
+        assert len(app_concepts) >= 1
+
+    def test_uiviewcontroller_pattern(self) -> None:
+        """UIViewController subclass enriches symbol with controller concept."""
+        symbol = Symbol(
+            id="swift:Sources/App/DetailVC.swift:1-30:DetailVC:class",
+            name="DetailVC",
+            kind="class",
+            language="swift",
+            path="Sources/App/DetailVC.swift",
+            span=Span(1, 30, 0, 500),
+            meta={"base_classes": ["UIViewController"]},
+        )
+        pattern_def = load_framework_patterns("swiftui")
+        assert pattern_def is not None
+        results = match_patterns(symbol, [pattern_def])
+        ctrl_concepts = [r for r in results if r["concept"] == "controller"]
+        assert len(ctrl_concepts) >= 1
+
+    def test_parsable_command_pattern(self) -> None:
+        """ParsableCommand conformance enriches with application concept."""
+        symbol = Symbol(
+            id="swift:Sources/CLI/MyCLI.swift:1-15:MyCLI:struct",
+            name="MyCLI",
+            kind="struct",
+            language="swift",
+            path="Sources/CLI/MyCLI.swift",
+            span=Span(1, 15, 0, 200),
+            meta={"base_classes": ["ParsableCommand"]},
+        )
+        pattern_def = load_framework_patterns("swiftui")
+        assert pattern_def is not None
+        results = match_patterns(symbol, [pattern_def])
+        app_concepts = [r for r in results if r["concept"] == "application"]
+        assert len(app_concepts) >= 1
+
+
+class TestHummingbirdPatterns:
+    """Tests for hummingbird.yaml framework patterns."""
+
+    def test_hummingbird_yaml_loads(self) -> None:
+        """hummingbird.yaml loads correctly."""
+        pattern_def = load_framework_patterns("hummingbird")
+        assert pattern_def is not None
+        assert pattern_def.id == "hummingbird"
+        assert pattern_def.language == "swift"
+        assert len(pattern_def.patterns) >= 3
+
+    def test_hummingbird_middleware_pattern(self) -> None:
+        """RouterMiddleware conformance enriches with middleware concept."""
+        symbol = Symbol(
+            id="swift:Sources/App/Auth.swift:1-20:AuthMiddleware:struct",
+            name="AuthMiddleware",
+            kind="struct",
+            language="swift",
+            path="Sources/App/Auth.swift",
+            span=Span(1, 20, 0, 300),
+            meta={"base_classes": ["RouterMiddleware"]},
+        )
+        pattern_def = load_framework_patterns("hummingbird")
+        assert pattern_def is not None
+        results = match_patterns(symbol, [pattern_def])
+        mw_concepts = [r for r in results if r["concept"] == "middleware"]
+        assert len(mw_concepts) >= 1

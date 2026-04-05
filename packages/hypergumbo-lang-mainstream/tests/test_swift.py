@@ -834,3 +834,871 @@ class TestSwiftFunctionReferences:
         result = analyze_swift(tmp_path)
         ref_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(ref_edges) == 0
+
+
+class TestSwiftNavigationCalls:
+    """Tests for method calls via dot navigation (receiver.method() pattern).
+
+    Swift code commonly calls methods on receivers (e.g. session.request(),
+    FileManager.default.fileExists()). The analyzer must extract the METHOD
+    name, not the receiver name, from navigation_expression call targets.
+    """
+
+    def test_method_call_resolves_to_method_name(self, tmp_path: Path) -> None:
+        """session.request() should produce a call edge to 'request', not 'session'."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Service.swift").write_text(
+            "class Service {\n"
+            "    func request(_ url: String) -> String { return url }\n"
+            "}\n"
+        )
+        (tmp_path / "App.swift").write_text(
+            "func fetch() {\n"
+            "    let svc = Service()\n"
+            "    svc.request(\"http://example.com\")\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Should find a call edge from fetch -> request
+        request_edges = [
+            e for e in call_edges
+            if "request" in e.dst and "fetch" in e.src
+        ]
+        assert len(request_edges) >= 1, (
+            f"Expected call edge to 'request' method, got call edges: "
+            f"{[(e.src.split(':')[-2], e.dst.split(':')[-2]) for e in call_edges]}"
+        )
+
+    def test_chained_navigation_call(self, tmp_path: Path) -> None:
+        """URLSession.shared.dataTask() should extract 'dataTask' as callee."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Net.swift").write_text(
+            "func fetchData() {\n"
+            "    URLSession.shared.dataTask(with: URL(string: \"x\")!)\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Should have an unresolved edge to 'dataTask'
+        dt_edges = [e for e in call_edges if "dataTask" in e.dst]
+        assert len(dt_edges) >= 1, (
+            f"Expected call to 'dataTask', got: "
+            f"{[e.dst.split(':')[-2] for e in call_edges]}"
+        )
+
+    def test_same_file_method_via_navigation(self, tmp_path: Path) -> None:
+        """self.helper() or obj.helper() should resolve to helper in same file."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Util.swift").write_text(
+            "class Util {\n"
+            "    func helper() -> Int { return 42 }\n"
+            "    func run() {\n"
+            "        self.helper()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        helper_calls = [
+            e for e in call_edges
+            if "helper" in e.dst and "run" in e.src
+        ]
+        assert len(helper_calls) >= 1, (
+            f"Expected call from run -> helper, got: "
+            f"{[(e.src.split(':')[-2], e.dst.split(':')[-2]) for e in call_edges]}"
+        )
+
+
+class TestSwiftReceiverTypeTracking:
+    """Tests for receiver type tracking in method resolution.
+
+    When a variable has a known type (from type annotation or constructor call),
+    method calls on that variable should resolve to the correct type's method.
+    """
+
+    def test_type_annotation_resolves_method(self, tmp_path: Path) -> None:
+        """let store: Store = ...; store.send() → Store.send()."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Store.swift").write_text(
+            "class Store {\n"
+            "    func send(_ action: String) {}\n"
+            "}\n"
+            "class TestStore {\n"
+            "    func send(_ action: String) {}\n"
+            "}\n"
+        )
+        (tmp_path / "App.swift").write_text(
+            "func test() {\n"
+            "    let store: Store = Store()\n"
+            "    store.send(\"action\")\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        send_edges = [e for e in call_edges if "send" in e.dst and "test" in e.src]
+        assert len(send_edges) >= 1
+        # Should resolve to Store.send, not TestStore.send
+        store_send = [e for e in send_edges if "Store.send" in e.dst]
+        assert len(store_send) >= 1, (
+            f"Expected Store.send, got: {[e.dst for e in send_edges]}"
+        )
+
+    def test_constructor_infers_type(self, tmp_path: Path) -> None:
+        """let store = Store(); store.send() → Store.send()."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Store.swift").write_text(
+            "class Store {\n"
+            "    func send(_ action: String) {}\n"
+            "}\n"
+        )
+        (tmp_path / "App.swift").write_text(
+            "func test() {\n"
+            "    let store = Store()\n"
+            "    store.send(\"action\")\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        send_edges = [e for e in call_edges if "send" in e.dst and "test" in e.src]
+        assert len(send_edges) >= 1
+        store_send = [e for e in send_edges if "Store.send" in e.dst]
+        assert len(store_send) >= 1, (
+            f"Expected Store.send, got: {[e.dst for e in send_edges]}"
+        )
+
+    def test_receiver_is_type_name_directly(self, tmp_path: Path) -> None:
+        """ClassName.method() where receiver IS the type name."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Config.swift").write_text(
+            "class Config {\n"
+            "    static func load() -> String { return \"\" }\n"
+            "}\n"
+        )
+        (tmp_path / "App.swift").write_text(
+            "func setup() {\n"
+            "    Config.load()\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        load_edges = [e for e in call_edges if "load" in e.dst and "setup" in e.src]
+        assert len(load_edges) >= 1
+
+    def test_type_hint_used_for_resolver(self, tmp_path: Path) -> None:
+        """When qualified name not in symbols, type is used as path_hint for resolver."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Store.swift").write_text(
+            "class Store {\n"
+            "    func send(_ action: String) {}\n"
+            "}\n"
+        )
+        (tmp_path / "App.swift").write_text(
+            "func test() {\n"
+            "    let store = Store()\n"
+            "    store.unknownMethod()\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        # unknownMethod doesn't exist as a symbol, so it falls through to resolver
+        # The path_hint should be "Store" (from var_types)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        unknown_edges = [e for e in call_edges if "unknownMethod" in e.dst]
+        assert len(unknown_edges) >= 1  # Should produce an unresolved edge
+
+    def test_same_file_type_qualified(self, tmp_path: Path) -> None:
+        """Type-qualified resolution in same file → local_symbols path."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "All.swift").write_text(
+            "class Store {\n"
+            "    func send(_ action: String) {}\n"
+            "}\n"
+            "class TestStore {\n"
+            "    func send(_ action: String) {}\n"
+            "}\n"
+            "func test() {\n"
+            "    let store = Store()\n"
+            "    store.send(\"action\")\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        send_edges = [e for e in call_edges if "send" in e.dst and "test" in e.src]
+        assert len(send_edges) >= 1
+        store_send = [e for e in send_edges if "Store.send" in e.dst]
+        assert len(store_send) >= 1, (
+            f"Expected Store.send, got: {[e.dst for e in send_edges]}"
+        )
+        # Confidence should be 0.90 (type-qualified)
+        assert store_send[0].confidence == 0.90
+
+    def test_extract_var_type_annotation(self) -> None:
+        """Test _extract_var_type with type annotation."""
+        from hypergumbo_lang_mainstream.swift import _extract_var_type
+
+        import tree_sitter
+        from tree_sitter_language_pack import get_language
+        lang = get_language("swift")
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(b"let x: Store = Store()")
+        for node in tree.root_node.children:
+            if node.type == "property_declaration":
+                name, typ = _extract_var_type(node, b"let x: Store = Store()")
+                assert name == "x"
+                assert typ == "Store"
+                return
+        raise AssertionError("No property_declaration found")
+
+    def test_extract_var_type_constructor(self) -> None:
+        """Test _extract_var_type with constructor call (no annotation)."""
+        from hypergumbo_lang_mainstream.swift import _extract_var_type
+
+        import tree_sitter
+        from tree_sitter_language_pack import get_language
+        lang = get_language("swift")
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(b"let store = Store()")
+        for node in tree.root_node.children:
+            if node.type == "property_declaration":
+                name, typ = _extract_var_type(node, b"let store = Store()")
+                assert name == "store"
+                assert typ == "Store"
+                return
+        raise AssertionError("No property_declaration found")
+
+    def test_extract_var_type_no_type(self) -> None:
+        """Test _extract_var_type when no type is available."""
+        from hypergumbo_lang_mainstream.swift import _extract_var_type
+
+        import tree_sitter
+        from tree_sitter_language_pack import get_language
+        lang = get_language("swift")
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(b"let x = compute()")
+        for node in tree.root_node.children:
+            if node.type == "property_declaration":
+                name, typ = _extract_var_type(node, b"let x = compute()")
+                assert name == "x"
+                assert typ is None  # compute() starts lowercase, not a constructor
+                return
+        raise AssertionError("No property_declaration found")
+
+
+class TestSwiftComputedProperties:
+    """Tests for extracting computed properties as callable nodes.
+
+    Computed properties (var x: T { get { ... } }) are the primary API pattern
+    for many Swift libraries (SwiftyJSON, Kingfisher, TCA). They must appear as
+    symbols so they contribute to slice graphs and call resolution.
+    """
+
+    def test_getter_only_computed_property(self, tmp_path: Path) -> None:
+        """Computed property with implicit getter is extracted as property symbol."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "JSON.swift").write_text(
+            "struct JSON {\n"
+            "    var arrayValue: [Any] {\n"
+            "        return []\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        props = [s for s in result.symbols if s.kind == "property"]
+        prop_names = [s.name for s in props]
+        assert "JSON.arrayValue" in prop_names
+
+    def test_getter_setter_computed_property(self, tmp_path: Path) -> None:
+        """Computed property with explicit get/set is extracted."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Config.swift").write_text(
+            "class Config {\n"
+            "    private var _timeout: Int = 30\n"
+            "    var timeout: Int {\n"
+            "        get { return _timeout }\n"
+            "        set { _timeout = newValue }\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        props = [s for s in result.symbols if s.kind == "property"]
+        prop_names = [s.name for s in props]
+        assert "Config.timeout" in prop_names
+
+    def test_computed_property_not_stored(self, tmp_path: Path) -> None:
+        """Stored properties (no computed_property child) are NOT extracted as symbols."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Point.swift").write_text(
+            "struct Point {\n"
+            "    var x: Int = 0\n"
+            "    var y: Int = 0\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        props = [s for s in result.symbols if s.kind == "property"]
+        assert len(props) == 0, f"Stored properties should not be extracted: {[s.name for s in props]}"
+
+    def test_computed_property_has_span(self, tmp_path: Path) -> None:
+        """Computed property symbol has correct span."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Span.swift").write_text(
+            "struct S {\n"
+            "    var computed: Int {\n"
+            "        return 42\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        prop = next((s for s in result.symbols if s.name == "S.computed"), None)
+        assert prop is not None
+        assert prop.span.start_line == 2
+        assert prop.span.end_line == 4
+
+    def test_call_inside_computed_property_attributed(self, tmp_path: Path) -> None:
+        """Calls inside computed property body are attributed to the property."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "App.swift").write_text(
+            "func helper() -> Int { return 42 }\n"
+            "\n"
+            "struct App {\n"
+            "    var value: Int {\n"
+            "        return helper()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        prop = next((s for s in result.symbols if s.name == "App.value"), None)
+        helper = next((s for s in result.symbols if s.name == "helper"), None)
+        assert prop is not None, "Should find computed property"
+        assert helper is not None, "Should find helper function"
+
+        call_edge = next(
+            (e for e in result.edges if e.src == prop.id and e.dst == helper.id and e.edge_type == "calls"),
+            None,
+        )
+        assert call_edge is not None, "Call inside computed property should create edge from property to callee"
+
+    def test_computed_property_modifiers(self, tmp_path: Path) -> None:
+        """Modifiers (public, static) are extracted for computed properties."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Mod.swift").write_text(
+            "class Mod {\n"
+            "    public static var shared: Mod {\n"
+            "        return Mod()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        prop = next((s for s in result.symbols if s.name == "Mod.shared"), None)
+        assert prop is not None
+        assert "public" in prop.modifiers
+        assert "static" in prop.modifiers
+
+
+class TestSwiftSubscriptDeclarations:
+    """Tests for extracting subscript declarations as callable nodes.
+
+    Subscripts (subscript(index: Int) -> T { ... }) are a primary API pattern
+    for collection-like types in Swift (SwiftyJSON, Alamofire, etc.).
+    """
+
+    def test_subscript_with_int_param(self, tmp_path: Path) -> None:
+        """Subscript with Int parameter is extracted."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "List.swift").write_text(
+            "struct List {\n"
+            "    subscript(index: Int) -> String {\n"
+            "        return \"\"\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        subs = [s for s in result.symbols if s.kind == "subscript"]
+        assert len(subs) == 1
+        assert subs[0].name == "List.subscript(index:)"
+
+    def test_subscript_with_string_param(self, tmp_path: Path) -> None:
+        """Subscript with String parameter is extracted."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Dict.swift").write_text(
+            "struct Dict {\n"
+            "    subscript(key: String) -> Int {\n"
+            "        get { return 0 }\n"
+            "        set { }\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        subs = [s for s in result.symbols if s.kind == "subscript"]
+        assert len(subs) == 1
+        assert subs[0].name == "Dict.subscript(key:)"
+
+    def test_subscript_has_signature(self, tmp_path: Path) -> None:
+        """Subscript symbol includes parameter signature."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Arr.swift").write_text(
+            "struct Arr {\n"
+            "    subscript(index: Int) -> String {\n"
+            "        return \"\"\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        sub = next((s for s in result.symbols if s.kind == "subscript"), None)
+        assert sub is not None
+        assert sub.signature is not None
+        assert "Int" in sub.signature
+
+    def test_call_inside_subscript_attributed(self, tmp_path: Path) -> None:
+        """Calls inside subscript body are attributed to the subscript."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "App.swift").write_text(
+            "func validate(_ i: Int) -> Int { return i }\n"
+            "\n"
+            "struct App {\n"
+            "    subscript(index: Int) -> Int {\n"
+            "        return validate(index)\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        sub = next((s for s in result.symbols if s.kind == "subscript"), None)
+        validate = next((s for s in result.symbols if s.name == "validate"), None)
+        assert sub is not None, "Should find subscript"
+        assert validate is not None, "Should find validate function"
+
+        call_edge = next(
+            (e for e in result.edges if e.src == sub.id and e.dst == validate.id and e.edge_type == "calls"),
+            None,
+        )
+        assert call_edge is not None, "Call inside subscript should create edge from subscript to callee"
+
+    def test_multiple_subscripts(self, tmp_path: Path) -> None:
+        """Multiple subscripts in same type are all extracted."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Multi.swift").write_text(
+            "struct Multi {\n"
+            "    subscript(index: Int) -> String {\n"
+            "        return \"\"\n"
+            "    }\n"
+            "    subscript(key: String) -> String {\n"
+            "        return \"\"\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        subs = [s for s in result.symbols if s.kind == "subscript"]
+        assert len(subs) == 2
+        sub_names = {s.name for s in subs}
+        assert "Multi.subscript(index:)" in sub_names
+        assert "Multi.subscript(key:)" in sub_names
+
+
+class TestSwiftShortNameCollision:
+    """Tests for short-name collision prevention (AMB-METHOD invariant).
+
+    When multiple types define the same method name (append, filter, get),
+    bare-name resolution must not produce confident false-positive edges.
+    Methods should only be registered by qualified name (Type.method), so
+    bare calls fall through to the NameResolver which handles ambiguity.
+    """
+
+    def test_same_method_name_different_types_no_false_positive(self, tmp_path: Path) -> None:
+        """Two types with same method name should not produce false-positive edge.
+
+        When TypeA.process() calls process() meaning self.process(), it should
+        NOT resolve to TypeB.process().
+        """
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Types.swift").write_text(
+            "class TypeA {\n"
+            "    func process() {\n"
+            "        print(\"A\")\n"
+            "    }\n"
+            "    func run() {\n"
+            "        process()\n"
+            "    }\n"
+            "}\n"
+            "\n"
+            "class TypeB {\n"
+            "    func process() {\n"
+            "        print(\"B\")\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+
+        # Find the call edge from TypeA.run -> process
+        run_sym = next((s for s in result.symbols if s.name == "TypeA.run"), None)
+        assert run_sym is not None
+
+        # There should be an edge, but NOT a confident (0.85) same-file edge
+        # to TypeB.process. Either it should resolve to TypeA.process via the
+        # resolver's suffix matching, or be marked as ambiguous/unresolved.
+        call_edges = [
+            e for e in result.edges
+            if e.src == run_sym.id and e.edge_type == "calls"
+        ]
+
+        type_b = next((s for s in result.symbols if s.name == "TypeB.process"), None)
+        assert type_b is not None
+
+        # The call MUST NOT confidently resolve to TypeB.process
+        false_positive = next(
+            (e for e in call_edges if e.dst == type_b.id and e.confidence > 0.80),
+            None,
+        )
+        assert false_positive is None, (
+            f"Bare 'process()' call in TypeA.run should not confidently resolve to "
+            f"TypeB.process (confidence={false_positive.confidence if false_positive else 'N/A'})"
+        )
+
+    def test_top_level_function_still_resolves_locally(self, tmp_path: Path) -> None:
+        """Top-level functions (no enclosing type) should still resolve via local_symbols."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "App.swift").write_text(
+            "func helper() -> Int { return 42 }\n"
+            "\n"
+            "func caller() {\n"
+            "    helper()\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        caller = next((s for s in result.symbols if s.name == "caller"), None)
+        helper = next((s for s in result.symbols if s.name == "helper"), None)
+        assert caller is not None
+        assert helper is not None
+
+        call_edge = next(
+            (e for e in result.edges if e.src == caller.id and e.dst == helper.id),
+            None,
+        )
+        assert call_edge is not None, "Top-level function calls should still resolve locally"
+        assert call_edge.confidence == 0.85
+
+    def test_method_resolves_via_resolver_not_local(self, tmp_path: Path) -> None:
+        """Method calls should go through the resolver, not bare-name local match."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Service.swift").write_text(
+            "class Service {\n"
+            "    func execute() { print(\"exec\") }\n"
+            "    func run() {\n"
+            "        execute()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        run_sym = next((s for s in result.symbols if s.name == "Service.run"), None)
+        exec_sym = next((s for s in result.symbols if s.name == "Service.execute"), None)
+        assert run_sym is not None
+        assert exec_sym is not None
+
+        # The call should resolve (via resolver suffix match) but NOT with
+        # 0.85 local-symbol confidence — it should go through the resolver
+        call_edge = next(
+            (e for e in result.edges if e.src == run_sym.id and e.dst == exec_sym.id),
+            None,
+        )
+        assert call_edge is not None, "Method should still resolve via resolver"
+
+    def test_three_types_same_method_ambiguous(self, tmp_path: Path) -> None:
+        """3+ types with same method name produces low-confidence or unresolved edge."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Many.swift").write_text(
+            "class A {\n"
+            "    func update() {}\n"
+            "}\n"
+            "class B {\n"
+            "    func update() {}\n"
+            "}\n"
+            "class C {\n"
+            "    func update() {}\n"
+            "    func run() {\n"
+            "        update()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        run_sym = next((s for s in result.symbols if s.name == "C.run"), None)
+        assert run_sym is not None
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == run_sym.id and e.edge_type == "calls"
+        ]
+
+        # With 3+ candidates, resolver should either:
+        # - Not resolve (unresolved_external_call), or
+        # - Resolve with very low confidence (ambiguous)
+        for e in call_edges:
+            if "update" in e.dst:
+                assert e.confidence < 0.80, (
+                    f"3-way ambiguous 'update()' call should have low confidence, "
+                    f"got {e.confidence}"
+                )
+
+
+class TestSwiftErrorNodeRecovery:
+    """Tests for recovering class/struct symbols from ERROR nodes.
+
+    tree-sitter-swift fails to parse certain Swift patterns (preprocessor
+    directives, _$ identifiers), producing ERROR nodes instead of proper
+    class_declaration nodes. The analyzer should recover the class name
+    from ERROR nodes when possible.
+    """
+
+    def test_class_with_preprocessor_directive_recovered(
+        self, tmp_path: Path,
+    ) -> None:
+        """Class with complex preprocessor directives should be extracted."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "Store.swift"
+        # Reproduces tree-sitter-swift parse failure: @dynamicMemberLookup,
+        # @preconcurrency @MainActor, _$ identifiers, and #if/#else/#endif
+        # cause ERROR nodes instead of class_declaration.
+        swift_file.write_text("""\
+import Foundation
+
+@dynamicMemberLookup
+@preconcurrency @MainActor
+public final class Store<State, Action>: _Store {
+    var children: [String: AnyObject] = [:]
+
+    @_spi(Internals) public var cancellables: [UUID: Any] { [:] }
+
+    #if !os(visionOS)
+    let _$observationRegistrar = 0
+    #else
+    let _$observationRegistrar = 1
+    #endif
+
+    public func send(_ action: Action) {
+        // dispatch action
+    }
+}
+""")
+        result = analyze_swift(tmp_path)
+
+        # The class should be recovered even if the parser produces an ERROR node
+        class_syms = [s for s in result.symbols if s.kind == "class"]
+        class_names = {s.name for s in class_syms}
+        assert "Store" in class_names, (
+            f"Store class should be recovered from ERROR node. "
+            f"Found classes: {class_names}"
+        )
+
+    def test_recover_class_from_error_node_no_name(self) -> None:
+        """Recovery returns None when ERROR node has keyword but no name."""
+        from hypergumbo_lang_mainstream.swift import _recover_class_from_error_node
+
+        # ERROR node with 'class' keyword but empty name identifier
+        keyword_child = MagicMock()
+        keyword_child.type = "class"
+        keyword_child.children = []
+
+        empty_name = MagicMock()
+        empty_name.type = "simple_identifier"
+        empty_name.start_byte = 0
+        empty_name.end_byte = 0
+
+        error_node = MagicMock()
+        error_node.type = "ERROR"
+        error_node.children = [keyword_child, empty_name]
+
+        result = _recover_class_from_error_node(error_node, b"")
+        assert result is None
+
+    def test_recover_class_from_error_node_type_identifier(self) -> None:
+        """Recovery works with type_identifier instead of simple_identifier."""
+        from hypergumbo_lang_mainstream.swift import _recover_class_from_error_node
+
+        keyword_child = MagicMock()
+        keyword_child.type = "struct"
+        keyword_child.children = []
+
+        name_node = MagicMock()
+        name_node.type = "type_identifier"
+        name_node.start_byte = 7
+        name_node.end_byte = 14
+
+        error_node = MagicMock()
+        error_node.type = "ERROR"
+        error_node.children = [keyword_child, name_node]
+
+        result = _recover_class_from_error_node(error_node, b"struct MyModel { }")
+        assert result is not None
+        assert result[0] == "MyModel"
+        assert result[1] == "struct"
+
+    def test_recover_class_type_identifier_empty_name(self) -> None:
+        """Recovery returns None when type_identifier has empty name."""
+        from hypergumbo_lang_mainstream.swift import _recover_class_from_error_node
+
+        keyword_child = MagicMock()
+        keyword_child.type = "enum"
+        keyword_child.children = []
+
+        name_node = MagicMock()
+        name_node.type = "type_identifier"
+        name_node.start_byte = 0
+        name_node.end_byte = 0
+
+        error_node = MagicMock()
+        error_node.type = "ERROR"
+        error_node.children = [keyword_child, name_node]
+
+        result = _recover_class_from_error_node(error_node, b"")
+        assert result is None
+
+
+class TestSwiftVaporUsageContext:
+    """Tests for Vapor route UsageContext extraction."""
+
+    def test_vapor_simple_route(self, tmp_path: Path) -> None:
+        """Detects simple Vapor route registrations like app.get("path")."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "routes.swift"
+        swift_file.write_text('''
+import Vapor
+
+func routes(_ app: Application) throws {
+    app.get("hello") { req in
+        return "Hello, world!"
+    }
+}
+''')
+        result = analyze_swift(tmp_path)
+
+        assert len(result.usage_contexts) >= 1
+        ctx = result.usage_contexts[0]
+        assert ctx.kind == "call"
+        assert ctx.context_name == "app.get"
+        assert ctx.position == "args[last]"
+        assert ctx.metadata["route_path"] == "hello"
+        assert ctx.metadata["http_method"] == "GET"
+
+        # Route symbols should also be created
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        route = routes[0]
+        assert route.name == "GET /hello"
+        assert route.meta["http_method"] == "GET"
+        assert route.meta["route_path"] == "/hello"
+
+    def test_vapor_multiple_routes(self, tmp_path: Path) -> None:
+        """Detects multiple Vapor route methods."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "routes.swift"
+        swift_file.write_text('''
+import Vapor
+
+func routes(_ app: Application) throws {
+    app.get("users") { req in
+        return "list"
+    }
+    app.post("users") { req in
+        return "create"
+    }
+    app.delete("users", ":id") { req in
+        return "delete"
+    }
+}
+''')
+        result = analyze_swift(tmp_path)
+
+        assert len(result.usage_contexts) >= 3
+        methods = {ctx.metadata["http_method"] for ctx in result.usage_contexts}
+        assert "GET" in methods
+        assert "POST" in methods
+        assert "DELETE" in methods
+
+    def test_vapor_routes_receiver(self, tmp_path: Path) -> None:
+        """Detects routes registered on 'routes' and 'router' receivers."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "routes.swift"
+        swift_file.write_text('''
+import Vapor
+
+func boot(routes: RoutesBuilder) throws {
+    routes.get("api", "status") { req in
+        return "ok"
+    }
+}
+''')
+        result = analyze_swift(tmp_path)
+
+        assert len(result.usage_contexts) >= 1
+        ctx = result.usage_contexts[0]
+        assert ctx.context_name == "routes.get"
+        assert ctx.metadata["http_method"] == "GET"
+
+    def test_vapor_use_handler(self, tmp_path: Path) -> None:
+        """Detects Vapor routes with use: handler parameter."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "routes.swift"
+        swift_file.write_text('''
+import Vapor
+
+struct UserController {
+    func index(req: Request) throws -> String {
+        return "users"
+    }
+}
+
+func routes(_ app: Application) throws {
+    let controller = UserController()
+    app.get("users", use: controller.index)
+}
+''')
+        result = analyze_swift(tmp_path)
+
+        assert len(result.usage_contexts) >= 1
+        ctx = result.usage_contexts[0]
+        assert ctx.kind == "call"
+        assert ctx.metadata["http_method"] == "GET"
+
+    def test_vapor_no_routes_in_non_route_code(self, tmp_path: Path) -> None:
+        """Does not extract usage contexts from non-route code."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "Model.swift"
+        swift_file.write_text('''
+import Foundation
+
+struct User {
+    let name: String
+
+    func getName() -> String {
+        return name
+    }
+}
+''')
+        result = analyze_swift(tmp_path)
+        assert len(result.usage_contexts) == 0

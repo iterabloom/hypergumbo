@@ -195,21 +195,25 @@ def _extract_protocol_name(node: "tree_sitter.Node", source: bytes) -> str | Non
 def _extract_method_name(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract method selector from method_declaration or method_definition.
 
-    Objective-C methods can have multiple parts: -(void)setX:(int)x Y:(int)y
-    becomes "setX:Y:" as the selector.
+    Objective-C selectors include colons for keyword parts:
+    ``-(void)setX:(int)x Y:(int)y`` → ``setX:Y:``
+
+    The tree-sitter-objc AST interleaves identifier (selector keyword) and
+    method_parameter nodes: ``identifier(setX) method_parameter(:int x)
+    identifier(Y) method_parameter(:int y)``.  An identifier followed by a
+    method_parameter is a keyword part and gets ``:`` appended.
     """
     parts: list[str] = []
-    for child in node.children:
+    children = node.children
+    for i, child in enumerate(children):
         if child.type == "identifier":
-            parts.append(node_text(child, source))
-        elif child.type == "keyword_selector":  # pragma: no cover - complex selectors
-            # Complex selector like doSomething:withParam:
-            for kw_child in child.children:
-                if kw_child.type == "keyword_argument_selector":
-                    for kwa_child in kw_child.children:
-                        if kwa_child.type == "identifier":
-                            parts.append(node_text(kwa_child, source) + ":")
-                            break
+            name = node_text(child, source)
+            # Keyword selector: identifier followed by method_parameter
+            next_child = children[i + 1] if i + 1 < len(children) else None
+            if next_child is not None and next_child.type == "method_parameter":
+                parts.append(name + ":")
+            else:
+                parts.append(name)
 
     if parts:
         return "".join(parts)
@@ -420,34 +424,41 @@ def _extract_import_path(node: "tree_sitter.Node", source: bytes) -> str | None:
 def _extract_message_selector(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract the selector from a message_expression.
 
-    [receiver selectorPart1:arg selectorPart2:arg2] extracts "selectorPart1:selectorPart2:"
+    ``[receiver selectorPart1:arg selectorPart2:arg2]`` → ``selectorPart1:selectorPart2:``
 
-    Structure: [ receiver selector ]
-    - First identifier after '[' is the receiver (skip it)
-    - Second identifier is the selector for simple messages
-    - For keyword messages, keyword_argument_list contains selector parts
+    The tree-sitter-objc grammar flattens keyword messages — selector keywords,
+    colons, and arguments are all direct children of ``message_expression``::
+
+        message_expression
+          [ identifier(receiver) identifier(removeItemAtPath) : identifier(path) identifier(error) : &err ]
+
+    Selector keywords are identifiers followed by ``:``; argument identifiers
+    follow ``:`` and must be skipped.  Simple messages like ``[obj doSomething]``
+    have a single identifier after the receiver with no colon.
     """
     parts: list[str] = []
     seen_receiver = False
+    children = node.children
 
-    for child in node.children:
+    for i, child in enumerate(children):
         if child.type == "identifier":
             if not seen_receiver:
-                # First identifier is the receiver, skip it
+                # First identifier is the receiver — skip it
                 seen_receiver = True
-            else:
-                # Simple message like [obj doSomething]
+                continue
+            # Check if NEXT sibling is ":"
+            next_child = children[i + 1] if i + 1 < len(children) else None
+            if next_child is not None and next_child.type == ":":
+                # Keyword part: identifier before ":"
+                parts.append(node_text(child, source) + ":")
+            elif not parts:
+                # Simple message (no colons) like [obj doSomething]
                 parts.append(node_text(child, source))
+            # Otherwise it's an argument identifier — skip
         elif child.type == "message_expression":
-            # Nested message like [[obj alloc] init] - receiver is another message
-            seen_receiver = True
-        elif child.type == "keyword_argument_list":  # pragma: no cover - complex msgs
-            for kw_child in child.children:
-                if kw_child.type == "keyword_argument":
-                    for kwa_child in kw_child.children:
-                        if kwa_child.type == "identifier":
-                            parts.append(node_text(kwa_child, source) + ":")
-                            break
+            # Nested message like [[obj alloc] init] — receiver is another message
+            if not seen_receiver:
+                seen_receiver = True
 
     if parts:
         return "".join(parts)
@@ -613,6 +624,24 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
             # Collect methods globally for cross-file resolution
             for selector, sym in analysis.methods_by_name.items():
                 global_methods[selector] = sym
+
+        # Pass 1.5: Propagate parent_base_classes to methods
+        # Class @interface (in .h) declares base_classes; methods in
+        # @implementation (in .m) need those as parent_base_classes for
+        # framework pattern matching (e.g., UIKit lifecycle hooks).
+        class_bases: dict[str, list[str]] = {}
+        for sym in all_symbols:
+            if sym.kind == "class" and sym.meta and sym.meta.get("base_classes"):
+                class_bases[sym.name] = sym.meta["base_classes"]
+
+        for sym in all_symbols:
+            if sym.kind == "method" and "." in sym.name:
+                class_name = sym.name.rsplit(".", 1)[0]
+                bases = class_bases.get(class_name)
+                if bases:
+                    if sym.meta is None:
+                        sym.meta = {}
+                    sym.meta["parent_base_classes"] = bases
 
         # Pass 2: Extract edges using global symbol knowledge
         method_resolver = NameResolver(global_methods)

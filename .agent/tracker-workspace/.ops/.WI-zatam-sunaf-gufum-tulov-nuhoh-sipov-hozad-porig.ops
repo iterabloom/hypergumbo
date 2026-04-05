@@ -1,0 +1,92 @@
+- op: create  # 1408
+  at: '2026-03-23T14:14:08Z'  # 1408
+  by: agent  # 1408
+  actor: jgstern_agent  # 1408
+  clock: 1  # 1408
+  nonce: '1408'  # 1408
+  data:  # 1408
+    kind: work_item  # 1408
+    title: "ADR-0017 Phase 2: Rust def/use extractor (core patterns)"  # 1408
+    status: todo_soft  # 1408
+    priority: 3  # 1408
+    parent:  # 1408
+    tags:  # 1408
+    - adr-0017  # 1408
+    - phase-2  # 1408
+    before: []  # 1408
+    duplicate_of: []  # 1408
+    not_duplicate_of: []  # 1408
+    pr_ref:  # 1408
+    description: "Pluggable DefUseExtractor for Rust (~500-800 lines). Handles Simple+Moderate patterns: let bindings, tuple/struct destructuring, if-let/match, reassignment, field writes, for loops, closures (conservative capture), return. ? operator handled structurally (CFG creates dual edges, extractor treats Ok binding as simple let). Builds on existing rust.py scope analysis. See ADR-0017 §1c."  # 1408
+    fields: {}  # 1408
+- op: update  # c1bc
+  at: '2026-03-23T14:15:24Z'  # c1bc
+  by: agent  # c1bc
+  actor: jgstern_agent  # c1bc
+  clock: 2  # c1bc
+  nonce: c1bc  # c1bc
+  set: {}  # c1bc
+  add:  # c1bc
+    before: [WI-todip-kudar-bibuz-gubak-ropat-zinuz-doliv-vizum]  # c1bc
+- op: update  # 675e
+  at: '2026-03-23T14:15:24Z'  # 675e
+  by: agent  # 675e
+  actor: jgstern_agent  # 675e
+  clock: 3  # 675e
+  nonce: 675e  # 675e
+  set: {}  # 675e
+  add:  # 675e
+    before: [WI-bifog-hisaz-pofaj-zasub-pifoh-gavan-pajos-juvog]  # 675e
+- op: update  # 74a9
+  at: '2026-03-23T14:17:40Z'  # 74a9
+  by: agent  # 74a9
+  actor: jgstern_agent  # 74a9
+  clock: 4  # 74a9
+  nonce: 74a9  # 74a9
+  set:  # 74a9
+    status: needs_human_review  # 74a9
+- op: discuss  # 89ec
+  at: '2026-03-23T14:17:40Z'  # 89ec
+  by: agent  # 89ec
+  actor: jgstern_agent  # 89ec
+  clock: 5  # 89ec
+  nonce: 89ec  # 89ec
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 89ec
+- op: update  # 8d8b
+  at: '2026-03-25T04:15:55Z'  # 8d8b
+  by: agent  # 8d8b
+  actor: jgstern_agent  # 8d8b
+  clock: 6  # 8d8b
+  nonce: 8d8b  # 8d8b
+  set:  # 8d8b
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 8d8b
+- op: update  # e8f4
+  at: '2026-03-25T07:48:10Z'  # e8f4
+  by: agent  # e8f4
+  actor: jgstern_agent  # e8f4
+  clock: 7  # e8f4
+  nonce: e8f4  # e8f4
+  set:  # e8f4
+    status: todo_soft  # e8f4
+- op: discuss  # c6ae
+  at: '2026-03-25T07:48:10Z'  # c6ae
+  by: agent  # c6ae
+  actor: jgstern_agent  # c6ae
+  clock: 8  # c6ae
+  nonce: c6ae  # c6ae
+  message: "ADR-0017 accepted. Phase 2. Repurposed: Python def/use extractor (was Rust)."  # c6ae
+- op: update  # 8cab
+  at: '2026-03-26T08:16:32Z'  # 8cab
+  by: agent  # 8cab
+  actor: jgstern_agent  # 8cab
+  clock: 9  # 8cab
+  nonce: 8cab  # 8cab
+  set:  # 8cab
+    status: done  # 8cab
+- op: discuss  # d2d9
+  at: '2026-03-26T08:16:32Z'  # d2d9
+  by: agent  # d2d9
+  actor: jgstern_agent  # d2d9
+  clock: 10  # d2d9
+  nonce: d2d9  # d2d9
+  message: "Implemented in PR #2582. Rust def/use extractor (183 lines) for core patterns: let, tuple/struct/tuple-struct destructure, reassignment, compound assign, field/index writes, for, if-let, match arms (incl. mut_pattern via match_pattern), closures, return, macros. 37 tests, 100% coverage."  # d2d9

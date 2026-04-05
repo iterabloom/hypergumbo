@@ -3,12 +3,207 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v2.4.0
+- Released **tool** is at: v2.5.0
 - Released **schema** is at: v0.2.2
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
 ## [Unreleased]
+
+## [2.5.0] - 2026-04-04
+
+### Added
+
+#### Go qualified-type parameter tracking
+
+- **Qualified type propagation**: Function parameters and struct fields with package-qualified types (e.g. `client *http.Client`) now carry full module hints through to unresolved edges and field chain access. IO boundary detection can now classify `http.Client.Do()` as `net_send` and chained patterns like `n.client.Do(req)` — previously blocked by `ambiguous_names` guard due to missing module context.
+- **Interface dispatch narrowing** (WI-doval): `var n Notifier = &DiscordNotifier{}` now tracks the concrete type, eliminating spurious `dispatches_to` edges.
+
+#### Taint-flow analysis (ADR-0017)
+
+- **Structural propagation** (Phase 1): YAML-driven taint catalogs (crypto, key material, fs writes, network sends) for Python, Rust, TS, Go, Java. Call-graph BFS with sanitizer checking. `verify-claims` supports `taint_flow` constraints.
+- **Intraprocedural dataflow** (Phase 2): Language-parameterized CFG builder (Rust `?`, Python `with`, Go `defer`). Reaching-def solver with worklist fixpoint. Def/use extractors for Python, Rust, TypeScript. DDG-backed propagation upgrades taint findings from `approximate` to `precise`. Budget-capped target selection (500 functions).
+- **Interprocedural propagation** (Phases 3-5): Function summary inference and YAML-declared summaries (TS 12, Rust 11 built-in). Cross-language propagation through 12 linker edge types. Field-sensitivity: `x` tainted → `x.field`/`x[key]` tainted.
+
+#### I/O boundary catalogs
+
+- **Objective-C** (`objc.yaml`): 90+ Foundation/Cocoa primitives (filesystem, networking, Core Data, subprocess, IPC).
+- **Scala** (`scala.yaml`): scala.io, cats-effect, ZIO, sttp/http4s/akka-http, fs2, Slick/Doobie/Quill. Inherits Java catalog.
+- **Haskell** (`haskell.yaml`): Prelude, System.IO, Network.Socket, System.Process, Data.IORef, Control.Concurrent.
+- **Swift** (`swift.yaml`): Foundation IO catalog (FileManager, URLSession, Process, NotificationCenter). 14 server-side primitives (AsyncHTTPClient, NIOSSL, distributed tracing). SwiftNIO channel/file I/O (`NonBlockingFileIO`, `Channel`, `ChannelHandlerContext`). 7 swift-log Logger level methods. Ambiguous names for generic identifiers (write, read, Data, URL).
+
+#### FFI unresolved edges for IO tracing
+
+- **Ruby FFI** (WI-valiv): `attach_function` to external libraries emits `ruby:C_ffi:0-0:<name>:unresolved` edges, redirected to C catalog for IO tagging.
+- **Python FFI** (WI-dokum): `ctypes.CDLL(None)` and `ffi.dlopen(None)` emit `python:C_stdlib:0-0:<name>:unresolved` edges. Repo-local C symbols still produce resolved edges when available.
+
+#### Dataflow access mode patterns
+
+- **Rust** (`rust.yaml`): 44 method-name heuristics (write/read/delete). Previously all Rust call edges had no access_mode.
+- **Go** (`go.yaml`): 30 regex patterns (15 write, 15 read) for mutating method calls (WI-satuv).
+- **Erlang**: Name-based heuristics (get_*/set_*, ETS/Mnesia ops, gen_server call/cast).
+
+#### `io-boundaries` CLI
+
+- Enriched text output: per-primitive counts, call-site locations, entry-point traces, high-risk highlighting.
+- New flags: `--by-file`, `--boundary TYPE`, `--primitive NAME`, `--exclude-tests`.
+- Enriched JSON: `chains`, `primitive_counts`, `has_high_risk` (backward-compatible).
+
+#### Language analyzers
+
+- **Swift**: Computed property/subscript extraction. Vapor/Hummingbird route extraction (kind="route").
+- **Objective-C**: Cocoa/UIKit lifecycle patterns (`cocoa.yaml`). Method `parent_base_classes` propagation.
+- **Scala**: Play Framework routes parser. IOApp/ZIOAppDefault/Scalatra entrypoint detection.
+- **Haskell**: Typeclass instance `implements` edges. Dataflow access_mode patterns.
+- **Erlang**: `gen_server:call/cast` dispatch linking.
+- **Go**: Cobra `AddCommand()` command tree detection.
+
+#### Framework & entrypoint detection
+
+- Hummingbird added to Swift framework list.
+- SwiftUI App, UIApplicationDelegate/NSApplicationDelegate, UIViewController/NSViewController, ParsableCommand (Swift Argument Parser), and XCTestCase entrypoint patterns (`swiftui.yaml`).
+- Hummingbird route/middleware/application patterns (`hummingbird.yaml`).
+- Middleware concept (59+ YAML patterns) now mapped to `middleware_handler` entrypoints.
+- Haskell `main :: IO ()` and Erlang `main/0`/`start/0` entrypoints.
+
+#### Tier classification
+
+- Swift `.build/` → tier 4. DocC `.docc/` → tier 2 (was tier 1; fixes 33% inflation in TCA).
+
+#### Rust def/use extractor enhancements
+
+- Borrow alias tracking: `let y = &mut x` records `x` as a use of `y`.
+- `ref`/`ref mut` patterns in match arms now bind variables correctly.
+- Dereference assignments (`*ptr = val`) generate defines for `ptr`.
+
+#### Transcript sync and local model pipeline (ADR-0018)
+
+- **Vendor-agnostic transcript sync**: Background watcher mirrors session transcripts to `.agent/.current_session_transcript.jsonl` (~83% noise filtered). Supports Claude Code, Codex CLI, Gemini CLI, Cursor.
+- **LLM-driven playbook injection**: Two-model sparse-selection pipeline rates playbook relevance and injects high-scoring ones into conversation context. Compaction-aware dedup with token-distance window. 14 playbooks extracted from AGENTS.md.
+- **G-Vendi finetuning pipeline** (`scripts/finetune-transcript-model`): Diversity-guided data selection (arXiv:2505.20161) for local Qwen2.5-0.5B-Instruct model. Parse-outcome sidecar log for tracking failures.
+
+#### Autonomous mode management
+
+- **Session-start hook**: Prompts for BROAD/DEEP/OFF mode selection when autonomous mode is OFF or has a stale PID. Vendor-agnostic with thin adapters per AI tool.
+- **Session-end hook**: Disables autonomous mode (`loop-toggle off`) when the user ends their session. Shared logic in `_shared/session_end_logic.sh`.
+- **Circuit breaker reset**: `loop-toggle` now deduplicates the last hash in the stop-hook hash file when activating a mode, preventing stale state from auto-approving stops.
+
+#### CI resilience
+
+- **Stale-pending detection in auto-pr**: `poll_ci()` detects when all CI jobs remain pending after 5 minutes (exit code 3). Auto-pr closes the PR, waits with exponential backoff (2/4/8/16 min), and repushes. Up to 4 retries.
+- **Stale-pending detection in tracker sync**: Same mitigation applied to `_poll_ci`/`do_sync` — 90-second timeout, close/wait/repush with up to 2 retries.
+- **Tracker sync PR verification**: Stop hook's stale-PR audit calls `verify-tracker-pr` to check safety before recommending close.
+
+#### Reverse slice seed selection
+
+- **Library export boost** (1.4×): `library_export`-tagged symbols in the entrypoints section are boosted in rslice seed scoring. Ensures reverse slices answer "who calls this library's public API?" (WI-bosik).
+- **Architectural concept boost** (1.3×): Middleware, controller, application, and model symbols boosted over pure hub nodes (OutputBuffer.append, Iterator.next).
+
+#### I/O boundary catalog additions
+
+- **C**: `fclose`, `fflush`, `fseek`, `rewind`, `ungetc`, `ftell` (stdio lifecycle). `tmpfile`, `tmpnam`, `mkstemp`, `mkdtemp`, `mkostemp`, `mkstemps` (temp files).
+- **Go**: `http.Transport.RoundTrip` (net_send). `golang.org/x/sys/execabs.Command` (subprocess). `testing.T.TempDir`/`testing.B.TempDir` (fs_write). `log`/`log/slog` families (ipc_send). `crypto/tls` Dial/Client and `net/smtp` NewClient/Dial/SendMail (net_send). Removes 6 false positives (`bytes.Buffer.WriteString`, `strings.Builder.WriteString`, `kingpin.Command()`).
+
+#### Other
+
+- `sketch --require-section`: force specific sections into output regardless of token budget.
+
+### Fixed
+
+#### FFI IO boundary tracing (INV-kagob, INV-zogun)
+
+- All 6 FFI linkers (cgo, JNI, PyFFI, N-API, Lua FFI, Ruby FFI) now annotate bridge edges with `access_mode=write, dest_access_mode=read`. Validated: chai2010/cgo 0→38 annotated edges.
+- `cgo_bridge` and `ffi_bridge` added to IO boundary tag and trace sets. IO chains now cross Go→C and Python→Rust boundaries (go-sqlite3: 116 edges, polars: 5,617 edges previously had zero IO metadata).
+- FFI catalog redirect: `go:C:` pseudo-namespace from cgo redirected to C catalog. Validated: chai2010/cgo 0→7 IO edges.
+
+#### Dataflow slice quality (INV-jahov)
+
+- **Position-aware access_mode**: Tree-sitter child field names distinguish LHS (write) from RHS (read) in assignments. Python AST reclassifies call edges on assignment lines as "read". `returns` YAML section now loaded (was silently dropped). Net effect: dataflow slices are tighter than structural slices — forward follows write/mutate, reverse follows read.
+
+#### Java annotation and route fixes (INV-nimik, WI-tojuz)
+
+- JAX-RS `@Path(value="/foo")` kwargs extraction (was only checking positional args). Same fix for Micronaut. Generic return type extraction (`Response<User>` → `Response`) for subresource locator detection.
+- Empty route paths normalized to `"/"` in stable IDs and materialized symbols.
+- `in`, `out`, `err` added to Java `ambiguous_names` (20 false positives in keycloak from JPA `CriteriaBuilder.in()`).
+
+#### I/O boundary detection
+
+- **Ambiguous name filtering for 10 catalogs** (INV-tapat): Go, Rust, Python, Java, C, JavaScript, Erlang, Haskell, Objective-C. Measured: polars net_send 285→89 (69% reduction). JavaScript `remove`/`rename` added (8 false `fs_write` chains eliminated in keycloak).
+- Case-insensitive module matching. ObjC catalog key bridging. Scala fs2/akka ops reclassified from `net_recv` to `fs_read`/`fs_write`. Haskell `external` sentinel for short-name fallback.
+
+#### Symbol resolution
+
+- ObjC selectors include colons (`removeItemAtPath:error:`). Callee extraction handles colon-containing names.
+- ObjC `protocol` symbols indexed for `implements` edges in inheritance linker.
+- Short-name confidence penalties (single-letter 0.15×, two-letter 0.50×) for Scala and Haskell.
+- Scala: 30+ collection/FP names added to `ambiguous_names` blocklist.
+
+#### Swift
+
+- Methods registered by qualified name only (`Type.method`), preventing false call edges from same-name methods.
+- ERROR node recovery for declarations broken by preprocessor directives or `_$` identifiers.
+- Receiver type tracking from property declarations. Navigation call target walks to method, not receiver.
+
+#### Haskell & Erlang
+
+- Where-clause/let bindings no longer extracted as top-level symbols (fixes 24-31% orphan rate).
+- Erlang function clauses with same name/arity coalesced (fixes 47-64% orphan rate).
+
+#### Python
+
+- Unresolved method calls emit `unresolved_variable_method_call` edges (0.40 confidence) instead of being dropped.
+
+#### C dataflow
+
+- `returns` section added to C dataflow YAML (was missing — Go, Java, C++, Rust, Python, TypeScript all had it). Return statement edges now get `access_mode="read"`.
+
+#### auto-pr & tracker sync
+
+- **Gate timing race** (INV-rahib): `PR_PENDING` gate now created before push (was after), closing a window where tracker sync could advance dev mid-flight. Added re-check before push and proactive fetch+rebase after CI poll.
+- **Variable name bug**: `$PUSH_REMOTE` (undefined uppercase) → `$push_remote`; hardcoded `"dev"` → `$BASE_BRANCH` in hung-run retry.
+- **Tracker `pending_sync_lines` failover**: Now checks `.git/CI_FAILOVER_ACTIVE` and prefers `selfh/dev` as diff base. Previously all ops synced via selfh showed as "pending" relative to stale `origin/dev` (e.g., 435 lines when true delta was near zero).
+
+#### CI & release scripts
+
+- **CI rootdir pinning**: Added `--rootdir=.` to CI pytest invocations. When all manifest tests belong to one package, pytest selected the package subdirectory as rootdir, breaking repo-root-relative paths (0 items collected).
+- **ci-debug SIGPIPE**: `_find_job_from_log_probe` used `curl | head -1` under `set -o pipefail`, sending SIGPIPE to curl (exit 141). Now uses `curl -r 0-1023` (HTTP range request) instead of piping.
+- **ci-debug Forgejo API fallback**: `/actions/runs` endpoint doesn't exist on Forgejo 11.x. Falls back to `/actions/tasks` to discover run numbers, then probes job logs. Transparent to Codeberg (tries `/runs` first).
+- **ci-debug ops-exclusion failover**: Fetches `selfh/dev` during failover so ops-exclusion diff matches CI's base SHA.
+- **Empty manifest for docs+CI-only PRs**: Generates empty targeted manifest when no Python source files changed.
+- **Release: smart-test version handling**: Version-only `__init__.py` diffs now generate targeted manifests (one test per package) instead of falling back to full-suite.
+- **Release: branch creation order**: `prepare-release` creates feature branch before committing (was after).
+- **Release: tracker flush**: Flushes pending tracker ops before clean-tree check.
+- **`requests` upgraded to 2.33.0** for CVE-2026-25645.
+
+#### Hooks
+
+- **Stale-PR audit failover** (WI-soboh): Now respects `CI_FAILOVER_ACTIVE`, querying selfh instead of origin.
+- **Circuit breaker**: Fixed TOCTOU race (two `tail` reads) and off-by-one (current stop counted toward threshold). Mechanically runs `loop-toggle off` on trip.
+- **Pre-push failover verification** (INV-bifud): Blocks pushes to origin during failover.
+
+#### Bakeoff threshold tuning
+
+- `io_tag_rate`: Log-linear scaling from 500 nodes (was 10K), `warn_min` 0.1%. `dataflow_slice_ratio`: Skipped when `access_mode_coverage < 30%`. `limit_hit_frequency`: Log-linear boost for 35K+ node repos.
+- `tier1_pct`: 100% for single-language library repos. `cross_language_io_pct`: Per-chain source vs catalog language (FFI repos now detected correctly). Polyglot threshold: <5% secondary language ignored.
+
+#### Transcript pipeline (ADR-0018)
+
+- Session state now cleared on session start with session-token self-healing. Poll race condition fixed (state marker written after hook succeeds). Goal injection removed (wasted tokens, risked bias).
+- Rating parser: greedy fallback regex removed. Hook wiring gaps fixed for Cursor and Codex CLI. Transcript window reduced from 16K to 8K tokens.
+
+### Changed
+
+- **Bakeoff script rename**: `bakeoff` → `bakeoff-broad`, `bakeoff-features` → `bakeoff-deep`, `bakeoff-reflect` → `bakeoff-broad-reflect`, `bakeoff-features-reflect` → `bakeoff-deep-reflect`. All references updated across AGENTS.md, ADRs, hooks, and scripts.
+- **Cooldown prompt restructure**: Process Retrospective promoted to Section 1. Gates discouraging analysis/tooling work during CI waits removed.
+- **State file fallbacks removed**: `last_stop_check.json` uses primary location only (`~/hypergumbo_lab_notebook/guidance_log/`). Legacy paths no longer checked.
+
+### Documentation
+
+- **ADR-0017** (Taint-Zone Dataflow Analysis): Proposed and accepted. Python-first extractor ordering.
+- **Governance docs**: Autonomous mode management, circuit breaker, and ADR index (`docs/adr/README.md`).
+- **Deprecated invariant ledger removed**: Superseded by structured tracker (ADR-0013). References updated.
+- **Agent playbooks**: Changelog audit playbook, playbook creation guide, bakeoff artifact guide added.
+- **Spec updates**: ADR-0017 taint_flow constraint in §3 verify-claims. Dataflow non-goal narrowed in §2. ADR-0014/0015 synced with implementation state.
 
 ## [2.4.0] - 2026-03-21
 
@@ -49,11 +244,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Runtime memory pressure guard**: Monitors RSS, skips analyzers before OOM
 - **Dataflow annotation line index**: ~47% faster Java analysis
 
-#### Tracker
-
-- **Batch command** (`tracker batch`), **inverse blocking flags** (`--add-blocked-by`), **dependency graph view** (`tracker deps`)
-- **Verbose update confirmations**, **setup wizard improvements**, **auto-create config template**
-
 ### Changed
 
 - **Weighted import inclusion in ranking**: Import edges now included at reduced weight (0.3) instead of excluded entirely. Widely-imported core types rise in rankings while call edges still dominate.
@@ -68,7 +258,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Test-edge filter**: Phantom source symbol import edges no longer leak through to inflate centrality
 - **`rank_files()` consistency**: Now uses same centrality parameters as `rank_symbols()`
 - **Erlang local call resolution**: Intra-module calls without explicit module qualification now resolved
-- **Tracker short prefix resolution**: `--remove-before`, `--remove-duplicate-of`, `--remove-not-duplicate-of` now resolve short ID prefixes
 
 ### Performance
 
@@ -104,16 +293,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Jupyter** (`.ipynb`): Extracts Python symbols and call edges from notebook code cells. Strips IPython magics/shell commands, tracks cross-cell line offsets.
 - **Blade** (`.blade.php`), **Gnuplot** (`.gnuplot`, `.gp`, `.plt`), **Handlebars** (`.hbs`), **Just** (`justfile`), **Mermaid** (`.mmd`), **QML** (`.qml`): New regex-based analyzers for templates, build files, diagrams, and Qt components.
 
-#### Tracker
-
-- **TUI startup diagnostics**: Prints item count, per-tier breakdown, and load time before and after the TUI (e.g., `htrac: 298 items (12 canonical, 286 workspace) loaded in 0.43s`).
-- **Sync logging**: Always-on file logging in `.agent/.sync-logs/` with 30-day garbage collection.
-
 ### Fixed
 
 - **`slice --files` crash** when `--max-hops` not passed (`int < None` TypeError). Broken since 2.2.0 — caused `smart-test` to silently fall back to full test suite on every run.
-- **Tracker sync pending-line inflation**: count grew by ~22 per cycle instead of resetting to 0. Fixed by fast-forwarding local dev after sync.
-- **Tracker sync cleanup**: `unlink()` OSError no longer halts cleanup; checkout/merge failures now logged.
 - **`dev-install`** now calls `install-hooks` automatically (was a separate manual step).
 
 ## [2.2.0] - 2026-03-12
@@ -335,7 +517,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - smart-test improvements, infra-only PR skip, shared Forgejo API lib, parallel coverage, retry-aware `merge-pr`.
 - Three-way stop hook, post-compaction recovery, pre-push hook, fail-closed tracker, fork workflow hardening.
-- Standardized pass IDs via `make_pass_id()`. Generalized symbol identity (ADR-0014): location `id`, signature `stable_id`, CST `shape_id`. Tracker `update --note` and unread message warning.
+- Standardized pass IDs via `make_pass_id()`. Generalized symbol identity (ADR-0014): location `id`, signature `stable_id`, CST `shape_id`.
 
 ### Fixed
 

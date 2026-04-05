@@ -3506,6 +3506,75 @@ func second(s *Client) {
             f"found: {[e.dst for e in second_calls]}"
         )
 
+    def test_interface_var_with_concrete_initializer(self, tmp_path: Path) -> None:
+        """var n Notifier = &DiscordNotifier{} resolves to concrete type.
+
+        When an interface-typed variable is initialized with a concrete type,
+        calls on that variable should resolve to the concrete type's method,
+        not produce unresolved/interface dispatch edges.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Notifier interface {
+    Notify()
+}
+
+type DiscordNotifier struct{}
+type EmailNotifier struct{}
+
+func (d *DiscordNotifier) Notify() {}
+func (e *EmailNotifier) Notify() {}
+
+func send() {
+    var n Notifier = &DiscordNotifier{}
+    n.Notify()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        send_calls = [e for e in call_edges if "send" in e.src]
+
+        # n.Notify() should resolve to DiscordNotifier.Notify (concrete type)
+        # not produce an unresolved edge to Notifier.Notify
+        assert any("DiscordNotifier.Notify" in e.dst for e in send_calls), (
+            f"send's n.Notify() should resolve to DiscordNotifier.Notify, "
+            f"found: {[e.dst for e in send_calls]}"
+        )
+
+    def test_interface_var_without_initializer_uses_declared_type(
+        self, tmp_path: Path,
+    ) -> None:
+        """var s Server (no initializer) still resolves via declared type."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+
+func (s *Server) Start() {}
+
+func run() {
+    var s Server
+    s.Start()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_calls = [e for e in call_edges if "run" in e.src]
+
+        assert any("Server.Start" in e.dst for e in run_calls), (
+            f"run's s.Start() should resolve to Server.Start, "
+            f"found: {[e.dst for e in run_calls]}"
+        )
+
     def test_skips_builtin_type_parameters(self, tmp_path: Path) -> None:
         """Parameters with builtin types (string, int) are not tracked.
 
@@ -4406,8 +4475,15 @@ func doWork(mu *sync.Mutex) {
             assert "DirLocker.Lock" not in edge.dst, (
                 f"mu.Lock() should NOT resolve to DirLocker.Lock, got {edge.dst}"
             )
-            assert edge.evidence_type == "stdlib_method_call", (
-                f"stdlib method collision should have evidence_type='stdlib_method_call', "
+            # With qualified-type parameter tracking, *sync.Mutex propagates
+            # the module hint through import_aliases, so the edge goes through
+            # the unresolved_method_call path (with correct module hint 'sync')
+            # instead of the stdlib_method_call guard.  Both are correct — the
+            # key invariant is that DirLocker.Lock is NOT chosen.
+            assert edge.evidence_type in (
+                "stdlib_method_call", "unresolved_method_call",
+            ), (
+                f"stdlib method collision should produce unresolved edge, "
                 f"got '{edge.evidence_type}'"
             )
             assert edge.confidence <= 0.50, (
@@ -4530,8 +4606,13 @@ func saveData(m *sync.Map) {
             assert "DownTrackSpreader.Store" not in edge.dst, (
                 f"m.Store() should NOT resolve to DownTrackSpreader.Store, got {edge.dst}"
             )
-            assert edge.evidence_type == "stdlib_method_call", (
-                f"Expected evidence_type='stdlib_method_call', got '{edge.evidence_type}'"
+            # With qualified-type parameter tracking, *sync.Map propagates
+            # module hint, so the edge may go through unresolved_method_call
+            # path instead of stdlib_method_call.  Both are correct.
+            assert edge.evidence_type in (
+                "stdlib_method_call", "unresolved_method_call",
+            ), (
+                f"Expected unresolved edge, got '{edge.evidence_type}'"
             )
 
     def test_load_single_candidate_produces_unresolved(
@@ -5700,8 +5781,8 @@ type Handler struct{}
         # Only handler should be present (non-builtin)
         assert fields == {"handler": "Handler"}
 
-    def test_qualified_type_uses_unqualified_name(self, tmp_path: Path) -> None:
-        """pkg.Type fields use the unqualified type name."""
+    def test_qualified_type_uses_qualified_name(self, tmp_path: Path) -> None:
+        """pkg.Type fields store the full qualified name for module hint recovery."""
         result = self._parse_file(tmp_path, """\
 package main
 
@@ -5712,10 +5793,10 @@ type Server struct {
 }
 """)
         fields = result.class_field_types.get("Server", {})
-        assert fields.get("client") == "Client"
+        assert fields.get("client") == "http.Client"
 
     def test_pointer_to_qualified_type(self, tmp_path: Path) -> None:
-        """*pkg.Type fields unwrap pointer and extract unqualified name."""
+        """*pkg.Type fields unwrap pointer and keep qualified name."""
         result = self._parse_file(tmp_path, """\
 package main
 
@@ -5726,7 +5807,7 @@ type Server struct {
 }
 """)
         fields = result.class_field_types.get("Server", {})
-        assert fields.get("client") == "Client"
+        assert fields.get("client") == "http.Client"
 
     def test_embedding_excluded(self, tmp_path: Path) -> None:
         """Embedded types (no field name) are not included in class_field_types."""
@@ -6111,3 +6192,239 @@ class TestGoShapeId:
         struct = next(s for s in result.symbols if s.name == "Point")
         assert struct.shape_id is not None
         assert struct.shape_id.startswith("sha256:")
+
+
+class TestCobraAddCommandUsageContext:
+    """Tests for Cobra AddCommand() usage context extraction."""
+
+    def test_addcommand_creates_usage_context(self, tmp_path: Path) -> None:
+        """Detects rootCmd.AddCommand(subCmd) calls."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text('''package main
+
+import "github.com/spf13/cobra"
+
+var rootCmd = &cobra.Command{
+    Use: "myapp",
+}
+
+var serveCmd = &cobra.Command{
+    Use: "serve",
+    RunE: func(cmd *cobra.Command, args []string) error {
+        return nil
+    },
+}
+
+func init() {
+    rootCmd.AddCommand(serveCmd)
+}
+''')
+        result = analyze_go(tmp_path)
+
+        # Should have a usage context for AddCommand
+        add_cmd_ctxs = [
+            c for c in result.usage_contexts
+            if c.context_name == "rootCmd.AddCommand"
+        ]
+        assert len(add_cmd_ctxs) >= 1
+        ctx = add_cmd_ctxs[0]
+        assert ctx.kind == "call"
+        assert ctx.metadata.get("child_command") == "serveCmd"
+
+
+class TestGoQualifiedTypeParameterEdges:
+    """Tests that function parameters with qualified types (e.g. *http.Client)
+    propagate module information to unresolved method call edges.
+
+    Invariant: When a function parameter has a package-qualified type (like
+    *http.Client), method calls on that parameter must produce unresolved
+    edges with the correct module hint (e.g. net/http) — NOT 'external'.
+    This is critical because IO boundary detection uses the module hint to
+    classify edges (e.g. http.Client.Do → net_send), and the ambiguous_names
+    guard rejects method names like 'Do' without module context.
+    """
+
+    def test_qualified_param_type_propagates_module_hint(
+        self, tmp_path: Path,
+    ) -> None:
+        """client.Do() with *http.Client param → edge dst contains 'net/http'.
+
+        The Go analyzer should extract the package prefix from the qualified
+        type, map it through import_aliases, and embed the full import path
+        in the unresolved edge ID.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+import "net/http"
+
+func doRequest(client *http.Client, req *http.Request) {
+    client.Do(req)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        do_edges = [e for e in call_edges if "Do" in e.dst]
+        assert len(do_edges) >= 1, (
+            f"Expected at least one edge to 'Do', got edges: "
+            f"{[e.dst for e in call_edges]}"
+        )
+        # The edge dst must contain 'net/http', not 'external'
+        do_edge = do_edges[0]
+        assert "net/http" in do_edge.dst, (
+            f"Expected 'net/http' in edge dst for client.Do() with "
+            f"*http.Client param, got: {do_edge.dst}"
+        )
+        assert "external" not in do_edge.dst, (
+            f"Edge dst should not contain 'external' when receiver type is "
+            f"known via qualified param type, got: {do_edge.dst}"
+        )
+
+    def test_non_pointer_qualified_param_propagates_hint(
+        self, tmp_path: Path,
+    ) -> None:
+        """Method call on non-pointer qualified param also gets module hint.
+
+        http.Client (without *) should also work.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+import "net/http"
+
+func doRequest(client http.Client) {
+    client.Do(nil)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        do_edges = [e for e in call_edges if "Do" in e.dst]
+        assert len(do_edges) >= 1, (
+            f"Expected at least one edge to 'Do', got edges: "
+            f"{[e.dst for e in call_edges]}"
+        )
+        assert "net/http" in do_edges[0].dst, (
+            f"Expected 'net/http' in dst, got: {do_edges[0].dst}"
+        )
+
+    def test_qualified_param_with_go_mod_strips_module_prefix(
+        self, tmp_path: Path,
+    ) -> None:
+        """When go.mod exists, module prefix is stripped from import path hint.
+
+        If the repo has go.mod with module path 'github.com/example/myapp',
+        the import_path_hint should still be the full import path (since
+        net/http is not a prefix of the module path), preserving the
+        'net/http' module hint for IO boundary detection.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_mod = tmp_path / "go.mod"
+        go_mod.write_text("module github.com/example/myapp\n\ngo 1.21\n")
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+import "net/http"
+
+func doRequest(client *http.Client, req *http.Request) {
+    client.Do(req)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        do_edges = [e for e in call_edges if "Do" in e.dst]
+        assert len(do_edges) >= 1, (
+            f"Expected at least one edge to 'Do', got edges: "
+            f"{[e.dst for e in call_edges]}"
+        )
+        # net/http is not a prefix of github.com/example/myapp, so
+        # _strip_module_prefix returns the full import path unchanged
+        assert "net/http" in do_edges[0].dst, (
+            f"Expected 'net/http' in dst with go.mod present, "
+            f"got: {do_edges[0].dst}"
+        )
+
+    def test_field_chain_qualified_type_propagates_module_hint(
+        self, tmp_path: Path,
+    ) -> None:
+        """n.client.Do() with struct field *http.Client → edge dst has net/http.
+
+        When a struct field has a package-qualified type (e.g. *http.Client),
+        _resolve_field_chain should return the qualified name, and the
+        typed_field_call fallback should extract the import path from
+        the package prefix.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+import "net/http"
+
+type Notifier struct {
+    client *http.Client
+}
+
+func (n *Notifier) Send(req *http.Request) {
+    n.client.Do(req)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        do_edges = [e for e in call_edges if "Do" in e.dst]
+        assert len(do_edges) >= 1, (
+            f"Expected at least one edge to 'Do', got edges: "
+            f"{[e.dst for e in call_edges]}"
+        )
+        assert "net/http" in do_edges[0].dst, (
+            f"Expected 'net/http' in edge dst for n.client.Do() "
+            f"with *http.Client field, got: {do_edges[0].dst}"
+        )
+
+    def test_field_chain_with_go_mod(self, tmp_path: Path) -> None:
+        """Field chain module hint works with go.mod (module_path set)."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_mod = tmp_path / "go.mod"
+        go_mod.write_text("module github.com/example/app\n\ngo 1.21\n")
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""\
+package main
+
+import "net/http"
+
+type Client struct {
+    http *http.Client
+}
+
+func (c *Client) Fetch(req *http.Request) {
+    c.http.Do(req)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        do_edges = [e for e in call_edges if "Do" in e.dst]
+        assert len(do_edges) >= 1
+        assert "net/http" in do_edges[0].dst

@@ -1,0 +1,74 @@
+- op: create  # ee36
+  at: '2026-03-23T14:14:07Z'  # ee36
+  by: agent  # ee36
+  actor: jgstern_agent  # ee36
+  clock: 1  # ee36
+  nonce: ee36  # ee36
+  data:  # ee36
+    kind: work_item  # ee36
+    title: "ADR-0017 Phase 2: YAML CFG node mappings (per-language)"  # ee36
+    status: todo_soft  # ee36
+    priority: 3  # ee36
+    parent:  # ee36
+    tags:  # ee36
+    - adr-0017  # ee36
+    - phase-2  # ee36
+    before: []  # ee36
+    duplicate_of: []  # ee36
+    not_duplicate_of: []  # ee36
+    pr_ref:  # ee36
+    description: "YAML files mapping tree-sitter node types to generic control-flow categories (conditional, loop, break, continue, return, early_return, try_catch). ~30-60 lines per language. Rust mapping first. Unmapped nodes treated as sequential statements (safe overapproximation) with DEBUG warning. See ADR-0017 §1d."  # ee36
+    fields: {}  # ee36
+- op: update  # a25b
+  at: '2026-03-23T14:17:40Z'  # a25b
+  by: agent  # a25b
+  actor: jgstern_agent  # a25b
+  clock: 2  # a25b
+  nonce: a25b  # a25b
+  set:  # a25b
+    status: needs_human_review  # a25b
+- op: discuss  # 67a9
+  at: '2026-03-23T14:17:40Z'  # 67a9
+  by: agent  # 67a9
+  actor: jgstern_agent  # 67a9
+  clock: 3  # 67a9
+  nonce: 67a9  # 67a9
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 67a9
+- op: update  # 9b24
+  at: '2026-03-25T04:15:54Z'  # 9b24
+  by: agent  # 9b24
+  actor: jgstern_agent  # 9b24
+  clock: 4  # 9b24
+  nonce: 9b24  # 9b24
+  set:  # 9b24
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # 9b24
+- op: update  # d5d8
+  at: '2026-03-25T07:46:28Z'  # d5d8
+  by: agent  # d5d8
+  actor: jgstern_agent  # d5d8
+  clock: 5  # d5d8
+  nonce: d5d8  # d5d8
+  set:  # d5d8
+    status: todo_soft  # d5d8
+- op: discuss  # ee7b
+  at: '2026-03-25T07:46:28Z'  # ee7b
+  by: agent  # ee7b
+  actor: jgstern_agent  # ee7b
+  clock: 6  # ee7b
+  nonce: ee7b  # ee7b
+  message: "ADR-0017 accepted. Phase 2."  # ee7b
+- op: update  # 5842
+  at: '2026-03-26T07:16:51Z'  # 5842
+  by: agent  # 5842
+  actor: jgstern_agent  # 5842
+  clock: 7  # 5842
+  nonce: '5842'  # 5842
+  set:  # 5842
+    status: done  # 5842
+- op: discuss  # e0c1
+  at: '2026-03-26T07:16:51Z'  # e0c1
+  by: agent  # e0c1
+  actor: jgstern_agent  # e0c1
+  clock: 8  # e0c1
+  nonce: e0c1  # e0c1
+  message: "Implemented in PR #2578. Added Go (with defer hook), TypeScript (with try/catch/finally), Java (with try/catch/finally) YAML CFG node mappings. Python and Rust mappings were created in PR #2575. Total: 5 language mappings."  # e0c1

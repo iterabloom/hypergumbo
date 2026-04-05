@@ -2731,6 +2731,20 @@ def _process_call(
                     evidence_type="unresolved_method_call",
                     confidence=0.50,
                 ))
+            # Case: local_var.method() where type cannot be inferred.
+            # Emit unresolved edge using the attribute name so that IO
+            # boundary analysis and taint-flow analysis can detect it.
+            # Lower confidence since we don't know the receiver type.
+            else:
+                dst_id = f"python:external:0-0:{attr_name}:unresolved"
+                edges.append(Edge.create(
+                    src=caller_symbol.id,
+                    dst=dst_id,
+                    edge_type="calls",
+                    line=call_node.lineno,
+                    evidence_type="unresolved_variable_method_call",
+                    confidence=0.40,
+                ))
 
 
 def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None) -> AnalysisResult:

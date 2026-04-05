@@ -25,7 +25,7 @@ jobs:
     if: >-
       !startsWith(github.head_ref || '', 'tracker-sync/')
       && !startsWith(github.event.head_commit.message || '', 'tracker:')
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     outputs:
       code: ${{ steps.filter.outputs.code }}
       tracker_data: ${{ steps.filter.outputs.tracker_data }}
@@ -96,7 +96,7 @@ jobs:
   # Stop-the-line protocol: Block PRs when full-suite is broken
   # Exception: PRs titled "fix(job-XXXXX):" are allowed through
   stop-the-line:
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     if: github.event_name == 'pull_request'
     steps:
       - name: Check full-suite status
@@ -188,7 +188,7 @@ jobs:
   lint:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     env:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
@@ -211,7 +211,7 @@ jobs:
 
 
   dco:
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
@@ -235,7 +235,7 @@ jobs:
   audit:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     env:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
@@ -248,13 +248,17 @@ jobs:
         run: |
           pip install --upgrade pip wheel setuptools
           pip install pip-audit
+          # CVE-2026-25645: requests 2.32.5 — fix in 2.33.0
+          pip install "requests~=2.33.0"
       - name: Run pip-audit (dependency vulnerabilities)
-        run: pip-audit --skip-editable
+        run: |
+          # CVE-2026-4539: pygments 2.19.2 — no upstream fix available yet (latest version)
+          pip-audit --skip-editable --ignore-vuln CVE-2026-4539
 
   verify-generated:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     env:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
@@ -283,7 +287,7 @@ jobs:
   build-grammars:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     env:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
@@ -309,7 +313,7 @@ jobs:
   pytest:
     needs: [changes, stop-the-line, build-grammars]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure' && needs.build-grammars.result != 'failure'
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     timeout-minutes: 30
     env:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
@@ -650,7 +654,9 @@ jobs:
           echo "Running: pytest ($TEST_COUNT test files)"
           # SMART_TEST_ACTIVE=1 bypasses smart-test wrapper to use real pytest
           # (CI already computed test selection via manifest - don't re-compute)
-          SMART_TEST_ACTIVE=1 pytest -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
+          # --rootdir=. pins pytest to repo root so manifest paths resolve
+          # correctly even for single-package PRs (see ADR-0010 §Rootdir Pinning)
+          SMART_TEST_ACTIVE=1 pytest --rootdir=. -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
           TEST_EXIT=$?
 
           # Check 100% coverage for changed source files only
@@ -876,7 +882,7 @@ jobs:
           TEST_COUNT=$(echo "$SELECTED_TESTS" | wc -w)
 
           echo "=== Running $TEST_COUNT selected tests (retry on self-hosted) ==="
-          SMART_TEST_ACTIVE=1 pytest -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
+          SMART_TEST_ACTIVE=1 pytest --rootdir=. -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
           TEST_EXIT=$?
 
           if [ $TEST_EXIT -eq 0 ] && [ -n "$COVERABLE_SOURCE_FILES" ]; then
@@ -936,7 +942,7 @@ jobs:
       always() &&
       needs.changes.outputs.tracker_data == 'true' &&
       needs.stop-the-line.result != 'failure'
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -955,7 +961,7 @@ jobs:
   ci-complete:
     needs: [changes, stop-the-line, lint, audit, verify-generated, build-grammars, pytest, pytest-retry, dco, tracker-validate]
     if: always()
-    runs-on: codeberg-small-lazy
+    runs-on: self-hosted
     timeout-minutes: 5
     steps:
       - name: Check job results

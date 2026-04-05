@@ -1,0 +1,44 @@
+- op: create  # 19de
+  at: '2026-04-03T08:25:08Z'  # 19de
+  by: agent  # 19de
+  actor: jgstern_agent  # 19de
+  clock: 1  # 19de
+  nonce: 19de  # 19de
+  data:  # 19de
+    kind: work_item  # 19de
+    title: "htrac serve: auth config schema in config.yaml"  # 19de
+    status: todo_soft  # 19de
+    priority: 3  # 19de
+    parent:  # 19de
+    tags:  # 19de
+    - adr-0019  # 19de
+    - auth  # 19de
+    before: []  # 19de
+    duplicate_of: []  # 19de
+    not_duplicate_of: []  # 19de
+    pr_ref:  # 19de
+    description: "Define config.yaml schema for auth section: session_ttl_minutes, duress_module path, brute_force rate limit params (base delay, max delay, max consecutive failures), WebAuthn RP ID/origin. Validate on startup. See docs/adr/0019-remote-access-transport.md §Session management, §Password brute-force protection."  # 19de
+    fields: {}  # 19de
+- op: update  # c113
+  at: '2026-04-03T08:26:56Z'  # c113
+  by: agent  # c113
+  actor: jgstern_agent  # c113
+  clock: 2  # c113
+  nonce: c113  # c113
+  set:  # c113
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # c113
+- op: update  # 5d89
+  at: '2026-04-03T20:04:29Z'  # 5d89
+  by: agent  # 5d89
+  actor: jgstern_agent  # 5d89
+  clock: 3  # 5d89
+  nonce: 5d89  # 5d89
+  set:  # 5d89
+    status: done  # 5d89
+- op: discuss  # 388d
+  at: '2026-04-03T20:04:29Z'  # 388d
+  by: agent  # 388d
+  actor: jgstern_agent  # 388d
+  clock: 4  # 388d
+  nonce: 388d  # 388d
+  message: "Implemented in PR #105 (pending merge). AuthConfig dataclass with session_ttl, duress_module, rate_limit params, WebAuthn RP config. 9 tests."  # 388d

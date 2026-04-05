@@ -194,9 +194,13 @@ Before releasing, ensure version is consistent across:
 
 The `prepare-release` script handles this automatically.
 
+#### Tracker version
+
+`hypergumbo-tracker` is independently versioned (currently MPL-2.0, separate changelog at `packages/hypergumbo-tracker/CHANGELOG.md`). When the tracker has unreleased changes, pass `--tracker VERSION` to bump it alongside the main release. If omitted, `bump-version` warns when tracker source has changed since the last tag but leaves the version unchanged.
+
 ### Changelog
 
-Update `CHANGELOG.md` with release notes. The workflow extracts the section matching the version for the release body.
+Update `CHANGELOG.md` with release notes. The workflow extracts the section matching the version for the release body. When releasing with `--tracker`, the script also stamps `packages/hypergumbo-tracker/CHANGELOG.md`.
 
 ## How to Release
 
@@ -207,15 +211,18 @@ This workflow separates automated preparation (agent) from authorization (human)
 #### Step 1: Agent Prepares Release
 
 ```bash
-# Agent runs this command
-./scripts/prepare-release 0.8.0
+# Main packages only
+./scripts/prepare-release 2.5.0
+
+# Main packages + tracker (when tracker has unreleased changes)
+./scripts/prepare-release 2.5.0 --tracker 0.2.0
 ```
 
 This script:
 1. ✓ Verifies on dev branch with clean working directory
-2. ✓ Bumps version in `pyproject.toml` and `__init__.py`
-3. ✓ Updates CHANGELOG.md (`[Unreleased]` → `[0.8.0] - YYYY-MM-DD`)
-4. ✓ Commits: `chore: release 0.8.0`
+2. ✓ Bumps version in `pyproject.toml` and `__init__.py` (and tracker, if `--tracker`)
+3. ✓ Updates CHANGELOG.md (`[Unreleased]` → `[2.5.0] - YYYY-MM-DD`; same for tracker changelog if `--tracker`)
+4. ✓ Commits: `chore: release 2.5.0` (or `chore: release 2.5.0 (tracker 0.2.0)`)
 5. ✓ Runs `./scripts/release-check` (tests, security, build)
 6. ✓ Pushes to dev
 7. ✓ Creates PR from dev → main
@@ -284,11 +291,11 @@ curl -X POST \
 
 | Script | Who Runs | Purpose |
 |--------|----------|---------|
-| `./scripts/prepare-release VERSION` | Agent | Full preparation: bump, changelog, validate, PR |
+| `./scripts/prepare-release VERSION [--tracker TV]` | Agent | Full preparation: bump, changelog, validate, PR |
 | `./scripts/tag-release VERSION` | Human | Create signed tag after PR merge |
 | `./scripts/release VERSION` | Either | Legacy single-step (detects branch protection) |
 | `./scripts/release-check` | Either | Validate release readiness (standalone) |
-| `./scripts/bump-version VERSION` | Either | Just bump version (used by prepare-release) |
+| `./scripts/bump-version VERSION [--tracker TV]` | Either | Just bump version (used by prepare-release) |
 
 ## Dry Run Mode
 
@@ -420,7 +427,7 @@ git push origin v0.8.0
 
 ## Platform Notes
 
-Codeberg/Forgejo only provides Linux runners (`codeberg-small-lazy`). Multi-platform testing (macOS, Windows) should be done locally before tagging a release.
+CI runs exclusively on a self-hosted Linux runner. Multi-platform testing (macOS, Windows) should be done locally before tagging a release.
 
 ## Two-User Workflow (Optional)
 

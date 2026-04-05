@@ -86,3 +86,11 @@
   clock: 11  # a6fa
   nonce: a6fa  # a6fa
   message: "[migrated from justification field] Investigated and confirmed NOT a bug. Vue template nodes from app/javascript/ are correctly tier1 and vastly outnumber tier2 test symbols. Metric interpretation issue, not classification bug."  # a6fa
+- op: update  # ad31
+  at: '2026-03-25T04:23:59Z'  # ad31
+  by: agent  # ad31
+  actor: jgstern_agent  # ad31
+  clock: 12  # ad31
+  nonce: ad31  # ad31
+  set:  # ad31
+    parent: INV-mogud-jurul-fisiv-jupaz-sujos-hufis-dadov-luzar  # ad31

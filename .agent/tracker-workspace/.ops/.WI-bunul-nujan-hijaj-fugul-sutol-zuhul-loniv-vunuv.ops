@@ -32,3 +32,11 @@
   clock: 3  # 629c
   nonce: 629c  # 629c
   message: "Fixed in PR #2031. Added nested class guard to _is_import_class_mismatch: if resolved symbol is a nested class (class/interface/enum with dot in name) but lookup used bare name from a different file, skip the edge. Eliminates Properties/Logger false positives from Kafka bakeoff."  # 629c
+- op: update  # 7c3e
+  at: '2026-03-25T04:23:59Z'  # 7c3e
+  by: agent  # 7c3e
+  actor: jgstern_agent  # 7c3e
+  clock: 4  # 7c3e
+  nonce: 7c3e  # 7c3e
+  set:  # 7c3e
+    parent: INV-vusog-kimig-vasin-gomot-sahud-ponul-nilov-novuv  # 7c3e

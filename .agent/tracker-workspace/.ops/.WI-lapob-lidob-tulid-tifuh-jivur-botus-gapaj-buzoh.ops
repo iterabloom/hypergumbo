@@ -1,0 +1,66 @@
+- op: create  # 9215
+  at: '2026-03-31T09:10:55Z'  # 9215
+  by: agent  # 9215
+  actor: jgstern_agent  # 9215
+  clock: 1  # 9215
+  nonce: '9215'  # 9215
+  data:  # 9215
+    kind: work_item  # 9215
+    title: "Annotation confirm/discard: arrow key adjustment, Enter/Escape flow"  # 9215
+    status: needs_human_review  # 9215
+    priority: 2  # 9215
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # 9215
+    tags:  # 9215
+    - adr-0020  # 9215
+    before: []  # 9215
+    duplicate_of: []  # 9215
+    not_duplicate_of: []  # 9215
+    pr_ref:  # 9215
+    description: "After each annotation gesture, user can adjust position with arrow keys (mitigates SSH mouse coordinate drift). Enter confirms the annotation; Escape discards it. Confirmed annotations are appended to the annotation list."  # 9215
+    fields: {}  # 9215
+- op: update  # 656b
+  at: '2026-03-31T09:19:50Z'  # 656b
+  by: agent  # 656b
+  actor: jgstern_agent  # 656b
+  clock: 2  # 656b
+  nonce: 656b  # 656b
+  set: {}  # 656b
+  add:  # 656b
+    before: [WI-lidip-giluh-nukak-tanak-sasuk-fanib-faduv-suhok]  # 656b
+- op: update  # 286d
+  at: '2026-03-31T09:28:23Z'  # 286d
+  by: agent  # 286d
+  actor: jgstern_agent  # 286d
+  clock: 3  # 286d
+  nonce: 286d  # 286d
+  set:  # 286d
+    status: todo_soft  # 286d
+- op: discuss  # 373b
+  at: '2026-03-31T09:30:48Z'  # 373b
+  by: human  # 373b
+  actor: jgstern  # 373b
+  clock: 4  # 373b
+  nonce: 373b  # 373b
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 373b
+- op: discuss  # 0f7b
+  at: '2026-03-31T09:40:25Z'  # 0f7b
+  by: agent  # 0f7b
+  actor: jgstern_agent  # 0f7b
+  clock: 5  # 0f7b
+  nonce: 0f7b  # 0f7b
+  message: "Acknowledged. Will reference ADR-0020 when implementing."  # 0f7b
+- op: update  # e19e
+  at: '2026-04-03T23:11:17Z'  # e19e
+  by: agent  # e19e
+  actor: jgstern_agent  # e19e
+  clock: 6  # e19e
+  nonce: e19e  # e19e
+  set:  # e19e
+    status: done  # e19e
+- op: discuss  # be6c
+  at: '2026-04-03T23:11:17Z'  # be6c
+  by: agent  # be6c
+  actor: jgstern_agent  # be6c
+  clock: 7  # be6c
+  nonce: be6c  # be6c
+  message: "Already implemented in tui.py AnnotationScreen: _nudge() with arrow key bindings (action_nudge_up/down/left/right), Enter confirms (action_confirm), Escape discards (action_discard)."  # be6c

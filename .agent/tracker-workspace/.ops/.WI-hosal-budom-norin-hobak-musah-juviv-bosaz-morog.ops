@@ -1,0 +1,45 @@
+- op: create  # 43b5
+  at: '2026-04-03T08:25:10Z'  # 43b5
+  by: agent  # 43b5
+  actor: jgstern_agent  # 43b5
+  clock: 1  # 43b5
+  nonce: 43b5  # 43b5
+  data:  # 43b5
+    kind: work_item  # 43b5
+    title: "htrac serve: static asset serving for BlockSuite frontend"  # 43b5
+    status: todo_soft  # 43b5
+    priority: 2  # 43b5
+    parent:  # 43b5
+    tags:  # 43b5
+    - adr-0019  # 43b5
+    - server  # 43b5
+    - frontend  # 43b5
+    before: []  # 43b5
+    duplicate_of: []  # 43b5
+    not_duplicate_of: []  # 43b5
+    pr_ref:  # 43b5
+    description: "Serve built BlockSuite static assets from htrac serve. Starlette StaticFiles mount or equivalent. Assets built by Vite, served at a known path. Must work behind Tor (high latency first load — service worker caches app shell for subsequent loads). See docs/adr/0019-remote-access-transport.md §Web frontend, §Server."  # 43b5
+    fields: {}  # 43b5
+- op: update  # 9913
+  at: '2026-04-03T08:26:56Z'  # 9913
+  by: agent  # 9913
+  actor: jgstern_agent  # 9913
+  clock: 2  # 9913
+  nonce: '9913'  # 9913
+  set:  # 9913
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 9913
+- op: update  # 4c9e
+  at: '2026-04-03T20:55:53Z'  # 4c9e
+  by: agent  # 4c9e
+  actor: jgstern_agent  # 4c9e
+  clock: 3  # 4c9e
+  nonce: 4c9e  # 4c9e
+  set:  # 4c9e
+    status: done  # 4c9e
+- op: discuss  # 79c8
+  at: '2026-04-03T20:55:53Z'  # 79c8
+  by: agent  # 79c8
+  actor: jgstern_agent  # 79c8
+  clock: 4  # 79c8
+  nonce: 79c8  # 79c8
+  message: "Implemented in PR #110. StaticFiles mount at / as fallback. API routes take precedence. 5 tests."  # 79c8

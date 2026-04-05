@@ -32,3 +32,11 @@
   clock: 3  # 4195
   nonce: '4195'  # 4195
   message: "Implemented in PR #1902. New decorator-dispatch linker creates dispatches_to edges from registry iteration sites to registered handlers. Bakeoff shows +333 edges on hypergumbo self-analysis (52587→52920). Cross-package dispatch is now connected."  # 4195
+- op: update  # 210d
+  at: '2026-03-25T04:23:57Z'  # 210d
+  by: agent  # 210d
+  actor: jgstern_agent  # 210d
+  clock: 4  # 210d
+  nonce: 210d  # 210d
+  set:  # 210d
+    parent: INV-bolil-mirid-pakim-lujun-kivas-vifuk-butof-vihif  # 210d

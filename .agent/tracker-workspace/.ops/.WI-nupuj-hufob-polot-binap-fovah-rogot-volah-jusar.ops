@@ -1,0 +1,41 @@
+- op: create  # acb1
+  at: '2026-03-24T00:31:12Z'  # acb1
+  by: agent  # acb1
+  actor: jgstern_agent  # acb1
+  clock: 1  # acb1
+  nonce: acb1  # acb1
+  data:  # acb1
+    kind: work_item  # acb1
+    title: "Haskell: detect main :: IO () as entrypoint"  # acb1
+    status: todo_soft  # acb1
+    priority: 2  # acb1
+    parent:  # acb1
+    tags: []  # acb1
+    before: []  # acb1
+    duplicate_of: []  # acb1
+    not_duplicate_of: []  # acb1
+    pr_ref:  # acb1
+    description: ""  # acb1
+    fields: {}  # acb1
+- op: discuss  # c63b
+  at: '2026-03-24T00:31:17Z'  # c63b
+  by: agent  # c63b
+  actor: jgstern_agent  # c63b
+  clock: 2  # c63b
+  nonce: c63b  # c63b
+  message: "Bakeoff finding from Haskell DEEP (deep-20260323-195835). All 10 repos selected Python scripts or test functions as entrypoints instead of actual Haskell 'main :: IO ()' in Main.hs. Need Haskell-specific entrypoint pattern."  # c63b
+- op: update  # da8e
+  at: '2026-03-24T00:53:46Z'  # da8e
+  by: agent  # da8e
+  actor: jgstern_agent  # da8e
+  clock: 3  # da8e
+  nonce: da8e  # da8e
+  set:  # da8e
+    status: done  # da8e
+- op: discuss  # 9d05
+  at: '2026-03-24T00:53:46Z'  # 9d05
+  by: agent  # 9d05
+  actor: jgstern_agent  # 9d05
+  clock: 4  # 9d05
+  nonce: 9d05  # 9d05
+  message: "Fixed in PR #2507. Added Haskell main function pattern to main-functions.yaml."  # 9d05

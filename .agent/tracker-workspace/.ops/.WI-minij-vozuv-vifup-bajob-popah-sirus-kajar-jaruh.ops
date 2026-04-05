@@ -1,0 +1,42 @@
+- op: create  # 503c
+  at: '2026-03-24T04:48:36Z'  # 503c
+  by: agent  # 503c
+  actor: jgstern_agent  # 503c
+  clock: 1  # 503c
+  nonce: 503c  # 503c
+  data:  # 503c
+    kind: work_item  # 503c
+    title: "Scala: single-letter and common name collision producing false call edges"  # 503c
+    status: todo_soft  # 503c
+    priority: 3  # 503c
+    parent:  # 503c
+    tags: []  # 503c
+    before: []  # 503c
+    duplicate_of: []  # 503c
+    not_duplicate_of: []  # 503c
+    pr_ref:  # 503c
+    description: "In Scala FP codebases (cats, http4s), single-letter parameter names (f, g) and common Scala names (Some, Open) create massive false positive call edges. cats Reducible.g has 94 false incoming edges. FlatMapped.f has 737 false incoming edges. Need scope-aware resolution: local defs/lambdas should not be globally resolvable. Bakeoff: scala-20260323 baseline."  # 503c
+    fields: {}  # 503c
+- op: update  # 5bfc
+  at: '2026-03-24T08:46:41Z'  # 5bfc
+  by: agent  # 5bfc
+  actor: jgstern_agent  # 5bfc
+  clock: 2  # 5bfc
+  nonce: 5bfc  # 5bfc
+  set:  # 5bfc
+    status: done  # 5bfc
+- op: discuss  # 9334
+  at: '2026-03-24T08:46:41Z'  # 9334
+  by: agent  # 9334
+  actor: jgstern_agent  # 9334
+  clock: 3  # 9334
+  nonce: '9334'  # 9334
+  message: "Fixed in PR #2525. Added _short_name_penalty() to Scala analyzer: single-letter names get 0.15x confidence (drops to ~0.10), two-letter names get 0.50x (drops to ~0.34). False edges from f/g/x/n are now easily filterable by downstream consumers."  # 9334
+- op: update  # 7b28
+  at: '2026-03-25T04:23:57Z'  # 7b28
+  by: agent  # 7b28
+  actor: jgstern_agent  # 7b28
+  clock: 4  # 7b28
+  nonce: 7b28  # 7b28
+  set:  # 7b28
+    parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # 7b28

@@ -1,0 +1,66 @@
+- op: create  # ee67
+  at: '2026-03-31T09:09:01Z'  # ee67
+  by: agent  # ee67
+  actor: jgstern_agent  # ee67
+  clock: 1  # ee67
+  nonce: ee67  # ee67
+  data:  # ee67
+    kind: work_item  # ee67
+    title: "Annotation mode: freeze screen and overlay widget"  # ee67
+    status: needs_human_review  # ee67
+    priority: 2  # ee67
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # ee67
+    tags:  # ee67
+    - adr-0020  # ee67
+    before: []  # ee67
+    duplicate_of: []  # ee67
+    not_duplicate_of: []  # ee67
+    pr_ref:  # ee67
+    description: "After screenshot, TUI enters annotation mode: screen content freezes, semi-transparent overlay widget appears on top. Mouse support required (MouseDown, MouseMove, MouseUp). Known limitation: unavailable in terminals without mouse event support (e.g. screen/tmux with mouse passthrough disabled)."  # ee67
+    fields: {}  # ee67
+- op: update  # 2c9c
+  at: '2026-03-31T09:18:42Z'  # 2c9c
+  by: agent  # 2c9c
+  actor: jgstern_agent  # 2c9c
+  clock: 2  # 2c9c
+  nonce: 2c9c  # 2c9c
+  set: {}  # 2c9c
+  add:  # 2c9c
+    before: [WI-fubij-tubun-lipon-hunuk-ripoj-tomiz-ratum-tuzag]  # 2c9c
+- op: update  # c8b1
+  at: '2026-03-31T09:28:23Z'  # c8b1
+  by: agent  # c8b1
+  actor: jgstern_agent  # c8b1
+  clock: 3  # c8b1
+  nonce: c8b1  # c8b1
+  set:  # c8b1
+    status: todo_soft  # c8b1
+- op: discuss  # 94b2
+  at: '2026-03-31T09:30:31Z'  # 94b2
+  by: human  # 94b2
+  actor: jgstern  # 94b2
+  clock: 4  # 94b2
+  nonce: 94b2  # 94b2
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # 94b2
+- op: discuss  # 8c05
+  at: '2026-03-31T09:40:25Z'  # 8c05
+  by: agent  # 8c05
+  actor: jgstern_agent  # 8c05
+  clock: 5  # 8c05
+  nonce: 8c05  # 8c05
+  message: "Acknowledged. Will reference ADR-0020 when implementing."  # 8c05
+- op: update  # 1613
+  at: '2026-04-02T10:33:04Z'  # 1613
+  by: agent  # 1613
+  actor: jgstern_agent  # 1613
+  clock: 6  # 1613
+  nonce: '1613'  # 1613
+  set:  # 1613
+    status: done  # 1613
+- op: discuss  # 0761
+  at: '2026-04-02T10:33:04Z'  # 0761
+  by: agent  # 0761
+  actor: jgstern_agent  # 0761
+  clock: 7  # 0761
+  nonce: '0761'  # 0761
+  message: "Done in PR #64. AnnotationScreen modal freezes the underlying screen (Textual modal pauses parent) and shows _AnnotationCanvas overlay. Mouse events handled via on_mouse_down/move/up."  # 0761

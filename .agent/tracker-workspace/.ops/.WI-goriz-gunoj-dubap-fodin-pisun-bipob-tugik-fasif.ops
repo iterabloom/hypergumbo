@@ -1,0 +1,59 @@
+- op: create  # fe1f
+  at: '2026-03-31T09:06:50Z'  # fe1f
+  by: agent  # fe1f
+  actor: jgstern_agent  # fe1f
+  clock: 1  # fe1f
+  nonce: fe1f  # fe1f
+  data:  # fe1f
+    kind: work_item  # fe1f
+    title: "Screenshot storage: .agent/screenshots/ directory and naming convention"  # fe1f
+    status: needs_human_review  # fe1f
+    priority: 2  # fe1f
+    parent: WI-fuzim-kiput-tajuh-kukag-bijaz-zusag-kirih-lorat  # fe1f
+    tags:  # fe1f
+    - adr-0020  # fe1f
+    before: []  # fe1f
+    duplicate_of: []  # fe1f
+    not_duplicate_of: []  # fe1f
+    pr_ref:  # fe1f
+    description: "Create .agent/screenshots/ directory (git-tracked). Naming: <item-id>-<YYYYMMDD-HHMMSS>.svg. No automatic cleanup; future htrac screenshots --prune is out of scope for now."  # fe1f
+    fields: {}  # fe1f
+- op: update  # 464c
+  at: '2026-03-31T09:18:41Z'  # 464c
+  by: agent  # 464c
+  actor: jgstern_agent  # 464c
+  clock: 2  # 464c
+  nonce: 464c  # 464c
+  set: {}  # 464c
+  add:  # 464c
+    before: [WI-mozub-pozot-roruf-sutaj-midal-balit-humov-hatih]  # 464c
+- op: discuss  # f9fd
+  at: '2026-03-31T09:26:40Z'  # f9fd
+  by: agent  # f9fd
+  actor: jgstern_agent  # f9fd
+  clock: 3  # f9fd
+  nonce: f9fd  # f9fd
+  message: "For more detail see docs/adr/0020-tui-screenshot-annotation-and-inline-preview.md"  # f9fd
+- op: update  # d904
+  at: '2026-03-31T09:28:23Z'  # d904
+  by: agent  # d904
+  actor: jgstern_agent  # d904
+  clock: 4  # d904
+  nonce: d904  # d904
+  set:  # d904
+    status: todo_soft  # d904
+- op: update  # c526
+  at: '2026-03-31T10:56:54Z'  # c526
+  by: agent  # c526
+  actor: jgstern_agent  # c526
+  clock: 5  # c526
+  nonce: c526  # c526
+  set:  # c526
+    status: done  # c526
+- op: discuss  # 4ede
+  at: '2026-03-31T10:56:54Z'  # 4ede
+  by: agent  # 4ede
+  actor: jgstern_agent  # 4ede
+  clock: 6  # 4ede
+  nonce: 4ede  # 4ede
+  message: "Implemented in PR #2673 as screenshot_path() in annotations.py. Generates .agent/screenshots/<item-id>-<YYYYMMDD-HHMMSS>.svg paths."  # 4ede

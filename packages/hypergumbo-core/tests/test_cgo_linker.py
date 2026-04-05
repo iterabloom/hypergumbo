@@ -203,6 +203,52 @@ class TestCgoLinkerBasic:
 
         assert result.edges[0].evidence_type == "cgo_call"
 
+    def test_edge_has_access_mode(self) -> None:
+        """cgo_bridge edges have access_mode=write (Go passes data to C)."""
+        from hypergumbo_core.linkers.cgo import link_cgo
+
+        go_func = _make_go_symbol("caller", path="main.go")
+        c_func = _make_c_symbol("process", path="native.c")
+        edge = _make_unresolved_edge(go_func.id, "process")
+
+        result = link_cgo(
+            go_symbols=[go_func],
+            c_symbols=[c_func],
+            edges=[edge],
+        )
+
+        assert len(result.edges) == 1
+        bridge = result.edges[0]
+        assert bridge.meta is not None
+        assert bridge.meta.get("access_mode") == "write"
+        assert bridge.meta.get("dest_access_mode") == "read"
+
+    def test_multiple_edges_all_have_access_mode(self) -> None:
+        """All cgo_bridge edges get access_mode annotation, not just the first."""
+        from hypergumbo_core.linkers.cgo import link_cgo
+
+        go_func1 = _make_go_symbol("caller1", path="main.go", start_line=1, end_line=5)
+        go_func2 = _make_go_symbol("caller2", path="main.go", start_line=10, end_line=15)
+        c_read = _make_c_symbol("readData", path="io.c")
+        c_write = _make_c_symbol("writeData", path="io.c", start_line=20, end_line=25)
+
+        edges = [
+            _make_unresolved_edge(go_func1.id, "readData", line=3),
+            _make_unresolved_edge(go_func2.id, "writeData", line=12),
+        ]
+
+        result = link_cgo(
+            go_symbols=[go_func1, go_func2],
+            c_symbols=[c_read, c_write],
+            edges=edges,
+        )
+
+        assert len(result.edges) == 2
+        for bridge in result.edges:
+            assert bridge.meta is not None
+            assert bridge.meta.get("access_mode") == "write"
+            assert bridge.meta.get("dest_access_mode") == "read"
+
 
 class TestCgoLinkerEdgeCases:
     """Edge case tests for cgo linker."""

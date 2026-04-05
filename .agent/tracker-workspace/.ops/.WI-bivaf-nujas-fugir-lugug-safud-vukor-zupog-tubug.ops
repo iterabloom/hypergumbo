@@ -1,0 +1,74 @@
+- op: create  # b8e7
+  at: '2026-03-23T14:14:10Z'  # b8e7
+  by: agent  # b8e7
+  actor: jgstern_agent  # b8e7
+  clock: 1  # b8e7
+  nonce: b8e7  # b8e7
+  data:  # b8e7
+    kind: work_item  # b8e7
+    title: "ADR-0017 Phase 4: Cross-language taint propagation via linker edges"  # b8e7
+    status: todo_soft  # b8e7
+    priority: 3  # b8e7
+    parent:  # b8e7
+    tags:  # b8e7
+    - adr-0017  # b8e7
+    - phase-4  # b8e7
+    before: []  # b8e7
+    duplicate_of: []  # b8e7
+    not_duplicate_of: []  # b8e7
+    pr_ref:  # b8e7
+    description: "Taint propagation through existing linker edges (wasm_bindgen, tauri_ipc, napi, grpc, pyffi). Callee function summaries consulted at bridge calls. IPC boundaries taint-transparent by default (serialization does not sanitize). Survey serialization libs at IPC boundaries and ensure summaries exist. See ADR-0017 §5."  # b8e7
+    fields: {}  # b8e7
+- op: update  # 4cfb
+  at: '2026-03-23T14:17:41Z'  # 4cfb
+  by: agent  # 4cfb
+  actor: jgstern_agent  # 4cfb
+  clock: 2  # 4cfb
+  nonce: 4cfb  # 4cfb
+  set:  # 4cfb
+    status: needs_human_review  # 4cfb
+- op: discuss  # 14e0
+  at: '2026-03-23T14:17:41Z'  # 14e0
+  by: agent  # 14e0
+  actor: jgstern_agent  # 14e0
+  clock: 3  # 14e0
+  nonce: '14e0'  # 14e0
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # 14e0
+- op: update  # e685
+  at: '2026-03-25T04:15:55Z'  # e685
+  by: agent  # e685
+  actor: jgstern_agent  # e685
+  clock: 4  # e685
+  nonce: e685  # e685
+  set:  # e685
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # e685
+- op: update  # c484
+  at: '2026-03-25T07:51:56Z'  # c484
+  by: agent  # c484
+  actor: jgstern_agent  # c484
+  clock: 5  # c484
+  nonce: c484  # c484
+  set:  # c484
+    status: todo_soft  # c484
+- op: discuss  # fded
+  at: '2026-03-25T07:51:56Z'  # fded
+  by: agent  # fded
+  actor: jgstern_agent  # fded
+  clock: 6  # fded
+  nonce: fded  # fded
+  message: "ADR-0017 accepted. Phase 4."  # fded
+- op: update  # 31ec
+  at: '2026-03-26T10:38:16Z'  # 31ec
+  by: agent  # 31ec
+  actor: jgstern_agent  # 31ec
+  clock: 7  # 31ec
+  nonce: 31ec  # 31ec
+  set:  # 31ec
+    status: done  # 31ec
+- op: discuss  # 60bb
+  at: '2026-03-26T10:38:16Z'  # 60bb
+  by: agent  # 60bb
+  actor: jgstern_agent  # 60bb
+  clock: 8  # 60bb
+  nonce: 60bb  # 60bb
+  message: "Implemented in PR #2591 (CI pending). TAINT_CALL_EDGE_TYPES includes 12 cross-language linker edge types. Both structural and DDG taint propagation now traverse wasm_bridge, ffi_bridge, ipc_calls, napi_bridge, grpc_calls, etc. 68 tests, 100% coverage."  # 60bb

@@ -3269,27 +3269,6 @@ class TestCheckReflectionState:
             result = _check_reflection_state(tmp_path)
         assert result.status == "ok"
 
-    def test_fallback_to_agent_dir(self, tmp_path: Path) -> None:
-        """Falls back to .agent/last_stop_check.json when primary doesn't exist."""
-        from datetime import datetime, timezone
-
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
-        now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        state = {
-            "last_completed_utc": now,
-            "branch": "dev",
-            "last_pr": 0,
-            "last_pr_state": "none",
-            "pending_hard_todos": 0,
-            "pending_soft_todos": 0,
-            "notes": "",
-        }
-        (agent_dir / "last_stop_check.json").write_text(json.dumps(state))
-        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
-            result = _check_reflection_state(tmp_path)
-        assert result.status == "ok"
-
     def test_stale_state(self, tmp_path: Path) -> None:
         """A state file > 7 days old should warn."""
         (tmp_path / ".agent").mkdir()

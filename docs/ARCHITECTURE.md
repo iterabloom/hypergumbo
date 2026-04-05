@@ -1,4 +1,3 @@
-<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Architecture
 
 > **Auto-generated** by running hypergumbo on itself.
@@ -14,16 +13,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **205** Python modules (117 analyzers, 43 linkers, 27 core, 4 CLI, 14 tracker)
-- **3652** symbols (functions, classes, methods)
-- **38013** edges by type:
-  - calls: 22925
-  - imports: 7550
-  - instantiates: 5316
-  - contains: 1008
-  - dispatches_to: 514
-  - decorated_by: 266
-  - other: 434
+- **223** Python modules (121 analyzers, 43 linkers, 29 core, 4 CLI, 26 tracker)
+- **4046** symbols (functions, classes, methods)
+- **52323** edges by type:
+  - calls: 35902
+  - imports: 8078
+  - instantiates: 5834
+  - contains: 1188
+  - dispatches_to: 518
+  - decorated_by: 280
+  - other: 523
 
 ## Package Architecture
 
@@ -36,7 +35,7 @@ depend on core but not on each other, and the tracker is fully independent.
                     /       |       \
                    v        v        v
   lang-mainstream   lang-common   lang-extended1
-  (36 analyzers)   (38 analyzers)   (40 analyzers)
+  (40 analyzers)   (38 analyzers)   (40 analyzers)
                    \       |       /
                     v      v      v
                    hypergumbo-core
@@ -50,8 +49,8 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 43 linkers, 99 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
-| **hypergumbo-lang-mainstream** | 36 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 43 linkers, 103 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-lang-mainstream** | 40 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 40 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
 | **hypergumbo** | Meta-package that installs core + all language packages |
@@ -84,7 +83,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 3652 Symbols + 38013 Edges + UsageContexts             │
+│  Output: 4046 Symbols + 52323 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -92,7 +91,7 @@ Source Files
 │                     4. PATTERN ENRICHMENT                       │
 │  YAML-driven pattern matching (ADR-0003):                       │
 │  - 7 convention patterns (always loaded)                        │
-│  - 92 framework patterns (loaded when framework detected)       │
+│  - 96 framework patterns (loaded when framework detected)       │
 │  Output: Symbols enriched with meta.concepts                    │
 └─────────────────────────────────────────────────────────────────┘
      │
@@ -228,28 +227,27 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 4047.2 | ir.py |
-| `Span` | class | 3483.7 | ir.py |
-| `run_behavior_map` | function | 2264.0 | cli.py |
-| `TrackerApp` | class | 1647.2 | tui.py |
-| `LinkerContext` | class | 1140.1 | registry.py |
-| `load_framework_patterns` | function | 1137.4 | framework_patterns.py |
-| `main` | function | 1032.8 | cli.py |
+| `Symbol` | class | 4112.5 | ir.py |
+| `Span` | class | 3536.2 | ir.py |
+| `run_behavior_map` | function | 2406.8 | cli.py |
+| `TrackerApp` | class | 1682.0 | tui.py |
+| `load_framework_patterns` | function | 1538.3 | framework_patterns.py |
+| `LinkerContext` | class | 1169.5 | registry.py |
+| `main` | function | 1124.5 | cli.py |
+| `clear_pattern_cache` | function | 1058.2 | framework_patterns.py |
+| `find_files` | function | 1000.7 | discovery.py |
+| `match_patterns` | function | 873.0 | framework_patterns.py |
 | `TreeSitterAnalyzer` | class | 851.1 | base.py |
-| `find_files` | function | 782.8 | discovery.py |
-| `Store` | class | 760.4 | store.py |
-| `clear_pattern_cache` | function | 620.0 | framework_patterns.py |
-| `UsageContext.create` | method | 574.6 | ir.py |
-| `Edge` | class | 565.6 | ir.py |
-| `Store.add` | method | 535.4 | store.py |
-| `node_text` | function | 522.0 | base.py |
+| `Store` | class | 774.0 | store.py |
+| `detect_entrypoints` | function | 611.2 | entrypoints.py |
+| `UsageContext.create` | method | 594.6 | ir.py |
 
 ## Pattern System
 
 ### Key Components
 
 - **`framework_patterns.py`**: Loads and applies YAML pattern files
-- **`frameworks/*.yaml`**: 99 pattern files (7 convention + 92 framework)
+- **`frameworks/*.yaml`**: 103 pattern files (7 convention + 96 framework)
 - **`meta.concepts`**: List of matched concepts (single source of truth)
 - **`meta.decorators`/`meta.annotations`**: Raw metadata for pattern matching
 
@@ -372,10 +370,10 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | Script | Description |
 |--------|-------------|
 | `analyze-artifacts` | Analyze hypergumbo bakeoff artifacts to extract insights. |
-| `bakeoff` | bakeoff - Automated hypergumbo bakeoff runner and analyzer |
-| `bakeoff-features` | bakeoff-features - Feature-focused hypergumbo bakeoff runner |
-| `bakeoff-features-reflect` | bakeoff-features-reflect - LLM-driven qualitative assessment of hypergumbo outputs |
-| `bakeoff-reflect` | bakeoff-reflect - LLM-driven parse correctness assessment for BROAD bakeoff |
+| `bakeoff-broad` | bakeoff-broad - Automated hypergumbo bakeoff runner and analyzer |
+| `bakeoff-broad-reflect` | bakeoff-broad-reflect - LLM-driven parse correctness assessment for BROAD bakeoff |
+| `bakeoff-deep` | bakeoff-deep - Feature-focused hypergumbo bakeoff runner |
+| `bakeoff-deep-reflect` | bakeoff-deep-reflect - LLM-driven qualitative assessment of hypergumbo outputs |
 | `changelog-date-bucket` | Rewrite CHANGELOG.md's "## [Unreleased]" into date-grouped subheadings. |
 | `compute_probe_embeddings.py` | Compute probe embeddings for sketch_embeddings.py. |
 | `generate-architecture` | Generate ARCHITECTURE.md using hypergumbo to analyze itself. |
@@ -389,6 +387,13 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 |--------|-------------|
 | `contribute` | Contributor workflow script for fork-based development. |
 | `list-my-prs` | List open PRs for this repository |
+
+### Other
+
+| Script | Description |
+|--------|-------------|
+| `finetune-transcript-model` | G-Vendi-guided data selection and finetuning for the local transcript model. |
+| `verify-tracker-pr` | Check if a tracker sync PR's ops data is already |
 
 ## Adding a New Analyzer
 
@@ -424,6 +429,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 - **`hypergumbo_core.build_grammars`**: Build tree-sitter grammars from source for languages not available ...
 - **`hypergumbo_core.catalog`**: Catalog of available analysis passes.
+- **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
 - **`hypergumbo_core.compact`**: Compact output mode with coverage-based truncation and residual sum...
 - **`hypergumbo_core.dataflow`**: YAML-driven dataflow classification for edges (ADR-0015).
 - **`hypergumbo_core.datamodels`**: Data model detection for code analysis.
@@ -446,9 +452,10 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.slice`**: Graph slicing for LLM context extraction.
 - **`hypergumbo_core.supply_chain`**: Supply chain classification for code analysis.
 - **`hypergumbo_core.symbol_resolution`**: Unified symbol resolution with pluggable matching strategies.
+- **`hypergumbo_core.taint`**: Taint catalog loading and taint-flow propagation (ADR-0017 Phases 1...
 - **`hypergumbo_core.taxonomy`**: File taxonomy classification (ADR-0004).
 - **`hypergumbo_core.test_masking`**: Slow test masking for smart-test.
-- **`hypergumbo_core.verify_claims`**: Security claim verification against I/O boundary maps (ADR-0016 Pha...
+- **`hypergumbo_core.verify_claims`**: Security claim verification against I/O boundary and taint-flow ana...
 
 ### Analyzers
 
@@ -479,16 +486,20 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_mainstream.objc`**: Objective-C analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.perl`**: Perl analysis pass using tree-sitter.
 - **`hypergumbo_lang_mainstream.php`**: PHP analysis pass using tree-sitter-php.
+- **`hypergumbo_lang_mainstream.play_routes`**: Play Framework routes file parser.
 - **`hypergumbo_lang_mainstream.powershell`**: PowerShell analysis pass using tree-sitter.
 - **`hypergumbo_lang_mainstream.properties`**: Java properties file analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.py`**: Python AST analysis pass.
+- **`hypergumbo_lang_mainstream.py_def_use`**: Python def/use extractor for intraprocedural dataflow analysis (ADR...
 - **`hypergumbo_lang_mainstream.requirements`**: Python requirements.txt analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.ruby`**: Ruby analysis pass using tree-sitter-ruby.
 - **`hypergumbo_lang_mainstream.rust`**: Rust analysis pass using tree-sitter-rust.
+- **`hypergumbo_lang_mainstream.rust_def_use`**: Rust def/use extractor for intraprocedural dataflow analysis (ADR-0...
 - **`hypergumbo_lang_mainstream.scala`**: Scala analysis pass using tree-sitter-scala.
 - **`hypergumbo_lang_mainstream.sql`**: SQL schema analysis pass using tree-sitter-sql.
 - **`hypergumbo_lang_mainstream.swift`**: Swift analysis pass using tree-sitter-swift.
 - **`hypergumbo_lang_mainstream.toml_config`**: TOML configuration file analyzer using tree-sitter-toml.
+- **`hypergumbo_lang_mainstream.ts_def_use`**: TypeScript/JavaScript def/use extractor for intraprocedural dataflo...
 - **`hypergumbo_lang_mainstream.xml_config`**: XML configuration analysis pass using tree-sitter-xml.
 - **`hypergumbo_lang_mainstream.yaml_ansible`**: YAML/Ansible analyzer using tree-sitter.
 - **`hypergumbo_lang_common.astro`**: Astro component analyzer using tree-sitter.
@@ -597,7 +608,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.napi`**: Node.js N-API linker for connecting JavaScript/TypeScript calls to ...
 - **`hypergumbo_core.linkers.openapi`**: OpenAPI/Swagger linker for detecting API schema to handler connecti...
 - **`hypergumbo_core.linkers.orm`**: ORM query linker for detecting ORM model references in application ...
-- **`hypergumbo_core.linkers.otp`**: OTP GenServer dispatch linker for Elixir.
+- **`hypergumbo_core.linkers.otp`**: OTP GenServer dispatch linker for Elixir and Erlang.
 - **`hypergumbo_core.linkers.phoenix_ipc`**: Phoenix Channels IPC linker for detecting Elixir IPC patterns.
 - **`hypergumbo_core.linkers.pyffi`**: Python FFI linker for connecting Python ctypes/cffi calls to C/C++ ...
 - **`hypergumbo_core.linkers.react_component`**: React component linker for detecting JSX composition edges.
@@ -625,15 +636,27 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 ### Tracker
 
+- **`hypergumbo_tracker.annotations`**: Annotation data model for TUI screenshot annotations (ADR-0020).
 - **`hypergumbo_tracker.cache`**: SQLite per-tier read cache for the hypergumbo tracker.
 - **`hypergumbo_tracker.cli`**: CLI entry points for hypergumbo-tracker.
 - **`hypergumbo_tracker.configure`**: Interactive CLI config editor for hypergumbo tracker.
 - **`hypergumbo_tracker.embeddings`**: Tier 2 embedding-based near-duplicate detection for the hypergumbo ...
 - **`hypergumbo_tracker.migration`**: Migration from markdown governance files to YAML tracker ops.
 - **`hypergumbo_tracker.models`**: Data model for the hypergumbo tracker.
+- **`hypergumbo_tracker.preview`**: Inline SVG preview for TUI discussion threads (ADR-0020 Part 2).
+- **`hypergumbo_tracker.preview_pipeline`**: SVG→PNG→ANSI rendering pipeline with graceful degradation (ADR-0020).
+- **`hypergumbo_tracker.screenshot_save`**: Screenshot save and auto-create tracker item (ADR-0020, WI-rujoz).
+- **`hypergumbo_tracker.serve`**: Starlette/uvicorn server for htrac serve (ADR-0019).
+- **`hypergumbo_tracker.serve_auth_config`**: Auth config schema for htrac serve (ADR-0019).
+- **`hypergumbo_tracker.serve_duress`**: DuressHandler Protocol for htrac serve (ADR-0019).
+- **`hypergumbo_tracker.serve_password`**: Bcrypt password verification for htrac serve (ADR-0019).
+- **`hypergumbo_tracker.serve_sessions`**: In-memory session management for htrac serve (ADR-0019).
+- **`hypergumbo_tracker.serve_webauthn`**: WebAuthn/FIDO2 registration and authentication for htrac serve (ADR...
 - **`hypergumbo_tracker.setup`**: Idempotent setup wizard for the hypergumbo tracker.
 - **`hypergumbo_tracker.stop_hook`**: Stop hook helpers for the hypergumbo tracker.
 - **`hypergumbo_tracker.store`**: Store for the hypergumbo tracker — YAML I/O, compile, CRUD, Lamport...
+- **`hypergumbo_tracker.svg_detection`**: SVG path detection in discussion messages (ADR-0020).
+- **`hypergumbo_tracker.svg_injection`**: Cell-to-SVG coordinate mapping and annotation injection (ADR-0020).
 - **`hypergumbo_tracker.sync`**: Streamlined PR workflow for tracker-only changes.
 - **`hypergumbo_tracker.sync_log`**: Always-on file logging for tracker sync operations.
 - **`hypergumbo_tracker.trackerset`**: TrackerSet: multi-tier unified view over canonical, workspace, and ...
@@ -644,7 +667,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 6272e420d6b6
-  hypergumbo: 2.3.0
+  commit: 5c8f2a41bba9
+  hypergumbo: 2.4.0
   python: 3.12.3
 -->

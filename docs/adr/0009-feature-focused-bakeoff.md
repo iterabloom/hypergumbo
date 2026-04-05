@@ -8,7 +8,7 @@ Status: Accepted
 
 ### The Problem: Parse Correctness vs Developer Usefulness
 
-The existing `scripts/bakeoff` infrastructure answers one question well: "Does hypergumbo parse this codebase correctly?" It:
+The existing `scripts/bakeoff-broad` infrastructure answers one question well: "Does hypergumbo parse this codebase correctly?" It:
 - Uses smaller repos (1-100MB) for fast iteration
 - Focuses on detecting parsing failures, missing call edges, route detection issues
 - Runs frequently as part of the development cycle
@@ -59,8 +59,8 @@ This is automated from the human's perspective (no manual analysis needed) but c
 ### 1. Create Separate Feature Bakeoff Loop
 
 New scripts:
-- `scripts/bakeoff-features` - Main orchestration (init, cohort, run, diagnose, status)
-- `scripts/bakeoff-features-reflect` - LLM-driven qualitative assessment
+- `scripts/bakeoff-deep` - Main orchestration (init, cohort, run, diagnose, status)
+- `scripts/bakeoff-deep-reflect` - LLM-driven qualitative assessment
 
 ### 2. Repo Selection Criteria
 
@@ -93,7 +93,7 @@ or grouping by domain to isolate variables).
 
 A curriculum is a markdown file stored in `~/hypergumbo_lab_notebook/curricula/` containing:
 - The rationale for the cohort groupings and ordering
-- The `bakeoff-features cohort --repos` commands to run in sequence
+- The `bakeoff-deep cohort --repos` commands to run in sequence
 - Any per-cohort notes or hypotheses
 
 Example curriculum (repos are illustrative):
@@ -106,9 +106,9 @@ Progress from single-language repos to polyglot monoliths.
 ## Cohorts
 
 ```bash
-./scripts/bakeoff-features cohort --repos alpha-api,beta-service,gamma-lib
-./scripts/bakeoff-features cohort --repos delta-monolith,epsilon-gateway,zeta-dashboard
-./scripts/bakeoff-features cohort --repos eta-platform,theta-infra,iota-legacy
+./scripts/bakeoff-deep cohort --repos alpha-api,beta-service,gamma-lib
+./scripts/bakeoff-deep cohort --repos delta-monolith,epsilon-gateway,zeta-dashboard
+./scripts/bakeoff-deep cohort --repos eta-platform,theta-infra,iota-legacy
 ```
 
 ## Notes
@@ -117,7 +117,7 @@ Progress from single-language repos to polyglot monoliths.
 - Cohort 3: Large polyglot monoliths — stress-tests slice limits
 ````
 
-Run each cohort command followed by `bakeoff-features run` and `bakeoff-features diagnose`
+Run each cohort command followed by `bakeoff-deep run` and `bakeoff-deep diagnose`
 before proceeding to the next.
 
 ### 3. Feature Test Battery
@@ -236,8 +236,8 @@ Commands:
 
 ## Implementation Checklist
 
-- [x] Create `scripts/bakeoff-features` with init, cohort, run, diagnose, status commands
-- [x] Create `scripts/bakeoff-features-reflect` for LLM-driven assessment
+- [x] Create `scripts/bakeoff-deep` with init, cohort, run, diagnose, status commands
+- [x] Create `scripts/bakeoff-deep-reflect` for LLM-driven assessment
 - [x] Define quality metric thresholds
 - [x] Document recommended larger repos for testing
 - [x] Extend `scripts/loop-toggle` for multiple modes
@@ -247,5 +247,5 @@ Commands:
 ## References
 
 - ADR-0008: Autonomous Governance and Vendor-Agnostic Hooks
-- `scripts/bakeoff`: Regular bakeoff infrastructure
+- `scripts/bakeoff-broad`: Regular bakeoff infrastructure
 - `docs/hypergumbo-spec.md`: Slice and supply chain specifications

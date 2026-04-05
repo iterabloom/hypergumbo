@@ -1,0 +1,42 @@
+- op: create  # 3ee7
+  at: '2026-03-24T04:49:27Z'  # 3ee7
+  by: agent  # 3ee7
+  actor: jgstern_agent  # 3ee7
+  clock: 1  # 3ee7
+  nonce: 3ee7  # 3ee7
+  data:  # 3ee7
+    kind: work_item  # 3ee7
+    title: "Scala: detect Play Framework routes (conf/routes file)"  # 3ee7
+    status: todo_soft  # 3ee7
+    priority: 3  # 3ee7
+    parent:  # 3ee7
+    tags: []  # 3ee7
+    before: []  # 3ee7
+    duplicate_of: []  # 3ee7
+    not_duplicate_of: []  # 3ee7
+    pr_ref:  # 3ee7
+    description: "Play Framework routes files are not parsed. lila has 983-line conf/routes mapping HTTP endpoints to controller actions — the entire API surface. playframework.yaml framework pattern exists but doesn't parse the routes DSL. Highest-value improvement for Play apps. Bakeoff: scala-20260323 baseline."  # 3ee7
+    fields: {}  # 3ee7
+- op: update  # 2e97
+  at: '2026-03-24T06:53:37Z'  # 2e97
+  by: agent  # 2e97
+  actor: jgstern_agent  # 2e97
+  clock: 2  # 2e97
+  nonce: '2e97'  # 2e97
+  set:  # 2e97
+    status: done  # 2e97
+- op: discuss  # fcd2
+  at: '2026-03-24T06:53:37Z'  # fcd2
+  by: agent  # fcd2
+  actor: jgstern_agent  # fcd2
+  clock: 3  # fcd2
+  nonce: fcd2  # fcd2
+  message: "Fixed in PR #2520. Added play_routes.py parser that reads conf/routes files and creates kind='route' symbols with controller_action metadata."  # fcd2
+- op: update  # af74
+  at: '2026-03-25T04:23:58Z'  # af74
+  by: agent  # af74
+  actor: jgstern_agent  # af74
+  clock: 4  # af74
+  nonce: af74  # af74
+  set:  # af74
+    parent: INV-nimik-zudat-pafil-hipuf-hisif-sunip-kopib-puluj  # af74

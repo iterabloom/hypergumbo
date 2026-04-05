@@ -30,3 +30,93 @@ borrows:
   - node_type: reference_expression
     mutate_if: mutable
     read_if: immutable
+
+# Name-based heuristics for Rust method calls.
+# Rust convention: snake_case methods. Methods taking &mut self that modify
+# state follow naming patterns like push, insert, write, etc.
+library_patterns:
+  # Write/mutate patterns: methods that modify receiver state
+  - match: '\.write\('
+    access_mode: write
+  - match: '\.write_all\('
+    access_mode: write
+  - match: '\.write_fmt\('
+    access_mode: write
+  - match: '\.flush\('
+    access_mode: write
+  - match: '\.push\('
+    access_mode: write
+  - match: '\.push_str\('
+    access_mode: write
+  - match: '\.insert\('
+    access_mode: write
+  - match: '\.remove\('
+    access_mode: delete
+  - match: '\.pop\('
+    access_mode: write
+  - match: '\.clear\('
+    access_mode: write
+  - match: '\.truncate\('
+    access_mode: write
+  - match: '\.extend\('
+    access_mode: write
+  - match: '\.append\('
+    access_mode: write
+  - match: '\.set\('
+    access_mode: write
+  - match: '\.replace\('
+    access_mode: write
+  - match: '\.swap\('
+    access_mode: write
+  - match: '\.drain\('
+    access_mode: write
+  - match: '\.retain\('
+    access_mode: write
+  - match: '\.resize\('
+    access_mode: write
+  - match: '\.close\('
+    access_mode: write
+  - match: '\.shutdown\('
+    access_mode: write
+  - match: '\.send\('
+    access_mode: write
+  - match: '\.store\('
+    access_mode: write
+  - match: '\.drop\('
+    access_mode: delete
+
+  # Read patterns: methods that retrieve data without mutation
+  - match: '\.get\('
+    access_mode: read
+  - match: '\.read\('
+    access_mode: read
+  - match: '\.read_exact\('
+    access_mode: read
+  - match: '\.read_to_string\('
+    access_mode: read
+  - match: '\.read_to_end\('
+    access_mode: read
+  - match: '\.peek\('
+    access_mode: read
+  - match: '\.contains\('
+    access_mode: read
+  - match: '\.find\('
+    access_mode: read
+  - match: '\.len\('
+    access_mode: read
+  - match: '\.is_empty\('
+    access_mode: read
+  - match: '\.iter\('
+    access_mode: read
+  - match: '\.clone\('
+    access_mode: read
+  - match: '\.as_ref\('
+    access_mode: read
+  - match: '\.borrow\('
+    access_mode: read
+  - match: '\.load\('
+    access_mode: read
+  - match: '\.recv\('
+    access_mode: read
+  - match: '\.seek\('
+    access_mode: read

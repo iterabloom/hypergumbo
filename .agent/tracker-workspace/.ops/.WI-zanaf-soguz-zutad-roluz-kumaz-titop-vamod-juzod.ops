@@ -1,0 +1,101 @@
+- op: create  # e3bb
+  at: '2026-03-23T14:14:06Z'  # e3bb
+  by: agent  # e3bb
+  actor: jgstern_agent  # e3bb
+  clock: 1  # e3bb
+  nonce: e3bb  # e3bb
+  data:  # e3bb
+    kind: work_item  # e3bb
+    title: "ADR-0017 Phase 1: Extend verify-claims for taint-flow claims"  # e3bb
+    status: todo_soft  # e3bb
+    priority: 2  # e3bb
+    parent:  # e3bb
+    tags:  # e3bb
+    - adr-0017  # e3bb
+    - phase-1  # e3bb
+    before: []  # e3bb
+    duplicate_of: []  # e3bb
+    not_duplicate_of: []  # e3bb
+    pr_ref:  # e3bb
+    description: "Extend verify-claims to support taint_flow claim type alongside existing must_not_exist/max_chains. Fields: source_taint, prohibited_sink_zone, allowed_sanitizers. Five verdict levels: Confirmed, Confirmed (sanitized), Violated, Inconclusive (no DDG), Inconclusive (opaque). See ADR-0017 §6."  # e3bb
+    fields: {}  # e3bb
+- op: update  # 1c3c
+  at: '2026-03-23T14:15:23Z'  # 1c3c
+  by: agent  # 1c3c
+  actor: jgstern_agent  # 1c3c
+  clock: 2  # 1c3c
+  nonce: 1c3c  # 1c3c
+  set: {}  # 1c3c
+  add:  # 1c3c
+    before: [WI-fisik-binub-vobip-lulub-fapob-likok-tujig-posul]  # 1c3c
+- op: update  # ea0a
+  at: '2026-03-23T14:15:23Z'  # ea0a
+  by: agent  # ea0a
+  actor: jgstern_agent  # ea0a
+  clock: 3  # ea0a
+  nonce: ea0a  # ea0a
+  set: {}  # ea0a
+  add:  # ea0a
+    before: [WI-ruhol-tizol-vusuf-raluh-zurum-lifav-kopuv-vabor]  # ea0a
+- op: update  # 72b2
+  at: '2026-03-23T14:15:24Z'  # 72b2
+  by: agent  # 72b2
+  actor: jgstern_agent  # 72b2
+  clock: 4  # 72b2
+  nonce: 72b2  # 72b2
+  set: {}  # 72b2
+  add:  # 72b2
+    before: [WI-gafum-havur-dizuk-dosar-nodim-doduh-vidot-jabak]  # 72b2
+- op: update  # ab82
+  at: '2026-03-23T14:17:40Z'  # ab82
+  by: agent  # ab82
+  actor: jgstern_agent  # ab82
+  clock: 5  # ab82
+  nonce: ab82  # ab82
+  set:  # ab82
+    status: needs_human_review  # ab82
+- op: discuss  # df80
+  at: '2026-03-23T14:17:40Z'  # df80
+  by: agent  # df80
+  actor: jgstern_agent  # df80
+  clock: 6  # df80
+  nonce: df80  # df80
+  message: "ADR-0017 is Proposed. Blocked on ADR acceptance."  # df80
+- op: update  # f223
+  at: '2026-03-25T04:15:55Z'  # f223
+  by: agent  # f223
+  actor: jgstern_agent  # f223
+  clock: 7  # f223
+  nonce: f223  # f223
+  set:  # f223
+    parent: INV-karud-nozoh-zolup-bopob-jukus-rujus-rorol-kakaj  # f223
+- op: update  # d320
+  at: '2026-03-25T07:43:15Z'  # d320
+  by: agent  # d320
+  actor: jgstern_agent  # d320
+  clock: 8  # d320
+  nonce: d320  # d320
+  set:  # d320
+    status: todo_soft  # d320
+- op: discuss  # ac62
+  at: '2026-03-25T07:43:15Z'  # ac62
+  by: agent  # ac62
+  actor: jgstern_agent  # ac62
+  clock: 9  # ac62
+  nonce: ac62  # ac62
+  message: "ADR-0017 accepted. Phase 1."  # ac62
+- op: update  # e250
+  at: '2026-03-25T09:00:48Z'  # e250
+  by: agent  # e250
+  actor: jgstern_agent  # e250
+  clock: 10  # e250
+  nonce: e250  # e250
+  set:  # e250
+    status: done  # e250
+- op: discuss  # 8c79
+  at: '2026-03-25T09:00:48Z'  # 8c79
+  by: agent  # 8c79
+  actor: jgstern_agent  # 8c79
+  clock: 11  # 8c79
+  nonce: 8c79  # 8c79
+  message: "Implemented in feat/taint-flow-phase1. New taint_flow constraint type in verify-claims YAML. TaintFlowConstraint dataclass with source_taint, prohibited_sink_zone, allowed_sanitizers. 13 new tests."  # 8c79

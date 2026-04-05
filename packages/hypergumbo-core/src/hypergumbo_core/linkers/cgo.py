@@ -33,6 +33,13 @@ resolves them to the actual C function symbols.
 C++ functions accessible via cgo must use ``extern "C"`` linkage, so they
 appear as regular C-style function symbols and are matched the same way.
 
+Dataflow Annotation
+-------------------
+Bridge edges are annotated with ``access_mode="write"`` (Go caller passes data
+to C) and ``dest_access_mode="read"`` (C callee receives data). This is Tier 2
+(explicit linker) annotation — Tier 1 automatic annotation cannot work across
+language boundaries because no single-language AST spans the FFI call.
+
 Why This Design
 ---------------
 - Follows the same analyze-then-link pattern as JNI linker
@@ -174,6 +181,8 @@ def link_cgo(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="cgo_call",
+                access_mode="write",
+                dest_access_mode="read",
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

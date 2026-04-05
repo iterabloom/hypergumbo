@@ -1,0 +1,37 @@
+- op: create  # 7f17
+  at: '2026-04-01T19:00:04Z'  # 7f17
+  by: agent  # 7f17
+  actor: jgstern_agent  # 7f17
+  clock: 1  # 7f17
+  nonce: 7f17  # 7f17
+  data:  # 7f17
+    kind: work_item  # 7f17
+    title: "Ruby FFI attach_function calls not producing bridge edges"  # 7f17
+    status: todo_soft  # 7f17
+    priority: 4  # 7f17
+    parent:  # 7f17
+    tags:  # 7f17
+    - io-boundary  # 7f17
+    - ffi  # 7f17
+    - ruby  # 7f17
+    before: []  # 7f17
+    duplicate_of: []  # 7f17
+    not_duplicate_of: []  # 7f17
+    pr_ref:  # 7f17
+    description: "The Ruby analyzer does not recognize Ruby FFI gem patterns (extend FFI::Library, attach_function). ffi-rzmq-core has 31 attach_function bindings to libzmq (network IO) but produces 0 ffi_bridge edges and 0 IO boundary chains. Scope expansion from INV-kagob."  # 7f17
+    fields: {}  # 7f17
+- op: update  # 105b
+  at: '2026-04-03T21:36:42Z'  # 105b
+  by: agent  # 105b
+  actor: jgstern_agent  # 105b
+  clock: 2  # 105b
+  nonce: 105b  # 105b
+  set:  # 105b
+    status: done  # 105b
+- op: discuss  # 1e3b
+  at: '2026-04-03T21:36:42Z'  # 1e3b
+  by: agent  # 1e3b
+  actor: jgstern_agent  # 1e3b
+  clock: 3  # 1e3b
+  nonce: 1e3b  # 1e3b
+  message: "Implemented in PR #113. Ruby FFI linker emits ruby:C_ffi:0-0:<name>:unresolved edges for external library attach_function bindings. io_boundary tagger redirects to C catalog. 4 new tests."  # 1e3b

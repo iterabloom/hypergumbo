@@ -77,9 +77,11 @@ _MUTATION_COMMANDS: frozenset[str] = frozenset({
     "add", "update", "discuss", "lock", "unlock",
     "freeze", "unfreeze", "repair-drift",
     "promote", "demote", "stealth", "unstealth",
-    "delete", "reconcile-reset", "fork-setup", "tui",
+    "delete", "reconcile-reset", "fork-setup",
     "batch",
 })
+# Note: "tui" is NOT here — it handles auto-sync internally,
+# only when it actually mutated data (see _cmd_tui).
 
 
 # ---------------------------------------------------------------------------
@@ -1378,6 +1380,7 @@ def _tui_startup_summary(ts: TrackerSet) -> str:
 def _cmd_tui(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'tui' subcommand — launch Textual TUI."""
     from hypergumbo_tracker.tui import TrackerApp
+    from hypergumbo_tracker.sync import pending_sync_lines
 
     altscreen_off = _detect_screen_altscreen_off()
     if altscreen_off:
@@ -1389,18 +1392,77 @@ def _cmd_tui(args: argparse.Namespace, ts: TrackerSet) -> int:
     sys.stderr.write(f"htrac: {startup_msg}\n")
     sys.stderr.flush()
 
+    # Snapshot pending ops before TUI to detect mutations on exit.
+    tracker_root = Path(args.tracker_root_resolved)
+    try:
+        repo_root = Path(
+            subprocess.run(  # nosec B603, B607
+                ["git", "rev-parse", "--show-toplevel"],  # noqa: S607
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+        )
+        lines_before = pending_sync_lines(repo_root)
+    except Exception:
+        repo_root = None
+        lines_before = 0
+
     app = TrackerApp(tracker_set=ts)
     app.run()
 
-    # Reprint after TUI exits so the user can see it.
+    # Reprint after TUI exits only when altscreen is off (TUI remnants
+    # would still be visible and need the context line).
     if altscreen_off:
-        # Clear the screen to remove TUI remnants, then re-show the hint.
         sys.stdout.write("\033[2J\033[H")
         sys.stdout.flush()
         _print_screen_warning()
-    sys.stderr.write(f"htrac: {startup_msg}\n")
-    sys.stderr.flush()
+        sys.stderr.write(f"htrac: {startup_msg}\n")
+        sys.stderr.flush()
 
+    # Auto-sync only if the TUI session actually wrote new ops.
+    if repo_root is not None and not getattr(args, "no_auto_sync", False):
+        lines_after = pending_sync_lines(repo_root)
+        if lines_after > lines_before:
+            _maybe_auto_sync(tracker_root)
+
+    return EXIT_SUCCESS
+
+
+def _cmd_serve(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'serve' subcommand — start/stop/status the web server."""
+    from hypergumbo_tracker.serve import (
+        DEFAULT_PORT,
+        default_pid_path,
+        get_server_status,
+        run_server,
+        stop_server,
+    )
+
+    tracker_root = Path(args.tracker_root_resolved)
+    pid_path = default_pid_path(tracker_root)
+
+    if args.stop:
+        if stop_server(pid_path):
+            print("Server stopped.")
+            return EXIT_SUCCESS
+        print("No running server found.", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    if args.status:
+        status = get_server_status(pid_path)
+        if getattr(args, "json", False):
+            import json
+            print(json.dumps(status))
+        elif status["running"]:
+            print(f"Server running (PID {status['pid']})")
+        elif "stale_pid" in status:
+            print(f"Not running (stale PID file: {status['stale_pid']})")
+        else:
+            print("Not running.")
+        return EXIT_SUCCESS
+
+    port = args.port or DEFAULT_PORT
+    print(f"Starting htrac serve on 127.0.0.1:{port}")
+    run_server(port=port, pid_path=pid_path)
     return EXIT_SUCCESS
 
 
@@ -1633,6 +1695,28 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # --- tui ---
     sub.add_parser("tui", help="Launch interactive TUI (requires textual)")
+
+    # --- serve ---
+    p_serve = sub.add_parser(
+        "serve",
+        help="Start web server for remote access (requires starlette, uvicorn)",
+    )
+    p_serve.add_argument(
+        "--background", action="store_true",
+        help="Daemonize and write PID file",
+    )
+    p_serve.add_argument(
+        "--stop", action="store_true",
+        help="Stop a running serve process",
+    )
+    p_serve.add_argument(
+        "--status", action="store_true",
+        help="Show status of running serve process",
+    )
+    p_serve.add_argument(
+        "--port", type=int, default=None,
+        help="Port to bind (default: 7380)",
+    )
 
     # --- deps ---
     p_deps = sub.add_parser("deps", help="Show dependency graph for an item")
@@ -2127,6 +2211,39 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(_cmd_migrate(args))
     if args.command == "sync":
         raise SystemExit(_cmd_sync(args))
+    if args.command == "serve" and (args.stop or args.status):
+        # --stop and --status don't need TrackerSet, but need tracker_root for PID path
+        from hypergumbo_tracker.serve import (
+            default_pid_path,
+            get_server_status,
+            stop_server,
+        )
+
+        if args.tracker_root:
+            tracker_root = Path(args.tracker_root)
+        else:
+            tracker_root = _find_tracker_root()
+        pid_path = default_pid_path(tracker_root)
+
+        if args.stop:
+            if stop_server(pid_path):
+                print("Server stopped.")
+                raise SystemExit(EXIT_SUCCESS)
+            print("No running server found.", file=sys.stderr)
+            raise SystemExit(EXIT_USER_ERROR)
+
+        # --status
+        status = get_server_status(pid_path)
+        if getattr(args, "json", False):
+            import json
+            print(json.dumps(status))
+        elif status["running"]:
+            print(f"Server running (PID {status['pid']})")
+        elif "stale_pid" in status:
+            print(f"Not running (stale PID file: {status['stale_pid']})")
+        else:
+            print("Not running.")
+        raise SystemExit(EXIT_SUCCESS)
 
     # Discover tracker root
     try:
@@ -2193,6 +2310,7 @@ def main(argv: list[str] | None = None) -> None:
         "fork-setup": _cmd_fork_setup,
         "tui": _cmd_tui,
         "batch": _cmd_batch,
+        "serve": _cmd_serve,
     }
 
     handler = handler_map.get(args.command)

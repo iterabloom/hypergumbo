@@ -1,0 +1,86 @@
+- op: create  # a5ff
+  at: '2026-03-24T00:32:22Z'  # a5ff
+  by: agent  # a5ff
+  actor: jgstern_agent  # a5ff
+  clock: 1  # a5ff
+  nonce: a5ff  # a5ff
+  data:  # a5ff
+    kind: work_item  # a5ff
+    title: "Haskell: name collision from single-letter function names"  # a5ff
+    status: todo_soft  # a5ff
+    priority: 3  # a5ff
+    parent:  # a5ff
+    tags: []  # a5ff
+    before: []  # a5ff
+    duplicate_of: []  # a5ff
+    not_duplicate_of: []  # a5ff
+    pr_ref:  # a5ff
+    description: ""  # a5ff
+    fields: {}  # a5ff
+- op: discuss  # a9e4
+  at: '2026-03-24T00:32:26Z'  # a9e4
+  by: agent  # a9e4
+  actor: jgstern_agent  # a9e4
+  clock: 2  # a9e4
+  nonce: a9e4  # a9e4
+  message: "Bakeoff finding: Haskell repos use typeclasses extensively but 0 'implements' edges. Breaks refactoring analysis for typeclass-heavy code (Pretty, Show, etc.)."  # a9e4
+- op: update  # b93d
+  at: '2026-03-24T01:22:07Z'  # b93d
+  by: agent  # b93d
+  actor: jgstern_agent  # b93d
+  clock: 3  # b93d
+  nonce: b93d  # b93d
+  set:  # b93d
+    priority: 4  # b93d
+- op: discuss  # 4fc0
+  at: '2026-03-24T01:22:07Z'  # 4fc0
+  by: agent  # 4fc0
+  actor: jgstern_agent  # 4fc0
+  clock: 4  # 4fc0
+  nonce: 4fc0  # 4fc0
+  message: "Mitigated by PR #2503 (where-clause exclusion). Remaining risk: top-level single-letter functions. Lower priority."  # 4fc0
+- op: update  # f189
+  at: '2026-03-24T06:55:22Z'  # f189
+  by: agent  # f189
+  actor: jgstern_agent  # f189
+  clock: 5  # f189
+  nonce: f189  # f189
+  set:  # f189
+    priority: 4  # f189
+- op: discuss  # 28f2
+  at: '2026-03-24T06:55:22Z'  # 28f2
+  by: agent  # 28f2
+  actor: jgstern_agent  # 28f2
+  clock: 6  # 28f2
+  nonce: 28f2  # 28f2
+  message: "Deprioritized: not Scala-related, from prior bakeoffs."  # 28f2
+- op: update  # c037
+  at: '2026-03-25T04:23:57Z'  # c037
+  by: agent  # c037
+  actor: jgstern_agent  # c037
+  clock: 7  # c037
+  nonce: c037  # c037
+  set:  # c037
+    parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # c037
+- op: discuss  # f0bf
+  at: '2026-03-25T18:18:13Z'  # f0bf
+  by: agent  # f0bf
+  actor: jgstern_agent  # f0bf
+  clock: 8  # f0bf
+  nonce: f0bf  # f0bf
+  message: "Partial fix in PR #2557: added _short_name_penalty() to Haskell analyzer (same pattern as Scala PR #2525). Single-letter names get 0.15x confidence, two-letter get 0.50x. False edges from f/g/x/n are now easily filterable. Item remains open — top-level single-letter function extraction still happens, this just reduces confidence on the call edges."  # f0bf
+- op: update  # 54ab
+  at: '2026-03-25T19:37:24Z'  # 54ab
+  by: agent  # 54ab
+  actor: jgstern_agent  # 54ab
+  clock: 9  # 54ab
+  nonce: 54ab  # 54ab
+  set:  # 54ab
+    status: done  # 54ab
+- op: discuss  # d4b9
+  at: '2026-03-25T19:37:24Z'  # d4b9
+  by: agent  # d4b9
+  actor: jgstern_agent  # d4b9
+  clock: 10  # d4b9
+  nonce: d4b9  # d4b9
+  message: "Addressed in PR #2557. Confidence penalty: 1-letter=0.15x, 2-letter=0.50x."  # d4b9

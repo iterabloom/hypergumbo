@@ -1,0 +1,65 @@
+- op: create  # 1764
+  at: '2026-04-01T18:59:15Z'  # 1764
+  by: agent  # 1764
+  actor: jgstern_agent  # 1764
+  clock: 1  # 1764
+  nonce: '1764'  # 1764
+  data:  # 1764
+    kind: work_item  # 1764
+    title: "Python CFFI/ctypes calls to C stdlib IO not traced by io-boundaries"  # 1764
+    status: todo_soft  # 1764
+    priority: 3  # 1764
+    parent:  # 1764
+    tags:  # 1764
+    - io-boundary  # 1764
+    - ffi  # 1764
+    - cffi  # 1764
+    before: []  # 1764
+    duplicate_of: []  # 1764
+    not_duplicate_of: []  # 1764
+    pr_ref:  # 1764
+    description: "The pyffi linker only creates ffi_bridge edges for CFFI/ctypes calls targeting repo-local C symbols. Calls to C stdlib via ffi.dlopen(None) produce no bridge edges and no IO tags. Scope expansion from INV-kagob."  # 1764
+    fields: {}  # 1764
+- op: discuss  # 7f0b
+  at: '2026-04-02T14:27:52Z'  # 7f0b
+  by: agent  # 7f0b
+  actor: jgstern_agent  # 7f0b
+  clock: 2  # 7f0b
+  nonce: 7f0b  # 7f0b
+  message: "Investigation: The pyffi linker only creates ffi_bridge edges against repo-local C symbols. When Python uses ffi.dlopen(None) to call C stdlib directly, there are no local C symbols to match — the linker needs to either (a) create unresolved edges similar to cgo pseudo-namespace pattern, or (b) the io_boundary tagger needs a Python-side catalog for ctypes/cffi stdlib calls. This is a design-level change, not a simple fix. Deprioritizing."  # 7f0b
+- op: discuss  # 6dab
+  at: '2026-04-02T14:43:06Z'  # 6dab
+  by: human  # 6dab
+  actor: jgstern  # 6dab
+  clock: 3  # 6dab
+  nonce: 6dab  # 6dab
+  message: "what are the pros/cons of these options? is this related to multi-fidelity analysis?"  # 6dab
+- op: discuss  # 06f6
+  at: '2026-04-03T05:07:15Z'  # 06f6
+  by: agent  # 06f6
+  actor: jgstern_agent  # 06f6
+  clock: 4  # 06f6
+  nonce: 06f6  # 06f6
+  message: "Pros/cons of the two options:\n\n**Option A — pyffi linker creates unresolved edges (like cgo pattern):**\n- Pro: Consistent with how cgo already handles C stdlib (go:C:0-0:fopen:unresolved). The io_boundary tagger already knows how to follow ffi_bridge edges and redirect catalog lookups (INV-kagob fix).\n- Pro: One fix covers all C stdlib functions — no need to enumerate Python-side names.\n- Con: Requires pyffi linker to detect ffi.dlopen(None) / ctypes.CDLL(None) as 'C stdlib' and synthesize pseudo-namespace edges (py:C:0-0:fopen:unresolved). The linker currently only matches against repo-local symbols.\n- Con: The unresolved edges clutter the behavior map with symbols that have no repo-local definition.\n\n**Option B — Python-side IO catalog for ctypes/cffi calls:**\n- Pro: No linker changes needed — just add entries like ctypes.CDLL.fopen, ffi.cdef.fwrite to the Python IO catalog.\n- Pro: Simpler for the user — IO boundaries show up as Python calls, not cross-language edges.\n- Con: Must enumerate every C stdlib function that Python code might call. Incomplete by nature.\n- Con: Loses the FFI provenance — the behavior map doesn't show these are actually C calls through FFI.\n\n**Relation to multi-fidelity:** Yes, this is related. The current pyffi linker operates at Tier 2 (linker-inferred edges). Option A stays at Tier 2 with synthesized edges. Option B would be Tier 1 (catalog-based tagging). The multi-fidelity design supports both — the provenance field would distinguish them. Option A is more architecturally consistent with how cgo already works.\n\nRecommendation: Option A (pyffi creates unresolved edges), since the pattern is proven by cgo and the io_boundary tagger already handles catalog redirects via _resolve_ffi_catalog()."  # 06f6
+- op: discuss  # 761a
+  at: '2026-04-03T07:00:53Z'  # 761a
+  by: human  # 761a
+  actor: jgstern  # 761a
+  clock: 5  # 761a
+  nonce: 761a  # 761a
+  message: "ok let's go with option A"  # 761a
+- op: update  # d8ba
+  at: '2026-04-03T09:25:30Z'  # d8ba
+  by: agent  # d8ba
+  actor: jgstern_agent  # d8ba
+  clock: 6  # d8ba
+  nonce: d8ba  # d8ba
+  set:  # d8ba
+    status: done  # d8ba
+- op: discuss  # 992d
+  at: '2026-04-03T09:25:30Z'  # 992d
+  by: agent  # 992d
+  actor: jgstern_agent  # 992d
+  clock: 7  # 992d
+  nonce: 992d  # 992d
+  message: "Implemented Option A in PR #93. pyffi linker emits python:C_stdlib:0-0:<name>:unresolved edges for ctypes.CDLL(None) and ffi.dlopen(None). io_boundary tagger redirects to C catalog. If repo-local C symbol exists, resolved edge preferred. 7 new tests, all at 100% coverage."  # 992d

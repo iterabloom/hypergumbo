@@ -779,6 +779,71 @@ class TestFormatActivityLines:
         assert "showing last 5 of 15" in lines[0].lower()
         assert "Message 14" in lines[-1]
 
+    def test_svg_reference_adds_placeholder(self, tmp_path: Path) -> None:
+        """Discussion entry referencing an existing SVG gets a placeholder."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        # Create an SVG file
+        screenshots = tmp_path / ".agent" / "screenshots"
+        screenshots.mkdir(parents=True)
+        svg = screenshots / "INV-foo-20260401-1422.svg"
+        svg.write_text("<svg></svg>")
+
+        item = CompiledItem(
+            id="INV-foo",
+            kind="work_item",
+            title="Bug",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="human", actor="dev", at="2026-04-01T14:22:00Z",
+                    message=f"See {svg} for the issue",
+                ),
+            ],
+        )
+        lines = _format_activity_lines(item)
+        assert len(lines) == 2
+        assert "[screenshot:" in lines[1]
+
+    def test_svg_reference_missing_file(self) -> None:
+        """Discussion entry referencing a missing SVG shows file-not-found."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="INV-foo",
+            kind="work_item",
+            title="Bug",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="human", actor="dev", at="2026-04-01T14:22:00Z",
+                    message="See /nonexistent/path/test.svg for details",
+                ),
+            ],
+        )
+        lines = _format_activity_lines(item)
+        assert len(lines) == 2
+        assert "file not found" in lines[1]
+
+    def test_no_svg_reference_no_extra_lines(self) -> None:
+        """Discussion entry without SVG refs produces no extra lines."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="INV-foo",
+            kind="work_item",
+            title="Bug",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="human", actor="dev", at="2026-04-01T14:22:00Z",
+                    message="Just a regular message, no screenshots",
+                ),
+            ],
+        )
+        lines = _format_activity_lines(item)
+        assert len(lines) == 1
+
 
 # ---------------------------------------------------------------------------
 # Pilot tests: compact layout
@@ -5058,6 +5123,127 @@ class TestDeliverScreenshot:
                 await pilot.pause()
             svgs = list(fake_downloads.glob("*.svg"))
             assert len(svgs) == 1
+
+
+class TestCaptureScreenshot:
+    """Tests for the S keybinding that saves screenshot to .agent/screenshots/ (ADR-0020)."""
+
+    @pytest.mark.asyncio
+    async def test_capture_screenshot_saves_svg(self, tmp_path: Path) -> None:
+        """Pressing S saves an SVG screenshot to .agent/screenshots/."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Patch screenshot_path at the source module
+            with patch(
+                "hypergumbo_tracker.annotations.screenshot_path",
+                side_effect=lambda item_id, ts: tmp_path / ".agent" / "screenshots" / f"{item_id}-test.svg",
+            ):
+                await pilot.press("S")
+                await pilot.pause()
+
+            svgs = list((tmp_path / ".agent" / "screenshots").glob("*.svg"))
+            assert len(svgs) == 1
+            assert svgs[0].stat().st_size > 0
+
+    @pytest.mark.asyncio
+    async def test_capture_screenshot_no_item_uses_screen_prefix(self, tmp_path: Path) -> None:
+        """When no item is selected, screenshot uses 'screen' as prefix."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Mock _get_selected_item to return None
+            with patch.object(app, "_get_selected_item", return_value=None), \
+                 patch(
+                     "hypergumbo_tracker.annotations.screenshot_path",
+                     side_effect=lambda item_id, ts: tmp_path / ".agent" / "screenshots" / f"{item_id}-test.svg",
+                 ):
+                await pilot.press("S")
+                await pilot.pause()
+
+            svgs = list((tmp_path / ".agent" / "screenshots").glob("*.svg"))
+            assert len(svgs) == 1
+            assert "screen" in svgs[0].name
+
+
+    @pytest.mark.asyncio
+    async def test_capture_screenshot_permission_fallback(self, tmp_path: Path) -> None:
+        """Falls back to /tmp when .agent/screenshots is not writable."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+
+            original_mkdir = Path.mkdir
+
+            def failing_mkdir(self_path: Path, *a: Any, **kw: Any) -> None:
+                if ".agent" in str(self_path) and "screenshots" in str(self_path):
+                    raise PermissionError("not writable")
+                return original_mkdir(self_path, *a, **kw)
+
+            with patch.object(Path, "mkdir", failing_mkdir), \
+                 patch(
+                     "hypergumbo_tracker.annotations.screenshot_path",
+                     side_effect=lambda item_id, ts: tmp_path / ".agent" / "screenshots" / f"{item_id}-test.svg",
+                 ):
+                await pilot.press("S")
+                await pilot.pause()
+
+            # Should have saved to /tmp fallback
+            import os
+            import tempfile
+            fallback = Path(tempfile.gettempdir()) / f"{os.getuid()}-htrac-screenshots"
+            svgs = list(fallback.glob("*.svg")) if fallback.exists() else []
+            assert len(svgs) >= 1
+
+    @pytest.mark.asyncio
+    async def test_capture_screenshot_write_permission_fallback(
+        self, tmp_path: Path,
+    ) -> None:
+        """Falls back to /tmp when write_text fails (dir exists but not writable)."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+
+            original_write = Path.write_text
+            call_count = 0
+
+            def failing_write(self_path: Path, *a: Any, **kw: Any) -> Any:
+                nonlocal call_count
+                if ".agent" in str(self_path) and ".svg" in str(self_path):
+                    call_count += 1
+                    if call_count <= 1:
+                        raise PermissionError("not writable")
+                return original_write(self_path, *a, **kw)
+
+            with patch.object(Path, "write_text", failing_write), \
+                 patch(
+                     "hypergumbo_tracker.annotations.screenshot_path",
+                     side_effect=lambda item_id, ts: tmp_path / ".agent" / "screenshots" / f"{item_id}-test.svg",
+                 ):
+                await pilot.press("S")
+                await pilot.pause()
+
+            import os
+            import tempfile
+            fallback = Path(tempfile.gettempdir()) / f"{os.getuid()}-htrac-screenshots"
+            svgs = list(fallback.glob("*.svg")) if fallback.exists() else []
+            assert len(svgs) >= 1
 
 
 class TestYankAction:

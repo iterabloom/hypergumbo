@@ -414,11 +414,17 @@ class TestConfigLoading:
         assert cfg.kinds["invariant"].prefix == "INV"
         assert cfg.statuses == [
             "todo_hard", "todo_soft", "in_progress",
-            "needs_human_review", "holding", "violated",
+            "needs_human_review", "holding", "satisfied",
+            "pending_validation", "violated",
             "done", "wont_do", "deleted",
         ]
-        assert cfg.blocking_statuses == ["todo_hard", "todo_soft", "violated"]
-        assert cfg.resolved_statuses == ["done", "wont_do", "deleted", "holding"]
+        assert cfg.blocking_statuses == [
+            "todo_hard", "todo_soft", "violated", "pending_validation",
+        ]
+        assert cfg.resolved_statuses == [
+            "done", "wont_do", "deleted", "satisfied", "holding",
+        ]
+        assert cfg.kinds["invariant"].deprecated_statuses == ["holding"]
         assert cfg.human_only_statuses == ["deleted"]
         assert cfg.agent_usernames == ["*_agent"]
         assert cfg.lamport_branches == ["dev", "main"]
@@ -566,6 +572,53 @@ class TestConfigValidation:
         raw = self._minimal_config()
         raw["actor_resolution"] = {"agent_usernames": "*_agent"}
         with pytest.raises(ConfigValidationError, match="non-empty list"):
+            _parse_config_dict(raw)
+
+    def test_deprecated_statuses_parsed(self) -> None:
+        raw = self._minimal_config()
+        raw["statuses"] = ["todo_hard", "done", "holding", "satisfied"]
+        raw["kinds"] = {
+            "invariant": {
+                "prefix": "INV",
+                "allowed_statuses": ["satisfied"],
+                "deprecated_statuses": ["holding"],
+            },
+        }
+        cfg = _parse_config_dict(raw)
+        assert cfg.kinds["invariant"].deprecated_statuses == ["holding"]
+
+    def test_deprecated_statuses_unknown_raises(self) -> None:
+        raw = self._minimal_config()
+        raw["kinds"] = {
+            "invariant": {
+                "prefix": "INV",
+                "deprecated_statuses": ["nonexistent"],
+            },
+        }
+        with pytest.raises(ConfigValidationError, match=r"deprecated_statuses.*unknown"):
+            _parse_config_dict(raw)
+
+    def test_deprecated_statuses_overlap_raises(self) -> None:
+        raw = self._minimal_config()
+        raw["kinds"] = {
+            "invariant": {
+                "prefix": "INV",
+                "allowed_statuses": ["todo_hard"],
+                "deprecated_statuses": ["todo_hard"],
+            },
+        }
+        with pytest.raises(ConfigValidationError, match="overlap"):
+            _parse_config_dict(raw)
+
+    def test_deprecated_statuses_not_list_raises(self) -> None:
+        raw = self._minimal_config()
+        raw["kinds"] = {
+            "invariant": {
+                "prefix": "INV",
+                "deprecated_statuses": "holding",
+            },
+        }
+        with pytest.raises(ConfigValidationError, match="deprecated_statuses must be a list"):
             _parse_config_dict(raw)
 
     def test_kind_spec_not_dict(self) -> None:

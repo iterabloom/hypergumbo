@@ -1,0 +1,81 @@
+- op: create  # 1de2
+  at: '2026-04-03T08:25:09Z'  # 1de2
+  by: agent  # 1de2
+  actor: jgstern_agent  # 1de2
+  clock: 1  # 1de2
+  nonce: 1de2  # 1de2
+  data:  # 1de2
+    kind: work_item  # 1de2
+    title: "BlockSuite web frontend: project scaffold and build pipeline"  # 1de2
+    status: todo_soft  # 1de2
+    priority: 2  # 1de2
+    parent:  # 1de2
+    tags:  # 1de2
+    - adr-0019  # 1de2
+    - frontend  # 1de2
+    before: []  # 1de2
+    duplicate_of: []  # 1de2
+    not_duplicate_of: []  # 1de2
+    pr_ref:  # 1de2
+    description: "Set up BlockSuite + Vite project for the htrac web frontend. Block-based document editor + infinite canvas (edgeless mode). Build as static assets served by htrac serve. Service worker for app shell caching (critical for Tor latency — only first load is heavy). See docs/adr/0019-remote-access-transport.md §Web frontend."  # 1de2
+    fields: {}  # 1de2
+- op: update  # 9989
+  at: '2026-04-03T08:26:56Z'  # 9989
+  by: agent  # 9989
+  actor: jgstern_agent  # 9989
+  clock: 2  # 9989
+  nonce: '9989'  # 9989
+  set:  # 9989
+    parent: WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 9989
+- op: update  # 33c5
+  at: '2026-04-04T04:01:56Z'  # 33c5
+  by: agent  # 33c5
+  actor: jgstern_agent  # 33c5
+  clock: 3  # 33c5
+  nonce: 33c5  # 33c5
+  set:  # 33c5
+    priority: 4  # 33c5
+- op: discuss  # 5d3c
+  at: '2026-04-04T04:01:56Z'  # 5d3c
+  by: agent  # 5d3c
+  actor: jgstern_agent  # 5d3c
+  clock: 4  # 5d3c
+  nonce: 5d3c  # 5d3c
+  message: "Deprioritized during DEEP mode. Frontend scaffold (Vite+BlockSuite+TS) is outside hypergumbo-core analysis focus."  # 5d3c
+- op: discuss  # 6242
+  at: '2026-04-04T17:09:11Z'  # 6242
+  by: human  # 6242
+  actor: jgstern  # 6242
+  clock: 5  # 6242
+  nonce: '6242'  # 6242
+  message: "this should be a priority"  # 6242
+- op: update  # 0dcd
+  at: '2026-04-04T17:09:18Z'  # 0dcd
+  by: human  # 0dcd
+  actor: jgstern  # 0dcd
+  clock: 6  # 0dcd
+  nonce: 0dcd  # 0dcd
+  set:  # 0dcd
+    priority: 2  # 0dcd
+- op: discuss  # aa9b
+  at: '2026-04-04T17:16:26Z'  # aa9b
+  by: agent  # aa9b
+  actor: jgstern_agent  # aa9b
+  clock: 7  # aa9b
+  nonce: aa9b  # aa9b
+  message: "Acknowledged. Promoting BlockSuite frontend scaffold to active priority. Will start implementation after completing pending bakeoff reflect/aggregate (DEEP mode protocol requires clearing those first to avoid stale data)."  # aa9b
+- op: update  # 5607
+  at: '2026-04-04T18:26:18Z'  # 5607
+  by: agent  # 5607
+  actor: jgstern_agent  # 5607
+  clock: 8  # 5607
+  nonce: '5607'  # 5607
+  set:  # 5607
+    status: done  # 5607
+- op: discuss  # 9ab6
+  at: '2026-04-04T18:26:18Z'  # 9ab6
+  by: agent  # 9ab6
+  actor: jgstern_agent  # 9ab6
+  clock: 9  # 9ab6
+  nonce: 9ab6  # 9ab6
+  message: "Implemented in PR #132. Scaffold includes: Vite+TS build, BlockSuite 0.17.33 (PageEditor+EdgelessEditor), WebSocket client for htrac serve protocol, service worker for app shell caching, dev proxy config. Builds to dist/ for static serving."  # 9ab6
