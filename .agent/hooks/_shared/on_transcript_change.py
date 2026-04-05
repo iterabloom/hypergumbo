@@ -597,7 +597,7 @@ def main() -> None:
     )
     step2_prompt = (
         f"An agentic coder has the following goal:\n\n{agent_goals}\n\n"
-        "Below are 18 guidance documents. Select ONLY documents that address "
+        f"Below are {len(PLAYBOOKS)} guidance documents. Select ONLY documents that address "
         "something the agent is concretely about to do right now, based on the "
         "goal above. Do NOT select documents that are merely \"generally useful.\" "
         "If the goal does not clearly indicate a specific activity that a document "

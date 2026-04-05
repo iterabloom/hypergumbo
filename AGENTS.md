@@ -242,8 +242,6 @@ A playbook (also called SOP, protocol, procedure, or skill) is a plain-language 
     "is what the hook uses to decide whether to inject the playbook into "
     "the agent's context based on the current transcript."),
    ```
-   Also update the `"Below are N guidance documents"` count in the `step2_prompt` string in the same file to match the new length of the `PLAYBOOKS` list.
-
 **Why three levels of detail:** AGENTS.md (always loaded, brief) gives the agent the rule. The hook summary (loaded contextually, expanded) gives the agent enough detail to follow the procedure when it's relevant. The playbook file (loaded on demand, full) gives the complete explanation with examples, rationale, and edge cases.
 
 **Governance note:** AGENTS.md and `.agent/hooks/` are governance files. Changes to them require human approval — do not self-merge PRs that touch these files. The playbook markdown file itself is not a governance file (it only takes effect when referenced from one).
