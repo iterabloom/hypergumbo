@@ -7,7 +7,7 @@ Implemented
 
 ## Context
 
-The hypergumbo test suite has grown to 5700+ tests across 108 language analyzers. CI runs on resource-constrained runners (`codeberg-small-lazy`, limited to `-n 2` parallelism) are timing out or taking too long. We need faster feedback without:
+The hypergumbo test suite has grown to 5700+ tests across 108 language analyzers. CI runs on a self-hosted runner (limited to `-n 2` parallelism) were timing out or taking too long. We need faster feedback without:
 
 1. Abusing the CI compute allocation
 2. Compromising on 100% test coverage
@@ -207,8 +207,8 @@ fast-ci:
         STATUS_JSON=$(curl -s "$API_BASE/commits/$BASE_SHA/status")
 
         # Check only the aggregate job — it is the authoritative verdict.
-        # Individual jobs like test-core may fail due to Codeberg runner
-        # timeouts while their retries (on self-hosted) succeed.
+        # Individual jobs like test-core may fail due to runner
+        # timeouts while their retries succeed.
         RESULT=$(echo "$STATUS_JSON" | python3 -c '
         import json, sys, re
         d = json.load(sys.stdin)

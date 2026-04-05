@@ -420,7 +420,7 @@ git push origin v0.8.0
 
 ## Platform Notes
 
-Codeberg/Forgejo only provides Linux runners (`codeberg-small-lazy`). Multi-platform testing (macOS, Windows) should be done locally before tagging a release.
+CI runs exclusively on a self-hosted Linux runner. Multi-platform testing (macOS, Windows) should be done locally before tagging a release.
 
 ## Two-User Workflow (Optional)
 
