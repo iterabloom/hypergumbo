@@ -2951,54 +2951,49 @@ def test_sanitize_filename_part_empty_becomes_unnamed() -> None:
 
 
 def test_cmd_slice_default_output_includes_entry_name(tmp_path: Path, capsys) -> None:
-    """Test that slice default output filename includes sanitized entry name."""
-    import os
-    # Change to tmp_path so output goes there
-    original_cwd = os.getcwd()
-    os.chdir(tmp_path)
-    try:
-        # Create a behavior map file
-        behavior_map = {
-            "schema_version": "0.1.0",
-            "nodes": [
-                {
-                    "id": "python:src/main.py:1-2:my_func:function",
-                    "name": "my_func",
-                    "kind": "function",
-                    "language": "python",
-                    "path": "src/main.py",
-                    "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
-                }
-            ],
-            "edges": [],
-        }
-        (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+    """Test that slice default output goes to cache dir, not repo root."""
+    # Create a behavior map file
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-2:my_func:function",
+                "name": "my_func",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
+            }
+        ],
+        "edges": [],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
 
-        args = FakeArgs()
-        args.path = str(tmp_path)
-        args.entry = "my_func"
-        args.out = "slice.json"  # Default value
-        args.input = None
-        args.max_hops = 3
-        args.max_files = 20
-        args.min_confidence = 0.0
-        args.exclude_tests = False
-        args.list_entries = False
-        args.reverse = False
-        args.language = None
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "my_func"
+    args.out = "slice.json"  # Default value
+    args.input = None
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
 
-        result = cmd_slice(args)
+    result = cmd_slice(args)
 
-        assert result == 0
+    assert result == 0
 
-        # Output should be slice.my_func.json, not slice.json
-        assert (tmp_path / "slice.my_func.json").exists()
-        assert not (tmp_path / "slice.json").exists()
+    # Output should NOT be in the repo root (avoids cache busting)
+    assert not (tmp_path / "slice.my_func.json").exists()
+    assert not (tmp_path / "slice.json").exists()
 
-        out, _ = capsys.readouterr()
-        assert "slice.my_func.json" in out
-    finally:
-        os.chdir(original_cwd)
+    out, _ = capsys.readouterr()
+    # File should be in the cache directory and reported to user
+    assert "slice.my_func.json" in out
+    assert ".cache/hypergumbo/" in out
 
 
 def test_cmd_slice_files_mode(tmp_path: Path, capsys) -> None:
