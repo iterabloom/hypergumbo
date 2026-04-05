@@ -47,6 +47,8 @@ Use **BROAD** mode (the default) when coverage gaps remain — missing linker ed
 
 Always run a 1-repo mini trial before full experiments to validate setup and estimate runtime. If extrapolated single-command wall-clock time exceeds 8 hours, document the design in the lab notebook instead of running it. Do not draw conclusions from mini-trials — they are only for smoke testing and timing. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/experiment-design-playbook.md`.)
 
+- **Self-analysis dogfooding:** Periodically run hypergumbo on its own codebase to validate Python analysis quality, catch regressions, and build intuition about the tool's output. Useful before refactoring shared modules, after changing analyzers or linkers, and when investigating bakeoff signals. Does not substitute for bakeoff on diverse repos. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/self-analysis-dogfooding-playbook.md`.)
+
 - **Keep CHANGELOG.md, pyproject.toml, `docs/hypergumbo-spec.md` updated:** Document what's implemented and bump the version to the extent appropriate just before each PR.
 - **Changelog audit:** Periodically audit the `[Unreleased]` section of `CHANGELOG.md` for completeness and organization. Phase 1: compare the section against `git log <last-tag>..HEAD` to find missing items (all commit types matter — features, fixes, CI, tests, refactors, docs). Phase 2: calibrate detail level against the most recent released sections — the Unreleased section should match their granularity, not exceed it. Completeness is valued but verbosity is not completeness; one concise bullet per feature beats a multi-paragraph architecture breakdown. Merge duplicates, normalize granularity, group related entries, reorder by significance. Do not remove information; concision means fewer words, not less content. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/changelog-audit-playbook.md`.)
 - **Agentic session retrospective:** After an autonomous session, analyze the agent's decision-making and infrastructure interactions (not what was built, but how it decided what to build). Consumes `.agent/.last_session_transcript.jsonl` (vendor-agnostic, rotated on session start). Produces a lab notebook entry with structured findings and proposed improvements to AGENTS.md, hooks, scripts, or playbooks. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/agentic-session-retrospective.md`.)
@@ -240,6 +242,7 @@ A playbook (also called SOP, protocol, procedure, or skill) is a plain-language 
     "is what the hook uses to decide whether to inject the playbook into "
     "the agent's context based on the current transcript."),
    ```
+   Also update the `"Below are N guidance documents"` count in the `step2_prompt` string in the same file to match the new length of the `PLAYBOOKS` list.
 
 **Why three levels of detail:** AGENTS.md (always loaded, brief) gives the agent the rule. The hook summary (loaded contextually, expanded) gives the agent enough detail to follow the procedure when it's relevant. The playbook file (loaded on demand, full) gives the complete explanation with examples, rationale, and edge cases.
 
