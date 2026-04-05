@@ -22,6 +22,8 @@ dependencies = [
   "tree-sitter~=0.25.2",
   # CLI formatting
   "rich~=14.3.2",
+  # CVE-2026-4539
+  "pygments~=2.20.0",
   # YAML parsing for framework patterns
   "pyyaml~=6.0.3",
 ]
