@@ -18,3 +18,12 @@
     pr_ref:  # 2863
     description: "Phase 5 (TDD). Walk all 'identifier_ref' descendants of each operator_definition/theorem/assumption. For each, resolver.lookup(name) against global registry. Skip self-references. Deduplicate with seen_ref_pairs: set[tuple[str, str]]. Edge type 'references', confidence 0.80. Key insight: identifier (declarations) vs identifier_ref (references) — the name child of operator_definition is 'identifier', so walking 'identifier_ref' descendants naturally excludes it. Parameter names and LET-bound names won't be in registry so are skipped. Primed variables (x') parse as separate identifier_ref + prime nodes — no stripping needed. Write tests: test_operator_body_references, test_no_self_reference, test_deduplication. Ref: ~/hypergumbo_lab_notebook/tla_plan.md §Edge Extraction, §Reference extraction logic, §Primed variables"  # 2863
     fields: {}  # 2863
+- op: update  # 6b86
+  at: '2026-04-05T19:30:05Z'  # 6b86
+  by: agent  # 6b86
+  actor: jgstern_agent  # 6b86
+  clock: 2  # 6b86
+  nonce: 6b86  # 6b86
+  set: {}  # 6b86
+  add:  # 6b86
+    before: [WI-hotaz-gofim-kokam-pisug-pisus-zubup-dupav-monim]  # 6b86
