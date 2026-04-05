@@ -1,0 +1,20 @@
+- op: create  # 171a
+  at: '2026-04-05T19:27:33Z'  # 171a
+  by: agent  # 171a
+  actor: jgstern_agent  # 171a
+  clock: 1  # 171a
+  nonce: 171a  # 171a
+  data:  # 171a
+    kind: work_item  # 171a
+    title: "TLA+: signatures, cross-file, file symbols, polish"  # 171a
+    status: todo_soft  # 171a
+    priority: 3  # 171a
+    parent: WI-jurin-sosuj-napav-nizur-fokog-vigob-pitur-zoduf  # 171a
+    tags:  # 171a
+    - tlaplus  # 171a
+    before: []  # 171a
+    duplicate_of: []  # 171a
+    not_duplicate_of: []  # 171a
+    pr_ref:  # 171a
+    description: "Phase 6 (TDD). (1) Parameterized operator signatures: collect 'identifier' children between ( and ) tokens (before def_eq), format as '(a, b)'. Zero-parameter operators get None. (2) Cross-file analysis: verify two-pass resolution works across multiple .tla files. (3) File symbols: verify create_file_symbols=True produces file-level symbols. (4) No .tla files: verify clean empty result. Write tests: test_parameterized_operator_signature, test_zero_param_no_signature, test_cross_file_analysis, test_file_symbol_created, test_no_tla_files. Ref: ~/hypergumbo_lab_notebook/tla_plan.md §Signatures, §TDD Phase 6"  # 171a
+    fields: {}  # 171a

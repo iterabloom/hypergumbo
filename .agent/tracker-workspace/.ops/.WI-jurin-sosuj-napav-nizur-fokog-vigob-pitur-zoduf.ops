@@ -1,0 +1,21 @@
+- op: create  # ae02
+  at: '2026-04-05T19:23:46Z'  # ae02
+  by: agent  # ae02
+  actor: jgstern_agent  # ae02
+  clock: 1  # ae02
+  nonce: ae02  # ae02
+  data:  # ae02
+    kind: work_item  # ae02
+    title: "TLA+ language analyzer"  # ae02
+    status: todo_soft  # ae02
+    priority: 3  # ae02
+    parent:  # ae02
+    tags:  # ae02
+    - tlaplus  # ae02
+    - lang-analyzer  # ae02
+    before: []  # ae02
+    duplicate_of: []  # ae02
+    not_duplicate_of: []  # ae02
+    pr_ref:  # ae02
+    description: "Add TLA+ (formal specification language) analyzer to hypergumbo-lang-extended1. TLA+ models concurrent/distributed systems, used in AWS, CockroachDB, Cosmos. tree-sitter-tlaplus v1.5.0 on PyPI. Agda analyzer is the closest template. Full plan: ~/hypergumbo_lab_notebook/tla_plan.md"  # ae02
+    fields: {}  # ae02

@@ -1,0 +1,20 @@
+- op: create  # b99e
+  at: '2026-04-05T19:27:31Z'  # b99e
+  by: agent  # b99e
+  actor: jgstern_agent  # b99e
+  clock: 1  # b99e
+  nonce: b99e  # b99e
+  data:  # b99e
+    kind: work_item  # b99e
+    title: "TLA+: operator, constant, variable symbol extraction"  # b99e
+    status: todo_soft  # b99e
+    priority: 3  # b99e
+    parent: WI-jurin-sosuj-napav-nizur-fokog-vigob-pitur-zoduf  # b99e
+    tags:  # b99e
+    - tlaplus  # b99e
+    before: []  # b99e
+    duplicate_of: []  # b99e
+    not_duplicate_of: []  # b99e
+    pr_ref:  # b99e
+    description: "Phase 2 (TDD). Extract: (1) operators from 'operator_definition' nodes, name via find_child_by_type(node, 'identifier'). (2) constants from 'constant_declaration' — each 'identifier' child is a separate symbol. (3) variables from 'variable_declaration' — each 'identifier' child is a separate symbol. Key: use 'identifier' nodes (not 'identifier_ref') for declarations. Write tests: test_detect_operator, test_detect_zero_param_operator, test_detect_constants, test_detect_variables. Ref: ~/hypergumbo_lab_notebook/tla_plan.md §Symbol Extraction"  # b99e
+    fields: {}  # b99e

@@ -1,0 +1,20 @@
+- op: create  # 1928
+  at: '2026-04-05T19:27:32Z'  # 1928
+  by: agent  # 1928
+  actor: jgstern_agent  # 1928
+  clock: 1  # 1928
+  nonce: '1928'  # 1928
+  data:  # 1928
+    kind: work_item  # 1928
+    title: "TLA+: theorem, assumption, LOCAL, RECURSIVE symbol extraction"  # 1928
+    status: todo_soft  # 1928
+    priority: 3  # 1928
+    parent: WI-jurin-sosuj-napav-nizur-fokog-vigob-pitur-zoduf  # 1928
+    tags:  # 1928
+    - tlaplus  # 1928
+    before: []  # 1928
+    duplicate_of: []  # 1928
+    not_duplicate_of: []  # 1928
+    pr_ref:  # 1928
+    description: "Phase 3 (TDD). Extract: (1) Named theorems from 'theorem' nodes — find_child_by_type(node, 'identifier'), skip if None (unnamed). (2) Named assumptions from 'assumption' nodes — same pattern. (3) LOCAL operators: detect 'local_definition' parent on 'operator_definition', set meta {'is_local': True}. (4) RECURSIVE operators: record names from 'recursive_declaration' -> 'operator_declaration' -> 'identifier' child in a set, then set meta {'is_recursive': True} on the matching 'operator_definition'. (5) PlusCal: detect 'pcal_algorithm' inside 'block_comment', emit single operator symbol with meta {'is_pluscal': True}. Scoping: LET...IN defs are NOT top-level symbols. Write tests: test_detect_named_theorem, test_detect_assumption, test_local_operator_has_meta, test_recursive_operator_meta. Ref: ~/hypergumbo_lab_notebook/tla_plan.md §Symbol Extraction, §Meta flags"  # 1928
+    fields: {}  # 1928

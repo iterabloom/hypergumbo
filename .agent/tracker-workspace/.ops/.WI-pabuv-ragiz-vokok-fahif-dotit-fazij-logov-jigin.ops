@@ -1,0 +1,20 @@
+- op: create  # 72eb
+  at: '2026-04-05T19:27:33Z'  # 72eb
+  by: agent  # 72eb
+  actor: jgstern_agent  # 72eb
+  clock: 1  # 72eb
+  nonce: 72eb  # 72eb
+  data:  # 72eb
+    kind: work_item  # 72eb
+    title: "TLA+: real-world repo validation"  # 72eb
+    status: todo_soft  # 72eb
+    priority: 3  # 72eb
+    parent: WI-jurin-sosuj-napav-nizur-fokog-vigob-pitur-zoduf  # 72eb
+    tags:  # 72eb
+    - tlaplus  # 72eb
+    before: []  # 72eb
+    duplicate_of: []  # 72eb
+    not_duplicate_of: []  # 72eb
+    pr_ref:  # 72eb
+    description: "Validate on 3 real-world repos (shallow clones to /tmp). (1) tlaplus/Examples — official collection, 30+ .tla files, broad construct coverage. (2) cockroachdb/cockroach — sparse checkout docs/tla-plus/ only, industrial specs with INSTANCE+substitutions. (3) ongardie/raft.tla — canonical Raft spec, dense operator graph. Per-repo checklist: hypergumbo run completes without error, output JSON has nodes+edges, at least 1 tlaplus symbol exists, at least 1 imports edge with evidence_type extends, hypergumbo sketch includes TLA+. Record observations in lab notebook. Ref: ~/hypergumbo_lab_notebook/tla_plan.md §Real-World Repo Validation"  # 72eb
+    fields: {}  # 72eb
