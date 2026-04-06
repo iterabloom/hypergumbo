@@ -11,7 +11,8 @@ Given an entrypoint (function name, file path, or node ID), the slicer
 performs breadth-first traversal following edges (calls, imports) to
 collect related nodes. Traversal respects configurable limits:
 
-- **max_hops**: Depth limit (default 3). Prevents unbounded exploration.
+- **max_hops**: Depth limit (default None = unlimited). When unset, max_files
+  and hub_threshold bound the slice.
 - **max_files**: File count limit (default 20). Keeps context focused.
 - **min_confidence**: Edge confidence threshold. Filters speculative edges.
 - **exclude_tests**: Skips test files to focus on production code.
@@ -129,7 +130,8 @@ class SliceQuery:
 
     Attributes:
         entrypoint: Symbol name, file path, or node ID to start from.
-        max_hops: Maximum traversal depth (default: 3).
+        max_hops: Maximum traversal depth. None (default) means unlimited —
+                  max_files and hub_threshold bound the slice instead.
         max_files: Maximum number of files to include (default: 100).
         min_confidence: Minimum edge confidence to follow (default: 0.0).
         exclude_tests: Whether to exclude test files (default: False).
@@ -163,7 +165,7 @@ class SliceQuery:
     """
 
     entrypoint: str
-    max_hops: int = 3
+    max_hops: int | None = None
     max_files: int = 100
     min_confidence: float = 0.0
     exclude_tests: bool = False
@@ -458,8 +460,8 @@ def slice_graph(
     while queue:
         current_id, hop = queue.popleft()
 
-        # Check hop limit for next level
-        if hop >= query.max_hops:
+        # Check hop limit for next level (None means unlimited)
+        if query.max_hops is not None and hop >= query.max_hops:
             if "hop_limit" not in limits_hit:
                 limits_hit.append("hop_limit")
             continue

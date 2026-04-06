@@ -936,7 +936,7 @@ Entry sources (HTTP routes, CLI mains, IPC handlers, etc.) are detected by the p
 
 ### Slicing algorithm
 
-🟩 BFS traversal on the call graph from entry nodes, bounded by hop limit and file count limit. See [§3 Analysis options](#analysis-options) for CLI flags (`--max-hops`, `--max-files`). Edges can be filtered by confidence threshold or test exclusion.
+🟩 BFS traversal on the call graph from entry nodes, bounded by file count limit (`--max-files`, default 100) and hub pruning (threshold 50). No hop limit is imposed by default; `--max-hops` is available for explicit user control. Edges can be filtered by confidence threshold or test exclusion.
 
 ### Dataflow slicing (ADR-0015)
 

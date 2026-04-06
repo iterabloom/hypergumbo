@@ -10,6 +10,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+
+- **Slice reverse filename collision**: `hypergumbo slice --entry X` and `--entry X --reverse` no longer silently overwrite each other. Reverse slices now write to `slice.<name>.reverse.json`.
+- **Slice hop limit removed**: The adaptive hop limit (3-10 based on node count) has been removed. `max_files` (default 100) and hub pruning (threshold 50) are sufficient to bound slice size. Previously, large graphs (>2000 nodes) were capped at 3 hops, causing forward slices to utilize only 17% of the file budget. The `--max-hops` flag is still available for explicit user control.
+
 ## [2.5.1] - 2026-04-05
 
 ## [2.5.0] - 2026-04-04

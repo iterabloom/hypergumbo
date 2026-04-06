@@ -762,7 +762,7 @@ class TestSliceQuery:
         """Query has sensible defaults."""
         query = SliceQuery(entrypoint="foo")
 
-        assert query.max_hops == 3
+        assert query.max_hops is None
         assert query.max_files == 100
         assert query.min_confidence == 0.0
         assert query.exclude_tests is False

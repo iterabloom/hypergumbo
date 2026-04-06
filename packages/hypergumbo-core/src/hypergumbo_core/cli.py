@@ -1276,7 +1276,8 @@ def cmd_slice(args: argparse.Namespace) -> int:
         from .sketch_embeddings import _get_results_cache_dir
 
         cache_dir = _get_results_cache_dir(repo_root)
-        out_path = cache_dir / f"slice.{safe_name}.json"
+        direction = ".reverse" if args.reverse else ""
+        out_path = cache_dir / f"slice.{safe_name}{direction}.json"
     else:
         out_path = Path(out_path_arg)
 
@@ -1286,19 +1287,10 @@ def cmd_slice(args: argparse.Namespace) -> int:
     hub_threshold_raw = getattr(args, "hub_threshold", 50)
     hub_threshold = hub_threshold_raw if hub_threshold_raw else None
     exclude_imports = getattr(args, "exclude_imports", False)
-    # Adaptive hop limit: deeper traversal for smaller graphs where
-    # the full call chain is short enough to be manageable.
+    # When the user doesn't specify --max-hops, leave it as None (unlimited).
+    # max_files and hub_threshold are sufficient to bound slice size; an
+    # artificial hop limit only causes the slice to undershoot the file budget.
     max_hops = args.max_hops
-    if max_hops is None:
-        node_count = len(nodes)
-        if node_count <= 200:
-            max_hops = 10
-        elif node_count <= 500:
-            max_hops = 7
-        elif node_count <= 2000:
-            max_hops = 5
-        else:
-            max_hops = 3
     query = SliceQuery(
         entrypoint=entry,
         max_hops=max_hops,
@@ -3879,7 +3871,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         "--max-hops",
         type=int,
         default=None,
-        help="Maximum traversal depth (default: adaptive, 3-10 based on graph size)",
+        help="Maximum traversal depth (default: unlimited, bounded by --max-files)",
     )
     p_slice.add_argument(
         "--max-files",
