@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **Import-based framework validation**: Framework detection now cross-references manifest-detected frameworks against actual import edges in non-test source files. Frameworks imported only by test code (e.g., `pytest`) or not imported at all (e.g., optional deps like `pytorch`) are classified as `dev_frameworks` instead of `frameworks`. Works across all languages that produce import edges; languages without import edges (Java) use a fallback that preserves manifest-detected frameworks. The behavior map profile now includes a `dev_frameworks` field, and the sketch annotates dev-only frameworks with `(dev)`.
+
 ### Fixed
 
 - **Slice reverse filename collision**: `hypergumbo slice --entry X` and `--entry X --reverse` no longer silently overwrite each other. Reverse slices now write to `slice.<name>.reverse.json`.

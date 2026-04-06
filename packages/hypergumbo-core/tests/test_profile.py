@@ -6,6 +6,17 @@ from pathlib import Path
 from hypergumbo_core.cli import run_behavior_map
 
 
+def _all_detected_frameworks(data: dict) -> list[str]:
+    """Return all detected frameworks (production + dev).
+
+    Manifest detection tests care that the framework was *found*, not
+    whether the import-based refinement classified it as production or
+    dev-only.  Use this helper in tests that exercise manifest scanning.
+    """
+    profile = data["profile"]
+    return profile.get("frameworks", []) + profile.get("dev_frameworks", [])
+
+
 def test_detects_python_language(tmp_path: Path) -> None:
     """Should detect Python files and count them."""
     # Create some Python files
@@ -504,8 +515,8 @@ ark-groth16 = "0.4"
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "arkworks" in data["profile"]["frameworks"]
-    assert "groth16" in data["profile"]["frameworks"]
+    assert "arkworks" in _all_detected_frameworks(data)
+    assert "groth16" in _all_detected_frameworks(data)
 
 
 def test_detects_rust_plonky2(tmp_path: Path) -> None:
@@ -565,7 +576,7 @@ sp-runtime = "24.0"
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "substrate" in data["profile"]["frameworks"]
+    assert "substrate" in _all_detected_frameworks(data)
 
 
 def test_detects_rust_ethers(tmp_path: Path) -> None:
@@ -603,7 +614,7 @@ risc0-zkvm = "0.20"
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "risc0" in data["profile"]["frameworks"]
+    assert "risc0" in _all_detected_frameworks(data)
 
 
 def test_detects_rust_zcash(tmp_path: Path) -> None:
@@ -1063,7 +1074,7 @@ end
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "phoenix" in data["profile"]["frameworks"]
+    assert "phoenix" in _all_detected_frameworks(data)
 
 
 def test_detects_elixir_ecto_framework(tmp_path: Path) -> None:
@@ -1086,7 +1097,7 @@ end
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "ecto" in data["profile"]["frameworks"]
+    assert "ecto" in _all_detected_frameworks(data)
 
 
 # Dart/Flutter framework detection tests
@@ -1168,8 +1179,8 @@ def test_detects_react_native_framework(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "react-native" in data["profile"]["frameworks"]
-    assert "react" in data["profile"]["frameworks"]
+    assert "react-native" in _all_detected_frameworks(data)
+    assert "react" in _all_detected_frameworks(data)
 
 
 def test_detects_expo_framework(tmp_path: Path) -> None:
@@ -1186,7 +1197,7 @@ def test_detects_expo_framework(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "expo" in data["profile"]["frameworks"]
+    assert "expo" in _all_detected_frameworks(data)
 
 
 # Meta-framework detection tests
@@ -1359,7 +1370,7 @@ def test_detects_hardhat_framework_from_config_js(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "hardhat" in data["profile"]["frameworks"]
+    assert "hardhat" in _all_detected_frameworks(data)
 
 
 def test_detects_hardhat_framework_from_config_ts(tmp_path: Path) -> None:
@@ -1377,7 +1388,7 @@ export default config;
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "hardhat" in data["profile"]["frameworks"]
+    assert "hardhat" in _all_detected_frameworks(data)
 
 
 def test_detects_both_foundry_and_hardhat(tmp_path: Path) -> None:
@@ -1764,7 +1775,7 @@ target_link_libraries(myapp Qt6::Widgets)
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "qt" in data["profile"]["frameworks"]
+    assert "qt" in _all_detected_frameworks(data)
 
 
 def test_detects_cpp_qt_framework_from_pro(tmp_path: Path) -> None:
@@ -1778,7 +1789,7 @@ SOURCES += main.cpp
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "qt" in data["profile"]["frameworks"]
+    assert "qt" in _all_detected_frameworks(data)
 
 
 # Erlang framework detection tests
@@ -1873,7 +1884,7 @@ def test_detects_kotlin_exposed_framework(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "exposed" in data["profile"]["frameworks"]
+    assert "exposed" in _all_detected_frameworks(data)
 
 
 # C# framework detection tests
@@ -1935,7 +1946,7 @@ dependencies:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "shelf" in data["profile"]["frameworks"]
+    assert "shelf" in _all_detected_frameworks(data)
 
 
 def test_detects_dart_serverpod_framework(tmp_path: Path) -> None:
@@ -1951,7 +1962,7 @@ dependencies:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "serverpod" in data["profile"]["frameworks"]
+    assert "serverpod" in _all_detected_frameworks(data)
 
 
 # Julia framework detection tests
@@ -2020,7 +2031,7 @@ def test_detects_ocaml_cohttp_framework(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "cohttp" in data["profile"]["frameworks"]
+    assert "cohttp" in _all_detected_frameworks(data)
 
 
 # Nim framework detection tests
@@ -2038,7 +2049,7 @@ requires "jester >= 0.5.0"
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "jester" in data["profile"]["frameworks"]
+    assert "jester" in _all_detected_frameworks(data)
 
 
 def test_detects_nim_prologue_framework(tmp_path: Path) -> None:
@@ -2053,7 +2064,7 @@ requires "prologue >= 0.6.0"
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "prologue" in data["profile"]["frameworks"]
+    assert "prologue" in _all_detected_frameworks(data)
 
 
 # Zig framework detection tests
@@ -2099,7 +2110,7 @@ def test_detects_d_vibed_framework(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "vibe-d" in data["profile"]["frameworks"]
+    assert "vibe-d" in _all_detected_frameworks(data)
 
 
 def test_detects_d_hunt_framework(tmp_path: Path) -> None:
@@ -2114,7 +2125,7 @@ dependency "hunt-framework" version="~>3.0.0"
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "hunt" in data["profile"]["frameworks"]
+    assert "hunt" in _all_detected_frameworks(data)
 
 
 # Groovy framework detection tests
@@ -2161,7 +2172,7 @@ dependencies {
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert "ratpack" in data["profile"]["frameworks"]
+    assert "ratpack" in _all_detected_frameworks(data)
 
 
 def test_bottleneck_does_not_trigger_bottle_detection(tmp_path: Path) -> None:
@@ -2402,3 +2413,278 @@ def test_detects_grpc_java_framework(tmp_path: Path) -> None:
 
     detected = _detect_java_frameworks(tmp_path)
     assert "grpc" in detected
+
+
+# ---------------------------------------------------------------------------
+# refine_frameworks() tests
+# ---------------------------------------------------------------------------
+
+
+def _make_edge(src: str, dst: str, edge_type: str = "imports"):
+    """Helper to create a minimal Edge for testing."""
+    from hypergumbo_core.ir import Edge
+
+    return Edge(id=f"e-{src}-{dst}", src=src, dst=dst, edge_type=edge_type, line=1)
+
+
+def _make_symbol(sym_id: str, path: str, language: str = "python"):
+    """Helper to create a minimal Symbol for testing."""
+    from hypergumbo_core.ir import Span, Symbol
+
+    return Symbol(
+        id=sym_id,
+        name="func",
+        kind="function",
+        language=language,
+        path=path,
+        span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+    )
+
+
+def _make_profile(frameworks: list[str], mode: str = "auto"):
+    """Helper to create a RepoProfile for testing."""
+    from hypergumbo_core.profile import RepoProfile
+
+    return RepoProfile(frameworks=frameworks, framework_mode=mode)
+
+
+def test_refine_frameworks_prod_import_stays() -> None:
+    """Framework imported in production code stays in frameworks."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["flask"])
+    edges = [
+        _make_edge(
+            src="python:src/app.py:1-5:handler:function",
+            dst="python:flask:0-0:module:module",
+        ),
+    ]
+    symbols = [_make_symbol("python:src/app.py:1-5:handler:function", "src/app.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "flask" in result.frameworks
+    assert "flask" not in result.dev_frameworks
+
+
+def test_refine_frameworks_test_only_import_moves_to_dev() -> None:
+    """Framework imported only in test code moves to dev_frameworks."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["pytest"])
+    edges = [
+        _make_edge(
+            src="python:tests/test_app.py:1-5:test_foo:function",
+            dst="python:pytest:0-0:module:module",
+        ),
+    ]
+    symbols = [
+        _make_symbol("python:tests/test_app.py:1-5:test_foo:function", "tests/test_app.py"),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "pytest" not in result.frameworks
+    assert "pytest" in result.dev_frameworks
+
+
+def test_refine_frameworks_no_imports_moves_to_dev() -> None:
+    """Framework with no matching imports moves to dev_frameworks."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["transformers"])
+    # Edge exists but for a different module
+    edges = [
+        _make_edge(
+            src="python:src/app.py:1-5:handler:function",
+            dst="python:flask:0-0:module:module",
+        ),
+    ]
+    symbols = [_make_symbol("python:src/app.py:1-5:handler:function", "src/app.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "transformers" not in result.frameworks
+    assert "transformers" in result.dev_frameworks
+
+
+def test_refine_frameworks_explicit_mode_unchanged() -> None:
+    """Explicit mode skips refinement entirely."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["pytorch"], mode="explicit")
+    # No edges at all — but mode is explicit, so no refinement
+    result = refine_frameworks(profile, [], [])
+    assert "pytorch" in result.frameworks
+    assert result.dev_frameworks == []
+
+
+def test_refine_frameworks_none_mode_unchanged() -> None:
+    """None mode skips refinement entirely."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([], mode="none")
+    result = refine_frameworks(profile, [], [])
+    assert result.frameworks == []
+    assert result.dev_frameworks == []
+
+
+def test_refine_frameworks_all_mode_unchanged() -> None:
+    """All mode skips refinement entirely."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["flask", "django"], mode="all")
+    result = refine_frameworks(profile, [], [])
+    assert "flask" in result.frameworks
+    assert "django" in result.frameworks
+    assert result.dev_frameworks == []
+
+
+def test_refine_frameworks_java_no_import_edges_stays() -> None:
+    """Java frameworks stay when Java has no import edges (fallback)."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["spring-boot"])
+    # No import edges at all — Java doesn't produce them
+    edges = []
+    symbols = []
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "spring-boot" in result.frameworks
+
+
+def test_refine_frameworks_import_override_pytorch() -> None:
+    """IMPORT_OVERRIDES maps 'torch' manifest pattern to 'torch' import."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["pytorch"])
+    edges = [
+        _make_edge(
+            src="python:src/model.py:1-5:train:function",
+            dst="python:torch:0-0:module:module",
+        ),
+    ]
+    symbols = [_make_symbol("python:src/model.py:1-5:train:function", "src/model.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "pytorch" in result.frameworks
+
+
+def test_refine_frameworks_prefix_matching_submodule() -> None:
+    """Submodule import (starlette.responses) matches framework (starlette)."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["starlette"])
+    edges = [
+        _make_edge(
+            src="python:src/serve.py:1-5:lifespan:function",
+            dst="python:starlette.responses:0-0:JSONResponse:symbol",
+        ),
+    ]
+    symbols = [_make_symbol("python:src/serve.py:1-5:lifespan:function", "src/serve.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "starlette" in result.frameworks
+    assert "starlette" not in result.dev_frameworks
+
+
+def test_refine_frameworks_mixed_prod_and_dev() -> None:
+    """Multiple frameworks: prod stays, dev-only moves."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["flask", "pytest"])
+    edges = [
+        _make_edge(
+            src="python:src/app.py:1-5:handler:function",
+            dst="python:flask:0-0:module:module",
+        ),
+        _make_edge(
+            src="python:tests/test_app.py:1-5:test_foo:function",
+            dst="python:pytest:0-0:module:module",
+        ),
+    ]
+    symbols = [
+        _make_symbol("python:src/app.py:1-5:handler:function", "src/app.py"),
+        _make_symbol("python:tests/test_app.py:1-5:test_foo:function", "tests/test_app.py"),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert result.frameworks == ["flask"]
+    assert result.dev_frameworks == ["pytest"]
+
+
+def test_refine_frameworks_go_full_path_matching() -> None:
+    """Go framework patterns use full import paths and match exactly."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["gin"])
+    edges = [
+        _make_edge(
+            src="go:main.go:1-5:main:function",
+            dst="go:github.com/gin-gonic/gin:0-0:package:package",
+        ),
+    ]
+    symbols = [_make_symbol("go:main.go:1-5:main:function", "main.go", language="go")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "gin" in result.frameworks
+
+
+def test_refine_frameworks_js_devdep_in_prod_code() -> None:
+    """JS framework imported in non-test file is confirmed even if it was a devDep."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["lit"])
+    edges = [
+        _make_edge(
+            src="typescript:src/components/app.ts:1-5:App:class",
+            dst="typescript:lit:0-0:module:module",
+        ),
+    ]
+    symbols = [
+        _make_symbol(
+            "typescript:src/components/app.ts:1-5:App:class",
+            "src/components/app.ts",
+            language="typescript",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "lit" in result.frameworks
+
+
+def test_refine_frameworks_import_override_scikit_learn() -> None:
+    """scikit-learn manifest pattern maps to sklearn import."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["scikit-learn"])
+    edges = [
+        _make_edge(
+            src="python:src/ml.py:1-5:train:function",
+            dst="python:sklearn.ensemble:0-0:RandomForestClassifier:symbol",
+        ),
+    ]
+    symbols = [_make_symbol("python:src/ml.py:1-5:train:function", "src/ml.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "scikit-learn" in result.frameworks
+
+
+def test_refine_frameworks_preserves_other_fields() -> None:
+    """Refinement preserves framework_mode and other profile fields."""
+    from hypergumbo_core.profile import LanguageStats, RepoProfile, refine_frameworks
+
+    profile = RepoProfile(
+        languages={"python": LanguageStats(files=5, loc=100)},
+        frameworks=["flask"],
+        framework_mode="auto",
+        requested_frameworks=[],
+    )
+    edges = [
+        _make_edge(
+            src="python:src/app.py:1-5:handler:function",
+            dst="python:flask:0-0:module:module",
+        ),
+    ]
+    symbols = [_make_symbol("python:src/app.py:1-5:handler:function", "src/app.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert result.languages == {"python": LanguageStats(files=5, loc=100)}
+    assert result.framework_mode == "auto"

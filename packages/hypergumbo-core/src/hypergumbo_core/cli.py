@@ -4817,6 +4817,14 @@ def run_behavior_map(
             f"suffix={resolution_stats.resolved_suffix})"
         )
 
+    # Refine framework list using import evidence (post-analysis validation).
+    # Frameworks detected from manifests are cross-referenced against actual
+    # import edges to distinguish production frameworks from dev/test-only ones.
+    if profile.framework_mode == "auto":
+        from .profile import refine_frameworks
+        profile = refine_frameworks(profile, all_edges, all_symbols)
+        behavior_map["profile"] = profile.to_dict()
+
     # Enrich symbols with framework concept metadata (ADR-0003)
     # This applies YAML-based patterns to add concept info (route, model, etc.)
     # to symbols based on their decorators, base classes, annotations, AND
