@@ -73,15 +73,24 @@ for e in edges:
     connected.add(e.get('dst'))
 orphans = node_ids - connected
 print(f'Orphans: {len(orphans)} / {len(nodes)} ({100*len(orphans)/max(len(nodes),1):.0f}%)')
+
+# Edge type breakdown (field is 'type', NOT 'kind' — 'kind' is a node field)
+from collections import Counter
+edge_types = Counter(e.get('type', 'MISSING') for e in edges)
+print()
+print('Edge types:')
+for t, count in edge_types.most_common(15):
+    print(f'  {t}: {count}')
 "
 ```
 
 **Expected:** Orphan rate below 30%. If higher, the Python analyzer or linkers may be missing edges.
+Edge type distribution should include `calls`, `contains`, `imports`, `instantiates`, etc. If most edges show `MISSING`, the behavior map schema may have changed.
 
 ### Key symbols check
 
 The top symbols should include core modules that everything depends on:
-- `ir.py` symbols (IRNode, IREdge, etc.)
+- `ir.py` symbols (Symbol, Edge, Span, AnalysisRun, etc.)
 - `cli.py` (main entry point)
 - `sketch.py`, `slice.py` (primary output generators)
 - `discovery.py` (file discovery, used by all analyzers)
@@ -109,8 +118,8 @@ hypergumbo slice --entry cli:main
 # Slice from a specific analyzer
 hypergumbo slice --entry py:analyze
 
-# Reverse slice: what calls ir.IRNode?
-hypergumbo slice --entry ir:IRNode --reverse
+# Reverse slice: what calls Symbol?
+hypergumbo slice --entry Symbol --reverse
 ```
 
 **Check:** Does the forward slice from `cli:main` include `sketch.py`, `slice.py`, `ir.py`, and the analyzer modules? If major dependencies are missing, the call graph has gaps.
@@ -118,8 +127,8 @@ hypergumbo slice --entry ir:IRNode --reverse
 ### Explain validation
 
 ```bash
-# Who calls IRNode? (should be many analyzers)
-hypergumbo explain IRNode
+# Who calls Symbol? (should be many analyzers)
+hypergumbo explain Symbol
 
 # What does cli.main call? (should be run/sketch/slice commands)
 hypergumbo explain main --with-source -x
