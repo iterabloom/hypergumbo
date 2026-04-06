@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 ## Pre-Work Playbook
 Run these checks before starting any new feature or task:
 ```bash
@@ -18,15 +19,19 @@ else
   REMOTE=origin
 fi
 
-# 4. Sync with dev and main from the AUTHORITATIVE remote
+# 4. If you have stashed changes to restore, reset affected-tests.txt first
+#    (smart-test regenerates it on every run, causing stash pop conflicts)
+git checkout -- "$(git rev-parse --show-toplevel)/.ci/affected-tests.txt" 2>/dev/null
+
+# 5. Sync with dev and main from the AUTHORITATIVE remote
 git fetch "$REMOTE" dev
 git checkout dev && git merge --ff-only "$REMOTE/dev"
 
-# 5. Check current progress (at your careful discretion, use `head`, `tail`, `sed`, `grep`, etc, for efficient reading)
+# 6. Check current progress (at your careful discretion, use `head`, `tail`, `sed`, `grep`, etc, for efficient reading)
 cat docs/hypergumbo-spec.md
 cat CHANGELOG.md
 
-# 6. Create feature branch (now based on the correct remote)
+# 7. Create feature branch (now based on the correct remote)
 git checkout -b <author>/feat/<short-name>
 ```
 
