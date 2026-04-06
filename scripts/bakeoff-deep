@@ -2397,7 +2397,7 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
             "jni_bridge", "wasm_bridge", "pyffi_bridge",
         })
         has_ffi_edges = any(
-            e.get("type") in _FFI_EDGE_TYPES for e in raw_edges
+            e.get("type") in _FFI_EDGE_TYPES for e in edges
         )
         lang_count = {}
         for n in nodes:
