@@ -142,16 +142,15 @@ PLAYBOOKS = [
      "unavailability code path. Never use pytest.mark.skipif as an escape hatch."),
     ("changelog-audit-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/changelog-audit-playbook.md",
-     "Two-phase audit of the [Unreleased] section of CHANGELOG.md. Phase 1 (completeness): "
-     "compare against git log from the last release tag to HEAD, chunking the log to avoid "
-     "context overload; identify merged work missing from the changelog — all commit types "
-     "matter (features, fixes, CI, tests, refactors, docs, infra). Phase 2 (organization): "
-     "calibrate detail level against recent released sections — Unreleased should match their "
-     "granularity, not exceed it. Completeness is valued but verbosity is not completeness; "
-     "one concise bullet per feature beats a multi-paragraph breakdown. Merge duplicate entries, "
-     "normalize granularity toward feature-level descriptions, group related items, reorder by "
-     "significance. Never remove information; concision means fewer words, not less content. "
-     "Budget: max 3 rounds of organization edits."),
+     "Three-phase audit of the [Unreleased] sections of both CHANGELOG.md (main tool) and "
+     "packages/hypergumbo-tracker/CHANGELOG.md (tracker package). Phase 0 (relocation): move "
+     "misplaced entries to the correct changelog — tracker-only work (commits touching only "
+     "packages/hypergumbo-tracker/) belongs in the tracker changelog, not the main one. "
+     "Phase 1 (completeness): compare each section against path-filtered git log; tracker "
+     "commits are not 'missing' from the main changelog. Phase 2 (organization): calibrate "
+     "detail level against recent released sections. Merge duplicates, normalize granularity, "
+     "group related items, reorder by significance. Never remove information. Budget: max 3 "
+     "rounds of organization edits per changelog."),
 
     ("agentic-session-retrospective",
      ".agent/agent_playbooks_protocols_sops_skills/agentic-session-retrospective.md",
@@ -184,6 +183,15 @@ PLAYBOOKS = [
      "diffing against prior baselines to detect regressions. Useful before refactoring shared "
      "modules, after changing analyzers or linkers, and when investigating bakeoff signals. "
      "Does not substitute for bakeoff on diverse repos."),
+
+    ("trackerize",
+     ".agent/agent_playbooks_protocols_sops_skills/trackerize-playbook.md",
+     "When the user says 'trackerize', decompose the plan under discussion into individual "
+     "self-contained tracker items. Check existing tracker items first to avoid duplicates and "
+     "inform priority assignment (0-4). Use --before for real dependencies between items, tags "
+     "for filterability, and parent relationships only when structurally compelling. Prefer flat "
+     "lists. If what to trackerize is ambiguous, ask the user to clarify. Create items in "
+     "dependency order so --before references are valid. Summarize created items for the user."),
 ]
 
 
