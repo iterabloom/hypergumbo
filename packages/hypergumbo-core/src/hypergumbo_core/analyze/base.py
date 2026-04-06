@@ -143,15 +143,21 @@ class FileAnalysis:
     may not exist yet during Pass 1 (it might be in another file).
     """
 
-    interface_method_sets: dict[str, set[str]] = field(default_factory=dict)
-    """Maps interface name → set of method names (Go structural typing).
+    interface_method_sets: dict[str, set[tuple[str, int, int]]] = field(
+        default_factory=dict,
+    )
+    """Maps interface name → set of (method_name, param_count, return_count).
 
     Used for cross-file structural interface matching: a struct satisfies
-    an interface if its method set is a superset of the interface's.
+    an interface if its method set (including arities) is a superset of
+    the interface's.  Arity matching prevents false positives from
+    coincidental method name collisions (e.g., Close() vs Close(ctx)).
     """
 
-    struct_method_sets: dict[str, set[str]] = field(default_factory=dict)
-    """Maps struct name → set of method names from receiver declarations.
+    struct_method_sets: dict[str, set[tuple[str, int, int]]] = field(
+        default_factory=dict,
+    )
+    """Maps struct name → set of (method_name, param_count, return_count).
 
     Used alongside ``interface_method_sets`` for cross-file structural
     interface matching in Go.

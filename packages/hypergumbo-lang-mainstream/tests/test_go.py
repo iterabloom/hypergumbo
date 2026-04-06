@@ -5527,6 +5527,102 @@ func (db *DB) Querier() Querier {
             f"DB should implement Queryable, got: {db_sym.meta['base_classes']}"
         )
 
+    def test_arity_mismatch_rejects_false_structural_match(
+        self, tmp_path: Path
+    ) -> None:
+        """Struct method with different arity should NOT satisfy interface.
+
+        Go's structural typing requires matching method signatures, not just
+        names.  A struct with Close(ctx context.Context) error does NOT
+        satisfy an interface with Close() error because the parameter counts
+        differ.  Without arity checking, any struct with a Close() method
+        would be falsely matched to io.Closer-style interfaces.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "types.go").write_text("""package main
+
+import "context"
+
+type Closer interface {
+    Close() error
+}
+
+// RealCloser satisfies Closer: same name AND same arity (0 params, 1 return)
+type RealCloser struct{}
+func (r *RealCloser) Close() error { return nil }
+
+// FakeCloser does NOT satisfy Closer: same name but different arity (1 param)
+type FakeCloser struct{}
+func (f *FakeCloser) Close(ctx context.Context) error { return nil }
+""")
+
+        result = analyze_go(tmp_path)
+
+        real = next(
+            (s for s in result.symbols if s.name == "RealCloser"), None
+        )
+        fake = next(
+            (s for s in result.symbols if s.name == "FakeCloser"), None
+        )
+        assert real is not None
+        assert fake is not None
+
+        # RealCloser should satisfy Closer
+        assert real.meta and "Closer" in real.meta.get("base_classes", []), (
+            f"RealCloser should implement Closer, got: {real.meta}"
+        )
+
+        # FakeCloser should NOT satisfy Closer (arity mismatch)
+        fake_bases = (fake.meta or {}).get("base_classes", [])
+        assert "Closer" not in fake_bases, (
+            f"FakeCloser should NOT implement Closer (arity mismatch), "
+            f"but got base_classes={fake_bases}"
+        )
+
+    def test_arity_mismatch_cross_file(self, tmp_path: Path) -> None:
+        """Cross-file structural matching also respects arity."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "iface.go").write_text("""package main
+
+type Handler interface {
+    Handle(req Request) Response
+}
+""")
+        (tmp_path / "good.go").write_text("""package main
+
+type GoodHandler struct{}
+func (g *GoodHandler) Handle(req Request) Response { return Response{} }
+""")
+        (tmp_path / "bad.go").write_text("""package main
+
+// WrongArity has Handle() but with 0 params instead of 1
+type WrongArity struct{}
+func (w *WrongArity) Handle() string { return "" }
+""")
+
+        result = analyze_go(tmp_path)
+
+        good = next(
+            (s for s in result.symbols if s.name == "GoodHandler"), None
+        )
+        bad = next(
+            (s for s in result.symbols if s.name == "WrongArity"), None
+        )
+        assert good is not None
+        assert bad is not None
+
+        assert good.meta and "Handler" in good.meta.get("base_classes", [])
+
+        bad_bases = (bad.meta or {}).get("base_classes", [])
+        assert "Handler" not in bad_bases, (
+            f"WrongArity should NOT implement Handler (0 params vs 1), "
+            f"got base_classes={bad_bases}"
+        )
+
 
 class TestGoInterfaceMethodSymbols:
     """Tests for extracting method symbols from Go interface definitions.
