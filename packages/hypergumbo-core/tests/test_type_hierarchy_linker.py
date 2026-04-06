@@ -603,6 +603,94 @@ class TestLinkTypeHierarchy:
         )
 
 
+class TestResolveMethodClassId:
+    """Tests for _resolve_method_class_id helper."""
+
+    def test_returns_none_for_method_with_no_class_name(self) -> None:
+        """Method whose name is not qualified returns None."""
+        from hypergumbo_core.linkers.type_hierarchy import (
+            _resolve_method_class_id,
+        )
+
+        method = Symbol(
+            id="py:/app/mod.py:1-5:bare_function:method",
+            name="bare_function",
+            kind="method",
+            language="python",
+            path="/app/mod.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="py-v1",
+            origin_run_id="test",
+        )
+        assert _resolve_method_class_id(method, {}, {}) is None
+
+    def test_returns_none_for_unknown_class_name(self) -> None:
+        """Method whose class name has no matching class returns None.
+
+        This happens when a method references an external class that
+        has no Symbol in the graph (e.g., stdlib types, vendor code).
+        """
+        from hypergumbo_core.linkers.type_hierarchy import (
+            _resolve_method_class_id,
+        )
+
+        method = Symbol(
+            id="py:/app/mod.py:1-5:External.foo:method",
+            name="External.foo",
+            kind="method",
+            language="python",
+            path="/app/mod.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="py-v1",
+            origin_run_id="test",
+        )
+        # class_ids_by_name is empty — class "External" is not a known class
+        assert _resolve_method_class_id(method, {}, {}) is None
+
+    def test_falls_back_to_first_candidate_when_no_same_file_match(
+        self,
+    ) -> None:
+        """When no candidate class is in the method's file, use first.
+
+        Go allows defining methods in a different file than their
+        struct (same package).  When the same-file heuristic fails,
+        we fall back to the first candidate, preserving historical
+        behavior for cross-file cases.
+        """
+        from hypergumbo_core.linkers.type_hierarchy import (
+            _resolve_method_class_id,
+        )
+
+        struct_a = Symbol(
+            id="go:/app/types.go:1-10:Store:struct",
+            name="Store",
+            kind="struct",
+            language="go",
+            path="/app/types.go",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="go-v1",
+            origin_run_id="test",
+        )
+        # Method defined in a different file than the struct
+        method = Symbol(
+            id="go:/app/methods.go:1-5:Store.Get:method",
+            name="Store.Get",
+            kind="method",
+            language="go",
+            path="/app/methods.go",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="go-v1",
+            origin_run_id="test",
+        )
+        class_symbols = {struct_a.id: struct_a}
+        class_ids_by_name = {"Store": [struct_a.id]}
+
+        result = _resolve_method_class_id(
+            method, class_ids_by_name, class_symbols,
+        )
+        assert result == struct_a.id
+
+
 class TestHelperFunctions:
     """Tests for helper functions."""
 

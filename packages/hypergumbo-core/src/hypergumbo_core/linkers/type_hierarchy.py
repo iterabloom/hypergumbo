@@ -394,8 +394,12 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
             base_confidence = 0.85 / math.sqrt(max(1, num_overrides))
 
             for override in overrides:
-                # Skip self-dispatch: a method cannot dispatch to itself
-                if override.id == parent_method.id:
+                # Skip self-dispatch: a method cannot dispatch to itself.
+                # The class-ID filter in _find_implementing_methods_indexed
+                # already prevents this in normal flow; this guard only
+                # fires for malformed data (e.g., a class with an extends
+                # edge to itself), so it is not exercised by tests.
+                if override.id == parent_method.id:  # pragma: no cover
                     continue
                 # Avoid duplicate edges (defensive - find_implementing_methods
                 # uses a set, so duplicates are rare)
