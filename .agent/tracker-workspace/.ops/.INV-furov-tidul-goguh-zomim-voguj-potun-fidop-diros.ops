@@ -1,0 +1,22 @@
+- op: create  # 2a28
+  at: '2026-04-06T20:07:41Z'  # 2a28
+  by: agent  # 2a28
+  actor: jgstern_agent  # 2a28
+  clock: 1  # 2a28
+  nonce: 2a28  # 2a28
+  data:  # 2a28
+    kind: invariant  # 2a28
+    title: "Go structural interface matching must verify method arity, not just names"  # 2a28
+    status: pending_validation  # 2a28
+    priority: 2  # 2a28
+    parent:  # 2a28
+    tags:  # 2a28
+    - analysis_quality  # 2a28
+    before: []  # 2a28
+    duplicate_of: []  # 2a28
+    not_duplicate_of: []  # 2a28
+    pr_ref:  # 2a28
+    description: "Go structural interface satisfaction now checks (name, param_count, return_count) tuples instead of just method names. This prevents false implements edges when methods share names but have different signatures (e.g., Close() error vs Close(ctx) error). Validated by unit tests; needs bakeoff confirmation that alertmanager dispatches_to edge count drops significantly from the previous 463."  # 2a28
+    fields:  # 2a28
+      statement: "Go structural interface matching verifies method arity (param_count, return_count) alongside names, preventing false implements edges from coincidental name collisions"  # 2a28
+      root_cause: "_extract_interface_methods and struct_method_sets used set[str] of method names only; Go requires matching full signatures for interface satisfaction"  # 2a28

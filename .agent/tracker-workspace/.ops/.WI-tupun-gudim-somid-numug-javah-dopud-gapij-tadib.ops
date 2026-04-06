@@ -1,0 +1,20 @@
+- op: create  # 11be
+  at: '2026-04-06T10:01:03Z'  # 11be
+  by: agent  # 11be
+  actor: jgstern_agent  # 11be
+  clock: 1  # 11be
+  nonce: 11be  # 11be
+  data:  # 11be
+    kind: work_item  # 11be
+    title: "Rust: strip module prefix from qualified types in typed_field_call resolution"  # 11be
+    status: todo_soft  # 11be
+    priority: 4  # 11be
+    parent:  # 11be
+    tags:  # 11be
+    - analysis_quality  # 11be
+    before: []  # 11be
+    duplicate_of: []  # 11be
+    not_duplicate_of: []  # 11be
+    pr_ref:  # 11be
+    description: "Scope expansion from Go cross-package interface dispatch fix. In rust.py line 1364, typed_name uses receiver_type which may include module prefix from scoped_type_identifier. Verify by running bakeoff on Rust-heavy polyglot repos."  # 11be
+    fields: {}  # 11be
