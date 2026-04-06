@@ -1784,7 +1784,15 @@ def _extract_edges_from_file(
                             # receiver-type method disambiguation
                             elif alias in var_types:
                                 receiver_type = var_types[alias]
-                                qualified_name = f"{receiver_type}.{callee_name}"
+                                # Strip package prefix from qualified types
+                                # (e.g. "notify.Stage" → "Stage") since symbol
+                                # names in global_symbols are unqualified.
+                                bare_recv = (
+                                    receiver_type.rsplit(".", 1)[-1]
+                                    if "." in receiver_type
+                                    else receiver_type
+                                )
+                                qualified_name = f"{bare_recv}.{callee_name}"
                                 # Try qualified name in local or global symbols
                                 if qualified_name in local_symbols:
                                     callee = local_symbols[qualified_name]
@@ -1851,7 +1859,17 @@ def _extract_edges_from_file(
                                 field_type_registry,
                             )
                             if resolved_type:
-                                qualified_name = f"{resolved_type}.{callee_name}"
+                                # For cross-package qualified types
+                                # (e.g. "notify.Stage"), symbol names in
+                                # global_symbols are unqualified ("Stage.Exec",
+                                # not "notify.Stage.Exec").  Strip the package
+                                # prefix before constructing the method name.
+                                bare_type = (
+                                    resolved_type.rsplit(".", 1)[-1]
+                                    if "." in resolved_type
+                                    else resolved_type
+                                )
+                                qualified_name = f"{bare_type}.{callee_name}"
                                 target = local_symbols.get(qualified_name)
                                 if target is None and qualified_name in global_symbols:
                                     candidates = global_symbols[qualified_name]
