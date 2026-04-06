@@ -426,34 +426,85 @@ def _strip_module_prefix(import_path: str, module_path: str) -> str:
     return import_path
 
 
+def _count_go_method_arity(
+    node: "tree_sitter.Node",
+) -> tuple[int, int]:
+    """Count parameter and return arity of a Go method node.
+
+    Works on both ``method_elem`` (interface method specs) and
+    ``method_declaration`` / ``function_declaration`` nodes.
+
+    Returns (param_count, return_count).  For multi-name parameter
+    declarations like ``a, b int`` each name is counted separately.
+    For return types, a bare type (``error``) counts as 1, and a
+    parameter_list (``(int, error)``) counts its declarations.
+
+    Uses ``child_by_field_name("parameters")`` to correctly skip the
+    receiver in ``method_declaration`` nodes (where the receiver is
+    also a ``parameter_list`` but accessed via the "receiver" field).
+    """
+    param_count = 0
+    return_count = 0
+
+    # Use the named "parameters" field to avoid counting the receiver
+    params_node = node.child_by_field_name("parameters")
+    if params_node is not None:
+        for pc in params_node.children:
+            if pc.type == "parameter_declaration":
+                # Count identifiers — ``a, b int`` has 2 names
+                names = sum(
+                    1 for n in pc.children if n.type == "identifier"
+                )
+                param_count += max(names, 1)
+
+    # Result can be a single type node or a parameter_list (for tuples).
+    result_node = node.child_by_field_name("result")
+    if result_node is not None:
+        if result_node.type == "parameter_list":
+            for rc in result_node.children:
+                if rc.type == "parameter_declaration":
+                    names = sum(
+                        1 for n in rc.children if n.type == "identifier"
+                    )
+                    return_count += max(names, 1)
+        else:
+            # Single return type (e.g., ``error``, ``*Foo``)
+            return_count = 1
+
+    return param_count, return_count
+
+
 def _extract_interface_methods(
     interface_type_node: "tree_sitter.Node",
     source: bytes,
-) -> set[str]:
-    """Extract method names from a Go interface definition.
+) -> set[tuple[str, int, int]]:
+    """Extract method signatures from a Go interface definition.
 
-    Go interfaces list method specifications (name + signature) in their body.
-    This function extracts just the method names, used for structural interface
-    matching: a struct satisfies an interface if it has all the interface's
-    methods.
+    Returns a set of ``(name, param_count, return_count)`` tuples for
+    structural interface matching.  Go's structural typing requires
+    matching both method names AND arities: a struct with
+    ``Close(ctx context.Context) error`` does NOT satisfy an interface
+    with ``Close() error`` because the parameter counts differ.
 
     Example::
 
         type Notifier interface {
-            Notify(msg string) error    // → {"Notify"}
-            Close() error               // → {"Notify", "Close"}
+            Notify(msg string) error    // → {("Notify", 1, 1)}
+            Close() error               // → {("Notify", 1, 1), ("Close", 0, 1)}
         }
 
     Embedded interfaces (e.g., ``io.Reader`` inside another interface) are
     skipped — we only match on explicitly declared methods in this interface.
     """
-    methods: set[str] = set()
+    methods: set[tuple[str, int, int]] = set()
     for child in interface_type_node.children:
         if child.type == "method_elem":
             # method_elem has a field_identifier child for the method name
             name_node = find_child_by_type(child, "field_identifier")
             if name_node:
-                methods.add(node_text(name_node, source))
+                name = node_text(name_node, source)
+                params, returns = _count_go_method_arity(child)
+                methods.add((name, params, returns))
     return methods
 
 
@@ -829,10 +880,10 @@ def _extract_symbols_from_file(
     impl_assertions: dict[str, list[str]] = {}
 
     # For structural interface matching (Go implicit satisfaction):
-    # interface_name -> set of method names defined in the interface body
-    interface_method_sets: dict[str, set[str]] = {}
-    # struct_name -> set of method names from method_declaration receivers
-    struct_method_sets: dict[str, set[str]] = {}
+    # interface_name -> set of (method_name, param_count, return_count)
+    interface_method_sets: dict[str, set[tuple[str, int, int]]] = {}
+    # struct_name -> set of (method_name, param_count, return_count)
+    struct_method_sets: dict[str, set[tuple[str, int, int]]] = {}
 
     for node in iter_tree(tree.root_node):
         # Function declaration (including methods with receivers)
@@ -932,7 +983,10 @@ def _extract_symbols_from_file(
                 if receiver_type:
                     if receiver_type not in struct_method_sets:
                         struct_method_sets[receiver_type] = set()
-                    struct_method_sets[receiver_type].add(method_name)
+                    arity = _count_go_method_arity(node)
+                    struct_method_sets[receiver_type].add(
+                        (method_name, arity[0], arity[1])
+                    )
 
         # Type declaration (struct or interface)
         elif node.type == "type_declaration":
@@ -1667,7 +1721,7 @@ def _extract_edges_from_file(
     resolver: ListNameResolver | None = None,
     module_path: str | None = None,
     field_type_registry: dict[str, dict[str, str]] | None = None,
-    interface_method_sets: dict[str, set[str]] | None = None,
+    interface_method_sets: dict[str, set[tuple[str, int, int]]] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -3318,7 +3372,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
 
     # Aggregate interface_method_sets across all files for the ambiguity
     # guard's interface-dispatch preference (go.py ambiguity guard).
-    all_interface_method_sets: dict[str, set[str]] = {}
+    all_interface_method_sets: dict[str, set[tuple[str, int, int]]] = {}
     for analysis in file_analyses.values():
         all_interface_method_sets.update(analysis.interface_method_sets)
 
@@ -3392,8 +3446,8 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     # Per-file matching already happened in _extract_symbols_from_file;
     # this pass catches cross-file relationships (e.g., interface in one
     # file, implementing struct in another).
-    global_iface_methods: dict[str, set[str]] = {}
-    global_struct_methods: dict[str, set[str]] = {}
+    global_iface_methods: dict[str, set[tuple[str, int, int]]] = {}
+    global_struct_methods: dict[str, set[tuple[str, int, int]]] = {}
     for analysis in file_analyses.values():
         for iname, imethods in analysis.interface_method_sets.items():
             # First definition wins (interfaces with same name in different
