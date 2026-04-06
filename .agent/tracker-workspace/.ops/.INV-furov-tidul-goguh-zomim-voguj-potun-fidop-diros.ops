@@ -20,3 +20,18 @@
     fields:  # 2a28
       statement: "Go structural interface matching verifies method arity (param_count, return_count) alongside names, preventing false implements edges from coincidental name collisions"  # 2a28
       root_cause: "_extract_interface_methods and struct_method_sets used set[str] of method names only; Go requires matching full signatures for interface satisfaction"  # 2a28
+- op: update  # 4083
+  at: '2026-04-06T22:35:48Z'  # 4083
+  by: agent  # 4083
+  actor: jgstern_agent  # 4083
+  clock: 2  # 4083
+  nonce: '4083'  # 4083
+  set:  # 4083
+    status: satisfied  # 4083
+- op: discuss  # 8f4a
+  at: '2026-04-06T22:35:48Z'  # 8f4a
+  by: agent  # 8f4a
+  actor: jgstern_agent  # 8f4a
+  clock: 3  # 8f4a
+  nonce: 8f4a  # 8f4a
+  message: "Validated by bakeoff deep-20260406-182616. Combined with the concrete-concrete fan-out fix (PR #2721), alertmanager dropped 358 edges (-23% avg slice) and prometheus dropped 626 edges. The arity component alone only removed 8 edges in alertmanager — the dominant issue was the class-name collision bug fixed in PR #2721. Both fixes are structural and now in place."  # 8f4a
