@@ -1,0 +1,27 @@
+- op: create  # c2eb
+  at: '2026-04-06T21:16:46Z'  # c2eb
+  by: agent  # c2eb
+  actor: jgstern_agent  # c2eb
+  clock: 1  # c2eb
+  nonce: c2eb  # c2eb
+  data:  # c2eb
+    kind: work_item  # c2eb
+    title: "Flaky auto-run tests: capsys stderr capture races in parallel mode"  # c2eb
+    status: todo_soft  # c2eb
+    priority: 3  # c2eb
+    parent:  # c2eb
+    tags:  # c2eb
+    - ci_infrastructure  # c2eb
+    before: []  # c2eb
+    duplicate_of: []  # c2eb
+    not_duplicate_of: []  # c2eb
+    pr_ref:  # c2eb
+    description: "test_cmd_explain_auto_runs_analysis and test_cmd_slice_auto_runs_analysis (in test_cli_explain.py and test_cli_commands.py) fail intermittently when run via pytest -n auto. They pass in isolation. Symptom: capsys.readouterr() returns only the final error message, missing the 'No cached results found, running analysis' stderr line that should come first. Observed on commits df28b4698 (dev) and the feature branch fix/type-hierarchy-class-id-collision. Suggests a capsys capture race or stderr ordering issue with xdist workers. Possible root causes: (1) auto-run stderr write is not flushed before the error message, (2) capsys captures pyramid stderr from another worker, (3) some shared cache lets the auto-run path short-circuit in one parallel ordering but not another."  # c2eb
+    fields: {}  # c2eb
+- op: discuss  # 79ac
+  at: '2026-04-06T23:14:23Z'  # 79ac
+  by: agent  # 79ac
+  actor: jgstern_agent  # 79ac
+  clock: 2  # 79ac
+  nonce: 79ac  # 79ac
+  message: "Root cause: cache state leakage via ~/.cache/hypergumbo/. pytest rotates only 3 tmp_path dirs (pytest-87/88/89), so the same tmp_path is recreated across pytest sessions. The non-git fingerprint hashes the absolute path → same fingerprint each time. The empty-dir state hash also returns the same value. ~/.cache/hypergumbo/<fp>/results/<sh>/hypergumbo.results.json persists indefinitely (no cleanup). When pytest's rotating counter reuses an N whose stale cache file still exists, _discover_input_file finds it and short-circuits the auto-run path → 'No cached results found' is never printed. Confirmed via failure log: tmp_path was /tmp/pytest-of-jgstern_agent/pytest-89/popen-gw1/test_cmd_slice_auto_runs_analy0, fingerprint d14365624d3459f3, and a stale cached file from March 31 exists at exactly that location. Hypothesis 3 from the original description was correct; (1) and (2) ruled out. Fix: autouse fixture in conftest.py to set XDG_CACHE_HOME per-test."  # 79ac
