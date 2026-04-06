@@ -2384,17 +2384,29 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         # Only assess dataflow_slice_ratio if a dataflow slice was produced
         if os.path.exists(os.path.join(repo_out, "slice.dataflow.0.json")):
             metric_assessments.append(("dataflow_slice_ratio", metrics.dataflow_slice_ratio * 100))
-        # Only assess cross_language_io_pct for genuinely polyglot repos.
-        # Requires the second-most-common language to have >= 5% of nodes.
-        # This prevents false WARNs on repos that are 99% one language with
-        # incidental build/config files in another (e.g., Swift + 1% C headers).
+        # Only assess cross_language_io_pct for FFI-polyglot repos.
+        # The metric measures same-process cross-language function calls
+        # (Go→C via cgo, Java→C via JNI, etc.), NOT HTTP/gRPC boundaries
+        # between separately deployed services.  Web-polyglot repos (Go
+        # backend + TS frontend communicating via HTTP) will always score
+        # 0% because there are no direct cross-language function calls.
+        # Gate: require (1) meaningful polyglot, (2) IO boundaries found,
+        # and (3) at least one FFI bridge edge in the graph.
+        _FFI_EDGE_TYPES = frozenset({
+            "cgo_bridge", "ffi_bridge", "napi_bridge",
+            "jni_bridge", "wasm_bridge", "pyffi_bridge",
+        })
+        has_ffi_edges = any(
+            e.get("type") in _FFI_EDGE_TYPES for e in raw_edges
+        )
         lang_count = {}
         for n in nodes:
             lang = n.get("language", "")
             if lang:
                 lang_count[lang] = lang_count.get(lang, 0) + 1
         if (is_meaningfully_polyglot(lang_count, len(nodes))
-                and metrics.io_boundary_types_found > 0):
+                and metrics.io_boundary_types_found > 0
+                and has_ffi_edges):
             metric_assessments.append(("cross_language_io_pct", metrics.cross_language_io_pct))
 
         verdict_status = "GOOD"

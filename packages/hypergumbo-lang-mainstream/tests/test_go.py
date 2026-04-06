@@ -6100,6 +6100,175 @@ func main() {}
         ]
         assert len(typed_edges) == 0
 
+    def test_cross_package_interface_field_resolves_to_interface_method(
+        self, tmp_path: Path,
+    ) -> None:
+        """d.stage.Exec() where stage is notify.Stage → typed_field_call to Stage.Exec.
+
+        When a struct field has a cross-package interface type (qualified_type
+        in Go AST, e.g. ``notify.Stage``), _resolve_field_chain returns
+        "notify.Stage".  The qualified method name must strip the package
+        prefix ("Stage.Exec", not "notify.Stage.Exec") because symbol names
+        in global_symbols are unqualified.
+
+        This is the root cause of the deep bakeoff's interface dispatch gap:
+        alertmanager's Dispatcher.stage (type notify.Stage) produced unresolved
+        edges instead of linking to Stage.Exec.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text(
+            "module github.com/example/app\ngo 1.21\n"
+        )
+        notify_dir = tmp_path / "notify"
+        notify_dir.mkdir()
+        notify_dir.joinpath("notify.go").write_text("""\
+package notify
+
+type Stage interface {
+    Exec(ctx string) string
+}
+
+type RetryStage struct{}
+
+func (r *RetryStage) Exec(ctx string) string {
+    return ctx
+}
+
+type MuteStage struct{}
+
+func (m *MuteStage) Exec(ctx string) string {
+    return ""
+}
+
+type DedupStage struct{}
+
+func (d *DedupStage) Exec(ctx string) string {
+    return ctx
+}
+""")
+        dispatch_dir = tmp_path / "dispatch"
+        dispatch_dir.mkdir()
+        dispatch_dir.joinpath("dispatch.go").write_text("""\
+package dispatch
+
+import "github.com/example/app/notify"
+
+type Dispatcher struct {
+    stage notify.Stage
+}
+
+func (d *Dispatcher) Run() string {
+    return d.stage.Exec("start")
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Verify the interface method symbol exists
+        stage_exec = [s for s in result.symbols if s.name == "Stage.Exec"]
+        assert len(stage_exec) == 1, (
+            f"Expected Stage.Exec symbol, found: "
+            f"{[s.name for s in result.symbols if 'Exec' in s.name]}"
+        )
+
+        # The call from Dispatcher.Run should resolve to Stage.Exec
+        # via typed_field_call, NOT produce an unresolved edge
+        run_sym = next(
+            s for s in result.symbols if s.name == "Dispatcher.Run"
+        )
+        call_edges = [
+            e for e in result.edges
+            if e.src == run_sym.id and "Exec" in e.dst
+        ]
+        assert len(call_edges) >= 1, (
+            f"Dispatcher.Run should have a call edge for d.stage.Exec(), "
+            f"found edges from Run: "
+            f"{[e.dst for e in result.edges if e.src == run_sym.id]}"
+        )
+
+        exec_edge = call_edges[0]
+        assert "unresolved" not in exec_edge.dst, (
+            f"d.stage.Exec() should resolve to Stage.Exec interface method, "
+            f"not to unresolved. Got dst={exec_edge.dst}"
+        )
+        assert exec_edge.dst == stage_exec[0].id, (
+            f"d.stage.Exec() should resolve to Stage.Exec symbol, "
+            f"got dst={exec_edge.dst}"
+        )
+        assert exec_edge.evidence_type == "typed_field_call"
+
+    def test_cross_package_interface_param_resolves_to_interface_method(
+        self, tmp_path: Path,
+    ) -> None:
+        """s.Exec() where s is param of type notify.Stage → typed_receiver_call.
+
+        Same bug as cross-package field, but via function parameter with
+        qualified type.  The receiver_type in var_types is "notify.Stage";
+        stripping the package prefix gives "Stage" for the qualified name.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text(
+            "module github.com/example/app\ngo 1.21\n"
+        )
+        notify_dir = tmp_path / "notify"
+        notify_dir.mkdir()
+        notify_dir.joinpath("notify.go").write_text("""\
+package notify
+
+type Stage interface {
+    Exec(ctx string) string
+}
+
+type RetryStage struct{}
+
+func (r *RetryStage) Exec(ctx string) string { return ctx }
+
+type MuteStage struct{}
+
+func (m *MuteStage) Exec(ctx string) string { return "" }
+
+type DedupStage struct{}
+
+func (d *DedupStage) Exec(ctx string) string { return ctx }
+""")
+        runner_dir = tmp_path / "runner"
+        runner_dir.mkdir()
+        runner_dir.joinpath("runner.go").write_text("""\
+package runner
+
+import "github.com/example/app/notify"
+
+func RunStage(s notify.Stage) string {
+    return s.Exec("start")
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        stage_exec = [s for s in result.symbols if s.name == "Stage.Exec"]
+        assert len(stage_exec) == 1
+
+        run_sym = next(
+            s for s in result.symbols if s.name == "RunStage"
+        )
+        call_edges = [
+            e for e in result.edges
+            if e.src == run_sym.id and "Exec" in e.dst
+        ]
+        assert len(call_edges) >= 1, (
+            f"RunStage should call s.Exec(), found: "
+            f"{[e.dst for e in result.edges if e.src == run_sym.id]}"
+        )
+
+        exec_edge = call_edges[0]
+        assert "unresolved" not in exec_edge.dst, (
+            f"s.Exec() should resolve to Stage.Exec, "
+            f"not unresolved. Got dst={exec_edge.dst}"
+        )
+        assert exec_edge.dst == stage_exec[0].id
+
 
 class TestGoConstructorTypeInference:
     """Tests for NewXxx() constructor return type inference in var_types.
