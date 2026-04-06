@@ -166,7 +166,7 @@ Before every commit: verify git identity (user.name/user.email), run tests with 
 
 ## Workflow (Trunk-Based XP)
 - **Primary Goal:** Keep `dev` green and deployable at all times.
-- **NEVER commit directly to `dev` or `main` -- always use a feature branch.** Direct pushes to protected branches are blocked by the pre-push hook. If you find yourself on `dev` with uncommitted work, stash it, create a feature branch, and unstash there.
+- **NEVER commit directly to `dev` or `main` -- always use a feature branch.** Direct pushes to protected branches are blocked by the pre-push hook. If you find yourself on `dev` with uncommitted work, stash it, create a feature branch, and unstash there. **Before restoring a stash** (pop or apply), always run `git checkout -- "$(git rev-parse --show-toplevel)/.ci/affected-tests.txt"` first — `smart-test` regenerates this tracked file on every test run, so it will have changed between stash and pop, causing a merge conflict that blocks the restore.
 - **TDD Protocol:**
   1. **Red:** Write a failing test first.
   2. **Green:** Write minimal code to pass the test.
