@@ -3099,13 +3099,21 @@ def _collect_important_files(
 
 
 def _format_frameworks(profile: RepoProfile, exclude_tests: bool = False) -> str:
-    """Format detected frameworks."""
-    if not profile.frameworks:
+    """Format detected frameworks.
+
+    Production frameworks are listed first, followed by dev/test-only
+    frameworks annotated with ``(dev)``.
+    """
+    dev_fws: list[str] = getattr(profile, "dev_frameworks", [])
+    all_frameworks = list(profile.frameworks) + list(dev_fws)
+    if not all_frameworks:
         return ""
 
+    dev_set = set(dev_fws)
     lines = [_section_header("Frameworks", exclude_tests), ""]
-    for framework in sorted(profile.frameworks):
-        lines.append(f"- {framework}")
+    for framework in sorted(all_frameworks):
+        suffix = " (dev)" if framework in dev_set else ""
+        lines.append(f"- {framework}{suffix}")
 
     return "\n".join(lines)
 

@@ -536,6 +536,23 @@ LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "groovy": GROOVY_FRAMEWORKS,
 }
 
+# Manifest patterns that differ from their actual import module name.
+# Maps the manifest pattern (as it appears in *_FRAMEWORKS values) to the
+# module name that appears in import edges.  Most packages import under their
+# own name; only the exceptions are listed here.
+IMPORT_OVERRIDES: dict[str, str] = {
+    # Python: PyPI package name -> import name
+    "pytorch": "torch",
+    "scikit-learn": "sklearn",
+    "grpcio": "grpc",
+    "llama-index": "llama_index",
+    "graphql-core": "graphql",
+    "farm-haystack": "haystack",
+    "Flask-AppBuilder": "flask_appbuilder",
+    "CherryPy": "cherrypy",
+    "SQLAlchemy": "sqlalchemy",
+}
+
 
 class FrameworkMode(Enum):
     """Mode for framework detection (ADR-0003).
@@ -646,6 +663,7 @@ class RepoProfile:
 
     languages: dict[str, LanguageStats] = field(default_factory=dict)
     frameworks: list[str] = field(default_factory=list)
+    dev_frameworks: list[str] = field(default_factory=list)
     framework_mode: str = "auto"  # none, all, explicit, auto
     requested_frameworks: list[str] = field(default_factory=list)
 
@@ -653,6 +671,7 @@ class RepoProfile:
         result = {
             "languages": {k: v.to_dict() for k, v in self.languages.items()},
             "frameworks": sorted(self.frameworks),
+            "dev_frameworks": sorted(self.dev_frameworks),
             "framework_mode": self.framework_mode,
         }
         # Only include requested_frameworks for explicit mode
@@ -670,6 +689,7 @@ class RepoProfile:
         return cls(
             languages=languages,
             frameworks=d.get("frameworks", []),
+            dev_frameworks=d.get("dev_frameworks", []),
             framework_mode=d.get("framework_mode", "auto"),
             requested_frameworks=d.get("requested_frameworks", []),
         )
@@ -1618,6 +1638,167 @@ def _detect_frameworks(repo_root: Path) -> list[str]:
     frameworks.extend(_detect_groovy_frameworks(repo_root))
     frameworks.extend(_detect_protobuf(repo_root))
     return frameworks
+
+
+def _import_modules_for_framework(framework: str) -> set[str]:
+    """Return the set of import module names that correspond to a framework.
+
+    For each manifest pattern in the framework's *_FRAMEWORKS dict entry,
+    applies IMPORT_OVERRIDES to translate PyPI/npm names that differ from
+    their actual import name, then lowercases for matching.
+
+    Args:
+        framework: Framework name (e.g., "pytorch", "flask").
+
+    Returns:
+        Set of lowercased import module names.
+    """
+    modules: set[str] = set()
+    for _lang, fw_dict in LANGUAGE_FRAMEWORKS.items():
+        if framework in fw_dict:
+            for pattern in fw_dict[framework]:
+                canonical = IMPORT_OVERRIDES.get(pattern, pattern)
+                modules.add(canonical.lower())
+    return modules
+
+
+def _framework_languages(framework: str) -> set[str]:
+    """Return the set of languages a framework belongs to.
+
+    Uses LANGUAGE_FRAMEWORKS to map framework name → {language, ...}.
+
+    Args:
+        framework: Framework name (e.g., "spring-boot", "flask").
+
+    Returns:
+        Set of language identifiers (e.g., {"python"}, {"java", "kotlin"}).
+    """
+    langs: set[str] = set()
+    for lang, fw_dict in LANGUAGE_FRAMEWORKS.items():
+        if framework in fw_dict:
+            langs.add(lang)
+    return langs
+
+
+def _module_matches(imported: str, pattern: str) -> bool:
+    """Check if an imported module name matches a framework pattern.
+
+    Uses prefix matching: ``starlette.responses`` matches pattern
+    ``starlette`` because the imported module starts with the pattern
+    followed by a dot.  Exact equality also matches.  Both strings are
+    compared lowercase.
+
+    Args:
+        imported: The imported module name (2nd colon-field of the edge dst).
+        pattern: The framework import module name (lowercased).
+
+    Returns:
+        True if the import matches the pattern.
+    """
+    imported_lower = imported.lower()
+    return imported_lower == pattern or imported_lower.startswith(pattern + ".")
+
+
+def refine_frameworks(
+    profile: "RepoProfile",
+    edges: list,
+    symbols: list,
+) -> "RepoProfile":
+    """Validate detected frameworks against actual import edges.
+
+    Cross-references each candidate framework against import edges in the
+    analysis results.  Frameworks imported only by test files (or not
+    imported at all) are moved from ``frameworks`` to ``dev_frameworks``.
+
+    Only applies in AUTO mode — explicit/all/none modes are returned
+    unchanged because the user specified the frameworks intentionally.
+
+    For languages that don't emit import edges (e.g., Java), frameworks
+    are kept as confirmed to avoid false negatives.
+
+    Args:
+        profile: The repo profile with candidate frameworks from manifest
+            scanning.
+        edges: All edges from the analysis (Symbol-level IR Edge objects).
+        symbols: All symbols from the analysis (used to extract source
+            file paths for test classification).
+
+    Returns:
+        A new RepoProfile with ``frameworks`` (production-confirmed) and
+        ``dev_frameworks`` (dev/test-only) populated.
+    """
+    from .paths import is_test_file
+
+    if profile.framework_mode != "auto":
+        return profile
+
+    if not profile.frameworks:
+        return profile
+
+    # Build symbol ID → file path lookup for source classification.
+    sym_path: dict[str, str] = {s.id: s.path for s in symbols}
+
+    # Collect import edges and track which languages have them.
+    # Each entry: (source_file_path, imported_module, language_of_import)
+    import_edge_langs: set[str] = set()
+    # Map: lowercased_module → list of source file paths
+    module_importers: dict[str, list[str]] = {}
+
+    for edge in edges:
+        if edge.edge_type != "imports":
+            continue
+        dst = edge.dst
+        parts = dst.split(":")
+        if len(parts) < 2:
+            continue  # pragma: no cover
+        lang = parts[0]
+        imported_module = parts[1]
+        import_edge_langs.add(lang)
+
+        # Resolve source file path from the symbol table, falling back
+        # to extracting it from the edge src ID.
+        src_path = sym_path.get(edge.src, "")
+        if not src_path and ":" in edge.src:
+            src_path = edge.src.split(":")[1] if len(edge.src.split(":")) > 1 else ""
+
+        module_importers.setdefault(imported_module.lower(), []).append(src_path)
+
+    confirmed: list[str] = []
+    dev_only: list[str] = []
+
+    for fw in profile.frameworks:
+        fw_langs = _framework_languages(fw)
+
+        # Fallback: if none of this framework's languages produced import
+        # edges, we can't validate — keep as confirmed.
+        if not fw_langs & import_edge_langs:
+            confirmed.append(fw)
+            continue
+
+        import_modules = _import_modules_for_framework(fw)
+        has_prod_import = False
+
+        for module_key, importers in module_importers.items():
+            if any(_module_matches(module_key, pat) for pat in import_modules):
+                for src_path in importers:
+                    if src_path and not is_test_file(src_path):
+                        has_prod_import = True
+                        break
+            if has_prod_import:
+                break
+
+        if has_prod_import:
+            confirmed.append(fw)
+        else:
+            dev_only.append(fw)
+
+    return RepoProfile(
+        languages=profile.languages,
+        frameworks=confirmed,
+        dev_frameworks=dev_only,
+        framework_mode=profile.framework_mode,
+        requested_frameworks=profile.requested_frameworks,
+    )
 
 
 def detect_profile(
