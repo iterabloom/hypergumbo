@@ -159,8 +159,21 @@ except Exception:
     fi
   fi
 
-  # Record current hash AFTER the check
+  # Record current hash AFTER the check — but throttle to prevent the
+  # circuit breaker from tripping during legitimate waits (e.g. background
+  # sub-agents producing bakeoff assessments).  Without this pause, 5 stop
+  # hook fires can accumulate in ~2.5 minutes, tripping the breaker while
+  # real work is still in flight.
   if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
+    PAUSE_SECS=150
+    echo "stop logic is forcing a pause for ${PAUSE_SECS} seconds..." >&2
+    while [[ "$PAUSE_SECS" -gt 0 ]]; do
+      sleep 10
+      PAUSE_SECS=$((PAUSE_SECS - 10))
+      if [[ "$PAUSE_SECS" -gt 0 ]]; then
+        echo "${PAUSE_SECS}..." >&2
+      fi
+    done
     echo "$CURRENT_HASH" >> "$HASH_FILE"
   fi
 fi
