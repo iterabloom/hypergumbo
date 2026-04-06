@@ -1388,25 +1388,12 @@ def test_cmd_slice_auto_entry_prefers_connected(tmp_path: Path, capsys) -> None:
     assert "2 outgoing edges" in out  # Should report edge count
 
 
-@pytest.mark.parametrize(
-    "node_count,expected_hops",
-    [
-        (50, 10),    # ≤200 → 10 hops
-        (200, 10),   # ≤200 → 10 hops
-        (201, 7),    # ≤500 → 7 hops
-        (500, 7),    # ≤500 → 7 hops
-        (501, 5),    # ≤2000 → 5 hops
-        (2000, 5),   # ≤2000 → 5 hops
-        (2001, 3),   # >2000 → 3 hops
-    ],
-)
-def test_cmd_slice_adaptive_hop_limit(
-    tmp_path: Path, capsys, node_count: int, expected_hops: int,
-) -> None:
-    """When max_hops is None (default), hop limit adapts to graph size."""
-    # Create a behavior map with the specified number of nodes
+def test_cmd_slice_no_hop_limit_when_unset(tmp_path: Path, capsys) -> None:
+    """When max_hops is None (default), no hop limit is imposed — max_files governs."""
+    # Build a 6-hop linear chain: func0 -> func1 -> ... -> func5
     nodes = []
-    for i in range(node_count):
+    edges = []
+    for i in range(6):
         nodes.append({
             "id": f"python:src/f{i}.py:1-2:func{i}:function",
             "name": f"func{i}",
@@ -1415,10 +1402,18 @@ def test_cmd_slice_adaptive_hop_limit(
             "path": f"src/f{i}.py",
             "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
         })
+    for i in range(5):
+        edges.append({
+            "id": f"e{i}",
+            "src": f"python:src/f{i}.py:1-2:func{i}:function",
+            "dst": f"python:src/f{i+1}.py:1-2:func{i+1}:function",
+            "type": "calls",
+            "confidence": 1.0,
+        })
     behavior_map = {
         "schema_version": "0.1.0",
         "nodes": nodes,
-        "edges": [],
+        "edges": edges,
     }
     (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
 
@@ -1427,8 +1422,8 @@ def test_cmd_slice_adaptive_hop_limit(
     args.entry = "func0"
     args.out = str(tmp_path / "slice.json")
     args.input = None
-    args.max_hops = None  # Trigger adaptive logic
-    args.max_files = 200
+    args.max_hops = None  # No user-specified limit
+    args.max_files = 100
     args.min_confidence = 0.0
     args.exclude_tests = False
     args.list_entries = False
@@ -1439,7 +1434,11 @@ def test_cmd_slice_adaptive_hop_limit(
     assert result == 0
 
     data = json.loads((tmp_path / "slice.json").read_text())
-    assert data["feature"]["query"]["hops"] == expected_hops
+    # All 6 nodes should be reachable (5 hops deep) — no hop_limit hit
+    assert len(data["feature"]["node_ids"]) == 6
+    assert "hop_limit" not in data["feature"]["limits_hit"]
+    # Query should report hops as None (no limit)
+    assert data["feature"]["query"]["hops"] is None
 
 
 def test_cmd_slice_reverse(tmp_path: Path, capsys) -> None:
@@ -3033,6 +3032,65 @@ def test_cmd_slice_default_output_includes_entry_name(tmp_path: Path, capsys) ->
     # File should be in the cache directory and reported to user
     assert "slice.my_func.json" in out
     assert ".cache/hypergumbo/" in out
+
+
+def test_cmd_slice_reverse_uses_distinct_filename(tmp_path: Path, capsys) -> None:
+    """Test that --reverse slices use a different default filename than forward slices."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-2:my_func:function",
+                "name": "my_func",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
+            }
+        ],
+        "edges": [],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    # Run forward slice
+    args_fwd = FakeArgs()
+    args_fwd.path = str(tmp_path)
+    args_fwd.entry = "my_func"
+    args_fwd.out = "slice.json"
+    args_fwd.input = None
+    args_fwd.max_hops = 3
+    args_fwd.max_files = 20
+    args_fwd.min_confidence = 0.0
+    args_fwd.exclude_tests = False
+    args_fwd.list_entries = False
+    args_fwd.reverse = False
+    args_fwd.language = None
+
+    result_fwd = cmd_slice(args_fwd)
+    assert result_fwd == 0
+    out_fwd, _ = capsys.readouterr()
+
+    # Run reverse slice
+    args_rev = FakeArgs()
+    args_rev.path = str(tmp_path)
+    args_rev.entry = "my_func"
+    args_rev.out = "slice.json"
+    args_rev.input = None
+    args_rev.max_hops = 3
+    args_rev.max_files = 20
+    args_rev.min_confidence = 0.0
+    args_rev.exclude_tests = False
+    args_rev.list_entries = False
+    args_rev.reverse = True
+    args_rev.language = None
+
+    result_rev = cmd_slice(args_rev)
+    assert result_rev == 0
+    out_rev, _ = capsys.readouterr()
+
+    # The filenames must differ so they don't overwrite each other
+    assert "slice.my_func.json" in out_fwd
+    assert "slice.my_func.reverse.json" in out_rev
 
 
 def test_cmd_slice_files_mode(tmp_path: Path, capsys) -> None:
