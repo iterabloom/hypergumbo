@@ -142,6 +142,39 @@ def _get_class_name_from_method(method_symbol: Symbol) -> str | None:
     return None
 
 
+def _resolve_method_class_id(
+    method_sym: Symbol,
+    class_ids_by_name: dict[str, list[str]],
+    class_symbols: dict[str, Symbol],
+) -> str | None:
+    """Resolve a method symbol to its actual containing class ID.
+
+    When multiple classes share the same short name (common in Go where
+    each package can define a type named ``Notifier``), this picks the
+    class in the same file as the method.  For languages where methods
+    and their class are defined in the same file (Python, Java, Ruby,
+    Go — always same package, usually same file), same-file matching
+    is the correct disambiguation.
+
+    Falls back to the first candidate if no same-file class exists, to
+    preserve behavior for languages that allow methods in different
+    files than their class.
+    """
+    class_name = _get_class_name_from_method(method_sym)
+    if not class_name:
+        return None
+    candidate_ids = class_ids_by_name.get(class_name, [])
+    if not candidate_ids:
+        return None
+    # Prefer a class in the same file as the method
+    for cid in candidate_ids:
+        csym = class_symbols.get(cid)
+        if csym and csym.path == method_sym.path:
+            return cid
+    # Fallback: first candidate (historical behavior for cross-file cases)
+    return candidate_ids[0]
+
+
 @dataclass
 class _TypeHierarchyIndex:
     """Pre-built indexes for fast type hierarchy resolution.
@@ -149,14 +182,21 @@ class _TypeHierarchyIndex:
     Built once in link_type_hierarchy and shared across all
     find_implementing_methods calls. Avoids rebuilding symbol_by_id
     and scanning all_symbols on every invocation.
+
+    Methods are indexed by their resolved class ID (not name), so that
+    multiple classes sharing a short name do not collide.
     """
 
     symbol_by_id: dict[str, Symbol]
-    # short_method_name -> [(class_name, Symbol)]
+    # short_method_name -> [(class_id, Symbol)]
     methods_by_short_name: dict[str, list[tuple[str, Symbol]]]
 
     @staticmethod
-    def build(all_symbols: list[Symbol]) -> _TypeHierarchyIndex:
+    def build(
+        all_symbols: list[Symbol],
+        class_ids_by_name: dict[str, list[str]],
+        class_symbols: dict[str, Symbol],
+    ) -> _TypeHierarchyIndex:
         """Build indexes from the full symbol list."""
         symbol_by_id = {s.id: s for s in all_symbols}
         methods_by_short_name: dict[str, list[tuple[str, Symbol]]] = {}
@@ -164,10 +204,12 @@ class _TypeHierarchyIndex:
             if sym.kind != "method":
                 continue
             short_name = _get_method_short_name(sym.name)
-            class_name = _get_class_name_from_method(sym)
-            if class_name:
+            class_id = _resolve_method_class_id(
+                sym, class_ids_by_name, class_symbols,
+            )
+            if class_id is not None:
                 methods_by_short_name.setdefault(short_name, []).append(
-                    (class_name, sym)
+                    (class_id, sym)
                 )
         return _TypeHierarchyIndex(
             symbol_by_id=symbol_by_id,
@@ -220,18 +262,16 @@ def _find_implementing_methods_indexed(
     child_class_ids: list[str],
     index: _TypeHierarchyIndex,
 ) -> list[Symbol]:
-    """Find overriding methods using pre-built indexes."""
-    # Resolve child class IDs to names
-    child_class_names = set()
-    for child_id in child_class_ids:
-        child_sym = index.symbol_by_id.get(child_id)
-        if child_sym:
-            child_class_names.add(child_sym.name)
+    """Find overriding methods using pre-built indexes.
 
-    # Look up methods by short name, filter by child class membership
+    Filters by class *ID*, not class name.  This prevents false positives
+    when multiple classes share the same short name — e.g., Go packages
+    each defining a struct named ``Notifier`` must not cross-dispatch.
+    """
+    child_id_set = set(child_class_ids)
     candidates = index.methods_by_short_name.get(method_short_name, [])
-    return [sym for class_name, sym in candidates
-            if class_name in child_class_names]
+    return [sym for class_id, sym in candidates
+            if class_id in child_id_set]
 
 
 def _find_implementing_methods_scan(
@@ -292,30 +332,37 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
         # No inheritance relationships, nothing to do
         return LinkerResult(run=run)
 
-    # Build index of class/interface symbols by ID and by name
+    # Build index of class/interface/struct/trait symbols by ID and
+    # multi-valued by name.  Name collisions are common in Go (multiple
+    # packages defining the same short type name like ``Notifier``), so we
+    # track all candidates and disambiguate methods by file path.
+    # Struct and trait are included to match the inheritance linker's
+    # broader definition of "type with methods".
     class_symbols = {
         s.id: s for s in ctx.symbols
-        if s.kind in ("class", "interface")
+        if s.kind in ("class", "interface", "struct", "trait")
     }
-    class_id_by_name: dict[str, str] = {}
+    class_ids_by_name: dict[str, list[str]] = defaultdict(list)
     for cid, csym in class_symbols.items():
-        # First match wins — consistent with the original linear scan
-        if csym.name not in class_id_by_name:
-            class_id_by_name[csym.name] = cid
+        class_ids_by_name[csym.name].append(cid)
 
-    # Build index of methods by their containing class (O(methods) via dict lookup)
+    # Build index of methods by their actual containing class ID.
+    # Each method is assigned to the class in the same file (preferred),
+    # falling back to the first candidate with a matching name.
     methods_by_class: dict[str, list[Symbol]] = defaultdict(list)
     for sym in ctx.symbols:
         if sym.kind != "method":
             continue
-        class_name = _get_class_name_from_method(sym)
-        if class_name:
-            class_id = class_id_by_name.get(class_name)
-            if class_id:
-                methods_by_class[class_id].append(sym)
+        class_id = _resolve_method_class_id(
+            sym, class_ids_by_name, class_symbols,
+        )
+        if class_id is not None:
+            methods_by_class[class_id].append(sym)
 
     # Build shared index once for find_implementing_methods
-    hierarchy_index = _TypeHierarchyIndex.build(ctx.symbols)
+    hierarchy_index = _TypeHierarchyIndex.build(
+        ctx.symbols, class_ids_by_name, class_symbols,
+    )
 
     # Create dispatches_to edges
     new_edges: list[Edge] = []
@@ -347,6 +394,9 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
             base_confidence = 0.85 / math.sqrt(max(1, num_overrides))
 
             for override in overrides:
+                # Skip self-dispatch: a method cannot dispatch to itself
+                if override.id == parent_method.id:
+                    continue
                 # Avoid duplicate edges (defensive - find_implementing_methods
                 # uses a set, so duplicates are rare)
                 pair = (parent_method.id, override.id)
