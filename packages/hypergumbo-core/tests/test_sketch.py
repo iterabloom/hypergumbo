@@ -6129,6 +6129,36 @@ class TestAnalyzeTestFiles:
         assert result.summary is not None
         assert "1 test file" in result.summary
 
+    def test_rust_pattern_in_python_file_no_false_positive(self, tmp_path: Path) -> None:
+        """Rust #[test] in a Python test fixture must not trigger cargo test detection."""
+        (tmp_path / "test_rust_fixtures.py").write_text(
+            'RUST_CODE = """\n#[test]\nfn test_add() { assert_eq!(1+1, 2); }\n"""\n'
+        )
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "cargo test" not in result.summary
+        assert "cargo test" not in result.frameworks
+
+    def test_rust_pattern_in_yaml_file_no_false_positive(self, tmp_path: Path) -> None:
+        """Rust #[test] in a YAML pattern file must not trigger cargo test detection."""
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "test-frameworks.yaml").write_text(
+            "# Rust test detection\npattern: '#[test]'\n"
+        )
+        result = _analyze_test_files(tmp_path)
+        assert "cargo test" not in result.frameworks
+
+    def test_rust_test_attribute_in_rs_file(self, tmp_path: Path) -> None:
+        """Rust #[test] in an actual .rs test file should detect cargo test."""
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "test_example.rs").write_text(
+            "#[test]\nfn test_add() { assert_eq!(1+1, 2); }\n"
+        )
+        result = _analyze_test_files(tmp_path)
+        assert "cargo test" in result.frameworks
+
     def test_counts_loc_correctly(self, tmp_path: Path) -> None:
         """Counts non-empty lines in test files."""
         (tmp_path / "test_example.py").write_text(

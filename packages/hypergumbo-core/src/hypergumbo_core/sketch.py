@@ -2379,7 +2379,10 @@ def _analyze_test_files(
     for test_file in test_file_paths[:sample_size]:
         try:
             content = test_file.read_text(encoding="utf-8", errors="replace")[:5000]
-            for pattern, framework in TEST_FRAMEWORK_PATTERNS:
+            suffix = test_file.suffix
+            for pattern, framework, extensions in TEST_FRAMEWORK_PATTERNS:
+                if extensions is not None and suffix not in extensions:
+                    continue
                 if re.search(pattern, content):
                     frameworks_found.add(framework)
         except OSError:  # pragma: no cover
@@ -4417,27 +4420,31 @@ TEST_FILE_PATTERNS = [
     "*.bats",
 ]
 
-# Test framework detection: (import/require pattern, framework name)
-TEST_FRAMEWORK_PATTERNS = [
+# Test framework detection: (pattern, framework_name, extensions)
+# The extensions tuple limits which files the pattern fires on, preventing
+# false positives when fixture data or YAML catalogs contain literal syntax
+# from another language (e.g., Rust ``#[test]`` in a Python test file).
+# Patterns whose syntax is unambiguous across languages use None (match any file).
+TEST_FRAMEWORK_PATTERNS: list[tuple[str, str, tuple[str, ...] | None]] = [
     # Python
-    (r"import pytest|from pytest", "pytest"),
-    (r"import unittest|from unittest", "unittest"),
-    (r"from hypothesis import", "hypothesis"),
+    (r"import pytest|from pytest", "pytest", None),
+    (r"import unittest|from unittest", "unittest", None),
+    (r"from hypothesis import", "hypothesis", None),
     # JavaScript
-    (r"from ['\"]jest['\"]|require\(['\"]jest['\"]", "jest"),
-    (r"from ['\"]vitest['\"]|import.*vitest", "vitest"),
-    (r"from ['\"]mocha['\"]|require\(['\"]mocha['\"]", "mocha"),
-    (r"import.*@testing-library", "testing-library"),
+    (r"from ['\"]jest['\"]|require\(['\"]jest['\"]", "jest", None),
+    (r"from ['\"]vitest['\"]|import.*vitest", "vitest", None),
+    (r"from ['\"]mocha['\"]|require\(['\"]mocha['\"]", "mocha", None),
+    (r"import.*@testing-library", "testing-library", None),
     # Go (built-in testing package)
-    (r'import.*"testing"', "go test"),
+    (r'import.*"testing"', "go test", None),
     # Ruby
-    (r"require ['\"]rspec['\"]|RSpec\.describe", "rspec"),
-    (r"require ['\"]minitest['\"]", "minitest"),
-    # Rust
-    (r"#\[cfg\(test\)\]|#\[test\]", "cargo test"),
+    (r"require ['\"]rspec['\"]|RSpec\.describe", "rspec", None),
+    (r"require ['\"]minitest['\"]", "minitest", None),
+    # Rust — short attribute syntax appears as fixture data in other languages
+    (r"#\[cfg\(test\)\]|#\[test\]", "cargo test", (".rs",)),
     # Java
-    (r"import org\.junit", "junit"),
-    (r"import org\.testng", "testng"),
+    (r"import org\.junit", "junit", None),
+    (r"import org\.testng", "testng", None),
 ]
 
 

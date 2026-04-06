@@ -19,6 +19,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Profile LOC always zero in behavior map**: `hypergumbo run` now populates per-language LOC in the profile. Previously, LOC was deferred and only backfilled in the sketch path, so `profile.languages.*.loc` was always 0 in JSON output. LOC counting is now consolidated in `_detect_languages` as the single source of truth, eliminating a redundant counting codepath in `_analyze_test_files`.
 - **Slice reverse filename collision**: `hypergumbo slice --entry X` and `--entry X --reverse` no longer silently overwrite each other. Reverse slices now write to `slice.<name>.reverse.json`.
 - **Slice hop limit removed**: The adaptive hop limit (3-10 based on node count) has been removed. `max_files` (default 100) and hub pruning (threshold 50) are sufficient to bound slice size. Previously, large graphs (>2000 nodes) were capped at 3 hops, causing forward slices to utilize only 17% of the file budget. The `--max-hops` flag is still available for explicit user control.
+- **False positive `cargo test` in sketch test framework detection**: Test framework patterns with short, ambiguous syntax (e.g., Rust `#[test]`) are now scoped to their language's file extensions. Previously, the sketch scanned all test files with all patterns regardless of language, causing a Python test file or YAML catalog containing a literal `#[test]` string to falsely report `cargo test` as a detected test framework.
 
 ## [2.5.1] - 2026-04-05
 
