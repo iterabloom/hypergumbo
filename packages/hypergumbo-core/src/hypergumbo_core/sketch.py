@@ -2290,76 +2290,32 @@ def _estimate_file_block_tokens(rel_path: str, content: str) -> int:
 
 @dataclass
 class _TestAnalysis:
-    """Cached results from a single source-file walk.
+    """Cached results from a test-file analysis walk.
 
-    Consolidates data that was previously computed by separate walks in
-    ``_count_test_loc``, ``_detect_test_summary``, and the LOC counting
-    portion of ``profile._detect_languages`` into a single directory
-    traversal.
+    Walks all source files to identify test files, then reads only the
+    test files to count LOC and detect test frameworks.  Per-language
+    LOC is computed separately by ``profile._detect_languages``.
     """
 
     test_loc: int = 0
     test_files: int = 0
     summary: Optional[str] = None
     frameworks: set[str] = None  # type: ignore[assignment]
-    language_loc: dict[str, int] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.frameworks is None:  # pragma: no cover - defensive default
             self.frameworks = set()
-        if self.language_loc is None:  # pragma: no cover - defensive default
-            self.language_loc = {}
-
-
-def _build_ext_to_lang_map() -> dict[str, str]:
-    """Build a mapping from file suffix to language name.
-
-    Uses LANGUAGE_EXTENSIONS from taxonomy. For glob patterns like "*.py",
-    maps ".py" → "python". Non-extension patterns (e.g., "Makefile") are
-    mapped as-is.
-    """
-    from .taxonomy import LANGUAGE_EXTENSIONS
-
-    ext_map: dict[str, str] = {}
-    for lang, patterns in LANGUAGE_EXTENSIONS.items():
-        for pat in patterns:
-            if pat.startswith("*."):
-                ext_map[pat[1:]] = lang  # "*.py" → ".py" → "python"
-            elif pat.startswith("*"):  # pragma: no cover - no current patterns match
-                ext_map[pat[1:]] = lang  # "*_test.go" → "_test.go" → lang
-            else:
-                ext_map[pat] = lang  # "Makefile" → lang
-    return ext_map
-
-
-def _classify_file_language(path: Path, ext_map: dict[str, str]) -> Optional[str]:
-    """Classify a file into a language using the extension map.
-
-    Tries longest-suffix-first matching so ".d.ts" beats ".ts".
-    """
-    name = path.name
-    # Try progressively shorter suffixes
-    for i in range(len(name)):
-        suffix = name[i:]
-        if suffix in ext_map:
-            return ext_map[suffix]
-    return None
 
 
 def _analyze_test_files(
     repo_root: Path,
     extra_excludes: Optional[List[str]] = None,
 ) -> _TestAnalysis:
-    """Single-walk analysis of all source files.
+    """Walk source files to collect test-file metrics.
 
-    Replaces the separate walks previously done by ``_count_test_loc``
-    (test LOC counting), ``_detect_test_summary`` (framework detection),
-    and the LOC counting in ``profile._detect_languages``.
-
-    Walks LANGUAGE_EXTENSIONS + test-only extensions once.  For every file:
-    * counts non-empty lines (per-language LOC)
-    * if it is a test file, accumulates test LOC and collects the path for
-      framework detection
+    Identifies test files by path pattern, reads only the test files to
+    count LOC and detect test frameworks.  Per-language LOC is computed
+    separately by ``profile._detect_languages(count_loc=True)``.
 
     After the walk it samples up to 20 test files and scans their first
     5 000 chars for test-framework import patterns.
@@ -2370,7 +2326,7 @@ def _analyze_test_files(
 
     Returns:
         ``_TestAnalysis`` with test_loc, test_files, summary string,
-        detected frameworks, and per-language LOC.
+        and detected frameworks.
     """
     import re
     from .taxonomy import LANGUAGE_EXTENSIONS
@@ -2386,12 +2342,8 @@ def _analyze_test_files(
     all_patterns.add("*.bats")  # Bash Automated Testing System (test-only)
     patterns = list(all_patterns)
 
-    # Build extension → language map for per-language LOC classification
-    ext_map = _build_ext_to_lang_map()
-
     test_loc = 0
     test_file_paths: list[Path] = []
-    language_loc: dict[str, int] = {}
     seen: set[Path] = set()
 
     for f in find_files(repo_root, patterns, excludes=excludes):
@@ -2401,7 +2353,8 @@ def _analyze_test_files(
         seen.add(f)
 
         rel_path = str(f.relative_to(repo_root))
-        is_test = _is_test_path(rel_path)
+        if not _is_test_path(rel_path):
+            continue
 
         try:
             content = f.read_text(encoding="utf-8", errors="ignore")
@@ -2409,21 +2362,15 @@ def _analyze_test_files(
         except OSError:  # pragma: no cover
             continue
 
-        # Accumulate per-language LOC
-        lang = _classify_file_language(f, ext_map)
-        if lang is not None:
-            language_loc[lang] = language_loc.get(lang, 0) + file_loc
-
-        if is_test:
-            test_file_paths.append(f)
-            test_loc += file_loc
+        test_file_paths.append(f)
+        test_loc += file_loc
 
     test_files = len(test_file_paths)
 
     if not test_file_paths:
         return _TestAnalysis(
             test_loc=0, test_files=0, summary=None,
-            frameworks=set(), language_loc=language_loc,
+            frameworks=set(),
         )
 
     # Detect frameworks from a sample of test files
@@ -2451,7 +2398,6 @@ def _analyze_test_files(
         test_files=test_files,
         summary=summary,
         frameworks=frameworks_found,
-        language_loc=language_loc,
     )
 
 
@@ -5741,7 +5687,7 @@ def generate_sketch(
         profile = RepoProfile.from_dict(cached_results["profile"])
     else:  # pragma: no cover - fallback when auto-discovery/auto-run fails
         _log(f"Detecting profile for {repo_root.name}...")
-        profile = detect_profile(repo_root, extra_excludes=extra_excludes)
+        profile = detect_profile(repo_root, extra_excludes=extra_excludes, count_loc=True)
 
     _log(f"Profile ready in {time.time() - t0:.1f}s")
     prog.complete_phase("profile")
@@ -5753,15 +5699,9 @@ def generate_sketch(
     # Pre-compute test analysis once (shared by Overview and Tests sections).
     # Previously _count_test_loc and _detect_test_summary each did their own
     # full directory walk; this consolidates both into a single pass.
-    # Also computes per-language LOC which we backfill into the profile
-    # when the profile was freshly detected (loc=0).  Cached profiles
-    # already carry their own LOC data and should not be overwritten.
+    # LOC is now computed by detect_profile(count_loc=True) above, so no
+    # backfill is needed here.
     test_analysis = _analyze_test_files(repo_root, extra_excludes)
-    profile_has_loc = any(s.loc > 0 for s in profile.languages.values())
-    if not profile_has_loc:
-        for lang, loc in test_analysis.language_loc.items():
-            if lang in profile.languages:
-                profile.languages[lang].loc = loc
 
     # Build base sections (always included)
     sections = []
