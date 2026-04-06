@@ -477,15 +477,24 @@ except Exception:
 
 # ------------------------------------------------------------------
 # fetch_job_log HEAD_SHA [JOB_NAME]
-#   Fetch plain-text log for a CI job. Uses the web route with
-#   /attempt/1/logs (the REST API /actions/jobs endpoint returns 404
-#   on Codeberg's Forgejo v14).
+#   Fetch plain-text log for a CI job. Uses the web route; the REST API
+#   /actions/jobs endpoint returns 404 on Codeberg's Forgejo v14.
+#
+#   The log URL path depends on the Forgejo version:
+#   - Codeberg (Forgejo v14+) requires /attempt/1/logs
+#   - Self-hosted older Forgejo uses /logs directly
+#   We detect failover state via FAILOVER_ACTIVE (set by
+#   apply_failover_overrides) to pick the right path.
 #
 #   Strategy (2 API calls + 1 web route):
 #     1. GET /actions/runs?head_sha=<full-sha> → index_in_repo (run number)
 #     2. GET /{owner}/{repo}/actions/runs/{run_number}/jobs/0 (HTML)
 #        → parse embedded JSON for job names/indices
-#     3. GET /{owner}/{repo}/actions/runs/{run_number}/jobs/{idx}/attempt/1/logs
+#     3. GET /{owner}/{repo}/actions/runs/{run_number}/jobs/{idx}/<path>
+#        where <path> is "attempt/1/logs" on Codeberg, "logs" on self-hosted
+#
+#   Checks HTTP status explicitly so a 404 body is not printed as if it
+#   were log content.
 #
 #   Prints log to stdout. Returns 1 if not found.
 # ------------------------------------------------------------------
@@ -536,10 +545,33 @@ fetch_job_log() {
 
 	echo "Fetching log for job '$job_name' (run #$run_number, index $job_index)..." >&2
 
-	# Step 3: Download log via web route
-	curl -sSL --http1.1 --max-time 60 \
+	# Step 3: Download log via web route.
+	# Pick URL path by Forgejo version: self-hosted (failover active) uses
+	# /logs directly; Codeberg Forgejo v14+ requires /attempt/1/logs.
+	local log_path="attempt/1/logs"
+	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
+		log_path="logs"
+	fi
+
+	# Use -w to capture HTTP status so a 404 body ("Not found.") is not
+	# silently printed as if it were log content.
+	local tmp_log http_code
+	tmp_log=$(mktemp)
+	http_code=$(curl -sSL --http1.1 --max-time 60 \
 		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
-		"$web_base/actions/runs/$run_number/jobs/$job_index/logs" 2>/dev/null
+		-o "$tmp_log" \
+		-w "%{http_code}" \
+		"$web_base/actions/runs/$run_number/jobs/$job_index/$log_path" \
+		2>/dev/null) || http_code="000"
+
+	if [[ "$http_code" != "200" ]]; then
+		rm -f "$tmp_log"
+		echo "Log fetch failed: HTTP $http_code for /actions/runs/$run_number/jobs/$job_index/$log_path" >&2
+		return 1
+	fi
+
+	cat "$tmp_log"
+	rm -f "$tmp_log"
 }
 
 # ------------------------------------------------------------------
