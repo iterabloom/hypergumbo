@@ -4777,11 +4777,10 @@ def run_behavior_map(
     file_index = FileIndex.build(repo_root, excludes=combined_excludes)
     set_file_index(file_index)
 
-    # Detect repo profile (languages, frameworks)
-    # LOC is set to 0 here (avoids reading every file).
-    # generate_sketch backfills LOC from _analyze_test_files when it runs.
+    # Detect repo profile (languages, frameworks) with LOC counting.
+    # Analyzers will read the same files shortly, so OS cache is warm.
     show_progress("Detecting profile", 5)
-    profile = detect_profile(repo_root, extra_excludes=extra_excludes, frameworks=frameworks)
+    profile = detect_profile(repo_root, extra_excludes=extra_excludes, frameworks=frameworks, count_loc=True)
     behavior_map["profile"] = profile.to_dict()
 
     # Detect internal package roots for supply chain classification

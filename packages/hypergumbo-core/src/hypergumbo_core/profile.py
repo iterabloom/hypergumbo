@@ -706,7 +706,7 @@ def _count_loc(file_path: Path, max_file_size: int | None = None) -> int:
     try:
         if max_file_size is not None and file_path.stat().st_size > max_file_size:
             return 0
-        content = file_path.read_text(errors="ignore")
+        content = file_path.read_text(encoding="utf-8", errors="ignore")
         return sum(1 for line in content.splitlines() if line.strip())
     except (OSError, IOError):  # pragma: no cover - defensive
         return 0
@@ -715,16 +715,19 @@ def _count_loc(file_path: Path, max_file_size: int | None = None) -> int:
 def _detect_languages(
     repo_root: Path,
     extra_excludes: list[str] | None = None,
+    count_loc: bool = False,
 ) -> dict[str, LanguageStats]:
     """Detect languages by scanning file extensions.
 
-    Returns file counts per language.  LOC is set to zero here and
-    populated lazily later (by ``_analyze_test_files`` in sketch.py)
-    to avoid reading every source file during profile detection.
+    Returns file counts and optionally LOC per language.  When
+    ``count_loc`` is False (the default), LOC is set to zero for speed.
+    When True, each discovered file is read to count non-empty lines
+    via ``_count_loc``.
 
     Args:
         repo_root: Path to the repository root.
         extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
+        count_loc: If True, read files and compute LOC per language.
     """
     languages: dict[str, LanguageStats] = {}
 
@@ -738,7 +741,8 @@ def _detect_languages(
         # Use a set to deduplicate files (e.g., *.ts and *.d.ts both match foo.d.ts)
         files = set(find_files(repo_root, patterns, excludes=excludes))
         if files:
-            languages[lang] = LanguageStats(files=len(files), loc=0)
+            loc = sum(_count_loc(f) for f in files) if count_loc else 0
+            languages[lang] = LanguageStats(files=len(files), loc=loc)
 
     return languages
 
@@ -1805,6 +1809,7 @@ def detect_profile(
     repo_root: Path,
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
+    count_loc: bool = False,
 ) -> RepoProfile:
     """Detect the profile of a repository.
 
@@ -1816,11 +1821,12 @@ def detect_profile(
             - "none": Skip framework detection
             - "all": Check all frameworks for detected languages
             - "fastapi,celery": Only check specified frameworks
+        count_loc: If True, compute LOC per language (reads all source files).
 
     Returns a RepoProfile with detected languages and frameworks.
     """
     languages = _detect_languages(
-        repo_root, extra_excludes=extra_excludes,
+        repo_root, extra_excludes=extra_excludes, count_loc=count_loc,
     )
     detected_languages = set(languages.keys())
 

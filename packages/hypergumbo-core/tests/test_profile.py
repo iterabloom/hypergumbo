@@ -32,8 +32,8 @@ def test_detects_python_language(tmp_path: Path) -> None:
     assert "languages" in data["profile"]
     assert "python" in data["profile"]["languages"]
     assert data["profile"]["languages"]["python"]["files"] == 2
-    # LOC is deferred to sketch generation (not computed during profile detection)
-    assert data["profile"]["languages"]["python"]["loc"] == 0
+    # run_behavior_map uses count_loc=True so LOC is populated
+    assert data["profile"]["languages"]["python"]["loc"] == 4  # 2 lines per file
 
 
 def test_detects_javascript_language(tmp_path: Path) -> None:
@@ -243,7 +243,7 @@ def test_profile_empty_when_no_source_files(tmp_path: Path) -> None:
 
 
 def test_counts_lines_of_code_correctly(tmp_path: Path) -> None:
-    """LOC is deferred: behavior map has loc=0, sketch populates it."""
+    """Behavior map has correct LOC (non-empty lines only)."""
     (tmp_path / "app.py").write_text("def main():\n    # comment\n    pass\n\n\n")
 
     out_path = tmp_path / "out.json"
@@ -251,8 +251,8 @@ def test_counts_lines_of_code_correctly(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    # LOC is deferred to sketch generation — profile detection only counts files
-    assert data["profile"]["languages"]["python"]["loc"] == 0
+    # LOC counts non-empty lines: "def main:", "# comment", "pass" = 3
+    assert data["profile"]["languages"]["python"]["loc"] == 3
     assert data["profile"]["languages"]["python"]["files"] == 1
 
 
@@ -1430,18 +1430,38 @@ def test_count_loc_with_max_file_size(tmp_path: Path) -> None:
     assert _count_loc(large_file, max_file_size=10000) == 500
 
 
-def test_detect_languages_defers_loc_counting(tmp_path: Path) -> None:
-    """_detect_languages returns loc=0; LOC is computed lazily later."""
+def test_detect_languages_loc_counting(tmp_path: Path) -> None:
+    """_detect_languages counts LOC when count_loc=True, returns 0 otherwise."""
     from hypergumbo_core.profile import _detect_languages
 
     # Create Python files
     (tmp_path / "small.py").write_text("print('hi')\n")
     (tmp_path / "large.py").write_text("x = 1\n" * 500)
 
+    # Default: no LOC counting
     langs = _detect_languages(tmp_path)
     assert langs["python"].files == 2
-    # LOC counting is deferred to _analyze_test_files in sketch.py
     assert langs["python"].loc == 0
+
+    # With count_loc=True: LOC is computed
+    langs = _detect_languages(tmp_path, count_loc=True)
+    assert langs["python"].files == 2
+    assert langs["python"].loc == 501  # 1 + 500
+
+
+def test_detect_profile_count_loc(tmp_path: Path) -> None:
+    """detect_profile passes count_loc through to _detect_languages."""
+    from hypergumbo_core.profile import detect_profile
+
+    (tmp_path / "app.py").write_text("def main():\n    print('hello')\n")
+
+    # Default: loc=0
+    profile = detect_profile(tmp_path)
+    assert profile.languages["python"].loc == 0
+
+    # With count_loc=True: loc is computed
+    profile = detect_profile(tmp_path, count_loc=True)
+    assert profile.languages["python"].loc == 2
 
 
 # Recursive manifest scanning tests
