@@ -483,6 +483,125 @@ class TestLinkTypeHierarchy:
             assert edge.src == parent_method.id
             assert edge.edge_type == "dispatches_to"
 
+    def test_concrete_types_with_same_name_do_not_cross_dispatch(
+        self,
+    ) -> None:
+        """Structs in different files sharing a type name don't cross-dispatch.
+
+        Go regression: multiple packages can define a struct named 'Notifier',
+        each with a 'Notify()' method.  The structural interface matcher
+        creates 'implements' edges from each concrete Notifier to a single
+        interface (e.g., notify.Notifier).  The type hierarchy linker must
+        create dispatches_to edges from the interface method to each concrete
+        method — but must NOT create edges between concrete methods.
+
+        Previously, ``class_id_by_name`` collapsed all classes with the same
+        name to a single ID (first-match-wins), so ``methods_by_class`` for
+        the interface ID incorrectly included every concrete struct's method.
+        Then each concrete method was treated as a 'parent method' of the
+        interface, and ``_find_implementing_methods_indexed`` filtered by
+        class *name* (not ID), causing every concrete method to be emitted
+        as an override of every other concrete method.  For N implementers,
+        this created O(N²) false concrete→concrete edges.
+        """
+        # Interface: notify.Notifier at notify/notify.go
+        iface = Symbol(
+            id="go:/app/notify/notify.go:60-70:Notifier:interface",
+            name="Notifier",
+            kind="interface",
+            language="go",
+            path="/app/notify/notify.go",
+            span=Span(start_line=60, end_line=70, start_col=0, end_col=1),
+            origin="go-v1",
+            origin_run_id="test",
+        )
+        iface_method = Symbol(
+            id="go:/app/notify/notify.go:62-62:Notifier.Notify:method",
+            name="Notifier.Notify",
+            kind="method",
+            language="go",
+            path="/app/notify/notify.go",
+            span=Span(start_line=62, end_line=62, start_col=4, end_col=50),
+            origin="go-v1",
+            origin_run_id="test",
+        )
+
+        # 3 concrete Notifier structs in different packages, all named
+        # "Notifier" within their package, each with a Notify method.
+        concretes = []
+        concrete_methods = []
+        for pkg in ("discord", "slack", "webhook"):
+            struct = Symbol(
+                id=f"go:/app/notify/{pkg}/{pkg}.go:10-20:Notifier:struct",
+                name="Notifier",
+                kind="struct",
+                language="go",
+                path=f"/app/notify/{pkg}/{pkg}.go",
+                span=Span(
+                    start_line=10, end_line=20, start_col=0, end_col=1,
+                ),
+                origin="go-v1",
+                origin_run_id="test",
+            )
+            method = Symbol(
+                id=f"go:/app/notify/{pkg}/{pkg}.go:30-40:Notifier.Notify:method",
+                name="Notifier.Notify",
+                kind="method",
+                language="go",
+                path=f"/app/notify/{pkg}/{pkg}.go",
+                span=Span(
+                    start_line=30, end_line=40, start_col=0, end_col=1,
+                ),
+                origin="go-v1",
+                origin_run_id="test",
+            )
+            concretes.append(struct)
+            concrete_methods.append(method)
+
+        # Each concrete struct implements the interface
+        implements_edges = [
+            Edge.create(
+                src=c.id,
+                dst=iface.id,
+                edge_type="implements",
+                line=10,
+                origin="go-v1",
+                evidence_type="ast_implements",
+            )
+            for c in concretes
+        ]
+
+        symbols = [iface, iface_method] + concretes + concrete_methods
+        ctx = LinkerContext(
+            repo_root="/app",
+            symbols=symbols,
+            edges=implements_edges,
+        )
+
+        result = link_type_hierarchy(ctx)
+
+        # Expected: 3 dispatches_to edges (interface → each concrete)
+        # Buggy: 3 correct + 6 concrete→concrete false positives (9 total)
+        iface_to_concrete = [
+            e for e in result.edges
+            if e.src == iface_method.id and e.edge_type == "dispatches_to"
+        ]
+        concrete_to_concrete = [
+            e for e in result.edges
+            if e.src in {m.id for m in concrete_methods}
+            and e.edge_type == "dispatches_to"
+        ]
+
+        assert len(iface_to_concrete) == 3, (
+            f"Expected 3 interface→concrete edges, got "
+            f"{len(iface_to_concrete)}"
+        )
+        assert len(concrete_to_concrete) == 0, (
+            f"Concrete methods should not dispatch to each other, got "
+            f"{len(concrete_to_concrete)} false edges: "
+            f"{[(e.src, e.dst) for e in concrete_to_concrete]}"
+        )
+
 
 class TestHelperFunctions:
     """Tests for helper functions."""
