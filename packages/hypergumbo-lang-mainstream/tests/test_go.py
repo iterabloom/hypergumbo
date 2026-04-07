@@ -5581,6 +5581,69 @@ func (f *FakeCloser) Close(ctx context.Context) error { return nil }
             f"but got base_classes={fake_bases}"
         )
 
+    def test_same_name_structs_in_different_packages_all_implement_interface(
+        self, tmp_path: Path
+    ) -> None:
+        """Many packages declaring `type Notifier struct` must each be wired
+        up as implementations of a cross-package `Notifier` interface.
+
+        Regression: alertmanager (and any Go repo with a cross-package
+        interface whose name collides with the implementing struct's
+        short name) lost 16 of 17 ``implements`` edges because the
+        cross-file structural matcher keyed both ``global_struct_methods``
+        and ``struct_syms`` by short name.  All same-named structs were
+        merged into one entry, and only the first struct symbol got the
+        ``base_classes`` annotation.  See INV-zomuk.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+
+        # Cross-package interface in notify/notify.go
+        notify_dir = tmp_path / "notify"
+        notify_dir.mkdir()
+        (notify_dir / "notify.go").write_text("""package notify
+
+type Notifier interface {
+    Notify(msg string) (bool, error)
+}
+""")
+
+        # Three different packages each declaring `type Notifier struct`
+        # alongside its `Notify` method.  Mirrors alertmanager's
+        # notify/{slack,webhook,wechat}/*.go layout.
+        for pkg in ("slack", "webhook", "wechat"):
+            pkg_dir = tmp_path / "notify" / pkg
+            pkg_dir.mkdir()
+            (pkg_dir / f"{pkg}.go").write_text(f"""package {pkg}
+
+type Notifier struct {{}}
+
+func (n *Notifier) Notify(msg string) (bool, error) {{
+    return true, nil
+}}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Each package's Notifier struct should be annotated with the
+        # cross-package Notifier interface as a base class.
+        notifier_structs = [
+            s for s in result.symbols
+            if s.name == "Notifier" and s.kind == "struct"
+        ]
+        assert len(notifier_structs) == 3, (
+            f"Expected 3 Notifier structs, found {len(notifier_structs)}: "
+            f"{[s.path for s in notifier_structs]}"
+        )
+
+        for struct_sym in notifier_structs:
+            bases = (struct_sym.meta or {}).get("base_classes", [])
+            assert "Notifier" in bases, (
+                f"{struct_sym.path}: expected base_classes to include "
+                f"'Notifier', got {bases}"
+            )
+
     def test_arity_mismatch_cross_file(self, tmp_path: Path) -> None:
         """Cross-file structural matching also respects arity."""
         from hypergumbo_lang_mainstream.go import analyze_go
