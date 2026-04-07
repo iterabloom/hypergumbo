@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 ### DEEP Mode Priority Queue:
 When in DEEP mode, focus on feature quality rather than coverage breadth:
 1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-deep-reflect` then `./scripts/bakeoff-deep-reflect aggregate` to assess developer usefulness. This IS the mode's core feedback loop — reflecting on whether outputs help developers is the entire point of DEEP mode. Do not skip it. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
@@ -11,6 +12,14 @@ When in DEEP mode, focus on feature quality rather than coverage breadth:
 **Pipeline overlap guidance:** Same as BROAD mode — reflect agents only read artifacts, so you can overlap reflect with the next cohort's `run`. See BROAD mode guidance above for sequential vs overlapped workflows.
 
 **When blocked:** Aggregate prior sessions (`./scripts/bakeoff-deep-reflect aggregate`), compare sessions (`./scripts/bakeoff-deep compare <A> <B>`), or update lab notebook.
+
+**Iteration vs. new session:** For validation runs on the same cohort (the
+classic fix-iterate loop), skip `init` and call `cycle` directly — the CLI
+auto-discovers the latest session and increments the iteration counter into
+`iter-002/`, `iter-003/`, etc. Only call `init` when starting a *new line of
+inquiry* (different cohort, different questions, days+ gap, pre-release
+baseline). See `bakeoff-artifacts-guide.md` §"Iteration vs. New Session" for
+the full rule and the anti-pattern history.
 
 DEEP mode scripts:
 ```bash
