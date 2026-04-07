@@ -27,3 +27,11 @@
   set: {}  # ea68
   add:  # ea68
     before: [WI-bidiv-gozol-honug-fosid-mogan-pohom-kahin-burul]  # ea68
+- op: update  # 0ae6
+  at: '2026-04-07T09:28:37Z'  # 0ae6
+  by: human  # 0ae6
+  actor: jgstern  # 0ae6
+  clock: 3  # 0ae6
+  nonce: 0ae6  # 0ae6
+  set:  # 0ae6
+    priority: 2  # 0ae6

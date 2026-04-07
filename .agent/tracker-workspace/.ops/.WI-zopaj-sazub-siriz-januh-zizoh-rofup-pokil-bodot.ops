@@ -18,3 +18,11 @@
     pr_ref:  # 0ec8
     description: "Update CHANGELOG.md [Unreleased] with TLA+ analyzer entry. Update docs/hypergumbo-spec.md if language list needs updating. Create feature branch (jgstern-agent/feat/tlaplus-analyzer), commit with sign-off, submit PR via auto-pr. Ref: ~/hypergumbo_lab_notebook/tla_plan.md"  # 0ec8
     fields: {}  # 0ec8
+- op: update  # e534
+  at: '2026-04-07T09:29:56Z'  # e534
+  by: human  # e534
+  actor: jgstern  # e534
+  clock: 2  # e534
+  nonce: e534  # e534
+  set:  # e534
+    priority: 2  # e534
