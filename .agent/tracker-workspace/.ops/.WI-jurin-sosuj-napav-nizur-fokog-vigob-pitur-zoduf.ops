@@ -19,3 +19,11 @@
     pr_ref:  # ae02
     description: "Add TLA+ (formal specification language) analyzer to hypergumbo-lang-extended1. TLA+ models concurrent/distributed systems, used in AWS, CockroachDB, Cosmos. tree-sitter-tlaplus v1.5.0 on PyPI. Agda analyzer is the closest template. Full plan: ~/hypergumbo_lab_notebook/tla_plan.md"  # ae02
     fields: {}  # ae02
+- op: update  # 4da1
+  at: '2026-04-07T09:28:22Z'  # 4da1
+  by: human  # 4da1
+  actor: jgstern  # 4da1
+  clock: 2  # 4da1
+  nonce: 4da1  # 4da1
+  set:  # 4da1
+    priority: 2  # 4da1

@@ -27,3 +27,11 @@
   set: {}  # 52fa
   add:  # 52fa
     before: [WI-tilum-bojaz-jipun-dilol-govis-harin-jatad-luzar]  # 52fa
+- op: update  # ddaf
+  at: '2026-04-07T09:28:54Z'  # ddaf
+  by: human  # ddaf
+  actor: jgstern  # ddaf
+  clock: 3  # ddaf
+  nonce: ddaf  # ddaf
+  set:  # ddaf
+    priority: 2  # ddaf
