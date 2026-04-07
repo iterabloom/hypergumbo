@@ -42,3 +42,19 @@
   clock: 4  # 169c
   nonce: 169c  # 169c
   message: "I'm not sure I replied on WI-saful and await your thoughts there."  # 169c
+- op: discuss  # 54af
+  at: '2026-04-07T16:32:42Z'  # 54af
+  by: human  # 54af
+  actor: jgstern  # 54af
+  clock: 5  # 54af
+  nonce: 54af  # 54af
+  message: "Please see the WI-saful discussion; would addressing that and the follow-on item it proposes also address INV-sabum?"  # 54af
+- op: update  # 9e58
+  at: '2026-04-07T16:33:08Z'  # 9e58
+  by: human  # 9e58
+  actor: jgstern  # 9e58
+  clock: 6  # 9e58
+  nonce: '9e58'  # 9e58
+  set:  # 9e58
+    status: violated  # 9e58
+    priority: 1  # 9e58
