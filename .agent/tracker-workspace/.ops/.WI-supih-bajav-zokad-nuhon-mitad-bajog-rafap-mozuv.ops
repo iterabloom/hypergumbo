@@ -1,0 +1,20 @@
+- op: create  # 11b0
+  at: '2026-04-07T04:00:50Z'  # 11b0
+  by: agent  # 11b0
+  actor: jgstern_agent  # 11b0
+  clock: 1  # 11b0
+  nonce: 11b0  # 11b0
+  data:  # 11b0
+    kind: work_item  # 11b0
+    title: "library_patterns: expand Go write-verb matching beyond Set/Put/Add/Push/Close"  # 11b0
+    status: todo_soft  # 11b0
+    priority: 3  # 11b0
+    parent:  # 11b0
+    tags:  # 11b0
+    - analysis_quality  # 11b0
+    before: []  # 11b0
+    duplicate_of: []  # 11b0
+    not_duplicate_of: []  # 11b0
+    pr_ref:  # 11b0
+    description: "alertmanager reflect (deep-20260406-233120): 'Verbs like Expire, Delete, Remove, GC, Reset, Truncate, Drop, Clear, Init, Reload should also be tagged access_mode=write. Currently Silences.Expire (9 calls), Marker.SetActiveOrSilenced (6 calls), Marker.Delete are not write-tagged.' Easy YAML config addition — extend go.yaml library_patterns to cover the missing verb suffixes."  # 11b0
+    fields: {}  # 11b0
