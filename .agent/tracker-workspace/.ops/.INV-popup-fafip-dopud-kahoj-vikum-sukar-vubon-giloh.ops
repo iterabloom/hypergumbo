@@ -20,3 +20,18 @@
     fields:  # 7360
       statement: "In Go, when a local variable shadows an imported package name in the same statement (e.g., `api, err := api.New(api.Options{})`), the call to the package function on the right-hand side must still resolve to the package function, not be dropped."  # 7360
       root_cause: "The Go call resolver checks the LHS identifier against the local variable scope before checking the imports table. When the LHS variable is being defined in the same statement, it shadows the package name even though the RHS call should resolve to the package. Result: the calls edge is silently dropped."  # 7360
+- op: update  # 5e0e
+  at: '2026-04-07T05:21:10Z'  # 5e0e
+  by: agent  # 5e0e
+  actor: jgstern_agent  # 5e0e
+  clock: 2  # 5e0e
+  nonce: 5e0e  # 5e0e
+  set:  # 5e0e
+    status: pending_validation  # 5e0e
+- op: discuss  # c60a
+  at: '2026-04-07T05:21:10Z'  # c60a
+  by: agent  # c60a
+  actor: jgstern_agent  # c60a
+  clock: 3  # c60a
+  nonce: c60a  # c60a
+  message: "Fixed in PR #2737. Replaced substring matching in ListNameResolver with component-anchored matching via _path_component_suffix_match. The hint must now be a path-component suffix of the candidate's containing directory. Verified end-to-end on alertmanager: api.New at line 381 of cmd/alertmanager/main.go now resolves to api/api.go:112-167:New (was unresolved). Pending bakeoff validation on next deep cycle."  # c60a
