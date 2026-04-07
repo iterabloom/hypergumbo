@@ -1,0 +1,20 @@
+- op: create  # 3d60
+  at: '2026-04-07T00:29:36Z'  # 3d60
+  by: agent  # 3d60
+  actor: jgstern_agent  # 3d60
+  clock: 1  # 3d60
+  nonce: 3d60  # 3d60
+  data:  # 3d60
+    kind: work_item  # 3d60
+    title: "Within-file type-hierarchy false positives in alertmanager timeinterval.go"  # 3d60
+    status: todo_soft  # 3d60
+    priority: 3  # 3d60
+    parent:  # 3d60
+    tags:  # 3d60
+    - analysis_quality  # 3d60
+    before: []  # 3d60
+    duplicate_of: []  # 3d60
+    not_duplicate_of: []  # 3d60
+    pr_ref:  # 3d60
+    description: "deep-20260406-182616 reflect: 5 of 101 dispatches_to edges in alertmanager are still concrete->concrete (4.95%): InclusiveRange.{memberFromString,MarshalText,MarshalYAML,UnmarshalYAML} in timeinterval/timeinterval.go and URL.UnmarshalYAML -> mailDev.UnmarshalYAML. These are all in the same file with identical method names across sibling structs — distinct from the cross-package class-ID collision PR #2721 fixed. Likely a within-file type-hierarchy artifact (multiple structs in one file all defining MarshalYAML create N x N edges). Investigate whether type-hierarchy linker creates spurious edges for sibling structs that don't share inheritance."  # 3d60
+    fields: {}  # 3d60

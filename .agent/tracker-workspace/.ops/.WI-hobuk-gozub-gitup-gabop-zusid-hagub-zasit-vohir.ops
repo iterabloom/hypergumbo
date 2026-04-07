@@ -1,0 +1,21 @@
+- op: create  # 750e
+  at: '2026-04-07T00:40:52Z'  # 750e
+  by: agent  # 750e
+  actor: jgstern_agent  # 750e
+  clock: 1  # 750e
+  nonce: 750e  # 750e
+  data:  # 750e
+    kind: work_item  # 750e
+    title: "Go cross-file structural matcher misses struct methods split across files in same package"  # 750e
+    status: todo_soft  # 750e
+    priority: 3  # 750e
+    parent:  # 750e
+    tags:  # 750e
+    - analysis_quality  # 750e
+    - cross_language_linkers  # 750e
+    before: []  # 750e
+    duplicate_of: []  # 750e
+    not_duplicate_of: []  # 750e
+    pr_ref:  # 750e
+    description: "Scope expansion from INV-zomuk fix: when a Go struct's methods are split across multiple files within the same package (e.g., type definition in foo.go, methods in foo_helpers.go), the per-file iteration in the cross-file structural interface matcher in go.py only sees methods from the file containing the type definition. This means the merged method set is incomplete and the struct may fail to satisfy interfaces it would otherwise implement. Fix: aggregate methods within a package (group file_analyses by directory) before per-struct iteration. Confirm impact via bakeoff: how often does Go split struct definition and methods across files?"  # 750e
+    fields: {}  # 750e
