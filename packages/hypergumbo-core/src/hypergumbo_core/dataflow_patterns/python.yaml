@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# ADR-0015: Dataflow patterns for Python (tree-sitter grammar)
+# ADR-0015: Dataflow patterns for Python.
 #
-# Note: py.py uses Python's ast module, not tree-sitter. This YAML is for
-# any future tree-sitter-based Python analysis or for analyzers that parse
-# Python files via the base class (e.g., embedded Python in notebooks).
-# The py.py-specific integration is tracked as WI-mimon.
+# This file is consumed by both the tree-sitter Python pipeline (via
+# annotate_dataflow) AND the stdlib-ast pipeline in py.py (via
+# annotate_dataflow_ast, which loads library_patterns from this file
+# as a per-language fallback after the AST positional walk).
 language: python
 
 assignments:
@@ -36,3 +36,65 @@ returns:
 deletions:
   - node_type: delete_statement
     delete: argument
+
+# Library patterns: regex matched against the source line of an unannotated
+# call edge.  Used as a fallback after the AST walk classifies positional
+# context (assignment LHS/RHS, return values, etc.).  Conservative — only
+# methods whose name unambiguously implies the access mode regardless of
+# the receiver type.
+library_patterns:
+  # === Mutating list/dict/set operations ===
+  - match: '\.append\('
+    access_mode: write
+  - match: '\.extend\('
+    access_mode: write
+  - match: '\.add\('
+    access_mode: write
+  - match: '\.update\('
+    access_mode: mutate
+  - match: '\.insert\('
+    access_mode: write
+  - match: '\.pop\('
+    access_mode: delete
+  - match: '\.remove\('
+    access_mode: delete
+  - match: '\.clear\('
+    access_mode: delete
+  - match: '\.discard\('
+    access_mode: delete
+  - match: '\.popitem\('
+    access_mode: delete
+
+  # === File / stream / socket writes ===
+  - match: '\.write\('
+    access_mode: write
+  - match: '\.writelines\('
+    access_mode: write
+  - match: '\.send\('
+    access_mode: write
+  - match: '\.sendall\('
+    access_mode: write
+  - match: '\.put\('
+    access_mode: write
+  - match: '\.put_nowait\('
+    access_mode: write
+  - match: '\.flush\('
+    access_mode: write
+
+  # === Reads ===
+  - match: '\.read\('
+    access_mode: read
+  - match: '\.readline\('
+    access_mode: read
+  - match: '\.readlines\('
+    access_mode: read
+  - match: '\.recv\('
+    access_mode: read
+  - match: '\.get\('
+    access_mode: read
+  - match: '\.keys\('
+    access_mode: read
+  - match: '\.values\('
+    access_mode: read
+  - match: '\.items\('
+    access_mode: read

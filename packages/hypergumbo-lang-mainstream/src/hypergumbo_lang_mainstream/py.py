@@ -85,7 +85,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
 
-from hypergumbo_core.dataflow import annotate_dataflow_ast
+from hypergumbo_core.dataflow import annotate_dataflow_ast, get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
@@ -1377,6 +1377,9 @@ class FileAnalysis:
     tree: ast.AST | None = None
     # Usage contexts for call-based patterns (Django URL patterns, etc.)
     usage_contexts: list[UsageContext] = field(default_factory=list)
+    # Original source text (for library_patterns regex scanning during
+    # dataflow annotation — see annotate_dataflow_ast).
+    source: str = ""
 
 
 def _detect_src_layout(repo_root: Path) -> Path | None:
@@ -2069,6 +2072,7 @@ def _extract_file_analysis(
         module_imports=module_imports,
         tree=tree,
         usage_contexts=usage_contexts,
+        source=source,
     )
 
 
@@ -2857,6 +2861,9 @@ def analyze_python(
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
     all_usage_contexts: list[UsageContext] = []
+    # Load python.yaml dataflow config once for library_patterns fallback
+    # in annotate_dataflow_ast (per-file is wasteful — it's a static config).
+    py_dataflow_config = get_dataflow_config("python")
     for py_file, analysis in file_analyses.items():
         module_name = _module_name_from_path(py_file, repo_root, source_root)
 
@@ -2874,8 +2881,16 @@ def analyze_python(
         for edge in call_edges:
             edge.origin = PASS_ID
             edge.origin_run_id = run.execution_id
-        # ADR-0015: annotate edges with access_mode from Python AST context
-        call_edges = annotate_dataflow_ast(call_edges, analysis.tree)
+        # ADR-0015: annotate edges with access_mode from Python AST context.
+        # Pass source + python.yaml config so library_patterns (e.g. .append,
+        # .write, .send → write) can fall back when the AST positional walk
+        # leaves a call edge unclassified.  Without this, PR #2733's
+        # library_patterns wiring is dead code for Python.
+        call_edges = annotate_dataflow_ast(
+            call_edges, analysis.tree,
+            source=analysis.source,
+            config=py_dataflow_config,
+        )
         all_edges.extend(call_edges)
 
         # Extract import edges
