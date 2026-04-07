@@ -1,0 +1,22 @@
+- op: create  # fc96
+  at: '2026-04-07T22:30:17Z'  # fc96
+  by: agent  # fc96
+  actor: jgstern_agent  # fc96
+  clock: 1  # fc96
+  nonce: fc96  # fc96
+  data:  # fc96
+    kind: work_item  # fc96
+    title: "INV-dihos Phase 3: Return-Type Registry for Rust + C++ + Scala"  # fc96
+    status: todo_soft  # fc96
+    priority: 3  # fc96
+    parent:  # fc96
+    tags:  # fc96
+    - analysis_quality  # fc96
+    - cross_language_linkers  # fc96
+    before:  # fc96
+    - WI-jujup-vosag-ganov-suvir-hijof-zolim-vukov-juhan  # fc96
+    duplicate_of: []  # fc96
+    not_duplicate_of: []  # fc96
+    pr_ref:  # fc96
+    description: "Phase 3 of the ADR-0006 Return-Type Registry Pre-Pass. Largest delta of the rollout because none of these three analyzers currently have var_types infrastructure to extend — each needs constructor + parameter extraction first before signature registration is meaningful.\n\nDELIVERABLES:\n(1) Bootstrap var_types infrastructure for Rust, C++, and Scala. Each gets a per-file dict[str, str] populated from constructor calls, parameter declarations, and (for C++/Scala) field declarations. Mirror the pattern in go.py / java.py.\n\n(2) New 'signatures' YAML for rust.yaml, cpp.yaml, scala.yaml. Each declares function_node_types, name/return fields, generic_strip_pattern.\n\n(3) Tier 2 escape hatches in signatures.py:\n  - rust_extract(): 'Result<T, E>' / 'Option<T>' unwrap; 'impl Trait' opacity (leave unregistered); 'Box<T>' / 'Rc<T>' / 'Arc<T>' unwrap.\n  - cpp_extract(): pointer/reference strip ('Query*' → 'Query', 'Query&' → 'Query'); template specialization handling (consistent with §Limitations: 'vector<Query>' → 'vector').\n  - scala_extract(): implicits deferred to a follow-on item; basic return-type extraction only.\n\n(4) Wire registry into each analyzer's var_types fill loop.\n\n(5) Regression tests per language.\n\n(6) Bakeoff validation: alertmanager Rust workspace, any LLVM-style C++ repo, any Spark/Akka Scala monorepo.\n\nPREREQUISITE: Phase 2 (created above) — same registry plumbing. The constructor/parameter bootstrap is the largest single piece of work in this WI; consider splitting if it grows too large to ship as a single PR."  # fc96
+    fields: {}  # fc96

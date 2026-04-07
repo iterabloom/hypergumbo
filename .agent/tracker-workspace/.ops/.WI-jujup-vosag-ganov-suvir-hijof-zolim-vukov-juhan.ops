@@ -1,0 +1,22 @@
+- op: create  # 3e5c
+  at: '2026-04-07T22:30:17Z'  # 3e5c
+  by: agent  # 3e5c
+  actor: jgstern_agent  # 3e5c
+  clock: 1  # 3e5c
+  nonce: 3e5c  # 3e5c
+  data:  # 3e5c
+    kind: work_item  # 3e5c
+    title: "INV-dihos Phase 2: Return-Type Registry for Kotlin + C#"  # 3e5c
+    status: todo_soft  # 3e5c
+    priority: 3  # 3e5c
+    parent:  # 3e5c
+    tags:  # 3e5c
+    - analysis_quality  # 3e5c
+    - cross_language_linkers  # 3e5c
+    before:  # 3e5c
+    - WI-kuroj-gitar-kisot-nijin-somal-baruf-natof-junav  # 3e5c
+    duplicate_of: []  # 3e5c
+    not_duplicate_of: []  # 3e5c
+    pr_ref:  # 3e5c
+    description: "Phase 2 of the ADR-0006 Return-Type Registry Pre-Pass. Extends the registry built in Phase 1 (WI-kuroj) to two more analyzers with existing var_types infrastructure. Smaller delta than Phase 1.\n\nDELIVERABLES:\n(1) New 'signatures' YAML in kotlin.yaml: function_node_types (function_declaration, primary_constructor), name_field, return_type_field. Tier 2 escape hatches in signatures.py kotlin_extract(): nullable suffix strip ('Foo?' → 'Foo'); generic erasure (handled by Tier 1).\n\n(2) New 'signatures' YAML in csharp.yaml: function_node_types (method_declaration, constructor_declaration), name_field, return_type_field. Tier 2 escape hatches in signatures.py csharp_extract(): async unwrapping ('Task<T>' → 'T', 'ValueTask<T>' → 'T', 'IAsyncEnumerable<T>' → 'T').\n\n(3) Wire registry into kotlin.py and csharp.py var_types fill loops (same pattern as Phase 1 wiring).\n\n(4) Regression tests in tests/test_kotlin_signature_registry.py and tests/test_csharp_signature_registry.py covering the per-language Tier 2 escape hatches.\n\n(5) Bakeoff validation: re-run kserve (Kotlin) and aspnet (C#) deep-bakeoff after Phase 2.\n\nPREREQUISITE: Phase 1 (WI-kuroj) must be complete because this WI extends signatures.py and reuses its registry plumbing."  # 3e5c
+    fields: {}  # 3e5c
