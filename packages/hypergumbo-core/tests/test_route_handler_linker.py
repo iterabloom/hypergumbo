@@ -1682,6 +1682,85 @@ class TestGoRouteHandlerLinking:
         assert result.edges[0].dst == handler.id
         assert result.edges[0].edge_type == "routes_to"
 
+    def test_go_handler_lowercase_receiver_resolves_to_uppercase_method(self) -> None:
+        """Go handler ``api.query`` (lowercase var) resolves to ``API.query`` method.
+
+        Regression: prometheus has a route ``GET /query`` registered as
+        ``r.Get("/query", api.query)`` in ``web/api/v1/api.go``, where
+        ``api`` is a local var of type ``*API`` (Go convention: the
+        variable receiver is lowercase, the type is uppercase).  The
+        handler_name extracted from the call site is ``api.query``.
+
+        It also happens that ``cmd/promtool/unittest.go`` defines an
+        unrelated package-level function called ``query``.  Without
+        same-file disambiguation, the resolver's short-name fallback
+        picks the unrelated function.  Result: ``GET /query`` routes
+        to the wrong code, breaking every refactor or slice query
+        targeting the API handler.
+
+        Fix: when the qualified-name lookup misses, the resolver
+        prefers candidates in the same file (or same package) as the
+        route's source.  The matching method ``API.query`` lives in
+        the same file as the route, so it wins over the unrelated
+        ``cmd/promtool/unittest.go:query`` function.
+        """
+        route = Symbol(
+            id="go:/repo/web/api/v1/api.go:425-425:api.query:route",
+            name="api.query",
+            kind="route",
+            language="go",
+            path="/repo/web/api/v1/api.go",
+            span=Span(start_line=425, end_line=425, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/query",
+                "handler_name": "api.query",
+            },
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+        # The CORRECT target: API.query method on the *API type, in the
+        # same file as the route registration.
+        api_query_method = Symbol(
+            id="go:/repo/web/api/v1/api.go:502-569:API.query:method",
+            name="API.query",
+            kind="method",
+            language="go",
+            path="/repo/web/api/v1/api.go",
+            span=Span(start_line=502, end_line=569, start_col=0, end_col=1),
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+        # The WRONG target: an unrelated package-level function named query
+        # in cmd/promtool/unittest.go.  Defined first → wins first-encountered
+        # short-name lookup unless same-file preference is applied.
+        unrelated_query_function = Symbol(
+            id="go:/repo/cmd/promtool/unittest.go:611-632:query:function",
+            name="query",
+            kind="function",
+            language="go",
+            path="/repo/cmd/promtool/unittest.go",
+            span=Span(start_line=611, end_line=632, start_col=0, end_col=1),
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        # Pass the unrelated function FIRST to make sure first-wins doesn't
+        # accidentally pick the right one.
+        result = link_routes_to_handlers(
+            [unrelated_query_function, api_query_method, route], [],
+        )
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        assert edge.dst == api_query_method.id, (
+            f"Expected route /query → API.query (same file as route), "
+            f"got {edge.dst}.  This means the short-name fallback is "
+            f"matching the unrelated cmd/promtool/unittest.go:query "
+            f"function instead of preferring the in-file method."
+        )
+
     def test_go_handler_no_match(self) -> None:
         """Go routes with handler_name that doesn't match any function."""
         route = Symbol(
