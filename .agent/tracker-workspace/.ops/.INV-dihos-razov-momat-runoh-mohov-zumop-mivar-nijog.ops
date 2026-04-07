@@ -21,3 +21,33 @@
     fields:  # 4f72
       statement: "Go method calls on local variables that hold the return value of another method call (or struct field access) must resolve via the receiver's typed return type, not via global short-name lookup."  # 4f72
       root_cause: "WI-hikug closed with receiver type tracking that handles short var declarations, var declarations, function parameters, and method receivers — but it does not propagate types through method-call return values. Example from prometheus deep-20260407-030917 web/api/v1/api.go:502-569 API.query: qry, err := ng.NewInstantQuery(...) should give qry the type promql.Query (return type of QueryEngine.NewInstantQuery). Then qry.Close() should resolve to promql.Query.Close. Instead it resolves to ResourceClient.Close from a different package. Same pattern for warnings.Add and r.Context."  # 4f72
+- op: discuss  # b24a
+  at: '2026-04-07T07:53:57Z'  # b24a
+  by: agent  # b24a
+  actor: jgstern_agent  # b24a
+  clock: 2  # b24a
+  nonce: b24a  # b24a
+  message: "Verified by reading go.py:1248-1557. The receiver type tracker has 4 patterns: (1) short_var_declaration via _type_from_rhs which only handles literals (Server{}, &Server{}) and constructor naming (NewFoo() -> Foo); (2) var_spec; (3) parameter_declaration; (4) method_declaration. The misresolutions in API.query are caused by gaps: (a) qry := ng.NewInstantQuery(...) — _type_from_constructor_call infers 'InstantQuery' (strip New + capital match), but the actual return type is Query (interface). qry.Close then can't find InstantQuery.Close and falls back to global lookup -> ResourceClient.Close. (b) warnings := q.Warnings() — not a constructor naming pattern, so no type inferred at all. (c) r.Context() — r is a parameter with type *http.Request, parameter_declaration handler stores it as 'http.Request', but http.Request methods are not in source; resolver falls back globally. The structural fix requires a pre-pass that records each function/method declaration's return type into a registry, then when processing qry := bar.NewInstantQuery() looks up NewInstantQuery's actual return type instead of guessing from the name. This is a substantial architectural addition (cross-file pre-pass + new registry + new resolution path), not a small extension to _extract_go_var_types. Recommending P2 not P1 since the false targets are largely cosmetic (centrality pollution, slice noise) rather than a correctness regression vs prior sessions."  # b24a
+- op: update  # 8477
+  at: '2026-04-07T07:54:25Z'  # 8477
+  by: agent  # 8477
+  actor: jgstern_agent  # 8477
+  clock: 3  # 8477
+  nonce: '8477'  # 8477
+  set:  # 8477
+    status: needs_human_review  # 8477
+    priority: 2  # 8477
+- op: discuss  # 7483
+  at: '2026-04-07T07:54:25Z'  # 7483
+  by: agent  # 7483
+  actor: jgstern_agent  # 7483
+  clock: 4  # 7483
+  nonce: '7483'  # 7483
+  message: "Setting to needs_human_review pending architectural decision: the fix requires either (a) a new pre-pass that builds a function-return-type registry from method/function declarations across all Go source files, then resolves call expression types via this registry, or (b) accepting that name-based heuristic resolution will continue to misroute common methods like Close/Add/Context/Set when the receiver type isn't directly inferable. Option (a) is a substantial addition; option (b) leaves global name collisions in place. Recommend human triage before committing to a direction. Not a regression — this gap has been present and was only surfaced because INV-kunam fix made the prometheus slice now reach into web/api/v1/api.go where the misresolutions are visible."  # 7483
+- op: discuss  # c394
+  at: '2026-04-07T08:05:09Z'  # c394
+  by: human  # c394
+  actor: jgstern  # c394
+  clock: 5  # c394
+  nonce: c394  # c394
+  message: "might analogous situations arise for other languages besides golang?"  # c394

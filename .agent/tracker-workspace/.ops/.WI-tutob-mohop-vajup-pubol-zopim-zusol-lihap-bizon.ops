@@ -19,3 +19,18 @@
     pr_ref:  # 13be
     description: "Source: deep-20260407-030917 prometheus reflect agent. The LOW_DATAFLOW_SLICE_RATIO WARN at 6.0% is a measurement artifact: slice.0 grew from ~962 to 1689 nodes after the INV-kunam route resolver fix added reach into web/api/v1/api.go, dropping the dataflow/regular ratio from 6.3% to 6.0% even though both numerator and denominator grew. The underlying access_mode-annotated call-edge coverage on slice.0 is actually 53.0% and 62.0% repo-wide. Fix options: (a) decompose the signal into access_mode_edge_coverage (annotatable edges with access_mode set / total annotatable edges) and dataflow_slice_relative_size as separate metrics, (b) make the warn delta-aware (only fire when dataflow node count drops absolutely, not when ratio drops because of denominator growth), (c) drop the ratio metric entirely in favor of (a). The current single-ratio metric will continue to false-alarm whenever a quality fix elsewhere in the pipeline grows the regular slice."  # 13be
     fields: {}  # 13be
+- op: update  # 1dc4
+  at: '2026-04-07T08:21:00Z'  # 1dc4
+  by: agent  # 1dc4
+  actor: jgstern_agent  # 1dc4
+  clock: 2  # 1dc4
+  nonce: 1dc4  # 1dc4
+  set:  # 1dc4
+    status: done  # 1dc4
+- op: discuss  # fc79
+  at: '2026-04-07T08:21:01Z'  # fc79
+  by: agent  # fc79
+  actor: jgstern_agent  # fc79
+  clock: 3  # fc79
+  nonce: fc79  # fc79
+  message: "Merged in PR iterabloom/hypergumbo#2746 (commit 45895a45c). Added slice_access_mode_coverage field to RepoMetrics, computed from call edges in slice.0.json with access_mode set, and threaded through assess_metric. When slice-relative coverage >= 50%, LOW_DATAFLOW_SLICE_RATIO WARN is suppressed (treated as denominator-effect false alarm). Verified against deep-20260407-030917 artifacts: alertmanager 63.7%, kserve 38.5% (real signal preserved), prometheus 70.7% (clears the WARN). Three new tests in TestDataflowSliceRatioConditional cover the new logic."  # fc79
