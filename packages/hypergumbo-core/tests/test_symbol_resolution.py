@@ -1042,6 +1042,62 @@ class TestListNameResolverAmbiguityThreshold:
             f"Should resolve to a symbol in pkg/log, got {result.symbol.path}"
         )
 
+    def test_path_component_suffix_match_helper_edge_cases(self) -> None:
+        """Direct tests for the _path_component_suffix_match helper.
+
+        Covers edge cases that don't surface through ListNameResolver:
+          - Empty hint parts (defensive — no signal).
+          - Symbol path with no parent directory (bare filename).
+        """
+        from hypergumbo_core.symbol_resolution import (
+            _path_component_suffix_match,
+        )
+        # Empty hint never matches.
+        assert _path_component_suffix_match("/repo/api/api.go", []) is False
+        # Bare filename has no parent components to match against.
+        assert _path_component_suffix_match("api.go", ["api"]) is False
+        # Sanity: a normal match still works.
+        assert _path_component_suffix_match(
+            "/repo/api/api.go", ["api"],
+        ) is True
+
+    def test_single_segment_hint_anchored_to_path_components(self) -> None:
+        """Single-segment hint must match path components, not substrings.
+
+        Regression: alertmanager has an ``api`` package at ``api/api.go``
+        and a swagger-generated client tree at ``api/v2/client/<sub>/*.go``.
+        Several of those generated files define ``func New(...)``.  When
+        main.go calls ``api.New(...)``, the import path stripped against
+        the module prefix yields the single-segment hint ``api``.
+
+        Substring matching incorrectly admitted ``api/v2/client/general/g.go``,
+        ``api/v2/client/silence/s.go`` etc. because the substring ``api``
+        appears anywhere in the path.  With ``ambiguity_threshold=3`` the
+        narrowed set was still ≥ 3 → unresolved → forward slice from main
+        could not reach the api package.
+
+        Component-anchored matching restricts the hint to a path-component
+        suffix of the candidate's containing directory, so ``api`` matches
+        only files whose parent directory IS ``api`` (not files in
+        ``api/v2/client/<x>/``).
+        """
+        target = make_symbol("New", "/repo/api/api.go", "go")
+        swagger1 = make_symbol("New", "/repo/api/v2/client/general/g.go", "go")
+        swagger2 = make_symbol("New", "/repo/api/v2/client/silence/s.go", "go")
+        swagger3 = make_symbol("New", "/repo/api/v2/client/alert/a.go", "go")
+        swagger4 = make_symbol("New", "/repo/api/v2/client/receiver/r.go", "go")
+        other = make_symbol("New", "/repo/notify/discord/d.go", "go")
+        syms = [target, swagger1, swagger2, swagger3, swagger4, other]
+        resolver = ListNameResolver({"New": syms}, ambiguity_threshold=3)
+        result = resolver.lookup("New", path_hint="api")
+        assert result.found is True, (
+            "Single-segment hint 'api' should match only files whose parent "
+            "directory is 'api', not files deeper in api/v2/client/*"
+        )
+        assert result.symbol is target
+        assert result.confidence == ListNameResolver.CONFIDENCE_PATH_HINT
+        assert result.match_type == "path_hint"
+
 
 # ============================================================================
 # NameResolver :: separator tests (Rust qualified names)

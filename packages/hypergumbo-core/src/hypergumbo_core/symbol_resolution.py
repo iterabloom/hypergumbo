@@ -661,6 +661,42 @@ class NameResolver:
         self._suffix_index = None
 
 
+def _path_component_suffix_match(
+    symbol_path: str,
+    hint_parts: list[str],
+) -> bool:
+    """Return True if ``hint_parts`` is a path-component suffix of dirname(symbol_path).
+
+    A path-component suffix is a sequence of consecutive directory names
+    ending at the last directory of the symbol's containing folder.  This
+    is the structurally correct semantic for matching imports against
+    files: an import like ``github.com/foo/api`` should match files
+    whose immediate parent directory is ``api``, NOT files deeper inside
+    ``api/v2/client/``.
+
+    Substring matching admits false positives because the bare name
+    appears anywhere in the path; component anchoring rejects them.
+
+    Edge cases:
+      - Empty hint_parts → False (no signal).
+      - Hint longer than dirname → False.
+      - File with no parent directory (basename only) → False unless
+        hint_parts is empty (already handled above).
+    """
+    if not hint_parts:
+        return False
+    # Drop empty components introduced by leading slashes (e.g.
+    # ``/repo/api/api.go`` → ``['', 'repo', 'api', 'api.go']``).
+    path_components = [p for p in symbol_path.split("/") if p]
+    # The dirname is everything except the file basename (last component).
+    if len(path_components) < 2:
+        return False
+    dir_components = path_components[:-1]
+    if len(hint_parts) > len(dir_components):
+        return False
+    return dir_components[-len(hint_parts):] == hint_parts
+
+
 class ListNameResolver:
     """Symbol resolver for list-valued registries (dict[str, list[Symbol]]).
 
@@ -758,8 +794,10 @@ class ListNameResolver:
                 path_parts = path_hint.rstrip("/").split("/")
                 matched = False
                 for i in range(len(path_parts) - 1, -1, -1):
-                    suffix = "/".join(path_parts[i:])
-                    if suffix in candidates[0].path:
+                    suffix_parts = path_parts[i:]
+                    if _path_component_suffix_match(
+                        candidates[0].path, suffix_parts,
+                    ):
                         matched = True
                         break
                 if not matched:
@@ -781,20 +819,31 @@ class ListNameResolver:
         # Track the best (smallest) narrowed candidate set: even if no
         # suffix yields a unique match, narrowing from 10 → 2 candidates
         # is useful — it means only 2 symbols are in the matching package.
+        #
+        # Path matching is COMPONENT-ANCHORED: the hint must match a
+        # path-component suffix of the candidate's containing directory,
+        # not a free-form substring.  Substring matching admits false
+        # positives — e.g., hint ``api`` matched every file under
+        # ``api/v2/client/<x>/`` because the substring ``api`` appears
+        # anywhere in the path.  Component anchoring requires the hint's
+        # segments to be the LAST segments of the dirname.
         narrowed = candidates
         if path_hint:
-            # Try progressively shorter suffixes of the path hint to find unique match
-            # e.g., for "github.com/example/src/zzz_correct/genproto", try:
-            #   1. "src/zzz_correct/genproto" (longest useful suffix)
-            #   2. "zzz_correct/genproto"
-            #   3. "genproto" (shortest)
-            path_parts = path_hint.rstrip("/").split("/")
-
             # Try progressively longer suffixes of the path hint.
             # Start with just the last segment, extend toward the full path.
+            # e.g., for "github.com/example/src/zzz_correct/genproto", try:
+            #   1. "genproto" (shortest, last component)
+            #   2. "zzz_correct/genproto"
+            #   3. "src/zzz_correct/genproto"
+            #   4. "github.com/example/src/zzz_correct/genproto" (full)
+            path_parts = path_hint.rstrip("/").split("/")
+
             for i in range(len(path_parts) - 1, -1, -1):
-                suffix = "/".join(path_parts[i:])
-                matching = [c for c in candidates if suffix in c.path]
+                suffix_parts = path_parts[i:]
+                matching = [
+                    c for c in candidates
+                    if _path_component_suffix_match(c.path, suffix_parts)
+                ]
                 if len(matching) == 1:
                     return LookupResult(
                         symbol=matching[0],
