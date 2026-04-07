@@ -1,0 +1,20 @@
+- op: create  # 192d
+  at: '2026-04-07T07:49:03Z'  # 192d
+  by: agent  # 192d
+  actor: jgstern_agent  # 192d
+  clock: 1  # 192d
+  nonce: 192d  # 192d
+  data:  # 192d
+    kind: work_item  # 192d
+    title: "python.yaml library_patterns: extend with file-IO and serialization primitives"  # 192d
+    status: todo_soft  # 192d
+    priority: 4  # 192d
+    parent:  # 192d
+    tags:  # 192d
+    - analysis_quality  # 192d
+    before: []  # 192d
+    duplicate_of: []  # 192d
+    not_duplicate_of: []  # 192d
+    pr_ref:  # 192d
+    description: "Source: deep-20260407-030917 kserve reflect agent question. The python.yaml library_patterns currently covers .append/.extend/.add/.update/.write/.send/.put/.read/.recv/.get/.keys/.values/.items/.pop/.remove/.clear/.discard/.popitem/.flush/.writelines (~20 patterns). Suggested extensions: open (read or write depending on mode arg, default read), close (delete?), seek (mutate), truncate (delete/write), readline/readlines (read), json.dump/json.load (write/read), json.dumps/json.loads (read), pickle.dump/pickle.load (write/read), yaml.dump/yaml.load (write/read). These are common Python data-handling primitives that currently leave call edges unannotated. Note: per WI-saful needs_human_review, the dataflow slice may not currently consume read edges anyway, so the immediate impact is on access_mode_coverage metric and the per-edge tagging visible in dataflow output."  # 192d
+    fields: {}  # 192d
