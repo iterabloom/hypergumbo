@@ -81,3 +81,19 @@
   clock: 9  # 66ac
   nonce: 66ac  # 66ac
   message: "Invariant is verified by unit tests in packages/hypergumbo-core/tests/test_slice.py at lines 2641-2736:\n\n- test_event_publisher_excluded_from_node_ids: BFS traverses uses → event_publisher → event_publishes → event_subscriber → event_subscribes → handler, with handler.id in result.node_ids. Confirms end-to-end traversal across event edges.\n- test_pass_through_still_traverses: BFS reaches both the immediate consumer AND the downstream .calls edge, proving the traversal continues past the subscriber.\n- test_edges_to_synthetic_nodes_excluded: confirms the synthetic event_publisher/subscriber nodes are pass-through only (filtered from node_ids) but edges WERE traversed during BFS.\n- test_pass_through_kinds_empty_keeps_all: confirms behavior when the synthetic-filter is disabled.\n\nThese tests have been in place since PR #2123 (March 2026) and exercise the core event-edge traversal logic. The 2026-04-07 cohort (alertmanager, kserve, prometheus) doesn't contain event-driven repos, so bakeoff evidence is not available from that session — but the synthetic-test coverage is direct and structural. The original concern (event edges being silently dropped) is structurally prevented by the pass_through_kinds mechanism, which admits the edges during BFS then filters only the synthetic endpoints from the output."  # 66ac
+- op: update  # 2508
+  at: '2026-04-07T22:23:18Z'  # 2508
+  by: human  # 2508
+  actor: jgstern  # 2508
+  clock: 10  # 2508
+  nonce: '2508'  # 2508
+  set:  # 2508
+    status: pending_validation  # 2508
+    priority: 3  # 2508
+- op: discuss  # ecdf
+  at: '2026-04-07T22:24:16Z'  # ecdf
+  by: human  # ecdf
+  actor: jgstern  # ecdf
+  clock: 11  # ecdf
+  nonce: ecdf  # ecdf
+  message: "we should test on real repos. we probably have something relevant in ~/ALL_REPOS"  # ecdf

@@ -42,3 +42,11 @@
   clock: 4  # 7d05
   nonce: 7d05  # 7d05
   message: "What we should investigate is (a) what was the motivation for the decision to classify test code as tier-2 code? what was the contemporaneous thinking and discussion when those implementations were made? and (b) what was the contemporaneous motivation, thinking, and discussion underlying the seemingly contradictory \"tier and test-ness are orthogonal axes that should not be merged\"? Understanding both is the first step."  # 7d05
+- op: update  # e289
+  at: '2026-04-07T22:25:23Z'  # e289
+  by: human  # e289
+  actor: jgstern  # e289
+  clock: 5  # e289
+  nonce: e289  # e289
+  set:  # e289
+    status: todo_soft  # e289

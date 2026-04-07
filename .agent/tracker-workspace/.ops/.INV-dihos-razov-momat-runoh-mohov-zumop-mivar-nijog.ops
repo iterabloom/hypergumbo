@@ -109,3 +109,10 @@
   clock: 13  # 8380
   nonce: '8380'  # 8380
   message: "yes please do create WI items for Phases 1-5 as you describe above. How pressing is this? If this issue or aspects of it are jeapordizing hypergumbo's credibility then you should certainly work on them immediately. But it would be nice if we could get to the TLA+ work items."  # 8380
+- op: discuss  # b01a
+  at: '2026-04-07T22:27:38Z'  # b01a
+  by: agent  # b01a
+  actor: jgstern_agent  # b01a
+  clock: 14  # b01a
+  nonce: b01a  # b01a
+  message: "On credibility: this is *not* an immediate credibility risk. The current symptoms are noise (slice pollution, centrality misranking on prometheus's web/api/v1/api.go) — they don't produce wrong answers, they produce *less informative* answers. The slices still walk; they just route receivers to the wrong concrete type. The bakeoff caught this exactly because the rest of the pipeline (INV-kunam, WI-saful, etc.) had been improved to the point where this gap became visible. So: the gap matters for slice quality on Go-heavy repos, but it's not blocking releases or producing user-visible incorrect output. Safe to defer behind TLA+ work.\n\nGoing to create the Phase 1-5 WIs now in a batch and let you triage TLA+ vs. INV-dihos Phase 1 timing. The Phase 1 (Java + Go) WI is the only one I'd recommend prioritizing above TLA+ — Phases 2-5 build on it and are clearly lower-leverage."  # b01a
