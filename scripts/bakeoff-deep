@@ -2966,6 +2966,108 @@ def _collect_reflect_scores(session_dir):
     return repo_scores
 
 
+# Verdict-driving metrics shown when no per-metric deltas exist between
+# two compared sessions (e.g. running compare against an identical session).
+# Order is descending importance: dataflow_slice_ratio is the most direct
+# proxy for slice quality, followed by access_mode coverage and the broader
+# slice/tier/io coverage metrics. Members not present in the actual report
+# data are filtered out at selection time, so listing extra candidates is
+# safe — they only surface when the data carries them.
+_DEFAULT_COMPARE_METRICS = [
+    "dataflow_slice_ratio",
+    "slice_access_mode_coverage",
+    "slice_coverage_pct",
+    "tier1_pct",
+    "io_tag_rate",
+    "orphan_rate",
+    "avg_slice_nodes",
+    "cross_file_ratio",
+    "centrality_gini",
+]
+
+
+def _select_key_metrics(metrics_a, metrics_b, common_repos, max_count=6):
+    """Pick which metrics ``cmd_compare`` should display.
+
+    Replaces the legacy hardcoded ``KEY_METRICS`` list (WI-lazat). The
+    selection is dynamic so that any metric introduced after the script
+    was last edited (e.g. ``slice_access_mode_coverage``, the field that
+    actually drove a verdict change in deep-20260407-050552 vs
+    deep-20260407-030917) becomes visible automatically when it has a
+    nonzero delta between sessions.
+
+    Algorithm:
+      1. Compute the intersection of *numeric* metric keys present in
+         both sessions for at least one common repo. Non-numeric fields
+         like ``verdict`` are excluded.
+      2. For each candidate, compute the mean absolute delta across all
+         repos that have a numeric value in both sessions.
+      3. If at least one candidate has a nonzero mean abs delta, return
+         the top ``max_count`` ranked by descending delta (alphabetical
+         tiebreak).
+      4. Otherwise (sessions identical, or only zero-delta metrics fall
+         in the candidate set), return the verdict-driving fallback list
+         intersected with the actual candidate set so that the column
+         layout stays stable across runs.
+
+    Args:
+        metrics_a: dict mapping ``repo_name`` to a metric dict.
+        metrics_b: same shape as ``metrics_a``.
+        common_repos: iterable of repo names present in both sessions.
+        max_count: maximum number of metrics to return.
+
+    Returns:
+        Ordered list of metric names. Empty when no common repos or no
+        numeric metrics intersect.
+    """
+    common = list(common_repos)
+    if not common:
+        return []
+
+    # Step 1: candidate set = numeric keys present in both sessions
+    keys_a: set[str] = set()
+    keys_b: set[str] = set()
+    for repo in common:
+        for k, v in metrics_a.get(repo, {}).items():
+            if k != "verdict" and isinstance(v, (int, float)) and not isinstance(v, bool):
+                keys_a.add(k)
+        for k, v in metrics_b.get(repo, {}).items():
+            if k != "verdict" and isinstance(v, (int, float)) and not isinstance(v, bool):
+                keys_b.add(k)
+    candidates = keys_a & keys_b
+    if not candidates:
+        return []
+
+    # Step 2: mean absolute delta per candidate
+    deltas: dict[str, float] = {}
+    for m in candidates:
+        per_repo: list[float] = []
+        for repo in common:
+            va = metrics_a.get(repo, {}).get(m)
+            vb = metrics_b.get(repo, {}).get(m)
+            if (
+                isinstance(va, (int, float)) and not isinstance(va, bool)
+                and isinstance(vb, (int, float)) and not isinstance(vb, bool)
+            ):
+                per_repo.append(abs(vb - va))
+        if per_repo:
+            deltas[m] = sum(per_repo) / len(per_repo)
+
+    # Step 3: rank by descending delta if any nonzero
+    if deltas and any(d > 0 for d in deltas.values()):
+        ranked = sorted(deltas.items(), key=lambda x: (-x[1], x[0]))
+        return [m for m, _ in ranked[:max_count]]
+
+    # Step 4: zero-delta fallback — verdict-driving defaults restricted to
+    # what is actually present in the candidate set.
+    fallback = [m for m in _DEFAULT_COMPARE_METRICS if m in candidates]
+    if fallback:
+        return fallback[:max_count]
+    # Last-resort alphabetical (only reached when no default member is in
+    # the candidate set).
+    return sorted(candidates)[:max_count]
+
+
 def cmd_compare(args):
     """Compare two bakeoff sessions side-by-side.
 
@@ -3038,14 +3140,28 @@ def cmd_compare(args):
             print(f"Only in B: {', '.join(only_b)}")
         return 0
 
-    # Key metrics to compare
-    key_metrics = ["orphan_rate", "avg_slice_nodes", "cross_file_ratio", "centrality_gini"]
+    # Key metrics to compare — dynamically selected by mean absolute delta
+    # so newly-added verdict-driving fields (e.g. slice_access_mode_coverage)
+    # surface automatically. WI-lazat / PR following deep-20260407-050552.
+    key_metrics = _select_key_metrics(metrics_a, metrics_b, common_repos)
 
     # Print header
     header = f"{'Repo':<25} {'Verdict':<12}"
     for m in key_metrics:
-        short = m.replace("_rate", "").replace("_nodes", "").replace("_ratio", "R").replace("_gini", "")
-        header += f" {short:>10}"
+        # Compress common suffixes; truncate to keep the column tight.
+        short = (
+            m.replace("_rate", "")
+            .replace("_nodes", "")
+            .replace("_ratio", "R")
+            .replace("_gini", "")
+            .replace("_pct", "%")
+            .replace("_coverage", "Cov")
+            .replace("dataflow_slice", "df_slice")
+            .replace("slice_access_modeCov", "smodeCov")
+        )
+        if len(short) > 12:
+            short = short[:12]
+        header += f" {short:>13}"
     if any(r in scores_a or r in scores_b for r in common_repos):
         header += f" {'LLM':>6}"
     print(header)
@@ -3066,13 +3182,16 @@ def cmd_compare(args):
         for m in key_metrics:
             val_a = ma.get(m)
             val_b = mb.get(m)
-            if val_a is not None and val_b is not None:
+            if (
+                isinstance(val_a, (int, float)) and not isinstance(val_a, bool)
+                and isinstance(val_b, (int, float)) and not isinstance(val_b, bool)
+            ):
                 delta = val_b - val_a
                 metric_deltas[m].append(delta)
                 sign = "+" if delta > 0 else ""
-                row += f" {sign}{delta:>9.1f}"
+                row += f" {sign}{delta:>12.2f}"
             else:
-                row += f" {'--':>10}"
+                row += f" {'--':>13}"
 
         # LLM score delta
         sa = scores_a.get(repo, {}).get("overall_score")
