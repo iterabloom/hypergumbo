@@ -1,0 +1,22 @@
+- op: create  # 2d09
+  at: '2026-04-07T22:31:06Z'  # 2d09
+  by: agent  # 2d09
+  actor: jgstern_agent  # 2d09
+  clock: 1  # 2d09
+  nonce: 2d09  # 2d09
+  data:  # 2d09
+    kind: work_item  # 2d09
+    title: "INV-dihos Phase 5: Cross-linker integration of return-type registry"  # 2d09
+    status: todo_soft  # 2d09
+    priority: 4  # 2d09
+    parent:  # 2d09
+    tags:  # 2d09
+    - analysis_quality  # 2d09
+    - cross_language_linkers  # 2d09
+    before:  # 2d09
+    - WI-hudam-bakim-birul-riban-vajis-siliz-tirug-valid  # 2d09
+    duplicate_of: []  # 2d09
+    not_duplicate_of: []  # 2d09
+    pr_ref:  # 2d09
+    description: "Phase 5 (follow-on) of the ADR-0006 Return-Type Registry Pre-Pass. Optional cross-linker integration that consumes the registry built in Phases 1-4.\n\nDELIVERABLES:\n(1) type_hierarchy.py fallback for ambiguous receiver types: when the registry has multiple candidate methods for a given short name, use type_hierarchy's receiver→class index to disambiguate.\n\n(2) dataflow.py refinement for chained method-call access_mode: when a chained call like 'cache.Get(k).Set(v)' has known receiver types (Cache.Get returns *Entry, Entry.Set is a write), populate dest_access_mode for the second call's receiver edge. This is Phase 5's contribution to the WI-hukoh forward-dataflow option (2)/(3) decision.\n\n(3) Cross-reference WI-hukoh in the PR description.\n\nOPTIONAL: only after Phases 1-4 are validated against deep-bakeoff metrics. Skip if the registry signal turns out to be too noisy or too thin to support cross-linker consumption.\n\nPREREQUISITE: Phase 4 (created above)."  # 2d09
+    fields: {}  # 2d09
