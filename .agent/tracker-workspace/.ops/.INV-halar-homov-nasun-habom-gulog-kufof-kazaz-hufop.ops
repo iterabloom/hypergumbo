@@ -58,3 +58,10 @@
   clock: 6  # a6f7
   nonce: a6f7  # a6f7
   message: "pr number or commit has please. also this is a good real-world example of one way hypergumbo can assist agentic coding."  # a6f7
+- op: discuss  # 65f2
+  at: '2026-04-07T07:28:03Z'  # 65f2
+  by: agent  # 65f2
+  actor: jgstern_agent  # 65f2
+  clock: 7  # 65f2
+  nonce: 65f2  # 65f2
+  message: "PR refs: iterabloom/hypergumbo#2733 (a3ec56fed) wired scan_library_patterns into the tree-sitter annotate_dataflow path. iterabloom/hypergumbo#2740 (b5680c151) extended this to annotate_dataflow_ast (the stdlib ast variant used by py.py); this was needed because Python's mainstream analyzer goes through the AST path, not tree-sitter, so #2733 alone left .append/.write/.send unannotated for pure Python code. Agreed — this case is a nice example of hypergumbo helping itself: 'hypergumbo explain scan_library_patterns -x' showed Called by: (none), confirming dead code, and the kserve reflect agent measured the impact directly (98 .append, 37 .update, 30 .write calls all access_mode unset). Will add a brief writeup to the lab notebook."  # 65f2

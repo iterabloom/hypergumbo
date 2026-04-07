@@ -18,3 +18,18 @@
     pr_ref:  # 64bc
     description: "kserve reflect (deep-20260406-233120) found: 'packages/hypergumbo-core/src/hypergumbo_core/dataflow_patterns/python.yaml has NO library_patterns section at all — only assignments, returns, and deletions. By contrast, go.yaml has 25+ library_patterns rules.' Even if python.yaml had library_patterns, py.py uses Python's stdlib ast (not tree-sitter) so it would not consume them — but we now wire library_patterns through annotate_dataflow which is called by py.py too, so this would just work.\n\nAdd library_patterns for: .append/.extend/.add/.update/.pop/.remove/.insert/.clear/.write/.writelines/.send/.put as write/mutate; .get/.keys/.values/.items/.read/.recv as read.\n\nConcrete impact (kserve): 98 .append calls, 37 .update calls, 30 .write calls — ZERO have access_mode set today. This would lift Python access_mode coverage substantially."  # 64bc
     fields: {}  # 64bc
+- op: update  # 89a0
+  at: '2026-04-07T07:08:20Z'  # 89a0
+  by: agent  # 89a0
+  actor: jgstern_agent  # 89a0
+  clock: 2  # 89a0
+  nonce: 89a0  # 89a0
+  set:  # 89a0
+    status: done  # 89a0
+- op: discuss  # 5461
+  at: '2026-04-07T07:08:20Z'  # 5461
+  by: agent  # 5461
+  actor: jgstern_agent  # 5461
+  clock: 3  # 5461
+  nonce: '5461'  # 5461
+  message: "Done in commit b5680c151. Added library_patterns section to python.yaml (.append, .write, .send, .read, .get, etc.) and wired it through annotate_dataflow_ast. Verified via 3 new dataflow tests. Bakeoff impact (Python access_mode coverage) pending validation in next deep cycle."  # 5461
