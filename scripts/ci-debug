@@ -75,7 +75,10 @@ cmd_runs() {
 import sys, json
 try:
     data = json.load(sys.stdin)
-    runs = data.get('workflow_runs', [])
+    # Coerce explicit null to []. Forgejo's runs/tasks endpoints can return
+    # 'workflow_runs': null when no runs exist; dict.get's default only fires
+    # for missing keys, not for keys with a null value.
+    runs = data.get('workflow_runs') or []
     # Deduplicate by run_number (tasks endpoint returns one entry per job)
     seen = set()
     unique = []
@@ -111,7 +114,15 @@ import sys, json
 try:
     data = json.load(sys.stdin)
     state = data.get('state', 'unknown')
-    statuses = data.get('statuses', [])
+    # Coerce explicit null to []. Forgejo returns 'statuses': null (with
+    # total_count: 0 and state: '') for SHAs that have no commit-status
+    # entries yet — e.g. a freshly pushed PR head where CI hasn't reported
+    # anything. dict.get's default only fires for missing keys.
+    statuses = data.get('statuses') or []
+
+    if not statuses:
+        print('No CI status reported for this commit yet.')
+        sys.exit(0)
 
     # Check if ci-complete passed despite overall failure.
     # When pytest-retry recovers a flaky test, individual jobs may show
@@ -176,13 +187,17 @@ cmd_pr_status() {
       ci_complete_state=$(echo "$API_RESPONSE" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-for s in data.get('statuses', []):
+# Coerce explicit null to []; see cmd_status for the same defensive pattern.
+for s in (data.get('statuses') or []):
     if s.get('context', '') == 'ci-complete':
         print(s.get('state', ''))
         break
 " 2>/dev/null)
       if [[ "$ci_state" == "failure" && "$ci_complete_state" == "success" ]]; then
         ci_state="success (recovered)"
+      fi
+      if [[ -z "$ci_state" ]]; then
+        ci_state="(no status reported yet)"
       fi
       echo "  Overall: $ci_state"
     else
