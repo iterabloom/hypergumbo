@@ -116,3 +116,11 @@
   clock: 14  # b01a
   nonce: b01a  # b01a
   message: "On credibility: this is *not* an immediate credibility risk. The current symptoms are noise (slice pollution, centrality misranking on prometheus's web/api/v1/api.go) — they don't produce wrong answers, they produce *less informative* answers. The slices still walk; they just route receivers to the wrong concrete type. The bakeoff caught this exactly because the rest of the pipeline (INV-kunam, WI-saful, etc.) had been improved to the point where this gap became visible. So: the gap matters for slice quality on Go-heavy repos, but it's not blocking releases or producing user-visible incorrect output. Safe to defer behind TLA+ work.\n\nGoing to create the Phase 1-5 WIs now in a batch and let you triage TLA+ vs. INV-dihos Phase 1 timing. The Phase 1 (Java + Go) WI is the only one I'd recommend prioritizing above TLA+ — Phases 2-5 build on it and are clearly lower-leverage."  # b01a
+- op: update  # df67
+  at: '2026-04-07T23:26:22Z'  # df67
+  by: human  # df67
+  actor: jgstern  # df67
+  clock: 15  # df67
+  nonce: df67  # df67
+  set:  # df67
+    status: pending_validation  # df67

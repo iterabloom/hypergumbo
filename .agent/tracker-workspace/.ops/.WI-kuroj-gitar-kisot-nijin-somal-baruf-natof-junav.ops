@@ -19,3 +19,20 @@
     pr_ref:  # 571e
     description: "Phase 1 of the ADR-0006 Return-Type Registry Pre-Pass (per the augmentation in PR #2771). Build the global function-signature registry once per AnalysisRun and wire it into Java + Go var_types resolution loops. This is the highest-value phase because both languages already track receiver types in var_types and Java + Go are the most-represented statically-typed languages in the deep-bakeoff pool.\n\nDELIVERABLES:\n(1) New 'signatures.py' module under packages/hypergumbo-core/src/hypergumbo_core/. Builds dict[str, str] of {ReceiverType.MethodName: ReturnType} (or bare MethodName for free functions). Walks each analyzer's tree-sitter output once. Tier 1 = positional rules from <lang>.yaml; Tier 2 = per-language Python escape hatches dispatched by edge.language. Attached to AnalysisRun context.\n\n(2) New 'signatures' YAML section in go.yaml: function_node_types (function_declaration, method_declaration), receiver_field (receiver), name_field (name), result_field (result), generic_strip_pattern ('<.*>').\n\n(3) New 'signatures' YAML section in java.yaml: function_node_types (method_declaration, constructor_declaration), receiver_field null (look up enclosing class_declaration), name_field (name), return_type_field (type), generic_strip_pattern ('<.*>').\n\n(4) Python escape hatches in signatures.py go_extract(): tuple return — pick non-error result; cross-package qualifier strip ('promql.Query' → 'Query'); receiver binding ('(qe *QueryEngine) M()' → 'QueryEngine.M', strip pointer star + package qualifier).\n\n(5) Python escape hatches in signatures.py java_extract(): constructor handling (register 'ClassName' under enclosing class).\n\n(6) Wire registry into go.py and java.py var_types fill loop: when 'x := obj.method()' and obj's type is known, look up {obj_type}.{method_name} in function_signatures and assign x that return type. Place AFTER existing constructor/parameter/field rules so they retain precedence.\n\n(7) Regression tests: tests/test_go_signature_registry.py and tests/test_java_signature_registry.py. Cover: simple return type, receiver-bound method, tuple-return-with-error (Go), generic erasure, cross-package qualifier (Go), constructor (Java).\n\n(8) Bakeoff validation: re-run prometheus deep-bakeoff after Phase 1. Forward slice from cmd/promtool/main.go:queryRange should walk into promql.Engine.exec → evalSampleVector. Compare iter-NNN slice.0 node count against the prior iteration to confirm chained receiver resolution actually grew the slice.\n\nCREDIBILITY NOTE (per human reply 2026-04-07): not an immediate credibility risk; defer behind TLA+ work if other priorities arise. This phase is the only one of Phases 1-5 that should be prioritized above TLA+."  # 571e
     fields: {}  # 571e
+- op: update  # 3107
+  at: '2026-04-07T23:24:57Z'  # 3107
+  by: human  # 3107
+  actor: jgstern  # 3107
+  clock: 2  # 3107
+  nonce: '3107'  # 3107
+  set:  # 3107
+    parent: INV-dihos-razov-momat-runoh-mohov-zumop-mivar-nijog  # 3107
+- op: update  # 1346
+  at: '2026-04-07T23:26:34Z'  # 1346
+  by: human  # 1346
+  actor: jgstern  # 1346
+  clock: 3  # 1346
+  nonce: '1346'  # 1346
+  set:  # 1346
+    status: todo_hard  # 1346
+    priority: 1  # 1346

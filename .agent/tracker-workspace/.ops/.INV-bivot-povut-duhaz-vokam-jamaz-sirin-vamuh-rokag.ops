@@ -104,3 +104,12 @@
   clock: 12  # 08d0
   nonce: 08d0  # 08d0
   message: "Acknowledged. Found candidate repos in ~/ALL_REPOS/whole_bunch_of_repos: kafka, rabbitmq, redis, kong. The agent is being asked to disable autonomous mode after responding to messages so the validation will not run in this session, but to pre-load the next session here is the concrete validation plan:\n\n(1) Pick one event-driven repo from the candidate set. kafka is the highest-signal pick because it both publishes (KafkaProducer.send) and subscribes (KafkaConsumer.poll) within the same codebase, so a slice from a publish site should walk into the broker's subscriber dispatch — exactly the BFS gap INV-bivot fixed.\n\n(2) Run a focused trial: bakeoff-deep init --pool ~/ALL_REPOS/whole_bunch_of_repos, cohort --repos kafka, cycle. Expect at least one repo, ~30-60 min wall clock per the experiment-design playbook (kafka is a large Java repo so this may push the upper bound).\n\n(3) Mine slice.0.json and slice.dataflow.0.json for event_publishes edges. Pre-fix expectation (per INV-bivot): these edges existed in the graph but BFS never traversed them. Post-fix expectation: forward slice from a producer should reach consumer methods via event_publishes.\n\n(4) Compare the cohort's iter-001 against the prior INV-bivot baseline if one exists. The reflect-aggregate step should confirm whether the BFS is now walking event edges in real production code, not just the unit-test stubs.\n\nINV-bivot stays in pending_validation until this run completes. The next session should pick this up before any new INV-dihos Phase 1 work — it's the only outstanding validation against a real event-driven repo."  # 08d0
+- op: update  # 6f89
+  at: '2026-04-07T23:22:13Z'  # 6f89
+  by: human  # 6f89
+  actor: jgstern  # 6f89
+  clock: 13  # 6f89
+  nonce: 6f89  # 6f89
+  set: {}  # 6f89
+  remove:  # 6f89
+    tags: [done-ish]  # 6f89

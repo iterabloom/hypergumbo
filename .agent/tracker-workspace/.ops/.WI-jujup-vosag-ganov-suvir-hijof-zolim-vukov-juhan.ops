@@ -20,3 +20,19 @@
     pr_ref:  # 3e5c
     description: "Phase 2 of the ADR-0006 Return-Type Registry Pre-Pass. Extends the registry built in Phase 1 (WI-kuroj) to two more analyzers with existing var_types infrastructure. Smaller delta than Phase 1.\n\nDELIVERABLES:\n(1) New 'signatures' YAML in kotlin.yaml: function_node_types (function_declaration, primary_constructor), name_field, return_type_field. Tier 2 escape hatches in signatures.py kotlin_extract(): nullable suffix strip ('Foo?' → 'Foo'); generic erasure (handled by Tier 1).\n\n(2) New 'signatures' YAML in csharp.yaml: function_node_types (method_declaration, constructor_declaration), name_field, return_type_field. Tier 2 escape hatches in signatures.py csharp_extract(): async unwrapping ('Task<T>' → 'T', 'ValueTask<T>' → 'T', 'IAsyncEnumerable<T>' → 'T').\n\n(3) Wire registry into kotlin.py and csharp.py var_types fill loops (same pattern as Phase 1 wiring).\n\n(4) Regression tests in tests/test_kotlin_signature_registry.py and tests/test_csharp_signature_registry.py covering the per-language Tier 2 escape hatches.\n\n(5) Bakeoff validation: re-run kserve (Kotlin) and aspnet (C#) deep-bakeoff after Phase 2.\n\nPREREQUISITE: Phase 1 (WI-kuroj) must be complete because this WI extends signatures.py and reuses its registry plumbing."  # 3e5c
     fields: {}  # 3e5c
+- op: update  # cc56
+  at: '2026-04-07T23:25:30Z'  # cc56
+  by: human  # cc56
+  actor: jgstern  # cc56
+  clock: 2  # cc56
+  nonce: cc56  # cc56
+  set:  # cc56
+    parent: INV-dihos-razov-momat-runoh-mohov-zumop-mivar-nijog  # cc56
+- op: update  # 9990
+  at: '2026-04-07T23:26:49Z'  # 9990
+  by: human  # 9990
+  actor: jgstern  # 9990
+  clock: 3  # 9990
+  nonce: '9990'  # 9990
+  set:  # 9990
+    priority: 4  # 9990

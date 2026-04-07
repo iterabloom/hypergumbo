@@ -18,3 +18,10 @@
     pr_ref:  # c83d
     description: "Draft an exploratory ADR documenting the 'per-language config surface' as a first-class concept, plus a 'language_profile.py' registry in core that loads, merges, and exposes every applicable rule for a language as a single object. Analyzers consume the registry instead of reading YAML themselves. ADR also defines the contribution surface ('how do I add a rule for my language?') so external contributors can submit YAML diffs without touching Python.\n\nP3 in the WI-sukav discoverability taxonomy. Per human reply 2026-04-07: 'P3 is worth an exploratory/draft ADR' and 'maybe skip P2 altogether or at most roll it into P3'. So this WI rolls P2 (auto-generated reference page) into the ADR's design as one of the 'consumers' of the registry — the ADR can specify both runtime consumers (analyzers) and build-time consumers (docs generation).\n\nDELIVERABLES:\n(1) New ADR file under docs/adr/ (next available number) titled 'Per-language Configuration Surface and Language Profile Registry'.\n(2) §Context: enumerate the existing per-language config sections (dataflow, frameworks, test detection, signatures from INV-dihos, type_hierarchy flags from WI-sukav, io_boundary).\n(3) §Decision: define LanguageProfile dataclass + load_profile(lang) function. List the consumers (analyzers + docs generation).\n(4) §Consequences: discuss migration cost vs flexibility, and tie it back to the discoverability concern from WI-sukav.\n\nEXPLORATORY: low priority, no implementation. The goal is to capture the design before the per-language config surface grows beyond what can usefully be hand-managed."  # c83d
     fields: {}  # c83d
+- op: discuss  # e2c7
+  at: '2026-04-07T23:33:01Z'  # e2c7
+  by: human  # e2c7
+  actor: jgstern  # e2c7
+  clock: 2  # e2c7
+  nonce: e2c7  # e2c7
+  message: "sure but I wasn't a fan of those markdown files in WI-fahot (aka \"P2\"). those sound like a bad idea."  # e2c7

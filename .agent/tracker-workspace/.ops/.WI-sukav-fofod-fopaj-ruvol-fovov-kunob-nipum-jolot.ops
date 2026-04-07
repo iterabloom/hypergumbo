@@ -67,3 +67,18 @@
   clock: 8  # 0fd4
   nonce: 0fd4  # 0fd4
   message: "Created the three follow-on items per your reply:\n- WI-siran (P3): 'hypergumbo config show <lang>' subcommand (P1 in the discoverability taxonomy)\n- WI-fahot (P4, needs_human_review): A2 alternative — per-edge virtual_dispatch flag (deferred until A1 ships and we see bakeoff signal on whether per-method granularity is worth the migration cost)\n- WI-rumim (P4): exploratory ADR draft for cross-cutting language_profile registry (P3 in the discoverability taxonomy; also rolls in the P2 auto-generated reference page concept since you suggested skipping or rolling P2 into P3)\n\nFor THIS WI (the A1 fix): the agent is being asked to disable autonomous mode after responding to messages, so the A1 implementation will not happen in this session. WI-sukav stays in todo_soft as the action item for the next session."  # 0fd4
+- op: discuss  # 581b
+  at: '2026-04-07T23:29:45Z'  # 581b
+  by: human  # 581b
+  actor: jgstern  # 581b
+  clock: 9  # 581b
+  nonce: 581b  # 581b
+  message: "ok we are back in a new session please go ahead with A1"  # 581b
+- op: update  # 53df
+  at: '2026-04-07T23:29:54Z'  # 53df
+  by: human  # 53df
+  actor: jgstern  # 53df
+  clock: 10  # 53df
+  nonce: 53df  # 53df
+  set:  # 53df
+    priority: 1  # 53df
