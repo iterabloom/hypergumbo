@@ -1,0 +1,21 @@
+- op: create  # 9136
+  at: '2026-04-07T23:57:50Z'  # 9136
+  by: agent  # 9136
+  actor: jgstern_agent  # 9136
+  clock: 1  # 9136
+  nonce: '9136'  # 9136
+  data:  # 9136
+    kind: work_item  # 9136
+    title: "dead-code-maybe ranking boosts (path shape + FFI signatures)"  # 9136
+    status: todo_soft  # 9136
+    priority: 4  # 9136
+    parent:  # 9136
+    tags:  # 9136
+    - cross_language_linkers  # 9136
+    - dead_code_prospector  # 9136
+    before: []  # 9136
+    duplicate_of: []  # 9136
+    not_duplicate_of: []  # 9136
+    pr_ref:  # 9136
+    description: "Secondary ranking signals for dead-code-maybe per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md Heuristics §5 and §6:\n\n(1) **Path/name shape boost:** boost candidates in directories named api/, rpc/, proto/, ffi/, native/, bindings/, bridge/, or with names containing handler, _request, _response, serialize, to_json. Cross-language references concentrate in these locations.\n\n(2) **FFI signature auto-flag:** anything with extern \"C\", JNIEXPORT, [DllImport], #[pyo3], extern crate, ctypes/cffi declarations should be auto-flagged as a definite linker gap (the notebook calls these 'free hits'). If it's dead in the static call graph and has an FFI signature, you're definitely missing a linker.\n\nLower priority than the base filters — not strictly required for the first prospecting run. May be added after initial run reveals whether they would materially change the top-ranked list. Depends on the base dead-code-maybe tool."  # 9136
+    fields: {}  # 9136
