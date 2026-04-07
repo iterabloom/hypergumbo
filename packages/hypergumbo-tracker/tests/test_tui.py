@@ -651,6 +651,118 @@ class TestLabelMarkup:
         # And resolves to plain text correctly
         assert "[agent]" in _strip_markup(raw)
 
+    def test_description_with_bracket_substring_does_not_raise(self) -> None:
+        """Descriptions containing ``[ ... ]`` substrings render without error.
+
+        Regression for the WI-difij crash: when the user opened the
+        WI-difij detail view, the TUI raised
+        ``MarkupError: Expected markup value (found '--name-only
+        \\$sha)" ]')`` because Rich tried to parse a bracketed shell
+        snippet in the description as a markup tag.  ``Static.update``
+        calls ``visualize`` which in turn calls ``Text.from_markup``,
+        so any user-controlled text embedded in the joined detail
+        lines must be escaped.
+
+        Uses the exact escape sequence from WI-difij to faithfully
+        reproduce the original parser failure.
+        """
+        item = CompiledItem(
+            id="WI-shellsnippet",
+            kind="work_item",
+            title="Detect empty diff",
+            status="todo_soft",
+            priority=4,
+            tier=Tier.WORKSPACE,
+            description=(
+                "while read sha _; do\n"
+                "    if [ -z \\\"\\$(git show --pretty='' "
+                "--name-only \\$sha)\\\" ]; then\n"
+                "      echo \\\"empty: \\$sha\\\"\n"
+                "    fi\n"
+                "  done"
+            ),
+        )
+        lines = _format_detail_lines(item)
+        raw = "\n".join(lines)
+        # Round-trip through the same code path Static.update uses.
+        # Pre-fix this raises rich.errors.MarkupError.
+        plain = Text.from_markup(raw).plain
+        # The escaped substring still renders to the original text.
+        assert "--name-only" in plain
+        assert "if [ -z" in plain
+
+    def test_title_with_bracket_substring_does_not_raise(self) -> None:
+        """Titles containing ``[ ... ]`` render without raising MarkupError."""
+        item = CompiledItem(
+            id="WI-bktitle",
+            kind="work_item",
+            title="Fix [build] regression in linker",
+            status="todo_soft",
+            priority=2,
+            tier=Tier.WORKSPACE,
+        )
+        lines = _format_detail_lines(item)
+        raw = "\n".join(lines)
+        plain = Text.from_markup(raw).plain
+        assert "Fix [build] regression in linker" in plain
+
+    def test_field_value_with_bracket_substring_does_not_raise(self) -> None:
+        """Custom field values containing brackets render without raising."""
+        item = CompiledItem(
+            id="WI-bkfield",
+            kind="work_item",
+            title="Field bracket test",
+            status="todo_soft",
+            priority=3,
+            tier=Tier.WORKSPACE,
+            fields={"command": '[ -z "$x" ] && echo empty'},
+        )
+        lines = _format_detail_lines(item)
+        raw = "\n".join(lines)
+        plain = Text.from_markup(raw).plain
+        assert '[ -z "$x" ] && echo empty' in plain
+
+    def test_discussion_message_with_bracket_substring_does_not_raise(
+        self,
+    ) -> None:
+        """Discussion messages containing brackets render without raising."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="WI-bkdisc",
+            kind="work_item",
+            title="Discussion bracket test",
+            status="todo_soft",
+            priority=3,
+            tier=Tier.WORKSPACE,
+            discussion=[
+                DiscussionEntry(
+                    by="human", actor="dev", at="2026-04-07T22:00:00Z",
+                    message='try `git log --pretty="[%h] %s"` to verify',
+                ),
+            ],
+        )
+        lines = _format_detail_lines(item)
+        raw = "\n".join(lines)
+        plain = Text.from_markup(raw).plain
+        assert '[%h] %s' in plain
+
+    def test_tag_with_bracket_substring_does_not_raise(self) -> None:
+        """Tags containing brackets render without raising."""
+        item = CompiledItem(
+            id="WI-bktag",
+            kind="work_item",
+            title="Tag bracket test",
+            status="todo_soft",
+            priority=3,
+            tier=Tier.WORKSPACE,
+            tags=["normal", "[experimental]"],
+        )
+        lines = _format_detail_lines(item)
+        raw = "\n".join(lines)
+        plain = Text.from_markup(raw).plain
+        assert "[experimental]" in plain
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: _collapse_double_spacing

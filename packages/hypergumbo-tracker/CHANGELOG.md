@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Fixed
+
+- **TUI crash on items whose description contains bracketed shell snippets**: opening the WI-difij detail panel raised `MarkupError: Expected markup value (found '--name-only \\$sha)" ]')` because Rich's markup parser tried to interpret a bracketed shell snippet (`if [ -z "$(git show --pretty='' --name-only $sha)" ]`) as a style tag. Same root cause for any user-controlled text containing literal `[`: titles like `Fix [build] regression`, tags like `[experimental]`, custom field values, and discussion messages all had the same latent crash. Fix: new `_escape_user` helper that escapes literal `[` to `\[` before user values are interpolated into the markup-formatted lines built by `_format_detail_lines` and `_format_activity_lines`. The structural label markup (e.g. `[bold reverse]Title:[/]`) is unaffected because it never embeds user content directly. Five new tests in `TestLabelMarkup` cover the regression: description (using the literal WI-difij escape sequence), title, custom field value, discussion message, and tag. All round-trip through `Text.from_markup()` (the same code path `Static.update` uses) and assert the original characters survive.
+
 ## [0.2.0] - 2026-04-04
 
 ### Added
