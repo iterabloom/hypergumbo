@@ -1,0 +1,21 @@
+- op: create  # 1ee4
+  at: '2026-04-07T10:13:08Z'  # 1ee4
+  by: agent  # 1ee4
+  actor: jgstern_agent  # 1ee4
+  clock: 1  # 1ee4
+  nonce: 1ee4  # 1ee4
+  data:  # 1ee4
+    kind: work_item  # 1ee4
+    title: "Tier classifier: in-tree *_test.go files should be tier 1, not tier 2"  # 1ee4
+    status: todo_soft  # 1ee4
+    priority: 3  # 1ee4
+    parent:  # 1ee4
+    tags:  # 1ee4
+    - analysis_quality  # 1ee4
+    - go  # 1ee4
+    before: []  # 1ee4
+    duplicate_of: []  # 1ee4
+    not_duplicate_of: []  # 1ee4
+    pr_ref:  # 1ee4
+    description: "Surfaced from deep-20260407-050552 reflect aggregate (alertmanager + prometheus). The tier classifier is currently classifying in-tree Go test files (config/coordinator_test.go, dispatch/dispatch_test.go, notify/notify_test.go, provider/mem/mem_test.go, silence/silence_test.go, test/cli/mock.go, test/testutils/{acceptance,collector}.go on alertmanager; api_test.go, manager_test.go, xds_test.go, file_test.go, query_log_test.go on prometheus) as tier=2. They should be tier=1 because they live in the same Go module (same go.mod) as the production code.\\n\\nImpact: tier-2 inclusion in slices is supposed to reveal genuine third-party dependencies for the user. With this bug, the 14 tier-2 nodes alertmanager exposes are all in-tree test fixtures, not cgo deps or vendored libs, making the tier-2 slice useless for 'what packages do I depend on?' answers. Same on prometheus (24 tier-2 nodes, all _test.go).\\n\\nRoot cause to investigate: the supply_chain tier classifier in core/supply_chain.py — likely conflates 'is_test_file' with 'is_external_module'. The Go-specific path probably puts test files into tier 2 because they aren't in 'main package execution', but tier and test-ness are orthogonal axes that should not be merged.\\n\\nReproduce: `hypergumbo run /home/jgstern_agent/repos/alertmanager`, then inspect any *_test.go node's supply_chain_tier field. Should be 1; currently 2.\\n\\nThis is a different (opposite) issue from WI-kodas (which was about Vue templates being correctly tier 1 — that one was metric interpretation, not classification). This one is genuine misclassification."  # 1ee4
+    fields: {}  # 1ee4
