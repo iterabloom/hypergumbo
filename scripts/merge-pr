@@ -3,17 +3,18 @@
 set -euo pipefail
 
 # ------------------------------------------------------------------
-# merge-pr: Focused recovery script for merging existing PRs
+# merge-pr: Focused recovery script for merging (or closing) existing PRs
 #
 # Usage:
 #   merge-pr <PR_NUMBER>                    Merge immediately (verify CI first)
 #   merge-pr <PR_NUMBER> --wait-for-ci      Poll CI then merge
 #   merge-pr <PR_NUMBER> --squash           Squash merge
 #   merge-pr <PR_NUMBER> --timeout 1800     Custom CI wait timeout (seconds)
+#   merge-pr close <PR_NUMBER> [--reason]   Close PR without merging (WI-vonis)
 #
 # Exit codes:
-#   0 = success (merged, or already merged)
-#   1 = failure (CI failed, merge rejected, auth error)
+#   0 = success (merged, or already merged; closed, or already closed)
+#   1 = failure (CI failed, merge rejected, auth error, refuse-to-close)
 #   2 = timeout (CI still pending after deadline)
 #
 # This script does NOT create PR_PENDING — it only cleans it up.
@@ -33,6 +34,147 @@ if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
 fi
 
 # ------------------------------------------------------------------
+# `close` subcommand — WI-vonis.
+# ------------------------------------------------------------------
+# Fills a coverage gap in AGENTS.md §"CI Interaction Policy": before
+# this, agents that needed to close a PR without merging it had to ask
+# a human to click a button in the forge UI (the only sanctioned CI
+# scripts had no `close` action). The subcommand validates the PR is
+# open, optionally posts the supplied reason as a comment first (so
+# the audit trail lives on the forge), then PATCHes `state=closed`.
+# Refuses to "close" an already-merged PR; idempotent no-op on an
+# already-closed one.
+# ------------------------------------------------------------------
+close_usage() {
+	echo "Usage: merge-pr close <PR_NUMBER> [--reason \"text\"]"
+	echo ""
+	echo "Close a PR without merging. Validates the PR is open, optionally"
+	echo "posts a reason as a PR comment, then PATCHes state=closed via"
+	echo "the forge API."
+	echo ""
+	echo "Exit codes:"
+	echo "  0 = Success (closed, or already closed non-merged)"
+	echo "  1 = Failure (already merged, not found, network error)"
+}
+
+cmd_close() {
+	local pr_num=""
+	local reason=""
+
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		--reason)
+			reason="${2:-}"
+			shift 2
+			;;
+		--help | -h)
+			close_usage
+			return 0
+			;;
+		*)
+			if [[ -z "$pr_num" ]] && [[ "$1" =~ ^[0-9]+$ ]]; then
+				pr_num="$1"
+			else
+				echo "Unknown option to close: $1"
+				close_usage
+				return 1
+			fi
+			shift
+			;;
+		esac
+	done
+
+	if [[ -z "$pr_num" ]]; then
+		echo "Error: PR number required"
+		close_usage
+		return 1
+	fi
+
+	# Validate credentials
+	local token="${FORGEJO_TOKEN:-}"
+	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+		token="${SELFHOSTED_FORGEJO_TOKEN:-$token}"
+	fi
+	if [[ -z "$token" ]]; then
+		echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
+		return 1
+	fi
+
+	echo "🔍 Fetching PR #$pr_num..."
+	if ! api_get "$API_BASE/pulls/$pr_num"; then
+		echo "❌ Failed to fetch PR #$pr_num (HTTP $API_HTTP_CODE)"
+		if [[ -n "$API_RESPONSE" ]]; then
+			echo "Response: $API_RESPONSE"
+		fi
+		return 1
+	fi
+
+	local pr_state pr_merged pr_title
+	pr_state=$(echo "$API_RESPONSE" | json_field "state")
+	pr_merged=$(echo "$API_RESPONSE" | json_field "merged")
+	pr_title=$(echo "$API_RESPONSE" | json_field "title")
+	echo "   Title:  $pr_title"
+	echo "   State:  $pr_state"
+
+	# Refuse to "close" an already-merged PR. The whole point of the
+	# subcommand is close-without-merge; merged PRs are a terminal state
+	# that close() cannot (and should not) reach.
+	if [[ "$pr_merged" == "True" || "$pr_merged" == "true" ]]; then
+		echo "❌ Refusing to close PR #$pr_num: already merged"
+		return 1
+	fi
+
+	# Idempotent no-op when PR is already closed and not merged.
+	if [[ "$pr_state" == "closed" ]]; then
+		echo "ℹ️  PR #$pr_num is already closed (no-op)"
+		return 0
+	fi
+
+	# Post the reason as a comment (best-effort) before closing, so the
+	# audit trail survives even if the close itself fails.
+	if [[ -n "$reason" ]]; then
+		echo "💬 Posting close reason as comment..."
+		local comment_payload
+		comment_payload=$(
+			python3 -c "
+import json, sys
+print(json.dumps({'body': f'Closed by merge-pr: {sys.argv[1]}'}))
+" "$reason"
+		)
+		if ! api_post "$API_BASE/issues/$pr_num/comments" "$comment_payload"; then
+			# Non-fatal: still attempt the close.
+			echo "⚠️  Failed to post reason as comment (HTTP $API_HTTP_CODE); continuing with close"
+		fi
+	fi
+
+	echo "🗙 Closing PR #$pr_num..."
+	if ! api_patch "$API_BASE/pulls/$pr_num" '{"state": "closed"}'; then
+		echo "❌ Failed to close PR #$pr_num (HTTP $API_HTTP_CODE)"
+		if [[ -n "$API_RESPONSE" ]]; then
+			echo "Response: $API_RESPONSE"
+		fi
+		return 1
+	fi
+
+	echo ""
+	echo "✅ PR #$pr_num closed"
+	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+		echo "🔗 $FAILOVER_URL/$FAILOVER_REPO/pulls/$pr_num"
+	else
+		echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$pr_num"
+	fi
+	return 0
+}
+
+# Dispatch the `close` subcommand early, before the merge-specific
+# argument parser runs. Any remaining args are forwarded to cmd_close.
+if [[ "${1:-}" == "close" ]]; then
+	shift
+	cmd_close "$@"
+	exit $?
+fi
+
+# ------------------------------------------------------------------
 # Parse arguments
 # ------------------------------------------------------------------
 PR_NUM=""
@@ -42,6 +184,7 @@ CUSTOM_TIMEOUT=""
 
 usage() {
 	echo "Usage: merge-pr <PR_NUMBER> [options]"
+	echo "       merge-pr close <PR_NUMBER> [--reason \"text\"]"
 	echo ""
 	echo "Options:"
 	echo "  --wait-for-ci   Poll CI status before merging (uses poll_ci)"
@@ -49,9 +192,12 @@ usage() {
 	echo "  --timeout SECS  Custom CI polling timeout (default: 2400s)"
 	echo "  --help          Show this help"
 	echo ""
+	echo "Subcommands:"
+	echo "  close           Close a PR without merging (WI-vonis)"
+	echo ""
 	echo "Exit codes:"
-	echo "  0 = Success (merged or already merged)"
-	echo "  1 = Failure (CI failed, merge rejected, auth error)"
+	echo "  0 = Success (merged or already merged, closed or already closed)"
+	echo "  1 = Failure (CI failed, merge rejected, auth error, refuse-close)"
 	echo "  2 = Timeout (CI still pending after deadline)"
 }
 
