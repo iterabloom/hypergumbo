@@ -1,0 +1,20 @@
+- op: create  # 64bc
+  at: '2026-04-07T03:59:33Z'  # 64bc
+  by: agent  # 64bc
+  actor: jgstern_agent  # 64bc
+  clock: 1  # 64bc
+  nonce: 64bc  # 64bc
+  data:  # 64bc
+    kind: work_item  # 64bc
+    title: "python.yaml has no library_patterns section (PR #2733 dead code for Python)"  # 64bc
+    status: todo_soft  # 64bc
+    priority: 2  # 64bc
+    parent:  # 64bc
+    tags:  # 64bc
+    - analysis_quality  # 64bc
+    before: []  # 64bc
+    duplicate_of: []  # 64bc
+    not_duplicate_of: []  # 64bc
+    pr_ref:  # 64bc
+    description: "kserve reflect (deep-20260406-233120) found: 'packages/hypergumbo-core/src/hypergumbo_core/dataflow_patterns/python.yaml has NO library_patterns section at all — only assignments, returns, and deletions. By contrast, go.yaml has 25+ library_patterns rules.' Even if python.yaml had library_patterns, py.py uses Python's stdlib ast (not tree-sitter) so it would not consume them — but we now wire library_patterns through annotate_dataflow which is called by py.py too, so this would just work.\n\nAdd library_patterns for: .append/.extend/.add/.update/.pop/.remove/.insert/.clear/.write/.writelines/.send/.put as write/mutate; .get/.keys/.values/.items/.read/.recv as read.\n\nConcrete impact (kserve): 98 .append calls, 37 .update calls, 30 .write calls — ZERO have access_mode set today. This would lift Python access_mode coverage substantially."  # 64bc
+    fields: {}  # 64bc
