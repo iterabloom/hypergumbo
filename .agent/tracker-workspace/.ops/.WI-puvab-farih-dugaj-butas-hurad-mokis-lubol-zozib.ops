@@ -19,3 +19,18 @@
     pr_ref:  # 42d1
     description: "Followup from WI-munim investigation. The deep-bakeoff diagnostic produces slice.tier1.json and slice.tier2.json with exclude_tests=True. In repos like alertmanager where tier-2 nodes are dominated by tests (800/801 in alertmanager), the two slices are byte-identical and the diagnostic produces a misleading 'tier filter broken' signal in reflect. Fix options: (a) use exclude_tests=False for the tier-comparison slice queries, (b) report tier-2 size minus tier-1 size as a metric the diagnostic surfaces directly, or (c) skip the tier diff entirely on test-dominated repos. Also worth investigating: should the supply_chain classifier split tests into a distinct tier (e.g., tier-4 'test') instead of conflating with internal_dep? Source: WI-munim investigation against deep-20260406-182616 alertmanager."  # 42d1
     fields: {}  # 42d1
+- op: update  # 9073
+  at: '2026-04-07T09:03:30Z'  # 9073
+  by: agent  # 9073
+  actor: jgstern_agent  # 9073
+  clock: 2  # 9073
+  nonce: '9073'  # 9073
+  set:  # 9073
+    status: done  # 9073
+- op: discuss  # 3ce9
+  at: '2026-04-07T09:03:30Z'  # 3ce9
+  by: agent  # 3ce9
+  actor: jgstern_agent  # 3ce9
+  clock: 3  # 3ce9
+  nonce: 3ce9  # 3ce9
+  message: "Merged in PR iterabloom/hypergumbo#2750 (commit 08061fef1). Bakeoff tier-bounded slices now use the same explicit non-test entry as slice.0.json (the first non-test entry from entries.txt) and drop --exclude-tests from the slice traversal. This lets tier-2 BFS walk into test-supply-chain code, which is what tier-2 was supposed to measure all along, while still keeping test entries out of the seed selection. On test-dominated repos like alertmanager (800/801 tier-2 nodes are tests), slice.tier1.json and slice.tier2.json should now differ meaningfully instead of being byte-identical."  # 3ce9
