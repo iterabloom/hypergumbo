@@ -52,6 +52,24 @@ all nodes within N hops. DFS might go deep down one path and miss
 nearby relevant code. For context extraction, "nearby" code is usually
 more relevant than "deep" code.
 
+Dataflow Slicing (ADR-0015)
+----------------------------
+When ``dataflow=True``, forward slicing follows only write/mutate edges as
+the primary BFS chain ("what does this symbol write to, transitively?"). On
+top of this, it admits **one-hop downstream reads** from writer nodes: after
+visiting a node W that has at least one outgoing write/mutate edge, W's
+outgoing read edges are added to the slice as terminal hops. The read-edge
+destination enters ``node_ids`` and the edge enters ``edge_ids``, but the
+destination is NOT enqueued for further BFS expansion. This captures "data
+flows OUT: write site → downstream reads of what was written" — the
+semantics ADR-0015 §6 describes — without exploding the slice into
+unbounded reader chains. (See WI-saful for the option 1/2/3 tradeoff and
+the separate tracker item for the longer-term option 2/3 direction.)
+
+Reverse dataflow slicing follows read edges as its primary chain and does
+not apply the one-hop write rule: it is already symmetric in the opposite
+direction.
+
 Entry Matching
 --------------
 The entrypoint spec is matched flexibly:
@@ -343,6 +361,22 @@ def slice_graph(
             edges_to[edge.dst] = []
         edges_to[edge.dst].append(edge)
 
+    # ADR-0015 §6 / WI-saful option (1): precompute "writer" nodes for the
+    # one-hop downstream read admission rule. A node is a writer if it has at
+    # least one outgoing write/mutate edge. In forward dataflow mode, after a
+    # writer is visited by BFS, its outgoing read edges are admitted as
+    # one-hop terminals: the edge and the destination node enter the slice
+    # but the destination is NOT enqueued (so reader chains don't explode).
+    # This implements "data flows OUT (write site → downstream reads of what
+    # was written)" without requiring per-edge dest_access_mode annotation
+    # (which is the option-2/option-3 longer-term direction tracked separately).
+    writer_node_ids: Set[str] = set()
+    if query.dataflow and not query.reverse:
+        for edge in edges:
+            if edge.meta is not None and "access_mode" in edge.meta:
+                if edge.meta["access_mode"] in ("write", "mutate"):
+                    writer_node_ids.add(edge.src)
+
     # Build file path -> file node IDs mapping for import edge lookup
     # Import edges source from file nodes with ID format: {lang}:{path}:1-1:file:file
     # We collect all unique (path, language) combinations from nodes
@@ -531,16 +565,29 @@ def slice_graph(
 
             # ADR-0015: dataflow mode — only follow data-dependency chains.
             # Forward: follow write/mutate edges (find what this symbol writes to).
+            #   PLUS one-hop downstream read admission from writer nodes
+            #   (WI-saful option 1): when current_id is a writer (has any
+            #   outgoing write/mutate edge), its outgoing read edges are
+            #   admitted as terminals — the dst is added to the slice but
+            #   NOT enqueued for further BFS expansion.
             # Reverse: follow read edges (find who reads from this symbol).
             # Edges without access_mode metadata are still followed (graceful
             # degradation when annotation coverage is incomplete).
+            terminal = False
             if query.dataflow and edge.meta is not None and "access_mode" in edge.meta:
                 mode = edge.meta["access_mode"]
                 if query.reverse:
                     if mode not in ("read",):
                         continue
                 else:
-                    if mode not in ("write", "mutate"):
+                    if mode in ("write", "mutate"):
+                        pass
+                    elif (
+                        mode == "read"
+                        and current_id in writer_node_ids
+                    ):
+                        terminal = True
+                    else:
                         continue
 
             # Get the node at the other end of the edge
@@ -587,11 +634,15 @@ def slice_graph(
                 node_tiers[next_node.id] = getattr(
                     next_node, 'supply_chain_tier', 1,
                 )
-                queue.append((next_node.id, hop + 1))
-                # Add import edges from the visited file (forward only,
-                # unless imports excluded)
-                if not query.reverse and not query.exclude_imports:
-                    add_file_imports(next_node.path)
+                # Terminal edges (one-hop downstream reads from writers)
+                # admit the destination but do NOT enqueue it for further
+                # BFS expansion. See WI-saful option (1).
+                if not terminal:
+                    queue.append((next_node.id, hop + 1))
+                    # Add import edges from the visited file (forward only,
+                    # unless imports excluded)
+                    if not query.reverse and not query.exclude_imports:
+                        add_file_imports(next_node.path)
 
     # Filter pass-through synthetic nodes: they were traversed during BFS
     # but should not appear in the output (they represent IPC channels,

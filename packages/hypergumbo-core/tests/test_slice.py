@@ -2991,6 +2991,209 @@ class TestDataflowSlice:
         assert func_b.id in result.node_ids
 
 
+class TestDataflowOneHopDownstreamRead:
+    """Tests for ADR-0015 §6 one-hop downstream read admission (WI-saful option 1).
+
+    A "writer node" is a node with at least one outgoing write/mutate edge.
+    In forward dataflow mode, after the BFS visits a writer node W, it also
+    admits each of W's outgoing read edges as a one-hop terminal: the edge
+    and its destination are added to the slice, but the destination is NOT
+    enqueued for further BFS. This captures "data flows OUT (write site →
+    downstream reads of what was written)" without exploding the slice.
+    """
+
+    def test_writer_node_admits_one_hop_read(self) -> None:
+        """A writer node's outgoing read edges admit dst into the slice."""
+        writer = make_symbol("writer", path="src/a.py")
+        sink = make_symbol("sink", path="src/b.py")
+        reader = make_symbol("reader", path="src/c.py")
+        # writer → sink via write (writer is a writer)
+        write_edge = Edge.create(
+            src=writer.id, dst=sink.id, edge_type="calls", line=10,
+            access_mode="write",
+        )
+        # writer → reader via read (downstream read from writer)
+        read_edge = Edge.create(
+            src=writer.id, dst=reader.id, edge_type="calls", line=11,
+            access_mode="read",
+        )
+        query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
+        result = slice_graph(
+            [writer, sink, reader], [write_edge, read_edge], query,
+        )
+        assert writer.id in result.node_ids
+        assert sink.id in result.node_ids
+        assert reader.id in result.node_ids
+        # Both edges admitted into the slice output
+        assert write_edge.id in result.edge_ids
+        assert read_edge.id in result.edge_ids
+
+    def test_one_hop_read_dst_is_terminal(self) -> None:
+        """One-hop read admission must NOT enqueue dst for further expansion.
+
+        Otherwise the downstream read would re-introduce read-chain BFS,
+        which is precisely what option (1) avoids.
+        """
+        writer = make_symbol("writer", path="src/a.py")
+        reader = make_symbol("reader", path="src/b.py")
+        downstream = make_symbol("downstream", path="src/c.py")
+        # writer's own outgoing write makes it a "writer"
+        self_write = Edge.create(
+            src=writer.id, dst=writer.id, edge_type="calls", line=5,
+            access_mode="write",
+        )
+        # writer → reader via read (one-hop terminal)
+        read_edge = Edge.create(
+            src=writer.id, dst=reader.id, edge_type="calls", line=10,
+            access_mode="read",
+        )
+        # reader → downstream via write (would normally extend BFS)
+        downstream_edge = Edge.create(
+            src=reader.id, dst=downstream.id, edge_type="calls", line=20,
+            access_mode="write",
+        )
+        query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
+        result = slice_graph(
+            [writer, reader, downstream],
+            [self_write, read_edge, downstream_edge],
+            query,
+        )
+        assert writer.id in result.node_ids
+        assert reader.id in result.node_ids
+        # downstream must NOT be reached: reader was admitted as a terminal
+        assert downstream.id not in result.node_ids
+        assert downstream_edge.id not in result.edge_ids
+
+    def test_non_writer_entry_still_skips_read(self) -> None:
+        """Pre-existing skip behavior preserved for non-writer source nodes.
+
+        This is the regression-guard for test_dataflow_skips_read_edges.
+        A node with NO outgoing write/mutate edges is not a writer, so its
+        outgoing reads are NOT admitted.
+        """
+        non_writer = make_symbol("non_writer", path="src/a.py")
+        target = make_symbol("target", path="src/b.py")
+        edge = Edge.create(
+            src=non_writer.id, dst=target.id, edge_type="calls", line=10,
+            access_mode="read",
+        )
+        query = SliceQuery(entrypoint="non_writer", dataflow=True, max_hops=3)
+        result = slice_graph([non_writer, target], [edge], query)
+        assert non_writer.id in result.node_ids
+        assert target.id not in result.node_ids
+        assert edge.id not in result.edge_ids
+
+    def test_writer_chain_admits_downstream_reads_at_each_link(self) -> None:
+        """Each writer in a chain admits its own one-hop downstream reads."""
+        a = make_symbol("a", path="src/a.py")
+        b = make_symbol("b", path="src/b.py")
+        c = make_symbol("c", path="src/c.py")
+        reader_a = make_symbol("reader_a", path="src/ra.py")
+        reader_b = make_symbol("reader_b", path="src/rb.py")
+        # a → b via write
+        e_ab = Edge.create(
+            src=a.id, dst=b.id, edge_type="calls", line=1, access_mode="write",
+        )
+        # b → c via mutate (so b is also a writer)
+        e_bc = Edge.create(
+            src=b.id, dst=c.id, edge_type="calls", line=2, access_mode="mutate",
+        )
+        # a → reader_a via read (one-hop terminal admission for a)
+        e_a_ra = Edge.create(
+            src=a.id, dst=reader_a.id, edge_type="calls", line=3,
+            access_mode="read",
+        )
+        # b → reader_b via read (one-hop terminal admission for b)
+        e_b_rb = Edge.create(
+            src=b.id, dst=reader_b.id, edge_type="calls", line=4,
+            access_mode="read",
+        )
+        query = SliceQuery(entrypoint="a", dataflow=True, max_hops=5)
+        result = slice_graph(
+            [a, b, c, reader_a, reader_b],
+            [e_ab, e_bc, e_a_ra, e_b_rb],
+            query,
+        )
+        assert a.id in result.node_ids
+        assert b.id in result.node_ids
+        assert c.id in result.node_ids
+        assert reader_a.id in result.node_ids
+        assert reader_b.id in result.node_ids
+
+    def test_one_hop_read_respects_min_confidence(self) -> None:
+        """One-hop read admission must filter low-confidence edges."""
+        writer = make_symbol("writer", path="src/a.py")
+        sink = make_symbol("sink", path="src/b.py")
+        low_reader = make_symbol("low_reader", path="src/c.py")
+        write_edge = Edge.create(
+            src=writer.id, dst=sink.id, edge_type="calls", line=10,
+            access_mode="write",
+        )
+        read_edge = Edge.create(
+            src=writer.id, dst=low_reader.id, edge_type="calls", line=11,
+            access_mode="read", confidence=0.2,
+        )
+        query = SliceQuery(
+            entrypoint="writer", dataflow=True, max_hops=3, min_confidence=0.5,
+        )
+        result = slice_graph(
+            [writer, sink, low_reader], [write_edge, read_edge], query,
+        )
+        assert writer.id in result.node_ids
+        assert sink.id in result.node_ids
+        assert low_reader.id not in result.node_ids
+        assert read_edge.id not in result.edge_ids
+
+    def test_one_hop_read_respects_exclude_imports(self) -> None:
+        """One-hop read admission must respect exclude_imports filter."""
+        writer = make_symbol("writer", path="src/a.py")
+        sink = make_symbol("sink", path="src/b.py")
+        imported_mod = make_symbol(
+            "imported_mod", path="src/c.py", kind="module",
+        )
+        write_edge = Edge.create(
+            src=writer.id, dst=sink.id, edge_type="calls", line=10,
+            access_mode="write",
+        )
+        # An import edge tagged with read access_mode (rare but legal)
+        import_read = Edge.create(
+            src=writer.id, dst=imported_mod.id, edge_type="imports", line=1,
+            access_mode="read",
+        )
+        query = SliceQuery(
+            entrypoint="writer", dataflow=True, max_hops=3,
+            exclude_imports=True,
+        )
+        result = slice_graph(
+            [writer, sink, imported_mod], [write_edge, import_read], query,
+        )
+        assert writer.id in result.node_ids
+        assert imported_mod.id not in result.node_ids
+        assert import_read.id not in result.edge_ids
+
+    def test_one_hop_read_skipped_in_reverse(self) -> None:
+        """Reverse dataflow mode is unaffected by the one-hop rule.
+
+        Reverse mode already follows read edges as the primary chain;
+        the one-hop write admission is a forward-only enhancement.
+        """
+        writer = make_symbol("writer", path="src/a.py")
+        sink = make_symbol("sink", path="src/b.py")
+        # In reverse mode, we'd follow read edges TO writer, not from it.
+        # An outgoing read from writer should NOT be one-hop-admitted.
+        read_edge = Edge.create(
+            src=writer.id, dst=sink.id, edge_type="calls", line=1,
+            access_mode="read",
+        )
+        query = SliceQuery(
+            entrypoint="writer", dataflow=True, reverse=True, max_hops=3,
+        )
+        result = slice_graph([writer, sink], [read_edge], query)
+        assert writer.id in result.node_ids
+        # sink is not admitted: reverse mode doesn't apply the one-hop rule
+        assert sink.id not in result.node_ids
+
+
 class TestCrossLinkerIntegration:
     """Verify slice BFS traverses edges from multiple linkers in a single trace.
 
