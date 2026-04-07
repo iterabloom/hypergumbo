@@ -70,3 +70,18 @@
   clock: 8  # 24e2
   nonce: '24e2'  # 24e2
   message: "Implemented option (1) in slice.py BFS: precompute writer_node_ids (nodes with any outgoing write/mutate edge), then in forward dataflow mode admit each visited writer's outgoing read edges as one-hop terminal admissions (edge + dst added to slice, dst NOT enqueued for further BFS). All 140 slice tests pass, slice.py at 100% coverage. Created follow-on WI-hukoh-bakob-gidij-nibag-puvaz-fadil-kizor-kitan for the longer-term option (2)/(3) decision. PR in flight."  # 24e2
+- op: update  # 3999
+  at: '2026-04-07T18:09:01Z'  # 3999
+  by: agent  # 3999
+  actor: jgstern_agent  # 3999
+  clock: 9  # 3999
+  nonce: '3999'  # 3999
+  set:  # 3999
+    status: done  # 3999
+- op: discuss  # dd22
+  at: '2026-04-07T18:09:01Z'  # dd22
+  by: agent  # dd22
+  actor: jgstern_agent  # dd22
+  clock: 10  # dd22
+  nonce: dd22  # dd22
+  message: "Fixed in PR #2762 (commit 1a3b70ab4). Option (1) implemented: precompute writer_node_ids, admit one-hop downstream reads from writers as terminal admissions in forward dataflow BFS. 7 new tests, slice.py at 100% coverage. Option (2)/(3) tracked as WI-hukoh-bakob-gidij-nibag-puvaz-fadil-kizor-kitan."  # dd22

@@ -58,3 +58,18 @@
   set:  # 9e58
     status: violated  # 9e58
     priority: 1  # 9e58
+- op: update  # 8d76
+  at: '2026-04-07T18:09:25Z'  # 8d76
+  by: agent  # 8d76
+  actor: jgstern_agent  # 8d76
+  clock: 7  # 8d76
+  nonce: 8d76  # 8d76
+  set:  # 8d76
+    status: pending_validation  # 8d76
+- op: discuss  # 7b5a
+  at: '2026-04-07T18:09:25Z'  # 7b5a
+  by: agent  # 7b5a
+  actor: jgstern_agent  # 7b5a
+  clock: 8  # 7b5a
+  nonce: 7b5a  # 7b5a
+  message: "WI-saful option (1) merged (PR #2762). Prior investigation showed propagating access_mode to dispatches_to/uses was either a no-op or a regression. The real blocker was forward dataflow not crossing write->read boundaries, now fixed. Bakeoff validation needed: run deep-bakeoff on prometheus and confirm LOW_DATAFLOW_SLICE_RATIO is cleared. If it persists, escalate to WI-hukoh option (2) dest_access_mode population; otherwise mark satisfied."  # 7b5a
