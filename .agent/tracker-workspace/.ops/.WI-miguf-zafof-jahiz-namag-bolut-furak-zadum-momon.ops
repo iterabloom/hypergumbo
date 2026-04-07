@@ -40,3 +40,10 @@
   clock: 4  # 39c9
   nonce: 39c9  # 39c9
   message: "Fixed in PR (pending). Root cause: cache state leakage via ~/.cache/hypergumbo/. The non-git fingerprint hashes the absolute path, so the same tmp_path string yields the same fingerprint across pytest sessions, and pytest only retains the last 3 pytest-N dirs — so any N gets reused. The cache file is never cleaned, so a stale results file from a previous session can survive into a later one and short-circuit the auto-run check. Fix: autouse fixture in packages/hypergumbo-core/tests/conftest.py that sets XDG_CACHE_HOME to a per-test tmp dir, structurally isolating cache state for every test."  # 39c9
+- op: discuss  # 9bd1
+  at: '2026-04-07T04:02:50Z'  # 9bd1
+  by: human  # 9bd1
+  actor: jgstern  # 9bd1
+  clock: 5  # 9bd1
+  nonce: 9bd1  # 9bd1
+  message: "pr number please? or commit hash"  # 9bd1

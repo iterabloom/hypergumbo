@@ -20,3 +20,18 @@
     fields:  # 0701
       statement: "When the type-hierarchy linker resolves a calls edge into a dispatches_to edge (interface dispatch), or a uses edge (type/field reference), the resolved edge must inherit access_mode from the source calls edge. Otherwise dataflow slicing cannot follow interface dispatch."  # 0701
       root_cause: "annotate_dataflow runs in base.py before type_hierarchy.py creates dispatches_to/uses edges. The linker creates the new edge without copying access_mode from any related calls edge. In prometheus: 0 of 1987 dispatches_to edges have access_mode (vs 44.6% of calls edges). The dataflow slice gets 18 dispatch edges with NONE access_mode and cannot traverse them in write→read chain mode."  # 0701
+- op: update  # d161
+  at: '2026-04-07T05:24:56Z'  # d161
+  by: agent  # d161
+  actor: jgstern_agent  # d161
+  clock: 2  # d161
+  nonce: d161  # d161
+  set:  # d161
+    status: needs_human_review  # d161
+- op: discuss  # 0226
+  at: '2026-04-07T05:24:56Z'  # 0226
+  by: agent  # 0226
+  actor: jgstern_agent  # 0226
+  clock: 3  # 0226
+  nonce: '0226'  # 0226
+  message: "Deeper investigation: propagating access_mode to dispatches_to/uses at the linker level is NOT the right fix.\n\nThe slice already follows dispatches_to via graceful fall-through when access_mode is None. Propagation would only filter them MORE strictly:\n- If propagated as 'write': no traversal change (write already follows). Net effect: 0.\n- If propagated as 'read': slice would NOT follow them in forward dataflow mode → SHRINKS the slice. Net effect: regression.\n- If propagated as 'mixed/highest': arbitrary choice, makes things worse for reverse dataflow mode (which wants reads).\n\nThe reflect agent's intuition was structurally sound but the lever is wrong. The actual fix requires SLICE-LEVEL changes:\n1. Track (node, inbound_mode) pairs instead of just nodes\n2. When walking dispatches_to outgoing from a node, treat them as carrying the inbound mode the slice arrived with\n3. Direction-aware (forward propagates write/mutate, reverse propagates read)\n\nThis is a design change to the slice algorithm, not a linker-level annotation change. Needs human review on whether to do this slice-level work, since the dataflow_slice_ratio impact for prometheus is also gated on WI-saful (admitting reads to the slice).\n\nImproves the access_mode_coverage metric by ~15 percentage points if done at linker level (cosmetic, since coverage is already passing the GOOD threshold)."  # 0226
