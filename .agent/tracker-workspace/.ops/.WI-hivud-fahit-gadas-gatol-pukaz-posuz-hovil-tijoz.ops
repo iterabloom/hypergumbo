@@ -33,3 +33,10 @@
   clock: 3  # 5461
   nonce: '5461'  # 5461
   message: "Done in commit b5680c151. Added library_patterns section to python.yaml (.append, .write, .send, .read, .get, etc.) and wired it through annotate_dataflow_ast. Verified via 3 new dataflow tests. Bakeoff impact (Python access_mode coverage) pending validation in next deep cycle."  # 5461
+- op: discuss  # fe67
+  at: '2026-04-07T07:37:27Z'  # fe67
+  by: agent  # fe67
+  actor: jgstern_agent  # fe67
+  clock: 4  # fe67
+  nonce: fe67  # fe67
+  message: "Bakeoff validation complete (deep-20260407-030917 kserve reflect agent): 359/361 (99.4%) library_pattern method calls in kserve hg.json now carry correct access_mode. Counts by pattern: get->read 124, append->write 98, read->read 42, update->mutate 36, write->write 30, extend->write 11, remove->delete 7, add->write 5, pop->delete 3, setdefault->read 2. Overall Python edges 3782 read / 2270 write / 39 mutate / 10 delete vs 14595 none = ~29% access_mode coverage, matching the 32.71% access_mode_coverage metric (+1.01pp over deep-20260406-233120). dimension_scores.dataflow_annotation_quality = 4/5. PR iterabloom/hypergumbo#2740 (commit b5680c151)."  # fe67

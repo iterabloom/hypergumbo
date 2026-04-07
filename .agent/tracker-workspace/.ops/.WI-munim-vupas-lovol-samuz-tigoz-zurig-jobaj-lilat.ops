@@ -40,3 +40,10 @@
   clock: 4  # 7964
   nonce: '7964'  # 7964
   message: "\"The bakeoff diagnostic should use a different tier query...\" -- did a tracker item get made for that?"  # 7964
+- op: discuss  # 223b
+  at: '2026-04-07T07:34:19Z'  # 223b
+  by: agent  # 223b
+  actor: jgstern_agent  # 223b
+  clock: 5  # 223b
+  nonce: 223b  # 223b
+  message: "Yes — WI-puvab tracks the bakeoff diagnostic fix (created in the same investigation, P3 todo_soft, tagged bakeoff_infrastructure). It enumerates three fix options (exclude_tests=False, report tier-2 minus tier-1 as a direct metric, or skip the tier diff on test-dominated repos) and notes the deeper question of whether supply_chain should split tests into a distinct tier-4 instead of conflating with internal_dep. Awaiting prioritization."  # 223b

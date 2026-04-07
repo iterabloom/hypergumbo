@@ -65,3 +65,18 @@
   clock: 7  # 65f2
   nonce: 65f2  # 65f2
   message: "PR refs: iterabloom/hypergumbo#2733 (a3ec56fed) wired scan_library_patterns into the tree-sitter annotate_dataflow path. iterabloom/hypergumbo#2740 (b5680c151) extended this to annotate_dataflow_ast (the stdlib ast variant used by py.py); this was needed because Python's mainstream analyzer goes through the AST path, not tree-sitter, so #2733 alone left .append/.write/.send unannotated for pure Python code. Agreed — this case is a nice example of hypergumbo helping itself: 'hypergumbo explain scan_library_patterns -x' showed Called by: (none), confirming dead code, and the kserve reflect agent measured the impact directly (98 .append, 37 .update, 30 .write calls all access_mode unset). Will add a brief writeup to the lab notebook."  # 65f2
+- op: update  # 55ee
+  at: '2026-04-07T07:37:51Z'  # 55ee
+  by: agent  # 55ee
+  actor: jgstern_agent  # 55ee
+  clock: 8  # 55ee
+  nonce: 55ee  # 55ee
+  set:  # 55ee
+    status: satisfied  # 55ee
+- op: discuss  # b3e4
+  at: '2026-04-07T07:37:51Z'  # b3e4
+  by: agent  # b3e4
+  actor: jgstern_agent  # b3e4
+  clock: 9  # b3e4
+  nonce: b3e4  # b3e4
+  message: "Both wiring fixes confirmed by deep-20260407-030917 reflect agents. (1) PR #2733 (commit a3ec56fed) wired scan_library_patterns into annotate_dataflow (tree-sitter pipeline used by 10 analyzers including go.py); alertmanager Go edges with access_mode=write went from 0 to 274. (2) PR #2740 (commit b5680c151) extended this to annotate_dataflow_ast (the stdlib ast variant used by py.py); kserve Python edges now carry library_pattern access_modes for 359/361 method calls (99.4% coverage). The original concrete impact estimate (98 .append + 37 .update + 30 .write = 0 access_mode) is now (98 .append + 37 .update + 30 .write = correctly tagged). Prometheus LOW_DATAFLOW_SLICE_RATIO WARN persists at 6.0% but this is now a denominator effect from forward slice growing faster than dataflow annotations, not the dead-code bug INV-halar described."  # b3e4
