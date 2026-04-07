@@ -1742,6 +1742,106 @@ class TestAnnotateDataflowAst:
         assert result[0].meta is not None
         assert result[0].meta["access_mode"] == "delete"
 
+    def test_library_pattern_fallback_for_python_call(self) -> None:
+        """library_patterns from python.yaml fall back when AST walk misses.
+
+        Regression: PR #2733 wired scan_library_patterns into the
+        tree-sitter ``annotate_dataflow`` but py.py uses ``annotate_dataflow_ast``
+        which had no library_patterns awareness — so .append/.write/.send
+        method calls in pure Python code never received an access_mode.
+        """
+        import ast
+        from hypergumbo_core.dataflow import (
+            DataflowConfig,
+            annotate_dataflow_ast as annotate,
+        )
+        # An expression-statement method call: AST positional walk doesn't
+        # apply (no assignment, return, delete around it), so the line is
+        # unclassified by the AST pass.  library_patterns should kick in.
+        source = "items.append(thing)"
+        tree = ast.parse(source)
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:append:method",
+            edge_type="calls",
+            line=1,
+        )
+        config = DataflowConfig(
+            language="python",
+            assignments=[],
+            returns=[],
+            deletions=[],
+            library_patterns=[
+                {"match": r"\.append\(", "access_mode": "write"},
+            ],
+        )
+        result = annotate([edge], tree, source=source, config=config)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "write"
+
+    def test_library_pattern_does_not_override_ast_classification(self) -> None:
+        """AST positional rules retain precedence over library_patterns.
+
+        ``items.append(thing)`` on an assignment line: the AST classifies
+        the call as ``read`` (call on RHS of assignment), not ``write``
+        from the library_pattern.
+        """
+        import ast
+        from hypergumbo_core.dataflow import (
+            DataflowConfig,
+            annotate_dataflow_ast as annotate,
+        )
+        source = "x = items.append(thing)"
+        tree = ast.parse(source)
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:append:method",
+            edge_type="calls",
+            line=1,
+        )
+        config = DataflowConfig(
+            language="python",
+            assignments=[],
+            returns=[],
+            deletions=[],
+            library_patterns=[
+                {"match": r"\.append\(", "access_mode": "write"},
+            ],
+        )
+        result = annotate([edge], tree, source=source, config=config)
+        # AST sees `x = ...` (assignment) → call on RHS is read (Python ast
+        # rule), even though library_patterns would say write.
+        assert result[0].meta["access_mode"] == "read"
+
+    def test_library_pattern_priority_write_beats_read_same_line(self) -> None:
+        """Multiple library_patterns on the same line resolve via priority."""
+        import ast
+        from hypergumbo_core.dataflow import (
+            DataflowConfig,
+            annotate_dataflow_ast as annotate,
+        )
+        source = "out.write(src.read())"
+        tree = ast.parse(source)
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:write:method",
+            edge_type="calls",
+            line=1,
+        )
+        config = DataflowConfig(
+            language="python",
+            assignments=[],
+            returns=[],
+            deletions=[],
+            library_patterns=[
+                {"match": r"\.read\(", "access_mode": "read"},
+                {"match": r"\.write\(", "access_mode": "write"},
+            ],
+        )
+        result = annotate([edge], tree, source=source, config=config)
+        # Both patterns match the line; write outranks read.
+        assert result[0].meta["access_mode"] == "write"
+
     def test_skips_existing_access_mode(self) -> None:
         """Edges with existing access_mode should not be overwritten."""
         import ast

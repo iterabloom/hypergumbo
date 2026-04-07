@@ -469,6 +469,8 @@ def scan_library_patterns(
 def annotate_dataflow_ast(
     edges: List["Edge"],
     tree: Any,
+    source: Optional[str] = None,
+    config: Optional[DataflowConfig] = None,
 ) -> List["Edge"]:
     """Annotate edges with access_mode using Python's ast module (Tier 1 for py.py).
 
@@ -478,11 +480,22 @@ def annotate_dataflow_ast(
     value consumed by the assignment (RHS), regardless of whether the
     assignment itself is a write or mutate.
 
+    When ``source`` and ``config`` are provided, library_patterns from the
+    config (e.g., ``\\.append\\(`` → write) are scanned against the source
+    text and applied as a per-language fallback for edges that the AST walk
+    leaves unclassified.  This is the py.py-side equivalent of the
+    library_patterns wiring that ``annotate_dataflow`` does for tree-sitter
+    languages — without it, PR #2733's wiring is dead code for Python and
+    no Python ``.append``, ``.write``, ``.send``, etc. call edge ever gets
+    an access_mode.
+
     Skips edges that already have access_mode (Tier 2 precedence).
 
     Args:
         edges: List of Edge objects to annotate.
         tree: Python ast.Module node.
+        source: Optional source file text (for library_patterns scanning).
+        config: Optional DataflowConfig (for library_patterns).
 
     Returns:
         The same list of edges with access_mode added where applicable.
@@ -512,7 +525,16 @@ def annotate_dataflow_ast(
         elif isinstance(node, ast.Yield) or isinstance(node, ast.YieldFrom):
             line_modes[node.lineno] = "read"
 
-    if not line_modes:
+    # Pre-compute library_patterns line→mode map (per-language fallback).
+    library_modes_by_line: Dict[int, str] = {}
+    if source and config is not None and config.library_patterns:
+        for site in scan_library_patterns(source, config):
+            existing = library_modes_by_line.get(site.line)
+            if existing is None or _mode_priority(site.access_mode) > \
+                    _mode_priority(existing):
+                library_modes_by_line[site.line] = site.access_mode
+
+    if not line_modes and not library_modes_by_line:
         return edges
 
     for edge in edges:
@@ -525,6 +547,10 @@ def annotate_dataflow_ast(
             # Even in `foo().bar = x`, the call reads the object.
             if mode in ("write", "mutate") and edge.edge_type == "calls":
                 mode = "read"
+        elif library_modes_by_line:
+            # AST walk left this edge unclassified — try library_patterns.
+            mode = library_modes_by_line.get(edge.line)
+        if mode is not None:
             if edge.meta is None:
                 edge.meta = {}
             edge.meta["access_mode"] = mode
