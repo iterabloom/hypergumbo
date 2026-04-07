@@ -1987,21 +1987,33 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = 
             print("OK" if rc == 0 else f"FAIL({rc})")
 
         # 5. Tier-bounded slices
-        # Use --exclude-tests so --entry auto doesn't pick a test main()
-        for tier in [1, 2]:
-            print(f"  slice[tier={tier}]...", end=" ", flush=True)
-            rc, stdout, stderr = run_cmd([
-                "hypergumbo", "slice",
-                "--input", hg_json,
-                "--entry", "auto",
-                "--max-tier", str(tier),
-                "--exclude-tests",
-                "--inline",
-                "--out", os.path.join(repo_out, f"slice.tier{tier}.json"),
-            ])
-            with open(os.path.join(repo_out, f"slice.tier{tier}.exit"), "w") as f:
-                f.write(str(rc))
-            print("OK" if rc == 0 else f"FAIL({rc})")
+        # WI-puvab: use the same explicit non-test entry as slice.0 (the first
+        # entry in entries.txt has already been filtered against _TEST_PATH_RE)
+        # and DO NOT pass --exclude-tests during traversal.  Previous code used
+        # --entry auto --exclude-tests, which caused tier-2 slices on
+        # test-dominated repos (e.g., alertmanager: 800/801 tier-2 nodes are
+        # tests) to come out byte-identical to tier-1 slices because the test
+        # supply chain was filtered out before tier counting.  The reflect
+        # agent then misread this as "tier filter broken".  Picking the same
+        # explicit entry as slice.0 keeps test entries out of the seed while
+        # allowing the BFS to walk into tier-2 test code.
+        if entries:
+            tier_entry = entries[0]
+            for tier in [1, 2]:
+                print(f"  slice[tier={tier}]...", end=" ", flush=True)
+                rc, stdout, stderr = run_cmd([
+                    "hypergumbo", "slice",
+                    "--input", hg_json,
+                    "--entry", tier_entry,
+                    "--max-tier", str(tier),
+                    "--inline",
+                    "--out", os.path.join(repo_out, f"slice.tier{tier}.json"),
+                ])
+                with open(os.path.join(repo_out, f"slice.tier{tier}.exit"), "w") as f:
+                    f.write(str(rc))
+                print("OK" if rc == 0 else f"FAIL({rc})")
+        else:
+            print("  slice[tier=1,2]... SKIP (no non-test entries)")
 
         # 6. Symbols report (exclude test code for cleaner rankings)
         print("  symbols...", end=" ", flush=True)
