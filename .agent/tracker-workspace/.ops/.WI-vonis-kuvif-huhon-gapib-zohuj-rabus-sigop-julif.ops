@@ -35,3 +35,18 @@
   nonce: 099c  # 099c
   set:  # 099c
     status: todo_soft  # 099c
+- op: update  # b192
+  at: '2026-04-07T19:58:34Z'  # b192
+  by: agent  # b192
+  actor: jgstern_agent  # b192
+  clock: 4  # b192
+  nonce: b192  # b192
+  set:  # b192
+    status: done  # b192
+- op: discuss  # 9054
+  at: '2026-04-07T19:58:34Z'  # 9054
+  by: agent  # 9054
+  actor: jgstern_agent  # 9054
+  clock: 5  # 9054
+  nonce: '9054'  # 9054
+  message: "Merged as PR #2766 (manual merge by human per governance workflow). The close subcommand is now available: ./scripts/merge-pr close <PR> [--reason text]. Empty tracker-sync PRs and superseded PRs can now be closed via the sanctioned CI script without asking the human to click the forge UI."  # 9054

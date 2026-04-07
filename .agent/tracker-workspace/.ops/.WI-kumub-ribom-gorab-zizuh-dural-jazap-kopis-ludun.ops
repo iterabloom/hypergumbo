@@ -19,3 +19,18 @@
     pr_ref:  # 9ddc
     description: "Add a safety check to `scripts/bakeoff-deep init` (and bakeoff-broad) that detects when a recent session (< 7 days) exists with the same code hash and would be a candidate for iteration instead of a new session. Print a warning suggesting the user run `cycle` against the existing session instead. Should be opt-out (warning + 5s sleep), not blocking. Per playbook clarification commit (deep-iteration-vs-new-session). User explicitly approved deferring this as a tracker item."  # 9ddc
     fields: {}  # 9ddc
+- op: update  # 10f1
+  at: '2026-04-07T20:34:49Z'  # 10f1
+  by: agent  # 10f1
+  actor: jgstern_agent  # 10f1
+  clock: 2  # 10f1
+  nonce: 10f1  # 10f1
+  set:  # 10f1
+    status: done  # 10f1
+- op: discuss  # 9964
+  at: '2026-04-07T20:34:49Z'  # 9964
+  by: agent  # 9964
+  actor: jgstern_agent  # 9964
+  clock: 3  # 9964
+  nonce: '9964'  # 9964
+  message: "Merged as PR #2767. bakeoff-deep init now warns when a recent same-pool + same-code-hash session exists, pointing users at 'cycle' for iter-002/iter-003 instead of starting a new top-level session. Opt-out via BAKEOFF_DEEP_SKIP_RECENT_WARNING=1. 10 new tests cover the full matrix."  # 9964
