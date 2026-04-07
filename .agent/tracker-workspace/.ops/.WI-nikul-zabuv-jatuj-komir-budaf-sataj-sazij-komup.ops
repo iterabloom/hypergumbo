@@ -1,0 +1,20 @@
+- op: create  # 2e65
+  at: '2026-04-07T07:48:36Z'  # 2e65
+  by: agent  # 2e65
+  actor: jgstern_agent  # 2e65
+  clock: 1  # 2e65
+  nonce: '2e65'  # 2e65
+  data:  # 2e65
+    kind: work_item  # 2e65
+    title: "Go: model handler-wrapping closures (wrap, ready, middleware) as call-graph nodes"  # 2e65
+    status: todo_soft  # 2e65
+    priority: 3  # 2e65
+    parent:  # 2e65
+    tags:  # 2e65
+    - analysis_quality  # 2e65
+    before: []  # 2e65
+    duplicate_of: []  # 2e65
+    not_duplicate_of: []  # 2e65
+    pr_ref:  # 2e65
+    description: "Source: deep-20260407-030917 prometheus reflect agent. Closure-wrapped handlers are still erased from the call graph: r.Post('/read', api.ready(api.remoteRead)) produces a routes_to -> api.remoteRead edge but the 'ready' middleware wrapper is invisible. Same for 'wrap', 'wrapAgent' wrappers in web/api/v1/api.go:425-484. For middleware/auth refactoring, the wrap layer is invisible — the route resolver fix (INV-kunam) doesn't help because wrap isn't modeled at all. Fix: when a route registration call passes a closure call expression as its handler argument, model the inner function as a wrapping/decorating call edge with a wraps or middleware_of edge type. This is distinct from the closed WI-hosad work which added middleware concepts to entrypoint mapping but did not link them to the wrapped handler chain."  # 2e65
+    fields: {}  # 2e65
