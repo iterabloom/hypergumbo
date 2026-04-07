@@ -1,0 +1,20 @@
+- op: create  # 9e88
+  at: '2026-04-07T00:28:02Z'  # 9e88
+  by: agent  # 9e88
+  actor: jgstern_agent  # 9e88
+  clock: 1  # 9e88
+  nonce: '9e88'  # 9e88
+  data:  # 9e88
+    kind: work_item  # 9e88
+    title: "Tier-1 == Tier-2 slice files in alertmanager (tier filtering broken)"  # 9e88
+    status: todo_soft  # 9e88
+    priority: 2  # 9e88
+    parent:  # 9e88
+    tags:  # 9e88
+    - analysis_quality  # 9e88
+    before: []  # 9e88
+    duplicate_of: []  # 9e88
+    not_duplicate_of: []  # 9e88
+    pr_ref:  # 9e88
+    description: "deep-20260406-182616 reflect: slice.tier1.json and slice.tier2.json are byte-identical (465 nodes, 648 edges) for alertmanager, despite 801 internal_dep nodes existing in supply_chain. Tier-2 should add internal_dep nodes; the tier filter does not actually broaden the slice. Investigate slice.py tier handling. Also confirm whether this affects other repos in the bakeoff or is alertmanager-specific. Source: alertmanager.assessment.yaml dimension_scores.tier_classification=2 (lowest)."  # 9e88
+    fields: {}  # 9e88

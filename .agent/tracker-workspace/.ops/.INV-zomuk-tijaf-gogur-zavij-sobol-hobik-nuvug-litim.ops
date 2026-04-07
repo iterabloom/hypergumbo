@@ -1,0 +1,23 @@
+- op: create  # 932c
+  at: '2026-04-07T00:27:34Z'  # 932c
+  by: agent  # 932c
+  actor: jgstern_agent  # 932c
+  clock: 1  # 932c
+  nonce: 932c  # 932c
+  data:  # 932c
+    kind: invariant  # 932c
+    title: "Go Notifier-cluster regression: same-name interface fan-out lost"  # 932c
+    status: violated  # 932c
+    priority: 0  # 932c
+    parent:  # 932c
+    tags:  # 932c
+    - analysis_quality  # 932c
+    - cross_language_linkers  # 932c
+    before: []  # 932c
+    duplicate_of: []  # 932c
+    not_duplicate_of: []  # 932c
+    pr_ref:  # 932c
+    description: "PR #2721 (deep-20260406-182616 reflect) introduced a regression. In alertmanager, 16 of 17 concrete Notifier.Notify implementations now have ZERO inbound dispatches_to from notify/notify.go:65 Notifier interface. This destroys the canonical 'who implements X' workflow. Affected: alertmanager and any Go repo with cross-package interfaces sharing a name with the impl struct (extremely common in Go: io.Reader+bytes.Reader, http.Handler, etc.). Source: deep-20260406-182616 alertmanager.assessment.yaml, dimension_scores.understanding=4, new_feature_score=48 (would be higher without this regression)."  # 932c
+    fields:  # 932c
+      statement: "When a Go package declares a struct with the same short name as a cross-package interface (e.g., 'package slack; type Notifier struct' alongside 'package notify; type Notifier interface'), every concrete implementation of the interface method must still appear as an inbound dispatches_to target from the interface method."  # 932c
+      root_cause: "PR #2721 added same-file disambiguation in _resolve_method_class_id and class-ID filtering in _find_implementing_methods_indexed. With multiple same-named classes across packages, methods are now uniquely assigned to the same-file class. The regression hypothesis: either (a) the structural-implements matcher fails to emit 'implements' edges when impl struct shares the interface name (so child_class_ids is empty for the interface), or (b) the same-file disambiguation picks the local concrete struct on the interface side, putting the interface method on the wrong class. Reflect notes from deep-20260406-182616/alertmanager.assessment.yaml: 'The fan-out matcher excludes concrete impls when the receiver struct is also named Notifier'. Affects 16 of 17 alertmanager notifier impls (slack, webhook, pushover, wechat, msteams, etc.). Only discord.Notifier and Email.Notify (different short name) are wired up."  # 932c
