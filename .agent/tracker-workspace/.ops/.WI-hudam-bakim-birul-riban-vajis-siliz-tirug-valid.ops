@@ -20,3 +20,19 @@
     pr_ref:  # 4747
     description: "Phase 4 of the ADR-0006 Return-Type Registry Pre-Pass. Promote py.py:1648's local return-type extraction to a global registry entry so untyped Python code can chain through annotated APIs.\n\nDELIVERABLES:\n(1) New 'signatures' YAML in python.yaml. PEP 484 annotations are well-defined; map function_definition node types to the existing return_type extraction logic.\n\n(2) Tier 2 escape hatches in signatures.py python_extract(): handle Optional[T], Union[T, U], Awaitable[T], and the 3.9+ T | None pipe syntax. Resolve forward references / string annotations only when trivially decodable.\n\n(3) Wire registry into py.py's var_types fill loop. The existing local extraction at py.py:1648 stays in place — the new code path just adds a global lookup that fires when the local one would otherwise return None.\n\n(4) Untyped Python remains 'n/a' (registry entry simply absent for unannotated functions).\n\n(5) Regression tests in tests/test_python_signature_registry.py covering: simple return type, Optional unwrap, Union, async Awaitable, string forward reference, untyped function (registry-miss path).\n\n(6) Bakeoff validation: kserve (mixed-typed Python — its public API uses PEP 484 throughout).\n\nPREREQUISITE: Phase 3 (created above) — registry plumbing. Phase 4 ships independently as long as Phases 1-3 have established the registry contract."  # 4747
     fields: {}  # 4747
+- op: update  # 202b
+  at: '2026-04-07T23:25:44Z'  # 202b
+  by: human  # 202b
+  actor: jgstern  # 202b
+  clock: 2  # 202b
+  nonce: 202b  # 202b
+  set:  # 202b
+    parent: INV-dihos-razov-momat-runoh-mohov-zumop-mivar-nijog  # 202b
+- op: update  # dbd2
+  at: '2026-04-07T23:27:00Z'  # dbd2
+  by: human  # dbd2
+  actor: jgstern  # dbd2
+  clock: 3  # dbd2
+  nonce: dbd2  # dbd2
+  set:  # dbd2
+    priority: 4  # dbd2

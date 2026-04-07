@@ -19,3 +19,10 @@
     pr_ref:  # af5a
     description: "Alternative framing of the WI-sukav fix. A1 (per-language flag table in type_hierarchy linker) ships first; A2 is the cleaner long-term direction once C++ analyzer infrastructure justifies the per-method tracking.\n\nDELIVERABLES:\n(1) Each analyzer emits 'extends' edges with meta.virtual_dispatch: True/False. Java/Python/Kotlin/Ruby always set True. Go always sets False. C++ computes from 'virtual' keyword presence per method. C# tracks 'virtual'/'override' modifier.\n\n(2) type_hierarchy.py reads edge.meta.virtual_dispatch and gates dispatches_to creation accordingly. Removes the per-language flag table introduced in A1.\n\n(3) Allows per-method overrides (e.g., a C++ class with both virtual and non-virtual methods).\n\nCURRENT STATUS: needs_human_review because the value of A2 over A1 depends on whether C++/C# per-method tracking actually pays off. Defer until A1 ships and bakeoff signals tell us whether per-method granularity is worth the migration cost."  # af5a
     fields: {}  # af5a
+- op: discuss  # 92cf
+  at: '2026-04-07T23:31:58Z'  # 92cf
+  by: human  # 92cf
+  actor: jgstern  # 92cf
+  clock: 2  # 92cf
+  nonce: 92cf  # 92cf
+  message: "I'm not sure how much I like this because if we are going to go for WI-rumim why not just go for it and avoid intermediate complexity"  # 92cf
