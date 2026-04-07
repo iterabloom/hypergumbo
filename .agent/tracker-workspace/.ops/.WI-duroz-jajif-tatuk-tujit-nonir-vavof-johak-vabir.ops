@@ -1,0 +1,22 @@
+- op: create  # e123
+  at: '2026-04-07T23:53:41Z'  # e123
+  by: agent  # e123
+  actor: jgstern_agent  # e123
+  clock: 1  # e123
+  nonce: e123  # e123
+  data:  # e123
+    kind: work_item  # e123
+    title: "Consider adding linker-prospect cohort to bakeoff harness"  # e123
+    status: todo_soft  # e123
+    priority: 4  # e123
+    parent:  # e123
+    tags:  # e123
+    - bakeoff_infrastructure  # e123
+    - cross_language_linkers  # e123
+    - dead_code_prospector  # e123
+    before: []  # e123
+    duplicate_of: []  # e123
+    not_duplicate_of: []  # e123
+    pr_ref:  # e123
+    description: "Open question from ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md 'Open Questions / Followups' §5: should the bakeoff harness gain a 'linker prospect' cohort that runs dead-code-maybe on the polyglot subset of the curriculum?\n\nThe notebook explicitly recommends framing the experiment as a one-shot prospecting run ('Retire the pipeline. The marginal value of the 5th rerun is much lower than the 1st; the long tail is dominated by reflection / framework issues that need different fixes.') So this item may resolve as 'wont_do'.\n\nDecide YES/NO after the triage item completes and we know whether the signal stays useful over time. If YES: add a new cohort/curriculum definition under ~/hypergumbo_lab_notebook/curricula/ that selects polyglot repos from the pool and runs the prospector via bakeoff-broad or bakeoff-deep.\n\nDepends on the initial triage pass producing a clear judgment on reusability."  # e123
+    fields: {}  # e123
