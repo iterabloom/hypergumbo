@@ -40,3 +40,18 @@
   clock: 4  # 3aae
   nonce: 3aae  # 3aae
   message: "ok please go ahead with ther revised fix"  # 3aae
+- op: update  # 4735
+  at: '2026-04-07T19:15:20Z'  # 4735
+  by: agent  # 4735
+  actor: jgstern_agent  # 4735
+  clock: 5  # 4735
+  nonce: '4735'  # 4735
+  set:  # 4735
+    status: done  # 4735
+- op: discuss  # 384a
+  at: '2026-04-07T19:15:20Z'  # 384a
+  by: agent  # 384a
+  actor: jgstern_agent  # 384a
+  clock: 6  # 384a
+  nonce: 384a  # 384a
+  message: "Fixed in PR #2764. Replaced hardcoded KEY_METRICS with _select_key_metrics dynamic ranking by mean absolute delta. 8 new tests. Verified end-to-end on deep-20260407-030917 vs deep-20260407-050552 — the prometheus WARN→GOOD verdict change is now explained by visible access_mode_coverage +0.22 delta instead of the old all-zero output."  # 384a
