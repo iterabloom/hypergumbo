@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for CLI commands to achieve 100% coverage."""
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -2945,8 +2946,11 @@ def test_cmd_sketch_input_no_staleness_warning_when_fresh(tmp_path: Path, capsys
     assert result == 0
 
     _, err = capsys.readouterr()
-    # Should NOT warn about stale results
-    assert "stale" not in err
+    # Should NOT warn about stale results.  Match the specific phrase the
+    # warning uses (see test_cmd_sketch_input_staleness_warning) rather
+    # than the bare word "stale", which can appear in unrelated paths
+    # such as the cache directory inside the test's tmp_path.
+    assert "may be stale" not in err
 
 
 def test_sanitize_filename_part_simple() -> None:
@@ -3029,9 +3033,13 @@ def test_cmd_slice_default_output_includes_entry_name(tmp_path: Path, capsys) ->
     assert not (tmp_path / "slice.json").exists()
 
     out, _ = capsys.readouterr()
-    # File should be in the cache directory and reported to user
+    # File should be in the cache directory and reported to user.
+    # The conftest autouse fixture sets XDG_CACHE_HOME so the cache
+    # lives under tmp_path; check against the env value rather than
+    # the default ".cache/hypergumbo/" prefix to remain portable.
     assert "slice.my_func.json" in out
-    assert ".cache/hypergumbo/" in out
+    xdg_cache = os.environ["XDG_CACHE_HOME"]
+    assert f"{xdg_cache}/hypergumbo/" in out
 
 
 def test_cmd_slice_reverse_uses_distinct_filename(tmp_path: Path, capsys) -> None:
