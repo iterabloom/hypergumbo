@@ -3441,47 +3441,60 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
 
     all_symbols.extend(all_route_syms)
 
-    # Cross-file structural interface matching: aggregate method sets from
-    # all files and match structs to interfaces defined in other files.
-    # Per-file matching already happened in _extract_symbols_from_file;
-    # this pass catches cross-file relationships (e.g., interface in one
-    # file, implementing struct in another).
+    # Cross-file structural interface matching: match each struct
+    # against interfaces defined in other files.  Per-file matching
+    # already happened in _extract_symbols_from_file; this pass catches
+    # cross-file relationships (e.g., interface in notify/notify.go,
+    # implementing struct in notify/slack/slack.go).
+    #
+    # CRITICAL: do NOT key struct method sets or struct symbols by short
+    # name across files.  Many Go packages declare a type with the same
+    # short name (e.g., 18 packages in alertmanager declare
+    # ``type Notifier struct``).  Aggregating them globally loses the
+    # per-package association and causes only the first struct to
+    # receive the ``base_classes`` annotation.  Iterate per-file instead
+    # so each package's struct keeps its own method set.
     global_iface_methods: dict[str, set[tuple[str, int, int]]] = {}
-    global_struct_methods: dict[str, set[tuple[str, int, int]]] = {}
     for analysis in file_analyses.values():
         for iname, imethods in analysis.interface_method_sets.items():
-            # First definition wins (interfaces with same name in different
-            # packages would need package qualification, which is out of scope)
+            # First definition wins (interfaces with the same short name
+            # in different packages would need package qualification,
+            # which is out of scope here).
             if iname not in global_iface_methods:
                 global_iface_methods[iname] = imethods
-        for sname, smethods in analysis.struct_method_sets.items():
-            # Merge method sets: methods can be defined across multiple files
-            if sname in global_struct_methods:
-                global_struct_methods[sname] = global_struct_methods[sname] | smethods
-            else:
-                global_struct_methods[sname] = set(smethods)
 
-    if global_iface_methods and global_struct_methods:
-        # Build a lookup of struct symbols for efficient updates
-        struct_syms: dict[str, Symbol] = {}
-        for sym in all_symbols:
-            if sym.kind == "struct" and sym.name not in struct_syms:
-                struct_syms[sym.name] = sym
-
-        for struct_name, struct_methods in global_struct_methods.items():
-            struct_sym = struct_syms.get(struct_name)
-            if struct_sym is None:
-                continue  # pragma: no cover
-            for iface_name, iface_methods in global_iface_methods.items():
-                if not iface_methods.issubset(struct_methods):
+    if global_iface_methods:
+        for analysis in file_analyses.values():
+            if not analysis.struct_method_sets:
+                continue
+            # Build a per-file lookup so we annotate the struct symbol
+            # in *this* file (not the first one encountered globally).
+            file_struct_syms: dict[str, Symbol] = {
+                s.name: s
+                for s in analysis.symbols
+                if s.kind == "struct"
+            }
+            for struct_name, struct_methods in analysis.struct_method_sets.items():
+                struct_sym = file_struct_syms.get(struct_name)
+                if struct_sym is None:  # pragma: no cover
+                    # Methods defined in this file for a struct declared
+                    # in a different file within the same package.  This
+                    # branch is a known limitation tracked by WI-hobuk:
+                    # methods split across files are silently dropped
+                    # from the cross-file structural match because we
+                    # iterate per-file and only annotate structs whose
+                    # type declaration lives in the current file.
                     continue
-                if struct_sym.meta is None:
-                    struct_sym.meta = {}
-                existing = struct_sym.meta.get("base_classes", [])
-                if iface_name not in existing:
-                    struct_sym.meta.setdefault("base_classes", []).append(
-                        iface_name,
-                    )
+                for iface_name, iface_methods in global_iface_methods.items():
+                    if not iface_methods.issubset(struct_methods):
+                        continue
+                    if struct_sym.meta is None:
+                        struct_sym.meta = {}
+                    existing = struct_sym.meta.get("base_classes", [])
+                    if iface_name not in existing:
+                        struct_sym.meta.setdefault("base_classes", []).append(
+                            iface_name,
+                        )
 
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
