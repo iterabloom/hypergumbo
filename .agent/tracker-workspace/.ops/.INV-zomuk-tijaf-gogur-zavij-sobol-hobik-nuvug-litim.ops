@@ -21,3 +21,18 @@
     fields:  # 932c
       statement: "When a Go package declares a struct with the same short name as a cross-package interface (e.g., 'package slack; type Notifier struct' alongside 'package notify; type Notifier interface'), every concrete implementation of the interface method must still appear as an inbound dispatches_to target from the interface method."  # 932c
       root_cause: "PR #2721 added same-file disambiguation in _resolve_method_class_id and class-ID filtering in _find_implementing_methods_indexed. With multiple same-named classes across packages, methods are now uniquely assigned to the same-file class. The regression hypothesis: either (a) the structural-implements matcher fails to emit 'implements' edges when impl struct shares the interface name (so child_class_ids is empty for the interface), or (b) the same-file disambiguation picks the local concrete struct on the interface side, putting the interface method on the wrong class. Reflect notes from deep-20260406-182616/alertmanager.assessment.yaml: 'The fan-out matcher excludes concrete impls when the receiver struct is also named Notifier'. Affects 16 of 17 alertmanager notifier impls (slack, webhook, pushover, wechat, msteams, etc.). Only discord.Notifier and Email.Notify (different short name) are wired up."  # 932c
+- op: update  # 39ad
+  at: '2026-04-07T01:41:11Z'  # 39ad
+  by: agent  # 39ad
+  actor: jgstern_agent  # 39ad
+  clock: 2  # 39ad
+  nonce: 39ad  # 39ad
+  set:  # 39ad
+    status: pending_validation  # 39ad
+- op: discuss  # 8c5e
+  at: '2026-04-07T01:41:11Z'  # 8c5e
+  by: agent  # 8c5e
+  actor: jgstern_agent  # 8c5e
+  clock: 3  # 8c5e
+  nonce: 8c5e  # 8c5e
+  message: "Fix merged in PR #2730. Validation against alertmanager hg.json: dispatches_to from notify.Notifier.Notify went from 3 → 19, implements edges from 3 → 19. Awaiting next bakeoff cycle for full confirmation across other Go repos."  # 8c5e
