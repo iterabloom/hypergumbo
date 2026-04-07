@@ -1,0 +1,21 @@
+- op: create  # 9ddc
+  at: '2026-04-07T09:33:45Z'  # 9ddc
+  by: agent  # 9ddc
+  actor: jgstern_agent  # 9ddc
+  clock: 1  # 9ddc
+  nonce: 9ddc  # 9ddc
+  data:  # 9ddc
+    kind: work_item  # 9ddc
+    title: "bakeoff-deep init: warn when same-cohort session exists recently"  # 9ddc
+    status: todo_soft  # 9ddc
+    priority: 3  # 9ddc
+    parent:  # 9ddc
+    tags:  # 9ddc
+    - bakeoff_infrastructure  # 9ddc
+    - developer_experience  # 9ddc
+    before: []  # 9ddc
+    duplicate_of: []  # 9ddc
+    not_duplicate_of: []  # 9ddc
+    pr_ref:  # 9ddc
+    description: "Add a safety check to `scripts/bakeoff-deep init` (and bakeoff-broad) that detects when a recent session (< 7 days) exists with the same code hash and would be a candidate for iteration instead of a new session. Print a warning suggesting the user run `cycle` against the existing session instead. Should be opt-out (warning + 5s sleep), not blocking. Per playbook clarification commit (deep-iteration-vs-new-session). User explicitly approved deferring this as a tracker item."  # 9ddc
+    fields: {}  # 9ddc
