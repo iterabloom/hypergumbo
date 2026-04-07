@@ -236,6 +236,57 @@ class TestDataflowSliceRatioConditional:
         status, msg = bf.assess_metric("dataflow_slice_ratio", 100.0, total_nodes=5000)
         assert status == "WARN", "Without coverage info, 100% should still WARN"
 
+    def test_low_ratio_suppressed_by_high_slice_access_mode_coverage(self):
+        """Low dataflow_slice_ratio should NOT WARN when slice has high access_mode coverage.
+
+        The prometheus deep-20260407-030917 case: slice.0 grew from ~962 to 1689
+        nodes after the INV-kunam route resolver fix.  The dataflow slice didn't
+        shrink but the regular slice grew, dropping the ratio from 6.3% to 6.0%.
+        Meanwhile, 70.7% of call edges in the slice still carry access_mode.
+        This is a denominator effect, not a dataflow regression — the warn
+        should be suppressed when the slice itself is well-annotated.
+        """
+        status, msg = bf.assess_metric(
+            "dataflow_slice_ratio", 6.0,
+            total_nodes=11836,
+            access_mode_coverage=44.6,
+            slice_access_mode_coverage=70.7,
+        )
+        assert status == "GOOD", (
+            f"6% dataflow_slice_ratio with 70.7% slice_access_mode_coverage "
+            f"should be GOOD (denominator effect from quality fix elsewhere): {msg}"
+        )
+
+    def test_low_ratio_with_low_slice_coverage_still_warns(self):
+        """Low dataflow_slice_ratio + low slice_access_mode_coverage still warns.
+
+        If the slice itself has thin annotation coverage, the low ratio reflects
+        a real gap in dataflow tagging — the warn should still fire.
+        """
+        status, msg = bf.assess_metric(
+            "dataflow_slice_ratio", 6.0,
+            total_nodes=11836,
+            access_mode_coverage=44.6,
+            slice_access_mode_coverage=15.0,
+        )
+        assert status == "WARN", (
+            f"6% dataflow_slice_ratio with 15% slice_access_mode_coverage "
+            f"should still WARN: {msg}"
+        )
+
+    def test_slice_coverage_at_threshold_boundary(self):
+        """slice_access_mode_coverage of exactly 50% suppresses the WARN."""
+        status, msg = bf.assess_metric(
+            "dataflow_slice_ratio", 5.0,
+            total_nodes=10000,
+            access_mode_coverage=40.0,
+            slice_access_mode_coverage=50.0,
+        )
+        assert status == "GOOD", (
+            f"At 50% slice_access_mode_coverage boundary, low ratio should "
+            f"be suppressed: {msg}"
+        )
+
 
 class TestLimitHitFrequencyScaling:
     """Test limit_hit_frequency threshold scaling for large repos."""
