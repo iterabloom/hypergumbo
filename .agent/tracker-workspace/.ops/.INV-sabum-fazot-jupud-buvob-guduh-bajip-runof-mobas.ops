@@ -1,0 +1,22 @@
+- op: create  # 0701
+  at: '2026-04-07T03:56:34Z'  # 0701
+  by: agent  # 0701
+  actor: jgstern_agent  # 0701
+  clock: 1  # 0701
+  nonce: '0701'  # 0701
+  data:  # 0701
+    kind: invariant  # 0701
+    title: "dispatches_to and uses edges must propagate access_mode from underlying calls"  # 0701
+    status: violated  # 0701
+    priority: 0  # 0701
+    parent:  # 0701
+    tags:  # 0701
+    - analysis_quality  # 0701
+    before: []  # 0701
+    duplicate_of: []  # 0701
+    not_duplicate_of: []  # 0701
+    pr_ref:  # 0701
+    description: "Found in prometheus reflect (deep-20260406-233120): 'Propagate access_mode from calls edges to the resolved dispatches_to and uses edges. Currently 100% of dispatches_to edges have NONE access_mode while their underlying calls edges do. This single change would lift access_mode coverage from 44.6% to roughly 60% on prometheus and would let the dataflow slice walk through interface dispatch.' Direct cause of LOW_DATAFLOW_SLICE_RATIO 6.3% < 10.0%. Highest-impact remaining bakeoff finding."  # 0701
+    fields:  # 0701
+      statement: "When the type-hierarchy linker resolves a calls edge into a dispatches_to edge (interface dispatch), or a uses edge (type/field reference), the resolved edge must inherit access_mode from the source calls edge. Otherwise dataflow slicing cannot follow interface dispatch."  # 0701
+      root_cause: "annotate_dataflow runs in base.py before type_hierarchy.py creates dispatches_to/uses edges. The linker creates the new edge without copying access_mode from any related calls edge. In prometheus: 0 of 1987 dispatches_to edges have access_mode (vs 44.6% of calls edges). The dataflow slice gets 18 dispatch edges with NONE access_mode and cannot traverse them in write→read chain mode."  # 0701

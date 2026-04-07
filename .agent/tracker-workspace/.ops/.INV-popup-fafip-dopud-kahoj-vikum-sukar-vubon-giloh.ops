@@ -1,0 +1,22 @@
+- op: create  # 7360
+  at: '2026-04-07T03:56:17Z'  # 7360
+  by: agent  # 7360
+  actor: jgstern_agent  # 7360
+  clock: 1  # 7360
+  nonce: '7360'  # 7360
+  data:  # 7360
+    kind: invariant  # 7360
+    title: "Go variable shadowing of imported package drops call edges"  # 7360
+    status: violated  # 7360
+    priority: 0  # 7360
+    parent:  # 7360
+    tags:  # 7360
+    - analysis_quality  # 7360
+    before: []  # 7360
+    duplicate_of: []  # 7360
+    not_duplicate_of: []  # 7360
+    pr_ref:  # 7360
+    description: "Found in alertmanager: cmd/alertmanager/main.go:381 `api, err := api.New(api.Options{})` produces no calls edge from run() to api.New(). Forward slice from main reaches 0 of 9 HTTP route handlers. Pattern is Go-idiomatic and common with stdlib package names: config, log, os, http, ctx. Reflect agent (alertmanager.assessment.yaml) confirmed root cause via direct hg.json inspection. Fix: when LHS resolves to a same-statement local var, fall back to imports table lookup. Source: deep-20260406-233120 alertmanager reflect."  # 7360
+    fields:  # 7360
+      statement: "In Go, when a local variable shadows an imported package name in the same statement (e.g., `api, err := api.New(api.Options{})`), the call to the package function on the right-hand side must still resolve to the package function, not be dropped."  # 7360
+      root_cause: "The Go call resolver checks the LHS identifier against the local variable scope before checking the imports table. When the LHS variable is being defined in the same statement, it shadows the package name even though the RHS call should resolve to the package. Result: the calls edge is silently dropped."  # 7360
