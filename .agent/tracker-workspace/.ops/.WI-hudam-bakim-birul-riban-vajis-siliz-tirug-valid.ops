@@ -1,0 +1,22 @@
+- op: create  # 4747
+  at: '2026-04-07T22:31:05Z'  # 4747
+  by: agent  # 4747
+  actor: jgstern_agent  # 4747
+  clock: 1  # 4747
+  nonce: '4747'  # 4747
+  data:  # 4747
+    kind: work_item  # 4747
+    title: "INV-dihos Phase 4: Return-Type Registry for type-annotated Python"  # 4747
+    status: todo_soft  # 4747
+    priority: 3  # 4747
+    parent:  # 4747
+    tags:  # 4747
+    - analysis_quality  # 4747
+    - cross_language_linkers  # 4747
+    before:  # 4747
+    - WI-titor-habak-faduh-tuzih-dilog-rutil-fogum-sasuf  # 4747
+    duplicate_of: []  # 4747
+    not_duplicate_of: []  # 4747
+    pr_ref:  # 4747
+    description: "Phase 4 of the ADR-0006 Return-Type Registry Pre-Pass. Promote py.py:1648's local return-type extraction to a global registry entry so untyped Python code can chain through annotated APIs.\n\nDELIVERABLES:\n(1) New 'signatures' YAML in python.yaml. PEP 484 annotations are well-defined; map function_definition node types to the existing return_type extraction logic.\n\n(2) Tier 2 escape hatches in signatures.py python_extract(): handle Optional[T], Union[T, U], Awaitable[T], and the 3.9+ T | None pipe syntax. Resolve forward references / string annotations only when trivially decodable.\n\n(3) Wire registry into py.py's var_types fill loop. The existing local extraction at py.py:1648 stays in place — the new code path just adds a global lookup that fires when the local one would otherwise return None.\n\n(4) Untyped Python remains 'n/a' (registry entry simply absent for unannotated functions).\n\n(5) Regression tests in tests/test_python_signature_registry.py covering: simple return type, Optional unwrap, Union, async Awaitable, string forward reference, untyped function (registry-miss path).\n\n(6) Bakeoff validation: kserve (mixed-typed Python — its public API uses PEP 484 throughout).\n\nPREREQUISITE: Phase 3 (created above) — registry plumbing. Phase 4 ships independently as long as Phases 1-3 have established the registry contract."  # 4747
+    fields: {}  # 4747
