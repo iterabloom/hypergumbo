@@ -1,0 +1,23 @@
+- op: create  # 4f72
+  at: '2026-04-07T07:45:38Z'  # 4f72
+  by: agent  # 4f72
+  actor: jgstern_agent  # 4f72
+  clock: 1  # 4f72
+  nonce: 4f72  # 4f72
+  data:  # 4f72
+    kind: invariant  # 4f72
+    title: "Go receiver-type inference must follow method-call return types"  # 4f72
+    status: violated  # 4f72
+    priority: 1  # 4f72
+    parent:  # 4f72
+    tags:  # 4f72
+    - analysis_quality  # 4f72
+    - cross_language_linkers  # 4f72
+    before: []  # 4f72
+    duplicate_of: []  # 4f72
+    not_duplicate_of: []  # 4f72
+    pr_ref:  # 4f72
+    description: "Source: deep-20260407-030917 prometheus reflect agent. Three observed misresolutions in API.query outgoing edges: qry.Close -> ResourceClient.Close (wrong), warnings.Add -> unsafeLabelAdder.Add (wrong), r.Context -> LazyLoader.Context (wrong, should be http.Request.Context). Receiver type tracking from WI-hikug catches direct type assignments and parameters but not types that flow through return values of method calls or struct field accesses. Affects every Go repo with the .Close()/.Add()/.Set()/.Context() pattern (essentially every Go service). Likely fix: extend _extract_go_var_types to record return types from typed method calls when the caller's type is known. Same issue contaminates symbol_ranking globally because every .Close() call in the codebase pollutes a single ResourceClient.Close with bogus in-degree."  # 4f72
+    fields:  # 4f72
+      statement: "Go method calls on local variables that hold the return value of another method call (or struct field access) must resolve via the receiver's typed return type, not via global short-name lookup."  # 4f72
+      root_cause: "WI-hikug closed with receiver type tracking that handles short var declarations, var declarations, function parameters, and method receivers — but it does not propagate types through method-call return values. Example from prometheus deep-20260407-030917 web/api/v1/api.go:502-569 API.query: qry, err := ng.NewInstantQuery(...) should give qry the type promql.Query (return type of QueryEngine.NewInstantQuery). Then qry.Close() should resolve to promql.Query.Close. Instead it resolves to ResourceClient.Close from a different package. Same pattern for warnings.Add and r.Context."  # 4f72
