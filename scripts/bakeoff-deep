@@ -1336,6 +1336,105 @@ def _find_latest_session(base_workdir: str, prefix: str = "deep-") -> Optional[s
     return sessions[-1]
 
 
+# Threshold (in seconds) below which an existing session is considered
+# "recent" for iteration-vs-new-session warnings. 7 days matches the
+# bakeoff-process-health-audit window and the spec clarification in
+# the iteration-vs-new-session anti-pattern writeup.
+_INIT_RECENT_SESSION_THRESHOLD_SECONDS = 7 * 24 * 60 * 60
+# Seconds the init warning sleeps before proceeding, so users notice
+# the notice in terminal output. Opt-out via env var.
+_INIT_RECENT_SESSION_SLEEP_SECONDS = 5
+
+
+def _check_recent_session_for_init(
+    base_workdir: str,
+    pool_path: str,
+    current_code_hash: str,
+    prefix: str = "deep-",
+    now: Optional[float] = None,
+) -> Optional[dict]:
+    """Inspect the most recent session and return warning details if recent.
+
+    WI-kumub: help agents and humans avoid the "init-between-every-run"
+    anti-pattern. When a session exists for the same pool + same hypergumbo
+    code hash created within the recency threshold, ``init`` is almost
+    certainly the wrong command — ``cycle`` against the existing session
+    would increment ``iter-002/`` and preserve the convergence trajectory.
+
+    Returns a dict with human-readable fields when a recent candidate is
+    found, or ``None`` when no warning should be emitted. The caller is
+    responsible for printing the warning and applying any cooldown. Pure
+    data in / pure data out so it is trivially testable.
+
+    Args:
+        base_workdir: Root directory containing timestamped session dirs.
+        pool_path: The resolved --pool path requested by the user.
+        current_code_hash: Current hypergumbo editable-install code hash
+            (may be empty string if unknown; an empty hash never warns).
+        prefix: Session directory prefix ("deep-" or "broad-").
+        now: Override for the current time (unit tests).
+
+    Returns:
+        ``None`` if no warning, otherwise a dict with:
+          - ``session_path``: absolute path to the candidate session
+          - ``session_name``: basename of the session dir
+          - ``age_hours``: float age of the session in hours
+          - ``same_pool``: bool, pool matches the candidate's pool_path
+          - ``same_code``: bool, code hash matches
+          - ``cohort_count``: int, number of cohorts in the candidate
+    """
+    if now is None:
+        now = time.time()
+
+    latest = _find_latest_session(base_workdir, prefix=prefix)
+    if not latest:
+        return None
+    try:
+        state = load_state(latest)
+    except (json.JSONDecodeError, OSError, TypeError):
+        # A corrupt or partially-written state.json shouldn't block
+        # `init` — just skip the warning.
+        return None
+    if state is None:
+        return None
+
+    # Parse created_at to determine age. created_at is an isoformat string
+    # written by cmd_init; tolerate missing/invalid values by giving up.
+    created_epoch: Optional[float] = None
+    if state.created_at:
+        try:
+            created_epoch = datetime.datetime.fromisoformat(state.created_at).timestamp()
+        except ValueError:
+            created_epoch = None
+    if created_epoch is None:
+        return None
+
+    age_seconds = now - created_epoch
+    if age_seconds < 0 or age_seconds >= _INIT_RECENT_SESSION_THRESHOLD_SECONDS:
+        return None
+
+    same_pool = state.pool_path == pool_path
+    same_code = bool(
+        current_code_hash
+        and state.hypergumbo_code_hash
+        and state.hypergumbo_code_hash == current_code_hash
+    )
+
+    # Only warn when both pool AND code match — otherwise the user is
+    # genuinely starting a different line of inquiry and `init` is right.
+    if not (same_pool and same_code):
+        return None
+
+    return {
+        "session_path": latest,
+        "session_name": os.path.basename(latest),
+        "age_hours": age_seconds / 3600.0,
+        "same_pool": same_pool,
+        "same_code": same_code,
+        "cohort_count": state.cohort_number,
+    }
+
+
 def cmd_init(args):
     """Initialize a new feature bakeoff session.
 
@@ -1388,6 +1487,70 @@ def cmd_init(args):
 
     # Backward compat: --force is now the default behavior, accept silently
     # (flag kept so existing scripts/docs don't break)
+
+    # WI-kumub: warn when a recent same-pool + same-code session exists.
+    # This guards against the "init-between-every-run" anti-pattern where
+    # iter-002/iter-003 convergence is lost because every fix-and-retry
+    # creates a new top-level session. Opt-out via
+    # BAKEOFF_DEEP_SKIP_RECENT_WARNING=1 for scripted batch use.
+    if not os.environ.get("BAKEOFF_DEEP_SKIP_RECENT_WARNING"):
+        warning = _check_recent_session_for_init(
+            base_workdir=base_workdir,
+            pool_path=pool_path,
+            current_code_hash=compute_hypergumbo_code_hash(),
+            prefix="deep-",
+        )
+        if warning:
+            age_h = warning["age_hours"]
+            age_str = (
+                f"{age_h:.1f}h" if age_h < 48 else f"{age_h / 24:.1f}d"
+            )
+            print(
+                "⚠️  A recent deep bakeoff session exists for the same pool "
+                "and code hash:",
+                file=sys.stderr,
+            )
+            print(
+                f"    {warning['session_name']}  "
+                f"(age: {age_str}, cohorts: {warning['cohort_count']})",
+                file=sys.stderr,
+            )
+            print(
+                "    If you are validating a fix-and-retry against the same "
+                "cohort, you probably want",
+                file=sys.stderr,
+            )
+            print(
+                "    to ITERATE on the existing session instead of starting "
+                "a new one:",
+                file=sys.stderr,
+            )
+            print(
+                "        ./scripts/bakeoff-deep cycle",
+                file=sys.stderr,
+            )
+            print(
+                "    (auto-discovers the latest session and produces iter-002/, "
+                "iter-003/, …)",
+                file=sys.stderr,
+            )
+            print(
+                "    Only `init` when starting a NEW line of inquiry (different "
+                "cohort, different",
+                file=sys.stderr,
+            )
+            print(
+                "    questions, days+ gap). See "
+                ".agent/agent_playbooks_protocols_sops_skills/bakeoff-artifacts-guide.md.",
+                file=sys.stderr,
+            )
+            print(
+                f"    Continuing in {_INIT_RECENT_SESSION_SLEEP_SECONDS}s — "
+                "Ctrl-C now to abort, or export "
+                "BAKEOFF_DEEP_SKIP_RECENT_WARNING=1 to silence.",
+                file=sys.stderr,
+            )
+            time.sleep(_INIT_RECENT_SESSION_SLEEP_SECONDS)
 
     # Create timestamped session directory to prevent artifact overwrites
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
