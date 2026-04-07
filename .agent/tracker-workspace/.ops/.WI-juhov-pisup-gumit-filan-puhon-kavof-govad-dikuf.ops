@@ -1,0 +1,22 @@
+- op: create  # 6eb8
+  at: '2026-04-07T23:55:18Z'  # 6eb8
+  by: agent  # 6eb8
+  actor: jgstern_agent  # 6eb8
+  clock: 1  # 6eb8
+  nonce: 6eb8  # 6eb8
+  data:  # 6eb8
+    kind: work_item  # 6eb8
+    title: "Triage dead-code-maybe results into prioritized linker backlog"  # 6eb8
+    status: todo_soft  # 6eb8
+    priority: 3  # 6eb8
+    parent:  # 6eb8
+    tags:  # 6eb8
+    - cross_language_linkers  # 6eb8
+    - dead_code_prospector  # 6eb8
+    before:  # 6eb8
+    - WI-duroz-jajif-tatuk-tujit-nonir-vavof-johak-vabir  # 6eb8
+    duplicate_of: []  # 6eb8
+    not_duplicate_of: []  # 6eb8
+    pr_ref:  # 6eb8
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md 'Recommended shape of the experiment' §4-5: after the prospecting pass runs, walk the top ~50–100 candidates and group by *kind* of missed edge — HTTP path, MQ topic, gRPC method, JNI, FFI struct, etc. Produce a prioritized backlog of linkers to implement, each as its own tracker item linked back to this one.\n\nAfter each new linker lands, the corresponding candidates should disappear on rerun — that is the built-in regression test for the linker implementations.\n\nDeliverable: a set of new WI items tagged 'linker_gap' (or similar) each proposing a specific linker to implement, sorted by candidate count / confidence."  # 6eb8
+    fields: {}  # 6eb8
