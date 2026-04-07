@@ -389,6 +389,11 @@ class FeatureMetrics:
     # Dataflow metrics
     dataflow_slice_ratio: float = 1.0
     access_mode_coverage: float = 0.0
+    # Fraction of call edges in slice.0 with access_mode set.  Used to
+    # suppress LOW_DATAFLOW_SLICE_RATIO false-alarms when an unrelated
+    # quality fix grows the regular-slice denominator faster than the
+    # dataflow slice.  See assess_metric for details.
+    slice_access_mode_coverage: float = 0.0
 
     # Verify-claims metrics (0 if no claims file)
     claims_total: int = 0
@@ -853,6 +858,7 @@ def assess_metric(
     *,
     total_nodes: int | None = None,
     access_mode_coverage: float | None = None,
+    slice_access_mode_coverage: float | None = None,
 ) -> tuple:
     """Assess a metric against thresholds. Returns (status, message).
 
@@ -866,10 +872,23 @@ def assess_metric(
     (3K-10K nodes like mitmproxy and tokenizers) with an unrealistically high
     5% requirement.
 
-    For ``dataflow_slice_ratio``, assessment is skipped (returns GOOD) when
-    ``access_mode_coverage`` is below 30%.  Low annotation coverage means most
-    edges lack access_mode metadata, so --dataflow mode follows them
-    unconditionally — producing a ratio near 100% is expected, not a defect.
+    For ``dataflow_slice_ratio``, two suppressions apply:
+
+    1. When repo-wide ``access_mode_coverage`` is below 30%, the metric is
+       skipped (returns GOOD).  Low annotation coverage means most edges
+       lack access_mode metadata, so --dataflow mode follows them
+       unconditionally — producing a ratio near 100% is expected.
+
+    2. When ``slice_access_mode_coverage`` (call edges in slice.0 with
+       access_mode set / total call edges in slice.0) is at or above 50%,
+       a low ratio is treated as a denominator effect rather than a real
+       dataflow gap.  Example (prometheus deep-20260407-030917): the
+       INV-kunam route resolver fix grew slice.0 from ~962 to 1689 nodes
+       by adding more reachable Go call edges; the dataflow slice didn't
+       shrink but the regular-slice denominator grew, dropping the ratio
+       from 6.3% to 6.0%.  Meanwhile 70.7% of call edges in the new slice
+       still carried access_mode — the slice itself was well-annotated,
+       so the WARN was a false alarm caused by an unrelated quality fix.
     """
     thresholds = QUALITY_THRESHOLDS.get(name, {})
     unit = "" if name in _COUNT_METRICS else "%"
@@ -901,6 +920,14 @@ def assess_metric(
     # With <30% annotation coverage, the 100% ratio is expected behavior.
     if name == "dataflow_slice_ratio" and access_mode_coverage is not None:
         if access_mode_coverage < 30.0:
+            return ("GOOD", None)
+
+    # Suppress LOW dataflow_slice_ratio WARN when the slice itself is
+    # well-annotated.  A low ratio with high in-slice coverage means an
+    # unrelated quality fix grew the regular-slice denominator without
+    # adding dataflow coverage, not that dataflow tagging is missing.
+    if name == "dataflow_slice_ratio" and slice_access_mode_coverage is not None:
+        if slice_access_mode_coverage >= 50.0:
             return ("GOOD", None)
 
     # Scale limit_hit_frequency threshold up for large repos.
@@ -2341,11 +2368,29 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         if os.path.exists(regular_slice_path) and os.path.exists(dataflow_slice_path):
             try:
                 with open(regular_slice_path) as f:
-                    regular_nodes = len(json.load(f).get("feature", {}).get("nodes", []))
+                    regular_data = json.load(f).get("feature", {})
+                regular_nodes = len(regular_data.get("nodes", []))
                 with open(dataflow_slice_path) as f:
                     dataflow_nodes = len(json.load(f).get("feature", {}).get("nodes", []))
                 if regular_nodes > 0:
                     metrics.dataflow_slice_ratio = dataflow_nodes / regular_nodes
+
+                # Slice-relative access_mode coverage on call edges.  This
+                # captures "how much dataflow signal is in the area of
+                # interest" and is a stronger denominator-aware companion
+                # to the global access_mode_coverage metric.
+                slice_call_edges = [
+                    e for e in regular_data.get("edges", [])
+                    if e.get("type") == "calls"
+                ]
+                if slice_call_edges:
+                    annotated = sum(
+                        1 for e in slice_call_edges
+                        if e.get("meta", {}).get("access_mode")
+                    )
+                    metrics.slice_access_mode_coverage = (
+                        annotated / len(slice_call_edges) * 100
+                    )
             except (json.JSONDecodeError, OSError):
                 pass
 
@@ -2415,6 +2460,7 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
                 metric_name, value,
                 total_nodes=metrics.total_nodes,
                 access_mode_coverage=metrics.access_mode_coverage,
+                slice_access_mode_coverage=metrics.slice_access_mode_coverage,
             )
             if status == "FAIL":
                 verdict_status = "FAIL"
