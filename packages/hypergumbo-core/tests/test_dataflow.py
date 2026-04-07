@@ -620,6 +620,188 @@ returns:
         assert result[0].meta is not None
         assert result[0].meta.get("access_mode") == "read"
 
+    def test_library_pattern_annotates_call_edge_when_no_ast_match(
+        self, tmp_path: Path
+    ) -> None:
+        """library_patterns should annotate call edges as a fallback when
+        the AST positional rules don't match.
+
+        Go method calls like ``s.Set(x)`` live inside expression statements
+        with no assignment parent, so the AST walk in ``annotate_dataflow``
+        finds nothing.  The Go go.yaml documents library_patterns as
+        filling exactly this gap, but until this test was written the
+        patterns were never applied — ``scan_library_patterns`` had no
+        production callers and the Go YAML's 30 patterns were dead code.
+        See INV-halar.
+        """
+        yaml_content = """\
+language: go
+
+assignments:
+  - node_type: short_var_declaration
+    write: left
+    read: right
+
+library_patterns:
+  - match: '\\.Set\\('
+    access_mode: write
+  - match: '\\.Get\\('
+    access_mode: read
+"""
+        yaml_file = tmp_path / "go.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        # Edges on lines 1 and 2.  No assignment parent — purely
+        # expression-statement method calls.  AST walk yields nothing,
+        # so library_patterns must do the work.
+        set_edge = Edge.create(
+            src="go:a.go:1:caller:function",
+            dst="go:a.go:1:Set:method",
+            edge_type="calls",
+            line=1,
+        )
+        get_edge = Edge.create(
+            src="go:a.go:2:caller:function",
+            dst="go:a.go:2:Get:method",
+            edge_type="calls",
+            line=2,
+        )
+
+        tree = self._make_mock_tree(
+            {1: "expression_statement", 2: "expression_statement"}
+        )
+        source = b's.Set("foo")\nv := s.Get("foo")\n'
+
+        result = annotate_dataflow([set_edge, get_edge], tree, source, config)
+
+        assert len(result) == 2
+        assert result[0].meta is not None
+        assert result[0].meta.get("access_mode") == "write"
+        assert result[1].meta is not None
+        assert result[1].meta.get("access_mode") == "read"
+
+    def test_library_pattern_priority_write_beats_read_on_same_line(
+        self, tmp_path: Path
+    ) -> None:
+        """When two library_patterns match the same line, the stronger
+        access mode wins (write > mutate > delete > read).
+
+        Without this rule, a write+read pattern combo on a line like
+        ``s.Set(s.Get("k"))`` would non-deterministically get either
+        ``read`` or ``write`` depending on YAML iteration order, silently
+        downgrading mutating operations.
+        """
+        yaml_content = """\
+language: go
+
+library_patterns:
+  - match: '\\.Get\\('
+    access_mode: read
+  - match: '\\.Set\\('
+    access_mode: write
+"""
+        yaml_file = tmp_path / "go.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        edge = Edge.create(
+            src="go:a.go:1:caller:function",
+            dst="go:a.go:1:Set:method",
+            edge_type="calls",
+            line=1,
+        )
+        tree = self._make_mock_tree({1: "expression_statement"})
+        # Same line matches both .Get( and .Set( — write must win.
+        source = b's.Set(s.Get("k"))\n'
+        result = annotate_dataflow([edge], tree, source, config)
+
+        assert len(result) == 1
+        assert result[0].meta is not None
+        assert result[0].meta.get("access_mode") == "write"
+
+    def test_library_pattern_priority_read_does_not_override_write(
+        self, tmp_path: Path
+    ) -> None:
+        """Reverse of the previous test — patterns are declared in the
+        opposite order, but the stronger mode still wins regardless of
+        YAML iteration order."""
+        yaml_content = """\
+language: go
+
+library_patterns:
+  - match: '\\.Set\\('
+    access_mode: write
+  - match: '\\.Get\\('
+    access_mode: read
+"""
+        yaml_file = tmp_path / "go.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        edge = Edge.create(
+            src="go:a.go:1:caller:function",
+            dst="go:a.go:1:Set:method",
+            edge_type="calls",
+            line=1,
+        )
+        tree = self._make_mock_tree({1: "expression_statement"})
+        source = b's.Set(s.Get("k"))\n'
+        result = annotate_dataflow([edge], tree, source, config)
+
+        assert len(result) == 1
+        assert result[0].meta is not None
+        assert result[0].meta.get("access_mode") == "write"
+
+    def test_library_pattern_does_not_override_ast_annotation(
+        self, tmp_path: Path
+    ) -> None:
+        """AST positional rules take precedence over library_patterns.
+
+        If both an assignment-style match and a library pattern would
+        annotate the same edge, the AST result wins because it carries
+        more structural information than the regex heuristic.
+        """
+        yaml_content = """\
+language: go
+
+assignments:
+  - node_type: short_var_declaration
+    write: left
+    read: right
+
+library_patterns:
+  - match: '\\.Set\\('
+    access_mode: write
+"""
+        yaml_file = tmp_path / "go.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        # Edge falls inside a short_var_declaration's RHS, where the AST
+        # positional rule says "read".  The line also matches `.Set(`,
+        # but the AST result must win.
+        edge = Edge.create(
+            src="go:a.go:5:caller:function",
+            dst="go:a.go:5:Set:method",
+            edge_type="calls",
+            line=5,
+        )
+        tree = self._make_positional_tree(
+            line=5,
+            parent_type="short_var_declaration",
+            children={
+                "left": ("identifier", 0, 1),
+                "right": ("call_expression", 4, 14),
+            },
+        )
+        source = b'\n\n\n\nv := s.Set("foo")\n'
+        result = annotate_dataflow([edge], tree, source, config)
+
+        assert len(result) == 1
+        assert result[0].meta is not None
+        assert result[0].meta.get("access_mode") == "read"  # AST wins
+
     def test_no_annotation_when_position_unresolvable(self, tmp_path: Path) -> None:
         """Flat mock without child_by_field_name leaves edge unannotated."""
         yaml_content = """\

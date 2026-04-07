@@ -326,7 +326,30 @@ def annotate_dataflow(
         return edges
 
     positional_map = config.build_positional_map()
-    if not positional_map:
+
+    # Pre-compute library_patterns annotations by line.  These act as a
+    # per-language fallback for call edges that the AST positional rules
+    # can't classify (e.g., Go method calls like ``s.Set(x)`` that live
+    # inside expression statements with no assignment parent).  See
+    # INV-halar.  AST positional rules take precedence — only edges that
+    # the AST walk leaves unclassified consult this map.
+    library_modes_by_line: dict[int, str] = {}
+    if config.library_patterns:
+        try:
+            content = source.decode("utf-8", errors="replace")
+        except (AttributeError, UnicodeDecodeError):  # pragma: no cover
+            content = ""
+        if content:
+            for site in scan_library_patterns(content, config):
+                # If multiple library_patterns match the same line,
+                # prefer write/mutate/delete over read so that mutating
+                # operations are not silently downgraded.
+                existing = library_modes_by_line.get(site.line)
+                if existing is None or _mode_priority(site.access_mode) > \
+                        _mode_priority(existing):
+                    library_modes_by_line[site.line] = site.access_mode
+
+    if not positional_map and not library_modes_by_line:
         return edges
 
     # Build line index once for O(1) per-edge lookup
@@ -337,21 +360,25 @@ def annotate_dataflow(
         if edge.meta is not None and "access_mode" in edge.meta:
             continue
 
-        # Look up node at this edge's line (O(1) via index)
+        access_mode: Optional[str] = None
+
+        # First try AST positional rules at this edge's line
         target_line = edge.line - 1  # tree-sitter uses 0-indexed lines
         node = line_index.get(target_line)
-        if node is None:
-            continue
+        if node is not None and positional_map:
+            current = node
+            while current is not None:
+                if current.type in positional_map:
+                    child_modes = positional_map[current.type]
+                    access_mode = _classify_by_position(
+                        node, current, child_modes,
+                    )
+                    break
+                current = getattr(current, "parent", None)
 
-        # Walk up from the deepest node to find a matching node type
-        current = node
-        access_mode = None
-        while current is not None:
-            if current.type in positional_map:
-                child_modes = positional_map[current.type]
-                access_mode = _classify_by_position(node, current, child_modes)
-                break
-            current = getattr(current, "parent", None)
+        # Fall back to library_patterns matched against the source line
+        if access_mode is None and library_modes_by_line:
+            access_mode = library_modes_by_line.get(edge.line)
 
         if access_mode is not None:
             if edge.meta is None:
@@ -359,6 +386,25 @@ def annotate_dataflow(
             edge.meta["access_mode"] = access_mode
 
     return edges
+
+
+# Order in which mutating modes outrank read for library_patterns
+# disambiguation: write > mutate > delete > read.
+_LIBRARY_PATTERN_PRIORITY = {
+    "write": 4,
+    "mutate": 3,
+    "delete": 2,
+    "read": 1,
+}
+
+
+def _mode_priority(mode: str) -> int:
+    """Rank access modes for library_patterns conflict resolution.
+
+    Unknown modes default to 1 (read tier) so YAML authors can introduce
+    new vocabulary without crashing the annotator.
+    """
+    return _LIBRARY_PATTERN_PRIORITY.get(mode, 1)
 
 
 def scan_library_patterns(
