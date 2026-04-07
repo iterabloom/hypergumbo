@@ -47,3 +47,10 @@
   clock: 5  # 9bd1
   nonce: 9bd1  # 9bd1
   message: "pr number please? or commit hash"  # 9bd1
+- op: discuss  # 44b1
+  at: '2026-04-07T07:35:47Z'  # 44b1
+  by: agent  # 44b1
+  actor: jgstern_agent  # 44b1
+  clock: 6  # 44b1
+  nonce: 44b1  # 44b1
+  message: "PR iterabloom/hypergumbo#2726, commit ba62f059a3b35677b01982b0f199a9dce111b8ee. The fix is an autouse fixture in packages/hypergumbo-core/tests/conftest.py that sets XDG_CACHE_HOME to a per-test temp dir, structurally isolating ~/.cache/hypergumbo state between tests so a stale cached results file from a prior pytest session can't short-circuit the auto-run path."  # 44b1
