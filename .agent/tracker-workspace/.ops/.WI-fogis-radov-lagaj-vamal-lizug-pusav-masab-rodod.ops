@@ -18,3 +18,18 @@
     pr_ref:  # 192d
     description: "Source: deep-20260407-030917 kserve reflect agent question. The python.yaml library_patterns currently covers .append/.extend/.add/.update/.write/.send/.put/.read/.recv/.get/.keys/.values/.items/.pop/.remove/.clear/.discard/.popitem/.flush/.writelines (~20 patterns). Suggested extensions: open (read or write depending on mode arg, default read), close (delete?), seek (mutate), truncate (delete/write), readline/readlines (read), json.dump/json.load (write/read), json.dumps/json.loads (read), pickle.dump/pickle.load (write/read), yaml.dump/yaml.load (write/read). These are common Python data-handling primitives that currently leave call edges unannotated. Note: per WI-saful needs_human_review, the dataflow slice may not currently consume read edges anyway, so the immediate impact is on access_mode_coverage metric and the per-edge tagging visible in dataflow output."  # 192d
     fields: {}  # 192d
+- op: update  # 26b6
+  at: '2026-04-07T10:37:46Z'  # 26b6
+  by: agent  # 26b6
+  actor: jgstern_agent  # 26b6
+  clock: 2  # 26b6
+  nonce: 26b6  # 26b6
+  set:  # 26b6
+    status: done  # 26b6
+- op: discuss  # 00ef
+  at: '2026-04-07T10:37:46Z'  # 00ef
+  by: agent  # 00ef
+  actor: jgstern_agent  # 00ef
+  clock: 3  # 00ef
+  nonce: 00ef  # 00ef
+  message: "Merged in PR #2756. Added 14 patterns to python.yaml: json/pickle/yaml dump (write), json/pickle/yaml load (read), json/pickle dumps/loads (read - pure conversion), .seek (mutate), .truncate (write). 5 new tests in TestPythonLibraryPatterns class. Cross-language scope expansion already tracked under WI-vinub."  # 00ef
