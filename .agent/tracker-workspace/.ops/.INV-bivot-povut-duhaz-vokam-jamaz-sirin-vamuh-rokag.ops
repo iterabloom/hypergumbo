@@ -58,3 +58,11 @@
   clock: 6  # 449d
   nonce: 449d  # 449d
   message: "Cross-ref: PlazaFlow readiness. PlazaFlow awareness edges (isSpeaking, editing, driverState) need the same slice traversal fix. See META-migil umbrella and WI-mamuh (Yjs sub-doc tracing)."  # 449d
+- op: update  # 3020
+  at: '2026-04-07T08:28:34Z'  # 3020
+  by: human  # 3020
+  actor: jgstern  # 3020
+  clock: 7  # 3020
+  nonce: '3020'  # 3020
+  set:  # 3020
+    status: pending_validation  # 3020

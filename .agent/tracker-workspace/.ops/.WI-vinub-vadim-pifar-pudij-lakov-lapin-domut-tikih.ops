@@ -1,0 +1,20 @@
+- op: create  # 2f2a
+  at: '2026-04-07T08:32:50Z'  # 2f2a
+  by: agent  # 2f2a
+  actor: jgstern_agent  # 2f2a
+  clock: 1  # 2f2a
+  nonce: 2f2a  # 2f2a
+  data:  # 2f2a
+    kind: work_item  # 2f2a
+    title: "Cross-language library_patterns: extend state-mutating verbs to all languages"  # 2f2a
+    status: todo_soft  # 2f2a
+    priority: 4  # 2f2a
+    parent:  # 2f2a
+    tags:  # 2f2a
+    - analysis_quality  # 2f2a
+    before: []  # 2f2a
+    duplicate_of: []  # 2f2a
+    not_duplicate_of: []  # 2f2a
+    pr_ref:  # 2f2a
+    description: "Scope expansion from WI-supih (Go-only). The verbs Expire/GC/Truncate/Drop/Init/Reload tagged as access_mode=write in go.yaml are universal state-mutating semantics that apply to many languages. Other YAML files (rust.yaml, ts.yaml, java.yaml, python.yaml, c.yaml, csharp.yaml, kotlin.yaml, etc.) should be reviewed for analogous coverage. Each language has its own naming conventions but the same underlying operations: Rust .clear()/.drain()/.truncate()/.reset(); TypeScript .clear()/.delete()/.flush(); Java .clear()/.removeAll(); Python .clear()/.pop()/.popitem() (already covered in python.yaml). Audit each YAML and add missing verbs. Not surfaced by any specific bakeoff signal — speculative scope expansion based on the WI-supih reflect finding. P4 because no concrete evidence other languages are missing these verbs in real repos."  # 2f2a
+    fields: {}  # 2f2a

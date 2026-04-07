@@ -35,3 +35,10 @@
   clock: 3  # 0226
   nonce: '0226'  # 0226
   message: "Deeper investigation: propagating access_mode to dispatches_to/uses at the linker level is NOT the right fix.\n\nThe slice already follows dispatches_to via graceful fall-through when access_mode is None. Propagation would only filter them MORE strictly:\n- If propagated as 'write': no traversal change (write already follows). Net effect: 0.\n- If propagated as 'read': slice would NOT follow them in forward dataflow mode → SHRINKS the slice. Net effect: regression.\n- If propagated as 'mixed/highest': arbitrary choice, makes things worse for reverse dataflow mode (which wants reads).\n\nThe reflect agent's intuition was structurally sound but the lever is wrong. The actual fix requires SLICE-LEVEL changes:\n1. Track (node, inbound_mode) pairs instead of just nodes\n2. When walking dispatches_to outgoing from a node, treat them as carrying the inbound mode the slice arrived with\n3. Direction-aware (forward propagates write/mutate, reverse propagates read)\n\nThis is a design change to the slice algorithm, not a linker-level annotation change. Needs human review on whether to do this slice-level work, since the dataflow_slice_ratio impact for prometheus is also gated on WI-saful (admitting reads to the slice).\n\nImproves the access_mode_coverage metric by ~15 percentage points if done at linker level (cosmetic, since coverage is already passing the GOOD threshold)."  # 0226
+- op: discuss  # 169c
+  at: '2026-04-07T08:30:36Z'  # 169c
+  by: human  # 169c
+  actor: jgstern  # 169c
+  clock: 4  # 169c
+  nonce: 169c  # 169c
+  message: "I'm not sure I replied on WI-saful and await your thoughts there."  # 169c

@@ -18,3 +18,18 @@
     pr_ref:  # 11b0
     description: "alertmanager reflect (deep-20260406-233120): 'Verbs like Expire, Delete, Remove, GC, Reset, Truncate, Drop, Clear, Init, Reload should also be tagged access_mode=write. Currently Silences.Expire (9 calls), Marker.SetActiveOrSilenced (6 calls), Marker.Delete are not write-tagged.' Easy YAML config addition — extend go.yaml library_patterns to cover the missing verb suffixes."  # 11b0
     fields: {}  # 11b0
+- op: update  # 31f2
+  at: '2026-04-07T08:42:17Z'  # 31f2
+  by: agent  # 31f2
+  actor: jgstern_agent  # 31f2
+  clock: 2  # 31f2
+  nonce: 31f2  # 31f2
+  set:  # 31f2
+    status: done  # 31f2
+- op: discuss  # c568
+  at: '2026-04-07T08:42:17Z'  # c568
+  by: agent  # c568
+  actor: jgstern_agent  # c568
+  clock: 3  # c568
+  nonce: c568  # c568
+  message: "Merged in PR iterabloom/hypergumbo#2748 (commit 6e960640e). Added six new write verbs to go.yaml library_patterns: Expire, GC, Truncate, Drop, Init, Reload. New test TestGoLibraryPatterns.test_expanded_write_verbs_match verifies all six match in a representative function body. Scope expansion to other languages tracked in WI-vinub (P4)."  # c568
