@@ -475,7 +475,10 @@ def _resolve_django_handler(
 
 
 def _resolve_go_handler(
-    handler_name: str, symbol_by_name: dict[str, Symbol]
+    handler_name: str,
+    symbol_by_name: dict[str, Symbol],
+    symbols_by_short_name: dict[str, list[Symbol]] | None = None,
+    route_path: str | None = None,
 ) -> Symbol | None:
     """Resolve Go handler function name to a handler symbol.
 
@@ -483,10 +486,34 @@ def _resolve_go_handler(
     as arguments to route registration calls. The handler can be:
     - Simple identifier: "listUsers"
     - Package-qualified: "handlers.GetAPI"
+    - Receiver-method form: "api.query" where ``api`` is a local var of type
+      ``*API`` (Go convention: lowercase variable, uppercase type).
+
+    The receiver-method case is the cause of a particularly nasty
+    misresolution: ``api.query`` cannot match the symbol stored as
+    ``API.query`` (different case), so the resolver falls back to the
+    bare short name ``query``, which collides with any unrelated
+    package-level function named ``query`` elsewhere in the repo.
+    Concrete failure: prometheus's ``GET /query`` route resolved to
+    ``cmd/promtool/unittest.go:611:query:function`` instead of
+    ``web/api/v1/api.go:502:API.query:method``.
+
+    Disambiguation rule: when the qualified-name lookup misses, prefer
+    candidates whose path matches the route's source file (the route's
+    `path`, supplied via ``route_path``).  This is the structurally
+    correct hint because the registering call site lives in the same
+    file as the handler method.
 
     Args:
-        handler_name: Handler function name from route metadata
-        symbol_by_name: Lookup table of symbols by name
+        handler_name: Handler function name from route metadata.
+        symbol_by_name: Lookup table of symbols by full name (single
+            candidate per name; first-wins).
+        symbols_by_short_name: Optional multi-valued lookup by short
+            name (last segment of dotted name).  When provided,
+            same-file disambiguation kicks in.  When omitted, the
+            resolver falls back to the legacy single-candidate path.
+        route_path: Optional source path of the route symbol used for
+            same-file disambiguation.
 
     Returns:
         Matching Symbol or None (excludes route symbols to avoid self-reference)
@@ -502,9 +529,26 @@ def _resolve_go_handler(
         if is_handler(sym):
             return sym
 
-    # For qualified names like "handlers.GetAPI", try the last segment
+    # For qualified names like "handlers.GetAPI" or "api.query", try the
+    # last segment.  When multiple candidates share the short name, prefer
+    # the one whose path matches the route's source file — this catches
+    # the receiver-method case where ``api.query`` can't match ``API.query``
+    # (case mismatch) but the correct method lives in the same file as the
+    # route.
     if "." in handler_name:
         func_name = handler_name.rsplit(".", 1)[-1]
+
+        if (
+            symbols_by_short_name is not None
+            and route_path
+            and func_name in symbols_by_short_name
+        ):
+            # Same-file preference: pick the candidate whose path equals
+            # the route's source file.  Falls through to the legacy
+            # single-candidate lookup if no in-file match exists.
+            for cand in symbols_by_short_name[func_name]:
+                if is_handler(cand) and cand.path == route_path:
+                    return cand
 
         if func_name in symbol_by_name:
             sym = symbol_by_name[func_name]
@@ -588,6 +632,11 @@ def link_routes_to_handlers(
     # ID lookup is used for direct handler_ref resolution (Flask-RESTful, etc.).
     symbol_by_name: dict[str, Symbol] = {}
     symbol_by_id: dict[str, Symbol] = {}
+    # Multi-valued lookup by short name (last segment of dotted name).  Used by
+    # the Go resolver to disambiguate between same-named symbols (e.g. an unrelated
+    # ``query`` function and an ``API.query`` method) by preferring the candidate
+    # in the same file as the route.
+    symbols_by_short_name: dict[str, list[Symbol]] = {}
     for s in symbols:
         symbol_by_id[s.id] = s
         existing = symbol_by_name.get(s.name)
@@ -599,6 +648,10 @@ def link_routes_to_handlers(
             existing_qn = symbol_by_name.get(qn)
             if existing_qn is None or existing_qn.kind == "route":
                 symbol_by_name[qn] = s
+        # Index by short name for same-file disambiguation
+        if s.kind in ("function", "method"):
+            short = s.name.rsplit(".", 1)[-1] if "." in s.name else s.name
+            symbols_by_short_name.setdefault(short, []).append(s)
 
     # Find route symbols
     routes = [s for s in symbols if s.kind == "route"]
@@ -647,7 +700,10 @@ def link_routes_to_handlers(
             )
         elif handler_ref["type"] == "go":
             handler = _resolve_go_handler(
-                handler_ref["handler_name"], symbol_by_name
+                handler_ref["handler_name"],
+                symbol_by_name,
+                symbols_by_short_name=symbols_by_short_name,
+                route_path=route.path,
             )
 
         if handler:
