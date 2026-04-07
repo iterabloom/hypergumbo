@@ -35,3 +35,18 @@
   clock: 3  # 985d
   nonce: 985d  # 985d
   message: "Fixed in PR #2739. Added symbols_by_short_name multi-valued index in link_routes_to_handlers, then in _resolve_go_handler prefer candidates whose path equals the route's source file (same-file disambiguation). Verified end-to-end on real prometheus: GET /query and POST /query now resolve to web/api/v1/api.go:API.query:method instead of cmd/promtool/unittest.go:query:function. Pending bakeoff confirmation."  # 985d
+- op: update  # 6e80
+  at: '2026-04-07T07:41:31Z'  # 6e80
+  by: agent  # 6e80
+  actor: jgstern_agent  # 6e80
+  clock: 4  # 6e80
+  nonce: '6e80'  # 6e80
+  set:  # 6e80
+    status: satisfied  # 6e80
+- op: discuss  # be70
+  at: '2026-04-07T07:41:31Z'  # be70
+  by: agent  # be70
+  actor: jgstern_agent  # be70
+  clock: 5  # be70
+  nonce: be70  # be70
+  message: "Confirmed by deep-20260407-030917 prometheus reflect agent: 'INV-kunam fix is CONFIRMED WORKING. Both GET /query and POST /query route nodes now have exactly one routes_to edge targeting web/api/v1/api.go:502-569:API.query:method. The prior session's misrouting to cmd/promtool/unittest.go:611-632:query:function is gone: that promtool helper has only 1 incoming edge (a same-file calls from testGroup.test), no routes_to. Verified by direct hg.json inspection.' Forward slice from main now reaches API.query plus 24 other web/api/v1/api.go symbols. new_feature_score went from 60 to 72; dimension_scores.slice_quality: 4. Verdict PARTIALLY_USEFUL HIGH IMPROVING. PR iterabloom/hypergumbo#2739 (commit 0732769611)."  # be70

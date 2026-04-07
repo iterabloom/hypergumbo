@@ -1,0 +1,21 @@
+- op: create  # 13be
+  at: '2026-04-07T07:45:58Z'  # 13be
+  by: agent  # 13be
+  actor: jgstern_agent  # 13be
+  clock: 1  # 13be
+  nonce: 13be  # 13be
+  data:  # 13be
+    kind: work_item  # 13be
+    title: "LOW_DATAFLOW_SLICE_RATIO must be denominator-aware"  # 13be
+    status: todo_hard  # 13be
+    priority: 2  # 13be
+    parent:  # 13be
+    tags:  # 13be
+    - bakeoff_infrastructure  # 13be
+    - analysis_quality  # 13be
+    before: []  # 13be
+    duplicate_of: []  # 13be
+    not_duplicate_of: []  # 13be
+    pr_ref:  # 13be
+    description: "Source: deep-20260407-030917 prometheus reflect agent. The LOW_DATAFLOW_SLICE_RATIO WARN at 6.0% is a measurement artifact: slice.0 grew from ~962 to 1689 nodes after the INV-kunam route resolver fix added reach into web/api/v1/api.go, dropping the dataflow/regular ratio from 6.3% to 6.0% even though both numerator and denominator grew. The underlying access_mode-annotated call-edge coverage on slice.0 is actually 53.0% and 62.0% repo-wide. Fix options: (a) decompose the signal into access_mode_edge_coverage (annotatable edges with access_mode set / total annotatable edges) and dataflow_slice_relative_size as separate metrics, (b) make the warn delta-aware (only fire when dataflow node count drops absolutely, not when ratio drops because of denominator growth), (c) drop the ratio metric entirely in favor of (a). The current single-ratio metric will continue to false-alarm whenever a quality fix elsewhere in the pipeline grows the regular slice."  # 13be
+    fields: {}  # 13be
