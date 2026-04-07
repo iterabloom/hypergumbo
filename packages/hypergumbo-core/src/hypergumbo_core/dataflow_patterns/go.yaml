@@ -65,6 +65,21 @@ library_patterns:
     access_mode: write
   - match: '\.Swap\('
     access_mode: write
+  # State-mutating verbs surfaced by alertmanager bakeoff (WI-supih).
+  # Expire/GC/Truncate/Drop modify or remove receiver state; Init/Reload
+  # rebuild internal state from external sources (config files, etc.).
+  - match: '\.Expire\('
+    access_mode: write
+  - match: '\.GC\('
+    access_mode: write
+  - match: '\.Truncate\('
+    access_mode: write
+  - match: '\.Drop\('
+    access_mode: write
+  - match: '\.Init\('
+    access_mode: write
+  - match: '\.Reload\('
+    access_mode: write
 
   # Read patterns: methods that retrieve data without mutation
   - match: '\.Get\('

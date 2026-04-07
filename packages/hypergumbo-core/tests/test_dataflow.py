@@ -1342,7 +1342,7 @@ class TestGoLibraryPatterns:
         )
 
     def test_non_matching_methods_ignored(self) -> None:
-        """Normal method calls like .String(), .Len() should not match."""
+        """Normal method calls like .String() should not match."""
         config = self._load_go_config()
         content = (
             "func display(s *Silence) string {\n"
@@ -1351,6 +1351,33 @@ class TestGoLibraryPatterns:
         )
         sites = scan_library_patterns(content, config)
         assert len(sites) == 0
+
+    def test_expanded_write_verbs_match(self) -> None:
+        """Go writers like Expire/GC/Truncate/Drop/Init/Reload should be tagged.
+
+        These are state-mutating verbs surfaced by the deep-20260406-233120
+        alertmanager reflect agent: Silences.Expire (9 calls in alertmanager)
+        and similar GC/Reset/Init/Reload patterns were unannotated despite
+        being clear writers.  WI-supih.
+        """
+        config = self._load_go_config()
+        content = (
+            "func cycle(s *Silences, store *Store, cfg *Config) {\n"
+            "\ts.Expire(id)\n"
+            "\ts.GC()\n"
+            "\tstore.Truncate()\n"
+            "\tstore.Drop(table)\n"
+            "\tcfg.Init()\n"
+            "\tcfg.Reload()\n"
+            "}\n"
+        )
+        sites = scan_library_patterns(content, config)
+        write_sites = [s for s in sites if s.access_mode == "write"]
+        assert len(write_sites) == 6, (
+            f"Expected 6 write sites for Expire/GC/Truncate/Drop/Init/Reload, "
+            f"got {len(write_sites)}: "
+            f"{[(s.access_mode, s.line) for s in sites]}"
+        )
 
 
 # ==================== RUST LIBRARY PATTERNS TESTS ====================
