@@ -321,7 +321,7 @@ def _format_activity_lines(item: CompiledItem, limit: int = 10) -> list[str]:
 
     for entry in entries:
         ts = _format_timestamp(entry.at)
-        lines.append(f"{ts} \\[{entry.by}]: {entry.message}")
+        lines.append(f"{ts} \\[{entry.by}]: {_escape_user(entry.message)}")
 
         # Detect SVG paths and add inline preview placeholders (ADR-0020)
         svg_paths = extract_svg_paths(entry.message)
@@ -351,6 +351,27 @@ def _label(name: str) -> str:
     """
     escaped = name.replace("[", "\\[")
     return f"[bold reverse]{escaped}[/]"
+
+
+def _escape_user(text: str) -> str:
+    """Escape user-controlled text so Rich's markup parser leaves it alone.
+
+    User content (titles, descriptions, field values, discussion messages,
+    tags) may contain ``[`` characters that are not intended as Rich
+    markup.  Examples: shell snippets like ``[ -z "$x" ]``, format
+    strings like ``[%h] %s``, bracketed metadata like ``[experimental]``.
+
+    ``_format_detail_lines`` and ``_format_activity_lines`` interpolate
+    these values into a string that is later passed to
+    ``Static.update`` → ``Text.from_markup``.  Without escaping, the
+    markup parser tries to interpret the user's brackets as style tags
+    and raises ``rich.errors.MarkupError`` (the WI-difij crash).
+
+    Only ``[`` needs escaping — Rich treats unmatched ``]`` as literal.
+    Backslashes do *not* need escaping for the markup parser; they pass
+    through as-is.
+    """
+    return text.replace("[", "\\[")
 
 
 def _collapse_double_spacing(text: str) -> str:
@@ -711,7 +732,7 @@ def _format_detail_lines(
     lines: list[str] = []
     if item.frozen:
         lines.append("[bold cyan]*** FROZEN ***[/bold cyan]")
-    lines.append(f"{_label('Title:')} {item.title}")
+    lines.append(f"{_label('Title:')} {_escape_user(item.title)}")
     lines.append(f"{_label('ID:')} {item.id}")
 
     lock_s = " [locked]" if "status" in item.locked_fields else ""
@@ -732,7 +753,8 @@ def _format_detail_lines(
             lines.append(f"{_label('Cross-tier conflict:')} YES")
 
     if item.tags:
-        lines.append(f"{_label('Tags:')} {', '.join(item.tags)}")
+        tags_text = ", ".join(_escape_user(t) for t in item.tags)
+        lines.append(f"{_label('Tags:')} {tags_text}")
     if item.parent:
         lines.append(f"{_label('Parent:')} {item.parent}")
 
@@ -744,7 +766,7 @@ def _format_detail_lines(
 
     lock_desc = " [locked]" if "description" in item.locked_fields else ""
     if item.description:
-        desc = _collapse_double_spacing(item.description)
+        desc = _escape_user(_collapse_double_spacing(item.description))
         lines.append(f"\n{_label(f'Description{lock_desc}:')}\n{desc}")
 
     if item.fields:
@@ -755,19 +777,20 @@ def _format_detail_lines(
                 if fname in item.fields:
                     flabel = f" ({fschema.description})" if fschema.description else ""
                     lock = " [locked]" if fname in item.locked_fields else ""
-                    lines.append(f"  {_label(f'{fname}{flabel}{lock}:')} {item.fields[fname]}")
+                    value = _escape_user(str(item.fields[fname]))
+                    lines.append(f"  {_label(f'{fname}{flabel}{lock}:')} {value}")
             # Unknown fields (not in schema)
             unknown = {k: v for k, v in item.fields.items() if k not in fields_schema}
             if unknown:
                 lines.append(f"\n  {_label('Other:')}")
                 for k, v in unknown.items():
                     lock = " [locked]" if k in item.locked_fields else ""
-                    lines.append(f"    {_label(f'{k}{lock}:')} {v}")
+                    lines.append(f"    {_label(f'{k}{lock}:')} {_escape_user(str(v))}")
         else:
             lines.append(f"\n{_label('Fields:')}")
             for k, v in item.fields.items():
                 lock = " [locked]" if k in item.locked_fields else ""
-                lines.append(f"  {_label(f'{k}{lock}:')} {v}")
+                lines.append(f"  {_label(f'{k}{lock}:')} {_escape_user(str(v))}")
 
     # In wide mode, discussion is shown in the activity panel
     if tier != "wide" and item.discussion:
@@ -776,7 +799,9 @@ def _format_detail_lines(
         lock_d = " [locked]" if "discussion" in item.locked_fields else ""
         lines.append(f"\n{_label(f'Discussion{lock_d} ({count} entries){badge}:')}")
         for entry in item.discussion[-5:]:
-            lines.append(f"  \\[{entry.at}] {entry.by}: {entry.message}")
+            lines.append(
+                f"  \\[{entry.at}] {entry.by}: {_escape_user(entry.message)}"
+            )
 
     return lines
 
