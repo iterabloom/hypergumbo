@@ -35,3 +35,18 @@
   clock: 3  # c60a
   nonce: c60a  # c60a
   message: "Fixed in PR #2737. Replaced substring matching in ListNameResolver with component-anchored matching via _path_component_suffix_match. The hint must now be a path-component suffix of the candidate's containing directory. Verified end-to-end on alertmanager: api.New at line 381 of cmd/alertmanager/main.go now resolves to api/api.go:112-167:New (was unresolved). Pending bakeoff validation on next deep cycle."  # c60a
+- op: update  # 9671
+  at: '2026-04-07T07:31:37Z'  # 9671
+  by: agent  # 9671
+  actor: jgstern_agent  # 9671
+  clock: 4  # 9671
+  nonce: '9671'  # 9671
+  set:  # 9671
+    status: satisfied  # 9671
+- op: discuss  # 306d
+  at: '2026-04-07T07:31:37Z'  # 306d
+  by: agent  # 306d
+  actor: jgstern_agent  # 306d
+  clock: 5  # 306d
+  nonce: 306d  # 306d
+  message: "Confirmed by deep-20260407-030917 alertmanager reflect agent: 'INV-popup fix is clearly working: api/api.go:New is now correctly bound to the in-tree apiv2.NewAPI function (api/v2/api.go:93-147), and the slice walks main -> run -> api.New -> apiv2.NewAPI -> all 9 v2 handler methods.' avg_slice_nodes +8.1, dimension_scores.slice_quality 4/5, overall verdict USEFUL HIGH IMPROVING. PR iterabloom/hypergumbo#2737 (commit 50f352d5a)."  # 306d

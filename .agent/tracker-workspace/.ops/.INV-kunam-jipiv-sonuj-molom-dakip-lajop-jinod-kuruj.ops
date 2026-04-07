@@ -20,3 +20,18 @@
     fields:  # b7f7
       statement: "When routes_to needs to resolve a handler reference and multiple symbols share the name, the resolver must prefer (a) same package as the registering call, (b) method-vs-function preference matching the receiver shown at the call site, before falling back to global name lookup."  # b7f7
       root_cause: "The route resolver does global symbol search and picks by an unstable tiebreaker. In prometheus: GET /query and POST /query route to cmd/promtool/unittest.go:611:query:function instead of web/api/v1/api.go:502:API.query:method. Sibling routes (/query_exemplars, /query_range, /format_query) resolve correctly. The only difference is the unrelated promtool helper named 'query'."  # b7f7
+- op: update  # fac2
+  at: '2026-04-07T06:19:59Z'  # fac2
+  by: agent  # fac2
+  actor: jgstern_agent  # fac2
+  clock: 2  # fac2
+  nonce: fac2  # fac2
+  set:  # fac2
+    status: pending_validation  # fac2
+- op: discuss  # 985d
+  at: '2026-04-07T06:19:59Z'  # 985d
+  by: agent  # 985d
+  actor: jgstern_agent  # 985d
+  clock: 3  # 985d
+  nonce: 985d  # 985d
+  message: "Fixed in PR #2739. Added symbols_by_short_name multi-valued index in link_routes_to_handlers, then in _resolve_go_handler prefer candidates whose path equals the route's source file (same-file disambiguation). Verified end-to-end on real prometheus: GET /query and POST /query now resolve to web/api/v1/api.go:API.query:method instead of cmd/promtool/unittest.go:query:function. Pending bakeoff confirmation."  # 985d
