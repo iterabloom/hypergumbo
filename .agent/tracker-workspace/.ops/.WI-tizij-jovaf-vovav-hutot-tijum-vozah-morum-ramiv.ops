@@ -1,0 +1,20 @@
+- op: create  # 43c0
+  at: '2026-04-07T07:46:57Z'  # 43c0
+  by: agent  # 43c0
+  actor: jgstern_agent  # 43c0
+  clock: 1  # 43c0
+  nonce: 43c0  # 43c0
+  data:  # 43c0
+    kind: work_item  # 43c0
+    title: "kserve: demote generated OpenAPI base classes from centrality ranking"  # 43c0
+    status: todo_soft  # 43c0
+    priority: 3  # 43c0
+    parent:  # 43c0
+    tags:  # 43c0
+    - analysis_quality  # 43c0
+    before: []  # 43c0
+    duplicate_of: []  # 43c0
+    not_duplicate_of: []  # 43c0
+    pr_ref:  # 43c0
+    description: "Source: deep-20260407-030917 kserve reflect agent. Top-ranked Python symbol is 'Configuration' (in=161, out=17), the generated OpenAPI base class extended by ~120 generated model classes (knative_*, v1alpha1_*, v1beta1_*, v1_*). It is structurally central but has near-zero developer relevance. None of the top 15 symbols include the actual controller Reconcile() methods for InferenceService, LLMInferenceService, or the predict/infer dataplane methods, which are the heart of what kserve does. Fix: detect generated code in centrality ranking via swagger/openapi markers (file naming knative_*/v1alpha1_*/v1beta1_*, coding: utf-8 file header, swagger comment markers) and apply a centrality penalty. Should also expose --exclude-generated on hypergumbo symbols command. Symbol ranking dimension_score = 2 (lowest) for kserve."  # 43c0
+    fields: {}  # 43c0

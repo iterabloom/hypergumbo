@@ -1,0 +1,20 @@
+- op: create  # 0ffd
+  at: '2026-04-07T07:47:27Z'  # 0ffd
+  by: agent  # 0ffd
+  actor: jgstern_agent  # 0ffd
+  clock: 1  # 0ffd
+  nonce: 0ffd  # 0ffd
+  data:  # 0ffd
+    kind: work_item  # 0ffd
+    title: "Go: link build-tag-gated alternate definitions via build_tag_alternative_of edge"  # 0ffd
+    status: todo_soft  # 0ffd
+    priority: 3  # 0ffd
+    parent:  # 0ffd
+    tags:  # 0ffd
+    - analysis_quality  # 0ffd
+    before: []  # 0ffd
+    duplicate_of: []  # 0ffd
+    not_duplicate_of: []  # 0ffd
+    pr_ref:  # 0ffd
+    description: "Source: deep-20260407-030917 prometheus reflect agent. Labels.Get exists in 3 prometheus files (model/labels/labels_dedupelabels.go, labels_stringlabels.go, labels_slicelabels.go), each guarded by mutually exclusive build tags (//go:build dedupelabels, stringlabels, default). Symbol ranker arbitrarily picks one as 'the' Labels.Get, hiding the alternates. A refactor must touch all three but only one is visible in centrality. Fix: detect //go:build directives in Go source, and when multiple definitions of the same fully-qualified symbol exist under mutually exclusive build constraints, emit a build_tag_alternative_of edge type linking them. This unifies the symbol's centrality and gives slice/explain a way to surface 'this symbol has 3 build-tag alternates'."  # 0ffd
+    fields: {}  # 0ffd
