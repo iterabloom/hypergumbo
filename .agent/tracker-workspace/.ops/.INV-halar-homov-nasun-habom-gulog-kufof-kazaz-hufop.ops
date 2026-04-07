@@ -1,0 +1,53 @@
+- op: create  # 34ef
+  at: '2026-04-07T01:59:38Z'  # 34ef
+  by: agent  # 34ef
+  actor: jgstern_agent  # 34ef
+  clock: 1  # 34ef
+  nonce: 34ef  # 34ef
+  data:  # 34ef
+    kind: invariant  # 34ef
+    title: "library_patterns YAML never applied to edges (scan_library_patterns is dead code)"  # 34ef
+    status: violated  # 34ef
+    priority: 0  # 34ef
+    parent:  # 34ef
+    tags:  # 34ef
+    - analysis_quality  # 34ef
+    - cross_language_linkers  # 34ef
+    before: []  # 34ef
+    duplicate_of: []  # 34ef
+    not_duplicate_of: []  # 34ef
+    pr_ref:  # 34ef
+    description: "Highest-impact remaining bakeoff finding from deep-20260406-161630 and deep-20260406-182616. Verified by reading dataflow.py source: scan_library_patterns is defined and unit-tested but never integrated. Fix: add a library-patterns annotation pass to annotate_dataflow (or call scan_library_patterns from each analyzer's _annotate_dataflow integration point) that maps DataflowSite line numbers back to call edges and stamps access_mode into edge.meta. Likely affects all 5 languages with library_patterns: Go (30 patterns), Python, Rust, TS, Java. Bakeoff impact: prometheus LOW_DATAFLOW_SLICE_RATIO 5.1% → expected to clear; alertmanager dimension_scores.dataflow_annotation_quality 2 → expected ≥4."  # 34ef
+    fields:  # 34ef
+      statement: "Every YAML library_patterns entry (e.g. Go's '\\.Set\\(' → write, Python's '\\.append\\(' → write) must be matched against source files and the resulting access_mode must propagate to call edges so that --dataflow slices have something to filter on."  # 34ef
+      root_cause: "dataflow.py defines scan_library_patterns(content, config) which produces DataflowSite objects from regex matches, but the function is only called from test_dataflow.py — no analyzer (Go, Python, Rust, TS, Java, etc.) integrates it into the edge annotation pipeline. The analyzers call annotate_dataflow(edges, tree, source, config) which only applies the AST positional rules from the assignments/returns sections; library_patterns is silently dropped. Result: in alertmanager hg.json, of 8872 calls edges, 4520 have access_mode='read' (from a different code path) but ZERO have 'write' or 'mutate' despite 15 Go write patterns existing in go.yaml. The dataflow slice consequently has 0 access-mode-annotated edges, manifesting as the LOW_DATAFLOW_SLICE_RATIO bakeoff WARN on prometheus."  # 34ef
+- op: update  # 7063
+  at: '2026-04-07T02:03:24Z'  # 7063
+  by: agent  # 7063
+  actor: jgstern_agent  # 7063
+  clock: 2  # 7063
+  nonce: '7063'  # 7063
+  set:  # 7063
+    status: needs_human_review  # 7063
+- op: discuss  # 5200
+  at: '2026-04-07T02:03:24Z'  # 5200
+  by: agent  # 5200
+  actor: jgstern_agent  # 5200
+  clock: 3  # 5200
+  nonce: '5200'  # 5200
+  message: "Per user pushback (2026-04-06): unclear whether library_patterns is supposed to be wired into the annotator, or whether it was always meant for linker consumption like event_sourcing/message_queue. The Go go.yaml comment ('Name-based heuristics in library_patterns fill this gap') and the patterns themselves (method-name regexes with access_mode but no channel/edge_type) suggest they want to annotate generic call edges. ADR-0015 §3/§7 suggest library_patterns is for linker pattern-matching that produces specialized edge types (not annotation of generic calls edges). Three options for resolution: (a) delete unused Go library_patterns, (b) extend annotate_dataflow to apply library_patterns as per-language fallback, (c) leave alone and find a different remedy for the prometheus LOW_DATAFLOW_SLICE_RATIO WARN. Awaiting user direction."  # 5200
+- op: update  # 2f1b
+  at: '2026-04-07T03:12:52Z'  # 2f1b
+  by: agent  # 2f1b
+  actor: jgstern_agent  # 2f1b
+  clock: 4  # 2f1b
+  nonce: 2f1b  # 2f1b
+  set:  # 2f1b
+    status: pending_validation  # 2f1b
+- op: discuss  # 4dda
+  at: '2026-04-07T03:12:52Z'  # 4dda
+  by: agent  # 4dda
+  actor: jgstern_agent  # 4dda
+  clock: 5  # 4dda
+  nonce: 4dda  # 4dda
+  message: "Fix decided after dogfooding: 'hypergumbo explain scan_library_patterns -x' confirmed Called by: (none), and 'hypergumbo explain annotate_dataflow -x' showed 10 analyzers integrated. Wired scan_library_patterns into annotate_dataflow as a per-language fallback after the AST walk. AST positional rules retain precedence. Validation: alertmanager calls edges with access_mode='write' went 0 → 274; read 4520 → 4688. PR pending. Expected to clear prometheus LOW_DATAFLOW_SLICE_RATIO WARN."  # 4dda
