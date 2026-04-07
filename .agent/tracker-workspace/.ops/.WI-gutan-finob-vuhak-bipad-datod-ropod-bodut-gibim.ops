@@ -19,3 +19,18 @@
     pr_ref:  # a657
     description: "Bakeoff session organization (init -> cohort -> cycle -> iter-NNN) is currently 'tested in prod' rather than via integration tests. Build a test harness with mocked _run_cohort_repos that exercises: (a) init creates a fresh session, (b) cycle increments state.json iteration counter, (c) cycle creates iter-NNN/ subdirs in same session, (d) auto-discovery picks the latest session, (e) running cycle without prior cohort errors out cleanly. Mocking _run_cohort_repos lets us test the orchestration without actually running hypergumbo on repos. Per user note 2026-04-06: 'we haven't really put effort into doing integration tests of the bakeoff process itself and how runs and iterations progress and get recorded'. User explicitly approved deferring this as a tracker item."  # a657
     fields: {}  # a657
+- op: update  # 647a
+  at: '2026-04-07T21:09:47Z'  # 647a
+  by: agent  # 647a
+  actor: jgstern_agent  # 647a
+  clock: 2  # 647a
+  nonce: 647a  # 647a
+  set:  # 647a
+    status: done  # 647a
+- op: discuss  # e11c
+  at: '2026-04-07T21:09:47Z'  # e11c
+  by: agent  # e11c
+  actor: jgstern_agent  # e11c
+  clock: 3  # e11c
+  nonce: e11c  # e11c
+  message: "Implemented in PR #2770. Added tests/test_bakeoff_deep_integration.py with 13 integration tests covering init/cohort/run/cycle orchestration with _run_cohort_repos and cmd_diagnose mocked. Tests cover: fresh session creation, iteration counter advancement, iter-NNN/ subdirs in same session, no-change skip branch, cycle --skip-reflect path, resolve_workdir auto-discovery, and clean error paths for missing prerequisites."  # e11c
