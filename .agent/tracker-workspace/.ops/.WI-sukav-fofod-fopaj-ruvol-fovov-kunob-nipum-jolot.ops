@@ -60,3 +60,10 @@
   clock: 7  # a20c
   nonce: a20c  # a20c
   message: "1. yes please create a separate WI for P1\n2. no please go ahead with A1 now. also create a separate WI for A2 with low priority and needs_human_review.\n3. yes P3 is worth an exploratory/draft ADR, so please make a WI for that ADR drafting (low priority). I'm thinking maybe skip P2 altogether or at most roll it into P3."  # a20c
+- op: discuss  # 0fd4
+  at: '2026-04-07T22:34:00Z'  # 0fd4
+  by: agent  # 0fd4
+  actor: jgstern_agent  # 0fd4
+  clock: 8  # 0fd4
+  nonce: 0fd4  # 0fd4
+  message: "Created the three follow-on items per your reply:\n- WI-siran (P3): 'hypergumbo config show <lang>' subcommand (P1 in the discoverability taxonomy)\n- WI-fahot (P4, needs_human_review): A2 alternative — per-edge virtual_dispatch flag (deferred until A1 ships and we see bakeoff signal on whether per-method granularity is worth the migration cost)\n- WI-rumim (P4): exploratory ADR draft for cross-cutting language_profile registry (P3 in the discoverability taxonomy; also rolls in the P2 auto-generated reference page concept since you suggested skipping or rolling P2 into P3)\n\nFor THIS WI (the A1 fix): the agent is being asked to disable autonomous mode after responding to messages, so the A1 implementation will not happen in this session. WI-sukav stays in todo_soft as the action item for the next session."  # 0fd4

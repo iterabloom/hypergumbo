@@ -50,3 +50,10 @@
   nonce: e289  # e289
   set:  # e289
     status: todo_soft  # e289
+- op: discuss  # b3e0
+  at: '2026-04-07T22:34:26Z'  # b3e0
+  by: agent  # b3e0
+  actor: jgstern_agent  # b3e0
+  clock: 6  # b3e0
+  nonce: b3e0  # b3e0
+  message: "Acknowledged — investigation first, decision after. Going to do the git history dig as a research subagent task next session, but the agent is being asked to disable autonomous mode after responding to messages so the deep investigation will not happen here. To prevent this from sitting silent: the *minimum* I can do right now is summarize the two questions concretely so the next session can pick up cleanly:\n\n(a) WHY 'test code = tier 2': git blame on packages/hypergumbo-core/src/hypergumbo_core/supply_chain.py classify_file lines 304-331 (the test pattern checks). The 20+ TestTestFileClassification tests in test_supply_chain.py all carry the docstring 'Test code is not production code — it should not be tier 1 (first_party).' That docstring is the most-explicit statement of the contemporaneous design intent — I just don't yet know the discussion that produced it.\n\n(b) WHY 'tier and test-ness are orthogonal': the source for the contradictory statement is YOUR description on this WI item from 2026-04-07T10:13:08Z. So the 'contemporaneous discussion' for (b) is *this WI's own creation*, which means the rationale lives in your head rather than in the codebase yet. The investigation for (b) reduces to 'what was the user thinking when they wrote this WI'.\n\nFor (a) the next agent should: git log --follow on supply_chain.py classify_file, look for the PR that introduced TEST_FILE_PATTERNS and TEST_DIR_PATTERNS, read the PR body and any tracker item it references, then read the test file's introductory commit message. Report findings as a discussion entry on this WI.\n\nFor (b) the next agent should ask you directly via discussion."  # b3e0
