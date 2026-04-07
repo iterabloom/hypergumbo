@@ -1,0 +1,22 @@
+- op: create  # b7f7
+  at: '2026-04-07T03:58:00Z'  # b7f7
+  by: agent  # b7f7
+  actor: jgstern_agent  # b7f7
+  clock: 1  # b7f7
+  nonce: b7f7  # b7f7
+  data:  # b7f7
+    kind: invariant  # b7f7
+    title: "Route resolver picks wrong target on name collision (prometheus /query)"  # b7f7
+    status: violated  # b7f7
+    priority: 1  # b7f7
+    parent:  # b7f7
+    tags:  # b7f7
+    - analysis_quality  # b7f7
+    before: []  # b7f7
+    duplicate_of: []  # b7f7
+    not_duplicate_of: []  # b7f7
+    pr_ref:  # b7f7
+    description: "Found in prometheus reflect (deep-20260406-233120): 'Worst possible failure mode: the slice from /query walks the wrong code.' This breaks all refactoring tasks targeting the API.query handler. Fix should score candidates by package proximity to the routes_to source first."  # b7f7
+    fields:  # b7f7
+      statement: "When routes_to needs to resolve a handler reference and multiple symbols share the name, the resolver must prefer (a) same package as the registering call, (b) method-vs-function preference matching the receiver shown at the call site, before falling back to global name lookup."  # b7f7
+      root_cause: "The route resolver does global symbol search and picks by an unstable tiebreaker. In prometheus: GET /query and POST /query route to cmd/promtool/unittest.go:611:query:function instead of web/api/v1/api.go:502:API.query:method. Sibling routes (/query_exemplars, /query_range, /format_query) resolve correctly. The only difference is the unrelated promtool helper named 'query'."  # b7f7
