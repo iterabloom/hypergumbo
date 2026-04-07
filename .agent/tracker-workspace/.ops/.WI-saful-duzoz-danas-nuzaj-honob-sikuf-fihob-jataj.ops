@@ -1,0 +1,20 @@
+- op: create  # 7141
+  at: '2026-04-07T03:58:10Z'  # 7141
+  by: agent  # 7141
+  actor: jgstern_agent  # 7141
+  clock: 1  # 7141
+  nonce: '7141'  # 7141
+  data:  # 7141
+    kind: work_item  # 7141
+    title: "Dataflow slice excludes read edges entirely (rename or fix)"  # 7141
+    status: needs_human_review  # 7141
+    priority: 1  # 7141
+    parent:  # 7141
+    tags:  # 7141
+    - analysis_quality  # 7141
+    before: []  # 7141
+    duplicate_of: []  # 7141
+    not_duplicate_of: []  # 7141
+    pr_ref:  # 7141
+    description: "prometheus reflect (deep-20260406-233120): 'Zero read access_mode edges in slice.dataflow.0 (0/132). Yet hg.json has 24549 read edges globally and a naive call-BFS from main reaches 3699 of them. The dataflow slice algorithm appears to admit only edges with access_mode==write and the call paths that reach them, never including read edges as branches/destinations.'\n\nDesign question: is the --dataflow flag intended to show (a) side-effecting paths only, or (b) actual data flow with both reads and writes?\n\nIf (a): the artifact should be renamed slice.sideeffects.0 because the current name implies bidirectional dataflow.\n\nIf (b): this is a bug. A 'one-hop downstream read from each writer' rule would roughly triple the slice and likely close the prometheus LOW_DATAFLOW_SLICE_RATIO gap on its own.\n\nReflect noted: 474 read edges have dst nodes in the dataflow slice but are not admitted.\n\nNeeds human triage on intent before fixing."  # 7141
+    fields: {}  # 7141
