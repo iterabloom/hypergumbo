@@ -1380,6 +1380,109 @@ class TestGoLibraryPatterns:
         )
 
 
+# ==================== PYTHON LIBRARY PATTERNS TESTS ====================
+
+
+class TestPythonLibraryPatterns:
+    """Tests for python.yaml library_patterns extensions (WI-fogis).
+
+    The base python.yaml ships with list/dict/set/file primitives. The
+    deep-20260407-030917 kserve reflect agent flagged additional Python
+    serialization and file-position primitives that should also be
+    annotated for richer dataflow coverage.
+    """
+
+    def _load_python_config(self):
+        py_yaml = (
+            Path(__file__).parent.parent
+            / "src" / "hypergumbo_core" / "dataflow_patterns" / "python.yaml"
+        )
+        return load_dataflow_config(py_yaml)
+
+    def test_python_config_has_library_patterns(self) -> None:
+        """python.yaml should include library_patterns."""
+        config = self._load_python_config()
+        assert config.language == "python"
+        assert len(config.library_patterns) > 0
+
+    def test_serialization_writes_match(self) -> None:
+        """json.dump, pickle.dump, yaml.dump are write operations."""
+        config = self._load_python_config()
+        content = (
+            "def persist(state, path):\n"
+            "    json.dump(state, open(path, 'w'))\n"
+            "    pickle.dump(state, open(path + '.pkl', 'wb'))\n"
+            "    yaml.dump(state, open(path + '.yaml', 'w'))\n"
+            "    yaml.safe_dump(state, open(path + '.safe.yaml', 'w'))\n"
+        )
+        sites = scan_library_patterns(content, config)
+        write_sites = [s for s in sites if s.access_mode == "write"]
+        assert len(write_sites) >= 4, (
+            f"Expected >=4 write sites for json/pickle/yaml dump, "
+            f"got {len(write_sites)}: "
+            f"{[(s.access_mode, s.line) for s in sites]}"
+        )
+
+    def test_serialization_reads_match(self) -> None:
+        """json.load, pickle.load, yaml.load are read operations."""
+        config = self._load_python_config()
+        content = (
+            "def restore(path):\n"
+            "    state = json.load(open(path))\n"
+            "    config = pickle.load(open(path + '.pkl', 'rb'))\n"
+            "    cfg = yaml.load(open(path + '.yaml'))\n"
+            "    safe_cfg = yaml.safe_load(open(path + '.safe.yaml'))\n"
+        )
+        sites = scan_library_patterns(content, config)
+        read_sites = [s for s in sites if s.access_mode == "read"]
+        assert len(read_sites) >= 4, (
+            f"Expected >=4 read sites for json/pickle/yaml load, "
+            f"got {len(read_sites)}: "
+            f"{[(s.access_mode, s.line) for s in sites]}"
+        )
+
+    def test_string_serialization_reads_match(self) -> None:
+        """json.dumps, json.loads, pickle.dumps, pickle.loads.
+
+        dumps serializes object → string (read of object), loads
+        deserializes string → object (read of string). Both are
+        classified as read because neither mutates persistent state.
+        """
+        config = self._load_python_config()
+        content = (
+            "def encode(obj):\n"
+            "    s1 = json.dumps(obj)\n"
+            "    s2 = pickle.dumps(obj)\n"
+            "    o1 = json.loads(s1)\n"
+            "    o2 = pickle.loads(s2)\n"
+        )
+        sites = scan_library_patterns(content, config)
+        read_sites = [s for s in sites if s.access_mode == "read"]
+        assert len(read_sites) >= 4, (
+            f"Expected >=4 read sites for json/pickle dumps/loads, "
+            f"got {len(read_sites)}: "
+            f"{[(s.access_mode, s.line) for s in sites]}"
+        )
+
+    def test_file_position_methods_match(self) -> None:
+        """File .seek() mutates position, .truncate() deletes content."""
+        config = self._load_python_config()
+        content = (
+            "def rewrite(f):\n"
+            "    f.seek(0)\n"
+            "    f.truncate()\n"
+        )
+        sites = scan_library_patterns(content, config)
+        modes = {s.access_mode for s in sites}
+        assert "mutate" in modes or "write" in modes, (
+            f"Expected seek/truncate to be tagged, got {[(s.access_mode, s.line) for s in sites]}"
+        )
+        # Should match both seek and truncate
+        assert len(sites) >= 2, (
+            f"Expected >=2 sites for seek + truncate, got {len(sites)}"
+        )
+
+
 # ==================== RUST LIBRARY PATTERNS TESTS ====================
 
 

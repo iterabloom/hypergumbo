@@ -98,3 +98,42 @@ library_patterns:
     access_mode: read
   - match: '\.items\('
     access_mode: read
+
+  # === Serialization (WI-fogis) ===
+  # json/pickle/yaml dump (object → file: writes the file)
+  - match: '\bjson\.dump\('
+    access_mode: write
+  - match: '\bpickle\.dump\('
+    access_mode: write
+  - match: '\byaml\.dump\('
+    access_mode: write
+  - match: '\byaml\.safe_dump\('
+    access_mode: write
+  # json/pickle/yaml load (file → object: reads the file)
+  - match: '\bjson\.load\('
+    access_mode: read
+  - match: '\bpickle\.load\('
+    access_mode: read
+  - match: '\byaml\.load\('
+    access_mode: read
+  - match: '\byaml\.safe_load\('
+    access_mode: read
+  # String-form variants are pure (object ↔ string, no I/O), but
+  # classified as read because they observe the input without
+  # mutating persistent state.
+  - match: '\bjson\.dumps\('
+    access_mode: read
+  - match: '\bpickle\.dumps\('
+    access_mode: read
+  - match: '\bjson\.loads\('
+    access_mode: read
+  - match: '\bpickle\.loads\('
+    access_mode: read
+
+  # === File position / size (WI-fogis) ===
+  # seek changes the read/write cursor — mutate of file state
+  - match: '\.seek\('
+    access_mode: mutate
+  # truncate removes content past the cursor — write/delete of file state
+  - match: '\.truncate\('
+    access_mode: write
