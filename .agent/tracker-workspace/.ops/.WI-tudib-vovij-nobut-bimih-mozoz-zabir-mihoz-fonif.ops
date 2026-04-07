@@ -1,0 +1,22 @@
+- op: create  # 744e
+  at: '2026-04-07T10:06:35Z'  # 744e
+  by: agent  # 744e
+  actor: jgstern_agent  # 744e
+  clock: 1  # 744e
+  nonce: 744e  # 744e
+  data:  # 744e
+    kind: work_item  # 744e
+    title: "Go interface satisfaction must traverse promoted methods from embedded types"  # 744e
+    status: todo_soft  # 744e
+    priority: 3  # 744e
+    parent:  # 744e
+    tags:  # 744e
+    - go  # 744e
+    - analysis_quality  # 744e
+    - cross_language_linkers  # 744e
+    before: []  # 744e
+    duplicate_of: []  # 744e
+    not_duplicate_of: []  # 744e
+    pr_ref:  # 744e
+    description: "Discovered while investigating WI-sukav. The Go structural interface matcher creates 'implements' edges only when a type explicitly defines all required methods, but doesn't account for methods promoted via embedding. Confirmed in alertmanager timeinterval.go: the type \\`stringableRange\\` interface requires setBegin, setEnd, memberFromString. InclusiveRange explicitly defines all three and gets implements: InclusiveRange → stringableRange (correct). WeekdayRange embeds InclusiveRange (so it inherits setBegin/setEnd via promotion) and explicitly defines its own memberFromString — meaning *WeekdayRange satisfies stringableRange. But hg.json shows NO implements edge from WeekdayRange to stringableRange. Same gap for DayOfMonthRange, MonthRange, YearRange. The structural matcher needs to traverse the type's embedding chain when checking interface satisfaction. Fix should also update find_implementing_methods in type_hierarchy.py to include embedder types as implementers when their explicit methods + their embedded types' methods cover the interface."  # 744e
+    fields: {}  # 744e
