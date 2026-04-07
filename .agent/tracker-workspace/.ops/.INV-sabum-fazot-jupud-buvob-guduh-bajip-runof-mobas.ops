@@ -73,3 +73,18 @@
   clock: 8  # 7b5a
   nonce: 7b5a  # 7b5a
   message: "WI-saful option (1) merged (PR #2762). Prior investigation showed propagating access_mode to dispatches_to/uses was either a no-op or a regression. The real blocker was forward dataflow not crossing write->read boundaries, now fixed. Bakeoff validation needed: run deep-bakeoff on prometheus and confirm LOW_DATAFLOW_SLICE_RATIO is cleared. If it persists, escalate to WI-hukoh option (2) dest_access_mode population; otherwise mark satisfied."  # 7b5a
+- op: update  # c596
+  at: '2026-04-07T18:25:08Z'  # c596
+  by: agent  # c596
+  actor: jgstern_agent  # c596
+  clock: 9  # c596
+  nonce: c596  # c596
+  set:  # c596
+    status: satisfied  # c596
+- op: discuss  # a309
+  at: '2026-04-07T18:25:08Z'  # a309
+  by: agent  # a309
+  actor: jgstern_agent  # a309
+  clock: 10  # a309
+  nonce: a309  # a309
+  message: "VALIDATED via deep-20260407-050552 iter-002 (post-WI-saful PR #2762).\n\nEvidence (dataflow_slice_ratio iter-001 → iter-002):\n  alertmanager: 0.166 → 0.246 (+48%)\n  kserve:       0.543 → 0.629 (+16%)\n  prometheus:   0.060 → 0.090 (+49%)\n\nThe forward dataflow slice is now substantially larger across all three cohort repos. The original INV-sabum claim — that propagating access_mode to dispatches_to/uses edges was needed to fix LOW_DATAFLOW_SLICE_RATIO — is empirically refuted. The actual fix was at the slice BFS level (admit one-hop downstream reads from writers), not at the linker level. Dispatches_to edges continue to be followed via graceful degradation (unannotated edges are still followed in dataflow mode by design), and the WI-saful one-hop rule means writer chains now reach reader-side terminals via direct write→read transitions.\n\nWI-hukoh tracks the longer-term option (2)/(3) decision (dest_access_mode population vs. stateful per-node writer-chain BFS). That work is no longer urgent for this bakeoff signal but remains a structural cleanup opportunity."  # a309
