@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Pytest configuration for hypergumbo-core tests.
 
-Includes self-healing pytest wrapper repair (ADR-0010).
+Includes self-healing pytest wrapper repair (ADR-0010) and an
+autouse fixture that isolates the hypergumbo cache directory per
+test to prevent state leakage between pytest sessions.
 """
 
 from __future__ import annotations
@@ -10,6 +12,8 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 
 def _find_repo_root() -> Path | None:
@@ -60,6 +64,28 @@ def _repair_wrapper(repo_root: Path) -> bool:
         return result.returncode == 0
     except Exception:
         return False
+
+
+@pytest.fixture(autouse=True)
+def isolate_hypergumbo_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate ``~/.cache/hypergumbo/`` per test to prevent state leakage.
+
+    Hypergumbo caches analysis results under
+    ``~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/`` keyed
+    by the absolute path of the analyzed repo.  pytest rotates only
+    the last few ``pytest-<N>`` tmpdirs, so the same ``tmp_path``
+    string is recreated across pytest sessions and yields the same
+    fingerprint.  Because the cache is never cleaned, a stale results
+    file from a previous session can survive into a later one and
+    short-circuit auto-run code paths whose tests assert that no
+    cache hit occurred.
+
+    Tests that explicitly want the default ``XDG_CACHE_HOME`` (e.g.,
+    ``test_xdg_cache_base_default``) can still call
+    ``monkeypatch.delenv("XDG_CACHE_HOME", raising=False)`` to undo
+    this isolation for the duration of the test.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "_xdg_cache"))
 
 
 def pytest_configure(config):
