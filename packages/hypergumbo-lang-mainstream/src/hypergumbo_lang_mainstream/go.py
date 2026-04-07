@@ -66,6 +66,7 @@ Why This Design
 """
 from __future__ import annotations
 
+import os
 import time
 import warnings
 from pathlib import Path
@@ -3452,8 +3453,13 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     # short name (e.g., 18 packages in alertmanager declare
     # ``type Notifier struct``).  Aggregating them globally loses the
     # per-package association and causes only the first struct to
-    # receive the ``base_classes`` annotation.  Iterate per-file instead
-    # so each package's struct keeps its own method set.
+    # receive the ``base_classes`` annotation.  Iterate per *package*
+    # (i.e., per directory) instead — Go packages are exactly one
+    # directory of files, so two structs of the same name in different
+    # directories belong to different packages and must not share
+    # methods, while two struct method declarations in different files
+    # of the *same* directory belong to the same package and MUST be
+    # aggregated (WI-hobuk).
     global_iface_methods: dict[str, set[tuple[str, int, int]]] = {}
     for analysis in file_analyses.values():
         for iname, imethods in analysis.interface_method_sets.items():
@@ -3464,27 +3470,55 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
                 global_iface_methods[iname] = imethods
 
     if global_iface_methods:
-        for analysis in file_analyses.values():
-            if not analysis.struct_method_sets:
+        # Group file_analyses by package directory.  In Go, all files
+        # in a single directory belong to the same package, so the
+        # parent directory is the correct aggregation key.  Using the
+        # directory rather than the file path lets methods split across
+        # sibling files (e.g., service.go + service_helpers.go) merge
+        # into one effective method set per struct, while keeping
+        # cross-package shadows (foo/service.go vs bar/service.go)
+        # disjoint.
+        packages: dict[str, list] = {}
+        for fpath, analysis in file_analyses.items():
+            pkg_dir = os.path.dirname(fpath)
+            packages.setdefault(pkg_dir, []).append(analysis)
+
+        for pkg_analyses in packages.values():
+            # Merge struct method sets across all files in this package.
+            # If two files contribute methods for the same struct name,
+            # union their method tuples — methods are keyed by
+            # (name, in_arity, out_arity) so duplicates collapse cleanly.
+            pkg_struct_methods: dict[
+                str, set[tuple[str, int, int]]
+            ] = {}
+            for analysis in pkg_analyses:
+                for sname, smethods in analysis.struct_method_sets.items():
+                    pkg_struct_methods.setdefault(sname, set()).update(
+                        smethods,
+                    )
+
+            if not pkg_struct_methods:
                 continue
-            # Build a per-file lookup so we annotate the struct symbol
-            # in *this* file (not the first one encountered globally).
-            file_struct_syms: dict[str, Symbol] = {
-                s.name: s
-                for s in analysis.symbols
-                if s.kind == "struct"
-            }
-            for struct_name, struct_methods in analysis.struct_method_sets.items():
-                struct_sym = file_struct_syms.get(struct_name)
-                if struct_sym is None:  # pragma: no cover
-                    # Methods defined in this file for a struct declared
-                    # in a different file within the same package.  This
-                    # branch is a known limitation tracked by WI-hobuk:
-                    # methods split across files are silently dropped
-                    # from the cross-file structural match because we
-                    # iterate per-file and only annotate structs whose
-                    # type declaration lives in the current file.
-                    continue
+
+            # Build a per-package struct symbol lookup so we annotate
+            # whichever file actually contains the struct's type
+            # declaration, regardless of which sibling files supplied
+            # the methods.
+            pkg_struct_syms: dict[str, Symbol] = {}
+            for analysis in pkg_analyses:
+                for s in analysis.symbols:
+                    if s.kind == "struct" and s.name not in pkg_struct_syms:
+                        pkg_struct_syms[s.name] = s
+
+            for struct_name, struct_methods in pkg_struct_methods.items():
+                struct_sym = pkg_struct_syms.get(struct_name)
+                if struct_sym is None:
+                    # Methods defined in this package but no
+                    # corresponding type declaration found.  Either the
+                    # struct lives in a generated file we skipped or
+                    # the receiver type is misspelled — either way we
+                    # cannot annotate a non-existent symbol.
+                    continue  # pragma: no cover
                 for iface_name, iface_methods in global_iface_methods.items():
                     if not iface_methods.issubset(struct_methods):
                         continue

@@ -5644,6 +5644,176 @@ func (n *Notifier) Notify(msg string) (bool, error) {{
                 f"'Notifier', got {bases}"
             )
 
+    def test_struct_methods_split_across_files_in_same_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Methods on a struct declared in one file but defined in another
+        file of the same package must still count toward structural matching.
+
+        WI-hobuk: prior to the per-package aggregation fix, the cross-file
+        structural matcher iterated per-file, so it only saw methods that
+        lived in the same file as the struct's type declaration.  When a Go
+        package idiomatically split a struct's type into ``foo.go`` and
+        its methods into ``foo_helpers.go`` (or any other file in the same
+        package), the matcher silently dropped those methods from the
+        struct's effective method set and the struct failed to satisfy any
+        interface that required them.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        # Interface in iface.go
+        (tmp_path / "iface.go").write_text("""package main
+
+type Notifier interface {
+    Notify(msg string) error
+    Close() error
+}
+""")
+        # Struct declaration in service.go
+        (tmp_path / "service.go").write_text("""package main
+
+type Service struct{}
+
+func (s *Service) Notify(msg string) error {
+    return nil
+}
+""")
+        # The other half of Service's method set lives in service_helpers.go
+        # (idiomatic Go: split helpers into a sibling file in the same package).
+        (tmp_path / "service_helpers.go").write_text("""package main
+
+func (s *Service) Close() error {
+    return nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        svc = next(
+            (s for s in result.symbols
+             if s.name == "Service" and s.kind == "struct"),
+            None,
+        )
+        assert svc is not None, "Service struct should be found"
+        # The struct's effective method set is {Notify, Close} once methods
+        # in the sibling file are aggregated, so it satisfies Notifier.
+        bases = (svc.meta or {}).get("base_classes", [])
+        assert "Notifier" in bases, (
+            f"Service should implement Notifier (methods aggregated from "
+            f"service.go + service_helpers.go), got base_classes={bases}"
+        )
+
+    def test_struct_methods_in_sibling_file_only(
+        self, tmp_path: Path
+    ) -> None:
+        """Even when *all* methods live in a sibling file, the struct should
+        still satisfy interfaces.
+
+        Edge case for WI-hobuk: the type is declared in ``types.go`` with
+        no methods at all in that file, while every method is defined in
+        ``methods.go``.  Per-file iteration would have seen Service's
+        type in types.go with an empty method set and given up.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "iface.go").write_text("""package main
+
+type Closer interface {
+    Close() error
+}
+""")
+        # Type only — no methods.
+        (tmp_path / "types.go").write_text("""package main
+
+type Service struct{}
+""")
+        # All methods in a sibling file.
+        (tmp_path / "methods.go").write_text("""package main
+
+func (s *Service) Close() error {
+    return nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        svc = next(
+            (s for s in result.symbols
+             if s.name == "Service" and s.kind == "struct"),
+            None,
+        )
+        assert svc is not None
+        bases = (svc.meta or {}).get("base_classes", [])
+        assert "Closer" in bases, (
+            f"Service should implement Closer despite having all methods "
+            f"in a sibling file, got base_classes={bases}"
+        )
+
+    def test_methods_in_different_package_do_not_count(
+        self, tmp_path: Path
+    ) -> None:
+        """Aggregation must respect Go package boundaries.
+
+        Two files declaring ``type Service struct`` in *different* packages
+        must not have their method sets merged.  This guards the
+        per-package aggregation fix from over-merging into the
+        cross-package shadow that INV-zomuk warned about.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "iface.go").write_text("""package main
+
+type Notifier interface {
+    Notify(msg string) error
+    Close() error
+}
+""")
+        # Package "foo": only declares Service with Notify method.
+        foo_dir = tmp_path / "foo"
+        foo_dir.mkdir()
+        (foo_dir / "service.go").write_text("""package foo
+
+type Service struct{}
+
+func (s *Service) Notify(msg string) error {
+    return nil
+}
+""")
+        # Package "bar": declares its own Service with Close method.
+        # If aggregation accidentally merged across packages, foo.Service
+        # would (incorrectly) be seen as having both Notify AND Close
+        # and would falsely satisfy Notifier.
+        bar_dir = tmp_path / "bar"
+        bar_dir.mkdir()
+        (bar_dir / "service.go").write_text("""package bar
+
+type Service struct{}
+
+func (s *Service) Close() error {
+    return nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # foo.Service should NOT satisfy Notifier — it only has Notify,
+        # not Close.  bar.Service is a separate type that should not
+        # contribute methods.
+        foo_service = next(
+            (s for s in result.symbols
+             if s.name == "Service" and "foo" in s.path),
+            None,
+        )
+        assert foo_service is not None
+        foo_bases = (foo_service.meta or {}).get("base_classes", [])
+        assert "Notifier" not in foo_bases, (
+            f"foo.Service should NOT implement Notifier (it only has "
+            f"Notify, not Close); got base_classes={foo_bases}"
+        )
+
     def test_arity_mismatch_cross_file(self, tmp_path: Path) -> None:
         """Cross-file structural matching also respects arity."""
         from hypergumbo_lang_mainstream.go import analyze_go
