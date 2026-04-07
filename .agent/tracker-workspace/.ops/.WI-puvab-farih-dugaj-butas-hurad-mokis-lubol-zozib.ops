@@ -1,0 +1,21 @@
+- op: create  # 42d1
+  at: '2026-04-07T01:52:34Z'  # 42d1
+  by: agent  # 42d1
+  actor: jgstern_agent  # 42d1
+  clock: 1  # 42d1
+  nonce: 42d1  # 42d1
+  data:  # 42d1
+    kind: work_item  # 42d1
+    title: "Bakeoff: tier-filter diagnostic should use exclude_tests=False to be informative"  # 42d1
+    status: todo_soft  # 42d1
+    priority: 3  # 42d1
+    parent:  # 42d1
+    tags:  # 42d1
+    - bakeoff_infrastructure  # 42d1
+    - analysis_quality  # 42d1
+    before: []  # 42d1
+    duplicate_of: []  # 42d1
+    not_duplicate_of: []  # 42d1
+    pr_ref:  # 42d1
+    description: "Followup from WI-munim investigation. The deep-bakeoff diagnostic produces slice.tier1.json and slice.tier2.json with exclude_tests=True. In repos like alertmanager where tier-2 nodes are dominated by tests (800/801 in alertmanager), the two slices are byte-identical and the diagnostic produces a misleading 'tier filter broken' signal in reflect. Fix options: (a) use exclude_tests=False for the tier-comparison slice queries, (b) report tier-2 size minus tier-1 size as a metric the diagnostic surfaces directly, or (c) skip the tier diff entirely on test-dominated repos. Also worth investigating: should the supply_chain classifier split tests into a distinct tier (e.g., tier-4 'test') instead of conflating with internal_dep? Source: WI-munim investigation against deep-20260406-182616 alertmanager."  # 42d1
+    fields: {}  # 42d1

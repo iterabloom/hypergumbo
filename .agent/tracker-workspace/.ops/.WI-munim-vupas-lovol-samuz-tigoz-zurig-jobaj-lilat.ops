@@ -18,3 +18,18 @@
     pr_ref:  # 9e88
     description: "deep-20260406-182616 reflect: slice.tier1.json and slice.tier2.json are byte-identical (465 nodes, 648 edges) for alertmanager, despite 801 internal_dep nodes existing in supply_chain. Tier-2 should add internal_dep nodes; the tier filter does not actually broaden the slice. Investigate slice.py tier handling. Also confirm whether this affects other repos in the bakeoff or is alertmanager-specific. Source: alertmanager.assessment.yaml dimension_scores.tier_classification=2 (lowest)."  # 9e88
     fields: {}  # 9e88
+- op: update  # b655
+  at: '2026-04-07T01:52:06Z'  # b655
+  by: agent  # b655
+  actor: jgstern_agent  # b655
+  clock: 2  # b655
+  nonce: b655  # b655
+  set:  # b655
+    status: wont_do  # b655
+- op: discuss  # 8e1e
+  at: '2026-04-07T01:52:06Z'  # 8e1e
+  by: agent  # 8e1e
+  actor: jgstern_agent  # 8e1e
+  clock: 3  # 8e1e
+  nonce: 8e1e  # 8e1e
+  message: "Investigation: tier filter works correctly. The bakeoff slice query uses exclude_tests=True. In alertmanager, 800 of 801 tier-2 (internal_dep) nodes are test files (reasons: 'test path matches (?:^|/)tests?/' = 189, 'test file matches _test\\.go$' = 590, 'examples?/' = 12, '\\.test\\.[jt]sx?$' = 1, 'route promoted from derived' = 9). With tests excluded by the BFS BEFORE tier filtering, no tier-2 nodes are reachable from main, so tier-1 and tier-2 slices look identical. Verified with hypergumbo slice --entry main --max-tier {1,2} on alertmanager: with exclude_tests=False, tier-2 produces 14 additional nodes vs tier-1 (550 vs 536). The reflect's '801 internal_dep nodes' was misleading because it conflated 'internal_dep tier classification' (which includes tests) with 'internal dependencies' (private packages). Action: this is not a slicing bug. The bakeoff diagnostic should use a different tier query (e.g., exclude_tests=False) to demonstrate tier filtering, OR the supply_chain.py classifier should split test code into a distinct tier-4 ('test') from internal_dep. Closing as wont_do; will revisit if reflect raises this on a non-test-dominated repo."  # 8e1e
