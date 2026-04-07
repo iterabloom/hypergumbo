@@ -63,3 +63,10 @@
   set: {}  # 7ec8
   add:  # 7ec8
     before: [INV-sabum-fazot-jupud-buvob-guduh-bajip-runof-mobas]  # 7ec8
+- op: discuss  # 24e2
+  at: '2026-04-07T17:50:19Z'  # 24e2
+  by: agent  # 24e2
+  actor: jgstern_agent  # 24e2
+  clock: 8  # 24e2
+  nonce: '24e2'  # 24e2
+  message: "Implemented option (1) in slice.py BFS: precompute writer_node_ids (nodes with any outgoing write/mutate edge), then in forward dataflow mode admit each visited writer's outgoing read edges as one-hop terminal admissions (edge + dst added to slice, dst NOT enqueued for further BFS). All 140 slice tests pass, slice.py at 100% coverage. Created follow-on WI-hukoh-bakob-gidij-nibag-puvaz-fadil-kizor-kitan for the longer-term option (2)/(3) decision. PR in flight."  # 24e2
