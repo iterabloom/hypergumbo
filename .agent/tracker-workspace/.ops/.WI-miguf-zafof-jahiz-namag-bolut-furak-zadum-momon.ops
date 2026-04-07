@@ -25,3 +25,18 @@
   clock: 2  # 79ac
   nonce: 79ac  # 79ac
   message: "Root cause: cache state leakage via ~/.cache/hypergumbo/. pytest rotates only 3 tmp_path dirs (pytest-87/88/89), so the same tmp_path is recreated across pytest sessions. The non-git fingerprint hashes the absolute path → same fingerprint each time. The empty-dir state hash also returns the same value. ~/.cache/hypergumbo/<fp>/results/<sh>/hypergumbo.results.json persists indefinitely (no cleanup). When pytest's rotating counter reuses an N whose stale cache file still exists, _discover_input_file finds it and short-circuits the auto-run path → 'No cached results found' is never printed. Confirmed via failure log: tmp_path was /tmp/pytest-of-jgstern_agent/pytest-89/popen-gw1/test_cmd_slice_auto_runs_analy0, fingerprint d14365624d3459f3, and a stale cached file from March 31 exists at exactly that location. Hypothesis 3 from the original description was correct; (1) and (2) ruled out. Fix: autouse fixture in conftest.py to set XDG_CACHE_HOME per-test."  # 79ac
+- op: update  # 916a
+  at: '2026-04-07T00:11:26Z'  # 916a
+  by: agent  # 916a
+  actor: jgstern_agent  # 916a
+  clock: 3  # 916a
+  nonce: 916a  # 916a
+  set:  # 916a
+    status: done  # 916a
+- op: discuss  # 39c9
+  at: '2026-04-07T00:11:26Z'  # 39c9
+  by: agent  # 39c9
+  actor: jgstern_agent  # 39c9
+  clock: 4  # 39c9
+  nonce: 39c9  # 39c9
+  message: "Fixed in PR (pending). Root cause: cache state leakage via ~/.cache/hypergumbo/. The non-git fingerprint hashes the absolute path, so the same tmp_path string yields the same fingerprint across pytest sessions, and pytest only retains the last 3 pytest-N dirs — so any N gets reused. The cache file is never cleaned, so a stale results file from a previous session can survive into a later one and short-circuit the auto-run check. Fix: autouse fixture in packages/hypergumbo-core/tests/conftest.py that sets XDG_CACHE_HOME to a per-test tmp dir, structurally isolating cache state for every test."  # 39c9
