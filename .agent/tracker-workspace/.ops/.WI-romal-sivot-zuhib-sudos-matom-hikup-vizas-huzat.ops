@@ -1,0 +1,21 @@
+- op: create  # 7883
+  at: '2026-04-08T01:49:06Z'  # 7883
+  by: agent  # 7883
+  actor: jgstern_agent  # 7883
+  clock: 1  # 7883
+  nonce: '7883'  # 7883
+  data:  # 7883
+    kind: work_item  # 7883
+    title: "Optional: 'tracker discuss --investigate' delegates reply to Explore subagent"  # 7883
+    status: todo_soft  # 7883
+    priority: 4  # 7883
+    parent:  # 7883
+    tags:  # 7883
+    - agent_governance  # 7883
+    - developer_experience  # 7883
+    before: []  # 7883
+    duplicate_of: []  # 7883
+    not_duplicate_of: []  # 7883
+    pr_ref:  # 7883
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md proposed remedy §7 (marked 'Optional —' in the notebook): a new flag for tracker discuss that explicitly *delegates* the reply.\n\n**Behavior:** scripts/tracker discuss <ID> --investigate spawns an Explore subagent with a structured prompt:\n- The item's full description\n- The full discussion thread\n- The human's question (the most recent by:human entry)\n- An instruction: 'research and draft a reply'\n\nThe agent's reply is captured and posted as the discussion entry, attributed to the spawning agent (not synthesized as a separate identity).\n\n**Why optional:** the notebook flags this as a *formalization* of what the agent did once spontaneously for INV-dihos cross-language analysis (record 4855 in the second-to-last transcript). The companion items (REPLY-FIRST CYCLE, strengthened guidance, --ack-thread enforcement) may be sufficient to make this kind of delegation happen without an explicit CLI affordance — in which case this item should be wont_do.\n\n**Lower priority** because it adds new capability rather than changing incentives, and the notebook itself recommends prioritizing the incentive-changing items (A/B/C above) first.\n\n**Implementation surface:** scripts/tracker (orchestration to spawn subagent + capture output) and packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py (the --investigate flag plumbing). NOT a governance file."  # 7883
+    fields: {}  # 7883
