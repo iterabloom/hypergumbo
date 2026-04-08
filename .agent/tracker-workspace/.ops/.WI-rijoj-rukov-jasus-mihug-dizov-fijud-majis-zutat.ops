@@ -1,0 +1,20 @@
+- op: create  # 0a1c
+  at: '2026-04-08T19:23:10Z'  # 0a1c
+  by: agent  # 0a1c
+  actor: jgstern_agent  # 0a1c
+  clock: 1  # 0a1c
+  nonce: 0a1c  # 0a1c
+  data:  # 0a1c
+    kind: work_item  # 0a1c
+    title: "Cursor: SQLite extractor + per-conversation fan-out for per-session isolation"  # 0a1c
+    status: todo_soft  # 0a1c
+    priority: 4  # 0a1c
+    parent:  # 0a1c
+    tags:  # 0a1c
+    - developer_experience  # 0a1c
+    before: []  # 0a1c
+    duplicate_of: []  # 0a1c
+    not_duplicate_of: []  # 0a1c
+    pr_ref:  # 0a1c
+    description: "Cursor's transcript backing store is a global SQLite database (state.vscdb) shared across all Cursor windows in all workspaces, unlike Claude Code/Codex/Gemini which have per-session JSONL files. To support concurrent Cursor sessions per repo with per-session isolation (parallel to PR landing now for the other 3 vendors), we need: (1) a SQLite-aware extractor that replaces filter-transcript.py for the Cursor case, reading rows from cursorDiskKV keyed by composerData/bubbleId; (2) an active-session registry under .agent/.cursor-sessions/ that records live conversation_ids; (3) per-conversation fan-out from one global watcher to multiple .current_session_transcript.<conversation_id>.jsonl destinations; (4) the cursor PostToolUse and AfterAgentResponse hooks need to parse stdin JSON for conversation_id and pass it to the poller. BLOCKED on Cursor upstream fixing two known bugs: additional_context silently dropped on PostToolUse (documented but broken) and agent_message/additional_context silently dropped since v2.0.64 on AfterAgentResponse (regression). Until those are fixed, no Cursor injection actually reaches the model anyway, so building the SQLite extractor is wasted effort. Until this WI is addressed, Cursor is enforced as single-session-per-repo via a sibling check in cursor/session-start.sh."  # 0a1c
+    fields: {}  # 0a1c
