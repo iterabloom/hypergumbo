@@ -20,3 +20,27 @@
     pr_ref:  # 96a9
     description: "Open question from ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md 'Open Questions / Followups' §4: does hypergumbo already have an 'exported symbols' notion, or do we need to compute it per language?\n\n**Step 1: investigate.** Search core + analyzer packages for any existing concept of 'public/exported' (e.g., meta.visibility, symbol.exported, __all__ extraction). Report findings in the discussion thread.\n\n**Step 2: implement the gap.** For any language where exported-ness is not already tracked, add it. Minimum target list (drawn from the notebook §4):\n- Python: names in module __all__; names re-exported from __init__.py\n- TypeScript/JavaScript: top-level 'export' in index.ts / entry modules\n- Rust: 'pub' items in crate root (lib.rs) and re-exports\n- Go: exported (Capitalized) identifiers at package level\n\nStore as a per-symbol field (e.g., meta.exported: true) so it can be consumed by both the dead-code-maybe cheap drop filter (public API) and by the --seeds exports mode of the base tool.\n\nRequired by two downstream items: the base tool's --seeds exports flag, and the cheap drop filters' 'drop public API' rule."  # 96a9
     fields: {}  # 96a9
+- op: update  # ec00
+  at: '2026-04-08T01:33:20Z'  # ec00
+  by: agent  # ec00
+  actor: jgstern_agent  # ec00
+  clock: 2  # ec00
+  nonce: ec00  # ec00
+  set: {}  # ec00
+  add:  # ec00
+    duplicate_of: [WI-zimum-sozib-kinob-vobav-kirim-fojig-zopum-dobij]  # ec00
+- op: discuss  # 7c06
+  at: '2026-04-08T01:33:20Z'  # 7c06
+  by: agent  # 7c06
+  actor: jgstern_agent  # 7c06
+  clock: 3  # 7c06
+  nonce: 7c06  # 7c06
+  message: "Duplicate created during auto-sync retry cycle. The canonical item WI-zimum is referenced by WI-fisam (base tool) via --before, completing the dependency wiring."  # 7c06
+- op: update  # cae7
+  at: '2026-04-08T01:37:20Z'  # cae7
+  by: human  # cae7
+  actor: jgstern  # cae7
+  clock: 4  # cae7
+  nonce: cae7  # cae7
+  set:  # cae7
+    status: deleted  # cae7

@@ -39,3 +39,11 @@
   clock: 3  # 4d08
   nonce: 4d08  # 4d08
   message: "Duplicate created during auto-sync retry cycle. The canonical item WI-fisam has complete --before wiring to cheap-filters, string-literal, boosts, and exported-symbols items; this one was created first but the sync failure left it orphaned locally, triggering a re-creation with better wiring."  # 4d08
+- op: update  # 0644
+  at: '2026-04-08T01:37:43Z'  # 0644
+  by: human  # 0644
+  actor: jgstern  # 0644
+  clock: 4  # 0644
+  nonce: '0644'  # 0644
+  set:  # 0644
+    status: deleted  # 0644
