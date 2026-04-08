@@ -1,0 +1,21 @@
+- op: create  # caa2
+  at: '2026-04-08T01:46:30Z'  # caa2
+  by: agent  # caa2
+  actor: jgstern_agent  # caa2
+  clock: 1  # caa2
+  nonce: caa2  # caa2
+  data:  # caa2
+    kind: work_item  # caa2
+    title: "AGENTS.md: WebSearch/WebFetch guidance for tracker reply context"  # caa2
+    status: needs_human_review  # caa2
+    priority: 3  # caa2
+    parent:  # caa2
+    tags:  # caa2
+    - agent_governance  # caa2
+    - governance  # caa2
+    before: []  # caa2
+    duplicate_of: []  # caa2
+    not_duplicate_of: []  # caa2
+    pr_ref:  # caa2
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md proposed remedy §1: across ~6500 agent records analyzed in the notebook, there are 0 WebSearch and 0 WebFetch invocations. AGENTS.md never mentions either tool. ALLOWED_WEBSITES.md lists allowed domains (DuckDuckGo, Google, Scholar, GitHub, arxiv.org, MDN, docs.python.org, rfc-editor.org, tree-sitter docs, package registries, OSV/CVE...) but the agent has no operational guidance to actually reach for them. When the human's question would benefit from external context (RFC behavior, library semantics, paper citations, vendor docs), the agent answers from training data only.\n\n**Proposed change:** add two lines to AGENTS.md:\n\n> When answering a tracker reply benefits from external context (RFCs, language semantics, library behavior, vendor docs, paper citations), use WebSearch / WebFetch against the domains in ALLOWED_WEBSITES.md. Treat the result as a citation, not authority.\n\nSmallest-effort, highest-leverage proposed remedy: web tools are currently invisible to the agent.\n\n**Status: needs_human_review per AGENTS.md §'Approval workflow' for governance files.**\n\nAGENTS.md is a governance file. This item exists to surface the proposal; it must NOT be implemented directly. Human approval workflow:\n1. This item stays in needs_human_review\n2. Discussion thread requests explicit approval\n3. After approval, an implementation item can be opened that creates the AGENTS.md PR\n\nPer the notebook this is best paired with the new tracker-reply-playbook (separate item) which would expand the two-line guidance into a full procedure."  # caa2
+    fields: {}  # caa2
