@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Gemini CLI SessionStart hook adapter
 # See ADR-0008 for governance protocol
 #
@@ -44,8 +45,11 @@ if [[ -z "$TRANSCRIPT_SRC" || "$TRANSCRIPT_SRC" == "null" ]]; then
     fi
 fi
 
-if [[ -n "$TRANSCRIPT_SRC" && "$TRANSCRIPT_SRC" != "null" ]]; then
-    REPO_ROOT="$REPO_ROOT" "$SCRIPT_DIR/../_shared/launch-transcript-sync.sh" "$TRANSCRIPT_SRC"
+source "$SCRIPT_DIR/../_shared/session_id_helpers.sh"
+SESSION_ID=$(extract_gemini_session_id "$STDIN_JSON")
+
+if [[ -n "$TRANSCRIPT_SRC" && "$TRANSCRIPT_SRC" != "null" && -n "$SESSION_ID" ]]; then
+    REPO_ROOT="$REPO_ROOT" "$SCRIPT_DIR/../_shared/launch-transcript-sync.sh" "$TRANSCRIPT_SRC" "$SESSION_ID"
 fi
 
 if [[ "$SESSION_START_NEEDS_PROMPT" == "true" && -n "$SESSION_START_MESSAGE" ]]; then

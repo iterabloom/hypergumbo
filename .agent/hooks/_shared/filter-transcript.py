@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
-"""Incremental transcript filter for the session sync pipeline.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Incremental transcript filter for the per-session sync pipeline.
 
 Reads new lines from a JSONL transcript (from a saved byte offset),
 filters out redundant noise, and appends meaningful lines to the
 destination file. Tracks state between invocations so each run only
 processes new data.
+
+Per-session isolation (ADR-0018 amendment): the state file path encodes
+the session id, so each concurrent session has its own offset state.
+There is no cross-session validation needed because the state file path
+is unique per session — if a state file exists, it belongs to that
+session by construction. The defensive "file shrank" reset path remains
+for filesystem oddities (truncation/replacement edge cases that should
+not occur under normal Claude Code operation since transcripts are
+append-only across compaction).
 
 Filter rules:
   1. Drop bash_progress lines with empty output
@@ -22,50 +32,25 @@ import json
 import os
 import sys
 
-SESSION_TOKEN_FILENAME = ".transcript-session-token"
-
-
-def _read_session_token(state_path):
-    """Read the current session token from the .agent/ directory.
-
-    Derives the .agent/ directory from the state file's location (the state
-    file lives in .agent/).
-    """
-    agent_dir = os.path.dirname(state_path)
-    path = os.path.join(agent_dir, SESSION_TOKEN_FILENAME)
-    try:
-        with open(path) as f:
-            return f.read().strip()
-    except OSError:
-        return ""
-
 
 def load_state(state_path):
     """Load filter state (byte offset, last output hash).
 
-    Returns empty state if the state file belongs to a different session
-    (stale token), preventing cross-session byte offsets from causing
-    incorrect filtering.
+    Returns empty state if the state file is missing or corrupt. Under
+    per-session isolation the state file path is unique per session, so
+    no cross-session validation is needed.
     """
     if os.path.exists(state_path):
         try:
             with open(state_path) as f:
-                state = json.load(f)
+                return json.load(f)
         except (json.JSONDecodeError, OSError):
             return {"offset": 0, "last_bash_hash": ""}
-
-        # Validate session token
-        current_token = _read_session_token(state_path)
-        if current_token and state.get("session_token") != current_token:
-            return {"offset": 0, "last_bash_hash": ""}
-
-        return state
     return {"offset": 0, "last_bash_hash": ""}
 
 
 def save_state(state_path, state):
-    """Persist filter state atomically with session token."""
-    state["session_token"] = _read_session_token(state_path)
+    """Persist filter state atomically."""
     tmp = state_path + ".tmp"
     with open(tmp, "w") as f:
         json.dump(state, f)
@@ -155,6 +140,11 @@ def filter_new_lines(src_path, dest_path, state):
     # (avoids writing intermediate state that will be superseded)
 
     if kept:
+        # Ensure the destination directory exists (per-session DESTs may
+        # be the first file written to .agent/ in a fresh repo).
+        dest_dir = os.path.dirname(dest_path)
+        if dest_dir:
+            os.makedirs(dest_dir, exist_ok=True)
         with open(dest_path, "ab") as f:
             for line in kept:
                 f.write(line)

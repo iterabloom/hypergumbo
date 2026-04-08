@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Codex CLI PostToolUse hook adapter for transcript feedback.
 #
 # Codex CLI lacks a FileChanged hook, so we poll the filtered transcript
@@ -10,13 +11,20 @@
 
 set -euo pipefail
 
-# Drain stdin (Codex passes tool result JSON)
-cat > /dev/null
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POLL_SCRIPT="$SCRIPT_DIR/../_shared/poll-transcript-change.sh"
 
-HOOK_OUTPUT=$("$POLL_SCRIPT" 2>/dev/null) || exit 0
+# Capture stdin and extract session_id so the poller can find this
+# session's per-session transcript file.
+STDIN_JSON=$(cat)
+source "$SCRIPT_DIR/../_shared/session_id_helpers.sh"
+SESSION_ID=$(extract_codex_session_id "$STDIN_JSON")
+
+if [[ -z "$SESSION_ID" ]]; then
+    exit 0
+fi
+
+HOOK_OUTPUT=$("$POLL_SCRIPT" "$SESSION_ID" 2>/dev/null) || exit 0
 
 # No output from hook — nothing to inject
 if [[ -z "$HOOK_OUTPUT" ]]; then

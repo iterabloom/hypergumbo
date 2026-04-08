@@ -33,18 +33,30 @@ AUTONOMOUS_MODE.txt
 .agent/disabled.LOOP
 .agent/last_stop_check.json
 .agent/invariant-ledger.md
-.agent/.current_session_transcript.jsonl
+# Per-session transcript pipeline (ADR-0018, per-session amendment 2026-04-08).
+# Each session writes per-session-keyed files. The .last_*/.second_to_last_*
+# global slots are written at session END by rotate-on-session-end.sh.
+.agent/.current_session_transcript.*.jsonl
+.agent/.current_injection_history.*.jsonl
+.agent/.transcript-sync.*.pid
+.agent/.transcript-sync-state.*.json
+.agent/.transcript-poll-state.*
+.agent/.transcript-injection-state.*.json
 .agent/.last_session_transcript.jsonl
 .agent/.second_to_last_transcript.jsonl
+.agent/.last_injection_history.jsonl
+.agent/.second_to_last_injection_history.jsonl
+.agent/.archived-transcripts/
+.agent/.rotation.lock
+# Legacy paths from before the per-session amendment (ignored for one-time
+# upgrade-cleanup safety; may be removed once no repo still has these).
+.agent/.current_session_transcript.jsonl
 .agent/.transcript-sync.pid
 .agent/.transcript-sync-state.json
 .agent/.transcript-poll-state
 .agent/.transcript-injection-state.json
 .agent/.transcript-session-token
 .agent/.current_injection_history.jsonl
-.agent/.last_injection_history.jsonl
-.agent/.second_to_last_injection_history.jsonl
-.agent/.archived-transcripts/
 hook-canary.txt
 
 # Coverage

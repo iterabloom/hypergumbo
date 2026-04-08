@@ -118,9 +118,19 @@ Config files:
 
 **Why both layers:** The glob reset handles the normal path. The session token handles edge cases where state files are created outside the watcher (e.g., by `on_transcript_change.py`) or where the watcher launch fails. Neither layer alone covers all failure modes.
 
-**Invariant test:** `TestSessionResetInvariant` in the test suite verifies that every known `.transcript-*` file matches the glob pattern and that persistent files (`.training-data.jsonl`, the rotated transcript pair, the rotated injection-history sidecar pair, and the `.archived-transcripts/` directory) do not. Adding a new state file that breaks the convention causes a test failure.
+> **Amendment (2026-04-08, Option 2 — per-session isolation):** The
+> single-global-slot rotation model documented in this section was
+> superseded after the 2026-04-08 watcher-leak lifecycle test. The
+> table below describes the *original* design; see the
+> "Per-session isolation amendment" section further down for the
+> current pipeline shape, which keys the live transcript and
+> injection-history sidecar by `session_id`, performs rotation at
+> session END instead of session START, and serializes concurrent
+> end events with `flock`.
 
-Per-session and persistent state files:
+**Invariant test (original):** `TestSessionResetInvariant` verified that every known `.transcript-*` file matched the glob pattern and that persistent files did not. This test has been replaced by `TestPerSessionNamingInvariants`, which verifies that per-session stems can be keyed by `session_id` without colliding with global slot filenames.
+
+Per-session and persistent state files (original design):
 
 | File | Per-session? | Cleared on start? |
 |------|---|---|
@@ -139,7 +149,75 @@ Per-session and persistent state files:
 | `.training-data.jsonl` | No | No (accumulates for finetuning) |
 | `.parse-outcomes.jsonl` | No | No (accumulates; sidecar for parse failures) |
 
-The injection-history sidecar (`*_injection_history.jsonl`) is the durable record of every playbook injection event. It exists because Claude Code's `additionalContext` mechanism (and equivalent vendor mechanisms) inject the hook's stdout into the API request without writing it back into the session JSONL. Without the sidecar, the `agentic-session-retrospective` playbook's Phase 2d question — "which playbooks were injected and were they relevant?" — is structurally unanswerable. The writer is `log_injection_history` in `on_transcript_change.py`; it fires from both the success path and the zero-injection early-exit path so precision/recall analysis sees both signal and noise. Each record contains the distilled goal, the selected/injected/skipped-dedup playbook IDs, and the model identifiers. Records are append-only JSON-per-line; the `sync-transcript.sh` rotation block moves them in lockstep with the transcript pair.
+The injection-history sidecar (`*_injection_history.jsonl`) is the durable record of every playbook injection event. It exists because Claude Code's `additionalContext` mechanism (and equivalent vendor mechanisms) inject the hook's stdout into the API request without writing it back into the session JSONL. Without the sidecar, the `agentic-session-retrospective` playbook's Phase 2d question — "which playbooks were injected and were they relevant?" — is structurally unanswerable. The writer is `log_injection_history` in `on_transcript_change.py`; it fires from both the success path and the zero-injection early-exit path so precision/recall analysis sees both signal and noise. Each record contains the distilled goal, the selected/injected/skipped-dedup playbook IDs, and the model identifiers. Records are append-only JSON-per-line; under the per-session amendment they are rotated at session END (not start) by `rotate-on-session-end.sh`.
+
+## Per-session isolation amendment (2026-04-08, Option 2)
+
+### Problem the original design did not handle
+
+The original rotation model assumed exactly one Claude Code (or Codex / Gemini) session per repo at any time. Two concurrent sessions in the same repo collided in three ways:
+
+1. Both watchers wrote to the same `.current_session_transcript.jsonl` DEST, racing on every filter pass.
+2. Both used a single global `.agent/.transcript-sync.pid`; whichever wrote last clobbered the other's PID.
+3. The orphan-cleanup pgrep scoped by `DEST` argument could not distinguish a stale orphan from a live sibling, so session B's startup unconditionally killed session A's still-live watcher (the bug observed in the 2026-04-08 manual lifecycle test, Step 5).
+
+Beyond the watcher leak, the rotation slots themselves were undefined under concurrency: "previous session" has no meaning if two sessions are alive at once.
+
+### Decision
+
+Each session writes to its own per-session current files, keyed by a sanitized `session_id` derived from the vendor's hook input:
+
+| Per-session file | Path |
+|---|---|
+| Filtered transcript | `.agent/.current_session_transcript.<session_id>.jsonl` |
+| Injection-history sidecar | `.agent/.current_injection_history.<session_id>.jsonl` |
+| Watcher PID file | `.agent/.transcript-sync.<session_id>.pid` |
+| Filter offset state | `.agent/.transcript-sync-state.<session_id>.json` |
+| Poll state | `.agent/.transcript-poll-state.<session_id>` |
+| Dedup / injection state | `.agent/.transcript-injection-state.<session_id>.json` |
+
+The global `.last_session_transcript.jsonl`, `.second_to_last_transcript.jsonl`, `.last_injection_history.jsonl`, and `.second_to_last_injection_history.jsonl` slots are preserved with redefined semantics: they are written at **session END**, not session start, by `rotate-on-session-end.sh`. `.last_*` now means **"most recently *ended* session in this repo,"** with concurrent end events serialized by an exclusive `flock` on `.agent/.rotation.lock`.
+
+### Lifecycle
+
+* **Session start.** The vendor hook extracts a `session_id` from its native input source via `session_id_helpers.sh` (Claude Code: `.session_id` UUID; Codex: basename of `transcript_path`; Gemini: `GEMINI_SESSION_ID` env var or `transcript_path` basename; Cursor: hardcoded `cursor-singleton`). The hook calls `launch-transcript-sync.sh <SRC> <SESSION_ID>`, which:
+  1. Runs a one-time legacy cleanup (kills any pre-amendment global watcher and removes legacy state files).
+  2. Walks `.agent/.transcript-sync.*.pid`. Files whose recorded PID is dead are *crashed sessions*; their orphaned `.current_session_transcript.<sid>.jsonl` and `.current_injection_history.<sid>.jsonl` are archived directly into `.agent/.archived-transcripts/crashed-<UTC-stamp>-<sid>/` (skipping `.last_*` — a crashed session must not claim "most recently ended"), and the stale state files are removed. Files whose recorded PID is alive are *live siblings* and are left strictly alone.
+  3. Launches `sync-transcript.sh <SRC> <DEST> <SESSION_ID>` in the background. The watcher writes the per-session DEST and PID file and never participates in rotation.
+* **Session end.** The vendor hook calls `kill-transcript-sync.sh <REPO_ROOT> <SESSION_ID>`, which kills only the watcher whose per-session PID file or pgrep `argv[+3]` matches `SESSION_ID`. It then calls `rotate-on-session-end.sh <REPO_ROOT> <SESSION_ID>`, which acquires the `.rotation.lock` flock, archives the existing `.second_to_last_*` pair into a timestamped subdir, demotes `.last_*` → `.second_to_last_*`, promotes the per-session `.current_*.<sid>.*` → `.last_*`, and cleans up the per-session state files for `<sid>`. Concurrent end events serialize via flock; last writer wins the `.last_*` slot.
+* **Polling.** `poll-transcript-change.sh <SESSION_ID>` reads the per-session DEST and the per-session poll state (`.transcript-poll-state.<sid>`).
+* **Dedup / injection state.** `on_transcript_change.py`'s `recently_injected()`, `load_injection_state()`, `save_injection_state()`, and `log_injection_history()` all take a `session_id` argument; the state and sidecar paths embed it.
+
+### What goes away
+
+* The `.transcript-*` glob session reset in `sync-transcript.sh` is removed. Per-session paths make a glob reset unnecessary by construction.
+* The global `.transcript-session-token` mechanism (and `_read_session_token` in both `filter-transcript.py` and `on_transcript_change.py`) is removed. The per-session DEST is now the authoritative session identity at every layer.
+* The pgrep-by-DEST orphan cleanup in `kill-transcript-sync.sh` is replaced by pgrep-by-`SESSION_ID` (matched at `argv[+3]` from the `sync-transcript.sh` script-name field), so kill events cannot reach sibling sessions even when the per-session PID file is missing.
+
+### Cursor exemption
+
+Cursor's transcript backing store is a single global SQLite database (`state.vscdb`) shared by all Cursor windows in all workspaces. Per-session isolation requires a SQLite-aware extractor that fans out to per-conversation files, which is deferred (tracker `WI-rijoj`). Until that work lands, Cursor is enforced single-session-per-repo: `cursor/session-start.sh` checks for a live `cursor-singleton` watcher via the per-session PID file and aborts the transcript-sync wiring with a clear stderr message if one is found. The Cursor session itself still launches normally — only the transcript-sync side is gated.
+
+### Migration
+
+The first `launch-transcript-sync.sh` invocation in any repo after this amendment lands runs a one-time legacy cleanup that:
+
+* Reads the legacy `.agent/.transcript-sync.pid`, kills its PID if alive, and removes the file.
+* `pgrep`s for any 2-positional-arg `sync-transcript.sh` process whose DEST matches the legacy global path and kills it.
+* Removes legacy global state files: `.transcript-sync-state.json`, `.transcript-poll-state`, `.transcript-injection-state.json`, `.transcript-session-token`, and the legacy `.current_session_transcript.jsonl`.
+
+After the first post-amendment session starts, all legacy state is gone and the per-session pipeline takes over.
+
+### New invariants
+
+* Every per-session file's filename embeds `<session_id>`. `TestPerSessionNamingInvariants` enforces this convention: per-session stems and global slot filenames cannot collide.
+* `kill-transcript-sync.sh` matches by `SESSION_ID` only. `TestKillScript.test_kill_skips_sibling_session_in_same_repo` enforces this — the structural fix for the watcher-leak bug.
+* `launch-transcript-sync.sh`'s orphan sweep distinguishes crashed sessions from live siblings by checking whether the recorded PID is alive. `TestCrashedSessionOrphan` enforces both directions.
+* `rotate-on-session-end.sh` is the *only* writer of `.last_*` and `.second_to_last_*`. `TestRotateOnSessionEnd` covers the rotation chain, mtime preservation, empty-current handling, and concurrent serialization via flock.
+
+### Files changed (summary)
+
+`launch-transcript-sync.sh`, `sync-transcript.sh`, `kill-transcript-sync.sh`, `poll-transcript-change.sh`, `filter-transcript.py`, `on_transcript_change.py`, `rotate-on-session-end.sh` (new), `session_id_helpers.sh` (new), 4 vendor `session-start.sh`, 4 vendor `session-end.sh`, 5 vendor polling hooks, `tests/test_watcher_lifecycle.py`, `tests/test_transcript_pipeline_properties.py`, `agentic-session-retrospective.md`, `AGENTS.md`, `.gitignore`, `CHANGELOG.md`.
 
 ## Consequences
 

@@ -363,37 +363,47 @@ class TestParseSelection:
 # ---------------------------------------------------------------------------
 
 class TestRecentlyInjected:
-    """Property tests for on_transcript_change.py's recently_injected."""
+    """Property tests for on_transcript_change.py's recently_injected.
 
-    SESSION_TOKEN = "test-session-12345"
+    Per-session isolation (ADR-0018 amendment / Option 2): each test
+    uses an explicit session_id and a per-session injection-state file
+    path. The legacy global session-token mechanism has been removed
+    because per-session paths already encode session identity.
+    """
 
-    @staticmethod
-    def _make_transcript(base: str, lines: list[dict]) -> str:
-        """Write a JSONL transcript and return its path."""
-        path = os.path.join(base, "transcript.jsonl")
+    SESSION_ID = "test-session-12345"
+
+    @classmethod
+    def _make_transcript(cls, base: str, lines: list[dict]) -> str:
+        """Write a per-session JSONL transcript and return its path.
+
+        The path matches the per-session naming convention so that
+        on_transcript_change.py can extract the session_id from it
+        (which is what main() does at runtime).
+        """
+        agent_dir = os.path.join(base, ".agent")
+        os.makedirs(agent_dir, exist_ok=True)
+        path = os.path.join(
+            agent_dir,
+            f".current_session_transcript.{cls.SESSION_ID}.jsonl",
+        )
         with open(path, "wb") as f:
             for obj in lines:
                 f.write(_jsonl_line(obj))
         return path
 
     @classmethod
-    def _write_session_token(cls, base: str, token: str | None = None) -> None:
-        """Write a session token file so state validation passes."""
-        agent_dir = os.path.join(base, ".agent")
-        os.makedirs(agent_dir, exist_ok=True)
-        with open(os.path.join(agent_dir, ".transcript-session-token"), "w") as f:
-            f.write(token or cls.SESSION_TOKEN)
-
-    @classmethod
     def _make_state(cls, base: str, state: dict) -> None:
-        """Write injection state with matching session token."""
+        """Write per-session injection state for SESSION_ID."""
         agent_dir = os.path.join(base, ".agent")
         os.makedirs(agent_dir, exist_ok=True)
-        state.setdefault("session_token", cls.SESSION_TOKEN)
-        state_path = os.path.join(agent_dir, ".transcript-injection-state.json")
+        state.setdefault("session_id", cls.SESSION_ID)
+        state_path = os.path.join(
+            agent_dir,
+            f".transcript-injection-state.{cls.SESSION_ID}.json",
+        )
         with open(state_path, "w") as f:
             json.dump(state, f)
-        cls._write_session_token(base)
 
     def test_no_prior_injections_returns_empty(
         self, tmp_path: Path, hook_mod: Any,
@@ -403,7 +413,7 @@ class TestRecentlyInjected:
             {"type": "user_message", "content": "hello"},
         ])
         skip, state = hook_mod.recently_injected(
-            transcript, ["pb-a", "pb-b"], str(tmp_path),
+            transcript, ["pb-a", "pb-b"], str(tmp_path), self.SESSION_ID,
         )
         assert skip == set()
 
@@ -430,7 +440,9 @@ class TestRecentlyInjected:
                 "last_compact_offset": 0,
             })
 
-            skip, _ = hook_mod.recently_injected(transcript, pb_ids, d)
+            skip, _ = hook_mod.recently_injected(
+                transcript, pb_ids, d, self.SESSION_ID,
+            )
             assert skip == set(pb_ids)
         finally:
             shutil.rmtree(d)
@@ -452,7 +464,7 @@ class TestRecentlyInjected:
         })
 
         skip, state = hook_mod.recently_injected(
-            transcript, ["pb-a"], str(tmp_path),
+            transcript, ["pb-a"], str(tmp_path), self.SESSION_ID,
         )
         assert "pb-a" not in skip
         assert state["last_compact_offset"] > 0
@@ -474,7 +486,7 @@ class TestRecentlyInjected:
         })
 
         skip, _ = hook_mod.recently_injected(
-            transcript, ["pb-a"], str(tmp_path),
+            transcript, ["pb-a"], str(tmp_path), self.SESSION_ID,
         )
         assert "pb-a" in skip
 
@@ -493,7 +505,7 @@ class TestRecentlyInjected:
         })
 
         skip, _ = hook_mod.recently_injected(
-            transcript, ["pb-a"], str(tmp_path),
+            transcript, ["pb-a"], str(tmp_path), self.SESSION_ID,
         )
         assert "pb-a" not in skip
 
@@ -502,64 +514,85 @@ class TestRecentlyInjected:
     ) -> None:
         """Non-existent transcript file yields no skips."""
         skip, _ = hook_mod.recently_injected(
-            str(tmp_path / "nonexistent.jsonl"), ["pb-a"], str(tmp_path),
+            str(tmp_path / "nonexistent.jsonl"),
+            ["pb-a"],
+            str(tmp_path),
+            self.SESSION_ID,
         )
         assert skip == set()
 
     def test_corrupt_state_file_resets(
         self, tmp_path: Path, hook_mod: Any,
     ) -> None:
-        """Corrupt state file is treated as empty state."""
+        """Corrupt per-session state file is treated as empty state."""
         transcript = self._make_transcript(str(tmp_path), [
             {"type": "user_message", "content": "hi"},
         ])
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir(exist_ok=True)
-        (agent_dir / ".transcript-injection-state.json").write_text("{invalid json")
+        (
+            agent_dir / f".transcript-injection-state.{self.SESSION_ID}.json"
+        ).write_text("{invalid json")
 
         skip, state = hook_mod.recently_injected(
-            transcript, ["pb-a"], str(tmp_path),
+            transcript, ["pb-a"], str(tmp_path), self.SESSION_ID,
         )
         assert skip == set()
         assert state["injections"] == {}
 
-    def test_stale_session_token_invalidates_state(
+    def test_concurrent_sessions_have_independent_state(
         self, tmp_path: Path, hook_mod: Any,
     ) -> None:
-        """Injection state from a prior session (different token) is discarded.
-
-        This is the bug that ADR-0018's session token mechanism fixes:
-        byte offsets from an old session's transcript are meaningless
-        against the new session's transcript.
-        """
-        transcript = self._make_transcript(str(tmp_path), [
-            {"type": "user_message", "content": "new session"},
-        ])
-
-        # Write state with OLD session token and large byte offsets
+        """Two sessions in the same repo have independent injection
+        state. Session B's dedup state must not be affected by session
+        A's prior injections."""
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir(exist_ok=True)
-        old_state = {
-            "session_token": "old-session-999",
-            "injections": {
-                "pb-a": 1_200_000,  # Offset larger than new transcript
-                "pb-b": 1_100_000,
-            },
-            "last_compact_offset": 0,
-        }
-        (agent_dir / ".transcript-injection-state.json").write_text(
-            json.dumps(old_state),
-        )
-        # Write CURRENT session token (different from the state's token)
-        (agent_dir / ".transcript-session-token").write_text("new-session-123")
 
-        skip, state = hook_mod.recently_injected(
-            transcript, ["pb-a", "pb-b"], str(tmp_path),
+        sid_a = "concurrent-A"
+        sid_b = "concurrent-B"
+
+        # Session A's transcript and saturated state
+        path_a = os.path.join(
+            agent_dir,
+            f".current_session_transcript.{sid_a}.jsonl",
         )
-        # Stale state should be discarded — nothing skipped
-        assert skip == set()
-        assert state["injections"] == {}
-        assert state["session_token"] == "new-session-123"
+        with open(path_a, "wb") as f:
+            f.write(_jsonl_line({"type": "user_message", "content": "A"}))
+        state_a_path = os.path.join(
+            agent_dir,
+            f".transcript-injection-state.{sid_a}.json",
+        )
+        with open(state_a_path, "w") as f:
+            json.dump({
+                "session_id": sid_a,
+                "injections": {"pb-a": os.path.getsize(path_a)},
+                "last_compact_offset": 0,
+            }, f)
+
+        # Session B's transcript with NO state at all
+        path_b = os.path.join(
+            agent_dir,
+            f".current_session_transcript.{sid_b}.jsonl",
+        )
+        with open(path_b, "wb") as f:
+            f.write(_jsonl_line({"type": "user_message", "content": "B"}))
+
+        # Session B asking about pb-a should NOT inherit session A's
+        # "already injected" state.
+        skip_b, _ = hook_mod.recently_injected(
+            path_b, ["pb-a"], str(tmp_path), sid_b,
+        )
+        assert skip_b == set(), (
+            "session B inherited session A's dedup state — per-session "
+            "isolation broken"
+        )
+
+        # Session A's state is still intact
+        skip_a, _ = hook_mod.recently_injected(
+            path_a, ["pb-a"], str(tmp_path), sid_a,
+        )
+        assert skip_a == {"pb-a"}
 
 
 # ---------------------------------------------------------------------------
@@ -709,87 +742,65 @@ class TestTruncateToBudget:
 # Session token tests for filter-transcript.py
 # ---------------------------------------------------------------------------
 
-class TestFilterSessionToken:
-    """Tests for filter-transcript.py's session token validation."""
+class TestFilterPerSessionState:
+    """Tests for filter-transcript.py's per-session state file handling.
 
-    def test_stale_token_resets_filter_state(
+    Under per-session isolation (ADR-0018 amendment / Option 2), each
+    session has its own state file path keyed by session_id, so cross-
+    session state contamination is structurally impossible. The legacy
+    session_token validation has been removed because the per-session
+    path itself is the identity check.
+    """
+
+    def test_load_returns_state_when_present(
         self, tmp_path: Path, filter_mod: Any,
     ) -> None:
-        """Filter state from a prior session (different token) resets to zero offset."""
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
-
-        # Write state with old token and non-zero offset
-        state_path = str(agent_dir / "state.json")
+        """Filter state with offset and hash is loaded as-is."""
+        state_path = str(tmp_path / "state.json")
         with open(state_path, "w") as f:
             json.dump({
                 "offset": 50000,
                 "last_bash_hash": "abc123",
-                "session_token": "old-session",
             }, f)
-
-        # Write current session token (different)
-        (agent_dir / ".transcript-session-token").write_text("new-session")
-
-        # State path is in .agent/, so _read_session_token will find the token
-        state = filter_mod.load_state(state_path)
-        assert state["offset"] == 0
-        assert state["last_bash_hash"] == ""
-
-    def test_matching_token_preserves_state(
-        self, tmp_path: Path, filter_mod: Any,
-    ) -> None:
-        """Filter state with matching session token is preserved."""
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
-
-        state_path = str(agent_dir / "state.json")
-        with open(state_path, "w") as f:
-            json.dump({
-                "offset": 50000,
-                "last_bash_hash": "abc123",
-                "session_token": "current-session",
-            }, f)
-
-        (agent_dir / ".transcript-session-token").write_text("current-session")
 
         state = filter_mod.load_state(state_path)
         assert state["offset"] == 50000
         assert state["last_bash_hash"] == "abc123"
 
-    def test_no_token_file_preserves_state(
+    def test_load_returns_empty_when_missing(
         self, tmp_path: Path, filter_mod: Any,
     ) -> None:
-        """Without a session token file, state is preserved (backward compat)."""
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
-
-        state_path = str(agent_dir / "state.json")
-        with open(state_path, "w") as f:
-            json.dump({
-                "offset": 50000,
-                "last_bash_hash": "abc123",
-            }, f)
-
-        # No .transcript-session-token file written
+        """Missing state file yields a fresh zero-offset state."""
+        state_path = str(tmp_path / "nonexistent-state.json")
         state = filter_mod.load_state(state_path)
-        assert state["offset"] == 50000
+        assert state["offset"] == 0
+        assert state["last_bash_hash"] == ""
 
-    def test_save_embeds_session_token(
+    def test_load_handles_corrupt_state_file(
         self, tmp_path: Path, filter_mod: Any,
     ) -> None:
-        """save_state embeds the current session token in the state file."""
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir()
+        """A corrupt state file yields a fresh zero-offset state."""
+        state_path = str(tmp_path / "state.json")
+        with open(state_path, "w") as f:
+            f.write("{not valid json")
 
-        (agent_dir / ".transcript-session-token").write_text("my-token")
+        state = filter_mod.load_state(state_path)
+        assert state["offset"] == 0
+        assert state["last_bash_hash"] == ""
 
-        state_path = str(agent_dir / "state.json")
-        filter_mod.save_state(state_path, {"offset": 100, "last_bash_hash": "x"})
+    def test_save_round_trip(
+        self, tmp_path: Path, filter_mod: Any,
+    ) -> None:
+        """save_state writes the state, load_state reads it back."""
+        state_path = str(tmp_path / "state.json")
+        filter_mod.save_state(
+            state_path, {"offset": 100, "last_bash_hash": "x"},
+        )
 
         with open(state_path) as f:
             saved = json.load(f)
-        assert saved["session_token"] == "my-token"
+        assert saved["offset"] == 100
+        assert saved["last_bash_hash"] == "x"
 
 
 # ---------------------------------------------------------------------------
@@ -806,27 +817,35 @@ class TestInjectionHistory:
     injected, when, or why. The sidecar records every poll's metadata
     (including dedup-skipped and zero-selection polls) so that retrospective
     analysis has a real signal to compute precision against.
+
+    Per-session isolation (ADR-0018 amendment / Option 2): the sidecar
+    file path is per-session, keyed by session_id. Rotation into the
+    global ``.last_injection_history.jsonl`` slot happens at session
+    END via rotate-on-session-end.sh — see TestRotateOnSessionEnd in
+    test_watcher_lifecycle.py.
     """
 
-    SIDECAR_FILENAME: ClassVar[str] = ".current_injection_history.jsonl"
+    SESSION_ID: ClassVar[str] = "test-injection-history-session"
 
-    def _read_records(self, repo_root: Path) -> list[dict]:
-        path = repo_root / ".agent" / self.SIDECAR_FILENAME
+    def _sidecar_filename(self, session_id: str | None = None) -> str:
+        return (
+            f".current_injection_history.{session_id or self.SESSION_ID}.jsonl"
+        )
+
+    def _read_records(
+        self, repo_root: Path, session_id: str | None = None,
+    ) -> list[dict]:
+        path = repo_root / ".agent" / self._sidecar_filename(session_id)
         if not path.exists():
             return []
-        return [json.loads(line) for line in path.read_text().splitlines() if line]
-
-    def _write_session_token(self, repo_root: Path, token: str = "test-token") -> None:
-        agent_dir = repo_root / ".agent"
-        agent_dir.mkdir(exist_ok=True)
-        (agent_dir / ".transcript-session-token").write_text(token)
+        return [
+            json.loads(line) for line in path.read_text().splitlines() if line
+        ]
 
     def test_writer_appends_record(
         self, tmp_path: Path, hook_mod: Any,
     ) -> None:
         """Basic happy path: writer creates the file and writes one well-formed record."""
-        self._write_session_token(tmp_path, "session-A")
-
         hook_mod.log_injection_history(
             str(tmp_path),
             transcript_offset=12345,
@@ -835,6 +854,7 @@ class TestInjectionHistory:
             injected=["pb-a"],
             skipped_dedup=["pb-b"],
             event_id="evt-001",
+            session_id=self.SESSION_ID,
         )
 
         records = self._read_records(tmp_path)
@@ -846,7 +866,7 @@ class TestInjectionHistory:
         assert rec["injected"] == ["pb-a"]
         assert rec["skipped_dedup"] == ["pb-b"]
         assert rec["event_id"] == "evt-001"
-        assert rec["session_token"] == "session-A"
+        assert rec["session_id"] == self.SESSION_ID
         assert "timestamp" in rec
         assert "distill_model" in rec
         assert "select_model" in rec
@@ -855,8 +875,6 @@ class TestInjectionHistory:
         self, tmp_path: Path, hook_mod: Any,
     ) -> None:
         """Successive calls append, not overwrite."""
-        self._write_session_token(tmp_path)
-
         for i in range(3):
             hook_mod.log_injection_history(
                 str(tmp_path),
@@ -866,6 +884,7 @@ class TestInjectionHistory:
                 injected=[f"pb-{i}"],
                 skipped_dedup=[],
                 event_id=f"evt-{i}",
+                session_id=self.SESSION_ID,
             )
 
         records = self._read_records(tmp_path)
@@ -894,6 +913,7 @@ class TestInjectionHistory:
                 injected=[],
                 skipped_dedup=[],
                 event_id="evt",
+                session_id=self.SESSION_ID,
             )
         finally:
             agent_dir.chmod(0o755)  # restore so pytest cleanup works
@@ -907,8 +927,6 @@ class TestInjectionHistory:
         actually the correct outcome most of the time (per the selector
         prompt), and we need to count them to compute precision/recall.
         """
-        self._write_session_token(tmp_path)
-
         hook_mod.log_injection_history(
             str(tmp_path),
             transcript_offset=999,
@@ -917,6 +935,7 @@ class TestInjectionHistory:
             injected=[],
             skipped_dedup=[],
             event_id="evt-empty",
+            session_id=self.SESSION_ID,
         )
 
         records = self._read_records(tmp_path)
@@ -929,8 +948,6 @@ class TestInjectionHistory:
         self, tmp_path: Path, hook_mod: Any,
     ) -> None:
         """When dedup suppresses a selected playbook, it lands in skipped_dedup."""
-        self._write_session_token(tmp_path)
-
         hook_mod.log_injection_history(
             str(tmp_path),
             transcript_offset=2000,
@@ -939,6 +956,7 @@ class TestInjectionHistory:
             injected=["pb-a"],          # only pb-a was actually injected
             skipped_dedup=["pb-b", "pb-c"],  # pb-b and pb-c were already in context
             event_id="evt-dedup",
+            session_id=self.SESSION_ID,
         )
 
         records = self._read_records(tmp_path)
@@ -946,279 +964,172 @@ class TestInjectionHistory:
         assert records[0]["injected"] == ["pb-a"]
         assert set(records[0]["skipped_dedup"]) == {"pb-b", "pb-c"}
 
-    def test_sidecar_filename_does_not_match_transcript_glob(self) -> None:
-        """The sidecar filename must NOT match `.transcript-*` because that
-        glob is used by sync-transcript.sh's per-session reset to wipe
-        transient state. The sidecar is supposed to ROTATE (parallel to the
-        transcript), not be wiped."""
-        import fnmatch
+    def test_concurrent_sessions_have_independent_sidecars(
+        self, tmp_path: Path, hook_mod: Any,
+    ) -> None:
+        """Two concurrent sessions in the same repo write to separate
+        per-session sidecar files. Session B's records never appear in
+        session A's sidecar."""
+        sid_a = "concurrent-history-A"
+        sid_b = "concurrent-history-B"
 
-        assert not fnmatch.fnmatch(self.SIDECAR_FILENAME, ".transcript-*"), (
-            f"{self.SIDECAR_FILENAME} matches `.transcript-*` glob — it would "
-            "be deleted by sync-transcript.sh's session reset, defeating "
-            "rotation."
+        hook_mod.log_injection_history(
+            str(tmp_path),
+            transcript_offset=100,
+            agent_goals="A",
+            selected=["pb-a"],
+            injected=["pb-a"],
+            skipped_dedup=[],
+            event_id="evt-A",
+            session_id=sid_a,
+        )
+        hook_mod.log_injection_history(
+            str(tmp_path),
+            transcript_offset=200,
+            agent_goals="B",
+            selected=["pb-b"],
+            injected=["pb-b"],
+            skipped_dedup=[],
+            event_id="evt-B",
+            session_id=sid_b,
         )
 
+        recs_a = self._read_records(tmp_path, session_id=sid_a)
+        recs_b = self._read_records(tmp_path, session_id=sid_b)
+        assert len(recs_a) == 1
+        assert len(recs_b) == 1
+        assert recs_a[0]["event_id"] == "evt-A"
+        assert recs_b[0]["event_id"] == "evt-B"
+        assert recs_a[0]["session_id"] == sid_a
+        assert recs_b[0]["session_id"] == sid_b
+
 
 # ---------------------------------------------------------------------------
-# sync-transcript.sh archive + sidecar rotation tests (B3)
+# _session_id_from_transcript_path tests
 # ---------------------------------------------------------------------------
 
-def _isolate_shared_scripts(tmp_path: Path) -> Path:
-    """Copy sync-transcript.sh + filter-transcript.py into tmp_path so the
-    script's `BASH_SOURCE`-based path resolution lands inside the test
-    sandbox instead of the real repo.
 
-    Returns the .agent/hooks/_shared/ dir inside tmp_path.
-    """
-    real_shared = (
-        Path(__file__).parent.parent / ".agent" / "hooks" / "_shared"
-    )
-    shared_dir = tmp_path / ".agent" / "hooks" / "_shared"
-    shared_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("sync-transcript.sh", "filter-transcript.py"):
-        src_file = real_shared / name
-        dest_file = shared_dir / name
-        shutil.copy(src_file, dest_file)
-        dest_file.chmod(0o755)
-    return shared_dir
+class TestSessionIdFromTranscriptPath:
+    """Verify on_transcript_change.py extracts session_id from per-session
+    transcript filenames. The polling layer constructs the path with the
+    session_id baked in, so the filename basename is the authoritative
+    source of session identity inside on_transcript_change.py."""
 
+    def test_extracts_uuid_session_id(self, hook_mod: Any) -> None:
+        """A Claude Code UUID session_id is extracted correctly."""
+        path = (
+            "/repo/.agent/.current_session_transcript."
+            "cf03d762-70bc-4a30-856f-9cf372da4c07.jsonl"
+        )
+        sid = hook_mod._session_id_from_transcript_path(path)
+        assert sid == "cf03d762-70bc-4a30-856f-9cf372da4c07"
 
-def _run_rotation(tmp_path: Path) -> subprocess.Popen:
-    """Spawn sync-transcript.sh in tmp_path so it runs its rotation block.
+    def test_extracts_alphanumeric_session_id(self, hook_mod: Any) -> None:
+        """An alphanumeric session_id (e.g. cursor-singleton) is extracted."""
+        path = (
+            "/repo/.agent/.current_session_transcript."
+            "cursor-singleton.jsonl"
+        )
+        sid = hook_mod._session_id_from_transcript_path(path)
+        assert sid == "cursor-singleton"
 
-    Returns the Popen handle so the test can poll for the PID file (which
-    signals "rotation done") and then terminate the watcher.
-    """
-    shared = _isolate_shared_scripts(tmp_path)
-    sync_script = shared / "sync-transcript.sh"
+    def test_extracts_underscore_session_id(self, hook_mod: Any) -> None:
+        """Session ids with underscores are valid."""
+        path = (
+            "/repo/.agent/.current_session_transcript."
+            "session_id_with_underscores.jsonl"
+        )
+        sid = hook_mod._session_id_from_transcript_path(path)
+        assert sid == "session_id_with_underscores"
 
-    src = tmp_path / "src.jsonl"
-    src.write_text("")
-    dest = tmp_path / ".agent" / ".current_session_transcript.jsonl"
-
-    proc = subprocess.Popen(
-        ["bash", str(sync_script), str(src), str(dest)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    # Wait for the rotation to complete (PID file appears AFTER rotation)
-    pid_file = tmp_path / ".agent" / ".transcript-sync.pid"
-    deadline = time.time() + 5.0
-    while time.time() < deadline:
-        if pid_file.exists() and pid_file.read_text().strip():
-            break
-        time.sleep(0.05)
-    return proc
-
-
-def _terminate_proc(proc: subprocess.Popen) -> None:
-    if proc.poll() is None:
-        try:
-            proc.terminate()
-            proc.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=2)
-
-
-class TestSidecarRotation:
-    """Verify sync-transcript.sh's archive-on-rotation logic for the
-    transcript and the new injection-history sidecar.
-
-    Each session start should:
-      1. Archive the about-to-be-clobbered .second_to_last_* pair into a
-         timestamped subdir under .agent/.archived-transcripts/, gzipped,
-         with mtime preserved via `touch -r`.
-      2. Rotate .last_* → .second_to_last_*.
-      3. Rotate .current_* → .last_*.
-
-    These tests cover both the transcript pair AND the parallel injection
-    history sidecar pair.
-    """
-
-    def test_rotation_archives_second_to_last_pair(
-        self, tmp_path: Path,
+    def test_returns_empty_for_non_per_session_path(
+        self, hook_mod: Any,
     ) -> None:
-        """When .second_to_last_transcript.jsonl exists at session start,
-        it gets gzipped into a timestamped archive subdir."""
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir(parents=True, exist_ok=True)
-
-        # Seed the .second_to_last pair (these should be archived)
-        second_tr = agent_dir / ".second_to_last_transcript.jsonl"
-        second_tr.write_text('{"type":"user_message","content":"two sessions ago"}\n')
-        second_inj = agent_dir / ".second_to_last_injection_history.jsonl"
-        second_inj.write_text('{"event_id":"old","selected":["pb-x"]}\n')
-
-        # Also seed .last_* so the rotation has something to demote
-        last_tr = agent_dir / ".last_session_transcript.jsonl"
-        last_tr.write_text('{"type":"user_message","content":"last session"}\n')
-        last_inj = agent_dir / ".last_injection_history.jsonl"
-        last_inj.write_text('{"event_id":"recent","selected":[]}\n')
-
-        proc = _run_rotation(tmp_path)
-        try:
-            archive_dir = agent_dir / ".archived-transcripts"
-            assert archive_dir.exists(), "no archive dir was created"
-
-            subdirs = sorted(archive_dir.iterdir())
-            assert len(subdirs) == 1, f"expected 1 archive subdir, got {len(subdirs)}"
-            archive_subdir = subdirs[0]
-            assert archive_subdir.name.startswith("20"), (
-                f"archive subdir should be timestamped (20YYMMDD...): {archive_subdir.name}"
+        """A path that does not match the per-session naming convention
+        yields an empty string. Callers treat this as "no session id"
+        and bail out (main() exits cleanly)."""
+        for bad_path in (
+            "/repo/.agent/.current_session_transcript.jsonl",  # no sid
+            "/repo/.agent/transcript.jsonl",                   # wrong stem
+            "/repo/random.jsonl",                              # totally unrelated
+            "",                                                 # empty
+        ):
+            assert hook_mod._session_id_from_transcript_path(bad_path) == "", (
+                f"unexpectedly extracted a sid from {bad_path!r}"
             )
-
-            transcript_gz = archive_subdir / "transcript.jsonl.gz"
-            inj_gz = archive_subdir / "injection_history.jsonl.gz"
-            assert transcript_gz.exists(), "transcript.jsonl.gz missing in archive"
-            assert inj_gz.exists(), "injection_history.jsonl.gz missing in archive"
-
-            # Verify content survives the gzip round-trip
-            with gzip.open(transcript_gz, "rt") as f:
-                assert "two sessions ago" in f.read()
-            with gzip.open(inj_gz, "rt") as f:
-                assert '"event_id":"old"' in f.read()
-        finally:
-            _terminate_proc(proc)
-
-    def test_rotation_rotates_sidecar_in_parallel(
-        self, tmp_path: Path,
-    ) -> None:
-        """The injection-history sidecar rotates in parallel with the
-        transcript: .current → .last, .last → .second_to_last."""
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir(parents=True, exist_ok=True)
-
-        # Seed only .current_injection_history.jsonl (a fresh first session
-        # with no prior history). After rotation, it should appear at
-        # .last_injection_history.jsonl.
-        current_inj = agent_dir / ".current_injection_history.jsonl"
-        current_inj.write_text('{"event_id":"current"}\n')
-
-        proc = _run_rotation(tmp_path)
-        try:
-            last_inj = agent_dir / ".last_injection_history.jsonl"
-            second_inj = agent_dir / ".second_to_last_injection_history.jsonl"
-
-            assert last_inj.exists(), "current_injection_history.jsonl was not rotated to .last"
-            assert '"event_id":"current"' in last_inj.read_text()
-            assert not second_inj.exists(), (
-                ".second_to_last should not exist on first rotation with no prior .last"
-            )
-            # No archive needed because nothing was at .second_to_last
-            archive_dir = agent_dir / ".archived-transcripts"
-            assert not archive_dir.exists(), (
-                "first-session rotation should NOT create an archive subdir"
-            )
-        finally:
-            _terminate_proc(proc)
-
-    def test_archive_preserves_mtime(self, tmp_path: Path) -> None:
-        """The gzipped archive file's mtime equals the source file's mtime
-        (validates `touch -r`). The user can read the original session-end
-        time via `ls -la` on the archive."""
-        agent_dir = tmp_path / ".agent"
-        agent_dir.mkdir(parents=True, exist_ok=True)
-
-        second_tr = agent_dir / ".second_to_last_transcript.jsonl"
-        second_tr.write_text('{"line":1}\n')
-        # Backdate the file by 2 hours so we can detect mtime preservation
-        backdate = time.time() - 7200
-        os.utime(second_tr, (backdate, backdate))
-        original_mtime = second_tr.stat().st_mtime
-
-        proc = _run_rotation(tmp_path)
-        try:
-            archive_dir = agent_dir / ".archived-transcripts"
-            subdir = next(archive_dir.iterdir())
-            archived = subdir / "transcript.jsonl.gz"
-            assert archived.exists()
-
-            archived_mtime = archived.stat().st_mtime
-            # Allow 1s slack for filesystem timestamp granularity
-            assert abs(archived_mtime - original_mtime) < 1.5, (
-                f"archived mtime {archived_mtime} differs from original "
-                f"{original_mtime} by more than 1s"
-            )
-        finally:
-            _terminate_proc(proc)
-
-    def test_no_archive_when_nothing_to_archive(
-        self, tmp_path: Path,
-    ) -> None:
-        """First session of a clean repo: only .current_* files exist (or
-        none). The rotation must NOT create an empty .archived-transcripts/
-        subdir."""
-        # Run rotation against a fresh tmp_path with no prior state at all
-        proc = _run_rotation(tmp_path)
-        try:
-            archive_dir = tmp_path / ".agent" / ".archived-transcripts"
-            assert not archive_dir.exists(), (
-                "fresh repo with no .second_to_last_* files should not "
-                "create an archive subdir"
-            )
-        finally:
-            _terminate_proc(proc)
 
 
 # ---------------------------------------------------------------------------
-# Session reset invariant test
+# Per-session naming invariants
 # ---------------------------------------------------------------------------
 
-class TestSessionResetInvariant:
-    """Verify that session start clears all per-session state files.
+class TestPerSessionNamingInvariants:
+    """Verify that all per-session state filenames follow the convention
+    that allows multiple concurrent sessions to coexist in one .agent/.
 
-    Convention: any file in .agent/ matching .transcript-* is per-session
-    transient state.  The glob reset in sync-transcript.sh must catch all
-    of them.  This test simulates a pipeline run (creating all known state
-    files), then verifies the glob pattern would remove them.
+    Under the per-session model (ADR-0018 amendment / Option 2), each
+    file produced by the pipeline must either:
+      (a) be per-session — its name embeds <session_id> as a suffix —
+          so two concurrent sessions never collide, OR
+      (b) be a global slot owned by the rotation chain
+          (.last_*/.second_to_last_*) or be persistent (training data,
+          archive directory).
+
+    There is NO glob-based session reset anymore: the previous global
+    .transcript-* glob in sync-transcript.sh's per-session reset block
+    has been removed because per-session paths make the reset
+    unnecessary by construction.
     """
 
-    # All per-session state files that the pipeline creates.
-    # If you add a new .transcript-* file, add it here — the test will
-    # verify the glob catches it.
-    PER_SESSION_FILES: ClassVar[list[str]] = [
-        ".transcript-sync.pid",
-        ".transcript-sync-state.json",
-        ".transcript-poll-state",
-        ".transcript-injection-state.json",
-        ".transcript-session-token",
+    # Per-session files are created with these stem patterns. Each must
+    # have <session_id> embedded as a filename component.
+    PER_SESSION_STEMS: ClassVar[list[str]] = [
+        ".current_session_transcript",
+        ".current_injection_history",
+        ".transcript-sync",            # PID file: .transcript-sync.<sid>.pid
+        ".transcript-sync-state",      # filter state: ...<sid>.json
+        ".transcript-poll-state",      # poll state: ...<sid>
+        ".transcript-injection-state", # dedup state: ...<sid>.json
     ]
 
-    # Files that must NOT be cleared on session start.
-    PERSISTENT_FILES: ClassVar[list[str]] = [
-        ".training-data.jsonl",
-        ".current_session_transcript.jsonl",  # Cleared separately by explicit rm
-        # Injection-history sidecar (B1+B3): rotates parallel to the
-        # transcript and must NOT be wiped by the .transcript-* glob.
-        ".current_injection_history.jsonl",
+    # Global slots and persistent files (no per-session suffix).
+    GLOBAL_FILES: ClassVar[list[str]] = [
+        ".last_session_transcript.jsonl",
+        ".second_to_last_transcript.jsonl",
         ".last_injection_history.jsonl",
         ".second_to_last_injection_history.jsonl",
-        # Archive dir for rotated-out sessions.
+        ".training-data.jsonl",
+        ".rotation.lock",
         ".archived-transcripts",
     ]
 
-    def test_glob_pattern_catches_all_per_session_files(
-        self, tmp_path: Path,
-    ) -> None:
-        """The glob '.transcript-*' matches every per-session state file."""
-        import fnmatch
+    def test_per_session_stem_can_be_keyed_by_sid(self) -> None:
+        """For each per-session stem, the path
+        ``<stem>.<session_id>.<ext>`` (or ``<stem>.<session_id>``) is
+        well-formed and uniquely identifies a session."""
+        for stem in self.PER_SESSION_STEMS:
+            sid = "test-sid-abc123"
+            # Check that no GLOBAL_FILE matches this stem-with-sid pattern
+            for ext in ("", ".jsonl", ".json", ".pid"):
+                candidate = f"{stem}.{sid}{ext}"
+                assert candidate not in self.GLOBAL_FILES, (
+                    f"per-session candidate {candidate!r} collides with a "
+                    f"global slot — naming convention violated"
+                )
 
-        for name in self.PER_SESSION_FILES:
-            assert fnmatch.fnmatch(name, ".transcript-*"), (
-                f"{name} does not match '.transcript-*' — it will survive "
-                f"session reset.  Rename it to start with '.transcript-'."
-            )
-
-    def test_glob_pattern_spares_persistent_files(
-        self, tmp_path: Path,
-    ) -> None:
-        """The glob '.transcript-*' does NOT match persistent files."""
-        import fnmatch
-
-        for name in self.PERSISTENT_FILES:
-            assert not fnmatch.fnmatch(name, ".transcript-*"), (
-                f"{name} matches '.transcript-*' — it would be deleted on "
-                f"session start.  Rename it if it should persist."
-            )
+    def test_global_files_have_no_session_suffix(self) -> None:
+        """Global slot filenames don't accidentally encode a session id."""
+        # A real session_id is a UUID-shaped string with hex+dashes. The
+        # check is that no GLOBAL_FILE looks like it has a per-session
+        # tail. We approximate by ensuring no GLOBAL_FILE name contains a
+        # dot-separated component longer than 'second_to_last'.
+        suspicious = []
+        for name in self.GLOBAL_FILES:
+            parts = name.split(".")
+            for p in parts:
+                if len(p) > 20 and "_" not in p and "-" in p:
+                    suspicious.append((name, p))
+        assert not suspicious, (
+            f"global filenames look like they encode a session id: "
+            f"{suspicious}"
+        )
