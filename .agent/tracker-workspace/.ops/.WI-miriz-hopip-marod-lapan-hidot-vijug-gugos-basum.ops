@@ -1,0 +1,21 @@
+- op: create  # 76c9
+  at: '2026-04-08T01:50:35Z'  # 76c9
+  by: agent  # 76c9
+  actor: jgstern_agent  # 76c9
+  clock: 1  # 76c9
+  nonce: 76c9  # 76c9
+  data:  # 76c9
+    kind: work_item  # 76c9
+    title: "auto-pr: write .git/AUTOPR_LAST_RESULT.json sentinel on every exit"  # 76c9
+    status: needs_human_review  # 76c9
+    priority: 3  # 76c9
+    parent:  # 76c9
+    tags:  # 76c9
+    - ci_infrastructure  # 76c9
+    - governance  # 76c9
+    before: []  # 76c9
+    duplicate_of: []  # 76c9
+    not_duplicate_of: []  # 76c9
+    pr_ref:  # 76c9
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md §'Lessons / proposed mitigations' §4 (auto-pr silent-success blip, PR #2773 incident).\n\n**The bug:** the assistant's run_in_background mechanism captured zero bytes for an auto-pr invocation that actually succeeded end-to-end (pushed branch, created PR #2773, polled CI to green, merged, cleaned up local branch). From the assistant's perspective the run never happened; from the forge's perspective it was a complete success. The agent then ran auto-pr again in the foreground, hit 'commit is the same as the old commit' rejections, and queued a stale vPR. The user had to intervene with 'its merged -- pr 2773'.\n\n**Proposed fix:** scripts/auto-pr writes a final-state marker file .git/AUTOPR_LAST_RESULT.json on every exit (success or failure) containing:\n- exit_code\n- pr_number (if a PR was created or merged)\n- pr_url\n- merged_sha (the commit on dev that the PR became)\n- timestamp\n- final_state (one of: 'merged', 'queued_vpr', 'cancelled', 'failed_<reason>')\n\nThe recovery pass would then check this file before falling back to 'queue as vPR.' This file would also let the assistant rapidly check whether a backgrounded auto-pr succeeded without depending on captured stdout at all.\n\n**STATUS: needs_human_review per AGENTS.md governance file list. scripts/auto-pr is governance.**\n\nApproval workflow: this item stays in needs_human_review until the human approves the design. After approval, an implementation item touching scripts/auto-pr can be created and submitted as a PR with explicit authorization.\n\n**Cross-references** (per notebook): PR #2770 (WI-gutan, successful background), PR #2771 (ADR-0006, successful background), PR #2773 (WI-hobuk, the silent-success run), vpr-usage playbook."  # 76c9
+    fields: {}  # 76c9
