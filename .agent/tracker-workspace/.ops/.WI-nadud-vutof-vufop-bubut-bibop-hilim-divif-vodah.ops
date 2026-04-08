@@ -1,0 +1,22 @@
+- op: create  # 9233
+  at: '2026-04-08T02:49:44Z'  # 9233
+  by: agent  # 9233
+  actor: jgstern_agent  # 9233
+  clock: 1  # 9233
+  nonce: '9233'  # 9233
+  data:  # 9233
+    kind: work_item  # 9233
+    title: "filter-transcript.py: normalize queue-operation rows (Tier 2 deferred)"  # 9233
+    status: needs_human_review  # 9233
+    priority: 4  # 9233
+    parent:  # 9233
+    tags:  # 9233
+    - bf4oxh91w_investigation  # 9233
+    - transcript_pipeline  # 9233
+    - governance  # 9233
+    before: []  # 9233
+    duplicate_of: []  # 9233
+    not_duplicate_of: []  # 9233
+    pr_ref:  # 9233
+    description: "**Per `~/hypergumbo_lab_notebook/bf4oxh91w_investigation_threads_04072026_1702.md` Thread 3 §\"Proposed fixes\" Tier 2, and Thread 4 §\"Tier 2 — only with strong justification.\"** Explicitly deferred — this item exists so the proposal isn't forgotten, NOT so it gets implemented soon.\n\n**The proposal:** have `filter-transcript.py` (`.agent/hooks/_shared/filter-transcript.py`) emit normalized synthetic rows alongside the originals when it encounters Claude-Code-specific `type: queue-operation` rows. For example, emit a synthetic `type: normalized_user_interjection` row carrying the same content as the original `queue-operation` enqueue, so downstream consumers can recognize \"human typed mid-tool-call\" without knowing the Claude Code-specific format. Vendor adapters for Codex/Gemini/Cursor would emit the same normalized rows from their own native formats, fulfilling the \"vendor-agnostic JSONL\" claim that the agentic-session-retrospective playbook makes today.\n\n**Why deferred (HIGH risk, do NOT implement without explicit justification):**\nThe synced transcript is read by `on_transcript_change.py:select_recent_entries`, which slurps raw bytes into the step1_prompt of the goal-distillation pipeline. Adding new row types — even purely additive ones — *changes the bytes that enter the LLM prompt*, which is a distribution shift in the training corpus. Per the Thread 4 cohort analysis, the corpus is already heterogeneous in 9-10 unmarked ways; adding another silent distribution shift without first landing the metadata cutover (separate item) makes the existing problem worse.\n\n**Required precondition:** the coordinated `log_training_example` metadata cutover (separate item) must land first. After the cutover, every new entry carries `infra_sha` so this filter change becomes a clean cohort boundary in the corpus rather than an invisible drift.\n\n**Required at implementation time** (notes for the future approver):\n1. Bump `pipeline_version` from `v1` to `v2` to mark the cutover.\n2. Snapshot `.training-data.jsonl` → `.training-data-v1-snapshot-<date>.jsonl` (the new boundary).\n3. Document in CHANGELOG.\n4. Update the agentic-session-retrospective playbook to reference the normalized row type (separate doc-fix item already exists for Phase 1 queue-operation guidance).\n5. Update vendor adapters in the same change OR explicitly leave them as future work (Codex/Gemini/Cursor adapters don't yet exist, so this can be deferred but should be tracked).\n\n**STATUS: needs_human_review per AGENTS.md governance file list. `.agent/hooks/` is governance.**\n\n**Likely never gets implemented unless:** (a) a second vendor adapter ships and the \"vendor-agnostic\" claim becomes load-bearing, OR (b) downstream tooling starts depending on a normalized interruption row format. Until then this item is documentation of the option, not a queued task.\n\n**Priority P4** because explicit Tier 2 deferral. The two doc/test items (Thread 3 §Tier 0 fixes) handle the immediate queue-operation gap without touching the pipeline."  # 9233
+    fields: {}  # 9233
