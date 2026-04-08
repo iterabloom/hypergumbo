@@ -1,0 +1,21 @@
+- op: create  # bc6b
+  at: '2026-04-08T00:21:11Z'  # bc6b
+  by: agent  # bc6b
+  actor: jgstern_agent  # bc6b
+  clock: 1  # bc6b
+  nonce: bc6b  # bc6b
+  data:  # bc6b
+    kind: work_item  # bc6b
+    title: "Upgrade Rust-touching linkers to consume rust-analyzer symbols when present"  # bc6b
+    status: todo_soft  # bc6b
+    priority: 4  # bc6b
+    parent:  # bc6b
+    tags:  # bc6b
+    - cross_language_linkers  # bc6b
+    - rust_analyzer  # bc6b
+    before: []  # bc6b
+    duplicate_of: []  # bc6b
+    not_duplicate_of: []  # bc6b
+    pr_ref:  # bc6b
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1407.md 'Concrete wins' §7 and 'A plausible integration shape' §4: update the five Rust-touching cross-language linkers to consume higher-fidelity symbols from the rust-analyzer backend when it has run, and fall back to their existing string-matching paths otherwise.\n\n**Linkers to update** (all under packages/hypergumbo-core/src/hypergumbo_core/linkers/):\n- tauri_ipc.py — invoke() ↔ #[tauri::command]\n- wasm_bindgen.py — #[wasm_bindgen] ↔ JS imports (mostly proc-macro, biggest win)\n- napi.py — N-API bindings (mostly proc-macro, biggest win)\n- jni.py — JNIEXPORT ↔ Java native methods\n- cgo.py — Go cgo ↔ C symbols\n\n**Join key:** when rust-analyzer is the analyzer, use the macro-expanded, mangling-aware symbol name from SCIP. When rust.py is the analyzer, keep existing string-join. The linker must not assume which backend ran — check for a backend marker on the Rust symbols.\n\n**Success criterion:** on repos with proc-macro-heavy Rust (Tauri apps, wasm-bindgen web apps, NAPI packages), edge counts for these linkers should increase and confidence should rise. Verify via the rust-analyzer bakeoff cohort.\n\nBlocked on the hypergumbo-lang-rust-analyzer package scaffold producing runnable output with SCIP symbol IDs on symbol nodes."  # bc6b
+    fields: {}  # bc6b

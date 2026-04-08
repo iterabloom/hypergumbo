@@ -1,0 +1,22 @@
+- op: create  # 2cbf
+  at: '2026-04-08T00:19:57Z'  # 2cbf
+  by: agent  # 2cbf
+  actor: jgstern_agent  # 2cbf
+  clock: 1  # 2cbf
+  nonce: 2cbf  # 2cbf
+  data:  # 2cbf
+    kind: work_item  # 2cbf
+    title: "BROAD-mode bakeoff cohort for rust-analyzer backend validation"  # 2cbf
+    status: todo_soft  # 2cbf
+    priority: 4  # 2cbf
+    parent:  # 2cbf
+    tags:  # 2cbf
+    - bakeoff_infrastructure  # 2cbf
+    - rust_analyzer  # 2cbf
+    - analysis_quality  # 2cbf
+    before: []  # 2cbf
+    duplicate_of: []  # 2cbf
+    not_duplicate_of: []  # 2cbf
+    pr_ref:  # 2cbf
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1407.md 'A plausible integration shape' §5: add a curated Rust-workspace cohort to BROAD-mode bakeoff to validate the rust-analyzer-backed analyzer against the tree-sitter baseline.\n\n**Candidate cohort** (suggested in the notebook, adjust as needed):\n- ripgrep\n- axum\n- swc\n- cargo (itself)\n\n**Metrics to compare** (same shape as other linker bakeoffs):\n- edge count delta (rust-analyzer vs rust.py tree-sitter)\n- confidence distribution shift\n- slice quality on known-good entry points\n- wall-clock time (first run and cached)\n- peak memory\n\n**Expected direction:** more edges, higher confidence, modest wall-clock penalty, higher memory. A large drop in edge count or confidence is a red flag that the SCIP translation is lossy.\n\nStore cohort under ~/hypergumbo_lab_notebook/curricula/rust-analyzer-validation.md.\n\nBlocked on the hypergumbo-lang-rust-analyzer package scaffold being runnable end-to-end."  # 2cbf
+    fields: {}  # 2cbf

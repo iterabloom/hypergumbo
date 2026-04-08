@@ -23,3 +23,19 @@
     pr_ref:  # ba17
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md Q1: build the ~30-line base tool that computes\n\n    dead = production_callables − reachable_from(entrypoints ∪ optional_tests)\n\non top of hypergumbo's existing behavior map. The primitives are already in place — wire them together:\n\n- Use hypergumbo run to produce the behavior map (reuse _get_or_run_analysis from cmd_test_coverage et al.).\n- Seed from entrypoints.py:detect_entrypoints (CLI mains, HTTP routes, framework hooks, registry decorators).\n- BFS via ranking.py:compute_transitive_test_coverage (despite the name, it is a generic multi-source BFS over call edges — cmd_test_coverage already uses it for cold spots with a different seed set).\n- Output: a ranked list of 'dead' callables with (symbol, path, language, decorators, metadata).\n\n**Seed-set flexibility:** add a --seeds {entrypoints,tests,exports,all} flag (notebook Open Questions §2). Different seed sets give materially different dead lists; the experiment needs to control this.\n\n**Framing decision to make first (notebook Open Questions §1):** implement as a first-class hypergumbo subcommand (slotting next to test-coverage / io-boundaries / routes) OR as a scripts/ one-off. Subcommand has reuse value if we keep dogfooding dead-code on hypergumbo itself; one-off is fine if this is genuinely a one-shot prospect. Recommend subcommand (consistent with existing analysis-subcommand pattern), but a one-off is acceptable.\n\nFoundation for all downstream dead-code-prospector items."  # ba17
     fields: {}  # ba17
+- op: update  # 7794
+  at: '2026-04-08T01:32:11Z'  # 7794
+  by: agent  # 7794
+  actor: jgstern_agent  # 7794
+  clock: 2  # 7794
+  nonce: '7794'  # 7794
+  set: {}  # 7794
+  add:  # 7794
+    duplicate_of: [WI-fisam-jugup-hafof-dibop-majog-kupir-vilam-bihov]  # 7794
+- op: discuss  # 4d08
+  at: '2026-04-08T01:32:11Z'  # 4d08
+  by: agent  # 4d08
+  actor: jgstern_agent  # 4d08
+  clock: 3  # 4d08
+  nonce: 4d08  # 4d08
+  message: "Duplicate created during auto-sync retry cycle. The canonical item WI-fisam has complete --before wiring to cheap-filters, string-literal, boosts, and exported-symbols items; this one was created first but the sync failure left it orphaned locally, triggering a re-creation with better wiring."  # 4d08

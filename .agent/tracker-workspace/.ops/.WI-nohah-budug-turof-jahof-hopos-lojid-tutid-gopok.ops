@@ -1,0 +1,21 @@
+- op: create  # 475b
+  at: '2026-04-08T00:22:11Z'  # 475b
+  by: agent  # 475b
+  actor: jgstern_agent  # 475b
+  clock: 1  # 475b
+  nonce: 475b  # 475b
+  data:  # 475b
+    kind: work_item  # 475b
+    title: "Optional-dep handling and graceful-degrade for rust-analyzer binary"  # 475b
+    status: todo_soft  # 475b
+    priority: 4  # 475b
+    parent:  # 475b
+    tags:  # 475b
+    - analysis_quality  # 475b
+    - rust_analyzer  # 475b
+    before: []  # 475b
+    duplicate_of: []  # 475b
+    not_duplicate_of: []  # 475b
+    pr_ref:  # 475b
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1407.md 'Costs to flag honestly' §1 and §3: rust-analyzer is tens of MB of native binary and requires a working Rust toolchain plus resolvable dependencies. It must be **optional**, and the hypergumbo-lang-rust-analyzer backend must degrade gracefully to the tree-sitter rust.py analyzer in three failure modes:\n\n1. rust-analyzer not on PATH (nothing installed)\n2. cargo metadata fails (e.g., private deps unresolvable, weird target triple)\n3. rust-analyzer scip returns non-zero or produces an invalid SCIP file\n\n**Installation path:** add to hypergumbo add-extras (if that is the canonical extras-install surface) with a well-documented opt-in. Alternatively, follow the same PATH-detection pattern grammars already use — pick whichever is already established for large optional native deps.\n\n**Testing:** per the optional-dependency testing playbook — one mock test for the 'unavailable' code path; the real tests run end-to-end when rust-analyzer is installed in CI.\n\n**Observable behavior:** when rust-analyzer is unavailable, the Rust analysis still runs (via rust.py), but the behavior map should carry a provenance marker indicating which backend was used so downstream tools can trust-weight accordingly.\n\nBlocked on the hypergumbo-lang-rust-analyzer package scaffold."  # 475b
+    fields: {}  # 475b
