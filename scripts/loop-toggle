@@ -340,7 +340,16 @@ toggle_mode() {
 }
 
 # Main
-case "${1:-toggle}" in
+#
+# Lowercase the argument before dispatching so callers can pass any
+# casing — e.g., the session-start hook prompts the agent with "BROAD",
+# "DEEP", or "OFF" (uppercase), and the agent should not have to know
+# the script is internally lowercase. The case arms below all use
+# lowercase patterns; this normalization makes them effectively
+# case-insensitive.
+raw_arg="${1:-toggle}"
+arg="${raw_arg,,}"
+case "$arg" in
     off|disable)
         set_mode_off
         ;;
