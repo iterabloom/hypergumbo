@@ -1,0 +1,25 @@
+- op: create  # ba17
+  at: '2026-04-08T00:03:35Z'  # ba17
+  by: agent  # ba17
+  actor: jgstern_agent  # ba17
+  clock: 1  # ba17
+  nonce: ba17  # ba17
+  data:  # ba17
+    kind: work_item  # ba17
+    title: "Implement dead-code-maybe base tool (subcommand or script)"  # ba17
+    status: todo_soft  # ba17
+    priority: 3  # ba17
+    parent:  # ba17
+    tags:  # ba17
+    - analysis_quality  # ba17
+    - cross_language_linkers  # ba17
+    - dead_code_prospector  # ba17
+    before:  # ba17
+    - WI-zafab-munap-vapab-hisap-jinil-pozig-gafav-zabak  # ba17
+    - WI-pimig-gifug-lobif-gabom-zitiz-razuk-lidat-garah  # ba17
+    - WI-hadap-bumat-gijub-zumit-jigad-nogor-tihaz-bajut  # ba17
+    duplicate_of: []  # ba17
+    not_duplicate_of: []  # ba17
+    pr_ref:  # ba17
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md Q1: build the ~30-line base tool that computes\n\n    dead = production_callables − reachable_from(entrypoints ∪ optional_tests)\n\non top of hypergumbo's existing behavior map. The primitives are already in place — wire them together:\n\n- Use hypergumbo run to produce the behavior map (reuse _get_or_run_analysis from cmd_test_coverage et al.).\n- Seed from entrypoints.py:detect_entrypoints (CLI mains, HTTP routes, framework hooks, registry decorators).\n- BFS via ranking.py:compute_transitive_test_coverage (despite the name, it is a generic multi-source BFS over call edges — cmd_test_coverage already uses it for cold spots with a different seed set).\n- Output: a ranked list of 'dead' callables with (symbol, path, language, decorators, metadata).\n\n**Seed-set flexibility:** add a --seeds {entrypoints,tests,exports,all} flag (notebook Open Questions §2). Different seed sets give materially different dead lists; the experiment needs to control this.\n\n**Framing decision to make first (notebook Open Questions §1):** implement as a first-class hypergumbo subcommand (slotting next to test-coverage / io-boundaries / routes) OR as a scripts/ one-off. Subcommand has reuse value if we keep dogfooding dead-code on hypergumbo itself; one-off is fine if this is genuinely a one-shot prospect. Recommend subcommand (consistent with existing analysis-subcommand pattern), but a one-off is acceptable.\n\nFoundation for all downstream dead-code-prospector items."  # ba17
+    fields: {}  # ba17
