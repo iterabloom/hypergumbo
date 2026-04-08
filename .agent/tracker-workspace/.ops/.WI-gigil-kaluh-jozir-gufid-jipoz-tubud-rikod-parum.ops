@@ -1,0 +1,22 @@
+- op: create  # 0bd5
+  at: '2026-04-08T02:45:57Z'  # 0bd5
+  by: agent  # 0bd5
+  actor: jgstern_agent  # 0bd5
+  clock: 1  # 0bd5
+  nonce: 0bd5  # 0bd5
+  data:  # 0bd5
+    kind: work_item  # 0bd5
+    title: "scripts/backfill-training-data-cohort-tags.py: sidecar labelling for v0 corpus"  # 0bd5
+    status: todo_soft  # 0bd5
+    priority: 3  # 0bd5
+    parent:  # 0bd5
+    tags:  # 0bd5
+    - bf4oxh91w_investigation  # 0bd5
+    - training_data  # 0bd5
+    - developer_experience  # 0bd5
+    before: []  # 0bd5
+    duplicate_of: []  # 0bd5
+    not_duplicate_of: []  # 0bd5
+    pr_ref:  # 0bd5
+    description: "**Per `~/hypergumbo_lab_notebook/bf4oxh91w_investigation_threads_04072026_1702.md` Thread 4 §\"Tier 0c\" — explicitly called out as \"the highest-value Tier 0 work.\"**\n\n**The script:** `scripts/backfill-training-data-cohort-tags.py`. Walks `.agent/.training-data.jsonl`, resolves cohort metadata for each entry from git history via timestamp lookup, writes a parallel sidecar `.agent/.training-data-cohort-tags.jsonl` with one row per training entry. **Does NOT modify the corpus itself.** Re-runnable. Doesn't touch the live `on_transcript_change.py` watcher.\n\n**Sidecar schema (one row per training entry, indexed by entry position or by hash of the original entry):**\n```json\n{\n  \"entry_index\": 12345,\n  \"entry_timestamp\": \"2026-04-05T16:32:11.105289\",\n  \"infra_sha\": \"704548fe1234...\",\n  \"infra_sha_short\": \"704548fe1\",\n  \"playbook_registry_sha\": \"27495fbb4...\",\n  \"playbook_count_actual\": 19,\n  \"playbook_count_in_prompt\": 19,\n  \"main_llm_presumed\": \"claude-opus-4-6\"\n}\n```\n\n**Resolution logic:**\n- For each training entry, take its `timestamp` field.\n- Use `git log --until=<timestamp> --pretty=format:%H -1 -- packages/hypergumbo-tracker/src/hypergumbo_tracker/on_transcript_change.py` to find the SHA of `on_transcript_change.py` that was effective at that moment. (Same approach for the playbook registry file path — likely the same file or a closely related one.)\n- For `playbook_count_in_prompt` vs `playbook_count_actual`, parse the cached step2_prompt or re-derive from the file content at that SHA. The drift between these two columns is interesting (see Thread 6 §\"What the corpus shows\" — ~3,000 entries had a divergence).\n- For `main_llm_presumed`, default to `claude-opus-4-6` for v0 entries (the environment description says Opus 4.6 is the default for the window). Optionally extract per-session by walking `~/.claude/projects/-home-jgstern-agent-hypergumbo/<session-id>.jsonl` for the `message.model` field — see notebook §\"Loose ends\" item 3.\n\n**Why Tier 0:** the script reads from the corpus and writes to a separate file. Zero impact on the live watcher. Re-runnable any number of times. Fully reversible (delete the sidecar). Safe to run before the Tier 1 cutover and after — the cutover adds the same fields as native top-level metadata; the sidecar bridges the gap for v0 entries.\n\n**Tests:**\n1. Run on a small fixture corpus, assert every entry gets a sidecar row.\n2. Assert idempotence: running twice produces identical sidecar.\n3. Assert the SHA resolution correctly handles entries written exactly at a commit boundary (off-by-one timestamps).\n\n**NOT a governance file.** Pure script under `scripts/`, doesn't touch anything live. Tier 0 per Thread 4's tier table. Pairs with the coordinated cutover item — backfill labels v0 entries, cutover handles v1+ natively, together they make the invariant satisfiable.\n\n**Cross-reference:** the analyst explicitly asked for human go-ahead on this in the source conversation but the conversation pivoted before getting an answer. The trackerized item now lives here so it doesn't get forgotten."  # 0bd5
+    fields: {}  # 0bd5
