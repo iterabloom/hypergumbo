@@ -1,0 +1,21 @@
+- op: create  # d2b1
+  at: '2026-04-08T01:51:31Z'  # d2b1
+  by: agent  # d2b1
+  actor: jgstern_agent  # d2b1
+  clock: 1  # d2b1
+  nonce: d2b1  # d2b1
+  data:  # d2b1
+    kind: work_item  # d2b1
+    title: "auto-pr: detect 'commit is same as old commit' → hint 'Already merged as PR #N'"  # d2b1
+    status: needs_human_review  # d2b1
+    priority: 3  # d2b1
+    parent:  # d2b1
+    tags:  # d2b1
+    - ci_infrastructure  # d2b1
+    - governance  # d2b1
+    before: []  # d2b1
+    duplicate_of: []  # d2b1
+    not_duplicate_of: []  # d2b1
+    pr_ref:  # d2b1
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md §'Lessons / proposed mitigations' §2 (auto-pr silent-success blip).\n\n**The bug:** when a Forgejo gerrit-style endpoint refuses to push because 'The new commit is the same as the old commit' — meaning the commit's tree already exists in the merged-into branch — auto-pr's retry loop today treats this as a generic push failure and queues the change as a vPR. In the PR #2773 incident, this masked a successful prior merge: the commit was already in dev, so the rejection was actually 'this work is already merged,' not 'push failed, try again.'\n\n**Proposed fix:** in scripts/auto-pr's push retry loop, detect this specific Forgejo error message ('The new commit is the same as the old commit' or similar) and emit:\n\n> 📍 Already merged as PR #N — local cleanup only\n\n…then perform the cleanup steps (delete local branch, remove .git/PR_PENDING) without queueing a vPR. The PR number can be looked up via the forge API by searching for a merged PR whose head SHA matches HEAD.\n\n**Why this matters:** prevents the false-vPR-queue path that the user had to manually clean up with rm .git/PR_QUEUE during the incident. Saves a confusing 'why is there a stale vPR?' debugging step on every silent-success.\n\n**STATUS: needs_human_review per AGENTS.md governance file list. scripts/auto-pr is governance.**\n\n**Pairs with the AUTOPR_LAST_RESULT.json sentinel item** — together they provide redundant recovery paths: the sentinel catches the success at auto-pr exit time, and the rejection-message hint catches it at the next invocation if the sentinel is missing or stale."  # d2b1
+    fields: {}  # d2b1
