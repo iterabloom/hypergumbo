@@ -1,0 +1,23 @@
+- op: create  # 02cf
+  at: '2026-04-08T00:24:02Z'  # 02cf
+  by: agent  # 02cf
+  actor: jgstern_agent  # 02cf
+  clock: 1  # 02cf
+  nonce: 02cf  # 02cf
+  data:  # 02cf
+    kind: work_item  # 02cf
+    title: "SCIP → hypergumbo IR translation shim"  # 02cf
+    status: todo_soft  # 02cf
+    priority: 3  # 02cf
+    parent:  # 02cf
+    tags:  # 02cf
+    - analysis_quality  # 02cf
+    - rust_analyzer  # 02cf
+    before:  # 02cf
+    - WI-duzul-dusad-miviv-satar-faril-pojis-gusav-mogaz  # 02cf
+    - WI-nokoh-potot-hovur-jimih-vokas-lotum-duduv-jumut  # 02cf
+    duplicate_of: []  # 02cf
+    not_duplicate_of: []  # 02cf
+    pr_ref:  # 02cf
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1407.md 'Concrete wins' §6 and 'A plausible integration shape': build a pure translation shim that walks a Sourcegraph SCIP index and emits hypergumbo Symbol/Edge objects.\n\n**Input:** a SCIP index file produced by rust-analyzer scip (or, eventually, any SCIP emitter).\n**Output:** a list of Symbol and Edge objects ready for the analyzer registry, with provenance indicating SCIP as the source.\n\n**SCIP concepts to map:**\n- Document → file path and language detection\n- SymbolInformation → Symbol (name, kind, signature, optional documentation)\n- Occurrence → call/reference/definition sites (source spans)\n- Relationships (implementation_of, type_definition_of, defined_by) → Edge kinds (implements, has_type, defined_in)\n\n**Design target:** the shim must be language-agnostic enough that the same code can later consume scip-typescript / scip-java / scip-python / scip-clang output (see the 'generalize SCIP shim' item). Rust-specific quirks should live in the rust-analyzer package, not in the shim.\n\n**Testing:** start with recorded SCIP fixtures (small Rust crates) so tests don't require running rust-analyzer. Add end-to-end tests in the package that DO run rust-analyzer when available.\n\n**Open questions from the notebook that the shim's design must answer:**\n- How is trait-dispatch represented in SCIP relationships, if at all? (may or may not need a Rust-specific post-processing step)\n- Are macro-expanded items in SCIP tagged with the original source span, or a synthetic one? (affects how cross-language linkers join on source locations)\n\nBlocked on the mini trial answering these questions before coding begins."  # 02cf
+    fields: {}  # 02cf

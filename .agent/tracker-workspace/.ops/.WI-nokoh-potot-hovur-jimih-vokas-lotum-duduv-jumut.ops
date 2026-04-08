@@ -1,0 +1,21 @@
+- op: create  # 1edf
+  at: '2026-04-08T00:19:33Z'  # 1edf
+  by: agent  # 1edf
+  actor: jgstern_agent  # 1edf
+  clock: 1  # 1edf
+  nonce: 1edf  # 1edf
+  data:  # 1edf
+    kind: work_item  # 1edf
+    title: "Generalize SCIP ingest shim to other languages (TS/Java/Python/C)"  # 1edf
+    status: todo_soft  # 1edf
+    priority: 4  # 1edf
+    parent:  # 1edf
+    tags:  # 1edf
+    - analysis_quality  # 1edf
+    - rust_analyzer  # 1edf
+    before: []  # 1edf
+    duplicate_of: []  # 1edf
+    not_duplicate_of: []  # 1edf
+    pr_ref:  # 1edf
+    description: "Open question #4 from ~/hypergumbo_lab_notebook/notebookjournal_04072026_1407.md: can the same SCIP-ingest shim be reused for other languages with SCIP emitters (scip-typescript, scip-java, scip-python, scip-clang)? If so, this becomes a much bigger architectural lever than just 'Rust gets better' — a unified 'SCIP-backed analyzer' tier that sits between tree-sitter and hand-rolled analyzers across the stack.\n\nDecide AFTER the Rust-analyzer backend is stable and the SCIP shim design has proven itself on one language. The item exists to make the generalization question discoverable; it should not drive design decisions for the initial Rust implementation.\n\nDeliverable: a brief design sketch documenting (a) which emitters produce compatible SCIP output, (b) what per-language translation quirks exist, (c) whether a single shim or per-language shims make more sense. Followed by tracker items for each language integration if pursued.\n\nBlocked on the Rust-analyzer backend + SCIP shim being operational."  # 1edf
+    fields: {}  # 1edf

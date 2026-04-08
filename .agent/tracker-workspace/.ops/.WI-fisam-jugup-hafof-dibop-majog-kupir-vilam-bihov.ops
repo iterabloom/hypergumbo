@@ -1,0 +1,26 @@
+- op: create  # 921c
+  at: '2026-04-08T00:16:22Z'  # 921c
+  by: agent  # 921c
+  actor: jgstern_agent  # 921c
+  clock: 1  # 921c
+  nonce: 921c  # 921c
+  data:  # 921c
+    kind: work_item  # 921c
+    title: "Implement dead-code-maybe base tool (subcommand or script)"  # 921c
+    status: todo_soft  # 921c
+    priority: 3  # 921c
+    parent:  # 921c
+    tags:  # 921c
+    - analysis_quality  # 921c
+    - cross_language_linkers  # 921c
+    - dead_code_prospector  # 921c
+    before:  # 921c
+    - WI-zafab-munap-vapab-hisap-jinil-pozig-gafav-zabak  # 921c
+    - WI-pimig-gifug-lobif-gabom-zitiz-razuk-lidat-garah  # 921c
+    - WI-hadap-bumat-gijub-zumit-jigad-nogor-tihaz-bajut  # 921c
+    - WI-zimum-sozib-kinob-vobav-kirim-fojig-zopum-dobij  # 921c
+    duplicate_of: []  # 921c
+    not_duplicate_of: []  # 921c
+    pr_ref:  # 921c
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md Q1: build the ~30-line base tool that computes\n\n    dead = production_callables − reachable_from(entrypoints ∪ optional_tests)\n\non top of hypergumbo's existing behavior map. The primitives are already in place — wire them together:\n\n- Use hypergumbo run to produce the behavior map (reuse _get_or_run_analysis from cmd_test_coverage et al.).\n- Seed from entrypoints.py:detect_entrypoints (CLI mains, HTTP routes, framework hooks, registry decorators).\n- BFS via ranking.py:compute_transitive_test_coverage (despite the name, it is a generic multi-source BFS over call edges — cmd_test_coverage already uses it for cold spots with a different seed set).\n- Output: a ranked list of 'dead' callables with (symbol, path, language, decorators, metadata).\n\nSeed-set flexibility: add a --seeds {entrypoints,tests,exports,all} flag (notebook Open Questions §2). Different seed sets give materially different dead lists; the experiment needs to control this.\n\nFraming decision to make first (notebook Open Questions §1): implement as a first-class hypergumbo subcommand (slotting next to test-coverage / io-boundaries / routes) OR as a scripts/ one-off. Subcommand has reuse value if we keep dogfooding dead-code on hypergumbo itself; one-off is fine if this is genuinely a one-shot prospect. Recommend subcommand (consistent with existing analysis-subcommand pattern), but a one-off is acceptable.\n\nFoundation for all downstream dead-code-prospector items."  # 921c
+    fields: {}  # 921c

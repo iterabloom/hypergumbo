@@ -1,0 +1,22 @@
+- op: create  # 6a64
+  at: '2026-04-08T00:15:23Z'  # 6a64
+  by: agent  # 6a64
+  actor: jgstern_agent  # 6a64
+  clock: 1  # 6a64
+  nonce: 6a64  # 6a64
+  data:  # 6a64
+    kind: work_item  # 6a64
+    title: "Investigate and implement exported-symbols detection for dead-code seeds"  # 6a64
+    status: todo_soft  # 6a64
+    priority: 3  # 6a64
+    parent:  # 6a64
+    tags:  # 6a64
+    - analysis_quality  # 6a64
+    - dead_code_prospector  # 6a64
+    before:  # 6a64
+    - WI-zafab-munap-vapab-hisap-jinil-pozig-gafav-zabak  # 6a64
+    duplicate_of: []  # 6a64
+    not_duplicate_of: []  # 6a64
+    pr_ref:  # 6a64
+    description: "Open question from ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md 'Open Questions / Followups' §4: does hypergumbo already have an 'exported symbols' notion, or do we need to compute it per language?\n\nStep 1: investigate. Search core + analyzer packages for any existing concept of public/exported (e.g., meta.visibility, symbol.exported, __all__ extraction). Report findings in the discussion thread.\n\nStep 2: implement the gap. For any language where exported-ness is not already tracked, add it. Minimum target list (drawn from the notebook §4):\n- Python: names in module __all__; names re-exported from __init__.py\n- TypeScript/JavaScript: top-level export in index.ts / entry modules\n- Rust: pub items in crate root (lib.rs) and re-exports\n- Go: exported (Capitalized) identifiers at package level\n\nStore as a per-symbol field (e.g., meta.exported: true) so it can be consumed by both the dead-code-maybe cheap drop filter (public API) and by the --seeds exports mode of the base tool.\n\nRequired by two downstream items: the base tool's --seeds exports flag, and the cheap drop filters' 'drop public API' rule."  # 6a64
+    fields: {}  # 6a64
