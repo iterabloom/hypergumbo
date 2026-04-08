@@ -1,0 +1,22 @@
+- op: create  # 35b5
+  at: '2026-04-08T02:42:40Z'  # 35b5
+  by: agent  # 35b5
+  actor: jgstern_agent  # 35b5
+  clock: 1  # 35b5
+  nonce: 35b5  # 35b5
+  data:  # 35b5
+    kind: work_item  # 35b5
+    title: "agentic-session-retrospective.md: document queue-operation rows in Phase 1"  # 35b5
+    status: needs_human_review  # 35b5
+    priority: 4  # 35b5
+    parent:  # 35b5
+    tags:  # 35b5
+    - bf4oxh91w_investigation  # 35b5
+    - transcript_pipeline  # 35b5
+    - governance  # 35b5
+    before: []  # 35b5
+    duplicate_of: []  # 35b5
+    not_duplicate_of: []  # 35b5
+    pr_ref:  # 35b5
+    description: "**Per `~/hypergumbo_lab_notebook/bf4oxh91w_investigation_threads_04072026_1702.md` Thread 3:** the agentic-session-retrospective playbook tells analysts to \"scan for User messages (explicit instructions, mode changes, **interruptions**)\" but doesn't explain that *interruptions* live in `type: queue-operation` rows in the JSONL — not in `type: user` rows. Anyone (including the analyst who wrote the source notebook) following the playbook with a naive `type=user` filter loses the most interesting decision points: real-time human interjections during long agent turns.\n\n**Concrete failure observed:** while investigating the bf4oxh91w incident, the analyst initially filtered the JSONL by `type ∈ {user, assistant, system}` and confidently concluded \"no human in the loop, this is autonomous self-reflection.\" That was wrong — the human had typed three real-time messages while the agent was waiting. They lived in `queue-operation` rows with `operation: enqueue` containing the typed text in a `content` field, and were folded into the next assistant turn's prompt as `operation: remove` events at L269–271. The user/assistant filter missed all of them.\n\n**The fix:** add an explicit Phase 1 bullet to `.agent/agent_playbooks_protocols_sops_skills/agentic-session-retrospective.md` (or wherever Phase 1 is currently documented) calling out:\n\n> **Mid-tool-call human interjections live in `queue-operation` rows, NOT in `type=user` rows.** When scanning for interruptions, include `type: queue-operation` with `operation: enqueue` (the moment the human typed) and `operation: remove` (the moment the harness folded it into the next assistant prompt). A naive `type=user` filter will silently lose all real-time interjections during long agent turns. See `~/hypergumbo_lab_notebook/bf4oxh91w_investigation_threads_04072026_1702.md` Thread 3 for a worked example with a verbatim queue-operation row.\n\n**Worked example to include in the playbook** (verbatim from the source transcript at L264):\n```json\n{\n  \"type\": \"queue-operation\",\n  \"operation\": \"enqueue\",\n  \"timestamp\": \"2026-04-06T19:35:16.666Z\",\n  \"sessionId\": \"246a2da5-9cd9-44d8-8b3a-54790b589126\",\n  \"content\": \"...\"\n}\n```\n\n**Cross-reference to add:** `filter-transcript.py` (`.agent/hooks/_shared/filter-transcript.py`) DOES preserve queue-operation rows — its only filter rules drop `bash_progress` heartbeats and `file-history-snapshot`. So the data is in the synced JSONL too. The analyst verified `.second_to_last_transcript.jsonl` contains 199 queue-operation rows. The playbook should mention this so future analysts know they don't need to go back to the raw Claude Code originals.\n\n**STATUS: needs_human_review per AGENTS.md governance file list. `.agent/agent_playbooks_protocols_sops_skills/` is governance.**\n\nDoc-only fix. Zero pipeline impact (the playbook file content does not enter `.training-data.jsonl`). Tier 0 per Thread 3's tier table."  # 35b5
+    fields: {}  # 35b5
