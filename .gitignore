@@ -41,6 +41,10 @@ AUTONOMOUS_MODE.txt
 .agent/.transcript-poll-state
 .agent/.transcript-injection-state.json
 .agent/.transcript-session-token
+.agent/.current_injection_history.jsonl
+.agent/.last_injection_history.jsonl
+.agent/.second_to_last_injection_history.jsonl
+.agent/.archived-transcripts/
 hook-canary.txt
 
 # Coverage

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 ## Agentic Session Retrospective Playbook
 
 Structured post-hoc analysis of an agent's decision-making during an autonomous session. The goal is not to evaluate what was built (that's what bakeoff reflect does), but to evaluate *how the agent decided what to build* and how the autonomous infrastructure (AGENTS.md, hooks, scripts, playbooks) helped or hindered those decisions.
@@ -8,25 +9,43 @@ Structured post-hoc analysis of an agent's decision-making during an autonomous 
 
 ### Phase 0: Locate the Session Transcript
 
-The transcript sync pipeline (ADR-0018) rotates normalized transcripts on each session start:
+The transcript sync pipeline (ADR-0018) rotates normalized transcripts on each session start. There are TWO parallel rotation chains: the transcript itself and the injection-history sidecar (the latter is what makes Phase 2d answerable — see below).
 
 | File | Contents |
 |------|----------|
 | `.agent/.current_session_transcript.jsonl` | Live session (being written to now) |
 | `.agent/.last_session_transcript.jsonl` | Previous session — **this is what you typically want** |
 | `.agent/.second_to_last_transcript.jsonl` | Two sessions ago (for comparison) |
+| `.agent/.current_injection_history.jsonl` | Live session's playbook injection events |
+| `.agent/.last_injection_history.jsonl` | Previous session's injection events — paired with `.last_session_transcript.jsonl` |
+| `.agent/.second_to_last_injection_history.jsonl` | Two sessions ago — paired with `.second_to_last_transcript.jsonl` |
+| `.agent/.archived-transcripts/<UTC-stamp>/transcript.jsonl.gz` | Older sessions, gzipped — paired with `injection_history.jsonl.gz` in the same dir |
+| `.agent/.archived-transcripts/<UTC-stamp>/injection_history.jsonl.gz` | Older sessions' injection events |
 
-All three files are vendor-agnostic JSONL produced by the sync pipeline. Vendor differences (Claude Code, Codex CLI, Gemini CLI, Cursor) are handled upstream by the per-vendor transcript sync adapters — the retrospective consumes only the normalized output.
+All transcript files are vendor-agnostic JSONL produced by the sync pipeline. Vendor differences (Claude Code, Codex CLI, Gemini CLI, Cursor) are handled upstream by the per-vendor transcript sync adapters — the retrospective consumes only the normalized output. The injection-history sidecar is written by `on_transcript_change.py` regardless of vendor.
+
+The archive directory's subdirectories are named with the UTC rotation timestamp in ISO 8601 basic format (`%Y%m%dT%H%M%SZ`). Each gzipped file's mtime is preserved from the source so `ls -la .agent/.archived-transcripts/*/` shows the original session-end time.
 
 ```bash
 # Typical usage: analyze the previous session
 TRANSCRIPT=".agent/.last_session_transcript.jsonl"
+INJECTION_HISTORY=".agent/.last_injection_history.jsonl"
 wc -l "$TRANSCRIPT"   # how big is it?
 head -5 "$TRANSCRIPT"  # confirm start time
 tail -5 "$TRANSCRIPT"  # confirm end time
+wc -l "$INJECTION_HISTORY"  # how many injection events?
 ```
 
-If the file doesn't exist (e.g., the sync watcher wasn't running), fall back to vendor-specific transcript locations. For Claude Code: `~/.claude/projects/-home-*-hypergumbo/<session-uuid>/`. For Codex CLI: `~/.codex/sessions/`. For Gemini CLI: `~/.gemini/sessions/`. For Cursor: `.cursor/hooks-output/`.
+For multi-session aggregation (e.g., precision audits across a week), iterate the archive:
+
+```bash
+# Concatenate all archived injection histories into a single stream
+for d in .agent/.archived-transcripts/*/; do
+    zcat "$d/injection_history.jsonl.gz" 2>/dev/null
+done | jq -s 'length'  # total events across the archive
+```
+
+If the file doesn't exist (e.g., the sync watcher wasn't running), fall back to vendor-specific transcript locations. For Claude Code: `~/.claude/projects/-home-*-hypergumbo/<session-uuid>/`. For Codex CLI: `~/.codex/sessions/`. For Gemini CLI: `~/.gemini/sessions/`. For Cursor: `.cursor/hooks-output/`. The injection-history sidecar has no vendor fallback — if it's missing, Phase 2d cannot be answered for that session.
 
 **Sanity check:** Read the first and last 5 lines to confirm the time range covers the session of interest. If the transcript is very large (>50K lines), work in chunks — note line ranges as you go.
 
@@ -89,10 +108,31 @@ Work through each category below. For each, note specific transcript evidence (t
 
 #### 2d. Playbook Injection (ADR-0018)
 
-- Which playbooks were injected during the session?
-- Were they relevant to what the agent was actually doing?
-- Were any playbooks missing that would have been helpful?
-- Did injection timing align with need (injected before the agent needed it, not after)?
+Read `.agent/.last_injection_history.jsonl`. Each line is one LLM poll, recorded as a JSON object with these fields:
+
+- `timestamp` — when the poll fired
+- `session_token` — the session this event belongs to (defends against cross-session contamination)
+- `transcript_offset` — byte position in the transcript at poll time
+- `event_id` — unique ID per event
+- `agent_goals` — the distilled goal the selector LLM was given
+- `selected` — playbook IDs the selector picked
+- `injected` — playbook IDs that actually reached the agent (`selected` minus dedup-skipped)
+- `skipped_dedup` — playbook IDs that were already in the recent context window
+- `distill_model`, `select_model` — which models were used
+
+Compute:
+- **Total polls** — `wc -l .agent/.last_injection_history.jsonl`
+- **Empty-selection rate** — fraction of polls where `selected` is `[]`. High rate (>50%) suggests the selector is correctly recognizing "nothing relevant", but very high (>90%) suggests the polling is wasted CPU.
+- **Dedup hit rate** — fraction of polls where `skipped_dedup` is non-empty. Very high (>50%) suggests the dedup window is too small or the selector keeps re-picking the same things.
+- **Top-3 most-injected playbooks** — `jq -r '.injected[]' .agent/.last_injection_history.jsonl | sort | uniq -c | sort -rn | head -3`
+- **Top-3 most-selected-but-deduped playbooks** — same with `.skipped_dedup[]`. These are the playbooks that fight the dedup loop hardest; consider whether they should be pinned, removed, or have their summaries rewritten.
+- **Read-then-injected overlap** — for a sample of injection events, scan the transcript before the event for explicit `Read` tool calls of the same playbook file. If the agent already read the playbook and then it got injected anyway, that's pure waste.
+- **Precision estimate** — manually rate a sample of 10 `agent_goals` + `injected` pairs against your sense of relevance (1=clearly relevant, 0=clearly irrelevant, 0.5=marginal). Report a precision number, but treat it as a vibes-based ceiling, not a measurement.
+
+Also ask:
+- Were any playbooks **missing** that would have been helpful? Cross-reference with the registry in `.agent/hooks/_shared/on_transcript_change.py:PLAYBOOKS`.
+- Did injection **timing** align with need (before the agent needed it, not after)?
+- Were the **distilled goals** accurate summaries of what the agent was actually doing? A bad goal distillation poisons every downstream selection.
 
 #### 2e. AGENTS.md Compliance
 

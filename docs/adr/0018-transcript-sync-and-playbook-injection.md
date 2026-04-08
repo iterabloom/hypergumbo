@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0018: Vendor-Agnostic Transcript Sync and LLM-Driven Playbook Injection
 
-Date: 2026-03-29
+Date: 2026-03-29 (amended 2026-04-08)
 Status: Accepted
 
 ## Context
@@ -40,7 +40,7 @@ This achieves ~83% line reduction on real sessions (measured: 110K → 18K lines
 **Stage 2: LLM-driven sparse selection.** When the filtered transcript grows, a hook calls `on_transcript_change.py`, which:
 1. Selects the most recent entries within a token budget (default 4K tokens)
 2. Sends them to Small 3.2 via OpenRouter to distill the agent's current goals
-3. Sends the goals + 14 playbook summaries to Small 2603 with reasoning enabled, asking it to select 0-3 relevant playbooks
+3. Sends the goals + the playbook summaries (currently 19) to Small 2603 with reasoning enabled, asking it to select 0-3 relevant playbooks
 4. Reads and outputs the full content of every selected playbook
 
 **Stage 3: Context injection.** The hook's stdout is injected back into the agent's conversation via the AI tool's native hook system. The mechanism varies by tool (see §3 below).
@@ -85,12 +85,13 @@ The dedup scans the *filtered* transcript (not the native one), because:
 ```
 .agent/hooks/_shared/
 ├── sync-transcript.sh          # Background watcher (inotifywait loop)
+│                                # Owns transcript + sidecar rotation + archive
 ├── filter-transcript.py        # Incremental noise filter
-├── launch-transcript-sync.sh   # Shared: kill stale watcher, launch new
-├── kill-transcript-sync.sh     # Shared: SIGTERM + PID file cleanup
+├── launch-transcript-sync.sh   # Shared: kill stale watcher (PID file + pgrep), launch new
+├── kill-transcript-sync.sh     # Shared: SIGTERM via PID file with pgrep DEST-scoped fallback
 ├── poll-transcript-change.sh   # Size-based polling for tools without FileChanged (or where it's broken)
 ├── on_transcript_change.sh     # Shell wrapper → Python
-├── on_transcript_change.py     # Two-step LLM pipeline
+├── on_transcript_change.py     # Two-step LLM pipeline + log_injection_history sidecar writer
 └── test-transcript-pipeline.sh # Dry-run test harness
 
 .agent/hooks/{claude-code,codex-cli,gemini-cli,cursor}/
@@ -100,7 +101,7 @@ The dedup scans the *filtered* transcript (not the native one), because:
                                 # (wraps poll output in vendor JSON format)
 
 .agent/agent_playbooks_protocols_sops_skills/
-├── *.md                        # 14 extracted playbook files
+├── *.md                        # 19 extracted playbook files
 
 Config files:
 ├── .claude/settings.json       # PostToolUse polling hook (FileChanged broken as of v2.1.87)
@@ -117,20 +118,28 @@ Config files:
 
 **Why both layers:** The glob reset handles the normal path. The session token handles edge cases where state files are created outside the watcher (e.g., by `on_transcript_change.py`) or where the watcher launch fails. Neither layer alone covers all failure modes.
 
-**Invariant test:** `TestSessionResetInvariant` in the test suite verifies that every known `.transcript-*` file matches the glob pattern and that persistent files (`.training-data.jsonl`) do not. Adding a new state file that breaks the convention causes a test failure.
+**Invariant test:** `TestSessionResetInvariant` in the test suite verifies that every known `.transcript-*` file matches the glob pattern and that persistent files (`.training-data.jsonl`, the rotated transcript pair, the rotated injection-history sidecar pair, and the `.archived-transcripts/` directory) do not. Adding a new state file that breaks the convention causes a test failure.
 
-Six runtime state files total:
+Per-session and persistent state files:
 
 | File | Per-session? | Cleared on start? |
 |------|---|---|
-| `.current_session_transcript.jsonl` | Yes | Yes (explicit rm) |
+| `.current_session_transcript.jsonl` | Yes | Yes (explicit rm, after rotation) |
 | `.transcript-sync.pid` | Yes | Yes (glob) |
 | `.transcript-sync-state.json` | Yes | Yes (glob) |
 | `.transcript-poll-state` | Yes | Yes (glob) |
 | `.transcript-injection-state.json` | Yes | Yes (glob + token) |
 | `.transcript-session-token` | Yes | Yes (glob, then rewritten) |
+| `.last_session_transcript.jsonl` | Rotated | No — `.current` → `.last` on session start |
+| `.second_to_last_transcript.jsonl` | Rotated | No — `.last` → `.second_to_last`; `.second_to_last` archived to `.archived-transcripts/<UTC-stamp>/transcript.jsonl.gz` before being clobbered |
+| `.current_injection_history.jsonl` | Rotated | No — deliberately uses a different prefix than `.transcript-*` so the glob does NOT touch it. Rotated parallel to the transcript |
+| `.last_injection_history.jsonl` | Rotated | No — `.current_injection_history` → `.last_injection_history` on session start |
+| `.second_to_last_injection_history.jsonl` | Rotated | No — `.last_injection_history` → `.second_to_last_injection_history`; archived to `.archived-transcripts/<UTC-stamp>/injection_history.jsonl.gz` before being clobbered |
+| `.archived-transcripts/<UTC-stamp>/{transcript,injection_history}.jsonl.gz` | Persistent | No — gzipped pair per archived session, mtime preserved via `touch -r` |
 | `.training-data.jsonl` | No | No (accumulates for finetuning) |
 | `.parse-outcomes.jsonl` | No | No (accumulates; sidecar for parse failures) |
+
+The injection-history sidecar (`*_injection_history.jsonl`) is the durable record of every playbook injection event. It exists because Claude Code's `additionalContext` mechanism (and equivalent vendor mechanisms) inject the hook's stdout into the API request without writing it back into the session JSONL. Without the sidecar, the `agentic-session-retrospective` playbook's Phase 2d question — "which playbooks were injected and were they relevant?" — is structurally unanswerable. The writer is `log_injection_history` in `on_transcript_change.py`; it fires from both the success path and the zero-injection early-exit path so precision/recall analysis sees both signal and noise. Each record contains the distilled goal, the selected/injected/skipped-dedup playbook IDs, and the model identifiers. Records are append-only JSON-per-line; the `sync-transcript.sh` rotation block moves them in lockstep with the transcript pair.
 
 ## Consequences
 
@@ -144,7 +153,7 @@ Six runtime state files total:
 ### Costs
 - **External LLM dependency**: The sparse selection requires an OpenRouter API key and network access. If unavailable, the hook exits silently (no playbooks injected, but no errors either).
 - **Latency**: Two LLM calls per invocation add latency. Step 1 uses Small 3.2 (fast distillation); step 2 uses Small 2603 with reasoning enabled (longer timeout, ~854 reasoning tokens observed). The token budget is halved (4K vs 8K), partially offsetting the cost of the reasoning model.
-- **State files**: Five gitignored runtime files (filtered transcript, PID file, filter state, poll state, injection state).
+- **State files**: Gitignored runtime files (filtered transcript, PID file, filter state, poll state, injection state, session token, rotated transcript pair, injection-history sidecar pair, archived-transcripts subdirs).
 - **Vendor hook bugs**: Claude Code's `FileChanged` hook does not fire (v2.1.83–v2.1.87+), requiring `PostToolUse` polling as a workaround. Two of three Cursor feedback hooks are non-functional (regressions since v2.0.64). Both workarounds add per-tool-call overhead (one `stat()` call) but no meaningful latency.
 - **Heuristic dedup**: The compaction + token-distance dedup is a heuristic. It's possible to re-inject a playbook the LLM still has (wasted tokens) or fail to re-inject one it lost (missed context). The heuristic errs on the side of re-injection.
 
@@ -158,7 +167,7 @@ All parameters are environment variables with sensible defaults:
 | `TRANSCRIPT_DISTILL_MODEL` | `mistralai/mistral-small-3.2-24b-instruct` | LLM for goal distillation (step 1) |
 | `TRANSCRIPT_SELECT_MODEL` | `mistralai/mistral-small-2603` | LLM for playbook selection with reasoning (step 2) |
 | `TRANSCRIPT_MAX_TOKENS` | `4000` | Token budget for transcript window |
-| `TRANSCRIPT_DEDUP_TOKENS` | `50000` | Token distance before allowing re-injection |
+| `TRANSCRIPT_DEDUP_TOKENS` | `100000` | Token distance before allowing re-injection. Bumped from 50000 (April 2026) after observing that long sessions outgrew the prior ~220KB window within 10–15 turns and thrashed re-injecting the same playbooks |
 | `TRANSCRIPT_TRAINING_LOG` | `.agent/.training-data.jsonl` | Path for finetuning data collection (ChatML JSONL) |
 | `TRANSCRIPT_PARSE_OUTCOME_LOG` | `.agent/.parse-outcomes.jsonl` | Path for parse-outcome sidecar (dormant — parse_selection has no parse failures) |
 
@@ -261,3 +270,28 @@ The benchmarks used `llama-cpp-python` directly (not the `llm` CLI), specificall
 - **Playbook auto-discovery**: Currently uses a hardcoded registry. Could scan the playbooks directory and generate summaries automatically.
 - **Cost tracking**: Log OpenRouter token usage per session to monitor the cost of the relevance-rating calls.
 - **Claude Code `FileChanged` revert**: When Anthropic fixes the `FileChanged` hook bug, revert `.claude/settings.json` from `PostToolUse` polling back to event-driven `FileChanged` on `.current_session_transcript.jsonl`. The original config is preserved in the lab notebook (`filechanged_hook_issue.md`).
+- **Read-then-injected overlap signal**: Track cases where the agent explicitly read a playbook via the `Read` tool and then the same playbook was injected by the pipeline (or vice versa). This is pure waste — captured in the injection-history sidecar but not yet measured. A simple post-hoc analysis script could compute the overlap rate per session.
+
+## Amendments
+
+### 2026-04-08 — Watcher leak fix and retrospective blindness fix
+
+Two distinct production gaps were found while auditing the pipeline against this ADR and fixed in a single PR:
+
+**1. Watcher leak.** Thirteen `sync-transcript.sh` processes had accumulated since Apr 5, all writing to the same shared destination. Three structural bugs combined to produce the leak:
+
+- `kill-transcript-sync.sh` had no fallback when the PID file was missing — silent leaks were unkillable.
+- `launch-transcript-sync.sh` only consulted the PID file, never scanned by process name, so each new session started a fresh watcher even when stale ones were running.
+- `sync-transcript.sh`'s EXIT trap removed the PID file unconditionally, racing with the next session's PID write.
+
+Fixes: `kill-transcript-sync.sh` now has a two-phase cleanup (PID file path + `pgrep` fallback scoped to the repo's expected DEST argument); `launch-transcript-sync.sh` delegates to the kill script before launching; `sync-transcript.sh`'s cleanup trap is now conditional on `cat "$PID_FILE" == "$$"`. Also fixed: the rotation/glob-reset block was deleting the PID file written immediately before it (reordered so the rm runs first), and the `do_sync` calls now have `|| true` because the function's last command doubles as a return-value test that interacts badly with `set -euo pipefail` when the filter drops every new line as noise.
+
+The lifecycle is gated by `tests/test_watcher_lifecycle.py`, which spawns real subprocesses through the actual shell scripts and asserts the kill/launch/EXIT-trap invariants.
+
+**2. Retrospective blindness.** Claude Code's `additionalContext` mechanism injects the hook's stdout into the API request without writing it back into the session JSONL, so the rotated transcript files contained zero record of which playbooks were injected. The `agentic-session-retrospective` Phase 2d question — "which playbooks were injected and were they relevant?" — was structurally unanswerable.
+
+Fix: a new `log_injection_history()` writer in `on_transcript_change.py` appends a JSON record per LLM poll to `.agent/.current_injection_history.jsonl`, capturing the distilled goal, the selected playbooks, the playbooks that actually reached the agent (after dedup), the playbooks that were skipped by dedup, and the model identifiers. The sidecar rotates parallel to the transcript pair — `.current → .last → .second_to_last` — and `sync-transcript.sh` archives the about-to-be-clobbered `.second_to_last_*` pair into `.agent/.archived-transcripts/<UTC-stamp>/{transcript,injection_history}.jsonl.gz` with `gzip -c` and `touch -r` to preserve the original session-end mtime. Sidecar files use a different prefix (`*_injection_history.jsonl`) than the per-session glob (`.transcript-*`) so they survive the session reset by construction; this is gated by an extension to `TestSessionResetInvariant`.
+
+The writer fires from both the success path AND the zero-injection early-exit path so precision/recall analysis sees both signal and noise. It is best-effort (`OSError`-suppressed) following the same pattern as `log_training_example`. Tests live in `tests/test_transcript_pipeline_properties.py::TestInjectionHistory` and `::TestSidecarRotation`.
+
+**3. Dedup window bump.** `TRANSCRIPT_DEDUP_TOKENS` default raised from 50,000 to 100,000. At 4.4 chars/token, the prior 220KB window meant long sessions outgrew it within 10–15 turns and re-injected the same playbooks. The new ~440KB window is still a heuristic, but trades CPU-cheap suppression for a meaningful reduction in re-injection thrash.

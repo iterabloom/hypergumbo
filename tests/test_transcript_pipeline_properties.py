@@ -13,13 +13,16 @@ function-scoped fixtures across examples). Non-property tests use tmp_path.
 
 from __future__ import annotations
 
+import gzip
 import importlib
 import importlib.machinery
 import importlib.util
 import json
 import os
 import shutil
+import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -790,6 +793,376 @@ class TestFilterSessionToken:
 
 
 # ---------------------------------------------------------------------------
+# log_injection_history tests
+# ---------------------------------------------------------------------------
+
+class TestInjectionHistory:
+    """Verify on_transcript_change.py's log_injection_history sidecar writer.
+
+    The sidecar fixes ADR-0018's "retrospective blindness" gap: previously,
+    Claude Code's `additionalContext` injection mechanism never round-tripped
+    playbook content into the session transcript JSONL, so a retrospective on
+    `.last_session_transcript.jsonl` could not see which playbooks were
+    injected, when, or why. The sidecar records every poll's metadata
+    (including dedup-skipped and zero-selection polls) so that retrospective
+    analysis has a real signal to compute precision against.
+    """
+
+    SIDECAR_FILENAME: ClassVar[str] = ".current_injection_history.jsonl"
+
+    def _read_records(self, repo_root: Path) -> list[dict]:
+        path = repo_root / ".agent" / self.SIDECAR_FILENAME
+        if not path.exists():
+            return []
+        return [json.loads(line) for line in path.read_text().splitlines() if line]
+
+    def _write_session_token(self, repo_root: Path, token: str = "test-token") -> None:
+        agent_dir = repo_root / ".agent"
+        agent_dir.mkdir(exist_ok=True)
+        (agent_dir / ".transcript-session-token").write_text(token)
+
+    def test_writer_appends_record(
+        self, tmp_path: Path, hook_mod: Any,
+    ) -> None:
+        """Basic happy path: writer creates the file and writes one well-formed record."""
+        self._write_session_token(tmp_path, "session-A")
+
+        hook_mod.log_injection_history(
+            str(tmp_path),
+            transcript_offset=12345,
+            agent_goals="The agent is implementing watcher leak fix.",
+            selected=["pb-a", "pb-b"],
+            injected=["pb-a"],
+            skipped_dedup=["pb-b"],
+            event_id="evt-001",
+        )
+
+        records = self._read_records(tmp_path)
+        assert len(records) == 1
+        rec = records[0]
+        assert rec["transcript_offset"] == 12345
+        assert rec["agent_goals"] == "The agent is implementing watcher leak fix."
+        assert rec["selected"] == ["pb-a", "pb-b"]
+        assert rec["injected"] == ["pb-a"]
+        assert rec["skipped_dedup"] == ["pb-b"]
+        assert rec["event_id"] == "evt-001"
+        assert rec["session_token"] == "session-A"
+        assert "timestamp" in rec
+        assert "distill_model" in rec
+        assert "select_model" in rec
+
+    def test_writer_appends_multiple_records(
+        self, tmp_path: Path, hook_mod: Any,
+    ) -> None:
+        """Successive calls append, not overwrite."""
+        self._write_session_token(tmp_path)
+
+        for i in range(3):
+            hook_mod.log_injection_history(
+                str(tmp_path),
+                transcript_offset=1000 * i,
+                agent_goals=f"goal {i}",
+                selected=[f"pb-{i}"],
+                injected=[f"pb-{i}"],
+                skipped_dedup=[],
+                event_id=f"evt-{i}",
+            )
+
+        records = self._read_records(tmp_path)
+        assert len(records) == 3
+        assert [r["event_id"] for r in records] == ["evt-0", "evt-1", "evt-2"]
+
+    def test_writer_handles_oserror_silently(
+        self, tmp_path: Path, hook_mod: Any,
+    ) -> None:
+        """Writer must be best-effort: an unwritable directory does not raise.
+
+        This matches log_training_example's resilience pattern — the pipeline
+        should never crash because of a logging hiccup.
+        """
+        # Create a read-only .agent dir so the writer can't create the file
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        agent_dir.chmod(0o555)  # r-x only
+        try:
+            # Must NOT raise
+            hook_mod.log_injection_history(
+                str(tmp_path),
+                transcript_offset=0,
+                agent_goals="goal",
+                selected=[],
+                injected=[],
+                skipped_dedup=[],
+                event_id="evt",
+            )
+        finally:
+            agent_dir.chmod(0o755)  # restore so pytest cleanup works
+
+    def test_records_zero_selection_polls(
+        self, tmp_path: Path, hook_mod: Any,
+    ) -> None:
+        """A poll where the selector returned [] still writes a record.
+
+        This is the precision-measurement case: zero-selection polls are
+        actually the correct outcome most of the time (per the selector
+        prompt), and we need to count them to compute precision/recall.
+        """
+        self._write_session_token(tmp_path)
+
+        hook_mod.log_injection_history(
+            str(tmp_path),
+            transcript_offset=999,
+            agent_goals="The agent is reading a config file.",
+            selected=[],
+            injected=[],
+            skipped_dedup=[],
+            event_id="evt-empty",
+        )
+
+        records = self._read_records(tmp_path)
+        assert len(records) == 1
+        assert records[0]["selected"] == []
+        assert records[0]["injected"] == []
+        assert records[0]["skipped_dedup"] == []
+
+    def test_records_dedup_skipped(
+        self, tmp_path: Path, hook_mod: Any,
+    ) -> None:
+        """When dedup suppresses a selected playbook, it lands in skipped_dedup."""
+        self._write_session_token(tmp_path)
+
+        hook_mod.log_injection_history(
+            str(tmp_path),
+            transcript_offset=2000,
+            agent_goals="goal",
+            selected=["pb-a", "pb-b", "pb-c"],
+            injected=["pb-a"],          # only pb-a was actually injected
+            skipped_dedup=["pb-b", "pb-c"],  # pb-b and pb-c were already in context
+            event_id="evt-dedup",
+        )
+
+        records = self._read_records(tmp_path)
+        assert records[0]["selected"] == ["pb-a", "pb-b", "pb-c"]
+        assert records[0]["injected"] == ["pb-a"]
+        assert set(records[0]["skipped_dedup"]) == {"pb-b", "pb-c"}
+
+    def test_sidecar_filename_does_not_match_transcript_glob(self) -> None:
+        """The sidecar filename must NOT match `.transcript-*` because that
+        glob is used by sync-transcript.sh's per-session reset to wipe
+        transient state. The sidecar is supposed to ROTATE (parallel to the
+        transcript), not be wiped."""
+        import fnmatch
+
+        assert not fnmatch.fnmatch(self.SIDECAR_FILENAME, ".transcript-*"), (
+            f"{self.SIDECAR_FILENAME} matches `.transcript-*` glob — it would "
+            "be deleted by sync-transcript.sh's session reset, defeating "
+            "rotation."
+        )
+
+
+# ---------------------------------------------------------------------------
+# sync-transcript.sh archive + sidecar rotation tests (B3)
+# ---------------------------------------------------------------------------
+
+def _isolate_shared_scripts(tmp_path: Path) -> Path:
+    """Copy sync-transcript.sh + filter-transcript.py into tmp_path so the
+    script's `BASH_SOURCE`-based path resolution lands inside the test
+    sandbox instead of the real repo.
+
+    Returns the .agent/hooks/_shared/ dir inside tmp_path.
+    """
+    real_shared = (
+        Path(__file__).parent.parent / ".agent" / "hooks" / "_shared"
+    )
+    shared_dir = tmp_path / ".agent" / "hooks" / "_shared"
+    shared_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("sync-transcript.sh", "filter-transcript.py"):
+        src_file = real_shared / name
+        dest_file = shared_dir / name
+        shutil.copy(src_file, dest_file)
+        dest_file.chmod(0o755)
+    return shared_dir
+
+
+def _run_rotation(tmp_path: Path) -> subprocess.Popen:
+    """Spawn sync-transcript.sh in tmp_path so it runs its rotation block.
+
+    Returns the Popen handle so the test can poll for the PID file (which
+    signals "rotation done") and then terminate the watcher.
+    """
+    shared = _isolate_shared_scripts(tmp_path)
+    sync_script = shared / "sync-transcript.sh"
+
+    src = tmp_path / "src.jsonl"
+    src.write_text("")
+    dest = tmp_path / ".agent" / ".current_session_transcript.jsonl"
+
+    proc = subprocess.Popen(
+        ["bash", str(sync_script), str(src), str(dest)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    # Wait for the rotation to complete (PID file appears AFTER rotation)
+    pid_file = tmp_path / ".agent" / ".transcript-sync.pid"
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
+        if pid_file.exists() and pid_file.read_text().strip():
+            break
+        time.sleep(0.05)
+    return proc
+
+
+def _terminate_proc(proc: subprocess.Popen) -> None:
+    if proc.poll() is None:
+        try:
+            proc.terminate()
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=2)
+
+
+class TestSidecarRotation:
+    """Verify sync-transcript.sh's archive-on-rotation logic for the
+    transcript and the new injection-history sidecar.
+
+    Each session start should:
+      1. Archive the about-to-be-clobbered .second_to_last_* pair into a
+         timestamped subdir under .agent/.archived-transcripts/, gzipped,
+         with mtime preserved via `touch -r`.
+      2. Rotate .last_* → .second_to_last_*.
+      3. Rotate .current_* → .last_*.
+
+    These tests cover both the transcript pair AND the parallel injection
+    history sidecar pair.
+    """
+
+    def test_rotation_archives_second_to_last_pair(
+        self, tmp_path: Path,
+    ) -> None:
+        """When .second_to_last_transcript.jsonl exists at session start,
+        it gets gzipped into a timestamped archive subdir."""
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+
+        # Seed the .second_to_last pair (these should be archived)
+        second_tr = agent_dir / ".second_to_last_transcript.jsonl"
+        second_tr.write_text('{"type":"user_message","content":"two sessions ago"}\n')
+        second_inj = agent_dir / ".second_to_last_injection_history.jsonl"
+        second_inj.write_text('{"event_id":"old","selected":["pb-x"]}\n')
+
+        # Also seed .last_* so the rotation has something to demote
+        last_tr = agent_dir / ".last_session_transcript.jsonl"
+        last_tr.write_text('{"type":"user_message","content":"last session"}\n')
+        last_inj = agent_dir / ".last_injection_history.jsonl"
+        last_inj.write_text('{"event_id":"recent","selected":[]}\n')
+
+        proc = _run_rotation(tmp_path)
+        try:
+            archive_dir = agent_dir / ".archived-transcripts"
+            assert archive_dir.exists(), "no archive dir was created"
+
+            subdirs = sorted(archive_dir.iterdir())
+            assert len(subdirs) == 1, f"expected 1 archive subdir, got {len(subdirs)}"
+            archive_subdir = subdirs[0]
+            assert archive_subdir.name.startswith("20"), (
+                f"archive subdir should be timestamped (20YYMMDD...): {archive_subdir.name}"
+            )
+
+            transcript_gz = archive_subdir / "transcript.jsonl.gz"
+            inj_gz = archive_subdir / "injection_history.jsonl.gz"
+            assert transcript_gz.exists(), "transcript.jsonl.gz missing in archive"
+            assert inj_gz.exists(), "injection_history.jsonl.gz missing in archive"
+
+            # Verify content survives the gzip round-trip
+            with gzip.open(transcript_gz, "rt") as f:
+                assert "two sessions ago" in f.read()
+            with gzip.open(inj_gz, "rt") as f:
+                assert '"event_id":"old"' in f.read()
+        finally:
+            _terminate_proc(proc)
+
+    def test_rotation_rotates_sidecar_in_parallel(
+        self, tmp_path: Path,
+    ) -> None:
+        """The injection-history sidecar rotates in parallel with the
+        transcript: .current → .last, .last → .second_to_last."""
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+
+        # Seed only .current_injection_history.jsonl (a fresh first session
+        # with no prior history). After rotation, it should appear at
+        # .last_injection_history.jsonl.
+        current_inj = agent_dir / ".current_injection_history.jsonl"
+        current_inj.write_text('{"event_id":"current"}\n')
+
+        proc = _run_rotation(tmp_path)
+        try:
+            last_inj = agent_dir / ".last_injection_history.jsonl"
+            second_inj = agent_dir / ".second_to_last_injection_history.jsonl"
+
+            assert last_inj.exists(), "current_injection_history.jsonl was not rotated to .last"
+            assert '"event_id":"current"' in last_inj.read_text()
+            assert not second_inj.exists(), (
+                ".second_to_last should not exist on first rotation with no prior .last"
+            )
+            # No archive needed because nothing was at .second_to_last
+            archive_dir = agent_dir / ".archived-transcripts"
+            assert not archive_dir.exists(), (
+                "first-session rotation should NOT create an archive subdir"
+            )
+        finally:
+            _terminate_proc(proc)
+
+    def test_archive_preserves_mtime(self, tmp_path: Path) -> None:
+        """The gzipped archive file's mtime equals the source file's mtime
+        (validates `touch -r`). The user can read the original session-end
+        time via `ls -la` on the archive."""
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+
+        second_tr = agent_dir / ".second_to_last_transcript.jsonl"
+        second_tr.write_text('{"line":1}\n')
+        # Backdate the file by 2 hours so we can detect mtime preservation
+        backdate = time.time() - 7200
+        os.utime(second_tr, (backdate, backdate))
+        original_mtime = second_tr.stat().st_mtime
+
+        proc = _run_rotation(tmp_path)
+        try:
+            archive_dir = agent_dir / ".archived-transcripts"
+            subdir = next(archive_dir.iterdir())
+            archived = subdir / "transcript.jsonl.gz"
+            assert archived.exists()
+
+            archived_mtime = archived.stat().st_mtime
+            # Allow 1s slack for filesystem timestamp granularity
+            assert abs(archived_mtime - original_mtime) < 1.5, (
+                f"archived mtime {archived_mtime} differs from original "
+                f"{original_mtime} by more than 1s"
+            )
+        finally:
+            _terminate_proc(proc)
+
+    def test_no_archive_when_nothing_to_archive(
+        self, tmp_path: Path,
+    ) -> None:
+        """First session of a clean repo: only .current_* files exist (or
+        none). The rotation must NOT create an empty .archived-transcripts/
+        subdir."""
+        # Run rotation against a fresh tmp_path with no prior state at all
+        proc = _run_rotation(tmp_path)
+        try:
+            archive_dir = tmp_path / ".agent" / ".archived-transcripts"
+            assert not archive_dir.exists(), (
+                "fresh repo with no .second_to_last_* files should not "
+                "create an archive subdir"
+            )
+        finally:
+            _terminate_proc(proc)
+
+
+# ---------------------------------------------------------------------------
 # Session reset invariant test
 # ---------------------------------------------------------------------------
 
@@ -817,6 +1190,13 @@ class TestSessionResetInvariant:
     PERSISTENT_FILES: ClassVar[list[str]] = [
         ".training-data.jsonl",
         ".current_session_transcript.jsonl",  # Cleared separately by explicit rm
+        # Injection-history sidecar (B1+B3): rotates parallel to the
+        # transcript and must NOT be wiped by the .transcript-* glob.
+        ".current_injection_history.jsonl",
+        ".last_injection_history.jsonl",
+        ".second_to_last_injection_history.jsonl",
+        # Archive dir for rotated-out sessions.
+        ".archived-transcripts",
     ]
 
     def test_glob_pattern_catches_all_per_session_files(
