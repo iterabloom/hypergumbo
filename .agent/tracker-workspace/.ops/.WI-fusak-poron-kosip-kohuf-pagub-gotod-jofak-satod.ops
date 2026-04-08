@@ -1,0 +1,20 @@
+- op: create  # 4ac9
+  at: '2026-04-08T16:55:36Z'  # 4ac9
+  by: agent  # 4ac9
+  actor: jgstern_agent  # 4ac9
+  clock: 1  # 4ac9
+  nonce: 4ac9  # 4ac9
+  data:  # 4ac9
+    kind: work_item  # 4ac9
+    title: "Measure read-then-injected playbook overlap (waste signal)"  # 4ac9
+    status: todo_soft  # 4ac9
+    priority: 3  # 4ac9
+    parent:  # 4ac9
+    tags:  # 4ac9
+    - developer_experience  # 4ac9
+    before: []  # 4ac9
+    duplicate_of: []  # 4ac9
+    not_duplicate_of: []  # 4ac9
+    pr_ref:  # 4ac9
+    description: "Build a post-hoc analyzer that, given a session's transcript and its paired .last_injection_history.jsonl, computes the overlap between (a) playbooks the agent explicitly read via the Read tool and (b) playbooks that were subsequently injected by the on_transcript_change pipeline (or vice versa). The overlap is pure waste — the agent already has the content. Output a per-session waste rate and a top-N list of playbooks that thrash this loop. Surface the result in the agentic-session-retrospective playbook (Phase 2d) once available. Per ADR-0018 (2026-04-08 amendment) Future Work."  # 4ac9
+    fields: {}  # 4ac9
