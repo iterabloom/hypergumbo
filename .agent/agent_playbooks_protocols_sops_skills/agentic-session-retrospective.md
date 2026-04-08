@@ -9,31 +9,43 @@ Structured post-hoc analysis of an agent's decision-making during an autonomous 
 
 ### Phase 0: Locate the Session Transcript
 
-The transcript sync pipeline (ADR-0018) rotates normalized transcripts on each session start. There are TWO parallel rotation chains: the transcript itself and the injection-history sidecar (the latter is what makes Phase 2d answerable — see below).
+The transcript sync pipeline (ADR-0018, per-session amendment 2026-04-08) keeps two parallel chains: the filtered transcript itself and the injection-history sidecar (the latter is what makes Phase 2d answerable — see below). Each session writes to its own per-session current files keyed by `session_id`. On session **end**, those per-session files are atomically promoted into the global `.last_*` slot via `rotate-on-session-end.sh` (with `flock` serialization for concurrent end events).
 
 | File | Contents |
 |------|----------|
-| `.agent/.current_session_transcript.jsonl` | Live session (being written to now) |
-| `.agent/.last_session_transcript.jsonl` | Previous session — **this is what you typically want** |
-| `.agent/.second_to_last_transcript.jsonl` | Two sessions ago (for comparison) |
-| `.agent/.current_injection_history.jsonl` | Live session's playbook injection events |
-| `.agent/.last_injection_history.jsonl` | Previous session's injection events — paired with `.last_session_transcript.jsonl` |
-| `.agent/.second_to_last_injection_history.jsonl` | Two sessions ago — paired with `.second_to_last_transcript.jsonl` |
+| `.agent/.current_session_transcript.<session_id>.jsonl` | Live session (one per active session in this repo, being written to now) |
+| `.agent/.current_injection_history.<session_id>.jsonl` | Live session's playbook injection events (parallel to transcript) |
+| `.agent/.last_session_transcript.jsonl` | **Most recently *ended* session** — this is what you typically want |
+| `.agent/.second_to_last_transcript.jsonl` | Second most recently ended session (for comparison) |
+| `.agent/.last_injection_history.jsonl` | Most recently ended session's injection events — paired with `.last_session_transcript.jsonl` |
+| `.agent/.second_to_last_injection_history.jsonl` | Second most recently ended — paired with `.second_to_last_transcript.jsonl` |
 | `.agent/.archived-transcripts/<UTC-stamp>/transcript.jsonl.gz` | Older sessions, gzipped — paired with `injection_history.jsonl.gz` in the same dir |
 | `.agent/.archived-transcripts/<UTC-stamp>/injection_history.jsonl.gz` | Older sessions' injection events |
+| `.agent/.archived-transcripts/crashed-<UTC-stamp>-<sid>/` | Crashed sessions (no SessionEnd hook fired); never claim `.last_*` |
 
 All transcript files are vendor-agnostic JSONL produced by the sync pipeline. Vendor differences (Claude Code, Codex CLI, Gemini CLI, Cursor) are handled upstream by the per-vendor transcript sync adapters — the retrospective consumes only the normalized output. The injection-history sidecar is written by `on_transcript_change.py` regardless of vendor.
 
-The archive directory's subdirectories are named with the UTC rotation timestamp in ISO 8601 basic format (`%Y%m%dT%H%M%SZ`). Each gzipped file's mtime is preserved from the source so `ls -la .agent/.archived-transcripts/*/` shows the original session-end time.
+**Concurrency note (per-session amendment).** With multiple sessions running concurrently in the same repo, "most recently ended" is a *linearization* by session-end time, not by session-start time. Two sessions ending in close succession serialize via flock; the last one to acquire the lock wins the `.last_*` slot. If you need to retrospect on a specific live session that has not yet ended, look at its per-session `.current_session_transcript.<session_id>.jsonl` instead. Cursor is exempt: Cursor is enforced single-session-per-repo (its `session_id` is hardcoded `cursor-singleton`) because its transcript backing store is a global SQLite database. The deferred per-conversation extractor work is tracked in `WI-rijoj`.
+
+The archive directory's subdirectories are named with the UTC rotation timestamp in ISO 8601 basic format (`%Y%m%dT%H%M%SZ`). Crashed-session subdirs are prefixed with `crashed-` and include the orphaned session_id in the dir name. Each gzipped file's mtime is preserved from the source so `ls -la .agent/.archived-transcripts/*/` shows the original session-end time.
 
 ```bash
-# Typical usage: analyze the previous session
+# Typical usage: analyze the most recently ended session
 TRANSCRIPT=".agent/.last_session_transcript.jsonl"
 INJECTION_HISTORY=".agent/.last_injection_history.jsonl"
 wc -l "$TRANSCRIPT"   # how big is it?
 head -5 "$TRANSCRIPT"  # confirm start time
 tail -5 "$TRANSCRIPT"  # confirm end time
 wc -l "$INJECTION_HISTORY"  # how many injection events?
+```
+
+To inspect a specific live session (e.g. a parallel session you want to retrospect on without ending it):
+
+```bash
+ls .agent/.current_session_transcript.*.jsonl   # all live sessions
+SID="<the session_id you want>"
+TRANSCRIPT=".agent/.current_session_transcript.${SID}.jsonl"
+INJECTION_HISTORY=".agent/.current_injection_history.${SID}.jsonl"
 ```
 
 For multi-session aggregation (e.g., precision audits across a week), iterate the archive:
@@ -111,7 +123,7 @@ Work through each category below. For each, note specific transcript evidence (t
 Read `.agent/.last_injection_history.jsonl`. Each line is one LLM poll, recorded as a JSON object with these fields:
 
 - `timestamp` — when the poll fired
-- `session_token` — the session this event belongs to (defends against cross-session contamination)
+- `session_id` — the session this event belongs to (per-session amendment 2026-04-08; replaces the prior global `session_token` mechanism)
 - `transcript_offset` — byte position in the transcript at poll time
 - `event_id` — unique ID per event
 - `agent_goals` — the distilled goal the selector LLM was given

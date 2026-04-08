@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Codex CLI SessionStart hook adapter
 # See ADR-0008 for governance protocol
 #
@@ -7,7 +8,8 @@
 # with session_id, transcript_path, cwd, model, permission_mode, source.
 #
 # Transcript sync: uses transcript_path from stdin JSON to launch a
-# background watcher that mirrors it to .agent/.current_session_transcript.jsonl.
+# background watcher that mirrors it to a per-session current file
+# (.agent/.current_session_transcript.<session_id>.jsonl).
 
 set -euo pipefail
 
@@ -40,8 +42,11 @@ if [[ -z "$TRANSCRIPT_SRC" || "$TRANSCRIPT_SRC" == "null" ]]; then
     fi
 fi
 
-if [[ -n "$TRANSCRIPT_SRC" && "$TRANSCRIPT_SRC" != "null" ]]; then
-    REPO_ROOT="$REPO_ROOT" "$SCRIPT_DIR/../_shared/launch-transcript-sync.sh" "$TRANSCRIPT_SRC"
+source "$SCRIPT_DIR/../_shared/session_id_helpers.sh"
+SESSION_ID=$(extract_codex_session_id "$STDIN_JSON")
+
+if [[ -n "$TRANSCRIPT_SRC" && "$TRANSCRIPT_SRC" != "null" && -n "$SESSION_ID" ]]; then
+    REPO_ROOT="$REPO_ROOT" "$SCRIPT_DIR/../_shared/launch-transcript-sync.sh" "$TRANSCRIPT_SRC" "$SESSION_ID"
 fi
 
 if [[ "$SESSION_START_NEEDS_PROMPT" == "true" && -n "$SESSION_START_MESSAGE" ]]; then

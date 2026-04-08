@@ -31,6 +31,29 @@ import urllib.request
 import urllib.error
 import uuid
 
+
+# ---------------------------------------------------------------------------
+# Per-session path helpers (ADR-0018 amendment, Option 2)
+# ---------------------------------------------------------------------------
+
+CURRENT_TRANSCRIPT_RE = re.compile(
+    r"\.current_session_transcript\.([A-Za-z0-9_-]+)\.jsonl$"
+)
+
+
+def _session_id_from_transcript_path(transcript_path: str) -> str:
+    """Extract the session_id from a per-session current transcript path.
+
+    Per-session transcript paths have the form
+    ``<repo>/.agent/.current_session_transcript.<session_id>.jsonl``.
+    Returns an empty string if the basename does not match — callers
+    should treat that as "no session id known" and fall back to
+    repo-global state files.
+    """
+    basename = os.path.basename(transcript_path)
+    m = CURRENT_TRANSCRIPT_RE.search(basename)
+    return m.group(1) if m else ""
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -336,31 +359,30 @@ def log_injection_history(
     injected: list[str],
     skipped_dedup: list[str],
     event_id: str,
+    session_id: str,
 ) -> None:
-    """Append an injection-event record to the rotated sidecar.
+    """Append an injection-event record to the per-session rotated sidecar.
 
     Fixes ADR-0018's "retrospective blindness" gap. Claude Code's
     ``additionalContext`` mechanism does not write hook-injected text back
     into the session transcript JSONL, so a retrospective on
     ``.last_session_transcript.jsonl`` cannot see which playbooks were
     injected, when, or whether they were relevant. The sidecar at
-    ``<repo>/.agent/.current_injection_history.jsonl`` is the durable
-    record of every poll the LLM-driven selector made: the distilled goal,
-    what it picked, what was actually injected (after dedup), and what was
-    skipped because it was already in the model's context.
+    ``<repo>/.agent/.current_injection_history.<session_id>.jsonl`` is the
+    durable record of every poll the LLM-driven selector made: the
+    distilled goal, what it picked, what was actually injected (after
+    dedup), and what was skipped because it was already in the model's
+    context.
 
-    The file is rotated (not wiped) at session start by ``sync-transcript.sh``
-    in parallel with the transcript:
+    Per-session isolation (ADR-0018 amendment / Option 2): each session
+    writes to its own per-session sidecar file. On session END,
+    ``rotate-on-session-end.sh`` promotes that file into the global
+    ``.last_injection_history.jsonl`` slot:
 
-        .current_injection_history.jsonl
-            -> .last_injection_history.jsonl
-            -> .second_to_last_injection_history.jsonl
+        .current_injection_history.<sid>.jsonl   (this session, while alive)
+            -> .last_injection_history.jsonl     (on session end)
+            -> .second_to_last_injection_history.jsonl  (when next session ends)
             -> .agent/.archived-transcripts/<UTC-stamp>/injection_history.jsonl.gz
-
-    The sidecar's filename deliberately does NOT match the ``.transcript-*``
-    glob (which the per-session reset uses to wipe transient state) — see
-    ``TestSessionResetInvariant`` and ``TestInjectionHistory`` for the
-    enforcement of that invariant.
 
     Best-effort: any ``OSError`` is swallowed so a logging hiccup never
     breaks the pipeline. Mirrors the resilience pattern in
@@ -370,12 +392,11 @@ def log_injection_history(
     the moment of injection (matches the dedup state's offsets — useful
     for cross-referencing).
     """
-    log_path = os.path.join(
-        repo_root, ".agent", ".current_injection_history.jsonl",
-    )
+    filename = f".current_injection_history.{session_id}.jsonl"
+    log_path = os.path.join(repo_root, ".agent", filename)
     record = {
         "timestamp": datetime.datetime.now().isoformat(),
-        "session_token": _read_session_token(repo_root),
+        "session_id": session_id,
         "transcript_offset": transcript_offset,
         "event_id": event_id,
         "agent_goals": agent_goals,
@@ -386,6 +407,9 @@ def log_injection_history(
         "select_model": SELECT_MODEL,
     }
     try:
+        agent_dir = os.path.dirname(log_path)
+        if agent_dir:
+            os.makedirs(agent_dir, exist_ok=True)
         with open(log_path, "a") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
     except OSError:
@@ -458,72 +482,59 @@ def read_playbook(repo_root: str, rel_path: str) -> str:
     return ""
 
 
-INJECTION_STATE_FILENAME = ".transcript-injection-state.json"
-SESSION_TOKEN_FILENAME = ".transcript-session-token"
+def _state_path(repo_root: str, session_id: str) -> str:
+    """Return the per-session injection-state file path.
+
+    Per-session isolation (ADR-0018 amendment / Option 2): each session
+    has its own state file keyed by session_id, so concurrent sessions
+    in the same repo never poison each other's dedup state.
+    """
+    filename = f".transcript-injection-state.{session_id}.json"
+    return os.path.join(repo_root, ".agent", filename)
 
 
-def _state_path(repo_root: str) -> str:
-    return os.path.join(repo_root, ".agent", INJECTION_STATE_FILENAME)
-
-
-def _read_session_token(repo_root: str) -> str:
-    """Read the current session token (written by sync-transcript.sh on start)."""
-    path = os.path.join(repo_root, ".agent", SESSION_TOKEN_FILENAME)
-    try:
-        with open(path) as f:
-            return f.read().strip()
-    except OSError:
-        return ""
-
-
-def _empty_state(repo_root: str) -> dict:
-    """Return a fresh injection state tagged with the current session token."""
+def _empty_state(session_id: str) -> dict:
+    """Return a fresh injection state tagged with the session id."""
     return {
-        "session_token": _read_session_token(repo_root),
+        "session_id": session_id,
         "injections": {},
         "last_compact_offset": 0,
     }
 
 
-def load_injection_state(repo_root: str) -> dict:
-    """Load injection tracking state.
+def load_injection_state(repo_root: str, session_id: str) -> dict:
+    """Load per-session injection tracking state.
 
-    Returns empty state if the state file is missing, corrupt, or belongs
-    to a different session (stale token).  This prevents cross-session
-    byte offsets from poisoning the dedup logic.
+    Returns empty state if the state file is missing or corrupt. Under
+    per-session isolation the state file path encodes session_id, so no
+    cross-session validation is needed.
 
     State format:
     {
-        "session_token": "<token>",
+        "session_id": "<sid>",
         "injections": {"pb_id": <byte_offset_at_injection_time>, ...},
         "last_compact_offset": <byte_offset_of_last_compact_boundary>
     }
     """
-    path = _state_path(repo_root)
+    path = _state_path(repo_root, session_id)
     if os.path.exists(path):
         try:
             with open(path) as f:
-                state = json.load(f)
+                return json.load(f)
         except (json.JSONDecodeError, OSError):
-            return _empty_state(repo_root)
-
-        # Validate session token — stale state from a prior session is
-        # meaningless because byte offsets reference a different transcript.
-        current_token = _read_session_token(repo_root)
-        if current_token and state.get("session_token") != current_token:
-            return _empty_state(repo_root)
-
-        return state
-    return _empty_state(repo_root)
+            return _empty_state(session_id)
+    return _empty_state(session_id)
 
 
-def save_injection_state(repo_root: str, state: dict) -> None:
-    """Persist injection tracking state atomically.
-
-    Embeds the current session token so future reads can detect staleness.
-    """
-    state["session_token"] = _read_session_token(repo_root)
-    path = _state_path(repo_root)
+def save_injection_state(
+    repo_root: str, session_id: str, state: dict,
+) -> None:
+    """Persist per-session injection tracking state atomically."""
+    state["session_id"] = session_id
+    path = _state_path(repo_root, session_id)
+    agent_dir = os.path.dirname(path)
+    if agent_dir:
+        os.makedirs(agent_dir, exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
         json.dump(state, f)
@@ -552,16 +563,18 @@ def recently_injected(
     transcript_path: str,
     playbook_ids: list[str],
     repo_root: str,
+    session_id: str,
 ) -> tuple[set[str], dict]:
     """Determine which playbooks should be skipped due to recent injection.
 
-    Uses a state file to track when each playbook was injected (by byte offset
-    in the transcript). Invalidates injections that occurred before the most
-    recent compact_boundary event, since the LLM no longer has that context.
+    Uses a per-session state file to track when each playbook was injected
+    (by byte offset in the transcript). Invalidates injections that
+    occurred before the most recent compact_boundary event, since the LLM
+    no longer has that context.
 
     Returns (set of pb_ids to skip, updated state dict).
     """
-    state = load_injection_state(repo_root)
+    state = load_injection_state(repo_root, session_id)
     injections = state.get("injections", {})
     prev_compact = state.get("last_compact_offset", 0)
 
@@ -607,6 +620,20 @@ def main() -> None:
             print(f"[dry-run] No transcript at: {transcript_path!r}", file=sys.stderr)
         sys.exit(0)
 
+    # Derive session_id from the transcript path basename. The polling
+    # script (poll-transcript-change.sh) constructs the path with the
+    # session_id baked in, so the transcript path is the authoritative
+    # source of session identity at this layer.
+    session_id = _session_id_from_transcript_path(transcript_path)
+    if not session_id:
+        if verbose:
+            print(
+                f"[dry-run] Could not derive session_id from path: "
+                f"{transcript_path!r}",
+                file=sys.stderr,
+            )
+        sys.exit(0)
+
     if not dry_run and not os.environ.get("OPENROUTER_API_KEY"):
         if verbose:
             print("[dry-run] OPENROUTER_API_KEY not set", file=sys.stderr)
@@ -618,7 +645,9 @@ def main() -> None:
 
     # Step 0a: Check if all playbooks are recently injected (skip LLM calls entirely)
     all_ids = [pb_id for pb_id, _, _ in PLAYBOOKS]
-    already, inj_state = recently_injected(transcript_path, all_ids, repo_root)
+    already, inj_state = recently_injected(
+        transcript_path, all_ids, repo_root, session_id,
+    )
     if len(already) == len(PLAYBOOKS):
         if verbose:
             print("[step 0] All playbooks recently injected — skipping LLM calls",
@@ -761,7 +790,7 @@ def main() -> None:
         if not dry_run:
             # Save state even if nothing to inject (compaction tracking
             # still matters).
-            save_injection_state(repo_root, inj_state)
+            save_injection_state(repo_root, session_id, inj_state)
             # Record this poll to the injection-history sidecar — even
             # zero-injection polls are valuable because they tell a
             # retrospective how often the selector said "none" or
@@ -774,6 +803,7 @@ def main() -> None:
                 injected=[],
                 skipped_dedup=skipped,
                 event_id=event_id,
+                session_id=session_id,
             )
         sys.exit(0)
 
@@ -782,7 +812,7 @@ def main() -> None:
         inj_state["injections"][pb_id] = current_size
 
     if not dry_run:
-        save_injection_state(repo_root, inj_state)
+        save_injection_state(repo_root, session_id, inj_state)
         # Record this injection event to the sidecar so retrospectives
         # can later evaluate whether the selector was actually picking
         # the right playbooks for what the agent was doing.
@@ -794,6 +824,7 @@ def main() -> None:
             injected=[pb_id for pb_id, _ in relevant],
             skipped_dedup=skipped,
             event_id=event_id,
+            session_id=session_id,
         )
 
     # Output: injected into the agent's conversation

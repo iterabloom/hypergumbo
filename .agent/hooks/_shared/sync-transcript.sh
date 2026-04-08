@@ -1,116 +1,45 @@
 #!/bin/bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # sync-transcript.sh — Long-running watcher that mirrors a session transcript
-# to a vendor-agnostic location inside the repo.
+# to a per-session, vendor-agnostic location inside the repo.
 #
 # Launched in background by session-start hooks; killed by session-end hooks.
 # Uses inotifywait to watch the source JSONL for close_write events and
-# incrementally filters new lines into the destination. Fires
-# on_transcript_change.sh as a downstream hook on each update.
+# incrementally filters new lines into the per-session destination. The
+# downstream hook (on_transcript_change.sh / poll-transcript-change.sh)
+# is fired by the AI tool's own PostToolUse / FileChanged hook against
+# the per-session destination.
 #
-# The filter drops redundant noise (repeated bash_progress heartbeats,
-# empty progress lines, file-history snapshots) so downstream consumers
-# only see meaningful events.
+# Per-session isolation (Option 2 of ADR-0018 amendment):
+#   - DEST is .agent/.current_session_transcript.<SESSION_ID>.jsonl
+#   - PID file is .agent/.transcript-sync.<SESSION_ID>.pid
+#   - Filter state is .agent/.transcript-sync-state.<SESSION_ID>.json
+# Each concurrent session in the same repo writes to its own files, so
+# sibling sessions never race on shared state. Rotation into the global
+# .last_*/.second_to_last_* slots happens at session END (not start), via
+# rotate-on-session-end.sh — this script is purely append-only.
 #
-# Usage: sync-transcript.sh <source-jsonl> <dest-jsonl>
+# Usage: sync-transcript.sh <source-jsonl> <dest-jsonl> <session-id>
 
 set -euo pipefail
 
 SRC="$1"
 DEST="$2"
+SESSION_ID="$3"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/../../.. && pwd)"
-PID_FILE="$REPO_ROOT/.agent/.transcript-sync.pid"
+PID_FILE="$REPO_ROOT/.agent/.transcript-sync.${SESSION_ID}.pid"
 FILTER_SCRIPT="$REPO_ROOT/.agent/hooks/_shared/filter-transcript.py"
-STATE_FILE="$REPO_ROOT/.agent/.transcript-sync-state.json"
+STATE_FILE="$REPO_ROOT/.agent/.transcript-sync-state.${SESSION_ID}.json"
 
-# Rotate prior session transcripts before clearing state.
-# .last_session_transcript.jsonl = previous session (the one to retrospect on)
-# .second_to_last_transcript.jsonl = two sessions ago (for comparison)
-LAST="$REPO_ROOT/.agent/.last_session_transcript.jsonl"
-SECOND="$REPO_ROOT/.agent/.second_to_last_transcript.jsonl"
+mkdir -p "$REPO_ROOT/.agent"
 
-# Injection-history sidecar (ADR-0018 B1): parallel to the transcript pair.
-# Captures which playbooks were selected/injected/skipped per LLM poll, so
-# the agentic-session-retrospective playbook can answer "were the right
-# playbooks injected at the right times?" — a question that is structurally
-# unanswerable from the transcript JSONL alone (Claude Code's
-# additionalContext mechanism injects into the API request but not the
-# session log).
-INJ_CURRENT="$REPO_ROOT/.agent/.current_injection_history.jsonl"
-INJ_LAST="$REPO_ROOT/.agent/.last_injection_history.jsonl"
-INJ_SECOND="$REPO_ROOT/.agent/.second_to_last_injection_history.jsonl"
-ARCHIVE_DIR="$REPO_ROOT/.agent/.archived-transcripts"
-
-# Step 1: archive the about-to-be-clobbered .second_to_last_* pair into a
-# timestamped subdir.  Per ADR-0018, we keep cross-session history for
-# retrospective analysis without sacrificing the per-session reset semantics
-# of .current/.last/.second_to_last.  gzip + touch -r preserves the original
-# session-end mtime so `ls -la` shows when the session actually ended.  The
-# archive is best-effort: a gzip failure logs to stderr but does NOT abort
-# session start.
-if [[ -f "$SECOND" || -f "$INJ_SECOND" ]]; then
-    STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-    DEST_DIR="$ARCHIVE_DIR/$STAMP"
-    mkdir -p "$DEST_DIR" || echo "warn: could not mkdir $DEST_DIR" >&2
-    if [[ -f "$SECOND" ]]; then
-        if gzip -c "$SECOND" > "$DEST_DIR/transcript.jsonl.gz" 2>/dev/null; then
-            touch -r "$SECOND" "$DEST_DIR/transcript.jsonl.gz" 2>/dev/null || true
-        else
-            echo "warn: failed to archive $SECOND" >&2
-        fi
-    fi
-    if [[ -f "$INJ_SECOND" ]]; then
-        if gzip -c "$INJ_SECOND" > "$DEST_DIR/injection_history.jsonl.gz" 2>/dev/null; then
-            touch -r "$INJ_SECOND" "$DEST_DIR/injection_history.jsonl.gz" 2>/dev/null || true
-        else
-            echo "warn: failed to archive $INJ_SECOND" >&2
-        fi
-    fi
-fi
-
-# Step 2: rotate the transcript pair (.last → .second, .current → .last)
-if [[ -f "$LAST" ]]; then
-    mv -f "$LAST" "$SECOND"
-fi
-if [[ -f "$DEST" && -s "$DEST" ]]; then
-    mv -f "$DEST" "$LAST"
-fi
-
-# Step 3: rotate the injection-history sidecar in parallel.  These files
-# DO NOT match the .transcript-* glob below (they use a different prefix),
-# so they survive the per-session reset and persist across sessions exactly
-# the way the transcript pair does.
-if [[ -f "$INJ_LAST" ]]; then
-    mv -f "$INJ_LAST" "$INJ_SECOND"
-fi
-if [[ -f "$INJ_CURRENT" && -s "$INJ_CURRENT" ]]; then
-    mv -f "$INJ_CURRENT" "$INJ_LAST"
-fi
-
-# Reset ALL per-session state for a fresh session.
-# Convention: any file in .agent/ matching .transcript-* is per-session
-# transient state and gets blown away here.  New state files that follow
-# this naming convention are automatically covered — no registration needed.
-# NOTE: .current_injection_history.jsonl and the .archived-transcripts/ dir
-# deliberately use a different prefix so they are NOT caught by this glob.
-rm -f "$REPO_ROOT/.agent/.transcript-"* "$DEST"
-
-# Write the PID file AFTER the per-session reset (otherwise the rm -f
-# above silently nukes it, which made kill-transcript-sync.sh blind to
-# the live watcher — the root cause of the 13-orphan leak observed
-# Apr 5–7 2026, alongside the EXIT trap race fixed by the conditional
-# cleanup below).
+# Write the per-session PID file. Because the PID file path encodes
+# SESSION_ID, sibling sessions never collide here.
 echo $$ > "$PID_FILE"
 
-# Write a session token so consumers can detect stale state even if
-# this reset was somehow skipped (e.g., watcher not launched).
-echo "$(date +%s)-$$" > "$REPO_ROOT/.agent/.transcript-session-token"
-
 # Conditional cleanup: only remove the PID file if it still belongs to us.
-# A racing session start may have overwritten the PID file with its own
-# PID; in that case the new owner manages the file's lifecycle, not us.
-# Without this guard, an exiting watcher unconditionally clobbered the new
-# watcher's PID file.
+# A user manually clobbering our PID file is rare, but the guard keeps the
+# trap from removing a file that has been re-claimed by another process.
 cleanup() {
     if [[ -f "$PID_FILE" ]] && [[ "$(cat "$PID_FILE" 2>/dev/null)" == "$$" ]]; then
         rm -f "$PID_FILE"

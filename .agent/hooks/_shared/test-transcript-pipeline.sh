@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # test-transcript-pipeline.sh — Dry-run the transcript sync pipeline.
 #
 # Runs each component in isolation with verbose output so you can see
@@ -90,8 +91,12 @@ echo "Source size: $SRC_LINES lines, $SRC_SIZE"
 echo ""
 
 # --- Stage 1: Filter ---
+# DEST follows the per-session naming convention so on_transcript_change.py
+# can derive the session_id from the basename (per ADR-0018 amendment).
 echo "=== Stage 1: Filter ==="
-DEST="$WORKDIR/filtered.jsonl"
+mkdir -p "$WORKDIR/.agent"
+TEST_SID="test-pipeline-$$"
+DEST="$WORKDIR/.agent/.current_session_transcript.${TEST_SID}.jsonl"
 STATE="$WORKDIR/filter-state.json"
 
 python3 "$FILTER_SCRIPT" "$SRC" "$DEST" "$STATE"

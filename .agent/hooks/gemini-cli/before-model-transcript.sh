@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Gemini CLI BeforeModel hook adapter for transcript feedback.
 #
 # BeforeModel fires before EVERY LLM API call (including retries and
@@ -14,13 +15,21 @@
 
 set -euo pipefail
 
-# Drain stdin (Gemini passes the full LLM request JSON)
-cat > /dev/null
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POLL_SCRIPT="$SCRIPT_DIR/../_shared/poll-transcript-change.sh"
 
-HOOK_OUTPUT=$("$POLL_SCRIPT" 2>/dev/null) || {
+# Capture stdin and extract session_id so the poller can find this
+# session's per-session transcript file.
+STDIN_JSON=$(cat)
+source "$SCRIPT_DIR/../_shared/session_id_helpers.sh"
+SESSION_ID=$(extract_gemini_session_id "$STDIN_JSON")
+
+if [[ -z "$SESSION_ID" ]]; then
+    echo '{"decision":"allow"}'
+    exit 0
+fi
+
+HOOK_OUTPUT=$("$POLL_SCRIPT" "$SESSION_ID" 2>/dev/null) || {
     # No new content — allow request to proceed unmodified
     echo '{"decision":"allow"}'
     exit 0

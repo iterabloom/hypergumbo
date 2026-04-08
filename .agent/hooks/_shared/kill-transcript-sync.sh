@@ -1,26 +1,31 @@
 #!/bin/bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# kill-transcript-sync.sh — Stop background transcript sync watchers for this repo.
+# kill-transcript-sync.sh — Stop a single session's transcript sync watcher.
 # Called by each tool's session-end hook. Idempotent.
 #
-# Usage: kill-transcript-sync.sh <REPO_ROOT>
+# Usage: kill-transcript-sync.sh <REPO_ROOT> <SESSION_ID>
 #
-# Two-phase cleanup:
-#   1. PID file path (the happy path) — kill the watcher whose PID is stored
-#      in .agent/.transcript-sync.pid.
-#   2. pgrep fallback (catches leaked watchers when the PID file is missing,
-#      stale, or was clobbered by an EXIT-trap race) — scan for
-#      sync-transcript.sh processes whose DEST argument matches this repo's
-#      expected destination, and kill them.
+# Per-session isolation (ADR-0018 amendment / Option 2):
+#   - This script kills ONLY the watcher belonging to <SESSION_ID>. A live
+#     sibling session in the same repo with a different SESSION_ID is never
+#     touched.
+#   - Two-phase cleanup:
+#       1. PID file path (the happy path) — kill the watcher whose PID is
+#          stored in .agent/.transcript-sync.<SESSION_ID>.pid.
+#       2. pgrep fallback (catches the rare case where the per-session PID
+#          file went missing) — scan for sync-transcript.sh processes whose
+#          third positional argument equals <SESSION_ID>, and kill them.
 #
-# Scoping by DEST naturally restricts to "watchers for THIS repo," so a
-# concurrent Claude Code session in a DIFFERENT repo is never touched.
+# Rotation of this session's per-session current files into the global
+# .last_*/.second_to_last_* slots is handled by rotate-on-session-end.sh,
+# which the session-end hook calls AFTER this script. Keeping kill and
+# rotate as separate scripts means we never accidentally rotate orphans.
 
 set -euo pipefail
 
 REPO_ROOT="${1:-${REPO_ROOT:?REPO_ROOT must be set}}"
-SYNC_PID_FILE="$REPO_ROOT/.agent/.transcript-sync.pid"
-EXPECTED_DEST="$REPO_ROOT/.agent/.current_session_transcript.jsonl"
+SESSION_ID="${2:?SESSION_ID is required}"
+SYNC_PID_FILE="$REPO_ROOT/.agent/.transcript-sync.${SESSION_ID}.pid"
 
 # Phase 1: PID-file path (fast happy path).
 if [[ -f "$SYNC_PID_FILE" ]]; then
@@ -32,32 +37,34 @@ if [[ -f "$SYNC_PID_FILE" ]]; then
 fi
 
 # Phase 2: pgrep fallback. The PID-file path above misses any watcher whose
-# PID file was lost (e.g., overwritten by a racing session start, or removed
-# by an EXIT trap that has since been fixed but left orphans behind). Scan
-# every running sync-transcript.sh process and kill those whose DEST argument
-# matches this repo's expected destination.
+# PID file was lost (e.g., disk full during write, or manual `rm`). Scan
+# every running sync-transcript.sh process and kill those whose third
+# positional argument equals our SESSION_ID. Matching by SESSION_ID (not
+# DEST) is the structural fix for the watcher-leak bug — the prior
+# DEST-matching loop killed sibling sessions in the same repo because they
+# all shared a single global DEST.
 #
 # Two-phase parsing of `pgrep -af` output:
 #   1. PID is the first whitespace-delimited field
-#   2. The DEST argument is the second positional arg AFTER the field whose
-#      value ends in 'sync-transcript.sh' (i.e., the script path itself).
+#   2. The SESSION_ID argument is the third positional arg AFTER the field
+#      whose value ends in 'sync-transcript.sh' (i.e., the script path).
 #      For a real watcher, the command line is:
-#        bash /path/to/sync-transcript.sh <SRC> <DEST>
-#      so DEST is at offset +2 from the script-name field.
+#        bash /path/to/sync-transcript.sh <SRC> <DEST> <SESSION_ID>
+#      so SESSION_ID is at offset +3 from the script-name field.
 while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     pid="${line%% *}"
     # Defensive: never kill ourselves.
     [[ "$pid" == "$$" ]] && continue
-    dest=$(awk '{
+    proc_sid=$(awk '{
         for (i=2; i<=NF; i++) {
             if ($i ~ /sync-transcript\.sh$/) {
-                print $(i+2)
+                print $(i+3)
                 exit
             }
         }
     }' <<< "$line")
-    if [[ -n "$dest" && "$dest" == "$EXPECTED_DEST" ]]; then
+    if [[ -n "$proc_sid" && "$proc_sid" == "$SESSION_ID" ]]; then
         kill "$pid" 2>/dev/null || true
     fi
 done < <(pgrep -af 'sync-transcript\.sh' 2>/dev/null || true)
