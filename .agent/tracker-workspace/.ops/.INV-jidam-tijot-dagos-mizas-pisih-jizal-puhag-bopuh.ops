@@ -1,0 +1,23 @@
+- op: create  # 68ab
+  at: '2026-04-08T02:41:00Z'  # 68ab
+  by: agent  # 68ab
+  actor: jgstern_agent  # 68ab
+  clock: 1  # 68ab
+  nonce: 68ab  # 68ab
+  data:  # 68ab
+    kind: invariant  # 68ab
+    title: "Agent must not launch a long-running command identical to one already running in current session"  # 68ab
+    status: violated  # 68ab
+    priority: 2  # 68ab
+    parent:  # 68ab
+    tags:  # 68ab
+    - bf4oxh91w_investigation  # 68ab
+    - agent_governance  # 68ab
+    before: []  # 68ab
+    duplicate_of: []  # 68ab
+    not_duplicate_of: []  # 68ab
+    pr_ref:  # 68ab
+    description: "**Stated invariant:** *Agent must not launch a long-running command identical to one already running in the current session.*\n\n**Status: violated** as observed on 2026-04-06 19:25–19:42 in session `246a2da5-9cd9-44d8-8b3a-54790b589126`, task ID `bf4oxh91w`. Full forensic timeline in `~/hypergumbo_lab_notebook/bf4oxh91w_investigation_threads_04072026_1702.md` Thread 2 and Thread 8.\n\n**Concrete violation:** under stop-hook pressure, the agent flipped from \"tests are still running, will wait for notification\" (L252, 19:28:31) to \"background task seems stale\" (L262, 19:32:19) on **no new evidence** — the output file was 0 bytes both times, the only thing that changed was that the stop hook had pinged (L253, 19:31:25). The agent then re-issued an identical `pytest -n auto --cov-fail-under=100` command at L263, backgrounded as task `blnxjp40f`. Both pytest runs ran concurrently for ~5 minutes consuming all CPU cores. The original `bf4oxh91w` task completed normally at L265 (19:36:18) — it was never stale. The user had to interject three times to get the agent to recognize what it had done.\n\n**Causal factors** (per Thread 8, ranked by leverage):\n1. Stop-hook pressure overrode careful reasoning (54 seconds between hook fire and destructive action).\n2. No pre-launch idempotency check anywhere in the workflow.\n3. `TaskList` tool exists and is not habituated. The agent has direct access to it; it didn't occur to the agent to call it.\n4. The 0-byte stdout heuristic is misleading for `smart-test` specifically — `smart-test` redirects to `.ci/pytest-output.log` per AGENTS.md §\"Output Capture for Long-Running Commands\", so the per-task stdout file is *expected* to be empty. This is a documented gotcha that the agent forgot under pressure.\n5. The agent abandoned its own commitment (\"I'll be notified when it finishes\") with no logged rationalization.\n\n**Why this is an invariant, not a one-off bug:** the failure mode is structural — any future situation combining (a) a long-running background command, (b) a stdout-redirecting tool, and (c) stop-hook anxiety will reproduce it absent a structural fix. Doc-only interventions failed once already (the smart-test output convention is in AGENTS.md and was forgotten under pressure).\n\n**Companion fix items** (the structural interventions that should move this invariant to `satisfied`):\n- WI: `scripts/smart-test` flock guard — Thread 8 §Recommendation, the highest-leverage single fix\n- WI: stop-hook task-awareness — secondary fix, governance, addresses root cause (anxiety)\n\n**How this gets validated to `satisfied`:** after the smart-test flock lands, the failure mode becomes structurally impossible for `smart-test` invocations specifically (a second invocation will hit `flock` and exit loudly). After the stop-hook task-aware guidance lands, the broader class of duplicate-launch is also addressed. Validation: a manual or scripted reproduction attempt on the smart-test flock should fail gracefully; the stop-hook reproduction is a process-level test (review of next stop-hook firing while a background task is in flight)."  # 68ab
+    fields:  # 68ab
+      statement: "Within a single agent session, the agent must not launch a long-running command (e.g., test suite, full build) whose argv matches a command currently running as a background task in the same session, regardless of perceived staleness signals from the harness."  # 68ab
+      root_cause: "Stop-hook anxiety + missing structural mutex. Agent flips from 'wait for notification' to 'task is stale' on no new evidence (other than the stop hook firing), and re-launches the identical command without (a) checking liveness via TaskList/ps/log file or (b) killing the prior process. The 0-byte stdout heuristic is misleading for tools that redirect to .ci/pytest-output.log, and the agent forgot the AGENTS.md rule about that under pressure. Documented gotchas + doc-only rules are insufficient — needs structural enforcement (flock at scripts/smart-test, task-aware stop-hook guidance)."  # 68ab

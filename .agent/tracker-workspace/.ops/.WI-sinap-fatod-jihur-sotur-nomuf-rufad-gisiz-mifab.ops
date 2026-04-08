@@ -1,0 +1,22 @@
+- op: create  # bc08
+  at: '2026-04-08T02:41:25Z'  # bc08
+  by: agent  # bc08
+  actor: jgstern_agent  # bc08
+  clock: 1  # bc08
+  nonce: bc08  # bc08
+  data:  # bc08
+    kind: work_item  # bc08
+    title: "scripts/smart-test: add flock guard against concurrent invocations"  # bc08
+    status: todo_soft  # bc08
+    priority: 2  # bc08
+    parent:  # bc08
+    tags:  # bc08
+    - bf4oxh91w_investigation  # bc08
+    - ci_infrastructure  # bc08
+    - developer_experience  # bc08
+    before: []  # bc08
+    duplicate_of: []  # bc08
+    not_duplicate_of: []  # bc08
+    pr_ref:  # bc08
+    description: "**Highest-leverage single fix** identified in `~/hypergumbo_lab_notebook/bf4oxh91w_investigation_threads_04072026_1702.md` Thread 8 §Recommendation. Companion to the invariant item *\"Agent must not launch a long-running command identical to one already running in the current session\"* (status: violated).\n\n**The fix:** add a flock-based mutex to `scripts/smart-test`. At startup, acquire a non-blocking lock on `.ci/.smart-test.lock`. If already held by another smart-test process, exit non-zero with a loud, actionable message:\n\n> Another smart-test is already running (PID N).\n> Refusing to start a second instance — running two pytest -n auto in parallel will consume all CPU cores and may flake xdist.\n> Either:\n>   1. Wait for the notification from the first run, OR\n>   2. `kill N` to abort it first, then re-run smart-test.\n\n~5–10 lines of shell. Example sketch:\n\n```sh\nLOCKFILE=\".ci/.smart-test.lock\"\nexec 9>\"$LOCKFILE\"\nif ! flock -n 9; then\n    holder=$(cat \"$LOCKFILE.pid\" 2>/dev/null || echo \"unknown\")\n    echo \"Another smart-test is already running (PID $holder)...\" >&2\n    exit 1\nfi\necho $$ > \"$LOCKFILE.pid\"\ntrap 'rm -f \"$LOCKFILE.pid\"' EXIT\n```\n\n**Why this is structurally strong:**\n- Makes the duplicate-launch failure mode *structurally impossible* for `smart-test` specifically, regardless of agent reasoning quality.\n- Doesn't depend on agent recall of any AGENTS.md rule (the agent already had the rule and forgot it under pressure).\n- Doesn't shift training data distribution.\n- Doesn't touch any governance file (`scripts/smart-test` is NOT in the AGENTS.md governance file list).\n- Dovetails with existing sentinel-file patterns (`auto-pr` uses `.git/PR_PENDING` as an advisory gate — this is the same pattern at the per-test level).\n\n**Tests to add:**\n1. Two parallel `smart-test` invocations: second exits non-zero with the loud message.\n2. After first completes, lock is released and a third invocation succeeds.\n3. If first crashes (kill -9), the lock is released by `flock` automatically (it's a file-descriptor lock, OS-managed).\n\n**What this does NOT fix:** the stop-hook anxiety that drove the duplicate-launch decision in the first place. The companion stop-hook task-aware guidance item addresses that root cause separately. Per the notebook: \"Then #3 as a follow-up because it addresses the root cause (stop-hook anxiety creating premature action) but it's governance and shouldn't gate the immediate fix.\"\n\n**NOT a governance file.** Application script. Can be implemented + PR'd directly via the standard flow."  # bc08
+    fields: {}  # bc08
