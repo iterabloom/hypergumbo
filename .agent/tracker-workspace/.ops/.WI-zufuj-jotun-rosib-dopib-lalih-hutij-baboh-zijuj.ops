@@ -1,0 +1,21 @@
+- op: create  # 6d73
+  at: '2026-04-08T01:44:50Z'  # 6d73
+  by: agent  # 6d73
+  actor: jgstern_agent  # 6d73
+  clock: 1  # 6d73
+  nonce: 6d73  # 6d73
+  data:  # 6d73
+    kind: work_item  # 6d73
+    title: "Block 'tracker discuss' with --ack-thread when prior entry is by:human"  # 6d73
+    status: todo_soft  # 6d73
+    priority: 3  # 6d73
+    parent:  # 6d73
+    tags:  # 6d73
+    - agent_governance  # 6d73
+    - developer_experience  # 6d73
+    before: []  # 6d73
+    duplicate_of: []  # 6d73
+    not_duplicate_of: []  # 6d73
+    pr_ref:  # 6d73
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md proposed remedy §4: today the tracker CLI emits 'Please reply to the human's message' AFTER the agent has already discussed (notebook references records 159, 220, 4775, 4858 in the analyzed transcripts). It is a backstop, not a planning aid.\n\n**Change:** in tracker discuss subcommand (cli.py), when the target item's last discussion entry has by: human, require either --ack-thread flag OR print the full prior thread + description and exit non-zero on first attempt. Same heuristic as today's warning, stricter enforcement.\n\n**Why this matters:** the REPLY-FIRST CYCLE branch (companion item) creates a quiet room for the agent to focus on replies — but the agent might learn that the cycle clears as soon as tracker discuss posts *anything*. This item's hard gate is what prevents that. Without it, REPLY-FIRST CYCLE might just produce shorter drive-by replies.\n\n**Failure mode design check:** the gate must be one-time per turn (--ack-thread flag), not per session, so genuine multi-step conversations can proceed. The agent must explicitly affirm that it has loaded and considered the prior thread before its reply gets posted.\n\n**Pairs with REPLY-FIRST CYCLE branch and the strengthened guidance text.** The notebook calls these three items 'a coherent intervention.'\n\nNOT a governance file — packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py is application code."  # 6d73
+    fields: {}  # 6d73
