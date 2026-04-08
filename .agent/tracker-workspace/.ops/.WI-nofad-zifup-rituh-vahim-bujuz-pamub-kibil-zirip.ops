@@ -1,0 +1,21 @@
+- op: create  # 1d77
+  at: '2026-04-08T01:48:32Z'  # 1d77
+  by: agent  # 1d77
+  actor: jgstern_agent  # 1d77
+  clock: 1  # 1d77
+  nonce: 1d77  # 1d77
+  data:  # 1d77
+    kind: work_item  # 1d77
+    title: "Create tracker-reply-playbook.md and register in AGENTS.md + on_transcript_change hook"  # 1d77
+    status: needs_human_review  # 1d77
+    priority: 3  # 1d77
+    parent:  # 1d77
+    tags:  # 1d77
+    - agent_governance  # 1d77
+    - governance  # 1d77
+    before: []  # 1d77
+    duplicate_of: []  # 1d77
+    not_duplicate_of: []  # 1d77
+    pr_ref:  # 1d77
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md proposed remedy §5: codify the four-step tracker-reply protocol as a standalone playbook following the existing pattern under .agent/agent_playbooks_protocols_sops_skills/.\n\n**Three-level structure** (per AGENTS.md §'Creating a New Playbook'):\n1. Full playbook file: .agent/agent_playbooks_protocols_sops_skills/tracker-reply-playbook.md — covers the four-step protocol, examples, classification rubric (approval/directive/question), guidance on when to delegate to Explore subagent, when to use WebSearch, and the anti-pattern of replying in the same turn as starting a new feature branch.\n2. AGENTS.md essentialization: 1-3 sentence summary in the appropriate section of AGENTS.md, with the standard '(For more explanation, please read .agent/agent_playbooks_protocols_sops_skills/tracker-reply-playbook.md.)' suffix.\n3. Hook registration: add a tuple to the PLAYBOOKS list in .agent/hooks/_shared/on_transcript_change.py with a multi-sentence expanded summary so the hook can auto-inject when relevant.\n\n**Status: needs_human_review per AGENTS.md §'Approval workflow.'**\n\nThe playbook *file itself* is not a governance file (per AGENTS.md §'Creating a New Playbook': 'The playbook markdown file itself is not a governance file (it only takes effect when referenced from one).'). However, both the AGENTS.md essentialization and the .agent/hooks/_shared/on_transcript_change.py registration ARE governance changes — and the playbook is useless without registration. Treat the whole item as governance work pending human approval.\n\n**Content blueprint:** the strengthened stop-hook directive text from the companion item is the core content. Expand with examples of (a) good vs drive-by replies, (b) when to dispatch Explore subagent, (c) when to use WebSearch on allowlisted domains, (d) the 'don't dispatch a new feature branch in the same turn as a substantive reply' rule."  # 1d77
+    fields: {}  # 1d77
