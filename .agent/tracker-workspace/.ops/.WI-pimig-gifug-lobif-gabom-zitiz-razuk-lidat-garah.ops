@@ -1,0 +1,22 @@
+- op: create  # 3ebf
+  at: '2026-04-08T00:00:19Z'  # 3ebf
+  by: agent  # 3ebf
+  actor: jgstern_agent  # 3ebf
+  clock: 1  # 3ebf
+  nonce: 3ebf  # 3ebf
+  data:  # 3ebf
+    kind: work_item  # 3ebf
+    title: "String-literal cross-language collision signal for dead-code-maybe"  # 3ebf
+    status: todo_soft  # 3ebf
+    priority: 3  # 3ebf
+    parent:  # 3ebf
+    tags:  # 3ebf
+    - cross_language_linkers  # 3ebf
+    - dead_code_prospector  # 3ebf
+    before:  # 3ebf
+    - WI-botol-duhub-farad-vukih-fiput-tifit-luzur-lazaf  # 3ebf
+    duplicate_of: []  # 3ebf
+    not_duplicate_of: []  # 3ebf
+    pr_ref:  # 3ebf
+    description: "Implement the 'killer heuristic' from ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md Heuristics §2: for each dead-code candidate, check whether the symbol name (or a plausible route shape derived from it) appears as a **string literal** in files whose language differs from the symbol's language. A hit in another-language files is a near-certain signal of a missing cross-language reference (HTTP path, RPC method, MQ topic, FFI name). Same-language hits are a different signal (dynamic dispatch/reflection) — track separately, do not conflate.\n\nRank candidates by hit count in other-language files. The top of that ranked list is what we eyeball manually.\n\n**Performance requirement:** build an inverted index 'name → files-containing-this-string-as-literal' once per repo, then query per dead candidate. Naive O(candidates × files) scanning is unacceptable on the 200-repo corpus (notebook Open Questions §3).\n\n**Detecting 'string literal':** simple substring match in files whose extension maps to a different language than the candidate. Start naive — do not try to parse every language's string-literal syntax. False positives from comments/identifiers are acceptable at this stage; the filter list still reduces raw candidate counts by orders of magnitude.\n\nDepends on the base dead-code-maybe tool."  # 3ebf
+    fields: {}  # 3ebf
