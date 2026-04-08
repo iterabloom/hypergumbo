@@ -1,0 +1,30 @@
+- op: create  # 61a2
+  at: '2026-04-08T19:27:18Z'  # 61a2
+  by: agent  # 61a2
+  actor: jgstern_agent  # 61a2
+  clock: 1  # 61a2
+  nonce: 61a2  # 61a2
+  data:  # 61a2
+    kind: invariant  # 61a2
+    title: "Concurrent sessions in the same repo must not corrupt each other's transcript or kill each other's watcher"  # 61a2
+    status: pending_validation  # 61a2
+    priority: 2  # 61a2
+    parent:  # 61a2
+    tags:  # 61a2
+    - developer_experience  # 61a2
+    before: []  # 61a2
+    duplicate_of: []  # 61a2
+    not_duplicate_of: []  # 61a2
+    pr_ref:  # 61a2
+    description: "Status pending_validation until manually verified by re-running Step 5 of the test protocol from the 2026-04-08 lifecycle test report (two concurrent Claude Code sessions in different terminals, each survives the other's start/end). Original violation observed in that report: pgrep-by-DEST sweep killed session A's watcher when session B started."  # 61a2
+    fields:  # 61a2
+      statement: "When two or more agentic CLI sessions (Claude Code, Codex CLI, Gemini CLI) run concurrently in the same repository, the transcript-sync pipeline guarantees per-session isolation: (1) each session's watcher process is isolated and not killed by sibling session lifecycle events; (2) each session writes to its own .current_session_transcript.<session_id>.jsonl without racing siblings on a shared destination; (3) each session's injection-history sidecar is isolated to that session; (4) the global .last_session_transcript.jsonl rotation slot is updated only on session END (not start), with end-time atomic rotation handled via flock; (5) crashed sessions (no SessionEnd hook fired) get their orphaned current files archived directly to .archived-transcripts/ on the next session start, never claiming the .last_* slot. Cursor is exempted (single-session-per-repo, see linked Cursor extractor WI) because its transcript backing store is a global SQLite database."  # 61a2
+      root_cause: "Original violation: launch-transcript-sync.sh's orphan cleanup used pgrep -af 'sync-transcript.sh' to find all watcher processes and matched them by DEST argument. Because all sessions in one repo shared the same DEST path (.current_session_transcript.jsonl, no per-session suffix), session B's startup unconditionally killed session A's still-live watcher. The single global PID file at .agent/.transcript-sync.pid had the same problem at a different layer (only one PID could be tracked at a time). Both root causes are fixed by encoding session_id into the DEST and PID file paths so each session has its own isolated namespace."  # 61a2
+- op: update  # dde7
+  at: '2026-04-08T23:20:28Z'  # dde7
+  by: human  # dde7
+  actor: jgstern  # dde7
+  clock: 2  # dde7
+  nonce: dde7  # dde7
+  set:  # dde7
+    status: satisfied  # dde7

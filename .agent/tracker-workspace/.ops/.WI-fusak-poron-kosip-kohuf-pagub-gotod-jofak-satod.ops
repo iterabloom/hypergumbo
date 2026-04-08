@@ -18,3 +18,18 @@
     pr_ref:  # 4ac9
     description: "Build a post-hoc analyzer that, given a session's transcript and its paired .last_injection_history.jsonl, computes the overlap between (a) playbooks the agent explicitly read via the Read tool and (b) playbooks that were subsequently injected by the on_transcript_change pipeline (or vice versa). The overlap is pure waste — the agent already has the content. Output a per-session waste rate and a top-N list of playbooks that thrash this loop. Surface the result in the agentic-session-retrospective playbook (Phase 2d) once available. Per ADR-0018 (2026-04-08 amendment) Future Work."  # 4ac9
     fields: {}  # 4ac9
+- op: update  # 9baa
+  at: '2026-04-08T22:24:17Z'  # 9baa
+  by: agent  # 9baa
+  actor: jgstern_agent  # 9baa
+  clock: 2  # 9baa
+  nonce: 9baa  # 9baa
+  set:  # 9baa
+    description: "Build a post-hoc analyzer that, given a session's transcript and its paired .last_injection_history.jsonl, computes the overlap between (a) playbooks the agent explicitly read via the Read tool and (b) playbooks that were subsequently injected by the on_transcript_change pipeline (or vice versa). The overlap is pure waste — the agent already has the content. Output a per-session waste rate and a top-N list of playbooks that thrash this loop. Surface the result in the agentic-session-retrospective playbook (Phase 2d) once available. Per ADR-0018 (2026-04-08 amendment) Future Work.\n\n**Sidecar location** (per commits 7310783e1 and 9ac06cc88): each live session writes to `.agent/.current_injection_history.<session_id>.jsonl`. On session END, `rotate-on-session-end.sh` (serialized via flock) promotes that session's pair to `.agent/.last_session_transcript.jsonl` + `.agent/.last_injection_history.jsonl`, where \"last\" means \"most recently *ended* session in this repo\" (per the ADR-0018 per-session-isolation amendment), NOT \"the previous session.\" Older pairs cascade to `.second_to_last_*` and then archive into `.agent/.archived-transcripts/<UTC-stamp>/`. The analyzer should accept either a live per-session sidecar or any rotated/archived transcript+sidecar pair."  # 9baa
+- op: discuss  # 0ccc
+  at: '2026-04-08T22:24:18Z'  # 0ccc
+  by: agent  # 0ccc
+  actor: jgstern_agent  # 0ccc
+  clock: 3  # 0ccc
+  nonce: 0ccc  # 0ccc
+  message: "Refreshed description to reflect per-session sidecar naming and the 'most recently ended' semantics introduced by commits 7310783e1 (sidecar writer + rotation) and 9ac06cc88 (per-session DEST/PID isolation). No change to scope or status."  # 0ccc

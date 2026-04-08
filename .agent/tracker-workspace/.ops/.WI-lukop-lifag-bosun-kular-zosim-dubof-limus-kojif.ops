@@ -1,0 +1,20 @@
+- op: create  # 3942
+  at: '2026-04-08T23:18:16Z'  # 3942
+  by: agent  # 3942
+  actor: jgstern_agent  # 3942
+  clock: 1  # 3942
+  nonce: '3942'  # 3942
+  data:  # 3942
+    kind: work_item  # 3942
+    title: "tracker list --status: support repeatable values for multi-status filters"  # 3942
+    status: todo_soft  # 3942
+    priority: 4  # 3942
+    parent:  # 3942
+    tags:  # 3942
+    - developer_experience  # 3942
+    before: []  # 3942
+    duplicate_of: []  # 3942
+    not_duplicate_of: []  # 3942
+    pr_ref:  # 3942
+    description: "**Symptom:** `tracker list --status STATUS` accepts only one status value. Common patterns like 'show me all open items' (todo_hard + todo_soft + violated + pending_validation + needs_human_review) require five separate invocations and a merge step in the caller.\n\n**Discovered need:** the 2026-04-08 retrospective extraction needed all five 'open' statuses. Required five `tracker --no-auto-sync --json list --status X` calls and a `jq` merge across the five JSON files. Routine enough to deserve first-class support.\n\n**Proposed fix:** make `--status` repeatable using argparse `action='append'`, OR accept a comma-separated list. Repeatable is more idiomatic and consistent with `--tag`/`--add-tag` patterns elsewhere in the CLI.\n\n**Bonus: --open shortcut.** Add a named filter `--open` that expands to the five statuses listed above. Centralizes the definition of 'open' so future status changes (e.g., adding a new blocking status) only need to update one place.\n\n**Tests:**\n1. `--status todo_hard --status todo_soft` returns the union.\n2. `--open` returns the same set as the five explicit statuses.\n3. `--status X --status X` deduplicates.\n4. Single `--status X` (legacy) still works (regression guard).\n\n**Cross-reference:** WI-pusif discovery notes the same five-call pattern as ergonomic friction during long-running retrospective sessions."  # 3942
+    fields: {}  # 3942
