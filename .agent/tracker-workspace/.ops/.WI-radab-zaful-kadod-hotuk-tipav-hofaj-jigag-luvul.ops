@@ -1,0 +1,21 @@
+- op: create  # 3905
+  at: '2026-04-08T01:45:58Z'  # 3905
+  by: agent  # 3905
+  actor: jgstern_agent  # 3905
+  clock: 1  # 3905
+  nonce: '3905'  # 3905
+  data:  # 3905
+    kind: work_item  # 3905
+    title: "Self-contained 'check-messages': include description, prior thread, pr_ref"  # 3905
+    status: todo_soft  # 3905
+    priority: 3  # 3905
+    parent:  # 3905
+    tags:  # 3905
+    - agent_governance  # 3905
+    - developer_experience  # 3905
+    before: []  # 3905
+    duplicate_of: []  # 3905
+    not_duplicate_of: []  # 3905
+    pr_ref:  # 3905
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md proposed remedy §3: today _cmd_check_messages (cli.py:999-1049, in packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py) prints only the unread message text + item title — not the description, not the prior discussion, not the pr_ref. So to answer in context the agent must do a second tracker show <ID> per item, and that second call still does not include the codebase / ADR / PR-history context the question may be about.\n\n**Change:** modify _cmd_check_messages to also print, for each item:\n- The item description (truncate to ~1500 chars to keep output bounded)\n- The prior 2-3 discussion entries (preserve by:human / by:agent attribution)\n- Any pr_ref field\n\n**Why:** cuts a tool round-trip and ensures the question never gets answered without its context. Today even a thoughtful agent has to guess what the question is about until it does the second tracker show.\n\n**Format consideration:** the output of check-messages may be long when several items have unread messages. Consider a --compact flag that keeps the current behavior, with the new richer output as the default, OR vice versa. Default to richer — the cost of an extra few KB of output is far less than the cost of a context-free reply.\n\nNOT a governance file."  # 3905
+    fields: {}  # 3905
