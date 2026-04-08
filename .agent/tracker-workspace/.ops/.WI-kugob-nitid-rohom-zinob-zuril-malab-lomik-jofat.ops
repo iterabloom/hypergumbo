@@ -1,0 +1,29 @@
+- op: create  # 9eca
+  at: '2026-04-08T01:53:02Z'  # 9eca
+  by: agent  # 9eca
+  actor: jgstern_agent  # 9eca
+  clock: 1  # 9eca
+  nonce: 9eca  # 9eca
+  data:  # 9eca
+    kind: work_item  # 9eca
+    title: "auto-pr: 'list/status' should reconcile vPR queue against forge before reporting"  # 9eca
+    status: needs_human_review  # 9eca
+    priority: 3  # 9eca
+    parent:  # 9eca
+    tags:  # 9eca
+    - ci_infrastructure  # 9eca
+    - governance  # 9eca
+    before: []  # 9eca
+    duplicate_of: []  # 9eca
+    not_duplicate_of: []  # 9eca
+    pr_ref:  # 9eca
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md §'Lessons / proposed mitigations' §1 (auto-pr silent-success blip).\n\n**The bug:** in the PR #2773 incident, the user ended up with a stale vPR in .git/PR_QUEUE pointing at a commit that had already been merged. ./scripts/auto-pr list and ./scripts/auto-pr status both reported the queue contents at face value and gave no signal that the entry was stale. The user had to manually rm .git/PR_QUEUE to recover.\n\n**Proposed fix:** add a reconciliation pass at the start of auto-pr list (and auto-pr status) that, for each queued vPR, queries the forge to check whether the underlying commit / branch has already been merged into dev. If it has:\n1. Print a warning: '⚠️  vPR #N is stale (already merged as PR #M)'\n2. Offer to clean up: 'Run  to remove stale entries' (or auto-prune with a flag)\n3. Optionally: when stale entries equal 100% of the queue, exit with a 'queue is empty after reconciliation' message\n\n**Why this matters:** removes a class of confusing manual recovery (rm .git/PR_QUEUE) from the agent's playbook. Self-cleaning state is more reliable than docs saying 'when X happens, run Y manually.'\n\n**STATUS: needs_human_review per AGENTS.md governance file list. scripts/auto-pr is governance.**\n\n**Pairs with the AUTOPR_LAST_RESULT.json sentinel item and the 'commit is same as old commit' detection item.** Together: the sentinel catches the success at exit (item J), the rejection hint catches it at next invocation (item I), and the queue reconciliation catches it any time the user inspects the queue (this item)."  # 9eca
+    fields: {}  # 9eca
+- op: update  # a40b
+  at: '2026-04-08T01:54:47Z'  # a40b
+  by: agent  # a40b
+  actor: jgstern_agent  # a40b
+  clock: 2  # a40b
+  nonce: a40b  # a40b
+  set:  # a40b
+    description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md §'Lessons / proposed mitigations' §1 (auto-pr silent-success blip).\n\n**The bug:** in the PR #2773 incident, the user ended up with a stale vPR in .git/PR_QUEUE pointing at a commit that had already been merged. ./scripts/auto-pr list and ./scripts/auto-pr status both reported the queue contents at face value and gave no signal that the entry was stale. The user had to manually rm .git/PR_QUEUE to recover.\n\n**Proposed fix:** add a reconciliation pass at the start of auto-pr list (and auto-pr status) that, for each queued vPR, queries the forge to check whether the underlying commit / branch has already been merged into dev. If it has:\n1. Print a warning: '⚠️  vPR #N is stale (already merged as PR #M)'\n2. Offer to clean up: 'Run auto-pr prune to remove stale entries' (or auto-prune with a flag)\n3. Optionally: when stale entries equal 100% of the queue, exit with a 'queue is empty after reconciliation' message\n\n**Why this matters:** removes a class of confusing manual recovery (rm .git/PR_QUEUE) from the agent's playbook. Self-cleaning state is more reliable than docs saying 'when X happens, run Y manually.'\n\n**STATUS: needs_human_review per AGENTS.md governance file list. scripts/auto-pr is governance.**\n\n**Pairs with the AUTOPR_LAST_RESULT.json sentinel item and the 'commit is same as old commit' detection item.** Together: the sentinel catches the success at exit (item J), the rejection hint catches it at next invocation (item I), and the queue reconciliation catches it any time the user inspects the queue (this item)."  # a40b
