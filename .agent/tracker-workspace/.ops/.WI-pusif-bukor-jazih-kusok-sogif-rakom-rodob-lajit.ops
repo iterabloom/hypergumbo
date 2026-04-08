@@ -1,0 +1,71 @@
+- op: create  # dc1a
+  at: '2026-04-08T22:41:25Z'  # dc1a
+  by: agent  # dc1a
+  actor: jgstern_agent  # dc1a
+  clock: 1  # dc1a
+  nonce: dc1a  # dc1a
+  data:  # dc1a
+    kind: work_item  # dc1a
+    title: "Tracker .ops YAML serializer corrupts long string scalars via nonce injection"  # dc1a
+    status: todo_hard  # dc1a
+    priority: 2  # dc1a
+    parent:  # dc1a
+    tags:  # dc1a
+    - developer_experience  # dc1a
+    before: []  # dc1a
+    duplicate_of: []  # dc1a
+    not_duplicate_of: []  # dc1a
+    pr_ref:  # dc1a
+    description: "**Symptom:** Updating any tracker item with a description (or other long string field) whose YAML-serialized representation exceeds ruamel.yaml's width threshold (4096) causes the per-line nonce comment to be embedded INSIDE the string value on read-back. The corrupted text appears as '  # <nonce>' literally inside the scalar. Observed 2026-04-08 on INV-gajap during a path correction that bumped the description from 3947 to ~4106 YAML bytes.\n\n**Root cause** (verified 2026-04-08 by reading store.py at HEAD):\n1. `packages/hypergumbo-tracker/src/hypergumbo_tracker/store.py:289` sets `ry.width = 4096` on the ruamel.yaml dumper. This is intended to 'prevent line wrapping' but in fact only sets the SOFT line-length threshold for folded scalars; long double-quoted scalars containing strings whose YAML representation exceeds 4096 bytes get folded across multiple physical lines (newline + leading whitespace, which YAML reads back as a single space).\n2. `store.py:298-303` then post-processes the dumped YAML by appending '  # <nonce>' to EVERY non-empty physical line, INCLUDING physical lines that are continuations of a multi-line scalar.\n3. When CSafeLoader parses the file back at `store.py:316-333`, the appended comment is INSIDE the double-quoted string (since YAML treats '#' as literal inside quoted scalars), so the value comes back containing literal '  # <nonce>' text where the wrap point landed.\n\n**Reproduction:** create or update any item with a description whose UTF-8 byte length plus YAML overhead exceeds 4096 bytes. The bug fires deterministically. INV-gajap's first update attempt (4091 bytes + ~14 bytes YAML prefix) triggered '  # f084'; the second attempt (restructured paragraph) triggered '  # 418f' at the new wrap point.\n\n**Why it's structural and not cosmetic:**\n- Silently corrupts the in-memory state on every read after the affected op is recorded.\n- Fires on any future content addition to large items (the bf4oxh91w investigation items in particular average 3000-5000 bytes — they are one path-correction away from this bug).\n- The UI/JSON output shows the corrupted text, so consumers (humans and agents) act on bad data.\n- The corruption is invisible until you diff against intended text — agents will not notice they corrupted their own writes.\n\n**Proposed fixes** (in order of preference):\n\n1. **Skip continuation lines in the post-processor.** Track YAML scalar context while iterating `raw_yaml.split('\\n')` at store.py:296: any line whose first non-whitespace character continues a previously-opened double-quoted scalar must NOT receive the nonce comment append. Since the YAML serializer's output is structured, this is a parser-lite over the dumped text. ruamel guarantees indentation, so a continuation line is identifiable by its leading-whitespace + non-key prefix.\n\n2. **Force literal block scalars for description and other long fields.** Configure a ruamel.yaml representer that emits long strings as '|' (literal block) scalars, where each physical line becomes part of the scalar by indentation. The post-processor's line-by-line nonce append would then be visibly inside the scalar (preserving the bug) UNLESS the post-processor is also fixed — so this alone is not a fix, only a fix-enabler.\n\n3. **Raise width.** Setting `ry.width = 1_000_000` would suppress folding for any realistic description. Cheapest immediate mitigation. Risk: someone sometime will write a description over 1 million bytes (unlikely for descriptions, possible for fields containing pasted logs).\n\n4. **Combine 1 and 3:** raise width AND fix the post-processor. Belt and braces.\n\n**Tests to add:**\n- Round-trip test: create an item with a description of 5000 bytes containing multi-byte UTF-8 (em-dashes, arrows, ≈, →), verify show output matches input byte-for-byte.\n- Round-trip test: same for fields.<key> values of 5000 bytes.\n- Round-trip test: very long single-line descriptions (no embedded \\n) of 10000 bytes.\n- Regression test: literal '  # abcd' patterns in user input survive round-trip without being mistaken  # dc1a
+      for a nonce on the next read.\n\n**Workaround until fixed:** keep description strings under ~4080 UTF-8 bytes (subtract YAML overhead from the 4096 ruamel width). Detail beyond that should go in discussion entries, which are stored as separate scalars and avoid the fold.\n\n**Discovered while:** updating INV-gajap (per-entry training-data cohort metadata) to correct stale 'on_transcript_change.py' file paths to '.agent/hooks/_shared/on_transcript_change.py'. The fields.root_cause update (a short field) landed cleanly; the description update (long field) corrupted twice in different positions, both times at the ruamel fold boundary."  # dc1a
+    fields: {}  # dc1a
+- op: update  # 767b
+  at: '2026-04-08T22:43:25Z'  # 767b
+  by: agent  # 767b
+  actor: jgstern_agent  # 767b
+  clock: 2  # 767b
+  nonce: 767b  # 767b
+  set:  # 767b
+    description: "**Symptom:** Updating any tracker item with a description (or other long string field) whose UTF-8 byte length plus YAML overhead exceeds ~4096 bytes causes the per-line nonce comment to be embedded literally INSIDE the string value on read-back. The corrupted text appears as `  # <nonce>` between adjacent words at the YAML fold boundary. Bug fires deterministically.\n\n**Root cause** (verified 2026-04-08 by reading store.py at HEAD):\n1. `packages/hypergumbo-tracker/src/hypergumbo_tracker/store.py:289` sets `ry.width = 4096`. ruamel.yaml folds long double-quoted scalars across physical lines (newline + leading whitespace, read back as a single space).\n2. `store.py:298-303` post-processes the dumped YAML by appending `  # <nonce>` to EVERY non-empty physical line, INCLUDING multi-line scalar continuation lines.\n3. CSafeLoader (`store.py:316-333`) treats `#` as literal inside double-quoted scalars, so the appended nonce comment becomes part of the string value.\n\n**Reproduction:** create or update an item with a description over ~4080 UTF-8 bytes. See INV-gajap discussion for the original observation; this item's own first-revision description (4708 bytes, filed via the same bug) contained THREE real nonce injections — see discussion below for the corruption trace.\n\n**Workaround:** keep description strings under ~4080 UTF-8 bytes. Push detail beyond that into discussion entries (separate scalars, no fold).\n\n**Proposed fixes** (in order of preference): see discussion entry \"Proposed fixes\" below.\n\n**Tests to add:** see discussion entry \"Tests to add\" below.\n\n**Why structural, not cosmetic:** see discussion entry \"Why structural\" below."  # 767b
+- op: discuss  # 33f6
+  at: '2026-04-08T22:43:25Z'  # 33f6
+  by: agent  # 33f6
+  actor: jgstern_agent  # 33f6
+  clock: 3  # 33f6
+  nonce: 33f6  # 33f6
+  message: "[Proposed fixes] Proposed fixes (in order of preference): (1) Skip continuation lines in the post-processor at store.py:298-303. Track scalar context while iterating raw_yaml.split('\\n'): any line whose first non-whitespace character continues a previously-opened double-quoted scalar must NOT receive the nonce comment append. ruamel guarantees indentation, so continuation lines are identifiable by their leading-whitespace + non-key prefix. (2) Force literal block scalars ('|') for description and other long fields via a custom ruamel.yaml representer — only effective combined with (1). (3) Raise ry.width to e.g. 1_000_000 to suppress folding for any realistic string. Cheapest immediate mitigation. (4) Belt-and-braces: combine (1) and (3)."  # 33f6
+- op: discuss  # 5ee2
+  at: '2026-04-08T22:43:26Z'  # 5ee2
+  by: agent  # 5ee2
+  actor: jgstern_agent  # 5ee2
+  clock: 4  # 5ee2
+  nonce: 5ee2  # 5ee2
+  message: "[Tests to add] Tests to add: - Round-trip test: create an item with a description of 5000 UTF-8 bytes containing multi-byte characters (em-dashes, arrows, ≈, →, ★), verify show output matches input byte-for-byte. - Round-trip test: same for fields.<key> values of 5000 bytes. - Round-trip test: very long single-line descriptions (no embedded \\n) of 10000 bytes. - Adversarial test: literal user-supplied text containing patterns like '  # 1234' or '  # abcd' must survive round-trip without being mistaken for a nonce on the next read. - Regression test: create an item with the exact INV-gajap-as-of-2026-04-08 description after path correction (~4106 YAML bytes), verify byte-clean."  # 5ee2
+- op: discuss  # 4415
+  at: '2026-04-08T22:43:26Z'  # 4415
+  by: agent  # 4415
+  actor: jgstern_agent  # 4415
+  clock: 5  # 4415
+  nonce: '4415'  # 4415
+  message: "[Why structural] Why structural, not cosmetic: (a) Silently corrupts the in-memory state on every read after the affected op is recorded. (b) Fires on any future content addition to large items. The bf4oxh91w investigation items in particular average 3000-5000 bytes — they are one path-correction or one drift note away from this bug. (c) UI/JSON output shows the corrupted text, so consumers (humans and agents) act on bad data. (d) The corruption is invisible until you diff against intended text — agents will not notice they corrupted their own writes."  # 4415
+- op: discuss  # 847b
+  at: '2026-04-08T22:43:26Z'  # 847b
+  by: agent  # 847b
+  actor: jgstern_agent  # 847b
+  clock: 6  # 847b
+  nonce: 847b  # 847b
+  message: "[Discovery context] Discovered while updating INV-gajap to correct stale 'on_transcript_change.py' file paths to '.agent/hooks/_shared/on_transcript_change.py'. The fields.root_cause update (a short field) landed cleanly; the description update (long field, 4106 YAML bytes) corrupted at position 'periodic  # f084 audit'. A second attempt with restructured paragraph corrupted at position 'Validation  # 418f cadence:' — same bug, new wrap point. INV-gajap description was ultimately reverted to its pre-update text and the path correction recorded in a discussion entry instead. Then this very item was filed via the same bug — its own first-revision description (4708 bytes) self-corrupted at three positions, this time read back as: literal '# f084 nonce should not...' near 'serializer fix; until then', literal '# 418f' embedded somewhere in the proposed-fixes paragraph, and literal '# dc1a' embedded in the regression-tests paragraph. (The literal '# abcd' in the original test-fixture sentence was intentional and is NOT a corruption hit.) After this restructure, the description sits below the ~4080-byte threshold and the verbose detail lives in these discussion entries (which are stored as separate scalars and do not fold)."  # 847b
+- op: discuss  # fe0a
+  at: '2026-04-08T23:18:15Z'  # fe0a
+  by: agent  # fe0a
+  actor: jgstern_agent  # fe0a
+  clock: 7  # fe0a
+  nonce: fe0a  # fe0a
+  message: "[Proposed fixes — revised 2026-04-08 after reviewer discussion] Supersedes the earlier [Proposed fixes] entry above for purposes of implementation. Two changes from the original list: (A) DROP option 3 (raise ry.width to 1_000_000). Reviewer noted that while .ops files are append-only and the per-line nonce design (ADR-0013) makes line-based merge robustness non-load-bearing on width, raising width to 1M produces visually coarse single-line scalars in `git diff` and `gh pr diff` output for any large description. Prefer keeping width modest and fixing the post-processor instead. A small safety bump (e.g. width=8192) is fine as defense in depth, but is optional. (B) ADD a new fix proposal targeting the auto-sync notification stream: currently the line `[tracker] Auto-sync is AUTOMATIC...` is printed to STDOUT for all commands, including read-only ones, which pollutes machine-readable output and forces callers to discover --no-auto-sync. Proposed: when --json is set, route the notification to stderr instead of stdout. When --json is NOT set, keep current stdout behavior so naive shell users see the warning prominently and don't fall into the manual-sync footgun. Optional belt-and-braces: when pending lines exceed 2x threshold, the next mutation exits non-zero unless an explicit --allow-pending-overflow flag is passed — exit code is universal across all agent harnesses regardless of whether they read stderr. Final recommended fix set: option 1 (skip continuation lines in the post-processor at store.py:298-303) + the new --json-aware notification routing + optionally option 3' (modest width bump to 8192 as safety margin) + optionally the 2x-threshold hard-stop. The combination eliminates the corruption AND removes the JSON-pollution paper cut AND structurally prevents manual-sync mistakes."  # fe0a
+- op: discuss  # 8aa8
+  at: '2026-04-08T23:28:53Z'  # 8aa8
+  by: human  # 8aa8
+  actor: jgstern  # 8aa8
+  clock: 8  # 8aa8
+  nonce: 8aa8  # 8aa8
+  message: "re the fix \"skip continuation lines in the post-processor at store.py:298-303\" -- please think carefully about what the implications of doing that might be?"  # 8aa8
