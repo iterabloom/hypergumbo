@@ -39,7 +39,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DISTILL_MODEL = os.environ.get("TRANSCRIPT_DISTILL_MODEL", "mistralai/mistral-small-3.2-24b-instruct")
 SELECT_MODEL = os.environ.get("TRANSCRIPT_SELECT_MODEL", "mistralai/mistral-small-2603")
 MAX_TOKENS = int(os.environ.get("TRANSCRIPT_MAX_TOKENS", "4000"))
-DEDUP_TOKENS = int(os.environ.get("TRANSCRIPT_DEDUP_TOKENS", "50000"))
+DEDUP_TOKENS = int(os.environ.get("TRANSCRIPT_DEDUP_TOKENS", "100000"))
 CHARS_PER_TOKEN = 4.4
 
 # Training data collection: log LLM inputs/outputs for future local model finetuning.
@@ -156,15 +156,20 @@ PLAYBOOKS = [
      ".agent/agent_playbooks_protocols_sops_skills/agentic-session-retrospective.md",
      "Structured post-hoc analysis of an agent's decision-making during an autonomous session. "
      "Evaluates how the agent decided what to build — not what it built. Five phases: (1) read "
-     ".agent/.last_session_transcript.jsonl (rotated on session start, vendor-agnostic), "
-     "(2) reconstruct the decision "
-     "sequence as a timeline with branching points, (3) analyze infrastructure interactions — "
-     "stop hook steering, CI/merge overhead, tracker task selection, playbook injection relevance, "
-     "AGENTS.md compliance, bakeoff integration, (4) quantify time/token allocation across feature "
-     "work, CI overhead, research, compliance, error recovery, and idle time, (5) synthesize "
-     "findings as structured proposals (what happened, impact, root cause, proposed improvement, "
-     "category) and record in the lab notebook. Creates tracker items for actionable improvements. "
-     "Time box: 30-60 minutes total."),
+     ".agent/.last_session_transcript.jsonl (rotated on session start, vendor-agnostic) AND "
+     ".agent/.last_injection_history.jsonl (parallel sidecar recording every playbook injection "
+     "event with the distilled goal, selected/injected/skipped-dedup playbook IDs — this is the "
+     "ONLY way to answer 'were the right playbooks injected at the right times?', since Claude "
+     "Code's additionalContext mechanism does not round-trip into the session JSONL); older "
+     "sessions live gzipped in .agent/.archived-transcripts/<UTC-stamp>/, (2) reconstruct the "
+     "decision sequence as a timeline with branching points, (3) analyze infrastructure "
+     "interactions — stop hook steering, CI/merge overhead, tracker task selection, playbook "
+     "injection relevance (compute precision, dedup-hit rate, top-injected, read-then-injected "
+     "overlap), AGENTS.md compliance, bakeoff integration, (4) quantify time/token allocation "
+     "across feature work, CI overhead, research, compliance, error recovery, and idle time, "
+     "(5) synthesize findings as structured proposals (what happened, impact, root cause, "
+     "proposed improvement, category) and record in the lab notebook. Creates tracker items "
+     "for actionable improvements. Time box: 30-60 minutes total."),
 
     ("bakeoff-process-health-audit",
      ".agent/agent_playbooks_protocols_sops_skills/bakeoff-process-health-audit-playbook.md",
@@ -320,6 +325,71 @@ def log_training_example(
             f.write(entry + "\n")
     except OSError:
         pass  # Best-effort — don't break the pipeline for logging failures
+
+
+def log_injection_history(
+    repo_root: str,
+    *,
+    transcript_offset: int,
+    agent_goals: str,
+    selected: list[str],
+    injected: list[str],
+    skipped_dedup: list[str],
+    event_id: str,
+) -> None:
+    """Append an injection-event record to the rotated sidecar.
+
+    Fixes ADR-0018's "retrospective blindness" gap. Claude Code's
+    ``additionalContext`` mechanism does not write hook-injected text back
+    into the session transcript JSONL, so a retrospective on
+    ``.last_session_transcript.jsonl`` cannot see which playbooks were
+    injected, when, or whether they were relevant. The sidecar at
+    ``<repo>/.agent/.current_injection_history.jsonl`` is the durable
+    record of every poll the LLM-driven selector made: the distilled goal,
+    what it picked, what was actually injected (after dedup), and what was
+    skipped because it was already in the model's context.
+
+    The file is rotated (not wiped) at session start by ``sync-transcript.sh``
+    in parallel with the transcript:
+
+        .current_injection_history.jsonl
+            -> .last_injection_history.jsonl
+            -> .second_to_last_injection_history.jsonl
+            -> .agent/.archived-transcripts/<UTC-stamp>/injection_history.jsonl.gz
+
+    The sidecar's filename deliberately does NOT match the ``.transcript-*``
+    glob (which the per-session reset uses to wipe transient state) — see
+    ``TestSessionResetInvariant`` and ``TestInjectionHistory`` for the
+    enforcement of that invariant.
+
+    Best-effort: any ``OSError`` is swallowed so a logging hiccup never
+    breaks the pipeline. Mirrors the resilience pattern in
+    ``log_training_example``.
+
+    *transcript_offset* is the byte offset in the filtered transcript at
+    the moment of injection (matches the dedup state's offsets — useful
+    for cross-referencing).
+    """
+    log_path = os.path.join(
+        repo_root, ".agent", ".current_injection_history.jsonl",
+    )
+    record = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "session_token": _read_session_token(repo_root),
+        "transcript_offset": transcript_offset,
+        "event_id": event_id,
+        "agent_goals": agent_goals,
+        "selected": selected,
+        "injected": injected,
+        "skipped_dedup": skipped_dedup,
+        "distill_model": DISTILL_MODEL,
+        "select_model": SELECT_MODEL,
+    }
+    try:
+        with open(log_path, "a") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass  # Best-effort — never break the pipeline for logging failures
 
 
 def log_parse_outcome(
@@ -680,23 +750,51 @@ def main() -> None:
         print(f"[step 3] Skipped (recently injected): "
               f"{', '.join(sorted(skipped))}", file=sys.stderr)
 
+    # Pre-compute current_size once — used by both branches below.
+    current_size = (os.path.getsize(transcript_path)
+                    if os.path.exists(transcript_path) else 0)
+
     if not relevant:
         if verbose:
             print(f"[step 3] No playbooks to inject "
                   f"({len(skipped)} deduped)", file=sys.stderr)
-        # Save state even if nothing to inject (compaction tracking still matters)
         if not dry_run:
+            # Save state even if nothing to inject (compaction tracking
+            # still matters).
             save_injection_state(repo_root, inj_state)
+            # Record this poll to the injection-history sidecar — even
+            # zero-injection polls are valuable because they tell a
+            # retrospective how often the selector said "none" or
+            # everything was deduped (vs. how often it actually fired).
+            log_injection_history(
+                repo_root,
+                transcript_offset=current_size,
+                agent_goals=agent_goals,
+                selected=selected,
+                injected=[],
+                skipped_dedup=skipped,
+                event_id=event_id,
+            )
         sys.exit(0)
 
     # Record injection offsets before outputting
-    current_size = (os.path.getsize(transcript_path)
-                    if os.path.exists(transcript_path) else 0)
     for pb_id, content in relevant:
         inj_state["injections"][pb_id] = current_size
 
     if not dry_run:
         save_injection_state(repo_root, inj_state)
+        # Record this injection event to the sidecar so retrospectives
+        # can later evaluate whether the selector was actually picking
+        # the right playbooks for what the agent was doing.
+        log_injection_history(
+            repo_root,
+            transcript_offset=current_size,
+            agent_goals=agent_goals,
+            selected=selected,
+            injected=[pb_id for pb_id, _ in relevant],
+            skipped_dedup=skipped,
+            event_id=event_id,
+        )
 
     # Output: injected into the agent's conversation
     print(f"[Transcript Analysis — {len(relevant)} relevant playbook(s)]")
