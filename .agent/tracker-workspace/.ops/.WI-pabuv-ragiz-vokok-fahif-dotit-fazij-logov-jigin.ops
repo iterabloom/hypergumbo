@@ -108,3 +108,10 @@
   clock: 13  # 6adb
   nonce: 6adb  # 6adb
   message: "Real-world validation completed on all 3 repos. All pass. One bug found (profile.languages missing TLA+) filed as separate tracker item. Full results: ~/hypergumbo_lab_notebook/tla_realworld_validation_04092026.md"  # 6adb
+- op: discuss  # 1d0a
+  at: '2026-04-09T17:24:36Z'  # 1d0a
+  by: human  # 1d0a
+  actor: jgstern  # 1d0a
+  clock: 14  # 1d0a
+  nonce: 1d0a  # 1d0a
+  message: "(note to self: new bug WI-ludil filed)"  # 1d0a
