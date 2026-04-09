@@ -508,3 +508,200 @@ _autopr_is_already_merged_rejection "$1"
     def test_does_not_match_empty_output(self, tmp_path: Path) -> None:
         rc = self._run_helper(tmp_path, "")
         assert rc != 0
+
+
+# ---------------------------------------------------------------------------
+# WI-kugob: vPR queue reconciliation against forge (local check)
+# ---------------------------------------------------------------------------
+
+
+def _seed_vpr(
+    fake: Path, vpr: int, branch: str, sha: str,
+    base: str = "dev", title: str = "test work",
+) -> None:
+    """Append a vPR JSON line to .git/PR_QUEUE."""
+    line = (
+        '{"vpr":' + str(vpr) +
+        ',"branch":"' + branch +
+        '","base":"' + base +
+        '","title":"' + title +
+        '","desc":"","sha":"' + sha +
+        '","ts":"2026-01-01T00:00:00Z"}\n'
+    )
+    queue_file = fake / ".git" / "PR_QUEUE"
+    with queue_file.open("a") as f:
+        f.write(line)
+
+
+def _git_sha(fake: Path, ref: str = "HEAD") -> str:
+    return subprocess.run(
+        ["git", "rev-parse", ref],
+        cwd=str(fake), check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+
+def _wire_local_origin(fake: Path) -> None:
+    """Point origin at the fake repo itself so 'fetch origin dev'
+    is a no-op against the local refs."""
+    subprocess.run(
+        ["git", "remote", "set-url", "origin", str(fake)],
+        cwd=str(fake), check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["git", "branch", "-f", "origin/dev", "dev"],
+        cwd=str(fake), check=True, capture_output=True,
+    )
+
+
+class TestVprQueueReconciliation:
+    """auto-pr list/status/prune must distinguish stale vs. live vPRs.
+
+    A vPR is "stale" iff its commit is reachable from origin/<base> —
+    i.e., the work is already in dev and queueing it again was a
+    silent-success blip.  All checks are local (no forge API call),
+    so the tests just need a fake repo with a wired-up origin.
+    """
+
+    def test_list_clean_queue_has_no_stale_warning(
+        self, tmp_path: Path,
+    ) -> None:
+        """Live-only queue: list reports normally, no warnings."""
+        fake = _init_fake_repo(tmp_path, branch="feature")
+        _wire_local_origin(fake)
+        # Add a commit on feature that is NOT in dev — that vPR is live.
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", "feature work"],
+            cwd=str(fake), check=True, capture_output=True,
+        )
+        live_sha = _git_sha(fake)
+        _seed_vpr(fake, 1, "feature", live_sha)
+
+        result = _run_autopr(fake, "list")
+        assert result.returncode == 0
+        assert "STALE" not in result.stdout
+        assert "appear stale" not in result.stdout
+        assert "Prune stale" not in result.stdout
+
+    def test_list_stale_queue_emits_warning(self, tmp_path: Path) -> None:
+        """Stale queue: list annotates the entry and recommends prune."""
+        fake = _init_fake_repo(tmp_path, branch="dev")
+        _wire_local_origin(fake)
+        # Seed a vPR whose SHA == current dev HEAD → stale
+        dev_sha = _git_sha(fake)
+        _seed_vpr(fake, 1, "merged-feature", dev_sha)
+
+        result = _run_autopr(fake, "list")
+        assert result.returncode == 0
+        assert "STALE" in result.stdout
+        assert "appear stale" in result.stdout
+        assert "Prune stale" in result.stdout
+        assert "auto-pr prune" in result.stdout
+
+    def test_status_mixed_queue_shows_split_count(
+        self, tmp_path: Path,
+    ) -> None:
+        """status reports `(N live, M stale)` for mixed queues."""
+        fake = _init_fake_repo(tmp_path, branch="feature")
+        _wire_local_origin(fake)
+        # Add a feature commit (live)
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", "live work"],
+            cwd=str(fake), check=True, capture_output=True,
+        )
+        live_sha = _git_sha(fake)
+        # And a SHA that IS in dev (stale)
+        dev_sha = _git_sha(fake, "dev")
+        _seed_vpr(fake, 1, "live-feature", live_sha)
+        _seed_vpr(fake, 2, "merged-feature", dev_sha)
+
+        result = _run_autopr(fake, "status")
+        assert result.returncode == 0
+        assert "(1 live, 1 stale)" in result.stdout
+        assert "Prune stale" in result.stdout
+
+    def test_status_all_stale_shows_degraded_message(
+        self, tmp_path: Path,
+    ) -> None:
+        """All-stale queue: status flags it explicitly."""
+        fake = _init_fake_repo(tmp_path, branch="dev")
+        _wire_local_origin(fake)
+        dev_sha = _git_sha(fake)
+        _seed_vpr(fake, 1, "merged-a", dev_sha)
+        _seed_vpr(fake, 2, "merged-b", dev_sha)
+
+        result = _run_autopr(fake, "status")
+        assert result.returncode == 0
+        assert "ALL appear stale" in result.stdout
+
+    def test_prune_removes_only_stale_entries(
+        self, tmp_path: Path,
+    ) -> None:
+        """prune deletes stale entries; live ones survive."""
+        fake = _init_fake_repo(tmp_path, branch="feature")
+        _wire_local_origin(fake)
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", "live work"],
+            cwd=str(fake), check=True, capture_output=True,
+        )
+        live_sha = _git_sha(fake)
+        dev_sha = _git_sha(fake, "dev")
+        _seed_vpr(fake, 1, "merged-a", dev_sha)
+        _seed_vpr(fake, 2, "live-b", live_sha)
+        _seed_vpr(fake, 3, "merged-c", dev_sha)
+
+        result = _run_autopr(fake, "prune")
+        assert result.returncode == 0
+        assert "Pruned 2 entries" in result.stdout
+        # Verify the queue file now contains only the live entry.
+        queue_lines = (
+            (fake / ".git" / "PR_QUEUE").read_text().splitlines()
+        )
+        assert len(queue_lines) == 1
+        assert "live-b" in queue_lines[0]
+
+    def test_prune_clean_queue_is_noop(self, tmp_path: Path) -> None:
+        """prune against a queue with no stale entries reports clean."""
+        fake = _init_fake_repo(tmp_path, branch="feature")
+        _wire_local_origin(fake)
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", "live work"],
+            cwd=str(fake), check=True, capture_output=True,
+        )
+        live_sha = _git_sha(fake)
+        _seed_vpr(fake, 1, "live-feature", live_sha)
+
+        result = _run_autopr(fake, "prune")
+        assert result.returncode == 0
+        assert "Queue clean" in result.stdout
+        # Queue file unchanged
+        assert (fake / ".git" / "PR_QUEUE").exists()
+
+    def test_prune_empty_queue(self, tmp_path: Path) -> None:
+        """prune against a non-existent queue is a no-op."""
+        fake = _init_fake_repo(tmp_path, branch="dev")
+        result = _run_autopr(fake, "prune")
+        assert result.returncode == 0
+        assert "nothing to prune" in result.stdout
+
+    def test_prune_all_stale_removes_queue_file(
+        self, tmp_path: Path,
+    ) -> None:
+        """prune against an all-stale queue removes the file entirely."""
+        fake = _init_fake_repo(tmp_path, branch="dev")
+        _wire_local_origin(fake)
+        dev_sha = _git_sha(fake)
+        _seed_vpr(fake, 1, "merged-a", dev_sha)
+        _seed_vpr(fake, 2, "merged-b", dev_sha)
+
+        result = _run_autopr(fake, "prune")
+        assert result.returncode == 0
+        assert "queue is now empty" in result.stdout
+        assert not (fake / ".git" / "PR_QUEUE").exists()
+
+    def test_prune_does_not_write_sentinel(self, tmp_path: Path) -> None:
+        """prune is a query/maintenance subcommand — no sentinel."""
+        fake = _init_fake_repo(tmp_path, branch="dev")
+        sentinel = tmp_path / "sentinel.json"
+        result = _run_autopr(fake, "prune", sentinel=sentinel)
+        assert result.returncode == 0
+        assert not sentinel.exists()
