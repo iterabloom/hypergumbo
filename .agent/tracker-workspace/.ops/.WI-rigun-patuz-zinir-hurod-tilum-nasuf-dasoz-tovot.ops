@@ -145,3 +145,18 @@
   clock: 18  # a90f
   nonce: a90f  # a90f
   message: "Created follow-up tracker item WI-movar for the bakeoff-deep tier-slice query upgrade (compose tier==2 AND NOT is_test_file). This WI can now be marked done — the is_test_file boolean landed in PR #2813, and the query upgrade is tracked separately."  # a90f
+- op: update  # 73cf
+  at: '2026-04-09T08:41:26Z'  # 73cf
+  by: agent  # 73cf
+  actor: jgstern_agent  # 73cf
+  clock: 19  # 73cf
+  nonce: 73cf  # 73cf
+  set:  # 73cf
+    status: done  # 73cf
+- op: discuss  # 41c4
+  at: '2026-04-09T08:41:26Z'  # 41c4
+  by: agent  # 41c4
+  actor: jgstern_agent  # 41c4
+  clock: 20  # 41c4
+  nonce: 41c4  # 41c4
+  message: "Follow-up tracker item WI-movar created for bakeoff-deep tier-slice query upgrade. is_test_file boolean landed in PR #2813."  # 41c4
