@@ -44,3 +44,25 @@
   nonce: f584  # f584
   set:  # f584
     priority: 0  # f584
+- op: update  # 1a2b
+  at: '2026-04-09T08:17:14Z'  # 1a2b
+  by: agent  # 1a2b
+  actor: jgstern_agent  # 1a2b
+  clock: 5  # 1a2b
+  nonce: 1a2b  # 1a2b
+  set:  # 1a2b
+    status: done  # 1a2b
+- op: discuss  # dab1
+  at: '2026-04-09T08:17:15Z'  # dab1
+  by: agent  # dab1
+  actor: jgstern_agent  # dab1
+  clock: 6  # dab1
+  nonce: dab1  # dab1
+  message: "Fixed in PR #2824. FileAnalysis gains method_return_types dict. Go: new _go_return_type_from_signature extracts return types from signature strings (handles tuple returns with error picking, pointer stripping, package qualifier stripping). Pass 1 populates registry for both methods (ReceiverType.MethodName) and functions (FuncName). Aggregated across files after Pass 1. Wired into _extract_go_var_types as a fallback after existing _type_from_rhs rules. Java: registry populated from existing meta['return_type'] for consistency; Java already has inline return-type chaining during edge extraction. 15 unit tests for the signature parser, 3 integration tests (grammar-gated). Bakeoff validation deferred to next bakeoff-deep cycle."  # dab1
+- op: discuss  # c350
+  at: '2026-04-09T08:22:16Z'  # c350
+  by: human  # c350
+  actor: jgstern  # c350
+  clock: 7  # c350
+  nonce: c350  # c350
+  message: "you need to keep a running list of bakeoffs that you are deferring. you've said that on a lot of items. if you're going to mark an item as done then you need a new item such as \"complete the following deferred bakeoffs\" and keep updating it. you should look at all items you have modified in the past 24 hours and compile the ones that you have said \"deferring the bakeoff\". if you don't do that we will lose track of what we need to actually test on real-world data."  # c350

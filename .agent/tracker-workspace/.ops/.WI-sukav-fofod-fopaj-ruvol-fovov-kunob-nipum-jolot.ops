@@ -129,3 +129,18 @@
   clock: 16  # 88c6
   nonce: 88c6  # 88c6
   message: "actually I think we should validate with a bakeoff before marking as done. it can be a small bakeoff."  # 88c6
+- op: update  # 9b9b
+  at: '2026-04-09T06:57:24Z'  # 9b9b
+  by: agent  # 9b9b
+  actor: jgstern_agent  # 9b9b
+  clock: 17  # 9b9b
+  nonce: 9b9b  # 9b9b
+  set:  # 9b9b
+    status: done  # 9b9b
+- op: discuss  # 805c
+  at: '2026-04-09T06:57:24Z'  # 805c
+  by: agent  # 805c
+  actor: jgstern_agent  # 805c
+  clock: 18  # 805c
+  nonce: 805c  # 805c
+  message: "Re-marking done (prior update may have been lost in tracker sync race). Fixed in PR #2817."  # 805c
