@@ -23,7 +23,7 @@ The transcript sync pipeline (ADR-0018, per-session amendment 2026-04-08) keeps 
 | `.agent/.archived-transcripts/<UTC-stamp>/injection_history.jsonl.gz` | Older sessions' injection events |
 | `.agent/.archived-transcripts/crashed-<UTC-stamp>-<sid>/` | Crashed sessions (no SessionEnd hook fired); never claim `.last_*` |
 
-All transcript files are vendor-agnostic JSONL produced by the sync pipeline. Vendor differences (Claude Code, Codex CLI, Gemini CLI, Cursor) are handled upstream by the per-vendor transcript sync adapters — the retrospective consumes only the normalized output. The injection-history sidecar is written by `on_transcript_change.py` regardless of vendor.
+All transcript files are JSONL produced by the sync pipeline. The pipeline deduplicates noise (empty bash_progress, redundant snapshots), isolates sessions, and normalizes user interjections via `normalize_interjections.py` (WI-nadud). Vendor differences (Claude Code, Codex CLI, Gemini CLI, Cursor) are partially normalized: interjection events are emitted as `type: normalized_user_interjection` alongside the vendor-specific originals (Claude Code `queue-operation`, Codex CLI `turn_aborted`+`user_message`, OpenHands `MessageObservation` during open action). Other row types retain their vendor-specific structure. The injection-history sidecar is written by `on_transcript_change.py` regardless of vendor.
 
 **Concurrency note (per-session amendment).** With multiple sessions running concurrently in the same repo, "most recently ended" is a *linearization* by session-end time, not by session-start time. Two sessions ending in close succession serialize via flock; the last one to acquire the lock wins the `.last_*` slot. If you need to retrospect on a specific live session that has not yet ended, look at its per-session `.current_session_transcript.<session_id>.jsonl` instead. Cursor is exempt: Cursor is enforced single-session-per-repo (its `session_id` is hardcoded `cursor-singleton`) because its transcript backing store is a global SQLite database. The deferred per-conversation extractor work is tracked in `WI-rijoj`.
 
@@ -67,11 +67,15 @@ If the file doesn't exist (e.g., the sync watcher wasn't running), fall back to 
 
 **Step 1 — Extract the session arc.** Scan the transcript for:
 - User messages (explicit instructions, mode changes, interruptions)
-- **Mid-tool-call human interjections** — these live in `type: queue-operation` rows, **NOT** in `type: user` rows. When scanning for interruptions, include `type: queue-operation` with `operation: enqueue` (the moment the human typed) and `operation: remove` (the moment the harness folded it into the next assistant prompt). A naive `type=user` filter will silently lose all real-time interjections during long agent turns. Example row:
+- **Mid-tool-call human interjections** — the preferred way to find these is `type: normalized_user_interjection` rows (WI-nadud). These are emitted by `normalize_interjections.py` alongside the vendor-specific originals during the filter pass. They carry a uniform schema across vendors with `content`, `vendor`, `delivery_semantics`, `observability.confidence`, and `raw_refs`. The original vendor-specific rows are also preserved:
+  - **Claude Code:** `type: queue-operation` with `operation: enqueue` (confidence 1.0, explicit event)
+  - **Codex CLI:** `type: turn_aborted` (reason: interrupted) + `type: user_message` (confidence 0.9, inferred)
+  - **OpenHands:** `event_type: MessageObservation` (source: user) during open action (confidence 0.8, inferred)
+  A naive `type=user` filter will silently lose all real-time interjections during long agent turns. Use `type=normalized_user_interjection` for vendor-agnostic scanning, or the vendor-specific types for deeper analysis. Example normalized row:
   ```json
-  {"type": "queue-operation", "operation": "enqueue", "timestamp": "2026-04-06T19:35:16.666Z", "sessionId": "...", "content": "user typed this mid-turn"}
+  {"type": "normalized_user_interjection", "vendor": "claude-code", "timestamp": "2026-04-06T19:35:16.666Z", "content": "user typed this mid-turn", "delivery_semantics": "queued", "runtime_state_at_accept": "busy", "observability": {"source_kind": "explicit_event", "confidence": 1.0}, "raw_refs": [{"type": "queue-operation", "operation": "enqueue", ...}]}
   ```
-  `filter-transcript.py` preserves queue-operation rows (regression-tested in `tests/test_filter_transcript.py`), so the data is in the synced JSONL — no need to go back to the raw vendor originals.
+  `filter-transcript.py` preserves original rows and emits normalized synthetic rows (regression-tested in `tests/test_filter_transcript.py` and `tests/test_normalize_interjections.py`).
 - Tool calls that indicate major decisions (git checkout -b, auto-pr, bakeoff commands, tracker updates)
 - Stop hook fires and the guidance they produced
 - Context compaction events

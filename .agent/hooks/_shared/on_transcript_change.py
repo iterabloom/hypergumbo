@@ -418,12 +418,12 @@ def log_training_example(
     *extra* is an optional dict of additional metadata fields merged into the
     top-level JSON object (e.g. ``{"parse_misses": ["id1", "id2"]}``).
 
-    **Cohort metadata (v1, WI-tatuh / INV-gajap):**
+    **Cohort metadata (v2, WI-tatuh / INV-gajap / WI-nadud):**
 
     Every entry carries top-level cohort metadata so distribution shifts are
     discoverable from the corpus alone:
 
-    * ``pipeline_version`` — forward marker (``"v1"`` for this implementation)
+    * ``pipeline_version`` — forward marker (``"v2"`` since WI-nadud normalization)
     * ``infra_sha`` — commit SHA of this file at write time
     * ``playbook_registry_sha`` — commit SHA of the PLAYBOOKS registry file
     * ``main_llm`` — the LLM whose transcript is being analyzed
@@ -447,7 +447,7 @@ def log_training_example(
         "step": step,
         "model": model,
         "scoring_model": model,
-        "pipeline_version": "v1",
+        "pipeline_version": "v2",
         "infra_sha": infra_sha,
         "playbook_registry_sha": playbook_registry_sha,
         "main_llm": main_llm,

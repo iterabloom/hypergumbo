@@ -3,9 +3,9 @@
 """Incremental transcript filter for the per-session sync pipeline.
 
 Reads new lines from a JSONL transcript (from a saved byte offset),
-filters out redundant noise, and appends meaningful lines to the
-destination file. Tracks state between invocations so each run only
-processes new data.
+filters out redundant noise, appends meaningful lines to the
+destination file, and emits normalized interjection events alongside
+vendor-specific originals (WI-nadud).
 
 Per-session isolation (ADR-0018 amendment): the state file path encodes
 the session id, so each concurrent session has its own offset state.
@@ -24,13 +24,28 @@ Filter rules:
      final command output even when intermediate snapshots are dropped)
   5. Keep everything else as-is
 
+After filtering, a normalization pass (normalize_interjections module)
+detects vendor-specific interjection patterns and emits synthetic
+``normalized_user_interjection`` rows alongside the originals. Vendor
+is auto-detected from row content and cached in the state file.
+
 Usage: filter-transcript.py <source> <dest> <state-file>
 """
 
 import hashlib
+import importlib.util
 import json
 import os
 import sys
+
+
+def _import_normalize():
+    """Import normalize_interjections from the same directory."""
+    norm_path = os.path.join(os.path.dirname(__file__), "normalize_interjections.py")
+    spec = importlib.util.spec_from_file_location("normalize_interjections", norm_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def load_state(state_path):
@@ -139,20 +154,76 @@ def filter_new_lines(src_path, dest_path, state):
     # Don't flush pending_bash at EOF — wait for next non-bash line
     # (avoids writing intermediate state that will be superseded)
 
+    # --- Normalization pass (WI-nadud) ---
+    # Parse kept rows, run through normalize_rows, re-serialize.
+    norm_vendor = state.get("norm_vendor")
+    norm_state = state.get("norm_state", {})
+    output_lines: list[bytes] = []
+
     if kept:
+        parsed_kept = []
+        raw_kept = []  # parallel list of original raw bytes
+        for raw_line in kept:
+            try:
+                parsed_kept.append(json.loads(raw_line))
+                raw_kept.append(raw_line)
+            except json.JSONDecodeError:
+                output_lines.append(raw_line)  # keep unparseable lines as-is
+
+        if parsed_kept:
+            try:
+                norm_mod = _import_normalize()
+                normalized, norm_state = norm_mod.normalize_rows(
+                    parsed_kept, vendor=norm_vendor, state=norm_state,
+                )
+                # Auto-detect and cache vendor for future batches
+                if norm_vendor is None:
+                    norm_vendor = norm_mod.detect_vendor(parsed_kept)
+
+                # Build output: for each row in normalized result, either
+                # use the original raw bytes (if it's an original row) or
+                # serialize the new synthetic row.
+                orig_idx = 0
+                for row in normalized:
+                    if (
+                        row.get("type") == "normalized_user_interjection"
+                    ):
+                        # Synthetic row — serialize fresh
+                        output_lines.append(
+                            json.dumps(row, separators=(",", ":")).encode("utf-8")
+                        )
+                    else:
+                        # Original row — use raw bytes to avoid re-serialization drift
+                        if orig_idx < len(raw_kept):
+                            output_lines.append(raw_kept[orig_idx])
+                            orig_idx += 1
+                        else:
+                            output_lines.append(
+                                json.dumps(row, separators=(",", ":")).encode("utf-8")
+                            )
+            except Exception:  # pragma: no cover — normalization is best-effort
+                # If normalization fails, fall back to original kept rows
+                output_lines = list(kept)
+        else:
+            output_lines = list(kept)
+    # --- End normalization pass ---
+
+    if output_lines:
         # Ensure the destination directory exists (per-session DESTs may
         # be the first file written to .agent/ in a fresh repo).
         dest_dir = os.path.dirname(dest_path)
         if dest_dir:
             os.makedirs(dest_dir, exist_ok=True)
         with open(dest_path, "ab") as f:
-            for line in kept:
+            for line in output_lines:
                 f.write(line)
                 f.write(b"\n")
 
     return {
         "offset": new_offset,
         "last_bash_hash": last_bash_hash,
+        "norm_vendor": norm_vendor,
+        "norm_state": norm_state,
     }
 
 
