@@ -7022,3 +7022,110 @@ func (c *Client) Fetch(req *http.Request) {
         do_edges = [e for e in call_edges if "Do" in e.dst]
         assert len(do_edges) >= 1
         assert "net/http" in do_edges[0].dst
+
+
+class TestGoBuildTagAlternates:
+    """Tests for detecting build-tag-gated alternate definitions.
+
+    WI-potun: Go files with mutually exclusive //go:build directives
+    define alternates of the same symbol (e.g. Labels.Get in
+    labels_stringlabels.go vs labels_dedupelabels.go). The analyzer
+    should detect these and emit build_tag_alternative_of edges.
+    """
+
+    def test_build_tag_alternates_detected(self, tmp_path: Path) -> None:
+        """Two files with different build tags defining the same method
+        should produce a build_tag_alternative_of edge."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "impl_a.go").write_text("""//go:build impl_a
+
+package main
+
+type Handler struct{}
+
+func (h *Handler) Serve() {}
+""")
+        (tmp_path / "impl_b.go").write_text("""//go:build impl_b
+
+package main
+
+type Handler struct{}
+
+func (h *Handler) Serve() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        alt_edges = [
+            e for e in result.edges
+            if e.edge_type == "build_tag_alternative_of"
+        ]
+        assert len(alt_edges) >= 1, (
+            "Should detect build_tag_alternative_of between Handler.Serve "
+            "in impl_a.go and impl_b.go"
+        )
+        # Both directions should be linked
+        serve_syms = [
+            s for s in result.symbols if s.name == "Handler.Serve"
+        ]
+        assert len(serve_syms) == 2, (
+            f"Expected 2 Handler.Serve symbols, got {len(serve_syms)}"
+        )
+
+    def test_no_build_tag_no_alternate_edge(self, tmp_path: Path) -> None:
+        """Files without build tags should NOT produce alternate edges
+        even if they define same-named symbols."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        # Two packages, same method name — NOT build-tag alternates
+        pkg_a = tmp_path / "a"
+        pkg_a.mkdir()
+        (pkg_a / "handler.go").write_text("""package a
+
+type Handler struct{}
+func (h *Handler) Serve() {}
+""")
+        pkg_b = tmp_path / "b"
+        pkg_b.mkdir()
+        (pkg_b / "handler.go").write_text("""package b
+
+type Handler struct{}
+func (h *Handler) Serve() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        alt_edges = [
+            e for e in result.edges
+            if e.edge_type == "build_tag_alternative_of"
+        ]
+        assert len(alt_edges) == 0, (
+            "Should NOT emit build_tag_alternative_of for different packages"
+        )
+
+    def test_build_tag_stored_in_meta(self, tmp_path: Path) -> None:
+        """Symbols from build-tagged files should have the constraint
+        in their meta."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "tagged.go").write_text("""//go:build stringlabels
+
+package main
+
+func TaggedFunc() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        func_sym = next(
+            (s for s in result.symbols if s.name == "TaggedFunc"), None
+        )
+        assert func_sym is not None
+        assert func_sym.meta is not None
+        assert "build_constraint" in func_sym.meta, (
+            f"TaggedFunc should have build_constraint in meta, got: {func_sym.meta}"
+        )
