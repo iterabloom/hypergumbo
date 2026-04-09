@@ -106,6 +106,7 @@ class FileClassification:
     reason: str
     package_name: Optional[str] = None
     is_test: bool = False
+    is_generated: bool = False
 
 
 # Path patterns for tier inference (checked as prefixes on relative path)
@@ -135,6 +136,23 @@ DERIVED_FILENAME_PATTERNS = [
     r"\.pb\.go$",           # Go protobuf generated code
     r"_pb2\.py$",           # Python protobuf generated code
     r"_pb2_grpc\.py$",      # Python gRPC generated code
+]
+
+# WI-tizij: patterns for generated code (OpenAPI/Swagger, protobuf, etc.)
+# These files are structurally central but have low developer relevance.
+# The is_generated flag lets ranking apply a centrality penalty.
+GENERATED_CODE_PATTERNS = [
+    # OpenAPI/Swagger generated Python models (kserve, kubernetes-client, etc.)
+    r"^(?:.*/)?(v\d+(?:alpha\d+|beta\d+)?_\w+)\.py$",  # v1alpha1_foo.py, v1beta1_bar.py, v1_baz.py
+    r"^(?:.*/)?knative_\w+\.py$",                        # knative_foo.py
+    # Protobuf/gRPC (already DERIVED tier, but also mark generated)
+    r"\.pb\.go$",
+    r"_pb2\.py$",
+    r"_pb2_grpc\.py$",
+    r"\.serde\.rs$",
+    # OpenAPI generated Go clients
+    r"^(?:.*/)?zz_generated\.\w+\.go$",                  # Kubernetes code-gen
+    r"^(?:.*/)?mock_\w+\.go$",                           # mockgen output
 ]
 
 EXTERNAL_DEP_PATTERNS = [
@@ -229,6 +247,21 @@ WORKSPACE_FIRST_PARTY_PATTERNS = [
 ]
 
 
+_GENERATED_CODE_RE = [re.compile(p) for p in GENERATED_CODE_PATTERNS]
+
+
+def _is_generated_file(rel_path: str) -> bool:
+    """Check if a file path matches known generated-code patterns.
+
+    WI-tizij: generated code (OpenAPI models, protobuf stubs, Kubernetes
+    code-gen) is structurally central but has low developer relevance.
+    """
+    for pat in _GENERATED_CODE_RE:
+        if pat.search(rel_path):
+            return True
+    return False
+
+
 def classify_file(
     path: Path,
     repo_root: Path,
@@ -244,7 +277,9 @@ def classify_file(
         config: Optional custom classification configuration
 
     Returns:
-        FileClassification with tier, reason, and optional package_name
+        FileClassification with tier, reason, and optional package_name.
+        The ``is_generated`` flag is set independently of tier when the
+        file path matches known generated-code patterns (WI-tizij).
     """
     # Get relative path for pattern matching
     try:
@@ -252,6 +287,24 @@ def classify_file(
     except ValueError:
         # Path not under repo_root, default to first-party
         return FileClassification(Tier.FIRST_PARTY, "default (outside repo)")
+
+    # WI-tizij: detect generated code; applied to result at function end.
+    generated = _is_generated_file(rel)
+
+    result = _classify_file_core(rel, path, repo_root, package_roots, config)
+    if generated:
+        result.is_generated = True
+    return result
+
+
+def _classify_file_core(
+    rel: str,
+    path: Path,
+    repo_root: Path,
+    package_roots: Optional[set[Path]] = None,
+    config: Optional[SupplyChainConfig] = None,
+) -> FileClassification:
+    """Core classification logic (called by classify_file)."""
 
     # Normalize path separators for consistent matching
     rel = rel.replace("\\", "/")

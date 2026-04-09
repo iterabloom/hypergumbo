@@ -4883,6 +4883,7 @@ def _run_analysis(
         symbol.supply_chain_tier = classification.tier.value
         symbol.supply_chain_reason = classification.reason
         symbol.is_test_file = classification.is_test
+        symbol.is_generated_file = classification.is_generated
 
     # Deduplicate edges by ID (some analyzers may produce duplicate edges)
     seen_edge_ids: set[str] = set()
