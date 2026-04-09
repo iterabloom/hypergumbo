@@ -1,0 +1,21 @@
+- op: create  # 448c
+  at: '2026-04-09T16:34:26Z'  # 448c
+  by: agent  # 448c
+  actor: jgstern_agent  # 448c
+  clock: 1  # 448c
+  nonce: 448c  # 448c
+  data:  # 448c
+    kind: work_item  # 448c
+    title: "Event-sourcing linker: expand pattern set beyond Spring/JS/Django"  # 448c
+    status: todo_soft  # 448c
+    priority: 3  # 448c
+    parent:  # 448c
+    tags:  # 448c
+    - analysis_quality  # 448c
+    - cross_language_linkers  # 448c
+    before: []  # 448c
+    duplicate_of: []  # 448c
+    not_duplicate_of: []  # 448c
+    pr_ref:  # 448c
+    description: "The event-sourcing linker only detects 3 framework patterns: Spring @EventListener/ApplicationEventPublisher, JS EventEmitter emit/on, Django signals. Repos using custom event systems (keycloak ProviderEventListener, kafka's internal KafkaEventQueue, Akka event bus, Go channels-as-events) produce zero event edges. Surfaced during INV-bivot bakeoff validation: kafka (91MB Java codebase implementing a message broker) had zero event_publishes edges because its internal event infrastructure doesn't match any detected pattern. Expand pattern set to cover: (1) custom Java event bus patterns (register/fire/dispatch), (2) Go channel-based event patterns, (3) Akka/Vert.x event bus, (4) generic publish/subscribe method name heuristics."  # 448c
+    fields: {}  # 448c

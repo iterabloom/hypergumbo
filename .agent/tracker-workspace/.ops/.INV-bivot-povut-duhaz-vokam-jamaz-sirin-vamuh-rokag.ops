@@ -135,3 +135,10 @@
   clock: 16  # be24
   nonce: be24  # be24
   message: "do we have a tracker item for the coverage gap in the linker? if not, we should."  # be24
+- op: discuss  # fea5
+  at: '2026-04-09T16:34:04Z'  # fea5
+  by: agent  # fea5
+  actor: jgstern_agent  # fea5
+  clock: 17  # fea5
+  nonce: fea5  # fea5
+  message: "No, there is no tracker item for the event-sourcing linker coverage gap. The linker only detects Spring @EventListener/publishEvent, JS EventEmitter emit/on, and Django signals. Repos using custom event systems (keycloak ProviderEventListener, kafka's internal KafkaEventQueue) don't trigger it. Creating the item now."  # fea5
