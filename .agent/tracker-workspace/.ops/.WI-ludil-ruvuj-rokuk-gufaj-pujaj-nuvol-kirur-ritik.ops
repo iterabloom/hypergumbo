@@ -1,0 +1,20 @@
+- op: create  # 3938
+  at: '2026-04-09T17:20:04Z'  # 3938
+  by: agent  # 3938
+  actor: jgstern_agent  # 3938
+  clock: 1  # 3938
+  nonce: '3938'  # 3938
+  data:  # 3938
+    kind: work_item  # 3938
+    title: "TLA+ missing from profile.languages (LOC/file detection gap)"  # 3938
+    status: todo_hard  # 3938
+    priority: 2  # 3938
+    parent:  # 3938
+    tags:  # 3938
+    - tlaplus  # 3938
+    before: []  # 3938
+    duplicate_of: []  # 3938
+    not_duplicate_of: []  # 3938
+    pr_ref:  # 3938
+    description: "profile.languages does not include tlaplus even when a repo has hundreds of .tla files. The TLA+ analyzer correctly discovers and analyzes .tla files (6062 nodes in tlaplus/examples), but the profile/LOC detection system doesn't map .tla extension to a language. This causes the sketch Overview line to omit TLA+ entirely. Root cause is likely the file extension -> language mapping in discovery.py or profile detection code. Found during real-world repo validation on 2026-04-09. See ~/hypergumbo_lab_notebook/tla_realworld_validation_04092026.md."  # 3938
+    fields: {}  # 3938

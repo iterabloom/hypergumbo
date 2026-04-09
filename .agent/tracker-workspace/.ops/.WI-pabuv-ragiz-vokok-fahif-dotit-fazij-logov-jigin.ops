@@ -86,3 +86,25 @@
   clock: 10  # 767c
   nonce: 767c  # 767c
   message: "1. Please do a shallow git clone of `https://github.com/tlaplus/examples` to `~/ALL_REPOS/`\n\n2. Please do a shallow git clone of `https://github.com/ongardie/raft.tla` to `~/ALL_REPOS/`\n\n3. Please run the following:\n\n```\ncd ~/ALL_REPOS/\ngit clone --depth 1 --filter=blob:none --sparse https://github.com/cockroachdb/cockroach.git\ncd cockroach\ngit sparse-checkout set docs/tla-plus\n```"  # 767c
+- op: discuss  # 0a62
+  at: '2026-04-09T17:19:28Z'  # 0a62
+  by: agent  # 0a62
+  actor: jgstern_agent  # 0a62
+  clock: 11  # 0a62
+  nonce: 0a62  # 0a62
+  message: "Completed real-world repo validation per human instructions. Cloned all 3 repos to ~/ALL_REPOS/:\n- tlaplus/examples (shallow, 319 .tla files)\n- ongardie/raft.tla (shallow, 2 .tla files)\n- cockroachdb/cockroach (sparse checkout docs/tla-plus/, 2 .tla files)\n\nResults: All 3 repos pass validation. hypergumbo run completes without error on all. Node/edge counts are healthy: examples=6062 nodes/12136 edges, raft=66/204, cockroach=122/122. EXTENDS evidence_type works (665+4+8=677 total). INSTANCE works (100 in examples; 0 in raft and cockroach is correct — confirmed no INSTANCE in source). All construct types detected (operators, constants, modules, theorems, assumptions).\n\nOne bug found: TLA+ missing from profile.languages (sketch Overview line doesn't show TLA+). Filed as separate tracker item. Full results in ~/hypergumbo_lab_notebook/tla_realworld_validation_04092026.md."  # 0a62
+- op: update  # f606
+  at: '2026-04-09T17:20:22Z'  # f606
+  by: agent  # f606
+  actor: jgstern_agent  # f606
+  clock: 12  # f606
+  nonce: f606  # f606
+  set:  # f606
+    status: done  # f606
+- op: discuss  # 6adb
+  at: '2026-04-09T17:20:22Z'  # 6adb
+  by: agent  # 6adb
+  actor: jgstern_agent  # 6adb
+  clock: 13  # 6adb
+  nonce: 6adb  # 6adb
+  message: "Real-world validation completed on all 3 repos. All pass. One bug found (profile.languages missing TLA+) filed as separate tracker item. Full results: ~/hypergumbo_lab_notebook/tla_realworld_validation_04092026.md"  # 6adb
