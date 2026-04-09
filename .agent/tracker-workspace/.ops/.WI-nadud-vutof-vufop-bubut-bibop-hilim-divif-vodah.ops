@@ -27,3 +27,18 @@
   clock: 2  # a08f
   nonce: a08f  # a08f
   message: "ATTN human reviewer: this item's central premise is 'cutover-first ordering — the coordinated log_training_example metadata cutover (WI-tatuh) must land before any further pipeline change.' That ordering has now been broken twice in the meantime: commit 7310783e1 added log_injection_history(), bumped TRANSCRIPT_DEDUP_TOKENS 50000->100000, and regenerated the PLAYBOOKS registry summary; commit 9ac06cc88 rewrote DEST/PID handling for per-session isolation. None added cohort metadata. The Tier-2 normalization proposed here is unchanged in scope, but the v0/v1 corpus boundary it depends on now spans more silent drift than originally documented. See INV-gajap discussion for the corresponding violation update."  # a08f
+- op: discuss  # 4f5f
+  at: '2026-04-09T18:38:38Z'  # 4f5f
+  by: human  # 4f5f
+  actor: jgstern  # 4f5f
+  clock: 3  # 4f5f
+  nonce: 4f5f  # 4f5f
+  message: "I authorize any governance file changes needed to complete this item. I approve all of this item and using auto-pr to merge it when done."  # 4f5f
+- op: update  # 8092
+  at: '2026-04-09T18:38:49Z'  # 8092
+  by: human  # 8092
+  actor: jgstern  # 8092
+  clock: 4  # 8092
+  nonce: '8092'  # 8092
+  set:  # 8092
+    status: todo_soft  # 8092

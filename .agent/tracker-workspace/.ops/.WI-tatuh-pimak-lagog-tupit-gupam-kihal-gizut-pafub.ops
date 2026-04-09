@@ -35,3 +35,25 @@
   clock: 3  # e589
   nonce: e589  # e589
   message: "Drift accumulated since item creation: commit 7310783e1 (DEDUP_TOKENS bump 50000->100000, log_injection_history() writer added, PLAYBOOKS registry summary regenerated 14->19) and commit 9ac06cc88 (per-session DEST/PID rewrite, removal of legacy global session-token mechanism). Both modify the watcher infra without per-entry cohort markers, so the v0 snapshot this cutover takes will now span more unmarked drift than originally documented. Also corrected the file path in the description: the watcher lives at .agent/hooks/_shared/on_transcript_change.py, not under packages/hypergumbo-tracker/. Status remains needs_human_review."  # e589
+- op: discuss  # e41f
+  at: '2026-04-09T18:31:50Z'  # e41f
+  by: human  # e41f
+  actor: jgstern  # e41f
+  clock: 4  # e41f
+  nonce: e41f  # e41f
+  message: "`.agent/.training-data.jsonl` is already snapshotted in `/home/jgstern_agent/hypergumbo/.agent/.deprecated-datasets`"  # e41f
+- op: discuss  # 169b
+  at: '2026-04-09T18:35:07Z'  # 169b
+  by: human  # 169b
+  actor: jgstern  # 169b
+  clock: 5  # 169b
+  nonce: 169b  # 169b
+  message: "I approve whatever governance file changes are needed to complete this item. I approve using auto-pr. I approve you implementing and completing this item."  # 169b
+- op: update  # 4f9d
+  at: '2026-04-09T18:39:04Z'  # 4f9d
+  by: human  # 4f9d
+  actor: jgstern  # 4f9d
+  clock: 6  # 4f9d
+  nonce: 4f9d  # 4f9d
+  set:  # 4f9d
+    status: todo_soft  # 4f9d

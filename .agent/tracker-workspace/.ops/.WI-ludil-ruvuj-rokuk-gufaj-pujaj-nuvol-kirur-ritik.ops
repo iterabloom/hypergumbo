@@ -18,3 +18,18 @@
     pr_ref:  # 3938
     description: "profile.languages does not include tlaplus even when a repo has hundreds of .tla files. The TLA+ analyzer correctly discovers and analyzes .tla files (6062 nodes in tlaplus/examples), but the profile/LOC detection system doesn't map .tla extension to a language. This causes the sketch Overview line to omit TLA+ entirely. Root cause is likely the file extension -> language mapping in discovery.py or profile detection code. Found during real-world repo validation on 2026-04-09. See ~/hypergumbo_lab_notebook/tla_realworld_validation_04092026.md."  # 3938
     fields: {}  # 3938
+- op: update  # cd82
+  at: '2026-04-09T18:09:24Z'  # cd82
+  by: agent  # cd82
+  actor: jgstern_agent  # cd82
+  clock: 2  # cd82
+  nonce: cd82  # cd82
+  set:  # cd82
+    status: done  # cd82
+- op: discuss  # f323
+  at: '2026-04-09T18:09:24Z'  # f323
+  by: agent  # f323
+  actor: jgstern_agent  # f323
+  clock: 3  # f323
+  nonce: f323  # f323
+  message: "Fixed in PR #2855. Added tlaplus LanguageSpec to taxonomy.py LANGUAGES registry, and .tla to ext_to_lang dicts in sketch.py and sketch_embeddings.py. Validated on 3 real-world repos."  # f323
