@@ -4631,6 +4631,7 @@ def _classify_symbols(
         classification = classify_file(file_path, repo_root, package_roots)
         symbol.supply_chain_tier = classification.tier.value
         symbol.supply_chain_reason = classification.reason
+        symbol.is_test_file = classification.is_test
 
 
 def _compute_supply_chain_summary(

@@ -91,11 +91,21 @@ class SupplyChainConfig:
 
 @dataclass
 class FileClassification:
-    """Classification result for a file."""
+    """Classification result for a file.
+
+    `tier` and `is_test` are independent axes (WI-rigun-patuz). The
+    classifier may demote a file to INTERNAL_DEP because it is a test
+    file, but consumers that want a clean 'real third-party deps' or
+    'production code only' query should compose `tier` with `is_test`
+    rather than re-deriving test-ness from path patterns. The historical
+    'tests = tier 2' framing (89154fa20) is preserved on `tier`; the new
+    `is_test` flag exposes the test-detection result as a separate bit.
+    """
 
     tier: Tier
     reason: str
     package_name: Optional[str] = None
+    is_test: bool = False
 
 
 # Path patterns for tier inference (checked as prefixes on relative path)
@@ -305,12 +315,16 @@ def classify_file(
                     for test_pat in TEST_DIR_PATTERNS:
                         if re.search(test_pat, rel_to_pkg):
                             return FileClassification(
-                                Tier.INTERNAL_DEP, f"in workspace {pkg_root.name} (test)"
+                                Tier.INTERNAL_DEP,
+                                f"in workspace {pkg_root.name} (test)",
+                                is_test=True,
                             )
                     for test_pat in TEST_FILE_PATTERNS:
                         if re.search(test_pat, rel_to_pkg):
                             return FileClassification(
-                                Tier.INTERNAL_DEP, f"in workspace {pkg_root.name} (test)"
+                                Tier.INTERNAL_DEP,
+                                f"in workspace {pkg_root.name} (test)",
+                                is_test=True,
                             )
                     # All other workspace files are first-party.
                     # Workspace members are by definition part of the project.
@@ -325,10 +339,18 @@ def classify_file(
     # src/test/, pkg/handler_test.go are classified as tier 2 not tier 1)
     for pattern in TEST_DIR_PATTERNS:
         if re.search(pattern, rel):
-            return FileClassification(Tier.INTERNAL_DEP, f"test path matches {pattern}")
+            return FileClassification(
+                Tier.INTERNAL_DEP,
+                f"test path matches {pattern}",
+                is_test=True,
+            )
     for pattern in TEST_FILE_PATTERNS:
         if re.search(pattern, rel):
-            return FileClassification(Tier.INTERNAL_DEP, f"test file matches {pattern}")
+            return FileClassification(
+                Tier.INTERNAL_DEP,
+                f"test file matches {pattern}",
+                is_test=True,
+            )
 
     # 5c. Jupyter notebooks are exploratory, not part of the import namespace
     if rel.endswith(".ipynb"):

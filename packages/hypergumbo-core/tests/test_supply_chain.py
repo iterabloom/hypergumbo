@@ -49,6 +49,7 @@ class TestFileClassification:
         assert fc.tier == Tier.FIRST_PARTY
         assert fc.reason == "matches ^src/"
         assert fc.package_name is None
+        assert fc.is_test is False  # WI-rigun: default
 
     def test_classification_with_package(self):
         fc = FileClassification(
@@ -57,6 +58,16 @@ class TestFileClassification:
             package_name="lodash",
         )
         assert fc.package_name == "lodash"
+
+    def test_classification_with_is_test(self):
+        """WI-rigun: is_test flag is independent of tier."""
+        fc = FileClassification(
+            tier=Tier.INTERNAL_DEP,
+            reason="test file matches _test.go$",
+            is_test=True,
+        )
+        assert fc.is_test is True
+        assert fc.tier == Tier.INTERNAL_DEP
 
 
 class TestDerivedArtifactDetection:
@@ -606,6 +617,10 @@ class TestTestFileClassification:
     Common conventions across languages:
     - Directory-based: tests/, test/, __tests__/, spec/, src/test/
     - File suffix-based: _test.go, .test.js, .spec.ts, _spec.rb
+
+    Per WI-rigun, every test file detected here must ALSO have is_test=True
+    on the FileClassification result, so consumers can compose the tier and
+    test-ness axes independently.
     """
 
     def test_tests_dir_is_internal_dep(self, tmp_path):
@@ -617,6 +632,7 @@ class TestTestFileClassification:
         result = classify_file(tests_dir / "test_main.py", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
         assert "test" in result.reason.lower()
+        assert result.is_test is True
 
     def test_test_dir_singular_is_internal_dep(self, tmp_path):
         """Top-level test/ directory is tier 2."""
@@ -626,6 +642,7 @@ class TestTestFileClassification:
 
         result = classify_file(test_dir / "test_app.rb", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_jest_tests_dir_is_internal_dep(self, tmp_path):
         """Jest __tests__/ directory is tier 2."""
@@ -635,6 +652,7 @@ class TestTestFileClassification:
 
         result = classify_file(tests_dir / "app.test.js", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_spec_dir_is_internal_dep(self, tmp_path):
         """Ruby spec/ directory is tier 2."""
@@ -644,6 +662,7 @@ class TestTestFileClassification:
 
         result = classify_file(spec_dir / "user_spec.rb", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_java_src_test_is_internal_dep(self, tmp_path):
         """Maven/Gradle src/test/ directory is tier 2."""
@@ -653,6 +672,7 @@ class TestTestFileClassification:
 
         result = classify_file(test_dir / "AppTest.java", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_go_test_file_suffix_is_internal_dep(self, tmp_path):
         """Go _test.go files are tier 2 even in src/."""
@@ -662,6 +682,7 @@ class TestTestFileClassification:
 
         result = classify_file(src_dir / "handler_test.go", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_js_test_file_suffix_is_internal_dep(self, tmp_path):
         """JavaScript .test.js files are tier 2."""
@@ -671,6 +692,7 @@ class TestTestFileClassification:
 
         result = classify_file(src_dir / "app.test.js", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_ts_spec_file_suffix_is_internal_dep(self, tmp_path):
         """TypeScript .spec.ts files are tier 2."""
@@ -680,6 +702,7 @@ class TestTestFileClassification:
 
         result = classify_file(src_dir / "service.spec.ts", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_ruby_spec_file_suffix_is_internal_dep(self, tmp_path):
         """Ruby _spec.rb files are tier 2."""
@@ -689,6 +712,7 @@ class TestTestFileClassification:
 
         result = classify_file(src_dir / "user_spec.rb", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_rust_colocated_tests_rs_is_internal_dep(self, tmp_path):
         """Rust co-located tests.rs modules are tier 2."""
@@ -698,6 +722,7 @@ class TestTestFileClassification:
 
         result = classify_file(src_dir / "tests.rs", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_rust_testonly_rs_is_internal_dep(self, tmp_path):
         """Rust testonly.rs files are tier 2."""
@@ -707,6 +732,7 @@ class TestTestFileClassification:
 
         result = classify_file(src_dir / "testonly.rs", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_unit_tests_dir_is_internal_dep(self, tmp_path):
         """C++ unit_tests/ directory is tier 2."""
@@ -716,6 +742,7 @@ class TestTestFileClassification:
 
         result = classify_file(test_dir / "test_utils.cpp", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_nested_unit_tests_dir_is_internal_dep(self, tmp_path):
         """Nested unit_tests/ directory (e.g., src/unit_tests/) is tier 2."""
@@ -725,6 +752,7 @@ class TestTestFileClassification:
 
         result = classify_file(test_dir / "test_main.cpp", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_cpp_test_prefix_is_internal_dep(self, tmp_path):
         """C++ test_*.cpp files are tier 2 (GTest convention)."""
@@ -734,6 +762,7 @@ class TestTestFileClassification:
 
         result = classify_file(src_dir / "test_parser.cpp", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_cpp_test_prefix_cc_is_internal_dep(self, tmp_path):
         """C++ test_*.cc files are tier 2."""
@@ -743,6 +772,7 @@ class TestTestFileClassification:
 
         result = classify_file(src_dir / "test_server.cc", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
 
     def test_cpp_production_code_stays_tier1(self, tmp_path):
         """C++ production code with 'test' in the name stays tier 1."""
@@ -752,6 +782,7 @@ class TestTestFileClassification:
 
         result = classify_file(src_dir / "attestation.cpp", tmp_path, set())
         assert result.tier == Tier.FIRST_PARTY
+        assert result.is_test is False
 
     def test_production_code_in_src_stays_tier1(self, tmp_path):
         """Production files next to test files stay tier 1."""
@@ -761,9 +792,15 @@ class TestTestFileClassification:
 
         result = classify_file(src_dir / "app.ts", tmp_path, set())
         assert result.tier == Tier.FIRST_PARTY
+        assert result.is_test is False
 
     def test_test_dir_lower_priority_than_derived(self, tmp_path):
-        """Derived artifacts take priority over test classification."""
+        """Derived artifacts take priority over test classification.
+
+        WI-rigun: when a path matches BOTH derived and test patterns, the
+        derived branch fires first and is_test stays False — the file is
+        not exposed as a test file because it isn't read as source.
+        """
         # dist/tests/ should still be tier 4 (derived), not tier 2 (test)
         dist_tests = tmp_path / "dist" / "tests"
         dist_tests.mkdir(parents=True)
@@ -771,6 +808,7 @@ class TestTestFileClassification:
 
         result = classify_file(dist_tests / "test_main.js", tmp_path, set())
         assert result.tier == Tier.DERIVED
+        assert result.is_test is False
 
 
 class TestFuzzBenchClassification:
@@ -1511,3 +1549,113 @@ class TestClassifySymbolsDependencyTier:
 
         _classify_symbols([sym], tmp_path, set())
         assert sym.supply_chain_tier == 1  # First-party, not tier 3
+
+
+class TestIsTestFileAxis:
+    """WI-rigun: is_test_file is independent of supply_chain_tier.
+
+    These tests pin the new behavior end-to-end: classify_file sets
+    is_test, _classify_symbols propagates it to Symbol.is_test_file,
+    and Symbol.to_dict / Symbol.from_dict round-trip the field through
+    the supply_chain block. The tier classification stays unchanged
+    (test files remain tier 2 per 89154fa20) — this WI only adds the
+    independent flag.
+    """
+
+    def test_workspace_test_file_is_test_true(self, tmp_path: Path) -> None:
+        """Test file inside a workspace package is tier 2 AND is_test=True."""
+        pkg = tmp_path / "pkgs" / "core"
+        (pkg / "src").mkdir(parents=True)
+        (pkg / "src" / "lib.go").write_text("package core")
+        (pkg / "src" / "lib_test.go").write_text("package core")
+
+        result = classify_file(
+            pkg / "src" / "lib_test.go", tmp_path, {pkg}
+        )
+        assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
+
+    def test_workspace_production_file_is_test_false(self, tmp_path: Path) -> None:
+        """Non-test file inside a workspace is tier 1 AND is_test=False."""
+        pkg = tmp_path / "pkgs" / "core"
+        (pkg / "src").mkdir(parents=True)
+        (pkg / "src" / "lib.go").write_text("package core")
+
+        result = classify_file(pkg / "src" / "lib.go", tmp_path, {pkg})
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_test is False
+
+    def test_workspace_test_dir_is_test_true(self, tmp_path: Path) -> None:
+        """Workspace tests/ directory is tier 2 AND is_test=True."""
+        pkg = tmp_path / "pkgs" / "core"
+        (pkg / "tests").mkdir(parents=True)
+        (pkg / "tests" / "test_lib.py").write_text("def test(): pass")
+
+        result = classify_file(
+            pkg / "tests" / "test_lib.py", tmp_path, {pkg}
+        )
+        assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
+
+    def test_external_dep_is_test_false(self, tmp_path: Path) -> None:
+        """A test file inside node_modules is tier 3, NOT marked is_test.
+
+        Test files vendored inside an external package are not the
+        consumer's tests — the EXTERNAL_DEP branch fires before the
+        test branch and is_test stays False.
+        """
+        node_modules = tmp_path / "node_modules" / "lodash" / "test"
+        node_modules.mkdir(parents=True)
+        (node_modules / "compact.test.js").write_text("test('ok', () => {})")
+
+        result = classify_file(
+            node_modules / "compact.test.js", tmp_path, set()
+        )
+        assert result.tier == Tier.EXTERNAL_DEP
+        assert result.is_test is False
+
+    def test_fuzz_file_is_not_marked_is_test(self, tmp_path: Path) -> None:
+        """Fuzz/bench files are tier 2 but is_test=False (separate axis)."""
+        fuzz = tmp_path / "fuzz" / "fuzz_targets"
+        fuzz.mkdir(parents=True)
+        (fuzz / "fuzz_diff.rs").write_text("fuzz_target!(|data| {})")
+
+        result = classify_file(fuzz / "fuzz_diff.rs", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is False
+
+    def test_classify_symbols_propagates_is_test_flag(
+        self, tmp_path: Path
+    ) -> None:
+        """_classify_symbols copies classification.is_test to Symbol.is_test_file."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Span, Symbol
+
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "handler.go").write_text("package pkg")
+        (tmp_path / "pkg" / "handler_test.go").write_text("package pkg")
+
+        prod = Symbol(
+            id="go:pkg:Handler",
+            name="Handler",
+            kind="function",
+            language="go",
+            path="pkg/handler.go",
+            span=Span(1, 0, 1, 0),
+        )
+        test = Symbol(
+            id="go:pkg:TestHandler",
+            name="TestHandler",
+            kind="function",
+            language="go",
+            path="pkg/handler_test.go",
+            span=Span(1, 0, 1, 0),
+        )
+
+        _classify_symbols([prod, test], tmp_path, set())
+
+        assert prod.is_test_file is False
+        assert test.is_test_file is True
+        # Tier semantics unchanged.
+        assert prod.supply_chain_tier == 1
+        assert test.supply_chain_tier == 2

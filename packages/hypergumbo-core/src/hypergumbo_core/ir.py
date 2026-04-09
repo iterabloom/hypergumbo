@@ -242,6 +242,7 @@ class Symbol:
     meta: Optional[Dict[str, Any]] = None
     supply_chain_tier: int = 1  # Default to first_party
     supply_chain_reason: str = ""
+    is_test_file: bool = False  # WI-rigun: independent of tier
     cyclomatic_complexity: Optional[int] = None
     lines_of_code: Optional[int] = None
     signature: Optional[str] = None
@@ -279,6 +280,7 @@ class Symbol:
                 "tier": self.supply_chain_tier,
                 "tier_name": _TIER_NAMES.get(self.supply_chain_tier, "first_party"),
                 "reason": self.supply_chain_reason,
+                "is_test_file": self.is_test_file,
             },
             "cyclomatic_complexity": self.cyclomatic_complexity,
             "lines_of_code": self.lines_of_code,
@@ -310,6 +312,7 @@ class Symbol:
             meta=d.get("meta"),
             supply_chain_tier=supply_chain.get("tier", 1),
             supply_chain_reason=supply_chain.get("reason", ""),
+            is_test_file=supply_chain.get("is_test_file", False),
             cyclomatic_complexity=d.get("cyclomatic_complexity"),
             lines_of_code=d.get("lines_of_code"),
             signature=d.get("signature"),
