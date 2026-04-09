@@ -83,3 +83,32 @@
   clock: 10  # 1ead
   nonce: 1ead  # 1ead
   message: "I do not believe migration would be an issue for us now but I also think maybe it is a moot point. If we are going with \"Bump width to a very large value (e.g. 100_000)\", then why not just bump it to infinity (it's already difficult to read, so who cares)? furthermore if I understand the git merging process correctly and how tracker interacts with that, maybe there isn't even an opportunity for difficulty of this kind to be an issue?"  # 1ead
+- op: discuss  # 553b
+  at: '2026-04-09T00:55:32Z'  # 553b
+  by: agent  # 553b
+  actor: jgstern_agent  # 553b
+  clock: 11  # 553b
+  nonce: 553b  # 553b
+  message: "[Reply to 'why not infinity / is the merge concern moot'] Investigation findings:\n\n(1) IS THE MERGE CONCERN MOOT? Mostly yes for the auto-sync path, but NO in general — and that 'no' is the load-bearing case. Findings:\n\n(a) Auto-sync (_maybe_auto_sync → do_sync in sync.py:823) does NOT perform real 3-way git merges. It uses git plumbing (read-tree/write-tree/commit-tree) with a temporary index to build a commit on top of origin/dev sequentially — never checks out a branch (avoids breaking the editable-install Python interpreter). The resulting PR is merged server-side via Forgejo API, trying ff → rebase → merge-commit. So the auto-sync path itself never fires merge=union locally.\n\n(b) HOWEVER: real 3-way merges of .ops files DO happen when developers integrate divergent feature branches back to main. test_git_integration.py contains four explicit merge tests (test_concurrent_updates_merge_cleanly, test_identical_op_type_merge, test_rebase_preserves_both_ops, test_duplicate_create_ops_handled) that create branches with concurrent .ops edits and run real git merge commands. They verify the CRDT-like property in ADR-0013: 'concurrent edits to the same item never produce git conflicts.'\n\n(c) .gitattributes confirms: '.agent/tracker/.ops/.*.ops linguist-generated merge=union diff=tracker' (and same for tracker-workspace). The nonce-on-every-line is what makes merge=union safe — without it, two ops with identical first lines would be deduped into one fused malformed YAML, and shared internal lines (e.g. 'set:' or 'status: done') would be silently stripped from earlier ops. Both pathologies are documented in ADR-0013 and store.py:9-11.\n\n(d) Two other anti-collision mechanisms ALSO exist: per-item .ops files (different items never share a file, so cross-item collision is structurally impossible) and Lamport clock ordering (compile sorts ops by clock so order-independence holds even when merge=union interleaves). The nonce is the third leg of that tripod and addresses a different failure mode (line-level dedup) that the other two don't cover.\n\n(2) WHY NOT INFINITY? No good reason — and that's the right answer. ruamel.yaml accepts any integer for ry.width; setting it to sys.maxsize (or 2**31-1) effectively means 'never fold any scalar.' Each scalar then occupies one physical line, the per-line nonce remains structurally valid for merge=union, and the continuation-line corruption bug becomes structurally impossible. The diff aesthetics objection I raised earlier dissolves on reflection: the .ops files are ALREADY effectively unreadable (machine-generated YAML with hex nonces on every line), so 'one very long line' vs 'several long folded lines' is no worse for human review. The diff=tracker textconv driver in .gitattributes already declutters diffs by showing compiled item state instead of raw ops, so reviewers don't read the raw YAML anyway.\n\nRECOMMENDATION (revised): set ry.width = sys.maxsize (or a very large constant like 2**31-1). One-line change in store.py:289. The nonce mechanism stays exactly as-is. No literal-block-scalar representer needed. No continuation-line-skip post-processor needed. No migration of existing .ops files (the read path is unchanged — CSafeLoader reads the same wire format whether ruamel folded the dump or not). The fix is conservative, minimal, and structurally eliminates the entire bug class.\n\nTests to add stay the same as the earlier [Tests to add] entry: 5000-byte multi-byte round-trip, 5000-byte fields.<key> round-trip, 10000-byte single-line description round-trip, adversarial '  # 1234'-in-content round-trip, INV-gajap-as-of-2026-04-08 regression test. Plus one new test: an explicit guard that ry.width is set to a value larger than any plausible scalar (e.g. assert ry.width > 1_000_000) so a future refactor can't silently re-introduce folding.\n\nAwaiting your go-ahead before implementing. If you confirm, I'll move WI-pusif to in_progress and ship the fix as a normal feature PR (not a governance file change — store.py is not in the governance set)."  # 553b
+- op: discuss  # e5e7
+  at: '2026-04-09T01:03:17Z'  # e5e7
+  by: human  # e5e7
+  actor: jgstern  # e5e7
+  clock: 12  # e5e7
+  nonce: e5e7  # e5e7
+  message: "ok go for it"  # e5e7
+- op: update  # fd3c
+  at: '2026-04-09T01:12:45Z'  # fd3c
+  by: agent  # fd3c
+  actor: jgstern_agent  # fd3c
+  clock: 13  # fd3c
+  nonce: fd3c  # fd3c
+  set:  # fd3c
+    status: in_progress  # fd3c
+- op: discuss  # ca7c
+  at: '2026-04-09T01:12:45Z'  # ca7c
+  by: agent  # ca7c
+  actor: jgstern_agent  # ca7c
+  clock: 14  # ca7c
+  nonce: ca7c  # ca7c
+  message: "Starting implementation. Branch: jgstern-agent/fix/tracker-yaml-fold-corruption. Approach: set ry.width = sys.maxsize per human approval."  # ca7c
