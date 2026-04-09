@@ -134,6 +134,84 @@ _autopr_finalize() {
 }
 
 # ------------------------------------------------------------------
+# WI-bahuf: detect 'commit is the same as the old commit' rejection
+#
+# When a refs/for/ push is rejected by Forgejo with this message, the
+# work is already in the merge target — usually because a backgrounded
+# auto-pr completed silently and the user/agent reran auto-pr without
+# realizing.  The historical (broken) behavior was to retry, fail, and
+# queue a stale vPR.  Detect this case explicitly, look up the merged
+# PR, and clean up locally without queueing anything.
+#
+# Pairs with WI-miriz's AUTOPR_LAST_RESULT.json sentinel: together they
+# provide redundant recovery — the sentinel catches success at exit
+# time, and the rejection-message hint catches it at the next run.
+# ------------------------------------------------------------------
+_autopr_is_already_merged_rejection() {
+	local push_output="$1"
+	# Forgejo's literal error message for refs/for/ pushes when the
+	# commit's tree already exists in the merged-into branch.
+	# Match case-insensitively to survive minor wording changes across
+	# Forgejo versions.
+	echo "$push_output" | grep -qiE "the new commit is the same as the old commit"
+}
+
+# Confirm a sha is reachable from origin/$base — gives an independent
+# proof that the work is actually merged, separate from the error string.
+_autopr_sha_in_base() {
+	local sha="$1" base="$2"
+	# Best-effort fetch; failures fall through to the local check.
+	git fetch origin "$base" --quiet 2>/dev/null || true
+	git merge-base --is-ancestor "$sha" "origin/$base" 2>/dev/null
+}
+
+# Handle the already-merged case: look up the PR (best-effort), set
+# sentinel state, run cleanup, exit 0.  Always called from inside an
+# action subcommand with the WI-miriz trap installed.
+_autopr_handle_already_merged() {
+	local local_sha="$1" branch="$2" base="$3"
+
+	if ! _autopr_sha_in_base "$local_sha" "$base"; then
+		# Rejection message matched but the SHA is NOT in the base
+		# branch — bail out and let the normal failure flow take over.
+		return 1
+	fi
+
+	echo ""
+	echo "---------------------------------------------------"
+	# Look up the PR by branch name (the agent hasn't deleted it yet)
+	# then by SHA as fallback.  PR# discovery is best-effort: if both
+	# lookups fail we still proceed with cleanup, just without the
+	# number in the sentinel/output.
+	local pr_num=""
+	if find_merged_pr "branch" "$branch"; then
+		pr_num="$FOUND_MERGED_PR_NUM"
+	elif find_merged_pr "sha" "$local_sha"; then
+		pr_num="$FOUND_MERGED_PR_NUM"
+	fi
+
+	if [[ -n "$pr_num" ]]; then
+		echo "📍 Already merged as PR #$pr_num — local cleanup only"
+		_autopr_state_pr_num="$pr_num"
+		if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
+			_autopr_state_pr_url="$FAILOVER_URL/$FAILOVER_REPO/pulls/$pr_num"
+		else
+			_autopr_state_pr_url="https://codeberg.org/$REPO_SLUG/pulls/$pr_num"
+		fi
+	else
+		echo "📍 Already merged (PR # not found via API) — local cleanup only"
+	fi
+
+	_autopr_state_final="already_merged"
+	_autopr_state_merged_sha="$local_sha"
+
+	# Cleanup mirrors the post-merge path in do_pr but does NOT touch
+	# tracker ops or attempt to amend the (already-merged) commit.
+	cleanup_local "$branch" "$base"
+	exit 0
+}
+
+# ------------------------------------------------------------------
 # Parse PR number from Forgejo push response
 # ------------------------------------------------------------------
 
@@ -431,6 +509,11 @@ Individual commits are preserved in the history."
 		echo "$PUSH_OUTPUT"
 		if [[ "$push_success" == "true" ]]; then
 			break
+		fi
+
+		# WI-bahuf: detect 'already merged' rejection on flush too.
+		if _autopr_is_already_merged_rejection "$PUSH_OUTPUT"; then
+			_autopr_handle_already_merged "$tip_sha" "$tip_branch" "$base_branch" || true
 		fi
 
 		echo ""
@@ -761,6 +844,20 @@ do_pr() {
 		exit 0
 	fi
 
+	# WI-bahuf testing hook: simulate Forgejo's 'same as old commit'
+	# rejection without an actual push.  Bypasses the push entirely and
+	# jumps straight to the already-merged detection path.
+	if [[ "${AUTO_PR_SIMULATE_ALREADY_MERGED:-}" == "1" ]]; then
+		echo "⚠️  [SIMULATED ALREADY-MERGED] AUTO_PR_SIMULATE_ALREADY_MERGED=1"
+		PUSH_OUTPUT="remote: error: The new commit is the same as the old commit"
+		echo "$PUSH_OUTPUT"
+		_autopr_handle_already_merged "$LOCAL_SHA" "$BRANCH" "$BASE_BRANCH" || {
+			echo "❌ Already-merged detection rejected — SHA not in base"
+			_autopr_state_final="failed_already_merged_check"
+			exit 1
+		}
+	fi
+
 	# Check for existing open PR on this branch (deduplication)
 	if find_open_pr "branch" "$BRANCH"; then
 		echo "ℹ️  Found existing open PR #$FOUND_PR_NUM for branch $BRANCH — will reuse"
@@ -808,6 +905,16 @@ do_pr() {
 		echo "$PUSH_OUTPUT"
 		if [[ "$push_success" == "true" ]]; then
 			break
+		fi
+
+		# WI-bahuf: don't retry / queue if Forgejo rejected the push
+		# because the work is already in dev.  Detect the literal
+		# rejection message and short-circuit to the merged-cleanup
+		# path on the FIRST attempt.
+		if _autopr_is_already_merged_rejection "$PUSH_OUTPUT"; then
+			_autopr_handle_already_merged "$LOCAL_SHA" "$BRANCH" "$BASE_BRANCH" || true
+			# If _autopr_handle_already_merged returns 1, the SHA is
+			# NOT in the base — fall through to normal retry/queue.
 		fi
 
 		echo ""
