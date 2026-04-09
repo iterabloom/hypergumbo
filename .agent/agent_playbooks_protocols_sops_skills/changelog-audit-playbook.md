@@ -86,9 +86,9 @@ Read the log in chunks (200-300 lines). For each chunk, note commits whose subje
 
 Run this phase for each changelog in turn, after Phase 1 is complete for that changelog.
 
-**Goal:** Make the Unreleased section easier to scan and understand without losing information. The Unreleased section's level of detail should be comparable to that of the released per-version sections — and no more.
+**Goal:** Make the Unreleased section easier to scan and understand. The Unreleased section's level of detail should be comparable to that of the released per-version sections — and no more.
 
-**Step 0 — Calibrate against released sections.** Before touching the Unreleased section, read the most recent 2-3 released version sections (e.g., `## [2.4.0]`, `## [2.3.0]` for the main changelog; `## [0.2.0]` etc. for the tracker changelog). These are the style and detail-level target. The Unreleased section should feel like it belongs in the same document at the same granularity. If a released section describes a feature in one bullet, the Unreleased section should not describe a comparable feature in five bullets with implementation sub-details. Completeness is highly valued — every piece of work should be represented — but verbosity is not completeness. A single concise bullet that captures the *effect* of a feature is better than a multi-paragraph breakdown of its internal architecture. Save implementation details for commit messages and ADRs.
+**Step 0 — Calibrate against released sections.** Before touching the Unreleased section, read the most recent 2-3 released version sections (e.g., `## [2.4.0]`, `## [2.3.0]` for the main changelog; `## [0.2.0]` etc. for the tracker changelog). These are the style and detail-level target. The Unreleased section should feel like it belongs in the same document at the same granularity. If a released section describes a feature in one bullet, the Unreleased section should not describe a comparable feature in five bullets with implementation sub-details. Completeness is valued but so is conciseness — sometimes it is appropriate to remove detail and make the view more "birds' eye". A single concise bullet that captures the *effect* of a feature is better than a multi-paragraph breakdown of its internal architecture. Save implementation details for commit messages and ADRs.
 
 **Step 1 — Re-read the Unreleased section in full.** Ask these specific questions:
 
@@ -117,7 +117,7 @@ This prevents context-window overload from holding a 200+ line section in workin
 
 ### Guard Rails
 
-- **Do not remove information.** Concision means saying the same thing in fewer words, not saying less. If a bullet point documents real work, it stays — it may get reworded or merged with a related bullet, but it does not disappear.
+- **Prefer conciseness over exhaustive detail.** Every piece of real work should be represented, but it's fine to condense multiple implementation-level bullets into a single higher-level entry. The goal is a useful birds'-eye summary, not an exhaustive log — that's what `git log` is for.
 - **Do not editorialize.** The changelog records what changed, not whether the change was important or impressive. A CI fix gets the same neutral tone as a new feature.
 - **Do not rewrite history.** If the changelog attributes work to a specific PR or commit, keep that attribution. Traceability matters.
 - **Watch for context window pressure.** If the Unreleased section is very long (100+ lines) and the commit log is very long (500+ commits), you will be tempted to skim. Resist — skim strategically (by chunk), not randomly. Missing a feature is worse than spending an extra 2 minutes reading.
