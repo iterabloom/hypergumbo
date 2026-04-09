@@ -89,6 +89,7 @@ package-lock.json
 .agent/.sync-logs/
 .agent/.training-data.jsonl
 .agent/.training-data-selected.jsonl
+.agent/.training-data-v1-snapshot-*.jsonl
 .agent/.deprecated-datasets/
 .agent/finetuned-model/
 .agent/transcript-model.gguf

@@ -206,9 +206,11 @@ class TestRowOrderPreservation:
         lines = dest.read_text().strip().split("\n")
         parsed = [json.loads(line) for line in lines]
         types = [r["type"] for r in parsed]
+        # normalized_user_interjection follows the enqueue (WI-nadud)
         assert types == [
             "user",
             "queue-operation",
+            "normalized_user_interjection",
             "system",
             "queue-operation",
             "assistant",
@@ -253,3 +255,80 @@ class TestFullFixtureMix:
         # bash_progress flushed (Rule 4: last bash before non-bash)
         progress = [r for r in parsed if r.get("type") == "progress"]
         assert len(progress) == 1
+
+
+class TestNormalizationIntegration:
+    """filter_new_lines emits normalized_user_interjection alongside queue-operation."""
+
+    def test_enqueue_produces_normalized_in_output(self, tmp_path: Path) -> None:
+        """Queue-operation enqueue in source -> normalized event in dest JSONL."""
+        mod = _import_filter()
+        src = _make_source(tmp_path, [USER_ROW, QUEUE_OP_ENQUEUE, ASSISTANT_ROW])
+        dest = tmp_path / "dest.jsonl"
+        state = {"offset": 0, "last_bash_hash": ""}
+
+        mod.filter_new_lines(str(src), str(dest), state)
+
+        lines = dest.read_text().strip().split("\n")
+        parsed = [json.loads(line) for line in lines]
+        normalized = [r for r in parsed if r.get("type") == "normalized_user_interjection"]
+        assert len(normalized) == 1
+        assert normalized[0]["vendor"] == "claude-code"
+        assert normalized[0]["content"] == "user typed this mid-turn"
+
+    def test_normalized_follows_queue_op_in_output(self, tmp_path: Path) -> None:
+        """Normalized event appears right after the queue-operation in JSONL output."""
+        mod = _import_filter()
+        src = _make_source(tmp_path, [USER_ROW, QUEUE_OP_ENQUEUE, ASSISTANT_ROW])
+        dest = tmp_path / "dest.jsonl"
+        state = {"offset": 0, "last_bash_hash": ""}
+
+        mod.filter_new_lines(str(src), str(dest), state)
+
+        lines = dest.read_text().strip().split("\n")
+        parsed = [json.loads(line) for line in lines]
+        types = [r["type"] for r in parsed]
+        idx_qop = types.index("queue-operation")
+        idx_norm = types.index("normalized_user_interjection")
+        assert idx_norm == idx_qop + 1
+
+    def test_remove_does_not_produce_normalized(self, tmp_path: Path) -> None:
+        """Queue-operation remove -> no normalized event."""
+        mod = _import_filter()
+        src = _make_source(tmp_path, [USER_ROW, QUEUE_OP_REMOVE, ASSISTANT_ROW])
+        dest = tmp_path / "dest.jsonl"
+        state = {"offset": 0, "last_bash_hash": ""}
+
+        mod.filter_new_lines(str(src), str(dest), state)
+
+        lines = dest.read_text().strip().split("\n")
+        parsed = [json.loads(line) for line in lines]
+        normalized = [r for r in parsed if r.get("type") == "normalized_user_interjection"]
+        assert len(normalized) == 0
+
+    def test_no_interjections_no_normalized(self, tmp_path: Path) -> None:
+        """Normal conversation without queue-ops -> no normalized events."""
+        mod = _import_filter()
+        src = _make_source(tmp_path, [USER_ROW, ASSISTANT_ROW])
+        dest = tmp_path / "dest.jsonl"
+        state = {"offset": 0, "last_bash_hash": ""}
+
+        mod.filter_new_lines(str(src), str(dest), state)
+
+        lines = dest.read_text().strip().split("\n")
+        parsed = [json.loads(line) for line in lines]
+        normalized = [r for r in parsed if r.get("type") == "normalized_user_interjection"]
+        assert len(normalized) == 0
+
+    def test_normalization_state_persisted(self, tmp_path: Path) -> None:
+        """Normalization state is included in the returned state dict."""
+        mod = _import_filter()
+        src = _make_source(tmp_path, [USER_ROW, QUEUE_OP_ENQUEUE, ASSISTANT_ROW])
+        dest = tmp_path / "dest.jsonl"
+        state = {"offset": 0, "last_bash_hash": ""}
+
+        new_state = mod.filter_new_lines(str(src), str(dest), state)
+        # State should include normalization state
+        assert "norm_vendor" in new_state
+        assert "norm_state" in new_state
+        assert new_state["norm_vendor"] == "claude-code"
