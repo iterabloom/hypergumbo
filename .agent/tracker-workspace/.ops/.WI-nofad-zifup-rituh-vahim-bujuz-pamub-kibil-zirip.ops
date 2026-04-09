@@ -19,3 +19,18 @@
     pr_ref:  # 1d77
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md proposed remedy §5: codify the four-step tracker-reply protocol as a standalone playbook following the existing pattern under .agent/agent_playbooks_protocols_sops_skills/.\n\n**Three-level structure** (per AGENTS.md §'Creating a New Playbook'):\n1. Full playbook file: .agent/agent_playbooks_protocols_sops_skills/tracker-reply-playbook.md — covers the four-step protocol, examples, classification rubric (approval/directive/question), guidance on when to delegate to Explore subagent, when to use WebSearch, and the anti-pattern of replying in the same turn as starting a new feature branch.\n2. AGENTS.md essentialization: 1-3 sentence summary in the appropriate section of AGENTS.md, with the standard '(For more explanation, please read .agent/agent_playbooks_protocols_sops_skills/tracker-reply-playbook.md.)' suffix.\n3. Hook registration: add a tuple to the PLAYBOOKS list in .agent/hooks/_shared/on_transcript_change.py with a multi-sentence expanded summary so the hook can auto-inject when relevant.\n\n**Status: needs_human_review per AGENTS.md §'Approval workflow.'**\n\nThe playbook *file itself* is not a governance file (per AGENTS.md §'Creating a New Playbook': 'The playbook markdown file itself is not a governance file (it only takes effect when referenced from one).'). However, both the AGENTS.md essentialization and the .agent/hooks/_shared/on_transcript_change.py registration ARE governance changes — and the playbook is useless without registration. Treat the whole item as governance work pending human approval.\n\n**Content blueprint:** the strengthened stop-hook directive text from the companion item is the core content. Expand with examples of (a) good vs drive-by replies, (b) when to dispatch Explore subagent, (c) when to use WebSearch on allowlisted domains, (d) the 'don't dispatch a new feature branch in the same turn as a substantive reply' rule."  # 1d77
     fields: {}  # 1d77
+- op: discuss  # 3f18
+  at: '2026-04-09T01:57:57Z'  # 3f18
+  by: human  # 3f18
+  actor: jgstern  # 3f18
+  clock: 2  # 3f18
+  nonce: 3f18  # 3f18
+  message: "I approve of changing relevant governance files and using auto-pr to do so"  # 3f18
+- op: update  # 5c65
+  at: '2026-04-09T01:58:14Z'  # 5c65
+  by: human  # 5c65
+  actor: jgstern  # 5c65
+  clock: 3  # 5c65
+  nonce: 5c65  # 5c65
+  set:  # 5c65
+    status: todo_soft  # 5c65
