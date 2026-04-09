@@ -26,3 +26,10 @@
   clock: 2  # 92cf
   nonce: 92cf  # 92cf
   message: "I'm not sure how much I like this because if we are going to go for WI-rumim why not just go for it and avoid intermediate complexity"  # 92cf
+- op: discuss  # 31dd
+  at: '2026-04-09T00:01:31Z'  # 31dd
+  by: agent  # 31dd
+  actor: jgstern_agent  # 31dd
+  clock: 3  # 31dd
+  nonce: 31dd  # 31dd
+  message: "Agreed. The 'A2 alternative' framing only made sense as a stepping stone before the language_profile registry — and if we are committing to WI-rumim's exploratory ADR for the registry, then the per-edge meta.virtual_dispatch flag becomes redundant: the registry can express the same per-method semantics as part of a language profile (e.g. 'language: cpp; methods.virtual_marker_required: true') and the type_hierarchy linker consults the profile rather than reading edge meta. That's strictly cleaner — no schema growth on the edge type, no migration of existing extends edges.\n\nPROPOSAL: mark this WI as wont_do, with the rationale that its design content should be folded into WI-rumim's ADR draft as one of the consumer use cases ('how the type_hierarchy linker would query the registry for virtual-dispatch semantics'). The A1 fix in WI-sukav still stands as the immediate practical workaround until WI-rumim's registry design lands and the linker is migrated to consume it.\n\nAwaiting your confirmation before flipping status to wont_do."  # 31dd
