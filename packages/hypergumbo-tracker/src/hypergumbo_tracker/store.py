@@ -36,6 +36,7 @@ import json
 import os
 import secrets
 import subprocess  # nosec B404
+import sys
 import warnings
 from collections import defaultdict
 from io import StringIO
@@ -286,7 +287,15 @@ def _serialize_op(op_dict: dict[str, Any]) -> str:
 
     ry = YAML()
     ry.default_flow_style = False
-    ry.width = 4096  # Prevent line wrapping
+    # WI-pusif-bukor: ruamel.yaml folds long double-quoted scalars at the
+    # width boundary, inserting a newline + indent that the per-line nonce
+    # post-processor below would then corrupt by injecting `# <nonce>` into
+    # the middle of the scalar value (CSafeLoader treats `#` as literal
+    # inside double-quoted strings on read-back). Setting width to sys.maxsize
+    # disables folding for any realistic scalar — each scalar occupies one
+    # physical line, the nonce-on-every-line invariant remains intact, and
+    # the corruption class is structurally eliminated.
+    ry.width = sys.maxsize
 
     stream = StringIO()
     ry.dump([prepared], stream)

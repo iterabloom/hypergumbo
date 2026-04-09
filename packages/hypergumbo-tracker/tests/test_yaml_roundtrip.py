@@ -442,6 +442,207 @@ class TestFlowStyleUpdateLists:
         assert "[]" in serialized
 
 
+class TestLongStringRoundtrip:
+    """Verify long string scalars round-trip without nonce-injection corruption.
+
+    Regression for WI-pusif-bukor: at the previous ry.width=4096 setting,
+    ruamel.yaml folded long double-quoted scalars across physical lines.
+    The per-line nonce post-processor in `_serialize_op` then appended
+    `  # <nonce>` to every physical line, including continuation lines,
+    embedding the nonce comment INSIDE the string value. CSafeLoader treats
+    `#` as literal inside double-quoted scalars, so on read-back the value
+    contained `# <nonce>` substrings the user never wrote.
+
+    The fix sets `ry.width = sys.maxsize`, so no realistic scalar folds.
+    Each scalar is one physical line, the nonce-on-every-line invariant
+    remains intact, and the corruption class is structurally impossible.
+
+    These tests use `_parse_ops_bytes` (which delegates to CSafeLoader) so
+    they exercise the same parser the production read path uses — no nonce
+    pre-stripping required, because `#` outside a string is a normal YAML
+    comment.
+    """
+
+    @staticmethod
+    def _roundtrip(op: dict[str, Any]) -> list[dict[str, Any]]:
+        serialized = _serialize_op(op)
+        return _parse_ops_bytes(serialized.encode("utf-8"))
+
+    def test_5000_byte_description_with_multibyte_chars(self) -> None:
+        """5000+ UTF-8 bytes of description with multi-byte characters."""
+        long_desc = (
+            "Lorem ipsum dolor sit amet — em-dash → arrow ≈ tilde ★ star. "
+        ) * 80
+        assert len(long_desc.encode("utf-8")) > 5000
+        op = {
+            "op": "create",
+            **COMMON,
+            "data": {
+                "kind": "invariant",
+                "title": "Long description test",
+                "status": "todo_hard",
+                "priority": 2,
+                "description": long_desc,
+                "fields": {},
+            },
+        }
+        parsed = self._roundtrip(op)
+        assert parsed[0]["data"]["description"] == long_desc
+
+    def test_5000_byte_field_value(self) -> None:
+        """5000+ byte fields.<key> value must survive round-trip."""
+        long_value = (
+            "alpha beta gamma delta epsilon zeta eta theta iota kappa "
+        ) * 100
+        assert len(long_value.encode("utf-8")) > 5000
+        op = {
+            "op": "create",
+            **COMMON,
+            "data": {
+                "kind": "invariant",
+                "title": "Long field test",
+                "status": "todo_hard",
+                "priority": 2,
+                "description": "",
+                "fields": {"statement": long_value},
+            },
+        }
+        parsed = self._roundtrip(op)
+        assert parsed[0]["data"]["fields"]["statement"] == long_value
+
+    def test_10000_byte_single_line_no_spaces(self) -> None:
+        """10 KB scalar with no whitespace — adversarial fold target.
+
+        Whitespace gives the YAML folder natural break points; a long run
+        of non-whitespace must still be emitted without folding. With the
+        WI-pusif fix this is structurally guaranteed.
+        """
+        long_desc = "x" * 10000
+        op = {
+            "op": "create",
+            **COMMON,
+            "data": {
+                "kind": "invariant",
+                "title": "No-spaces long description",
+                "status": "todo_hard",
+                "priority": 2,
+                "description": long_desc,
+                "fields": {},
+            },
+        }
+        parsed = self._roundtrip(op)
+        assert parsed[0]["data"]["description"] == long_desc
+
+    def test_adversarial_literal_hash_pattern_in_long_string(self) -> None:
+        """User-supplied text containing literal '  # NNNN' must round-trip.
+
+        The original WI-pusif description noted that the literal sequence
+        `'  # 1234'` or `'  # abcd'` inside user content is at risk of
+        being mistaken for a nonce comment by any naive post-processor.
+        With ry.width=sys.maxsize the entire scalar lives on one line and
+        CSafeLoader correctly preserves these literal substrings.
+        """
+        long_desc = (
+            "intro padding padding padding padding padding padding padding "
+            * 30
+            + "the literal sequence '  # abcd' must survive verbatim "
+            + "padding padding padding padding padding padding padding "
+            * 30
+            + "another literal '  # 1234' here too "
+            + "padding padding padding padding padding padding padding "
+            * 30
+        )
+        assert len(long_desc.encode("utf-8")) > 4096
+        assert "  # abcd" in long_desc
+        assert "  # 1234" in long_desc
+        op = {"op": "discuss", **COMMON, "message": long_desc}
+        parsed = self._roundtrip(op)
+        assert parsed[0]["message"] == long_desc
+
+    def test_inv_gajap_size_regression(self) -> None:
+        """A description ~4106 YAML bytes — the original failure size class.
+
+        WI-pusif was first observed updating INV-gajap with a 4106-byte
+        description that corrupted at position `'periodic  # f084 audit'`.
+        Any description in the 4080-5000 byte range is at risk under the
+        old serializer; this test pins one such size.
+        """
+        long_desc = (
+            "Sentence about the invariant that violates expectation. "
+        ) * 75
+        size = len(long_desc.encode("utf-8"))
+        assert 4000 < size < 5000, f"unexpected size {size}"
+        op = {
+            "op": "create",
+            **COMMON,
+            "data": {
+                "kind": "invariant",
+                "title": "INV size regression",
+                "status": "violated",
+                "priority": 2,
+                "description": long_desc,
+                "fields": {},
+            },
+        }
+        parsed = self._roundtrip(op)
+        assert parsed[0]["data"]["description"] == long_desc
+
+    def test_no_nonce_substring_leaks_into_long_scalar(self) -> None:
+        """Direct check: parsed long scalar must NOT contain '# <hex>'.
+
+        Under the old fold-then-nonce-inject bug, the parsed string would
+        contain `# <4-hex-chars>` substrings injected at every fold boundary
+        (~4096 bytes apart). This test detects exactly that corruption
+        signature on a multi-fold-length input.
+        """
+        # ~12 KB — would have ~3 fold boundaries under width=4096.
+        long_desc = "ipsum dolor sit amet consectetur adipiscing elit " * 250
+        op = {
+            "op": "create",
+            **COMMON,
+            "data": {
+                "kind": "invariant",
+                "title": "fold-boundary nonce-injection canary",
+                "status": "todo_hard",
+                "priority": 2,
+                "description": long_desc,
+                "fields": {},
+            },
+        }
+        parsed = self._roundtrip(op)
+        result = parsed[0]["data"]["description"]
+        assert result == long_desc
+        # Defense in depth: even if equality somehow passed, no nonce comment
+        # substring should be present.
+        assert not re.search(r"#\s+[0-9a-f]{4}\b", result), (
+            f"nonce-comment substring leaked into description: {result!r}"
+        )
+
+    def test_serializer_does_not_fold_large_scalars(self) -> None:
+        """Width-guard test: a 100 KB scalar must serialize without folding.
+
+        This is an observable-property test, not an internal-constant test:
+        if a future refactor lowers ry.width below ~100 KB the bug class
+        becomes possible again, and this guard fires. Counts the number of
+        non-empty physical lines in the serialized op — folding would
+        produce ~25 lines per fold-boundary multiple, while no-fold should
+        produce a small constant.
+        """
+        long_msg = "x" * 100_000
+        op = {"op": "discuss", **COMMON, "message": long_msg}
+        serialized = _serialize_op(op)
+        non_empty = [l for l in serialized.split("\n") if l.strip()]
+        # Header fields (op, at, by, actor, clock, nonce) + 1 message line.
+        # With width=4096 we'd see ~25 extra lines from message folding.
+        assert len(non_empty) < 15, (
+            f"suspected folding: {len(non_empty)} non-empty physical lines "
+            f"for a single 100 KB scalar; expected <15"
+        )
+        # And it must round-trip cleanly.
+        parsed = _parse_ops_bytes(serialized.encode("utf-8"))
+        assert parsed[0]["message"] == long_msg
+
+
 class TestReconcileOpSerialization:
     """Verify reconcile op serialization."""
 
