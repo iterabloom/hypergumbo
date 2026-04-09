@@ -124,3 +124,17 @@
   nonce: df67  # df67
   set:  # df67
     status: pending_validation  # df67
+- op: discuss  # 52b6
+  at: '2026-04-09T10:30:50Z'  # 52b6
+  by: agent  # 52b6
+  actor: jgstern_agent  # 52b6
+  clock: 16  # 52b6
+  nonce: 52b6  # 52b6
+  message: "Bakeoff validation (deep-20260409-054615 prometheus): return-type registry NOT producing resolved edges. All 708 chained calls remain chained_call_unresolved. Zero edges have return_type metadata. The registry is either not populating or not being consulted. Needs investigation before INV-dihos can move to satisfied."  # 52b6
+- op: discuss  # 34cf
+  at: '2026-04-09T10:34:20Z'  # 34cf
+  by: agent  # 34cf
+  actor: jgstern_agent  # 34cf
+  clock: 17  # 34cf
+  nonce: 34cf  # 34cf
+  message: "Investigation of the 708 chained_call_unresolved edges in prometheus: these are NOT a failure of the return-type registry. They are INLINE chained calls (e.g. ng.NewInstantQuery().Exec()) where the receiver is itself a call_expression. The chained-call ambiguity guard at go.py:2108-2127 correctly emits these as unresolved because there is no intermediate variable to type.\n\nThe return-type registry (WI-kuroj) works for VARIABLE ASSIGNMENT cases: 'qry := ng.NewInstantQuery(...)' puts 'Query' into var_types['qry'], enabling 'qry.Exec()' to resolve via typed_receiver_call. But inline chains bypass var_types entirely.\n\nTo resolve inline chains, a new mechanism is needed: when the receiver is a call_expression, extract the callee method name, look it up in the return-type registry, and use the return type to qualify the outer method. This is a Phase 2 enhancement, not a Phase 1 bug.\n\nSummary: the return-type registry IS populating correctly (confirmed by 15 unit tests passing with grammar-gated assertions). The 708 unresolved edges are inline chained calls that the current architecture doesn't handle. Phase 1 handles variable-assignment chaining; inline chaining is future work."  # 34cf
