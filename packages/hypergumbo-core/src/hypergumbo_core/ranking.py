@@ -731,6 +731,39 @@ def apply_trivial_sink_weights(
     return weighted
 
 
+def apply_generated_code_weights(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    generated_weight: float = 0.05,
+) -> Dict[str, float]:
+    """Dampen centrality for generated code symbols.
+
+    WI-tizij: OpenAPI models, protobuf stubs, and Kubernetes code-gen
+    artifacts are structurally central (many classes extend a generated
+    base like Configuration) but have near-zero developer relevance.
+    Symbols with ``is_generated_file=True`` get their centrality
+    multiplied by ``generated_weight`` (default 0.05 = 95% reduction).
+
+    Args:
+        centrality: Centrality scores to weight.
+        symbols: Symbol list (used for is_generated_file flag).
+        generated_weight: Multiplier for generated-code symbols (default 0.05).
+
+    Returns:
+        Dictionary mapping symbol ID to dampened centrality score.
+    """
+    generated_ids = {s.id for s in symbols if s.is_generated_file}
+    if not generated_ids:
+        return centrality
+    weighted = {}
+    for sid, score in centrality.items():
+        if sid in generated_ids:
+            weighted[sid] = score * generated_weight
+        else:
+            weighted[sid] = score
+    return weighted
+
+
 def apply_common_method_name_weights(
     centrality: Dict[str, float],
     symbols: List[Symbol],
@@ -1067,6 +1100,11 @@ def rank_symbols(
     # De-weight trivial sinks (short-bodied pure sinks like accessors/stubs)
     weighted_centrality = apply_trivial_sink_weights(
         weighted_centrality, symbols, filtered_edges,
+    )
+
+    # WI-tizij: de-weight generated code (OpenAPI models, protobuf stubs, etc.)
+    weighted_centrality = apply_generated_code_weights(
+        weighted_centrality, symbols,
     )
 
     # Sort by weighted centrality (highest first), then by name for stability

@@ -3750,3 +3750,60 @@ class TestComputeHarmonicShares:
         assert sum(shares) == 3
         # At least first share is > 0
         assert shares[0] > 0
+
+
+class TestApplyGeneratedCodeWeights:
+    """WI-tizij: generated code symbols get centrality penalty."""
+
+    def test_generated_symbol_downweighted(self):
+        from hypergumbo_core.ranking import apply_generated_code_weights
+
+        gen_sym = make_symbol("Configuration", path="models/v1alpha1_config.py")
+        gen_sym.is_generated_file = True
+        centrality = {gen_sym.id: 1.0}
+
+        result = apply_generated_code_weights(centrality, [gen_sym])
+        assert result[gen_sym.id] == pytest.approx(0.05)
+
+    def test_non_generated_symbol_unchanged(self):
+        from hypergumbo_core.ranking import apply_generated_code_weights
+
+        prod_sym = make_symbol("InferenceService", path="controller.py")
+        centrality = {prod_sym.id: 1.0}
+
+        result = apply_generated_code_weights(centrality, [prod_sym])
+        assert result[prod_sym.id] == 1.0
+
+    def test_no_generated_symbols_noop(self):
+        from hypergumbo_core.ranking import apply_generated_code_weights
+
+        sym = make_symbol("Foo", path="foo.py")
+        centrality = {sym.id: 1.0}
+
+        result = apply_generated_code_weights(centrality, [sym])
+        assert result is centrality  # Returns same dict (fast path)
+
+    def test_mixed_generated_and_production(self):
+        """Both generated and non-generated symbols together."""
+        from hypergumbo_core.ranking import apply_generated_code_weights
+
+        gen = make_symbol("Configuration", path="models/v1alpha1_config.py")
+        gen.is_generated_file = True
+        prod = make_symbol("InferenceService", path="controller.py")
+        centrality = {gen.id: 1.0, prod.id: 1.0}
+
+        result = apply_generated_code_weights(centrality, [gen, prod])
+        assert result[gen.id] == pytest.approx(0.05)
+        assert result[prod.id] == 1.0
+
+    def test_custom_weight(self):
+        from hypergumbo_core.ranking import apply_generated_code_weights
+
+        gen_sym = make_symbol("Model", path="models/knative_serving.py")
+        gen_sym.is_generated_file = True
+        centrality = {gen_sym.id: 1.0}
+
+        result = apply_generated_code_weights(
+            centrality, [gen_sym], generated_weight=0.1
+        )
+        assert result[gen_sym.id] == pytest.approx(0.1)
