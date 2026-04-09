@@ -42,6 +42,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Training data pipeline
 
+- **Backfill script for v0 training corpus cohort tags** (WI-gigil): `scripts/backfill-training-data-cohort-tags.py` walks a v0 training-data JSONL snapshot and writes a parallel sidecar with per-entry `infra_sha`, `playbook_registry_sha`, `playbook_count_actual`, `playbook_count_in_prompt`, and `main_llm_presumed`. Resolves SHAs from git history via binary search on a pre-built commit timeline. Re-runnable, does not modify the original corpus. Sidecar for the v0 snapshot (12,738 entries) written to `.agent/.deprecated-datasets/`.
 - **Per-entry cohort metadata for training corpus** (WI-tatuh / INV-gajap): `log_training_example` in `.agent/hooks/_shared/on_transcript_change.py` now writes seven top-level cohort metadata fields on every training entry: `pipeline_version` (`"v1"`), `infra_sha`, `playbook_registry_sha`, `main_llm`, `vendor` (`"claude-code"`), `vendor_version`, and `scoring_model`. The legacy `model` field is preserved for backward compatibility. `main_llm` and `vendor_version` are extracted from the filtered transcript JSONL; git SHAs are resolved via `git log` and cached per-process. Distribution shifts in the pipeline, playbook registry, main LLM, or vendor are now discoverable from the corpus alone.
 
 #### Developer experience
