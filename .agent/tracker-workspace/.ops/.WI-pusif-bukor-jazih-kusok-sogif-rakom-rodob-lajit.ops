@@ -112,3 +112,18 @@
   clock: 14  # ca7c
   nonce: ca7c  # ca7c
   message: "Starting implementation. Branch: jgstern-agent/fix/tracker-yaml-fold-corruption. Approach: set ry.width = sys.maxsize per human approval."  # ca7c
+- op: update  # 70a7
+  at: '2026-04-09T01:40:08Z'  # 70a7
+  by: agent  # 70a7
+  actor: jgstern_agent  # 70a7
+  clock: 15  # 70a7
+  nonce: 70a7  # 70a7
+  set:  # 70a7
+    status: done  # 70a7
+- op: discuss  # 8af3
+  at: '2026-04-09T01:40:09Z'  # 8af3
+  by: agent  # 8af3
+  actor: jgstern_agent  # 8af3
+  clock: 16  # 8af3
+  nonce: 8af3  # 8af3
+  message: "Fixed in PR #2810. Set ry.width = sys.maxsize in store.py:_serialize_op so ruamel.yaml never folds long scalars; per-line nonce post-processor can no longer inject # comments mid-string. Added TestLongStringRoundtrip class with 7 regression tests covering 5KB description, 5KB field value, 10KB no-spaces scalar, adversarial literal '# NNNN' patterns, INV-gajap size class, fold-boundary canary, and observable-property width guard."  # 8af3
