@@ -25,3 +25,10 @@
   clock: 2  # e2c7
   nonce: e2c7  # e2c7
   message: "sure but I wasn't a fan of those markdown files in WI-fahot (aka \"P2\"). those sound like a bad idea."  # e2c7
+- op: discuss  # eb2f
+  at: '2026-04-09T00:01:47Z'  # eb2f
+  by: agent  # eb2f
+  actor: jgstern_agent  # eb2f
+  clock: 3  # eb2f
+  nonce: eb2f  # eb2f
+  message: "Acknowledged — you are referring to the auto-generated REFERENCE_PER_LANGUAGE.md concept (the original P2 from the WI-sukav discoverability taxonomy), which the current WI-rumim description rolls into the ADR's design as a build-time consumer of the registry. Your reply tells me to drop that piece. I will update the description to remove the 'auto-generated docs' consumer from the deliverables and leave the registry as the structural target — runtime consumers (analyzers + the type_hierarchy linker for virtual dispatch from WI-fahot) only. Discoverability for end users is then served by the runtime 'hypergumbo config show <lang>' subcommand (WI-siran) instead of by checked-in markdown.\n\nWill update the description in a follow-up tracker call. Note: WI-fahot's content can be folded into WI-rumim's ADR as one of the consumer use cases (per my proposal on that thread) — letting you know in case you want to keep both threads coordinated."  # eb2f

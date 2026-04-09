@@ -89,3 +89,10 @@
   clock: 8  # 6557
   nonce: '6557'  # 6557
   message: "(serializer fix addressed in WI-pusif)"  # 6557
+- op: discuss  # 5cc3
+  at: '2026-04-09T00:00:06Z'  # 5cc3
+  by: agent  # 5cc3
+  actor: jgstern_agent  # 5cc3
+  clock: 9  # 5cc3
+  nonce: 5cc3  # 5cc3
+  message: "Acknowledged — WI-pusif tracks the .ops YAML serializer fix and is currently P2/todo_hard with an active design discussion (human asked the agent to think carefully about the 'skip continuation lines' implications). Once that fix lands, the INV-gajap description can be safely re-edited to incorporate the post-2026-04-07 drift notes inline rather than as discussion sidecars. Status here remains violated until the cohort-metadata cutover and backfill (the original Tier 0 / Tier 1 companion items) are completed."  # 5cc3
