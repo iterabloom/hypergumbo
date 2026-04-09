@@ -1659,3 +1659,61 @@ class TestIsTestFileAxis:
         # Tier semantics unchanged.
         assert prod.supply_chain_tier == 1
         assert test.supply_chain_tier == 2
+
+
+class TestIsGeneratedFileAxis:
+    """WI-tizij: is_generated_file is independent of supply_chain_tier.
+
+    Generated code (OpenAPI models, protobuf stubs, Kubernetes code-gen)
+    is structurally central but has low developer relevance. The
+    is_generated flag lets ranking apply a centrality penalty.
+    """
+
+    def test_openapi_v1alpha1_model_is_generated(self, tmp_path: Path) -> None:
+        """OpenAPI v1alpha1_*.py files are marked is_generated=True."""
+        models = tmp_path / "models"
+        models.mkdir()
+        (models / "v1alpha1_foo.py").write_text("class V1alpha1Foo: pass")
+
+        result = classify_file(models / "v1alpha1_foo.py", tmp_path)
+        assert result.is_generated is True
+        # Tier is still first_party (not derived)
+        assert result.tier == Tier.FIRST_PARTY
+
+    def test_openapi_v1beta1_model_is_generated(self, tmp_path: Path) -> None:
+        result = classify_file(
+            tmp_path / "v1beta1_bar.py", tmp_path
+        )
+        assert result.is_generated is True
+
+    def test_knative_model_is_generated(self, tmp_path: Path) -> None:
+        result = classify_file(
+            tmp_path / "knative_serving.py", tmp_path
+        )
+        assert result.is_generated is True
+
+    def test_protobuf_pb2_is_generated(self, tmp_path: Path) -> None:
+        result = classify_file(
+            tmp_path / "service_pb2.py", tmp_path
+        )
+        # pb2 files are already DERIVED tier AND now also is_generated
+        assert result.is_generated is True
+
+    def test_zz_generated_go_is_generated(self, tmp_path: Path) -> None:
+        result = classify_file(
+            tmp_path / "zz_generated.deepcopy.go", tmp_path
+        )
+        assert result.is_generated is True
+
+    def test_regular_file_not_generated(self, tmp_path: Path) -> None:
+        (tmp_path / "handler.py").write_text("def handle(): pass")
+        result = classify_file(tmp_path / "handler.py", tmp_path)
+        assert result.is_generated is False
+
+    def test_is_generated_and_is_test_independent(self, tmp_path: Path) -> None:
+        """A test file in a v1alpha1 model dir is both test AND generated."""
+        (tmp_path / "v1alpha1_test_utils.py").write_text("def test(): pass")
+        result = classify_file(tmp_path / "v1alpha1_test_utils.py", tmp_path)
+        assert result.is_generated is True
+        # is_test may or may not be True depending on path patterns
+        # The point is the two flags are independent

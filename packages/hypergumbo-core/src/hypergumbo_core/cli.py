@@ -4632,6 +4632,7 @@ def _classify_symbols(
         symbol.supply_chain_tier = classification.tier.value
         symbol.supply_chain_reason = classification.reason
         symbol.is_test_file = classification.is_test
+        symbol.is_generated_file = classification.is_generated
 
 
 def _compute_supply_chain_summary(

@@ -243,6 +243,7 @@ class Symbol:
     supply_chain_tier: int = 1  # Default to first_party
     supply_chain_reason: str = ""
     is_test_file: bool = False  # WI-rigun: independent of tier
+    is_generated_file: bool = False  # WI-tizij: generated code flag
     cyclomatic_complexity: Optional[int] = None
     lines_of_code: Optional[int] = None
     signature: Optional[str] = None
@@ -281,6 +282,7 @@ class Symbol:
                 "tier_name": _TIER_NAMES.get(self.supply_chain_tier, "first_party"),
                 "reason": self.supply_chain_reason,
                 "is_test_file": self.is_test_file,
+                "is_generated_file": self.is_generated_file,
             },
             "cyclomatic_complexity": self.cyclomatic_complexity,
             "lines_of_code": self.lines_of_code,
@@ -313,6 +315,7 @@ class Symbol:
             supply_chain_tier=supply_chain.get("tier", 1),
             supply_chain_reason=supply_chain.get("reason", ""),
             is_test_file=supply_chain.get("is_test_file", False),
+            is_generated_file=supply_chain.get("is_generated_file", False),
             cyclomatic_complexity=d.get("cyclomatic_complexity"),
             lines_of_code=d.get("lines_of_code"),
             signature=d.get("signature"),
