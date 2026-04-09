@@ -142,3 +142,17 @@
   clock: 17  # fea5
   nonce: fea5  # fea5
   message: "No, there is no tracker item for the event-sourcing linker coverage gap. The linker only detects Spring @EventListener/publishEvent, JS EventEmitter emit/on, and Django signals. Repos using custom event systems (keycloak ProviderEventListener, kafka's internal KafkaEventQueue) don't trigger it. Creating the item now."  # fea5
+- op: discuss  # 219b
+  at: '2026-04-09T16:41:47Z'  # 219b
+  by: human  # 219b
+  actor: jgstern  # 219b
+  clock: 18  # 219b
+  nonce: 219b  # 219b
+  message: "Please provide the id of the tracker item you are creating?"  # 219b
+- op: discuss  # 5255
+  at: '2026-04-09T16:50:09Z'  # 5255
+  by: agent  # 5255
+  actor: jgstern_agent  # 5255
+  clock: 19  # 5255
+  nonce: '5255'  # 5255
+  message: "The tracker item for the event-sourcing linker coverage gap is WI-zadat-gimiv-fugir-bupib-sigar-rapon-pofok-bopam (P3, todo_soft). Title: 'Event-sourcing linker: expand pattern set beyond Spring/JS/Django'."  # 5255
