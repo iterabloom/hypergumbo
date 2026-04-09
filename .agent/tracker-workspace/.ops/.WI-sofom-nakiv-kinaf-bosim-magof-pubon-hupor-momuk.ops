@@ -1,0 +1,21 @@
+- op: create  # 35be
+  at: '2026-04-09T08:36:56Z'  # 35be
+  by: agent  # 35be
+  actor: jgstern_agent  # 35be
+  clock: 1  # 35be
+  nonce: 35be  # 35be
+  data:  # 35be
+    kind: work_item  # 35be
+    title: "Consolidate and run deferred bakeoff validations"  # 35be
+    status: todo_soft  # 35be
+    priority: 2  # 35be
+    parent:  # 35be
+    tags:  # 35be
+    - bakeoff_validation  # 35be
+    - deferred_bakeoffs  # 35be
+    before: []  # 35be
+    duplicate_of: []  # 35be
+    not_duplicate_of: []  # 35be
+    pr_ref:  # 35be
+    description: "Running list of items marked done/pending_validation where bakeoff validation was explicitly deferred. These need real-world testing.\n\nDEFERRED BAKEOFFS:\n\n1. WI-kuroj (INV-dihos Phase 1: Return-Type Registry for Java+Go) - PR #2824. BAKEOFF: Re-run prometheus deep-bakeoff. Forward slice from cmd/promtool/main.go:queryRange should walk into promql.Engine.exec -> evalSampleVector.\n\n2. WI-sukav (Per-language gate on concrete-extends -> virtual dispatch) - PR #2817. BAKEOFF: Re-run alertmanager deep-bakeoff. 4 InclusiveRange.* false positives should disappear. concrete->concrete dispatches_to ratio should drop from 4.95% toward 0.\n\n3. INV-bivot (Slice BFS must traverse event_publishes edges) - pending_validation. BAKEOFF: Run kafka or another event-driven repo through bakeoff-deep. Forward slice from producer should reach consumer methods via event_publishes edges.\n\nUpdate this item each time an item is marked done with deferred bakeoff validation."  # 35be
+    fields: {}  # 35be
