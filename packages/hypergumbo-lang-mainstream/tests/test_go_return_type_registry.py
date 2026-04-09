@@ -65,6 +65,10 @@ class TestGoReturnTypeFromSignature:
     def test_none_signature(self) -> None:
         assert _go_return_type_from_signature(None) is None
 
+    def test_return_part_is_whitespace_only(self) -> None:
+        # Signature with trailing whitespace after params but no actual type
+        assert _go_return_type_from_signature("(x int) ") is None
+
     def test_builtin_return_type(self) -> None:
         assert _go_return_type_from_signature("(x int) error") is None
         assert _go_return_type_from_signature("(x int) string") is None
