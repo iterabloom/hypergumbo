@@ -147,3 +147,18 @@
   clock: 15  # 9a86
   nonce: 9a86  # 9a86
   message: "governance approved. auto-pr approved."  # 9a86
+- op: update  # f6cf
+  at: '2026-04-09T19:19:52Z'  # f6cf
+  by: agent  # f6cf
+  actor: jgstern_agent  # f6cf
+  clock: 16  # f6cf
+  nonce: f6cf  # f6cf
+  set:  # f6cf
+    status: satisfied  # f6cf
+- op: discuss  # 845d
+  at: '2026-04-09T19:19:52Z'  # 845d
+  by: agent  # 845d
+  actor: jgstern_agent  # 845d
+  clock: 17  # 845d
+  nonce: 845d  # 845d
+  message: "Both companion items complete: WI-tatuh (commit f8cbcbdd4) adds v1 cohort metadata to log_training_example, WI-gigil (commit 6b3ab6e00) backfills v0 corpus via sidecar. Every entry past (12,738 via sidecar) and present (native v1 fields) now carries pipeline_version, infra_sha, playbook_registry_sha, main_llm, vendor, vendor_version, scoring_model."  # 845d
