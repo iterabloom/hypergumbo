@@ -53,3 +53,26 @@
   set: {}  # f68e
   remove:  # f68e
     before: [WI-tatuh-pimak-lagog-tupit-gupam-kihal-gizut-pafub]  # f68e
+- op: update  # ecb2
+  at: '2026-04-09T19:11:15Z'  # ecb2
+  by: agent  # ecb2
+  actor: jgstern_agent  # ecb2
+  clock: 6  # ecb2
+  nonce: ecb2  # ecb2
+  set:  # ecb2
+    status: in_progress  # ecb2
+- op: update  # 043c
+  at: '2026-04-09T19:19:43Z'  # 043c
+  by: agent  # 043c
+  actor: jgstern_agent  # 043c
+  clock: 7  # 043c
+  nonce: 043c  # 043c
+  set:  # 043c
+    status: done  # 043c
+- op: discuss  # a605
+  at: '2026-04-09T19:19:43Z'  # a605
+  by: agent  # a605
+  actor: jgstern_agent  # a605
+  clock: 8  # a605
+  nonce: a605  # a605
+  message: "Implemented in commit 6b3ab6e00. Script + 30 tests + sidecar for 12,738-entry v0 corpus generated. Playbook count drift confirmed: 2,937 entries under actual=14 but prompt said 14; 181 entries under actual=15 but no prompt count update."  # a605

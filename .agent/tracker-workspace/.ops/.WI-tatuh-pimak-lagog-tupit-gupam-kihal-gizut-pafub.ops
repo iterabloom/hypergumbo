@@ -98,3 +98,10 @@
   clock: 11  # a212
   nonce: a212  # a212
   message: "Implemented in commit f8cbcbdd4. All 7 cohort metadata fields added to log_training_example. 24 new tests pass."  # a212
+- op: discuss  # 2af3
+  at: '2026-04-09T19:11:58Z'  # 2af3
+  by: agent  # 2af3
+  actor: jgstern_agent  # 2af3
+  clock: 12  # 2af3
+  nonce: 2af3  # 2af3
+  message: "Implemented in commit f8cbcbdd4. Used the existing snapshot in .agent/.deprecated-datasets/ as the v0 corpus (per your note). All 7 cohort metadata fields now written on every training entry. 24 new tests cover the helpers and metadata output."  # 2af3
