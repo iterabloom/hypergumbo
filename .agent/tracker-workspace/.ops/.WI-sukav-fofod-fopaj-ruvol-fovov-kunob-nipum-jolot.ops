@@ -98,3 +98,34 @@
   set:  # ea20
     status: todo_hard  # ea20
     priority: 0  # ea20
+- op: update  # d139
+  at: '2026-04-09T05:07:41Z'  # d139
+  by: agent  # d139
+  actor: jgstern_agent  # d139
+  clock: 13  # d139
+  nonce: d139  # d139
+  set:  # d139
+    status: done  # d139
+- op: discuss  # c028
+  at: '2026-04-09T05:07:41Z'  # c028
+  by: agent  # c028
+  actor: jgstern_agent  # c028
+  clock: 14  # c028
+  nonce: c028  # c028
+  message: "Fixed in PR #2817 (WI-sukav A1). build_inheritance_maps now filters extends edges whose source-symbol language is in NO_VIRTUAL_EXTENDS_LANGUAGES = {go, cpp, rust, csharp}. Implements edges unaffected. Java/Python/Kotlin/Ruby/Scala/Swift/JS-TS retain default-allow behavior. Tests cover all 4 filtered languages, java/python (default-allow) still dispatching, go implements still dispatching, and unknown-src-symbol fallback. Bakeoff validation deferred — next bakeoff-deep cycle on alertmanager should show the 4 InclusiveRange.* false positives in timeinterval.go disappear (and overall concrete→concrete dispatches_to ratio drop from 4.95% toward 0)."  # c028
+- op: update  # 08af
+  at: '2026-04-09T05:37:28Z'  # 08af
+  by: human  # 08af
+  actor: jgstern  # 08af
+  clock: 15  # 08af
+  nonce: 08af  # 08af
+  set:  # 08af
+    status: in_progress  # 08af
+    priority: 1  # 08af
+- op: discuss  # 88c6
+  at: '2026-04-09T05:38:36Z'  # 88c6
+  by: human  # 88c6
+  actor: jgstern  # 88c6
+  clock: 16  # 88c6
+  nonce: 88c6  # 88c6
+  message: "actually I think we should validate with a bakeoff before marking as done. it can be a small bakeoff."  # 88c6

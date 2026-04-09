@@ -51,3 +51,11 @@
   nonce: 973e  # 973e
   set:  # 973e
     priority: 0  # 973e
+- op: update  # e51c
+  at: '2026-04-09T04:19:07Z'  # e51c
+  by: human  # e51c
+  actor: jgstern  # e51c
+  clock: 6  # e51c
+  nonce: e51c  # e51c
+  set:  # e51c
+    title: "auto-pr: detect 'commit is same as old commit' → hint 'Already merged as PR #N' [human APPROVED; see discussion]"  # e51c
