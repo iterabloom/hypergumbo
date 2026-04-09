@@ -19,3 +19,18 @@
     pr_ref:  # 8120
     description: "Follow-up from WI-rigun (is_test_file boolean, PR #2813). Update bakeoff-deep tier-slice query to compose tier==2 AND NOT is_test_file for clean real third-party deps answers. Touches scripts/bakeoff-deep only."  # 8120
     fields: {}  # 8120
+- op: update  # 961f
+  at: '2026-04-09T12:33:36Z'  # 961f
+  by: agent  # 961f
+  actor: jgstern_agent  # 961f
+  clock: 2  # 961f
+  nonce: 961f  # 961f
+  set:  # 961f
+    status: done  # 961f
+- op: discuss  # 441a
+  at: '2026-04-09T12:33:36Z'  # 441a
+  by: agent  # 441a
+  actor: jgstern_agent  # 441a
+  clock: 3  # 441a
+  nonce: 441a  # 441a
+  message: "Fixed in PR #2843. _is_test_node in bakeoff-deep now checks supply_chain.is_test_file structured field before falling back to regex. Tier-2 diagnostics get a cleaner signal for real third-party deps."  # 441a
