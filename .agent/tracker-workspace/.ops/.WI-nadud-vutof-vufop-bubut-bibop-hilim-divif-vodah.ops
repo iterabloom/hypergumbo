@@ -60,3 +60,40 @@
   set: {}  # a424
   remove:  # a424
     before: [WI-tatuh-pimak-lagog-tupit-gupam-kihal-gizut-pafub]  # a424
+- op: discuss  # 3d26
+  at: '2026-04-09T21:34:45Z'  # 3d26
+  by: agent  # 3d26
+  actor: jgstern_agent  # 3d26
+  clock: 7  # 3d26
+  nonce: 3d26  # 3d26
+  message: "## Integrated analysis: multi-vendor interjection normalization (2026-04-09)\n\nTwo independent research reports (/tmp/interjection-analysis.md, /tmp/second-interjection-analysis.md) surveyed how 12 platforms handle mid-execution user interjections in their session transcripts. Key findings:\n\n### The original premise needs revision\n\nWI-nadud was framed as \"normalize Claude Code's queue-operation so future vendor adapters emit the same thing.\" Both reports agree this is the wrong abstraction. Claude Code is the **only** platform that persists enqueue/dequeue as explicit typed transcript events. Every other platform treats the queue as runtime/UI state. The right framing: define a normalized event capturing \"user supplied input while the agent wasn't at a clean idle boundary,\" with vendor-specific evidence quality.\n\n### The interaction pattern has critical mass\n\nCodex CLI, Gemini CLI, Zed, Roo Code, OpenCode, and OpenHands all support mid-execution interjection. This is no longer a niche Claude Code feature. But runtime behavior and transcript observability are separate concerns — most tools have the UX but don't persist it.\n\n### The abstraction is richer than assumed\n\n- Roo Code: interjections can carry **approval semantics** (implicit \"yes, proceed\"), not just conversation content.\n- Gemini CLI: configurable drain boundaries (after current turn vs. after full idleness) — `queue_scope` matters.\n- OpenCode: queue UI exists but behavior is actually interruptive, not deferred — can't assume \"queued\" means \"deferred.\"\n- Codex CLI: `pending_input` exists in the Rust state struct but is never serialized to the rollout file.\n\n### Recommended normalized schema\n\n```json\n{\n  \"type\": \"normalized_user_interjection\",\n  \"vendor\": \"...\",\n  \"runtime_state_at_accept\": \"busy | streaming | tool_running | waiting_approval | idle_unknown\",\n  \"delivery_semantics\": \"queued | interrupt | cancel_restart | advisory | unknown\",\n  \"queue_scope\": \"after_current_turn | after_idle | after_current_tool | unknown\",\n  \"approval_effect\": \"none | implicit_approve | explicit_approve | unknown\",\n  \"observability\": {\n    \"source_kind\": \"explicit_event | inferred_from_event_history | heuristic\",\n    \"confidence\": 0.0\n  }\n}\n```\n\n### Planned vendor adapters\n\n1. **OpenHands** (primary second adapter): Event-sourced persistence with numbered event files. Interjections inferable structurally — a MessageEvent arriving before the prior ActionEvent's observation closes. Best transcript substrate of any non-Claude-Code platform. Tier 2 ingestion (inferred from event history), confidence ~0.8.\n\n2. **Codex CLI** (Approach A — passive rollout parsing): Parse existing rollout JSONL. Reliable detection of Esc-interrupted interjections via TurnAborted(Interrupted) + UserMessage sequence. Blind to quietly-queued messages (systematic gap — pending_input is never serialized). Approach B (upstream PR to emit QueuedInput/DequeuedInput events) is a parallel long-term play but not a dependency.\n\n### Precondition satisfied\n\nThe item's original precondition — \"coordinated log_training_example metadata cutover must land first\" — is now satisfied (WI-tatuh, commit f8cbcbdd4, PR #2861). New entries carry pipeline_version/infra_sha, so this filter change would be a clean v1→v2 cohort boundary.\n\n### Revised scope\n\nImplementation should cover: (1) normalized event schema definition, (2) Claude Code adapter (replace the original \"just emit normalized rows from filter-transcript.py\" with the richer schema), (3) OpenHands adapter, (4) Codex CLI adapter (Approach A). Each adapter documents its confidence characteristics and known blind spots."  # 3d26
+- op: discuss  # abbf
+  at: '2026-04-09T21:35:04Z'  # abbf
+  by: agent  # abbf
+  actor: jgstern_agent  # abbf
+  clock: 8  # abbf
+  nonce: abbf  # abbf
+  message: "Acknowledged — governance and auto-pr approved. Scope revised per discussion above to include normalized event schema + three vendor adapters (Claude Code, OpenHands, Codex CLI Approach A). The original precondition (WI-tatuh metadata cutover) is now satisfied. Bumping priority from P4 to P3 to reflect the expanded, approved scope."  # abbf
+- op: update  # a3d6
+  at: '2026-04-09T21:35:16Z'  # a3d6
+  by: agent  # a3d6
+  actor: jgstern_agent  # a3d6
+  clock: 9  # a3d6
+  nonce: a3d6  # a3d6
+  set:  # a3d6
+    priority: 3  # a3d6
+- op: update  # 509c
+  at: '2026-04-09T22:24:01Z'  # 509c
+  by: agent  # 509c
+  actor: jgstern_agent  # 509c
+  clock: 10  # 509c
+  nonce: 509c  # 509c
+  set:  # 509c
+    status: done  # 509c
+- op: discuss  # 60d3
+  at: '2026-04-09T22:24:01Z'  # 60d3
+  by: agent  # 60d3
+  actor: jgstern_agent  # 60d3
+  clock: 11  # 60d3
+  nonce: 60d3  # 60d3
+  message: "Implemented in PR #2862. Normalized event schema + 3 vendor adapters (Claude Code, Codex CLI, OpenHands) in normalize_interjections.py. filter-transcript.py emits synthetic normalized_user_interjection rows alongside originals. pipeline_version bumped v1->v2, v1 corpus snapshotted. 47 tests. Retrospective playbook updated."  # 60d3
