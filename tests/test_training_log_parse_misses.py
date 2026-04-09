@@ -20,7 +20,9 @@ import importlib
 import importlib.machinery
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -238,3 +240,278 @@ class TestParseSelectionIntegration:
         outcome_entry = json.loads(sidecar.read_text().strip())
         assert training_entry["event_id"] == outcome_entry["event_id"]
         assert outcome_entry["parse_misses"] == ["missed-pb"]
+
+
+# ---------------------------------------------------------------------------
+# _get_file_commit_sha: git SHA resolution with caching
+# ---------------------------------------------------------------------------
+
+
+class TestGetFileCommitSha:
+    """_get_file_commit_sha returns the last commit SHA for a file."""
+
+    def test_returns_sha_for_tracked_file(self, hook_mod, tmp_path: Path) -> None:
+        """Returns a 40-char hex SHA for a file in a git repo."""
+        # Set up a minimal git repo
+        subprocess.run(
+            ["git", "init"], cwd=str(tmp_path),
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=str(tmp_path), capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=str(tmp_path), capture_output=True, check=True,
+        )
+        test_file = tmp_path / "hello.py"
+        test_file.write_text("print('hi')")
+        subprocess.run(
+            ["git", "add", "hello.py"], cwd=str(tmp_path),
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "init"], cwd=str(tmp_path),
+            capture_output=True, check=True,
+        )
+
+        # Clear the cache so this test's repo is used
+        hook_mod._sha_cache.clear()
+        sha = hook_mod._get_file_commit_sha(str(tmp_path), "hello.py")
+        assert len(sha) == 40
+        assert all(c in "0123456789abcdef" for c in sha)
+
+    def test_returns_empty_for_untracked_file(self, hook_mod, tmp_path: Path) -> None:
+        """Returns empty string when the file has no commits."""
+        subprocess.run(
+            ["git", "init"], cwd=str(tmp_path),
+            capture_output=True, check=True,
+        )
+        hook_mod._sha_cache.clear()
+        sha = hook_mod._get_file_commit_sha(str(tmp_path), "nonexistent.py")
+        assert sha == ""
+
+    def test_returns_empty_for_non_git_dir(self, hook_mod, tmp_path: Path) -> None:
+        """Returns empty string when not in a git repo."""
+        hook_mod._sha_cache.clear()
+        sha = hook_mod._get_file_commit_sha(str(tmp_path), "anything.py")
+        assert sha == ""
+
+    def test_caches_result(self, hook_mod, tmp_path: Path) -> None:
+        """Second call returns cached value without running git again."""
+        hook_mod._sha_cache.clear()
+        hook_mod._sha_cache[(str(tmp_path), "cached.py")] = "abc123"
+        sha = hook_mod._get_file_commit_sha(str(tmp_path), "cached.py")
+        assert sha == "abc123"
+
+    def test_handles_oserror(self, hook_mod, tmp_path: Path) -> None:
+        """OSError from subprocess is caught and returns empty string."""
+        hook_mod._sha_cache.clear()
+        with mock.patch("subprocess.run", side_effect=OSError("no git")):
+            sha = hook_mod._get_file_commit_sha(str(tmp_path), "file.py")
+        assert sha == ""
+
+    def test_handles_timeout(self, hook_mod, tmp_path: Path) -> None:
+        """TimeoutExpired from subprocess is caught and returns empty string."""
+        hook_mod._sha_cache.clear()
+        with mock.patch(
+            "subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="git", timeout=5),
+        ):
+            sha = hook_mod._get_file_commit_sha(str(tmp_path), "file.py")
+        assert sha == ""
+
+
+# ---------------------------------------------------------------------------
+# _extract_transcript_metadata: main_llm and vendor_version from JSONL
+# ---------------------------------------------------------------------------
+
+
+class TestExtractTranscriptMetadata:
+    """_extract_transcript_metadata reads main_llm and vendor_version."""
+
+    def test_extracts_main_llm_from_assistant_message(
+        self, hook_mod, tmp_path: Path,
+    ) -> None:
+        transcript = tmp_path / "transcript.jsonl"
+        lines = [
+            json.dumps({"type": "user_message", "content": "hello"}),
+            json.dumps({
+                "type": "assistant",
+                "message": {"model": "claude-opus-4-6", "content": "hi"},
+            }),
+        ]
+        transcript.write_text("\n".join(lines) + "\n")
+
+        meta = hook_mod._extract_transcript_metadata(str(transcript))
+        assert meta["main_llm"] == "claude-opus-4-6"
+
+    def test_extracts_vendor_version(self, hook_mod, tmp_path: Path) -> None:
+        transcript = tmp_path / "transcript.jsonl"
+        lines = [
+            json.dumps({"version": "1.2.3", "type": "init"}),
+            json.dumps({"type": "user_message", "content": "hello"}),
+        ]
+        transcript.write_text("\n".join(lines) + "\n")
+
+        meta = hook_mod._extract_transcript_metadata(str(transcript))
+        assert meta["vendor_version"] == "1.2.3"
+
+    def test_takes_most_recent_values(self, hook_mod, tmp_path: Path) -> None:
+        """When multiple entries have the fields, last one wins."""
+        transcript = tmp_path / "transcript.jsonl"
+        lines = [
+            json.dumps({"version": "1.0.0", "type": "init"}),
+            json.dumps({
+                "type": "assistant",
+                "message": {"model": "claude-sonnet-4-5", "content": "a"},
+            }),
+            json.dumps({"version": "1.2.3", "type": "reconnect"}),
+            json.dumps({
+                "type": "assistant",
+                "message": {"model": "claude-opus-4-6", "content": "b"},
+            }),
+        ]
+        transcript.write_text("\n".join(lines) + "\n")
+
+        meta = hook_mod._extract_transcript_metadata(str(transcript))
+        assert meta["main_llm"] == "claude-opus-4-6"
+        assert meta["vendor_version"] == "1.2.3"
+
+    def test_returns_empty_for_missing_file(self, hook_mod) -> None:
+        meta = hook_mod._extract_transcript_metadata("/nonexistent/path.jsonl")
+        assert meta == {"main_llm": "", "vendor_version": ""}
+
+    def test_returns_empty_for_empty_file(self, hook_mod, tmp_path: Path) -> None:
+        transcript = tmp_path / "transcript.jsonl"
+        transcript.write_text("")
+        meta = hook_mod._extract_transcript_metadata(str(transcript))
+        assert meta == {"main_llm": "", "vendor_version": ""}
+
+    def test_handles_malformed_json(self, hook_mod, tmp_path: Path) -> None:
+        """Malformed lines are skipped without error."""
+        transcript = tmp_path / "transcript.jsonl"
+        lines = [
+            "not json",
+            json.dumps({
+                "type": "assistant",
+                "message": {"model": "claude-opus-4-6", "content": "ok"},
+            }),
+        ]
+        transcript.write_text("\n".join(lines) + "\n")
+
+        meta = hook_mod._extract_transcript_metadata(str(transcript))
+        assert meta["main_llm"] == "claude-opus-4-6"
+
+    def test_handles_non_dict_message(self, hook_mod, tmp_path: Path) -> None:
+        """message field that is not a dict is ignored."""
+        transcript = tmp_path / "transcript.jsonl"
+        lines = [
+            json.dumps({"type": "assistant", "message": "just a string"}),
+        ]
+        transcript.write_text("\n".join(lines) + "\n")
+
+        meta = hook_mod._extract_transcript_metadata(str(transcript))
+        assert meta["main_llm"] == ""
+
+
+# ---------------------------------------------------------------------------
+# log_training_example: cohort metadata fields (WI-tatuh / INV-gajap)
+# ---------------------------------------------------------------------------
+
+
+class TestLogTrainingExampleCohortMetadata:
+    """log_training_example includes v1 cohort metadata in every entry."""
+
+    def _write_and_read(
+        self, hook_mod, tmp_path: Path, **kwargs,
+    ) -> dict:
+        """Helper: write one training example and return the parsed entry."""
+        log_path = tmp_path / "training.jsonl"
+        orig_log = hook_mod.TRAINING_LOG
+        hook_mod.TRAINING_LOG = str(log_path)
+        # Avoid hitting real git — seed the cache
+        hook_mod._sha_cache.clear()
+        hook_mod._sha_cache[
+            (str(tmp_path), hook_mod._INFRA_REL_PATH)
+        ] = "a" * 40
+        try:
+            hook_mod.log_training_example(
+                str(tmp_path), "goal_distillation", "prompt", "response",
+                model="test-scoring-model",
+                **kwargs,
+            )
+        finally:
+            hook_mod.TRAINING_LOG = orig_log
+        return json.loads(log_path.read_text().strip())
+
+    def test_pipeline_version_is_v1(self, hook_mod, tmp_path: Path) -> None:
+        entry = self._write_and_read(hook_mod, tmp_path)
+        assert entry["pipeline_version"] == "v1"
+
+    def test_infra_sha_present(self, hook_mod, tmp_path: Path) -> None:
+        entry = self._write_and_read(hook_mod, tmp_path)
+        assert entry["infra_sha"] == "a" * 40
+
+    def test_playbook_registry_sha_present(self, hook_mod, tmp_path: Path) -> None:
+        entry = self._write_and_read(hook_mod, tmp_path)
+        assert entry["playbook_registry_sha"] == "a" * 40
+
+    def test_vendor_is_claude_code(self, hook_mod, tmp_path: Path) -> None:
+        entry = self._write_and_read(hook_mod, tmp_path)
+        assert entry["vendor"] == "claude-code"
+
+    def test_scoring_model_mirrors_model(self, hook_mod, tmp_path: Path) -> None:
+        entry = self._write_and_read(hook_mod, tmp_path)
+        assert entry["scoring_model"] == "test-scoring-model"
+        assert entry["model"] == "test-scoring-model"
+
+    def test_main_llm_passed_through(self, hook_mod, tmp_path: Path) -> None:
+        entry = self._write_and_read(
+            hook_mod, tmp_path, main_llm="claude-opus-4-6",
+        )
+        assert entry["main_llm"] == "claude-opus-4-6"
+
+    def test_vendor_version_passed_through(self, hook_mod, tmp_path: Path) -> None:
+        entry = self._write_and_read(
+            hook_mod, tmp_path, vendor_version="1.5.0",
+        )
+        assert entry["vendor_version"] == "1.5.0"
+
+    def test_defaults_to_empty_when_not_provided(
+        self, hook_mod, tmp_path: Path,
+    ) -> None:
+        entry = self._write_and_read(hook_mod, tmp_path)
+        assert entry["main_llm"] == ""
+        assert entry["vendor_version"] == ""
+
+    def test_messages_array_unchanged(self, hook_mod, tmp_path: Path) -> None:
+        """Cohort metadata does not leak into the messages array."""
+        entry = self._write_and_read(
+            hook_mod, tmp_path, main_llm="opus", vendor_version="1.0",
+        )
+        msgs = entry["messages"]
+        assert len(msgs) == 2
+        assert msgs[0] == {"role": "user", "content": "prompt"}
+        assert msgs[1] == {"role": "assistant", "content": "response"}
+
+    def test_extra_still_works_alongside_cohort(
+        self, hook_mod, tmp_path: Path,
+    ) -> None:
+        entry = self._write_and_read(
+            hook_mod, tmp_path,
+            extra={"event_id": "test-uuid"},
+            main_llm="opus",
+        )
+        assert entry["event_id"] == "test-uuid"
+        assert entry["main_llm"] == "opus"
+        assert entry["pipeline_version"] == "v1"
+
+    def test_backward_compat_model_field_preserved(
+        self, hook_mod, tmp_path: Path,
+    ) -> None:
+        """The legacy 'model' field is still present for existing data loaders."""
+        entry = self._write_and_read(hook_mod, tmp_path)
+        assert "model" in entry
+        assert entry["model"] == entry["scoring_model"]

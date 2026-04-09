@@ -26,6 +26,7 @@ import datetime
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.request
 import urllib.error
@@ -53,6 +54,84 @@ def _session_id_from_transcript_path(transcript_path: str) -> str:
     basename = os.path.basename(transcript_path)
     m = CURRENT_TRANSCRIPT_RE.search(basename)
     return m.group(1) if m else ""
+
+# ---------------------------------------------------------------------------
+# Cohort metadata helpers (WI-tatuh / INV-gajap)
+# ---------------------------------------------------------------------------
+
+# Relative paths used for SHA lookups — the PLAYBOOKS registry currently
+# lives in the same file as the rest of the hook infra.
+_INFRA_REL_PATH = ".agent/hooks/_shared/on_transcript_change.py"
+_PLAYBOOK_REGISTRY_REL_PATH = _INFRA_REL_PATH
+
+# Module-level SHA cache: {(repo_root, rel_path): sha_string}
+_sha_cache: dict[tuple[str, str], str] = {}
+
+
+def _get_file_commit_sha(repo_root: str, rel_path: str) -> str:
+    """Return the commit SHA that last modified *rel_path*, cached per-process.
+
+    Uses ``git log -1`` to find the most recent commit touching the file.
+    Returns an empty string on any error (not a git repo, file untracked,
+    git not installed, timeout).
+    """
+    key = (repo_root, rel_path)
+    if key not in _sha_cache:
+        try:
+            result = subprocess.run(
+                ["git", "log", "-1", "--pretty=format:%H", "--", rel_path],
+                capture_output=True, text=True, cwd=repo_root, timeout=5,
+            )
+            _sha_cache[key] = (
+                result.stdout.strip() if result.returncode == 0 else ""
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            _sha_cache[key] = ""
+    return _sha_cache[key]
+
+
+def _extract_transcript_metadata(transcript_path: str) -> dict[str, str]:
+    """Extract ``main_llm`` and ``vendor_version`` from the transcript JSONL.
+
+    Scans lines from the end of the file for efficiency — we only need the
+    most recent values:
+
+    * ``main_llm``: the ``message.model`` field on the last assistant-type
+      entry (identifies the LLM whose transcript is being analyzed).
+    * ``vendor_version``: the top-level ``version`` field on any entry
+      (Claude Code writes this on session-start lines).
+
+    Returns a dict with both keys (empty strings if not found).
+    """
+    main_llm = ""
+    vendor_version = ""
+    if not os.path.exists(transcript_path):
+        return {"main_llm": main_llm, "vendor_version": vendor_version}
+
+    try:
+        with open(transcript_path, "rb") as f:
+            lines = f.readlines()
+
+        for line in reversed(lines):
+            if main_llm and vendor_version:
+                break
+            try:
+                entry = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if not main_llm:
+                msg = entry.get("message")
+                if isinstance(msg, dict) and "model" in msg:
+                    main_llm = str(msg["model"])
+            if not vendor_version:
+                ver = entry.get("version")
+                if ver is not None:
+                    vendor_version = str(ver)
+    except OSError:
+        pass
+
+    return {"main_llm": main_llm, "vendor_version": vendor_version}
+
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -318,6 +397,9 @@ def log_training_example(
     repo_root: str, step: str, prompt: str, response: str,
     model: str,
     extra: dict | None = None,
+    *,
+    main_llm: str = "",
+    vendor_version: str = "",
 ) -> None:
     """Append a ChatML training example to the training log.
 
@@ -335,15 +417,42 @@ def log_training_example(
 
     *extra* is an optional dict of additional metadata fields merged into the
     top-level JSON object (e.g. ``{"parse_misses": ["id1", "id2"]}``).
+
+    **Cohort metadata (v1, WI-tatuh / INV-gajap):**
+
+    Every entry carries top-level cohort metadata so distribution shifts are
+    discoverable from the corpus alone:
+
+    * ``pipeline_version`` — forward marker (``"v1"`` for this implementation)
+    * ``infra_sha`` — commit SHA of this file at write time
+    * ``playbook_registry_sha`` — commit SHA of the PLAYBOOKS registry file
+    * ``main_llm`` — the LLM whose transcript is being analyzed
+    * ``vendor`` — always ``"claude-code"`` (the only adapter currently)
+    * ``vendor_version`` — Claude Code version from the session JSONL
+    * ``scoring_model`` — alias for the legacy *model* parameter; *model* is
+      kept as a backward-compat key for existing data loaders
     """
     prompt, response = _truncate_to_budget(prompt, response, MAX_TOKENS)
     log_path = TRAINING_LOG
     if not log_path:
         log_path = os.path.join(repo_root, ".agent", ".training-data.jsonl")
+
+    infra_sha = _get_file_commit_sha(repo_root, _INFRA_REL_PATH)
+    playbook_registry_sha = _get_file_commit_sha(
+        repo_root, _PLAYBOOK_REGISTRY_REL_PATH,
+    )
+
     obj = {
         "timestamp": datetime.datetime.now().isoformat(),
         "step": step,
         "model": model,
+        "scoring_model": model,
+        "pipeline_version": "v1",
+        "infra_sha": infra_sha,
+        "playbook_registry_sha": playbook_registry_sha,
+        "main_llm": main_llm,
+        "vendor": "claude-code",
+        "vendor_version": vendor_version,
         "messages": [
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": response},
@@ -652,6 +761,14 @@ def main() -> None:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.normpath(os.path.join(script_dir, "..", "..", ".."))
 
+    # Extract cohort metadata from transcript (WI-tatuh / INV-gajap).
+    # Done once here; passed to every log_training_example call below.
+    _tmeta = _extract_transcript_metadata(transcript_path)
+    _cohort_kw: dict[str, str] = {
+        "main_llm": _tmeta["main_llm"],
+        "vendor_version": _tmeta["vendor_version"],
+    }
+
     # Step 0a: Check if all playbooks are recently injected (skip LLM calls entirely)
     all_ids = [pb_id for pb_id, _, _ in PLAYBOOKS]
     already, inj_state = recently_injected(
@@ -700,7 +817,7 @@ def main() -> None:
             sys.exit(0)
         log_training_example(
             repo_root, "goal_distillation", step1_prompt, agent_goals,
-            model=DISTILL_MODEL,
+            model=DISTILL_MODEL, **_cohort_kw,
         )
 
     if verbose:
@@ -747,6 +864,7 @@ def main() -> None:
         repo_root, "sparse_selection", step2_prompt, selection_text,
         model=SELECT_MODEL,
         extra={"event_id": event_id},
+        **_cohort_kw,
     )
 
     if verbose:
