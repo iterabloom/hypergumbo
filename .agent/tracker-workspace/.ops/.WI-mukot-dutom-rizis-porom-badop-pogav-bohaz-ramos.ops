@@ -80,3 +80,18 @@
   clock: 9  # 8a0e
   nonce: 8a0e  # 8a0e
   message: "Human approved governance file changes. Ready for implementation."  # 8a0e
+- op: update  # 78c2
+  at: '2026-04-09T10:49:53Z'  # 78c2
+  by: agent  # 78c2
+  actor: jgstern_agent  # 78c2
+  clock: 10  # 78c2
+  nonce: 78c2  # 78c2
+  set:  # 78c2
+    status: done  # 78c2
+- op: discuss  # e9e5
+  at: '2026-04-09T10:49:53Z'  # e9e5
+  by: agent  # e9e5
+  actor: jgstern_agent  # e9e5
+  clock: 11  # e9e5
+  nonce: e9e5  # e9e5
+  message: "Fixed in PR #2836. 8 regression tests for filter-transcript.py queue-operation preservation. Covers enqueue/remove rows, bash_progress/file-history-snapshot filtering, row order, and full fixture mix."  # e9e5

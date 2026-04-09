@@ -42,3 +42,18 @@
   clock: 4  # 68b0
   nonce: 68b0  # 68b0
   message: "Acknowledged governance approval. Will add the queue-operation row documentation to agentic-session-retrospective.md Phase 1 and use auto-pr for the governance file change."  # 68b0
+- op: update  # 9981
+  at: '2026-04-09T10:59:17Z'  # 9981
+  by: agent  # 9981
+  actor: jgstern_agent  # 9981
+  clock: 5  # 9981
+  nonce: '9981'  # 9981
+  set:  # 9981
+    status: done  # 9981
+- op: discuss  # dafc
+  at: '2026-04-09T10:59:17Z'  # dafc
+  by: agent  # dafc
+  actor: jgstern_agent  # dafc
+  clock: 6  # dafc
+  nonce: dafc  # dafc
+  message: "Fixed in PR #2837. Added queue-operation row documentation to Phase 1 of agentic-session-retrospective.md with verbatim example and cross-reference to regression test."  # dafc
