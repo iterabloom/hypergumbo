@@ -35,3 +35,18 @@
   nonce: 9ec9  # 9ec9
   set:  # 9ec9
     priority: 2  # 9ec9
+- op: update  # 179b
+  at: '2026-04-09T09:33:41Z'  # 179b
+  by: agent  # 179b
+  actor: jgstern_agent  # 179b
+  clock: 4  # 179b
+  nonce: 179b  # 179b
+  set:  # 179b
+    status: done  # 179b
+- op: discuss  # f24e
+  at: '2026-04-09T09:33:41Z'  # f24e
+  by: agent  # f24e
+  actor: jgstern_agent  # f24e
+  clock: 5  # f24e
+  nonce: f24e  # f24e
+  message: "Fixed in PR #2828. tree-sitter-tlaplus~=1.5.0 added to pyproject.toml, module registered in __init__.py."  # f24e
