@@ -1344,7 +1344,7 @@ def _extract_go_var_types(
             # the RHS (e.g. x := e.Query()), try the return-type
             # registry.  If the RHS is a method call on a receiver
             # whose type is already known, look up the return type.
-            if (
+            if (  # pragma: no cover - requires Go tree-sitter grammar
                 not type_name
                 and method_return_type_registry
                 and rhs.type == "call_expression"
