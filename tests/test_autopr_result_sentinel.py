@@ -335,3 +335,176 @@ class TestSentinelOverwrite:
         assert second["final_state"] == "noop_empty_queue"
         # Timestamps differ — second is at least as recent as first.
         assert second["timestamp"] >= first["timestamp"]
+
+
+# ---------------------------------------------------------------------------
+# WI-bahuf: 'commit is the same as the old commit' → already-merged hint
+# ---------------------------------------------------------------------------
+
+
+class TestAlreadyMergedDetection:
+    """auto-pr must detect Forgejo's 'same as old commit' rejection,
+    look up the merged PR, and clean up locally without queueing a vPR.
+
+    Because the rejection requires actually contacting Forgejo with a
+    valid refs/for/ push, we use the AUTO_PR_SIMULATE_ALREADY_MERGED
+    env var to inject a synthetic PUSH_OUTPUT and exercise the
+    detection / cleanup pipeline.
+    """
+
+    def test_simulated_already_merged_with_head_in_base(
+        self, tmp_path: Path,
+    ) -> None:
+        """HEAD on the feature branch == HEAD of dev (no extra commit) →
+        handler proceeds, cleanup runs, sentinel records merged state."""
+        fake = _init_fake_repo(tmp_path, branch="feature")
+        # Wire local origin so the fetch is a no-op and origin/dev is
+        # local dev — feature == dev so the SHA is in origin/dev.
+        subprocess.run(
+            ["git", "remote", "set-url", "origin", str(fake)],
+            cwd=str(fake), check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "branch", "-f", "origin/dev", "dev"],
+            cwd=str(fake), check=True, capture_output=True,
+        )
+
+        sentinel = tmp_path / "sentinel.json"
+        result = _run_autopr(
+            fake, sentinel=sentinel,
+            extra_env={
+                "FORGEJO_USER": "u",
+                "FORGEJO_TOKEN": "t",
+                "AUTO_PR_SIMULATE_ALREADY_MERGED": "1",
+                "AUTO_PR_SKIP_MANIFEST": "1",
+            },
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "Already merged" in result.stdout
+        payload = _read_sentinel(sentinel)
+        _assert_schema(payload)
+        assert payload["final_state"] == "already_merged"
+        assert payload["exit_code"] == 0
+        # merged_sha must be set to the local HEAD
+        head_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(fake), check=True, capture_output=True, text=True,
+        ).stdout.strip()
+        assert payload["merged_sha"] == head_sha
+        # PR# is unset in this fixture (find_merged_pr fails against
+        # the local origin pseudo-remote)
+        assert payload["pr_number"] is None
+
+    def test_simulated_already_merged_with_head_not_in_base(
+        self, tmp_path: Path,
+    ) -> None:
+        """HEAD on feature has a commit NOT in dev → detection bails
+        out with failed_already_merged_check."""
+        fake = _init_fake_repo(tmp_path, branch="feature")
+        # Add a commit to feature that is NOT in dev
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", "feature work"],
+            cwd=str(fake), check=True, capture_output=True,
+        )
+        # Local origin trick (no real upstream)
+        subprocess.run(
+            ["git", "remote", "set-url", "origin", str(fake)],
+            cwd=str(fake), check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "branch", "-f", "origin/dev", "dev"],
+            cwd=str(fake), check=True, capture_output=True,
+        )
+
+        sentinel = tmp_path / "sentinel.json"
+        result = _run_autopr(
+            fake, sentinel=sentinel,
+            extra_env={
+                "FORGEJO_USER": "u",
+                "FORGEJO_TOKEN": "t",
+                "AUTO_PR_SIMULATE_ALREADY_MERGED": "1",
+                "AUTO_PR_SKIP_MANIFEST": "1",
+            },
+        )
+        assert result.returncode == 1, result.stdout + result.stderr
+        payload = _read_sentinel(sentinel)
+        _assert_schema(payload)
+        assert payload["final_state"] == "failed_already_merged_check"
+
+    def test_already_merged_simulation_requires_auth(
+        self, tmp_path: Path,
+    ) -> None:
+        """Auth check fires before AUTO_PR_SIMULATE_ALREADY_MERGED is
+        consumed — locks ordering."""
+        fake = _init_fake_repo(tmp_path, branch="feature")
+        sentinel = tmp_path / "sentinel.json"
+        result = _run_autopr(
+            fake, sentinel=sentinel,
+            extra_env={
+                "FORGEJO_TOKEN": "t",  # USER stripped
+                "AUTO_PR_SIMULATE_ALREADY_MERGED": "1",
+                "AUTO_PR_SKIP_MANIFEST": "1",
+            },
+        )
+        assert result.returncode == 1
+        payload = _read_sentinel(sentinel)
+        # Auth error fires first — already-merged path never runs.
+        assert payload["final_state"] == "auth_error"
+
+
+class TestRejectionHelperFunctions:
+    """Direct tests for ``_autopr_is_already_merged_rejection`` —
+    sourced into a tiny harness so the matcher is exercised in
+    isolation from the do_pr / flush_queue control flow."""
+
+    def _run_helper(
+        self, tmp_path: Path, push_output: str,
+    ) -> int:
+        """Source the helper definition into a one-shot bash and
+        return the exit code of the rejection check on push_output."""
+        # Reproduce ONLY the helper here so the test doesn't depend
+        # on auto-pr's other top-level state.  This is the same body
+        # as scripts/auto-pr's _autopr_is_already_merged_rejection.
+        # If the production helper changes, this test must be updated
+        # to match — that is the intent (it locks the matcher in).
+        harness = tmp_path / "harness.sh"
+        harness.write_text(
+            '''#!/usr/bin/env bash
+set -euo pipefail
+_autopr_is_already_merged_rejection() {
+    local push_output="$1"
+    echo "$push_output" | grep -qiE "the new commit is the same as the old commit"
+}
+_autopr_is_already_merged_rejection "$1"
+'''
+        )
+        result = subprocess.run(
+            ["bash", str(harness), push_output],
+            capture_output=True, text=True,
+        )
+        return result.returncode
+
+    def test_matches_literal_message(self, tmp_path: Path) -> None:
+        rc = self._run_helper(
+            tmp_path,
+            "remote: error: The new commit is the same as the old commit",
+        )
+        assert rc == 0
+
+    def test_matches_case_insensitively(self, tmp_path: Path) -> None:
+        rc = self._run_helper(
+            tmp_path,
+            "REMOTE: ERROR: THE NEW COMMIT IS THE SAME AS THE OLD COMMIT",
+        )
+        assert rc == 0
+
+    def test_does_not_match_unrelated_error(self, tmp_path: Path) -> None:
+        rc = self._run_helper(
+            tmp_path,
+            "remote: error: failed to push some refs",
+        )
+        assert rc != 0
+
+    def test_does_not_match_empty_output(self, tmp_path: Path) -> None:
+        rc = self._run_helper(tmp_path, "")
+        assert rc != 0

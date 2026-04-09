@@ -210,6 +210,72 @@ find_open_pr() {
 }
 
 # ------------------------------------------------------------------
+# find_merged_pr TYPE VALUE
+#   Find a merged (state=closed AND merged=true) PR by "sha" or "branch".
+#   Used by auto-pr's WI-bahuf already-merged detection: when a refs/for/
+#   push is rejected with "the new commit is the same as the old commit",
+#   the work is already in dev, so we look up the merge target by branch
+#   name (most reliable since the agent hasn't deleted the branch yet)
+#   or by HEAD SHA.
+#
+#   Sets FOUND_MERGED_PR_NUM and FOUND_MERGED_PR_SHA on success. Returns 1
+#   if no merged PR matches (the rejection might have a different cause).
+#
+#   The Forgejo API does not have state=merged; we filter the closed list
+#   client-side by `merged: true` to skip rejected/closed-without-merge PRs.
+# ------------------------------------------------------------------
+find_merged_pr() {
+	local search_type="$1" search_value="$2"
+	FOUND_MERGED_PR_NUM=""
+	FOUND_MERGED_PR_SHA=""
+
+	if ! api_get "$API_BASE/pulls?state=closed&sort=recentupdate&limit=50"; then
+		return 1
+	fi
+
+	# Filter to merged-only client-side, then search by the requested key.
+	local match
+	match=$(echo "$API_RESPONSE" | python3 -c "
+import json
+import sys
+
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+search_type = '$search_type'
+search_value = '$search_value'
+if search_type == 'sha':
+    field_path = ('head', 'sha')
+elif search_type == 'branch':
+    field_path = ('head', 'ref')
+else:
+    print('find_merged_pr: unknown type', search_type, file=sys.stderr)
+    sys.exit(1)
+for item in data:
+    if not item.get('merged'):
+        continue
+    val = item
+    for key in field_path:
+        val = val.get(key) if isinstance(val, dict) else None
+        if val is None:
+            break
+    if val and str(val).startswith(search_value):
+        print(json.dumps(item))
+        sys.exit(0)
+sys.exit(1)
+" 2>/dev/null) || return 1
+
+	FOUND_MERGED_PR_NUM=$(echo "$match" | json_field "number")
+	FOUND_MERGED_PR_SHA=$(echo "$match" | json_field "head.sha")
+
+	if [[ -z "$FOUND_MERGED_PR_NUM" || "$FOUND_MERGED_PR_NUM" == "None" ]]; then
+		return 1
+	fi
+	return 0
+}
+
+# ------------------------------------------------------------------
 # poll_ci HEAD_SHA
 #   CI polling with timeout and ci-complete bypass (Scenario A/B).
 #   Uses API_BASE and FORGEJO_TOKEN from environment.
