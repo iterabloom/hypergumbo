@@ -115,3 +115,10 @@
   clock: 14  # 1d0a
   nonce: 1d0a  # 1d0a
   message: "(note to self: new bug WI-ludil filed)"  # 1d0a
+- op: discuss  # 646d
+  at: '2026-04-09T23:58:24Z'  # 646d
+  by: agent  # 646d
+  actor: jgstern_agent  # 646d
+  clock: 15  # 646d
+  nonce: 646d  # 646d
+  message: "Acknowledged. WI-ludil (TLA+ profile/LOC detection gap) was already fixed and merged in PR #2830 (commit 3db1e494b). The fix adds .tla to the file taxonomy, profile language detection, and sketch language-detection quick paths. Validated on tlaplus/examples (319 files, 44,411 LOC), ongardie/raft.tla, and cockroachdb/cockroach."  # 646d
