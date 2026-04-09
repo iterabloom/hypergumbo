@@ -18,3 +18,10 @@
     pr_ref:  # 2e65
     description: "Source: deep-20260407-030917 prometheus reflect agent. Closure-wrapped handlers are still erased from the call graph: r.Post('/read', api.ready(api.remoteRead)) produces a routes_to -> api.remoteRead edge but the 'ready' middleware wrapper is invisible. Same for 'wrap', 'wrapAgent' wrappers in web/api/v1/api.go:425-484. For middleware/auth refactoring, the wrap layer is invisible — the route resolver fix (INV-kunam) doesn't help because wrap isn't modeled at all. Fix: when a route registration call passes a closure call expression as its handler argument, model the inner function as a wrapping/decorating call edge with a wraps or middleware_of edge type. This is distinct from the closed WI-hosad work which added middleware concepts to entrypoint mapping but did not link them to the wrapped handler chain."  # 2e65
     fields: {}  # 2e65
+- op: discuss  # 0b52
+  at: '2026-04-09T13:49:46Z'  # 0b52
+  by: agent  # 0b52
+  actor: jgstern_agent  # 0b52
+  clock: 2  # 0b52
+  nonce: 0b52  # 0b52
+  message: "Investigation: prometheus web/api/v1/api.go:384-432 shows the pattern. wrap and wrapAgent are LOCAL CLOSURE VARIABLES declared inside Register() as 'wrap := func(f apiFunc) http.HandlerFunc { ... }'. Routes use r.Get('/query', wrapAgent(api.query)). The current route extractor already resolves the inner handler (api.query → API.query). The missing piece is modeling wrap/wrapAgent as middleware intermediaries in the call chain. This requires: (1) detecting closure variable declarations within function bodies, (2) recognizing when a route handler argument is a call to such a closure, (3) emitting a wraps or middleware_of edge from the closure to the inner handler. Substantial change — not a quick fix. The routes_to edges are already correct; this is about enriching the middleware chain visibility."  # 0b52

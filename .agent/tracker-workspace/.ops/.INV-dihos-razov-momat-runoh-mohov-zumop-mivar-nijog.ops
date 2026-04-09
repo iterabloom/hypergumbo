@@ -138,3 +138,18 @@
   clock: 17  # 34cf
   nonce: 34cf  # 34cf
   message: "Investigation of the 708 chained_call_unresolved edges in prometheus: these are NOT a failure of the return-type registry. They are INLINE chained calls (e.g. ng.NewInstantQuery().Exec()) where the receiver is itself a call_expression. The chained-call ambiguity guard at go.py:2108-2127 correctly emits these as unresolved because there is no intermediate variable to type.\n\nThe return-type registry (WI-kuroj) works for VARIABLE ASSIGNMENT cases: 'qry := ng.NewInstantQuery(...)' puts 'Query' into var_types['qry'], enabling 'qry.Exec()' to resolve via typed_receiver_call. But inline chains bypass var_types entirely.\n\nTo resolve inline chains, a new mechanism is needed: when the receiver is a call_expression, extract the callee method name, look it up in the return-type registry, and use the return type to qualify the outer method. This is a Phase 2 enhancement, not a Phase 1 bug.\n\nSummary: the return-type registry IS populating correctly (confirmed by 15 unit tests passing with grammar-gated assertions). The 708 unresolved edges are inline chained calls that the current architecture doesn't handle. Phase 1 handles variable-assignment chaining; inline chaining is future work."  # 34cf
+- op: discuss  # c808
+  at: '2026-04-09T12:57:37Z'  # c808
+  by: agent  # c808
+  actor: jgstern_agent  # c808
+  clock: 18  # c808
+  nonce: c808  # c808
+  message: "CORRECTION: the return-type registry IS working in prometheus bakeoff (deep-20260409-054615 iter-002). Evidence: 3475 typed_receiver_call edges in prometheus hg.json (meta.evidence_type field, not top-level). The earlier investigation incorrectly checked the top-level evidence_type key which doesn't exist in the serialized schema — evidence_type lives in meta.evidence_type.\n\nThe 708 chained_call_unresolved edges are a SEPARATE class of problem (inline chained calls, tracked in WI-vadin). Phase 1 var-assignment chaining is confirmed working. Moving INV-dihos to satisfied."  # c808
+- op: update  # 2958
+  at: '2026-04-09T12:57:37Z'  # 2958
+  by: agent  # 2958
+  actor: jgstern_agent  # 2958
+  clock: 19  # 2958
+  nonce: '2958'  # 2958
+  set:  # 2958
+    status: satisfied  # 2958
