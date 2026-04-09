@@ -36,3 +36,10 @@
     status: wont_do  # 041a
   add:  # 041a
     tags: [someday]  # 041a
+- op: discuss  # ff52
+  at: '2026-04-09T08:39:15Z'  # ff52
+  by: agent  # ff52
+  actor: jgstern_agent  # ff52
+  clock: 4  # ff52
+  nonce: ff52  # ff52
+  message: "Acknowledged. Tabled per human direction. Keeping wont_do status with someday tag for potential future revisit if a compelling need arises."  # ff52

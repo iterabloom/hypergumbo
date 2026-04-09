@@ -66,3 +66,10 @@
   clock: 7  # c350
   nonce: c350  # c350
   message: "you need to keep a running list of bakeoffs that you are deferring. you've said that on a lot of items. if you're going to mark an item as done then you need a new item such as \"complete the following deferred bakeoffs\" and keep updating it. you should look at all items you have modified in the past 24 hours and compile the ones that you have said \"deferring the bakeoff\". if you don't do that we will lose track of what we need to actually test on real-world data."  # c350
+- op: discuss  # fe0d
+  at: '2026-04-09T08:38:26Z'  # fe0d
+  by: agent  # fe0d
+  actor: jgstern_agent  # fe0d
+  clock: 8  # fe0d
+  nonce: fe0d  # fe0d
+  message: "Acknowledged. Created WI-sofom as the running consolidation list of deferred bakeoff validations. It currently tracks 3 items: (1) WI-kuroj/PR #2824 - prometheus return-type registry validation, (2) WI-sukav/PR #2817 - alertmanager concrete-extends gate validation, (3) INV-bivot - event_publishes edge traversal on kafka. Will update WI-sofom each time an item is marked done with deferred bakeoff. The next bakeoff-deep cycle will address these in batch."  # fe0d
