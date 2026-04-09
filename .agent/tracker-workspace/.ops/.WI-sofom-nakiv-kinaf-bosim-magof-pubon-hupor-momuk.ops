@@ -26,3 +26,18 @@
   clock: 2  # 9550
   nonce: '9550'  # 9550
   message: "Bakeoff validation results (deep-20260409-054615, alertmanager + prometheus + kafka):\n\n1. WI-sukav (concrete-extends gate, PR #2817): VALIDATED. Zero spurious InclusiveRange→concrete dispatches_to edges. 3 remaining InclusiveRange edges are legitimate interface→concrete dispatches from stringableRange. Fix confirmed working.\n\n2. WI-kuroj (return-type registry, PR #2824): NOT WORKING. All 708 chained calls in prometheus are unresolved (chained_call_unresolved). Zero edges have return_type metadata. The registry is either not populating for these methods or not being consulted during edge resolution. The promtool→Engine.exec chain remains broken. Needs investigation — reopening INV-dihos or creating a follow-up.\n\n3. INV-bivot (event_publishes traversal): CANNOT VALIDATE on kafka. Kafka implements a message broker but doesn't use application-level event frameworks (Spring @EventListener, JS EventEmitter) internally. The event-sourcing linker found zero patterns. Unit tests provide structural coverage. Need a different repo — something using Spring events or EventEmitter. Side finding: message-queue linker misclassifies Java consumer.subscribe(List.of(...)) as Redis pub/sub."  # 9550
+- op: update  # 4868
+  at: '2026-04-09T10:36:23Z'  # 4868
+  by: agent  # 4868
+  actor: jgstern_agent  # 4868
+  clock: 3  # 4868
+  nonce: '4868'  # 4868
+  set:  # 4868
+    status: done  # 4868
+- op: discuss  # af13
+  at: '2026-04-09T10:36:23Z'  # af13
+  by: agent  # af13
+  actor: jgstern_agent  # af13
+  clock: 4  # af13
+  nonce: af13  # af13
+  message: "Bakeoff validation complete (deep-20260409-054615). WI-sukav VALIDATED (alertmanager). WI-kuroj var-assignment chaining works but inline chains are a separate issue (WI-vadin created). INV-bivot cannot validate on kafka (no event framework patterns). All three items addressed — no more deferred bakeoffs to track."  # af13
