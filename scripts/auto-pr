@@ -46,6 +46,94 @@ CI_POLL_TIMEOUT=""
 GOVERNANCE_MODE=false
 
 # ------------------------------------------------------------------
+# WI-miriz: AUTOPR_LAST_RESULT.json sentinel
+#
+# Final-state marker file written on every exit from an action path
+# (do_pr, flush_queue, gov_cleanup).  Lets external observers (and
+# the agent that backgrounded the script) discover whether the run
+# succeeded without depending on captured stdout — which is the gap
+# that produced the silent-success / stale-vPR incident behind WI-miriz.
+#
+# Schema (see WI-miriz description for full rationale):
+#   exit_code    int     auto-pr's process exit code
+#   pr_number    int|null  PR created/merged this run, if any
+#   pr_url       str|null  full forge URL for the PR
+#   merged_sha   str|null  the commit on dev that the PR became
+#   timestamp    str     ISO-8601 UTC timestamp ('Z' suffix)
+#   final_state  str     terminal state (see _autopr_state_final values below)
+#
+# Override the destination via AUTOPR_RESULT_FILE for tests.
+# ------------------------------------------------------------------
+AUTOPR_RESULT_FILE="${AUTOPR_RESULT_FILE:-$REPO_ROOT/.git/AUTOPR_LAST_RESULT.json}"
+
+# Action-state variables, mutated as auto-pr makes progress.
+# Default 'unknown' is overwritten before any deliberate exit.
+_autopr_state_final="unknown"
+_autopr_state_pr_num=""
+_autopr_state_pr_url=""
+_autopr_state_merged_sha=""
+# Governance mode wants PR_PENDING to persist across the auto-pr exit
+# until the human acts.  Setting this true makes _autopr_finalize skip
+# the rm.  Default false matches the historical 'remove on exit' behavior.
+_autopr_state_keep_pending=false
+# Idempotency guard so multiple sentinel-write call sites don't fight.
+_autopr_sentinel_written=false
+
+_autopr_write_sentinel() {
+	local exit_code="$1"
+	if [[ "$_autopr_sentinel_written" == "true" ]]; then
+		return 0
+	fi
+	_autopr_sentinel_written=true
+
+	# If REPO_ROOT/.git is gone (extremely defensive — covers torn-down
+	# test fixtures), give up silently rather than blowing up the trap.
+	local sentinel_dir
+	sentinel_dir="$(dirname "$AUTOPR_RESULT_FILE")"
+	if [[ ! -d "$sentinel_dir" ]]; then
+		return 0
+	fi
+
+	AUTOPR_EXIT_CODE="$exit_code" \
+		AUTOPR_PR_NUM="$_autopr_state_pr_num" \
+		AUTOPR_PR_URL="$_autopr_state_pr_url" \
+		AUTOPR_MERGED_SHA="$_autopr_state_merged_sha" \
+		AUTOPR_FINAL_STATE="$_autopr_state_final" \
+		AUTOPR_OUT="$AUTOPR_RESULT_FILE" \
+		python3 - <<'PY' 2>/dev/null || true
+import datetime
+import json
+import os
+
+pr_num_raw = os.environ.get("AUTOPR_PR_NUM", "")
+data = {
+    "exit_code": int(os.environ.get("AUTOPR_EXIT_CODE", "0")),
+    "pr_number": int(pr_num_raw) if pr_num_raw else None,
+    "pr_url": os.environ.get("AUTOPR_PR_URL") or None,
+    "merged_sha": os.environ.get("AUTOPR_MERGED_SHA") or None,
+    "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    ),
+    "final_state": os.environ.get("AUTOPR_FINAL_STATE") or "unknown",
+}
+with open(os.environ["AUTOPR_OUT"], "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+}
+
+# Combined exit handler installed by every action subcommand.  Always
+# writes the sentinel; conditionally rm's PR_PENDING (skipped only when
+# _autopr_state_keep_pending is true, e.g. governance mode).
+_autopr_finalize() {
+	local exit_code="$?"
+	_autopr_write_sentinel "$exit_code"
+	if [[ "$_autopr_state_keep_pending" != "true" ]]; then
+		rm -f "$REPO_ROOT/.git/PR_PENDING" 2>/dev/null || true
+	fi
+}
+
+# ------------------------------------------------------------------
 # Parse PR number from Forgejo push response
 # ------------------------------------------------------------------
 
@@ -178,11 +266,16 @@ show_status() {
 
 # Flush all vPRs as a single atomic PR
 flush_queue() {
+	# WI-miriz: install sentinel trap as the very first action so even
+	# the earliest exits (auth) capture a final state.
+	trap _autopr_finalize EXIT
+
 	local count
 	count=$(queue_count)
 
 	if [[ "$count" -eq 0 ]]; then
 		echo "📭 No vPRs to flush"
+		_autopr_state_final="noop_empty_queue"
 		return 0
 	fi
 
@@ -190,10 +283,12 @@ flush_queue() {
 	TOKEN="${FORGEJO_TOKEN:-}"
 	if [[ -z "$USER" ]]; then
 		echo "Error: FORGEJO_USER environment variable is not set."
+		_autopr_state_final="auth_error"
 		exit 1
 	fi
 	if [[ -z "$TOKEN" ]]; then
 		echo "Error: FORGEJO_TOKEN environment variable is not set."
+		_autopr_state_final="auth_error"
 		exit 1
 	fi
 
@@ -317,10 +412,12 @@ Individual commits are preserved in the history."
 
 	# --- INV-rahib fix: create gate BEFORE push (same as do_pr) ---
 	echo "preparing" >"$REPO_ROOT/.git/PR_PENDING"
-	trap 'rm -f "$REPO_ROOT/.git/PR_PENDING"' EXIT
+	# (WI-miriz: trap _autopr_finalize is already installed at flush_queue's
+	# entry; it removes PR_PENDING on exit.  No replacement trap needed here.)
 
 	if [[ -f "$REPO_ROOT/.git/TRACKER_SYNC_PENDING" ]]; then
 		echo "Error: tracker sync started while preparing flush. Retry after sync completes."
+		_autopr_state_final="failed_tracker_sync_pending"
 		exit 1
 	fi
 
@@ -350,6 +447,7 @@ Individual commits are preserved in the history."
 		echo ""
 		echo "❌ Remote still unavailable after $max_attempts attempts"
 		echo "   vPRs remain queued. Try again later with: ./scripts/auto-pr flush"
+		_autopr_state_final="failed_flush_remote_unavailable"
 		exit 1
 	fi
 
@@ -374,6 +472,7 @@ Individual commits are preserved in the history."
 			HEAD_SHA="$FOUND_PR_SHA"
 		else
 			echo "❌ Could not find open PR for branch $tip_branch or commit $tip_sha"
+			_autopr_state_final="failed_pr_lookup"
 			exit 1
 		fi
 	fi
@@ -388,12 +487,16 @@ Individual commits are preserved in the history."
 	# Update gate file with actual PR number (gate already created before push)
 	echo "$PR_NUM" >"$REPO_ROOT/.git/PR_PENDING"
 
-	echo "✅ Created PR #$PR_NUM (contains $count vPRs)"
+	# WI-miriz: record PR identity for the sentinel.
+	_autopr_state_pr_num="$PR_NUM"
 	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		echo "🔗 $FAILOVER_URL/$FAILOVER_REPO/pulls/$PR_NUM"
+		_autopr_state_pr_url="$FAILOVER_URL/$FAILOVER_REPO/pulls/$PR_NUM"
 	else
-		echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
+		_autopr_state_pr_url="https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
 	fi
+
+	echo "✅ Created PR #$PR_NUM (contains $count vPRs)"
+	echo "🔗 $_autopr_state_pr_url"
 
 	# Poll CI
 	echo "---------------------------------------------------"
@@ -410,14 +513,17 @@ Individual commits are preserved in the history."
 		echo ""
 		echo "⚠️  CI hung (no jobs started). For flush, retry manually:"
 		echo "  ./scripts/merge-pr $PR_NUM --wait-for-ci"
+		_autopr_state_final="ci_hung"
 		exit 3
 	elif [[ $poll_result -eq 1 ]]; then
 		echo ""
 		echo "Fix the issues, amend commits, then run: ./scripts/auto-pr flush"
+		_autopr_state_final="ci_failed"
 		exit 1
 	elif [[ $poll_result -eq 2 ]]; then
 		echo ""
 		echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci"
+		_autopr_state_final="ci_timeout"
 		exit 2
 	fi
 
@@ -433,11 +539,15 @@ Individual commits are preserved in the history."
 	if ! do_merge "$PR_NUM" "$pr_title" "$pr_desc" "$tip_sha" "$squash_flag"; then
 		echo ""
 		echo "Recovery: ./scripts/merge-pr $PR_NUM"
+		_autopr_state_final="failed_merge"
 		exit 1
 	fi
 
-	# Clear the EXIT trap (merge succeeded)
-	trap - EXIT
+	# WI-miriz: capture merged-state into the sentinel.  Trap stays
+	# installed; the natural exit fires it.  Cleanup below also rm's
+	# PR_PENDING explicitly (idempotent with the trap).
+	_autopr_state_final="merged"
+	_autopr_state_merged_sha="$tip_sha"
 
 	# Cleanup
 	echo "---------------------------------------------------"
@@ -503,20 +613,27 @@ ensure_stacked_on_tip() {
 # Main PR workflow (push, poll, merge) - or queue if offline
 # ------------------------------------------------------------------
 do_pr() {
+	# WI-miriz: install sentinel trap as the very first action so even
+	# the earliest exits (auth, branch check) capture a final state.
+	trap _autopr_finalize EXIT
+
 	USER="${FORGEJO_USER:-}"
 	TOKEN="${FORGEJO_TOKEN:-}"
 	if [[ -z "$USER" ]]; then
 		echo "Error: FORGEJO_USER environment variable is not set."
+		_autopr_state_final="auth_error"
 		exit 1
 	fi
 	if [[ -z "$TOKEN" ]]; then
 		echo "Error: FORGEJO_TOKEN environment variable is not set."
+		_autopr_state_final="auth_error"
 		exit 1
 	fi
 
 	# Check for tracker sync in progress
 	if [[ -f "$REPO_ROOT/.git/TRACKER_SYNC_PENDING" ]]; then
 		echo "Error: tracker sync in progress. Wait for htrac sync to complete."
+		_autopr_state_final="failed_tracker_sync_pending"
 		exit 1
 	fi
 
@@ -524,6 +641,7 @@ do_pr() {
 	BASE_BRANCH="${BASE_BRANCH:-dev}"
 	if [[ "$BRANCH" == "main" || "$BRANCH" == "dev" ]]; then
 		echo "Error: You are on '$BRANCH'. Please create a feature branch first."
+		_autopr_state_final="failed_protected_branch"
 		exit 1
 	fi
 
@@ -553,9 +671,13 @@ do_pr() {
 	echo "🔑 Commit: ${LOCAL_SHA:0:7}"
 
 	# Regenerate test manifest to match current commit's diff
+	# (AUTO_PR_SKIP_MANIFEST=1 bypasses for tests that don't need a real
+	# hypergumbo install in the fake-repo fixture.)
 	echo "---------------------------------------------------"
-	echo "📋 Regenerating test manifest..."
-	if "$SCRIPT_DIR/smart-test" --manifest >/dev/null 2>&1; then
+	if [[ "${AUTO_PR_SKIP_MANIFEST:-}" == "1" ]]; then
+		echo "📋 Skipping manifest regen (AUTO_PR_SKIP_MANIFEST=1)"
+	elif "$SCRIPT_DIR/smart-test" --manifest >/dev/null 2>&1; then
+		echo "📋 Regenerating test manifest..."
 		# Guard: don't stage a full-suite manifest (pre-commit hook rejects it,
 		# and the existing committed manifest is likely better anyway)
 		if grep -q "^# Mode: full-suite" .ci/affected-tests.txt 2>/dev/null; then
@@ -621,6 +743,7 @@ do_pr() {
 		LOCAL_SHA="$(git rev-parse HEAD)"
 
 		queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
+		_autopr_state_final="queued_vpr"
 		exit 0
 	fi
 
@@ -634,6 +757,7 @@ do_pr() {
 		echo ""
 		echo "❌ Remote unavailable (simulated)"
 		queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
+		_autopr_state_final="queued_vpr"
 		exit 0
 	fi
 
@@ -660,11 +784,14 @@ do_pr() {
 	# leaving a window where tracker auto-sync could start and advance dev.
 	# Now we create it early so tracker sync sees it immediately.
 	echo "preparing" >"$REPO_ROOT/.git/PR_PENDING"
-	trap 'rm -f "$REPO_ROOT/.git/PR_PENDING"' EXIT
+	# (WI-miriz: trap _autopr_finalize is already installed at do_pr's
+	# entry; it removes PR_PENDING on exit unless governance mode flips
+	# _autopr_state_keep_pending.  No replacement trap needed here.)
 
 	# Re-check: tracker sync may have started since our initial preflight
 	if [[ -f "$REPO_ROOT/.git/TRACKER_SYNC_PENDING" ]]; then
 		echo "Error: tracker sync started while preparing push. Retry after sync completes."
+		_autopr_state_final="failed_tracker_sync_pending"
 		exit 1
 	fi
 
@@ -697,6 +824,7 @@ do_pr() {
 		echo ""
 		echo "❌ Remote unavailable after $max_attempts attempts"
 		queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
+		_autopr_state_final="queued_vpr"
 		exit 0 # Exit cleanly - vPR is queued
 	fi
 
@@ -728,6 +856,7 @@ do_pr() {
 			HEAD_SHA="$FOUND_PR_SHA"
 		else
 			echo "❌ Could not find open PR for branch $BRANCH or commit $LOCAL_SHA"
+			_autopr_state_final="failed_pr_lookup"
 			exit 1
 		fi
 	fi
@@ -742,12 +871,18 @@ do_pr() {
 	# Update gate file with actual PR number (gate already created before push)
 	echo "$PR_NUM" >"$REPO_ROOT/.git/PR_PENDING"
 
-	echo "✅ Found PR #$PR_NUM"
+	# WI-miriz: record PR identity now so the sentinel reflects which PR
+	# this run is responsible for, even if a later step (CI poll, merge)
+	# fails partway through.
+	_autopr_state_pr_num="$PR_NUM"
 	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		echo "🔗 $FAILOVER_URL/$FAILOVER_REPO/pulls/$PR_NUM"
+		_autopr_state_pr_url="$FAILOVER_URL/$FAILOVER_REPO/pulls/$PR_NUM"
 	else
-		echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
+		_autopr_state_pr_url="https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
 	fi
+
+	echo "✅ Found PR #$PR_NUM"
+	echo "🔗 $_autopr_state_pr_url"
 
 	# Poll CI
 	echo "---------------------------------------------------"
@@ -808,16 +943,19 @@ do_pr() {
 		echo "  1. Do NOT accumulate more changes to hypergumbo code"
 		echo "  2. Check runner health: ssh ci-runner systemctl status forgejo-runner-*"
 		echo "  3. When runners recover: ./scripts/merge-pr $PR_NUM --wait-for-ci"
+		_autopr_state_final="ci_hung"
 		exit 3
 	fi
 
 	if [[ $poll_result -eq 1 ]]; then
 		echo ""
 		echo "Recovery: fix CI, then ./scripts/merge-pr $PR_NUM --wait-for-ci"
+		_autopr_state_final="ci_failed"
 		exit 1
 	elif [[ $poll_result -eq 2 ]]; then
 		echo ""
 		echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci"
+		_autopr_state_final="ci_timeout"
 		exit 2
 	fi
 
@@ -832,8 +970,10 @@ do_pr() {
 		echo "     Web UI merge, then: ./scripts/auto-pr gov-cleanup $PR_NUM   # cleanup only"
 		echo ""
 		echo "   PR_PENDING gate is active — no new auto-pr until this is resolved."
-		# Do NOT clear PR_PENDING — this blocks subsequent PRs until human acts
-		trap - EXIT
+		# Keep PR_PENDING — this blocks subsequent PRs until human acts.
+		# WI-miriz: signal _autopr_finalize to skip the rm.
+		_autopr_state_keep_pending=true
+		_autopr_state_final="governance_pending"
 		exit 0
 	fi
 
@@ -857,9 +997,11 @@ do_pr() {
 					poll_ci "$HEAD_SHA" || poll_result=$?
 					if [[ $poll_result -eq 1 ]]; then
 						echo "Recovery: fix CI, then ./scripts/merge-pr $PR_NUM --wait-for-ci"
+						_autopr_state_final="ci_failed"
 						exit 1
 					elif [[ $poll_result -eq 2 ]]; then
 						echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci"
+						_autopr_state_final="ci_timeout"
 						exit 2
 					fi
 				else
@@ -884,11 +1026,15 @@ do_pr() {
 	if ! do_merge "$PR_NUM" "$TITLE" "$DESC" "$LOCAL_SHA" "$squash_flag"; then
 		echo ""
 		echo "Recovery: ./scripts/merge-pr $PR_NUM"
+		_autopr_state_final="failed_merge"
 		exit 1
 	fi
 
-	# Clear the EXIT trap (merge succeeded)
-	trap - EXIT
+	# WI-miriz: capture merged-state into the sentinel.  Leave the trap
+	# installed so the sentinel still fires on the natural exit; cleanup
+	# below also rm's PR_PENDING explicitly (idempotent with the trap).
+	_autopr_state_final="merged"
+	_autopr_state_merged_sha="$LOCAL_SHA"
 
 	# Record merged PR in failover state
 	if [[ "$FAILOVER_ACTIVE" == "true" ]] && [[ -f "$REPO_ROOT/.git/CI_FAILOVER_ACTIVE" ]]; then
@@ -996,6 +1142,10 @@ done
 # gov-cleanup: Verify PR is merged (by human via web UI), then clean up
 # ------------------------------------------------------------------
 gov_cleanup() {
+	# WI-miriz: install sentinel trap as the very first action so even
+	# the earliest exits capture a final state.
+	trap _autopr_finalize EXIT
+
 	local pr_num="${1:?Usage: auto-pr gov-cleanup <PR_NUM>}"
 	load_env
 	detect_api_base
@@ -1006,9 +1156,12 @@ gov_cleanup() {
 		token="${SELFHOSTED_FORGEJO_TOKEN:-$token}"
 	fi
 
+	_autopr_state_pr_num="$pr_num"
+
 	# Verify PR is actually merged
 	if ! api_get "$API_BASE/pulls/$pr_num"; then
 		echo "❌ Failed to fetch PR #$pr_num (HTTP $API_HTTP_CODE)"
+		_autopr_state_final="failed_pr_lookup"
 		exit 1
 	fi
 
@@ -1017,6 +1170,7 @@ gov_cleanup() {
 	if [[ "$merged" != "true" && "$merged" != "True" ]]; then
 		echo "❌ PR #$pr_num is not yet merged. Merge it first, then re-run."
 		echo "   Or use: ./scripts/merge-pr $pr_num"
+		_autopr_state_final="failed_not_merged"
 		exit 1
 	fi
 
@@ -1026,6 +1180,8 @@ gov_cleanup() {
 	echo "✅ PR #$pr_num confirmed merged."
 	cleanup_local "$branch" "$base"
 	echo "✅ Done. Ready for next auto-pr."
+	_autopr_state_final="merged"
+	# merged_sha not known here without an extra query — leave null.
 }
 
 case "${1:-}" in
