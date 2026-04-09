@@ -43,3 +43,11 @@
   nonce: 985d  # 985d
   set:  # 985d
     status: todo_hard  # 985d
+- op: update  # 973e
+  at: '2026-04-09T03:16:30Z'  # 973e
+  by: human  # 973e
+  actor: jgstern  # 973e
+  clock: 5  # 973e
+  nonce: 973e  # 973e
+  set:  # 973e
+    priority: 0  # 973e

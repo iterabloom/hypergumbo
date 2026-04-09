@@ -43,3 +43,11 @@
   nonce: 127c  # 127c
   set:  # 127c
     status: todo_hard  # 127c
+- op: update  # 40a5
+  at: '2026-04-09T03:16:22Z'  # 40a5
+  by: human  # 40a5
+  actor: jgstern  # 40a5
+  clock: 5  # 40a5
+  nonce: 40a5  # 40a5
+  set:  # 40a5
+    priority: 0  # 40a5

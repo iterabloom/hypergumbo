@@ -108,3 +108,33 @@
   clock: 13  # 6660
   nonce: '6660'  # 6660
   message: "Acknowledged 'ok go ahead' approval. Implementing Option B (additive is_test_file boolean) on branch jgstern-agent/feat/is-test-file-classification. Touchpoints: supply_chain.py FileClassification, ir.py Symbol, cli.py:4632, sketch.py:4883, tests in test_supply_chain.py + test_ir.py + test_sketch.py + test_slice_tier_filter.py."  # 6660
+- op: update  # a391
+  at: '2026-04-09T02:24:09Z'  # a391
+  by: agent  # a391
+  actor: jgstern_agent  # a391
+  clock: 14  # a391
+  nonce: a391  # a391
+  set:  # a391
+    status: done  # a391
+- op: discuss  # 2cf9
+  at: '2026-04-09T02:24:09Z'  # 2cf9
+  by: agent  # 2cf9
+  actor: jgstern_agent  # 2cf9
+  clock: 15  # 2cf9
+  nonce: 2cf9  # 2cf9
+  message: "Fixed in PR #2813. Added is_test boolean to FileClassification (supply_chain.py) and is_test_file boolean to Symbol (ir.py), propagated through cli._classify_symbols and sketch.py inline classifier, round-tripped through to_dict/from_dict under nested supply_chain block. Strictly additive — tier semantics unchanged. Test coverage: is_test assertions on all 17 existing TestTestFileClassification cases + new TestIsTestFileAxis (6 cases) + 4 new test_ir.py round-trip tests. All 9407 affected tests pass at 100% coverage. Follow-up: bakeoff-deep tier-slice query upgrade to compose 'tier == 2 AND NOT is_test_file' is a separate small PR (touches scripts/bakeoff-deep only)."  # 2cf9
+- op: update  # 0b3b
+  at: '2026-04-09T03:11:55Z'  # 0b3b
+  by: human  # 0b3b
+  actor: jgstern  # 0b3b
+  clock: 16  # 0b3b
+  nonce: 0b3b  # 0b3b
+  set:  # 0b3b
+    status: todo_soft  # 0b3b
+- op: discuss  # c86c
+  at: '2026-04-09T03:12:00Z'  # c86c
+  by: human  # c86c
+  actor: jgstern  # c86c
+  clock: 17  # c86c
+  nonce: c86c  # c86c
+  message: "not done until we get a tracker item for the follow-up"  # c86c
