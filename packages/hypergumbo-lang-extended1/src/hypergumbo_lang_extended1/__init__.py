@@ -24,6 +24,7 @@ ANALYZER_MODULES = [
     # Proof assistants and formal verification
     "hypergumbo_lang_extended1.agda",
     "hypergumbo_lang_extended1.lean",
+    "hypergumbo_lang_extended1.tlaplus",
 
     # Enterprise and legacy
     "hypergumbo_lang_extended1.cobol",
