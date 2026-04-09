@@ -873,6 +873,18 @@ def _extract_symbols_from_file(
 
     analysis = FileAnalysis()
 
+    # WI-potun: extract //go:build constraint from top-of-file comments.
+    # Build directives appear as comment nodes before the package clause.
+    build_constraint: str | None = None
+    for child in tree.root_node.children:
+        if child.type == "comment":
+            text = node_text(child, source).strip()
+            if text.startswith("//go:build "):
+                build_constraint = text[len("//go:build "):]
+                break
+        elif child.type == "package_clause":
+            break  # past the preamble, no more build directives
+
     # Extract import aliases for this file (used later in edge extraction)
     analysis.import_aliases = _extract_import_aliases(tree.root_node, source)
 
@@ -1233,6 +1245,13 @@ def _extract_symbols_from_file(
     # Store method sets for cross-file structural matching in _analyze_go_impl
     analysis.interface_method_sets = interface_method_sets
     analysis.struct_method_sets = struct_method_sets
+
+    # WI-potun: stamp build_constraint on all symbols from this file.
+    if build_constraint:
+        for sym in analysis.symbols:
+            if sym.meta is None:
+                sym.meta = {}
+            sym.meta["build_constraint"] = build_constraint
 
     return analysis
 
@@ -3688,6 +3707,41 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
+
+    # WI-potun: emit build_tag_alternative_of edges for symbols that have
+    # the same qualified name but live in different build-tag-gated files.
+    # This links e.g. Labels.Get in labels_stringlabels.go to Labels.Get in
+    # labels_dedupelabels.go, unifying centrality and letting slice/explain
+    # surface "this symbol has build-tag alternates".
+    _build_tag_syms: dict[str, list[Symbol]] = {}
+    for sym in all_symbols:
+        bc = (sym.meta or {}).get("build_constraint")
+        if bc and sym.kind in ("method", "function", "struct", "interface", "type"):
+            # Group by (package_dir, name) to match within-package alternates
+            pkg_dir = sym.path.rsplit("/", 1)[0] if "/" in sym.path else ""
+            key = (pkg_dir, sym.name)
+            _build_tag_syms.setdefault(key, []).append(sym)
+
+    for (_pkg_dir, _name), syms in _build_tag_syms.items():
+        if len(syms) < 2:
+            continue
+        # Emit edges between all pairs (undirected — use sorted IDs for
+        # deterministic dedup)
+        seen_pairs: set[tuple[str, str]] = set()
+        for i, a in enumerate(syms):
+            for b in syms[i + 1:]:
+                pair = (min(a.id, b.id), max(a.id, b.id))
+                if pair not in seen_pairs:
+                    seen_pairs.add(pair)
+                    all_edges.append(Edge.create(
+                        src=a.id,
+                        dst=b.id,
+                        edge_type="build_tag_alternative_of",
+                        line=a.span.start_line if a.span else 0,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        confidence=0.95,
+                    ))
 
     return AnalysisResult(
         symbols=all_symbols,
