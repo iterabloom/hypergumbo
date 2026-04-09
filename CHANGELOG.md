@@ -32,6 +32,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Language analyzers
 
 - **TLA+** (WI-jurin): new tree-sitter analyzer for `.tla` formal specification files. Extracts module, operator, constant, variable, theorem, and assumption symbols. Detects EXTENDS and INSTANCE as `imports` edges, operator body cross-references as `references` edges. Handles LOCAL operators, RECURSIVE declarations, parameterized operator signatures, primed variables, and unnamed theorem/assumption skipping. Uses `tree-sitter-tlaplus` PyPI package. Follows the Agda two-pass template (symbols → cross-file references).
+- **TLA+ profile/LOC detection** (WI-ludil): `.tla` files are now recognized by the file taxonomy, profile language detection, and sketch language-detection quick paths. Previously TLA+ nodes were extracted correctly by the analyzer but `.tla` files were invisible to the profile system (0 LOC, missing from sketch Overview line). Validated on tlaplus/examples (319 files, 44,411 LOC), ongardie/raft.tla, and cockroachdb/cockroach.
 
 #### Dataflow library_patterns expansions
 

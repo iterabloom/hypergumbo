@@ -127,6 +127,12 @@ class TestGetLanguage:
         f.touch()
         assert get_language(f) == "jupyter"
 
+    def test_tlaplus_file(self, tmp_path: Path) -> None:
+        """Detects TLA+ from .tla extension."""
+        f = tmp_path / "Raft.tla"
+        f.touch()
+        assert get_language(f) == "tlaplus"
+
     def test_markdown_file(self, tmp_path: Path) -> None:
         """Detects Markdown from .md extension."""
         f = tmp_path / "README.md"

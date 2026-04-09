@@ -1196,6 +1196,7 @@ def _get_repo_languages(repo_root: Path) -> set[str]:
         ".ml": "ocaml", ".clj": "clojure", ".zig": "zig",
         ".nim": "nim", ".dart": "dart", ".jl": "julia",
         ".groovy": "groovy",
+        ".tla": "tlaplus",
     }
     languages: set[str] = set()
     try:

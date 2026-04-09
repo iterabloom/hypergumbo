@@ -414,6 +414,11 @@ LANGUAGES: dict[str, LanguageSpec] = {
         extensions=["*.hbs", "*.handlebars"],
         roles=FileRole.ANALYZABLE,
     ),
+    "tlaplus": LanguageSpec(
+        name="tlaplus",
+        extensions=["*.tla"],
+        roles=FileRole.ANALYZABLE,
+    ),
     "just": LanguageSpec(
         name="just",
         extensions=["justfile", "Justfile", ".justfile", "*.just"],
