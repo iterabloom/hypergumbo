@@ -36,3 +36,11 @@
   set:  # 1346
     status: todo_hard  # 1346
     priority: 1  # 1346
+- op: update  # f584
+  at: '2026-04-09T03:14:49Z'  # f584
+  by: human  # f584
+  actor: jgstern  # f584
+  clock: 4  # f584
+  nonce: f584  # f584
+  set:  # f584
+    priority: 0  # f584

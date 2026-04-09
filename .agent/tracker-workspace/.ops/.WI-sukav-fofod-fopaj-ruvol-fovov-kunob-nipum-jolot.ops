@@ -89,3 +89,12 @@
   clock: 11  # 9fe0
   nonce: 9fe0  # 9fe0
   message: "Acknowledged. New session here, mode is OFF per user direction (the user asked me to address tracker messages, not to start coding work autonomously). Verified the A1 fix site: packages/hypergumbo-core/src/hypergumbo_core/linkers/type_hierarchy.py lines 322-329 — link_type_hierarchy() unconditionally unions parent_to_children (from extends edges) into all_parents_to_children before iterating dispatches_to creation. The minimal A1 patch threads a per-language flag through build_inheritance_maps so extends edges from no-virtual-dispatch languages do not populate parent_to_children. Language is determined from the source symbol's path (extension lookup). Initial table per the prior analysis: Java/Python/Kotlin/Ruby/Scala/Swift = True; Go/C++/Rust = False; C# pessimistic False until per-method virtual/override tracking lands. Tests: alertmanager fixture demonstrating the 4 InclusiveRange.* dispatches_to disappear; Java fixture demonstrating concrete-extends still produces dispatches_to. CHANGELOG entry under Unreleased. Action: this WI is ready for the next session (or this one with explicit go-ahead from the user) to implement under TDD with auto-pr."  # 9fe0
+- op: update  # ea20
+  at: '2026-04-09T03:15:33Z'  # ea20
+  by: human  # ea20
+  actor: jgstern  # ea20
+  clock: 12  # ea20
+  nonce: ea20  # ea20
+  set:  # ea20
+    status: todo_hard  # ea20
+    priority: 0  # ea20

@@ -43,3 +43,11 @@
   set:  # cd1f
     status: todo_hard  # cd1f
     priority: 2  # cd1f
+- op: update  # 1f4b
+  at: '2026-04-09T03:16:39Z'  # 1f4b
+  by: human  # 1f4b
+  actor: jgstern  # 1f4b
+  clock: 5  # 1f4b
+  nonce: 1f4b  # 1f4b
+  set:  # 1f4b
+    priority: 0  # 1f4b
