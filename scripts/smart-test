@@ -34,6 +34,27 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# ── Flock guard: prevent concurrent smart-test invocations ──
+# Two parallel pytest -n auto runs consume all CPU cores and may flake xdist.
+# Uses OS-managed file-descriptor lock — auto-released if process crashes.
+LOCKFILE=".ci/.smart-test.lock"
+mkdir -p .ci
+exec 9>"$LOCKFILE"
+if ! flock -n 9; then
+    holder=$(cat "$LOCKFILE.pid" 2>/dev/null || echo "unknown")
+    echo "ERROR: Another smart-test is already running (PID $holder)." >&2
+    echo "Refusing to start a second instance — two parallel pytest -n auto" >&2
+    echo "runs consume all CPU cores and may flake xdist." >&2
+    echo "" >&2
+    echo "Either:" >&2
+    echo "  1. Wait for the notification from the first run, OR" >&2
+    echo "  2. kill $holder to abort it first, then re-run smart-test." >&2
+    exit 1
+fi
+echo $$ > "$LOCKFILE.pid"
+_cleanup_lock() { rm -f "$LOCKFILE.pid"; }
+trap _cleanup_lock EXIT
+
 # Signal that we're running through smart-test (ADR-0010)
 # This prevents infinite recursion when the pytest wrapper calls smart-test
 # and smart-test subsequently calls pytest.
