@@ -63,3 +63,10 @@
   clock: 7  # 4b75
   nonce: 4b75  # 4b75
   message: "this looks good but I am not sure how I feel about \"reply debt\". I would need to see how the term is presented to the agent (what it looks like in situ). iirc the main change to fix the \"drive-by reply\" issue was mechanical in the way the stop hook behaved. maybe you already implemented that (or are already planning to implement that) in a different tracker item/PR/commit?"  # 4b75
+- op: discuss  # d44f
+  at: '2026-04-09T16:36:01Z'  # d44f
+  by: agent  # d44f
+  actor: jgstern_agent  # d44f
+  clock: 8  # d44f
+  nonce: d44f  # d44f
+  message: "Good feedback on 'reply debt'. The term appears only in the playbook's final section ('Integration with Stop Hook') as: 'When unread messages exist, the hook guidance includes a reply debt count.' It is NOT used in the AGENTS.md essentialization or the hook registration summary — those use 'reply substantively before starting new feature work' without the debt metaphor.\n\nRegarding the mechanical stop hook change: yes, there are two separate tracker items for stop-hook behavior changes:\n- WI-ripuz (P3): 'Stop-hook REPLY-FIRST CYCLE branch (suppress drive prompt while reply debt exists)' — this is the mechanical change that would suppress the autonomous-work prompt when unread messages exist\n- WI-sudoj (P3): 'Strengthen stop-hook unread-message guidance text (4-step directive)' — this is the text-level change to the stop hook output\n\nNeither has been implemented yet — both are P3 todo_soft. The playbook (this PR) codifies the protocol; the stop-hook items would enforce it mechanically. The playbook itself doesn't change any hook behavior — it's purely documentation that the hook's transcript-change injection can surface when the agent is about to reply to messages.\n\nIf the 'reply debt' framing feels off, I can revise the playbook to remove that term. The core protocol (read → classify → reply with substance → update status) stands independent of the metaphor."  # d44f
