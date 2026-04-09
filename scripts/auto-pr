@@ -279,6 +279,100 @@ queue_vpr() {
 	echo "   git checkout -b <new-branch> $branch"
 }
 
+# ------------------------------------------------------------------
+# WI-kugob: vPR queue reconciliation
+#
+# When a backgrounded auto-pr completes silently and the agent later
+# re-runs auto-pr, the new run can queue a stale vPR pointing at a
+# commit that's already in dev.  Before WI-kugob, `auto-pr list` and
+# `auto-pr status` reported these stale entries at face value, leaving
+# the user to manually `rm .git/PR_QUEUE` to recover.
+#
+# Reconciliation is now run on demand by `list`, `status`, and the
+# new `prune` subcommand.  The check is purely local — no forge API
+# call required — using `git merge-base --is-ancestor` against
+# `origin/$base`.  This is the same primitive used by WI-bahuf's
+# already-merged detection, so the two paths agree on what "stale"
+# means.
+#
+# Pairs with WI-miriz (sentinel) and WI-bahuf (rejection-message
+# hint): together they cover the three observation points where a
+# silent-success blip can be detected — exit time, next push time,
+# and any queue inspection.
+# ------------------------------------------------------------------
+
+# Return 0 (true) if vPR's commit is already in origin/$base.
+# Best-effort fetch; if origin/$base is missing entirely, treat the
+# entry as live (return 1) so the user is never warned about a vPR
+# that we genuinely can't classify.
+_autopr_vpr_is_stale() {
+	local sha="$1" base="$2"
+	if [[ -z "$sha" || -z "$base" ]]; then
+		return 1
+	fi
+	# Best-effort: don't fail the whole list if fetch is offline.
+	git fetch origin "$base" --quiet 2>/dev/null || true
+	if ! git rev-parse --verify "origin/$base" >/dev/null 2>&1; then
+		return 1
+	fi
+	git merge-base --is-ancestor "$sha" "origin/$base" 2>/dev/null
+}
+
+# Walk the queue and print, for each entry, "stale" or "live" plus
+# its sha/branch.  Used by both list_queue and prune_queue so the
+# reconciliation logic lives in exactly one place.
+#
+# Sets:
+#   _AUTOPR_RECON_STALE_LINES=()  array of stale queue lines
+#   _AUTOPR_RECON_LIVE_LINES=()   array of live queue lines
+#   _AUTOPR_RECON_STALE_COUNT     count of stale entries
+#   _AUTOPR_RECON_LIVE_COUNT      count of live entries
+_autopr_reconcile_queue() {
+	_AUTOPR_RECON_STALE_LINES=()
+	_AUTOPR_RECON_LIVE_LINES=()
+	_AUTOPR_RECON_STALE_COUNT=0
+	_AUTOPR_RECON_LIVE_COUNT=0
+
+	if [[ ! -f "$QUEUE_FILE" ]] || [[ ! -s "$QUEUE_FILE" ]]; then
+		return 0
+	fi
+
+	while IFS= read -r line; do
+		[[ -z "$line" ]] && continue
+		local sha base
+		sha=$(echo "$line" | json_field "sha")
+		base=$(echo "$line" | json_field "base")
+		if _autopr_vpr_is_stale "$sha" "$base"; then
+			_AUTOPR_RECON_STALE_LINES+=("$line")
+			_AUTOPR_RECON_STALE_COUNT=$((_AUTOPR_RECON_STALE_COUNT + 1))
+		else
+			_AUTOPR_RECON_LIVE_LINES+=("$line")
+			_AUTOPR_RECON_LIVE_COUNT=$((_AUTOPR_RECON_LIVE_COUNT + 1))
+		fi
+	done <"$QUEUE_FILE"
+}
+
+# Print a one-line stale warning for each stale entry in the
+# reconciliation result.  Caller is responsible for running
+# _autopr_reconcile_queue first.
+_autopr_print_stale_warnings() {
+	if [[ "$_AUTOPR_RECON_STALE_COUNT" -eq 0 ]]; then
+		return 0
+	fi
+	echo ""
+	echo "⚠️  ${_AUTOPR_RECON_STALE_COUNT} of ${#_AUTOPR_RECON_STALE_LINES[@]} vPR(s) appear stale (commit already in origin):"
+	local stale_line
+	for stale_line in "${_AUTOPR_RECON_STALE_LINES[@]}"; do
+		local vpr branch sha
+		vpr=$(echo "$stale_line" | json_field "vpr")
+		branch=$(echo "$stale_line" | json_field "branch")
+		sha=$(echo "$stale_line" | json_field "sha")
+		echo "    vPR #$vpr ($branch @ ${sha:0:8}) — already merged"
+	done
+	echo ""
+	echo "Run './scripts/auto-pr prune' to remove stale entries."
+}
+
 # List queued vPRs
 list_queue() {
 	local count
@@ -292,16 +386,35 @@ list_queue() {
 		return 0
 	fi
 
+	# Reconcile up front so we can annotate each entry.
+	_autopr_reconcile_queue
+
 	echo "📋 Queued vPRs ($count total):"
 	echo "---------------------------------------------------"
 
+	# Build a set of stale shas for O(1) lookup during the per-entry
+	# print loop.  Use an associative array for portability.
+	declare -A stale_shas=()
+	local stale_line
+	for stale_line in "${_AUTOPR_RECON_STALE_LINES[@]}"; do
+		local s
+		s=$(echo "$stale_line" | json_field "sha")
+		stale_shas["$s"]=1
+	done
+
 	while IFS= read -r line; do
-		local vpr branch title ts
+		[[ -z "$line" ]] && continue
+		local vpr branch title ts sha marker
 		vpr=$(echo "$line" | json_field "vpr")
 		branch=$(echo "$line" | json_field "branch")
 		title=$(echo "$line" | json_field "title")
 		ts=$(echo "$line" | json_field "ts")
-		echo "  vPR #$vpr: $title"
+		sha=$(echo "$line" | json_field "sha")
+		marker=""
+		if [[ -n "${stale_shas[$sha]:-}" ]]; then
+			marker=" ⚠️  STALE (already merged)"
+		fi
+		echo "  vPR #$vpr: $title$marker"
 		echo "       Branch: $branch"
 		echo "       Queued: $ts"
 		echo ""
@@ -311,10 +424,16 @@ list_queue() {
 	tip=$(queue_tip)
 	echo "---------------------------------------------------"
 	echo "📍 Queue tip: $tip"
+
+	_autopr_print_stale_warnings
+
 	echo ""
 	echo "Next steps:"
 	echo "  • Add more changes: git checkout -b <new-branch> $tip"
 	echo "  • Flush to remote:  ./scripts/auto-pr flush"
+	if [[ "$_AUTOPR_RECON_STALE_COUNT" -gt 0 ]]; then
+		echo "  • Prune stale:      ./scripts/auto-pr prune"
+	fi
 }
 
 # Show queue status
@@ -330,16 +449,82 @@ show_status() {
 		echo "  git checkout -b author/feat/name"
 		echo "  # make changes..."
 		echo "  ./scripts/auto-pr"
-	else
-		echo "📦 Queue has $count vPR(s) - offline workflow active"
-		echo ""
-		echo "Queue tip: $tip"
-		echo ""
-		echo "Options:"
-		echo "  • Add more changes: git checkout -b <new-branch> $tip"
-		echo "  • View queue:       ./scripts/auto-pr list"
-		echo "  • Flush to remote:  ./scripts/auto-pr flush"
+		return 0
 	fi
+
+	# Reconcile so the headline accurately reflects live vs. stale.
+	_autopr_reconcile_queue
+
+	if [[ "$_AUTOPR_RECON_LIVE_COUNT" -eq 0 ]]; then
+		# Whole queue is stale — degraded reporting.
+		echo "⚠️  Queue has $count vPR(s) but ALL appear stale (already merged)"
+		_autopr_print_stale_warnings
+		return 0
+	fi
+
+	echo "📦 Queue has $count vPR(s) - offline workflow active"
+	if [[ "$_AUTOPR_RECON_STALE_COUNT" -gt 0 ]]; then
+		echo "    ($_AUTOPR_RECON_LIVE_COUNT live, $_AUTOPR_RECON_STALE_COUNT stale)"
+	fi
+	echo ""
+	echo "Queue tip: $tip"
+	_autopr_print_stale_warnings
+	echo ""
+	echo "Options:"
+	echo "  • Add more changes: git checkout -b <new-branch> $tip"
+	echo "  • View queue:       ./scripts/auto-pr list"
+	echo "  • Flush to remote:  ./scripts/auto-pr flush"
+	if [[ "$_AUTOPR_RECON_STALE_COUNT" -gt 0 ]]; then
+		echo "  • Prune stale:      ./scripts/auto-pr prune"
+	fi
+}
+
+# Remove stale vPR entries from the queue.  Stale = commit is
+# reachable from origin/<base> (i.e. already merged).
+prune_queue() {
+	local count
+	count=$(queue_count)
+	if [[ "$count" -eq 0 ]]; then
+		echo "📭 No vPRs queued — nothing to prune"
+		return 0
+	fi
+
+	_autopr_reconcile_queue
+
+	if [[ "$_AUTOPR_RECON_STALE_COUNT" -eq 0 ]]; then
+		echo "✅ Queue clean — no stale entries to prune ($count live vPR(s))"
+		return 0
+	fi
+
+	echo "🧹 Pruning $_AUTOPR_RECON_STALE_COUNT stale vPR(s) of $count total..."
+	# Print details of what we're about to remove for the audit trail.
+	local stale_line
+	for stale_line in "${_AUTOPR_RECON_STALE_LINES[@]}"; do
+		local vpr branch sha
+		vpr=$(echo "$stale_line" | json_field "vpr")
+		branch=$(echo "$stale_line" | json_field "branch")
+		sha=$(echo "$stale_line" | json_field "sha")
+		echo "  − vPR #$vpr ($branch @ ${sha:0:8})"
+	done
+
+	# Rewrite the queue file with only the live entries.  Empty file
+	# (all stale) is the same as no queue at all — remove it.
+	if [[ "$_AUTOPR_RECON_LIVE_COUNT" -eq 0 ]]; then
+		rm -f "$QUEUE_FILE"
+		echo ""
+		echo "✅ Pruned $_AUTOPR_RECON_STALE_COUNT entries — queue is now empty"
+		return 0
+	fi
+
+	local tmp_queue
+	tmp_queue=$(mktemp)
+	local live_line
+	for live_line in "${_AUTOPR_RECON_LIVE_LINES[@]}"; do
+		echo "$live_line" >>"$tmp_queue"
+	done
+	mv "$tmp_queue" "$QUEUE_FILE"
+	echo ""
+	echo "✅ Pruned $_AUTOPR_RECON_STALE_COUNT entries — $_AUTOPR_RECON_LIVE_COUNT live vPR(s) remain"
 }
 
 # Flush all vPRs as a single atomic PR
@@ -1301,6 +1486,9 @@ flush)
 status)
 	show_status
 	;;
+prune)
+	prune_queue
+	;;
 gov-cleanup)
 	shift
 	gov_cleanup "$@"
@@ -1318,9 +1506,10 @@ help | --help | -h)
 	echo ""
 	echo "Commands:"
 	echo "  (default)       Push branch as PR (uses fast-forward merge by default)"
-	echo "  list            Show queued vPRs"
+	echo "  list            Show queued vPRs (annotates stale entries)"
 	echo "  flush           Push all vPRs as single atomic PR"
 	echo "  status          Show queue status and recommended next steps"
+	echo "  prune           Remove stale vPRs (commit already in origin/<base>)"
 	echo "  gov-cleanup N   After human merges PR N via web UI, clean up local state"
 	echo ""
 	echo "Exit codes:"
