@@ -132,3 +132,18 @@
   clock: 13  # 2b18
   nonce: 2b18  # 2b18
   message: "Implementation requires modifying .agent/hooks/_shared/on_transcript_change.py (governance file). Human approval requested in prior discussion entry. Setting to needs_human_review so it does not block the stop hook — this item cannot proceed without human authorization."  # 2b18
+- op: update  # 4b93
+  at: '2026-04-09T18:56:42Z'  # 4b93
+  by: human  # 4b93
+  actor: jgstern  # 4b93
+  clock: 14  # 4b93
+  nonce: 4b93  # 4b93
+  set:  # 4b93
+    status: violated  # 4b93
+- op: discuss  # 9a86
+  at: '2026-04-09T18:57:01Z'  # 9a86
+  by: human  # 9a86
+  actor: jgstern  # 9a86
+  clock: 15  # 9a86
+  nonce: 9a86  # 9a86
+  message: "governance approved. auto-pr approved."  # 9a86
