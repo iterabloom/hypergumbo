@@ -40,6 +40,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Python serialization + file-position primitives** (WI-fogis): 14 patterns added to `python.yaml` — `json.dump`/`pickle.dump`/`yaml.dump` as `write`; `json.load`/`pickle.load`/`yaml.load` as `read`; `.seek(` as `mutate`; `.truncate(` as `write`.
 - **Go state-mutating verbs** (WI-supih): six verbs added to `go.yaml` — `.Expire(`, `.GC(`, `.Truncate(`, `.Drop(`, `.Init(`, `.Reload(` — all tagged `access_mode=write`. Surfaced by alertmanager's `Silences.Expire` (9 calls).
 
+#### Training data pipeline
+
+- **Per-entry cohort metadata for training corpus** (WI-tatuh / INV-gajap): `log_training_example` in `.agent/hooks/_shared/on_transcript_change.py` now writes seven top-level cohort metadata fields on every training entry: `pipeline_version` (`"v1"`), `infra_sha`, `playbook_registry_sha`, `main_llm`, `vendor` (`"claude-code"`), `vendor_version`, and `scoring_model`. The legacy `model` field is preserved for backward compatibility. `main_llm` and `vendor_version` are extracted from the filtered transcript JSONL; git SHAs are resolved via `git log` and cached per-process. Distribution shifts in the pipeline, playbook registry, main LLM, or vendor are now discoverable from the corpus alone.
+
 #### Developer experience
 
 - **smart-test flock guard** (WI-sinap): concurrent `smart-test` invocations are now structurally prevented via `flock`. A second invocation while one is already running exits immediately with a clear error message naming the holding PID. Prevents the double-`pytest -n auto` scenario that consumed all CPU cores and caused xdist flakes.
