@@ -96,6 +96,7 @@ The project uses a YAML-backed structured tracker (ADR-0013) in `.agent/tracker/
   ```
   Alternatively, combine both steps: `scripts/tracker update WI-foo --status done --note "Fixed in PR #1234."` (`--note` is shorthand for `discuss`). Omitting the rationale loses context about why work was completed or deferred.
 - **Unread Messages:** Use `scripts/tracker check-messages` to see items with unread human discussion messages. The stop hook guidance also surfaces these. Heuristic: a thread is "unread" if its last entry has `by: human` (single-agent assumption — once the agent replies, the thread is considered "read").
+- **Tracker Reply Protocol:** When unread human messages exist, reply substantively before starting new feature work. Read the full thread via `tracker show`, classify the message (approval/directive/question/tabling/correction), reply with evidence and artifacts, then update item status. Drive-by acknowledgments waste human attention. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/tracker-reply-playbook.md`.)
 
 ## No Weasel Words
 When documenting status, coverage, or completion:

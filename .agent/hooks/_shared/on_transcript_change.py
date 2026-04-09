@@ -220,6 +220,15 @@ PLAYBOOKS = [
      "for filterability, and parent relationships only when structurally compelling. Prefer flat "
      "lists. If what to trackerize is ambiguous, ask the user to clarify. Create items in "
      "dependency order so --before references are valid. Summarize created items for the user."),
+
+    ("tracker-reply-playbook",
+     ".agent/agent_playbooks_protocols_sops_skills/tracker-reply-playbook.md",
+     "When tracker check-messages surfaces unread human messages, reply substantively before "
+     "starting new feature work. Four-step protocol: (1) read full thread via tracker show, "
+     "(2) classify the message (approval, directive, question, tabling, correction), (3) reply "
+     "with evidence and artifacts — do not promise future action, act now, (4) update item "
+     "status if warranted. Anti-patterns: drive-by acknowledgments, replying in the same turn "
+     "as starting a new feature branch, promising to investigate next session instead of now."),
 ]
 
 
