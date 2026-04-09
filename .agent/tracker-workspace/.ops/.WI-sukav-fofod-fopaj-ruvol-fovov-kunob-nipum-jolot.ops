@@ -144,3 +144,10 @@
   clock: 18  # 805c
   nonce: 805c  # 805c
   message: "Re-marking done (prior update may have been lost in tracker sync race). Fixed in PR #2817."  # 805c
+- op: discuss  # 732e
+  at: '2026-04-09T10:30:50Z'  # 732e
+  by: agent  # 732e
+  actor: jgstern_agent  # 732e
+  clock: 19  # 732e
+  nonce: 732e  # 732e
+  message: "Bakeoff validation COMPLETE (deep-20260409-054615 alertmanager). Zero spurious InclusiveRange→concrete dispatches_to edges. 3 remaining InclusiveRange edges are legitimate interface→concrete dispatches from stringableRange interface. The NO_VIRTUAL_EXTENDS_LANGUAGES gate works correctly for Go."  # 732e

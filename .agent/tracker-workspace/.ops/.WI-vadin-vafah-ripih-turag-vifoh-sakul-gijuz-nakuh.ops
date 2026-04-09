@@ -1,0 +1,21 @@
+- op: create  # 1803
+  at: '2026-04-09T10:34:42Z'  # 1803
+  by: agent  # 1803
+  actor: jgstern_agent  # 1803
+  clock: 1  # 1803
+  nonce: '1803'  # 1803
+  data:  # 1803
+    kind: work_item  # 1803
+    title: "Go: resolve inline chained method calls via return-type registry"  # 1803
+    status: todo_soft  # 1803
+    priority: 3  # 1803
+    parent: INV-dihos-razov-momat-runoh-mohov-zumop-mivar-nijog  # 1803
+    tags:  # 1803
+    - analysis_quality  # 1803
+    - go  # 1803
+    before: []  # 1803
+    duplicate_of: []  # 1803
+    not_duplicate_of: []  # 1803
+    pr_ref:  # 1803
+    description: "The return-type registry (WI-kuroj Phase 1) handles variable-assignment chains: 'qry := ng.NewInstantQuery(...)' types qry as Query, enabling 'qry.Exec()' to resolve. But inline chains like 'ng.NewInstantQuery().Exec()' bypass var_types entirely and hit the chained_call_unresolved guard at go.py:2108-2127.\n\nPrometheus bakeoff (deep-20260409-054615) shows 708 chained_call_unresolved edges. The fix: when the receiver is a call_expression, extract the inner callee method name, look up its return type in the registry, and use it to qualify the outer method for resolution. This extends the go.py:2108-2127 guard to attempt registry-based resolution before falling back to unresolved.\n\nImplementation sketch: at go.py:2108, before emitting chained_call_unresolved, check if inner callee is a selector_expression on a typed receiver, look up {ReceiverType}.{InnerMethod} in method_return_type_registry, and if found, use the return type to resolve the outer method."  # 1803
+    fields: {}  # 1803
