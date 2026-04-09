@@ -18,3 +18,25 @@
     pr_ref:  # 43c0
     description: "Source: deep-20260407-030917 kserve reflect agent. Top-ranked Python symbol is 'Configuration' (in=161, out=17), the generated OpenAPI base class extended by ~120 generated model classes (knative_*, v1alpha1_*, v1beta1_*, v1_*). It is structurally central but has near-zero developer relevance. None of the top 15 symbols include the actual controller Reconcile() methods for InferenceService, LLMInferenceService, or the predict/infer dataplane methods, which are the heart of what kserve does. Fix: detect generated code in centrality ranking via swagger/openapi markers (file naming knative_*/v1alpha1_*/v1beta1_*, coding: utf-8 file header, swagger comment markers) and apply a centrality penalty. Should also expose --exclude-generated on hypergumbo symbols command. Symbol ranking dimension_score = 2 (lowest) for kserve."  # 43c0
     fields: {}  # 43c0
+- op: discuss  # e1e8
+  at: '2026-04-09T15:21:50Z'  # e1e8
+  by: agent  # e1e8
+  actor: jgstern_agent  # e1e8
+  clock: 2  # e1e8
+  nonce: e1e8  # e1e8
+  message: "Phase 1 (detection infrastructure) shipped in PR #2848. is_generated flag added to FileClassification and is_generated_file to Symbol, detecting OpenAPI models (v1alpha1_*.py, knative_*.py), protobuf stubs (_pb2.py, .pb.go), and Kubernetes code-gen (zz_generated.*.go). 7 tests. Phase 2 (ranking penalty using the flag) is a follow-up — the flag is now available for ranking.py to consume."  # e1e8
+- op: update  # 7992
+  at: '2026-04-09T15:52:59Z'  # 7992
+  by: agent  # 7992
+  actor: jgstern_agent  # 7992
+  clock: 3  # 7992
+  nonce: '7992'  # 7992
+  set:  # 7992
+    status: done  # 7992
+- op: discuss  # 341d
+  at: '2026-04-09T15:52:59Z'  # 341d
+  by: agent  # 341d
+  actor: jgstern_agent  # 341d
+  clock: 4  # 341d
+  nonce: 341d  # 341d
+  message: "Both phases complete. Phase 1: PR #2848 (is_generated detection infrastructure — FileClassification.is_generated, Symbol.is_generated_file, patterns for OpenAPI/protobuf/Kubernetes code-gen). Phase 2: PR #2849 (apply_generated_code_weights in ranking.py — 95% centrality reduction for generated symbols). kserve's Configuration base class will no longer dominate the top-ranked symbols."  # 341d
