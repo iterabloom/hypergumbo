@@ -67,6 +67,11 @@ If the file doesn't exist (e.g., the sync watcher wasn't running), fall back to 
 
 **Step 1 — Extract the session arc.** Scan the transcript for:
 - User messages (explicit instructions, mode changes, interruptions)
+- **Mid-tool-call human interjections** — these live in `type: queue-operation` rows, **NOT** in `type: user` rows. When scanning for interruptions, include `type: queue-operation` with `operation: enqueue` (the moment the human typed) and `operation: remove` (the moment the harness folded it into the next assistant prompt). A naive `type=user` filter will silently lose all real-time interjections during long agent turns. Example row:
+  ```json
+  {"type": "queue-operation", "operation": "enqueue", "timestamp": "2026-04-06T19:35:16.666Z", "sessionId": "...", "content": "user typed this mid-turn"}
+  ```
+  `filter-transcript.py` preserves queue-operation rows (regression-tested in `tests/test_filter_transcript.py`), so the data is in the synced JSONL — no need to go back to the raw vendor originals.
 - Tool calls that indicate major decisions (git checkout -b, auto-pr, bakeoff commands, tracker updates)
 - Stop hook fires and the guidance they produced
 - Context compaction events
