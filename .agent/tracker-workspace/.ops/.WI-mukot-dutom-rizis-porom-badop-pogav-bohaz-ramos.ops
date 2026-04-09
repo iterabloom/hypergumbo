@@ -58,3 +58,25 @@
   nonce: dbfc  # dbfc
   set:  # dbfc
     status: needs_human_review  # dbfc
+- op: discuss  # 94d5
+  at: '2026-04-09T08:40:29Z'  # 94d5
+  by: agent  # 94d5
+  actor: jgstern_agent  # 94d5
+  clock: 7  # 94d5
+  nonce: 94d5  # 94d5
+  message: "Acknowledged governance approval. Will implement the filter-transcript.py regression test and use auto-pr for governance file changes."  # 94d5
+- op: update  # d513
+  at: '2026-04-09T08:41:37Z'  # d513
+  by: agent  # d513
+  actor: jgstern_agent  # d513
+  clock: 8  # d513
+  nonce: d513  # d513
+  set:  # d513
+    status: todo_soft  # d513
+- op: discuss  # 8a0e
+  at: '2026-04-09T08:41:37Z'  # 8a0e
+  by: agent  # 8a0e
+  actor: jgstern_agent  # 8a0e
+  clock: 9  # 8a0e
+  nonce: 8a0e  # 8a0e
+  message: "Human approved governance file changes. Ready for implementation."  # 8a0e
