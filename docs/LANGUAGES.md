@@ -17,7 +17,7 @@ Hypergumbo includes language analyzers for dozens of languages and file formats.
 | **Infrastructure** | Terraform/HCL, Dockerfile, CMake, Make, Just, Meson, Nix, Starlark, Bash, PowerShell, Fish, Puppet, Bitbake, YAML/Ansible |
 | **Data/Schema** | SQL, SPARQL, GraphQL, Protocol Buffers, Thrift, Cap'n Proto, Smithy, Prisma, JSON, TOML, XML, INI, Properties, KDL, JSONNet |
 | **Game Dev** | GDScript, Haxe, Luau |
-| **Proof/Formal** | Agda, Lean*, Wolfram* |
+| **Proof/Formal** | Agda, Lean*, TLA+, Wolfram* |
 | **Notebooks** | Jupyter Notebook (.ipynb) |
 | **Diagram/Plotting** | Mermaid, Gnuplot |
 | **Documentation** | Markdown, LaTeX, BibTeX, reStructuredText, AsciiDoc |
