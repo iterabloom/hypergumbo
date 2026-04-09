@@ -56,3 +56,10 @@
   clock: 6  # 2282
   nonce: '2282'  # 2282
   message: "Fixed in PR #2840. Created tracker-reply-playbook.md with four-step protocol (read thread, classify, reply with substance, update status). AGENTS.md essentialization added under Tracker section. Hook registration added to on_transcript_change.py PLAYBOOKS list."  # 2282
+- op: discuss  # 4b75
+  at: '2026-04-09T16:29:12Z'  # 4b75
+  by: human  # 4b75
+  actor: jgstern  # 4b75
+  clock: 7  # 4b75
+  nonce: 4b75  # 4b75
+  message: "this looks good but I am not sure how I feel about \"reply debt\". I would need to see how the term is presented to the agent (what it looks like in situ). iirc the main change to fix the \"drive-by reply\" issue was mechanical in the way the stop hook behaved. maybe you already implemented that (or are already planning to implement that) in a different tracker item/PR/commit?"  # 4b75

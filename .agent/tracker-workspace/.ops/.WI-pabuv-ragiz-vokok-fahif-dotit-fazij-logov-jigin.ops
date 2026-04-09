@@ -50,3 +50,10 @@
   clock: 5  # 710b
   nonce: 710b  # 710b
   message: "Completed as part of PR #2828 (TLA+ analyzer shipped as single PR)."  # 710b
+- op: discuss  # e5ef
+  at: '2026-04-09T16:15:01Z'  # e5ef
+  by: human  # e5ef
+  actor: jgstern  # e5ef
+  clock: 6  # e5ef
+  nonce: e5ef  # e5ef
+  message: "tell me about how those validations went on the 3 real-world repos? are there bakeoff artifacts? or alternatively, just a folder in the lab notebook documenting the validation results and method?"  # e5ef

@@ -117,3 +117,18 @@
   clock: 11  # c73a
   nonce: c73a  # c73a
   message: "Implementation requires modifying .agent/hooks/_shared/on_transcript_change.py (governance file). The fix is well-scoped: add pipeline_version, infra_sha, playbook_registry_sha, main_llm, vendor, and vendor_version fields to log_training_example(). Requesting human approval to proceed with implementation via auto-pr."  # c73a
+- op: update  # 3bae
+  at: '2026-04-09T16:31:04Z'  # 3bae
+  by: agent  # 3bae
+  actor: jgstern_agent  # 3bae
+  clock: 12  # 3bae
+  nonce: 3bae  # 3bae
+  set:  # 3bae
+    status: needs_human_review  # 3bae
+- op: discuss  # 2b18
+  at: '2026-04-09T16:31:04Z'  # 2b18
+  by: agent  # 2b18
+  actor: jgstern_agent  # 2b18
+  clock: 13  # 2b18
+  nonce: 2b18  # 2b18
+  message: "Implementation requires modifying .agent/hooks/_shared/on_transcript_change.py (governance file). Human approval requested in prior discussion entry. Setting to needs_human_review so it does not block the stop hook — this item cannot proceed without human authorization."  # 2b18

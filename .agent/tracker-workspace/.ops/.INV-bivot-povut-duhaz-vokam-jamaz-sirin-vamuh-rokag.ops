@@ -128,3 +128,10 @@
   clock: 15  # e54f
   nonce: e54f  # e54f
   message: "Satisfied based on structural test coverage. Unit tests in test_slice.py (lines 2641-2736) exercise end-to-end BFS traversal across event_publishes/event_subscribes edges with synthetic graphs. Bakeoff deep-20260409-054615 confirms no false positives on repos without event framework patterns (alertmanager, prometheus, kafka). The linker pattern set (Spring @EventListener, JS EventEmitter, Django signals) is narrow — repos using custom event systems (keycloak ProviderEventListener) don't trigger it. This is a coverage gap in the linker, not a violation of the BFS traversal invariant."  # e54f
+- op: discuss  # be24
+  at: '2026-04-09T16:05:09Z'  # be24
+  by: human  # be24
+  actor: jgstern  # be24
+  clock: 16  # be24
+  nonce: be24  # be24
+  message: "do we have a tracker item for the coverage gap in the linker? if not, we should."  # be24
