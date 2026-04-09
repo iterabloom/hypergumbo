@@ -21,3 +21,18 @@
     fields:  # 68ab
       statement: "Within a single agent session, the agent must not launch a long-running command (e.g., test suite, full build) whose argv matches a command currently running as a background task in the same session, regardless of perceived staleness signals from the harness."  # 68ab
       root_cause: "Stop-hook anxiety + missing structural mutex. Agent flips from 'wait for notification' to 'task is stale' on no new evidence (other than the stop hook firing), and re-launches the identical command without (a) checking liveness via TaskList/ps/log file or (b) killing the prior process. The 0-byte stdout heuristic is misleading for tools that redirect to .ci/pytest-output.log, and the agent forgot the AGENTS.md rule about that under pressure. Documented gotchas + doc-only rules are insufficient — needs structural enforcement (flock at scripts/smart-test, task-aware stop-hook guidance)."  # 68ab
+- op: update  # 59fd
+  at: '2026-04-09T11:20:13Z'  # 59fd
+  by: agent  # 59fd
+  actor: jgstern_agent  # 59fd
+  clock: 2  # 59fd
+  nonce: 59fd  # 59fd
+  set:  # 59fd
+    status: pending_validation  # 59fd
+- op: discuss  # 49c6
+  at: '2026-04-09T11:20:13Z'  # 49c6
+  by: agent  # 49c6
+  actor: jgstern_agent  # 49c6
+  clock: 3  # 49c6
+  nonce: 49c6  # 49c6
+  message: "Structural fix: smart-test flock guard (PR #2833) makes concurrent smart-test invocations structurally impossible. Second invocation exits immediately with PID of holder. The flock is OS-managed (auto-releases on crash). This addresses the highest-leverage causal factor (#2: no pre-launch idempotency check). Remaining causal factors (#1 stop-hook pressure, #3 TaskList not habituated) are softer — they reduce risk but don't gate the invariant. Moving to pending_validation — the next time an agent session runs a background test, the flock should prevent any duplicate launch."  # 49c6
