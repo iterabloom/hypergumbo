@@ -87,3 +87,25 @@
   nonce: 2e4f  # 2e4f
   unlock:  # 2e4f
   - status  # 2e4f
+- op: discuss  # ca85
+  at: '2026-04-09T15:58:04Z'  # ca85
+  by: agent  # ca85
+  actor: jgstern_agent  # ca85
+  clock: 11  # ca85
+  nonce: ca85  # ca85
+  message: "Understood. To clarify the current state: the initial 'WI-kuroj NOT WORKING' conclusion in my first reply was INCORRECT. I was checking evidence_type at the top level of the edge dict, but it lives in meta.evidence_type. After correcting this, prometheus shows 3475 typed_receiver_call edges — the return-type registry IS working for variable-assignment chains.\n\nThe 708 chained_call_unresolved edges are a SEPARATE class: inline chained calls like ng.NewInstantQuery().Exec() where no intermediate variable exists. WI-vadin addresses this specific gap. INV-dihos has been moved to satisfied with the 3475 typed_receiver_call edges as evidence.\n\nSo WI-vadin is correctly scoped: it extends the registry to handle inline chains (a new feature), not to fix a broken registry (which is working)."  # ca85
+- op: update  # 5a28
+  at: '2026-04-09T15:59:01Z'  # 5a28
+  by: agent  # 5a28
+  actor: jgstern_agent  # 5a28
+  clock: 12  # 5a28
+  nonce: 5a28  # 5a28
+  set:  # 5a28
+    status: done  # 5a28
+- op: discuss  # 693e
+  at: '2026-04-09T15:59:01Z'  # 693e
+  by: agent  # 693e
+  actor: jgstern_agent  # 693e
+  clock: 13  # 693e
+  nonce: 693e  # 693e
+  message: "Re-closing. All three deferred bakeoff validations completed (deep-20260409-054615). WI-sukav validated, WI-kuroj corrected (registry IS working — 3475 typed_receiver_call edges, initial 'not working' was wrong field check), INV-bivot satisfied. WI-vadin tracks the separate inline-chain gap."  # 693e
