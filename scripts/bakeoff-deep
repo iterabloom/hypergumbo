@@ -159,14 +159,22 @@ _TEST_ANNOTATION_NAMES = frozenset({
 
 
 def _is_test_node(node: dict) -> bool:
-    """Check if a node is test code by path or annotation.
+    """Check if a node is test code by path, annotation, or is_test_file flag.
 
     Extends file-path matching with annotation-based detection so that
     Rust ``#[test]``/``#[cfg(test)]`` functions in non-test files (e.g.
     ``src/lib.rs``) are correctly identified as test nodes.  This prevents
     test functions from appearing as rslice seed candidates and ensures
     edges from test functions don't inflate production in-degree.
+
+    Also checks the ``is_test_file`` field from supply_chain (WI-rigun /
+    PR #2813) when available, providing a structured signal that doesn't
+    depend on regex matching.
     """
+    # WI-movar: check structured is_test_file flag first (fastest path)
+    sc = node.get("supply_chain") or {}
+    if sc.get("is_test_file"):
+        return True
     if _TEST_PATH_RE.search(node.get("path", "")):
         return True
     meta = node.get("meta") or {}
