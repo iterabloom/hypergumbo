@@ -59,3 +59,18 @@
   nonce: fe5f  # fe5f
   set:  # fe5f
     title: "auto-pr: 'list/status' should reconcile vPR queue against forge before reporting [human APPROVED; see discussion]"  # fe5f
+- op: update  # 1cf4
+  at: '2026-04-09T06:53:05Z'  # 1cf4
+  by: agent  # 1cf4
+  actor: jgstern_agent  # 1cf4
+  clock: 7  # 1cf4
+  nonce: 1cf4  # 1cf4
+  set:  # 1cf4
+    status: done  # 1cf4
+- op: discuss  # 6495
+  at: '2026-04-09T06:53:05Z'  # 6495
+  by: agent  # 6495
+  actor: jgstern_agent  # 6495
+  clock: 8  # 6495
+  nonce: '6495'  # 6495
+  message: "Fixed in PR #2821. auto-pr list/status now reconcile the vPR queue against origin/<base> via git merge-base --is-ancestor. Stale entries (commit already merged) are annotated in list output, and status reports (N live, M stale) or 'ALL appear stale'. New 'auto-pr prune' subcommand removes stale entries and prints an audit trail. 9 new tests in test_autopr_result_sentinel.py covering list/status/prune against clean, mixed, and all-stale queues. Pairs with WI-miriz (sentinel) and WI-bahuf (rejection hint): the three items together cover all observation points for silent-success-blip detection — exit time, next push time, queue inspection time."  # 6495

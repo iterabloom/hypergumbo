@@ -59,3 +59,18 @@
   nonce: 542a  # 542a
   set:  # 542a
     title: "auto-pr: write .git/AUTOPR_LAST_RESULT.json sentinel on every exit [human APPROVED; see discussion]"  # 542a
+- op: update  # 8e26
+  at: '2026-04-09T05:57:15Z'  # 8e26
+  by: agent  # 8e26
+  actor: jgstern_agent  # 8e26
+  clock: 7  # 8e26
+  nonce: '8e26'  # 8e26
+  set:  # 8e26
+    status: done  # 8e26
+- op: discuss  # 59d1
+  at: '2026-04-09T05:57:16Z'  # 59d1
+  by: agent  # 59d1
+  actor: jgstern_agent  # 59d1
+  clock: 8  # 59d1
+  nonce: 59d1  # 59d1
+  message: "Fixed in PR #2819. scripts/auto-pr now writes .git/AUTOPR_LAST_RESULT.json on every action-subcommand exit (do_pr/flush_queue/gov_cleanup) with schema {exit_code, pr_number, pr_url, merged_sha, timestamp, final_state}. Non-action subcommands (list/status/help) intentionally don't write to avoid clobbering prior real runs. Added AUTOPR_RESULT_FILE override and AUTO_PR_SKIP_MANIFEST=1 bypass for tests. 12 new subprocess tests in tests/test_autopr_result_sentinel.py covering all exit paths and schema invariants. Validated end-to-end: PR #2819's own auto-pr run hit a divergence-rebase issue and the sentinel correctly captured exit_code=1 / final_state=failed_merge / pr_number=2819 — exactly the post-mortem signal WI-miriz was designed to provide. Foundation for WI-bahuf and WI-kugob."  # 59d1
