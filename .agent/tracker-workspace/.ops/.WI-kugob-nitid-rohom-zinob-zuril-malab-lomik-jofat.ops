@@ -27,3 +27,19 @@
   nonce: a40b  # a40b
   set:  # a40b
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md §'Lessons / proposed mitigations' §1 (auto-pr silent-success blip).\n\n**The bug:** in the PR #2773 incident, the user ended up with a stale vPR in .git/PR_QUEUE pointing at a commit that had already been merged. ./scripts/auto-pr list and ./scripts/auto-pr status both reported the queue contents at face value and gave no signal that the entry was stale. The user had to manually rm .git/PR_QUEUE to recover.\n\n**Proposed fix:** add a reconciliation pass at the start of auto-pr list (and auto-pr status) that, for each queued vPR, queries the forge to check whether the underlying commit / branch has already been merged into dev. If it has:\n1. Print a warning: '⚠️  vPR #N is stale (already merged as PR #M)'\n2. Offer to clean up: 'Run auto-pr prune to remove stale entries' (or auto-prune with a flag)\n3. Optionally: when stale entries equal 100% of the queue, exit with a 'queue is empty after reconciliation' message\n\n**Why this matters:** removes a class of confusing manual recovery (rm .git/PR_QUEUE) from the agent's playbook. Self-cleaning state is more reliable than docs saying 'when X happens, run Y manually.'\n\n**STATUS: needs_human_review per AGENTS.md governance file list. scripts/auto-pr is governance.**\n\n**Pairs with the AUTOPR_LAST_RESULT.json sentinel item and the 'commit is same as old commit' detection item.** Together: the sentinel catches the success at exit (item J), the rejection hint catches it at next invocation (item I), and the queue reconciliation catches it any time the user inspects the queue (this item)."  # a40b
+- op: discuss  # 7619
+  at: '2026-04-09T02:02:04Z'  # 7619
+  by: human  # 7619
+  actor: jgstern  # 7619
+  clock: 3  # 7619
+  nonce: '7619'  # 7619
+  message: "I approve of changing relevant governance files and using auto-pr to do so"  # 7619
+- op: update  # cd1f
+  at: '2026-04-09T02:02:25Z'  # cd1f
+  by: human  # cd1f
+  actor: jgstern  # cd1f
+  clock: 4  # cd1f
+  nonce: cd1f  # cd1f
+  set:  # cd1f
+    status: todo_hard  # cd1f
+    priority: 2  # cd1f

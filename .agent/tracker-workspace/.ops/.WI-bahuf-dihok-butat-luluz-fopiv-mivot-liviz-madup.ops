@@ -19,3 +19,27 @@
     pr_ref:  # d2b1
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md §'Lessons / proposed mitigations' §2 (auto-pr silent-success blip).\n\n**The bug:** when a Forgejo gerrit-style endpoint refuses to push because 'The new commit is the same as the old commit' — meaning the commit's tree already exists in the merged-into branch — auto-pr's retry loop today treats this as a generic push failure and queues the change as a vPR. In the PR #2773 incident, this masked a successful prior merge: the commit was already in dev, so the rejection was actually 'this work is already merged,' not 'push failed, try again.'\n\n**Proposed fix:** in scripts/auto-pr's push retry loop, detect this specific Forgejo error message ('The new commit is the same as the old commit' or similar) and emit:\n\n> 📍 Already merged as PR #N — local cleanup only\n\n…then perform the cleanup steps (delete local branch, remove .git/PR_PENDING) without queueing a vPR. The PR number can be looked up via the forge API by searching for a merged PR whose head SHA matches HEAD.\n\n**Why this matters:** prevents the false-vPR-queue path that the user had to manually clean up with rm .git/PR_QUEUE during the incident. Saves a confusing 'why is there a stale vPR?' debugging step on every silent-success.\n\n**STATUS: needs_human_review per AGENTS.md governance file list. scripts/auto-pr is governance.**\n\n**Pairs with the AUTOPR_LAST_RESULT.json sentinel item** — together they provide redundant recovery paths: the sentinel catches the success at auto-pr exit time, and the rejection-message hint catches it at the next invocation if the sentinel is missing or stale."  # d2b1
     fields: {}  # d2b1
+- op: discuss  # 61ca
+  at: '2026-04-09T02:00:53Z'  # 61ca
+  by: human  # 61ca
+  actor: jgstern  # 61ca
+  clock: 2  # 61ca
+  nonce: 61ca  # 61ca
+  message: "I approve of changing relevant governance files and using auto-pr to do so"  # 61ca
+- op: update  # 8683
+  at: '2026-04-09T02:01:07Z'  # 8683
+  by: human  # 8683
+  actor: jgstern  # 8683
+  clock: 3  # 8683
+  nonce: '8683'  # 8683
+  set:  # 8683
+    status: todo_soft  # 8683
+    priority: 2  # 8683
+- op: update  # 985d
+  at: '2026-04-09T02:03:11Z'  # 985d
+  by: human  # 985d
+  actor: jgstern  # 985d
+  clock: 4  # 985d
+  nonce: 985d  # 985d
+  set:  # 985d
+    status: todo_hard  # 985d
