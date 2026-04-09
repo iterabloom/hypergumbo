@@ -4882,6 +4882,7 @@ def _run_analysis(
         classification = classify_file(file_path, repo_root, package_roots)
         symbol.supply_chain_tier = classification.tier.value
         symbol.supply_chain_reason = classification.reason
+        symbol.is_test_file = classification.is_test
 
     # Deduplicate edges by ID (some analyzers may produce duplicate edges)
     seen_edge_ids: set[str] = set()

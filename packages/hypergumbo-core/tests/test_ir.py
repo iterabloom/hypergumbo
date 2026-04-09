@@ -981,6 +981,70 @@ def test_symbol_roundtrip_preserves_tier() -> None:
     assert restored.supply_chain_reason == "vendored"
 
 
+def test_symbol_is_test_file_default() -> None:
+    """WI-rigun: Symbol.is_test_file defaults to False."""
+    sym = Symbol(
+        id="python:src/app.py:1-2:greet:function",
+        name="greet",
+        kind="function",
+        language="python",
+        path="src/app.py",
+        span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+    )
+    assert sym.is_test_file is False
+
+
+def test_symbol_to_dict_includes_is_test_file() -> None:
+    """WI-rigun: Symbol.to_dict embeds is_test_file under supply_chain."""
+    sym = Symbol(
+        id="go:pkg/handler_test.go:1-2:TestHandler:function",
+        name="TestHandler",
+        kind="function",
+        language="go",
+        path="pkg/handler_test.go",
+        span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        supply_chain_tier=2,
+        supply_chain_reason="test file matches _test.go$",
+        is_test_file=True,
+    )
+    d = sym.to_dict()
+    assert d["supply_chain"]["is_test_file"] is True
+    assert d["supply_chain"]["tier"] == 2
+
+
+def test_symbol_roundtrip_preserves_is_test_file() -> None:
+    """WI-rigun: to_dict → from_dict round-trips is_test_file."""
+    sym = Symbol(
+        id="go:pkg/handler_test.go:1-2:TestHandler:function",
+        name="TestHandler",
+        kind="function",
+        language="go",
+        path="pkg/handler_test.go",
+        span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        supply_chain_tier=2,
+        supply_chain_reason="test file matches _test.go$",
+        is_test_file=True,
+    )
+    restored = Symbol.from_dict(sym.to_dict())
+    assert restored.is_test_file is True
+    assert restored.supply_chain_tier == 2
+    assert restored.supply_chain_reason == "test file matches _test.go$"
+
+
+def test_symbol_from_dict_is_test_file_default_false() -> None:
+    """WI-rigun: from_dict treats missing is_test_file as False (back-compat)."""
+    d = {
+        "id": "python:src/lib.py:1-2:foo:function",
+        "name": "foo",
+        "kind": "function",
+        "language": "python",
+        "path": "src/lib.py",
+        "supply_chain": {"tier": 1, "reason": "first_party"},
+    }
+    restored = Symbol.from_dict(d)
+    assert restored.is_test_file is False
+
+
 def test_edge_from_dict() -> None:
     """Edge.from_dict should reconstruct Edge from dict."""
     d = {
