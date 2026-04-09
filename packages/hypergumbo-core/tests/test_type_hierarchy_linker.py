@@ -1143,3 +1143,250 @@ class TestTestFileConfidencePenalty:
         assert dispatch_edges[0].confidence == 0.30, (
             "Test file override should get 0.30 confidence penalty"
         )
+
+
+class TestPerLanguageConcreteExtendsDispatch:
+    """Tests for WI-sukav A1: per-language extends-virtual-dispatch flag.
+
+    Some languages model concrete inheritance/composition with an `extends`
+    edge but do NOT use virtual dispatch through it.  For these languages,
+    the type hierarchy linker must NOT create dispatches_to edges from a
+    parent's method to a child's same-named method via an `extends` edge.
+
+    Languages with virtual dispatch through `extends` (current behavior preserved):
+    - Java, Kotlin, Python, Ruby, Scala, Swift
+
+    Languages WITHOUT virtual dispatch through `extends` (filtered):
+    - Go (struct embedding is composition, not inheritance)
+    - C++ (only `virtual` methods dispatch polymorphically)
+    - Rust (no inheritance; struct/trait are separate concepts)
+    - C# (pessimistic until per-method virtual/override tracking lands)
+
+    `implements` edges are unaffected — interface satisfaction is virtual
+    dispatch in every language that has the concept.
+    """
+
+    @staticmethod
+    def _make_struct(
+        lang: str, pkg: str, sname: str, mname: str
+    ) -> tuple[Symbol, Symbol]:
+        """Build a (struct, method) pair under /app/<pkg>/<pkg>.<ext>."""
+        ext = {
+            "go": "go", "cpp": "cpp", "rust": "rs",
+            "csharp": "cs", "java": "java", "python": "py",
+        }[lang]
+        path = f"/app/{pkg}/{pkg}.{ext}"
+        struct = Symbol(
+            id=f"{lang}:{path}:1-50:{sname}:struct",
+            name=sname, kind="struct", language=lang, path=path,
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=1),
+            origin=f"{lang}-v1", origin_run_id="test",
+        )
+        method = Symbol(
+            id=f"{lang}:{path}:10-15:{sname}.{mname}:method",
+            name=f"{sname}.{mname}", kind="method", language=lang, path=path,
+            span=Span(start_line=10, end_line=15, start_col=0, end_col=1),
+            origin=f"{lang}-v1", origin_run_id="test",
+        )
+        return struct, method
+
+    def _run_concrete_extends(
+        self, lang: str
+    ) -> list[Edge]:
+        """Build a parent struct + 4 children that 'extend' it, each with
+        its own override.  Returns the dispatches_to edges produced.
+
+        Mirrors alertmanager's timeinterval.go: InclusiveRange and 4
+        embedders (WeekdayRange/DayOfMonthRange/MonthRange/YearRange),
+        each with their own MarshalText.
+        """
+        parent_s, parent_m = self._make_struct(
+            lang, "timeinterval_parent", "InclusiveRange", "MarshalText",
+        )
+        children = [
+            self._make_struct(lang, f"timeinterval_{c}", c, "MarshalText")
+            for c in (
+                "WeekdayRange", "DayOfMonthRange", "MonthRange", "YearRange",
+            )
+        ]
+        symbols = [parent_s, parent_m]
+        edges: list[Edge] = []
+        for cs, cm in children:
+            symbols.extend([cs, cm])
+            edges.append(Edge.create(
+                src=cs.id, dst=parent_s.id, edge_type="extends",
+                line=1, origin=f"{lang}-v1", evidence_type="ast_extends",
+            ))
+        ctx = LinkerContext(
+            repo_root="/app", symbols=symbols, edges=edges,
+        )
+        result = link_type_hierarchy(ctx)
+        return [e for e in result.edges if e.edge_type == "dispatches_to"]
+
+    def test_go_concrete_extends_does_not_dispatch(self) -> None:
+        """Go struct embedding (extends) must not produce dispatches_to.
+
+        Regression for WI-sukav: alertmanager timeinterval.go had 4 false
+        InclusiveRange.* dispatches_to edges because the 4 sibling structs
+        embed InclusiveRange, and the linker treated their own MarshalText
+        methods as polymorphic overrides.  In Go, embedding is composition,
+        not virtual dispatch — calling `ir.MarshalText()` on a *InclusiveRange
+        always lands in InclusiveRange.MarshalText regardless of any embedder.
+        """
+        edges = self._run_concrete_extends("go")
+        assert edges == [], (
+            f"Go concrete extends must not produce dispatches_to edges; "
+            f"got {len(edges)}: {[(e.src, e.dst) for e in edges]}"
+        )
+
+    def test_cpp_concrete_extends_does_not_dispatch(self) -> None:
+        """C++ inheritance without `virtual` is statically resolved.
+
+        Pessimistic default: until per-method virtual tracking lands,
+        C++ extends must not produce dispatches_to. False negatives on
+        truly virtual methods are preferable to the false-positive flood
+        observed for non-virtual methods (which dominate most C++ code).
+        """
+        edges = self._run_concrete_extends("cpp")
+        assert edges == [], (
+            f"C++ concrete extends must not produce dispatches_to edges; "
+            f"got {len(edges)}"
+        )
+
+    def test_rust_concrete_extends_does_not_dispatch(self) -> None:
+        """Rust has no inheritance; only trait dispatch is virtual."""
+        edges = self._run_concrete_extends("rust")
+        assert edges == [], (
+            f"Rust concrete extends must not produce dispatches_to edges; "
+            f"got {len(edges)}"
+        )
+
+    def test_csharp_concrete_extends_does_not_dispatch(self) -> None:
+        """C# is pessimistic until virtual/override keyword tracking lands."""
+        edges = self._run_concrete_extends("csharp")
+        assert edges == [], (
+            f"C# concrete extends must not produce dispatches_to edges; "
+            f"got {len(edges)}"
+        )
+
+    def test_java_concrete_extends_still_dispatches(self) -> None:
+        """Java retains current behavior: concrete extends → dispatches_to.
+
+        Lock the per-language split: only the no-virtual-dispatch
+        languages are filtered.  Java methods are virtual by default.
+        """
+        edges = self._run_concrete_extends("java")
+        assert len(edges) == 4, (
+            f"Java concrete extends must still produce 4 dispatches_to "
+            f"edges (one per child override); got {len(edges)}"
+        )
+
+    def test_go_implements_still_dispatches(self) -> None:
+        """`implements` edges are unaffected by the per-language gate.
+
+        Interface satisfaction is virtual dispatch in every language that
+        has the concept.  Go's structural interface matcher emits
+        `implements` edges that must continue to drive dispatches_to.
+        """
+        iface = Symbol(
+            id="go:/app/notify/notify.go:60-70:Notifier:interface",
+            name="Notifier", kind="interface", language="go",
+            path="/app/notify/notify.go",
+            span=Span(start_line=60, end_line=70, start_col=0, end_col=1),
+            origin="go-v1", origin_run_id="test",
+        )
+        iface_method = Symbol(
+            id="go:/app/notify/notify.go:62-62:Notifier.Notify:method",
+            name="Notifier.Notify", kind="method", language="go",
+            path="/app/notify/notify.go",
+            span=Span(start_line=62, end_line=62, start_col=4, end_col=50),
+            origin="go-v1", origin_run_id="test",
+        )
+        impl_struct, impl_method = self._make_struct(
+            "go", "discord", "Notifier", "Notify",
+        )
+        implements_edge = Edge.create(
+            src=impl_struct.id, dst=iface.id, edge_type="implements",
+            line=10, origin="go-v1", evidence_type="ast_implements",
+        )
+        ctx = LinkerContext(
+            repo_root="/app",
+            symbols=[iface, iface_method, impl_struct, impl_method],
+            edges=[implements_edge],
+        )
+        result = link_type_hierarchy(ctx)
+        dispatches = [
+            e for e in result.edges if e.edge_type == "dispatches_to"
+        ]
+        assert len(dispatches) == 1, (
+            f"Go implements edges must still produce dispatches_to; "
+            f"got {len(dispatches)}"
+        )
+        assert dispatches[0].src == iface_method.id
+        assert dispatches[0].dst == impl_method.id
+
+    def test_unknown_language_extends_still_dispatches(self) -> None:
+        """Languages not in the no-virtual list keep current behavior.
+
+        Default-allow keeps the linker conservative for analyzers we
+        haven't yet investigated.  Only explicit no-virtual-dispatch
+        languages are filtered.
+        """
+        edges = self._run_concrete_extends("python")
+        assert len(edges) == 4, (
+            "Python (default-allow) must still produce dispatches_to "
+            "via concrete extends"
+        )
+
+    def test_extends_with_unknown_src_symbol_defaults_to_allow(self) -> None:
+        """An extends edge whose src symbol is not in the symbol list
+        falls back to default-allow behavior (no language to filter on)."""
+        parent = Symbol(
+            id="java:/app/P.java:1-5:P:class",
+            name="P", kind="class", language="java", path="/app/P.java",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="java-v1", origin_run_id="test",
+        )
+        parent_method = Symbol(
+            id="java:/app/P.java:2-4:P.foo:method",
+            name="P.foo", kind="method", language="java", path="/app/P.java",
+            span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
+            origin="java-v1", origin_run_id="test",
+        )
+        child = Symbol(
+            id="java:/app/C.java:1-5:C:class",
+            name="C", kind="class", language="java", path="/app/C.java",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="java-v1", origin_run_id="test",
+        )
+        child_method = Symbol(
+            id="java:/app/C.java:2-4:C.foo:method",
+            name="C.foo", kind="method", language="java", path="/app/C.java",
+            span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
+            origin="java-v1", origin_run_id="test",
+        )
+        # Edge src points to an ID that is NOT among symbols passed to
+        # build_inheritance_maps — exercise the fallback branch.
+        extends_edge = Edge.create(
+            src="java:/app/UNKNOWN.java:1-5:Ghost:class",
+            dst=parent.id, edge_type="extends", line=1,
+        )
+        # The actual child is wired via a second normal extends edge
+        # so the test still produces *some* dispatch graph state.
+        normal_extends = Edge.create(
+            src=child.id, dst=parent.id, edge_type="extends", line=1,
+        )
+        ctx = LinkerContext(
+            repo_root="/app",
+            symbols=[parent, parent_method, child, child_method],
+            edges=[extends_edge, normal_extends],
+        )
+        result = link_type_hierarchy(ctx)
+        dispatches = [
+            e for e in result.edges if e.edge_type == "dispatches_to"
+        ]
+        # The known child still drives a dispatches_to; the unknown-src
+        # extends is admitted under default-allow but contributes nothing
+        # because its child symbol is not in the graph.
+        assert len(dispatches) == 1
+        assert dispatches[0].dst == child_method.id
