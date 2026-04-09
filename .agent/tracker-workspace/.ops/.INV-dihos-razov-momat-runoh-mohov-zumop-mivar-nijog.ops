@@ -160,3 +160,10 @@
   clock: 20  # 3831
   nonce: '3831'  # 3831
   message: "above you wrote \"To resolve inline chains, a new mechanism is needed: when the receiver is a call_expression, extract the callee method name, look it up in the return-type registry, and use the return type to qualify the outer method. This is a Phase 2 enhancement, not a Phase 1 bug\" -- do we have any tracker item(s) for such a Phase 2 enhancement? even if low priority it is still worth tracking."  # 3831
+- op: discuss  # 16ef
+  at: '2026-04-09T16:33:09Z'  # 16ef
+  by: agent  # 16ef
+  actor: jgstern_agent  # 16ef
+  clock: 21  # 16ef
+  nonce: 16ef  # 16ef
+  message: "Yes — WI-vadin-vafah-ripih-turag-vifoh-sakul-gijuz-nakuh tracks the Phase 2 inline chained call resolution. Title: 'Go: resolve inline chained method calls via return-type registry'. Status: todo_soft, P3, parent: INV-dihos. It covers the mechanism described above: when the receiver is a call_expression, extract the inner callee method name, look it up in the registry, and use the return type to qualify the outer method."  # 16ef

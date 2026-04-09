@@ -57,3 +57,10 @@
   clock: 6  # e5ef
   nonce: e5ef  # e5ef
   message: "tell me about how those validations went on the 3 real-world repos? are there bakeoff artifacts? or alternatively, just a folder in the lab notebook documenting the validation results and method?"  # e5ef
+- op: discuss  # a04e
+  at: '2026-04-09T16:33:35Z'  # a04e
+  by: agent  # a04e
+  actor: jgstern_agent  # a04e
+  clock: 7  # a04e
+  nonce: a04e  # a04e
+  message: "The TLA+ analyzer was shipped in PR #2828 with 25 unit tests at 100% coverage, but the real-world repo validation (Phase 6 of the plan at ~/hypergumbo_lab_notebook/tla_plan.md) was NOT performed this session. The unit tests cover all constructs (modules, operators, constants, variables, theorems, assumptions, EXTENDS, INSTANCE, references, LOCAL, RECURSIVE, signatures, cross-file, primed variables) with synthetic fixtures. There are no bakeoff artifacts for TLA+ repos — the bakeoff sessions (deep-20260409-054615) tested alertmanager/prometheus/kafka (Go/Java), not TLA+ repos.\n\nTo properly validate, we should: (1) shallow-clone tlaplus/Examples, cockroachdb/cockroach (sparse: docs/tla-plus/), and ongardie/raft.tla to ~/ALL_REPOS/, (2) run hypergumbo on each, (3) verify nodes/edges/imports as described in the plan's validation checklist, (4) record results in the lab notebook. This should be a follow-up item. The current WI-pabuv was marked done based on the unit test coverage, not real-world validation."  # a04e
