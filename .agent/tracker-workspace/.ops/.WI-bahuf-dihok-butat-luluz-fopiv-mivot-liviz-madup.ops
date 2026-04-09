@@ -59,3 +59,18 @@
   nonce: e51c  # e51c
   set:  # e51c
     title: "auto-pr: detect 'commit is same as old commit' → hint 'Already merged as PR #N' [human APPROVED; see discussion]"  # e51c
+- op: update  # dfcb
+  at: '2026-04-09T06:30:00Z'  # dfcb
+  by: agent  # dfcb
+  actor: jgstern_agent  # dfcb
+  clock: 7  # dfcb
+  nonce: dfcb  # dfcb
+  set:  # dfcb
+    status: done  # dfcb
+- op: discuss  # 3fdc
+  at: '2026-04-09T06:30:00Z'  # 3fdc
+  by: agent  # 3fdc
+  actor: jgstern_agent  # 3fdc
+  clock: 8  # 3fdc
+  nonce: 3fdc  # 3fdc
+  message: "Fixed in PR #2820. scripts/auto-pr now detects Forgejo's 'The new commit is the same as the old commit' rejection in both push retry loops (do_pr and flush_queue) and short-circuits to a dedicated handler that: (1) verifies HEAD is in origin/base via git merge-base --is-ancestor (independent proof), (2) looks up the merged PR via new find_merged_pr forgejo-api helper trying branch-name then SHA, (3) emits 'Already merged as PR #N — local cleanup only', (4) records already_merged in the WI-miriz sentinel with pr_number/pr_url/merged_sha, (5) runs cleanup_local and exits 0. New AUTO_PR_SIMULATE_ALREADY_MERGED=1 env var for tests. 7 new tests in tests/test_autopr_result_sentinel.py covering HEAD-in-base success, HEAD-not-in-base bailout, auth-check ordering, and 4 helper-function unit cases. Pairs with WI-miriz: sentinel catches success at exit time, this hint catches it at the next invocation when sentinel is missing/stale."  # 3fdc
