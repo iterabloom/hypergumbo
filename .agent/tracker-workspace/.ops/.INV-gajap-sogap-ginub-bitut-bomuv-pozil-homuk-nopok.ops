@@ -96,3 +96,17 @@
   clock: 9  # 5cc3
   nonce: 5cc3  # 5cc3
   message: "Acknowledged — WI-pusif tracks the .ops YAML serializer fix and is currently P2/todo_hard with an active design discussion (human asked the agent to think carefully about the 'skip continuation lines' implications). Once that fix lands, the INV-gajap description can be safely re-edited to incorporate the post-2026-04-07 drift notes inline rather than as discussion sidecars. Status here remains violated until the cohort-metadata cutover and backfill (the original Tier 0 / Tier 1 companion items) are completed."  # 5cc3
+- op: discuss  # 136d
+  at: '2026-04-09T00:09:31Z'  # 136d
+  by: human  # 136d
+  actor: jgstern  # 136d
+  clock: 9  # 136d
+  nonce: 136d  # 136d
+  message: "do not bother editing INV-gajap description any further it is clear enough when read with the comments. it is not possible to hide/delete comments so editing the description risks more confusion."  # 136d
+- op: discuss  # 49a9
+  at: '2026-04-09T00:52:48Z'  # 49a9
+  by: agent  # 49a9
+  actor: jgstern_agent  # 49a9
+  clock: 10  # 49a9
+  nonce: 49a9  # 49a9
+  message: "Acknowledged — will not edit the description further. The 4080-byte safe-length advisory and the post-2026-04-07 drift notes will live exclusively as discussion entries on this item until the cohort-metadata cutover and backfill complete."  # 49a9
