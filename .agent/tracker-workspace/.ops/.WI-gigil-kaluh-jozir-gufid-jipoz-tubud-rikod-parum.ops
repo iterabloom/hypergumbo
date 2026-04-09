@@ -35,3 +35,21 @@
   clock: 3  # 6946
   nonce: '6946'  # 6946
   message: "Substantive correction: the git-log path in the original Resolution logic section was stale (packages/hypergumbo-tracker/src/hypergumbo_tracker/on_transcript_change.py — that path does not exist in this repo). As written, the script would have returned empty git history and produced empty infra_sha for every entry, silently broken. Corrected to .agent/hooks/_shared/on_transcript_change.py (the actual path, verified 2026-04-08 via Glob). Also added test #4 for the new SHA boundaries introduced by commits 704548fe1 / 7310783e1 / 9ac06cc88 so the resolver is exercised against real v0-window commits. Status remains todo_soft."  # 6946
+- op: update  # 76ca
+  at: '2026-04-09T18:47:26Z'  # 76ca
+  by: agent  # 76ca
+  actor: jgstern_agent  # 76ca
+  clock: 4  # 76ca
+  nonce: 76ca  # 76ca
+  set: {}  # 76ca
+  add:  # 76ca
+    before: [WI-tatuh-pimak-lagog-tupit-gupam-kihal-gizut-pafub]  # 76ca
+- op: update  # f68e
+  at: '2026-04-09T18:47:58Z'  # f68e
+  by: agent  # f68e
+  actor: jgstern_agent  # f68e
+  clock: 5  # f68e
+  nonce: f68e  # f68e
+  set: {}  # f68e
+  remove:  # f68e
+    before: [WI-tatuh-pimak-lagog-tupit-gupam-kihal-gizut-pafub]  # f68e
