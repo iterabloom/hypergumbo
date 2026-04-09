@@ -153,3 +153,10 @@
   nonce: '2958'  # 2958
   set:  # 2958
     status: satisfied  # 2958
+- op: discuss  # 3831
+  at: '2026-04-09T16:03:30Z'  # 3831
+  by: human  # 3831
+  actor: jgstern  # 3831
+  clock: 20  # 3831
+  nonce: '3831'  # 3831
+  message: "above you wrote \"To resolve inline chains, a new mechanism is needed: when the receiver is a call_expression, extract the callee method name, look it up in the return-type registry, and use the return type to qualify the outer method. This is a Phase 2 enhancement, not a Phase 1 bug\" -- do we have any tracker item(s) for such a Phase 2 enhancement? even if low priority it is still worth tracking."  # 3831
