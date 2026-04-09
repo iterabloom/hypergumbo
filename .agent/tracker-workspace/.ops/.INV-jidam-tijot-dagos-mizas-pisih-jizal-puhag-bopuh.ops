@@ -36,3 +36,18 @@
   clock: 3  # 49c6
   nonce: 49c6  # 49c6
   message: "Structural fix: smart-test flock guard (PR #2833) makes concurrent smart-test invocations structurally impossible. Second invocation exits immediately with PID of holder. The flock is OS-managed (auto-releases on crash). This addresses the highest-leverage causal factor (#2: no pre-launch idempotency check). Remaining causal factors (#1 stop-hook pressure, #3 TaskList not habituated) are softer — they reduce risk but don't gate the invariant. Moving to pending_validation — the next time an agent session runs a background test, the flock should prevent any duplicate launch."  # 49c6
+- op: update  # 2b7c
+  at: '2026-04-09T14:03:31Z'  # 2b7c
+  by: agent  # 2b7c
+  actor: jgstern_agent  # 2b7c
+  clock: 4  # 2b7c
+  nonce: 2b7c  # 2b7c
+  set:  # 2b7c
+    status: satisfied  # 2b7c
+- op: discuss  # edac
+  at: '2026-04-09T14:03:31Z'  # edac
+  by: agent  # edac
+  actor: jgstern_agent  # edac
+  clock: 5  # edac
+  nonce: edac  # edac
+  message: "Satisfied. Structural fix: smart-test flock guard (PR #2833) makes concurrent invocations structurally impossible. Verified manually: second invocation exits immediately with 'ERROR: Another smart-test is already running (PID N)'. The OS-managed file-descriptor lock auto-releases on crash (kill -9). This was also exercised during this session — multiple test runs completed without incident, and the lock was never stale."  # edac

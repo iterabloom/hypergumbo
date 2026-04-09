@@ -18,3 +18,18 @@
     pr_ref:  # 0ffd
     description: "Source: deep-20260407-030917 prometheus reflect agent. Labels.Get exists in 3 prometheus files (model/labels/labels_dedupelabels.go, labels_stringlabels.go, labels_slicelabels.go), each guarded by mutually exclusive build tags (//go:build dedupelabels, stringlabels, default). Symbol ranker arbitrarily picks one as 'the' Labels.Get, hiding the alternates. A refactor must touch all three but only one is visible in centrality. Fix: detect //go:build directives in Go source, and when multiple definitions of the same fully-qualified symbol exist under mutually exclusive build constraints, emit a build_tag_alternative_of edge type linking them. This unifies the symbol's centrality and gives slice/explain a way to surface 'this symbol has 3 build-tag alternates'."  # 0ffd
     fields: {}  # 0ffd
+- op: update  # b5d5
+  at: '2026-04-09T13:43:48Z'  # b5d5
+  by: agent  # b5d5
+  actor: jgstern_agent  # b5d5
+  clock: 2  # b5d5
+  nonce: b5d5  # b5d5
+  set:  # b5d5
+    status: done  # b5d5
+- op: discuss  # c27e
+  at: '2026-04-09T13:43:48Z'  # c27e
+  by: agent  # c27e
+  actor: jgstern_agent  # c27e
+  clock: 3  # c27e
+  nonce: c27e  # c27e
+  message: "Fixed in PR #2845. Extracts //go:build directives, stores build_constraint in symbol meta, emits build_tag_alternative_of edges for same-qualified-name symbols in different build-tagged files within the same package. 3 tests."  # c27e
