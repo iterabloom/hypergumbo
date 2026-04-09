@@ -928,6 +928,13 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
 
+                # WI-kuroj: capture return type for standalone functions
+                # (e.g. NewEngine() → Engine, ParseQuery() → Query).
+                if signature:
+                    ret_type = _go_return_type_from_signature(signature)
+                    if ret_type:
+                        analysis.method_return_types[func_name] = ret_type
+
         # Method declaration (function with receiver)
         elif node.type == "method_declaration":
             name_node = find_child_by_field(node, "name")
@@ -979,6 +986,14 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[method_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
+
+                # WI-kuroj: populate return-type registry for chained
+                # receiver resolution (e.g. x := e.Query() → x has
+                # type Result if Engine.Query returns Result).
+                if receiver_type and signature:
+                    ret_type = _go_return_type_from_signature(signature)
+                    if ret_type:
+                        analysis.method_return_types[full_name] = ret_type
 
                 # Track struct method sets for structural interface matching
                 if receiver_type:
@@ -1249,6 +1264,7 @@ def _get_enclosing_function(
 def _extract_go_var_types(
     root_node: "tree_sitter.Node",
     source: bytes,
+    method_return_type_registry: dict[str, str] | None = None,
 ) -> dict[str, dict[str, str]]:
     """Extract function-scoped variable-to-type-name mappings from Go code.
 
@@ -1263,11 +1279,22 @@ def _extract_go_var_types(
         var p *Client             → p has type Client (in enclosing func)
         func foo(s *Server)       → s has type Server (in foo)
         func (s *Server) Foo()    → s has type Server (in Server.Foo)
+        x := e.Query()            → x has type Result (via return-type registry,
+                                    when e has type Engine and Engine.Query
+                                    returns Result)
 
     Only the first assignment to a variable within a function wins
     (single-assignment SSA assumption per function scope). Built-in types
     (string, int, etc.) are excluded because they don't correspond to
     user-defined methods.
+
+    When ``method_return_type_registry`` is provided, chained method-call
+    return types are resolved: if the RHS is a call expression with a
+    typed receiver, the receiver type + method name is looked up in the
+    registry and the return type (if any) is assigned to the LHS variable.
+    This enables resolution chains like ``e := NewEngine(); r := e.Query();
+    r.Rows()`` — without the registry, ``r`` has no type and ``r.Rows()``
+    falls through to the unresolved path.
 
     Returns a nested dict: ``{func_name: {var_name: type_name}}``.
     For methods, func_name is qualified (``Type.Method``).
@@ -1312,6 +1339,30 @@ def _extract_go_var_types(
             # string) so the variable name is tracked for false-positive
             # prevention in function reference detection.
             type_name = _type_from_rhs(rhs, source)
+
+            # WI-kuroj: when _type_from_rhs can't infer a type from
+            # the RHS (e.g. x := e.Query()), try the return-type
+            # registry.  If the RHS is a method call on a receiver
+            # whose type is already known, look up the return type.
+            if (
+                not type_name
+                and method_return_type_registry
+                and rhs.type == "call_expression"
+            ):
+                call_func = find_child_by_field(rhs, "function")
+                if call_func is not None and call_func.type == "selector_expression":
+                    operand = find_child_by_field(call_func, "operand")
+                    field_node = find_child_by_field(call_func, "field")
+                    if operand is not None and field_node is not None:
+                        recv_name = node_text(operand, source)
+                        method_name = node_text(field_node, source)
+                        recv_type = func_vars.get(recv_name, "")
+                        if recv_type:
+                            qualified = f"{recv_type}.{method_name}"
+                            type_name = method_return_type_registry.get(
+                                qualified
+                            )
+
             if type_name and type_name not in _GO_BUILTINS:
                 func_vars[var_name] = type_name
             else:
@@ -1558,6 +1609,58 @@ def _type_identifier_from_node(
     return None  # pragma: no cover - pointer to non-named type (e.g. *func(), *chan)
 
 
+def _go_return_type_from_signature(signature: str | None) -> str | None:
+    """Extract the primary return type from a Go function signature.
+
+    WI-kuroj / INV-dihos return-type registry: enables chained receiver
+    resolution by letting ``x := obj.Method()`` infer ``x``'s type from
+    the registry when ``obj``'s type is known.
+
+    Handles three forms:
+    - ``"(params) ReturnType"``  → ``"ReturnType"``
+    - ``"(params) (Type1, error)"``  → ``"Type1"`` (pick non-error)
+    - ``"(params)"``  → ``None`` (no return type / void)
+
+    Go tuple returns with multiple non-error types (ambiguous) return
+    None.  Pointer-star prefixes are stripped.  Package-qualified types
+    (``pkg.Type``) are stripped to the bare type name because symbol
+    names in the symbol registry are unqualified.
+    """
+    if not signature:
+        return None
+    # Find the end of the parameter list: first ')' at depth 0.
+    paren_depth = 0
+    params_end = -1
+    for i, c in enumerate(signature):
+        if c == "(":
+            paren_depth += 1
+        elif c == ")":
+            paren_depth -= 1
+            if paren_depth == 0:
+                params_end = i
+                break
+    if params_end < 0 or params_end >= len(signature) - 1:
+        return None
+    ret_part = signature[params_end + 1 :].strip()
+    if not ret_part:
+        return None
+    # Tuple return: "(Type1, error)" → pick the non-error type.
+    if ret_part.startswith("(") and ret_part.endswith(")"):
+        inner = ret_part[1:-1]
+        types = [t.strip().lstrip("*") for t in inner.split(",")]
+        non_error = [
+            t for t in types if t not in _GO_BUILTIN_TYPES and t != "any"
+        ]
+        if len(non_error) == 1:
+            return non_error[0].rsplit(".", 1)[-1]
+        return None  # ambiguous: 0 or 2+ non-builtin return types
+    # Single return type: strip pointer and package prefix.
+    bare = ret_part.lstrip("*")
+    if bare in _GO_BUILTIN_TYPES or bare == "any":
+        return None
+    return bare.rsplit(".", 1)[-1]
+
+
 def _extract_function_reference_edges(
     args_node: "tree_sitter.Node",
     source: bytes,
@@ -1723,6 +1826,7 @@ def _extract_edges_from_file(
     module_path: str | None = None,
     field_type_registry: dict[str, dict[str, str]] | None = None,
     interface_method_sets: dict[str, set[tuple[str, int, int]]] | None = None,
+    method_return_type_registry: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -1735,6 +1839,11 @@ def _extract_edges_from_file(
     field access calls like ``r.integration.Notify()`` are resolved through the
     registry: r's type → field "integration" → type "Integration" → symbol
     "Integration.Notify".
+
+    When ``method_return_type_registry`` is provided (aggregated from Pass 1),
+    chained method calls like ``x := e.Query(); x.Rows()`` are resolved: the
+    return type of ``Engine.Query`` is looked up and assigned to ``x`` in
+    var_types, enabling ``x.Rows()`` to resolve to ``Result.Rows``.
 
     When ``module_path`` is provided (from go.mod), import path hints are
     transformed by stripping the module prefix so that suffix matching in
@@ -1749,6 +1858,8 @@ def _extract_edges_from_file(
         field_type_registry = {}
     if interface_method_sets is None:
         interface_method_sets = {}
+    if method_return_type_registry is None:
+        method_return_type_registry = {}
 
     try:
         source = file_path.read_bytes()
@@ -1760,7 +1871,10 @@ def _extract_edges_from_file(
     file_id = make_file_id("go", str(file_path))
 
     # Extract function-scoped variable-to-type bindings for receiver disambiguation
-    scoped_var_types = _extract_go_var_types(tree.root_node, source)
+    scoped_var_types = _extract_go_var_types(
+        tree.root_node, source,
+        method_return_type_registry=method_return_type_registry,
+    )
 
     for node in iter_tree(tree.root_node):
         # Detect import statements
@@ -3371,6 +3485,15 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             for fname, ftype in fields.items():
                 field_type_registry[class_name].setdefault(fname, ftype)
 
+    # WI-kuroj: aggregate return-type registry across all files for
+    # chained method call resolution (e.g. x := e.Query() → x has
+    # type Result if Engine.Query returns Result).  First writer wins
+    # (same convention as field_type_registry).
+    method_return_type_registry: dict[str, str] = {}
+    for analysis in file_analyses.values():
+        for key, ret_type in analysis.method_return_types.items():
+            method_return_type_registry.setdefault(key, ret_type)
+
     # Aggregate interface_method_sets across all files for the ambiguity
     # guard's interface-dispatch preference (go.py ambiguity guard).
     all_interface_method_sets: dict[str, set[tuple[str, int, int]]] = {}
@@ -3393,6 +3516,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             analysis.import_aliases, module_path=go_module_path,
             field_type_registry=field_type_registry,
             interface_method_sets=all_interface_method_sets,
+            method_return_type_registry=method_return_type_registry,
         )
 
         # ADR-0015 Tier 1: annotate call edges with dataflow access modes

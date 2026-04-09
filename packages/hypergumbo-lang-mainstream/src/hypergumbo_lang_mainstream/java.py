@@ -1956,6 +1956,18 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
                                     global_class_fields[cls_name][field_name] = type_name
                                     break
 
+    # WI-kuroj: build method return-type registry from Pass 1 symbols.
+    # Java already chains return types inline during edge extraction
+    # (lines 1475-1488 in _extract_edges), so this registry is primarily
+    # for cross-language consistency and downstream linker consumption.
+    # The inline chaining handles the active use case.
+    method_return_type_registry: dict[str, str] = {}
+    for sym in all_symbols:
+        if sym.kind == "method" and sym.meta:
+            ret = sym.meta.get("return_type")
+            if ret and ret != "Object":
+                method_return_type_registry.setdefault(sym.name, ret)
+
     # Pass 2: Extract edges using global symbol registry
     # Build resolvers ONCE and share across all files — the registry is frozen
     # after Pass 1, so the suffix index only needs to be built once.

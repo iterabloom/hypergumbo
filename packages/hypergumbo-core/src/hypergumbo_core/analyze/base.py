@@ -163,6 +163,24 @@ class FileAnalysis:
     interface matching in Go.
     """
 
+    method_return_types: dict[str, str] = field(default_factory=dict)
+    """Maps qualified method name → return type name.
+
+    INV-dihos / WI-kuroj return-type registry: when a call site does
+    ``x := obj.Method()`` and ``obj``'s type is known, the return type
+    of ``{ObjType}.{MethodName}`` can be looked up here and assigned
+    to ``x`` in var_types, enabling chained receiver-type resolution.
+
+    Populated during Pass 1 (symbol extraction) by language analyzers
+    that parse method/function signatures.  Aggregated across files
+    by ``analyze()`` into ``_method_return_type_registry`` for Pass 2.
+
+    Key format is language-specific:
+    - Go: ``ReceiverType.MethodName`` (e.g. ``Engine.Query``)
+    - Java: ``ClassName.methodName`` (e.g. ``Engine.query``)
+    - Functions without receivers: ``FuncName`` (e.g. ``NewEngine``)
+    """
+
 
 @dataclass(frozen=True)
 class ArityFlags:
