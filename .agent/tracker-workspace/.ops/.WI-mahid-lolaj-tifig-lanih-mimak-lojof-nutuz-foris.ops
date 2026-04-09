@@ -19,3 +19,18 @@
     pr_ref:  # a459
     description: "Surfaced from WI-sukav investigation. alertmanager hg.json from deep-20260407-050552 contains a dispatches_to edge \\`URL.UnmarshalYAML → mailDev.UnmarshalYAML\\` (conf 0.30 — already test-downweighted per WI-supok). URL is in config/common/url.go and mailDev is in notify/email/email_test.go. They are in different packages with no inheritance, embedding, or interface relationship — only a coincidental shared method name (UnmarshalYAML, satisfying yaml.v2.Unmarshaler). The dispatches_to edge should have a yaml.v2.Unmarshaler interface as the source, not URL itself. This appears to be a cross-package short-name collision case distinct from the within-file embedding issue (the embedding case was the bulk of WI-sukav). Investigate type_hierarchy.py linker behavior when an interface has implementers in multiple packages — likely the issue is that URL is being incorrectly classified as a parent of mailDev via name lookup, possibly because of how _resolve_method_class_id handles ambiguity when multiple types share method names. This is the kind of issue PR #2721 addressed for cross-package class-ID collision; check whether that fix should extend to cover this dispatch direction too."  # a459
     fields: {}  # a459
+- op: update  # 4586
+  at: '2026-04-09T11:22:29Z'  # 4586
+  by: agent  # 4586
+  actor: jgstern_agent  # 4586
+  clock: 2  # 4586
+  nonce: '4586'  # 4586
+  set:  # 4586
+    status: done  # 4586
+- op: discuss  # 6aa0
+  at: '2026-04-09T11:22:29Z'  # 6aa0
+  by: agent  # 6aa0
+  actor: jgstern_agent  # 6aa0
+  clock: 3  # 6aa0
+  nonce: 6aa0  # 6aa0
+  message: "The URL.UnmarshalYAML → mailDev.UnmarshalYAML false positive no longer appears in the latest bakeoff (deep-20260409-054615). The WI-sukav concrete-extends gate (PR #2817) eliminated this class of issue. All 108 remaining dispatches_to edges in alertmanager are legitimate interface→concrete dispatches. Zero struct-involved or cross-package spurious edges remain."  # 6aa0
