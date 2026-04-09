@@ -55,14 +55,66 @@ if TYPE_CHECKING:
 PASS_ID = make_pass_id("type-hierarchy")
 
 
+# WI-sukav A1: per-language gate for concrete-extends → virtual dispatch.
+#
+# Some languages model concrete inheritance/composition with an `extends`
+# edge but do NOT use virtual dispatch through it.  For these languages,
+# the type-hierarchy linker must NOT create dispatches_to edges from a
+# parent's method to a child's same-named method via an `extends` edge,
+# because there is no code path through which the parent's static type
+# could land in the child's method.
+#
+# Languages WITHOUT virtual dispatch through `extends` (filtered):
+#   - go     — struct embedding is composition; calling a method on the
+#              embedded type always lands in the embedded type's method,
+#              never the embedder's same-named shadow method.
+#   - cpp    — only methods marked `virtual` dispatch polymorphically;
+#              non-virtual methods are statically resolved at the static
+#              type.  Pessimistic until per-method virtual tracking lands.
+#   - rust   — no inheritance; struct/trait are separate concepts.  Trait
+#              dispatch flows through `implements` edges, which are
+#              unaffected by this gate.
+#   - csharp — methods are non-virtual unless marked `virtual`/`override`.
+#              Pessimistic until per-method tracking lands.
+#
+# Languages WITH virtual dispatch through `extends` (default behavior):
+# Java, Kotlin, Python, Ruby, Scala, Swift, and any analyzer not in the
+# deny set.  Defaulting to allow keeps the linker conservative for
+# analyzers we have not yet investigated.
+#
+# `implements` edges are unaffected — interface satisfaction is virtual
+# dispatch in every language that has the concept.
+NO_VIRTUAL_EXTENDS_LANGUAGES: frozenset[str] = frozenset({
+    "go", "cpp", "rust", "csharp",
+})
+
+
+def _extends_admits_dispatch(language: str | None) -> bool:
+    """Return True if `extends` edges in this language imply virtual dispatch.
+
+    A None or empty language is treated as default-allow (the conservative
+    choice for unknown analyzers).
+    """
+    if not language:
+        return True
+    return language not in NO_VIRTUAL_EXTENDS_LANGUAGES
+
+
 def build_inheritance_maps(
     symbols: list[Symbol],
     edges: list[Edge],
 ) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     """Build inheritance maps from extends/implements edges.
 
+    Per WI-sukav A1, `extends` edges from no-virtual-dispatch languages
+    (Go, C++, Rust, C#) are filtered out of `parent_to_children` so the
+    type-hierarchy linker does not create spurious dispatches_to edges
+    from a parent's method to a child's shadow method.  `implements`
+    edges are never filtered — interface dispatch is virtual in every
+    language.
+
     Args:
-        symbols: All symbols (for reference)
+        symbols: All symbols (for src-symbol language lookup)
         edges: All edges (to find extends/implements)
 
     Returns:
@@ -70,12 +122,17 @@ def build_inheritance_maps(
         - parent_to_children: class_id -> [child_class_ids] (from extends)
         - interface_to_impls: interface_id -> [implementing_class_ids] (from implements)
     """
+    symbol_by_id = {s.id: s for s in symbols}
     parent_to_children: dict[str, list[str]] = defaultdict(list)
     interface_to_impls: dict[str, list[str]] = defaultdict(list)
 
     for edge in edges:
         if edge.edge_type == "extends":
             # edge: child --extends--> parent
+            child_sym = symbol_by_id.get(edge.src)
+            child_lang = child_sym.language if child_sym else None
+            if not _extends_admits_dispatch(child_lang):
+                continue
             parent_id = edge.dst
             child_id = edge.src
             parent_to_children[parent_id].append(child_id)
