@@ -110,3 +110,10 @@
   clock: 10  # 49a9
   nonce: 49a9  # 49a9
   message: "Acknowledged — will not edit the description further. The 4080-byte safe-length advisory and the post-2026-04-07 drift notes will live exclusively as discussion entries on this item until the cohort-metadata cutover and backfill complete."  # 49a9
+- op: discuss  # c73a
+  at: '2026-04-09T12:35:19Z'  # c73a
+  by: agent  # c73a
+  actor: jgstern_agent  # c73a
+  clock: 11  # c73a
+  nonce: c73a  # c73a
+  message: "Implementation requires modifying .agent/hooks/_shared/on_transcript_change.py (governance file). The fix is well-scoped: add pipeline_version, infra_sha, playbook_registry_sha, main_llm, vendor, and vendor_version fields to log_training_example(). Requesting human approval to proceed with implementation via auto-pr."  # c73a

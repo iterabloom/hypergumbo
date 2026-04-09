@@ -20,3 +20,25 @@
     pr_ref:  # 744e
     description: "Discovered while investigating WI-sukav. The Go structural interface matcher creates 'implements' edges only when a type explicitly defines all required methods, but doesn't account for methods promoted via embedding. Confirmed in alertmanager timeinterval.go: the type \\`stringableRange\\` interface requires setBegin, setEnd, memberFromString. InclusiveRange explicitly defines all three and gets implements: InclusiveRange → stringableRange (correct). WeekdayRange embeds InclusiveRange (so it inherits setBegin/setEnd via promotion) and explicitly defines its own memberFromString — meaning *WeekdayRange satisfies stringableRange. But hg.json shows NO implements edge from WeekdayRange to stringableRange. Same gap for DayOfMonthRange, MonthRange, YearRange. The structural matcher needs to traverse the type's embedding chain when checking interface satisfaction. Fix should also update find_implementing_methods in type_hierarchy.py to include embedder types as implementers when their explicit methods + their embedded types' methods cover the interface."  # 744e
     fields: {}  # 744e
+- op: update  # b8c1
+  at: '2026-04-09T12:16:26Z'  # b8c1
+  by: agent  # b8c1
+  actor: jgstern_agent  # b8c1
+  clock: 2  # b8c1
+  nonce: b8c1  # b8c1
+  set:  # b8c1
+    status: done  # b8c1
+- op: discuss  # 108a
+  at: '2026-04-09T12:16:26Z'  # 108a
+  by: agent  # 108a
+  actor: jgstern_agent  # 108a
+  clock: 3  # 108a
+  nonce: 108a  # 108a
+  message: "Fixed in PR #2842. Structural interface matcher now unions embedded types' methods into embedder's method set. Handles transitive embedding. alertmanager WeekdayRange/DayOfMonthRange/MonthRange/YearRange now correctly satisfy stringableRange."  # 108a
+- op: discuss  # 685c
+  at: '2026-04-09T12:49:45Z'  # 685c
+  by: agent  # 685c
+  actor: jgstern_agent  # 685c
+  clock: 4  # 685c
+  nonce: 685c  # 685c
+  message: "Bakeoff validation COMPLETE (deep-20260409-054615 iter-002 alertmanager). Before: 57 implements edges, only InclusiveRange → stringableRange. After: 79 implements edges (+22), all 5 types (InclusiveRange, WeekdayRange, DayOfMonthRange, MonthRange, YearRange) now correctly implement stringableRange via promoted methods from embedding."  # 685c
