@@ -885,6 +885,10 @@ def _extract_symbols_from_file(
     interface_method_sets: dict[str, set[tuple[str, int, int]]] = {}
     # struct_name -> set of (method_name, param_count, return_count)
     struct_method_sets: dict[str, set[tuple[str, int, int]]] = {}
+    # WI-tudib: track embedding relationships for promoted-method resolution.
+    # struct_name -> list of embedded type names (built during tree walk,
+    # used after walk to augment struct_method_sets with promoted methods).
+    embedding_map: dict[str, list[str]] = {}
 
     for node in iter_tree(tree.root_node):
         # Function declaration (including methods with receivers)
@@ -1078,6 +1082,9 @@ def _extract_symbols_from_file(
                             embedded_types = _extract_struct_embeddings(
                                 type_node, source,
                             )
+                            # WI-tudib: record for promoted-method resolution
+                            if embedded_types:
+                                embedding_map[type_name] = embedded_types
                             # Extract field name→type mappings for chained
                             # field access resolution (e.g., r.integration.Notify()
                             # → Integration.Notify when integration is type Integration).
@@ -1174,6 +1181,30 @@ def _extract_symbols_from_file(
             sym.meta.setdefault("base_classes", []).extend(
                 impl_assertions[sym.name]
             )
+
+    # WI-tudib: augment struct_method_sets with promoted methods from
+    # embedded types.  In Go, embedding promotes the embedded type's
+    # methods to the embedder, enabling implicit interface satisfaction
+    # (e.g. WeekdayRange embeds InclusiveRange and inherits setBegin/setEnd).
+    # Walk the embedding_map and union each embedded type's methods
+    # into the embedder's method set.  Handles transitive embedding.
+    if embedding_map and struct_method_sets:
+        # Iterative resolution handles transitive embedding (A embeds B,
+        # B embeds C → A gets C's methods too).  Cap iterations to prevent
+        # cycles (shouldn't happen in valid Go, but be defensive).
+        for _ in range(len(embedding_map) + 1):
+            changed = False
+            for struct_name, embedded_names in embedding_map.items():
+                if struct_name not in struct_method_sets:
+                    struct_method_sets[struct_name] = set()
+                current = struct_method_sets[struct_name]
+                for emb_name in embedded_names:
+                    emb_methods = struct_method_sets.get(emb_name, set())
+                    if not emb_methods.issubset(current):
+                        struct_method_sets[struct_name] = current | emb_methods
+                        changed = True
+            if not changed:
+                break
 
     # Per-file structural interface matching: Go implicit satisfaction.
     # A struct satisfies an interface if its method set is a superset of

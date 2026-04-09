@@ -5857,6 +5857,102 @@ func (w *WrongArity) Handle() string { return "" }
         )
 
 
+    def test_embedding_promotes_methods_for_interface_satisfaction(
+        self, tmp_path: Path
+    ) -> None:
+        """Struct embedding promotes the embedded type's methods.
+
+        WI-tudib: WeekdayRange embeds InclusiveRange and inherits its
+        setBegin/setEnd methods.  When combined with its own explicit
+        memberFromString, WeekdayRange satisfies stringableRange.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "types.go").write_text("""package main
+
+type stringableRange interface {
+    setBegin(int)
+    setEnd(int)
+    memberFromString(string) (int, error)
+}
+
+type InclusiveRange struct {
+    Begin int
+    End   int
+}
+
+func (ir *InclusiveRange) setBegin(v int)                    {}
+func (ir *InclusiveRange) setEnd(v int)                      {}
+func (ir *InclusiveRange) memberFromString(s string) (int, error) { return 0, nil }
+
+// WeekdayRange embeds InclusiveRange → inherits setBegin, setEnd.
+// It defines its own memberFromString, so it should satisfy stringableRange.
+type WeekdayRange struct {
+    InclusiveRange
+}
+
+func (wr *WeekdayRange) memberFromString(s string) (int, error) { return 0, nil }
+""")
+
+        result = analyze_go(tmp_path)
+
+        # InclusiveRange directly satisfies stringableRange
+        ir = next(
+            (s for s in result.symbols if s.name == "InclusiveRange"), None
+        )
+        assert ir is not None
+        assert "stringableRange" in (ir.meta or {}).get("base_classes", [])
+
+        # WeekdayRange satisfies stringableRange via promoted methods
+        wr = next(
+            (s for s in result.symbols if s.name == "WeekdayRange"), None
+        )
+        assert wr is not None, "WeekdayRange struct should be found"
+        wr_bases = (wr.meta or {}).get("base_classes", [])
+        assert "stringableRange" in wr_bases, (
+            f"WeekdayRange should satisfy stringableRange via promoted "
+            f"methods from InclusiveRange, got base_classes={wr_bases}"
+        )
+
+    def test_transitive_embedding_promotes_methods(
+        self, tmp_path: Path
+    ) -> None:
+        """A embeds B, B embeds C → A gets C's methods for satisfaction."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        (tmp_path / "types.go").write_text("""package main
+
+type Doer interface {
+    Do()
+}
+
+type Base struct{}
+func (b *Base) Do() {}
+
+type Mid struct {
+    Base
+}
+
+type Top struct {
+    Mid
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        top = next(
+            (s for s in result.symbols if s.name == "Top"), None
+        )
+        assert top is not None
+        top_bases = (top.meta or {}).get("base_classes", [])
+        assert "Doer" in top_bases, (
+            f"Top should satisfy Doer via transitive embedding "
+            f"(Top → Mid → Base), got base_classes={top_bases}"
+        )
+
+
 class TestGoInterfaceMethodSymbols:
     """Tests for extracting method symbols from Go interface definitions.
 
