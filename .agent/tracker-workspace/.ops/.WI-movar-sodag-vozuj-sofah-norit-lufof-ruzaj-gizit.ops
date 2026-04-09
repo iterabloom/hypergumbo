@@ -1,0 +1,21 @@
+- op: create  # 8120
+  at: '2026-04-09T08:38:00Z'  # 8120
+  by: agent  # 8120
+  actor: jgstern_agent  # 8120
+  clock: 1  # 8120
+  nonce: '8120'  # 8120
+  data:  # 8120
+    kind: work_item  # 8120
+    title: "bakeoff-deep tier-slice query: compose tier==2 AND NOT is_test_file"  # 8120
+    status: todo_soft  # 8120
+    priority: 3  # 8120
+    parent:  # 8120
+    tags:  # 8120
+    - analysis_quality  # 8120
+    - go  # 8120
+    before: []  # 8120
+    duplicate_of: []  # 8120
+    not_duplicate_of: []  # 8120
+    pr_ref:  # 8120
+    description: "Follow-up from WI-rigun (is_test_file boolean, PR #2813). Update bakeoff-deep tier-slice query to compose tier==2 AND NOT is_test_file for clean real third-party deps answers. Touches scripts/bakeoff-deep only."  # 8120
+    fields: {}  # 8120
