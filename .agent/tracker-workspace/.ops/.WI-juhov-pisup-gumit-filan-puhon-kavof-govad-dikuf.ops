@@ -42,3 +42,10 @@
   clock: 4  # b482
   nonce: b482  # b482
   message: "please add Formal tracker items for gaps (1)-(3) as you suggest above"  # b482
+- op: discuss  # 2454
+  at: '2026-04-10T21:39:32Z'  # 2454
+  by: agent  # 2454
+  actor: jgstern_agent  # 2454
+  clock: 5  # 2454
+  nonce: '2454'  # 2454
+  message: "Formal tracker items created per your request:\n\n- WI-pimig-zopuv-tomam-masan-zodub-tifuj-domon-palog (P2) — Go linker: yaml/json marshal callbacks. 82 functions / 1540 LOC on alertmanager, largest category.\n- WI-lojuf-marup-fumad-dibib-lomon-vupos-zikok-zokov (P3) — Go linker: hashicorp/memberlist cluster delegate callbacks. 42 functions / 432 LOC.\n- WI-gohad-pusop-liput-govoh-misug-havab-libut-bulub (P3) — Go linker: spf13/cobra CLI command dispatch (RunE, PreRunE, etc.). 20 functions / 211 LOC.\n\nAll three tagged linker_gap, cross_language_linkers, go_analyzer, framework_hook (with serialization_boundary and cli_framework where applicable). Parent set to WI-juhov for traceability. Regression test for each is the same: after the linker lands, re-run dead-code-maybe on alertmanager and confirm the corresponding candidate count drops. Each WI also notes generalizable patterns in other languages (Jackson, pydantic, click, clap, picocli) for follow-up items once the Go implementations validate the approach."  # 2454
