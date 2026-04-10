@@ -42,3 +42,18 @@
   clock: 4  # eaa2
   nonce: eaa2  # eaa2
   message: "WI-juhov (triage dead-code-maybe results) is NOT complete — still todo_soft. However, I ran dead-code-maybe on alertmanager this session and the signal IS useful and self-validating.\n\nEvidence:\n- Before PR #2890 (added dispatches_to/routes_to/wraps to BFS): 781 false positives\n- After PR #2890: 634 false positives — 147 correctly reclassified\n- All 16 Notifier.Notify implementations correctly reached\n\nRemaining 634 candidates group by linker gap kind:\n1. YAML unmarshaling callbacks (Config.UnmarshalYAML, Route.UnmarshalYAML) — yaml.Decoder dispatch\n2. Cobra CLI subcommands (silenceAddCmd.add, silenceQueryCmd.query) — cobra.Command.Execute dispatch\n3. Go goroutine callees (Silences.Maintenance, Log.Maintenance, Silences.GC) — go func(){} edges\n4. Interface pipeline stages (TimeActiveStage.Exec, TimeMuteStage.Exec) — 2nd-level dispatches_to\n5. memberlist callbacks (TLSTransport.FinalAdvertiseAddr, tlsConn.read) — framework callbacks\n\nThe signal stays useful because it's self-validating: each new linker reduces the count. The 200-repo prospecting run (WI-botol) would amplify this by surfacing which gap kinds appear most frequently across the corpus, prioritizing linker investment. For the linker-prospect bakeoff cohort question: I think a lightweight variant (run dead-code-maybe on 20-30 repos, group by gap kind, rank by frequency) would be more useful than a persistent bakeoff cohort, since the signal is one-shot per linker gap."  # eaa2
+- op: update  # 23ca
+  at: '2026-04-10T18:20:05Z'  # 23ca
+  by: agent  # 23ca
+  actor: jgstern_agent  # 23ca
+  clock: 5  # 23ca
+  nonce: 23ca  # 23ca
+  set:  # 23ca
+    status: needs_human_review  # 23ca
+- op: discuss  # 5145
+  at: '2026-04-10T18:20:05Z'  # 5145
+  by: agent  # 5145
+  actor: jgstern_agent  # 5145
+  clock: 6  # 5145
+  nonce: '5145'  # 5145
+  message: "Consideration complete. Recommended lightweight one-shot variant (20-30 repos) over persistent bakeoff cohort. Awaiting human decision on whether to proceed."  # 5145
