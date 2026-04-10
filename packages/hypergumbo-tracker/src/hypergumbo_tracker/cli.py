@@ -696,7 +696,40 @@ def _warn_unread_human_messages(item_id: str, ts: TrackerSet) -> None:
 
 
 def _cmd_discuss(args: argparse.Namespace, ts: TrackerSet) -> int:
-    """Handle 'discuss' subcommand."""
+    """Handle 'discuss' subcommand.
+
+    When called with no message (and no --clear/--summarize), prints
+    the discussion thread instead of appending an empty entry.
+    """
+    # View mode: no message and no mutator flags → print thread
+    if not args.message and not args.clear and args.summarize is None:
+        item = ts.get(args.item_id)
+        discussion = item.discussion or []
+        if args.json:
+            from dataclasses import asdict
+            print(json.dumps(
+                [asdict(d) if hasattr(d, "__dataclass_fields__") else d for d in discussion],
+                indent=2,
+            ))
+        elif not discussion:
+            print(f"{item.id} — {item.title}")
+            print("Discussion: (no entries)")
+        else:
+            print(f"{item.id} — {item.title}")
+            print(f"Discussion ({len(discussion)} entries):")
+            for i, entry in enumerate(discussion, 1):
+                if hasattr(entry, "at"):
+                    print(f"\n  [{i}] {entry.at}  {entry.by}  {entry.actor}")
+                    for line in entry.message.splitlines():
+                        print(f"      {line}")
+                elif isinstance(entry, dict):  # pragma: no cover
+                    print(f"\n  [{i}] {entry.get('at', '')}  {entry.get('by', '')}")
+                    for line in entry.get("message", "").splitlines():
+                        print(f"      {line}")
+                else:
+                    print(f"\n  [{i}] {entry}")  # pragma: no cover
+        return EXIT_SUCCESS
+
     # Warn about unread human messages before adding agent's message
     if not args.clear and args.summarize is None:
         _warn_unread_human_messages(args.item_id, ts)

@@ -1045,6 +1045,68 @@ class TestWriteCommands:
         assert "First note" in out
         assert "Second note" in out
 
+    def test_discuss_view_shows_thread(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """discuss <id> with no message prints the discussion thread (WI-kidip)."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item_with_discussion(ops_dir, "WI-test", [
+            {"at": "2026-01-01T01:00:00Z", "by": "agent",
+             "actor": "test_agent", "message": "First note"},
+            {"at": "2026-01-02T01:00:00Z", "by": "human",
+             "actor": "jgstern", "message": "Human reply"},
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "discuss", "WI-test",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "First note" in out
+        assert "Human reply" in out
+        assert "2 entries" in out or "Discussion" in out
+
+    def test_discuss_view_empty_thread(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """discuss <id> on item with no discussion prints '(no entries)'."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "discuss", "WI-test",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "no entries" in out.lower()
+
+    def test_discuss_view_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """discuss <id> --json with no message returns discussion as JSON list."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item_with_discussion(ops_dir, "WI-test", [
+            {"at": "2026-01-01T01:00:00Z", "by": "agent",
+             "actor": "test_agent", "message": "A note"},
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "discuss", "WI-test",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert len(data) == 1
+        assert data[0]["message"] == "A note"
+
     def test_update_note_warns_unread_human_message(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None,
