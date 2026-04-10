@@ -958,6 +958,93 @@ class TestWriteCommands:
             ])
         assert exc.value.code == EXIT_USER_ERROR
 
+    def test_update_add_field_preserves_existing(self, tmp_path: Path,
+                                                 capsys: pytest.CaptureFixture,
+                                                 mock_agent_uid: None) -> None:
+        """--add-field merges into existing fields without erasing (WI-lorip)."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        # Set initial fields
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--field", "statement=original",
+            ])
+        capsys.readouterr()  # clear capture
+        # Add a new field — should preserve 'statement'
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--add-field", "root_cause=new_cause",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        capsys.readouterr()  # clear capture
+        # Verify both fields exist
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "show", "WI-test",
+            ])
+        data = json.loads(capsys.readouterr().out)
+        assert data["fields"]["statement"] == "original"
+        assert data["fields"]["root_cause"] == "new_cause"
+
+    def test_update_remove_field(self, tmp_path: Path,
+                                 capsys: pytest.CaptureFixture,
+                                 mock_agent_uid: None) -> None:
+        """--remove-field deletes a key from fields (WI-lorip)."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--field", "a=1", "--field", "b=2",
+            ])
+        capsys.readouterr()  # clear capture
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--remove-field", "a",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        capsys.readouterr()  # clear capture
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "show", "WI-test",
+            ])
+        data = json.loads(capsys.readouterr().out)
+        assert "a" not in data["fields"]
+        assert data["fields"]["b"] == "2"
+
+    def test_update_field_and_add_field_conflict(self, tmp_path: Path,
+                                                  capsys: pytest.CaptureFixture,
+                                                  mock_agent_uid: None) -> None:
+        """--field and --add-field together is an error (WI-lorip)."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--field", "a=1", "--add-field", "b=2",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+    def test_update_add_field_bad_format(self, tmp_path: Path,
+                                         capsys: pytest.CaptureFixture,
+                                         mock_agent_uid: None) -> None:
+        """--add-field without = is an error (WI-lorip)."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--add-field", "bad",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
     def test_update_with_all_options(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                                      mock_agent_uid: None) -> None:
         tracker_root = _setup_tracker(tmp_path)
