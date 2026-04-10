@@ -19,3 +19,18 @@
     pr_ref:  # 3905
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md proposed remedy §3: today _cmd_check_messages (cli.py:999-1049, in packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py) prints only the unread message text + item title — not the description, not the prior discussion, not the pr_ref. So to answer in context the agent must do a second tracker show <ID> per item, and that second call still does not include the codebase / ADR / PR-history context the question may be about.\n\n**Change:** modify _cmd_check_messages to also print, for each item:\n- The item description (truncate to ~1500 chars to keep output bounded)\n- The prior 2-3 discussion entries (preserve by:human / by:agent attribution)\n- Any pr_ref field\n\n**Why:** cuts a tool round-trip and ensures the question never gets answered without its context. Today even a thoughtful agent has to guess what the question is about until it does the second tracker show.\n\n**Format consideration:** the output of check-messages may be long when several items have unread messages. Consider a --compact flag that keeps the current behavior, with the new richer output as the default, OR vice versa. Default to richer — the cost of an extra few KB of output is far less than the cost of a context-free reply.\n\nNOT a governance file."  # 3905
     fields: {}  # 3905
+- op: update  # 37c8
+  at: '2026-04-10T07:24:22Z'  # 37c8
+  by: agent  # 37c8
+  actor: jgstern_agent  # 37c8
+  clock: 2  # 37c8
+  nonce: 37c8  # 37c8
+  set:  # 37c8
+    status: done  # 37c8
+- op: discuss  # cc80
+  at: '2026-04-10T07:24:22Z'  # cc80
+  by: agent  # cc80
+  actor: jgstern_agent  # cc80
+  clock: 3  # cc80
+  nonce: cc80  # cc80
+  message: "Implemented in commit 3883ba2d2. check-messages now includes description (truncated), prior 3 discussion entries, and pr_ref. JSON adds description, pr_ref, prior_discussion fields. 2 new tests."  # cc80

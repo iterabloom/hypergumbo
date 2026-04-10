@@ -32,3 +32,18 @@
   clock: 3  # 027e
   nonce: 027e  # 027e
   message: "Additional investigation from 2026-04-10 session: Confirmed the pattern in prometheus web/api/v1/api.go. Lines 384-415 declare 'wrap' and 'wrapAgent' as closure variables inside Register(). Lines 416-450 use them as r.Get('/query', wrapAgent(api.query)). The route resolver already resolves api.query → API.query correctly. The missing piece is specifically: when a route handler argument is a call_expression (e.g., wrapAgent(...)), detect that the callee is a closure variable, and emit a wraps/middleware_of edge from the closure to the inner handler argument. Implementation approach: (1) in _extract_go_var_types, detect func-typed variables from short_var_declarations where RHS is a func_literal, (2) in the route handler extraction (around go.py:3174), when handler arg is a call_expression whose callee matches a func-typed local var, emit a wraps edge. This doesn't require modeling the closure body — just the wrapping relationship."  # 027e
+- op: update  # b831
+  at: '2026-04-10T10:22:31Z'  # b831
+  by: agent  # b831
+  actor: jgstern_agent  # b831
+  clock: 4  # b831
+  nonce: b831  # b831
+  set:  # b831
+    status: in_progress  # b831
+- op: discuss  # ff36
+  at: '2026-04-10T10:22:31Z'  # ff36
+  by: agent  # ff36
+  actor: jgstern_agent  # ff36
+  clock: 5  # ff36
+  nonce: ff36  # ff36
+  message: "Implemented in commit 403e543ab on branch jgstern-agent/feat/go-closure-wrapper-edges. auto-pr in flight. Adds _build_closure_var_map, _extract_wrapper_info, _maybe_create_wrapper_symbol to Go analyzer. Creates wrapper Symbols with middleware concept, emits wraps edges, stores wrapper_name in route meta. 7 new tests, 100% coverage."  # ff36
