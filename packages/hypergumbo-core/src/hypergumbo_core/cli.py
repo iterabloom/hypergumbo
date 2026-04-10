@@ -3523,6 +3523,101 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     return 0
 
 
+def _compute_cross_language_hits(
+    dead_candidates: list[dict],
+    repo_root: Path,
+) -> dict[str, int]:
+    """Count cross-language string collisions for dead-code candidates.
+
+    For each dead candidate, checks whether its symbol name appears as a
+    substring in files whose language differs from the candidate's language.
+    A cross-language hit is a strong signal of a missing linker edge (HTTP
+    path, RPC method, MQ topic, FFI name).
+
+    Uses a simple inverted index: collect unique candidate names, then scan
+    non-binary files in the repo for occurrences.  Only counts hits in
+    files whose extension maps to a different language family.
+
+    Returns mapping of candidate ID → cross-language hit count.
+    """
+    # Map file extensions to language families (coarse grouping)
+    _EXT_TO_LANG: dict[str, str] = {
+        ".py": "python", ".pyi": "python",
+        ".go": "go",
+        ".java": "java", ".kt": "kotlin", ".kts": "kotlin",
+        ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript",
+        ".ts": "typescript", ".tsx": "typescript",
+        ".rs": "rust",
+        ".rb": "ruby",
+        ".c": "c", ".h": "c",
+        ".cpp": "cpp", ".hpp": "cpp", ".cc": "cpp", ".cxx": "cpp",
+        ".cs": "csharp",
+        ".swift": "swift",
+        ".php": "php",
+        ".scala": "scala",
+        ".ex": "elixir", ".exs": "elixir",
+        ".erl": "erlang",
+        ".lua": "lua",
+        ".yaml": "config", ".yml": "config", ".json": "config",
+        ".toml": "config", ".xml": "config", ".html": "config",
+    }
+
+    # Collect unique names from dead candidates, grouped by language
+    name_to_candidates: dict[str, list[dict]] = {}
+    for candidate in dead_candidates:
+        name = candidate.get("name", "")
+        # Use the short name (after last dot for methods)
+        short_name = name.rsplit(".", 1)[-1] if "." in name else name
+        # Skip very short names (too many false positives)
+        if len(short_name) < 4:
+            continue
+        name_to_candidates.setdefault(short_name, []).append(candidate)
+
+    if not name_to_candidates:
+        return {}
+
+    # Build set of names to search for
+    search_names = set(name_to_candidates.keys())
+
+    # Scan repo files for string occurrences
+    hits: dict[str, int] = {}
+    try:
+        for dirpath, _dirnames, filenames in os.walk(repo_root):
+            rel_dir = os.path.relpath(dirpath, repo_root)
+            # Skip hidden dirs, vendor, node_modules
+            # (rel_dir "." is the root itself — not hidden)
+            if rel_dir != "." and any(
+                part.startswith(".") or part in ("vendor", "node_modules",
+                    "third_party", "__pycache__")
+                for part in rel_dir.split(os.sep)
+            ):
+                continue
+            for fname in filenames:
+                ext = os.path.splitext(fname)[1].lower()
+                file_lang = _EXT_TO_LANG.get(ext)
+                if not file_lang:
+                    continue
+                fpath = os.path.join(dirpath, fname)
+                try:
+                    content = open(fpath, encoding="utf-8", errors="ignore").read()
+                except OSError:  # pragma: no cover
+                    continue
+                # Check each candidate name against this file
+                for name in search_names:
+                    if name in content:
+                        for candidate in name_to_candidates[name]:
+                            cand_lang = candidate.get("language", "")
+                            # Only count if different language
+                            if cand_lang and file_lang != cand_lang:
+                                hits[candidate["id"]] = (
+                                    hits.get(candidate["id"], 0) + 1
+                                )
+    except OSError:  # pragma: no cover — repo_root unreadable
+        pass
+
+    return hits
+
+
 def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     """Find potentially dead code: production callables unreachable from entrypoints.
 
@@ -3647,8 +3742,23 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         if sym_id not in reachable:
             dead_candidates.append(node)
 
-    # Sort by LOC descending (larger unreachable functions first)
-    dead_candidates.sort(key=lambda n: -(n.get("lines_of_code") or 1))
+    # Cross-language string collision: check if dead candidate names
+    # appear as substrings in files of a different language.  A hit is
+    # a near-certain signal of a missing cross-language reference
+    # (HTTP path, RPC method, MQ topic, FFI name).
+    cross_lang_hits: dict[str, int] = {}
+    if dead_candidates:
+        cross_lang_hits = _compute_cross_language_hits(
+            dead_candidates, repo_root,
+        )
+
+    # Sort by cross-language hits (desc), then LOC (desc)
+    dead_candidates.sort(
+        key=lambda n: (
+            -cross_lang_hits.get(n["id"], 0),
+            -(n.get("lines_of_code") or 1),
+        ),
+    )
 
     # Summary stats
     total_production = len(production_symbols)
@@ -3675,6 +3785,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                     "lines_of_code": n.get("lines_of_code"),
                     "span": n.get("span"),
                     "id": n["id"],
+                    "cross_language_hits": cross_lang_hits.get(n["id"], 0),
                 }
                 for n in dead_candidates
             ],
