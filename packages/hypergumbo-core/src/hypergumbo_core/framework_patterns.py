@@ -985,6 +985,8 @@ def _get_concept_path_from_symbol(symbol: "Symbol", concept_name: str) -> str | 
 
     concepts = symbol.meta.get("concepts", [])
     for concept in concepts:
+        if not isinstance(concept, dict):
+            continue
         if concept.get("concept") == concept_name:
             return concept.get("path")
     return None  # pragma: no cover - concept not found on parent
@@ -1034,6 +1036,8 @@ def _apply_subresource_locator_paths(
         path_value = None
 
         for c in concepts:
+            if not isinstance(c, dict):
+                continue
             if c.get("concept") == "resource_path":
                 has_resource_path = True
                 path_value = c.get("path", "")
@@ -1087,8 +1091,10 @@ def _apply_subresource_locator_paths(
                     continue
                 concepts = method.meta.get("concepts", [])
                 for c in concepts:
+                    if not isinstance(c, dict):  # pragma: no cover - defensive for string concepts
+                        continue
                     if c.get("concept") == "resource_path" and not any(
-                        cc.get("concept") == "route" for cc in concepts
+                        isinstance(cc, dict) and cc.get("concept") == "route" for cc in concepts
                     ):
                         ret = method.meta.get("return_type")
                         if ret and ret not in propagated_prefixes:
@@ -1122,11 +1128,15 @@ def _apply_subresource_locator_paths(
             # Get the method's own @Path (resource_path concept), if any
             method_own_path = None
             for c in concepts:
+                if not isinstance(c, dict):  # pragma: no cover - defensive for string concepts
+                    continue
                 if c.get("concept") == "resource_path":
                     method_own_path = c.get("path")
                     break
 
             for c in concepts:
+                if not isinstance(c, dict):  # pragma: no cover - defensive for string concepts
+                    continue
                 if c.get("concept") == "route":
                     current_path = c.get("path")
                     if current_path:
@@ -1360,6 +1370,7 @@ def enrich_symbols(
                 existing = symbol.meta.get("concepts", [])
                 existing_keys = {
                     tuple(sorted(c.items())) for c in existing
+                    if isinstance(c, dict)
                 }
                 for m in matches:
                     if tuple(sorted(m.items())) not in existing_keys:
