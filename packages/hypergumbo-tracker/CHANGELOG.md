@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Added
+
+- **`tracker discuss <id>` view mode** (WI-kidip): calling `discuss` with no message argument now prints the discussion thread in chronological order instead of appending an empty entry. Shows entry number, timestamp, actor, and message text. `--json` returns the thread as a JSON list of records. Empty threads show "(no entries)". Existing `discuss <id> <message>` (append) behavior is unchanged.
+
 ### Fixed
 
 - **Fold-induced nonce injection in YAML serializer** (WI-pusif-bukor): `_serialize_op` now sets `ry.width = sys.maxsize` so ruamel.yaml never folds long double-quoted scalars across physical lines. The previous `width=4096` let any field over ~4080 UTF-8 bytes trigger fold-then-nonce-injection: the post-processor appended `  # <nonce>` to every physical line including continuation lines, and CSafeLoader treats `#` as literal inside double-quoted scalars on read-back, embedding the nonce comment inside the user's value. Nonce-on-every-line invariant preserved — each scalar now occupies one physical line.
