@@ -615,6 +615,67 @@ class TestCompressedReadIntegration:
             f"Expected library_export Encrypt to rank first with boost, got: {seeds}"
         )
 
+    def test_pick_reverse_slice_seeds_dispatches_to_not_counted_as_out(
+        self, tmp_path: Path,
+    ) -> None:
+        """dispatches_to edges should NOT inflate out-degree for seed selection.
+
+        Interface methods accumulate dispatches_to edges (one per concrete
+        implementation) that look like high out-degree but aren't actual
+        function calls.  prometheus genericSeriesSet.Err (1 line, in=222)
+        had out=20 from dispatches_to edges, passing _MIN_OUT_DEGREE=3 and
+        getting selected as a seed over real domain functions.
+        """
+        data = {
+            "nodes": [
+                # Interface method: high in-degree, zero calls out-degree,
+                # but 5 dispatches_to edges (to implementations)
+                {"id": "iface_err", "name": "SeriesSet.Err", "kind": "method",
+                 "language": "go", "path": "storage/generic.go",
+                 "span": {"start_line": 34, "end_line": 34}},
+                # Real domain function: moderate in-degree, real calls out-degree
+                {"id": "domain_init", "name": "Head.Init", "kind": "function",
+                 "language": "go", "path": "tsdb/head.go",
+                 "span": {"start_line": 100, "end_line": 200}},
+                # Callers for in-degree
+                *[{"id": f"caller{i}", "name": f"caller{i}", "kind": "function",
+                   "language": "go", "path": f"pkg{i}/mod.go"}
+                  for i in range(20)],
+                # Dispatch targets (implementations of SeriesSet.Err)
+                *[{"id": f"impl{i}", "name": f"impl{i}.Err", "kind": "method",
+                   "language": "go", "path": f"impl{i}/impl.go"}
+                  for i in range(5)],
+                # Call targets for domain_init
+                *[{"id": f"target{i}", "name": f"target{i}", "kind": "function",
+                   "language": "go", "path": f"tsdb/target{i}.go"}
+                  for i in range(10)],
+            ],
+            "edges": [
+                # 20 callers → iface_err (high in-degree)
+                *[{"type": "calls", "src": f"caller{i}", "dst": "iface_err"}
+                  for i in range(20)],
+                # 5 dispatches_to from iface_err → implementations (NOT calls)
+                *[{"type": "dispatches_to", "src": "iface_err", "dst": f"impl{i}"}
+                  for i in range(5)],
+                # 10 callers → domain_init (moderate in-degree)
+                *[{"type": "calls", "src": f"caller{i}", "dst": "domain_init"}
+                  for i in range(10)],
+                # domain_init calls 10 targets (real calls out-degree)
+                *[{"type": "calls", "src": "domain_init", "dst": f"target{i}"}
+                  for i in range(10)],
+            ],
+        }
+        repo_out = _make_repo_output(tmp_path, "dispatch-repo", hg_data=data)
+        hg_path = str(repo_out / "hg.json")
+
+        seeds = bf.pick_reverse_slice_seeds(hg_path, count=2)
+        assert len(seeds) >= 1
+        # domain_init (real calls out=10) should rank above iface_err
+        # (dispatches_to out=5, calls out=0 → filtered by _MIN_OUT_DEGREE)
+        assert seeds[0] == "domain_init", (
+            f"Expected domain_init first (calls out=10), not interface stub. Got: {seeds}"
+        )
+
     def test_has_hg_json_detects_compressed(self, tmp_path: Path) -> None:
         """_has_hg_json should return True for repos with only hg.json.gz."""
         repo_out = _make_repo_output(tmp_path, "repo-a", already_compressed=True)
