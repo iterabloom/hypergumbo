@@ -1,0 +1,22 @@
+- op: create  # b12a
+  at: '2026-04-10T20:39:34Z'  # b12a
+  by: agent  # b12a
+  actor: jgstern_agent  # b12a
+  clock: 1  # b12a
+  nonce: b12a  # b12a
+  data:  # b12a
+    kind: work_item  # b12a
+    title: "Lightweight one-shot dead-code-maybe prospecting run (20-30 repos)"  # b12a
+    status: todo_soft  # b12a
+    priority: 2  # b12a
+    parent:  # b12a
+    tags:  # b12a
+    - dead_code_prospector  # b12a
+    - cross_language_linkers  # b12a
+    before:  # b12a
+    - WI-botol-duhub-farad-vukih-fiput-tifit-luzur-lazaf  # b12a
+    duplicate_of: []  # b12a
+    not_duplicate_of: []  # b12a
+    pr_ref:  # b12a
+    description: "Per WI-duroz human approval: implement a lightweight variant of WI-botol (the full 200-repo prospecting run). Select 20-30 polyglot repos from the pool, run dead-code-maybe --exclude-annotated on each, group candidates by gap kind (yaml_unmarshal, cobra_cli, memberlist, pipeline_stage, etc.), and rank by frequency across the corpus.\n\nDeliverable: a single JSON/CSV artifact under ~/hypergumbo_lab_notebook/prospector_runs/<timestamp>/ with top-ranked candidates and per-category counts. Unlike WI-botol, this is explicitly NOT wired into a recurring bakeoff cycle — it is a one-shot tool for prioritizing linker investment.\n\nHigher priority than WI-botol because the lightweight variant is faster to implement and provides actionable signal sooner. Blocks WI-botol: the full 200-repo run should only proceed if the lightweight variant demonstrates clear value.\n\nDependencies: base dead-code-maybe (done), --exclude-annotated filter (done, PR #2907), cross-language string collision (done, PR #2904)."  # b12a
+    fields: {}  # b12a
