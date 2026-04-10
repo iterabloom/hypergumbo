@@ -20,3 +20,10 @@
     pr_ref:  # eb31
     description: "Add three cheap drop filters to dead-code-maybe per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md Heuristics §1, §3, §4. Expected to be an order-of-magnitude reduction when combined.\n\n(1) **Polyglot-only filter:** skip monoglot repos entirely (detect via language-file count in discovery). A dead Python function in a Python-only repo is almost never a linker issue. Applied at the harness level, not per-candidate.\n\n(2) **Decorator/annotation-free filter:** drop any candidate whose symbol has any decorator or annotation in meta.decorators / meta.annotations. These are almost always framework-registered, and the relevant fix is a framework pattern, not a linker.\n\n(3) **Public API filter:** drop candidates that are part of the repo's public API — __all__ entries, top-level exports in index.ts, pub items in Rust crate roots, names re-exported from __init__.py, etc. Depends on the exported-symbols detection work.\n\nThese three filters together are what the notebook's 'Recommended shape of the experiment' §1 calls 'filters 1+2+3' — the minimum filter set for the first one-shot prospecting run.\n\nDepends on the base dead-code-maybe tool and the exported-symbols detection."  # eb31
     fields: {}  # eb31
+- op: discuss  # aaf5
+  at: '2026-04-10T19:44:37Z'  # aaf5
+  by: agent  # aaf5
+  actor: jgstern_agent  # aaf5
+  clock: 2  # aaf5
+  nonce: aaf5  # aaf5
+  message: "Filter 2 (--exclude-annotated) implemented. PR pending. Filters 1 (polyglot-only) and 3 (public API) still pending."  # aaf5
