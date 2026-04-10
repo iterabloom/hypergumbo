@@ -1,0 +1,23 @@
+- op: create  # a253
+  at: '2026-04-10T21:31:49Z'  # a253
+  by: agent  # a253
+  actor: jgstern_agent  # a253
+  clock: 1  # a253
+  nonce: a253  # a253
+  data:  # a253
+    kind: work_item  # a253
+    title: "Go linker: yaml/json marshal callbacks (UnmarshalYAML, MarshalJSON, etc.)"  # a253
+    status: todo_soft  # a253
+    priority: 2  # a253
+    parent: WI-juhov-pisup-gumit-filan-puhon-kavof-govad-dikuf  # a253
+    tags:  # a253
+    - linker_gap  # a253
+    - cross_language_linkers  # a253
+    - go_analyzer  # a253
+    - serialization_boundary  # a253
+    before: []  # a253
+    duplicate_of: []  # a253
+    not_duplicate_of: []  # a253
+    pr_ref:  # a253
+    description: "Linker gap identified during WI-juhov triage of alertmanager dead-code-maybe results. This is the highest-value Go linker investment from the triage: 82 functions covering ~1540 LOC are invisible to the call graph because they are reached via YAML/JSON marshal/unmarshal callbacks rather than direct calls.\n\nCONTEXT: In Go, types implementing `yaml.Unmarshaler`, `yaml.Marshaler`, `json.Unmarshaler`, `json.Marshaler`, `encoding.TextUnmarshaler`, `encoding.TextMarshaler`, `encoding.BinaryUnmarshaler`, `encoding.BinaryMarshaler` expose `UnmarshalYAML(unmarshal func(interface{}) error) error` / `MarshalYAML() (interface{}, error)` / `UnmarshalJSON([]byte) error` / `MarshalJSON() ([]byte, error)` / `UnmarshalText([]byte) error` / `MarshalText() ([]byte, error)` / `UnmarshalBinary([]byte) error` / `MarshalBinary() ([]byte, error)` methods that are called reflectively by the encoding library. The hypergumbo Go analyzer produces the method definitions but does not link any caller to them, so they show up as dead code even though they are invoked on every serialize/deserialize boundary.\n\nALERTMANAGER EVIDENCE: 82 functions, 1540 LOC categorized under this pattern in the WI-juhov triage. This is by far the largest category in the dead-code-maybe output (12% of non-noise candidates), suggesting it is also the largest source of false dead-code in YAML-config-driven Go projects (alertmanager, prometheus, loki, tempo, etc.).\n\nIMPLEMENTATION SKETCH:\n- New linker: `go_marshal_callback` (or extend an existing Go framework linker).\n- Phase 1: detect methods matching the exact signatures of the 8 interfaces above on any Go type.\n- Phase 2: find usages of the target types in `yaml.Unmarshal(b, &v)`, `json.Marshal(v)`, `yaml.NewDecoder(r).Decode(&v)`, struct fields tagged `yaml:\"...\"` or `json:\"...\"` (transitively).\n- Phase 3: emit `dispatches_to` edges from the marshal call sites to the method definitions. Alternatively, emit synthetic `framework_hook` or `serialization_entry` edges from the type's primary caller.\n\nREGRESSION TEST: After this linker lands, re-run `dead-code-maybe` on alertmanager — the 82 marshal-callback functions should disappear from candidates. The candidate-count delta is the linker's built-in effectiveness metric.\n\nTAGS: linker_gap, cross_language_linkers (not cross-language in this case, but the tag is the umbrella for linker work), go_analyzer, serialization_boundary.\n\nDEPENDENCIES: None. Can be implemented in isolation on top of existing Go structural analysis.\n\nPARENT: WI-juhov-pisup-gumit-filan-puhon-kavof-govad-dikuf (triage that identified this gap).\n\nSCOPE: Go only for this item. Equivalent patterns exist in Java (Jackson @JsonCreator, etc.), Python (pydantic validators, __init_subclass__), C# (IXmlSerializable, Json.NET JsonConverter) — file separate items if the Go implementation validates the approach."  # a253
+    fields: {}  # a253
