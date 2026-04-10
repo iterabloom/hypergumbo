@@ -18,3 +18,18 @@
     pr_ref:  # 8841
     description: "**Symptom:** `tracker update --field key=value` REPLACES the entire `fields` dict. If an item has `fields.statement` and `fields.root_cause` and you call `tracker update INV-foo --field root_cause=newval`, you SILENTLY ERASE `statement`. This is a data-loss footgun observed during the 2026-04-08 INV-gajap session.\n\n**Root cause:** `packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py:580-588` builds a fresh `fields_dict` from the `--field` args alone and assigns it as `set_fields['fields'] = fields_dict`, overwriting the entire dict on the item.\n\n**Workaround in use:** callers must always re-pass every existing field, even ones they aren't changing. This requires a prior `tracker show --json` to read the current state, plus careful escaping for long field values.\n\n**Proposed fix:** add two new flags parallel to the existing `--add-tag`/`--remove-tag` pattern:\n- `--add-field key=value` (repeatable): merges into the existing fields dict; creates the key if absent, replaces the value if present, leaves all other keys alone.\n- `--remove-field key` (repeatable): deletes the key from the existing fields dict; no-op if absent.\n\nKeep `--field` for back-compat as the full-replace operation, but document the footgun prominently in `update --help`.\n\n**Tests:**\n1. Item with three fields → `--add-field one=new` → assert other two preserved.\n2. Item with three fields → `--remove-field two` → assert other two preserved.\n3. Mixed `--add-field`/`--remove-field` in one call → all applied atomically.\n4. `--field key=value` (legacy) still full-replaces (regression guard).\n\n**Discovery context:** observed while updating INV-gajap to fix a stale file path in `fields.root_cause`. Required passing the unchanged `statement` field through every call to avoid erasing it. See WI-pusif discussion for the surrounding session."  # 8841
     fields: {}  # 8841
+- op: update  # c657
+  at: '2026-04-10T07:01:19Z'  # c657
+  by: agent  # c657
+  actor: jgstern_agent  # c657
+  clock: 2  # c657
+  nonce: c657  # c657
+  set:  # c657
+    status: done  # c657
+- op: discuss  # 55a0
+  at: '2026-04-10T07:01:19Z'  # 55a0
+  by: agent  # 55a0
+  actor: jgstern_agent  # 55a0
+  clock: 3  # 55a0
+  nonce: 55a0  # 55a0
+  message: "Implemented in commit dc2cb09f6. --add-field merges per-key (compile_ops per-key LWW), --remove-field sets key to None (compile_ops deletes None-valued keys). 4 new tests. Fixes data-loss footgun."  # 55a0
