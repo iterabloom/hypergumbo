@@ -3738,8 +3738,17 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
 
     # Dead candidates = production symbols NOT reachable
     dead_candidates = []
+    exclude_annotated = getattr(args, "exclude_annotated", False)
     for sym_id, node in production_symbols.items():
         if sym_id not in reachable:
+            # --exclude-annotated: skip candidates with decorators,
+            # annotations, or framework concepts (these are likely
+            # framework-registered callbacks, not linker gaps).
+            if exclude_annotated:
+                meta = node.get("meta") or {}
+                if (meta.get("decorators") or meta.get("annotations")
+                        or meta.get("concepts")):
+                    continue
             dead_candidates.append(node)
 
     # Cross-language string collision: check if dead candidate names
@@ -4743,6 +4752,11 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_dead_code.add_argument(
         "--min-confidence", type=float, default=0.0,
         help="Minimum entrypoint confidence threshold (default: 0.0)",
+    )
+    p_dead_code.add_argument(
+        "--exclude-annotated", action="store_true", default=False,
+        help="Exclude candidates with decorators, annotations, or framework concepts "
+             "(these are likely framework-registered, not linker gaps)",
     )
     p_dead_code.set_defaults(func=cmd_dead_code_maybe)
 

@@ -564,6 +564,49 @@ class TestDeadCodeMaybe:
         # don't represent cross-language references.
         assert dead[0]["cross_language_hits"] <= 1
 
+    def test_exclude_annotated_drops_framework_candidates(self, tmp_path: Path) -> None:
+        """--exclude-annotated drops candidates with decorators/annotations/concepts."""
+        import argparse
+
+        nodes = [
+            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "route",
+             "language": "python", "path": "app.py",
+             "span": {"start_line": 1, "end_line": 5},
+             "meta": {"route_path": "/api", "http_method": "GET"}},
+            # Has concepts → should be EXCLUDED by --exclude-annotated
+            {"id": "go:main.go:10-20:libFunc:function", "name": "libFunc",
+             "kind": "function", "language": "go", "path": "main.go",
+             "span": {"start_line": 10, "end_line": 20},
+             "meta": {"decorators": ["@deprecated"]}},
+            # No concepts/decorators/annotations → should be KEPT
+            {"id": "go:main.go:30-40:plainFunc:function", "name": "plainFunc",
+             "kind": "function", "language": "go", "path": "main.go",
+             "span": {"start_line": 30, "end_line": 40}},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, [])
+
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+            exclude_annotated=True,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        # plainFunc has no annotations → kept
+        assert "plainFunc" in dead_names
+        # libFunc has concepts → excluded
+        assert "libFunc" not in dead_names
+
     def test_seeds_all_includes_tests(self, tmp_path: Path) -> None:
         """--seeds all uses both entrypoints AND test functions as seeds."""
         import argparse
