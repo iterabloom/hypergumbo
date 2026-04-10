@@ -18,3 +18,18 @@
     pr_ref:  # dbde
     description: "DEEP bakeoff assessment (deep-20260409-054615, prometheus) found that pick_reverse_slice_seeds selects 1-line interface stubs (genericSeriesSet.Err, BucketIterator.Next/At) because dispatches_to edges inflate their out-degree past _MIN_OUT_DEGREE=3. These methods have span 1 line but out-degree 20-41 because every concrete implementation is a dispatches_to edge.\n\nRoot cause: out_degree in pick_reverse_slice_seeds (scripts/bakeoff-deep line ~1026) counts ALL edge types. Interface methods accumulate dispatches_to edges that look like high out-degree but aren't actual function calls.\n\nTwo possible fixes:\n(a) Only count calls-type edges for out_degree in seed selection (most precise).\n(b) Add a minimum LOC check (e.g., skip symbols with end_line - start_line < 3) to filter trivial stubs.\n\nOption (a) is preferred because it addresses the root cause (dispatches_to edges aren't 'calls') rather than using LOC as a proxy."  # dbde
     fields: {}  # dbde
+- op: update  # 7bfb
+  at: '2026-04-10T17:31:39Z'  # 7bfb
+  by: agent  # 7bfb
+  actor: jgstern_agent  # 7bfb
+  clock: 2  # 7bfb
+  nonce: 7bfb  # 7bfb
+  set:  # 7bfb
+    status: done  # 7bfb
+- op: discuss  # ec3f
+  at: '2026-04-10T17:31:39Z'  # ec3f
+  by: agent  # ec3f
+  actor: jgstern_agent  # ec3f
+  clock: 3  # ec3f
+  nonce: ec3f  # ec3f
+  message: "Fixed in PR (pending merge). Only call-flow edge types (calls, routes_to, wraps, ipc_calls, implements_rpc, grpc_calls, wasm_bridge) count toward out-degree in pick_reverse_slice_seeds. dispatches_to/implements/extends/contains no longer inflate interface method out-degree."  # ec3f

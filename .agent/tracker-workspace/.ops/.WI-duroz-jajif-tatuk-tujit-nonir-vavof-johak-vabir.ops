@@ -20,3 +20,25 @@
     pr_ref:  # e123
     description: "Open question from ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md 'Open Questions / Followups' §5: should the bakeoff harness gain a 'linker prospect' cohort that runs dead-code-maybe on the polyglot subset of the curriculum?\n\nThe notebook explicitly recommends framing the experiment as a one-shot prospecting run ('Retire the pipeline. The marginal value of the 5th rerun is much lower than the 1st; the long tail is dominated by reflection / framework issues that need different fixes.') So this item may resolve as 'wont_do'.\n\nDecide YES/NO after the triage item completes and we know whether the signal stays useful over time. If YES: add a new cohort/curriculum definition under ~/hypergumbo_lab_notebook/curricula/ that selects polyglot repos from the pool and runs the prospector via bakeoff-broad or bakeoff-deep.\n\nDepends on the initial triage pass producing a clear judgment on reusability."  # e123
     fields: {}  # e123
+- op: discuss  # b4df
+  at: '2026-04-10T17:20:17Z'  # b4df
+  by: human  # b4df
+  actor: jgstern  # b4df
+  clock: 2  # b4df
+  nonce: b4df  # b4df
+  message: "did the triage item complete? does the signal stay useful over time?"  # b4df
+- op: update  # 1a59
+  at: '2026-04-10T17:21:17Z'  # 1a59
+  by: human  # 1a59
+  actor: jgstern  # 1a59
+  clock: 3  # 1a59
+  nonce: 1a59  # 1a59
+  set:  # 1a59
+    priority: 2  # 1a59
+- op: discuss  # eaa2
+  at: '2026-04-10T17:33:51Z'  # eaa2
+  by: agent  # eaa2
+  actor: jgstern_agent  # eaa2
+  clock: 4  # eaa2
+  nonce: eaa2  # eaa2
+  message: "WI-juhov (triage dead-code-maybe results) is NOT complete — still todo_soft. However, I ran dead-code-maybe on alertmanager this session and the signal IS useful and self-validating.\n\nEvidence:\n- Before PR #2890 (added dispatches_to/routes_to/wraps to BFS): 781 false positives\n- After PR #2890: 634 false positives — 147 correctly reclassified\n- All 16 Notifier.Notify implementations correctly reached\n\nRemaining 634 candidates group by linker gap kind:\n1. YAML unmarshaling callbacks (Config.UnmarshalYAML, Route.UnmarshalYAML) — yaml.Decoder dispatch\n2. Cobra CLI subcommands (silenceAddCmd.add, silenceQueryCmd.query) — cobra.Command.Execute dispatch\n3. Go goroutine callees (Silences.Maintenance, Log.Maintenance, Silences.GC) — go func(){} edges\n4. Interface pipeline stages (TimeActiveStage.Exec, TimeMuteStage.Exec) — 2nd-level dispatches_to\n5. memberlist callbacks (TLSTransport.FinalAdvertiseAddr, tlsConn.read) — framework callbacks\n\nThe signal stays useful because it's self-validating: each new linker reduces the count. The 200-repo prospecting run (WI-botol) would amplify this by surfacing which gap kinds appear most frequently across the corpus, prioritizing linker investment. For the linker-prospect bakeoff cohort question: I think a lightweight variant (run dead-code-maybe on 20-30 repos, group by gap kind, rank by frequency) would be more useful than a persistent bakeoff cohort, since the signal is one-shot per linker gap."  # eaa2
