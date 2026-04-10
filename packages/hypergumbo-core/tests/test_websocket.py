@@ -354,6 +354,13 @@ class TestLinkWebSocket:
         assert len(message_edges) == 1
         assert "sender.js" in message_edges[0].src
         assert "receiver.js" in message_edges[0].dst
+        # INV-forim: dataflow annotations must persist through the linker.
+        # Historically edge.meta was reassigned after Edge.create, wiping
+        # the access_mode and dest_access_mode set by the kwargs.
+        assert message_edges[0].meta["access_mode"] == "write"
+        assert message_edges[0].meta["dest_access_mode"] == "read"
+        assert message_edges[0].meta["channel"] == "chat"
+        assert message_edges[0].meta["event"] == "chat"
 
     def test_no_self_links(self, tmp_path: Path) -> None:
         """Should not create edges from file to itself."""

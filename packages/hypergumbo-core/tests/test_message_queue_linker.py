@@ -714,6 +714,40 @@ class TestMessageQueueLinker:
         assert symbol.stable_id == "kafka:my-topic"
 
 
+class TestMessageQueueDataflowAnnotationsPreserved:
+    """Regression tests for INV-forim.
+
+    The message_queue linker sets access_mode="write" and
+    dest_access_mode="read" on its edges via Edge.create kwargs, then
+    historically overwrote edge.meta with a dict that wiped both fields.
+    These tests assert the annotations now persist through the linker.
+    """
+
+    def test_kafka_edge_has_access_mode_write(self, tmp_path: Path) -> None:
+        producer = tmp_path / "producer.py"
+        producer.write_text(dedent('''
+            from kafka import KafkaProducer
+            producer = KafkaProducer()
+            producer.send('user-events', value=b'hello')
+        '''))
+        consumer = tmp_path / "consumer.py"
+        consumer.write_text(dedent('''
+            from kafka import KafkaConsumer
+            consumer = KafkaConsumer()
+            consumer.subscribe(['user-events'])
+        '''))
+        result = link_message_queues(tmp_path)
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.meta["access_mode"] == "write"
+        assert edge.meta["dest_access_mode"] == "read"
+        # channel (from Edge.create kwarg) and topic (from meta dict) are
+        # both present — they are different keys, preserved for downstream
+        # consumers that may reference either name.
+        assert edge.meta["channel"] == "user-events"
+        assert edge.meta["topic"] == "user-events"
+
+
 class TestMessageQueueLinkerRegistry:
     """Tests for the registry-based linker wrapper."""
 

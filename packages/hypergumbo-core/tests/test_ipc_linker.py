@@ -367,6 +367,44 @@ ipcMain.on('test-channel', handler);
         for edge in result.edges:
             assert 0.0 <= edge.confidence <= 1.0
 
+    def test_edge_preserves_dataflow_annotations_send(self, tmp_path: Path) -> None:
+        """INV-forim: message_send edges have access_mode=write and
+        dest_access_mode=read preserved through the linker.
+
+        Historically edge.meta was reassigned after Edge.create, wiping the
+        dataflow fields set by the kwargs.
+        """
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        (tmp_path / "app.js").write_text("""
+ipcRenderer.send('test-channel', data);
+ipcMain.on('test-channel', handler);
+""")
+        result = link_ipc(tmp_path)
+        send_edges = [e for e in result.edges if e.edge_type == "message_send"]
+        assert len(send_edges) >= 1
+        for edge in send_edges:
+            assert edge.meta["access_mode"] == "write"
+            assert edge.meta["dest_access_mode"] == "read"
+            assert edge.meta["channel"] == "test-channel"
+            assert "channel_type" in edge.meta
+
+    def test_edge_preserves_dataflow_annotations_receive(self, tmp_path: Path) -> None:
+        """INV-forim: message_receive edges have access_mode=read and
+        dest_access_mode=write preserved through the linker."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        (tmp_path / "app.js").write_text("""
+ipcRenderer.send('test-channel', data);
+ipcMain.on('test-channel', handler);
+""")
+        result = link_ipc(tmp_path)
+        recv_edges = [e for e in result.edges if e.edge_type == "message_receive"]
+        assert len(recv_edges) >= 1
+        for edge in recv_edges:
+            assert edge.meta["access_mode"] == "read"
+            assert edge.meta["dest_access_mode"] == "write"
+
 
 class TestIpcRunMetadata:
     """Tests for IPC linker run metadata."""

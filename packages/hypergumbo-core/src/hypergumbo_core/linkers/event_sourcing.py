@@ -747,6 +747,10 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                 # Lower confidence for variable event names (can't verify at static analysis)
                 base_confidence = 0.65 if is_variable_event else 0.85
 
+                # Pass linker-specific meta via Edge.create's meta= kwarg so
+                # Edge.create merges it with the dataflow fields — assigning
+                # to edge.meta after construction would wipe access_mode and
+                # dest_access_mode set by the kwargs above (INV-forim).
                 edge = Edge.create(
                     src=pub_symbol.id,
                     dst=sub_symbol.id,
@@ -759,15 +763,15 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                     access_mode="write",
                     dest_access_mode="read",
                     channel=publisher.event_name,
+                    meta={
+                        "event_name": publisher.event_name,
+                        "publisher_framework": publisher.framework,
+                        "subscriber_framework": sub_pattern.framework,
+                        "cross_language": is_cross_language,
+                        "publisher_event_type": publisher.event_type,
+                        "subscriber_event_type": sub_pattern.event_type,
+                    },
                 )
-                edge.meta = {
-                    "event_name": publisher.event_name,
-                    "publisher_framework": publisher.framework,
-                    "subscriber_framework": sub_pattern.framework,
-                    "cross_language": is_cross_language,
-                    "publisher_event_type": publisher.event_type,
-                    "subscriber_event_type": sub_pattern.event_type,
-                }
                 edges.append(edge)
 
     run.duration_ms = int((time.time() - start_time) * 1000)

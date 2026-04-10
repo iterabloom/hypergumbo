@@ -72,6 +72,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+#### Dataflow annotation preservation
+
+- **Preserve `access_mode` / `dest_access_mode` through 4 cross-language linkers** (INV-forim, discovered during WI-hukoh Phase A telemetry): `event_sourcing`, `ipc` (send + receive + 2 bridge_invokes), `websocket`, and `message_queue` linkers followed the pattern `edge = Edge.create(access_mode=..., dest_access_mode=...); edge.meta = {...}` where the second line overwrote the meta dict with one that did not include the dataflow fields. Result: every event_publishes, message_send, message_receive, bridge_invokes, websocket_message, and message_queue edge in every generated behavior map had `access_mode` and `dest_access_mode` silently stripped. On a buildkit behavior map: 0 edges with `dest_access_mode` populated out of 42,792 total edges, despite 949 event-sourcing edges alone. Fix: pass linker-specific metadata as `meta={...}` kwarg to `Edge.create`, which correctly merges it with the dataflow fields. Regression tests added per linker asserting both fields are present on the output edges. This unblocks the WI-hukoh Phase C decision gate: without the fix, the `would_admit_dst_reader` telemetry counter was reading zero on every repo regardless of polyglot content.
+
 #### Agent state recovery
 
 - **Delete vestigial `.agent/last_stop_check.json`** (INV-jofaf facet 1): commit `84a63c8f` (WI-bulif) moved the agent state file to `~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json` and added a `.gitignore` entry, but did not `git rm` the old path. The stale file persisted in `HEAD` with `last_completed_utc` 36+ days out of date, confusing agents (and me during orientation today) who read the obvious-path `.agent/last_stop_check.json` and believed the stop hook was broken. Deleted from tracking; the ignore entry already in place prevents re-tracking. Facet 2 of INV-jofaf (unify `last_completed_utc` writers in `stop_logic.sh` — currently has no automatic writer so the field drifts) still open pending human approval because it touches governance files.

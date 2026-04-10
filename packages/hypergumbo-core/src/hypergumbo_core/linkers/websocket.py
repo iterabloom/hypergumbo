@@ -569,6 +569,10 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
                     )
                     confidence = 0.65 if is_variable_match else 0.85
                     evidence_type = "variable_match" if is_variable_match else f"{send_pat.pattern_type}_emit"
+                    # Pass linker-specific meta via Edge.create's meta= kwarg
+                    # so Edge.create merges it with the dataflow fields —
+                    # assigning edge.meta afterward would wipe access_mode
+                    # and dest_access_mode set above (INV-forim).
                     edge = Edge.create(
                         src=_make_file_id(send_pat.file_path),
                         dst=_make_file_id(recv_pat.file_path),
@@ -581,11 +585,11 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
                         access_mode="write",
                         dest_access_mode="read",
                         channel=event,
+                        meta={
+                            "event": event,
+                            "event_type": "variable" if is_variable_match else "literal",
+                        },
                     )
-                    edge.meta = {
-                        "event": event,
-                        "event_type": "variable" if is_variable_match else "literal",
-                    }
                     edges.append(edge)
 
     # Create edges for endpoint connections
