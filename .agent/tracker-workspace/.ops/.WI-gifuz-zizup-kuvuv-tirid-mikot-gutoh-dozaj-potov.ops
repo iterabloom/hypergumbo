@@ -1,0 +1,20 @@
+- op: create  # ca0f
+  at: '2026-04-10T11:03:37Z'  # ca0f
+  by: agent  # ca0f
+  actor: jgstern_agent  # ca0f
+  clock: 1  # ca0f
+  nonce: ca0f  # ca0f
+  data:  # ca0f
+    kind: work_item  # ca0f
+    title: "Go _test.go files misclassified as tier-2: add go.mod to detect_package_roots"  # ca0f
+    status: todo_soft  # ca0f
+    priority: 2  # ca0f
+    parent:  # ca0f
+    tags:  # ca0f
+    - analysis_quality  # ca0f
+    before: []  # ca0f
+    duplicate_of: []  # ca0f
+    not_duplicate_of: []  # ca0f
+    pr_ref:  # ca0f
+    description: "DEEP bakeoff (deep-20260409-054615) found all 13 tier2-only nodes in alertmanager are _test.go files or test utilities (mock.go, acceptance.go). Root cause: detect_package_roots() in supply_chain.py (lines 541-623) only handles npm/Cargo/Maven workspaces — Go modules (go.mod) are never detected. Without workspace detection, the generic test pattern check (lines 451-466) demotes ALL _test.go files to tier-2 (INTERNAL_DEP). Fix: add Go module detection to detect_package_roots() so that go.mod presence registers the repo root as a package root, allowing the workspace-aware tier logic (lines 421-449) to correctly classify co-located test files as tier-1. This is a root-cause fix, not a workaround. Structural scope expansion: check if Rust (Cargo.toml without workspace), Python (pyproject.toml without workspace), and other single-package layouts have the same bug."  # ca0f
+    fields: {}  # ca0f

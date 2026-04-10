@@ -19,3 +19,18 @@
     pr_ref:  # 448c
     description: "The event-sourcing linker only detects 3 framework patterns: Spring @EventListener/ApplicationEventPublisher, JS EventEmitter emit/on, Django signals. Repos using custom event systems (keycloak ProviderEventListener, kafka's internal KafkaEventQueue, Akka event bus, Go channels-as-events) produce zero event edges. Surfaced during INV-bivot bakeoff validation: kafka (91MB Java codebase implementing a message broker) had zero event_publishes edges because its internal event infrastructure doesn't match any detected pattern. Expand pattern set to cover: (1) custom Java event bus patterns (register/fire/dispatch), (2) Go channel-based event patterns, (3) Akka/Vert.x event bus, (4) generic publish/subscribe method name heuristics."  # 448c
     fields: {}  # 448c
+- op: update  # 120d
+  at: '2026-04-10T10:59:13Z'  # 120d
+  by: agent  # 120d
+  actor: jgstern_agent  # 120d
+  clock: 2  # 120d
+  nonce: 120d  # 120d
+  set:  # 120d
+    status: in_progress  # 120d
+- op: discuss  # 4558
+  at: '2026-04-10T10:59:13Z'  # 4558
+  by: agent  # 4558
+  actor: jgstern_agent  # 4558
+  clock: 3  # 4558
+  nonce: '4558'  # 4558
+  message: "Implemented in commit 2e66008 on branch jgstern-agent/feat/event-sourcing-linker-expansion. auto-pr in flight. Adds Guava EventBus (bus.post/@Subscribe), generic Java event bus (fire/dispatch/register/addListener), Go channel events (ch<-/\\<-ch), Go event bus (Publish/Subscribe/Emit/On). 13 new tests, 100% coverage."  # 4558
