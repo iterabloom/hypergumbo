@@ -62,12 +62,12 @@ class TestFileClassification:
     def test_classification_with_is_test(self):
         """WI-rigun: is_test flag is independent of tier."""
         fc = FileClassification(
-            tier=Tier.INTERNAL_DEP,
-            reason="test file matches _test.go$",
+            tier=Tier.FIRST_PARTY,
+            reason="co-located test file matches _test.go$",
             is_test=True,
         )
         assert fc.is_test is True
-        assert fc.tier == Tier.INTERNAL_DEP
+        assert fc.tier == Tier.FIRST_PARTY
 
 
 class TestDerivedArtifactDetection:
@@ -460,8 +460,8 @@ members = ["crates/*"]
         result = classify_file(test_dir / "test_core.py", tmp_path, roots)
         assert result.tier == Tier.INTERNAL_DEP
 
-    def test_workspace_test_file_pattern_is_internal_dep(self, tmp_path):
-        """Test files matching naming conventions are tier 2 in workspaces."""
+    def test_workspace_test_file_pattern_is_first_party(self, tmp_path):
+        """Co-located test files in workspaces are tier 1 with is_test=True."""
         cargo_toml = tmp_path / "Cargo.toml"
         cargo_toml.write_text('[workspace]\nmembers = ["crates/core"]')
 
@@ -473,8 +473,9 @@ members = ["crates/*"]
         roots = detect_package_roots(tmp_path)
 
         result = classify_file(pkg_dir / "handler_test.go", tmp_path, roots)
-        assert result.tier == Tier.INTERNAL_DEP
-        assert "test" in result.reason
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_test is True
+        assert "co-located test" in result.reason
 
     def test_examples_dir_is_internal_dep(self, tmp_path):
         """Examples directory is tier 2 (lower priority than workspace source)."""
@@ -674,64 +675,64 @@ class TestTestFileClassification:
         assert result.tier == Tier.INTERNAL_DEP
         assert result.is_test is True
 
-    def test_go_test_file_suffix_is_internal_dep(self, tmp_path):
-        """Go _test.go files are tier 2 even in src/."""
+    def test_go_test_file_suffix_is_first_party(self, tmp_path):
+        """Go _test.go files co-located with source are tier 1 with is_test."""
         src_dir = tmp_path / "pkg" / "handler"
         src_dir.mkdir(parents=True)
         (src_dir / "handler_test.go").write_text("package handler")
 
         result = classify_file(src_dir / "handler_test.go", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_js_test_file_suffix_is_internal_dep(self, tmp_path):
-        """JavaScript .test.js files are tier 2."""
+    def test_js_test_file_suffix_is_first_party(self, tmp_path):
+        """JavaScript .test.js files co-located with source are tier 1."""
         src_dir = tmp_path / "src"
         src_dir.mkdir()
         (src_dir / "app.test.js").write_text("test('ok', () => {})")
 
         result = classify_file(src_dir / "app.test.js", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_ts_spec_file_suffix_is_internal_dep(self, tmp_path):
-        """TypeScript .spec.ts files are tier 2."""
+    def test_ts_spec_file_suffix_is_first_party(self, tmp_path):
+        """TypeScript .spec.ts files co-located with source are tier 1."""
         src_dir = tmp_path / "src"
         src_dir.mkdir()
         (src_dir / "service.spec.ts").write_text("describe('Service', () => {})")
 
         result = classify_file(src_dir / "service.spec.ts", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_ruby_spec_file_suffix_is_internal_dep(self, tmp_path):
-        """Ruby _spec.rb files are tier 2."""
+    def test_ruby_spec_file_suffix_is_first_party(self, tmp_path):
+        """Ruby _spec.rb files co-located with source are tier 1."""
         src_dir = tmp_path / "lib"
         src_dir.mkdir()
         (src_dir / "user_spec.rb").write_text("RSpec.describe User do; end")
 
         result = classify_file(src_dir / "user_spec.rb", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_rust_colocated_tests_rs_is_internal_dep(self, tmp_path):
-        """Rust co-located tests.rs modules are tier 2."""
+    def test_rust_colocated_tests_rs_is_first_party(self, tmp_path):
+        """Rust co-located tests.rs modules are tier 1 with is_test."""
         src_dir = tmp_path / "core" / "lib" / "dal" / "src" / "consensus"
         src_dir.mkdir(parents=True)
         (src_dir / "tests.rs").write_text("#[cfg(test)]\nmod tests;")
 
         result = classify_file(src_dir / "tests.rs", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_rust_testonly_rs_is_internal_dep(self, tmp_path):
-        """Rust testonly.rs files are tier 2."""
+    def test_rust_testonly_rs_is_first_party(self, tmp_path):
+        """Rust testonly.rs files are tier 1 with is_test."""
         src_dir = tmp_path / "core" / "lib" / "vm_executor" / "src"
         src_dir.mkdir(parents=True)
         (src_dir / "testonly.rs").write_text("pub fn test_helper() {}")
 
         result = classify_file(src_dir / "testonly.rs", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
     def test_unit_tests_dir_is_internal_dep(self, tmp_path):
@@ -754,24 +755,24 @@ class TestTestFileClassification:
         assert result.tier == Tier.INTERNAL_DEP
         assert result.is_test is True
 
-    def test_cpp_test_prefix_is_internal_dep(self, tmp_path):
-        """C++ test_*.cpp files are tier 2 (GTest convention)."""
+    def test_cpp_test_prefix_is_first_party(self, tmp_path):
+        """C++ test_*.cpp files co-located with source are tier 1."""
         src_dir = tmp_path / "src"
         src_dir.mkdir()
         (src_dir / "test_parser.cpp").write_text("TEST(Parser, Basic) {}")
 
         result = classify_file(src_dir / "test_parser.cpp", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_cpp_test_prefix_cc_is_internal_dep(self, tmp_path):
-        """C++ test_*.cc files are tier 2."""
+    def test_cpp_test_prefix_cc_is_first_party(self, tmp_path):
+        """C++ test_*.cc files co-located with source are tier 1."""
         src_dir = tmp_path / "src"
         src_dir.mkdir()
         (src_dir / "test_server.cc").write_text("TEST(Server, Start) {}")
 
         result = classify_file(src_dir / "test_server.cc", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
     def test_cpp_production_code_stays_tier1(self, tmp_path):
@@ -1557,13 +1558,13 @@ class TestIsTestFileAxis:
     These tests pin the new behavior end-to-end: classify_file sets
     is_test, _classify_symbols propagates it to Symbol.is_test_file,
     and Symbol.to_dict / Symbol.from_dict round-trip the field through
-    the supply_chain block. The tier classification stays unchanged
-    (test files remain tier 2 per 89154fa20) — this WI only adds the
-    independent flag.
+    the supply_chain block.  Co-located test files (matching file-name
+    patterns like _test.go) are tier 1 with is_test=True; test files
+    in dedicated directories (tests/, spec/) remain tier 2.
     """
 
     def test_workspace_test_file_is_test_true(self, tmp_path: Path) -> None:
-        """Test file inside a workspace package is tier 2 AND is_test=True."""
+        """Co-located test file inside workspace is tier 1 AND is_test=True."""
         pkg = tmp_path / "pkgs" / "core"
         (pkg / "src").mkdir(parents=True)
         (pkg / "src" / "lib.go").write_text("package core")
@@ -1572,7 +1573,7 @@ class TestIsTestFileAxis:
         result = classify_file(
             pkg / "src" / "lib_test.go", tmp_path, {pkg}
         )
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
     def test_workspace_production_file_is_test_false(self, tmp_path: Path) -> None:
@@ -1656,9 +1657,9 @@ class TestIsTestFileAxis:
 
         assert prod.is_test_file is False
         assert test.is_test_file is True
-        # Tier semantics unchanged.
+        # Co-located test files are tier 1 (WI-gifuz).
         assert prod.supply_chain_tier == 1
-        assert test.supply_chain_tier == 2
+        assert test.supply_chain_tier == 1
 
 
 class TestIsGeneratedFileAxis:

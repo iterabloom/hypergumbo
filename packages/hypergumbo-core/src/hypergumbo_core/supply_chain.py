@@ -278,9 +278,9 @@ FUZZ_BENCH_PATTERNS = [
     r"(?:^|/)benches/",            # benches/ (Rust convention) at any level
 ]
 
-# Patterns for test code (tier 2) — checked BEFORE first-party patterns so that
-# test files in src/ or pkg/ are correctly classified as tier 2, not tier 1.
-# Directory patterns: top-level or nested test directories
+# Patterns for test code — checked BEFORE first-party patterns.
+# Directory patterns: dedicated test directories → tier 2 (INTERNAL_DEP)
+# File patterns: co-located test files → tier 1 (FIRST_PARTY) with is_test=True
 TEST_DIR_PATTERNS = [
     r"(?:^|/)tests?/",       # tests/ or test/ at any level
     r"(?:^|/)__tests__/",    # __tests__/ (Jest convention) at any level
@@ -288,7 +288,7 @@ TEST_DIR_PATTERNS = [
     r"(?:^|/)unit_tests?/",  # unit_tests/ or unit_test/ (C++ GTest convention)
 ]
 
-# File suffix patterns: language-specific test naming conventions
+# File suffix patterns: language-specific test naming conventions (co-located → tier 1)
 TEST_FILE_PATTERNS = [
     r"_test\.go$",                # Go: handler_test.go
     r"\.test\.[jt]sx?$",         # JS/TS: app.test.js, app.test.tsx
@@ -424,19 +424,23 @@ def _classify_file_core(
             try:
                 if path.is_relative_to(pkg_root):
                     rel_to_pkg = str(path.relative_to(pkg_root)).replace("\\", "/")
-                    # Test files within workspace packages are tier 2
+                    # Test files in dedicated test DIRECTORIES are tier 2
                     for test_pat in TEST_DIR_PATTERNS:
                         if re.search(test_pat, rel_to_pkg):
                             return FileClassification(
                                 Tier.INTERNAL_DEP,
-                                f"in workspace {pkg_root.name} (test)",
+                                f"in workspace {pkg_root.name} (test dir)",
                                 is_test=True,
                             )
+                    # Co-located test FILE patterns (e.g. _test.go next to
+                    # handler.go) are tier 1 with is_test=True.  The is_test
+                    # flag captures their test nature; tier 1 reflects that
+                    # they live in the same package as the source they test.
                     for test_pat in TEST_FILE_PATTERNS:
                         if re.search(test_pat, rel_to_pkg):
                             return FileClassification(
-                                Tier.INTERNAL_DEP,
-                                f"in workspace {pkg_root.name} (test)",
+                                Tier.FIRST_PARTY,
+                                f"in workspace {pkg_root.name} (co-located test)",
                                 is_test=True,
                             )
                     # All other workspace files are first-party.
@@ -448,8 +452,7 @@ def _classify_file_core(
             except (ValueError, TypeError):
                 continue
 
-    # 5b. Check test directory and file patterns (before first-party so that
-    # src/test/, pkg/handler_test.go are classified as tier 2 not tier 1)
+    # 5b. Check test directory patterns (dedicated test directories → tier 2)
     for pattern in TEST_DIR_PATTERNS:
         if re.search(pattern, rel):
             return FileClassification(
@@ -457,11 +460,16 @@ def _classify_file_core(
                 f"test path matches {pattern}",
                 is_test=True,
             )
+    # Co-located test FILE patterns (e.g. _test.go, .test.js next to
+    # source files) → tier 1 with is_test=True.  Prior to this change,
+    # these were tier 2, which made tier-2 useless for distinguishing
+    # first-party tests from actual third-party dependencies in Go and
+    # other languages where tests are co-located with source.
     for pattern in TEST_FILE_PATTERNS:
         if re.search(pattern, rel):
             return FileClassification(
-                Tier.INTERNAL_DEP,
-                f"test file matches {pattern}",
+                Tier.FIRST_PARTY,
+                f"co-located test file matches {pattern}",
                 is_test=True,
             )
 
