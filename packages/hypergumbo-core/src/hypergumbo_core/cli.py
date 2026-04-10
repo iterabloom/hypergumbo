@@ -3238,6 +3238,79 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     return 1 if has_violations else 0
 
 
+def cmd_config(args: argparse.Namespace) -> int:
+    """Show per-language configuration (dataflow patterns, IO primitives, etc.).
+
+    Walks YAML config directories within the hypergumbo-core package and
+    merges all config sections for the requested language into a single
+    document.  Each section is loaded from a ``<lang>.yaml`` file in the
+    corresponding config directory; missing files produce ``null`` for
+    that section.
+
+    WI-siran: discoverability for per-language config.
+    """
+    import yaml as _yaml
+
+    lang = args.language.lower()
+    fmt = args.format
+
+    # Locate config directories relative to this package
+    pkg_root = Path(__file__).parent
+    config_dirs = {
+        "dataflow_patterns": pkg_root / "dataflow_patterns",
+        "io_primitives": pkg_root / "io_primitives",
+        "function_summaries": pkg_root / "function_summaries",
+    }
+
+    merged: dict[str, Any] = {}
+    found_any = False
+
+    for section_name, config_dir in config_dirs.items():
+        yaml_path = config_dir / f"{lang}.yaml"
+        if yaml_path.exists():
+            try:
+                content = _yaml.safe_load(yaml_path.read_text())
+                merged[section_name] = content
+                found_any = True
+            except Exception:
+                merged[section_name] = None
+        else:
+            merged[section_name] = None
+
+    if not found_any:
+        print(
+            f"Warning: no configuration found for language '{lang}'",
+            file=sys.stderr,
+        )
+
+    if fmt == "json":
+        print(json.dumps(merged, indent=2, default=str))
+    elif fmt == "yaml":
+        print(_yaml.dump(merged, default_flow_style=False, sort_keys=False))
+    else:
+        # text format: pretty-printed summary
+        print(f"Configuration for: {lang}")
+        print("=" * 40)
+        for section_name, content in merged.items():
+            if content is None:
+                print(f"\n{section_name}: (not configured)")
+            else:
+                print(f"\n{section_name}:")
+                if isinstance(content, dict):
+                    for key in content:
+                        if key == "language":
+                            continue
+                        val = content[key]
+                        if isinstance(val, list):
+                            print(f"  {key}: {len(val)} rule(s)")
+                        else:
+                            print(f"  {key}: {val}")  # pragma: no cover
+                else:
+                    print(f"  ({type(content).__name__})")  # pragma: no cover
+
+    return 0
+
+
 def cmd_test_coverage(args: argparse.Namespace) -> int:
     """Estimate test coverage by analyzing which functions are called by tests.
 
@@ -4545,6 +4618,22 @@ subprocess, environment) and groups them by boundary type. See ADR-0016."""
     p_io.set_defaults(func=cmd_io_boundaries)
 
     # hypergumbo verify-claims
+    p_config = sub.add_parser(
+        "config",
+        help="Show per-language configuration (dataflow, IO, function summaries)",
+    )
+    p_config.add_argument(
+        "language",
+        help="Language name (e.g., go, python, java, rust)",
+    )
+    p_config.add_argument(
+        "--format",
+        choices=["json", "yaml", "text"],
+        default="text",
+        help="Output format (default: text)",
+    )
+    p_config.set_defaults(func=cmd_config)
+
     p_vc = sub.add_parser(
         "verify-claims",
         help="Verify security claims against I/O boundary map and taint flow",
@@ -4577,7 +4666,7 @@ subprocess, environment) and groups them by boundary type. See ADR-0016."""
     # Assign subcommands to groups for help formatting
     # Core analysis commands (group_order=0) - ordered by suborder
     core_cmds = ["sketch", "run", "slice", "search", "routes", "explain",
-                 "catalog", "test-coverage", "symbols", "compact",
+                 "catalog", "config", "test-coverage", "symbols", "compact",
                  "io-boundaries", "verify-claims"]
     for i, cmd in enumerate(core_cmds):
         _set_subparser_group(sub, cmd, "core", 0, suborder=i)
@@ -5274,7 +5363,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "symbols", "compact", "io-boundaries", "verify-claims"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "symbols", "compact", "io-boundaries", "verify-claims"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):

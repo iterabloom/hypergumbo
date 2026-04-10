@@ -49,6 +49,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Developer experience
 
+- **`hypergumbo config <lang>` subcommand** (WI-siran): new CLI command shows all per-language configuration in one view. Walks `dataflow_patterns/`, `io_primitives/`, and `function_summaries/` YAML directories and merges them for the requested language. Supports `--format json|yaml|text`. Unknown languages produce empty sections with a warning. Enables users and agents to discover what hypergumbo knows about a language without grepping the wheel.
 - **smart-test flock guard** (WI-sinap): concurrent `smart-test` invocations are now structurally prevented via `flock`. A second invocation while one is already running exits immediately with a clear error message naming the holding PID. Prevents the double-`pytest -n auto` scenario that consumed all CPU cores and caused xdist flakes.
 
 #### CLI & infrastructure
