@@ -808,6 +808,63 @@ class TestWriteCommands:
             ])
         assert exc.value.code == EXIT_USER_ERROR
 
+    def test_add_description_file(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                                  mock_agent_uid: None) -> None:
+        """--description-file reads description from a file (WI-pudan)."""
+        tracker_root = _setup_tracker(tmp_path)
+        desc_file = tmp_path / "desc.md"
+        desc_file.write_text("Description with `backticks` and $VAR")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "add", "--kind", "work_item", "--title", "FileDesc",
+                "--description-file", str(desc_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_add_description_stdin(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                                   mock_agent_uid: None) -> None:
+        """--description-stdin reads description from stdin (WI-pudan)."""
+        from io import StringIO
+        from unittest.mock import patch
+
+        tracker_root = _setup_tracker(tmp_path)
+        with patch("sys.stdin", StringIO("Stdin description\n")):
+            with pytest.raises(SystemExit) as exc:
+                main([
+                    "--tracker-root", str(tracker_root),
+                    "add", "--kind", "work_item", "--title", "StdinDesc",
+                    "--description-stdin",
+                ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_add_description_conflict(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                                      mock_agent_uid: None) -> None:
+        """--description and --description-file together is an error (WI-pudan)."""
+        tracker_root = _setup_tracker(tmp_path)
+        desc_file = tmp_path / "desc.md"
+        desc_file.write_text("text")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "add", "--kind", "work_item", "--title", "Conflict",
+                "--description", "inline",
+                "--description-file", str(desc_file),
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+    def test_add_description_file_not_found(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                                            mock_agent_uid: None) -> None:
+        """--description-file with nonexistent file is an error (WI-pudan)."""
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "add", "--kind", "work_item", "--title", "Missing",
+                "--description-file", str(tmp_path / "nonexistent.md"),
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
     def test_update(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                     mock_agent_uid: None) -> None:
         tracker_root = _setup_tracker(tmp_path)
@@ -819,6 +876,35 @@ class TestWriteCommands:
             ])
         assert exc.value.code == EXIT_SUCCESS
         assert "updated" in capsys.readouterr().out
+
+    def test_update_description_file(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                                     mock_agent_uid: None) -> None:
+        """update --description-file reads from file (WI-pudan)."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        desc_file = tmp_path / "desc.md"
+        desc_file.write_text("Updated via file")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--description-file", str(desc_file),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_update_description_conflict(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                                         mock_agent_uid: None) -> None:
+        """update --description + --description-file is an error (WI-pudan)."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        desc_file = tmp_path / "desc.md"
+        desc_file.write_text("text")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--description", "inline", "--description-file", str(desc_file),
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
 
     def test_update_json(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                          mock_agent_uid: None) -> None:

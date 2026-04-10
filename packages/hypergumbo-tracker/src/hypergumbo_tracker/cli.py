@@ -379,6 +379,44 @@ def _resolve_ref(ts: TrackerSet, raw: str, field_name: str) -> str:
         raise
 
 
+def _resolve_description(args: argparse.Namespace) -> str | None:
+    """Resolve description from --description, --description-file, or --description-stdin.
+
+    Exactly one source may be specified. Returns None if none given.
+    Prints an error and returns the sentinel ``_DESC_ERROR`` on conflict.
+    """
+    sources = []
+    if getattr(args, "description", None):
+        sources.append("--description")
+    if getattr(args, "description_file", None):
+        sources.append("--description-file")
+    if getattr(args, "description_stdin", False):
+        sources.append("--description-stdin")
+
+    if len(sources) > 1:
+        print(
+            f"error: only one of {', '.join(sources)} may be specified",
+            file=sys.stderr,
+        )
+        return _DESC_ERROR
+
+    if getattr(args, "description_file", None):
+        path = Path(args.description_file)
+        if not path.exists():
+            print(f"error: file not found: {path}", file=sys.stderr)
+            return _DESC_ERROR
+        return path.read_text().rstrip("\n")
+
+    if getattr(args, "description_stdin", False):
+        return sys.stdin.read().rstrip("\n")
+
+    return getattr(args, "description", None)
+
+
+# Sentinel for description resolution errors
+_DESC_ERROR = object()
+
+
 def _cmd_add(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'add' subcommand."""
     tier = Tier(args.tier) if args.tier else Tier.WORKSPACE
@@ -394,8 +432,11 @@ def _cmd_add(args: argparse.Namespace, ts: TrackerSet) -> int:
         kwargs["tags"] = args.tag
     if args.before:
         kwargs["before"] = [_resolve_ref(ts, b, "--before") for b in args.before]
-    if args.description:
-        kwargs["description"] = args.description
+    desc = _resolve_description(args)
+    if desc is _DESC_ERROR:
+        return EXIT_USER_ERROR
+    if desc:
+        kwargs["description"] = desc
     if args.pr_ref:
         kwargs["pr_ref"] = args.pr_ref
     # Parse --field key=value pairs
@@ -557,8 +598,11 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
         set_fields["parent"] = _resolve_ref(ts, args.parent, "--parent")
     if args.pr_ref:
         set_fields["pr_ref"] = args.pr_ref
-    if args.description:
-        set_fields["description"] = args.description
+    desc = _resolve_description(args)
+    if desc is _DESC_ERROR:
+        return EXIT_USER_ERROR
+    if desc:
+        set_fields["description"] = desc
 
     if args.add_tag:
         add_fields["tags"] = args.add_tag
@@ -1577,6 +1621,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("--tag", action="append", help="Tag (repeatable)")
     p_add.add_argument("--before", action="append", help="Before ID (repeatable)")
     p_add.add_argument("--description", help="Description text")
+    p_add.add_argument(
+        "--description-file", dest="description_file", metavar="FILE",
+        help="Read description from a file (avoids shell quoting issues)",
+    )
+    p_add.add_argument(
+        "--description-stdin", dest="description_stdin", action="store_true",
+        help="Read description from stdin",
+    )
     p_add.add_argument("--pr-ref", dest="pr_ref", help="PR reference")
     p_add.add_argument("--field", action="append", help="Field key=value (repeatable)")
     p_add.add_argument("--tier", choices=["canonical", "workspace", "stealth"],
@@ -1591,6 +1643,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--parent", help="New parent")
     p_update.add_argument("--pr-ref", dest="pr_ref", help="New PR reference")
     p_update.add_argument("--description", help="New description")
+    p_update.add_argument(
+        "--description-file", dest="description_file", metavar="FILE",
+        help="Read description from a file (avoids shell quoting issues)",
+    )
+    p_update.add_argument(
+        "--description-stdin", dest="description_stdin", action="store_true",
+        help="Read description from stdin",
+    )
     p_update.add_argument("--add-tag", action="append", help="Add tag")
     p_update.add_argument("--remove-tag", action="append", help="Remove tag")
     p_update.add_argument("--add-before", action="append", help="Add before link")
