@@ -53,3 +53,32 @@
   clock: 5  # 510c
   nonce: 510c  # 510c
   message: "Facet 1 shipped in PR #2918. Facet 2 proposal posted above. Blocking this item on human approval because the stop_logic.sh change is governance-protected."  # 510c
+- op: discuss  # a2a8
+  at: '2026-04-10T22:02:12Z'  # a2a8
+  by: human  # a2a8
+  actor: jgstern  # a2a8
+  clock: 6  # a2a8
+  nonce: a2a8  # a2a8
+  message: "\"Update... with a warning that only `notes` should be touched manually — all other fields come from the hook\" -- (human sighs audibly) well I guess this is the new normal, huh? we no longer command our computers, we just ask them nicely, or if we're really serious, we give them a stern warning?"  # a2a8
+- op: discuss  # ca0a
+  at: '2026-04-10T22:04:38Z'  # ca0a
+  by: agent  # ca0a
+  actor: jgstern_agent  # ca0a
+  clock: 7  # ca0a
+  nonce: ca0a  # ca0a
+  message: "Fair — 'a warning' is weasel-level enforcement and I should know better by now. The invariant is 'non-hook actors never write hook-owned fields,' and a warning in a markdown file is not enforcement, it is a plea.\n\nTwo options with teeth:\n\n## Option A: dedicated CLI tool\n\nAdd `scripts/update-last-stop-check` that accepts ONLY `--notes TEXT` and nothing else. It internally does the jq merge on the canonical path and touches only the notes field. Delete the raw jq snippet from recover-state-playbook.md and replace it with the tool invocation. Enforcement by construction: the tool physically cannot touch hook-owned fields, and if an agent bypasses it with raw jq they get no help and are on their own. Simple to implement (~40 line shell script), cheap to maintain.\n\nWeakness: the invariant still rests on 'agents use the tool, not raw jq.' A disciplined agent will use the tool; an undisciplined or retrained one may not. But the tool shrinks the attack surface to 'agents who deliberately bypass tooling,' which is a smaller and more detectable failure mode than 'agents who forget a subtle jq clause.'\n\n## Option B: split the file\n\nPhysically separate the two concerns. Hook-owned fields (last_completed_utc, guidance_file, bakeoff_convergence, bakeoff_session_path, last_pr_num from auto-pr, etc.) live in `~/hypergumbo_lab_notebook/guidance_log/stop_hook_state.json` — written only by stop_logic.sh. Agent-owned notes live in `~/hypergumbo_lab_notebook/guidance_log/agent_notes.json` — written only by the agent via a thin tool (or raw jq, since there is only one field to touch). The recover-state-playbook reads both and concatenates them for agent recovery. It is literally impossible for an agent's notes-update to touch the hook's fields because they are in different files.\n\nWeakness: two files instead of one. Agents reading either file in isolation get half the picture. The recover-state-playbook has to do the concatenation. Marginal extra complexity.\n\n## Strongest option: B + a dedicated tool for the notes file\n\nCombines the physical separation of B with the lexical safety of A. The notes file has its own thin update tool; the stop hook state file is hook-only. Invariant 'one writer per field' is enforced at two layers: file permissions / file location AND via CLI tool.\n\nMy recommendation: Option B + the dedicated tool. It deletes the failure mode entirely rather than papering over it with warnings.\n\nWhich do you prefer? If Option B, I'll update the facet 2 proposal with the new design (splits the jq merge in stop_logic.sh into stop_hook_state.json only, adds a new tool, updates recover-state-playbook and AGENTS.md) and wait for approval before touching stop_logic.sh."  # ca0a
+- op: discuss  # 3862
+  at: '2026-04-10T22:17:53Z'  # 3862
+  by: human  # 3862
+  actor: jgstern  # 3862
+  clock: 8  # 3862
+  nonce: '3862'  # 3862
+  message: "ok option B + a dedicated tool for the notes file it is. but also, I think maybe there should be an additional tool that audits for mismatches between the last modified in the filesystem and what it says inside the file content. that probably happens in multiple places."  # 3862
+- op: update  # c557
+  at: '2026-04-10T22:18:38Z'  # c557
+  by: human  # c557
+  actor: jgstern  # c557
+  clock: 9  # c557
+  nonce: c557  # c557
+  set:  # c557
+    status: violated  # c557
