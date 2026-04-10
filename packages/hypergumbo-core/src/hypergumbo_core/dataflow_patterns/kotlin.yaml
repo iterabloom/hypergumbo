@@ -12,3 +12,43 @@ assignments:
   - node_type: augmented_assignment
     mutate: left
     read: right
+
+# Name-based heuristics for Kotlin method calls (WI-vinub).
+# Covers MutableList, MutableMap, MutableSet, and Closeable patterns.
+library_patterns:
+  # Write/mutate patterns
+  - match: '\.add\('
+    access_mode: write
+  - match: '\.addAll\('
+    access_mode: write
+  - match: '\.put\('
+    access_mode: write
+  - match: '\.putAll\('
+    access_mode: write
+  - match: '\.set\('
+    access_mode: write
+  - match: '\.remove\('
+    access_mode: write
+  - match: '\.removeAll\('
+    access_mode: write
+  - match: '\.clear\('
+    access_mode: write
+  - match: '\.close\('
+    access_mode: write
+  - match: '\.flush\('
+    access_mode: write
+  - match: '\.reset\('
+    access_mode: write
+  - match: '\.delete\('
+    access_mode: write
+  - match: '\.update\('
+    access_mode: write
+  # Read patterns
+  - match: '\.get\('
+    access_mode: read
+  - match: '\.contains\('
+    access_mode: read
+  - match: '\.containsKey\('
+    access_mode: read
+  - match: '\.find\('
+    access_mode: read

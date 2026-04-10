@@ -39,6 +39,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Python AST wiring** (WI-hivud): `python.yaml` ships a `library_patterns` section covering common mutating/reading methods (`.append`, `.write`, `.read`, `.send`, `.get`, `.pop`, etc.). `annotate_dataflow_ast` now consumes it as a per-language fallback, mirroring `annotate_dataflow` for tree-sitter languages. Without this, library_patterns was dead code for Python: kserve measured 0 of 98 `.append` calls and 0 of 30 `.write` calls annotated.
 - **Python serialization + file-position primitives** (WI-fogis): 14 patterns added to `python.yaml` — `json.dump`/`pickle.dump`/`yaml.dump` as `write`; `json.load`/`pickle.load`/`yaml.load` as `read`; `.seek(` as `mutate`; `.truncate(` as `write`.
+- **Cross-language library_patterns for Java, JS/TS, C#, Kotlin** (WI-vinub): adds name-based state-mutating and reading method heuristics to 5 languages that previously had none. Java: 25 patterns (add/put/set/remove/clear/get/contains/etc). JavaScript + TypeScript: 23 patterns each (push/splice/set/delete/clear/get/has/etc). C#: 24 patterns (Add/Remove/Clear/Dispose/TryGetValue/etc). Kotlin: 17 patterns (add/put/remove/clear/get/contains/etc). Enables `access_mode` annotation on call edges for dataflow slicing in these languages.
 - **Go state-mutating verbs** (WI-supih): six verbs added to `go.yaml` — `.Expire(`, `.GC(`, `.Truncate(`, `.Drop(`, `.Init(`, `.Reload(` — all tagged `access_mode=write`. Surfaced by alertmanager's `Silences.Expire` (9 calls).
 
 #### Training data pipeline

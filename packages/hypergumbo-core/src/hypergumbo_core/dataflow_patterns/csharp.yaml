@@ -9,3 +9,57 @@ assignments:
   - node_type: local_declaration_statement
     write: name
     read: value
+
+# Name-based heuristics for C# method calls (WI-vinub).
+# Covers List<T>, Dictionary<K,V>, HashSet<T>, and IDisposable patterns.
+library_patterns:
+  # Write/mutate patterns
+  - match: '\.Add\('
+    access_mode: write
+  - match: '\.AddRange\('
+    access_mode: write
+  - match: '\.Insert\('
+    access_mode: write
+  - match: '\.Remove\('
+    access_mode: write
+  - match: '\.RemoveAt\('
+    access_mode: write
+  - match: '\.RemoveAll\('
+    access_mode: write
+  - match: '\.Clear\('
+    access_mode: write
+  - match: '\.Set\('
+    access_mode: write
+  - match: '\.Push\('
+    access_mode: write
+  - match: '\.Pop\('
+    access_mode: write
+  - match: '\.Enqueue\('
+    access_mode: write
+  - match: '\.Dequeue\('
+    access_mode: write
+  - match: '\.Dispose\('
+    access_mode: write
+  - match: '\.Close\('
+    access_mode: write
+  - match: '\.Flush\('
+    access_mode: write
+  - match: '\.Reset\('
+    access_mode: write
+  - match: '\.Update\('
+    access_mode: write
+  - match: '\.Delete\('
+    access_mode: write
+  # Read patterns
+  - match: '\.Get\('
+    access_mode: read
+  - match: '\.Contains\('
+    access_mode: read
+  - match: '\.ContainsKey\('
+    access_mode: read
+  - match: '\.TryGetValue\('
+    access_mode: read
+  - match: '\.Peek\('
+    access_mode: read
+  - match: '\.Find\('
+    access_mode: read
