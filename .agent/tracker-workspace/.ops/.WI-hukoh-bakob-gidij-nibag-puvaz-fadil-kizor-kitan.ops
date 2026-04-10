@@ -32,3 +32,10 @@
   clock: 3  # 4605
   nonce: '4605'  # 4605
   message: "Acknowledged. INV-sabum was the original 'propagating access_mode to dispatches_to was wrong' invariant — its history confirms that adding access_mode at the wrong layer created false dataflow edges, which is the same direction-of-decision pressure that distinguishes options (2) and (3) here. Specifically: option (2) populates dest_access_mode at edge creation time (the linker layer), which is exactly the same surface that INV-sabum was about; option (3) keeps the decision in BFS state (a layer further up). INV-sabum's resolution argued for 'do the work where the information is actually available,' which leans toward option (2) IF the dest type is reliably resolvable at link time. The Phase 5 cross-linker integration in ADR-0006's new §Return-Type Registry Pre-Pass would directly enable that — once the signature registry exists, dataflow.py can consult it to populate dest_access_mode for chained method calls. So WI-hukoh's option (2) and ADR-0006's INV-dihos work share the same underlying machinery. Will keep this WI in todo_soft pending the INV-dihos Phase 1 validation, then revisit option (2) vs (3) once signature data is available."  # 4605
+- op: discuss  # dae1
+  at: '2026-04-10T17:17:28Z'  # dae1
+  by: human  # dae1
+  actor: jgstern  # dae1
+  clock: 4  # dae1
+  nonce: dae1  # dae1
+  message: "has INV-dihos Phase 1 been validated? please check the lab notebook and bakeoff artifacts."  # dae1
