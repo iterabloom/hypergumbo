@@ -175,25 +175,26 @@ class TestLoadCatalog:
         assert hit.boundary == "fs_write"
 
     def test_go_catalog_slog_logging(self) -> None:
-        """log/slog functions are classified as ipc_send.
+        """log/slog functions are classified as logging, not ipc_send.
 
-        Go's structured logging writes to stderr by default. Package-level
-        functions (slog.Debug, slog.Info etc.) and Logger methods should
-        be detected with module context.
+        Go's structured logging writes to stderr by default. These are
+        logging operations, not inter-process communication.  Classifying
+        them as ipc_send produces hundreds of false positives in Go repos
+        (134 in alertmanager).
         """
         catalog = load_catalog("go")
         # Package-level slog functions
         hit = catalog.lookup_with_module("Debug", "log/slog")
         assert hit is not None, "slog.Debug should be in the Go IO catalog"
-        assert hit.boundary == "ipc_send"
+        assert hit.boundary == "logging"
 
         hit = catalog.lookup_with_module("Info", "log/slog")
         assert hit is not None
-        assert hit.boundary == "ipc_send"
+        assert hit.boundary == "logging"
 
         hit = catalog.lookup_with_module("Error", "log/slog")
         assert hit is not None
-        assert hit.boundary == "ipc_send"
+        assert hit.boundary == "logging"
 
         # Without module context, Debug/Info/Error are ambiguous
         assert catalog.lookup_with_module("Debug", None) is None
@@ -225,15 +226,26 @@ class TestLoadCatalog:
         assert hit.boundary == "net_send"
 
     def test_go_catalog_stdlib_log(self) -> None:
-        """log.Printf etc. are classified as ipc_send."""
+        """log.Printf etc. are classified as logging, not ipc_send."""
         catalog = load_catalog("go")
         hit = catalog.lookup_with_module("Printf", "log")
         assert hit is not None
-        assert hit.boundary == "ipc_send"
+        assert hit.boundary == "logging"
 
         hit = catalog.lookup_with_module("Fatal", "log")
         assert hit is not None
-        assert hit.boundary == "ipc_send"
+        assert hit.boundary == "logging"
+
+    def test_go_catalog_fmt_console_logging(self) -> None:
+        """fmt.Println etc. are classified as logging, not ipc_send."""
+        catalog = load_catalog("go")
+        hit = catalog.lookup_with_module("Println", "fmt")
+        assert hit is not None
+        assert hit.boundary == "logging"
+
+        hit = catalog.lookup_with_module("Fprintf", "fmt")
+        assert hit is not None
+        assert hit.boundary == "logging"
 
     def test_load_c_catalog(self) -> None:
         catalog = load_catalog("c")
