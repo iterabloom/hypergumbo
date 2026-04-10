@@ -734,8 +734,8 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
     return EXIT_SUCCESS
 
 
-def _warn_unread_human_messages(item_id: str, ts: TrackerSet) -> None:
-    """Print a warning if the item has unread human discussion messages.
+def _warn_unread_human_messages(item_id: str, ts: TrackerSet) -> bool:
+    """Check for unread human messages and print them.
 
     Checks whether the most recent discussion entry is from a human.
     If so, prints the unread message and the full prior transcript to
@@ -743,13 +743,15 @@ def _warn_unread_human_messages(item_id: str, ts: TrackerSet) -> None:
 
     Uses the single-agent heuristic from AGENTS.md: a trailing human
     message means the agent hasn't replied yet.
+
+    Returns True if unread human messages were found, False otherwise.
     """
     try:
         item = ts.get(item_id)
     except (ItemNotFoundError, AmbiguousPrefixError):
-        return  # Item resolution will fail properly in the caller
+        return False  # Item resolution will fail properly in the caller
     if not has_unread_human_messages(item):
-        return
+        return False
 
     unread = unread_human_messages(item)
     # Build the prior transcript (everything before the unread messages)
@@ -773,7 +775,12 @@ def _warn_unread_human_messages(item_id: str, ts: TrackerSet) -> None:
             prefix = "(summary) " if entry.is_summary else ""
             print(f"  [{entry.at}] {entry.actor} ({entry.by}): {prefix}{entry.message}")
     print()
-    print("Please reply to the human's message using `tracker discuss`.")
+    print(
+        "To proceed, re-run with --ack-thread to confirm you have "
+        "read the thread:\n"
+        f"  tracker discuss {item_id} --ack-thread \"<your reply>\""
+    )
+    return True
     print()
 
 
@@ -812,9 +819,11 @@ def _cmd_discuss(args: argparse.Namespace, ts: TrackerSet) -> int:
                     print(f"\n  [{i}] {entry}")  # pragma: no cover
         return EXIT_SUCCESS
 
-    # Warn about unread human messages before adding agent's message
+    # Gate on unread human messages: require --ack-thread to proceed
     if not args.clear and args.summarize is None:
-        _warn_unread_human_messages(args.item_id, ts)
+        has_unread = _warn_unread_human_messages(args.item_id, ts)
+        if has_unread and not args.ack_thread:
+            return EXIT_USER_ERROR
 
     if args.clear:
         ts.discuss(args.item_id, message="", clear=True)
@@ -1743,6 +1752,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_discuss.add_argument("--clear", action="store_true", help="Clear discussion (human only)")
     p_discuss.add_argument("--summarize", type=str, default=None, metavar="TEXT",
                            help="Replace discussion with summary text")
+    p_discuss.add_argument("--ack-thread", action="store_true",
+                           help="Acknowledge unread human messages (required when replying to a human thread)")
 
     # --- lock ---
     p_lock = sub.add_parser("lock", help="Lock fields on an item (human only)")
