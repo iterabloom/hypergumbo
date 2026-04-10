@@ -341,6 +341,12 @@ class TestEventSourcingLinker:
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "event_publishes"
         assert result.edges[0].meta["event_name"] == "user:created"
+        # INV-forim: dataflow annotations must persist through the linker.
+        # Historically edge.meta was reassigned after Edge.create, wiping
+        # the access_mode and dest_access_mode set by the kwargs.
+        assert result.edges[0].meta["access_mode"] == "write"
+        assert result.edges[0].meta["dest_access_mode"] == "read"
+        assert result.edges[0].meta["channel"] == "user:created"
 
     def test_cross_language_event_linking(self, tmp_path: Path):
         """Links Python publishers to JavaScript subscribers."""

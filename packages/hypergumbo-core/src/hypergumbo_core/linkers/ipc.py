@@ -525,7 +525,10 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     sender.channel_type == "variable" or receiver.channel_type == "variable"
                 )
                 confidence = 0.65 if is_variable_match else 0.85
-                # Create edge from sender to receiver
+                # Create edge from sender to receiver. Pass channel_type via
+                # meta= kwarg so Edge.create merges it with the dataflow
+                # fields — assigning edge.meta afterward would wipe out
+                # access_mode and dest_access_mode (INV-forim).
                 edge = Edge.create(
                     src=src_id,
                     dst=dst_id,
@@ -538,11 +541,10 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     access_mode="write",
                     dest_access_mode="read",
                     channel=channel,
+                    meta={
+                        "channel_type": "variable" if is_variable_match else "literal",
+                    },
                 )
-                edge.meta = {
-                    "channel": channel,
-                    "channel_type": "variable" if is_variable_match else "literal",
-                }
                 edges.append(edge)
 
     # Also create edges for the receive side
@@ -571,11 +573,10 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     access_mode="read",
                     dest_access_mode="write",
                     channel=channel,
+                    meta={
+                        "channel_type": "variable" if is_variable_match else "literal",
+                    },
                 )
-                edge.meta = {
-                    "channel": channel,
-                    "channel_type": "variable" if is_variable_match else "literal",
-                }
                 edges.append(edge)
 
     # ---- Phase 3: contextBridge.exposeInMainWorld wrapper resolution ----
@@ -705,12 +706,11 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     evidence_type="context_bridge_wrapper",
                     access_mode="write",
                     channel=channel,
+                    meta={
+                        "method": method_name,
+                        "namespace": namespace,
+                    },
                 )
-                edge.meta = {
-                    "channel": channel,
-                    "method": method_name,
-                    "namespace": namespace,
-                }
                 edges.append(edge)
 
     # Phase 3b: Scan for window.<funcName>() calls from individual function exposures
@@ -795,11 +795,10 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     evidence_type="context_bridge_wrapper",
                     access_mode="write",
                     channel=channel,
+                    meta={
+                        "function": func_name,
+                    },
                 )
-                edge.meta = {
-                    "channel": channel,
-                    "function": func_name,
-                }
                 edges.append(edge)
 
     run.files_analyzed = files_analyzed

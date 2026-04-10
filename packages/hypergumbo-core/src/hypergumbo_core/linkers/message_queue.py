@@ -497,6 +497,10 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
                     )
                     base_confidence = 0.65 if is_variable_match else 0.9
                     confidence = base_confidence - (0.1 if is_cross_language else 0.0)
+                    # Pass linker-specific meta via Edge.create's meta= kwarg
+                    # so Edge.create merges it with the dataflow fields —
+                    # assigning edge.meta afterward would wipe access_mode
+                    # and dest_access_mode set above (INV-forim).
                     edge = Edge.create(
                         src=pub_symbol.id,
                         dst=sub_symbol.id,
@@ -509,13 +513,13 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
                         access_mode="write",
                         dest_access_mode="read",
                         channel=key[1],
+                        meta={
+                            "queue_type": key[0],
+                            "topic": key[1],
+                            "topic_type": "variable" if is_variable_match else "literal",
+                            "cross_language": is_cross_language,
+                        },
                     )
-                    edge.meta = {
-                        "queue_type": key[0],
-                        "topic": key[1],
-                        "topic_type": "variable" if is_variable_match else "literal",
-                        "cross_language": is_cross_language,
-                    }
                     edges.append(edge)
 
     run.duration_ms = int((time.time() - start_time) * 1000)
