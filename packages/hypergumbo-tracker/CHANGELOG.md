@@ -9,6 +9,7 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Added
 
+- **Self-contained `check-messages` output** (WI-radab): `check-messages` now includes the item description (truncated to 500 chars), prior discussion entries (last 3 before unread), and `pr_ref` field. JSON output adds `description`, `pr_ref`, and `prior_discussion` fields. Eliminates the need for a follow-up `tracker show` to understand message context.
 - **`--add-field` and `--remove-field` for partial field updates** (WI-lorip): `update --add-field key=value` merges into existing fields without erasing other keys. `update --remove-field key` deletes a single key. Mutually exclusive with `--field` (full replacement). compile_ops treats `None`-valued field keys as deletions. Fixes a data-loss footgun where `--field key=value` silently erased all other fields.
 - **`--description-file` and `--description-stdin` for add/update** (WI-pudan): new flags to read description text from a file or stdin, avoiding shell quoting issues with backticks, `$VAR`, and other special characters. Mutually exclusive with `--description`. Missing file produces a clear error.
 - **`tracker list --status` repeatable + `--open` shortcut** (WI-lukop): `--status` now accepts multiple values (`--status todo_hard --status todo_soft`), returning the union. New `--open` flag expands to the five open statuses (todo_hard, todo_soft, violated, pending_validation, needs_human_review). `store.list_items()` accepts `str | list[str] | None` for the status parameter.
