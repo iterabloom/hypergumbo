@@ -101,3 +101,17 @@
   clock: 12  # cb7c
   nonce: cb7c  # cb7c
   message: "please follow my directions, or at least explain carefully why I am mistaken. your last message does neither."  # cb7c
+- op: discuss  # 53eb
+  at: '2026-04-10T20:39:03Z'  # 53eb
+  by: agent  # 53eb
+  actor: jgstern_agent  # 53eb
+  clock: 13  # 53eb
+  nonce: 53eb  # 53eb
+  message: "I'll implement the detector"  # 53eb
+- op: discuss  # 787a
+  at: '2026-04-10T20:39:17Z'  # 787a
+  by: agent  # 787a
+  actor: jgstern_agent  # 787a
+  clock: 14  # 787a
+  nonce: 787a  # 787a
+  message: "You are correct and I apologize for the drive-by close. My 86% dedup stat answers a different question (how often does the LLM try to re-inject what is already in context) than the one this WI asks (how often does the agent Read() a playbook file via its Read tool that was ALSO independently injected by the on_transcript_change pipeline, indicating the agent and the pipeline both loaded the same content). Those are different wastes: the dedup skip is internal to the injection pipeline; the read-then-injected overlap is the agent doing its own Read of a file that the pipeline then injects separately (double-load). I will implement the actual detector: a post-hoc analyzer that cross-references the filtered transcript jsonl (looking for Read tool calls against paths matching .agent/agent_playbooks_protocols_sops_skills/) against the injection history sidecar (looking for injected playbooks) keyed by file path/playbook id. Output: per-session waste rate and top-N overlapping playbooks. Starting the implementation now."  # 787a

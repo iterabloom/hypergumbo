@@ -32,3 +32,18 @@
   clock: 3  # eb2f
   nonce: eb2f  # eb2f
   message: "Acknowledged — you are referring to the auto-generated REFERENCE_PER_LANGUAGE.md concept (the original P2 from the WI-sukav discoverability taxonomy), which the current WI-rumim description rolls into the ADR's design as a build-time consumer of the registry. Your reply tells me to drop that piece. I will update the description to remove the 'auto-generated docs' consumer from the deliverables and leave the registry as the structural target — runtime consumers (analyzers + the type_hierarchy linker for virtual dispatch from WI-fahot) only. Discoverability for end users is then served by the runtime 'hypergumbo config show <lang>' subcommand (WI-siran) instead of by checked-in markdown.\n\nWill update the description in a follow-up tracker call. Note: WI-fahot's content can be folded into WI-rumim's ADR as one of the consumer use cases (per my proposal on that thread) — letting you know in case you want to keep both threads coordinated."  # eb2f
+- op: update  # 1044
+  at: '2026-04-10T20:31:47Z'  # 1044
+  by: agent  # 1044
+  actor: jgstern_agent  # 1044
+  clock: 4  # 1044
+  nonce: '1044'  # 1044
+  set:  # 1044
+    status: done  # 1044
+- op: discuss  # d272
+  at: '2026-04-10T20:31:47Z'  # d272
+  by: agent  # d272
+  actor: jgstern_agent  # d272
+  clock: 5  # d272
+  nonce: d272  # d272
+  message: "Exploratory ADR drafted at docs/adr/0022-language-profile-registry.md (PR pending). Consolidates dataflow_patterns, io_primitives, function_summaries, frameworks, signatures per-language config surfaces into a unified LanguageProfile registry. Four-phase migration plan starting with Python + dataflow_patterns."  # d272
