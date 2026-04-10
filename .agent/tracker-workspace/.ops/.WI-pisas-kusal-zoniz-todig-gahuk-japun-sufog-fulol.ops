@@ -1,0 +1,20 @@
+- op: create  # dbde
+  at: '2026-04-10T16:55:23Z'  # dbde
+  by: agent  # dbde
+  actor: jgstern_agent  # dbde
+  clock: 1  # dbde
+  nonce: dbde  # dbde
+  data:  # dbde
+    kind: work_item  # dbde
+    title: "Reverse slice seed selection: filter by LOC or calls-only out-degree"  # dbde
+    status: todo_soft  # dbde
+    priority: 3  # dbde
+    parent:  # dbde
+    tags:  # dbde
+    - analysis_quality  # dbde
+    before: []  # dbde
+    duplicate_of: []  # dbde
+    not_duplicate_of: []  # dbde
+    pr_ref:  # dbde
+    description: "DEEP bakeoff assessment (deep-20260409-054615, prometheus) found that pick_reverse_slice_seeds selects 1-line interface stubs (genericSeriesSet.Err, BucketIterator.Next/At) because dispatches_to edges inflate their out-degree past _MIN_OUT_DEGREE=3. These methods have span 1 line but out-degree 20-41 because every concrete implementation is a dispatches_to edge.\n\nRoot cause: out_degree in pick_reverse_slice_seeds (scripts/bakeoff-deep line ~1026) counts ALL edge types. Interface methods accumulate dispatches_to edges that look like high out-degree but aren't actual function calls.\n\nTwo possible fixes:\n(a) Only count calls-type edges for out_degree in seed selection (most precise).\n(b) Add a minimum LOC check (e.g., skip symbols with end_line - start_line < 3) to filter trivial stubs.\n\nOption (a) is preferred because it addresses the root cause (dispatches_to edges aren't 'calls') rather than using LOC as a proxy."  # dbde
+    fields: {}  # dbde

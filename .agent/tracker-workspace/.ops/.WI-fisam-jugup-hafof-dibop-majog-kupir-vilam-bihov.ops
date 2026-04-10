@@ -24,3 +24,33 @@
     pr_ref:  # 921c
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md Q1: build the ~30-line base tool that computes\n\n    dead = production_callables − reachable_from(entrypoints ∪ optional_tests)\n\non top of hypergumbo's existing behavior map. The primitives are already in place — wire them together:\n\n- Use hypergumbo run to produce the behavior map (reuse _get_or_run_analysis from cmd_test_coverage et al.).\n- Seed from entrypoints.py:detect_entrypoints (CLI mains, HTTP routes, framework hooks, registry decorators).\n- BFS via ranking.py:compute_transitive_test_coverage (despite the name, it is a generic multi-source BFS over call edges — cmd_test_coverage already uses it for cold spots with a different seed set).\n- Output: a ranked list of 'dead' callables with (symbol, path, language, decorators, metadata).\n\nSeed-set flexibility: add a --seeds {entrypoints,tests,exports,all} flag (notebook Open Questions §2). Different seed sets give materially different dead lists; the experiment needs to control this.\n\nFraming decision to make first (notebook Open Questions §1): implement as a first-class hypergumbo subcommand (slotting next to test-coverage / io-boundaries / routes) OR as a scripts/ one-off. Subcommand has reuse value if we keep dogfooding dead-code on hypergumbo itself; one-off is fine if this is genuinely a one-shot prospect. Recommend subcommand (consistent with existing analysis-subcommand pattern), but a one-off is acceptable.\n\nFoundation for all downstream dead-code-prospector items."  # 921c
     fields: {}  # 921c
+- op: update  # 5ecc
+  at: '2026-04-10T14:23:08Z'  # 5ecc
+  by: agent  # 5ecc
+  actor: jgstern_agent  # 5ecc
+  clock: 2  # 5ecc
+  nonce: 5ecc  # 5ecc
+  set:  # 5ecc
+    status: in_progress  # 5ecc
+- op: discuss  # 6056
+  at: '2026-04-10T14:23:09Z'  # 6056
+  by: agent  # 6056
+  actor: jgstern_agent  # 6056
+  clock: 3  # 6056
+  nonce: '6056'  # 6056
+  message: "Implemented in commit c24f8ed on branch jgstern-agent/feat/dead-code-maybe. auto-pr in flight. New subcommand: hypergumbo dead-code-maybe with --seeds {entrypoints,tests,all}, --format {text,json}, --min-confidence flags. BFS from seed set over call edges, outputs ranked list of unreachable production callables. 8 tests, 100% coverage."  # 6056
+- op: update  # 539a
+  at: '2026-04-10T14:29:03Z'  # 539a
+  by: agent  # 539a
+  actor: jgstern_agent  # 539a
+  clock: 4  # 539a
+  nonce: 539a  # 539a
+  set:  # 539a
+    status: done  # 539a
+- op: discuss  # 21df
+  at: '2026-04-10T14:29:03Z'  # 21df
+  by: agent  # 21df
+  actor: jgstern_agent  # 21df
+  clock: 5  # 21df
+  nonce: 21df  # 21df
+  message: "Merged in PR. New subcommand: hypergumbo dead-code-maybe with --seeds {entrypoints,tests,all}, --format {text,json}, --min-confidence. BFS from seed set over call edges, outputs ranked list of unreachable production callables by LOC. 8 tests, 100% coverage."  # 21df
