@@ -1,0 +1,32 @@
+- op: create  # 06c4
+  at: '2026-04-10T22:35:32Z'  # 06c4
+  by: agent  # 06c4
+  actor: jgstern_agent  # 06c4
+  clock: 1  # 06c4
+  nonce: 06c4  # 06c4
+  data:  # 06c4
+    kind: work_item  # 06c4
+    title: "Audit tool for embedded-timestamp vs filesystem-mtime mismatches"  # 06c4
+    status: todo_soft  # 06c4
+    priority: 2  # 06c4
+    parent:  # 06c4
+    tags:  # 06c4
+    - governance  # 06c4
+    - agent_state_recovery  # 06c4
+    - tooling  # 06c4
+    before:  # 06c4
+    - INV-jofaf-zusot-dosim-novaj-puvad-himam-botin-nuhin  # 06c4
+    duplicate_of: []  # 06c4
+    not_duplicate_of: []  # 06c4
+    pr_ref:  # 06c4
+    description: "Per INV-jofaf discussion (jgstern, 2026-04-10): when investigating the last_stop_check.json staleness bug, we discovered the file could have a FRESH filesystem mtime but STALE embedded content timestamps. Example: mtime 2026-04-10 17:26, but `last_completed_utc` field says `2026-03-30T22:20:04Z` (11 days old) while the `notes` field claims \"Session 04/10 FINAL\". This pattern probably exists in multiple places across the repo.\n\n## Goal\n\nBuild a single-purpose audit tool — `scripts/audit-stale-timestamps` — that walks a configured set of file patterns, extracts embedded timestamps via jq or regex, compares each to the filesystem mtime and/or to \"now\", and reports mismatches above a per-file-type threshold. Runnable ad-hoc and optionally as a stop-hook sidecar or CI check.\n\n## Candidate file patterns to audit\n\nFrom my initial survey (not exhaustive):\n\n1. **last_stop_check.json / stop_hook_state.json** (post-INV-jofaf split):\n   - `last_completed_utc` field vs. filesystem mtime\n   - `guidance_file` field (filename contains an MMDDYYYY_HHMM timestamp) vs. the referenced file's mtime\n   - Threshold: 1 hour\n\n2. **bakeoff session state.json files** (~/hypergumbo_lab_notebook/bakeoff_artifacts/*/state.json):\n   - `started_utc`, `updated_utc`, `last_iter_completed_utc` fields vs. the iter-NNN/ subdirectory mtimes\n   - Threshold: 4 hours (bakeoff runs can be long)\n\n3. **Guidance files** (~/hypergumbo_lab_notebook/guidance_log/stop_guidance_*.md):\n   - Filename MMDDYYYY_HHMM vs. filesystem mtime vs. content header timestamp\n   - Threshold: 10 minutes (should be near-instantaneous)\n\n4. **Tracker item created/updated timestamps** (.agent/tracker/):\n   - `created` and `updated` fields inside YAML item records vs. ops-file sequence\n   - Low priority — the tracker CLI owns all writes, so drift here would indicate a CLI bug\n   - Threshold: N/A (non-numeric check: created <= updated, updated <= now)\n\n5. **ADR files** (docs/decisions/*.md):\n   - Frontmatter `date: YYYY-MM-DD` vs. git log first-commit date\n   - Threshold: 1 day\n   - Drift here is mostly cosmetic but signals ADRs edited post-ratification without updating the date\n\n6. **CHANGELOG.md**:\n   - Section headers like `## [vX.Y.Z] - YYYY-MM-DD` vs. corresponding git tag date (once tags exist)\n   - `[Unreleased]` section has no date, but the pyproject.toml version might disagree with the top of the changelog\n   - Threshold: exact match for released versions; version-consistency for Unreleased\n\n7. **pyproject.toml version vs. CHANGELOG.md top version**:\n   - Not a timestamp but the same shape of bug\n   - Can be a separate rule\n\n8. **Lab notebook files** (~/hypergumbo_lab_notebook/notebookjournal_*.md):\n   - Filename timestamp vs. file mtime\n   - Threshold: 1 hour (notebooks get edited over time, so some drift is expected)\n\n## Tool design sketch\n\n```\nscripts/audit-stale-timestamps [--fix] [--pattern NAME] [--threshold HOURS]\n\nConfiguration in scripts/lib/stale-timestamps-rules.yaml:\n\nrules:\n  - name: stop_hook_state\n    paths: [\"~/hypergumbo_lab_notebook/guidance_log/stop_hook_state.json\"]\n    extractors:\n      - jq: '.last_completed_utc'\n        threshold: 1h\n      - jq: '.guidance_file'\n        compare: referenced_file_mtime\n        threshold: 1h\n  - name: bakeoff_state\n    paths: [\"~/hypergumbo_lab_notebook/bakeoff_artifacts/*/state.json\"]\n    extractors:\n      - jq: '.started_utc'\n        compare: mtime\n        threshold: 4h\n    ...\n```\n\nOutput: human-readable list of mismatches + exit code (0 = clean, 1 = mismatches found).\n\nOptional `--fix` mode: refreshes embedded timestamps to match mtime (CAREFUL: for read-only fields this is usually wrong — the field is the authoritative value and the mtime is wrong, not vice versa). Recommend omitting `--fix` in v1.\n\n## Relationship to INV-jofaf\n\nINV-jofaf facet 2 fix (Option B + dedicated tool) prevents the specific failure mode where an agent updates notes and leaves last_completed_utc stuck. But it does NOT prevent other versions of the same pattern (tool bugs, race conditions, manual edits). The audit tool is the regression safety net: even if we introduce a new stale-timestamp bug in another file, the audit catches it.\n\n## Priority\n\nP2. Not urgent — we just fixed the one instance we know about. But a broad audit of the repo's timestamp drift is cheap and will likely surface additional bugs, and the tool pays for itself on the first catch. Implement after INV-jofaf facet 2 ships.\n\n## Dependencies\n\n- INV-jofaf facet 2 should land first so the stop_hook_state.json schema is stable.\n- No other dependencies.\n\n## Estimated effort\n\n- Tool scaffolding: ~2 hours\n- Rule configuration for the 8 candidate patterns: ~2 hours\n- First audit run + fix any mismatches found: variable (0-4 hours)\n- Optional CI integration: ~1 hour"  # 06c4
+    fields: {}  # 06c4
+- op: update  # 7fc4
+  at: '2026-04-10T22:35:45Z'  # 7fc4
+  by: agent  # 7fc4
+  actor: jgstern_agent  # 7fc4
+  clock: 2  # 7fc4
+  nonce: 7fc4  # 7fc4
+  set: {}  # 7fc4
+  add:  # 7fc4
+    not_duplicate_of: [WI-sudoj-hahiv-havak-padal-gapad-rimik-ganov-dotol]  # 7fc4
