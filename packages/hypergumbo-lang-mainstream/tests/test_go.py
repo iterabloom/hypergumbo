@@ -2348,6 +2348,115 @@ class TestGoModulePathHelpers:
         assert result == "github.com/stretchr/testify/assert"
 
 
+class TestParseGoModDependencies:
+    """Tests for parse_go_mod_dependencies (WI-vovuk)."""
+
+    def test_block_require_direct_and_indirect(self, tmp_path: Path) -> None:
+        """Parses block require with direct and indirect deps."""
+        from hypergumbo_lang_mainstream.go import parse_go_mod_dependencies
+
+        (tmp_path / "go.mod").write_text(
+            "module github.com/example/myproject\n\n"
+            "go 1.21\n\n"
+            "require (\n"
+            "\tgithub.com/go-kit/log v0.2.1\n"
+            "\tgithub.com/beorn7/perp v1.1.1 // indirect\n"
+            ")\n"
+        )
+        manifest = parse_go_mod_dependencies(tmp_path)
+        assert manifest.entries["github.com/go-kit/log"]["direct"] is True
+        assert manifest.entries["github.com/beorn7/perp"]["direct"] is False
+
+    def test_single_line_require(self, tmp_path: Path) -> None:
+        """Parses single-line require statements."""
+        from hypergumbo_lang_mainstream.go import parse_go_mod_dependencies
+
+        (tmp_path / "go.mod").write_text(
+            "module github.com/example/myproject\n\n"
+            "require github.com/foo/bar v1.0.0\n"
+            "require github.com/baz/qux v2.0.0 // indirect\n"
+        )
+        manifest = parse_go_mod_dependencies(tmp_path)
+        assert manifest.entries["github.com/foo/bar"]["direct"] is True
+        assert manifest.entries["github.com/baz/qux"]["direct"] is False
+
+    def test_no_go_mod(self, tmp_path: Path) -> None:
+        """Returns empty manifest when go.mod doesn't exist."""
+        from hypergumbo_lang_mainstream.go import parse_go_mod_dependencies
+
+        manifest = parse_go_mod_dependencies(tmp_path)
+        assert manifest.entries == {}
+
+    def test_go_mod_without_require(self, tmp_path: Path) -> None:
+        """Returns empty manifest when go.mod has no require blocks."""
+        from hypergumbo_lang_mainstream.go import parse_go_mod_dependencies
+
+        (tmp_path / "go.mod").write_text(
+            "module github.com/example/myproject\n\ngo 1.21\n"
+        )
+        manifest = parse_go_mod_dependencies(tmp_path)
+        assert manifest.entries == {}
+
+    def test_multiple_require_blocks(self, tmp_path: Path) -> None:
+        """Handles multiple require blocks (common in go.mod)."""
+        from hypergumbo_lang_mainstream.go import parse_go_mod_dependencies
+
+        (tmp_path / "go.mod").write_text(
+            "module github.com/example/myproject\n\n"
+            "go 1.21\n\n"
+            "require (\n"
+            "\tgithub.com/direct/one v1.0.0\n"
+            ")\n\n"
+            "require (\n"
+            "\tgithub.com/indirect/two v2.0.0 // indirect\n"
+            ")\n"
+        )
+        manifest = parse_go_mod_dependencies(tmp_path)
+        assert manifest.entries["github.com/direct/one"]["direct"] is True
+        assert manifest.entries["github.com/indirect/two"]["direct"] is False
+
+    def test_replace_directive_ignored(self, tmp_path: Path) -> None:
+        """Replace directives don't affect dependency classification."""
+        from hypergumbo_lang_mainstream.go import parse_go_mod_dependencies
+
+        (tmp_path / "go.mod").write_text(
+            "module github.com/example/myproject\n\n"
+            "require github.com/foo/bar v1.0.0\n\n"
+            "replace github.com/foo/bar => ./local/bar\n"
+        )
+        manifest = parse_go_mod_dependencies(tmp_path)
+        assert manifest.entries["github.com/foo/bar"]["direct"] is True
+        assert len(manifest.entries) == 1
+
+    def test_os_error_returns_empty(self, tmp_path: Path) -> None:
+        """Returns empty manifest on read errors."""
+        from hypergumbo_lang_mainstream.go import parse_go_mod_dependencies
+
+        go_mod = tmp_path / "go.mod"
+        go_mod.write_text("module foo\n")
+        with patch.object(Path, "read_text", side_effect=OSError("mocked")):
+            manifest = parse_go_mod_dependencies(tmp_path)
+        assert manifest.entries == {}
+
+    def test_require_block_with_empty_and_comment_lines(self, tmp_path: Path) -> None:
+        """Empty lines and comments inside require blocks are skipped."""
+        from hypergumbo_lang_mainstream.go import parse_go_mod_dependencies
+
+        (tmp_path / "go.mod").write_text(
+            "module github.com/example/myproject\n\n"
+            "require (\n"
+            "\n"
+            "\t// this is a comment\n"
+            "\tgithub.com/foo/bar v1.0.0\n"
+            "\tjustname\n"
+            ")\n"
+        )
+        manifest = parse_go_mod_dependencies(tmp_path)
+        # Only the valid line should be parsed (comment and empty skipped,
+        # "justname" has < 2 parts so skipped)
+        assert manifest.entries == {"github.com/foo/bar": {"direct": True}}
+
+
 class TestGoImportPathResolution:
     """Tests for import path disambiguation (Bug #1 from bakeoff report)."""
 

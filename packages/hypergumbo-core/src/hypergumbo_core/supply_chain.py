@@ -52,6 +52,66 @@ class Tier(IntEnum):
 
 
 @dataclass
+class DependencyManifest:
+    """Language-agnostic dependency manifest for tier classification of boundary nodes.
+
+    Maps module paths (e.g., Go module paths from go.mod, npm package names
+    from package.json) to dependency metadata. Used by ``create_boundary_nodes``
+    to assign tier 2 (direct dependency) vs tier 3 (indirect/stdlib) to
+    synthetic boundary nodes that represent unresolved external references.
+
+    Entries map module path strings to dicts with at least a ``direct`` bool key.
+    Direct dependencies get tier 2 (INTERNAL_DEP) because they are explicit
+    project dependencies the developer chose; indirect and stdlib get tier 3.
+    """
+
+    entries: dict[str, dict] = field(default_factory=dict)
+
+    def classify_import(self, import_path: str) -> "Tier":
+        """Classify an import path using this manifest.
+
+        Matching uses longest-prefix-first: ``github.com/foo/bar/pkg``
+        matches entry ``github.com/foo/bar``.  Go stdlib paths (no dots
+        in the first path segment, e.g., ``encoding/json``, ``fmt``)
+        always return EXTERNAL_DEP regardless of manifest contents.
+
+        Returns:
+            Tier.INTERNAL_DEP (2) for direct dependencies,
+            Tier.EXTERNAL_DEP (3) for indirect, stdlib, or unknown.
+        """
+        if not import_path:
+            return Tier.EXTERNAL_DEP
+
+        # Go stdlib detection: first path segment has no dots
+        first_segment = import_path.split("/")[0]
+        if "." not in first_segment:
+            return Tier.EXTERNAL_DEP
+
+        # Longest-prefix match against manifest entries
+        best_match = ""
+        for module_path in self.entries:
+            if import_path == module_path or import_path.startswith(module_path + "/"):
+                if len(module_path) > len(best_match):
+                    best_match = module_path
+
+        if best_match and self.entries[best_match].get("direct", False):
+            return Tier.INTERNAL_DEP
+
+        return Tier.EXTERNAL_DEP
+
+    @classmethod
+    def merge(cls, manifests: list["DependencyManifest"]) -> "DependencyManifest":
+        """Merge multiple manifests into one.
+
+        Later entries override earlier ones for the same module path.
+        """
+        merged: dict[str, dict] = {}
+        for m in manifests:
+            merged.update(m.entries)
+        return cls(entries=merged)
+
+
+@dataclass
 class SupplyChainConfig:
     """Configuration for supply chain classification.
 

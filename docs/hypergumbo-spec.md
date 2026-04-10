@@ -1280,7 +1280,7 @@ This ensures first-party symbols appear first even when third-party utilities ha
 
 **What supply chain classification does NOT do:**
 
-1. **Resolve transitive dependencies**: Classification is based on file location, not the full dependency graph. A file in `node_modules/a/` that imports from `node_modules/b/` doesn't affect tier assignment.
+1. **Resolve transitive dependencies**: Classification is based on file location, not the full dependency graph. A file in `node_modules/a/` that imports from `node_modules/b/` doesn't affect tier assignment. 🟩 **Exception:** Go boundary nodes (unresolved external references) are classified using `go.mod` data: direct dependencies get tier 2, indirect dependencies and stdlib get tier 3. The language-agnostic `DependencyManifest` infrastructure supports future extension to npm, Cargo, and pip manifests.
 
 2. **Detect vendored copies**: If you copy `lodash.js` into `src/utils/lodash.js`, it's classified as tier 1 (first-party).
 

@@ -112,6 +112,14 @@ class AnalysisResult:
     run: AnalysisRun | None = None
     skipped: bool = False
     skip_reason: str = ""
+    dependency_manifest: object | None = None
+    """Optional DependencyManifest from supply_chain.py.
+
+    Language analyzers that parse dependency manifests (go.mod, package.json,
+    Cargo.toml) can populate this field. Manifests are merged after all
+    analyzers run and passed to ``create_boundary_nodes`` for tier
+    classification of external references.
+    """
 
 
 @dataclass

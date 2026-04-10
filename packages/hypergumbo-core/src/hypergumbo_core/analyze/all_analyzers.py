@@ -98,6 +98,7 @@ def run_all_analyzers(
     list[UsageContext],  # all_usage_contexts
     Limits,  # limits
     dict[str, list[Symbol]],  # captured_symbols (for linkers)
+    object | None,  # merged dependency manifest
 ]:
     """Run all registered analyzers and collect their results.
 
@@ -111,9 +112,10 @@ def run_all_analyzers(
 
     Returns:
         Tuple of (analysis_runs, all_symbols, all_edges, all_usage_contexts,
-        limits, captured_symbols) where captured_symbols is a dict mapping
-        capture names to symbol lists (e.g., {"c": [...], "java": [...]}
-        for the JNI linker).
+        limits, captured_symbols, dependency_manifest) where captured_symbols
+        is a dict mapping capture names to symbol lists (e.g., {"c": [...],
+        "java": [...]} for the JNI linker) and dependency_manifest is a
+        merged DependencyManifest from all analyzers (or None).
     """
     ensure_discovered()
 
@@ -124,6 +126,7 @@ def run_all_analyzers(
     limits = Limits()
     limits.max_files_per_analyzer = max_files
     captured_symbols: dict[str, list[Symbol]] = {}
+    dep_manifests: list = []
 
     # Wire global callback so find_files() reports skipped files to limits
     def _on_file_skipped(path: Path, size_bytes: int, reason: str) -> None:
@@ -158,6 +161,10 @@ def run_all_analyzers(
             if analyzer.capture_symbols_as and not result.skipped:
                 captured_symbols[analyzer.capture_symbols_as] = list(result.symbols)
 
+            # Collect dependency manifests for tier classification of boundary nodes
+            if not result.skipped and getattr(result, "dependency_manifest", None) is not None:
+                dep_manifests.append(result.dependency_manifest)
+
     # Deduplicate edges by ID (some analyzers may produce duplicate edges)
     seen_edge_ids: set[str] = set()
     deduped_edges: list[Edge] = []
@@ -184,4 +191,13 @@ def run_all_analyzers(
     # Clear global callback to avoid leaking state
     set_global_on_file_skipped(None)
 
-    return analysis_runs, all_symbols, all_edges, all_usage_contexts, limits, captured_symbols
+    # Merge dependency manifests from all analyzers
+    merged_manifest = None
+    if dep_manifests:
+        from ..supply_chain import DependencyManifest
+        merged_manifest = DependencyManifest.merge(dep_manifests)
+
+    return (
+        analysis_runs, all_symbols, all_edges, all_usage_contexts,
+        limits, captured_symbols, merged_manifest,
+    )

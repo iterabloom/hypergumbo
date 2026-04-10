@@ -72,6 +72,9 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+if TYPE_CHECKING:
+    from hypergumbo_core.supply_chain import DependencyManifest
+
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
@@ -409,6 +412,68 @@ def _read_go_module_path(repo_root: Path) -> str | None:
         if stripped.startswith("module "):
             return stripped.split(None, 1)[1].strip()
     return None
+
+
+def parse_go_mod_dependencies(repo_root: Path) -> "DependencyManifest":
+    """Parse go.mod to extract dependency metadata for tier classification.
+
+    Reads ``require`` directives from go.mod and classifies each as
+    direct or indirect (``// indirect`` comment).  Returns a
+    ``DependencyManifest`` that ``create_boundary_nodes`` uses to assign
+    tier 2 (direct dep) or tier 3 (indirect dep) to boundary nodes.
+
+    Handles both block (``require ( ... )``) and single-line
+    (``require github.com/foo/bar v1.0.0``) forms.  ``replace`` and
+    other directives are ignored — they don't affect tier classification.
+    """
+    from hypergumbo_core.supply_chain import DependencyManifest
+
+    go_mod = repo_root / "go.mod"
+    if not go_mod.exists():
+        return DependencyManifest()
+    try:
+        content = go_mod.read_text(errors="replace")
+    except OSError:
+        return DependencyManifest()
+
+    entries: dict[str, dict] = {}
+    in_require_block = False
+
+    for line in content.splitlines():
+        stripped = line.strip()
+
+        # Track block require boundaries
+        if stripped.startswith("require (") or stripped == "require(":
+            in_require_block = True
+            continue
+        if in_require_block and stripped == ")":
+            in_require_block = False
+            continue
+
+        if in_require_block:
+            # Inside require block: "github.com/foo/bar v1.0.0 // indirect"
+            _parse_require_line(stripped, entries)
+        elif stripped.startswith("require ") and "(" not in stripped:
+            # Single-line require: "require github.com/foo/bar v1.0.0"
+            _parse_require_line(stripped[len("require "):].strip(), entries)
+
+    return DependencyManifest(entries=entries)
+
+
+def _parse_require_line(line: str, entries: dict[str, dict]) -> None:
+    """Parse a single require line and add to entries dict.
+
+    Expected format: ``module_path version [// indirect]``
+    Empty lines and comments are ignored.
+    """
+    if not line or line.startswith("//"):
+        return
+    parts = line.split()
+    if len(parts) < 2:
+        return
+    module_path = parts[0]
+    is_indirect = "// indirect" in line
+    entries[module_path] = {"direct": not is_indirect}
 
 
 def _strip_module_prefix(import_path: str, module_path: str) -> str:
@@ -3495,6 +3560,10 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     # "github.com/aquasecurity/trivy/pkg/log").
     go_module_path = _read_go_module_path(repo_root)
 
+    # Parse go.mod dependencies for tier classification of boundary nodes
+    # (WI-vovuk). Direct deps → tier 2, indirect/stdlib → tier 3.
+    go_dep_manifest = parse_go_mod_dependencies(repo_root)
+
     # Pass 1: Extract all symbols
     file_analyses: dict[Path, FileAnalysis] = {}
     files_skipped = 0
@@ -3748,4 +3817,5 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
         edges=all_edges,
         usage_contexts=all_usage_contexts,
         run=run,
+        dependency_manifest=go_dep_manifest if go_dep_manifest.entries else None,
     )

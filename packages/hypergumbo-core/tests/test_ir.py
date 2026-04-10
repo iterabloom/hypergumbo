@@ -1196,3 +1196,97 @@ class TestCreateBoundaryNodes:
         result = create_boundary_nodes([s1], [e1, e2])
         assert len(result) == 2
         assert result[0].id < result[1].id
+
+    def test_manifest_classifies_direct_dep_as_tier2(self):
+        """Boundary nodes for direct deps get tier 2 when manifest provided."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        s1 = self._make_symbol("go:main.go:1-1:main:function")
+        e = Edge.create(
+            src=s1.id, dst="go:github.com/go-kit/log:0-0:package:package",
+            edge_type="imports", line=3,
+        )
+        manifest = DependencyManifest(entries={
+            "github.com/go-kit/log": {"direct": True},
+        })
+        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        assert len(result) == 1
+        assert result[0].supply_chain_tier == 2
+        assert "direct dependency" in result[0].supply_chain_reason
+
+    def test_manifest_classifies_indirect_dep_as_tier3(self):
+        """Boundary nodes for indirect deps remain tier 3."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        s1 = self._make_symbol("go:main.go:1-1:main:function")
+        e = Edge.create(
+            src=s1.id, dst="go:github.com/beorn7/perp:0-0:package:package",
+            edge_type="imports", line=3,
+        )
+        manifest = DependencyManifest(entries={
+            "github.com/beorn7/perp": {"direct": False},
+        })
+        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        assert len(result) == 1
+        assert result[0].supply_chain_tier == 3
+
+    def test_manifest_classifies_go_stdlib_as_tier3(self):
+        """Go stdlib boundary nodes remain tier 3 with manifest."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        s1 = self._make_symbol("go:main.go:1-1:main:function")
+        e = Edge.create(
+            src=s1.id, dst="go:encoding/json:0-0:Marshal:unresolved",
+            edge_type="calls", line=5,
+        )
+        manifest = DependencyManifest(entries={
+            "github.com/foo/bar": {"direct": True},
+        })
+        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        assert len(result) == 1
+        assert result[0].supply_chain_tier == 3
+
+    def test_no_manifest_backward_compat(self):
+        """Without manifest, all boundary nodes get tier 3 (existing behavior)."""
+        s1 = self._make_symbol("go:main.go:1-1:main:function")
+        e = Edge.create(
+            src=s1.id, dst="go:github.com/go-kit/log:0-0:package:package",
+            edge_type="imports", line=3,
+        )
+        result = create_boundary_nodes([s1], [e])
+        assert len(result) == 1
+        assert result[0].supply_chain_tier == 3
+
+    def test_manifest_subpackage_prefix_match(self):
+        """Import of subpackage matches module path prefix in manifest."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        s1 = self._make_symbol("go:main.go:1-1:main:function")
+        e = Edge.create(
+            src=s1.id,
+            dst="go:github.com/go-kit/log/level:0-0:package:package",
+            edge_type="imports", line=3,
+        )
+        manifest = DependencyManifest(entries={
+            "github.com/go-kit/log": {"direct": True},
+        })
+        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        assert len(result) == 1
+        assert result[0].supply_chain_tier == 2
+
+    def test_manifest_non_go_language_unaffected(self):
+        """Non-Go boundary nodes are not reclassified by manifest."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src=s1.id, dst="python:requests:0-0:get:unresolved",
+            edge_type="calls", line=5,
+        )
+        manifest = DependencyManifest(entries={
+            "github.com/go-kit/log": {"direct": True},
+        })
+        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        assert len(result) == 1
+        # Non-Go: manifest doesn't apply, stays tier 3
+        assert result[0].supply_chain_tier == 3
