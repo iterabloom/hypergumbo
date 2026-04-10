@@ -19,3 +19,18 @@
     pr_ref:  # 1803
     description: "The return-type registry (WI-kuroj Phase 1) handles variable-assignment chains: 'qry := ng.NewInstantQuery(...)' types qry as Query, enabling 'qry.Exec()' to resolve. But inline chains like 'ng.NewInstantQuery().Exec()' bypass var_types entirely and hit the chained_call_unresolved guard at go.py:2108-2127.\n\nPrometheus bakeoff (deep-20260409-054615) shows 708 chained_call_unresolved edges. The fix: when the receiver is a call_expression, extract the inner callee method name, look up its return type in the registry, and use it to qualify the outer method for resolution. This extends the go.py:2108-2127 guard to attempt registry-based resolution before falling back to unresolved.\n\nImplementation sketch: at go.py:2108, before emitting chained_call_unresolved, check if inner callee is a selector_expression on a typed receiver, look up {ReceiverType}.{InnerMethod} in method_return_type_registry, and if found, use the return type to resolve the outer method."  # 1803
     fields: {}  # 1803
+- op: update  # e827
+  at: '2026-04-10T02:25:42Z'  # e827
+  by: agent  # e827
+  actor: jgstern_agent  # e827
+  clock: 2  # e827
+  nonce: e827  # e827
+  set:  # e827
+    status: done  # e827
+- op: discuss  # d61c
+  at: '2026-04-10T02:25:42Z'  # d61c
+  by: agent  # d61c
+  actor: jgstern_agent  # d61c
+  clock: 3  # d61c
+  nonce: d61c  # d61c
+  message: "Implemented in commit e27ad5992. Inline chained calls like e.NewQuery().Exec() now resolve via return-type registry when inner callee's receiver type is known. New evidence type chained_return_type_call at confidence 0.75. 2 new tests (single-file + cross-file), 100% coverage."  # d61c

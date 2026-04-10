@@ -48,3 +48,18 @@
   clock: 5  # 8099
   nonce: '8099'  # 8099
   message: "Design direction: language-agnostic DependencyManifest in supply_chain.py. Each analyzer returns a manifest mapping module paths to direct/indirect (Go: go.mod require, JS: package.json deps vs devDeps, Python: pyproject.toml deps, Rust: Cargo.toml deps vs dev-deps). _create_boundary_nodes_for_dangling_edges in ir.py consults the manifest to set tier 2 (direct) or tier 3 (indirect/stdlib). This avoids baking Go-specific logic into the core."  # 8099
+- op: update  # e73e
+  at: '2026-04-10T01:28:01Z'  # e73e
+  by: agent  # e73e
+  actor: jgstern_agent  # e73e
+  clock: 6  # e73e
+  nonce: e73e  # e73e
+  set:  # e73e
+    status: done  # e73e
+- op: discuss  # 3790
+  at: '2026-04-10T01:28:01Z'  # 3790
+  by: agent  # 3790
+  actor: jgstern_agent  # 3790
+  clock: 7  # 3790
+  nonce: '3790'  # 3790
+  message: "Implemented in commit 684718a6e on branch jgstern-agent/feat/go-mod-tier-classification. Go go.mod require directives now parsed to classify boundary nodes: direct deps → tier 2, indirect/stdlib → tier 3. Language-agnostic DependencyManifest enables future extension. 40 new tests, 100% coverage."  # 3790
