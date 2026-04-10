@@ -3523,6 +3523,186 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
+    """Find potentially dead code: production callables unreachable from entrypoints.
+
+    Computes: dead = production_callables - reachable_from(seed_set)
+
+    The seed set is configurable via ``--seeds``:
+    - ``entrypoints``: CLI mains, HTTP routes, framework hooks (default)
+    - ``tests``: test functions only
+    - ``all``: both entrypoints AND tests
+
+    Uses BFS over call edges from seed symbols.  Functions not visited
+    are flagged as potentially dead.  Results are ranked by lines of code
+    (larger unreachable functions first).
+    """
+    repo_root = Path(args.path).resolve()
+
+    input_path, was_cached, generated_files = _get_or_run_analysis(
+        repo_root,
+        explicit_input=args.input,
+        show_progress=True,
+    )
+    if input_path is None:
+        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
+        return 1
+
+    behavior_map = json.loads(input_path.read_text())
+    nodes = behavior_map.get("nodes", [])
+    edges = behavior_map.get("edges", [])
+    # Identify production callable symbols (exclude test files)
+    production_symbols: dict[str, dict] = {}
+    test_symbols: set[str] = set()
+    for node in nodes:
+        path = node.get("path", "")
+        kind = node.get("kind", "")
+        if kind not in ("function", "method"):
+            continue
+        if _is_test_path(path):
+            test_symbols.add(node["id"])
+        else:
+            production_symbols[node["id"]] = node
+
+    if not production_symbols:
+        print("No production functions found to analyze.", file=sys.stderr)
+        return 0
+
+    # Build seed set based on --seeds flag
+    seed_ids: set[str] = set()
+    seeds_mode = getattr(args, "seeds", "entrypoints")
+
+    if seeds_mode in ("entrypoints", "all"):
+        from .entrypoints import detect_entrypoints
+        from .ir import Symbol, Edge, Span
+
+        # Convert dict nodes/edges to IR objects for detect_entrypoints
+        ir_nodes = []
+        for n in nodes:
+            span_data = n.get("span", {})
+            sym = Symbol(
+                id=n["id"],
+                name=n.get("name", ""),
+                kind=n.get("kind", ""),
+                language=n.get("language", ""),
+                path=n.get("path", ""),
+                span=Span(
+                    start_line=span_data.get("start_line", 0),
+                    end_line=span_data.get("end_line", 0),
+                    start_col=span_data.get("start_col", 0),
+                    end_col=span_data.get("end_col", 0),
+                ),
+                meta=n.get("meta"),
+            )
+            ir_nodes.append(sym)
+
+        ir_edges = []
+        for e in edges:
+            ir_edges.append(Edge(
+                id=e.get("id", ""),
+                src=e.get("src", ""),
+                dst=e.get("dst", ""),
+                edge_type=e.get("type", "calls"),
+                line=e.get("line", 0),
+                confidence=e.get("confidence", 0.85),
+            ))
+
+        min_conf = getattr(args, "min_confidence", 0.0)
+        entrypoints = detect_entrypoints(ir_nodes, ir_edges)
+        for ep in entrypoints:
+            if ep.confidence >= min_conf:
+                seed_ids.add(ep.symbol_id)
+
+    if seeds_mode in ("tests", "all"):
+        seed_ids.update(test_symbols)
+
+    # BFS from seeds through call edges
+    call_graph: dict[str, list[str]] = {}
+    for edge in edges:
+        if edge.get("type") == "calls":
+            src = edge.get("src", "")
+            dst = edge.get("dst", "")
+            if src and dst:
+                call_graph.setdefault(src, []).append(dst)
+
+    reachable: set[str] = set()
+    queue = list(seed_ids)
+    visited: set[str] = set(seed_ids)
+    while queue:
+        current = queue.pop()
+        reachable.add(current)
+        for neighbor in call_graph.get(current, []):
+            if neighbor not in visited:
+                visited.add(neighbor)
+                queue.append(neighbor)
+
+    # Dead candidates = production symbols NOT reachable
+    dead_candidates = []
+    for sym_id, node in production_symbols.items():
+        if sym_id not in reachable:
+            dead_candidates.append(node)
+
+    # Sort by LOC descending (larger unreachable functions first)
+    dead_candidates.sort(key=lambda n: -(n.get("lines_of_code") or 1))
+
+    # Summary stats
+    total_production = len(production_symbols)
+    total_reachable = len(reachable & set(production_symbols.keys()))
+    total_dead = len(dead_candidates)
+    total_entrypoints = len(seed_ids)
+
+    if args.format == "json":
+        output = {
+            "summary": {
+                "total_production_functions": total_production,
+                "reachable_functions": total_reachable,
+                "dead_candidates": total_dead,
+                "seed_count": total_entrypoints,
+                "seeds_mode": seeds_mode,
+                "dead_percent": round(total_dead / max(total_production, 1) * 100, 1),
+            },
+            "dead_candidates": [
+                {
+                    "name": n.get("name", ""),
+                    "path": n.get("path", ""),
+                    "language": n.get("language", ""),
+                    "kind": n.get("kind", ""),
+                    "lines_of_code": n.get("lines_of_code"),
+                    "span": n.get("span"),
+                    "id": n["id"],
+                }
+                for n in dead_candidates
+            ],
+        }
+        print(json.dumps(output, indent=2))
+    else:
+        # Text format
+        print(f"Dead Code Analysis (seeds: {seeds_mode})")
+        print(f"{'=' * 50}")
+        print(f"Production functions: {total_production}")
+        print(f"Entrypoints/seeds:    {total_entrypoints}")
+        print(f"Reachable:            {total_reachable}")
+        print(f"Potentially dead:     {total_dead} "
+              f"({total_dead / max(total_production, 1) * 100:.1f}%)")
+        print()
+
+        if dead_candidates:
+            print("Potentially dead functions (by LOC, largest first):")
+            print(f"{'─' * 70}")
+            for n in dead_candidates[:50]:
+                name = n.get("name", "?")
+                path = n.get("path", "?")
+                loc = n.get("lines_of_code") or "?"
+                print(f"  {name:<30} {path:<30} {loc:>5} LOC")
+
+            if len(dead_candidates) > 50:  # pragma: no cover
+                print(f"  ... and {len(dead_candidates) - 50} more")
+        else:
+            print("No potentially dead functions found.")
+
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Main parser with comprehensive help
     main_description = """\
@@ -4422,6 +4602,34 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     )
     p_test_cov.set_defaults(func=cmd_test_coverage)
 
+    # hypergumbo dead-code-maybe
+    p_dead_code = sub.add_parser(
+        "dead-code-maybe",
+        help="Find potentially dead code unreachable from entrypoints",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_dead_code.add_argument(
+        "path", nargs="?", default=".",
+        help="Path to repo root (default: current directory)",
+    )
+    p_dead_code.add_argument(
+        "--input", default=None,
+        help="Input behavior map file (default: auto-detect cached results)",
+    )
+    p_dead_code.add_argument(
+        "--format", choices=["text", "json"], default="text",
+        help="Output format (default: text)",
+    )
+    p_dead_code.add_argument(
+        "--seeds", choices=["entrypoints", "tests", "all"], default="entrypoints",
+        help="Seed set for reachability analysis (default: entrypoints)",
+    )
+    p_dead_code.add_argument(
+        "--min-confidence", type=float, default=0.0,
+        help="Minimum entrypoint confidence threshold (default: 0.0)",
+    )
+    p_dead_code.set_defaults(func=cmd_dead_code_maybe)
+
     # hypergumbo symbols
     symbols_epilog = """\
 Examples:
@@ -4666,8 +4874,8 @@ subprocess, environment) and groups them by boundary type. See ADR-0016."""
     # Assign subcommands to groups for help formatting
     # Core analysis commands (group_order=0) - ordered by suborder
     core_cmds = ["sketch", "run", "slice", "search", "routes", "explain",
-                 "catalog", "config", "test-coverage", "symbols", "compact",
-                 "io-boundaries", "verify-claims"]
+                 "catalog", "config", "test-coverage", "dead-code-maybe",
+                 "symbols", "compact", "io-boundaries", "verify-claims"]
     for i, cmd in enumerate(core_cmds):
         _set_subparser_group(sub, cmd, "core", 0, suborder=i)
 
@@ -5363,7 +5571,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "symbols", "compact", "io-boundaries", "verify-claims"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):
