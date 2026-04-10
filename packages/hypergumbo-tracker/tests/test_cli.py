@@ -1156,11 +1156,11 @@ class TestWriteCommands:
             ])
         assert exc.value.code == EXIT_SUCCESS
 
-    def test_discuss_warns_unread_human_message(
+    def test_discuss_blocks_without_ack_thread(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None,
     ) -> None:
-        """Discuss warns when the last message is from a human."""
+        """Discuss exits non-zero when last message is from human and no --ack-thread."""
         tracker_root = _setup_tracker(tmp_path)
         ops_dir = tracker_root / "tracker-workspace" / ".ops"
         _add_item_with_discussion(ops_dir, "WI-test", [
@@ -1174,11 +1174,35 @@ class TestWriteCommands:
                 "--tracker-root", str(tracker_root),
                 "discuss", "WI-test", "Will do",
             ])
-        assert exc.value.code == EXIT_SUCCESS
+        assert exc.value.code == EXIT_USER_ERROR
         out = capsys.readouterr().out
         assert "unread message from the human" in out
         assert "Please investigate this" in out
-        assert "tracker discuss" in out
+        assert "--ack-thread" in out
+
+    def test_discuss_proceeds_with_ack_thread(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Discuss proceeds when --ack-thread is provided with unread human message."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item_with_discussion(ops_dir, "WI-test", [
+            {"at": "2026-01-01T01:00:00Z", "by": "agent",
+             "actor": "test_agent", "message": "Initial note"},
+            {"at": "2026-01-02T01:00:00Z", "by": "human",
+             "actor": "jgstern", "message": "Please investigate this"},
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "discuss", "WI-test",
+                "I've read the thread. Here's my reply.",
+                "--ack-thread",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "discussed" in out
 
     def test_discuss_no_warning_when_last_is_agent(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
@@ -1244,7 +1268,7 @@ class TestWriteCommands:
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None,
     ) -> None:
-        """Unread warning includes prior transcript."""
+        """Unread gate includes prior transcript and exits non-zero."""
         tracker_root = _setup_tracker(tmp_path)
         ops_dir = tracker_root / "tracker-workspace" / ".ops"
         _add_item_with_discussion(ops_dir, "WI-test", [
@@ -1260,11 +1284,13 @@ class TestWriteCommands:
                 "--tracker-root", str(tracker_root),
                 "discuss", "WI-test", "Agent responds",
             ])
-        assert exc.value.code == EXIT_SUCCESS
+        # Now blocks without --ack-thread (WI-zufuj)
+        assert exc.value.code == EXIT_USER_ERROR
         out = capsys.readouterr().out
         assert "Human reply" in out
         assert "First note" in out
         assert "Second note" in out
+        assert "--ack-thread" in out
 
     def test_discuss_view_shows_thread(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
