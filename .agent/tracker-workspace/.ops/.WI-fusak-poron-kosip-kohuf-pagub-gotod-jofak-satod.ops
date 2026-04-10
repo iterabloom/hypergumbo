@@ -48,3 +48,18 @@
   clock: 5  # 12f2
   nonce: 12f2  # 12f2
   message: "Preliminary analysis from last session sidecar (444 events): LLM selected 704 playbook injections total, 101 actually injected (14%), 603 skipped by dedup (86%). Top selected: smart-test-playbook (124x selected, only 10x injected), coverage-and-test-placement (90x/10x), structural-fix (81x/8x). The dedup mechanism is working well. Full read-then-injected cross-reference (requiring transcript analysis) deferred — the dedup rate alone shows the injection pipeline is not wasteful."  # 12f2
+- op: update  # 6638
+  at: '2026-04-10T18:54:23Z'  # 6638
+  by: human  # 6638
+  actor: jgstern  # 6638
+  clock: 6  # 6638
+  nonce: '6638'  # 6638
+  set:  # 6638
+    status: todo_soft  # 6638
+- op: discuss  # fc7a
+  at: '2026-04-10T18:55:39Z'  # fc7a
+  by: human  # fc7a
+  actor: jgstern  # fc7a
+  clock: 7  # fc7a
+  nonce: fc7a  # fc7a
+  message: "nope sorry this is not done until you implement the read-then-injected detector. good work so far but you are not done."  # fc7a
