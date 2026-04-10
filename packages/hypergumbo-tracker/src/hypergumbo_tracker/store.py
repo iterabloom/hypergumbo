@@ -1845,7 +1845,7 @@ class Store:
 
     def list_items(
         self,
-        status: str | None = None,
+        status: str | list[str] | None = None,
         kind: str | None = None,
         tag: str | None = None,
         cache: Any | None = None,
@@ -1856,6 +1856,7 @@ class Store:
         Updates the positional alias stash.
 
         Args:
+            status: Single status string or list of statuses to filter by.
             cache: Optional Cache instance. If provided, uses cached compiled
                 items when source files haven't changed (write-through on miss).
         """
@@ -1863,7 +1864,11 @@ class Store:
 
         # Apply filters
         if status is not None:
-            items = [i for i in items if i.status == status]
+            if isinstance(status, list):
+                status_set = set(status)
+                items = [i for i in items if i.status in status_set]
+            else:
+                items = [i for i in items if i.status == status]
         if kind is not None:
             items = [i for i in items if i.kind == kind]
         if tag is not None:

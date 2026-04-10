@@ -357,6 +357,54 @@ class TestReadCommands:
         assert "WI-a" in out
         assert "WI-b" not in out
 
+    def test_list_multi_status(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                               mock_agent_uid: None) -> None:
+        """--status is repeatable: union of all specified statuses (WI-lukop)."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker" / ".ops", "WI-a", status="todo_hard")
+        _add_item(tracker_root / "tracker" / ".ops", "WI-b", status="todo_soft")
+        _add_item(tracker_root / "tracker" / ".ops", "WI-c", status="done")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "list",
+                "--status", "todo_hard", "--status", "todo_soft",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "WI-a" in out
+        assert "WI-b" in out
+        assert "WI-c" not in out
+
+    def test_list_open_filter(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                              mock_agent_uid: None) -> None:
+        """--open shows items with open statuses (WI-lukop)."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker" / ".ops", "WI-a", status="todo_soft")
+        _add_item(tracker_root / "tracker" / ".ops", "WI-b", status="done")
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "list", "--open"])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "WI-a" in out
+        assert "WI-b" not in out
+
+    def test_list_open_plus_status(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                                   mock_agent_uid: None) -> None:
+        """--open combined with --status merges both sets (WI-lukop)."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker" / ".ops", "WI-a", status="done")
+        _add_item(tracker_root / "tracker" / ".ops", "WI-b", status="todo_soft")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "list",
+                "--open", "--status", "done",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        # Both should appear: --open includes todo_soft, --status adds done
+        assert "WI-a" in out
+        assert "WI-b" in out
+
     def test_list_with_limit(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                              mock_agent_uid: None) -> None:
         tracker_root = _setup_tracker(tmp_path)
