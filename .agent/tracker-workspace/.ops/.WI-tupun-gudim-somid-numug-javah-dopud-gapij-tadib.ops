@@ -18,3 +18,18 @@
     pr_ref:  # 11be
     description: "Scope expansion from Go cross-package interface dispatch fix. In rust.py line 1364, typed_name uses receiver_type which may include module prefix from scoped_type_identifier. Verify by running bakeoff on Rust-heavy polyglot repos."  # 11be
     fields: {}  # 11be
+- op: update  # 7298
+  at: '2026-04-10T18:28:36Z'  # 7298
+  by: agent  # 7298
+  actor: jgstern_agent  # 7298
+  clock: 2  # 7298
+  nonce: '7298'  # 7298
+  set:  # 7298
+    status: done  # 7298
+- op: discuss  # 1d93
+  at: '2026-04-10T18:28:36Z'  # 1d93
+  by: agent  # 1d93
+  actor: jgstern_agent  # 1d93
+  clock: 3  # 1d93
+  nonce: 1d93  # 1d93
+  message: "Fixed in PR (pending merge). rsplit('::', 1)[-1] strips module prefix from scoped_type_identifier before typed_name construction. Test: self.inner.lock() where inner: std::sync::Mutex now resolves to Mutex::lock."  # 1d93

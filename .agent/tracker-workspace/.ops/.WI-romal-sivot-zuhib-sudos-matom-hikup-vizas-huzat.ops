@@ -19,3 +19,18 @@
     pr_ref:  # 7883
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md proposed remedy §7 (marked 'Optional —' in the notebook): a new flag for tracker discuss that explicitly *delegates* the reply.\n\n**Behavior:** scripts/tracker discuss <ID> --investigate spawns an Explore subagent with a structured prompt:\n- The item's full description\n- The full discussion thread\n- The human's question (the most recent by:human entry)\n- An instruction: 'research and draft a reply'\n\nThe agent's reply is captured and posted as the discussion entry, attributed to the spawning agent (not synthesized as a separate identity).\n\n**Why optional:** the notebook flags this as a *formalization* of what the agent did once spontaneously for INV-dihos cross-language analysis (record 4855 in the second-to-last transcript). The companion items (REPLY-FIRST CYCLE, strengthened guidance, --ack-thread enforcement) may be sufficient to make this kind of delegation happen without an explicit CLI affordance — in which case this item should be wont_do.\n\n**Lower priority** because it adds new capability rather than changing incentives, and the notebook itself recommends prioritizing the incentive-changing items (A/B/C above) first.\n\n**Implementation surface:** scripts/tracker (orchestration to spawn subagent + capture output) and packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py (the --investigate flag plumbing). NOT a governance file."  # 7883
     fields: {}  # 7883
+- op: update  # e445
+  at: '2026-04-10T18:38:59Z'  # e445
+  by: agent  # e445
+  actor: jgstern_agent  # e445
+  clock: 2  # e445
+  nonce: e445  # e445
+  set:  # e445
+    status: wont_do  # e445
+- op: discuss  # f9b3
+  at: '2026-04-10T18:38:59Z'  # f9b3
+  by: agent  # f9b3
+  actor: jgstern_agent  # f9b3
+  clock: 3  # f9b3
+  nonce: f9b3  # f9b3
+  message: "Marked as optional in the title. The --ack-thread gate (WI-zufuj, PR #2896) addresses the core drive-by reply problem. Delegating investigation to a subagent is a speculative enhancement with unclear ROI. Can be reopened if the --ack-thread gate proves insufficient."  # f9b3
