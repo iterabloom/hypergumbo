@@ -242,13 +242,29 @@ def _cmd_show(args: argparse.Namespace, ts: TrackerSet) -> int:
     return EXIT_SUCCESS
 
 
+_OPEN_STATUSES = [
+    "todo_hard", "todo_soft", "violated", "pending_validation",
+    "needs_human_review",
+]
+
+
 def _cmd_list(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'list' subcommand."""
     tier = None
     if hasattr(args, "tier") and args.tier:
         tier = Tier(args.tier)
+
+    # Resolve status filter: --open expands to the five open statuses,
+    # --status is repeatable and merged with --open if both given.
+    status_filter = getattr(args, "status", None)
+    if getattr(args, "open_filter", False):
+        if status_filter:
+            status_filter = list(set(status_filter + _OPEN_STATUSES))
+        else:
+            status_filter = list(_OPEN_STATUSES)
+
     items = ts.list_items(
-        status=getattr(args, "status", None),
+        status=status_filter,
         kind=getattr(args, "kind", None),
         tag=getattr(args, "tag", None),
         tier=tier,
@@ -1532,7 +1548,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # --- list ---
     p_list = sub.add_parser("list", help="List items with filters")
-    p_list.add_argument("--status", help="Filter by status")
+    p_list.add_argument("--status", action="append", help="Filter by status (repeatable)")
+    p_list.add_argument(
+        "--open", action="store_true", dest="open_filter",
+        help="Show open items (todo_hard, todo_soft, violated, pending_validation, needs_human_review)",
+    )
     p_list.add_argument("--kind", help="Filter by kind")
     p_list.add_argument("--tag", help="Filter by tag")
     p_list.add_argument("--tier", choices=["canonical", "workspace", "stealth"],

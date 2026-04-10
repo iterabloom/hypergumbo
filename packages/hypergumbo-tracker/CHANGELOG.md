@@ -9,6 +9,7 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Added
 
+- **`tracker list --status` repeatable + `--open` shortcut** (WI-lukop): `--status` now accepts multiple values (`--status todo_hard --status todo_soft`), returning the union. New `--open` flag expands to the five open statuses (todo_hard, todo_soft, violated, pending_validation, needs_human_review). `store.list_items()` accepts `str | list[str] | None` for the status parameter.
 - **`tracker discuss <id>` view mode** (WI-kidip): calling `discuss` with no message argument now prints the discussion thread in chronological order instead of appending an empty entry. Shows entry number, timestamp, actor, and message text. `--json` returns the thread as a JSON list of records. Empty threads show "(no entries)". Existing `discuss <id> <message>` (append) behavior is unchanged.
 
 ### Fixed

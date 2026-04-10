@@ -976,6 +976,17 @@ class TestReadyAndList:
         assert len(items) == 1
         assert items[0].title == "Done Item"
 
+    def test_list_items_filter_multi_status(self, ops_dir: Path, mock_agent_uid: None) -> None:
+        """list_items with a list of statuses returns the union (WI-lukop)."""
+        store = Store(ops_dir, config=_make_config())
+        store.add(kind="work_item", title="Hard", status="todo_hard")
+        store.add(kind="work_item", title="Soft", status="todo_soft")
+        store.add(kind="work_item", title="Done", status="done")
+        items = store.list_items(status=["todo_hard", "todo_soft"])
+        assert len(items) == 2
+        titles = {i.title for i in items}
+        assert titles == {"Hard", "Soft"}
+
     def test_list_items_filter_kind(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
         store.add(kind="invariant", fields=_INV_FIELDS, title="Inv Item")

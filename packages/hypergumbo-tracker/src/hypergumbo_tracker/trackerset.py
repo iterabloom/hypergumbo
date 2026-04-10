@@ -147,7 +147,7 @@ class TrackerSet:
 
     def list_items(
         self,
-        status: str | None = None,
+        status: str | list[str] | None = None,
         kind: str | None = None,
         tag: str | None = None,
         tier: Tier | None = None,
