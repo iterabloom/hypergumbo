@@ -189,11 +189,14 @@ DEFAULT_EDGE_TYPE_WEIGHTS: Dict[str, float] = {
     "ipc_event": 0.9,
     "wasm_bridge": 0.9,
     "grpc_calls": 0.9,
+    "event_subscribes": 0.8,
+    "event_publishes": 0.8,
     "routes_to": 0.8,
     "crdt_publishes": 0.8,
     "message_dispatch": 0.8,
     "crypto_flow": 0.8,
     "renders_component": 0.7,
+    "dispatches_to": 0.6,
     "imports": 0.3,
     "imports_module": 0.2,
     "module_exports": 0.1,
@@ -254,6 +257,13 @@ def compute_centrality(
     at most this many edges worth of in-degree to any target symbol.  This
     prevents a utility function called 50 times from 2 files from outranking
     an architecturally important function called 15 times from 15 files.
+
+    **Orchestration floor:** symbols with out-degree >= 20 (orchestration
+    hubs like ``main``/``run``/``app``) get a minimum effective in-degree
+    of ``sqrt(out_degree) * 0.8``.  Without this, within-file dampening
+    and per-file capping crush hubs whose few in-edges all originate from
+    the same file (e.g., ``run`` called only from ``main()`` in the same
+    ``main.go``).
 
     Scores are normalized to 0-1 after computation.
 
@@ -333,6 +343,20 @@ def compute_centrality(
             effective_in = hub_threshold + math.log(1 + ind - hub_threshold)
         else:
             effective_in = ind
+
+        # Orchestration floor: genuinely high-out-degree functions
+        # (main/run/app — typically out >= 20) get a minimum effective
+        # in-degree proportional to their out-degree.  Without this,
+        # within-file dampening and per-file capping crush orchestration
+        # hubs: alertmanager's `run` (in=9 all same-file, out=128) got
+        # effective_in=0.90 after 0.3x within-file weight and
+        # max_per_file_in=5, burying it at rank 45 below symbols with
+        # moderate in-degree from many files.  The threshold prevents
+        # the floor from affecting normal functions with a few out-edges.
+        _ORCHESTRATION_OUT_THRESHOLD = 20
+        if outd >= _ORCHESTRATION_OUT_THRESHOLD:
+            orchestration_floor = math.sqrt(outd) * 0.8
+            effective_in = max(effective_in, orchestration_floor)
 
         # Pure sinks (out_degree=0) get a dampened multiplier (0.5) vs
         # the normal floor of 1.0.  This penalizes popular leaf utilities
