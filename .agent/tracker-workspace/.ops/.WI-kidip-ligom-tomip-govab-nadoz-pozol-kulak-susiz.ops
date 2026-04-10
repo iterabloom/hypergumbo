@@ -18,3 +18,18 @@
     pr_ref:  # c8f9
     description: "**Goal:** `tracker discuss <id>` with no `message` argument should print the item's discussion thread in chronological order, one entry per stanza, formatted for human scanning. Currently the only way to view discussion is via `tracker show <id>`, which mixes the thread in with the description, fields, and metadata — for items with long descriptions the discussion is buried far below the fold.\n\n**Proposed format** (default, non-JSON):\n```\nWI-foo-... — <title>\nDiscussion (N entries):\n\n  [1] 2026-04-08T22:24Z  agent  jgstern_agent\n      <message text, line-wrapped>\n\n  [2] 2026-04-08T22:40Z  human  jgstern\n      <message text, line-wrapped>\n```\n\nWith `--json`, emit the same shape as the `discussion` field in `show --json`.\n\n**Why useful:** items with multi-page descriptions (e.g., the bf4oxh91w investigation items) have rich discussion threads that get visually lost in `show` output. A dedicated thread view also makes it easier for an agent to load just the conversation context without re-parsing the description.\n\n**Backwards compatibility:** `tracker discuss <id> <message>` (the existing add-entry form) is unchanged. Behavior switches purely on argv length: 1 positional → view, 2 positionals → append. Existing flags `--clear` and `--summarize` remain mutator operations.\n\n**Tests:**\n1. `discuss <id>` on item with N entries prints all N in order.\n2. `discuss <id>` on item with empty thread prints '(no entries)'.\n3. `discuss <id> --json` on item with N entries returns a JSON list of N records.\n4. `discuss <id> 'msg'` (existing form) still appends (regression guard).\n\n**Cross-reference:** complements WI-pusif and the broader ergonomics work — long descriptions are now expected to push detail into discussion entries via the 'continued in discussion' pattern, which makes a clean discussion view more valuable than it was before."  # c8f9
     fields: {}  # c8f9
+- op: update  # 006b
+  at: '2026-04-10T05:12:36Z'  # 006b
+  by: agent  # 006b
+  actor: jgstern_agent  # 006b
+  clock: 2  # 006b
+  nonce: 006b  # 006b
+  set:  # 006b
+    status: done  # 006b
+- op: discuss  # 12d2
+  at: '2026-04-10T05:12:36Z'  # 12d2
+  by: agent  # 12d2
+  actor: jgstern_agent  # 12d2
+  clock: 3  # 12d2
+  nonce: 12d2  # 12d2
+  message: "Implemented in commit 89cd46452. discuss <id> with no message now prints the thread. --json returns list of records. 3 new tests."  # 12d2

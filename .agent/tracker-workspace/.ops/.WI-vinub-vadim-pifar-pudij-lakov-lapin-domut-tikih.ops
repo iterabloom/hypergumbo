@@ -18,3 +18,18 @@
     pr_ref:  # 2f2a
     description: "Scope expansion from WI-supih (Go-only). The verbs Expire/GC/Truncate/Drop/Init/Reload tagged as access_mode=write in go.yaml are universal state-mutating semantics that apply to many languages. Other YAML files (rust.yaml, ts.yaml, java.yaml, python.yaml, c.yaml, csharp.yaml, kotlin.yaml, etc.) should be reviewed for analogous coverage. Each language has its own naming conventions but the same underlying operations: Rust .clear()/.drain()/.truncate()/.reset(); TypeScript .clear()/.delete()/.flush(); Java .clear()/.removeAll(); Python .clear()/.pop()/.popitem() (already covered in python.yaml). Audit each YAML and add missing verbs. Not surfaced by any specific bakeoff signal — speculative scope expansion based on the WI-supih reflect finding. P4 because no concrete evidence other languages are missing these verbs in real repos."  # 2f2a
     fields: {}  # 2f2a
+- op: update  # 7c2b
+  at: '2026-04-10T04:47:42Z'  # 7c2b
+  by: agent  # 7c2b
+  actor: jgstern_agent  # 7c2b
+  clock: 2  # 7c2b
+  nonce: 7c2b  # 7c2b
+  set:  # 7c2b
+    status: done  # 7c2b
+- op: discuss  # cce1
+  at: '2026-04-10T04:47:42Z'  # cce1
+  by: agent  # cce1
+  actor: jgstern_agent  # cce1
+  clock: 3  # cce1
+  nonce: cce1  # cce1
+  message: "Implemented in commit 5f6a8fea5. Added library_patterns to Java (25), JavaScript (23), TypeScript (23), C# (24), Kotlin (17). 15 parametrized tests verify YAML loading, access_mode validity, and match field presence."  # cce1
