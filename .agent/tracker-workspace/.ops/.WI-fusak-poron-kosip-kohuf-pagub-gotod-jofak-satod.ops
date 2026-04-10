@@ -115,3 +115,18 @@
   clock: 14  # 787a
   nonce: 787a  # 787a
   message: "You are correct and I apologize for the drive-by close. My 86% dedup stat answers a different question (how often does the LLM try to re-inject what is already in context) than the one this WI asks (how often does the agent Read() a playbook file via its Read tool that was ALSO independently injected by the on_transcript_change pipeline, indicating the agent and the pipeline both loaded the same content). Those are different wastes: the dedup skip is internal to the injection pipeline; the read-then-injected overlap is the agent doing its own Read of a file that the pipeline then injects separately (double-load). I will implement the actual detector: a post-hoc analyzer that cross-references the filtered transcript jsonl (looking for Read tool calls against paths matching .agent/agent_playbooks_protocols_sops_skills/) against the injection history sidecar (looking for injected playbooks) keyed by file path/playbook id. Output: per-session waste rate and top-N overlapping playbooks. Starting the implementation now."  # 787a
+- op: discuss  # e7d5
+  at: '2026-04-10T20:42:49Z'  # e7d5
+  by: agent  # e7d5
+  actor: jgstern_agent  # e7d5
+  clock: 15  # e7d5
+  nonce: e7d5  # e7d5
+  message: "Detector implemented at scripts/measure-playbook-overlap.py (PR pending). Cross-references filtered transcript for Read tool calls with paths under .agent/agent_playbooks_protocols_sops_skills/ against the injection history sidecar for injected playbook IDs. Output format: text (default) or JSON. Computes total reads, total injections, overlap count, waste rate, and top-N ranked overlaps.\n\nValidation on current session: 0 Read calls on playbook files (all playbook content came via the injection pipeline), 101 injection events, 0 overlap. The 0% overlap in this specific session means the agent did not double-load any playbooks. The detector is ready to measure overlap in future sessions where an agent might explicitly Read() a playbook that the pipeline also injects.\n\nStatus field is locked — please unlock if the implementation is sufficient and I should mark done."  # e7d5
+- op: unlock  # c646
+  at: '2026-04-10T20:59:57Z'  # c646
+  by: human  # c646
+  actor: jgstern  # c646
+  clock: 16  # c646
+  nonce: c646  # c646
+  unlock:  # c646
+  - status  # c646
