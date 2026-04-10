@@ -4476,6 +4476,96 @@ func marshalLocal(m *MarshalEncoder, data interface{}) {
             f"MarshalEncoder.Encode, found: {[e.dst for e in marshal_encode]}"
         )
 
+    def test_chained_call_resolved_via_return_type_registry(self, tmp_path: Path) -> None:
+        """engine.NewQuery().Exec() resolves via return-type registry (WI-vadin).
+
+        When the inner callee (NewQuery) has a known receiver type (Engine)
+        and the return-type registry maps Engine.NewQuery → Query, the outer
+        method (Exec) should resolve to Query.Exec instead of being marked
+        chained_call_unresolved.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Engine struct{}
+type Query struct{}
+
+func (e *Engine) NewQuery() *Query { return &Query{} }
+func (q *Query) Exec() {}
+
+func runQuery(e *Engine) {
+    e.NewQuery().Exec()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_calls = [e for e in call_edges if "runQuery" in e.src]
+
+        # The inner call e.NewQuery() should resolve to Engine.NewQuery
+        new_query_calls = [e for e in run_calls if "NewQuery" in e.dst]
+        assert any("Engine.NewQuery" in e.dst for e in new_query_calls), (
+            f"e.NewQuery() should resolve to Engine.NewQuery, "
+            f"found: {[e.dst for e in new_query_calls]}"
+        )
+
+        # The outer call .Exec() should resolve to Query.Exec via registry
+        exec_calls = [e for e in run_calls if "Exec" in e.dst]
+        assert any("Query.Exec" in e.dst for e in exec_calls), (
+            f"e.NewQuery().Exec() should resolve to Query.Exec via "
+            f"return-type registry, found: {[e.dst for e in exec_calls]}"
+        )
+
+        # Should NOT be chained_call_unresolved
+        exec_unresolved = [
+            e for e in exec_calls
+            if e.evidence_type == "chained_call_unresolved"
+        ]
+        assert len(exec_unresolved) == 0, (
+            f"Exec() should be resolved, not chained_call_unresolved: "
+            f"{[e.dst for e in exec_unresolved]}"
+        )
+
+    def test_chained_call_return_type_cross_file(self, tmp_path: Path) -> None:
+        """Cross-file chained call: engine in one file, query in another (WI-vadin).
+
+        When the return type's method is defined in a different file,
+        the global_symbols lookup (not local_symbols) must resolve it.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "engine.go").write_text("""package main
+
+type Engine struct{}
+
+func (e *Engine) NewQuery() *Query { return &Query{} }
+
+func runQuery(e *Engine) {
+    e.NewQuery().Exec()
+}
+""")
+        (tmp_path / "query.go").write_text("""package main
+
+type Query struct{}
+
+func (q *Query) Exec() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_calls = [e for e in call_edges if "runQuery" in e.src]
+
+        exec_calls = [e for e in run_calls if "Exec" in e.dst]
+        assert any("Query.Exec" in e.dst for e in exec_calls), (
+            f"Cross-file e.NewQuery().Exec() should resolve to Query.Exec "
+            f"via return-type registry + global_symbols, "
+            f"found: {[e.dst for e in exec_calls]}"
+        )
+
     def test_method_receiver_self_call_resolves(self, tmp_path: Path) -> None:
         """s.Close() inside func (s *Server) Cleanup() → typed_receiver_call.
 

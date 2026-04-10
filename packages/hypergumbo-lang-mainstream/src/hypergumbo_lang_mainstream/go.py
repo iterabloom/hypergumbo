@@ -2212,6 +2212,60 @@ def _extract_edges_from_file(
                                     import_path_hint = import_aliases[
                                         node_text(inner_operand, source)
                                     ]
+                        # WI-vadin: Before the chained-call ambiguity guard,
+                        # try to resolve via the return-type registry.
+                        # For e.NewQuery().Exec(), if e's type is Engine
+                        # and the registry maps Engine.NewQuery → Query,
+                        # resolve .Exec() as Query.Exec.
+                        if (
+                            callee_name
+                            and import_path_hint is None
+                            and operand_node is not None
+                            and operand_node.type == "call_expression"
+                            and method_return_type_registry
+                        ):
+                            inner_func = find_child_by_field(
+                                operand_node, "function",
+                            )
+                            if (
+                                inner_func is not None
+                                and inner_func.type == "selector_expression"
+                            ):
+                                inner_operand = find_child_by_field(
+                                    inner_func, "operand",
+                                )
+                                inner_field = find_child_by_field(
+                                    inner_func, "field",
+                                )
+                                if inner_operand is not None and inner_field is not None:
+                                    recv_name = node_text(inner_operand, source)
+                                    inner_method = node_text(inner_field, source)
+                                    recv_type = var_types.get(recv_name, "")
+                                    if recv_type:
+                                        qualified = f"{recv_type}.{inner_method}"
+                                        ret_type = method_return_type_registry.get(
+                                            qualified
+                                        )
+                                        if ret_type:
+                                            outer_qualified = f"{ret_type}.{callee_name}"
+                                            target = local_symbols.get(outer_qualified)
+                                            if target is None and outer_qualified in global_symbols:
+                                                candidates = global_symbols[outer_qualified]
+                                                if candidates:
+                                                    target = candidates[0]
+                                            if target is not None:
+                                                edges.append(Edge.create(
+                                                    src=current_function.id,
+                                                    dst=target.id,
+                                                    edge_type="calls",
+                                                    line=node.start_point[0] + 1,
+                                                    evidence_type="chained_return_type_call",
+                                                    confidence=0.75,
+                                                    origin=PASS_ID,
+                                                    origin_run_id=run.execution_id,
+                                                ))
+                                                callee_name = None
+
                         # Chained-call ambiguity guard: when the receiver
                         # is a call_expression but we couldn't determine its
                         # package (import_path_hint still None), the receiver
