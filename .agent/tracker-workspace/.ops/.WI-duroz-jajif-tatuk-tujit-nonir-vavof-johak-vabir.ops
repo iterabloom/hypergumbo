@@ -57,3 +57,10 @@
   clock: 6  # 5145
   nonce: '5145'  # 5145
   message: "Consideration complete. Recommended lightweight one-shot variant (20-30 repos) over persistent bakeoff cohort. Awaiting human decision on whether to proceed."  # 5145
+- op: discuss  # c8cb
+  at: '2026-04-10T18:41:37Z'  # c8cb
+  by: human  # c8cb
+  actor: jgstern  # c8cb
+  clock: 7  # c8cb
+  nonce: c8cb  # c8cb
+  message: "agreed let's do a lightweight one-shot variant (20-30 repos). please make an new item for that and have that item block WI-botol, and be higher-priority. once you've done that, respond here with the new tracker item id and mark this one (WI-duroz) as done."  # c8cb

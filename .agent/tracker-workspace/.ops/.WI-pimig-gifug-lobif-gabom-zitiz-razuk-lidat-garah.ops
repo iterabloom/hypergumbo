@@ -20,3 +20,18 @@
     pr_ref:  # 3ebf
     description: "Implement the 'killer heuristic' from ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md Heuristics §2: for each dead-code candidate, check whether the symbol name (or a plausible route shape derived from it) appears as a **string literal** in files whose language differs from the symbol's language. A hit in another-language files is a near-certain signal of a missing cross-language reference (HTTP path, RPC method, MQ topic, FFI name). Same-language hits are a different signal (dynamic dispatch/reflection) — track separately, do not conflate.\n\nRank candidates by hit count in other-language files. The top of that ranked list is what we eyeball manually.\n\n**Performance requirement:** build an inverted index 'name → files-containing-this-string-as-literal' once per repo, then query per dead candidate. Naive O(candidates × files) scanning is unacceptable on the 200-repo corpus (notebook Open Questions §3).\n\n**Detecting 'string literal':** simple substring match in files whose extension maps to a different language than the candidate. Start naive — do not try to parse every language's string-literal syntax. False positives from comments/identifiers are acceptable at this stage; the filter list still reduces raw candidate counts by orders of magnitude.\n\nDepends on the base dead-code-maybe tool."  # 3ebf
     fields: {}  # 3ebf
+- op: update  # 376d
+  at: '2026-04-10T18:48:10Z'  # 376d
+  by: agent  # 376d
+  actor: jgstern_agent  # 376d
+  clock: 2  # 376d
+  nonce: 376d  # 376d
+  set:  # 376d
+    status: done  # 376d
+- op: discuss  # 99df
+  at: '2026-04-10T18:48:10Z'  # 99df
+  by: agent  # 99df
+  actor: jgstern_agent  # 99df
+  clock: 3  # 99df
+  nonce: 99df  # 99df
+  message: "Implemented in dead-code-maybe subcommand. For each dead candidate, searches name across files of different languages. JSON output includes cross_language_hits per candidate. Ranked by collision count desc."  # 99df

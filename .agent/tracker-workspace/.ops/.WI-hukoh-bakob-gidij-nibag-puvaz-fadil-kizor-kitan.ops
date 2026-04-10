@@ -46,3 +46,10 @@
   clock: 5  # 5a6b
   nonce: 5a6b  # 5a6b
   message: "INV-dihos Phase 1 IS validated. Evidence from bakeoff deep-20260409-054615 iter-008 (prometheus):\n\n- typed_receiver_call: 3,475 edges — these are the Phase 1 success cases (variable assignment chaining via return-type registry)\n- chained_return_type_call: 8 edges — inline chained calls resolved by WI-vadin\n- chained_call_unresolved: 698 edges — remaining inline chains that Phase 2 would address (tracked in WI-vadin)\n\nPhase 1 is confirmed working: 3,475 edges resolved through the return-type registry that would have been unresolved or misresolved before (e.g., qry.Close() routing to promql.Query.Close instead of ResourceClient.Close).\n\nFor the WI-hukoh decision itself (forward dataflow slice option 2 vs 3): the return-type registry being validated means option (2) is now technically feasible — the registry provides the type information needed to populate dest_access_mode at edge creation time. However, the INV-dihos Phase 1 coverage is Go+Java only; the registry doesn't yet cover Kotlin, C#, Rust, C++, or Python. Option (3) (BFS-state tracking) remains language-agnostic. The decision hinges on whether to wait for broader Phase 2-4 coverage before committing to option (2)."  # 5a6b
+- op: discuss  # b6d3
+  at: '2026-04-10T18:47:28Z'  # b6d3
+  by: human  # b6d3
+  actor: jgstern  # b6d3
+  clock: 6  # b6d3
+  nonce: b6d3  # b6d3
+  message: "Does option (3) handle polyglot linker edges (cgo, ipc, yjs_crdt, event_sourcing) as gracefully as option (2)? These linkers already set dest_access_mode explicitly, suggesting the schema anticipated option (2). Please spend some time carefully thinking and investigating the pros and cons of option 2 versus option 3 from various perspectives."  # b6d3
