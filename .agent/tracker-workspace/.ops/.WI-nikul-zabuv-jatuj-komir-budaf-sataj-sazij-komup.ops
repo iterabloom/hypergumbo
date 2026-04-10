@@ -25,3 +25,10 @@
   clock: 2  # 0b52
   nonce: 0b52  # 0b52
   message: "Investigation: prometheus web/api/v1/api.go:384-432 shows the pattern. wrap and wrapAgent are LOCAL CLOSURE VARIABLES declared inside Register() as 'wrap := func(f apiFunc) http.HandlerFunc { ... }'. Routes use r.Get('/query', wrapAgent(api.query)). The current route extractor already resolves the inner handler (api.query → API.query). The missing piece is modeling wrap/wrapAgent as middleware intermediaries in the call chain. This requires: (1) detecting closure variable declarations within function bodies, (2) recognizing when a route handler argument is a call to such a closure, (3) emitting a wraps or middleware_of edge from the closure to the inner handler. Substantial change — not a quick fix. The routes_to edges are already correct; this is about enriching the middleware chain visibility."  # 0b52
+- op: discuss  # 027e
+  at: '2026-04-10T04:28:28Z'  # 027e
+  by: agent  # 027e
+  actor: jgstern_agent  # 027e
+  clock: 3  # 027e
+  nonce: 027e  # 027e
+  message: "Additional investigation from 2026-04-10 session: Confirmed the pattern in prometheus web/api/v1/api.go. Lines 384-415 declare 'wrap' and 'wrapAgent' as closure variables inside Register(). Lines 416-450 use them as r.Get('/query', wrapAgent(api.query)). The route resolver already resolves api.query → API.query correctly. The missing piece is specifically: when a route handler argument is a call_expression (e.g., wrapAgent(...)), detect that the callee is a closure variable, and emit a wraps/middleware_of edge from the closure to the inner handler argument. Implementation approach: (1) in _extract_go_var_types, detect func-typed variables from short_var_declarations where RHS is a func_literal, (2) in the route handler extraction (around go.py:3174), when handler arg is a call_expression whose callee matches a func-typed local var, emit a wraps edge. This doesn't require modeling the closure body — just the wrapping relationship."  # 027e

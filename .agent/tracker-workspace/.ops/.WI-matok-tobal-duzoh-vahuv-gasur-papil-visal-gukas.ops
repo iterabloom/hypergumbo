@@ -19,3 +19,18 @@
     pr_ref:  # c760
     description: "**Per `~/hypergumbo_lab_notebook/bf4oxh91w_investigation_threads_04072026_1702.md` §\"Loose ends I noticed but did NOT chase\" item 2.** Direct quote:\n\n> The failing test that started the secondary investigation (`test_cmd_explain_auto_runs_analysis`) was the one fixed by `ba62f059a`. The cache isolation bug it uncovered may have analogues in other tests using the same `tmp_path`-based fingerprinting pattern. Worth grepping for `test_cmd_*_auto_runs_analysis` and similar.\n\n**Background on the original bug** (commit `ba62f059a`, \"fix: isolate hypergumbo cache per-test to eliminate auto-run flake\"): under `pytest-xdist`, two tests intermittently failed because:\n1. The non-git fingerprint hashes the absolute path of the analyzed repo.\n2. pytest only rotates the last few `pytest-N` tmpdirs.\n3. The same `tmp_path` string gets recreated across pytest sessions and yields the same fingerprint.\n4. The cached `~/.cache/hypergumbo/<fp>/results/<sh>/hypergumbo.results.json` is never cleaned.\n5. So a stale results file from a prior session survives and short-circuits the auto-run check.\n\nThe fix isolated the hypergumbo cache per-test (likely by setting an env var or `tmp_path`-rooted cache dir for each test). But the *class* of bug — tests that depend on hypergumbo's cache, written before the cache-isolation discipline was understood — almost certainly has more instances.\n\n**Investigation steps:**\n1. `grep -rn 'auto_runs_analysis\\|_get_or_run_analysis\\|hypergumbo run' packages/*/tests/` to enumerate tests that exercise the auto-run / cached-analysis path.\n2. For each candidate, check whether the test sets up cache isolation (per-test cache dir, env var override, or `tmp_path`-rooted) or relies on the global default.\n3. Tests without isolation are candidates for the same flake. Reproduce locally under `pytest -n auto` if possible.\n4. Apply the same fix pattern as `ba62f059a` to each.\n\n**Why this matters:** `pytest-xdist` flakes erode trust in CI. The original bug had \"probably been silently flaking xdist runs for some unknown duration\" before bf4oxh91w surfaced it. Each remaining instance is a small contribution to \"tests are flaky\" anxiety which downstream feeds into stop-hook anxiety and the kind of premature-action failure modes documented in Thread 8 of the source notebook. Investigating once and closing the class is a structural fix.\n\n**Deliverable:** for each newly-found instance, either (a) a fix PR following `ba62f059a`'s pattern, OR (b) an explicit assertion in the test that documents why isolation is not needed. Update the tracker item with the count and outcomes.\n\n**NOT a governance file.** Test changes are normal application work.\n\n**Cross-reference:** the original cache-isolation fix `ba62f059a` landed Apr 6 20:13 and was an \"unplanned\" commit from the bf4oxh91w incident — see Thread 7 of the source notebook for the perverse silver lining (the agent's confusion forced it to look at `.ci/pytest-output.log`, which surfaced the unrelated failure, which turned out to be a real bug)."  # c760
     fields: {}  # c760
+- op: update  # 06c0
+  at: '2026-04-10T04:18:16Z'  # 06c0
+  by: agent  # 06c0
+  actor: jgstern_agent  # 06c0
+  clock: 2  # 06c0
+  nonce: 06c0  # 06c0
+  set:  # 06c0
+    status: done  # 06c0
+- op: discuss  # 5732
+  at: '2026-04-10T04:18:16Z'  # 5732
+  by: agent  # 5732
+  actor: jgstern_agent  # 5732
+  clock: 3  # 5732
+  nonce: '5732'  # 5732
+  message: "Fixed in commit 9b9300f1c. Added isolate_hypergumbo_cache autouse fixture to hypergumbo-lang-mainstream and hypergumbo-lang-common conftest.py files. 16+ BRANCHES test files were vulnerable to the same stale-cache flake fixed by ba62f059a for core tests."  # 5732
