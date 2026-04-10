@@ -235,6 +235,20 @@ class SliceResult:
         edge_ids: IDs of all edges in the slice.
         query: The query that produced this result.
         limits_hit: List of limits that were reached (e.g., "hop_limit").
+        admission_stats: Per-rule edge-admission counters for forward dataflow
+            BFS (WI-hukoh Phase A telemetry). Empty dict unless the query has
+            ``dataflow=True``. Keys:
+            ``admitted_writer_src`` (edge admitted because access_mode in
+            {write, mutate}), ``admitted_downstream_read`` (WI-saful option 1
+            terminal admission from writer node), ``admitted_no_annotation``
+            (edge had no access_mode — graceful-degrade admission),
+            ``admitted_reverse_read`` (reverse-mode read-edge admission),
+            ``rejected_read_from_non_writer`` (source is a reader outside any
+            writer chain — the case option 3 would catch),
+            ``rejected_other`` (rejected for another mode reason, e.g. delete),
+            ``would_admit_dst_reader`` (subset of rejected edges whose
+            dest_access_mode is read/mutate — predictive counter for option 2
+            impact before it is implemented).
     """
 
     entry_nodes: List[str]
@@ -244,6 +258,7 @@ class SliceResult:
     limits_hit: List[str] = field(default_factory=list)
     node_depths: Dict[str, int] = field(default_factory=dict)
     node_tiers: Dict[str, int] = field(default_factory=dict)
+    admission_stats: Dict[str, int] = field(default_factory=dict)
 
     @property
     def feature_id(self) -> str:
@@ -267,6 +282,8 @@ class SliceResult:
             result["node_depths"] = dict(sorted(self.node_depths.items()))
         if self.node_tiers:
             result["node_tiers"] = dict(sorted(self.node_tiers.items()))
+        if self.admission_stats:
+            result["admission_stats"] = dict(sorted(self.admission_stats.items()))
         return result
 
 
@@ -376,6 +393,24 @@ def slice_graph(
             if edge.meta is not None and "access_mode" in edge.meta:
                 if edge.meta["access_mode"] in ("write", "mutate"):
                     writer_node_ids.add(edge.src)
+
+    # WI-hukoh Phase A: per-rule admission counters for dataflow BFS. Empty
+    # unless dataflow mode is active. See SliceResult.admission_stats docstring
+    # for key semantics. These counts are incremented at the dataflow decision
+    # point only — downstream filters (confidence, tier, hub threshold, file
+    # limit) may still reject edges that were admitted here, so the admission
+    # totals are an upper bound on what actually lands in the slice.
+    admission_stats: Dict[str, int] = {}
+    if query.dataflow:
+        admission_stats = {
+            "admitted_writer_src": 0,
+            "admitted_downstream_read": 0,
+            "admitted_no_annotation": 0,
+            "admitted_reverse_read": 0,
+            "rejected_read_from_non_writer": 0,
+            "rejected_other": 0,
+            "would_admit_dst_reader": 0,
+        }
 
     # Build file path -> file node IDs mapping for import edge lookup
     # Import edges source from file nodes with ID format: {lang}:{path}:1-1:file:file
@@ -573,22 +608,43 @@ def slice_graph(
             # Reverse: follow read edges (find who reads from this symbol).
             # Edges without access_mode metadata are still followed (graceful
             # degradation when annotation coverage is incomplete).
+            #
+            # WI-hukoh Phase A: every branch increments a counter in
+            # admission_stats so we can measure per-rule admission frequency
+            # on real repos and predict option-2 impact before implementing it.
             terminal = False
             if query.dataflow and edge.meta is not None and "access_mode" in edge.meta:
                 mode = edge.meta["access_mode"]
                 if query.reverse:
                     if mode not in ("read",):
+                        admission_stats["rejected_other"] += 1
                         continue
+                    admission_stats["admitted_reverse_read"] += 1
                 else:
                     if mode in ("write", "mutate"):
-                        pass
+                        admission_stats["admitted_writer_src"] += 1
                     elif (
                         mode == "read"
                         and current_id in writer_node_ids
                     ):
+                        admission_stats["admitted_downstream_read"] += 1
                         terminal = True
                     else:
+                        # Rejected by the dataflow rule. Record whether
+                        # option 2 (dst_mode OR-check) would have admitted
+                        # this edge — this is the predictive counter for
+                        # WI-hukoh Phase C decision gate.
+                        dest_mode = edge.meta.get("dest_access_mode")
+                        if dest_mode in ("read", "mutate"):
+                            admission_stats["would_admit_dst_reader"] += 1
+                        if mode == "read":
+                            admission_stats["rejected_read_from_non_writer"] += 1
+                        else:
+                            admission_stats["rejected_other"] += 1
                         continue
+            elif query.dataflow:
+                # No access_mode on the edge: graceful degradation admits it.
+                admission_stats["admitted_no_annotation"] += 1
 
             # Get the node at the other end of the edge
             if query.reverse:
@@ -675,6 +731,7 @@ def slice_graph(
         limits_hit=limits_hit,
         node_depths=node_depths,
         node_tiers=node_tiers,
+        admission_stats=admission_stats,
     )
 
 

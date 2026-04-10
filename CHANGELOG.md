@@ -21,6 +21,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+#### Slice telemetry
+
+- **Forward-dataflow admission-rule telemetry** (WI-hukoh Phase A): `SliceResult.admission_stats` is a per-rule counter dictionary populated whenever `dataflow=True`, recording how many edges were admitted or rejected by each BFS rule during forward slicing. Keys: `admitted_writer_src`, `admitted_downstream_read` (WI-saful option 1 terminal admission), `admitted_no_annotation` (graceful-degrade), `admitted_reverse_read`, `rejected_read_from_non_writer`, `rejected_other`, and `would_admit_dst_reader` — the last is a predictive counter measuring how many edges option 2 (dst_access_mode OR-check) would admit if implemented, without requiring the behavior change. This is the baseline instrumentation for the forward-dataflow option-2-vs-3 decision gate. Dict is empty when `dataflow=False`. Surfaced in `SliceResult.to_dict()` when non-empty.
+
 #### Behavior map
 
 - **`hypergumbo dead-code-maybe` subcommand** (WI-fisam): finds production callables unreachable from entrypoints via BFS over call edges. Supports `--seeds {entrypoints,tests,all}` for configurable seed sets, `--format {text,json}` output, and `--min-confidence` for entrypoint filtering. Dead candidates are ranked by LOC (largest unreachable functions first). Foundation for downstream dead-code prospector tooling.

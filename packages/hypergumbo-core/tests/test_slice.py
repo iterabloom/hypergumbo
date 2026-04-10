@@ -3194,6 +3194,197 @@ class TestDataflowOneHopDownstreamRead:
         assert sink.id not in result.node_ids
 
 
+class TestAdmissionStatsTelemetry:
+    """WI-hukoh Phase A: per-rule edge-admission counters.
+
+    These tests verify that each BFS admission path increments the correct
+    counter in ``SliceResult.admission_stats``. The telemetry is the baseline
+    instrumentation for the forward-dataflow option-2-vs-3 decision gate: by
+    comparing per-rule admission counts on real repos, we can measure option
+    2's predictive impact (``would_admit_dst_reader``) before implementing it,
+    and quantify option 1's coverage on the existing corpus.
+    """
+
+    def test_stats_empty_when_dataflow_false(self) -> None:
+        """Non-dataflow slices do not populate admission_stats."""
+        func_a = make_symbol("func_a", path="src/a.py")
+        func_b = make_symbol("func_b", path="src/b.py")
+        edge = Edge.create(
+            src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
+        )
+        query = SliceQuery(entrypoint="func_a", dataflow=False, max_hops=3)
+        result = slice_graph([func_a, func_b], [edge], query)
+        assert result.admission_stats == {}
+
+    def test_stats_writer_src_counter(self) -> None:
+        """Edges admitted because access_mode is write/mutate increment
+        admitted_writer_src."""
+        writer = make_symbol("writer", path="src/a.py")
+        target = make_symbol("target", path="src/b.py")
+        edge = Edge.create(
+            src=writer.id, dst=target.id, edge_type="calls", line=10,
+            access_mode="write",
+        )
+        query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
+        result = slice_graph([writer, target], [edge], query)
+        assert result.admission_stats["admitted_writer_src"] == 1
+        assert result.admission_stats["admitted_downstream_read"] == 0
+        assert result.admission_stats["would_admit_dst_reader"] == 0
+
+    def test_stats_downstream_read_counter(self) -> None:
+        """WI-saful option 1 terminal admissions increment
+        admitted_downstream_read."""
+        writer = make_symbol("writer", path="src/a.py")
+        sink = make_symbol("sink", path="src/b.py")
+        reader = make_symbol("reader", path="src/c.py")
+        write_edge = Edge.create(
+            src=writer.id, dst=sink.id, edge_type="calls", line=10,
+            access_mode="write",
+        )
+        read_edge = Edge.create(
+            src=writer.id, dst=reader.id, edge_type="calls", line=11,
+            access_mode="read",
+        )
+        query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
+        result = slice_graph(
+            [writer, sink, reader], [write_edge, read_edge], query,
+        )
+        assert result.admission_stats["admitted_writer_src"] == 1
+        assert result.admission_stats["admitted_downstream_read"] == 1
+
+    def test_stats_no_annotation_counter(self) -> None:
+        """Graceful-degradation admissions (no access_mode) increment
+        admitted_no_annotation."""
+        func_a = make_symbol("func_a", path="src/a.py")
+        func_b = make_symbol("func_b", path="src/b.py")
+        edge = Edge.create(
+            src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
+        )
+        query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
+        result = slice_graph([func_a, func_b], [edge], query)
+        assert result.admission_stats["admitted_no_annotation"] == 1
+        assert result.admission_stats["admitted_writer_src"] == 0
+
+    def test_stats_rejected_read_from_non_writer_counter(self) -> None:
+        """Read edges from non-writer sources increment
+        rejected_read_from_non_writer."""
+        non_writer = make_symbol("non_writer", path="src/a.py")
+        target = make_symbol("target", path="src/b.py")
+        edge = Edge.create(
+            src=non_writer.id, dst=target.id, edge_type="calls", line=10,
+            access_mode="read",
+        )
+        query = SliceQuery(entrypoint="non_writer", dataflow=True, max_hops=3)
+        result = slice_graph([non_writer, target], [edge], query)
+        assert result.admission_stats["rejected_read_from_non_writer"] == 1
+        assert result.admission_stats["admitted_writer_src"] == 0
+
+    def test_stats_rejected_other_counter_delete_mode(self) -> None:
+        """Delete-mode edges (not read/write/mutate) increment rejected_other."""
+        func_a = make_symbol("func_a", path="src/a.py")
+        func_b = make_symbol("func_b", path="src/b.py")
+        edge = Edge.create(
+            src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
+            access_mode="delete",
+        )
+        query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
+        result = slice_graph([func_a, func_b], [edge], query)
+        assert result.admission_stats["rejected_other"] == 1
+        assert result.admission_stats["rejected_read_from_non_writer"] == 0
+
+    def test_stats_would_admit_dst_reader_counter(self) -> None:
+        """Rejected edges with dest_access_mode in {read, mutate} increment
+        the predictive option-2 counter.
+
+        This edge is rejected under option 1 (source is not a writer) but
+        would be admitted under option 2 (dst_mode is read). The counter lets
+        us measure option 2's impact before implementing it.
+        """
+        func_a = make_symbol("func_a", path="src/a.py")
+        func_b = make_symbol("func_b", path="src/b.py")
+        edge = Edge.create(
+            src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
+            access_mode="delete",
+            dest_access_mode="read",
+        )
+        query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
+        result = slice_graph([func_a, func_b], [edge], query)
+        assert result.admission_stats["rejected_other"] == 1
+        assert result.admission_stats["would_admit_dst_reader"] == 1
+
+    def test_stats_would_admit_dst_reader_only_on_rejection(self) -> None:
+        """Option-2 predictive counter does not count edges already admitted
+        by option 1.
+
+        A write-mode edge with dest_access_mode=read is admitted by the
+        writer_src rule and should NOT be counted in would_admit_dst_reader
+        (the counter measures option 2's UNIQUE additional contribution, not
+        double-counted overlap).
+        """
+        writer = make_symbol("writer", path="src/a.py")
+        target = make_symbol("target", path="src/b.py")
+        edge = Edge.create(
+            src=writer.id, dst=target.id, edge_type="calls", line=10,
+            access_mode="write",
+            dest_access_mode="read",
+        )
+        query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
+        result = slice_graph([writer, target], [edge], query)
+        assert result.admission_stats["admitted_writer_src"] == 1
+        assert result.admission_stats["would_admit_dst_reader"] == 0
+
+    def test_stats_reverse_read_counter(self) -> None:
+        """Reverse-mode read admissions increment admitted_reverse_read."""
+        writer = make_symbol("writer", path="src/a.py")
+        reader = make_symbol("reader", path="src/b.py")
+        edge = Edge.create(
+            src=reader.id, dst=writer.id, edge_type="calls", line=10,
+            access_mode="read",
+        )
+        query = SliceQuery(
+            entrypoint="writer", dataflow=True, reverse=True, max_hops=3,
+        )
+        result = slice_graph([writer, reader], [edge], query)
+        assert result.admission_stats["admitted_reverse_read"] == 1
+
+    def test_stats_reverse_rejects_write_edges(self) -> None:
+        """Reverse-mode write edges (not reads) increment rejected_other."""
+        writer = make_symbol("writer", path="src/a.py")
+        other = make_symbol("other", path="src/b.py")
+        edge = Edge.create(
+            src=other.id, dst=writer.id, edge_type="calls", line=10,
+            access_mode="write",
+        )
+        query = SliceQuery(
+            entrypoint="writer", dataflow=True, reverse=True, max_hops=3,
+        )
+        result = slice_graph([writer, other], [edge], query)
+        assert result.admission_stats["rejected_other"] == 1
+        assert result.admission_stats["admitted_reverse_read"] == 0
+
+    def test_stats_to_dict_omitted_when_empty(self) -> None:
+        """SliceResult.to_dict omits admission_stats when dataflow is off."""
+        func_a = make_symbol("func_a", path="src/a.py")
+        query = SliceQuery(entrypoint="func_a", dataflow=False, max_hops=3)
+        result = slice_graph([func_a], [], query)
+        d = result.to_dict()
+        assert "admission_stats" not in d
+
+    def test_stats_to_dict_present_when_dataflow(self) -> None:
+        """SliceResult.to_dict includes admission_stats under dataflow."""
+        writer = make_symbol("writer", path="src/a.py")
+        target = make_symbol("target", path="src/b.py")
+        edge = Edge.create(
+            src=writer.id, dst=target.id, edge_type="calls", line=10,
+            access_mode="write",
+        )
+        query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
+        result = slice_graph([writer, target], [edge], query)
+        d = result.to_dict()
+        assert "admission_stats" in d
+        assert d["admission_stats"]["admitted_writer_src"] == 1
+
+
 class TestCrossLinkerIntegration:
     """Verify slice BFS traverses edges from multiple linkers in a single trace.
 
