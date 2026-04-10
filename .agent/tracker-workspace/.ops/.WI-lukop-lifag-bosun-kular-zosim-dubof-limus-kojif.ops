@@ -18,3 +18,18 @@
     pr_ref:  # 3942
     description: "**Symptom:** `tracker list --status STATUS` accepts only one status value. Common patterns like 'show me all open items' (todo_hard + todo_soft + violated + pending_validation + needs_human_review) require five separate invocations and a merge step in the caller.\n\n**Discovered need:** the 2026-04-08 retrospective extraction needed all five 'open' statuses. Required five `tracker --no-auto-sync --json list --status X` calls and a `jq` merge across the five JSON files. Routine enough to deserve first-class support.\n\n**Proposed fix:** make `--status` repeatable using argparse `action='append'`, OR accept a comma-separated list. Repeatable is more idiomatic and consistent with `--tag`/`--add-tag` patterns elsewhere in the CLI.\n\n**Bonus: --open shortcut.** Add a named filter `--open` that expands to the five statuses listed above. Centralizes the definition of 'open' so future status changes (e.g., adding a new blocking status) only need to update one place.\n\n**Tests:**\n1. `--status todo_hard --status todo_soft` returns the union.\n2. `--open` returns the same set as the five explicit statuses.\n3. `--status X --status X` deduplicates.\n4. Single `--status X` (legacy) still works (regression guard).\n\n**Cross-reference:** WI-pusif discovery notes the same five-call pattern as ergonomic friction during long-running retrospective sessions."  # 3942
     fields: {}  # 3942
+- op: update  # e0ae
+  at: '2026-04-10T05:41:09Z'  # e0ae
+  by: agent  # e0ae
+  actor: jgstern_agent  # e0ae
+  clock: 2  # e0ae
+  nonce: e0ae  # e0ae
+  set:  # e0ae
+    status: done  # e0ae
+- op: discuss  # 8a1c
+  at: '2026-04-10T05:41:09Z'  # 8a1c
+  by: agent  # 8a1c
+  actor: jgstern_agent  # 8a1c
+  clock: 3  # 8a1c
+  nonce: 8a1c  # 8a1c
+  message: "Implemented in commit c2197e417. --status is now repeatable (action=append), --open shortcut for 5 open statuses. store.list_items accepts str | list[str] | None. 3 new tests."  # 8a1c
