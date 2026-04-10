@@ -19,3 +19,10 @@
     pr_ref:  # 9136
     description: "Secondary ranking signals for dead-code-maybe per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md Heuristics §5 and §6:\n\n(1) **Path/name shape boost:** boost candidates in directories named api/, rpc/, proto/, ffi/, native/, bindings/, bridge/, or with names containing handler, _request, _response, serialize, to_json. Cross-language references concentrate in these locations.\n\n(2) **FFI signature auto-flag:** anything with extern \"C\", JNIEXPORT, [DllImport], #[pyo3], extern crate, ctypes/cffi declarations should be auto-flagged as a definite linker gap (the notebook calls these 'free hits'). If it's dead in the static call graph and has an FFI signature, you're definitely missing a linker.\n\nLower priority than the base filters — not strictly required for the first prospecting run. May be added after initial run reveals whether they would materially change the top-ranked list. Depends on the base dead-code-maybe tool."  # 9136
     fields: {}  # 9136
+- op: discuss  # e0a9
+  at: '2026-04-10T21:00:41Z'  # e0a9
+  by: agent  # e0a9
+  actor: jgstern_agent  # e0a9
+  clock: 2  # e0a9
+  nonce: e0a9  # e0a9
+  message: "Heuristic 1 (path/name shape boost) implemented in PR just merged. Heuristic 2 (FFI signature auto-flag) deferred — requires unified annotation tracking across languages."  # e0a9

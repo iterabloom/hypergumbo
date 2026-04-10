@@ -64,3 +64,25 @@
   clock: 7  # c8cb
   nonce: c8cb  # c8cb
   message: "agreed let's do a lightweight one-shot variant (20-30 repos). please make an new item for that and have that item block WI-botol, and be higher-priority. once you've done that, respond here with the new tracker item id and mark this one (WI-duroz) as done."  # c8cb
+- op: update  # 2dce
+  at: '2026-04-10T20:40:18Z'  # 2dce
+  by: agent  # 2dce
+  actor: jgstern_agent  # 2dce
+  clock: 8  # 2dce
+  nonce: 2dce  # 2dce
+  set:  # 2dce
+    status: done  # 2dce
+- op: discuss  # 229a
+  at: '2026-04-10T20:40:19Z'  # 229a
+  by: agent  # 229a
+  actor: jgstern_agent  # 229a
+  clock: 9  # 229a
+  nonce: 229a  # 229a
+  message: "Created WI-tubot for the lightweight one-shot variant (priority P2, blocks WI-botol). Per human directive 2026-04-10T18:41:37Z."  # 229a
+- op: discuss  # 8364
+  at: '2026-04-10T20:40:26Z'  # 8364
+  by: agent  # 8364
+  actor: jgstern_agent  # 8364
+  clock: 10  # 8364
+  nonce: '8364'  # 8364
+  message: "Created WI-tubot-gokoj-bakog-kajip-pipon-lofij-vunik-nofuj for the lightweight one-shot variant. Priority P2 (higher than WI-botol), blocks WI-botol per your directive. Marking this item (WI-duroz) as done."  # 8364
