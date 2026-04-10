@@ -1012,17 +1012,29 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # prod_in_degree excludes edges from test nodes so that production
     # functions called mostly from tests don't outrank functions called
     # from production code.
+    # Edge types that represent actual function calls (not structural
+    # relationships).  Only these count toward out-degree for seed scoring.
+    # Without this filter, interface methods accumulate dispatches_to edges
+    # that inflate their out-degree: prometheus genericSeriesSet.Err (1 line)
+    # had out=20 from dispatches_to edges, passing _MIN_OUT_DEGREE=3 and
+    # getting selected as a seed over real domain functions.
+    _CALL_FLOW_EDGE_TYPES = {
+        "calls", "routes_to", "wraps", "ipc_calls",
+        "implements_rpc", "grpc_calls", "wasm_bridge",
+    }
+
     in_degree: dict = {}
     prod_in_degree: dict = {}
     out_degree: dict = {}
     for e in edges:
         src = e.get("src") or e.get("source")
         dst = e.get("dst") or e.get("target")
+        etype = e.get("type", "calls")
         if dst:
             in_degree[dst] = in_degree.get(dst, 0) + 1
             if src not in test_node_ids:
                 prod_in_degree[dst] = prod_in_degree.get(dst, 0) + 1
-        if src:
+        if src and etype in _CALL_FLOW_EDGE_TYPES:
             out_degree[src] = out_degree.get(src, 0) + 1
 
     # ---- Language-dominance weighting ----
