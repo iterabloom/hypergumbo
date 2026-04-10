@@ -1135,18 +1135,31 @@ def _cmd_check_messages(args: argparse.Namespace, ts: TrackerSet) -> int:
     if args.json:
         out = []
         for item, msgs in results:
-            out.append({
+            entry: dict[str, Any] = {
                 "id": item.id,
                 "title": item.title,
                 "status": item.status,
                 "priority": item.priority,
                 "tier": item.tier.value if item.tier else None,
+                "description": item.description or "",
+                "pr_ref": item.pr_ref,
                 "unread_messages": [
                     {"by": m.by, "actor": m.actor, "at": m.at,
                      "message": m.message, "is_summary": m.is_summary}
                     for m in msgs
                 ],
-            })
+            }
+            # Include prior discussion (last 3 entries before unread)
+            if item.discussion:
+                all_disc = list(item.discussion)
+                unread_count = len(msgs)
+                prior = all_disc[: max(0, len(all_disc) - unread_count)][-3:]
+                entry["prior_discussion"] = [
+                    {"by": d.by, "actor": d.actor, "at": d.at,
+                     "message": d.message}
+                    for d in prior
+                ]
+            out.append(entry)
         print(json.dumps(out, indent=2))
     else:
         if not results:
@@ -1158,6 +1171,30 @@ def _cmd_check_messages(args: argparse.Namespace, ts: TrackerSet) -> int:
                 tier_str = item.tier.value if item.tier else "unknown"
                 print(f"{item.id}  P{item.priority}  {item.status}  "
                       f"[{tier_str}]  {item.title}")
+                # Description (truncated to ~500 chars)
+                if item.description:
+                    desc = item.description[:500]
+                    if len(item.description) > 500:
+                        desc += "..."
+                    print(f"  description: {desc}")
+                if item.pr_ref:
+                    print(f"  pr_ref: {item.pr_ref}")
+                # Prior discussion (last 3 before unread)
+                if item.discussion:
+                    all_disc = list(item.discussion)
+                    unread_count = len(msgs)
+                    prior = all_disc[: max(0, len(all_disc) - unread_count)][-3:]
+                    if prior:
+                        print("  prior discussion:")
+                        for d in prior:
+                            actor = d.actor if hasattr(d, "actor") else ""
+                            by = d.by if hasattr(d, "by") else ""
+                            at = d.at if hasattr(d, "at") else ""
+                            msg_preview = d.message[:200] if hasattr(d, "message") else str(d)
+                            if len(d.message) > 200:
+                                msg_preview += "..."
+                            print(f"    [{at}] {actor} ({by}): {msg_preview}")
+                # Unread messages
                 for m in msgs:
                     print(f"  [{m.at}] {m.actor} ({m.by}): {m.message}")
 

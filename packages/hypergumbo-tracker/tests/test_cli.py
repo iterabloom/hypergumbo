@@ -3751,6 +3751,86 @@ class TestCheckMessages:
         assert "WI-can" not in ids
 
 
+    def test_context_includes_description_and_prior(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """check-messages includes description, pr_ref, prior discussion (WI-radab)."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        # Long description (>500 chars) to test truncation
+        long_desc = "A" * 600
+        # Long message (>200 chars) to test preview truncation
+        long_msg = "B" * 250
+        ops_content = textwrap.dedent(f"""\
+        - op: create
+          at: "2026-01-01T00:00:00Z"
+          by: agent
+          actor: test_agent
+          clock: 1
+          nonce: a1b2
+          data:
+            kind: work_item
+            title: "Contextual Item"
+            status: todo_hard
+            priority: 2
+            description: "{long_desc}"
+            pr_ref: "PR #999"
+        - op: discuss
+          at: "2026-01-10T10:00:00Z"
+          by: agent
+          actor: test_agent
+          clock: 10
+          nonce: d001
+          message: "{long_msg}"
+        - op: discuss
+          at: "2026-01-11T10:00:00Z"
+          by: human
+          actor: jgstern
+          clock: 11
+          nonce: d002
+          message: "Human question"
+        """)
+        (ops_dir / ".WI-ctx.ops").write_text(ops_content)
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "check-messages"])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        # Description truncated with ...
+        assert "..." in out
+        assert "AAAA" in out
+        # pr_ref shown
+        assert "PR #999" in out
+        # Prior discussion with long message truncated
+        assert "BBBB" in out
+        assert "Human question" in out
+
+    def test_context_json_includes_description(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """check-messages --json includes description and prior_discussion (WI-radab)."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item_with_discussion(
+            tracker_root / "tracker-workspace" / ".ops", "WI-jctx",
+            discussion_ops=[
+                {"at": "2026-01-10T10:00:00Z", "by": "agent", "actor": "test_agent",
+                 "message": "Prior agent note"},
+                {"at": "2026-01-11T10:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "Human asks question"},
+            ],
+        )
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "--json", "check-messages"])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert len(data) == 1
+        assert "description" in data[0]
+        assert "prior_discussion" in data[0]
+        assert len(data[0]["prior_discussion"]) == 1  # agent note before human msg
+        assert data[0]["prior_discussion"][0]["message"] == "Prior agent note"
+
+
 # ---------------------------------------------------------------------------
 # Auto-sync
 # ---------------------------------------------------------------------------
