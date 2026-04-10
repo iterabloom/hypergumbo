@@ -607,6 +607,46 @@ class TestDeadCodeMaybe:
         # libFunc has concepts → excluded
         assert "libFunc" not in dead_names
 
+    def test_path_shape_boost_api_dir(self, tmp_path: Path) -> None:
+        """Candidates in api/ dir get a path_shape_boost of 1."""
+        import argparse
+
+        nodes = [
+            # Plain function — no boost
+            {"id": "go:pkg/plain.go:1-5:plainFunc:function",
+             "name": "plainFunc", "kind": "function", "language": "go",
+             "path": "pkg/plain.go",
+             "span": {"start_line": 1, "end_line": 5}},
+            # In api/ dir — boost 1, "handler" in name → boost 2 total
+            {"id": "go:api/handler.go:1-5:userHandler:function",
+             "name": "userHandler", "kind": "function", "language": "go",
+             "path": "api/handler.go",
+             "span": {"start_line": 1, "end_line": 5}},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, [])
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+            exclude_annotated=False,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        by_name = {d["name"]: d for d in output["dead_candidates"]}
+        # api/ dir contributes 1, "handler" in name contributes 1 → boost=2
+        assert by_name["userHandler"]["path_shape_boost"] == 2
+        assert by_name["plainFunc"]["path_shape_boost"] == 0
+        # userHandler should rank first (higher boost)
+        assert output["dead_candidates"][0]["name"] == "userHandler"
+
     def test_seeds_all_includes_tests(self, tmp_path: Path) -> None:
         """--seeds all uses both entrypoints AND test functions as seeds."""
         import argparse
