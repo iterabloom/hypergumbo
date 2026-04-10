@@ -68,6 +68,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+#### Agent state recovery
+
+- **Delete vestigial `.agent/last_stop_check.json`** (INV-jofaf facet 1): commit `84a63c8f` (WI-bulif) moved the agent state file to `~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json` and added a `.gitignore` entry, but did not `git rm` the old path. The stale file persisted in `HEAD` with `last_completed_utc` 36+ days out of date, confusing agents (and me during orientation today) who read the obvious-path `.agent/last_stop_check.json` and believed the stop hook was broken. Deleted from tracking; the ignore entry already in place prevents re-tracking. Facet 2 of INV-jofaf (unify `last_completed_utc` writers in `stop_logic.sh` — currently has no automatic writer so the field drifts) still open pending human approval because it touches governance files.
+
 #### Symbol ranking
 
 - **Orchestration hub floor for high-out-degree functions**: functions with out-degree >= 20 (main/run/app orchestration hubs) get a minimum effective in-degree of `sqrt(out_degree) * 0.8`, preventing within-file dampening and per-file capping from burying them. On alertmanager, `run` (in=9 all same-file, out=128) was ranked #45 with effective_in=0.90 after 0.3x within-file weight and max_per_file_in=5; now ranks #1 with floor=9.05. Does not affect functions with fewer than 20 outgoing edges.

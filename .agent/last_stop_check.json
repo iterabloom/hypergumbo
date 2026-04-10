@@ -1,9 +1,0 @@
-{
-  "last_completed_utc": "2026-03-05T18:00:00Z",
-  "branch": "dev",
-  "last_pr": 1762,
-  "last_pr_state": "merged",
-  "pending_hard_todos": 0,
-  "pending_soft_todos": 0,
-  "notes": "CI failover system implemented and tested end-to-end. PR #1762 merged on Codeberg (ci-failover scripts, --gov flag, forgejo-api.sh apply_failover_overrides). Failover engaged targeting self-hosted Forgejo at 10.85.0.10:3000. Local PRs #1-6 merged (mirror handling, credential embedding, safe mirror restore, analyzer error message improvement). Local CI fully operational with runner labels local-ci, codeberg-small-lazy, self-hosted. Dev is 10+ commits ahead of origin/dev. Disengage when Codeberg recovers."
-}
