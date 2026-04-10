@@ -3523,6 +3523,42 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     return 0
 
 
+def _compute_path_shape_boost(node: dict) -> int:
+    """Boost score for candidates with cross-language path/name shapes.
+
+    Candidates in directories named api/, rpc/, proto/, ffi/, native/,
+    bindings/, bridge/, or with names containing handler, _request,
+    _response, serialize, to_json, from_json are more likely to be
+    missing cross-language linker edges than plain internal functions.
+
+    Returns 1 per matching signal (path or name), capped at 2.
+    """
+    _PATH_SEGMENTS = {
+        "api", "rpc", "proto", "ffi", "native", "bindings", "bridge",
+    }
+    _NAME_FRAGMENTS = (
+        "handler", "_request", "_response", "serialize",
+        "to_json", "from_json",
+    )
+
+    boost = 0
+    path = (node.get("path") or "").lower()
+    name = (node.get("name") or "").lower()
+
+    # Path segment check
+    path_parts = set(path.replace("\\", "/").split("/"))
+    if path_parts & _PATH_SEGMENTS:
+        boost += 1
+
+    # Name fragment check
+    for frag in _NAME_FRAGMENTS:
+        if frag in name:
+            boost += 1
+            break  # only count one name match
+
+    return boost
+
+
 def _compute_cross_language_hits(
     dead_candidates: list[dict],
     repo_root: Path,
@@ -3761,10 +3797,20 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             dead_candidates, repo_root,
         )
 
-    # Sort by cross-language hits (desc), then LOC (desc)
+    # Path/name shape boost: candidates in cross-language directories
+    # (api/, rpc/, proto/, ffi/, native/, bindings/, bridge/) or with
+    # cross-language naming conventions (handler, _request, _response,
+    # serialize, to_json) are more likely to be missing linker edges.
+    shape_boosts: dict[str, int] = {}
+    for node in dead_candidates:
+        boost = _compute_path_shape_boost(node)
+        if boost > 0:
+            shape_boosts[node["id"]] = boost
+
+    # Sort by (cross-lang hits + shape boost) desc, then LOC desc
     dead_candidates.sort(
         key=lambda n: (
-            -cross_lang_hits.get(n["id"], 0),
+            -(cross_lang_hits.get(n["id"], 0) + shape_boosts.get(n["id"], 0)),
             -(n.get("lines_of_code") or 1),
         ),
     )
@@ -3795,6 +3841,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                     "span": n.get("span"),
                     "id": n["id"],
                     "cross_language_hits": cross_lang_hits.get(n["id"], 0),
+                    "path_shape_boost": shape_boosts.get(n["id"], 0),
                 }
                 for n in dead_candidates
             ],
