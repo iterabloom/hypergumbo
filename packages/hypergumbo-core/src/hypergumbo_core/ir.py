@@ -612,6 +612,7 @@ class UsageContext:
 def create_boundary_nodes(
     symbols: List[Symbol],
     edges: List[Edge],
+    dependency_manifest: Any = None,
 ) -> List[Symbol]:
     """Create lightweight boundary nodes for dangling edge endpoints.
 
@@ -624,13 +625,17 @@ def create_boundary_nodes(
 
     Boundary nodes are:
     - kind="external_symbol" (generic) or inferred from the ID format
-    - supply_chain_tier=3 (external dependency)
+    - supply_chain_tier=3 (external dependency) by default, or tier 2 for
+      direct dependencies when a dependency_manifest is provided
     - Flagged with meta.external_boundary=True
     - Zero-span (no source location)
 
     Args:
         symbols: All extracted symbols from analyzers and linkers.
         edges: All edges (after deduplication).
+        dependency_manifest: Optional DependencyManifest from supply_chain.py.
+            When provided, Go boundary nodes are classified as tier 2 (direct
+            dependency) or tier 3 (indirect/stdlib) based on go.mod data.
 
     Returns:
         List of new boundary Symbol objects to extend the symbol list.
@@ -663,6 +668,20 @@ def create_boundary_nodes(
         # Extract name: second-to-last part in the colon-separated ID
         name = parts[-2] if len(parts) >= 2 else dangling_id
 
+        # Default tier classification
+        tier = 3
+        reason = "unresolved external reference"
+
+        # Consult dependency manifest for Go boundary nodes
+        if dependency_manifest is not None and language == "go" and len(parts) >= 3:
+            # Extract the import/module path from the ID.
+            # Go import IDs: "go:{import_path}:0-0:{name}:{kind}"
+            import_path = parts[1]
+            manifest_tier = dependency_manifest.classify_import(import_path)
+            tier = manifest_tier.value
+            if tier == 2:
+                reason = "direct dependency (go.mod)"
+
         sym = Symbol(
             id=dangling_id,
             name=name,
@@ -671,8 +690,8 @@ def create_boundary_nodes(
             path="<external>",
             span=zero_span,
             meta={"external_boundary": True},
-            supply_chain_tier=3,
-            supply_chain_reason="unresolved external reference",
+            supply_chain_tier=tier,
+            supply_chain_reason=reason,
         )
         boundary_nodes.append(sym)
 

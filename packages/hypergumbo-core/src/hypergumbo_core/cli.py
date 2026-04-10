@@ -4802,6 +4802,7 @@ def run_behavior_map(
         all_usage_contexts,
         limits,
         captured_symbols,
+        dependency_manifest,
     ) = run_all_analyzers(repo_root, max_files=max_files)
     _log_memory("after analyzers")
 
@@ -4901,7 +4902,9 @@ def run_behavior_map(
     # Create boundary nodes for dangling edge endpoints (WI-sikur / INV-miniz).
     # Edges to external functions (stdlib, npm packages, etc.) would otherwise
     # break slice traversal by pointing to nonexistent nodes.
-    boundary = create_boundary_nodes(all_symbols, all_edges)
+    boundary = create_boundary_nodes(
+        all_symbols, all_edges, dependency_manifest=dependency_manifest,
+    )
     if boundary:
         all_symbols.extend(boundary)
     _log_memory("after boundary nodes")

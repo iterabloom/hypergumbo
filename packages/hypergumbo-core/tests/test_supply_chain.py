@@ -1717,3 +1717,88 @@ class TestIsGeneratedFileAxis:
         assert result.is_generated is True
         # is_test may or may not be True depending on path patterns
         # The point is the two flags are independent
+
+
+class TestDependencyManifest:
+    """Tests for DependencyManifest (WI-vovuk)."""
+
+    def test_classify_direct_dep(self) -> None:
+        """Direct dependency → tier 2 (INTERNAL_DEP)."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        manifest = DependencyManifest(entries={
+            "github.com/go-kit/log": {"direct": True},
+        })
+        assert manifest.classify_import("github.com/go-kit/log") == Tier.INTERNAL_DEP
+
+    def test_classify_indirect_dep(self) -> None:
+        """Indirect dependency → tier 3 (EXTERNAL_DEP)."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        manifest = DependencyManifest(entries={
+            "github.com/beorn7/perp": {"direct": False},
+        })
+        assert manifest.classify_import("github.com/beorn7/perp") == Tier.EXTERNAL_DEP
+
+    def test_classify_prefix_matching(self) -> None:
+        """Import subpackage matches module path prefix."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        manifest = DependencyManifest(entries={
+            "github.com/go-kit/log": {"direct": True},
+        })
+        # Subpackage of a direct dep
+        assert manifest.classify_import("github.com/go-kit/log/level") == Tier.INTERNAL_DEP
+
+    def test_classify_go_stdlib(self) -> None:
+        """Go stdlib (no dots in first segment) → tier 3."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        manifest = DependencyManifest(entries={})
+        assert manifest.classify_import("encoding/json") == Tier.EXTERNAL_DEP
+        assert manifest.classify_import("fmt") == Tier.EXTERNAL_DEP
+        assert manifest.classify_import("net/http") == Tier.EXTERNAL_DEP
+
+    def test_classify_unknown_external(self) -> None:
+        """Unknown external (has dots, not in manifest) → tier 3."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        manifest = DependencyManifest(entries={
+            "github.com/foo/bar": {"direct": True},
+        })
+        assert manifest.classify_import("github.com/other/pkg") == Tier.EXTERNAL_DEP
+
+    def test_classify_empty_import(self) -> None:
+        """Empty import path → tier 3."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        manifest = DependencyManifest(entries={})
+        assert manifest.classify_import("") == Tier.EXTERNAL_DEP
+
+    def test_merge_manifests(self) -> None:
+        """Merging manifests combines entries."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        m1 = DependencyManifest(entries={"github.com/a/pkg": {"direct": True}})
+        m2 = DependencyManifest(entries={"github.com/b/pkg": {"direct": False}})
+        merged = DependencyManifest.merge([m1, m2])
+        assert merged.classify_import("github.com/a/pkg") == Tier.INTERNAL_DEP
+        assert merged.classify_import("github.com/b/pkg") == Tier.EXTERNAL_DEP
+
+    def test_merge_empty_list(self) -> None:
+        """Merging empty list returns empty manifest."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        merged = DependencyManifest.merge([])
+        assert merged.entries == {}
+
+    def test_versioned_module_prefix(self) -> None:
+        """Module paths with version suffixes (v2, v3) match imports."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        manifest = DependencyManifest(entries={
+            "github.com/alecthomas/kingpin/v2": {"direct": True},
+        })
+        assert manifest.classify_import(
+            "github.com/alecthomas/kingpin/v2/cmd"
+        ) == Tier.INTERNAL_DEP

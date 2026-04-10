@@ -799,7 +799,7 @@ class TestRunAllAnalyzersPathNormalization:
         with patch(
             "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
         ):
-            _, symbols, _, _, _, _ = facade_run_all(repo_root)
+            _, symbols, _, _, _, _, _ = facade_run_all(repo_root)
 
         # Absolute path should be relativized
         assert symbols[0].path == "src/Main.java"
@@ -845,7 +845,7 @@ class TestRunAllAnalyzersPathNormalization:
         with patch(
             "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
         ):
-            _, _, _, usage_contexts, _, _ = facade_run_all(repo_root)
+            _, _, _, usage_contexts, _, _, _ = facade_run_all(repo_root)
 
         assert usage_contexts[0].path == "routes/web.py"
 
@@ -888,7 +888,7 @@ class TestRunAllAnalyzersPathNormalization:
         with patch(
             "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
         ):
-            _, symbols, _, _, _, _ = facade_run_all(repo_root)
+            _, symbols, _, _, _, _, _ = facade_run_all(repo_root)
 
         # Path outside repo_root should be left as-is
         assert symbols[0].path == "/usr/include/stdlib.h"
@@ -928,7 +928,7 @@ class TestRunAllAnalyzersTruncatedFiles:
             with patch(
                 "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
             ):
-                _, _, _, _, limits, _ = facade_run_all(tmp_path)
+                _, _, _, _, limits, _, _ = facade_run_all(tmp_path)
 
             assert len(limits.truncated_files) == 1
             assert "big.py" in limits.truncated_files[0]["path"]
@@ -952,3 +952,62 @@ class TestRunAllAnalyzersTruncatedFiles:
         # Import the module-level variable directly
         import hypergumbo_core.discovery as disc_mod
         assert disc_mod._global_on_file_skipped is None
+
+
+class TestRunAllAnalyzersDependencyManifest:
+    """Tests that run_all_analyzers collects dependency manifests (WI-vovuk)."""
+
+    def test_manifest_collected_from_analyzer(self) -> None:
+        """Dependency manifests from analyzers are merged and returned."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "test-manifest-v1"}
+        run.pass_id = "test-manifest-v1"
+
+        manifest = DependencyManifest(entries={
+            "github.com/foo/bar": {"direct": True},
+        })
+
+        @register_analyzer("test_manifest")
+        def analyze_test(root: Path) -> AnalysisResult:
+            return AnalysisResult(
+                run=run,
+                skipped=False,
+                dependency_manifest=manifest,
+            )
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, _, _, _, _, _, merged = facade_run_all(Path("/test"))
+
+        assert merged is not None
+        from hypergumbo_core.supply_chain import Tier
+        assert merged.classify_import("github.com/foo/bar") == Tier.INTERNAL_DEP
+
+    def test_no_manifest_returns_none(self) -> None:
+        """Returns None when no analyzers provide manifests."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "test-nomanifest-v1"}
+        run.pass_id = "test-nomanifest-v1"
+
+        @register_analyzer("test_nomanifest")
+        def analyze_test(root: Path) -> AnalysisResult:
+            return AnalysisResult(run=run, skipped=False)
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, _, _, _, _, _, merged = facade_run_all(Path("/test"))
+
+        assert merged is None
