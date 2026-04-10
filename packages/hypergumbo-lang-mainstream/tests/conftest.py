@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _find_repo_root() -> Path | None:
     """Find the repo root by looking for .git directory."""
@@ -60,6 +62,18 @@ def _repair_wrapper(repo_root: Path) -> bool:
         return result.returncode == 0
     except Exception:
         return False
+
+
+@pytest.fixture(autouse=True)
+def isolate_hypergumbo_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate ``~/.cache/hypergumbo/`` per test to prevent state leakage.
+
+    Mirrors the fixture in hypergumbo-core/tests/conftest.py.  BRANCHES
+    tests call ``run_behavior_map(tmp_path, ...)`` which uses the cache;
+    without isolation, stale results from prior pytest sessions can
+    short-circuit auto-run checks and cause flaky failures under xdist.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "_xdg_cache"))
 
 
 def pytest_configure(config):
