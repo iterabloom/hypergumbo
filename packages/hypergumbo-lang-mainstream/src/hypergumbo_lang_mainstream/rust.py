@@ -1361,7 +1361,11 @@ def _extract_edges_from_file(
                                     value_node, source, impl_target,
                                 )
                                 if receiver_type is not None:
-                                    typed_name = f"{receiver_type}::{callee_name}"
+                                    # Strip module prefix from scoped types
+                                    # (e.g., "std::sync::Mutex" → "Mutex")
+                                    # because symbols are stored with bare names.
+                                    bare_type = receiver_type.rsplit("::", 1)[-1]
+                                    typed_name = f"{bare_type}::{callee_name}"
                                     target = (
                                         local_symbols.get(typed_name)
                                         or global_symbols.get(typed_name)
