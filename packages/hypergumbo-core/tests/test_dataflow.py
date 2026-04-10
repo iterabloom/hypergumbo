@@ -2075,3 +2075,44 @@ class TestAnnotateDataflowAst:
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
         assert result[0].meta["access_mode"] == "read"
+
+
+class TestCrossLanguageLibraryPatterns:
+    """Verify library_patterns YAML loads correctly for all languages (WI-vinub)."""
+
+    @pytest.mark.parametrize("lang", [
+        "java", "javascript", "typescript", "csharp", "kotlin",
+    ])
+    def test_library_patterns_load_for_language(self, lang: str) -> None:
+        """Each language's library_patterns section loads without error."""
+        config = get_dataflow_config(lang)
+        assert config is not None
+        assert len(config.library_patterns) > 0, (
+            f"{lang} should have library_patterns after WI-vinub"
+        )
+
+    @pytest.mark.parametrize("lang", [
+        "java", "javascript", "typescript", "csharp", "kotlin",
+    ])
+    def test_library_patterns_have_valid_access_mode(self, lang: str) -> None:
+        """Every library_pattern has a valid access_mode field."""
+        config = get_dataflow_config(lang)
+        valid_modes = {"read", "write", "mutate", "delete"}
+        for pattern in config.library_patterns:
+            assert "access_mode" in pattern, (
+                f"{lang}: pattern missing access_mode: {pattern}"
+            )
+            assert pattern["access_mode"] in valid_modes, (
+                f"{lang}: invalid access_mode '{pattern['access_mode']}'"
+            )
+
+    @pytest.mark.parametrize("lang", [
+        "java", "javascript", "typescript", "csharp", "kotlin",
+    ])
+    def test_library_patterns_have_match_field(self, lang: str) -> None:
+        """Every library_pattern has a match field."""
+        config = get_dataflow_config(lang)
+        for pattern in config.library_patterns:
+            assert "match" in pattern, (
+                f"{lang}: pattern missing match: {pattern}"
+            )
