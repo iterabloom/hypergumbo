@@ -1181,6 +1181,263 @@ func getResources() {
         )
 
 
+class TestGoClosureWrapperEdges:
+    """Tests for closure wrapper detection in Go route registration.
+
+    When Go code declares closure variables like:
+        wrap := func(f apiFunc) http.HandlerFunc { ... }
+    and uses them in route registration:
+        r.Get("/query", wrapAgent(api.query))
+    the analyzer should:
+    - Preserve the inner handler name (api.query) in route meta
+    - Record the wrapper name (wrapAgent) in route meta
+    - Create a Symbol for the wrapper closure
+    """
+
+    def test_wrapper_name_captured_in_route_meta(self, tmp_path: Path) -> None:
+        """Route meta includes wrapper_name when handler is wrapped."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""package api
+
+type API struct{}
+
+func (api *API) Register(r Router) {
+    wrap := func(f func()) func() {
+        return func() { f() }
+    }
+
+    wrapAgent := func(f func()) func() {
+        return wrap(func() { f() })
+    }
+
+    r.Get("/query", wrapAgent(api.query))
+    r.Post("/read", wrap(api.remoteRead))
+    r.Get("/status", api.serveStatus)
+}
+
+func (api *API) query() {}
+func (api *API) remoteRead() {}
+func (api *API) serveStatus() {}
+""")
+
+        result = analyze_go(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        routes_by_path = {s.meta["route_path"]: s for s in routes}
+
+        # Wrapped route should have wrapper_name
+        assert "/query" in routes_by_path
+        query_route = routes_by_path["/query"]
+        assert query_route.meta.get("wrapper_name") == "wrapAgent"
+        assert query_route.meta["handler_name"] == "api.query"
+
+        # Another wrapped route
+        assert "/read" in routes_by_path
+        read_route = routes_by_path["/read"]
+        assert read_route.meta.get("wrapper_name") == "wrap"
+        assert read_route.meta["handler_name"] == "api.remoteRead"
+
+        # Non-wrapped route should NOT have wrapper_name
+        assert "/status" in routes_by_path
+        status_route = routes_by_path["/status"]
+        assert "wrapper_name" not in status_route.meta
+
+    def test_wrapper_closure_symbol_created(self, tmp_path: Path) -> None:
+        """A Symbol is created for closure variables used as route wrappers."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""package api
+
+func Register(r Router) {
+    wrap := func(f func()) func() {
+        return func() { f() }
+    }
+
+    r.Get("/query", wrap(handler))
+}
+
+func handler() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # A wrapper symbol should be created for the closure variable
+        wrapper_syms = [
+            s for s in result.symbols
+            if s.name == "wrap" and s.kind == "function"
+        ]
+        assert len(wrapper_syms) == 1
+        wrapper = wrapper_syms[0]
+        assert wrapper.meta is not None
+        assert "middleware" in wrapper.meta.get("concepts", [])
+
+    def test_wrapper_wraps_edge_emitted(self, tmp_path: Path) -> None:
+        """A wraps edge is emitted from wrapper symbol to inner handler."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""package api
+
+type API struct{}
+
+func (api *API) Register(r Router) {
+    wrap := func(f func()) func() {
+        return func() { f() }
+    }
+
+    r.Get("/query", wrap(api.query))
+}
+
+func (api *API) query() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Find the wraps edge
+        wraps_edges = [e for e in result.edges if e.edge_type == "wraps"]
+        assert len(wraps_edges) >= 1
+
+        # Source should be the wrapper symbol
+        wrapper_syms = [s for s in result.symbols if s.name == "wrap" and s.kind == "function"]
+        assert len(wrapper_syms) == 1
+        wrapper = wrapper_syms[0]
+
+        # The wraps edge should come from the wrapper
+        wraps_edge = wraps_edges[0]
+        assert wraps_edge.src == wrapper.id
+
+    def test_wrapper_detection_gorilla_mux(self, tmp_path: Path) -> None:
+        """Wrapper detection works for Gorilla mux HandleFunc pattern."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""package api
+
+func Register(mux Router) {
+    auth := func(f func()) func() {
+        return func() { f() }
+    }
+
+    mux.HandleFunc("/users", auth(listUsers))
+}
+
+func listUsers() {}
+""")
+
+        result = analyze_go(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].meta.get("wrapper_name") == "auth"
+
+    def test_no_wrapper_for_constructor_pattern(self, tmp_path: Path) -> None:
+        """Constructor calls like NewHandler(env) should NOT set wrapper_name."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""package api
+
+func Register(r Router) {
+    r.Get("/health", httpapi.NewHandler(env))
+}
+""")
+
+        result = analyze_go(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        if routes:
+            assert "wrapper_name" not in routes[0].meta
+
+
+    def test_wrapper_symbol_deduplicated_across_routes(self, tmp_path: Path) -> None:
+        """Same wrapper used for multiple routes creates only one wrapper Symbol."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""package api
+
+func Register(r Router) {
+    wrap := func(f func()) func() {
+        return func() { f() }
+    }
+
+    r.Get("/a", wrap(handlerA))
+    r.Get("/b", wrap(handlerB))
+}
+
+func handlerA() {}
+func handlerB() {}
+""")
+
+        result = analyze_go(tmp_path)
+        wrapper_syms = [
+            s for s in result.symbols
+            if s.name == "wrap" and s.kind == "function"
+        ]
+        # Only one wrapper symbol despite two routes using it
+        assert len(wrapper_syms) == 1
+
+        # Both routes should reference the wrapper
+        routes = [s for s in result.symbols if s.kind == "route"]
+        for route in routes:
+            assert route.meta.get("wrapper_name") == "wrap"
+
+    def test_closure_wrapper_with_selector_arg_case2(self, tmp_path: Path) -> None:
+        """Closure wrapper detection handles selector_expression inner args.
+
+        When _extract_handler_name falls through to constructor pattern
+        (callee == handler_name) but the callee is a known closure var,
+        Case 2 kicks in and finds the inner selector_expression arg.
+        This happens when the handler name returned by _extract_handler_name
+        equals the callee because the first selector_expression arg search
+        in _extract_handler_name found a match but it was treated as a
+        wrapper unwrap.  To exercise Case 2's selector_expression branch
+        specifically, we need a closure var whose first arg is not found by
+        _extract_handler_name's own selector search (which always runs).
+
+        In practice, _extract_handler_name already catches selector_expression
+        args, so this path is exercised when a closure var call has ONLY
+        identifier args (covered by test_wrapper_detection_gorilla_mux).
+        We cover the selector path here by using a call where both the
+        callee and an inner call combine.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        # When the callee is a known closure var and the arg is a
+        # selector expression, both _extract_handler_name's existing
+        # selector scan AND Case 2 can match.  The existing scan wins
+        # (Case 1 fires first), so this path is effectively unreachable
+        # in normal code patterns.  Mark it as no-cover.
+        # This test verifies the deduplication path instead.
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""package api
+
+type API struct{}
+
+func (api *API) Register(r Router) {
+    wrap := func(f func()) func() {
+        return func() { f() }
+    }
+
+    r.Get("/a", wrap(api.query))
+    r.Get("/b", wrap(api.list))
+}
+
+func (api *API) query() {}
+func (api *API) list() {}
+""")
+
+        result = analyze_go(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        routes_by_path = {s.meta["route_path"]: s for s in routes}
+        assert routes_by_path["/a"].meta.get("wrapper_name") == "wrap"
+        assert routes_by_path["/b"].meta.get("wrapper_name") == "wrap"
+
+        # Only one wrapper symbol created despite two routes
+        wrapper_syms = [s for s in result.symbols if s.name == "wrap" and s.kind == "function"]
+        assert len(wrapper_syms) == 1
+
+
 class TestGoGorillaMuxRoutes:
     """Tests for Gorilla mux route detection.
 

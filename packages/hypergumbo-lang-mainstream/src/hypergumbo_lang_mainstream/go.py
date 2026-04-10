@@ -2594,6 +2594,103 @@ def _extract_handler_name(
     return None  # pragma: no cover - defensive for unrecognized node types
 
 
+def _extract_wrapper_info(
+    handler_arg: "tree_sitter.Node",
+    handler_name: str,
+    source: bytes,
+    closure_var_map: dict[str, tuple[int, int, int, int]] | None = None,
+) -> tuple[str | None, str | None]:
+    """Extract wrapper function name and true inner handler from a handler arg.
+
+    When a route handler argument is a call expression like
+    ``wrapAgent(api.query)``, and the handler name was extracted from an
+    inner argument (not the callee itself), the callee is a wrapper function.
+
+    Also handles the case where the inner handler is a plain identifier
+    (e.g., ``auth(listUsers)``) — ``_extract_handler_name`` falls back to
+    returning the callee as the handler in this case, so we need to check
+    whether the callee is a known closure variable to distinguish wrapper
+    calls from constructor calls.
+
+    Returns ``(wrapper_name, corrected_handler_name)`` or ``(None, None)``
+    if no wrapper is detected.  When ``corrected_handler_name`` is not None,
+    the caller should use it instead of the original ``handler_name``.
+    """
+    if handler_arg.type != "call_expression":
+        return None, None
+    func_node = find_child_by_field(handler_arg, "function")
+    if func_node is None:
+        return None, None  # pragma: no cover
+    callee_name = node_text(func_node, source)
+
+    # Case 1: handler was unwrapped from an inner selector_expression
+    # (e.g., wrapAgent(api.query) → handler_name="api.query", callee="wrapAgent")
+    if callee_name != handler_name:
+        return callee_name, None
+
+    # Case 2: handler IS the callee (constructor/fallback pattern).
+    # Check if the callee is a known closure variable — if so, the
+    # first argument is the actual handler being wrapped.
+    # e.g., auth(listUsers) where auth := func(f func()) func() { ... }
+    if closure_var_map and callee_name in closure_var_map:
+        args_node = find_child_by_field(handler_arg, "arguments")
+        if args_node:
+            for arg in args_node.children:
+                if arg.type == "identifier":
+                    return callee_name, node_text(arg, source)
+                if arg.type == "selector_expression":  # pragma: no cover
+                    return callee_name, node_text(arg, source)  # pragma: no cover
+
+    return None, None
+
+
+def _maybe_create_wrapper_symbol(
+    wrapper_name: str,
+    closure_var_map: dict[str, tuple[int, int, int, int]],
+    wrapper_symbols_created: dict[str, Symbol],
+    file_path: Path,
+    run: AnalysisRun,
+) -> tuple[Symbol | None, bool]:
+    """Create a Symbol for a closure wrapper variable, if not already created.
+
+    If the wrapper name matches a known closure variable from the pre-pass,
+    creates a function Symbol at the closure's definition location with
+    ``middleware`` concept metadata.
+
+    Returns ``(symbol, is_new)`` where ``is_new`` is True only when a
+    new Symbol was created (False for cache hits and non-matches).
+    """
+    if wrapper_name in wrapper_symbols_created:
+        return wrapper_symbols_created[wrapper_name], False
+    if wrapper_name not in closure_var_map:
+        return None, False
+    start_line, end_line, start_col, end_col = closure_var_map[wrapper_name]
+    sym = Symbol(
+        id=make_symbol_id(
+            "go", str(file_path), start_line, end_line,
+            wrapper_name, "function",
+        ),
+        stable_id=make_typed_stable_id(
+            "function", wrapper_name,
+        ),
+        name=wrapper_name,
+        kind="function",
+        language="go",
+        path=str(file_path),
+        span=Span(
+            start_line=start_line,
+            end_line=end_line,
+            start_col=start_col,
+            end_col=end_col,
+        ),
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+        meta={"concepts": ["middleware"], "is_closure_wrapper": True},
+    )
+    wrapper_symbols_created[wrapper_name] = sym
+    return sym, True
+
+
 def _extract_string_from_node(
     node: "tree_sitter.Node",
     source: bytes,
@@ -2838,6 +2935,60 @@ def _build_group_prefix_map(
     return prefix_map
 
 
+def _build_closure_var_map(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, tuple[int, int, int, int]]:
+    """Find local variables assigned to func literals (closure variables).
+
+    Scans for short variable declarations where the RHS is a func_literal:
+        wrap := func(f apiFunc) http.HandlerFunc { ... }
+
+    Returns a dict mapping variable name to source location tuple:
+        {var_name: (start_line, end_line, start_col, end_col)}
+
+    Used by ``_extract_go_routes`` to detect when a route handler argument
+    is a call to a closure wrapper (e.g., ``wrapAgent(api.query)``), enabling
+    the emission of ``wraps`` edges that make middleware wrappers visible
+    in the call graph.
+    """
+    closure_vars: dict[str, tuple[int, int, int, int]] = {}
+    for n in iter_tree(node):
+        if n.type != "short_var_declaration":
+            continue
+        lhs = n.children[0] if n.children else None
+        rhs = n.children[-1] if len(n.children) >= 3 else None
+        if lhs is None or rhs is None:
+            continue  # pragma: no cover
+        # The RHS may be a direct func_literal or wrapped in an
+        # expression_list (tree-sitter Go grammar wraps the RHS of
+        # short_var_declaration in expression_list).
+        func_lit_node = None
+        if rhs.type == "func_literal":
+            func_lit_node = rhs  # pragma: no cover - grammar always wraps in expr_list
+        elif rhs.type == "expression_list":
+            for child in rhs.children:
+                if child.type == "func_literal":
+                    func_lit_node = child
+                    break
+        if func_lit_node is None:
+            continue
+        var_name = None
+        if lhs.type == "expression_list":
+            for child in lhs.children:
+                if child.type == "identifier":
+                    var_name = node_text(child, source)
+                    break
+        if var_name:
+            closure_vars[var_name] = (
+                func_lit_node.start_point[0] + 1,
+                func_lit_node.end_point[0] + 1,
+                func_lit_node.start_point[1],
+                func_lit_node.end_point[1],
+            )
+    return closure_vars
+
+
 def _extract_go_routes(
     node: "tree_sitter.Node",
     source: bytes,
@@ -2859,14 +3010,25 @@ def _extract_go_routes(
     Creates symbols with stable_id = sha256("route:{method}:{path}") per ADR-0014.
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
 
+    Also detects closure wrapper patterns: when a route handler argument
+    is a call to a local func-typed variable (e.g., ``wrapAgent(api.query)``),
+    records ``wrapper_name`` in route metadata, creates a Symbol for the
+    wrapper closure, and emits a ``wraps`` edge from the wrapper to the
+    inner handler (when resolvable via ``local_symbols``).
+
     Returns:
-        Tuple of (route symbols, mount edges).
+        Tuple of (route symbols + wrapper symbols, mount edges + wraps edges).
     """
     routes: list[Symbol] = []
     mount_edges: list[Edge] = []
 
     # Pre-pass: build variable-to-prefix map for Gin/Echo/Fiber groups
     group_prefix_map = _build_group_prefix_map(node, source)
+
+    # Pre-pass: build closure variable map for wrapper detection
+    closure_var_map = _build_closure_var_map(node, source)
+    # Track wrapper symbols already created (deduplicate by name)
+    _wrapper_symbols_created: dict[str, Symbol] = {}
 
     for n in iter_tree(node):
         # Look for call_expression with selector_expression function
@@ -2899,6 +3061,7 @@ def _extract_go_routes(
                                 # a named handler but remember the closure as
                                 # fallback.
                                 closure_fallback = False
+                                handler_arg_node = None
                                 for arg in reversed(args_node.children):
                                     if arg.type in (
                                         "interpreted_string_literal",
@@ -2912,6 +3075,7 @@ def _extract_go_routes(
                                         continue
                                     handler_name = _extract_handler_name(arg, source)
                                     if handler_name is not None:
+                                        handler_arg_node = arg
                                         break
                                 if handler_name is None and closure_fallback:
                                     handler_name = "<closure>"
@@ -2932,6 +3096,47 @@ def _extract_go_routes(
                                 start_line = n.start_point[0] + 1
                                 end_line = n.end_point[0] + 1
 
+                                # Detect wrapper pattern
+                                route_meta: dict[str, str] = {
+                                    "route_path": route_path,
+                                    "http_method": normalized_method,
+                                    "handler_name": handler_name,
+                                }
+                                if handler_arg_node is not None:
+                                    w_name, corrected = _extract_wrapper_info(
+                                        handler_arg_node, handler_name, source,
+                                        closure_var_map=closure_var_map,
+                                    )
+                                    if w_name:
+                                        if corrected:
+                                            handler_name = corrected
+                                            route_meta["handler_name"] = corrected
+                                        route_meta["wrapper_name"] = w_name
+                                        # Create wrapper symbol and wraps edge
+                                        wrapper_sym, is_new = _maybe_create_wrapper_symbol(
+                                            w_name, closure_var_map,
+                                            _wrapper_symbols_created,
+                                            file_path, run,
+                                        )
+                                        if wrapper_sym:
+                                            if is_new:
+                                                routes.append(wrapper_sym)
+                                            # Try to resolve inner handler for wraps edge
+                                            if local_symbols:
+                                                handler_parts = handler_name.rsplit(".", 1)
+                                                short_name = handler_parts[-1] if handler_parts else handler_name
+                                                resolved = local_symbols.get(handler_name) or local_symbols.get(short_name)
+                                                if resolved:
+                                                    mount_edges.append(Edge.create(
+                                                        src=wrapper_sym.id,
+                                                        dst=resolved.id,
+                                                        edge_type="wraps",
+                                                        line=start_line,
+                                                        origin=PASS_ID,
+                                                        evidence_type="closure_wrapper",
+                                                        confidence=0.85,
+                                                    ))
+
                                 route_sym = Symbol(
                                     id=make_symbol_id(
                                         "go", str(file_path), start_line, end_line,
@@ -2950,11 +3155,7 @@ def _extract_go_routes(
                                     ),
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    meta={
-                                        "route_path": route_path,
-                                        "http_method": normalized_method,
-                                        "handler_name": handler_name,
-                                    },
+                                    meta=route_meta,
                                 )
                                 routes.append(route_sym)
 
@@ -2983,6 +3184,7 @@ def _extract_go_routes(
                                 # middleware convention as HTTP methods).
                                 # Prefer named handlers over closures.
                                 closure_fallback = False
+                                handler_arg_node = None
                                 for arg in reversed(args_node.children):
                                     if arg.type in (
                                         "interpreted_string_literal",
@@ -2996,6 +3198,7 @@ def _extract_go_routes(
                                         continue
                                     handler_name = _extract_handler_name(arg, source)
                                     if handler_name is not None:
+                                        handler_arg_node = arg
                                         break
                                 if handler_name is None and closure_fallback:
                                     handler_name = "<closure>"
@@ -3011,6 +3214,45 @@ def _extract_go_routes(
                                 route_path = prefix + route_path
                                 start_line = n.start_point[0] + 1
                                 end_line = n.end_point[0] + 1
+
+                                # Detect wrapper pattern
+                                route_meta_g: dict[str, str] = {
+                                    "route_path": route_path,
+                                    "http_method": handle_http_method,
+                                    "handler_name": handler_name,
+                                }
+                                if handler_arg_node is not None:
+                                    w_name, corrected = _extract_wrapper_info(
+                                        handler_arg_node, handler_name, source,
+                                        closure_var_map=closure_var_map,
+                                    )
+                                    if w_name:
+                                        if corrected:
+                                            handler_name = corrected
+                                            route_meta_g["handler_name"] = corrected
+                                        route_meta_g["wrapper_name"] = w_name
+                                        wrapper_sym, is_new = _maybe_create_wrapper_symbol(
+                                            w_name, closure_var_map,
+                                            _wrapper_symbols_created,
+                                            file_path, run,
+                                        )
+                                        if wrapper_sym:
+                                            if is_new:
+                                                routes.append(wrapper_sym)
+                                            if local_symbols:
+                                                handler_parts = handler_name.rsplit(".", 1)
+                                                short_name = handler_parts[-1] if handler_parts else handler_name
+                                                resolved = local_symbols.get(handler_name) or local_symbols.get(short_name)
+                                                if resolved:
+                                                    mount_edges.append(Edge.create(
+                                                        src=wrapper_sym.id,
+                                                        dst=resolved.id,
+                                                        edge_type="wraps",
+                                                        line=start_line,
+                                                        origin=PASS_ID,
+                                                        evidence_type="closure_wrapper",
+                                                        confidence=0.85,
+                                                    ))
 
                                 route_sym = Symbol(
                                     id=make_symbol_id(
@@ -3032,11 +3274,7 @@ def _extract_go_routes(
                                     ),
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    meta={
-                                        "route_path": route_path,
-                                        "http_method": handle_http_method,
-                                        "handler_name": handler_name,
-                                    },
+                                    meta=route_meta_g,
                                 )
                                 routes.append(route_sym)
 
