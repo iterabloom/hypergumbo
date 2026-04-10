@@ -18,3 +18,18 @@
     pr_ref:  # 1523
     description: "User-discoverability fix surfaced from WI-sukav discussion 2026-04-07. Hypergumbo accumulates per-language YAML config across multiple subsystems (dataflow patterns, framework patterns, test framework detection, signature extraction once Phase 1 of INV-dihos lands, type_hierarchy virtual-dispatch flags from WI-sukav, io_boundary patterns). A user installing from PyPI has no way to discover what hypergumbo thinks of their language without grepping the wheel.\n\nDELIVERABLES:\n(1) New CLI subcommand 'hypergumbo config show <lang>'. Walks every <lang>.yaml under packages/hypergumbo-lang-*/configs/ and emits a merged JSON document with: dataflow rules, framework patterns, test framework detection, signature extraction (once Phase 1 lands), type_hierarchy flags, io_boundary patterns. Each section includes the source file path the rule came from.\n\n(2) --format json | yaml | text (text = pretty-printed indented summary).\n\n(3) Tests covering: known language returns merged config, unknown language returns empty + warning, missing config sections degrade gracefully.\n\nThis is the cheapest of the three discoverability options proposed in the WI-sukav discussion (P1 in that taxonomy). P2 (auto-generated reference page) and P3 (cross-cutting registry + ADR) are tracked separately."  # 1523
     fields: {}  # 1523
+- op: update  # fc23
+  at: '2026-04-10T03:42:12Z'  # fc23
+  by: agent  # fc23
+  actor: jgstern_agent  # fc23
+  clock: 2  # fc23
+  nonce: fc23  # fc23
+  set:  # fc23
+    status: done  # fc23
+- op: discuss  # ae8e
+  at: '2026-04-10T03:42:12Z'  # ae8e
+  by: agent  # ae8e
+  actor: jgstern_agent  # ae8e
+  clock: 3  # ae8e
+  nonce: ae8e  # ae8e
+  message: "Implemented in commit f3e2a92ea. New 'hypergumbo config <lang>' subcommand shows merged dataflow_patterns, io_primitives, and function_summaries. Supports --format json|yaml|text. 8 tests, 100% coverage."  # ae8e
