@@ -18,3 +18,18 @@
     pr_ref:  # 24f0
     description: "**Symptom:** `tracker show <prefix>` and other prefix-accepting commands can return empty stdout silently when the prefix matches zero items, instead of printing an error and exiting non-zero. Observed 2026-04-08: `tracker --no-auto-sync show WI-rijoj 2>/dev/null` returned an empty result; `show WI-rijoj-rukov-jasus-mihug-dizov-fijud-majis-zutat` (full ID) worked. The 2>/dev/null suppressed any stderr diagnostic, but a script reading only stdout would have seen 'no item' as 'item with empty content' — silent failure.\n\n**Hypothesis:** the prefix resolver requires a longer disambiguation than the 8-char WI-rijoj fragment provides, OR returns None on zero match without raising. Either way, stdout-only callers can't tell.\n\n**Proposed fix:** in the prefix resolver (likely `trackerset.get` or its CLI wrapper), guarantee one of three behaviors on every call:\n1. Exactly one match → return the item, exit 0.\n2. Zero matches → print 'error: no item matches prefix <X>' to stderr, exit non-zero (suggest exit code 2, distinct from 1 for general errors).\n3. Multiple matches → print 'error: prefix <X> matches N items: <list>' to stderr, exit non-zero with the same code.\n\nStdout MUST remain empty on (2) and (3) so JSON callers don't get partial data.\n\n**Tests:**\n1. Unique prefix → exit 0, stdout has the item, stderr empty.\n2. Zero-match prefix → exit non-zero, stdout empty, stderr has descriptive error.\n3. Multi-match prefix → exit non-zero, stdout empty, stderr lists candidates.\n4. Full ID always works regardless of prefix length.\n\n**Discovery context:** observed while iterating over a list of item IDs in a shell loop during the 2026-04-08 retrospective. The silent empty result was caught only because a downstream parser noticed missing data; an automated script would have happily processed an empty item record."  # 24f0
     fields: {}  # 24f0
+- op: update  # bdb3
+  at: '2026-04-10T06:41:59Z'  # bdb3
+  by: agent  # bdb3
+  actor: jgstern_agent  # bdb3
+  clock: 2  # bdb3
+  nonce: bdb3  # bdb3
+  set:  # bdb3
+    status: done  # bdb3
+- op: discuss  # 923d
+  at: '2026-04-10T06:41:59Z'  # 923d
+  by: agent  # 923d
+  actor: jgstern_agent  # 923d
+  clock: 3  # 923d
+  nonce: 923d  # 923d
+  message: "Already implemented. The CLI correctly handles zero-match (error: No items match prefix) and multi-match (error: prefix is ambiguous. Did you mean: ...) at line 2436 of cli.py. Both print to stderr, exit non-zero, stdout empty. The original symptom was from 2>/dev/null suppressing the diagnostic — not a bug in the code."  # 923d
