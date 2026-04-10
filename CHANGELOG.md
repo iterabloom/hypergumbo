@@ -67,6 +67,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+#### Dead code analysis
+
+- **`dead-code-maybe` BFS follows `dispatches_to`, `routes_to`, and `wraps` edges**: the reachability BFS only followed `calls` edges, so interface dispatch targets (Go `Notifier.Notify` implementations), HTTP route handlers, and middleware-wrapped functions were all flagged as dead code. On alertmanager, this fix reduced false positives from 781 to 634 (147 functions correctly reclassified as reachable), and eliminated all 16 `Notifier.Notify` false positives. The BFS now follows the same call-flow edge types that the slice BFS uses.
+
 #### Go analyzer
 
 - **Cross-file struct method aggregation** (WI-hobuk): the structural interface matcher iterated per-file, so methods defined in a sibling file of the same package were dropped from the struct's effective method set. Fix: aggregate `struct_method_sets` per package directory before iterating struct candidates. Two structs of the same name in *different* directories still keep disjoint method sets (preserving the INV-zomuk fix). Scope expansion from INV-zomuk.

@@ -242,6 +242,165 @@ class TestDeadCodeMaybe:
 
         assert "No potentially dead functions" in captured.getvalue()
 
+    def test_dispatches_to_makes_impl_reachable(self, tmp_path: Path) -> None:
+        """Interface dispatch edges make concrete implementations reachable.
+
+        In Go/Java, calling an interface method dispatches to concrete
+        implementations via dispatches_to edges.  The BFS must follow these
+        edges so that implementations like Notifier.Notify in alertmanager
+        are NOT flagged as dead code.
+        """
+        import argparse
+
+        nodes = [
+            # Entrypoint: main
+            {"id": "go:main.go:1-10:main:function", "name": "main",
+             "kind": "function", "language": "go", "path": "main.go",
+             "span": {"start_line": 1, "end_line": 10},
+             "meta": {"is_main": True}},
+            # Interface method
+            {"id": "go:notify.go:5-5:Notifier.Notify:method", "name": "Notifier.Notify",
+             "kind": "method", "language": "go", "path": "notify.go",
+             "span": {"start_line": 5, "end_line": 5}},
+            # Concrete implementation
+            {"id": "go:slack.go:10-50:Notifier.Notify:method", "name": "Notifier.Notify",
+             "kind": "method", "language": "go", "path": "slack.go",
+             "span": {"start_line": 10, "end_line": 50}},
+            # Unreachable function (truly dead)
+            {"id": "go:orphan.go:1-20:orphan:function", "name": "orphan",
+             "kind": "function", "language": "go", "path": "orphan.go",
+             "span": {"start_line": 1, "end_line": 20}},
+        ]
+        edges = [
+            # main calls interface method
+            {"type": "calls", "src": "go:main.go:1-10:main:function",
+             "dst": "go:notify.go:5-5:Notifier.Notify:method"},
+            # Interface dispatches to concrete impl
+            {"type": "dispatches_to",
+             "src": "go:notify.go:5-5:Notifier.Notify:method",
+             "dst": "go:slack.go:10-50:Notifier.Notify:method"},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, edges)
+
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        dead_names = {d["name"] for d in output.get("dead_candidates", [])}
+        # Slack Notifier.Notify IS reachable via dispatches_to → NOT dead
+        dead_ids = {d["id"] for d in output.get("dead_candidates", [])}
+        assert "go:slack.go:10-50:Notifier.Notify:method" not in dead_ids
+        # orphan is truly unreachable → dead
+        assert "orphan" in dead_names
+
+    def test_routes_to_makes_handler_reachable(self, tmp_path: Path) -> None:
+        """Route registration edges make handlers reachable.
+
+        HTTP route registrations emit routes_to edges.  The BFS must follow
+        them so that route handlers are not flagged as dead.
+        """
+        import argparse
+
+        nodes = [
+            {"id": "go:main.go:1-10:main:function", "name": "main",
+             "kind": "function", "language": "go", "path": "main.go",
+             "span": {"start_line": 1, "end_line": 10},
+             "meta": {"is_main": True}},
+            # Route registration node
+            {"id": "go:routes.go:5-5:GET /api:route", "name": "GET /api",
+             "kind": "route", "language": "go", "path": "routes.go",
+             "span": {"start_line": 5, "end_line": 5},
+             "meta": {"route_path": "/api", "http_method": "GET"}},
+            # Handler function
+            {"id": "go:handler.go:10-40:handleAPI:function", "name": "handleAPI",
+             "kind": "function", "language": "go", "path": "handler.go",
+             "span": {"start_line": 10, "end_line": 40}},
+        ]
+        edges = [
+            {"type": "calls", "src": "go:main.go:1-10:main:function",
+             "dst": "go:routes.go:5-5:GET /api:route"},
+            {"type": "routes_to", "src": "go:routes.go:5-5:GET /api:route",
+             "dst": "go:handler.go:10-40:handleAPI:function"},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, edges)
+
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        dead_ids = {d["id"] for d in output.get("dead_candidates", [])}
+        assert "go:handler.go:10-40:handleAPI:function" not in dead_ids
+
+    def test_wraps_makes_inner_reachable(self, tmp_path: Path) -> None:
+        """Middleware wrapper edges make inner handlers reachable.
+
+        Go route registrations with middleware wrappers emit wraps edges.
+        The BFS must follow them.
+        """
+        import argparse
+
+        nodes = [
+            {"id": "go:main.go:1-10:main:function", "name": "main",
+             "kind": "function", "language": "go", "path": "main.go",
+             "span": {"start_line": 1, "end_line": 10},
+             "meta": {"is_main": True}},
+            # Wrapper function
+            {"id": "go:middleware.go:5-15:authWrap:function", "name": "authWrap",
+             "kind": "function", "language": "go", "path": "middleware.go",
+             "span": {"start_line": 5, "end_line": 15}},
+            # Inner handler
+            {"id": "go:api.go:20-50:query:function", "name": "query",
+             "kind": "function", "language": "go", "path": "api.go",
+             "span": {"start_line": 20, "end_line": 50}},
+        ]
+        edges = [
+            {"type": "calls", "src": "go:main.go:1-10:main:function",
+             "dst": "go:middleware.go:5-15:authWrap:function"},
+            {"type": "wraps", "src": "go:middleware.go:5-15:authWrap:function",
+             "dst": "go:api.go:20-50:query:function"},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, edges)
+
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        dead_ids = {d["id"] for d in output.get("dead_candidates", [])}
+        assert "go:api.go:20-50:query:function" not in dead_ids
+
     def test_seeds_all_includes_tests(self, tmp_path: Path) -> None:
         """--seeds all uses both entrypoints AND test functions as seeds."""
         import argparse

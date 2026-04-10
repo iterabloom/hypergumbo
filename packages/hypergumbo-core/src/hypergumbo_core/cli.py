@@ -3616,10 +3616,15 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     if seeds_mode in ("tests", "all"):
         seed_ids.update(test_symbols)
 
-    # BFS from seeds through call edges
+    # BFS from seeds through call-flow edges.
+    # calls:          direct function/method calls
+    # dispatches_to:  interface/abstract method → concrete implementation
+    # routes_to:      HTTP route registration → handler function
+    # wraps:          middleware wrapper → inner handler
+    _REACHABILITY_EDGE_TYPES = {"calls", "dispatches_to", "routes_to", "wraps"}
     call_graph: dict[str, list[str]] = {}
     for edge in edges:
-        if edge.get("type") == "calls":
+        if edge.get("type") in _REACHABILITY_EDGE_TYPES:
             src = edge.get("src", "")
             dst = edge.get("dst", "")
             if src and dst:
