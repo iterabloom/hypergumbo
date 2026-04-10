@@ -4162,6 +4162,49 @@ impl Server {
         assert typed_edges[0].confidence == 0.88
 
 
+    def test_scoped_type_field_call(self, tmp_path: Path) -> None:
+        """self.inner.lock() where inner: std::sync::Mutex resolves to Mutex::lock.
+
+        WI-tupun: scoped_type_identifier returns the full module path
+        (e.g., "std::sync::Mutex") but symbols are stored with bare names.
+        The module prefix must be stripped before constructing typed_name.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct Mutex {}
+
+impl Mutex {
+    fn lock(&self) {}
+}
+
+struct Server {
+    inner: std::sync::Mutex,
+}
+
+impl Server {
+    fn start(&self) {
+        self.inner.lock();
+    }
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        typed_edges = [
+            e for e in result.edges
+            if e.evidence_type == "typed_field_call"
+        ]
+        assert len(typed_edges) == 1
+        edge = typed_edges[0]
+
+        # Should resolve to Mutex::lock despite scoped type in field declaration
+        start_sym = next(s for s in result.symbols if s.name == "Server::start")
+        lock_sym = next(s for s in result.symbols if s.name == "Mutex::lock")
+        assert edge.src == start_sym.id
+        assert edge.dst == lock_sym.id
+
+
 class TestRustSelfResolution:
     """Self:: calls inside impl blocks should resolve to the actual type."""
 
