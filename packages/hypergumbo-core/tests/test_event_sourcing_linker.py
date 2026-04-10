@@ -11,6 +11,7 @@ from hypergumbo_core.linkers.event_sourcing import (
     _scan_javascript_events,
     _scan_python_events,
     _scan_java_events,
+    _scan_go_events,
     event_sourcing_linker,
     link_events,
     EventPattern,
@@ -1012,3 +1013,195 @@ class TestEventSubscriberToMethodEdges:
             f"All edges: {[(e.edge_type, e.src[:40], e.dst[:40]) for e in result.edges]}"
         )
         assert sub_edges[0].dst == handler_method.id
+
+
+class TestJavaCustomEventBusPatterns:
+    """Tests for custom Java event bus patterns beyond Spring.
+
+    Covers Guava EventBus, generic fire/dispatch/register patterns,
+    and @Subscribe annotations.
+    """
+
+    def test_guava_eventbus_post(self, tmp_path: Path):
+        """Detect Guava EventBus.post() pattern."""
+        f = tmp_path / "Publisher.java"
+        f.write_text(dedent("""\
+            public class Publisher {
+                private EventBus eventBus;
+                public void publish() {
+                    eventBus.post(new UserCreatedEvent());
+                }
+            }
+        """))
+        patterns = _scan_java_events(f, f.read_text())
+        pubs = [p for p in patterns if p.pattern_type == "publish"]
+        assert len(pubs) >= 1
+        assert any(p.framework == "event_bus" for p in pubs)
+
+    def test_guava_subscribe_annotation(self, tmp_path: Path):
+        """Detect @Subscribe annotation (Guava EventBus)."""
+        f = tmp_path / "Handler.java"
+        f.write_text(dedent("""\
+            public class Handler {
+                @Subscribe
+                public void onUserCreated(UserCreatedEvent event) {
+                    // handle it
+                }
+            }
+        """))
+        patterns = _scan_java_events(f, f.read_text())
+        subs = [p for p in patterns if p.pattern_type == "subscribe"]
+        assert len(subs) >= 1
+        assert any(p.framework == "event_bus" for p in subs)
+
+    def test_generic_java_fire_dispatch(self, tmp_path: Path):
+        """Detect generic fire()/dispatch() event publishing patterns."""
+        f = tmp_path / "Notifier.java"
+        f.write_text(dedent("""\
+            public class Notifier {
+                public void notify() {
+                    eventManager.fire("user.created", payload);
+                    dispatcher.dispatch("order.completed", data);
+                }
+            }
+        """))
+        patterns = _scan_java_events(f, f.read_text())
+        pubs = [p for p in patterns if p.pattern_type == "publish"]
+        assert len(pubs) >= 2
+
+    def test_generic_java_register_listener(self, tmp_path: Path):
+        """Detect generic register()/addListener() subscriber patterns."""
+        f = tmp_path / "Setup.java"
+        f.write_text(dedent("""\
+            public class Setup {
+                public void init() {
+                    eventManager.register("user.created", handler);
+                    bus.addListener("order.completed", listener);
+                }
+            }
+        """))
+        patterns = _scan_java_events(f, f.read_text())
+        subs = [p for p in patterns if p.pattern_type == "subscribe"]
+        assert len(subs) >= 2
+
+
+class TestGoEventPatterns:
+    """Tests for Go channel-based and event bus patterns."""
+
+    def test_go_channel_send(self, tmp_path: Path):
+        """Detect Go channel send operator as event publish."""
+        f = tmp_path / "publisher.go"
+        f.write_text(dedent("""\
+            package events
+
+            func publish(ch chan Event) {
+                ch <- Event{Type: "user.created"}
+            }
+        """))
+        patterns = _scan_go_events(f, f.read_text())
+        pubs = [p for p in patterns if p.pattern_type == "publish"]
+        assert len(pubs) >= 1
+        assert pubs[0].language == "go"
+
+    def test_go_channel_receive(self, tmp_path: Path):
+        """Detect Go channel receive as event subscribe."""
+        f = tmp_path / "subscriber.go"
+        f.write_text(dedent("""\
+            package events
+
+            func listen(ch chan Event) {
+                event := <-ch
+                handle(event)
+            }
+        """))
+        patterns = _scan_go_events(f, f.read_text())
+        subs = [p for p in patterns if p.pattern_type == "subscribe"]
+        assert len(subs) >= 1
+        assert subs[0].language == "go"
+
+    def test_go_select_channel_receive(self, tmp_path: Path):
+        """Detect channel receives inside select statements."""
+        f = tmp_path / "listener.go"
+        f.write_text(dedent("""\
+            package events
+
+            func listen(events chan Event, done chan struct{}) {
+                for {
+                    select {
+                    case evt := <-events:
+                        handle(evt)
+                    case <-done:
+                        return
+                    }
+                }
+            }
+        """))
+        patterns = _scan_go_events(f, f.read_text())
+        subs = [p for p in patterns if p.pattern_type == "subscribe"]
+        # Should detect at least the events channel receive
+        assert len(subs) >= 1
+
+    def test_go_event_bus_emit(self, tmp_path: Path):
+        """Detect Go event bus Publish/Emit method calls."""
+        f = tmp_path / "bus.go"
+        f.write_text(dedent("""\
+            package events
+
+            func notify(bus *EventBus) {
+                bus.Publish("user.created", payload)
+                bus.Emit("order.completed", data)
+            }
+        """))
+        patterns = _scan_go_events(f, f.read_text())
+        pubs = [p for p in patterns if p.pattern_type == "publish"]
+        assert len(pubs) >= 2
+
+    def test_go_event_bus_subscribe(self, tmp_path: Path):
+        """Detect Go event bus Subscribe/On method calls."""
+        f = tmp_path / "sub.go"
+        f.write_text(dedent("""\
+            package events
+
+            func setup(bus *EventBus) {
+                bus.Subscribe("user.created", handler)
+                bus.On("order.completed", listener)
+            }
+        """))
+        patterns = _scan_go_events(f, f.read_text())
+        subs = [p for p in patterns if p.pattern_type == "subscribe"]
+        assert len(subs) >= 2
+
+    def test_go_files_scanned(self, tmp_path: Path):
+        """Go files (.go) are included in source file scanning."""
+        (tmp_path / "main.go").write_text("package main")
+        (tmp_path / "util.py").write_text("# python")
+        files = list(_find_source_files(tmp_path))
+        go_files = [f for f in files if f.suffix == ".go"]
+        assert len(go_files) == 1
+
+
+class TestGoEventPipeline:
+    """End-to-end Go event linking tests."""
+
+    def test_go_event_bus_link(self, tmp_path: Path):
+        """Go event bus publisher and subscriber are linked."""
+        pub = tmp_path / "pub.go"
+        pub.write_text(dedent("""\
+            package events
+
+            func publish(bus *EventBus) {
+                bus.Publish("user.created", data)
+            }
+        """))
+        sub = tmp_path / "sub.go"
+        sub.write_text(dedent("""\
+            package events
+
+            func subscribe(bus *EventBus) {
+                bus.Subscribe("user.created", handler)
+            }
+        """))
+        result = link_events(tmp_path)
+        assert len(result.edges) >= 1
+        pub_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
+        assert len(pub_edges) >= 1
