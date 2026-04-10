@@ -42,3 +42,26 @@
   clock: 4  # ff4b
   nonce: ff4b  # ff4b
   message: "Script implemented (PR merged) and smoke-tested on alertmanager+prometheus. 2 repos, 2951 total candidates. Top gap categories: yaml_json_marshal (146), cross_language_api (43), memberlist_callbacks (42), handler_or_dto (17). Artifact saved to ~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-10-smoke-test/. Full 20-repo run deferred to a dedicated session due to wall-clock cost (kafka alone took 10+ min in iter-008). The tooling is proven working; running more repos is a trivial invocation."  # ff4b
+- op: discuss  # 33e3
+  at: '2026-04-10T21:46:49Z'  # 33e3
+  by: human  # 33e3
+  actor: jgstern  # 33e3
+  clock: 5  # 33e3
+  nonce: '33e3'  # 33e3
+  message: "it's ok if it takes some time. which repos in the set of 20 are larger than kafka?"  # 33e3
+- op: update  # a27c
+  at: '2026-04-10T21:47:51Z'  # a27c
+  by: human  # a27c
+  actor: jgstern  # a27c
+  clock: 6  # a27c
+  nonce: a27c  # a27c
+  set:  # a27c
+    status: todo_soft  # a27c
+- op: lock  # 2f63
+  at: '2026-04-10T21:48:12Z'  # 2f63
+  by: human  # 2f63
+  actor: jgstern  # 2f63
+  clock: 7  # 2f63
+  nonce: 2f63  # 2f63
+  lock:  # 2f63
+  - status  # 2f63
