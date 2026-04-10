@@ -19311,3 +19311,75 @@ class TestHummingbirdPatterns:
         results = match_patterns(symbol, [pattern_def])
         mw_concepts = [r for r in results if r["concept"] == "middleware"]
         assert len(mw_concepts) >= 1
+
+
+class TestMixedConceptsFormats:
+    """Concepts lists may contain both dicts and strings.
+
+    The middleware chain linker uses string concepts (e.g., ``["middleware"]``)
+    while the framework pattern pipeline produces dict concepts (e.g.,
+    ``[{"concept": "route", "path": "/users"}]``).  When both are present
+    on a symbol, iteration must skip non-dict entries gracefully.
+    """
+
+    def test_get_concept_path_skips_string_concepts(self) -> None:
+        """_get_concept_path_from_symbol handles mixed concepts."""
+        from hypergumbo_core.framework_patterns import _get_concept_path_from_symbol
+
+        sym = Symbol(
+            id="go:api.go:1-5:wrap:function",
+            name="wrap",
+            kind="function",
+            language="go",
+            path="api.go",
+            span=Span(1, 5, 0, 0),
+            meta={
+                "concepts": [
+                    "middleware",  # string format (middleware chain linker)
+                    {"concept": "route", "path": "/users"},  # dict format
+                ],
+            },
+        )
+        # Should find the dict concept, skipping the string
+        result = _get_concept_path_from_symbol(sym, "route")
+        assert result == "/users"
+
+        # Should return None for non-matching concept
+        result = _get_concept_path_from_symbol(sym, "controller")
+        assert result is None
+
+    def test_subresource_locator_skips_string_concepts(self) -> None:
+        """_apply_subresource_locator_paths handles mixed concepts."""
+        from hypergumbo_core.framework_patterns import _apply_subresource_locator_paths
+
+        sym = Symbol(
+            id="go:api.go:1-5:wrap:function",
+            name="wrap",
+            kind="function",
+            language="go",
+            path="api.go",
+            span=Span(1, 5, 0, 0),
+            meta={
+                "concepts": ["middleware"],
+            },
+        )
+        # Should not crash on string concepts
+        _apply_subresource_locator_paths([sym], {})
+
+    def test_enrich_skips_string_concepts_in_dedup(self) -> None:
+        """Concept deduplication handles mixed string/dict concepts."""
+        from hypergumbo_core.framework_patterns import enrich_symbols
+
+        sym = Symbol(
+            id="go:api.go:1-5:wrap:function",
+            name="wrap",
+            kind="function",
+            language="go",
+            path="api.go",
+            span=Span(1, 5, 0, 0),
+            meta={
+                "concepts": ["middleware"],
+            },
+        )
+        # Should not crash during enrichment
+        enrich_symbols([sym], [], [])
