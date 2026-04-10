@@ -67,6 +67,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+#### Symbol ranking
+
+- **Orchestration hub floor for high-out-degree functions**: functions with out-degree >= 20 (main/run/app orchestration hubs) get a minimum effective in-degree of `sqrt(out_degree) * 0.8`, preventing within-file dampening and per-file capping from burying them. On alertmanager, `run` (in=9 all same-file, out=128) was ranked #45 with effective_in=0.90 after 0.3x within-file weight and max_per_file_in=5; now ranks #1 with floor=9.05. Does not affect functions with fewer than 20 outgoing edges.
+- **`event_subscribes` and `event_publishes` added to `DEFAULT_EDGE_TYPE_WEIGHTS` at 0.8**: event-driven callback edges previously defaulted to 0.5 weight, under-counting the centrality of event handlers. Now weighted at 0.8, matching `routes_to` and `message_dispatch`. Also added `dispatches_to` at 0.6 for interface dispatch edges.
+
 #### Dead code analysis
 
 - **`dead-code-maybe` BFS follows `dispatches_to`, `routes_to`, and `wraps` edges**: the reachability BFS only followed `calls` edges, so interface dispatch targets (Go `Notifier.Notify` implementations), HTTP route handlers, and middleware-wrapped functions were all flagged as dead code. On alertmanager, this fix reduced false positives from 781 to 634 (147 functions correctly reclassified as reachable), and eliminated all 16 `Notifier.Notify` false positives. The BFS now follows the same call-flow edge types that the slice BFS uses.

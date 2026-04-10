@@ -3807,3 +3807,83 @@ class TestApplyGeneratedCodeWeights:
             centrality, [gen_sym], generated_weight=0.1
         )
         assert result[gen_sym.id] == pytest.approx(0.1)
+
+
+class TestEventSubscribesEdgeWeight:
+    """event_subscribes edges should be weighted as call-flow edges, not defaults."""
+
+    def test_event_subscribes_in_default_weights(self):
+        """event_subscribes should be in DEFAULT_EDGE_TYPE_WEIGHTS at >= 0.8."""
+        from hypergumbo_core.ranking import DEFAULT_EDGE_TYPE_WEIGHTS
+
+        assert "event_subscribes" in DEFAULT_EDGE_TYPE_WEIGHTS
+        assert DEFAULT_EDGE_TYPE_WEIGHTS["event_subscribes"] >= 0.8
+
+    def test_event_publishes_in_default_weights(self):
+        """event_publishes should also be weighted."""
+        from hypergumbo_core.ranking import DEFAULT_EDGE_TYPE_WEIGHTS
+
+        assert "event_publishes" in DEFAULT_EDGE_TYPE_WEIGHTS
+        assert DEFAULT_EDGE_TYPE_WEIGHTS["event_publishes"] >= 0.8
+
+
+class TestOrchestrationHubRanking:
+    """Orchestration hubs (low in, very high out) should not be buried by dampening.
+
+    alertmanager's `run` function (in=9 all from same file, out=128) scored
+    raw centrality 5.27 vs NewAlertmanagerClient's 26.4 because within-file
+    dampening (0.3x) and per-file cap (5) crushed its effective in-degree
+    from 9 to 0.90.  The out-degree boost (ln-scale) couldn't compensate.
+    """
+
+    def test_orchestration_hub_ranks_above_moderate_connector(self):
+        """A function with out=128 and in=2 (cross-file) should rank higher
+        than one with in=8 (cross-file) and out=9."""
+        # Orchestration hub: called from 2 files, calls 50 others
+        hub = make_symbol("run", path="main.go", kind="function", language="go")
+        # Moderate connector: called from 8 different files, calls 9
+        connector = make_symbol("NewClient", path="client.go", kind="function",
+                                language="go")
+        # Create callers for both
+        targets = [make_symbol(f"t{i}", path=f"pkg{i}/mod.go", kind="function",
+                               language="go")
+                   for i in range(50)]
+
+        hub_callers = [
+            make_symbol("main", path="main.go", kind="function", language="go"),
+            make_symbol("init", path="init.go", kind="function", language="go"),
+        ]
+        conn_callers = [
+            make_symbol(f"caller{i}", path=f"pkg{i}/use.go", kind="function",
+                        language="go")
+            for i in range(8)
+        ]
+
+        all_symbols = [hub, connector] + targets + hub_callers + conn_callers
+
+        edges = []
+        # hub called by 2 callers (1 same-file, 1 cross-file)
+        edges.append(make_edge(hub_callers[0].id, hub.id))  # same-file (main.go)
+        edges.append(make_edge(hub_callers[1].id, hub.id))  # cross-file
+
+        # hub calls 50 targets
+        for t in targets:
+            edges.append(make_edge(hub.id, t.id))
+
+        # connector called by 8 callers (all cross-file)
+        for c in conn_callers:
+            edges.append(make_edge(c.id, connector.id))
+
+        # connector calls 9 targets
+        for t in targets[:9]:
+            edges.append(make_edge(connector.id, t.id))
+
+        ranked = rank_symbols(all_symbols, edges)
+        rank_by_name = {rs.symbol.name: rs.rank for rs in ranked}
+
+        # run (the orchestration hub) should rank higher (lower rank number)
+        # than NewClient
+        assert rank_by_name["run"] < rank_by_name["NewClient"], (
+            f"run rank={rank_by_name['run']} should be < "
+            f"NewClient rank={rank_by_name['NewClient']}"
+        )
