@@ -18,3 +18,33 @@
     pr_ref:  # ca0f
     description: "DEEP bakeoff (deep-20260409-054615) found all 13 tier2-only nodes in alertmanager are _test.go files or test utilities (mock.go, acceptance.go). Root cause: detect_package_roots() in supply_chain.py (lines 541-623) only handles npm/Cargo/Maven workspaces — Go modules (go.mod) are never detected. Without workspace detection, the generic test pattern check (lines 451-466) demotes ALL _test.go files to tier-2 (INTERNAL_DEP). Fix: add Go module detection to detect_package_roots() so that go.mod presence registers the repo root as a package root, allowing the workspace-aware tier logic (lines 421-449) to correctly classify co-located test files as tier-1. This is a root-cause fix, not a workaround. Structural scope expansion: check if Rust (Cargo.toml without workspace), Python (pyproject.toml without workspace), and other single-package layouts have the same bug."  # ca0f
     fields: {}  # ca0f
+- op: update  # 8eb4
+  at: '2026-04-10T11:41:28Z'  # 8eb4
+  by: agent  # 8eb4
+  actor: jgstern_agent  # 8eb4
+  clock: 2  # 8eb4
+  nonce: 8eb4  # 8eb4
+  set:  # 8eb4
+    status: in_progress  # 8eb4
+- op: discuss  # 483e
+  at: '2026-04-10T11:41:29Z'  # 483e
+  by: agent  # 483e
+  actor: jgstern_agent  # 483e
+  clock: 3  # 483e
+  nonce: 483e  # 483e
+  message: "Implemented in commit 65c3d94 on branch jgstern-agent/fix/go-test-tier-classification. auto-pr in flight. Changed TEST_FILE_PATTERNS from tier-2 to tier-1 with is_test=True. TEST_DIR_PATTERNS unchanged (still tier-2). Affects Go, JS/TS, Ruby, Rust, C++. 100% coverage."  # 483e
+- op: update  # 35b5
+  at: '2026-04-10T11:47:57Z'  # 35b5
+  by: agent  # 35b5
+  actor: jgstern_agent  # 35b5
+  clock: 4  # 35b5
+  nonce: 35b5  # 35b5
+  set:  # 35b5
+    status: done  # 35b5
+- op: discuss  # cec9
+  at: '2026-04-10T11:47:57Z'  # cec9
+  by: agent  # cec9
+  actor: jgstern_agent  # cec9
+  clock: 5  # cec9
+  nonce: cec9  # cec9
+  message: "Merged in PR #2886. Co-located test files (_test.go, .test.js, .spec.ts, _spec.rb, tests.rs) now tier-1 with is_test=True. Dedicated test directories (tests/, spec/, __tests__/) remain tier-2. Root cause: TEST_FILE_PATTERNS and TEST_DIR_PATTERNS were treated identically but represent structurally different cases."  # cec9

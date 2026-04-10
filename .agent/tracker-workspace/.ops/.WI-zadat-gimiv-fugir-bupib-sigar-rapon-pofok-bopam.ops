@@ -34,3 +34,18 @@
   clock: 3  # 4558
   nonce: '4558'  # 4558
   message: "Implemented in commit 2e66008 on branch jgstern-agent/feat/event-sourcing-linker-expansion. auto-pr in flight. Adds Guava EventBus (bus.post/@Subscribe), generic Java event bus (fire/dispatch/register/addListener), Go channel events (ch<-/\\<-ch), Go event bus (Publish/Subscribe/Emit/On). 13 new tests, 100% coverage."  # 4558
+- op: update  # d2a9
+  at: '2026-04-10T11:06:23Z'  # d2a9
+  by: agent  # d2a9
+  actor: jgstern_agent  # d2a9
+  clock: 4  # d2a9
+  nonce: d2a9  # d2a9
+  set:  # d2a9
+    status: done  # d2a9
+- op: discuss  # e612
+  at: '2026-04-10T11:06:23Z'  # e612
+  by: agent  # e612
+  actor: jgstern_agent  # e612
+  clock: 5  # e612
+  nonce: e612  # e612
+  message: "Merged in PR #2884. Added Guava EventBus (bus.post/@Subscribe), generic Java event bus (fire/dispatch/register/addListener), Go channel events (ch<-/<-ch), Go event bus (Publish/Subscribe/Emit/On). Go files now scanned. 13 new tests, 100% coverage."  # e612
