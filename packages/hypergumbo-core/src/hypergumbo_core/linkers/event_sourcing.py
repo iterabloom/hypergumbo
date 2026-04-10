@@ -213,6 +213,59 @@ SPRING_TRANSACTIONAL_LISTENER_PATTERN = re.compile(
     re.MULTILINE,
 )
 
+# Guava EventBus: bus.post(new UserCreatedEvent())
+JAVA_EVENTBUS_POST_PATTERN = re.compile(
+    r"(\w+)\s*\.\s*post\s*\(",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+# Guava EventBus: @Subscribe annotation
+JAVA_SUBSCRIBE_PATTERN = re.compile(
+    r"@Subscribe\b",
+    re.MULTILINE,
+)
+
+# Generic Java event publishing: fire/dispatch/notify with string literal arg
+JAVA_GENERIC_PUBLISH_PATTERN = re.compile(
+    rf"(\w+)\s*\.\s*(?:fire|dispatch|notify|raise)\s*\(\s*{_EVENT_ARG}",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+# Generic Java event subscribing: register/addListener with string literal arg
+JAVA_GENERIC_SUBSCRIBE_PATTERN = re.compile(
+    rf"(\w+)\s*\.\s*(?:register|addListener|addEventListener|subscribe|on)\s*\(\s*{_EVENT_ARG}",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+# ============================================================================
+# Go event patterns
+# ============================================================================
+
+# Go channel send: ch <- value
+GO_CHANNEL_SEND_PATTERN = re.compile(
+    r"(\w+)\s*<-\s*\w+",
+    re.MULTILINE,
+)
+
+# Go channel receive: val := <-ch or case val := <-ch
+GO_CHANNEL_RECEIVE_PATTERN = re.compile(
+    r"(?:(\w+)\s*:?=\s*)?<-\s*(\w+)",
+    re.MULTILINE,
+)
+
+# Go event bus publish: bus.Publish("event", ...) or bus.Emit("event", ...)
+GO_EVENT_BUS_PUBLISH_PATTERN = re.compile(
+    rf"(\w+)\s*\.\s*(?:Publish|Emit|Fire|Dispatch|Send|Notify)\s*\(\s*{_EVENT_ARG}",
+    re.MULTILINE,
+)
+
+# Go event bus subscribe: bus.Subscribe("event", ...) or bus.On("event", ...)
+GO_EVENT_BUS_SUBSCRIBE_PATTERN = re.compile(
+    rf"(\w+)\s*\.\s*(?:Subscribe|On|Listen|Register|Handle)\s*\(\s*{_EVENT_ARG}",
+    re.MULTILINE,
+)
+
 
 def _find_source_files(root: Path) -> Iterator[Path]:
     """Find files that might contain event patterns.
@@ -226,7 +279,7 @@ def _find_source_files(root: Path) -> Iterator[Path]:
     Without this filter, repos like openzeppelin-contracts produce hundreds
     of orphan ``event_publisher`` nodes from test assertions.
     """
-    patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.java"]
+    patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.java", "**/*.go"]
     for path in find_files(root, patterns):
         if path.stem.endswith(".min"):
             continue
@@ -244,6 +297,8 @@ def _detect_language(file_path: Path) -> str:
         return "javascript"
     elif ext == ".java":
         return "java"
+    elif ext == ".go":
+        return "go"
     return "unknown"  # pragma: no cover
 
 
@@ -444,6 +499,132 @@ def _scan_java_events(file_path: Path, content: str) -> list[EventPattern]:
             framework="spring",
         ))
 
+    # Guava EventBus: bus.post() — publish via posting event objects
+    for match in JAVA_EVENTBUS_POST_PATTERN.finditer(content):
+        line = content[: match.start()].count("\n") + 1
+        patterns.append(EventPattern(
+            event_name="EventBusEvent",
+            pattern_type="publish",
+            line=line,
+            file_path=str(file_path),
+            language="java",
+            framework="event_bus",
+        ))
+
+    # Guava EventBus: @Subscribe annotation — method-level subscriber
+    for match in JAVA_SUBSCRIBE_PATTERN.finditer(content):
+        line = content[: match.start()].count("\n") + 1
+        patterns.append(EventPattern(
+            event_name="EventBusEvent",
+            pattern_type="subscribe",
+            line=line,
+            file_path=str(file_path),
+            language="java",
+            framework="event_bus",
+        ))
+
+    # Generic Java event publishing: fire/dispatch/notify with string args
+    for match in JAVA_GENERIC_PUBLISH_PATTERN.finditer(content):
+        event_name, event_type = _extract_event_from_match(match, 2, 3)
+        line = content[: match.start()].count("\n") + 1
+        patterns.append(EventPattern(
+            event_name=event_name,
+            pattern_type="publish",
+            line=line,
+            file_path=str(file_path),
+            language="java",
+            framework="event_bus",
+            event_type=event_type,
+        ))
+
+    # Generic Java event subscribing: register/addListener with string args
+    for match in JAVA_GENERIC_SUBSCRIBE_PATTERN.finditer(content):
+        event_name, event_type = _extract_event_from_match(match, 2, 3)
+        line = content[: match.start()].count("\n") + 1
+        patterns.append(EventPattern(
+            event_name=event_name,
+            pattern_type="subscribe",
+            line=line,
+            file_path=str(file_path),
+            language="java",
+            framework="event_bus",
+            event_type=event_type,
+        ))
+
+    return patterns
+
+
+def _scan_go_events(file_path: Path, content: str) -> list[EventPattern]:
+    """Scan Go file for event patterns.
+
+    Detects two categories:
+    - **Channel-based events**: ``ch <- value`` (publish) and ``val := <-ch``
+      (subscribe).  Channel names serve as event names since Go channels are
+      typed and named — the channel name is the best available identifier for
+      matching publishers to subscribers.
+    - **Event bus patterns**: ``bus.Publish("event", ...)`` and
+      ``bus.Subscribe("event", ...)`` using conventional method names.
+    """
+    patterns: list[EventPattern] = []
+
+    # Channel send: ch <- value
+    for match in GO_CHANNEL_SEND_PATTERN.finditer(content):
+        channel_name = match.group(1)
+        line = content[: match.start()].count("\n") + 1
+        patterns.append(EventPattern(
+            event_name=channel_name,
+            pattern_type="publish",
+            line=line,
+            file_path=str(file_path),
+            language="go",
+            framework="channel",
+            event_type="variable",
+        ))
+
+    # Channel receive: val := <-ch or case val := <-ch
+    for match in GO_CHANNEL_RECEIVE_PATTERN.finditer(content):
+        channel_name = match.group(2)
+        if channel_name is None:
+            continue  # pragma: no cover
+        line = content[: match.start()].count("\n") + 1
+        patterns.append(EventPattern(
+            event_name=channel_name,
+            pattern_type="subscribe",
+            line=line,
+            file_path=str(file_path),
+            language="go",
+            framework="channel",
+            event_type="variable",
+        ))
+
+    # Event bus publish: bus.Publish("event", ...) etc.
+    for match in GO_EVENT_BUS_PUBLISH_PATTERN.finditer(content):
+        event_name, event_type = _extract_event_from_match(match, 2, 3)
+        line = content[: match.start()].count("\n") + 1
+        patterns.append(EventPattern(
+            event_name=event_name,
+            pattern_type="publish",
+            line=line,
+            file_path=str(file_path),
+            language="go",
+            framework="event_bus",
+            event_type=event_type,
+        ))
+
+    # Event bus subscribe: bus.Subscribe("event", ...) etc.
+    for match in GO_EVENT_BUS_SUBSCRIBE_PATTERN.finditer(content):
+        event_name, event_type = _extract_event_from_match(match, 2, 3)
+        line = content[: match.start()].count("\n") + 1
+        patterns.append(EventPattern(
+            event_name=event_name,
+            pattern_type="subscribe",
+            line=line,
+            file_path=str(file_path),
+            language="go",
+            framework="event_bus",
+            event_type=event_type,
+        ))
+
     return patterns
 
 
@@ -456,6 +637,8 @@ def _scan_file(file_path: Path, content: str) -> list[EventPattern]:
         return _scan_javascript_events(file_path, content)
     elif language == "java":
         return _scan_java_events(file_path, content)
+    elif language == "go":
+        return _scan_go_events(file_path, content)
     return []  # pragma: no cover
 
 
@@ -695,7 +878,7 @@ def _create_subscriber_to_method_edges(
 @register_linker(
     "event_sourcing",
     priority=55,  # Run after core linkers, with other event patterns
-    description="Event sourcing linking (EventEmitter, Django signals, Spring events)",
+    description="Event sourcing linking (EventEmitter, Django signals, Spring events, Guava EventBus, Go channels)",
 )
 def event_sourcing_linker(ctx: LinkerContext) -> LinkerResult:
     """Event sourcing linker for registry-based dispatch.
