@@ -647,6 +647,28 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
             fields_dict[k] = v
         set_fields["fields"] = fields_dict
 
+    # Partial field updates: --add-field merges per-key, --remove-field
+    # sets key to None (compile_ops deletes None-valued field keys).
+    if getattr(args, "add_field", None) or getattr(args, "remove_field", None):
+        if "fields" in set_fields:
+            print(
+                "error: --field and --add-field/--remove-field are mutually exclusive",
+                file=sys.stderr,
+            )
+            return EXIT_USER_ERROR
+        partial_fields: dict[str, Any] = {}
+        if getattr(args, "add_field", None):
+            for kv in args.add_field:
+                if "=" not in kv:
+                    print(f"error: --add-field must be key=value, got {kv!r}", file=sys.stderr)
+                    return EXIT_USER_ERROR
+                k, v = kv.split("=", 1)
+                partial_fields[k] = v
+        if getattr(args, "remove_field", None):
+            for k in args.remove_field:
+                partial_fields[k] = None
+        set_fields["fields"] = partial_fields
+
     # Capture old state for verbose confirmation
     has_direct_mutations = bool(set_fields or add_fields or remove_fields)
     old_item = ts.get(args.item_id)
@@ -1669,7 +1691,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--remove-blocked-by", action="append",
                           help="Inverse of --remove-before: removes before link from the "
                                "OTHER item pointing to this item (repeatable)")
-    p_update.add_argument("--field", action="append", help="Field key=value (repeatable)")
+    p_update.add_argument("--field", action="append",
+                           help="Field key=value (REPLACES entire fields dict — use --add-field for partial)")
+    p_update.add_argument("--add-field", action="append", dest="add_field",
+                           help="Add/update a single field key=value (repeatable, preserves other fields)")
+    p_update.add_argument("--remove-field", action="append", dest="remove_field",
+                           help="Remove a field by key (repeatable)")
     p_update.add_argument("--note", help="Add a discussion note (shorthand for discuss)")
 
     # --- discuss ---

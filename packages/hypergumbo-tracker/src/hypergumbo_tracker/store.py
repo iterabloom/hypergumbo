@@ -558,9 +558,13 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
             set_dict = op_dict.get("set", {})
             for key, value in set_dict.items():
                 if key == "fields" and isinstance(value, dict):
-                    # Per-key LWW for fields dict
+                    # Per-key LWW for fields dict.
+                    # None values delete the key (WI-lorip --remove-field).
                     for fk, fv in value.items():
-                        item.fields[fk] = fv
+                        if fv is None:
+                            item.fields.pop(fk, None)
+                        else:
+                            item.fields[fk] = fv
                 elif key in _SET_VALUED_FIELDS:
                     # `set` on a set-valued field replaces wholesale
                     setattr(item, key, list(value) if isinstance(value, list) else [value])
