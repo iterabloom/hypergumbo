@@ -19,3 +19,18 @@
     pr_ref:  # 6d73
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md proposed remedy §4: today the tracker CLI emits 'Please reply to the human's message' AFTER the agent has already discussed (notebook references records 159, 220, 4775, 4858 in the analyzed transcripts). It is a backstop, not a planning aid.\n\n**Change:** in tracker discuss subcommand (cli.py), when the target item's last discussion entry has by: human, require either --ack-thread flag OR print the full prior thread + description and exit non-zero on first attempt. Same heuristic as today's warning, stricter enforcement.\n\n**Why this matters:** the REPLY-FIRST CYCLE branch (companion item) creates a quiet room for the agent to focus on replies — but the agent might learn that the cycle clears as soon as tracker discuss posts *anything*. This item's hard gate is what prevents that. Without it, REPLY-FIRST CYCLE might just produce shorter drive-by replies.\n\n**Failure mode design check:** the gate must be one-time per turn (--ack-thread flag), not per session, so genuine multi-step conversations can proceed. The agent must explicitly affirm that it has loaded and considered the prior thread before its reply gets posted.\n\n**Pairs with REPLY-FIRST CYCLE branch and the strengthened guidance text.** The notebook calls these three items 'a coherent intervention.'\n\nNOT a governance file — packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py is application code."  # 6d73
     fields: {}  # 6d73
+- op: update  # a2c9
+  at: '2026-04-10T18:10:29Z'  # a2c9
+  by: agent  # a2c9
+  actor: jgstern_agent  # a2c9
+  clock: 2  # a2c9
+  nonce: a2c9  # a2c9
+  set:  # a2c9
+    status: done  # a2c9
+- op: discuss  # a035
+  at: '2026-04-10T18:10:29Z'  # a035
+  by: agent  # a035
+  actor: jgstern_agent  # a035
+  clock: 3  # a035
+  nonce: a035  # a035
+  message: "Implemented in PR (pending merge). tracker discuss now exits EXIT_USER_ERROR when last entry is by:human unless --ack-thread is provided. Shows full prior transcript and hint. --note shorthand on update still warns without blocking."  # a035
