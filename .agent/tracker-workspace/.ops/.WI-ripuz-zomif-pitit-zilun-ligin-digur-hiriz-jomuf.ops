@@ -19,3 +19,18 @@
     pr_ref:  # 85d3
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md 'Elaboration on item 6' — the user explicitly identified this as the clearest remedy because it is the only proposal that changes the agent's incentive structure rather than adding tools/knowledge.\n\n**Change:** in packages/hypergumbo-tracker/src/hypergumbo_tracker/stop_hook.py:generate_guidance, branch when items_with_unread_blocking + unread_non_blocking > 0 and emit a *different* guidance file rather than the standard TODO/bakeoff one with an unread-message section appended. The new guidance:\n\n> REPLY-FIRST CYCLE — N unread human message(s)\n>\n> You are not in autonomous-drive mode this cycle. Do not start new code tasks, do not run bakeoffs, do not pick from tracker ready. Your only assignment is to clear reply debt. For each item:\n> 1. tracker show <ID> — load the full thread + description\n> 2. Classify: approval, directive, or question\n> 3. Questions: plan the investigation (Read/Grep, Explore subagent, WebSearch on allowlisted domains) BEFORE drafting\n> 4. tracker discuss <ID> — post the reply\n\n**Critical:** while reply debt exists, the hook does NOT emit 'AUTONOMOUS MODE: N TODOs block stopping'. The TODO list isn't shown at all. This is what gives the change teeth — the agent can't make progress on anything else without first clearing the reply.\n\n**Scope of suppression:** default to suppressing only when there is a *blocking* unread item (hard TODO, invariant violation, hard escalation). Treat non-blocking unread messages as a softer reminder. The notebook flags this as a judgment call worth thinking about.\n\n**Failure mode to design against:** the agent might learn that REPLY-FIRST CYCLE clears as soon as tracker discuss posts anything. The companion item ('--ack-thread enforcement') prevents this; without it, this change might just produce shorter drive-by replies.\n\n**Implementation cost:** ~50-80 lines plus tests asserting the autonomous-drive section is omitted when blocking unread exists. Behavior change is concentrated in one function.\n\n**Validation plan** (per notebook): run for a week and measure (a) reply length per by:human-prompted discuss, (b) tool calls per reply turn (Read/Grep/Explore/WebSearch), (c) replies citing specific code locations / ADRs / PRs, (d) whether the agent ever uses WebSearch for a tracker reply (currently 0 across ~6500 records).\n\nNOT a governance file — packages/hypergumbo-tracker/src/hypergumbo_tracker/stop_hook.py is application code."  # 85d3
     fields: {}  # 85d3
+- op: update  # 9529
+  at: '2026-04-10T18:20:54Z'  # 9529
+  by: agent  # 9529
+  actor: jgstern_agent  # 9529
+  clock: 2  # 9529
+  nonce: '9529'  # 9529
+  set:  # 9529
+    status: needs_human_review  # 9529
+- op: discuss  # eaf2
+  at: '2026-04-10T18:20:54Z'  # eaf2
+  by: agent  # eaf2
+  actor: jgstern_agent  # eaf2
+  clock: 3  # eaf2
+  nonce: eaf2  # eaf2
+  message: "Requires changes to .agent/hooks/ (governance files). WI-zufuj (--ack-thread gate) merged in PR #2896 — this is the companion item that suppresses the drive prompt while reply debt exists. Awaiting human approval to modify governance files."  # eaf2

@@ -19,3 +19,18 @@
     pr_ref:  # 1f55
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1518.md proposed remedy §2: replace the one-line guidance in stop_hook.py:349-353 ('Use scripts/tracker check-messages to read and reply to unread human messages') with a four-step directive parallel to the existing hard-TODO 'investigate deeply' guidance.\n\n**New text:**\n\n> Unread human messages: do NOT drive-by reply. For each item:\n> (1) tracker show to load the full thread + description\n> (2) classify the message — approval, directive, or question\n> (3) for questions, decide whether the answer requires reading source/ADRs (Read/Grep), cross-cutting analysis (Explore subagent), or external references (WebSearch); plan that investigation BEFORE drafting the reply\n> (4) reply via tracker discuss\n>\n> Do not dispatch a new feature branch in the same turn as a substantive reply.\n\n**Why:** the notebook's tool-tally analysis showed that across ~6500 agent records, 0 WebSearch and 0 WebFetch invocations occurred, and only 2 of 34 Agent dispatches were Explore (for tracker reply purposes). The current single-sentence guidance frames replies as a side errand to clear. The four-step text frames them as 'investigate deeply' work, paralleling the hard-TODO guidance.\n\n**Pairs with the REPLY-FIRST CYCLE branch item.** The notebook says 'Together those three [B, C, A] form a coherent intervention: 6 changes incentives, 2 says what good looks like, 4 enforces the floor.'\n\n**Scope:** ~20-line change in stop_hook.py:349-353. Independent of the REPLY-FIRST CYCLE branch — can be implemented separately and they will compose.\n\nNOT a governance file."  # 1f55
     fields: {}  # 1f55
+- op: update  # d8cf
+  at: '2026-04-10T18:20:54Z'  # d8cf
+  by: agent  # d8cf
+  actor: jgstern_agent  # d8cf
+  clock: 2  # d8cf
+  nonce: d8cf  # d8cf
+  set:  # d8cf
+    status: needs_human_review  # d8cf
+- op: discuss  # 6c03
+  at: '2026-04-10T18:20:54Z'  # 6c03
+  by: agent  # 6c03
+  actor: jgstern_agent  # 6c03
+  clock: 3  # 6c03
+  nonce: 6c03  # 6c03
+  message: "Requires changes to .agent/hooks/ (governance files). WI-zufuj (--ack-thread gate) merged in PR #2896 — this strengthens the guidance text. Awaiting human approval to modify governance files."  # 6c03

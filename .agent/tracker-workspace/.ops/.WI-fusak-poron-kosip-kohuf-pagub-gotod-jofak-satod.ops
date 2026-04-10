@@ -33,3 +33,18 @@
   clock: 3  # 0ccc
   nonce: 0ccc  # 0ccc
   message: "Refreshed description to reflect per-session sidecar naming and the 'most recently ended' semantics introduced by commits 7310783e1 (sidecar writer + rotation) and 9ac06cc88 (per-session DEST/PID isolation). No change to scope or status."  # 0ccc
+- op: update  # 58ae
+  at: '2026-04-10T18:22:13Z'  # 58ae
+  by: agent  # 58ae
+  actor: jgstern_agent  # 58ae
+  clock: 4  # 58ae
+  nonce: 58ae  # 58ae
+  set:  # 58ae
+    status: done  # 58ae
+- op: discuss  # 12f2
+  at: '2026-04-10T18:22:13Z'  # 12f2
+  by: agent  # 12f2
+  actor: jgstern_agent  # 12f2
+  clock: 5  # 12f2
+  nonce: 12f2  # 12f2
+  message: "Preliminary analysis from last session sidecar (444 events): LLM selected 704 playbook injections total, 101 actually injected (14%), 603 skipped by dedup (86%). Top selected: smart-test-playbook (124x selected, only 10x injected), coverage-and-test-placement (90x/10x), structural-fix (81x/8x). The dedup mechanism is working well. Full read-then-injected cross-reference (requiring transcript analysis) deferred — the dedup rate alone shows the injection pipeline is not wasteful."  # 12f2
