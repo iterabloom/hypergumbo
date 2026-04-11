@@ -1267,6 +1267,30 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
                     result_set.add(best)
 
     if result:
+        # WI-gapom: defensive hub-collision warning. After WI-fuhaj (Java)
+        # and WI-jopar (Go) fixed the underlying short-name collision bugs
+        # that produced 6054-edge POJO hubs on Kafka, the rslice seed picker
+        # should still surface a warning when any picked seed has a
+        # production in-degree well above the typical hub range. This is
+        # either (a) a legitimate framework-level hub worth knowing about
+        # (sync.Mutex.Lock, slf4j.Logger.info, etc.) or (b) a future name
+        # collision that slipped through analyzer fixes — both are worth
+        # an explicit signal in the bakeoff log so the LLM assessment
+        # agent and the human reviewer can investigate.
+        _HUB_WARN_THRESHOLD = 1000
+        for picked in result:
+            pin = prod_in_degree.get(picked, 0)
+            if pin > _HUB_WARN_THRESHOLD:
+                pnode = node_map.get(picked) or {}
+                pname = pnode.get("name", "<unknown>")
+                sys.stderr.write(
+                    f"WARNING: rslice seed {pname!r} has "
+                    f"prod_in_degree={pin} (> {_HUB_WARN_THRESHOLD}). "
+                    f"This may be a legitimate framework hub OR a possible "
+                    f"name-collision artifact (WI-gapom). Investigate the "
+                    f"caller distribution before drawing conclusions from "
+                    f"the resulting reverse slice.\n",
+                )
         return result
 
     # Relaxed fallback: drop the _MIN_OUT_DEGREE requirement.
