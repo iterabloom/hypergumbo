@@ -2204,7 +2204,7 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
         if threshold <= 0:
             return
 
-        # Find repo root
+        # Find repo root from cwd.
         result = subprocess.run(  # nosec B603, B607
             ["git", "rev-parse", "--show-toplevel"],  # noqa: S607
             capture_output=True,
@@ -2214,6 +2214,21 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
         if result.returncode != 0:
             return
         repo_root = Path(result.stdout.strip())
+
+        # Guard against confused state: the cwd-derived repo_root may point
+        # at a different repo than the one containing tracker_root (tests
+        # running from the real repo with a fake tracker_root under
+        # tmp_path, cross-repo CLI invocations, or stale cwd after chdir).
+        # In that case pending_sync_lines would count ops in the WRONG
+        # repo — if the real repo has pending ops above the threshold, we
+        # would trigger a sync against a tracker_root that does not even
+        # live in that repo, and then block for up to 15 minutes waiting
+        # for an unrelated .git/PR_PENDING to clear. Skip rather than sync
+        # the wrong repo.
+        try:
+            tracker_root.resolve().relative_to(repo_root.resolve())
+        except ValueError:
+            return
 
         lines = pending_sync_lines(repo_root)
         if lines < threshold:
@@ -2332,7 +2347,7 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _print_sync_reminder() -> None:
+def _print_sync_reminder(tracker_root: Path | None = None) -> None:
     """Print a short reminder about automatic sync to stderr.
 
     Shows how many tracker lines are pending and the auto-sync threshold
@@ -2340,6 +2355,11 @@ def _print_sync_reminder() -> None:
     that automatically when the threshold is exceeded.
 
     Never raises; silently no-ops if git or pending_sync_lines fails.
+
+    If ``tracker_root`` is provided and the cwd-derived repo_root does not
+    contain it, the reminder is suppressed. This avoids printing pending-
+    line counts from the WRONG repo when tests or cross-repo CLI
+    invocations drive ``tracker_root`` outside the current git repo.
     """
     from hypergumbo_tracker.sync import (
         AUTO_SYNC_DEFAULT_THRESHOLD,
@@ -2356,6 +2376,13 @@ def _print_sync_reminder() -> None:
         if result.returncode != 0:
             return
         repo_root = Path(result.stdout.strip())
+
+        # Guard: skip if tracker_root lives outside repo_root.
+        if tracker_root is not None:
+            try:
+                tracker_root.resolve().relative_to(repo_root.resolve())
+            except ValueError:
+                return
 
         threshold_str = os.environ.get(
             "TRACKER_AUTO_SYNC_THRESHOLD",
@@ -2531,7 +2558,7 @@ def main(argv: list[str] | None = None) -> None:
         _maybe_auto_sync(tracker_root)
 
     if exit_code == EXIT_SUCCESS:
-        _print_sync_reminder()
+        _print_sync_reminder(tracker_root)
 
     raise SystemExit(exit_code)
 
