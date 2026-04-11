@@ -5375,3 +5375,184 @@ def test_django_path_nested_concatenation(tmp_path: Path) -> None:
     assert len(routes) == 1, f"Expected 1 route, got {len(routes)}: {routes}"
     route_path = routes[0].get("meta", {}).get("route_path")
     assert route_path == "/api/v2/items/", f"Expected '/api/v2/items/', got {route_path!r}"
+
+
+# ============================================================================
+# WI-gipag: Python __all__ -> Symbol.is_exported tests
+# ============================================================================
+
+
+class TestExtractModuleAll:
+    """Tests for _extract_module_all."""
+
+    def test_no_all_returns_none(self) -> None:
+        import ast
+        from hypergumbo_lang_mainstream.py import _extract_module_all
+
+        tree = ast.parse("def foo(): pass\n")
+        assert _extract_module_all(tree) is None
+
+    def test_list_literal(self) -> None:
+        import ast
+        from hypergumbo_lang_mainstream.py import _extract_module_all
+
+        tree = ast.parse('__all__ = ["foo", "bar"]\n')
+        assert _extract_module_all(tree) == frozenset({"foo", "bar"})
+
+    def test_tuple_literal(self) -> None:
+        import ast
+        from hypergumbo_lang_mainstream.py import _extract_module_all
+
+        tree = ast.parse('__all__ = ("foo", "bar")\n')
+        assert _extract_module_all(tree) == frozenset({"foo", "bar"})
+
+    def test_empty_list(self) -> None:
+        import ast
+        from hypergumbo_lang_mainstream.py import _extract_module_all
+
+        tree = ast.parse("__all__ = []\n")
+        assert _extract_module_all(tree) == frozenset()
+
+    def test_annotated_assign(self) -> None:
+        import ast
+        from hypergumbo_lang_mainstream.py import _extract_module_all
+
+        tree = ast.parse('__all__: list[str] = ["foo"]\n')
+        assert _extract_module_all(tree) == frozenset({"foo"})
+
+    def test_non_literal_element_returns_none(self) -> None:
+        """A non-string literal in __all__ makes the whole thing
+        ambiguous — return None to fall back to the underscore rule."""
+        import ast
+        from hypergumbo_lang_mainstream.py import _extract_module_all
+
+        tree = ast.parse('__all__ = ["foo", other]\n')
+        assert _extract_module_all(tree) is None
+
+    def test_non_literal_expression_returns_none(self) -> None:
+        """__all__ = some_module.__all__ is not a parseable literal."""
+        import ast
+        from hypergumbo_lang_mainstream.py import _extract_module_all
+
+        tree = ast.parse("__all__ = other.__all__\n")
+        assert _extract_module_all(tree) is None
+
+    def test_unrelated_assignment_ignored(self) -> None:
+        """Assignments to other names should not interfere."""
+        import ast
+        from hypergumbo_lang_mainstream.py import _extract_module_all
+
+        tree = ast.parse('__version__ = "1.0"\n')
+        assert _extract_module_all(tree) is None
+
+    def test_assign_to_attr_ignored(self) -> None:
+        """Attribute assignment like ``x.__all__ = ...`` is not a
+        module-level ``__all__`` declaration."""
+        import ast
+        from hypergumbo_lang_mainstream.py import _extract_module_all
+
+        tree = ast.parse("x.__all__ = []\n")
+        assert _extract_module_all(tree) is None
+
+
+class TestIsPythonTopLevelExported:
+    """Tests for _is_python_top_level_exported."""
+
+    def test_in_all_is_exported(self) -> None:
+        from hypergumbo_lang_mainstream.py import _is_python_top_level_exported
+        assert _is_python_top_level_exported(
+            "foo", frozenset({"foo", "bar"}),
+        ) is True
+
+    def test_not_in_all_is_not_exported(self) -> None:
+        from hypergumbo_lang_mainstream.py import _is_python_top_level_exported
+        assert _is_python_top_level_exported(
+            "baz", frozenset({"foo"}),
+        ) is False
+
+    def test_no_all_public_name(self) -> None:
+        from hypergumbo_lang_mainstream.py import _is_python_top_level_exported
+        assert _is_python_top_level_exported("foo", None) is True
+
+    def test_no_all_underscore_prefix(self) -> None:
+        from hypergumbo_lang_mainstream.py import _is_python_top_level_exported
+        assert _is_python_top_level_exported("_helper", None) is False
+
+    def test_no_all_double_underscore_prefix(self) -> None:
+        from hypergumbo_lang_mainstream.py import _is_python_top_level_exported
+        assert _is_python_top_level_exported("__private", None) is False
+
+
+class TestSymbolIsExportedIntegration:
+    """End-to-end: analyze_python sets Symbol.is_exported per file."""
+
+    def test_public_top_level_function_exported(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "lib.py").write_text(
+            "def public_fn():\n    return 1\n\n"
+            "def _private_fn():\n    return 2\n",
+        )
+        result = analyze_python(tmp_path)
+        by_name = {s.name: s for s in result.symbols}
+        assert by_name["public_fn"].is_exported is True
+        assert by_name["_private_fn"].is_exported is False
+
+    def test_public_top_level_class_exported(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "lib.py").write_text(
+            "class PublicClass:\n    pass\n\n"
+            "class _Private:\n    pass\n",
+        )
+        result = analyze_python(tmp_path)
+        by_name = {s.name: s for s in result.symbols}
+        assert by_name["PublicClass"].is_exported is True
+        assert by_name["_Private"].is_exported is False
+
+    def test_all_restricts_to_listed_names(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "lib.py").write_text(
+            '__all__ = ["exported_fn"]\n\n'
+            "def exported_fn():\n    return 1\n\n"
+            "def also_public_but_not_listed():\n    return 2\n",
+        )
+        result = analyze_python(tmp_path)
+        by_name = {s.name: s for s in result.symbols if s.kind == "function"}
+        assert by_name["exported_fn"].is_exported is True
+        # Even though the name is public-ish, __all__ says otherwise.
+        assert by_name["also_public_but_not_listed"].is_exported is False
+
+    def test_empty_all_exports_nothing(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "lib.py").write_text(
+            "__all__ = []\n\n"
+            "def foo():\n    return 1\n",
+        )
+        result = analyze_python(tmp_path)
+        by_name = {s.name: s for s in result.symbols if s.kind == "function"}
+        assert by_name["foo"].is_exported is False
+
+    def test_nested_function_not_exported(self, tmp_path: Path) -> None:
+        """A decorated nested function (col_offset > 0) is captured by
+        the extractor but must not be flagged exported."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "app.py").write_text(
+            "from fastapi import APIRouter\n\n"
+            "def get_router():\n"
+            "    router = APIRouter()\n"
+            "    @router.get('/items')\n"
+            "    def list_items():\n"
+            "        return []\n"
+            "    return router\n",
+        )
+        result = analyze_python(tmp_path)
+        by_name = {s.name: s for s in result.symbols if s.kind == "function"}
+        # get_router is top-level and public → exported.
+        assert by_name["get_router"].is_exported is True
+        # list_items is nested (col_offset > 0) → not exported even
+        # though the name is public.
+        assert by_name["list_items"].is_exported is False
