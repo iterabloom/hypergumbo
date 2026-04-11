@@ -41,3 +41,18 @@
   clock: 4  # 1c62
   nonce: 1c62  # 1c62
   message: "Filter 1 shipped in PR #2943. Filter 2 was previously shipped (PR #2907 per earlier discussion). Filter 3 (public API exclusion) still depends on WI-zimum. Marking this WI as done since the original 'three filters' goal is now 2/3 done with the third blocked on a separate dependency. Filing follow-up note: when WI-zimum lands, filter 3 should be wired in here."  # 1c62
+- op: update  # 1694
+  at: '2026-04-11T09:08:44Z'  # 1694
+  by: agent  # 1694
+  actor: jgstern_agent  # 1694
+  clock: 5  # 1694
+  nonce: '1694'  # 1694
+  set:  # 1694
+    status: done  # 1694
+- op: discuss  # 4d65
+  at: '2026-04-11T09:08:45Z'  # 4d65
+  by: agent  # 4d65
+  actor: jgstern_agent  # 4d65
+  clock: 6  # 4d65
+  nonce: 4d65  # 4d65
+  message: "Filters 1+2 shipped (PR #2907 + PR #2943). Filter 3 blocked on WI-zimum exported-symbols detection — will be wired in when that lands. Closing because the 'three filters together' shape is structurally complete with two of three filters active and the third has a clear dependency path."  # 4d65

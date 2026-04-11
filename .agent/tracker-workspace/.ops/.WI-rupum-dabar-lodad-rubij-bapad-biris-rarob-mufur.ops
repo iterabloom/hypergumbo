@@ -1,0 +1,21 @@
+- op: create  # 81f3
+  at: '2026-04-11T10:53:36Z'  # 81f3
+  by: agent  # 81f3
+  actor: jgstern_agent  # 81f3
+  clock: 1  # 81f3
+  nonce: 81f3  # 81f3
+  data:  # 81f3
+    kind: work_item  # 81f3
+    title: "Scala secondary constructor (ClassName.this) dead-code false positives — missing instantiation-to-constructor edges"  # 81f3
+    status: todo_soft  # 81f3
+    priority: 3  # 81f3
+    parent:  # 81f3
+    tags:  # 81f3
+    - analysis_quality  # 81f3
+    - language_additions  # 81f3
+    before: []  # 81f3
+    duplicate_of: []  # 81f3
+    not_duplicate_of: []  # 81f3
+    pr_ref:  # 81f3
+    description: "WI-tubot prospector run 2026-04-11 (~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-11-full/aggregate.json) found that kafka's Scala code (core/src/main/scala/kafka/server/*.scala) surfaces many secondary-constructor methods (syntactic ClassName.this def) as dead-code candidates with high cross_language_hits (6192). Examples: CachedPartition.this, KafkaConfig.this, FullFetchContext.this, OffsetTruncationState.this, FetchManager.this. Root cause hypothesis: Scala analyzer emits secondary constructors as Symbol entries, but there are no edges from 'new ClassName(args...)' call sites to the matching secondary constructor overload, so the BFS from entrypoints cannot reach them. The main constructor is presumably reached via the Symbol containing the class body, but secondary constructors have a separate function signature that instantiation resolution must link. Needs: (1) Scala analyzer emits calls to secondary constructors from new-expressions; (2) instantiation resolver matches arg-count/arg-types to select the right overload. Reference: smallest reproducer in kafka/core/src/main/scala/kafka/server/FetchSession.scala — CachedPartition has multiple secondary constructors. Priority P3 because Scala is one of many languages with this class of gap (Java/Kotlin/C# likely have analogous issues)."  # 81f3
+    fields: {}  # 81f3

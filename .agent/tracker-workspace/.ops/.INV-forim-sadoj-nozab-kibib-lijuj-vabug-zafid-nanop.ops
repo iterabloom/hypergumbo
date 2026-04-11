@@ -45,3 +45,18 @@
   nonce: b605  # b605
   set:  # b605
     status: pending_validation  # b605
+- op: update  # 8db3
+  at: '2026-04-11T09:35:55Z'  # 8db3
+  by: agent  # 8db3
+  actor: jgstern_agent  # 8db3
+  clock: 5  # 8db3
+  nonce: 8db3  # 8db3
+  set:  # 8db3
+    status: satisfied  # 8db3
+- op: discuss  # 84f6
+  at: '2026-04-11T09:35:55Z'  # 84f6
+  by: agent  # 84f6
+  actor: jgstern_agent  # 84f6
+  clock: 6  # 84f6
+  nonce: 84f6  # 84f6
+  message: "Validated post-PR-2925. Unit regression tests (14 tests across test_event_sourcing_linker, test_ipc_linker, test_message_queue_linker, test_websocket) all pass. Real-repo evidence on alertmanager: 0 → 96 dest_access_mode edges (all event-sourcing-linker-v1). On kafka: 0 → 240 dest_access_mode edges (all event-sourcing-linker-v1). ipc/websocket/message_queue linkers did not fire on these 2 repos (they target patterns absent from alertmanager and kafka), but unit tests cover each directly. Invariant holds: Edge.create dataflow kwargs now persist into edge.meta."  # 84f6
