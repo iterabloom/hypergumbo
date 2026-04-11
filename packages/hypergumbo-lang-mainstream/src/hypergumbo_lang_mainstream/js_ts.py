@@ -3221,7 +3221,108 @@ def _extract_symbols(
                         symbols.append(symbol)
                     break  # Only handle one function_declaration per export
 
+    # WI-nimug / WI-zimum Phase 2b: mark symbols as is_exported=True when
+    # their defining declaration sits under a top-level export_statement.
+    _mark_exported_symbols(tree.root_node, source, symbols)
+
     return symbols
+
+
+def _collect_exported_names(
+    root: "tree_sitter.Node", source: bytes,
+) -> set[str]:
+    """Return the set of identifier names reachable via top-level exports.
+
+    WI-nimug / WI-zimum Phase 2b: finds names brought into the module's
+    public API by any of these TypeScript / JavaScript ``export``
+    syntaxes under the root node:
+
+    - ``export function foo() {}`` / ``export class Bar {}`` —
+      named export of a declaration
+    - ``export default function foo() {}`` /
+      ``export default class Bar {}`` — default export of a named decl
+    - ``export const foo = ...`` / ``export let ...`` / ``export var ...``
+    - ``export { foo, bar }`` — named re-export (export_clause)
+    - ``export { foo } from './bar'`` — named re-export-from
+    - ``export default identifier`` where identifier is a bare name
+
+    Default exports without an explicit name (e.g. ``export default
+    () => {}`` or ``export default 42``) are NOT added because there's
+    no symbol name to match against the analyzer's Symbol.name field.
+
+    Only the *top-level* export_statement children of the root module
+    are considered. Nested re-exports inside a function body are rare
+    and not part of the public module surface.
+    """
+    names: set[str] = set()
+    for child in root.children:
+        if child.type != "export_statement":
+            continue
+        _extract_export_names_from_statement(child, source, names)
+    return names
+
+
+def _extract_export_names_from_statement(
+    node: "tree_sitter.Node", source: bytes, out: set[str],
+) -> None:
+    """Populate *out* with the identifier names exported by *node*."""
+    for child in node.children:
+        ctype = child.type
+        if ctype in ("function_declaration", "class_declaration"):
+            name = _find_name_in_children(child, source)
+            if name:
+                out.add(name)
+        elif ctype == "lexical_declaration" or ctype == "variable_declaration":
+            # export const foo = ... / export let ... / export var ...
+            for var_child in child.children:
+                if var_child.type == "variable_declarator":
+                    name_node = var_child.child_by_field_name("name")
+                    if name_node is not None and name_node.type == "identifier":
+                        out.add(_node_text(name_node, source))
+        elif ctype == "export_clause":
+            # export { foo, bar } or export { foo as bar }
+            for clause_child in child.children:
+                if clause_child.type == "export_specifier":
+                    # Prefer the alias (``alias`` field) when present so
+                    # the exported name matches the public surface.
+                    alias = clause_child.child_by_field_name("alias")
+                    name_node = (
+                        alias
+                        if alias is not None
+                        else clause_child.child_by_field_name("name")
+                    )
+                    if name_node is not None:
+                        out.add(_node_text(name_node, source))
+        elif ctype == "identifier":
+            # ``export default foo`` — bare identifier after ``default``.
+            out.add(_node_text(child, source))
+
+
+def _mark_exported_symbols(
+    root: "tree_sitter.Node",
+    source: bytes,
+    symbols: list[Symbol],
+) -> None:
+    """Set ``Symbol.is_exported = True`` for each symbol whose short name
+    is in the exported-name set for this file.
+
+    WI-nimug: match by short name (split on the last dot) so ``Class.method``
+    style symbols created for TypeScript class members do not accidentally
+    get flagged when only the class is exported — class members stay
+    un-exported unless the class was the only thing exported, in which case
+    they are still un-exported here (the class symbol is the public
+    API entry point). Modules themselves remain un-exported — the field
+    is about individual declarations, not the module pseudo-node.
+    """
+    exported_names = _collect_exported_names(root, source)
+    if not exported_names:
+        return
+    for sym in symbols:
+        if sym.kind == "module":
+            continue
+        short = sym.name.rsplit(".", 1)[-1] if "." in sym.name else sym.name
+        if short in exported_names and "." not in sym.name:
+            sym.is_exported = True
 
 
 def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) -> bool:

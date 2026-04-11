@@ -442,6 +442,93 @@ const x = require(name);
         assert len(class_symbols) == 1
         assert class_symbols[0].name == "ApiClient"
 
+    def test_exported_function_is_flagged(self, tmp_path: Path) -> None:
+        """WI-nimug: ``export function`` sets Symbol.is_exported=True."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "export function publicFn() { return 1; }\n"
+            "function privateFn() { return 2; }\n",
+        )
+        result = analyze_javascript(tmp_path)
+        by_name = {s.name: s for s in result.symbols if s.kind == "function"}
+        assert by_name["publicFn"].is_exported is True
+        assert by_name["privateFn"].is_exported is False
+
+    def test_exported_class_is_flagged(self, tmp_path: Path) -> None:
+        """WI-nimug: ``export class`` sets Symbol.is_exported=True."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "export class PublicClass { method() { return 1; } }\n"
+            "class PrivateClass { method() { return 2; } }\n",
+        )
+        result = analyze_javascript(tmp_path)
+        classes = {s.name: s for s in result.symbols if s.kind == "class"}
+        assert classes["PublicClass"].is_exported is True
+        assert classes["PrivateClass"].is_exported is False
+
+    def test_export_default_function_is_flagged(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-nimug: ``export default function`` sets is_exported=True."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "export default function handler() { return 1; }\n",
+        )
+        result = analyze_javascript(tmp_path)
+        func_symbols = [
+            s for s in result.symbols if s.kind == "function"
+        ]
+        handler_sym = next(
+            (s for s in func_symbols if s.name == "handler"), None,
+        )
+        assert handler_sym is not None
+        assert handler_sym.is_exported is True
+
+    def test_export_clause_named_is_flagged(self, tmp_path: Path) -> None:
+        """WI-nimug: ``export { foo, bar }`` clause flags both names."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "function foo() { return 1; }\n"
+            "function bar() { return 2; }\n"
+            "function baz() { return 3; }\n"
+            "export { foo, bar };\n",
+        )
+        result = analyze_javascript(tmp_path)
+        by_name = {s.name: s for s in result.symbols if s.kind == "function"}
+        assert by_name["foo"].is_exported is True
+        assert by_name["bar"].is_exported is True
+        assert by_name["baz"].is_exported is False
+
+    def test_module_symbol_not_exported(self, tmp_path: Path) -> None:
+        """The synthetic <module:app.js> pseudo-node is never flagged."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "export function foo() { return 1; }\n",
+        )
+        result = analyze_javascript(tmp_path)
+        modules = [s for s in result.symbols if s.kind == "module"]
+        assert len(modules) >= 1
+        for m in modules:
+            assert m.is_exported is False
+
+    def test_no_exports_means_nothing_flagged(self, tmp_path: Path) -> None:
+        """When a file has no export_statement, no symbols get flagged."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "function foo() { return 1; }\n"
+            "class Bar {}\n",
+        )
+        result = analyze_javascript(tmp_path)
+        for s in result.symbols:
+            if s.kind != "module":
+                assert s.is_exported is False
+
     def test_typescript_exports_class(self, tmp_path: Path) -> None:
         """Handles TypeScript export class syntax."""
         pytest.importorskip("tree_sitter_typescript")
@@ -4539,6 +4626,91 @@ class TestDecoratorMetadata:
         """Skip tests if tree-sitter is not available."""
         pytest.importorskip("tree_sitter")
         pytest.importorskip("tree_sitter_typescript")
+
+    def test_decorator_resolves_to_same_file_function(
+        self, tmp_path: Path,
+    ) -> None:
+        """When a decorator's identifier matches a function symbol in
+        the same file, a ``decorated_by`` edge is emitted from the
+        decorated class to the decorator function.
+
+        This exercises the happy path of the decorator resolver in
+        _extract_decorator_edges — previously uncovered because every
+        decorator test only verified metadata extraction, not edge
+        construction.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "service.ts"
+        ts_file.write_text(
+            "function MyDecorator() {\n"
+            "  return function (target: any) { return target; };\n"
+            "}\n\n"
+            "@MyDecorator()\n"
+            "class UserService {\n"
+            "    findAll() { return []; }\n"
+            "}\n",
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        decorated_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by"
+        ]
+        # At least one resolved decorated_by edge was emitted.
+        resolved = [
+            e for e in decorated_edges
+            if "unresolved" not in e.dst
+        ]
+        assert len(resolved) >= 1
+        # The decorator function is the destination.
+        dec_fn = next(
+            (s for s in result.symbols
+             if s.name == "MyDecorator" and s.kind == "function"),
+            None,
+        )
+        assert dec_fn is not None
+        assert any(e.dst == dec_fn.id for e in resolved)
+
+    def test_decorator_rejects_non_function_kind_same_name(
+        self, tmp_path: Path,
+    ) -> None:
+        """When a decorator's identifier matches a CLASS (not a function)
+        in the same file, the resolver must leave it unresolved — a data
+        class named ``Post`` is not the NestJS ``@Post()`` decorator.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "controller.ts"
+        ts_file.write_text(
+            "class Post {\n"
+            "    title: string = '';\n"
+            "}\n\n"
+            "@Post()\n"
+            "class PostController {\n"
+            "    create() { return 1; }\n"
+            "}\n",
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        # The Post class symbol exists.
+        post_class = next(
+            (s for s in result.symbols
+             if s.name == "Post" and s.kind == "class"),
+            None,
+        )
+        assert post_class is not None
+
+        # NO resolved decorated_by edge points at the Post class.
+        decorated_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by"
+        ]
+        assert not any(
+            e.dst == post_class.id for e in decorated_edges
+        )
 
     def test_class_decorator_simple(self, tmp_path: Path) -> None:
         """Extracts simple class decorator without arguments."""
