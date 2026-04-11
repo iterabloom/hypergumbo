@@ -37,3 +37,11 @@
   clock: 3  # 9c32
   nonce: 9c32  # 9c32
   message: "Fixed in PR #2925 (merged). All 4 linkers now preserve access_mode/dest_access_mode through Edge.create's meta= kwarg. Regression tests added per linker. Verification pending: re-run hypergumbo on polyglot repos and confirm dest_access_mode now present."  # 9c32
+- op: update  # b605
+  at: '2026-04-11T04:04:47Z'  # b605
+  by: human  # b605
+  actor: jgstern  # b605
+  clock: 4  # b605
+  nonce: b605  # b605
+  set:  # b605
+    status: pending_validation  # b605
