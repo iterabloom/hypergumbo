@@ -78,6 +78,53 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
     return node.child_by_field_name(field_name)
 
 
+def _extract_kotlin_receiver_type(
+    func_node: "tree_sitter.Node",
+    source: bytes,
+) -> Optional[str]:
+    """Return the receiver type name if *func_node* is an extension function.
+
+    WI-fuhav: tree-sitter-kotlin parses ``fun Receiver.name(...) { }``
+    as a ``function_declaration`` whose children run as
+    ``[fun, user_type, '.', identifier, function_value_parameters, ...]``.
+    The ``user_type`` child sits BEFORE the ``identifier`` that carries
+    the function name — this is the distinguishing marker of an
+    extension function. Regular functions (``fun name() {}``) have
+    no receiver sibling.
+
+    Returns the text of the receiver user_type when detected, or
+    None for plain (non-extension) functions.
+    """
+    saw_user_type = False
+    receiver_text: Optional[str] = None
+    for child in func_node.children:
+        if child.type in ("simple_identifier", "identifier") and saw_user_type:
+            # We reached the function name after already seeing the
+            # receiver user_type — confirmed extension function.
+            return receiver_text
+        if child.type == "user_type":
+            # Record (but don't commit yet — the function_declaration
+            # body may contain user_type nodes further down that
+            # aren't receivers). We only commit if the NEXT identifier
+            # arrives before any structural block starts.
+            saw_user_type = True
+            receiver_text = (
+                child.text.decode("utf-8", errors="replace")
+                if child.text else None
+            )
+        elif child.type in (
+            "function_value_parameters",
+            "function_body",
+            "type_parameters",
+            "modifiers",
+            "{",
+        ):
+            # These sit after the name — if we hit one before confirming
+            # the name, there was no preceding receiver.
+            return None
+    return None  # pragma: no cover - defensive fallback for malformed AST
+
+
 # Kotlin modifier keyword types grouped by category.
 # tree-sitter-kotlin wraps each in a typed node (visibility_modifier,
 # inheritance_modifier, etc.) whose single child is the keyword.
@@ -587,6 +634,23 @@ def _extract_symbols_from_file(
                 if annotations:
                     func_meta = {"decorators": annotations}
 
+                # WI-fuhav: detect Kotlin extension functions.
+                # fun Receiver.name() {} is an extension function; the
+                # receiver type is the user_type sibling before the
+                # name identifier. Extension functions are inherently
+                # part of the public API of their receiver — something
+                # external calls them — so mark is_exported=True so
+                # dead-code-maybe's --seeds exports mode treats them
+                # as reachable. Also record the receiver type in meta
+                # for future linker use.
+                receiver_type = _extract_kotlin_receiver_type(node, source)
+                func_is_exported = False
+                if receiver_type is not None:
+                    if func_meta is None:
+                        func_meta = {}
+                    func_meta["extension_receiver"] = receiver_type
+                    func_is_exported = True
+
                 symbol = Symbol(
                     id=make_symbol_id("kotlin", str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
@@ -606,6 +670,7 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                     meta=func_meta,
                     shape_id=_analyzer.compute_shape_id(node),
+                    is_exported=func_is_exported,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
