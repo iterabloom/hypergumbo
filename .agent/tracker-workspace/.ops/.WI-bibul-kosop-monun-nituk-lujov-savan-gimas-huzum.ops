@@ -19,3 +19,18 @@
     pr_ref:  # 1dba
     description: ""  # 1dba
     fields: {}  # 1dba
+- op: update  # 058a
+  at: '2026-04-11T05:19:08Z'  # 058a
+  by: agent  # 058a
+  actor: jgstern_agent  # 058a
+  clock: 2  # 058a
+  nonce: 058a  # 058a
+  set:  # 058a
+    status: done  # 058a
+- op: discuss  # f885
+  at: '2026-04-11T05:19:08Z'  # f885
+  by: agent  # f885
+  actor: jgstern_agent  # f885
+  clock: 3  # f885
+  nonce: f885  # f885
+  message: "Shipped in PR #2933. stop_logic.sh binary rule on CONVERGED (suppress reflect/aggregate when tracker has ready items), NEEDS_WORK softened to 'recommended not mandatory', both priority playbooks mirror the rule. Preview confirms new guidance fires; all hook tests pass."  # f885

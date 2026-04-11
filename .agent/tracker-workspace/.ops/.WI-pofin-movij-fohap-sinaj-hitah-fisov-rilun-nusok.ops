@@ -1,0 +1,36 @@
+- op: create  # 1735
+  at: '2026-04-11T07:15:11Z'  # 1735
+  by: agent  # 1735
+  actor: jgstern_agent  # 1735
+  clock: 1  # 1735
+  nonce: '1735'  # 1735
+  data:  # 1735
+    kind: work_item  # 1735
+    title: "Generalize is_generated_file detection to read Go/Python/JS @generated headers"  # 1735
+    status: todo_hard  # 1735
+    priority: 3  # 1735
+    parent:  # 1735
+    tags:  # 1735
+    - bakeoff  # 1735
+    - assessment  # 1735
+    before: []  # 1735
+    duplicate_of: []  # 1735
+    not_duplicate_of: []  # 1735
+    pr_ref:  # 1735
+    description: ""  # 1735
+    fields: {}  # 1735
+- op: update  # 9ea6
+  at: '2026-04-11T07:21:50Z'  # 9ea6
+  by: agent  # 9ea6
+  actor: jgstern_agent  # 9ea6
+  clock: 2  # 9ea6
+  nonce: 9ea6  # 9ea6
+  set:  # 9ea6
+    status: todo_soft  # 9ea6
+- op: discuss  # 2f7e
+  at: '2026-04-11T07:21:50Z'  # 2f7e
+  by: agent  # 2f7e
+  actor: jgstern_agent  # 2f7e
+  clock: 3  # 2f7e
+  nonce: 2f7e  # 2f7e
+  message: "Soft TODO — header-magic generalization is structural cleanup, not urgent. Filed as follow-up to WI-sozah which shipped path-pattern coverage for go-swagger."  # 2f7e
