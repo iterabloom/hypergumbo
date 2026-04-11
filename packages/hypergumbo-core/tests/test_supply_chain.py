@@ -1861,6 +1861,66 @@ class TestIsGeneratedFileAxis:
             f"generated; got is_generated={result.is_generated}"
         )
 
+    def test_openapi_gen_typescript_request_is_generated(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-vubad: TypeScript openapi-gen/*.ts files are generated.
+
+        Airflow and other FastAPI/OpenAPI-based services ship a generated
+        TypeScript SDK under ``openapi-gen/requests/core/``. These files
+        (request.ts, CancelablePromise.ts, ApiClient.ts, etc.) should be
+        is_generated=True so dead-code-maybe demotes them out of the
+        candidate ranking.
+        """
+        target = (
+            tmp_path
+            / "airflow-core"
+            / "src"
+            / "airflow"
+            / "api_fastapi"
+            / "auth"
+            / "managers"
+            / "simple"
+            / "ui"
+            / "openapi-gen"
+            / "requests"
+            / "core"
+            / "request.ts"
+        )
+        target.parent.mkdir(parents=True)
+        target.write_text("// openapi-codegen output\n")
+        result = classify_file(target, tmp_path)
+        assert result.is_generated is True
+
+    def test_openapi_gen_tsx_is_generated(self, tmp_path: Path) -> None:
+        """TSX files under openapi-gen/ are also flagged."""
+        target = tmp_path / "ui" / "openapi-gen" / "Client.tsx"
+        target.parent.mkdir(parents=True)
+        target.write_text("export class Client {}\n")
+        result = classify_file(target, tmp_path)
+        assert result.is_generated is True
+
+    def test_openapi_gen_javascript_is_generated(
+        self, tmp_path: Path,
+    ) -> None:
+        """JavaScript output of openapi-codegen is also flagged."""
+        target = tmp_path / "openapi-gen" / "api" / "index.js"
+        target.parent.mkdir(parents=True)
+        target.write_text("module.exports = {};\n")
+        result = classify_file(target, tmp_path)
+        assert result.is_generated is True
+
+    def test_handwritten_typescript_not_falsely_generated(
+        self, tmp_path: Path,
+    ) -> None:
+        """A hand-written ``request.ts`` outside an ``openapi-gen/`` directory
+        must NOT be flagged generated."""
+        target = tmp_path / "src" / "api" / "request.ts"
+        target.parent.mkdir(parents=True)
+        target.write_text("export const request = async () => {};\n")
+        result = classify_file(target, tmp_path)
+        assert result.is_generated is False
+
 
 class TestDependencyManifest:
     """Tests for DependencyManifest (WI-vovuk)."""
