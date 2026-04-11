@@ -21,3 +21,18 @@
     pr_ref:  # 5528
     description: "Linker gap identified during WI-juhov triage of alertmanager dead-code-maybe results. 42 functions / 432 LOC are invisible to the call graph because they are registered as callbacks with the hashicorp/memberlist cluster framework and only invoked via reflection/interface dispatch from the memberlist event loop.\n\nCONTEXT: alertmanager (and other gossip-based clustering projects — consul, nomad, serf itself, vault) uses `github.com/hashicorp/memberlist` for peer membership. Callbacks are registered via the `Delegate`, `EventDelegate`, `ConflictDelegate`, `MergeDelegate`, `AliveDelegate`, and `PingDelegate` interfaces. Types implementing these interfaces expose methods like `NotifyJoin(*memberlist.Node)`, `NotifyLeave(*memberlist.Node)`, `NotifyUpdate(*memberlist.Node)`, `NotifyMsg([]byte)`, `GetBroadcasts(overhead, limit int) [][]byte`, `LocalState(join bool) []byte`, `MergeRemoteState(buf []byte, join bool)`, `NotifyConflict`, `NotifyMerge`, `NotifyAlive`, `AckPayload`, `NotifyPingComplete`. The hypergumbo Go analyzer produces the method definitions but does not link the memberlist event loop to them.\n\nALERTMANAGER EVIDENCE: 42 functions, 432 LOC categorized under this pattern in the WI-juhov triage. Second-largest category after yaml/json marshal callbacks.\n\nIMPLEMENTATION SKETCH:\n- New linker: `go_memberlist_callback`.\n- Phase 1: detect types implementing any memberlist delegate interface by structural matching on method signatures.\n- Phase 2: find call sites registering these types via `memberlist.Config.Delegate = myDelegate` (struct field assignment, constructor arguments, `Config{Delegate: ...}`).\n- Phase 3: emit `framework_hook` or `dispatches_to` edges from the registration site to the delegate methods. The methods are effectively entry points from the framework's perspective.\n\nREGRESSION TEST: After this linker lands, re-run `dead-code-maybe` on alertmanager — the 42 memberlist-callback functions should disappear from candidates. No other repos in the current DEEP bakeoff cohort use memberlist, so additional validation requires running against consul or nomad.\n\nTAGS: linker_gap, cross_language_linkers, go_analyzer, framework_hook.\n\nDEPENDENCIES: None. Can be implemented in isolation on top of existing Go structural analysis. May benefit from the INV-dihos return-type registry (Phase 1 already validated for Go) if the delegate type is constructed via a factory function.\n\nPARENT: WI-juhov-pisup-gumit-filan-puhon-kavof-govad-dikuf (triage that identified this gap).\n\nGENERALIZABLE: The same pattern applies to other Go gossip/cluster libraries (raft, serf, gRPC server interfaces). A generic `go_interface_callback` linker that finds any type assigned to a struct field of interface type could subsume this case plus yaml/json marshal. Consider scoping broader if implementation cost allows."  # 5528
     fields: {}  # 5528
+- op: update  # c796
+  at: '2026-04-11T13:59:50Z'  # c796
+  by: agent  # c796
+  actor: jgstern_agent  # c796
+  clock: 2  # c796
+  nonce: c796  # c796
+  set:  # c796
+    status: done  # c796
+- op: discuss  # 65d7
+  at: '2026-04-11T13:59:50Z'  # 65d7
+  by: agent  # 65d7
+  actor: jgstern_agent  # 65d7
+  clock: 3  # 65d7
+  nonce: 65d7  # 65d7
+  message: "Shipped. New go_memberlist_linker detects 12 canonical delegate methods (NotifyMsg/GetBroadcasts/LocalState/MergeRemoteState/NotifyJoin/NotifyLeave/NotifyUpdate/NotifyConflict/NotifyMerge/NotifyAlive/NotifyPingComplete/AckPayload), anchors on memberlist.Create() callers, falls back to first non-delegate function. 14 tests, 100% coverage. Acceptance validation (alertmanager 42 dead methods → reachable) deferred to next prospector run."  # 65d7
