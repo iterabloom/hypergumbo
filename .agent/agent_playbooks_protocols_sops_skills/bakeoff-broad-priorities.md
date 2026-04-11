@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 ### BROAD Mode Priority Queue:
-1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-broad-reflect` then `./scripts/bakeoff-broad-reflect aggregate` to synthesize findings. This is the primary feedback signal for coverage gaps — do not skip it. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
-2. **Aggregate across sessions:** When prior sessions have reflect data, run `./scripts/bakeoff-broad-reflect aggregate` to surface cross-session trends. If `./scripts/bakeoff-broad status` shows unaggregated assessments, aggregate before starting new work.
+1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-broad-reflect` then `./scripts/bakeoff-broad-reflect aggregate` to synthesize findings. This is the primary feedback signal for coverage gaps. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
+2. **Aggregate across sessions:** When prior sessions have reflect data, run `./scripts/bakeoff-broad-reflect aggregate` to surface cross-session trends. **Binary rule on a CONVERGED bakeoff:** if the tracker has any ready items, aggregate is NOT required — prefer tracker work and only return to aggregation after the backlog drains. Aggregation is only the natural next step when the bakeoff is not converged, or when it is converged AND the tracker is empty.
 3. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
 4. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
 
@@ -10,7 +10,7 @@
 - **Sequential workflow (any agent):** `run → diagnose → reflect → [complete assessments] → aggregate → next cohort`. Simpler, works everywhere.
 - **Overlapped workflow (agents with concurrency):** Launch reflect agents for Cohort N, then immediately `run` Cohort N+1 while assessments complete in background. Only `run` needs exclusive access to the editable install. This is where the throughput multiplier lives — a 5-cohort curriculum can overlap all reflect phases.
 
-**When blocked** (CI pending, pre-commit hook gate, `run` in progress): aggregate prior sessions, update lab notebook, investigate diagnostic findings. Use `./scripts/bakeoff-broad status` to find unaggregated assessments, or check for assessment files directly.
+**When blocked** (CI pending, pre-commit hook gate, `run` in progress): aggregate prior sessions, update lab notebook, investigate diagnostic findings. Use `./scripts/bakeoff-broad status` to find unaggregated assessments, or check for assessment files directly. On a CONVERGED bakeoff with a non-empty tracker backlog, pick a ready item instead — aggregation is not required busywork.
 
 **Iteration vs. new session:** For validation runs on the same cohort (the
 classic fix-iterate loop), skip `init` and call `cycle` directly — the CLI

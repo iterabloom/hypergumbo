@@ -76,6 +76,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`merge-pr close <PR>` subcommand** (WI-vonis): first sanctioned path to close a PR without merging it. Validates PR is open, refuses to close an already-merged PR, no-ops on an already-closed PR, and PATCHes `{state: closed}` via `api_patch`. Optional `--reason "text"` posts an audit-trail comment before the PATCH; comment failures are non-fatal.
 - **Bakeoff-deep session/iteration integration tests** (WI-gutan): `tests/test_bakeoff_deep_integration.py` exercises `init → cohort → cycle → iter-NNN/` end-to-end with cohort runs mocked out. 13 tests cover session creation, iteration advancement, the no-change skip branch, `cycle --skip-reflect`, workdir auto-discovery, and missing-prerequisite errors. Closes the "tested in prod" gap.
 
+### Changed
+
+#### Stop hook: relax aggregate-required on CONVERGED bakeoffs (WI-bibul)
+
+- **Binary rule on CONVERGED bakeoffs**: when the latest DEEP or BROAD bakeoff is CONVERGED AND the structured tracker has any ready items, the stop hook guidance no longer mentions reflect/aggregate. It leads with `./scripts/tracker ready` ("work the backlog first") and demotes new-cohort selection to step 2 ("when backlog drains"). Re-aggregating a converged cohort while real work is queued is busywork; the explicit line "Re-aggregating a converged cohort is NOT required while tracker items are queued" is included to defuse residual agent anxiety. On a CONVERGED bakeoff with an empty tracker the prior reflect/aggregate steps are preserved — aggregation IS the natural next step then.
+- **NEEDS_WORK softening**: the "Investigate:" header on unconverged bakeoffs becomes "Recommended next actions (not mandatory — tracker work is also a valid use of this session)", and the guidance now explicitly points to `./scripts/tracker ready` as an alternative. Gives the agent latitude to work tracker items instead of forcing a bakeoff iteration on every stop.
+- `.agent/agent_playbooks_protocols_sops_skills/bakeoff-{broad,deep}-priorities.md` mirror the new rule in their DEEP/BROAD priority queue sections and in the "When blocked" paragraph.
+
 ### Fixed
 
 #### Hook test infrastructure (INV-pofam)
