@@ -1,0 +1,36 @@
+- op: create  # 9c5f
+  at: '2026-04-11T14:37:45Z'  # 9c5f
+  by: agent  # 9c5f
+  actor: jgstern_agent  # 9c5f
+  clock: 1  # 9c5f
+  nonce: 9c5f  # 9c5f
+  data:  # 9c5f
+    kind: work_item  # 9c5f
+    title: "WI-zimum Phase 2b: TypeScript/JavaScript top-level export → Symbol.is_exported"  # 9c5f
+    status: todo_soft  # 9c5f
+    priority: 4  # 9c5f
+    parent:  # 9c5f
+    tags:  # 9c5f
+    - analysis_quality  # 9c5f
+    - dead_code_prospector  # 9c5f
+    before: []  # 9c5f
+    duplicate_of: []  # 9c5f
+    not_duplicate_of: []  # 9c5f
+    pr_ref:  # 9c5f
+    description: "Phase 2b of WI-zimum. WI-gipag (merged) covered the Python __all__ rule. This follow-up covers the TypeScript/JavaScript side: detect top-level export_statement nodes in js_ts.py and set Symbol.is_exported=True on the named exported declaration. Handles export default, named exports (export { foo }), and re-exports (export { foo } from './bar'). Extend the existing Next.js handler export parser in js_ts.py rather than adding a new pass. Validation: re-run WI-tubot prospector on apollo-server (85.5% baseline dead rate) and expect a meaningful drop. P4 because the Python half (WI-gipag) handled the larger dead% contributors (airflow/django/superset); TS cohort is a single repo in the current bakeoff."  # 9c5f
+    fields: {}  # 9c5f
+- op: update  # bedb
+  at: '2026-04-11T15:02:58Z'  # bedb
+  by: agent  # bedb
+  actor: jgstern_agent  # bedb
+  clock: 2  # bedb
+  nonce: bedb  # bedb
+  set:  # bedb
+    status: done  # bedb
+- op: discuss  # a557
+  at: '2026-04-11T15:02:58Z'  # a557
+  by: agent  # a557
+  actor: jgstern_agent  # a557
+  clock: 3  # a557
+  nonce: a557  # a557
+  message: "Shipped. Added _collect_exported_names, _extract_export_names_from_statement, _mark_exported_symbols helpers in js_ts.py. Handles export function/class/const/let/var declarations, export {foo,bar} clauses with aliases, export default named decl, export default identifier. Module pseudo-node never flagged. 8 new tests (6 export + 2 decorator for pre-existing coverage gap). js_ts.py now at 100%. WI-zimum Phase 2 complete."  # a557
