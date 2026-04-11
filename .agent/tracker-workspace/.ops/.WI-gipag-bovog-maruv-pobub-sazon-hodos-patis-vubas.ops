@@ -34,3 +34,10 @@
   clock: 3  # 0ea1
   nonce: 0ea1  # 0ea1
   message: "Python half shipped. Added _extract_module_all and _is_python_top_level_exported helpers in py.py. Top-level classes and functions now get is_exported from __all__ (if present) or leading-underscore convention. 19 new tests + sketch/cli refactor to keep modifier-derived fallback covered. TypeScript/JavaScript top-level export remains — filing as follow-up."  # 0ea1
+- op: discuss  # d8cb
+  at: '2026-04-11T17:02:15Z'  # d8cb
+  by: human  # d8cb
+  actor: jgstern  # d8cb
+  clock: 4  # d8cb
+  nonce: d8cb  # d8cb
+  message: "please provide the tracker item id for the follow-up TypeScript/JavaScript top-level export"  # d8cb

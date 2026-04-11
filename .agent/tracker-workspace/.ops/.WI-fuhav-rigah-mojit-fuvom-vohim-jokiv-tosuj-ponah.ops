@@ -34,3 +34,10 @@
   clock: 3  # f921
   nonce: f921  # f921
   message: "Shipped. Detect extension functions in kotlin.py via _extract_kotlin_receiver_type (walks function_declaration children for user_type-before-identifier pattern). Sets Symbol.is_exported=True and stores receiver type in meta.extension_receiver. 3 tests. Full receiver-typed dispatch resolution (emit edges from receiver.extMethod() to the extension function) remains a separate follow-up."  # f921
+- op: discuss  # 1574
+  at: '2026-04-11T17:09:20Z'  # 1574
+  by: human  # 1574
+  actor: jgstern  # 1574
+  clock: 4  # 1574
+  nonce: '1574'  # 1574
+  message: "is the thing you said \"remains a separate follow-up\" part of the original purpose/goal of the present tracker item? by saying something \"remains\" you imply that it existed *before*. the question is *before what?* immediately before your last discussion comment, ie, in the Description field of this tracker item (WI-fuhav)? or before WI-fuhav even existed?"  # 1574

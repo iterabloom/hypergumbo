@@ -56,3 +56,18 @@
   clock: 6  # 4d65
   nonce: 4d65  # 4d65
   message: "Filters 1+2 shipped (PR #2907 + PR #2943). Filter 3 blocked on WI-zimum exported-symbols detection — will be wired in when that lands. Closing because the 'three filters together' shape is structurally complete with two of three filters active and the third has a clear dependency path."  # 4d65
+- op: update  # c0b8
+  at: '2026-04-11T17:04:35Z'  # c0b8
+  by: human  # c0b8
+  actor: jgstern  # c0b8
+  clock: 7  # c0b8
+  nonce: c0b8  # c0b8
+  set:  # c0b8
+    status: todo_soft  # c0b8
+- op: discuss  # 7e0d
+  at: '2026-04-11T17:04:41Z'  # 7e0d
+  by: human  # 7e0d
+  actor: jgstern  # 7e0d
+  clock: 8  # 7e0d
+  nonce: 7e0d  # 7e0d
+  message: "I am pretty sure Filter 3 is no longer blocked, therefore I am re-opening this item"  # 7e0d
