@@ -22,3 +22,18 @@
     fields:  # 39a6
       statement: "Every bash test in .githooks/test_hooks.sh must be either passing or loudly failing. Silent test failures must not be possible — if a test regresses, CI must fail."  # 39a6
       root_cause: ".githooks/test_hooks.sh is a bash test script that is not invoked by any CI workflow. Scenarios 8c and 8d-1 have been failing for an unknown duration without surfacing, because the pre-push hook is the only time the script runs manually and the SUMMARY line is easy to miss. The failing assertions are on PID ancestor walk behavior in stop_logic.sh: the scenarios expect a 'dead PID re-claim / missing state file → re-claim + block' flow, but the hook short-circuits on 'Interactive session (PID does not match autonomous agent)' before reaching that path."  # 39a6
+- op: update  # f13b
+  at: '2026-04-11T04:44:03Z'  # f13b
+  by: agent  # f13b
+  actor: jgstern_agent  # f13b
+  clock: 2  # f13b
+  nonce: f13b  # f13b
+  set:  # f13b
+    status: satisfied  # f13b
+- op: discuss  # 8ec6
+  at: '2026-04-11T04:44:03Z'  # 8ec6
+  by: agent  # 8ec6
+  actor: jgstern_agent  # 8ec6
+  clock: 3  # 8ec6
+  nonce: 8ec6  # 8ec6
+  message: "Fixed in PR #2931 (merged manually).\n\n## What shipped\n\n1. **Scenario 8c fixed**: seed AUTONOMOUS_MODE.txt with `BROAD pid=$$` (the test shell's PID) during sandbox setup. Root cause was scenario 8a claiming autonomous ownership with `$PPID` of a transient command-substitution subshell that had already exited by the time 8c/8d-1 ran, leaving a dead PID that the PID ancestor walk correctly rejected as non-autonomous.\n\n2. **Scenario 8d-1 rewritten**: it was asserting a deprecated contract (dead PID → auto-reclaim + block) that `stop_logic.sh` had explicitly removed (see comment at lines 74-78). Rewritten to assert the current contract: dead PID → approve with \"Interactive session\" reason, AUTONOMOUS_MODE.txt unchanged.\n\n3. **test_hooks.sh wired into CI**: new `hook-tests` job in `.github/workflows/ci.yml` runs `bash .githooks/test_hooks.sh` unconditionally on every PR. Added to `ci-complete` needs + failure check so a failing hook test blocks merge.\n\n## Positive evidence the invariant holds\n\n- Local run: `bash .githooks/test_hooks.sh` → 23 passed, 0 failed (was 21 passed, 2 failed pre-fix).\n- CI run on PR #2931: `hook-tests` job visible in job list (\"audit build-grammars changes ci-complete dco hook-tests lint pytest ...\") and passed. Next silent regression in a bash hook test will cause the `hook-tests` job to fail, which cascades to `ci-complete` via its `needs` dependency and `failure` check, which blocks the merge.\n\n## Follow-up (out of scope for this item)\n\n- Other scripts under `.githooks/` or `scripts/` may have similar \"not reachable from CI\" latent issues. A broader audit of \"what bash tests exist and are they in CI?\" would catch similar silent rot. Filing as a separate item if the pattern recurs; not urgent given no known failures besides this one.\n\nClosing as satisfied."  # 8ec6
