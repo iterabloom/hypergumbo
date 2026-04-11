@@ -1,8 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 ### DEEP Mode Priority Queue:
 When in DEEP mode, focus on feature quality rather than coverage breadth:
-1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-deep-reflect` then `./scripts/bakeoff-deep-reflect aggregate` to assess developer usefulness. This IS the mode's core feedback loop — reflecting on whether outputs help developers is the entire point of DEEP mode. Do not skip it. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
-2. **Aggregate across sessions:** Run `./scripts/bakeoff-deep-reflect aggregate --all` and `./scripts/bakeoff-deep compare <A> <B>` to track improvement trajectories. If `./scripts/bakeoff-deep status` shows unaggregated assessments, aggregate before starting new work.
+1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-deep-reflect` then `./scripts/bakeoff-deep-reflect aggregate` to assess developer usefulness. This IS the mode's core feedback loop — reflecting on whether outputs help developers is the entire point of DEEP mode. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
+2. **Aggregate across sessions:** Run `./scripts/bakeoff-deep-reflect aggregate --all` and `./scripts/bakeoff-deep compare <A> <B>` to track improvement trajectories. **Binary rule on a CONVERGED bakeoff:** if the tracker has any ready items, aggregate is NOT required — prefer tracker work and only return to aggregation after the backlog drains. Aggregation is only the natural next step when the bakeoff is not converged, or when it is converged AND the tracker is empty.
 3. **Slice quality:** Does forward slice capture actual dependencies?
 4. **Reverse slice:** Does it correctly identify callers?
 5. **Supply chain tiers:** Is tier classification accurate for monorepos?
@@ -11,7 +11,7 @@ When in DEEP mode, focus on feature quality rather than coverage breadth:
 
 **Pipeline overlap guidance:** Same as BROAD mode — reflect agents only read artifacts, so you can overlap reflect with the next cohort's `run`. See BROAD mode guidance above for sequential vs overlapped workflows.
 
-**When blocked:** Aggregate prior sessions (`./scripts/bakeoff-deep-reflect aggregate`), compare sessions (`./scripts/bakeoff-deep compare <A> <B>`), or update lab notebook.
+**When blocked:** Aggregate prior sessions (`./scripts/bakeoff-deep-reflect aggregate`), compare sessions (`./scripts/bakeoff-deep compare <A> <B>`), or update lab notebook. On a CONVERGED bakeoff with a non-empty tracker backlog, pick a ready item instead — aggregation is not required busywork.
 
 **Iteration vs. new session:** For validation runs on the same cohort (the
 classic fix-iterate loop), skip `init` and call `cycle` directly — the CLI

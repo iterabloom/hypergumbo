@@ -239,19 +239,34 @@ except Exception:
       _SESSION_TYPE="deep"
     fi
 
+    # Guidance shape depends on (bakeoff status, session type, tracker backlog).
+    # Binary rule on CONVERGED: if the tracker has any ready items, suppress
+    # the reflect/aggregate steps entirely — re-aggregating a converged cohort
+    # while real work is queued is busywork. Only surface reflect/aggregate
+    # when the backlog is empty (then aggregation IS the natural next step).
+    # On NEEDS_WORK, soften "Investigate:" to "Recommended (not mandatory)" and
+    # explicitly call out that tracker work is a valid alternative.
     if [[ "$BAKEOFF_SUMMARY" == CONVERGED* ]]; then
       BAKEOFF_CONVERGENCE_LINE="$BAKEOFF_SUMMARY"
       if [[ "$_SESSION_TYPE" == "broad" ]]; then
-        BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session is CONVERGED — no critical/high issues.\nNext steps:\n  1. Run LLM assessment (if not done): ./scripts/bakeoff-broad-reflect\n  2. Aggregate findings: ./scripts/bakeoff-broad-reflect aggregate\n  3. Select a new cohort: ./scripts/bakeoff-broad cohort --count 5\n  4. Or move to other work items (tracker ready)\nDuring idle time (CI pending, bakeoff running): aggregate prior sessions.'
+        if [[ "$TOTAL_TODOS" -gt 0 ]]; then
+          BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session is CONVERGED — no critical/high issues.\nTracker has '"$TOTAL_TODOS"$' ready item(s); work the backlog first.\nNext steps:\n  1. Pick next item: ./scripts/tracker ready\n  2. When backlog drains, select a new cohort: ./scripts/bakeoff-broad cohort --count 5\nRe-aggregating a converged cohort is NOT required while tracker items are queued.'
+        else
+          BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session is CONVERGED — no critical/high issues.\nTracker backlog is empty, so aggregation IS the natural next step.\nNext steps:\n  1. Run LLM assessment (if not done): ./scripts/bakeoff-broad-reflect\n  2. Aggregate findings: ./scripts/bakeoff-broad-reflect aggregate\n  3. Select a new cohort: ./scripts/bakeoff-broad cohort --count 5'
+        fi
       else
-        BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session is CONVERGED — all repos GOOD.\nNext steps:\n  1. Run LLM assessment (if not done): ./scripts/bakeoff-deep-reflect\n  2. Aggregate findings: ./scripts/bakeoff-deep-reflect aggregate\n  3. Compare with prior sessions: ./scripts/bakeoff-deep compare <A> <B>\n  4. Select a new cohort: ./scripts/bakeoff-deep cohort --count 4\n  5. Or move to other work items (tracker ready)\nDuring idle time (CI pending, bakeoff running): aggregate prior sessions.'
+        if [[ "$TOTAL_TODOS" -gt 0 ]]; then
+          BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session is CONVERGED — all repos GOOD.\nTracker has '"$TOTAL_TODOS"$' ready item(s); work the backlog first.\nNext steps:\n  1. Pick next item: ./scripts/tracker ready\n  2. When backlog drains, select a new cohort: ./scripts/bakeoff-deep cohort --count 4\nRe-aggregating a converged cohort is NOT required while tracker items are queued.'
+        else
+          BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session is CONVERGED — all repos GOOD.\nTracker backlog is empty, so aggregation IS the natural next step.\nNext steps:\n  1. Run LLM assessment (if not done): ./scripts/bakeoff-deep-reflect\n  2. Aggregate findings: ./scripts/bakeoff-deep-reflect aggregate\n  3. Compare with prior sessions: ./scripts/bakeoff-deep compare <A> <B>\n  4. Select a new cohort: ./scripts/bakeoff-deep cohort --count 4'
+        fi
       fi
     elif [[ "$BAKEOFF_SUMMARY" == NEEDS_WORK* ]]; then
       BAKEOFF_CONVERGENCE_LINE="$BAKEOFF_SUMMARY"
       if [[ "$_SESSION_TYPE" == "broad" ]]; then
-        BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session has outstanding issues.\nInvestigate:\n  1. View issues: ./scripts/bakeoff-broad issues --format json\n  2. Run LLM assessment for deeper analysis: ./scripts/bakeoff-broad-reflect\n  3. Diagnose latest: ./scripts/bakeoff-broad diagnose\n  4. Fix issues, then re-run: ./scripts/bakeoff-broad cycle\nDuring idle time: ./scripts/bakeoff-broad-reflect aggregate'
+        BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest BROAD bakeoff session has outstanding issues.\nRecommended next actions (not mandatory — tracker work is also a valid use of this session):\n  1. View issues: ./scripts/bakeoff-broad issues --format json\n  2. Run LLM assessment for deeper analysis: ./scripts/bakeoff-broad-reflect\n  3. Diagnose latest: ./scripts/bakeoff-broad diagnose\n  4. Fix issues, then re-run: ./scripts/bakeoff-broad cycle\nTracker alternative: ./scripts/tracker ready'
       else
-        BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session has outstanding issues.\nInvestigate:\n  1. Check status: ./scripts/bakeoff-deep status\n  2. Run LLM assessment for deeper analysis: ./scripts/bakeoff-deep-reflect\n  3. Diagnose repos: ./scripts/bakeoff-deep diagnose\n  4. Fix issues, then re-run: ./scripts/bakeoff-deep cycle\nDuring idle time: ./scripts/bakeoff-deep-reflect aggregate'
+        BAKEOFF_SUFFIX=$'\n\n---\n## IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT\nBakeoff Status: '"$BAKEOFF_SUMMARY"$'\nLatest DEEP bakeoff session has outstanding issues.\nRecommended next actions (not mandatory — tracker work is also a valid use of this session):\n  1. Check status: ./scripts/bakeoff-deep status\n  2. Run LLM assessment for deeper analysis: ./scripts/bakeoff-deep-reflect\n  3. Diagnose repos: ./scripts/bakeoff-deep diagnose\n  4. Fix issues, then re-run: ./scripts/bakeoff-deep cycle\nTracker alternative: ./scripts/tracker ready'
       fi
     fi
   fi
