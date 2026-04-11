@@ -86,6 +86,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+#### Generated-file detection: go-swagger output paths (WI-sozah)
+
+- **Bug**: alertmanager-style swagger output (`api/v2/restapi/`, `api/v2/models/`) was not flagged as generated. The `is_generated_file` ranking dampener (centrality × 0.05) was therefore not applied to those nodes, and the supply-chain tier classifier left them in tier 1 alongside hand-written code. Bakeoff feedback: "tier1 vs tier2 slice is essentially indistinguishable (580 vs 583 nodes)" because the bulk of generated swagger output was indistinguishable from production code.
+- **Fix**: add six new patterns to `GENERATED_CODE_PATTERNS` in `supply_chain.py`:
+  - `(?:^|/)api/v\d+/(?:restapi|models)/` — anchored at `api/vN/` so first-party `models/` directories without that parent (e.g. `internal/models/`) are not false positives.
+  - Four go-swagger fingerprint files matched at any depth: `restapi/embedded_spec.go`, `restapi/configure_<name>.go`, `restapi/server.go`, `restapi/doc.go`. These names are unambiguous — go-swagger always emits them under the chosen output package.
+- **Tests**: 5 new tests in `TestIsGeneratedFileAxis` cover the swagger directory case, the swagger fingerprint files, and a regression guard asserting that a hand-written `internal/models/user.go` is NOT falsely flagged generated.
+- **Out of scope (deferred)**: header-magic detection of the standard Go `// Code generated <whatever>; DO NOT EDIT.` convention. This would catch every Go-generated file regardless of directory layout (sqlc, ent, gomock, gofu, etc.) but requires plumbing file content into `_is_generated_file` or doing a separate header-scan pass — too invasive for this PR. Will be filed as a follow-up tracker item.
+
 #### `hypergumbo io-boundaries` defaults to production-only (WI-sifif)
 
 - **Before**: `hypergumbo io-boundaries .` showed every IO chain in the repo, including chains whose source symbol lived in a `*_test.go` / `tests/test_*.py` / `*.spec.ts` file. On alertmanager this meant `env_read` reported 9 chains, 7 of which were test code — 78% noise. Bakeoff agents reading the resulting `io-boundaries.txt` could not separate the production IO surface from test fixtures.
