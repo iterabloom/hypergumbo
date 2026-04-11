@@ -86,6 +86,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+#### Dead-code prospector: polyglot-only filter (WI-zafab filter 1)
+
+- **Bug**: the dead-code-maybe prospecting harness ran every repo in the cohort regardless of polyglot status. A monoglot Python or pure Go repo almost never has cross-language linker gaps — its dead-code candidates are real dead code or missing language-internal framework hooks (a different fix class). Including monoglot repos in the prospecting run dilutes the cross-language linker-gap signal that the prospector exists to surface.
+- **Fix**: `scripts/dead-code-prospector-run.py` gains a harness-level polyglot check. Before invoking `hypergumbo dead-code-maybe`, the script walks the repo's source files (skipping `node_modules/`, `vendor/`, `third_party/`, `.venv/`, `build/`, `dist/`, `target/`, etc.) and counts files by language extension. A repo is considered "polyglot" only if at least 2 languages have ≥10 files; otherwise it is skipped with a clear stderr message naming the dominant language. Skipped repos appear in the JSON aggregate as `repos_skipped_monoglot` so the next run can audit them.
+- **CLI**: new `--include-monoglot` flag bypasses the filter. Default behavior is to skip.
+- **Language map**: 18 source languages recognized by file extension (Python, Go, Java, Kotlin, Scala, Rust, Ruby, TypeScript, JavaScript, C#, Swift, Objective-C, C/C++, Elixir, Erlang, Clojure, Elm, Dart, PHP). Build files, shell scripts, and config files are intentionally excluded — they don't count toward "polyglot" because every repo has them.
+- **Tests**: new `tests/test_dead_code_prospector.py` with 13 tests covering language counting (positive, multi-language, vendor/node_modules ignore, unknown extension drop), polyglot threshold logic (monoglot, two-above-threshold polyglot, custom threshold, empty repo), and the `run_prospecting` integration path with both default-skip and `--include-monoglot` override.
+- **Filter 2** (`--exclude-annotated`) was already implemented in a previous PR. **Filter 3** (public API exclusion via exported-symbols detection) depends on WI-zimum and remains pending.
+
 #### Go encoding/serialization callback entrypoints (WI-pimig Phase 1)
 
 - **Bug**: Go's `encoding/json`, `gopkg.in/yaml`, `encoding/text`, and `encoding/binary` packages dispatch to type-defined callback methods (`UnmarshalJSON`, `MarshalYAML`, `UnmarshalText`, `MarshalBinary`, etc.) reflectively rather than calling them by name. The hypergumbo Go analyzer correctly extracts the method definitions but no edge connects any caller to them, so the dead-code-maybe BFS treats them as unreachable. On alertmanager this is the largest single dead-code-maybe category — 82 functions / ~1540 LOC (12% of non-noise candidates per WI-juhov triage), with parallel gaps in every YAML-config-driven Go service (prometheus, loki, tempo, etc.).

@@ -51,6 +51,88 @@ _DEFAULT_REPOS = [
 ]
 
 
+# WI-zafab filter 1: polyglot-only detection. Mapping of file extension
+# to a language label for the harness-level polyglot check. Limited to
+# the languages the prospector cares about (the eight covered by the
+# default cohort plus a few common adjacents). Build files, shell
+# scripts, and config files are intentionally excluded — they don't
+# count toward "polyglot" because every repo has them.
+_LANG_BY_EXT: dict[str, str] = {
+    ".py": "python",
+    ".go": "go",
+    ".java": "java",
+    ".kt": "kotlin", ".kts": "kotlin",
+    ".scala": "scala", ".sc": "scala",
+    ".rs": "rust",
+    ".rb": "ruby",
+    ".ts": "typescript", ".tsx": "typescript",
+    ".js": "javascript", ".jsx": "javascript",
+    ".mjs": "javascript", ".cjs": "javascript",
+    ".cs": "csharp",
+    ".swift": "swift",
+    ".m": "objc", ".mm": "objc",
+    ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".hpp": "cpp", ".hh": "cpp",
+    ".c": "c", ".h": "c",
+    ".ex": "elixir", ".exs": "elixir",
+    ".erl": "erlang",
+    ".clj": "clojure", ".cljs": "clojure",
+    ".elm": "elm",
+    ".dart": "dart",
+    ".php": "php",
+}
+
+
+def _count_languages_by_extension(repo_path: Path) -> dict[str, int]:
+    """Walk the repo and count source files by language extension.
+
+    Skips common ignore directories (vendor/, node_modules/, .git/, etc.)
+    so vendored dependencies don't inflate the count and accidentally
+    promote a monoglot repo to "polyglot".
+
+    Returns a ``{language: file_count}`` dict.
+    """
+    _IGNORE_DIRS = {
+        ".git", "node_modules", "vendor", "third_party", "third-party",
+        ".venv", "venv", "env", ".env", "build", "dist", "target",
+        ".gradle", ".idea", ".vscode", "__pycache__",
+    }
+    counts: dict[str, int] = {}
+    for entry in repo_path.rglob("*"):
+        if not entry.is_file():
+            continue
+        # Skip if any path component is an ignored directory.
+        try:
+            rel_parts = entry.relative_to(repo_path).parts
+        except ValueError:  # pragma: no cover - rglob always yields relative
+            continue
+        if any(part in _IGNORE_DIRS for part in rel_parts[:-1]):
+            continue
+        lang = _LANG_BY_EXT.get(entry.suffix.lower())
+        if lang:
+            counts[lang] = counts.get(lang, 0) + 1
+    return counts
+
+
+def _is_polyglot_repo(
+    lang_counts: dict[str, int],
+    threshold: int = 10,
+) -> bool:
+    """Return True if the repo has at least two languages above the threshold.
+
+    The threshold filters out incidental files (e.g., a Go project's two
+    test JS files for a UI fixture) so the check identifies repos with
+    meaningful production code in multiple languages — exactly the
+    cohort where cross-language linker gaps drive dead-code-maybe noise.
+
+    WI-zafab filter 1: monoglot repos are skipped because a dead Python
+    function in a Python-only repo is almost never a missed cross-language
+    linker — it's either real dead code or a missing language-internal
+    framework hook (different fix class).
+    """
+    above_threshold = sum(1 for count in lang_counts.values() if count >= threshold)
+    return above_threshold >= 2
+
+
 def _categorize_candidate(name: str, path: str) -> str:
     """Group a dead-code candidate by likely linker gap category.
 
@@ -105,17 +187,25 @@ def _run_hypergumbo(repo_path: Path) -> dict | None:
 
 
 def run_prospecting(
-    pool: Path, repos: list[str], output_dir: Path,
+    pool: Path,
+    repos: list[str],
+    output_dir: Path,
+    *,
+    include_monoglot: bool = False,
 ) -> dict:
     """Run dead-code-maybe on each repo and aggregate by category.
 
     Returns a summary dict and writes per-repo + aggregate JSON to
-    output_dir.
+    output_dir. WI-zafab filter 1: monoglot repos are skipped by default
+    because they almost never have cross-language linker gaps; pass
+    ``include_monoglot=True`` to override (the corresponding CLI flag is
+    ``--include-monoglot``).
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     per_repo: dict[str, dict] = {}
     aggregate_categories: dict[str, list] = {}
     failed: list[str] = []
+    skipped_monoglot: list[dict] = []
 
     for repo_name in repos:
         repo_path = pool / repo_name
@@ -123,6 +213,26 @@ def run_prospecting(
             print(f"  [{repo_name}] SKIP (not in pool)", file=sys.stderr)
             failed.append(repo_name)
             continue
+        # WI-zafab filter 1: polyglot-only check at the harness level.
+        # Skip monoglot repos because dead-code in a single-language
+        # codebase is almost never a missed cross-language linker.
+        if not include_monoglot:
+            lang_counts = _count_languages_by_extension(repo_path)
+            if not _is_polyglot_repo(lang_counts):
+                top_lang = max(
+                    lang_counts.items(), key=lambda kv: kv[1], default=("(none)", 0),
+                )
+                print(
+                    f"  [{repo_name}] SKIP monoglot "
+                    f"(top: {top_lang[0]}={top_lang[1]} files; "
+                    f"--include-monoglot to override)",
+                    file=sys.stderr,
+                )
+                skipped_monoglot.append({
+                    "repo": repo_name,
+                    "languages": lang_counts,
+                })
+                continue
         print(f"  [{repo_name}] analyzing...", file=sys.stderr)
         result = _run_hypergumbo(repo_path)
         if result is None:
@@ -169,6 +279,7 @@ def run_prospecting(
         "repos_requested": repos,
         "repos_analyzed": list(per_repo.keys()),
         "repos_failed": failed,
+        "repos_skipped_monoglot": skipped_monoglot,
         "total_candidates": total_candidates,
         "category_counts": dict(sorted(
             category_counts.items(), key=lambda x: -x[1],
@@ -200,6 +311,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Output directory (default: ~/hypergumbo_lab_notebook/"
              "prospector_runs/run-<timestamp>/)",
     )
+    parser.add_argument(
+        "--include-monoglot", action="store_true",
+        help="WI-zafab filter 1: by default, monoglot repos are skipped "
+             "because they almost never have cross-language linker gaps. "
+             "Pass this flag to analyze them anyway.",
+    )
     args = parser.parse_args(argv)
 
     if args.repos:
@@ -221,7 +338,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Output:  {output_dir}")
     print()
 
-    summary = run_prospecting(args.pool, repos, output_dir)
+    summary = run_prospecting(
+        args.pool, repos, output_dir,
+        include_monoglot=args.include_monoglot,
+    )
 
     print()
     print("=" * 60)
@@ -229,6 +349,7 @@ def main(argv: list[str] | None = None) -> int:
     print("=" * 60)
     print(f"Repos analyzed: {len(summary['repos_analyzed'])}")
     print(f"Repos failed:   {len(summary['repos_failed'])}")
+    print(f"Repos skipped (monoglot): {len(summary['repos_skipped_monoglot'])}")
     print(f"Total candidates: {summary['total_candidates']}")
     print()
     print("Top categories by candidate count:")
