@@ -676,6 +676,115 @@ class TestCompressedReadIntegration:
             f"Expected domain_init first (calls out=10), not interface stub. Got: {seeds}"
         )
 
+    def test_pick_reverse_slice_seeds_warns_on_suspicious_hub(
+        self, tmp_path: Path, capsys: "Any",
+    ) -> None:
+        """WI-gapom: defensive warning when a picked seed has prod_in_degree > 1000.
+
+        After WI-fuhaj/WI-jopar removed the underlying short-name collision
+        bugs that produced 6054-edge POJO hubs on Kafka, the rslice seed
+        picker should still surface a stderr warning when any picked seed
+        has an unusually high production in-degree. This catches both (a)
+        legitimate framework hubs and (b) any future name-collision artifact
+        that slips past the analyzer fixes.
+        """
+        # Build a fixture with one hub node receiving 1500 prod calls plus
+        # enough out-degree to pass the _MIN_OUT_DEGREE filter, so the picker
+        # selects it as a seed.
+        hub = {
+            "id": "hub", "name": "Hub.Process", "kind": "method",
+            "language": "go", "path": "pkg/hub/hub.go",
+            "span": {"start_line": 1, "end_line": 50},
+        }
+        # Hub needs out-degree >= 3 to clear the _MIN_OUT_DEGREE filter.
+        hub_targets = [
+            {"id": f"hub_t{i}", "name": f"hub_target_{i}", "kind": "function",
+             "language": "go", "path": f"pkg/internal/t{i}.go",
+             "span": {"start_line": 1, "end_line": 1}}
+            for i in range(5)
+        ]
+        callers = [
+            {"id": f"caller{i}", "name": f"caller_{i}", "kind": "function",
+             "language": "go", "path": f"pkg/svc{i % 50}/handler.go",
+             "span": {"start_line": 1, "end_line": 1}}
+            for i in range(1500)
+        ]
+        edges = []
+        # 1500 prod callers → hub
+        for i in range(1500):
+            edges.append({"type": "calls", "src": f"caller{i}", "dst": "hub"})
+        # hub calls 5 targets (out_degree=5 ≥ _MIN_OUT_DEGREE)
+        for i in range(5):
+            edges.append({"type": "calls", "src": "hub", "dst": f"hub_t{i}"})
+
+        data = {"nodes": [hub, *hub_targets, *callers], "edges": edges}
+        repo_out = _make_repo_output(tmp_path, "hub-repo", hg_data=data)
+        hg_path = str(repo_out / "hg.json")
+
+        seeds = bf.pick_reverse_slice_seeds(hg_path, count=3)
+        assert "hub" in seeds, (
+            f"Hub fixture should be picked (high prod_in, qualifying out-degree); "
+            f"got seeds={seeds}"
+        )
+
+        captured = capsys.readouterr()
+        assert "rslice seed" in captured.err, (
+            f"Expected stderr WI-gapom warning, got: {captured.err!r}"
+        )
+        assert "Hub.Process" in captured.err, (
+            f"Warning should name the suspicious seed; got: {captured.err!r}"
+        )
+        assert "WI-gapom" in captured.err, (
+            f"Warning should reference WI-gapom for traceability; got: "
+            f"{captured.err!r}"
+        )
+
+    def test_pick_reverse_slice_seeds_no_warning_for_normal_hub(
+        self, tmp_path: Path, capsys: "Any",
+    ) -> None:
+        """WI-gapom: no spurious warning for ordinary domain hubs.
+
+        A function with prod_in_degree well below the threshold (e.g., 50)
+        must NOT trigger the WI-gapom warning even though it qualifies as
+        a seed candidate. This guards against the warning becoming noise.
+        """
+        nodes = [
+            {"id": "domain", "name": "Domain.Compute", "kind": "function",
+             "language": "go", "path": "pkg/domain/domain.go",
+             "span": {"start_line": 1, "end_line": 50}},
+        ]
+        for i in range(5):
+            nodes.append({
+                "id": f"target{i}", "name": f"target_{i}", "kind": "function",
+                "language": "go", "path": f"pkg/internal/t{i}.go",
+                "span": {"start_line": 1, "end_line": 1},
+            })
+        for i in range(20):
+            nodes.append({
+                "id": f"caller{i}", "name": f"caller_{i}", "kind": "function",
+                "language": "go", "path": f"pkg/svc{i}/handler.go",
+                "span": {"start_line": 1, "end_line": 1},
+            })
+
+        edges = []
+        for i in range(20):
+            edges.append({"type": "calls", "src": f"caller{i}", "dst": "domain"})
+        for i in range(5):
+            edges.append({"type": "calls", "src": "domain", "dst": f"target{i}"})
+
+        data = {"nodes": nodes, "edges": edges}
+        repo_out = _make_repo_output(tmp_path, "normal-repo", hg_data=data)
+        hg_path = str(repo_out / "hg.json")
+
+        seeds = bf.pick_reverse_slice_seeds(hg_path, count=3)
+        assert "domain" in seeds
+
+        captured = capsys.readouterr()
+        assert "WI-gapom" not in captured.err, (
+            f"Normal-sized hub (in=20) must NOT trigger the WI-gapom warning; "
+            f"got: {captured.err!r}"
+        )
+
     def test_has_hg_json_detects_compressed(self, tmp_path: Path) -> None:
         """_has_hg_json should return True for repos with only hg.json.gz."""
         repo_out = _make_repo_output(tmp_path, "repo-a", already_compressed=True)

@@ -86,6 +86,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+#### Bakeoff-deep: defensive hub-collision warning for rslice seeds (WI-gapom)
+
+- **Background**: WI-fuhaj (Java) and WI-jopar (Go) shipped earlier in this batch fixed the underlying short-name collision bugs that produced 6054-edge POJO hubs on Kafka. WI-gapom is a defensive complement: even with the analyzer fixes in place, the bakeoff's `pick_reverse_slice_seeds` should surface a warning when a picked seed has unusually high production in-degree. This catches both (a) legitimate framework hubs worth knowing about and (b) any future collision artifact that slips past the analyzer fixes.
+- **Fix**: after the seed picker computes its `result`, walk each picked seed and emit a stderr warning when `prod_in_degree > 1000`. The warning names the seed, the in-degree count, and references WI-gapom for traceability so the LLM assessment agent and human reviewers can investigate the caller distribution before drawing conclusions.
+- **Tests**: 2 new tests in `TestCompressedReadIntegration`. `test_pick_reverse_slice_seeds_warns_on_suspicious_hub` builds a fixture with one node receiving 1500 prod calls (plus enough out-degree to clear `_MIN_OUT_DEGREE`) and asserts the stderr warning fires. `test_pick_reverse_slice_seeds_no_warning_for_normal_hub` builds a 20-caller normal domain hub and asserts the warning does NOT fire — guards against the warning becoming noise.
+
 #### Generated-file detection: go-swagger output paths (WI-sozah)
 
 - **Bug**: alertmanager-style swagger output (`api/v2/restapi/`, `api/v2/models/`) was not flagged as generated. The `is_generated_file` ranking dampener (centrality × 0.05) was therefore not applied to those nodes, and the supply-chain tier classifier left them in tier 1 alongside hand-written code. Bakeoff feedback: "tier1 vs tier2 slice is essentially indistinguishable (580 vs 583 nodes)" because the bulk of generated swagger output was indistinguishable from production code.
