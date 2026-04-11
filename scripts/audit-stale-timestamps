@@ -1,0 +1,369 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Audit embedded timestamps in agent state files vs filesystem mtimes.
+
+WI-sofop V1: scan a fixed set of agent-state JSON files and report
+any mismatch between an embedded timestamp field (e.g.
+``last_completed_utc``) and the file's filesystem mtime beyond a
+per-rule threshold.
+
+Surfaces the failure mode discovered during INV-jofaf facet 2 debug:
+a state file that gets its `notes` or a sibling field updated (mtime
+becomes fresh) while its `last_completed_utc` field drifts 11 days
+out of date, silently breaking the Path-2 cooldown gate in
+``stop_logic.sh``.
+
+Scope
+-----
+V1 is intentionally narrow — two hardcoded rules covering the state
+files post-INV-jofaf-facet-2 split:
+
+1. ``~/<repo>_lab_notebook/guidance_log/stop_hook_state.json``:
+   compare ``last_completed_utc`` against the file's mtime.
+   Threshold: 1 hour.
+
+2. ``~/<repo>_lab_notebook/guidance_log/stop_hook_state.json``:
+   for the ``guidance_file`` field (if present), compare the
+   referenced file's mtime against ``last_completed_utc``.
+   Threshold: 1 hour.
+
+Future rules (bakeoff state.json, lab notebook journals, ADR dates,
+pyproject version vs CHANGELOG) are intentionally deferred to follow-
+up items. This script is the minimum useful audit — the one that
+would have caught INV-jofaf facet 2 before a human noticed the
+behavior.
+
+Exit codes
+----------
+- 0: no drift detected
+- 1: at least one rule fired
+- 2: a rule's target file was missing or unreadable (warning, not
+  a drift hit)
+
+Usage
+-----
+Run without arguments to audit all hardcoded rules:
+
+    scripts/audit-stale-timestamps
+
+Pass ``--json`` to emit a machine-readable report:
+
+    scripts/audit-stale-timestamps --json
+
+Pass ``--repo-root PATH`` to override the repository root (default:
+auto-detected via ``git rev-parse --show-toplevel``).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+# One hour is enough headroom for a long stop-hook reflection pass
+# but tight enough that an 11-day drift is trivially caught.
+_DEFAULT_THRESHOLD_SECONDS = 3600
+
+
+@dataclass
+class AuditRule:
+    """A single audit rule — one file, one embedded timestamp field."""
+
+    name: str
+    path: Path
+    field_name: str
+    compare: str  # "mtime" | "referenced_file_mtime"
+    threshold_seconds: int = _DEFAULT_THRESHOLD_SECONDS
+
+
+@dataclass
+class AuditResult:
+    """Result of applying one rule."""
+
+    rule_name: str
+    path: str
+    status: str  # "ok" | "drift" | "missing_field" | "missing_file"
+    detail: str = ""
+    drift_seconds: Optional[int] = None
+
+
+@dataclass
+class AuditReport:
+    """Aggregate result across all rules."""
+
+    results: list[AuditResult] = field(default_factory=list)
+
+    @property
+    def exit_code(self) -> int:
+        if any(r.status == "drift" for r in self.results):
+            return 1
+        if any(r.status == "missing_file" for r in self.results):
+            return 2
+        return 0
+
+    def to_dict(self) -> dict:
+        return {
+            "results": [
+                {
+                    "rule": r.rule_name,
+                    "path": r.path,
+                    "status": r.status,
+                    "detail": r.detail,
+                    "drift_seconds": r.drift_seconds,
+                }
+                for r in self.results
+            ],
+            "exit_code": self.exit_code,
+        }
+
+
+def _detect_repo_root() -> Path:
+    """Return the repository root via ``git rev-parse --show-toplevel``.
+
+    Falls back to the script's parent-of-parent when git is unavailable
+    or the script is invoked from outside a git working tree.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, check=True,
+        )
+        return Path(result.stdout.strip())
+    except (subprocess.CalledProcessError, FileNotFoundError):  # pragma: no cover
+        return Path(__file__).resolve().parent.parent
+
+
+def _default_rules(repo_root: Path) -> list[AuditRule]:
+    """Build the V1 hardcoded rule list.
+
+    The lab notebook path follows the INV-jofaf facet 2 convention:
+    ``~/<repo-name>_lab_notebook/guidance_log/``. The repo name is
+    taken from the ``repo_root`` basename so the auditor works for
+    hypergumbo and for any fork/clone that follows the same layout.
+    """
+    repo_name = repo_root.name
+    guidance = Path.home() / f"{repo_name}_lab_notebook" / "guidance_log"
+    stop_hook_state = guidance / "stop_hook_state.json"
+    return [
+        AuditRule(
+            name="stop_hook_state_last_completed",
+            path=stop_hook_state,
+            field_name="last_completed_utc",
+            compare="mtime",
+        ),
+        AuditRule(
+            name="stop_hook_state_guidance_file",
+            path=stop_hook_state,
+            field_name="guidance_file",
+            compare="referenced_file_mtime",
+        ),
+    ]
+
+
+def _parse_iso8601(text: str) -> Optional[datetime]:
+    """Parse an ISO-8601 UTC timestamp string into a timezone-aware datetime.
+
+    Accepts the ``Z`` suffix form (``2026-04-11T10:30:00Z``) and the
+    explicit offset form (``2026-04-11T10:30:00+00:00``). Returns None
+    for unparseable input — the caller treats this as a missing field.
+    """
+    if not isinstance(text, str):
+        return None
+    cleaned = text.strip()
+    if cleaned.endswith("Z"):
+        cleaned = cleaned[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(cleaned)
+    except ValueError:
+        return None
+
+
+def _run_rule(rule: AuditRule) -> AuditResult:
+    """Apply *rule* and return an AuditResult."""
+    if not rule.path.exists():
+        return AuditResult(
+            rule_name=rule.name,
+            path=str(rule.path),
+            status="missing_file",
+            detail=f"{rule.path} does not exist",
+        )
+    try:
+        data = json.loads(rule.path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        return AuditResult(
+            rule_name=rule.name,
+            path=str(rule.path),
+            status="missing_file",
+            detail=f"read/parse failed: {exc}",
+        )
+
+    value = data.get(rule.field_name)
+    if value is None:
+        return AuditResult(
+            rule_name=rule.name,
+            path=str(rule.path),
+            status="missing_field",
+            detail=f"field '{rule.field_name}' is absent or null",
+        )
+
+    file_mtime = datetime.fromtimestamp(rule.path.stat().st_mtime, tz=timezone.utc)
+
+    if rule.compare == "mtime":
+        parsed = _parse_iso8601(value)
+        if parsed is None:
+            return AuditResult(
+                rule_name=rule.name,
+                path=str(rule.path),
+                status="missing_field",
+                detail=f"field '{rule.field_name}' value is not ISO-8601: {value!r}",
+            )
+        drift = int(abs((file_mtime - parsed).total_seconds()))
+        if drift > rule.threshold_seconds:
+            return AuditResult(
+                rule_name=rule.name,
+                path=str(rule.path),
+                status="drift",
+                detail=(
+                    f"{rule.field_name}={value} vs mtime="
+                    f"{file_mtime.isoformat()} (drift {drift}s > "
+                    f"{rule.threshold_seconds}s)"
+                ),
+                drift_seconds=drift,
+            )
+        return AuditResult(
+            rule_name=rule.name,
+            path=str(rule.path),
+            status="ok",
+            drift_seconds=drift,
+        )
+
+    if rule.compare == "referenced_file_mtime":
+        referenced = Path(str(value)).expanduser()
+        if not referenced.exists():
+            return AuditResult(
+                rule_name=rule.name,
+                path=str(rule.path),
+                status="missing_file",
+                detail=(
+                    f"referenced file '{referenced}' does not exist"
+                ),
+            )
+        ref_mtime = datetime.fromtimestamp(
+            referenced.stat().st_mtime, tz=timezone.utc,
+        )
+        # Compare the referenced file's mtime to last_completed_utc (if
+        # present in the same JSON). A guidance file newer than
+        # last_completed_utc is expected (guidance is written first);
+        # a guidance file OLDER than last_completed_utc by >threshold
+        # indicates a stale-reference drift.
+        completed = _parse_iso8601(data.get("last_completed_utc", ""))
+        if completed is None:
+            return AuditResult(
+                rule_name=rule.name,
+                path=str(rule.path),
+                status="missing_field",
+                detail=(
+                    "referenced_file_mtime comparison requires "
+                    "last_completed_utc in same file"
+                ),
+            )
+        drift = int((completed - ref_mtime).total_seconds())
+        if drift > rule.threshold_seconds:
+            return AuditResult(
+                rule_name=rule.name,
+                path=str(rule.path),
+                status="drift",
+                detail=(
+                    f"guidance_file={referenced} mtime="
+                    f"{ref_mtime.isoformat()} predates "
+                    f"last_completed_utc={completed.isoformat()} by "
+                    f"{drift}s > {rule.threshold_seconds}s"
+                ),
+                drift_seconds=drift,
+            )
+        return AuditResult(
+            rule_name=rule.name,
+            path=str(rule.path),
+            status="ok",
+            drift_seconds=drift,
+        )
+
+    # Unknown compare mode — should never happen with the hardcoded
+    # V1 rules, so we trust the caller.
+    return AuditResult(  # pragma: no cover
+        rule_name=rule.name,
+        path=str(rule.path),
+        status="missing_field",
+        detail=f"unknown compare mode: {rule.compare}",
+    )
+
+
+def audit(rules: list[AuditRule]) -> AuditReport:
+    """Run all rules and return the aggregated report."""
+    report = AuditReport()
+    for rule in rules:
+        report.results.append(_run_rule(rule))
+    return report
+
+
+def _format_text(report: AuditReport) -> str:
+    """Format the report as a human-readable text summary."""
+    lines: list[str] = []
+    lines.append("audit-stale-timestamps: V1 report")
+    lines.append("=" * 50)
+    for r in report.results:
+        icon = {
+            "ok": "[OK]",
+            "drift": "[DRIFT]",
+            "missing_field": "[MISSING_FIELD]",
+            "missing_file": "[MISSING_FILE]",
+        }.get(r.status, "[?]")
+        lines.append(f"{icon} {r.rule_name}")
+        lines.append(f"    path: {r.path}")
+        if r.detail:
+            lines.append(f"    {r.detail}")
+        if r.drift_seconds is not None and r.status == "ok":
+            lines.append(f"    drift: {r.drift_seconds}s (within threshold)")
+    lines.append("=" * 50)
+    total = len(report.results)
+    hits = sum(1 for r in report.results if r.status == "drift")
+    missing = sum(1 for r in report.results if r.status == "missing_file")
+    lines.append(
+        f"Summary: {total} rules checked, {hits} drift, {missing} missing",
+    )
+    return "\n".join(lines)
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Audit embedded timestamps in agent state files.",
+    )
+    parser.add_argument(
+        "--json", action="store_true",
+        help="Emit JSON report instead of text.",
+    )
+    parser.add_argument(
+        "--repo-root", type=Path, default=None,
+        help="Override repository root (default: git rev-parse).",
+    )
+    args = parser.parse_args(argv)
+
+    repo_root = args.repo_root or _detect_repo_root()
+    rules = _default_rules(repo_root)
+    report = audit(rules)
+
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2))
+    else:
+        print(_format_text(report))
+
+    return report.exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main())
