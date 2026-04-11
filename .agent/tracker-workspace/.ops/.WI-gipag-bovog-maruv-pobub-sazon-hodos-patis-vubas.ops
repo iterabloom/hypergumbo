@@ -1,0 +1,21 @@
+- op: create  # b43b
+  at: '2026-04-11T12:11:44Z'  # b43b
+  by: agent  # b43b
+  actor: jgstern_agent  # b43b
+  clock: 1  # b43b
+  nonce: b43b  # b43b
+  data:  # b43b
+    kind: work_item  # b43b
+    title: "WI-zimum Phase 2: Python __all__ and TS top-level export populate Symbol.is_exported"  # b43b
+    status: todo_soft  # b43b
+    priority: 3  # b43b
+    parent:  # b43b
+    tags:  # b43b
+    - analysis_quality  # b43b
+    - dead_code_prospector  # b43b
+    before: []  # b43b
+    duplicate_of: []  # b43b
+    not_duplicate_of: []  # b43b
+    pr_ref:  # b43b
+    description: "Phase 2 of WI-zimum (Phase 1 merged PR #2948, covered Go/Rust/Java/C#/Scala/Kotlin/Groovy via the modifier-based is_exported_from_modifiers helper). Phase 2 covers languages whose export semantics do not flow through modifiers: (1) Python module-level __all__ names and the leading-underscore convention, implemented in py.py at symbol extraction time; (2) TypeScript/JavaScript top-level export_statement nodes in js_ts.py, extending the existing Next.js handler export parser to set Symbol.is_exported. Out of scope: Rust pub-use re-export chains, TS barrel index files, Python from-X-import-Y re-exports. Validation: re-run WI-tubot prospector on airflow (Python) and apollo-server (TS), expect dead% to drop meaningfully from the 70-85% baseline."  # b43b
+    fields: {}  # b43b
