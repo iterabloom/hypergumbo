@@ -123,6 +123,85 @@ def _python_visibility_modifiers(name: str) -> list[str]:
     return []
 
 
+def _extract_module_all(tree: "ast.Module") -> frozenset[str] | None:
+    """Extract the module-level ``__all__`` name set from *tree*.
+
+    WI-gipag (WI-zimum Phase 2): the module-level ``__all__`` list
+    declares the public API surface of a Python module. When present,
+    only names in ``__all__`` should be flagged ``is_exported=True``;
+    all other top-level symbols remain un-exported regardless of
+    naming convention.
+
+    Returns the frozenset of string names in ``__all__`` (possibly
+    empty), or ``None`` if the file does not define a module-level
+    ``__all__`` assignment. The ``None`` vs empty-set distinction
+    matters because the callers use it to decide between
+    ``__all__``-driven filtering and the fallback leading-underscore
+    rule.
+
+    Supported forms:
+    - ``__all__ = ["foo", "bar"]``       (list literal)
+    - ``__all__ = ("foo", "bar")``       (tuple literal)
+    - ``__all__: list[str] = ["foo"]``   (annotated assignment)
+
+    Non-literal forms (``__all__ = other_module.__all__``,
+    ``__all__ += ["baz"]``, list comprehensions) are not
+    interpreted — they are rare and would require evaluation. The
+    caller treats "unparseable ``__all__``" the same as "no
+    ``__all__``" and falls back to the leading-underscore rule.
+    """
+    for node in tree.body:
+        target_name: str | None = None
+        value: ast.expr | None = None
+
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if isinstance(target, ast.Name) and target.id == "__all__":
+                target_name = "__all__"
+                value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+            if isinstance(target, ast.Name) and target.id == "__all__":
+                target_name = "__all__"
+                value = node.value
+
+        if target_name is None or value is None:
+            continue
+
+        if isinstance(value, (ast.List, ast.Tuple)):
+            names: list[str] = []
+            for elt in value.elts:
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                    names.append(elt.value)
+                # Anything non-literal (e.g., a Name reference, a call)
+                # makes the __all__ interpretation ambiguous. Return
+                # None to fall back to the leading-underscore rule.
+                else:
+                    return None
+            return frozenset(names)
+        # __all__ set via a non-literal expression — unparseable.
+        return None
+    return None
+
+
+def _is_python_top_level_exported(
+    name: str, module_all: frozenset[str] | None,
+) -> bool:
+    """Return True if *name* is part of the Python module's public API.
+
+    WI-gipag: when the module has an ``__all__`` list, membership in
+    ``__all__`` is authoritative. Otherwise, the leading-underscore
+    convention applies — names not starting with ``_`` are public.
+    Dunders (``__name__``) are never considered exported by this rule;
+    they are special methods / module hooks, not user-facing API.
+    """
+    if module_all is not None:
+        return name in module_all
+    if name.startswith("_"):
+        return False
+    return True
+
+
 def normalize_python_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -1728,6 +1807,12 @@ def _extract_file_analysis(
     symbols = []
     symbol_by_name: dict[str, Symbol] = {}
 
+    # WI-gipag: extract the module-level __all__ (if any) once up front
+    # so each top-level Symbol extraction can decide is_exported without
+    # re-walking the tree. None means "no __all__ found" → fall back to
+    # the leading-underscore rule.
+    module_all = _extract_module_all(tree)
+
     # Create <module> pseudo-node for files with module-level executable code.
     # This provides an enclosing scope for linker synthetic nodes at module level,
     # enabling slice traversal for script-only files (no functions/classes).
@@ -1798,6 +1883,15 @@ def _extract_file_analysis(
 
             _ds = ast.get_docstring(node)
             _ds_line = _ds.split("\n")[0].strip()[:80] if _ds else None
+            # WI-gipag: decide is_exported for top-level class symbols via
+            # the module's __all__ (if present) or the leading-underscore
+            # convention. Only top-level classes are candidates for public
+            # API here — nested classes defined inside functions are not
+            # externally reachable regardless of naming.
+            class_is_exported = (
+                node.col_offset == 0
+                and _is_python_top_level_exported(node.name, module_all)
+            )
             symbol = Symbol(
                 id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "class"),
                 name=node.name,
@@ -1812,6 +1906,7 @@ def _extract_file_analysis(
                 meta=class_meta if class_meta else None,
                 docstring=_ds_line,
                 modifiers=_python_visibility_modifiers(node.name),
+                is_exported=class_is_exported,
             )
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
@@ -1967,6 +2062,15 @@ def _extract_file_analysis(
 
                 _fds = ast.get_docstring(node)
                 _fds_line = _fds.split("\n")[0].strip()[:80] if _fds else None
+                # WI-gipag: only top-level functions are candidates for
+                # the public API. Nested functions captured here (because
+                # they carry decorators, per the router-factory rule
+                # above) are never externally reachable via __all__, so
+                # is_exported stays False.
+                func_is_exported = (
+                    is_top_level
+                    and _is_python_top_level_exported(node.name, module_all)
+                )
                 symbol = Symbol(
                     id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "function"),
                     name=node.name,
@@ -1982,6 +2086,7 @@ def _extract_file_analysis(
                     signature=func_sig,
                     docstring=_fds_line,
                     modifiers=func_modifiers,
+                    is_exported=func_is_exported,
                 )
                 symbols.append(symbol)
                 symbol_by_name[node.name] = symbol
