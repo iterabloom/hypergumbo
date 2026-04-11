@@ -51,6 +51,7 @@ See ADR-0013 §TUI for the responsive design specification.
 from __future__ import annotations
 
 import json
+import os
 import re
 from functools import partial
 from pathlib import Path
@@ -470,6 +471,15 @@ _PREFS_DEFAULTS: dict = {
 }
 
 _MAX_TOGGLE_SESSIONS = 9
+
+# Seconds between background polls for external tracker writes. When a
+# separate process (the agent CLI in another terminal, the tracker's
+# auto-sync merging in remote changes, etc.) appends to the shared ops
+# files, the TUI notices on the next tick and calls _reload_after_write
+# to refresh its view without losing cursor position, scroll offset,
+# filter text, or in-flight compose text. Override via the
+# ``HTRAC_RELOAD_INTERVAL`` environment variable (value in seconds).
+_TUI_RELOAD_INTERVAL: float = float(os.environ.get("HTRAC_RELOAD_INTERVAL", "5.0"))
 
 
 def _load_tui_preferences(path: Path) -> dict:
@@ -2116,6 +2126,7 @@ class TrackerApp(App):
         self._filter_line_to_entry: dict[int, int] = {}  # line_num → 1-based entry index
         self._human_read_state: dict[str, dict[str, object]] = {}
         self._unread_override_ids: set[str] = set()
+        self._last_ops_signature: float = 0.0
         self._prefs_path = (
             tracker_set._tracker_root / "tracker-workspace" / "tui_preferences.json"
         )
@@ -2191,6 +2202,10 @@ class TrackerApp(App):
         self._refresh_tier()
         self._load_items()
         self._update_status_filter_bar()
+        # Capture the post-load signature so the first background tick
+        # doesn't spuriously reload, then start the periodic poller.
+        self._last_ops_signature = self._tracker_set.ops_mtime_signature()
+        self.set_interval(_TUI_RELOAD_INTERVAL, self._check_external_writes)
 
     def on_resize(self, event: Resize) -> None:
         """Re-evaluate layout tier when terminal is resized.
@@ -3543,12 +3558,102 @@ class TrackerApp(App):
     def _reload_after_write(self, select_id: str | None = None) -> None:
         """Reload items from TrackerSet and refresh the active table.
 
-        Optionally restores cursor to *select_id* after reload.
+        Captures the active DataTable's scroll offset before the rebuild
+        and restores it afterward so users don't lose their place after
+        a submit (or a background reload from an external write). The
+        cursor position is independently restored by item ID via
+        ``_restore_selection``.
+
+        Scroll restoration is deferred via ``call_after_refresh`` because
+        ``_populate_table`` issues ``table.move_cursor(row=0)`` during
+        the rebuild, which scrolls the viewport to the top. Applying
+        ``scroll_to`` synchronously in the same tick gets consumed by
+        that internal scroll; scheduling the restore for after the next
+        render pass lets the new virtual size settle first.
         """
+        saved_scroll = self._capture_active_scroll()
         self._load_items()
         if select_id:
             self._selected_item_id = select_id
         self._restore_selection()
+        self.call_after_refresh(self._restore_active_scroll, saved_scroll)
+
+    def _capture_active_scroll(self) -> tuple[str, float] | None:
+        """Return ``(widget_id, scroll_y)`` for the currently-rendered item
+        list, or ``None`` if no table is mounted yet.
+
+        Two layout tiers mount different DataTable IDs (``#std-table``
+        for standard/wide, ``#item-table`` for compact). Whichever one
+        is currently present answers the probe; the other raises
+        ``NoMatches`` and is skipped. A broad ``Exception`` catch covers
+        the pre-mount path where the app has no screen at all and
+        ``query_one`` raises earlier in the DOM-base resolution.
+        """
+        for widget_id in ("#std-table", "#item-table"):
+            try:
+                table = self.query_one(widget_id)
+            except Exception:  # noqa: S112  # nosec B112 — defensive pre-mount path; no logger available on unmounted App
+                continue
+            return (widget_id, float(getattr(table, "scroll_y", 0.0)))
+        return None
+
+    def _restore_active_scroll(
+        self, saved: tuple[str, float] | None,
+    ) -> None:
+        """Restore a scroll offset previously captured via
+        ``_capture_active_scroll``.
+
+        If the captured widget is no longer mounted (because the layout
+        tier changed between capture and restore), fall through to
+        whichever table IS mounted and apply the saved y offset there.
+        Textual's ``scroll_to`` clamps the y offset to the table's
+        scrollable bounds, so overflow is harmless. A broad ``Exception``
+        catch mirrors ``_capture_active_scroll`` for the pre-mount case.
+        """
+        if saved is None:
+            return
+        saved_widget_id, saved_y = saved
+        # Deduplicate candidate widget IDs while preserving order. If
+        # saved_widget_id is already one of the standard table IDs, it
+        # only appears once in the try loop below.
+        candidates = list(dict.fromkeys(
+            (saved_widget_id, "#std-table", "#item-table"),
+        ))
+        for widget_id in candidates:
+            try:
+                table = self.query_one(widget_id)
+            except Exception:  # noqa: S112  # nosec B112 — defensive pre-mount path; no logger available on unmounted App
+                continue
+            table.scroll_to(y=saved_y, animate=False)
+            return
+
+    def _check_external_writes(self) -> None:
+        """Timer callback: reload if any tier's ops files have changed
+        externally.
+
+        Defers the reload entirely while any modal screen is open, so a
+        background tick can't race with an in-progress edit against
+        external state. ``_last_ops_signature`` is not advanced on the
+        skip path, so the next tick after the modal closes will still
+        detect whatever accumulated while the modal was up.
+
+        On a non-skipped tick, computes the mtime signature across all
+        three tier ops directories and compares it to the last-seen
+        value. On advance, reuses ``_reload_after_write`` (which
+        preserves cursor position via ``_restore_selection`` and scroll
+        offset via the capture/restore helpers) and follows up with
+        ``_update_status_filter_bar`` so newly-introduced statuses
+        surface in the filter bar. Filter text, ``#chat-input`` text,
+        and focus are all untouched by ``_load_items``.
+        """
+        if len(self.screen_stack) > 1:
+            return
+        sig = self._tracker_set.ops_mtime_signature()
+        if sig == self._last_ops_signature:
+            return
+        self._last_ops_signature = sig
+        self._reload_after_write(select_id=self._selected_item_id)
+        self._update_status_filter_bar()
 
     # ------------------------------------------------------------------
     # Human read/unread state management
