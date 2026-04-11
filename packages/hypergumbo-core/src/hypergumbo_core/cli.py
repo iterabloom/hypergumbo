@@ -2910,7 +2910,10 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     # Apply boundary/primitive/exclude-tests filters
     boundary_filter = getattr(args, "boundary", None)
     primitive_filter = getattr(args, "primitive", None)
-    exclude_tests = getattr(args, "exclude_tests", False)
+    # WI-sifif: production-only is the default. Tests can opt-in to the
+    # historical "show everything" behavior by overriding exclude_tests=False;
+    # CLI users do the same via --include-tests.
+    exclude_tests = getattr(args, "exclude_tests", True)
 
     from .io_boundary import BoundaryMapEntry
 
@@ -4942,7 +4945,8 @@ without re-running the full analysis."""
     # hypergumbo io-boundaries
     io_boundaries_epilog = """\
 Examples:
-  hypergumbo io-boundaries .                          # Show I/O boundary map
+  hypergumbo io-boundaries .                          # Production-only IO map
+  hypergumbo io-boundaries . --include-tests          # Also include test files
   hypergumbo io-boundaries . --json                   # JSON output
   hypergumbo io-boundaries . --input hg.json          # From existing analysis
   hypergumbo io-boundaries . --by-file                # Group by file
@@ -4950,7 +4954,8 @@ Examples:
   hypergumbo io-boundaries . --primitive os.execv     # Filter to specific primitive
 
 Identifies call edges that reach I/O primitives (filesystem, network,
-subprocess, environment) and groups them by boundary type. See ADR-0016."""
+subprocess, environment) and groups them by boundary type. Test files
+are excluded by default — pass --include-tests to see them. See ADR-0016."""
 
     p_io = sub.add_parser(
         "io-boundaries",
@@ -4992,13 +4997,28 @@ subprocess, environment) and groups them by boundary type. See ADR-0016."""
         metavar="NAME",
         help="Filter to a specific primitive (e.g., subprocess.run, os.execv)",
     )
+    # WI-sifif: production-only is now the default for io-boundaries.
+    # Test files are noise for understanding production IO behavior — on
+    # alertmanager, env_read reported 9 chains with 7 of them in test files.
+    # `--exclude-tests` is kept as a no-op for backward compatibility with
+    # users/scripts already passing it; `--include-tests` flips back to the
+    # historical "show everything" behavior.
     p_io.add_argument(
         "-x",
         "--exclude-tests",
         action="store_true",
         dest="exclude_tests",
-        default=False,
-        help="Exclude I/O boundary chains originating from test files",
+        default=True,
+        help="(default behavior — kept for backward compatibility)",
+    )
+    p_io.add_argument(
+        "--include-tests",
+        action="store_false",
+        dest="exclude_tests",
+        help=(
+            "Include I/O boundary chains originating from test files "
+            "(default: production-only)"
+        ),
     )
     p_io.set_defaults(func=cmd_io_boundaries)
 

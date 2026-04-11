@@ -890,3 +890,74 @@ class TestIoBoundariesExcludeTests:
         data = json.loads(capsys.readouterr().out)
         # Chain kept because source node unknown (can't determine if test)
         assert data["total_io_edges"] == 1
+
+    def test_test_chains_excluded_by_default(self, tmp_path, capsys):
+        """WI-sifif: production-only is the default for io-boundaries.
+
+        When ``args.exclude_tests`` is not set at all (i.e., the user did
+        not pass ``--exclude-tests`` or ``--include-tests``), the command
+        must default to excluding test-file chains. Without this fix, the
+        bakeoff's ``io-boundaries.txt`` was 78% noise on alertmanager
+        (env_read: 9 chains, 7 in test files).
+        """
+        bmap = _make_behavior_map(
+            nodes=[
+                {
+                    "id": "python:src/main.py:1-5:main:function",
+                    "name": "main",
+                    "kind": "function",
+                    "language": "python",
+                    "path": "src/main.py",
+                    "span": {"start_line": 1, "end_line": 5},
+                },
+                {
+                    "id": "python:tests/test_main.py:1-5:test_func:function",
+                    "name": "test_func",
+                    "kind": "function",
+                    "language": "python",
+                    "path": "tests/test_main.py",
+                    "span": {"start_line": 1, "end_line": 5},
+                },
+                {
+                    "id": "python:os:0-0:remove:unresolved",
+                    "name": "remove",
+                    "kind": "unresolved",
+                    "language": "python",
+                    "path": "",
+                    "span": {"start_line": 0, "end_line": 0},
+                },
+            ],
+            edges=[
+                {
+                    "src": "python:src/main.py:1-5:main:function",
+                    "dst": "python:os:0-0:remove:unresolved",
+                    "type": "calls",
+                    "meta": {"callee": "os.remove"},
+                },
+                {
+                    "src": "python:tests/test_main.py:1-5:test_func:function",
+                    "dst": "python:os:0-0:remove:unresolved",
+                    "type": "calls",
+                    "meta": {"callee": "os.remove"},
+                },
+            ],
+        )
+
+        # No exclude_tests override at all — the command must default to
+        # production-only. Note _make_args does not set this attribute, so
+        # cmd_io_boundaries must use a True fallback.
+        args = _make_args(tmp_path, bmap, json_output=True)
+        assert not hasattr(args, "exclude_tests"), (
+            "Test fixture invariant: exclude_tests must be unset so the "
+            "default fallback in cmd_io_boundaries is exercised."
+        )
+        rc = cmd_io_boundaries(args)
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["total_io_edges"] == 1, (
+            f"Default behavior must be production-only — got "
+            f"{data['total_io_edges']} chains, expected 1 (the test_func "
+            f"chain should be filtered out)."
+        )
+        chains = data["boundaries"]["fs_write"]["chains"]
+        assert "test" not in chains[0]["io_edge_src"]

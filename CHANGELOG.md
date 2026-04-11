@@ -84,6 +84,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **NEEDS_WORK softening**: the "Investigate:" header on unconverged bakeoffs becomes "Recommended next actions (not mandatory — tracker work is also a valid use of this session)", and the guidance now explicitly points to `./scripts/tracker ready` as an alternative. Gives the agent latitude to work tracker items instead of forcing a bakeoff iteration on every stop.
 - `.agent/agent_playbooks_protocols_sops_skills/bakeoff-{broad,deep}-priorities.md` mirror the new rule in their DEEP/BROAD priority queue sections and in the "When blocked" paragraph.
 
+### Changed
+
+#### `hypergumbo io-boundaries` defaults to production-only (WI-sifif)
+
+- **Before**: `hypergumbo io-boundaries .` showed every IO chain in the repo, including chains whose source symbol lived in a `*_test.go` / `tests/test_*.py` / `*.spec.ts` file. On alertmanager this meant `env_read` reported 9 chains, 7 of which were test code — 78% noise. Bakeoff agents reading the resulting `io-boundaries.txt` could not separate the production IO surface from test fixtures.
+- **After**: production-only is the default. The `is_test_node` helper from `paths.py` (already used by the rslice prod variant) is invoked unconditionally on every IO chain, dropping any chain whose source symbol path or metadata identifies it as test code.
+- **CLI**: `--exclude-tests` is kept as a no-op for backward compatibility with users/scripts already passing it explicitly. A new `--include-tests` flag (action=`store_false` on the same dest) opts back into the historical "show everything" behavior. Help text and the example epilog updated. Test fixtures that explicitly pass `args.exclude_tests=True` or `args.exclude_tests=False` continue to work — the default fallback in `cmd_io_boundaries` flipped from `False` to `True`.
+- **Test**: new `TestIoBoundariesExcludeTests::test_test_chains_excluded_by_default` constructs a fixture with one prod chain (`src/main.py:main → os.remove`) and one test chain (`tests/test_main.py:test_func → os.remove`), invokes `cmd_io_boundaries` with no `exclude_tests` override at all, and asserts only the prod chain survives.
+
 ### Fixed
 
 #### Go analyzer: receiver-type guard for interface_dispatch (WI-jopar)
