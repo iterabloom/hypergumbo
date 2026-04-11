@@ -18,3 +18,18 @@
     pr_ref:  # 1f9a
     description: "**Goal:** Periodically scan tracker item descriptions and discussion entries for file-path references, then verify each path resolves to a real file at repo HEAD. Report stale references so they can be corrected before they mislead an agent into editing the wrong file.\n\n**Discovered need:** During the 2026-04-08 transcript-sync analysis, three open items (INV-gajap, WI-tatuh, WI-gigil) all referenced `packages/hypergumbo-tracker/src/hypergumbo_tracker/on_transcript_change.py` — a path that does not exist anywhere in the repo. The actual file is at `.agent/hooks/_shared/on_transcript_change.py`. WI-gigil specifically baked the bad path into a `git log --until=<timestamp>` command in its 'Resolution logic' section, which would have silently returned empty git history and produced empty `infra_sha` for every entry. None of the three errors would have been caught by any existing check.\n\n**Detection heuristic** (start simple):\n- Regex over each item's description and discussion messages for tokens that look like file paths: `[A-Za-z0-9_/.-]+\\.(py|md|yaml|yml|json|sh|toml|cfg|txt|js|ts|rs|go|java)` and well-known project paths (`packages/...`, `scripts/...`, `docs/...`, `.agent/...`, `tests/...`).\n- Also catch backtick-wrapped paths (`\\`packages/foo/bar.py\\``).\n- For each candidate, check whether the path resolves under the repo root.\n\n**False positive mitigation:**\n- Skip paths inside fenced code blocks tagged with hypothetical/illustrative languages (`bash`, `yaml`, etc. are fine; `pseudocode`, `example` are not).\n- Allow items to opt out by tag (e.g., `stale-paths-ok`) for items that intentionally reference deleted files.\n- Skip paths inside quoted strings that look like log lines or error messages.\n\n**Output:** A list of `(item_id, location, stale_path, suggested_actual_path?)` tuples. The 'suggested actual path' could come from a fuzzy basename search (`on_transcript_change.py` → find all files matching that basename in the repo).\n\n**Implementation surface options:**\n1. A standalone script under `scripts/` invoked manually or from CI.\n2. A new `tracker validate-paths` subcommand.\n3. A pre-commit/pre-PR check that runs over tracker items modified in the current branch.\n\n**Hypergumbo angle:** hypergumbo itself extracts file references from source. The linter could either reuse hypergumbo's path-extraction primitives or be implemented as a thin standalone grep. Standalone is cheaper for v1.\n\n**Why P4:** The drift exists but is rare and self-correcting once noticed. Filed because the bug we hit (WI-pusif) made these stale references *active footguns* for any future edit pass — fixing one path broke INV-gajap by triggering the YAML overflow. Worth automating the catch but not urgent."  # 1f9a
     fields: {}  # 1f9a
+- op: update  # 348b
+  at: '2026-04-11T17:09:26Z'  # 348b
+  by: agent  # 348b
+  actor: jgstern_agent  # 348b
+  clock: 2  # 348b
+  nonce: 348b  # 348b
+  set:  # 348b
+    status: done  # 348b
+- op: discuss  # 5e58
+  at: '2026-04-11T17:09:26Z'  # 5e58
+  by: agent  # 5e58
+  actor: jgstern_agent  # 5e58
+  clock: 3  # 5e58
+  nonce: '5e58'  # 5e58
+  message: "V1 shipped. scripts/tracker-path-linter detects backtick and bare path tokens in tracker item descriptions/discussions, verifies each against the repo filesystem, emits stale references with fuzzy basename suggestions via git ls-files index. 36 tests. False-positive mitigation (fenced-code detection, opt-out tag) deferred."  # 5e58

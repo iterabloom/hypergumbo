@@ -38,3 +38,18 @@
   nonce: c218  # c218
   set:  # c218
     priority: 3  # c218
+- op: update  # bab2
+  at: '2026-04-11T16:47:50Z'  # bab2
+  by: agent  # bab2
+  actor: jgstern_agent  # bab2
+  clock: 4  # bab2
+  nonce: bab2  # bab2
+  set:  # bab2
+    status: done  # bab2
+- op: discuss  # 6861
+  at: '2026-04-11T16:47:50Z'  # 6861
+  by: agent  # 6861
+  actor: jgstern_agent  # 6861
+  clock: 5  # 6861
+  nonce: '6861'  # 6861
+  message: "V1 shipped. Minimal scripts/audit-stale-timestamps with two hardcoded rules for stop_hook_state.json (last_completed_utc vs mtime + guidance_file vs last_completed_utc). 24 tests. Text and JSON output, exit codes 0/1/2. Broader audit rules (bakeoff state, lab notebook, ADRs, pyproject/CHANGELOG, tracker timestamps) deferred to follow-ups."  # 6861
