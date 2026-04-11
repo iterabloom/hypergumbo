@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Cooldown Mode — Implementation & Continuous Work
 
 ## 1. Process Retrospective (Brief)
@@ -5,7 +6,7 @@
 - Write any governance improvement ideas to `~/hypergumbo_lab_notebook/` tagged `[GOVERNANCE-IDEA]`
 
 ## 2. Implement Next Actions
-Below you will find `LAST REFLECTION NOTES` (from `last_stop_check.json`) and `IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT`. Use these ideas/notes to decide what to do next.
+Below you will find `LAST REFLECTION NOTES` (from `agent_notes.json`) and `IS THE BAKEOFF STATUS CONVERGED? WHAT TO DO IF NOT`. Use these ideas/notes to decide what to do next.
 
 **If notes contain implementation tasks**:
 - Check the tracker for any preexisting relevant entries to reopen and amend, or add a new item to the tracker. If you don't already see one, include a reminder to follow TDD: write failing test, make it pass, refactor, PR.

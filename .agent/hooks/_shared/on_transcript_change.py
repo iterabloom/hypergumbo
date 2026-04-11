@@ -207,10 +207,14 @@ PLAYBOOKS = [
      "branch with the naming convention author/[feat|fix|docs|refactor]/description."),
     ("recover-state-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/recover-state-playbook.md",
-     "After context compaction, recover state from last_stop_check.json which records: "
-     "current branch, last PR number/state, pending hard/soft TODOs, free-text notes, "
-     "active bakeoff session path. Also check guidance_file for recent stop hook output "
-     "and run tracker ready for pending work items. Keep notes fresh after key milestones."),
+     "After context compaction, recover state from two files in "
+     "~/<repo>_lab_notebook/guidance_log/: stop_hook_state.json (hook-written: "
+     "last_completed_utc, current_branch, guidance_file, bakeoff fields) and "
+     "agent_notes.json (agent-written free-text notes field, via "
+     "scripts/agent-notes --set/--append). Also check guidance_file for recent "
+     "stop hook output and run tracker ready for pending work items. Keep notes "
+     "fresh after key milestones via the scripts/agent-notes tool only — the "
+     "stop_hook_state.json file is hook-owned and must not be edited directly."),
     ("pre-commit-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/pre-commit-playbook.md",
      "Before every commit: verify git identity (user.name/user.email), run tests with "

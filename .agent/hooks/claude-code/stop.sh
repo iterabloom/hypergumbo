@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Claude Code Stop hook adapter
 # See ADR-0008 for governance protocol
 #
@@ -52,7 +53,7 @@ if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "true" ]]; then
   echo "Deactivating autonomous mode since the circuit breaker is tripped anyhow!" >&2
   TOGGLE_OUTPUT=$("$REPO_ROOT/scripts/loop-toggle" off 2>&1) || true
   echo "$TOGGLE_OUTPUT" >&2
-  REASON=$(printf 'CIRCUIT BREAKER: No progress on %d TODO(s) across %d stop events. Autonomous mode deactivated. Persist stalled items to last_stop_check.json. Read %s for details.' "$TOTAL_TODOS" "$HASH_THRESHOLD" "$GUIDANCE_FILE" | jq -Rs .)
+  REASON=$(printf 'CIRCUIT BREAKER: No progress on %d TODO(s) across %d stop events. Autonomous mode deactivated. Persist stalled items via scripts/agent-notes --set. Read %s for details.' "$TOTAL_TODOS" "$HASH_THRESHOLD" "$GUIDANCE_FILE" | jq -Rs .)
   echo "{\"decision\":\"approve\",\"reason\":$REASON}"
   exit 0
 fi

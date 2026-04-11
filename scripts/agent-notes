@@ -6,20 +6,15 @@ Writes ONLY the `notes` field of `~/<repo>_lab_notebook/guidance_log/agent_notes
 Hook-owned fields (last_completed_utc, guidance_file, bakeoff_*) live in a
 separate file `stop_hook_state.json` written exclusively by stop_logic.sh.
 
-This physical separation enforces the "one writer per field" invariant that
-the old unified last_stop_check.json couldn't maintain: the tool is unable
-to touch hook-owned fields because they are in a different file that this
-script never reads or writes.
+This physical separation enforces the "one writer per field" invariant:
+the tool is unable to touch hook-owned fields because they are in a
+different file that this script never reads or writes.
 
 Usage:
   agent-notes --set "Merged PR #1234. Next: WI-yyyy."
   agent-notes --append "Second note on same session."
   agent-notes --show
   agent-notes --clear
-
-On first run, if the legacy last_stop_check.json exists in the guidance_log,
-this tool does NOT migrate from it — migration is stop_logic.sh's job on its
-next fire. This tool only manages the notes file.
 """
 from __future__ import annotations
 
