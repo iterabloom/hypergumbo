@@ -445,8 +445,15 @@ if [[ -f "$STOP_HOOK" ]]; then
   mkdir -p "$STOP_TEST_DIR/.agent/hooks/claude-code"
   mkdir -p "$STOP_TEST_DIR/.agent"
 
-  # Enable autonomous mode and loop sentinel
-  echo "BROAD" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
+  # Enable autonomous mode and loop sentinel.
+  # Store the current test shell's PID ($$) in AUTONOMOUS_MODE.txt so that
+  # stop_logic.sh's _is_pid_ancestor() walk (running inside each $(...)
+  # subshell) finds $$ as an ancestor and classifies the session as
+  # autonomous. Prior to this fix, scenario 8a left behind the PID of a
+  # transient command-substitution subshell that had already exited by
+  # the time scenarios 8c/8d-1 ran, causing them to take the
+  # "dead stored PID → non-autonomous" branch and silently fail.
+  echo "BROAD pid=$$" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
   touch "$STOP_TEST_DIR/.agent/LOOP"
 
   # Provide stop_reflect.md and cooldown_prompt.md
@@ -518,8 +525,12 @@ TRACKER_STUB
   fi
 
   # SCENARIO 8c: No state file → full reflection (Path 3)
+  # Reset AUTONOMOUS_MODE.txt to our test shell's PID before this scenario
+  # (8a writes guidance_file into stop_hook_state.json which has now been
+  # removed, so Path 2 cooldown gating falls through to Path 3).
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8c: No state file → full reflection checklist"
+  echo "BROAD pid=$$" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
   rm -f "$SANDBOX_NOTEBOOK/stop_hook_state.json"
 
   OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
@@ -532,27 +543,34 @@ TRACKER_STUB
     ((FAIL_COUNT++))
   fi
 
-  # SCENARIO 8d-1: Dead PID in AUTONOMOUS_MODE.txt → re-claim and block
+  # SCENARIO 8d-1: Dead PID in AUTONOMOUS_MODE.txt → approve as non-autonomous
+  # (NOT auto-reclaim). Per stop_logic.sh lines 74-78: when the stored PID
+  # is dead, the hook deliberately refuses to auto-reclaim ownership — the
+  # autonomous agent must be restarted via loop-toggle, which will set a
+  # fresh PID. This scenario asserts that contract. A previous version of
+  # this test asserted auto-reclaim, which silently failed for months
+  # because the auto-reclaim behavior was deliberately removed without
+  # updating the test (INV-pofam).
   echo "--------------------------------------------------------"
-  echo "TEST: Scenario 8d-1: Dead PID re-claim (crash recovery)"
+  echo "TEST: Scenario 8d-1: Dead PID → approve (no auto-reclaim)"
   # Use a PID that definitely doesn't exist (max pid + 1 style)
   echo "BROAD pid=999999999" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
   rm -f "$SANDBOX_NOTEBOOK/stop_hook_state.json"
 
   OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
-  if echo "$OUTPUT" | grep -q '"decision":"block"'; then
-    # Also verify it re-claimed the PID
-    NEW_MODE=$(cat "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt")
-    if echo "$NEW_MODE" | grep -q "pid=" && ! echo "$NEW_MODE" | grep -q "pid=999999999"; then
-      echo "  ✅ PASS (dead PID re-claimed, hook blocks)"
+  if echo "$OUTPUT" | grep -q '"decision": "approve"' \
+     && echo "$OUTPUT" | grep -q "Interactive session"; then
+    # Verify the hook did NOT modify AUTONOMOUS_MODE.txt
+    UNCHANGED_MODE=$(cat "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt")
+    if [[ "$UNCHANGED_MODE" == "BROAD pid=999999999" ]]; then
+      echo "  ✅ PASS (dead PID → approve, AUTONOMOUS_MODE.txt unchanged)"
       ((PASS_COUNT++))
     else
-      echo "  ❌ FAIL (hook blocked but PID not re-claimed)"
-      echo "  AUTONOMOUS_MODE.txt: $NEW_MODE"
+      echo "  ❌ FAIL (hook approved but modified AUTONOMOUS_MODE.txt to: $UNCHANGED_MODE)"
       ((FAIL_COUNT++))
     fi
   else
-    echo "  ❌ FAIL (expected block after dead PID re-claim, got approve)"
+    echo "  ❌ FAIL (expected approve with 'Interactive session' reason for dead PID)"
     echo "  Output: $OUTPUT"
     ((FAIL_COUNT++))
   fi
