@@ -1208,6 +1208,7 @@ def enrich_symbols(
     # - naming-conventions.yaml: Controller, Handler, Service naming heuristics (0.70)
     # - library-exports.yaml: JS/TS index exports, Go exported symbols, Elixir modules
     # - logging-conventions.yaml: Logger classes, factory methods, log bridges
+    # - go-encoding-callbacks.yaml: Go MarshalJSON/UnmarshalYAML/etc. methods (WI-pimig)
     for convention_id in (
         "main-functions",
         "test-frameworks",
@@ -1216,6 +1217,7 @@ def enrich_symbols(
         "naming-conventions",
         "library-exports",
         "logging-conventions",
+        "go-encoding-callbacks",
     ):
         convention_patterns = load_framework_patterns(convention_id)
         if convention_patterns:
