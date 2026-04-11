@@ -22,3 +22,18 @@
     fields:  # 6d9c
       statement: "Dataflow annotations (access_mode, dest_access_mode, channel) set via Edge.create kwargs persist into the final edge's meta dict and are not silently overwritten by subsequent edge.meta assignments in linker code."  # 6d9c
       root_cause: "Four linkers (event_sourcing, ipc, websocket, message_queue) follow the pattern 'edge = Edge.create(access_mode=...); edge.meta = {...}' where the second line overwrites the first line's merged meta. Edge.create accepts a meta= kwarg that would merge linker metadata with dataflow fields, but the linkers don't use it."  # 6d9c
+- op: update  # cf82
+  at: '2026-04-10T23:32:12Z'  # cf82
+  by: agent  # cf82
+  actor: jgstern_agent  # cf82
+  clock: 2  # cf82
+  nonce: cf82  # cf82
+  set:  # cf82
+    status: satisfied  # cf82
+- op: discuss  # 9c32
+  at: '2026-04-10T23:32:12Z'  # 9c32
+  by: agent  # 9c32
+  actor: jgstern_agent  # 9c32
+  clock: 3  # 9c32
+  nonce: 9c32  # 9c32
+  message: "Fixed in PR #2925 (merged). All 4 linkers now preserve access_mode/dest_access_mode through Edge.create's meta= kwarg. Regression tests added per linker. Verification pending: re-run hypergumbo on polyglot repos and confirm dest_access_mode now present."  # 9c32
