@@ -26,3 +26,18 @@
   clock: 2  # e0a9
   nonce: e0a9  # e0a9
   message: "Heuristic 1 (path/name shape boost) implemented in PR just merged. Heuristic 2 (FFI signature auto-flag) deferred — requires unified annotation tracking across languages."  # e0a9
+- op: update  # f676
+  at: '2026-04-11T15:24:50Z'  # f676
+  by: agent  # f676
+  actor: jgstern_agent  # f676
+  clock: 3  # f676
+  nonce: f676  # f676
+  set:  # f676
+    status: done  # f676
+- op: discuss  # e446
+  at: '2026-04-11T15:24:50Z'  # e446
+  by: agent  # e446
+  actor: jgstern_agent  # e446
+  clock: 4  # e446
+  nonce: e446  # e446
+  message: "Heuristic 2 (FFI signature auto-flag) shipped. Added _compute_ffi_signature_flag in cli.py, new ffi_signature JSON field, +10 rank boost. Covers Rust (no_mangle/pyo3/napi/wasm_bindgen), Python (ctypes/cffi/cython), C/C++ (JNIEXPORT/extern), C# (DllImport), Java (native). 5 tests. Heuristic 1 (path shape boost) was already shipped per prior discussion note."  # e446
