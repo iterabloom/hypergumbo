@@ -2833,22 +2833,83 @@ class TestGovernanceCommands:
 
 
 class TestUtilityCommands:
-    def test_cache_rebuild(self, tmp_path: Path, capsys: pytest.CaptureFixture,
-                           mock_agent_uid: None) -> None:
+    def test_cache_rebuild(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """cache-rebuild rebuilds the live XDG caches that every other
+        read path uses. The test forces ``TRACKER_CACHE_DIR`` to a tmp
+        path so ``_get_cache_dir`` returns a known location without
+        needing a real git repo fingerprint.
+        """
         tracker_root = _setup_tracker(tmp_path)
+        cache_dir = tmp_path / "xdg_cache"
+        monkeypatch.setenv("TRACKER_CACHE_DIR", str(cache_dir))
         with pytest.raises(SystemExit) as exc:
             main(["--tracker-root", str(tracker_root), "cache-rebuild"])
         assert exc.value.code == EXIT_SUCCESS
         assert "cache rebuilt" in capsys.readouterr().out
+        # Verify the caches were actually rebuilt at the XDG-style path
+        # the dispatcher wired, NOT at the legacy ``.agent/.cache-*.db``
+        # path the old hardcoded subcommand used to write to.
+        for tier_name in ("canonical", "workspace", "stealth"):
+            assert (cache_dir / f"{tier_name}.cache.db").exists()
+        assert not (tracker_root / ".cache-canonical.db").exists()
 
-    def test_cache_rebuild_json(self, tmp_path: Path, capsys: pytest.CaptureFixture,
-                                mock_agent_uid: None) -> None:
+    def test_cache_rebuild_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         tracker_root = _setup_tracker(tmp_path)
+        cache_dir = tmp_path / "xdg_cache"
+        monkeypatch.setenv("TRACKER_CACHE_DIR", str(cache_dir))
         with pytest.raises(SystemExit) as exc:
             main(["--tracker-root", str(tracker_root), "--json", "cache-rebuild"])
         assert exc.value.code == EXIT_SUCCESS
         data = json.loads(capsys.readouterr().out)
         assert data["ok"] is True
+
+    def test_cache_rebuild_no_cache_dir(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When ``_get_cache_dir`` returns None (no git repo, no
+        ``TRACKER_CACHE_DIR`` override) the dispatcher doesn't wire
+        any Cache instances onto the TrackerSet, so ``ts._caches`` is
+        None and ``cache-rebuild`` must exit with a user error and a
+        clear message on stderr instead of crashing or silently
+        succeeding.
+        """
+        tracker_root = _setup_tracker(tmp_path)
+        monkeypatch.delenv("TRACKER_CACHE_DIR", raising=False)
+        # Ensure _get_cache_dir returns None regardless of whether
+        # pytest happens to run inside a git repo.
+        import hypergumbo_tracker.cli as cli_mod
+        monkeypatch.setattr(cli_mod, "_get_cache_dir", lambda _root: None)
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "cache-rebuild"])
+        assert exc.value.code == EXIT_USER_ERROR
+        captured = capsys.readouterr()
+        assert "no cache directory available" in captured.err
+
+    def test_cache_rebuild_no_cache_dir_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """JSON variant of the no-cache-dir error path: emits the error
+        object on stdout instead of a message on stderr, still returns
+        EXIT_USER_ERROR.
+        """
+        tracker_root = _setup_tracker(tmp_path)
+        monkeypatch.delenv("TRACKER_CACHE_DIR", raising=False)
+        import hypergumbo_tracker.cli as cli_mod
+        monkeypatch.setattr(cli_mod, "_get_cache_dir", lambda _root: None)
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "--json", "cache-rebuild"])
+        assert exc.value.code == EXIT_USER_ERROR
+        data = json.loads(capsys.readouterr().out)
+        assert data["ok"] is False
+        assert "no cache directory available" in data["error"]
 
     def test_reconcile_reset(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                              mock_human_uid: None) -> None:
