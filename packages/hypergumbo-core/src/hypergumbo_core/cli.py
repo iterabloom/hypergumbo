@@ -5146,14 +5146,16 @@ def _classify_symbols(
         symbol.supply_chain_reason = classification.reason
         symbol.is_test_file = classification.is_test
         symbol.is_generated_file = classification.is_generated
-        # WI-zimum: derive is_exported from the modifiers list populated by
-        # the per-language analyzer. Languages with their own export rules
-        # (Python __all__, TS top-level export) should set Symbol.is_exported
-        # directly at extraction time; this fallback picks up the modifier-
-        # based signal for Go ("exported"), Rust ("pub"/"pub(...)"), and
-        # languages that set "public" via visibility_from_modifiers.
-        if not symbol.is_exported:
-            symbol.is_exported = is_exported_from_modifiers(symbol.modifiers)
+        # WI-zimum: fold in modifier-derived export signal. The analyzer
+        # may have already set Symbol.is_exported at extraction time
+        # (WI-gipag: Python __all__, future: TS/JS export keyword);
+        # this step additionally picks up modifier-based signals for
+        # Go ("exported"), Rust ("pub"/"pub(...)"), and languages that
+        # emit "public" via visibility_from_modifiers.
+        symbol.is_exported = (
+            symbol.is_exported
+            or is_exported_from_modifiers(symbol.modifiers)
+        )
 
 
 def _compute_supply_chain_summary(

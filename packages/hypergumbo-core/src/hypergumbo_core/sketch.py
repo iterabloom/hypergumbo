@@ -4886,9 +4886,13 @@ def _run_analysis(
         symbol.supply_chain_reason = classification.reason
         symbol.is_test_file = classification.is_test
         symbol.is_generated_file = classification.is_generated
-        # WI-zimum: derive is_exported from the analyzer-provided modifiers.
-        if not symbol.is_exported:
-            symbol.is_exported = is_exported_from_modifiers(symbol.modifiers)
+        # WI-zimum: fold in modifier-derived export signal. Analyzer
+        # may have already set is_exported (WI-gipag Python __all__);
+        # otherwise pick up "public"/"exported"/"pub" from modifiers.
+        symbol.is_exported = (
+            symbol.is_exported
+            or is_exported_from_modifiers(symbol.modifiers)
+        )
 
     # Deduplicate edges by ID (some analyzers may produce duplicate edges)
     seen_edge_ids: set[str] = set()
