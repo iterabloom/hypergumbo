@@ -4125,6 +4125,48 @@ class TestAutoSync:
                 _maybe_auto_sync(tmp_path)
                 mock_psl.assert_not_called()
 
+    def test_tracker_root_outside_repo_root_skips_sync(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Auto-sync skips if tracker_root is not under the cwd-derived repo_root.
+
+        Regression test for the hang observed during pytest execution when
+        ``.git/PR_PENDING`` was set on the real repo but tests injected a
+        fake ``tracker_root`` under ``tmp_path``. Previously, ``_maybe_auto_sync``
+        would derive ``repo_root`` from cwd (the real repo), compute
+        ``pending_sync_lines`` against the real repo, trigger sync because
+        the real repo had accumulated ops above the threshold, and then
+        wait up to 15 minutes for the real ``.git/PR_PENDING`` to clear
+        — despite the test's ``tracker_root`` having nothing to do with the
+        real repo at all.
+
+        The fix: if ``tracker_root`` is not inside ``repo_root``, skip
+        auto-sync entirely — we are in a confused state (tests, cross-repo
+        CLI usage, stale cwd) and should not sync the wrong repo.
+        """
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+
+        # Simulate the confused state: git rev-parse returns the REAL
+        # hypergumbo repo (via cwd), but tracker_root is under tmp_path
+        # which is NOT under the real repo.
+        fake_other_repo = tmp_path / "fake_other_repo"
+        fake_other_repo.mkdir()
+        fake_tracker_root = tmp_path / ".agent"
+        fake_tracker_root.mkdir()
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(fake_other_repo),
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+            ) as mock_psl:
+                _maybe_auto_sync(fake_tracker_root)
+                # pending_sync_lines must NOT be called — the guard
+                # short-circuits before the count lookup. Otherwise the
+                # real repo's ops would be counted and sync would trigger.
+                mock_psl.assert_not_called()
+
     def test_invalid_threshold_uses_default(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
