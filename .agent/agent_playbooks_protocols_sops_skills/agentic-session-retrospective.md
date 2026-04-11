@@ -109,7 +109,7 @@ Work through each category below. For each, note specific transcript evidence (t
 - How many times did the stop hook fire? What path did it take each time (TODO blocking, cooldown, full reflection)?
 - Did the guidance files contain actionable next steps, or were they generic?
 - Did the agent follow the guidance, ignore it, or reinterpret it?
-- Did the `last_stop_check.json` notes from a prior session successfully steer this session?
+- Did the `agent_notes.json` notes from a prior session successfully steer this session?
 - Was the cooldown threshold (30 min) appropriate? Did the agent get stuck in cooldown when it should have done a full reflection, or vice versa?
 
 #### 2b. CI & Merge Pipeline

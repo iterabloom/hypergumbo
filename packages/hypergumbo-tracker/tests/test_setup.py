@@ -3237,18 +3237,7 @@ class TestCheckReflectionState:
         assert "skipped" in result.message
 
     def _write_state(self, tmp_path: Path, content: str) -> None:
-        """Write state to the LEGACY location within tmp_path.
-
-        Tests that use this helper exercise the fallback path in
-        _check_reflection_state: when stop_hook_state.json does not exist but
-        last_stop_check.json does, the legacy file is read instead.
-        """
-        gl_dir = tmp_path / "hypergumbo_lab_notebook" / "guidance_log"
-        gl_dir.mkdir(parents=True, exist_ok=True)
-        (gl_dir / "last_stop_check.json").write_text(content)
-
-    def _write_new_state(self, tmp_path: Path, content: str) -> None:
-        """Write state to the NEW canonical location within tmp_path."""
+        """Write state to the canonical stop_hook_state.json location."""
         gl_dir = tmp_path / "hypergumbo_lab_notebook" / "guidance_log"
         gl_dir.mkdir(parents=True, exist_ok=True)
         (gl_dir / "stop_hook_state.json").write_text(content)
@@ -3268,12 +3257,7 @@ class TestCheckReflectionState:
         now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         state = {
             "last_completed_utc": now,
-            "branch": "dev",
-            "last_pr": 42,
-            "last_pr_state": "none",
-            "pending_hard_todos": 0,
-            "pending_soft_todos": 0,
-            "notes": "",
+            "current_branch": "dev",
         }
         self._write_state(tmp_path, json.dumps(state))
         with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
@@ -3285,12 +3269,7 @@ class TestCheckReflectionState:
         (tmp_path / ".agent").mkdir()
         state = {
             "last_completed_utc": "2020-01-01T00:00:00Z",
-            "branch": "dev",
-            "last_pr": 0,
-            "last_pr_state": "none",
-            "pending_hard_todos": 0,
-            "pending_soft_todos": 0,
-            "notes": "",
+            "current_branch": "dev",
         }
         self._write_state(tmp_path, json.dumps(state))
         with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
@@ -3317,17 +3296,30 @@ class TestCheckReflectionState:
 
     def test_missing_required_keys(self, tmp_path: Path) -> None:
         (tmp_path / ".agent").mkdir()
-        state = {"branch": "dev"}  # missing last_completed_utc
+        state = {"current_branch": "dev"}  # missing last_completed_utc
         self._write_state(tmp_path, json.dumps(state))
         with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
             result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
-        assert "missing" in result.message.lower() or "key" in result.message.lower()
+        assert "last_completed_utc" in result.message
+
+    def test_missing_current_branch(self, tmp_path: Path) -> None:
+        """current_branch is a required key in the stop_hook_state.json schema."""
+        from datetime import datetime, timezone
+
+        (tmp_path / ".agent").mkdir()
+        now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        state = {"last_completed_utc": now}  # missing current_branch
+        self._write_state(tmp_path, json.dumps(state))
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
+            result = _check_reflection_state(tmp_path)
+        assert result.status == "warn"
+        assert "current_branch" in result.message
 
     def test_permission_denied(self, tmp_path: Path) -> None:
         """OSError when reading state file should degrade gracefully."""
         (tmp_path / ".agent").mkdir()
-        self._write_state(tmp_path, '{"branch": "dev"}')
+        self._write_state(tmp_path, '{"current_branch": "dev"}')
         with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
             with patch("pathlib.Path.read_text", side_effect=PermissionError("Permission denied")):
                 result = _check_reflection_state(tmp_path)
@@ -3338,65 +3330,13 @@ class TestCheckReflectionState:
         (tmp_path / ".agent").mkdir()
         state = {
             "last_completed_utc": "not-a-date",
-            "branch": "dev",
-            "last_pr": 0,
-            "last_pr_state": "none",
-            "pending_hard_todos": 0,
-            "pending_soft_todos": 0,
-            "notes": "",
+            "current_branch": "dev",
         }
         self._write_state(tmp_path, json.dumps(state))
         with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
             result = _check_reflection_state(tmp_path)
         assert result.status == "warn"
         assert "timestamp" in result.message.lower() or "parse" in result.message.lower()
-
-    def test_prefers_new_state_file(self, tmp_path: Path) -> None:
-        """stop_hook_state.json takes precedence over legacy last_stop_check.json.
-
-        Post-INV-jofaf-facet-2: when both files exist (e.g., migration in
-        progress or both were seeded in tests), the new canonical path wins.
-        """
-        from datetime import datetime, timezone
-
-        (tmp_path / ".agent").mkdir()
-        now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        new_state = {
-            "last_completed_utc": now,
-            "current_branch": "dev",
-        }
-        # Legacy file has stale data that would fail the check if read.
-        legacy_state = {
-            "last_completed_utc": "2020-01-01T00:00:00Z",
-            "branch": "dev",
-        }
-        self._write_new_state(tmp_path, json.dumps(new_state))
-        self._write_state(tmp_path, json.dumps(legacy_state))
-        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
-            result = _check_reflection_state(tmp_path)
-        # New file is read, so the check passes on the fresh timestamp.
-        assert result.status == "ok"
-
-    def test_missing_current_branch_in_new_state(self, tmp_path: Path) -> None:
-        """current_branch is required in the new-schema file; absence warns.
-
-        Post-INV-jofaf-facet-2: the canonical key is `current_branch`. If
-        neither `current_branch` nor the legacy `branch` alias is present,
-        the check surfaces it as a missing required key.
-        """
-        from datetime import datetime, timezone
-
-        (tmp_path / ".agent").mkdir()
-        now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        state = {
-            "last_completed_utc": now,
-            # No current_branch, no branch — both missing.
-        }
-        self._write_new_state(tmp_path, json.dumps(state))
-        with patch("hypergumbo_tracker.setup.Path.home", return_value=tmp_path):
-            result = _check_reflection_state(tmp_path)
-        assert result.status == "warn"
-        assert "current_branch" in result.message
 
 
 # ---------------------------------------------------------------------------

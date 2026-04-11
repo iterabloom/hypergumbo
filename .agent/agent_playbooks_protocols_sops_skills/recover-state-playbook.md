@@ -14,8 +14,6 @@ If the stop_hook_state.json contains a `guidance_file` field, read that file for
 
 If stop_hook_state.json contains `bakeoff_session_path` and `bakeoff_session_type`, these identify the most recent bakeoff session. Use the session path to resume work on the correct session (e.g., `./scripts/bakeoff-broad status --workdir <path>` or `./scripts/bakeoff-deep status --workdir <path>`).
 
-**Legacy file**: if `~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json` exists, it is a pre-INV-jofaf file that mixed both concerns. The stop hook migrates it on its next fire and deletes the legacy. You can also delete it manually if you confirm the two new files contain the current state.
-
 **Keep notes fresh** (post-INV-jofaf-facet-2): update agent_notes.json via the dedicated tool, which physically cannot touch hook-owned fields. After key milestones:
 - After a PR merge: record what was merged and what's next
 - After a bakeoff completes: record findings and next steps

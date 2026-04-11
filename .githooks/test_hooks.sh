@@ -491,29 +491,36 @@ TRACKER_STUB
 
   # Isolate $HOME so stop_logic.sh reads sandbox state, not real state.
   # Create a fake $HOME with the expected notebook structure.
+  # stop_logic.sh computes GUIDANCE_LOG_DIR as
+  # "$HOME/${_REPO_NAME}_lab_notebook/guidance_log" where _REPO_NAME is the
+  # basename of REPO_ROOT. REPO_ROOT in this sandbox is STOP_TEST_DIR, so
+  # _REPO_NAME is its basename — we must match that path exactly, not a
+  # hardcoded "hypergumbo" prefix.
   FAKE_HOME="$(mktemp -d -t hypergumbo-fakehome.XXXXXX)"
-  mkdir -p "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log"
+  SANDBOX_REPO_NAME="$(basename "$STOP_TEST_DIR")"
+  SANDBOX_NOTEBOOK="$FAKE_HOME/${SANDBOX_REPO_NAME}_lab_notebook/guidance_log"
+  mkdir -p "$SANDBOX_NOTEBOOK"
 
-  # SCENARIO 8a: last_stop_check.json with recent timestamp → cooldown
+  # SCENARIO 8a: stop_hook_state.json with recent timestamp → cooldown
   echo "--------------------------------------------------------"
-  echo "TEST: Scenario 8a: Stop hook reads last_stop_check.json (cooldown)"
+  echo "TEST: Scenario 8a: Stop hook reads stop_hook_state.json (cooldown)"
   RECENT_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
+  printf '{"last_completed_utc": "%s", "current_branch": "dev"}\n' "$RECENT_TS" > "$SANDBOX_NOTEBOOK/stop_hook_state.json"
 
   OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
   if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
-    echo "  ✅ PASS (cooldown triggered from last_stop_check.json)"
+    echo "  ✅ PASS (cooldown triggered from stop_hook_state.json)"
     ((PASS_COUNT++))
   else
-    echo "  ❌ FAIL (expected cooldown block from last_stop_check.json)"
+    echo "  ❌ FAIL (expected cooldown block from stop_hook_state.json)"
     echo "  Output: $OUTPUT"
     ((FAIL_COUNT++))
   fi
 
-  # SCENARIO 8c: Neither file exists → full reflection (Path 3)
+  # SCENARIO 8c: No state file → full reflection (Path 3)
   echo "--------------------------------------------------------"
   echo "TEST: Scenario 8c: No state file → full reflection checklist"
-  rm -f "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
+  rm -f "$SANDBOX_NOTEBOOK/stop_hook_state.json"
 
   OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
   if echo "$OUTPUT" | grep -q '"decision":"block"' && echo "$OUTPUT" | grep -q "Stale reflection"; then
@@ -530,7 +537,7 @@ TRACKER_STUB
   echo "TEST: Scenario 8d-1: Dead PID re-claim (crash recovery)"
   # Use a PID that definitely doesn't exist (max pid + 1 style)
   echo "BROAD pid=999999999" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
-  rm -f "$FAKE_HOME/hypergumbo_lab_notebook/guidance_log/last_stop_check.json"
+  rm -f "$SANDBOX_NOTEBOOK/stop_hook_state.json"
 
   OUTPUT=$(HOME="$FAKE_HOME" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
   if echo "$OUTPUT" | grep -q '"decision":"block"'; then

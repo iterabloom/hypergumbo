@@ -178,7 +178,7 @@ The stop hook includes a circuit breaker that prevents death spirals when the ag
 - **Sentinel directories** are configured in `.agent/tracker/config.yaml` under `stop_hook.progress_sentinel_dirs` (default: `packages/`, `docs/`, `scripts/`, `~/hypergumbo_lab_notebook/`). Dotfiles are excluded so that tracker bookkeeping and git metadata don't count as progress.
 - **Progress detection:** If the hash of sentinel file modification times differs between stop events, the agent made real progress (edited source, wrote docs, merged a PR, updated lab notebook). The breaker resets.
 - **Trip condition:** After 5 consecutive identical hashes (configurable via `HASH_THRESHOLD` in `stop_logic.sh`), the circuit breaker trips.
-- **On trip:** Autonomous mode is deactivated via `loop-toggle off`. The stop hook approves the stop and instructs the agent to persist stalled items to `last_stop_check.json` so they survive context compaction.
+- **On trip:** Autonomous mode is deactivated via `loop-toggle off`. The stop hook approves the stop and instructs the agent to persist stalled items via `scripts/agent-notes --set` (which writes to `agent_notes.json`) so they survive context compaction.
 
 The circuit breaker measures actual file changes rather than tracker status updates, ensuring that cosmetic tracker edits alone cannot keep a stuck agent running indefinitely.
 

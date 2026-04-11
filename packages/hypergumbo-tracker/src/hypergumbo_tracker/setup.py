@@ -2085,11 +2085,10 @@ def _check_autonomous_mode(repo_root: Path | None) -> CheckResult:
 def _check_reflection_state(repo_root: Path | None) -> CheckResult:
     """Check #20: Validate stop hook state file schema and freshness.
 
-    Post-INV-jofaf-facet-2 the canonical file is stop_hook_state.json (hook
-    writes only). Falls back to the legacy last_stop_check.json during the
-    migration window. Parses the file, checks that it has the expected keys,
-    validates the timestamp, and warns if the reflection is unreasonably
-    stale (>7 days). Advisory only.
+    Reads stop_hook_state.json (hook-written only, post-INV-jofaf-facet-2).
+    Parses the file, checks that it has the expected keys, validates the
+    timestamp, and warns if the reflection is unreasonably stale (>7 days).
+    Advisory only.
     """
     if repo_root is None:
         return CheckResult(
@@ -2098,14 +2097,10 @@ def _check_reflection_state(repo_root: Path | None) -> CheckResult:
             message="Reflection state check skipped (no git repo)",
         )
 
-    guidance_dir = Path.home() / "hypergumbo_lab_notebook" / "guidance_log"
-    new_state = guidance_dir / "stop_hook_state.json"
-    legacy_state = guidance_dir / "last_stop_check.json"
-    if new_state.exists():
-        state_file = new_state
-    elif legacy_state.exists():
-        state_file = legacy_state
-    else:
+    state_file = (
+        Path.home() / "hypergumbo_lab_notebook" / "guidance_log" / "stop_hook_state.json"
+    )
+    if not state_file.exists():
         return CheckResult(
             name="reflection_state",
             status="ok",
@@ -2139,13 +2134,11 @@ def _check_reflection_state(repo_root: Path | None) -> CheckResult:
             message=f"{state_file.name}: not a JSON object",
         )
 
-    # Post-split schema: `current_branch` is the canonical key. Legacy schema
-    # used `branch`; accept either so the check still passes during migration.
-    has_branch = "current_branch" in raw or "branch" in raw
+    # Post-split schema: `current_branch` is the canonical key.
     missing: set[str] = set()
     if "last_completed_utc" not in raw:
         missing.add("last_completed_utc")
-    if not has_branch:
+    if "current_branch" not in raw:
         missing.add("current_branch")
     if missing:
         return CheckResult(
