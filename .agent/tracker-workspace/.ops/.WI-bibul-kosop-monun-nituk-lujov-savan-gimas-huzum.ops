@@ -1,0 +1,21 @@
+- op: create  # 1dba
+  at: '2026-04-11T05:04:08Z'  # 1dba
+  by: agent  # 1dba
+  actor: jgstern_agent  # 1dba
+  clock: 1  # 1dba
+  nonce: 1dba  # 1dba
+  data:  # 1dba
+    kind: work_item  # 1dba
+    title: "Stop hook: relax aggregate-required on CONVERGED bakeoffs with ready tracker backlog"  # 1dba
+    status: todo_hard  # 1dba
+    priority: 2  # 1dba
+    parent:  # 1dba
+    tags:  # 1dba
+    - stop_hook  # 1dba
+    - governance  # 1dba
+    before: []  # 1dba
+    duplicate_of: []  # 1dba
+    not_duplicate_of: []  # 1dba
+    pr_ref:  # 1dba
+    description: ""  # 1dba
+    fields: {}  # 1dba
