@@ -3875,6 +3875,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     # Dead candidates = production symbols NOT reachable
     dead_candidates = []
     exclude_annotated = getattr(args, "exclude_annotated", False)
+    exclude_exports = getattr(args, "exclude_exports", False)
     for sym_id, node in production_symbols.items():
         if sym_id not in reachable:
             # --exclude-annotated: skip candidates with decorators,
@@ -3884,6 +3885,15 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 meta = node.get("meta") or {}
                 if (meta.get("decorators") or meta.get("annotations")
                         or meta.get("concepts")):
+                    continue
+            # WI-zafab filter 3: skip candidates that are part of the
+            # repo's public API (Symbol.is_exported=True). Exported
+            # symbols are reachable by external callers outside the
+            # analysis scope — an unreached exported symbol is a
+            # definitional false positive for the linker-gap bucket.
+            if exclude_exports:
+                sc = node.get("supply_chain") or {}
+                if sc.get("is_exported"):
                     continue
             dead_candidates.append(node)
 
@@ -4922,6 +4932,11 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         "--exclude-annotated", action="store_true", default=False,
         help="Exclude candidates with decorators, annotations, or framework concepts "
              "(these are likely framework-registered, not linker gaps)",
+    )
+    p_dead_code.add_argument(
+        "--exclude-exports", action="store_true", default=False,
+        help="WI-zafab filter 3: exclude candidates whose is_exported=True "
+             "(public API — reachable by external callers outside the analysis scope)",
     )
     p_dead_code.set_defaults(func=cmd_dead_code_maybe)
 
