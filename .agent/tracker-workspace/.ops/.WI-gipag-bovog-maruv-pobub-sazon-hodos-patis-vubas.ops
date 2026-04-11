@@ -41,3 +41,10 @@
   clock: 4  # d8cb
   nonce: d8cb  # d8cb
   message: "please provide the tracker item id for the follow-up TypeScript/JavaScript top-level export"  # d8cb
+- op: discuss  # de4d
+  at: '2026-04-11T17:37:43Z'  # de4d
+  by: agent  # de4d
+  actor: jgstern_agent  # de4d
+  clock: 5  # de4d
+  nonce: de4d  # de4d
+  message: "Follow-up item: WI-nimug-zosit-duzit-pomum-jorov-sizis-fogik-kusaf. I created it when closing WI-gipag (Python half) and then shipped it in the same session — it's already marked done. It adds Symbol.is_exported=True for top-level export function/class/const, export default <named>, export { foo } clauses (including aliases), and export default <identifier> in js_ts.py via a new _collect_exported_names post-pass. The WI-nimug close note references PR #2959 equivalent (auto-pr commit 44e6af6ab). Anonymous default exports without a name are intentionally not flagged — no Symbol.name to join on."  # de4d

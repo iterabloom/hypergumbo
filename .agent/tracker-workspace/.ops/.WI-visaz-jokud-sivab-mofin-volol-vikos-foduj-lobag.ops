@@ -1,0 +1,21 @@
+- op: create  # d4a9
+  at: '2026-04-11T17:39:05Z'  # d4a9
+  by: agent  # d4a9
+  actor: jgstern_agent  # d4a9
+  clock: 1  # d4a9
+  nonce: d4a9  # d4a9
+  data:  # d4a9
+    kind: work_item  # d4a9
+    title: "Kotlin extension-function call-site dispatch: emit calls edges from receiver.extFn() to extension definition"  # d4a9
+    status: todo_soft  # d4a9
+    priority: 3  # d4a9
+    parent:  # d4a9
+    tags:  # d4a9
+    - analysis_quality  # d4a9
+    - language_additions  # d4a9
+    before: []  # d4a9
+    duplicate_of: []  # d4a9
+    not_duplicate_of: []  # d4a9
+    pr_ref:  # d4a9
+    description: "Deferred half of WI-fuhav-rigah-mojit-fuvom-vohim-jokiv-tosuj-ponah. WI-fuhav's original fix direction covered TWO steps: (1) detect extension-function definitions by walking function_declaration children for a receiver user_type before the name identifier, and (2) 'at edge-extraction time, route any matching call sites to the extension function Symbol'. WI-fuhav's PR shipped step 1 only (detect + mark Symbol.is_exported=True + record meta.extension_receiver) and deferred step 2, but the close note incorrectly characterised step 2 as a pre-existing follow-up rather than an unshipped half of the original WI-fuhav scope. This item is that unshipped half.\\n\\nScope: in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/kotlin.py edge extraction, resolve 'receiver.method()' call expressions against the set of extension functions whose receiver_type matches the receiver's declared type. When a match is found, emit a calls edge from the enclosing function symbol to the extension function symbol.\\n\\nImplementation notes: (a) build an index of extension functions by {receiver_type -> [symbols]} during pass 1; (b) in pass 2, when an edge-extractor encounters a call_expression on a receiver, look up the receiver's declared type and probe the extension index for matching-name + matching-receiver. Generic receivers (List<T>, Set<String>) require stripping the generic argument for the lookup key. (c) Cross-file resolution: the extension function may be defined in a different file — the pass 2 ListNameResolver already handles cross-file, so reuse that machinery.\\n\\nValidation: re-run dead-code-maybe on spring-boot and confirm SpringApplicationExtensions.kt extension functions are reachable via the calls edges (not just is_exported=True). Also confirm the generic-receiver case works on a Kotlin stdlib fixture like fun <T> Iterable<T>.customMap()."  # d4a9
+    fields: {}  # d4a9

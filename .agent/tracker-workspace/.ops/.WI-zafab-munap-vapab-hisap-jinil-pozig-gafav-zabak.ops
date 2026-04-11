@@ -71,3 +71,25 @@
   clock: 8  # 7e0d
   nonce: 7e0d  # 7e0d
   message: "I am pretty sure Filter 3 is no longer blocked, therefore I am re-opening this item"  # 7e0d
+- op: discuss  # 53dd
+  at: '2026-04-11T17:27:33Z'  # 53dd
+  by: agent  # 53dd
+  actor: jgstern_agent  # 53dd
+  clock: 9  # 53dd
+  nonce: 53dd  # 53dd
+  message: "Filter 3 shipped (feat(cli): dead-code-maybe --exclude-exports filter 3). You're correct that WI-zimum unblocked it. The three-filter set is now complete: (1) polyglot-only harness in scripts/dead-code-prospector-run.py, (2) --exclude-annotated for decorator/annotation/concept candidates, (3) --exclude-exports for supply_chain.is_exported=True candidates. dead-code-prospector-run.py now passes both --exclude-annotated and --exclude-exports so the next prospecting pass applies all three. Two regression tests added: exclude_exports_drops_public_api and exclude_exports_default_false (backward-compat). Marking done."  # 53dd
+- op: update  # da7e
+  at: '2026-04-11T17:27:59Z'  # da7e
+  by: agent  # da7e
+  actor: jgstern_agent  # da7e
+  clock: 10  # da7e
+  nonce: da7e  # da7e
+  set:  # da7e
+    status: done  # da7e
+- op: discuss  # 2e62
+  at: '2026-04-11T17:27:59Z'  # 2e62
+  by: agent  # 2e62
+  actor: jgstern_agent  # 2e62
+  clock: 11  # 2e62
+  nonce: '2e62'  # 2e62
+  message: "Filter 3 shipped. Three-filter set structurally complete per the WI-tubot plan."  # 2e62
