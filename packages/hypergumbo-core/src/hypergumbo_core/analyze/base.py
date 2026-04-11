@@ -433,6 +433,22 @@ def make_typed_stable_id(
 
 _VISIBILITY_MODIFIERS = frozenset({"public", "private", "protected", "internal"})
 
+# WI-zimum: modifiers that denote externally-reachable / public-API symbols
+# across languages.
+#
+# - ``public``:     Java, C#, Kotlin, Scala, Groovy, TypeScript class members
+# - ``exported``:   Go naming-convention synthetic modifier (see
+#                   ``_go_visibility_modifiers`` — identifiers starting with
+#                   an uppercase letter get this tag)
+# - ``pub`` and ``pub(...)``:
+#                   Rust. The full ``pub(crate)`` / ``pub(super)`` /
+#                   ``pub(in path)`` forms all count as "exported" for the
+#                   purposes of WI-zimum because they are reachable from at
+#                   least one external module — they are public relative to
+#                   the file they are defined in, which is what the dead-code
+#                   seed set cares about.
+_EXPORTED_MODIFIERS_EXACT = frozenset({"public", "exported", "pub"})
+
 
 def visibility_from_modifiers(modifiers: list[str] | None) -> str:
     """Extract the visibility modifier from a list of modifiers.
@@ -448,6 +464,30 @@ def visibility_from_modifiers(modifiers: list[str] | None) -> str:
         if m in _VISIBILITY_MODIFIERS:
             return m
     return ""
+
+
+def is_exported_from_modifiers(modifiers: list[str] | None) -> bool:
+    """Return True if *modifiers* denotes an externally-reachable symbol.
+
+    Recognises the cross-language set from `_EXPORTED_MODIFIERS_EXACT` plus
+    Rust's qualified ``pub(...)`` forms (``pub(crate)``, ``pub(super)``,
+    ``pub(in ::path)``). A symbol is considered "exported" for the purposes
+    of WI-zimum (dead-code seed set) when ANY of its modifiers match.
+
+    Languages without visibility modifiers pass an empty list and this
+    returns False — the per-language analyzer is expected to set the
+    ``Symbol.is_exported`` field directly when it has its own rule
+    (e.g. Python ``__all__``, TypeScript top-level ``export``).
+    """
+    if not modifiers:
+        return False
+    for m in modifiers:
+        if m in _EXPORTED_MODIFIERS_EXACT:
+            return True
+        # Rust qualified pub(crate) / pub(super) / pub(in ...)
+        if m.startswith("pub("):
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------

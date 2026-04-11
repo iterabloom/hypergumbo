@@ -4821,6 +4821,7 @@ def _run_analysis(
         or None if no non-test functions exist. Coverage is computed BEFORE filtering.
     """
     import importlib
+    from .analyze.base import is_exported_from_modifiers
     from .supply_chain import classify_file, detect_package_roots
 
     all_symbols: list[Symbol] = []
@@ -4885,6 +4886,9 @@ def _run_analysis(
         symbol.supply_chain_reason = classification.reason
         symbol.is_test_file = classification.is_test
         symbol.is_generated_file = classification.is_generated
+        # WI-zimum: derive is_exported from the analyzer-provided modifiers.
+        if not symbol.is_exported:
+            symbol.is_exported = is_exported_from_modifiers(symbol.modifiers)
 
     # Deduplicate edges by ID (some analyzers may produce duplicate edges)
     seen_edge_ids: set[str] = set()

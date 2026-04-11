@@ -244,6 +244,7 @@ class Symbol:
     supply_chain_reason: str = ""
     is_test_file: bool = False  # WI-rigun: independent of tier
     is_generated_file: bool = False  # WI-tizij: generated code flag
+    is_exported: bool = False  # WI-zimum: public API / externally reachable
     cyclomatic_complexity: Optional[int] = None
     lines_of_code: Optional[int] = None
     signature: Optional[str] = None
@@ -283,6 +284,7 @@ class Symbol:
                 "reason": self.supply_chain_reason,
                 "is_test_file": self.is_test_file,
                 "is_generated_file": self.is_generated_file,
+                "is_exported": self.is_exported,
             },
             "cyclomatic_complexity": self.cyclomatic_complexity,
             "lines_of_code": self.lines_of_code,
@@ -316,6 +318,7 @@ class Symbol:
             supply_chain_reason=supply_chain.get("reason", ""),
             is_test_file=supply_chain.get("is_test_file", False),
             is_generated_file=supply_chain.get("is_generated_file", False),
+            is_exported=supply_chain.get("is_exported", False),
             cyclomatic_complexity=d.get("cyclomatic_complexity"),
             lines_of_code=d.get("lines_of_code"),
             signature=d.get("signature"),

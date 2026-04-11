@@ -1045,6 +1045,63 @@ def test_symbol_from_dict_is_test_file_default_false() -> None:
     assert restored.is_test_file is False
 
 
+def test_symbol_is_exported_default() -> None:
+    """WI-zimum: Symbol.is_exported defaults to False."""
+    sym = Symbol(
+        id="python:src/lib.py:1-2:helper:function",
+        name="helper",
+        kind="function",
+        language="python",
+        path="src/lib.py",
+        span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+    )
+    assert sym.is_exported is False
+
+
+def test_symbol_to_dict_includes_is_exported() -> None:
+    """WI-zimum: Symbol.to_dict embeds is_exported under supply_chain."""
+    sym = Symbol(
+        id="go:pkg/api.go:1-2:PublicFn:function",
+        name="PublicFn",
+        kind="function",
+        language="go",
+        path="pkg/api.go",
+        span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        is_exported=True,
+    )
+    d = sym.to_dict()
+    assert d["supply_chain"]["is_exported"] is True
+
+
+def test_symbol_roundtrip_preserves_is_exported() -> None:
+    """WI-zimum: to_dict → from_dict round-trips is_exported."""
+    sym = Symbol(
+        id="rust:src/lib.rs:1-2:public_fn:function",
+        name="public_fn",
+        kind="function",
+        language="rust",
+        path="src/lib.rs",
+        span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        is_exported=True,
+    )
+    restored = Symbol.from_dict(sym.to_dict())
+    assert restored.is_exported is True
+
+
+def test_symbol_from_dict_is_exported_default_false() -> None:
+    """WI-zimum: from_dict treats missing is_exported as False (back-compat)."""
+    d = {
+        "id": "python:src/lib.py:1-2:foo:function",
+        "name": "foo",
+        "kind": "function",
+        "language": "python",
+        "path": "src/lib.py",
+        "supply_chain": {"tier": 1, "reason": "first_party"},
+    }
+    restored = Symbol.from_dict(d)
+    assert restored.is_exported is False
+
+
 def test_edge_from_dict() -> None:
     """Edge.from_dict should reconstruct Edge from dict."""
     d = {

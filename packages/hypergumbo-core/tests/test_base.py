@@ -401,6 +401,58 @@ class TestVisibilityFromModifiers:
         assert visibility_from_modifiers(None) == ""
 
 
+class TestIsExportedFromModifiers:
+    """Tests for WI-zimum is_exported_from_modifiers utility."""
+
+    def test_public_is_exported(self) -> None:
+        from hypergumbo_core.analyze.base import is_exported_from_modifiers
+        assert is_exported_from_modifiers(["public"]) is True
+
+    def test_exported_is_exported(self) -> None:
+        from hypergumbo_core.analyze.base import is_exported_from_modifiers
+        assert is_exported_from_modifiers(["exported"]) is True
+
+    def test_pub_is_exported(self) -> None:
+        from hypergumbo_core.analyze.base import is_exported_from_modifiers
+        assert is_exported_from_modifiers(["pub"]) is True
+
+    def test_pub_crate_is_exported(self) -> None:
+        from hypergumbo_core.analyze.base import is_exported_from_modifiers
+        assert is_exported_from_modifiers(["pub(crate)"]) is True
+
+    def test_pub_super_is_exported(self) -> None:
+        from hypergumbo_core.analyze.base import is_exported_from_modifiers
+        assert is_exported_from_modifiers(["pub(super)"]) is True
+
+    def test_pub_in_path_is_exported(self) -> None:
+        from hypergumbo_core.analyze.base import is_exported_from_modifiers
+        assert is_exported_from_modifiers(["pub(in ::my_mod)"]) is True
+
+    def test_private_is_not_exported(self) -> None:
+        from hypergumbo_core.analyze.base import is_exported_from_modifiers
+        assert is_exported_from_modifiers(["private"]) is False
+
+    def test_unexported_is_not_exported(self) -> None:
+        from hypergumbo_core.analyze.base import is_exported_from_modifiers
+        assert is_exported_from_modifiers(["unexported"]) is False
+
+    def test_empty_list_is_not_exported(self) -> None:
+        from hypergumbo_core.analyze.base import is_exported_from_modifiers
+        assert is_exported_from_modifiers([]) is False
+
+    def test_none_is_not_exported(self) -> None:
+        from hypergumbo_core.analyze.base import is_exported_from_modifiers
+        assert is_exported_from_modifiers(None) is False
+
+    def test_mixed_public_plus_static_is_exported(self) -> None:
+        from hypergumbo_core.analyze.base import is_exported_from_modifiers
+        assert is_exported_from_modifiers(["public", "static"]) is True
+
+    def test_only_non_exported_modifier_is_not_exported(self) -> None:
+        from hypergumbo_core.analyze.base import is_exported_from_modifiers
+        assert is_exported_from_modifiers(["static", "final"]) is False
+
+
 class TestStripFqnPrefix:
     """Tests for strip_fqn_prefix utility."""
 
