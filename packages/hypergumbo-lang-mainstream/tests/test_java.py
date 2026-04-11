@@ -2458,8 +2458,12 @@ class TestJavaImportResolution:
         """Method calls resolved via import mapping."""
         from hypergumbo_lang_mainstream.java import analyze_java
 
-        # Define utils in a package
-        (tmp_path / "Utils.java").write_text("""
+        # Define utils in a package directory matching the declaration so that
+        # WI-fuhaj's import-class-mismatch guard recognises the resolved symbol
+        # as the one pointed at by ``import com.example.Utils``.
+        utils_dir = tmp_path / "com" / "example"
+        utils_dir.mkdir(parents=True)
+        (utils_dir / "Utils.java").write_text("""
 package com.example;
 
 public class Utils {
@@ -3777,6 +3781,128 @@ class TestClassNameCollision:
         assert len(edges) == 1, (
             "new Properties() inside Log4jConfiguration should resolve to "
             "the nested Properties class"
+        )
+
+    def test_static_call_skipped_when_import_mismatches(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-fuhaj Case 2: Logger.info() as a static call should NOT resolve
+        to a local Logger.info when the file imports org.slf4j.Logger.
+
+        Covers `_process_java_method_calls` Case 2 (``ClassName.method()``
+        static call). Before the fix, Case 2 emitted an ``ast_call_static``
+        edge without consulting file imports, so any file with a local class
+        named ``Logger`` absorbed every ``Logger.xxx(...)`` static call across
+        the repo regardless of whether the caller imported slf4j's ``Logger``
+        or the local one.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Local top-level Logger class with a static info() method.
+        (tmp_path / "Logger.java").write_text(
+            "package com.local;\n"
+            "public class Logger {\n"
+            "    public static void info(String msg) {}\n"
+            "}\n"
+        )
+        # App imports org.slf4j.Logger and calls Logger.info(...) statically.
+        (tmp_path / "App.java").write_text(
+            "package com.app;\n"
+            "import org.slf4j.Logger;\n"
+            "public class App {\n"
+            "    public void run() {\n"
+            "        Logger.info(\"hello\");\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        local_info = next(
+            (s for s in result.symbols if s.name == "Logger.info"), None,
+        )
+        assert local_info is not None, "Local Logger.info should be extracted"
+
+        app_run = next(
+            (s for s in result.symbols if s.name == "App.run"), None,
+        )
+        assert app_run is not None
+
+        false_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.src == app_run.id
+            and e.dst == local_info.id
+        ]
+        assert len(false_edges) == 0, (
+            f"Logger.info() static call should NOT resolve to com.local.Logger.info "
+            f"when App.java imports org.slf4j.Logger "
+            f"(got {len(false_edges)} false edges). "
+            f"WI-fuhaj: Case 2 needs the _is_import_class_mismatch guard."
+        )
+
+    def test_instance_call_fallback_skipped_when_import_mismatches(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-fuhaj Case 3 fallback: log.trace() on a Logger field should NOT
+        fall back to a local Logger class edge when the file imports slf4j.
+
+        Covers the Kafka bakeoff false-positive pattern: a local POJO named
+        ``Logger`` (e.g. Jackson config class) absorbs every ``log.trace/
+        log.error/log.warn`` call in every file that imports ``org.slf4j.
+        Logger``, because ``resolver.lookup("Logger.trace")`` fails (the POJO
+        has no trace method), Case 3 falls through to its ``class_symbols.get
+        ("Logger")`` fallback, and emits a calls edge to the wrong Logger
+        class symbol. On Kafka this produced 2057+ bogus edges to a 50-line
+        POJO. Fix: the fallback must also consult ``_is_import_class_mismatch``.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Local top-level Logger POJO with setters only — no trace/error/etc.
+        (tmp_path / "Logger.java").write_text(
+            "package com.local.pojo;\n"
+            "public class Logger {\n"
+            "    private String name;\n"
+            "    public String getName() { return name; }\n"
+            "    public void setName(String n) { this.name = n; }\n"
+            "}\n"
+        )
+        # Service imports slf4j Logger and calls log.trace("...").
+        (tmp_path / "Service.java").write_text(
+            "package com.svc;\n"
+            "import org.slf4j.Logger;\n"
+            "public class Service {\n"
+            "    private Logger log;\n"
+            "    public void doWork() {\n"
+            "        log.trace(\"hello\");\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        local_logger_cls = next(
+            (s for s in result.symbols
+             if s.name == "Logger" and s.kind == "class"), None,
+        )
+        assert local_logger_cls is not None, (
+            "Local Logger class symbol should be extracted"
+        )
+
+        service_dowork = next(
+            (s for s in result.symbols if s.name == "Service.doWork"), None,
+        )
+        assert service_dowork is not None
+
+        false_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.src == service_dowork.id
+            and e.dst == local_logger_cls.id
+        ]
+        assert len(false_edges) == 0, (
+            f"log.trace() should NOT fall back to the local Logger class "
+            f"when Service.java imports org.slf4j.Logger "
+            f"(got {len(false_edges)} false edges). "
+            f"WI-fuhaj: Case 3 fallback needs the _is_import_class_mismatch guard."
         )
 
 
