@@ -740,6 +740,127 @@ class TestDeadCodeMaybe:
         # orphan has no edges and is_exported=False → IS dead
         assert "orphan" in dead_names
 
+    def test_ffi_signature_flag_boosts_rank(self, tmp_path: Path) -> None:
+        """WI-hadap H2: candidates with FFI decorators get ffi_signature=True
+        and sort above plain dead candidates."""
+        import argparse
+
+        nodes = [
+            # Plain orphan with no FFI markers.
+            {"id": "go:pkg/plain.go:1-5:plainFn:function",
+             "name": "plainFn", "kind": "function", "language": "go",
+             "path": "pkg/plain.go",
+             "span": {"start_line": 1, "end_line": 5}},
+            # Rust FFI orphan with #[pyo3::pyfunction] decorator.
+            {"id": "rust:src/lib.rs:10-15:py_wrapper:function",
+             "name": "py_wrapper", "kind": "function", "language": "rust",
+             "path": "src/lib.rs",
+             "span": {"start_line": 10, "end_line": 15},
+             "meta": {"decorators": [{"name": "pyo3::pyfunction"}]}},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, [])
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+            exclude_annotated=False,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        candidates = output["dead_candidates"]
+        by_name = {c["name"]: c for c in candidates}
+        assert by_name["py_wrapper"]["ffi_signature"] is True
+        assert by_name["plainFn"]["ffi_signature"] is False
+        # FFI candidate ranks first (boost dominates).
+        assert candidates[0]["name"] == "py_wrapper"
+
+    def test_ffi_signature_flag_matches_native_modifier(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-hadap H2: Java native modifier sets ffi_signature=True."""
+        import argparse
+
+        nodes = [
+            {"id": "java:src/Main.java:1-5:nativeMethod:method",
+             "name": "nativeMethod", "kind": "method", "language": "java",
+             "path": "src/Main.java",
+             "span": {"start_line": 1, "end_line": 5},
+             "modifiers": ["public", "native"]},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, [])
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+            exclude_annotated=False,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        assert output["dead_candidates"][0]["ffi_signature"] is True
+
+    def test_ffi_signature_flag_accepts_string_decorator(self) -> None:
+        """WI-hadap H2: a bare-string decorator entry (older-schema
+        encoding) matches the fragment check."""
+        from hypergumbo_core.cli import _compute_ffi_signature_flag
+        node = {"meta": {"decorators": ["no_mangle"]}}
+        assert _compute_ffi_signature_flag(node) is True
+
+    def test_ffi_signature_flag_ignores_non_dict_non_str_decorator(
+        self,
+    ) -> None:
+        """WI-hadap H2: a non-dict/non-str decorator entry is ignored."""
+        from hypergumbo_core.cli import _compute_ffi_signature_flag
+        node = {"meta": {"decorators": [42, None]}}
+        assert _compute_ffi_signature_flag(node) is False
+
+    def test_ffi_signature_flag_false_for_plain_function(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-hadap H2: candidates without FFI markers are not flagged."""
+        import argparse
+
+        nodes = [
+            {"id": "py:app.py:1-5:helper:function",
+             "name": "helper", "kind": "function", "language": "python",
+             "path": "app.py",
+             "span": {"start_line": 1, "end_line": 5},
+             "meta": {"decorators": [{"name": "staticmethod"}]}},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, [])
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+            exclude_annotated=False,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        assert output["dead_candidates"][0]["ffi_signature"] is False
+
     def test_seeds_all_includes_exports(self, tmp_path: Path) -> None:
         """WI-zimum: --seeds all combines entrypoints, tests, AND exports."""
         import argparse

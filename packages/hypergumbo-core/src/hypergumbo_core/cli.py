@@ -3529,6 +3529,87 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     return 0
 
 
+# WI-hadap H2: FFI decorator / modifier markers. Presence of any of
+# these on a dead-code-maybe candidate is a "free hit" — the candidate
+# is definitionally FFI-bound, so a missing linker edge is a
+# high-confidence linker gap rather than a noise false positive.
+#
+# Exact-match decorator names (no pattern). Includes:
+# - Rust: #[no_mangle], #[pyo3::*], #[napi], #[wasm_bindgen]
+# - Python: @ctypes.CFUNCTYPE, @cffi.ffi, @cython.cclass
+# - C/C++: JNIEXPORT (declared as a macro, surfaces as modifier/decorator)
+# - C#: [DllImport]
+# - Go: //export (emitted as a meta field by the Go analyzer)
+#
+# Match is substring-insensitive on the decorator/modifier name string
+# so pkg.attr forms like ``pyo3::pyfunction`` or ``cython.cclass``
+# match on their short name prefix.
+_FFI_DECORATOR_FRAGMENTS = (
+    "no_mangle",
+    "pyo3",
+    "napi",
+    "wasm_bindgen",
+    "cfunctype",
+    "dllimport",
+    "jniexport",
+    "cython",
+    "cffi",
+    "ctypes",
+    "nativegen",
+)
+
+# Exact-match modifier strings (as emitted by language analyzers).
+_FFI_MODIFIER_EXACT = frozenset({
+    "extern",
+    "extern \"C\"",
+    "native",   # Java native methods
+    "dllimport",
+})
+
+
+def _compute_ffi_signature_flag(node: dict) -> bool:
+    """Return True if *node* has an FFI-signaling decorator or modifier.
+
+    WI-hadap H2: a dead-code-maybe candidate with an FFI signature is
+    almost certainly a missing cross-language linker edge — it's a
+    "free hit" for the prospector. The symbol declares itself as the
+    boundary of a language crossing (Rust #[pyo3], Python ctypes,
+    C extern "C", C# [DllImport], Java native, etc.), so if nothing
+    in the static call graph reaches it, a linker hasn't closed the
+    gap yet.
+
+    Checks the candidate's ``meta.decorators`` (list of
+    ``{"name": str, ...}`` dicts) and ``meta.modifiers`` or
+    top-level ``modifiers`` list. Match is substring-insensitive on
+    the decorator name to cover qualified forms like
+    ``pyo3::pyfunction`` or ``cython.cclass``.
+    """
+    meta = node.get("meta") or {}
+
+    decorators = meta.get("decorators") or []
+    if isinstance(decorators, list):
+        for dec in decorators:
+            if isinstance(dec, dict):
+                dec_name = dec.get("name", "")
+            elif isinstance(dec, str):
+                dec_name = dec
+            else:
+                dec_name = ""
+            dec_lower = dec_name.lower()
+            for frag in _FFI_DECORATOR_FRAGMENTS:
+                if frag in dec_lower:
+                    return True
+
+    modifiers = node.get("modifiers") or meta.get("modifiers") or []
+    if isinstance(modifiers, list):
+        for mod in modifiers:
+            if isinstance(mod, str):
+                if mod in _FFI_MODIFIER_EXACT or mod.lower() == "jniexport":
+                    return True
+
+    return False
+
+
 def _compute_path_shape_boost(node: dict) -> int:
     """Boost score for candidates with cross-language path/name shapes.
 
@@ -3821,15 +3902,29 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     # cross-language naming conventions (handler, _request, _response,
     # serialize, to_json) are more likely to be missing linker edges.
     shape_boosts: dict[str, int] = {}
+    ffi_flags: dict[str, bool] = {}
     for node in dead_candidates:
         boost = _compute_path_shape_boost(node)
         if boost > 0:
             shape_boosts[node["id"]] = boost
+        # WI-hadap H2: FFI signature auto-flag. An FFI-shaped candidate
+        # is a "free hit" — definitional cross-language boundary.
+        if _compute_ffi_signature_flag(node):
+            ffi_flags[node["id"]] = True
 
-    # Sort by (cross-lang hits + shape boost) desc, then LOC desc
+    # FFI-flagged candidates get an additive rank boost so they
+    # surface at the top of the "missing linker edge" list even when
+    # their cross-language string-hits count is low.
+    _FFI_RANK_BOOST = 10
+
+    # Sort by (cross-lang hits + shape boost + FFI boost) desc, then LOC desc
     dead_candidates.sort(
         key=lambda n: (
-            -(cross_lang_hits.get(n["id"], 0) + shape_boosts.get(n["id"], 0)),
+            -(
+                cross_lang_hits.get(n["id"], 0)
+                + shape_boosts.get(n["id"], 0)
+                + (_FFI_RANK_BOOST if ffi_flags.get(n["id"]) else 0)
+            ),
             -(n.get("lines_of_code") or 1),
         ),
     )
@@ -3861,6 +3956,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                     "id": n["id"],
                     "cross_language_hits": cross_lang_hits.get(n["id"], 0),
                     "path_shape_boost": shape_boosts.get(n["id"], 0),
+                    "ffi_signature": ffi_flags.get(n["id"], False),
                 }
                 for n in dead_candidates
             ],
