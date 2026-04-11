@@ -1,0 +1,21 @@
+- op: create  # b339
+  at: '2026-04-11T10:55:34Z'  # b339
+  by: agent  # b339
+  actor: jgstern_agent  # b339
+  clock: 1  # b339
+  nonce: b339  # b339
+  data:  # b339
+    kind: work_item  # b339
+    title: "Kotlin extension function dispatch: missing edges cause dead-code false positives"  # b339
+    status: todo_soft  # b339
+    priority: 3  # b339
+    parent:  # b339
+    tags:  # b339
+    - analysis_quality  # b339
+    - language_additions  # b339
+    before: []  # b339
+    duplicate_of: []  # b339
+    not_duplicate_of: []  # b339
+    pr_ref:  # b339
+    description: "WI-tubot prospector run 2026-04-11 found that spring-boot's Kotlin extension functions are flagged as dead code. Example: org.springframework.boot.SpringApplicationExtensions.kt defines fun SpringApplication.with(...)-style Kotlin extension functions. These appear in the dead-code-maybe candidate list with cross_language_hits=8339 because 'with' is a Kotlin stdlib keyword that appears everywhere. The underlying issue is that Kotlin extension-function dispatch is NOT producing a calls edge from receiver.method() call sites to the extension function definition. Root cause hypothesis: the Kotlin analyzer's edge extraction treats 'x.with(...)' as a method call on x's declared type, not as a resolved dispatch to the matching extension function in scope. Fix direction: detect extension-function definitions (funcs with receiver type) and, at edge-extraction time, route any matching call sites to the extension function Symbol. Analogous to how Scala implicit classes and Swift extensions work — likely a shared 'receiver-typed function dispatch' pattern. Scope expansion from prospector finding — priority P3 because Kotlin usage is smaller than Scala/Java in the cohort."  # b339
+    fields: {}  # b339
