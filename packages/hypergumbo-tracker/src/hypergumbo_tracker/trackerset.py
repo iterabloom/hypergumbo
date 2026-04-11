@@ -134,6 +134,39 @@ class TrackerSet:
         """Return the stealth tier Store."""
         return self._stealth
 
+    def ops_mtime_signature(self) -> float:
+        """Return a monotone float that advances when any ops file changes.
+
+        Combines each tier's ops-directory mtime (which catches file
+        creates and deletes on ext4) with the maximum per-file mtime over
+        ``*.ops`` entries in that directory (which catches in-place
+        ``O_APPEND`` writes that do not bump the parent directory's
+        mtime). The result is `max()`'d across all three tier stores.
+
+        This is the change signal consumed by the TUI's background reload
+        timer in ``_check_external_writes``. It performs O(N) ``stat()``
+        calls where N = total ops files. No file reads, no YAML parse,
+        no SQLite round-trip — safe to call every few seconds on the
+        event loop.
+
+        Returns 0.0 when every tier's ops directory is missing or
+        inaccessible (e.g. a freshly initialized repo before any tier
+        directory has been created, or a transient stat failure).
+        """
+        contributions: list[float] = [0.0]
+        for store in self._tier_stores.values():
+            try:
+                ops_dir = store.ops_dir
+                contributions.append(ops_dir.stat().st_mtime)
+                contributions.append(max(
+                    (f.stat().st_mtime for f in ops_dir.iterdir()
+                     if f.suffix == ".ops" and f.is_file()),
+                    default=0.0,
+                ))
+            except OSError:
+                continue
+        return max(contributions)
+
     def set_caches(self, caches: dict[Tier, Any]) -> None:
         """Set cache instances for each tier.
 

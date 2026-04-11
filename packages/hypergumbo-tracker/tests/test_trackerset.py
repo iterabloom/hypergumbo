@@ -1270,3 +1270,110 @@ class TestCacheAcceleratedReads:
         id1 = ts.add("invariant", "Cache Ready", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         items = ts.ready()
         assert any(i.id == id1 for i in items)
+
+
+# ---------------------------------------------------------------------------
+# ops_mtime_signature (background-reload change signal)
+# ---------------------------------------------------------------------------
+
+
+class TestOpsMtimeSignature:
+    """Tests for TrackerSet.ops_mtime_signature().
+
+    The signature is a monotone float used by the TUI's background-reload
+    timer to cheaply detect external writes to the .ops directories.
+    Combines per-tier directory mtime (catches creates/deletes) with the
+    maximum per-file mtime (catches appends). Only ``.ops``-suffixed files
+    contribute to the per-file max, so stray lock/tmp files in the ops
+    directory don't inflate the signature.
+    """
+
+    def test_returns_float_for_populated_tracker(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        tracker_set.add("invariant", "Populated", fields=_INV_FIELDS)
+        sig = tracker_set.ops_mtime_signature()
+        assert isinstance(sig, float)
+        assert sig > 0.0
+
+    def test_advances_on_discuss_append(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        import time
+        item_id = tracker_set.add(
+            "invariant", "Appendable", fields=_INV_FIELDS, tier=Tier.WORKSPACE,
+        )
+        sig_before = tracker_set.ops_mtime_signature()
+        time.sleep(0.01)
+        tracker_set.discuss(item_id, message="external append")
+        sig_after = tracker_set.ops_mtime_signature()
+        assert sig_after > sig_before
+
+    def test_advances_on_add(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        import time
+        sig_before = tracker_set.ops_mtime_signature()
+        time.sleep(0.01)
+        tracker_set.add("invariant", "New Item", fields=_INV_FIELDS)
+        sig_after = tracker_set.ops_mtime_signature()
+        assert sig_after > sig_before
+
+    def test_returns_zero_when_all_ops_dirs_missing(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        # Remove every tier's ops directory after construction. The Stores
+        # still hold Paths pointing at now-missing directories; stat() on
+        # each will raise OSError which the method must catch.
+        for store in tracker_set._tier_stores.values():
+            shutil.rmtree(store.ops_dir, ignore_errors=True)
+        assert tracker_set.ops_mtime_signature() == 0.0
+
+    def test_returns_nonneg_float_when_all_ops_dirs_empty(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        # Fresh TrackerSet, no items added — ops dirs exist but contain
+        # nothing ops-shaped. Directory mtimes still contribute, so the
+        # result is a finite non-negative float, but we don't pin an
+        # exact value.
+        sig = tracker_set.ops_mtime_signature()
+        assert isinstance(sig, float)
+        assert sig >= 0.0
+
+    def test_non_ops_file_with_future_mtime_ignored(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        """A non-.ops file with a future mtime must not inflate the per-file max.
+
+        The ``.ops`` suffix filter on ``iterdir()`` is what prevents lock
+        files, swap files, and tmpfiles from the ``_take_ownership_via_tmp``
+        path from counting.
+        """
+        import os
+        import time
+        tracker_set.add("invariant", "Real Item", fields=_INV_FIELDS)
+        workspace_ops = tracker_set.workspace.ops_dir
+        non_ops = workspace_ops / "random.lock"
+        non_ops.write_text("lock marker")
+        future = time.time() + 1_000_000  # ~12 days from now
+        os.utime(non_ops, (future, future))
+        sig = tracker_set.ops_mtime_signature()
+        assert sig < future  # filter excluded the non-ops file
+
+    def test_monotone_across_three_writes(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        import time
+        item_id = tracker_set.add(
+            "invariant", "Monotone", fields=_INV_FIELDS, tier=Tier.WORKSPACE,
+        )
+        observed: list[float] = []
+        for i in range(3):
+            time.sleep(0.01)
+            tracker_set.discuss(item_id, message=f"append {i}")
+            observed.append(tracker_set.ops_mtime_signature())
+        assert observed == sorted(observed)
+        # And strictly non-decreasing is sufficient; we don't require
+        # strict monotonicity because back-to-back appends on coarse
+        # filesystems could tie. On ext4 nanosecond-resolution mtimes,
+        # they'll typically be strictly increasing.

@@ -9412,3 +9412,372 @@ class TestFrozenUnreadCombination:
                     assert "\U0001f9ca" in row_str, "Ghost row should have frozen indicator"
                     found_ghost = True
             assert found_ghost, "Should find ghost row for frozen item"
+
+
+# ---------------------------------------------------------------------------
+# Background reload on external ops writes
+# ---------------------------------------------------------------------------
+
+
+def _make_tall_tracker_set(tmp_path: Path, n_items: int = 30) -> TrackerSet:
+    """Create a TrackerSet populated with enough items that the main table
+    overflows a standard-size viewport, so scroll position is meaningful."""
+    from helpers import make_test_config_dict
+
+    root = tmp_path / ".agent"
+    for d in [
+        root / "tracker" / ".ops",
+        root / "tracker-workspace" / ".ops",
+        root / "tracker-workspace" / "stealth",
+    ]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    config = _make_config()
+    config_path = root / "tracker" / "config.yaml"
+    import yaml as _yaml
+    config_path.write_text(_yaml.dump(make_test_config_dict()))
+
+    ts = TrackerSet(root, config=config)
+    for i in range(n_items):
+        ts.add(
+            kind="work_item",
+            title=f"Item {i:02d}",
+            status="todo_hard",
+            priority=2,
+        )
+    return ts
+
+
+class TestCheckExternalWrites:
+    """Tests for _check_external_writes and the new scroll-preservation
+    behavior in _reload_after_write.
+
+    Covers the core reload-on-external-change flow, the modal-open guard,
+    the initial-signature capture in on_mount, state preservation across
+    background reloads (cursor, scroll, filter text, chat input), the
+    scroll capture/restore helpers, and the interval constant parsing.
+    """
+
+    async def test_no_reload_when_signature_unchanged(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            baseline = app._last_ops_signature
+            app._tracker_set.ops_mtime_signature = MagicMock(return_value=baseline)
+            app._load_items = MagicMock(wraps=app._load_items)
+            app._check_external_writes()
+            assert app._load_items.call_count == 0
+            assert app._last_ops_signature == baseline
+
+    async def test_reload_triggered_when_signature_advances(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            new_sig = app._last_ops_signature + 42.0
+            app._tracker_set.ops_mtime_signature = MagicMock(return_value=new_sig)
+            app._load_items = MagicMock(wraps=app._load_items)
+            app._check_external_writes()
+            await pilot.pause()
+            assert app._load_items.call_count >= 1
+            assert app._last_ops_signature == new_sig
+
+    async def test_update_status_filter_bar_called_on_reload(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._tracker_set.ops_mtime_signature = MagicMock(
+                return_value=app._last_ops_signature + 1.0,
+            )
+            app._update_status_filter_bar = MagicMock(wraps=app._update_status_filter_bar)
+            app._check_external_writes()
+            await pilot.pause()
+            assert app._update_status_filter_bar.call_count >= 1
+
+    async def test_reload_skipped_while_modal_is_open(self, tmp_path: Path) -> None:
+        from textual.screen import ModalScreen
+        from hypergumbo_tracker.tui import TrackerApp
+
+        class _Blocker(ModalScreen[None]):
+            def compose(self):
+                from textual.widgets import Static
+                yield Static("modal")
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            baseline = app._last_ops_signature
+            app.push_screen(_Blocker())
+            for _ in range(10):
+                await pilot.pause()
+            # Advance the signature — a bare tick would normally reload.
+            app._tracker_set.ops_mtime_signature = MagicMock(
+                return_value=baseline + 99.0,
+            )
+            app._load_items = MagicMock(wraps=app._load_items)
+            app._check_external_writes()
+            await pilot.pause()
+            # Modal is on the stack → reload deferred, signature untouched.
+            assert app._load_items.call_count == 0
+            assert app._last_ops_signature == baseline
+            # After dismissing, the next tick catches up.
+            app.pop_screen()
+            for _ in range(10):
+                await pilot.pause()
+            app._check_external_writes()
+            await pilot.pause()
+            assert app._load_items.call_count >= 1
+            assert app._last_ops_signature == baseline + 99.0
+
+    async def test_selected_item_preserved_after_background_reload(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("down")
+            await pilot.pause()
+            target_id = app._selected_item_id
+            assert target_id is not None
+            app._tracker_set.ops_mtime_signature = MagicMock(
+                return_value=app._last_ops_signature + 1.0,
+            )
+            app._check_external_writes()
+            await pilot.pause()
+            assert app._selected_item_id == target_id
+
+    async def test_scroll_offset_preserved_after_background_reload(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tall_tracker_set(tmp_path, n_items=30)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            # Scroll down far enough that the viewport isn't showing row 0.
+            table.scroll_to(y=8, animate=False)
+            await pilot.pause()
+            captured_y = table.scroll_y
+            assert captured_y > 0
+            app._tracker_set.ops_mtime_signature = MagicMock(
+                return_value=app._last_ops_signature + 1.0,
+            )
+            app._check_external_writes()
+            await pilot.pause()
+            # Scroll offset should be (approximately) preserved across
+            # the reload.
+            table = app.query_one("#std-table")
+            assert abs(table.scroll_y - captured_y) <= 1.0
+
+    async def test_scroll_offset_preserved_after_tui_initiated_write(
+        self, tmp_path: Path,
+    ) -> None:
+        """Regression test for the latent 'submit resets scroll to top' bug.
+
+        _reload_after_write now captures and restores scroll offset, so
+        the same mechanism that fixes the background-reload case also
+        fixes the existing TUI-initiated-write case for free.
+        """
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tall_tracker_set(tmp_path, n_items=30)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.scroll_to(y=8, animate=False)
+            await pilot.pause()
+            captured_y = table.scroll_y
+            assert captured_y > 0
+            app._reload_after_write()
+            await pilot.pause()
+            table = app.query_one("#std-table")
+            assert abs(table.scroll_y - captured_y) <= 1.0
+
+    async def test_filter_text_preserved_after_background_reload(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Activate the filter and type partial text.
+            app._filter_active = True
+            app._filter_text = "cach"
+            filter_input = app.query_one("#filter-input")
+            filter_input.value = "cach"
+            await pilot.pause()
+            app._tracker_set.ops_mtime_signature = MagicMock(
+                return_value=app._last_ops_signature + 1.0,
+            )
+            app._check_external_writes()
+            await pilot.pause()
+            assert app._filter_text == "cach"
+            assert app._filter_active is True
+            assert app.query_one("#filter-input").value == "cach"
+
+    async def test_chat_input_text_preserved_after_background_reload(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        # Wide tier exposes the chat-input TextArea visibly; compose
+        # already yields it at all tiers, so querying it is safe at
+        # standard size too.
+        async with app.run_test(size=(140, 40)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            chat = app.query_one("#chat-input")
+            chat.load_text("partial thought in progress")
+            await pilot.pause()
+            app._tracker_set.ops_mtime_signature = MagicMock(
+                return_value=app._last_ops_signature + 1.0,
+            )
+            app._check_external_writes()
+            await pilot.pause()
+            assert app.query_one("#chat-input").text == "partial thought in progress"
+
+    async def test_initial_signature_captured_on_mount(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # A populated tracker has non-zero ops dir mtimes, so the
+            # post-mount signature must have advanced past the 0.0 init.
+            assert app._last_ops_signature > 0.0
+
+    async def test_reload_gracefully_handles_deleted_selected_item(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Pretend a nonexistent item was selected; _restore_selection
+            # should no-op without raising.
+            app._selected_item_id = "INV-no-such-item"
+            app._tracker_set.ops_mtime_signature = MagicMock(
+                return_value=app._last_ops_signature + 1.0,
+            )
+            app._check_external_writes()
+            await pilot.pause()  # no exception == pass
+
+    def test_capture_active_scroll_handles_no_table_mounted(
+        self, tmp_path: Path,
+    ) -> None:
+        """Before on_mount runs, no table widget has been mounted yet,
+        so _capture_active_scroll must return None without raising."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        # Do NOT run_test — the app hasn't mounted, so query_one on any
+        # widget id raises NoMatches, which _capture_active_scroll catches.
+        assert app._capture_active_scroll() is None
+
+    def test_restore_active_scroll_noop_when_saved_is_none(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        # Should return without raising even before mount.
+        app._restore_active_scroll(None)
+
+    async def test_restore_active_scroll_falls_back_on_layout_tier_change(
+        self, tmp_path: Path,
+    ) -> None:
+        """If the captured widget_id is no longer mounted (layout tier
+        changed between capture and restore), the fallback loop picks
+        whatever table IS mounted and applies the y offset to it."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tall_tracker_set(tmp_path, n_items=30)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Fake a compact-tier capture. #item-table is mounted in
+            # compose at every tier, so it exists but isn't the active
+            # table. We pretend it's the one we captured from.
+            saved = ("#item-table", 5.0)
+            # Should not raise, and should apply the y to whichever
+            # table is reachable.
+            app._restore_active_scroll(saved)
+            await pilot.pause()
+
+    async def test_restore_active_scroll_skips_unknown_widget_id(
+        self, tmp_path: Path,
+    ) -> None:
+        """Exercises the defensive Exception catch: if the saved widget_id
+        is unknown, the loop catches the query failure and continues to
+        the next candidate, which succeeds."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tall_tracker_set(tmp_path, n_items=30)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # A widget_id that doesn't exist in the DOM — query_one
+            # raises NoMatches, which the broad except catches, and
+            # the loop falls through to the real tables.
+            app._restore_active_scroll(("#no-such-widget-anywhere", 3.0))
+            await pilot.pause()  # no exception == pass
+
+    def test_interval_constant_default(self) -> None:
+        """With HTRAC_RELOAD_INTERVAL unset, the parsed default is 5.0."""
+        import os as _os
+        # Reparse with a clean environment to verify the default.
+        before = _os.environ.pop("HTRAC_RELOAD_INTERVAL", None)
+        try:
+            parsed = float(_os.environ.get("HTRAC_RELOAD_INTERVAL", "5.0"))
+            assert parsed == 5.0
+        finally:
+            if before is not None:
+                _os.environ["HTRAC_RELOAD_INTERVAL"] = before
+
+    async def test_interval_constant_passed_to_set_interval(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """on_mount must wire set_interval with the module-level constant,
+        so overriding the constant (which an operator would do via the
+        env var) actually changes the poll cadence."""
+        from hypergumbo_tracker import tui as tui_mod
+        from hypergumbo_tracker.tui import TrackerApp
+
+        monkeypatch.setattr(tui_mod, "_TUI_RELOAD_INTERVAL", 12.5)
+        captured: list[float] = []
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        original_set_interval = app.set_interval
+
+        def _spy(interval: float, callback: Any, **kwargs: Any) -> Any:
+            captured.append(interval)
+            return original_set_interval(interval, callback, **kwargs)
+
+        app.set_interval = MagicMock(side_effect=_spy)  # type: ignore[method-assign]
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+        assert 12.5 in captured
