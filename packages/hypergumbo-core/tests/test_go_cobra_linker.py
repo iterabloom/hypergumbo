@@ -229,6 +229,25 @@ class TestGoCobraLinkerIntegration:
         result = go_cobra_linker(ctx)
         assert result.edges == []
 
+    def test_noop_when_no_cobra_command_anchor(self, tmp_path: Path) -> None:
+        """Go file that doesn't mention cobra.Command is skipped before
+        the import check — exercises the anchor pre-filter."""
+        p = tmp_path / "utils.go"
+        p.write_text(
+            'package utils\n\n'
+            'import "fmt"\n\n'
+            'func Helper() {\n'
+            '    fmt.Println("hello")\n'
+            '}\n',
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[],
+            detected_languages={"go"},
+        )
+        result = go_cobra_linker(ctx)
+        assert result.edges == []
+
     def test_noop_when_no_cobra_import(self, tmp_path: Path) -> None:
         # File has cobra.Command{ but does NOT import spf13/cobra —
         # a highly unlikely case but the pre-filter still covers it.
@@ -333,6 +352,70 @@ class TestGoCobraLinkerIntegration:
             e for e in result.edges if e.dst == handler_sym.id
         ]
         assert len(matching) == 1
+
+    def test_package_qualified_handler_resolves_via_short_name(
+        self, tmp_path: Path,
+    ) -> None:
+        """A handler referenced as ``pkg.handler`` in the cobra.Command
+        literal is resolved against the short-name index when the full
+        qualified form has no direct match."""
+        file_path = tmp_path / "cmd" / "root.go"
+        file_path.parent.mkdir(parents=True)
+        file_path.write_text(
+            'package cmd\n\n'
+            'import (\n'
+            '    "github.com/spf13/cobra"\n'
+            '    "myapp/internal/runner"\n'
+            ')\n\n'
+            'func init() {\n'
+            '    cmd := &cobra.Command{\n'
+            '        Use:  "mycmd",\n'
+            '        RunE: runner.runMyCmd,\n'
+            '    }\n'
+            '    _ = cmd\n'
+            '}\n\n'
+            'func doSomething(cmd *cobra.Command, args []string) error {\n'
+            '    return nil\n'
+            '}\n',
+        )
+
+        init_sym = Symbol(
+            id=f"go:{file_path}:8-14:init:function",
+            name="init",
+            kind="function",
+            language="go",
+            path=str(file_path),
+            span=Span(start_line=8, end_line=14, start_col=0, end_col=0),
+        )
+        # The handler symbol is indexed under its short name "runMyCmd"
+        # (the analyzer's usual convention). The linker's first lookup
+        # ("runner.runMyCmd") will miss; the retry on the short name
+        # after splitting the dot succeeds.
+        handler_sym = Symbol(
+            id=f"go:{file_path}:16-18:runMyCmd:function",
+            name="runMyCmd",
+            kind="function",
+            language="go",
+            path=str(file_path),
+            span=Span(start_line=16, end_line=18, start_col=0, end_col=0),
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[init_sym, handler_sym],
+            detected_languages={"go"},
+        )
+        result = go_cobra_linker(ctx)
+
+        # Exactly one dispatches_to edge from init to runMyCmd,
+        # proved by the metadata capturing the qualified handler name.
+        matching = [
+            e for e in result.edges
+            if e.dst == handler_sym.id and e.edge_type == "dispatches_to"
+        ]
+        assert len(matching) == 1
+        assert matching[0].meta is not None
+        assert matching[0].meta.get("handler_name") == "runner.runMyCmd"
 
     def test_handler_outside_any_function_yields_no_edge(
         self, tmp_path: Path,
