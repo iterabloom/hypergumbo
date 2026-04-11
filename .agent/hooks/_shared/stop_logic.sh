@@ -275,11 +275,68 @@ if [[ "$TOTAL_TODOS" -gt 0 ]]; then
     printf '%s' "$BAKEOFF_SUFFIX" >> "$GUIDANCE_FILE"
   fi
 
-  # Update last_stop_check.json with guidance_file pointer + bakeoff convergence.
-  # Seeds the file from scratch if it doesn't exist yet (closes bootstrap gap).
+  # INV-jofaf facet 2: state is split into two files with ONE writer each.
+  #   stop_hook_state.json — written ONLY by this hook (last_completed_utc,
+  #     guidance_file, bakeoff_* fields). Hook-owned.
+  #   agent_notes.json     — written ONLY by scripts/agent-notes. Contains
+  #     a single `notes` field. Agent-owned.
+  #
+  # Prior state lived in last_stop_check.json which mixed both concerns and
+  # let agent-owned notes updates accidentally leave hook-owned fields
+  # (notably last_completed_utc) stale. See INV-jofaf for history.
+  #
+  # One-time migration: if stop_hook_state.json does not exist but the legacy
+  # last_stop_check.json does, seed stop_hook_state.json from the legacy
+  # file's hook-owned fields, and write the legacy file's notes field to
+  # agent_notes.json. The legacy file is then deleted. Self-healing, runs on
+  # the next hook fire after upgrading.
+  STATE_FILE_FOR_GF="$GUIDANCE_LOG_DIR/stop_hook_state.json"
+  LEGACY_STATE_FILE="$GUIDANCE_LOG_DIR/last_stop_check.json"
+  AGENT_NOTES_FILE="$GUIDANCE_LOG_DIR/agent_notes.json"
   if [[ -n "$GUIDANCE_FILE" && -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
-    STATE_FILE_FOR_GF="$GUIDANCE_LOG_DIR/last_stop_check.json"
     if command -v jq &>/dev/null; then
+      # Migrate legacy file on first run after upgrade.
+      if [[ ! -f "$STATE_FILE_FOR_GF" && -f "$LEGACY_STATE_FILE" ]]; then
+        _MIG_TMP=$(mktemp)
+        if jq '{last_completed_utc, guidance_file, bakeoff_convergence,
+                bakeoff_session_path, bakeoff_session_type, last_pr, last_pr_num,
+                last_pr_state, current_branch, pending_hard_todos,
+                pending_soft_todos}
+               | with_entries(select(.value != null))' \
+              "$LEGACY_STATE_FILE" > "$_MIG_TMP" 2>/dev/null; then
+          mv "$_MIG_TMP" "$STATE_FILE_FOR_GF"
+        else
+          rm -f "$_MIG_TMP"
+        fi
+        if [[ ! -f "$AGENT_NOTES_FILE" ]]; then
+          _NOTES_TMP=$(mktemp)
+          if jq '{notes} | with_entries(select(.value != null and .value != ""))' \
+              "$LEGACY_STATE_FILE" > "$_NOTES_TMP" 2>/dev/null; then
+            mv "$_NOTES_TMP" "$AGENT_NOTES_FILE"
+          else
+            rm -f "$_NOTES_TMP"
+          fi
+        fi
+        rm -f "$LEGACY_STATE_FILE"
+      fi
+
+      # Update stop_hook_state.json with guidance_file pointer + bakeoff
+      # convergence, and (when Path 3 will fire) last_completed_utc = now.
+      # last_completed_utc is only set when ELAPSED_MIN >= 30 (see below)
+      # so the cooldown→reflection gating works as intended without relying
+      # on agent discipline (INV-jofaf facet 2).
+      _NOW_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      _CURRENT_BRANCH=$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null || echo "")
+      # Compute ELAPSED_MIN NOW so we can decide whether to set
+      # last_completed_utc. This is the same computation done below, but we
+      # need the value before the jq call.
+      _PHASE_A_ELAPSED_MIN=9999
+      if [[ -f "$STATE_FILE_FOR_GF" ]]; then
+        _PHASE_A_LAST_TS=$(jq -r '.last_completed_utc // "1970-01-01T00:00:00Z"' "$STATE_FILE_FOR_GF" 2>/dev/null || echo "1970-01-01T00:00:00Z")
+        _PHASE_A_LAST_EPOCH=$(date -d "$_PHASE_A_LAST_TS" +%s 2>/dev/null || echo 0)
+        _PHASE_A_NOW_EPOCH=$(date +%s)
+        _PHASE_A_ELAPSED_MIN=$(( (_PHASE_A_NOW_EPOCH - _PHASE_A_LAST_EPOCH) / 60 ))
+      fi
       TMP=$(mktemp)
       _EXISTING="{}"
       if [[ -f "$STATE_FILE_FOR_GF" ]]; then
@@ -289,7 +346,14 @@ if [[ "$TOTAL_TODOS" -gt 0 ]]; then
             --arg bc "${BAKEOFF_CONVERGENCE_LINE:-}" \
             --arg bs "${_SESSION_DIR:-}" \
             --arg bt "${_SESSION_TYPE:-}" \
-            '. + {guidance_file: $gf} + (if $bc != "" then {bakeoff_convergence: $bc} else {} end) + (if $bs != "" then {bakeoff_session_path: $bs, bakeoff_session_type: $bt} else {} end)' \
+            --arg now "$_NOW_UTC" \
+            --arg elapsed "$_PHASE_A_ELAPSED_MIN" \
+            --arg branch "$_CURRENT_BRANCH" \
+            '. + {guidance_file: $gf}
+               + (if $bc != "" then {bakeoff_convergence: $bc} else {} end)
+               + (if $bs != "" then {bakeoff_session_path: $bs, bakeoff_session_type: $bt} else {} end)
+               + (if $branch != "" then {current_branch: $branch} else {} end)
+               + (if ($elapsed | tonumber) >= 30 then {last_completed_utc: $now} else {} end)' \
             > "$TMP" 2>/dev/null; then
         mv "$TMP" "$STATE_FILE_FOR_GF"
       else
@@ -302,7 +366,19 @@ fi
 # (Bakeoff convergence computed above, before guidance file write)
 
 # --- Cooldown & reflection: compute elapsed time, write guidance files ---
-STATE_FILE="$GUIDANCE_LOG_DIR/last_stop_check.json"
+# STATE_FILE is the hook-owned state. Post-INV-jofaf-facet-2 this is
+# stop_hook_state.json; the legacy last_stop_check.json is migrated and
+# deleted on the previous hook fire. For backward compatibility during the
+# first hook fire after upgrade (migration runs BEFORE this read), we still
+# fall back to the legacy path if the new file is absent.
+STATE_FILE="$GUIDANCE_LOG_DIR/stop_hook_state.json"
+if [[ ! -f "$STATE_FILE" && -f "$GUIDANCE_LOG_DIR/last_stop_check.json" ]]; then
+  STATE_FILE="$GUIDANCE_LOG_DIR/last_stop_check.json"
+fi
+# AGENT_NOTES_FILE is also defined here (in addition to inside the
+# guidance-file write block above) so the cooldown path can reference it
+# even when no TODOs triggered the main guidance file write.
+AGENT_NOTES_FILE="$GUIDANCE_LOG_DIR/agent_notes.json"
 
 ELAPSED_MIN=9999  # Default: stale (will trigger Path 3)
 if [[ -f "$STATE_FILE" ]]; then
@@ -324,9 +400,18 @@ if [[ "$ELAPSED_MIN" -lt 30 ]]; then
   fi
   {
     cat "$REPO_ROOT/.agent/cooldown_prompt.md"
-    # Append last reflection notes if present
-    if [[ -f "$STATE_FILE" ]]; then
-      NOTES=$(jq -r '.notes // ""' "$STATE_FILE" 2>/dev/null || true)
+    # Append last reflection notes from agent_notes.json (post-INV-jofaf
+    # facet 2 split). Fall back to the hook state file for backward
+    # compatibility during the first run after upgrade (legacy file still
+    # had notes embedded).
+    _NOTES_SOURCE=""
+    if [[ -f "$AGENT_NOTES_FILE" ]]; then
+      _NOTES_SOURCE="$AGENT_NOTES_FILE"
+    elif [[ -f "$STATE_FILE" ]]; then
+      _NOTES_SOURCE="$STATE_FILE"
+    fi
+    if [[ -n "$_NOTES_SOURCE" ]]; then
+      NOTES=$(jq -r '.notes // ""' "$_NOTES_SOURCE" 2>/dev/null || true)
       if [[ -n "$NOTES" ]]; then
         printf '\n\n---\n## LAST REFLECTION NOTES\n%s\n---' "$NOTES"
       fi

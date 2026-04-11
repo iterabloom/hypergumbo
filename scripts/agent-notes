@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Agent-owned notes CLI for the split state-file design (INV-jofaf facet 2).
+
+Writes ONLY the `notes` field of `~/<repo>_lab_notebook/guidance_log/agent_notes.json`.
+Hook-owned fields (last_completed_utc, guidance_file, bakeoff_*) live in a
+separate file `stop_hook_state.json` written exclusively by stop_logic.sh.
+
+This physical separation enforces the "one writer per field" invariant that
+the old unified last_stop_check.json couldn't maintain: the tool is unable
+to touch hook-owned fields because they are in a different file that this
+script never reads or writes.
+
+Usage:
+  agent-notes --set "Merged PR #1234. Next: WI-yyyy."
+  agent-notes --append "Second note on same session."
+  agent-notes --show
+  agent-notes --clear
+
+On first run, if the legacy last_stop_check.json exists in the guidance_log,
+this tool does NOT migrate from it — migration is stop_logic.sh's job on its
+next fire. This tool only manages the notes file.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def _notes_path() -> Path:
+    """Locate the agent_notes.json file.
+
+    Uses $AGENT_NOTES_FILE for tests, else derives from
+    $HOME/<repo>_lab_notebook/guidance_log/. The repo name is detected by
+    finding the nearest ancestor directory that contains a .git/ entry — same
+    derivation as stop_logic.sh (see the _REPO_NAME shell variable).
+    """
+    override = os.environ.get("AGENT_NOTES_FILE")
+    if override:
+        return Path(override)
+
+    cwd = Path.cwd().resolve()
+    repo_root = cwd
+    for parent in (cwd, *cwd.parents):
+        if (parent / ".git").exists():
+            repo_root = parent
+            break
+    repo_name = repo_root.name
+    home = Path.home()
+    return home / f"{repo_name}_lab_notebook" / "guidance_log" / "agent_notes.json"
+
+
+def _load(path: Path) -> dict:
+    """Read the notes file, returning an empty dict if it does not exist."""
+    if not path.exists():
+        return {}
+    try:
+        raw = path.read_text()
+    except OSError as e:
+        print(f"agent-notes: cannot read {path}: {e}", file=sys.stderr)
+        sys.exit(2)
+    if not raw.strip():
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(
+            f"agent-notes: {path} is not valid JSON ({e}). "
+            "Refusing to proceed — fix manually or use --clear.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if not isinstance(data, dict):
+        print(
+            f"agent-notes: {path} does not contain a JSON object. "
+            "Refusing to proceed.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return data
+
+
+def _save(path: Path, data: dict) -> None:
+    """Write the notes file atomically."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    tmp.replace(path)
+
+
+def _cmd_set(path: Path, text: str) -> int:
+    data = _load(path)
+    data["notes"] = text
+    _save(path, data)
+    return 0
+
+
+def _cmd_append(path: Path, text: str) -> int:
+    data = _load(path)
+    existing = data.get("notes", "")
+    if existing:
+        data["notes"] = f"{existing}\n{text}"
+    else:
+        data["notes"] = text
+    _save(path, data)
+    return 0
+
+
+def _cmd_show(path: Path) -> int:
+    data = _load(path)
+    notes = data.get("notes", "")
+    if notes:
+        print(notes)
+    return 0
+
+
+def _cmd_clear(path: Path) -> int:
+    data = _load(path)
+    data.pop("notes", None)
+    _save(path, data)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point."""
+    parser = argparse.ArgumentParser(
+        prog="agent-notes",
+        description=(
+            "Manage the agent-owned notes field of agent_notes.json. "
+            "Hook-owned fields live in stop_hook_state.json (separate file) "
+            "and are written only by stop_logic.sh — this tool CANNOT touch "
+            "them by construction."
+        ),
+    )
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--set",
+        dest="set_text",
+        metavar="TEXT",
+        help="Replace the notes field with TEXT.",
+    )
+    group.add_argument(
+        "--append",
+        dest="append_text",
+        metavar="TEXT",
+        help="Append TEXT to the notes field on a new line.",
+    )
+    group.add_argument(
+        "--show",
+        action="store_true",
+        help="Print the current notes field to stdout.",
+    )
+    group.add_argument(
+        "--clear",
+        action="store_true",
+        help="Remove the notes field.",
+    )
+    args = parser.parse_args(argv)
+
+    path = _notes_path()
+
+    if args.set_text is not None:
+        return _cmd_set(path, args.set_text)
+    if args.append_text is not None:
+        return _cmd_append(path, args.append_text)
+    if args.show:
+        return _cmd_show(path)
+    if args.clear:
+        return _cmd_clear(path)
+    return 1  # pragma: no cover
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,29 +1,42 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 ## Post-Compaction State Recovery
 When context has been compressed, you may have lost awareness of in-progress work.
 
-**Recover state:**
+**Recover state** (INV-jofaf facet 2 split: hook-owned state and agent-owned notes live in separate files, each with exactly one writer):
 ```bash
-cat ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json 2>/dev/null
+cat ~/hypergumbo_lab_notebook/guidance_log/stop_hook_state.json 2>/dev/null
+cat ~/hypergumbo_lab_notebook/guidance_log/agent_notes.json 2>/dev/null
 ```
-This file records: current branch (should be `dev` after a clean merge), last PR number/state, pending TODOs (hard/soft), free-text notes about what to do next, and the active bakeoff session. Use it to orient yourself before starting new work.
 
-If the JSON contains a `guidance_file` field, read that file for the most recent stop hook guidance (TODO details, circuit breaker status).
+The two files together record: hook-maintained fields (current_branch, last_completed_utc, guidance_file, bakeoff_convergence, bakeoff_session_path, bakeoff_session_type) in stop_hook_state.json, and the agent-authored free-text notes field in agent_notes.json. Use both to orient yourself before starting new work.
 
-If the JSON contains `bakeoff_session_path` and `bakeoff_session_type`, these identify the most recent bakeoff session. Use the session path to resume work on the correct session (e.g., `./scripts/bakeoff-broad status --workdir <path>` or `./scripts/bakeoff-deep status --workdir <path>`).
+If the stop_hook_state.json contains a `guidance_file` field, read that file for the most recent stop hook guidance (TODO details, circuit breaker status).
 
-**Keep notes fresh:** Update `last_stop_check.json` notes after key milestones, not just at reflection time. This ensures context survives compaction:
+If stop_hook_state.json contains `bakeoff_session_path` and `bakeoff_session_type`, these identify the most recent bakeoff session. Use the session path to resume work on the correct session (e.g., `./scripts/bakeoff-broad status --workdir <path>` or `./scripts/bakeoff-deep status --workdir <path>`).
+
+**Legacy file**: if `~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json` exists, it is a pre-INV-jofaf file that mixed both concerns. The stop hook migrates it on its next fire and deletes the legacy. You can also delete it manually if you confirm the two new files contain the current state.
+
+**Keep notes fresh** (post-INV-jofaf-facet-2): update agent_notes.json via the dedicated tool, which physically cannot touch hook-owned fields. After key milestones:
 - After a PR merge: record what was merged and what's next
 - After a bakeoff completes: record findings and next steps
 - After tracker item status changes: record what was resolved and why
 - After hitting an obstacle: record what's blocked and alternative approaches
 
 ```bash
-# Update notes (works whether or not the file exists — seeds from {} if missing)
-jq -n --arg n "Merged PR #NNNN (feat X). Next: WI-yyyy." \
-  --argjson existing "$(cat ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json 2>/dev/null || echo '{}')" \
-  '$existing + {notes: $n}' \
-  > /tmp/lsc.json && mv /tmp/lsc.json ~/hypergumbo_lab_notebook/guidance_log/last_stop_check.json
+# Replace notes
+scripts/agent-notes --set "Merged PR #NNNN (feat X). Next: WI-yyyy."
+
+# Append to existing notes on a new line
+scripts/agent-notes --append "Follow-up observation after the merge."
+
+# Print current notes
+scripts/agent-notes --show
+
+# Clear notes (after they are no longer relevant)
+scripts/agent-notes --clear
 ```
+
+DO NOT write to stop_hook_state.json directly. That file is hook-owned — last_completed_utc, guidance_file, and bakeoff fields are maintained by stop_logic.sh automatically. Writing to it manually would reintroduce the facet-1 failure mode where agent-edited timestamps drift from reality.
 
 Also check for pending work items:
 ```bash
