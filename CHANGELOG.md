@@ -84,6 +84,18 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **NEEDS_WORK softening**: the "Investigate:" header on unconverged bakeoffs becomes "Recommended next actions (not mandatory — tracker work is also a valid use of this session)", and the guidance now explicitly points to `./scripts/tracker ready` as an alternative. Gives the agent latitude to work tracker items instead of forcing a bakeoff iteration on every stop.
 - `.agent/agent_playbooks_protocols_sops_skills/bakeoff-{broad,deep}-priorities.md` mirror the new rule in their DEEP/BROAD priority queue sections and in the "When blocked" paragraph.
 
+### Added
+
+#### Broker / server lifecycle entrypoint heuristics (WI-nazir)
+
+- **Bug**: on Kafka, the entrypoint detector only caught the outer `Kafka.main` Scala method. The actual broker lifecycle methods (`BrokerServer.startup`, `ControllerServer.startup`, `KafkaRaftServer.start`, `SocketServer.Acceptor.run`, `KafkaApis.handleProduceRequest`, etc.) were invisible to the entrypoint list, so DEEP-mode reverse-slice consumers had no way to root analysis at the broker request-dispatch surface.
+- **Fix**: three new naming-tier patterns in `naming-conventions.yaml` emit a new `broker_lifecycle_by_name` concept on JVM-language methods (Java/Scala/Kotlin):
+  - `(^|\.)\\w*Server\\.(startup|start|run|shutdown)$` — server lifecycle methods
+  - `(^|\.)\\w*Apis\\.(handle\\w*|process\\w*|dispatch\\w*)$` — Apis request dispatch
+  - `(^|\.)\\w*Acceptor\\.run$` — `SocketServer.Acceptor`-style runnables
+- **Concept handler**: new `elif concept_type == "broker_lifecycle_by_name"` branch in `entrypoints.py` maps the concept to `EntrypointKind.CONTROLLER` at confidence 0.70 (the naming-heuristic tier — same as `controller_by_name` and `handler_by_name`) with label `Server lifecycle (by name): <symbol>`. Existing dedup against framework-level CONTROLLER detections still applies, so a `@Controller`-annotated `KafkaServer.startup` would still get the higher-confidence framework label instead of being double-counted.
+- **Tests**: 5 new pattern-matching tests in `TestNamingConventionsPatterns` (positive + JVM-only + lifecycle-method-only guards) and 2 new entrypoint-detection tests in `TestSemanticEntryDetection` (concept→CONTROLLER mapping + dedup).
+
 ### Changed
 
 #### Bakeoff-deep: defensive hub-collision warning for rslice seeds (WI-gapom)

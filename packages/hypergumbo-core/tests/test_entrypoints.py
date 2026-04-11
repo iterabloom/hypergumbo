@@ -1371,6 +1371,78 @@ class TestSemanticEntryDetection:
         assert handler_eps[0].confidence == 0.70  # Naming heuristic
         assert "by name" in handler_eps[0].label
 
+    def test_broker_lifecycle_by_name_entrypoint_detection(self) -> None:
+        """WI-nazir: ``broker_lifecycle_by_name`` concept becomes a CONTROLLER entrypoint.
+
+        The naming-conventions YAML emits this concept for ``BrokerServer.startup``,
+        ``KafkaApis.handleProduceRequest``, ``SocketServer.Acceptor.run``, etc.
+        — Kafka-style server lifecycle methods that the previous detector
+        missed because it only matched ``main()`` functions.
+        """
+        sym = Symbol(
+            id="scala:BrokerServer.scala:50-200:BrokerServer.startup:method",
+            name="BrokerServer.startup",
+            kind="method",
+            path="core/src/main/scala/kafka/server/BrokerServer.scala",
+            language="scala",
+            span=Span(50, 200, 0, 0),
+            meta={"concepts": [{
+                "concept": "broker_lifecycle_by_name",
+                "framework": "naming-conventions",
+            }]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1, (
+            f"Expected one CONTROLLER entrypoint for BrokerServer.startup, "
+            f"got {len(ctrl_eps)}: {entrypoints}"
+        )
+        assert ctrl_eps[0].confidence == 0.70  # Naming heuristic tier
+        assert "Server lifecycle" in ctrl_eps[0].label, (
+            f"Label should identify the broker lifecycle source; got "
+            f"{ctrl_eps[0].label!r}"
+        )
+        assert "BrokerServer.startup" in ctrl_eps[0].label
+
+    def test_broker_lifecycle_skipped_if_main_function_already_detected(
+        self,
+    ) -> None:
+        """WI-nazir: dedup — broker_lifecycle does not duplicate when MAIN_FUNCTION
+        was already added for the same symbol.
+
+        This guards against an outer ``Kafka.main`` being double-counted as
+        both MAIN_FUNCTION and CONTROLLER. The two kinds are distinct, so
+        the symbol gets MAIN_FUNCTION (which doesn't conflict). The dedup
+        is on CONTROLLER specifically — both broker_lifecycle and any prior
+        controller pattern produce CONTROLLER kind, so only one survives.
+        """
+        sym = Symbol(
+            id="scala:Kafka.scala:1-50:KafkaServer.startup:method",
+            name="KafkaServer.startup",
+            kind="method",
+            path="core/src/main/scala/kafka/server/KafkaServer.scala",
+            language="scala",
+            span=Span(1, 50, 0, 0),
+            meta={"concepts": [
+                {"concept": "controller", "framework": "spring-boot"},  # Higher tier
+                {"concept": "broker_lifecycle_by_name",
+                 "framework": "naming-conventions"},  # Lower tier
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        ctrl_eps = [e for e in entrypoints if e.kind == EntrypointKind.CONTROLLER]
+        assert len(ctrl_eps) == 1, (
+            f"Expected exactly one CONTROLLER entry (dedup), got {ctrl_eps}"
+        )
+        # The framework controller (0.95) wins over the naming heuristic (0.70).
+        assert ctrl_eps[0].confidence == 0.95
+
     def test_naming_convention_skipped_if_framework_detected(self) -> None:
         """Naming-based detection skipped if framework detection already matched."""
         # A class that has both @Controller annotation AND is named FooController
