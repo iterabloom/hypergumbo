@@ -814,6 +814,83 @@ class TestDeadCodeMaybe:
         output = json.loads(captured.getvalue())
         assert output["dead_candidates"][0]["ffi_signature"] is True
 
+    def test_exclude_exports_drops_public_api(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-zafab filter 3: --exclude-exports drops candidates where
+        supply_chain.is_exported=True (public API)."""
+        import argparse
+
+        nodes = [
+            # Public API — should be excluded when --exclude-exports.
+            {"id": "go:pkg/api.go:1-5:PublicFn:function",
+             "name": "PublicFn", "kind": "function", "language": "go",
+             "path": "pkg/api.go",
+             "span": {"start_line": 1, "end_line": 5},
+             "supply_chain": {"tier": 1, "is_exported": True}},
+            # Private helper — should remain in the candidate list.
+            {"id": "go:pkg/internal.go:1-5:helperFn:function",
+             "name": "helperFn", "kind": "function", "language": "go",
+             "path": "pkg/internal.go",
+             "span": {"start_line": 1, "end_line": 5},
+             "supply_chain": {"tier": 1, "is_exported": False}},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, [])
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+            exclude_annotated=False,
+            exclude_exports=True,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        dead_names = {c["name"] for c in output["dead_candidates"]}
+        assert "PublicFn" not in dead_names
+        assert "helperFn" in dead_names
+
+    def test_exclude_exports_default_false(
+        self, tmp_path: Path,
+    ) -> None:
+        """Without --exclude-exports, exported symbols stay in the list."""
+        import argparse
+
+        nodes = [
+            {"id": "go:pkg/api.go:1-5:PublicFn:function",
+             "name": "PublicFn", "kind": "function", "language": "go",
+             "path": "pkg/api.go",
+             "span": {"start_line": 1, "end_line": 5},
+             "supply_chain": {"tier": 1, "is_exported": True}},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, [])
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+            exclude_annotated=False,
+            exclude_exports=False,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        dead_names = {c["name"] for c in output["dead_candidates"]}
+        assert "PublicFn" in dead_names
+
     def test_ffi_signature_flag_accepts_string_decorator(self) -> None:
         """WI-hadap H2: a bare-string decorator entry (older-schema
         encoding) matches the fragment check."""

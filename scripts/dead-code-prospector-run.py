@@ -169,6 +169,7 @@ def _run_hypergumbo(repo_path: Path) -> dict | None:
                 str(repo_path),
                 "--format", "json",
                 "--exclude-annotated",
+                "--exclude-exports",
             ],
             capture_output=True, text=True, timeout=600,
         )
