@@ -1336,19 +1336,16 @@ def _cmd_setup(args: argparse.Namespace) -> int:
 
 def _cmd_cache_rebuild(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'cache-rebuild' subcommand."""
-    # Cache is optional — rebuild if available
-    from hypergumbo_tracker.cache import Cache
+    if ts._caches is None:
+        msg = "no cache directory available (not in a git repo?)"
+        if args.json:
+            print(json.dumps({"ok": False, "error": msg}))
+        else:
+            print(f"error: {msg}", file=sys.stderr)
+        return EXIT_USER_ERROR
 
-    for tier_name, tier_val in [
-        ("canonical", Tier.CANONICAL),
-        ("workspace", Tier.WORKSPACE),
-        ("stealth", Tier.STEALTH),
-    ]:
-        store = ts._tier_stores[tier_val]
-        db_path = ts._tracker_root / f".cache-{tier_name}.db"
-        cache = Cache(store, db_path, tier_val)
+    for cache in ts._caches.values():
         cache.rebuild()
-        cache.close()
 
     if args.json:
         print(json.dumps({"ok": True}))
