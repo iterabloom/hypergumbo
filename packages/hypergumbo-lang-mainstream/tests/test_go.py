@@ -4462,6 +4462,82 @@ func main() {
             "Typed receiver call should not be marked as ambiguous"
         )
 
+    def test_external_typed_receiver_does_not_dispatch_to_local_set(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-jopar: q.Set on a stdlib url.Values must not dispatch to a
+        local Set method, even when the local codebase defines an interface
+        with the same method name.
+
+        This is the alertmanager Alerts.Set false-positive pattern: every
+        ``q.Set("k", "v")`` (where ``q`` is a ``url.Values``) was emitting
+        an ``interface_dispatch`` calls edge to a local ``Alerts.Set``
+        because the dispatch guard checks only the method short name and
+        ignores the receiver type tracked in ``var_types``. The fix uses
+        the existing ``var_types`` lookup at the dispatch site so that a
+        receiver of known type only dispatches to candidates owned by
+        that type — and emits an unresolved external edge when nothing
+        matches.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "net/url"
+
+type AlertStore interface {
+    Set(name string)
+}
+
+type Alerts struct{}
+
+func (a *Alerts) Set(name string) {}
+
+func handle() {
+    q := url.Values{}
+    q.Set("key", "val")
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        handle_calls = [e for e in call_edges if "handle" in e.src]
+
+        # No edge from handle should target the local Alerts.Set method.
+        false_struct_edges = [
+            e for e in handle_calls if "Alerts.Set" in e.dst
+        ]
+        assert len(false_struct_edges) == 0, (
+            f"q.Set() on a url.Values receiver must NOT dispatch to "
+            f"Alerts.Set (got {len(false_struct_edges)} false edges). "
+            f"WI-jopar: receiver-type guard for Go interface_dispatch."
+        )
+
+        # And no edge should target the AlertStore interface method either.
+        false_iface_edges = [
+            e for e in handle_calls if "AlertStore.Set" in e.dst
+        ]
+        assert len(false_iface_edges) == 0, (
+            f"q.Set() on a url.Values receiver must NOT dispatch to "
+            f"AlertStore.Set (got {len(false_iface_edges)} false edges). "
+            f"WI-jopar: receiver-type guard for Go interface_dispatch."
+        )
+
+        # The call should still be recorded as something — typically an
+        # unresolved external edge so cross-language linkers can match it.
+        set_calls = [e for e in handle_calls if "Set" in e.dst]
+        assert len(set_calls) >= 1, (
+            f"q.Set() should still produce some edge (unresolved external "
+            f"is fine), found: {handle_calls}"
+        )
+        for edge in set_calls:
+            assert "unresolved" in edge.dst, (
+                f"q.Set() with known external receiver type should emit "
+                f"an unresolved edge, got dst={edge.dst!r}"
+            )
+
     def test_chained_call_operand_ambiguous(self, tmp_path: Path) -> None:
         """getWriter().Close() with 3+ types → unresolved edge.
 
