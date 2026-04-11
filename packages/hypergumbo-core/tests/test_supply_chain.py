@@ -1719,6 +1719,66 @@ class TestIsGeneratedFileAxis:
         # is_test may or may not be True depending on path patterns
         # The point is the two flags are independent
 
+    def test_go_swagger_restapi_directory_is_generated(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-sozah: alertmanager-style ``api/vN/restapi/`` is generated."""
+        target = tmp_path / "api" / "v2" / "restapi" / "operations" / "alerts.go"
+        target.parent.mkdir(parents=True)
+        target.write_text("// generated swagger server\npackage operations\n")
+        result = classify_file(target, tmp_path)
+        assert result.is_generated is True, (
+            f"api/v2/restapi/ files must be flagged generated, got "
+            f"is_generated={result.is_generated} (tier={result.tier!r})"
+        )
+
+    def test_go_swagger_models_directory_is_generated(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-sozah: alertmanager-style ``api/vN/models/`` is generated."""
+        target = tmp_path / "api" / "v2" / "models" / "alert.go"
+        target.parent.mkdir(parents=True)
+        target.write_text("// generated swagger model\npackage models\n")
+        result = classify_file(target, tmp_path)
+        assert result.is_generated is True
+
+    def test_go_swagger_embedded_spec_is_generated(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-sozah: ``restapi/embedded_spec.go`` is a go-swagger fingerprint."""
+        target = tmp_path / "pkg" / "openapi" / "restapi" / "embedded_spec.go"
+        target.parent.mkdir(parents=True)
+        target.write_text("package restapi\n")
+        result = classify_file(target, tmp_path)
+        assert result.is_generated is True
+
+    def test_go_swagger_configure_is_generated(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-sozah: ``restapi/configure_<name>.go`` is a go-swagger fingerprint."""
+        target = tmp_path / "restapi" / "configure_alertmanager.go"
+        target.parent.mkdir(parents=True)
+        target.write_text("package restapi\n")
+        result = classify_file(target, tmp_path)
+        assert result.is_generated is True
+
+    def test_handwritten_models_directory_not_falsely_generated(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-sozah: a hand-written ``models/`` dir without ``api/vN/`` parent
+        must NOT be flagged generated. The path pattern is anchored at
+        ``api/v\\d+/(restapi|models)/`` precisely so first-party ``models/``
+        directories are not false positives.
+        """
+        target = tmp_path / "internal" / "models" / "user.go"
+        target.parent.mkdir(parents=True)
+        target.write_text("package models\n")
+        result = classify_file(target, tmp_path)
+        assert result.is_generated is False, (
+            f"hand-written internal/models/user.go must NOT be flagged "
+            f"generated; got is_generated={result.is_generated}"
+        )
+
 
 class TestDependencyManifest:
     """Tests for DependencyManifest (WI-vovuk)."""

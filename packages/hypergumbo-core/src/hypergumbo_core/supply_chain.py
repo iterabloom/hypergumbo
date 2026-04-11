@@ -213,6 +213,19 @@ GENERATED_CODE_PATTERNS = [
     # OpenAPI generated Go clients
     r"^(?:.*/)?zz_generated\.\w+\.go$",                  # Kubernetes code-gen
     r"^(?:.*/)?mock_\w+\.go$",                           # mockgen output
+    # WI-sozah: go-swagger output layouts. Conventional alertmanager-style
+    # ``api/vN/{restapi,models}/`` directory hierarchies hold generated server
+    # stubs and DTOs. The catch-all is anchored at ``api/v\d+/(restapi|models)/``
+    # so first-party ``models/`` directories without an ``api/vN/`` parent are
+    # not falsely flagged.
+    r"(?:^|/)api/v\d+/(?:restapi|models)/",
+    # WI-sozah: go-swagger fingerprint files. These names are unambiguous
+    # — the tool always emits them under the chosen output package — so
+    # they can be matched at any depth without needing the ``api/vN/`` anchor.
+    r"(?:^|/)restapi/embedded_spec\.go$",
+    r"(?:^|/)restapi/configure_[^/]+\.go$",
+    r"(?:^|/)restapi/server\.go$",
+    r"(?:^|/)restapi/doc\.go$",
 ]
 
 EXTERNAL_DEP_PATTERNS = [
