@@ -10462,6 +10462,109 @@ class TestNamingConventionsPatterns:
             result = pattern.matches(symbol)
             assert result is None, f"{fq_name} should NOT match (only lifecycle methods)"
 
+    # ====== WI-pimig: Go encoding callback patterns ======
+
+    def test_go_encoding_callbacks_yaml_loads(self) -> None:
+        """WI-pimig: go-encoding-callbacks.yaml loads correctly."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("go-encoding-callbacks")
+        assert pattern_def is not None
+        assert pattern_def.id == "go-encoding-callbacks"
+        # 8 callback methods, one pattern each
+        assert len(pattern_def.patterns) == 8
+
+    def test_go_marshal_json_method_matches(self) -> None:
+        """WI-pimig: ``MyType.MarshalJSON`` is flagged as a serialization callback."""
+        pattern = Pattern(
+            concept="serialization_callback",
+            symbol_name=r"(^|\.)MarshalJSON$",
+            symbol_kind="^method$",
+            language=r"^go$",
+        )
+        for fq_name in (
+            "Alert.MarshalJSON",
+            "config.LoadBalancer.MarshalJSON",
+            "MarshalJSON",  # bare name (top-level method symbol)
+        ):
+            symbol = Symbol(
+                id=f"go:alert.go:1-10:{fq_name}:method",
+                name=fq_name,
+                kind="method",
+                language="go",
+                path="pkg/alert/alert.go",
+                span=Span(1, 10, 0, 100),
+                meta={},
+            )
+            result = pattern.matches(symbol)
+            assert result is not None, f"Should match {fq_name}"
+            assert result["concept"] == "serialization_callback"
+
+    def test_go_unmarshal_yaml_method_matches(self) -> None:
+        """WI-pimig: ``MyType.UnmarshalYAML`` is flagged."""
+        pattern = Pattern(
+            concept="serialization_callback",
+            symbol_name=r"(^|\.)UnmarshalYAML$",
+            symbol_kind="^method$",
+            language=r"^go$",
+        )
+        symbol = Symbol(
+            id="go:config.go:50-80:Config.UnmarshalYAML:method",
+            name="Config.UnmarshalYAML",
+            kind="method",
+            language="go",
+            path="pkg/config/config.go",
+            span=Span(50, 80, 0, 300),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "serialization_callback"
+
+    def test_go_encoding_callbacks_reject_non_go(self) -> None:
+        """WI-pimig: Java/Python ``UnmarshalJSON`` is NOT a Go encoding callback.
+
+        These method names are Go-specific. A method called ``UnmarshalJSON``
+        in another language would be a coincidence (or a port) and should not
+        be flagged as a Go encoding hook.
+        """
+        pattern = Pattern(
+            concept="serialization_callback",
+            symbol_name=r"(^|\.)UnmarshalJSON$",
+            symbol_kind="^method$",
+            language=r"^go$",
+        )
+        symbol = Symbol(
+            id="java:Config.java:1-10:Config.UnmarshalJSON:method",
+            name="Config.UnmarshalJSON",
+            kind="method",
+            language="java",
+            path="src/Config.java",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None
+
+    def test_go_encoding_callbacks_reject_non_method(self) -> None:
+        """WI-pimig: a top-level function named ``MarshalJSON`` is not a method."""
+        pattern = Pattern(
+            concept="serialization_callback",
+            symbol_name=r"(^|\.)MarshalJSON$",
+            symbol_kind="^method$",
+            language=r"^go$",
+        )
+        symbol = Symbol(
+            id="go:helpers.go:1-10:MarshalJSON:function",
+            name="MarshalJSON",
+            kind="function",  # function, not method
+            language="go",
+            path="pkg/helpers.go",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None
+
     def test_enrich_symbols_with_naming_conventions(self) -> None:
         """enrich_symbols applies naming convention patterns."""
         clear_pattern_cache()

@@ -639,6 +639,25 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.LIBRARY_EXPORT)
 
+            # WI-pimig: Go encoding callbacks (UnmarshalJSON, MarshalYAML, etc.).
+            # These methods are dispatched reflectively by the encoding library
+            # rather than called by name from anywhere in the codebase, so the
+            # call-graph BFS treats them as unreachable and dead-code-maybe
+            # reports them as candidates. Marking them as LIBRARY_EXPORT
+            # entrypoints makes them seeds for the BFS so they (and anything
+            # they call) become reachable. On alertmanager this covers 82
+            # functions / ~1540 LOC — the largest WI-juhov triage category.
+            elif concept_type == "serialization_callback":
+                if EntrypointKind.LIBRARY_EXPORT in added_kinds:
+                    continue
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.LIBRARY_EXPORT,
+                    confidence=0.80,  # Specific signature names → high confidence
+                    label=f"Serialization callback: {sym.name}",
+                ))
+                added_kinds.add(EntrypointKind.LIBRARY_EXPORT)
+
             # Naming-based heuristics (lowest confidence tier)
             # These are fallbacks when no explicit annotation/base class is found
             # ADR-0003 v1.4.x - naming-conventions.yaml

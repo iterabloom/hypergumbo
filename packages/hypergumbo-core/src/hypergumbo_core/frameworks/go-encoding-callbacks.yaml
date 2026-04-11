@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Go encoding/serialization callback methods (WI-pimig)
+#
+# Go's encoding/json, encoding/yaml, encoding/text, and encoding/binary
+# packages dispatch to type-defined methods reflectively when serializing
+# or deserializing. The methods themselves are never called by name from
+# anywhere in the codebase, so the call-graph BFS in dead-code-maybe
+# treats them as unreachable and reports them as dead code.
+#
+# On alertmanager, 82 functions covering ~1540 LOC fall into this pattern
+# (largest single category in WI-juhov triage). Equivalent gaps exist in
+# every YAML-config-driven Go service (prometheus, loki, tempo, etc.).
+#
+# Phase 1 fix (this file): mark these methods as serialization_callback
+# entrypoints so the dead-code BFS treats them as seeds. Phase 2 (caller-
+# site type matching) and Phase 3 (synthetic dispatches_to edges) can be
+# implemented later if developers want to see WHO triggers each callback.
+
+id: go-encoding-callbacks
+language: multi
+
+patterns:
+  # encoding/json — implementations of json.Unmarshaler / json.Marshaler.
+  # Anchor on (^|\.) to match both bare ``UnmarshalJSON`` and qualified
+  # ``MyType.UnmarshalJSON`` (the Go analyzer produces qualified names).
+  - concept: serialization_callback
+    symbol_name: "(^|\\.)UnmarshalJSON$"
+    symbol_kind: "^method$"
+    language: "^go$"
+
+  - concept: serialization_callback
+    symbol_name: "(^|\\.)MarshalJSON$"
+    symbol_kind: "^method$"
+    language: "^go$"
+
+  # gopkg.in/yaml.v2 / yaml.v3 — yaml.Unmarshaler / yaml.Marshaler.
+  - concept: serialization_callback
+    symbol_name: "(^|\\.)UnmarshalYAML$"
+    symbol_kind: "^method$"
+    language: "^go$"
+
+  - concept: serialization_callback
+    symbol_name: "(^|\\.)MarshalYAML$"
+    symbol_kind: "^method$"
+    language: "^go$"
+
+  # encoding.TextUnmarshaler / encoding.TextMarshaler — used by env-var
+  # parsers, flag.Value adapters, JSON/YAML when no specific marshaler
+  # exists, and many config libraries.
+  - concept: serialization_callback
+    symbol_name: "(^|\\.)UnmarshalText$"
+    symbol_kind: "^method$"
+    language: "^go$"
+
+  - concept: serialization_callback
+    symbol_name: "(^|\\.)MarshalText$"
+    symbol_kind: "^method$"
+    language: "^go$"
+
+  # encoding.BinaryUnmarshaler / encoding.BinaryMarshaler — used by gob,
+  # protobuf adapters, msgpack libraries, custom binary formats.
+  - concept: serialization_callback
+    symbol_name: "(^|\\.)UnmarshalBinary$"
+    symbol_kind: "^method$"
+    language: "^go$"
+
+  - concept: serialization_callback
+    symbol_name: "(^|\\.)MarshalBinary$"
+    symbol_kind: "^method$"
+    language: "^go$"
+
+linkers: []

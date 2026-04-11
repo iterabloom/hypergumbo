@@ -1407,6 +1407,74 @@ class TestSemanticEntryDetection:
         )
         assert "BrokerServer.startup" in ctrl_eps[0].label
 
+    def test_serialization_callback_entrypoint_detection(self) -> None:
+        """WI-pimig: ``serialization_callback`` concept becomes a LIBRARY_EXPORT.
+
+        Go's encoding/json, encoding/yaml, encoding/text, encoding/binary
+        packages dispatch to type-defined methods reflectively. Marking these
+        methods as LIBRARY_EXPORT entrypoints makes them seeds for the
+        dead-code BFS so they (and their transitive callees) become reachable.
+        On alertmanager this covers 82 functions / ~1540 LOC — the largest
+        WI-juhov dead-code-maybe triage category.
+        """
+        sym = Symbol(
+            id="go:alert.go:50-80:Alert.UnmarshalYAML:method",
+            name="Alert.UnmarshalYAML",
+            kind="method",
+            path="pkg/alert/alert.go",
+            language="go",
+            span=Span(50, 80, 0, 0),
+            meta={"concepts": [{
+                "concept": "serialization_callback",
+                "framework": "go-encoding-callbacks",
+            }]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(lib_eps) == 1, (
+            f"Expected one LIBRARY_EXPORT entrypoint for Alert.UnmarshalYAML, "
+            f"got {len(lib_eps)}: {entrypoints}"
+        )
+        assert lib_eps[0].confidence == 0.80
+        assert "Serialization callback" in lib_eps[0].label
+        assert "Alert.UnmarshalYAML" in lib_eps[0].label
+
+    def test_serialization_callback_dedup_against_library_export(self) -> None:
+        """WI-pimig: serialization_callback dedups against an existing
+        library_export concept on the same symbol.
+
+        Both map to LIBRARY_EXPORT kind, and a symbol can carry both concepts
+        if e.g. naming-conventions also flagged it. Whichever runs first
+        wins; the second is silently skipped to avoid duplicate entries.
+        """
+        sym = Symbol(
+            id="go:alert.go:1-10:Alert.MarshalJSON:method",
+            name="Alert.MarshalJSON",
+            kind="method",
+            path="pkg/alert/alert.go",
+            language="go",
+            span=Span(1, 10, 0, 0),
+            meta={"concepts": [
+                {"concept": "library_export", "framework": "library-exports"},
+                {"concept": "serialization_callback",
+                 "framework": "go-encoding-callbacks"},
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(lib_eps) == 1, (
+            f"Expected dedup to one LIBRARY_EXPORT entry, got {lib_eps}"
+        )
+        # The library_export concept is processed first in the elif chain,
+        # so its label wins.
+        assert lib_eps[0].confidence == 0.75
+
     def test_broker_lifecycle_skipped_if_main_function_already_detected(
         self,
     ) -> None:
