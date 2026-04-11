@@ -75,6 +75,74 @@ fun helper(x: Int): Int {
         assert "main" in func_names
         assert "helper" in func_names
 
+class TestKotlinExtensionFunctions:
+    """WI-fuhav: Kotlin extension function detection (``fun Receiver.name()``)."""
+
+    def test_detects_extension_function(self, tmp_path: Path) -> None:
+        """A ``fun Receiver.name()`` declaration is flagged as an extension."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "SpringApplicationExtensions.kt"
+        kt_file.write_text(
+            "package org.springframework.boot\n\n"
+            "class SpringApplication\n\n"
+            "fun SpringApplication.configure(block: () -> Unit) {\n"
+            "    block()\n"
+            "}\n",
+        )
+
+        result = analyze_kotlin(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        configure = next(
+            (s for s in funcs if s.name == "configure"), None,
+        )
+        assert configure is not None
+        assert configure.is_exported is True
+        assert configure.meta is not None
+        assert configure.meta.get("extension_receiver") == "SpringApplication"
+
+    def test_plain_function_not_flagged(self, tmp_path: Path) -> None:
+        """A regular (non-extension) top-level function is not flagged."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "Main.kt"
+        kt_file.write_text(
+            "fun greet(name: String) {\n"
+            "    println(\"hello, $name\")\n"
+            "}\n",
+        )
+        result = analyze_kotlin(tmp_path)
+        greet = next(
+            (s for s in result.symbols
+             if s.kind == "function" and s.name == "greet"),
+            None,
+        )
+        assert greet is not None
+        assert greet.is_exported is False
+        assert (greet.meta or {}).get("extension_receiver") is None
+
+    def test_extension_function_on_generic_receiver(
+        self, tmp_path: Path,
+    ) -> None:
+        """Extension on a generic receiver (``List<T>``) is detected."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        kt_file = tmp_path / "Ext.kt"
+        kt_file.write_text(
+            "fun List<Int>.sumSafe(): Int = this.fold(0) { acc, x -> acc + x }\n",
+        )
+        result = analyze_kotlin(tmp_path)
+        sum_safe = next(
+            (s for s in result.symbols
+             if s.kind == "function" and s.name == "sumSafe"),
+            None,
+        )
+        assert sum_safe is not None
+        assert sum_safe.is_exported is True
+        # Generic receiver text is preserved in the meta.
+        assert "List" in (sum_safe.meta or {}).get("extension_receiver", "")
+
+
 class TestKotlinClassExtraction:
     """Tests for extracting Kotlin classes."""
 
