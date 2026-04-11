@@ -2,7 +2,7 @@
 # ADR-0015: Dataflow Access Modes on Edges
 
 Date: 2026-03-15
-Updated: 2026-03-19
+Updated: 2026-04-11
 Status: Accepted
 
 ## Context
@@ -254,6 +254,39 @@ The slicer gains an optional `--dataflow` flag:
 
 Implementation: ~10 lines added to the BFS loop in `slice.py` to check `edge.meta.get("access_mode")` before traversal.
 
+#### Forward-slice admission rule (WI-saful option 1)
+
+The forward-dataflow BFS admission rule is:
+
+1. **Writer source**: admit edges where `access_mode in {write, mutate}`. This is the primary chain — "follow what this symbol writes to, transitively".
+2. **One-hop downstream read**: after visiting a writer node `W`, admit each of `W`'s outgoing `read` edges as a **terminal** (the edge and destination enter the slice, but the destination is NOT enqueued for further BFS). This captures "data flows OUT: write site → downstream reads of what was written" without exploding the slice into unbounded reader chains.
+3. **Graceful degradation**: edges with no `access_mode` annotation are admitted (graceful fallback for incomplete linker coverage).
+
+This is the "option 1" shipped in WI-saful. Rejected on evidence (see §6.1 below): **option 2** (symmetric `dst_mode` OR-check) and **option 3** (writer-chain BFS state).
+
+#### 6.1 Option 2 (dst_mode OR-check): evaluated and deferred (WI-hukoh)
+
+WI-hukoh-bakob-gidij-nibag-puvaz-fadil-kizor-kitan proposed extending the admission rule to "admit if `src_mode in {write, mutate}` OR `dst_mode in {read, mutate}`". The rationale was schema-correctness: the `dest_access_mode` field already exists on the `Edge` schema (see §1), and forward slicing should be symmetric with respect to it. WI-hukoh Phase A added `SliceResult.admission_stats` telemetry with a predictive counter `would_admit_dst_reader` that measures exactly how many edges option 2 would ADDITIONALLY admit beyond option 1's rules, **without implementing the behavior change**.
+
+On 4 sampled repos (alertmanager, buildkit, apollo-server, wasmtime, ~188k total edges, ~55k annotated), the result is unambiguous:
+
+| repo         | total edges | annotated | `write→-` | `mutate→-` | `read→-` | `delete→-` | `write→read` | other |
+|--------------|-------------|-----------|-----------|------------|----------|-----------|--------------|-------|
+| alertmanager | 12,430      | 4,809     | 266       | 0          | 4,447    | 0         | 96           | 0     |
+| buildkit     | 42,792      | 21,683    | 826       | 0          | 20,186   | 0         | 671          | 0     |
+| apollo-server| 7,710       | 320       | 10        | 0          | 310      | 0         | 0            | 0     |
+| wasmtime     | 125,152     | ~25,405   | 2,163     | 498        | 22,376   | 46        | 322          | 0     |
+
+**Critical pattern**: every single edge with `dest_access_mode` populated ALSO has `access_mode=write`. There are ZERO edges where src is `read`, `mutate`, `delete`, or `-` with dst as `read` or `mutate`. All 16 polyglot linkers that populate `dest_access_mode` always ALSO populate `access_mode=write` at the same call site. Empirically, option 2's unique contribution over option 1 is **zero edges on any tested repo**.
+
+**Decision**: defer option 2 indefinitely. Ship option 1 (already in place) as the canonical forward-slice admission rule. Do NOT add the `dst_mode` OR-check as dormant future-proofing — speculative complexity that must be maintained, reviewed, and tested carries non-zero cost for zero measured benefit, and the maintenance risks documented in the WI-hukoh thread (cognitive overhead of multi-branch admission rule, state-space doubling for option 3, deprecation cliff uncertainty) remain real even for dormant code.
+
+**Re-evaluation trigger**: the `SliceResult.admission_stats.would_admit_dst_reader` telemetry counter stays in place as a live monitor. Re-evaluate this decision **when** INV-dihos Phase 5 (cross-linker signature-registry integration) or any future linker begins populating `dest_access_mode` WITHOUT `access_mode=write` on ≥1% of annotated edges on any repo. At that point, re-run the Phase A telemetry: if `would_admit_dst_reader > 0`, option 2 becomes justified and this ADR section should be revised to match.
+
+**Option 3 (writer-chain BFS state)** was not separately evaluated on real data because option 2 had to be proven insufficient first — which it was not, because no edges in current behavior maps would exercise the dst-mode path at all. Option 3 is also deferred. If option 2 ever becomes active and multi-hop `write→passthrough→read` chains turn out to be a meaningful missed-case, option 3 can be evaluated then.
+
+**INV-forim prerequisite**: Phase A baseline data collection exposed INV-forim, a structural bug where 4 cross-language linkers (`event_sourcing`, `ipc`, `websocket`, `message_queue`) silently destroyed `access_mode`/`dest_access_mode` annotations by reassigning `edge.meta = {...}` after `Edge.create` had merged them. Fixed in PR #2925 before the Phase C decision data was collected — without that fix, the `would_admit_dst_reader` counter was reading zero on every repo for a different (structural) reason, which would have falsely validated the "option 2 is useless" conclusion for the wrong reason.
+
 ### 7. Unification of existing linkers
 
 Several existing linkers already detect dataflow patterns with bespoke Python code:
@@ -299,3 +332,7 @@ This also addresses the PlazaFlow team's annotation convention request (`@hg:pub
 - **ADR-0014 (Symbol Identity)**: `channel` fields on edges complement `stable_id` on symbols — together they identify what shared state is being accessed and by whom.
 - **PlazaFlow work items**: the Yjs/CRDT linker (WI-zusig), annotation convention (WI-logok), and Tauri event direction (WI-vovaj) all become special cases of dataflow-annotated edges. The annotation convention (`@hg:publishes` / `@hg:subscribes`) maps directly to `access_mode: write` / `access_mode: read` with an explicit `channel`.
 - **Test isolation analysis**: the shared mutable state detection enabled by this ADR directly addresses the Textual Pilot test interaction failures observed in hypergumbo's own test suite — module-level globals that are written by one test and read by another can be enumerated by querying for symbols with both `write` and `read` edges from different test scopes.
+- **WI-saful**: shipped "option 1" forward-slice admission rule (writer source + one-hop downstream read + graceful degradation). See §6.
+- **WI-hukoh**: evaluated "option 2" (dst_mode OR-check) and "option 3" (writer-chain BFS state) on real data; both deferred indefinitely because no edges in any sampled repo would exercise the dst-mode path. See §6.1 for the data and the re-evaluation trigger.
+- **INV-forim**: structural bug where 4 cross-language linkers destroyed dataflow annotations via `edge.meta = {...}` reassignment after `Edge.create`. Discovered during WI-hukoh Phase A baseline data collection, fixed in PR #2925. Was a prerequisite for WI-hukoh Phase C: without the fix, the telemetry was falsely reporting zero for a different (structural) reason.
+- **INV-dihos Phase 5**: cross-linker signature-registry integration. If this ever begins populating `dest_access_mode` on edges without `access_mode=write`, the WI-hukoh decision to skip option 2 must be revisited. The `SliceResult.admission_stats.would_admit_dst_reader` counter is the trigger.

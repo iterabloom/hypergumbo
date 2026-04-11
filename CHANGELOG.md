@@ -19,6 +19,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Cursor exempted**: Cursor's transcript backing store is a global SQLite database, so it is enforced single-session-per-repo via a sibling check. Per-conversation extractor deferred to WI-rijoj.
 - **Injection-history sidecar**: each session also writes a parallel `.current_injection_history.<session_id>.jsonl` recording playbook injection events.
 
+### Changed
+
+#### Forward-dataflow slice: option 2 evaluated and deferred (WI-hukoh)
+
+- **Decision**: keep WI-saful option 1 as the canonical forward-slice admission rule. Defer option 2 (dst_access_mode OR-check) and option 3 (writer-chain BFS state) indefinitely on evidence from 4 sampled repos (alertmanager, buildkit, apollo-server, wasmtime, ~188k total edges, ~55k annotated). `SliceResult.admission_stats.would_admit_dst_reader` telemetry reports ZERO unique edges that option 2 would admit beyond option 1 on any repo, because every single edge with `dest_access_mode` populated also has `access_mode=write` — the 16 polyglot linkers populating `dest_access_mode` always pair it with `access_mode=write`, so option 1's writer-source rule already admits the set. ADR-0015 §6.1 documents the full data and re-evaluation trigger: when any linker begins populating `dest_access_mode` WITHOUT `access_mode=write` on ≥1% of annotated edges on any repo, re-run the Phase A telemetry; if `would_admit_dst_reader > 0`, revisit this decision. The Phase A telemetry stays in place as a live monitor.
+
 ### Added
 
 #### Slice telemetry
