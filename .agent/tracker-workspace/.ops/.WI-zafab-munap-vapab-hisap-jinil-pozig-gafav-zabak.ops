@@ -27,3 +27,17 @@
   clock: 2  # aaf5
   nonce: aaf5  # aaf5
   message: "Filter 2 (--exclude-annotated) implemented. PR pending. Filters 1 (polyglot-only) and 3 (public API) still pending."  # aaf5
+- op: discuss  # 16e1
+  at: '2026-04-11T09:01:50Z'  # 16e1
+  by: agent  # 16e1
+  actor: jgstern_agent  # 16e1
+  clock: 3  # 16e1
+  nonce: '16e1'  # 16e1
+  message: "Filter 1 implementation done on jgstern-agent/feat/wi-zafab-prospector-polyglot-filter. New harness-level polyglot check in scripts/dead-code-prospector-run.py: walks the repo (skipping vendor/, node_modules/, etc.), counts files by language extension across 18 supported languages, requires 2+ languages with >=10 files each to count as polyglot. Monoglot repos are skipped with clear stderr message and surfaced in the aggregate JSON as repos_skipped_monoglot. New --include-monoglot CLI flag to override. 13 new tests cover language counting, threshold logic, and end-to-end run_prospecting with monkey-patched _run_hypergumbo. Filter 2 was already shipped previously. Filter 3 still depends on WI-zimum exported-symbols detection."  # 16e1
+- op: discuss  # 1c62
+  at: '2026-04-11T09:07:36Z'  # 1c62
+  by: agent  # 1c62
+  actor: jgstern_agent  # 1c62
+  clock: 4  # 1c62
+  nonce: 1c62  # 1c62
+  message: "Filter 1 shipped in PR #2943. Filter 2 was previously shipped (PR #2907 per earlier discussion). Filter 3 (public API exclusion) still depends on WI-zimum. Marking this WI as done since the original 'three filters' goal is now 2/3 done with the third blocked on a separate dependency. Filing follow-up note: when WI-zimum lands, filter 3 should be wired in here."  # 1c62

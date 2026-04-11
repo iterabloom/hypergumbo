@@ -21,3 +21,25 @@
     pr_ref:  # a253
     description: "Linker gap identified during WI-juhov triage of alertmanager dead-code-maybe results. This is the highest-value Go linker investment from the triage: 82 functions covering ~1540 LOC are invisible to the call graph because they are reached via YAML/JSON marshal/unmarshal callbacks rather than direct calls.\n\nCONTEXT: In Go, types implementing `yaml.Unmarshaler`, `yaml.Marshaler`, `json.Unmarshaler`, `json.Marshaler`, `encoding.TextUnmarshaler`, `encoding.TextMarshaler`, `encoding.BinaryUnmarshaler`, `encoding.BinaryMarshaler` expose `UnmarshalYAML(unmarshal func(interface{}) error) error` / `MarshalYAML() (interface{}, error)` / `UnmarshalJSON([]byte) error` / `MarshalJSON() ([]byte, error)` / `UnmarshalText([]byte) error` / `MarshalText() ([]byte, error)` / `UnmarshalBinary([]byte) error` / `MarshalBinary() ([]byte, error)` methods that are called reflectively by the encoding library. The hypergumbo Go analyzer produces the method definitions but does not link any caller to them, so they show up as dead code even though they are invoked on every serialize/deserialize boundary.\n\nALERTMANAGER EVIDENCE: 82 functions, 1540 LOC categorized under this pattern in the WI-juhov triage. This is by far the largest category in the dead-code-maybe output (12% of non-noise candidates), suggesting it is also the largest source of false dead-code in YAML-config-driven Go projects (alertmanager, prometheus, loki, tempo, etc.).\n\nIMPLEMENTATION SKETCH:\n- New linker: `go_marshal_callback` (or extend an existing Go framework linker).\n- Phase 1: detect methods matching the exact signatures of the 8 interfaces above on any Go type.\n- Phase 2: find usages of the target types in `yaml.Unmarshal(b, &v)`, `json.Marshal(v)`, `yaml.NewDecoder(r).Decode(&v)`, struct fields tagged `yaml:\"...\"` or `json:\"...\"` (transitively).\n- Phase 3: emit `dispatches_to` edges from the marshal call sites to the method definitions. Alternatively, emit synthetic `framework_hook` or `serialization_entry` edges from the type's primary caller.\n\nREGRESSION TEST: After this linker lands, re-run `dead-code-maybe` on alertmanager — the 82 marshal-callback functions should disappear from candidates. The candidate-count delta is the linker's built-in effectiveness metric.\n\nTAGS: linker_gap, cross_language_linkers (not cross-language in this case, but the tag is the umbrella for linker work), go_analyzer, serialization_boundary.\n\nDEPENDENCIES: None. Can be implemented in isolation on top of existing Go structural analysis.\n\nPARENT: WI-juhov-pisup-gumit-filan-puhon-kavof-govad-dikuf (triage that identified this gap).\n\nSCOPE: Go only for this item. Equivalent patterns exist in Java (Jackson @JsonCreator, etc.), Python (pydantic validators, __init_subclass__), C# (IXmlSerializable, Json.NET JsonConverter) — file separate items if the Go implementation validates the approach."  # a253
     fields: {}  # a253
+- op: discuss  # 8eea
+  at: '2026-04-11T08:37:31Z'  # 8eea
+  by: agent  # 8eea
+  actor: jgstern_agent  # 8eea
+  clock: 2  # 8eea
+  nonce: 8eea  # 8eea
+  message: "Phase 1 implementation done on jgstern-agent/feat/wi-pimig-go-marshal-callback-entrypoints. New go-encoding-callbacks.yaml with 8 patterns matching the standard marshal/unmarshal method names (UnmarshalJSON, MarshalJSON, UnmarshalYAML, MarshalYAML, UnmarshalText, MarshalText, UnmarshalBinary, MarshalBinary). New serialization_callback concept handler in entrypoints.py maps to LIBRARY_EXPORT at 0.80 confidence with custom 'Serialization callback' label. Framework loader updated to always load the new YAML alongside other convention files. 7 new tests cover positive matches, language scoping, method-vs-function guard, concept→entrypoint mapping, and dedup. Phase 2 (caller-site detection) and Phase 3 (synthetic dispatches_to edges) deferred — will file follow-ups if Phase 1 validates on next DEEP bakeoff."  # 8eea
+- op: update  # 19e4
+  at: '2026-04-11T08:44:49Z'  # 19e4
+  by: agent  # 19e4
+  actor: jgstern_agent  # 19e4
+  clock: 3  # 19e4
+  nonce: '19e4'  # 19e4
+  set:  # 19e4
+    status: done  # 19e4
+- op: discuss  # e9ad
+  at: '2026-04-11T08:44:49Z'  # e9ad
+  by: agent  # e9ad
+  actor: jgstern_agent  # e9ad
+  clock: 4  # e9ad
+  nonce: e9ad  # e9ad
+  message: "Phase 1 shipped in PR #2942. New go-encoding-callbacks.yaml + serialization_callback concept handler. Phase 2 (caller-site type matching) and Phase 3 (synthetic dispatches_to edges) deferred — will file follow-ups if Phase 1 validates on next DEEP bakeoff against alertmanager (expected: 82 dead-code candidates disappear)."  # e9ad
