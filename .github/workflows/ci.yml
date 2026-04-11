@@ -210,6 +210,22 @@ jobs:
         run: bandit -r packages/*/src/ -c pyproject.toml
 
 
+  # Run bash hook tests on every PR regardless of what changed.
+  # test_hooks.sh exercises pre-push and stop hook behavior in a sandbox;
+  # it takes ~10 seconds and its failure mode is "silent rot" (the script
+  # was manually-run only, so regressions could hide for months). Running
+  # always is cheap and prevents that. See INV-pofam for history.
+  hook-tests:
+    needs: [stop-the-line]
+    if: always() && needs.stop-the-line.result != 'failure'
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run .githooks/test_hooks.sh
+        run: bash .githooks/test_hooks.sh
+
+
   dco:
     runs-on: self-hosted
     if: github.event_name == 'pull_request'
@@ -959,7 +975,7 @@ jobs:
   # Final gate job - ensures workflow completes even when jobs are skipped
   # This fixes Forgejo Actions bug where skipped jobs leave workflow in "running" state
   ci-complete:
-    needs: [changes, stop-the-line, lint, audit, verify-generated, build-grammars, pytest, pytest-retry, dco, tracker-validate]
+    needs: [changes, stop-the-line, lint, hook-tests, audit, verify-generated, build-grammars, pytest, pytest-retry, dco, tracker-validate]
     if: always()
     runs-on: self-hosted
     timeout-minutes: 5
@@ -970,6 +986,7 @@ jobs:
           echo "  changes: ${{ needs.changes.result }}"
           echo "  stop-the-line: ${{ needs.stop-the-line.result }}"
           echo "  lint: ${{ needs.lint.result }}"
+          echo "  hook-tests: ${{ needs.hook-tests.result }}"
           echo "  audit: ${{ needs.audit.result }}"
           echo "  verify-generated: ${{ needs.verify-generated.result }}"
           echo "  build-grammars: ${{ needs.build-grammars.result }}"
@@ -989,6 +1006,7 @@ jobs:
           if [[ "${{ needs.changes.result }}" == "failure" ]] || \
              [[ "${{ needs.stop-the-line.result }}" == "failure" ]] || \
              [[ "${{ needs.lint.result }}" == "failure" ]] || \
+             [[ "${{ needs.hook-tests.result }}" == "failure" ]] || \
              [[ "${{ needs.audit.result }}" == "failure" ]] || \
              [[ "${{ needs.verify-generated.result }}" == "failure" ]] || \
              [[ "$pytest_ok" != "true" ]] || \
