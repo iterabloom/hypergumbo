@@ -50,4 +50,38 @@ patterns:
     symbol_kind: "^function$"
     language: "^c$"
 
+  # ====== Broker / server lifecycle methods (WI-nazir) ======
+  # Kafka-style server processes do not use a single ``main()`` entry point.
+  # Instead, lifecycle methods on classes ending in ``Server`` (BrokerServer,
+  # ControllerServer, KafkaRaftServer, SocketServer) are invoked by a thin
+  # outer ``Kafka.main`` to start each component. The previous detector only
+  # caught the outer main, leaving every BrokerServer / ControllerServer
+  # invisible to the entrypoint list. These patterns surface them as
+  # naming-tier entrypoints (confidence 0.70) so DEEP-mode reverse-slice
+  # consumers can root analysis at the actual broker startup paths.
+  - concept: broker_lifecycle_by_name
+    symbol_name: "(^|\\.)\\w*Server\\.(startup|start|run|shutdown)$"
+    symbol_kind: "^method$"
+    language: "^(java|scala|kotlin)$"
+
+  # ====== Apis dispatch methods (WI-nazir) ======
+  # Kafka uses ``KafkaApis.handle*()`` (handleProduceRequest, handleFetchRequest,
+  # etc.) as the broker request-dispatch surface. These are the real
+  # equivalent of HTTP route handlers and should be entrypoints, not buried
+  # nodes in the call graph.
+  - concept: broker_lifecycle_by_name
+    symbol_name: "(^|\\.)\\w*Apis\\.(handle\\w*|process\\w*|dispatch\\w*)$"
+    symbol_kind: "^method$"
+    language: "^(java|scala|kotlin)$"
+
+  # ====== Acceptor.run (WI-nazir) ======
+  # ``SocketServer.Acceptor`` and similar Acceptor classes implement Runnable
+  # and start the connection-accept loop in their ``run()`` method. The path
+  # constraint is intentionally absent because Acceptors typically live next
+  # to the Server that owns them, not under a ``handlers/`` directory.
+  - concept: broker_lifecycle_by_name
+    symbol_name: "(^|\\.)\\w*Acceptor\\.run$"
+    symbol_kind: "^method$"
+    language: "^(java|scala|kotlin)$"
+
 linkers: []

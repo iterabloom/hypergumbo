@@ -10329,6 +10329,139 @@ class TestNamingConventionsPatterns:
         result = pattern.matches(symbol)
         assert result is None
 
+    # ====== WI-nazir: broker / server lifecycle entrypoints ======
+
+    def test_broker_lifecycle_server_startup_matches(self) -> None:
+        """WI-nazir: ``BrokerServer.startup`` matches the broker_lifecycle pattern."""
+        pattern = Pattern(
+            concept="broker_lifecycle_by_name",
+            symbol_name=r"(^|\.)\w*Server\.(startup|start|run|shutdown)$",
+            symbol_kind="^method$",
+            language=r"^(java|scala|kotlin)$",
+        )
+        for fq_name in (
+            "BrokerServer.startup",
+            "ControllerServer.startup",
+            "KafkaRaftServer.start",
+            "BrokerServer.shutdown",
+            "kafka.server.BrokerServer.startup",  # qualified package
+        ):
+            symbol = Symbol(
+                id=f"scala:core/src/main/scala/kafka/server/BrokerServer.scala:1-10:{fq_name}:method",
+                name=fq_name,
+                kind="method",
+                language="scala",
+                path="core/src/main/scala/kafka/server/BrokerServer.scala",
+                span=Span(1, 10, 0, 100),
+                meta={},
+            )
+            result = pattern.matches(symbol)
+            assert result is not None, f"Should match {fq_name}"
+            assert result["concept"] == "broker_lifecycle_by_name"
+
+    def test_broker_lifecycle_apis_dispatch_matches(self) -> None:
+        """WI-nazir: ``KafkaApis.handleProduceRequest`` matches."""
+        pattern = Pattern(
+            concept="broker_lifecycle_by_name",
+            symbol_name=r"(^|\.)\w*Apis\.(handle\w*|process\w*|dispatch\w*)$",
+            symbol_kind="^method$",
+            language=r"^(java|scala|kotlin)$",
+        )
+        for fq_name in (
+            "KafkaApis.handleProduceRequest",
+            "KafkaApis.handleFetchRequest",
+            "KafkaApis.processOffsetCommit",
+            "AdminApis.dispatchRequest",
+        ):
+            symbol = Symbol(
+                id=f"scala:KafkaApis.scala:1-10:{fq_name}:method",
+                name=fq_name,
+                kind="method",
+                language="scala",
+                path="core/src/main/scala/kafka/server/KafkaApis.scala",
+                span=Span(1, 10, 0, 100),
+                meta={},
+            )
+            result = pattern.matches(symbol)
+            assert result is not None, f"Should match {fq_name}"
+            assert result["concept"] == "broker_lifecycle_by_name"
+
+    def test_broker_lifecycle_acceptor_run_matches(self) -> None:
+        """WI-nazir: ``SocketServer.Acceptor.run`` matches."""
+        pattern = Pattern(
+            concept="broker_lifecycle_by_name",
+            symbol_name=r"(^|\.)\w*Acceptor\.run$",
+            symbol_kind="^method$",
+            language=r"^(java|scala|kotlin)$",
+        )
+        symbol = Symbol(
+            id="scala:SocketServer.scala:200-300:SocketServer.Acceptor.run:method",
+            name="SocketServer.Acceptor.run",
+            kind="method",
+            language="scala",
+            path="core/src/main/scala/kafka/network/SocketServer.scala",
+            span=Span(200, 300, 0, 1000),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "broker_lifecycle_by_name"
+
+    def test_broker_lifecycle_rejects_non_jvm_languages(self) -> None:
+        """WI-nazir: ``BrokerServer.startup`` in Go is NOT a broker lifecycle entrypoint.
+
+        The pattern is JVM-language scoped because the Server-class lifecycle
+        convention is specifically a Java/Scala/Kotlin idiom — Go uses a
+        different shape (free function with goroutines) and doesn't need
+        this naming heuristic.
+        """
+        pattern = Pattern(
+            concept="broker_lifecycle_by_name",
+            symbol_name=r"(^|\.)\w*Server\.(startup|start|run|shutdown)$",
+            symbol_kind="^method$",
+            language=r"^(java|scala|kotlin)$",
+        )
+        symbol = Symbol(
+            id="go:server.go:1-10:HTTPServer.start:method",
+            name="HTTPServer.start",
+            kind="method",
+            language="go",
+            path="server.go",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None
+
+    def test_broker_lifecycle_rejects_unrelated_method(self) -> None:
+        """WI-nazir: only startup/start/run/shutdown match, not e.g. helper methods.
+
+        Without this guard, every method on a *Server class would be flagged
+        as an entrypoint, defeating the heuristic's purpose.
+        """
+        pattern = Pattern(
+            concept="broker_lifecycle_by_name",
+            symbol_name=r"(^|\.)\w*Server\.(startup|start|run|shutdown)$",
+            symbol_kind="^method$",
+            language=r"^(java|scala|kotlin)$",
+        )
+        for fq_name in (
+            "BrokerServer.helperMethod",
+            "BrokerServer.computeStuff",
+            "BrokerServer.toString",
+        ):
+            symbol = Symbol(
+                id=f"scala:BrokerServer.scala:1-10:{fq_name}:method",
+                name=fq_name,
+                kind="method",
+                language="scala",
+                path="core/src/main/scala/kafka/server/BrokerServer.scala",
+                span=Span(1, 10, 0, 100),
+                meta={},
+            )
+            result = pattern.matches(symbol)
+            assert result is None, f"{fq_name} should NOT match (only lifecycle methods)"
+
     def test_enrich_symbols_with_naming_conventions(self) -> None:
         """enrich_symbols applies naming convention patterns."""
         clear_pattern_cache()

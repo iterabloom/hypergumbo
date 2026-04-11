@@ -664,6 +664,22 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.CONTROLLER)
 
+            # WI-nazir: broker / server lifecycle methods (Kafka-style).
+            # ``BrokerServer.startup``, ``KafkaApis.handleProduceRequest``,
+            # ``SocketServer.Acceptor.run``, etc. are surfaced as CONTROLLER
+            # entrypoints so reverse-slice consumers can root analysis at the
+            # broker request-dispatch surface, not just the outer ``Kafka.main``.
+            elif concept_type == "broker_lifecycle_by_name":
+                if EntrypointKind.CONTROLLER in added_kinds:
+                    continue
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CONTROLLER,
+                    confidence=0.70,  # Naming heuristic - lowest tier
+                    label=f"Server lifecycle (by name): {sym.name}",
+                ))
+                added_kinds.add(EntrypointKind.CONTROLLER)
+
             elif concept_type == "service_by_name":
                 # Services are not entrypoints by default, but we track
                 # them for potential future use. Skip for now.
