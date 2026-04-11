@@ -22,3 +22,18 @@
     pr_ref:  # 4325
     description: "Linker gap identified during WI-juhov triage of alertmanager dead-code-maybe results. 20 functions / 211 LOC are invisible to the call graph because they are registered as cobra CLI command handlers and only invoked when the CLI subcommand is executed.\n\nCONTEXT: alertmanager (and nearly every modern Go CLI — kubernetes kubectl, helm, hugo, prometheus promtool, terraform, docker, hashicorp vault/consul/nomad, etcdctl) uses `github.com/spf13/cobra` for CLI dispatch. Subcommand handlers are registered via:\n  `cmd := &cobra.Command{\n      Use: \"mycmd\",\n      RunE: runMyCmd,         // callback reference\n      PreRunE: preRunMyCmd,   // callback reference\n      PostRunE: postRunMyCmd, // callback reference\n  }`\nand added to a parent via `parent.AddCommand(cmd)`. The Run/RunE/PreRun/PreRunE/PostRun/PostRunE/PersistentPreRun/PersistentPreRunE/PersistentPostRun/PersistentPostRunE fields are called by cobra's dispatch machinery at parse time. The hypergumbo Go analyzer sees the function definitions but does not connect `cobra.Command.Execute()` or `AddCommand()` to the registered handlers.\n\nALERTMANAGER EVIDENCE: 20 functions, 211 LOC categorized under this pattern in the WI-juhov triage. Third-largest category. High confidence that every other cobra-based project will exhibit the same gap.\n\nIMPLEMENTATION SKETCH:\n- New linker: `go_cobra_dispatch`.\n- Phase 1: detect `cobra.Command` struct literals (recognize by import path `github.com/spf13/cobra` + struct name `Command`).\n- Phase 2: extract the value of `Run`, `RunE`, `PreRun`, `PreRunE`, `PostRun`, `PostRunE`, `PersistentPreRun`, `PersistentPreRunE`, `PersistentPostRun`, `PersistentPostRunE` fields.\n- Phase 3: emit `dispatches_to` or `framework_hook` edges from the command's construction site (or from the root `Execute()` call, if it can be located) to each handler function.\n\nREGRESSION TEST: After this linker lands, re-run `dead-code-maybe` on alertmanager — the 20 cobra-handler functions should disappear from candidates. Additional validation on any other cobra-based project in the bakeoff cohort (prometheus has promtool).\n\nTAGS: linker_gap, cross_language_linkers, go_analyzer, framework_hook, cli_framework.\n\nDEPENDENCIES: None. This is structurally simpler than gaps (1) and (2) because cobra.Command is a well-known external type with a stable field name. Could be the first gap to implement as a proof of concept for the `go_framework_callback` linker family.\n\nPARENT: WI-juhov-pisup-gumit-filan-puhon-kavof-govad-dikuf (triage that identified this gap).\n\nRELATED: Python click (@click.command decorator + callback), Rust clap (derive + handler function), Java picocli — all exhibit the same structural pattern (CLI framework dispatches to handler function by reference, not by direct call). A generic `cli_framework_dispatch` linker family is the long-term direction."  # 4325
     fields: {}  # 4325
+- op: update  # 61e3
+  at: '2026-04-11T12:55:18Z'  # 61e3
+  by: agent  # 61e3
+  actor: jgstern_agent  # 61e3
+  clock: 2  # 61e3
+  nonce: '61e3'  # 61e3
+  set:  # 61e3
+    status: done  # 61e3
+- op: discuss  # b650
+  at: '2026-04-11T12:55:18Z'  # b650
+  by: agent  # b650
+  actor: jgstern_agent  # b650
+  clock: 3  # b650
+  nonce: b650  # b650
+  message: "Shipped in PR #2952. New go_cobra_linker (regex-based) detects cobra.Command{} literals, extracts all 10 handler fields (Run/RunE/PreRun/PreRunE/PostRun/PostRunE/PersistentPreRun/PersistentPreRunE/PersistentPostRun/PersistentPostRunE), and emits dispatches_to edges from enclosing function to handler. 21 tests, 100% coverage. Acceptance validation (alertmanager 20 dead functions → reachable) deferred to next prospector run."  # b650

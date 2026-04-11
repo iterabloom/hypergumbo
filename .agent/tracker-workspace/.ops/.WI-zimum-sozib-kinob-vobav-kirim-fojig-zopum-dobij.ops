@@ -20,3 +20,18 @@
     pr_ref:  # 6a64
     description: "Open question from ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md 'Open Questions / Followups' §4: does hypergumbo already have an 'exported symbols' notion, or do we need to compute it per language?\n\nStep 1: investigate. Search core + analyzer packages for any existing concept of public/exported (e.g., meta.visibility, symbol.exported, __all__ extraction). Report findings in the discussion thread.\n\nStep 2: implement the gap. For any language where exported-ness is not already tracked, add it. Minimum target list (drawn from the notebook §4):\n- Python: names in module __all__; names re-exported from __init__.py\n- TypeScript/JavaScript: top-level export in index.ts / entry modules\n- Rust: pub items in crate root (lib.rs) and re-exports\n- Go: exported (Capitalized) identifiers at package level\n\nStore as a per-symbol field (e.g., meta.exported: true) so it can be consumed by both the dead-code-maybe cheap drop filter (public API) and by the --seeds exports mode of the base tool.\n\nRequired by two downstream items: the base tool's --seeds exports flag, and the cheap drop filters' 'drop public API' rule."  # 6a64
     fields: {}  # 6a64
+- op: update  # 0e7c
+  at: '2026-04-11T12:13:57Z'  # 0e7c
+  by: agent  # 0e7c
+  actor: jgstern_agent  # 0e7c
+  clock: 2  # 0e7c
+  nonce: 0e7c  # 0e7c
+  set:  # 0e7c
+    status: done  # 0e7c
+- op: discuss  # c97c
+  at: '2026-04-11T12:13:57Z'  # c97c
+  by: agent  # c97c
+  actor: jgstern_agent  # c97c
+  clock: 3  # c97c
+  nonce: c97c  # c97c
+  message: "Phase 1 shipped in PR #2948. Added Symbol.is_exported, is_exported_from_modifiers helper, _classify_symbols propagation, and --seeds exports/--seeds all dead-code-maybe modes. Covers Go/Rust/Java/C#/Scala/Kotlin/Groovy. Phase 2 (Python __all__, TS top-level export) tracked as WI-gipag."  # c97c
