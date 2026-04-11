@@ -1,0 +1,432 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Scan tracker items for stale file-path references.
+
+WI-sihih: tracker item descriptions and discussion entries frequently
+embed file paths (``scripts/foo.py``, ``packages/.../bar.py``). When
+a file gets moved or deleted, those references become dangling
+pointers that mislead any future agent opening the item — the
+INV-gajap / WI-tatuh / WI-gigil triad in 2026-04-08 all referenced
+``packages/hypergumbo-tracker/src/hypergumbo_tracker/on_transcript_change.py``
+long after the file was relocated to
+``.agent/hooks/_shared/on_transcript_change.py``.
+
+This script is the minimum useful catch: a standalone linter that
+enumerates open tracker items, pulls path-shaped tokens from each
+item's description and discussion, and verifies each token resolves
+to a real file at repo HEAD. Stale references are reported with an
+optional fuzzy basename suggestion for the likely new location.
+
+Scope (V1)
+----------
+- Runs via ``tracker --json list`` to enumerate all items, filtered
+  by ``--status`` (defaults to the open set).
+- Extracts path tokens with a conservative regex that matches
+  backtick-wrapped paths and unquoted paths ending in a known source
+  or config extension. Matches under the project's canonical top-level
+  directories (``packages/``, ``scripts/``, ``docs/``, ``.agent/``,
+  ``tests/``, ``.ci/``) are also captured even without an extension
+  so directory references are covered.
+- Each candidate path is stripped of trailing punctuation (``.``,
+  ``,``, ``:``, ``)``, ``]``) before resolution.
+- Stale references include a fuzzy-match suggestion based on
+  basename lookup across the repo.
+
+Exit codes
+----------
+- 0: no stale references
+- 1: at least one stale reference found
+
+Usage
+-----
+Default: scan open items (todo_hard, todo_soft, violated,
+pending_validation, needs_human_review):
+
+    scripts/tracker-path-linter
+
+JSON output (machine-readable):
+
+    scripts/tracker-path-linter --json
+
+Limit to specific item ID prefix:
+
+    scripts/tracker-path-linter --id WI-sihih
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterable, Optional
+
+
+# Path-token regex: matches tokens that look like relative file
+# paths. Two shapes are accepted:
+#
+# 1. Backtick-wrapped: ``\`packages/foo/bar.py\``` — captures the
+#    contents between backticks.
+# 2. Bare token ending in a known source/config extension, OR
+#    starting with one of the project's top-level directory names.
+#
+# The character class excludes whitespace, angle brackets, quotes,
+# backticks, parentheses, square brackets, and common trailing
+# punctuation so we match a self-contained path and not a run-on
+# sentence.
+_PATH_CHARS = r"[A-Za-z0-9_./\-]"
+_TOP_LEVEL = (
+    "packages", "scripts", "docs", "tests", "src", "lib",
+    "\\.agent", "\\.ci", "\\.githooks",
+)
+_KNOWN_EXTS = (
+    "py", "pyi", "md", "yaml", "yml", "json", "sh", "bash",
+    "toml", "cfg", "txt", "js", "jsx", "ts", "tsx", "rs",
+    "go", "java", "kt", "kts", "scala", "rb", "html",
+)
+
+_BACKTICK_PATH_RE = re.compile(
+    r"`(" + _PATH_CHARS + r"+?)`",
+)
+
+_BARE_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9/])(?:"
+    + "|".join(_TOP_LEVEL) + r")/"
+    + _PATH_CHARS + r"*?"
+    r"(?:\." + "|".join(_KNOWN_EXTS) + r")?"
+    r"(?=[\s\]\)\"'`,;:.!?]|$)",
+)
+
+
+@dataclass
+class StaleRef:
+    """One stale path reference found in a tracker item."""
+
+    item_id: str
+    location: str  # "description" or "discussion[N]"
+    raw_token: str
+    normalized_path: str
+    suggested_path: Optional[str] = None
+
+
+@dataclass
+class LintReport:
+    """Aggregate result across all scanned items."""
+
+    stale: list[StaleRef] = field(default_factory=list)
+    items_scanned: int = 0
+    paths_checked: int = 0
+
+    @property
+    def exit_code(self) -> int:
+        return 1 if self.stale else 0
+
+    def to_dict(self) -> dict:
+        return {
+            "items_scanned": self.items_scanned,
+            "paths_checked": self.paths_checked,
+            "stale_references": [
+                {
+                    "item_id": s.item_id,
+                    "location": s.location,
+                    "raw_token": s.raw_token,
+                    "normalized_path": s.normalized_path,
+                    "suggested_path": s.suggested_path,
+                }
+                for s in self.stale
+            ],
+            "exit_code": self.exit_code,
+        }
+
+
+def _strip_trailing_punct(token: str) -> str:
+    """Strip common trailing punctuation from a path token."""
+    return token.rstrip(".,:;)]\"'")
+
+
+def _extract_path_tokens(text: str) -> list[str]:
+    """Return unique candidate path tokens from *text*.
+
+    Tokens are de-duplicated within the call so a path mentioned
+    twice in the same description is only reported once.
+    """
+    seen: list[str] = []
+    pushed: set[str] = set()
+
+    def _push(candidate: str) -> None:
+        norm = _strip_trailing_punct(candidate)
+        if not norm:
+            return
+        if norm not in pushed:
+            pushed.add(norm)
+            seen.append(norm)
+
+    for m in _BACKTICK_PATH_RE.finditer(text):
+        _push(m.group(1))
+    for m in _BARE_PATH_RE.finditer(text):
+        _push(m.group(0))
+    return seen
+
+
+def _looks_like_path(token: str) -> bool:
+    """Gate: a token must include a ``/`` to be considered a path.
+
+    The backtick regex accepts arbitrary content, but we only want
+    filesystem paths — not URLs, not single-identifier code spans,
+    not package.attribute expressions. Requiring a slash filters
+    most of those out without a complex language-specific grammar.
+    """
+    if "/" not in token:
+        return False
+    # Skip obvious non-paths.
+    if token.startswith("http://") or token.startswith("https://"):
+        return False
+    return True
+
+
+def _build_basename_index(repo_root: Path) -> dict[str, list[str]]:
+    """Build a ``basename -> [relative_path, ...]`` index via ``git ls-files``.
+
+    Falls back to an empty index if git is unavailable.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "ls-files"],
+            capture_output=True, text=True, check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):  # pragma: no cover
+        return {}
+    index: dict[str, list[str]] = {}
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        base = line.rsplit("/", 1)[-1]
+        index.setdefault(base, []).append(line)
+    return index
+
+
+def _fuzzy_suggest(
+    stale_path: str, basename_index: dict[str, list[str]],
+) -> Optional[str]:
+    """Return the first repo-relative path that shares the stale
+    path's basename, or None.
+
+    V1 is intentionally simple: a one-hit basename lookup. Fancier
+    edit-distance or path-prefix matching is deferred.
+    """
+    base = stale_path.rsplit("/", 1)[-1]
+    matches = basename_index.get(base, [])
+    if not matches:
+        return None
+    # Prefer a match whose path shares more trailing segments with
+    # the stale path (useful when multiple files share a basename).
+    if len(matches) == 1:
+        return matches[0]
+    stale_parts = stale_path.split("/")[::-1]
+    best = matches[0]
+    best_score = 0
+    for m in matches:
+        m_parts = m.split("/")[::-1]
+        score = 0
+        for a, b in zip(stale_parts, m_parts):
+            if a == b:
+                score += 1
+            else:
+                break
+        if score > best_score:
+            best_score = score
+            best = m
+    return best
+
+
+def _resolve_under_repo(repo_root: Path, token: str) -> bool:
+    """Return True if *token* resolves to a real file under repo_root."""
+    if token.startswith("/"):
+        p = Path(token)
+    else:
+        p = repo_root / token
+    try:
+        return p.exists()
+    except (OSError, ValueError):  # pragma: no cover
+        return False
+
+
+def _lint_item(
+    item: dict,
+    repo_root: Path,
+    basename_index: dict[str, list[str]],
+    report: LintReport,
+) -> None:
+    """Scan a single tracker item and append stale references to *report*."""
+    item_id = item.get("id", "?")
+    description = item.get("description") or ""
+    discussion_entries = item.get("discussion") or []
+
+    sections: list[tuple[str, str]] = [("description", description)]
+    for i, entry in enumerate(discussion_entries):
+        msg = entry.get("message") or entry.get("text") or ""
+        sections.append((f"discussion[{i}]", msg))
+
+    for location, text in sections:
+        for token in _extract_path_tokens(text):
+            if not _looks_like_path(token):
+                continue
+            report.paths_checked += 1
+            if _resolve_under_repo(repo_root, token):
+                continue
+            report.stale.append(
+                StaleRef(
+                    item_id=item_id,
+                    location=location,
+                    raw_token=token,
+                    normalized_path=token,
+                    suggested_path=_fuzzy_suggest(token, basename_index),
+                ),
+            )
+
+
+def _enumerate_items(
+    tracker_cli: str,
+    status_filter: list[str],
+    id_prefix: Optional[str],
+) -> list[dict]:
+    """Invoke ``tracker --json list`` and return the item list."""
+    argv = [tracker_cli, "--json", "list"]
+    if not status_filter:
+        argv.append("--open")
+    else:
+        for s in status_filter:
+            argv.extend(["--status", s])
+    argv.extend(["--limit", "1000"])
+    result = subprocess.run(
+        argv, capture_output=True, text=True, check=True,
+    )
+    items = json.loads(result.stdout)
+    if id_prefix:
+        items = [i for i in items if i.get("id", "").startswith(id_prefix)]
+    return items
+
+
+def _full_item(tracker_cli: str, item_id: str) -> dict:
+    """Fetch the full item (including discussion) via ``tracker --json show``."""
+    result = subprocess.run(
+        [tracker_cli, "--json", "show", item_id],
+        capture_output=True, text=True, check=True,
+    )
+    return json.loads(result.stdout)
+
+
+def lint(
+    repo_root: Path,
+    tracker_cli: str,
+    status_filter: Optional[list[str]] = None,
+    id_prefix: Optional[str] = None,
+) -> LintReport:
+    """Run the full lint over all matching tracker items."""
+    items = _enumerate_items(tracker_cli, status_filter or [], id_prefix)
+    basename_index = _build_basename_index(repo_root)
+    report = LintReport()
+    report.items_scanned = len(items)
+    for summary in items:
+        # ``list`` output already includes discussion, but we refetch
+        # via ``show`` in case the list representation is trimmed in
+        # future schema revisions.
+        try:
+            item = _full_item(tracker_cli, summary["id"])
+        except (subprocess.CalledProcessError, json.JSONDecodeError):  # pragma: no cover
+            item = summary
+        _lint_item(item, repo_root, basename_index, report)
+    return report
+
+
+def _format_text(report: LintReport) -> str:
+    lines: list[str] = []
+    lines.append(
+        f"tracker-path-linter: {report.items_scanned} items, "
+        f"{report.paths_checked} paths checked",
+    )
+    lines.append("=" * 60)
+    if not report.stale:
+        lines.append("No stale references found.")
+        return "\n".join(lines)
+
+    # Group by item_id for readability.
+    by_item: dict[str, list[StaleRef]] = {}
+    for s in report.stale:
+        by_item.setdefault(s.item_id, []).append(s)
+
+    for item_id, refs in by_item.items():
+        lines.append(f"\n[{item_id}]")
+        for ref in refs:
+            lines.append(f"  {ref.location}: {ref.normalized_path}")
+            if ref.suggested_path:
+                lines.append(f"    suggested: {ref.suggested_path}")
+
+    lines.append("")
+    lines.append("=" * 60)
+    lines.append(f"Summary: {len(report.stale)} stale references")
+    return "\n".join(lines)
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Scan tracker items for stale file-path references.",
+    )
+    parser.add_argument(
+        "--json", action="store_true",
+        help="Emit JSON report instead of text.",
+    )
+    parser.add_argument(
+        "--status", action="append", default=None,
+        help="Status filter (repeatable). Default: open items.",
+    )
+    parser.add_argument(
+        "--id", default=None,
+        help="Only scan items whose ID starts with this prefix.",
+    )
+    parser.add_argument(
+        "--repo-root", type=Path, default=None,
+        help="Repo root override (default: git rev-parse --show-toplevel).",
+    )
+    parser.add_argument(
+        "--tracker-cli", default="scripts/tracker",
+        help="Path to the tracker CLI wrapper.",
+    )
+    args = parser.parse_args(argv)
+
+    if args.repo_root is None:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True, text=True, check=True,
+            )
+            repo_root = Path(result.stdout.strip())
+        except (subprocess.CalledProcessError, FileNotFoundError):  # pragma: no cover
+            repo_root = Path(__file__).resolve().parent.parent
+    else:
+        repo_root = args.repo_root
+
+    tracker_cli = args.tracker_cli
+    if not Path(tracker_cli).is_absolute():
+        tracker_cli = str(repo_root / tracker_cli)
+
+    report = lint(
+        repo_root=repo_root,
+        tracker_cli=tracker_cli,
+        status_filter=args.status,
+        id_prefix=args.id,
+    )
+
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2))
+    else:
+        print(_format_text(report))
+
+    return report.exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main())
