@@ -47,6 +47,7 @@ from rich.table import Table
 
 from . import __version__
 from .analyze.all_analyzers import run_all_analyzers
+from .analyze.base import is_exported_from_modifiers
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 from .linkers.registry import LinkerContext, run_all_linkers
 # Import linker modules to trigger @register_linker decoration (side effect imports)
@@ -3665,7 +3666,8 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     The seed set is configurable via ``--seeds``:
     - ``entrypoints``: CLI mains, HTTP routes, framework hooks (default)
     - ``tests``: test functions only
-    - ``all``: both entrypoints AND tests
+    - ``exports``: symbols with ``is_exported=True`` (public API, WI-zimum)
+    - ``all``: entrypoints + tests + exports
 
     Uses BFS over call edges from seed symbols.  Functions not visited
     are flagged as potentially dead.  Results are ranked by lines of code
@@ -3688,6 +3690,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     # Identify production callable symbols (exclude test files)
     production_symbols: dict[str, dict] = {}
     test_symbols: set[str] = set()
+    exported_symbols: set[str] = set()
     for node in nodes:
         path = node.get("path", "")
         kind = node.get("kind", "")
@@ -3697,6 +3700,13 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             test_symbols.add(node["id"])
         else:
             production_symbols[node["id"]] = node
+            # WI-zimum: is_exported is stored under supply_chain in the
+            # behavior map. A production symbol with is_exported=True is
+            # part of the public API and should be unconditionally
+            # reachable (external callers are outside the analysis scope).
+            sc = node.get("supply_chain") or {}
+            if sc.get("is_exported"):
+                exported_symbols.add(node["id"])
 
     if not production_symbols:
         print("No production functions found to analyze.", file=sys.stderr)
@@ -3749,6 +3759,10 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
 
     if seeds_mode in ("tests", "all"):
         seed_ids.update(test_symbols)
+
+    # WI-zimum: exported symbols (public API) as seeds.
+    if seeds_mode in ("exports", "all"):
+        seed_ids.update(exported_symbols)
 
     # BFS from seeds through call-flow edges.
     # calls:          direct function/method calls
@@ -4796,8 +4810,11 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         help="Output format (default: text)",
     )
     p_dead_code.add_argument(
-        "--seeds", choices=["entrypoints", "tests", "all"], default="entrypoints",
-        help="Seed set for reachability analysis (default: entrypoints)",
+        "--seeds", choices=["entrypoints", "tests", "exports", "all"],
+        default="entrypoints",
+        help="Seed set for reachability analysis (default: entrypoints). "
+             "'exports' uses symbols with is_exported=True (public API). "
+             "'all' combines entrypoints, tests, and exports.",
     )
     p_dead_code.add_argument(
         "--min-confidence", type=float, default=0.0,
@@ -5127,6 +5144,14 @@ def _classify_symbols(
         symbol.supply_chain_reason = classification.reason
         symbol.is_test_file = classification.is_test
         symbol.is_generated_file = classification.is_generated
+        # WI-zimum: derive is_exported from the modifiers list populated by
+        # the per-language analyzer. Languages with their own export rules
+        # (Python __all__, TS top-level export) should set Symbol.is_exported
+        # directly at extraction time; this fallback picks up the modifier-
+        # based signal for Go ("exported"), Rust ("pub"/"pub(...)"), and
+        # languages that set "public" via visibility_from_modifiers.
+        if not symbol.is_exported:
+            symbol.is_exported = is_exported_from_modifiers(symbol.modifiers)
 
 
 def _compute_supply_chain_summary(

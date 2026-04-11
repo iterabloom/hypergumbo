@@ -1661,6 +1661,88 @@ class TestIsTestFileAxis:
         assert prod.supply_chain_tier == 1
         assert test.supply_chain_tier == 1
 
+    def test_classify_symbols_sets_is_exported_from_go_modifiers(
+        self, tmp_path: Path
+    ) -> None:
+        """WI-zimum: _classify_symbols derives is_exported from modifiers.
+
+        Go analyzer emits ``["exported"]`` for capitalized identifiers;
+        _classify_symbols should copy that to Symbol.is_exported=True.
+        """
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Span, Symbol
+
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "api.go").write_text("package pkg")
+
+        public_fn = Symbol(
+            id="go:pkg:PublicFn",
+            name="PublicFn",
+            kind="function",
+            language="go",
+            path="pkg/api.go",
+            span=Span(1, 0, 1, 0),
+            modifiers=["exported"],
+        )
+        private_fn = Symbol(
+            id="go:pkg:helperFn",
+            name="helperFn",
+            kind="function",
+            language="go",
+            path="pkg/api.go",
+            span=Span(1, 0, 1, 0),
+            modifiers=["unexported"],
+        )
+
+        _classify_symbols([public_fn, private_fn], tmp_path, set())
+
+        assert public_fn.is_exported is True
+        assert private_fn.is_exported is False
+
+    def test_classify_symbols_sets_is_exported_for_rust_pub(
+        self, tmp_path: Path
+    ) -> None:
+        """WI-zimum: Rust 'pub' and 'pub(crate)' modifiers → is_exported."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Span, Symbol
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "lib.rs").write_text("// rust source")
+
+        pub_fn = Symbol(
+            id="rust:lib:pub_fn",
+            name="pub_fn",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(1, 0, 1, 0),
+            modifiers=["pub"],
+        )
+        pub_crate_fn = Symbol(
+            id="rust:lib:pub_crate_fn",
+            name="pub_crate_fn",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(1, 0, 1, 0),
+            modifiers=["pub(crate)"],
+        )
+        priv_fn = Symbol(
+            id="rust:lib:priv_fn",
+            name="priv_fn",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(1, 0, 1, 0),
+            modifiers=[],
+        )
+
+        _classify_symbols([pub_fn, pub_crate_fn, priv_fn], tmp_path, set())
+
+        assert pub_fn.is_exported is True
+        assert pub_crate_fn.is_exported is True
+        assert priv_fn.is_exported is False
+
 
 class TestIsGeneratedFileAxis:
     """WI-tizij: is_generated_file is independent of supply_chain_tier.

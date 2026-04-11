@@ -686,3 +686,101 @@ class TestDeadCodeMaybe:
         dead_names = {d["name"] for d in output.get("dead_candidates", [])}
         # tested_fn IS reachable from test_fn with seeds=all → NOT dead
         assert "tested_fn" not in dead_names
+
+    def test_seeds_exports_uses_exported_symbols(self, tmp_path: Path) -> None:
+        """WI-zimum: --seeds exports treats is_exported=True functions as seeds.
+
+        A lone function with is_exported=True and no incoming call edges
+        should NOT be flagged as dead when --seeds exports is used, because
+        exported symbols are part of the public API and presumed reachable
+        by external callers.
+        """
+        import argparse
+
+        nodes = [
+            {"id": "go:api.go:1-5:PublicFn:function", "name": "PublicFn",
+             "kind": "function", "language": "go", "path": "api.go",
+             "span": {"start_line": 1, "end_line": 5},
+             "supply_chain": {"tier": 1, "is_exported": True}},
+            {"id": "go:api.go:10-15:helper:function", "name": "helper",
+             "kind": "function", "language": "go", "path": "api.go",
+             "span": {"start_line": 10, "end_line": 15},
+             "supply_chain": {"tier": 1, "is_exported": False}},
+            {"id": "go:api.go:20-25:orphan:function", "name": "orphan",
+             "kind": "function", "language": "go", "path": "api.go",
+             "span": {"start_line": 20, "end_line": 25},
+             "supply_chain": {"tier": 1, "is_exported": False}},
+        ]
+        edges = [
+            {"type": "calls", "src": "go:api.go:1-5:PublicFn:function",
+             "dst": "go:api.go:10-15:helper:function"},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, edges)
+
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="exports", min_confidence=0.0, exclude_annotated=False,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        dead_names = {d["name"] for d in output.get("dead_candidates", [])}
+        # PublicFn is a seed → NOT dead
+        assert "PublicFn" not in dead_names
+        # helper reachable from PublicFn → NOT dead
+        assert "helper" not in dead_names
+        # orphan has no edges and is_exported=False → IS dead
+        assert "orphan" in dead_names
+
+    def test_seeds_all_includes_exports(self, tmp_path: Path) -> None:
+        """WI-zimum: --seeds all combines entrypoints, tests, AND exports."""
+        import argparse
+
+        nodes = [
+            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "route",
+             "language": "python", "path": "app.py",
+             "span": {"start_line": 1, "end_line": 5},
+             "meta": {"route_path": "/api", "http_method": "GET"}},
+            {"id": "py:app.py:7-10:reached:function", "name": "reached",
+             "kind": "function", "language": "python", "path": "app.py",
+             "span": {"start_line": 7, "end_line": 10},
+             "supply_chain": {"tier": 1, "is_exported": False}},
+            # Exported but unreached via entrypoints — should be admitted via exports.
+            {"id": "py:app.py:12-20:exported_fn:function", "name": "exported_fn",
+             "kind": "function", "language": "python", "path": "app.py",
+             "span": {"start_line": 12, "end_line": 20},
+             "supply_chain": {"tier": 1, "is_exported": True}},
+        ]
+        edges = [
+            {"type": "calls", "src": "py:app.py:1-5:GET /api:route",
+             "dst": "py:app.py:7-10:reached:function"},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, edges)
+
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="all", min_confidence=0.0, exclude_annotated=False,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        dead_names = {d["name"] for d in output.get("dead_candidates", [])}
+        # Both reached and exported_fn should be alive under --seeds all.
+        assert "reached" not in dead_names
+        assert "exported_fn" not in dead_names
