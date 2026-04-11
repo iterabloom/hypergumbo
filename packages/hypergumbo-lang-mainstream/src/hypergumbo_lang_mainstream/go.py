@@ -2295,6 +2295,52 @@ def _extract_edges_from_file(
                             ))
                             callee_name = None  # Already handled
 
+                        # WI-jopar: receiver-type guard. When the operand is a
+                        # simple identifier that the analyzer is tracking as a
+                        # local variable (regardless of whether it inferred a
+                        # concrete type), the typed lookup at lines 2079-2108
+                        # already tried qualified resolution and failed.
+                        # Falling through to the short-name dispatch guard
+                        # would emit a wrong edge to a local Interface.Set or
+                        # Alerts.Set just because the method names collide
+                        # (e.g. ``q.Set("k", "v")`` where ``q`` is a
+                        # ``url.Values``). On alertmanager this single bug
+                        # absorbed 13 spurious in-edges into one struct,
+                        # poisoning the centrality ranking. Emit an unresolved
+                        # external edge instead — cross-language linkers can
+                        # still match it later, but no false intra-repo edge
+                        # is created.
+                        #
+                        # Note: var_types may map ``alias`` to an empty string
+                        # when the analyzer recognised the variable but not
+                        # its type (e.g. composite_literal of qualified_type
+                        # like ``url.Values{}``). The empty-string entry is
+                        # still meaningful — it tells us the operand is a
+                        # tracked local, not a free-floating identifier — so
+                        # the guard fires on key presence, not value truthiness.
+                        if (
+                            callee_name
+                            and import_path_hint is None
+                            and operand_node is not None
+                            and operand_node.type == "identifier"
+                        ):
+                            _alias = node_text(operand_node, source)
+                            if _alias in var_types:
+                                dst_id = (
+                                    f"go:external:0-0:{callee_name}:unresolved"
+                                )
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=dst_id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="external_receiver_call",
+                                    confidence=0.50,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
+                                callee_name = None  # Already handled
+
                         # Unified ambiguity guard for ALL selector expressions:
                         # covers simple identifiers (x.Close()), chained calls
                         # (getWriter().Close()), field access (resp.Body.Close()),
