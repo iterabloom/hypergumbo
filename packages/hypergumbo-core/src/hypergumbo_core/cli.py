@@ -59,6 +59,7 @@ import hypergumbo_core.linkers.dependency as _dependency_linker  # noqa: F401
 import hypergumbo_core.linkers.event_sourcing as _event_sourcing_linker  # noqa: F401
 import hypergumbo_core.linkers.graphql as _graphql_linker  # noqa: F401
 import hypergumbo_core.linkers.graphql_resolver as _graphql_resolver_linker  # noqa: F401
+import hypergumbo_core.linkers.go_cobra as _go_cobra_linker  # noqa: F401
 import hypergumbo_core.linkers.grpc as _grpc_linker  # noqa: F401
 import hypergumbo_core.linkers.http as _http_linker  # noqa: F401
 import hypergumbo_core.linkers.ipc as _ipc_linker  # noqa: F401
