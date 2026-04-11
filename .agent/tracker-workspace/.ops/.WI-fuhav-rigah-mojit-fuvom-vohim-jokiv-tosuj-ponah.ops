@@ -41,3 +41,10 @@
   clock: 4  # 1574
   nonce: '1574'  # 1574
   message: "is the thing you said \"remains a separate follow-up\" part of the original purpose/goal of the present tracker item? by saying something \"remains\" you imply that it existed *before*. the question is *before what?* immediately before your last discussion comment, ie, in the Description field of this tracker item (WI-fuhav)? or before WI-fuhav even existed?"  # 1574
+- op: discuss  # 3a6f
+  at: '2026-04-11T17:40:42Z'  # 3a6f
+  by: agent  # 3a6f
+  actor: jgstern_agent  # 3a6f
+  clock: 5  # 3a6f
+  nonce: 3a6f  # 3a6f
+  message: "You're right and my close was premature. Reading the original description back: the fix direction explicitly said 'detect extension-function definitions AND, at edge-extraction time, route any matching call sites to the extension function Symbol.' That's two steps, and my PR shipped only step 1 (detect + mark is_exported + record meta.extension_receiver). I called step 2 'a separate follow-up' which was wrong — 'remains' was a weasel word implying the call-site routing pre-existed WI-fuhav as a known deferral, but it was actually part of WI-fuhav's original scope that I silently descoped. Filed the missing half as WI-visaz-jokud-sivab-mofin-volol-vikos-foduj-lobag (Kotlin extension-function call-site dispatch: emit calls edges from receiver.extFn() to extension definition). The new item includes implementation notes for the {receiver_type -> extension functions} index and generic-receiver handling. Should I reopen WI-fuhav as partial, or leave it done-with-follow-up since the is_exported half was also a legitimate shipped fix? Your call."  # 3a6f

@@ -1,0 +1,21 @@
+- op: create  # 8dc6
+  at: '2026-04-11T23:57:05Z'  # 8dc6
+  by: agent  # 8dc6
+  actor: jgstern_agent  # 8dc6
+  clock: 1  # 8dc6
+  nonce: 8dc6  # 8dc6
+  data:  # 8dc6
+    kind: work_item  # 8dc6
+    title: "auto-pr --tracker-id flag: record PR# and merged SHA in tracker discussion post-merge"  # 8dc6
+    status: todo_hard  # 8dc6
+    priority: 2  # 8dc6
+    parent:  # 8dc6
+    tags:  # 8dc6
+    - developer_experience  # 8dc6
+    - tracker  # 8dc6
+    before: []  # 8dc6
+    duplicate_of: []  # 8dc6
+    not_duplicate_of: []  # 8dc6
+    pr_ref:  # 8dc6
+    description: "Per user discussion 2026-04-11: when the agent resolves a tracker item via auto-pr, it currently writes a pre-merge discussion entry citing the feature-branch commit SHA. That SHA is fragile — it survives true fast-forward merges but is changed by rebase-before-merge and squash-fallback, and a reader downstream has no guaranteed-durable identifier to follow. Solution: add a --tracker-id FULL_ID flag to scripts/auto-pr. On successful merge, auto-pr (which already tracks _autopr_state_merged_sha and PR_NUM in the WI-miriz sentinel) appends a tracker discussion entry like 'Merged as PR #NNNN, dev SHA abc1234f.' to the referenced item. Missing flag = no-op (not every auto-pr invocation is scoped to a tracker item). Failure to discuss = warn but do not fail the merge. IDs must be full (no prefix-scanning) per user directive: 'abbreviated ones risk collisions and thats not really logic that is worth spending the time on'. User gave explicit in-chat approval for design option #1 in the 2026-04-11 conversation — this item records that approval so the governance paper trail is auditable. Governance file: scripts/auto-pr is in the governance list, so the resulting PR will be pushed with --gov (human reviews/merges) rather than self-merged."  # 8dc6
+    fields: {}  # 8dc6
