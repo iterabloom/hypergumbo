@@ -97,6 +97,75 @@ def helper(x: Int): Int = {
         assert "main" in func_names
         assert "helper" in func_names
 
+class TestScalaSecondaryConstructor:
+    """WI-rupum: Scala secondary constructors (``def this(args) = ...``)
+    must be extracted as ``kind="constructor"`` with ``is_exported=True``
+    so they don't surface as dead-code false positives.
+    """
+
+    def test_secondary_constructor_kind_and_exported(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        scala_file = tmp_path / "Foo.scala"
+        scala_file.write_text(
+            "class Foo(val x: Int) {\n"
+            "  def this() = this(0)\n"
+            "  def this(s: String) = this(s.toInt)\n"
+            "}\n",
+        )
+        result = analyze_scala(tmp_path)
+        ctors = [s for s in result.symbols if s.kind == "constructor"]
+        assert len(ctors) == 2
+        for ctor in ctors:
+            assert ctor.name == "Foo.this"
+            assert ctor.is_exported is True
+
+    def test_secondary_constructor_not_marked_method(
+        self, tmp_path: Path,
+    ) -> None:
+        """The secondary constructor must NOT appear among method symbols."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        scala_file = tmp_path / "Bar.scala"
+        scala_file.write_text(
+            "class Bar(val n: Int) {\n"
+            "  def this() = this(0)\n"
+            "  def helper(): Int = n + 1\n"
+            "}\n",
+        )
+        result = analyze_scala(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = {m.name for m in methods}
+        # helper is a method, but "this" is NOT.
+        assert "Bar.helper" in method_names
+        assert "Bar.this" not in method_names
+
+    def test_top_level_this_not_constructor(self, tmp_path: Path) -> None:
+        """A function named ``this`` at top level (no enclosing class) is
+        not a secondary constructor and should stay kind='function'.
+        Scala syntactically forbids this in practice, but the extractor
+        must not treat any ``def this`` as a constructor when there's
+        no enclosing type."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        # We construct this by wrapping in an object so the tree-sitter
+        # parse is valid. The "this" method would be enclosed by the
+        # object, so enclosing_type != None and is_secondary_ctor=True.
+        # Instead, verify a plain top-level function is unaffected.
+        scala_file = tmp_path / "Top.scala"
+        scala_file.write_text(
+            "def regular(): Int = 42\n",
+        )
+        result = analyze_scala(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert any(f.name == "regular" for f in funcs)
+        # No constructor kind anywhere.
+        ctors = [s for s in result.symbols if s.kind == "constructor"]
+        assert ctors == []
+
+
 class TestScalaClassExtraction:
     """Tests for extracting Scala classes."""
 

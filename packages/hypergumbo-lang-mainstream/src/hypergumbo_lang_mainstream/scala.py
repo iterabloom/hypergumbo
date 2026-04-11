@@ -354,7 +354,21 @@ def _extract_symbols_from_file(
             if name_node:
                 func_name = node_text(name_node, source)
                 enclosing_type = _get_enclosing_type(node, source)
-                if enclosing_type:
+                # WI-rupum: Scala secondary constructors are parsed as
+                # ``function_definition`` with identifier text "this" —
+                # ``def this(arg) = this(...)``. These are not methods;
+                # they're constructors, invoked by ``new ClassName(arg)``.
+                # Without this special case, the WI-tubot prospector
+                # surfaced them (e.g. CachedPartition.this, KafkaConfig.this)
+                # as top-ranked dead-code candidates, because the static
+                # call graph never reaches them.
+                is_secondary_ctor = (
+                    func_name == "this" and enclosing_type is not None
+                )
+                if is_secondary_ctor:
+                    full_name = f"{enclosing_type}.this"
+                    kind = "constructor"
+                elif enclosing_type:
                     full_name = f"{enclosing_type}.{func_name}"
                     kind = "method"
                 else:
@@ -374,6 +388,12 @@ def _extract_symbols_from_file(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
                 ) if norm_sig else None
 
+                # WI-rupum: secondary constructors are inherently part
+                # of the public API of their enclosing class (something
+                # calls them via ``new``) — mark is_exported=True so
+                # dead-code-maybe's --seeds exports mode treats them
+                # as reachable. The constructor kind ALSO excludes them
+                # from the dead-code candidate list at the kind filter.
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
@@ -392,6 +412,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     modifiers=modifiers,
                     meta=meta,
+                    is_exported=is_secondary_ctor,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
