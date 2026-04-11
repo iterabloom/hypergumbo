@@ -1368,7 +1368,16 @@ def _extract_edges(
                     elif receiver_name and receiver_name in class_symbols:
                         candidate = f"{receiver_name}.{method_name}"
                         lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
-                        if lookup_result.found:
+                        # WI-fuhaj: consult file imports. Without this guard,
+                        # a static call like ``Logger.info(...)`` would resolve
+                        # to a local class named ``Logger`` even when the file
+                        # actually imports ``org.slf4j.Logger`` — the same
+                        # short-name collision class that INV-finak fixed for
+                        # instantiations and Case 3 type-inferred calls.
+                        if lookup_result.found and not _is_import_class_mismatch(
+                            receiver_name, lookup_result.symbol, imports,
+                            caller_file=str(file_path),
+                        ):
                             edge_confidence = 0.95 * lookup_result.confidence
                             edge = Edge.create(
                                 src=current_method.id,
@@ -1411,9 +1420,22 @@ def _extract_edges(
                             # Fallback: method not found on type (likely
                             # inherited from a framework base class, e.g.
                             # JpaRepository.save). Link to the type's
-                            # class/interface symbol instead.
+                            # class/interface symbol instead — but only
+                            # if the class symbol matches the file's
+                            # imports. WI-fuhaj: without this guard, a
+                            # local Jackson POJO named ``Logger`` absorbs
+                            # every ``log.trace/error/warn`` call in any
+                            # file that imports ``org.slf4j.Logger``,
+                            # because the slf4j Logger isn't in the
+                            # codebase symbols so the suffix-match
+                            # resolver reaches the local POJO. On Kafka
+                            # this produced 2057+ bogus edges to a
+                            # 50-line config POJO.
                             type_sym = class_symbols.get(type_class_name)
-                            if type_sym is not None:
+                            if type_sym is not None and not _is_import_class_mismatch(
+                                type_class_name, type_sym, imports,
+                                caller_file=str(file_path),
+                            ):
                                 edge = Edge.create(
                                     src=current_method.id,
                                     dst=type_sym.id,
@@ -1490,9 +1512,9 @@ def _extract_edges(
                     # Case 4: Fallback - try imported class or just the receiver name
                     # This handles edge cases where the receiver isn't recognized as a
                     # class or variable but might still match a symbol via imports.
-                    # In practice, this is rarely hit since Case 2 handles most static
-                    # calls and Case 3 handles most instance calls.
-                    if not edge_added and receiver_name and resolver:  # pragma: no cover
+                    # Also reachable when Case 2's import guard rejects a mismatched
+                    # static call — WI-fuhaj — so the guard must be repeated here.
+                    if not edge_added and receiver_name and resolver:
                         candidates = [f"{receiver_name}.{method_name}"]
                         # Try imported class name
                         if receiver_name in imports:
@@ -1500,8 +1522,15 @@ def _extract_edges(
                             candidates.insert(0, f"{full_class}.{method_name}")
                         for candidate in candidates:
                             lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
-                            if lookup_result.found and lookup_result.symbol is not None:
-                                edge = Edge.create(
+                            if (
+                                lookup_result.found
+                                and lookup_result.symbol is not None
+                                and not _is_import_class_mismatch(
+                                    receiver_name, lookup_result.symbol, imports,
+                                    caller_file=str(file_path),
+                                )
+                            ):
+                                edge = Edge.create(  # pragma: no cover
                                     src=current_method.id,
                                     dst=lookup_result.symbol.id,
                                     edge_type="calls",
@@ -1511,9 +1540,9 @@ def _extract_edges(
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
                                 )
-                                edges.append(edge)
-                                edge_added = True
-                                break
+                                edges.append(edge)  # pragma: no cover
+                                edge_added = True  # pragma: no cover
+                                break  # pragma: no cover
 
                     # Emit unresolved external edge when no resolution strategy succeeded
                     if not edge_added:
