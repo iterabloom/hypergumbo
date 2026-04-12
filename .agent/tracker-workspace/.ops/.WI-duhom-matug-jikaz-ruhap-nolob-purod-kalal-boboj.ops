@@ -1,0 +1,20 @@
+- op: create  # 5122
+  at: '2026-04-12T08:24:15Z'  # 5122
+  by: agent  # 5122
+  actor: jgstern_agent  # 5122
+  clock: 1  # 5122
+  nonce: '5122'  # 5122
+  data:  # 5122
+    kind: work_item  # 5122
+    title: "Gradle/Maven DependencyManifest: classify unresolved Java imports as external_dep"  # 5122
+    status: todo_soft  # 5122
+    priority: 2  # 5122
+    parent:  # 5122
+    tags:  # 5122
+    - analysis_quality  # 5122
+    before: []  # 5122
+    duplicate_of: []  # 5122
+    not_duplicate_of: []  # 5122
+    pr_ref:  # 5122
+    description: "WI-zizuf revealed that Gradle/Maven projects have near-zero external_dep nodes because external dependencies (Jackson, Netty, RocksDB, etc.) are declared in build.gradle/pom.xml but not physically present on disk. The file-path-based classifier can never classify them. Fix: extend DependencyManifest (currently Go-only via go.mod) to parse Gradle dependency declarations (implementation/api/compileOnly from build.gradle, libs.versions.toml) and Maven dependency declarations (pom.xml <dependencies>) so that classify_import() can classify unresolved Java/Kotlin imports as external_dep. This is a follow-up to the workspace detection fix in WI-zizuf — that fix improves first_party/internal_dep distinction within the project, but external deps remain invisible without manifest parsing."  # 5122
+    fields: {}  # 5122
