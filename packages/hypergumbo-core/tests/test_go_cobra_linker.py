@@ -417,11 +417,58 @@ class TestGoCobraLinkerIntegration:
         assert matching[0].meta is not None
         assert matching[0].meta.get("handler_name") == "runner.runMyCmd"
 
-    def test_handler_outside_any_function_yields_no_edge(
+    def test_package_level_var_emits_edge_from_var_symbol(
         self, tmp_path: Path,
     ) -> None:
-        """When the cobra.Command literal is at package level with no
-        enclosing function symbol, the linker skips rather than emitting a
+        """When the cobra.Command literal is a package-level var declaration,
+        the linker should emit an edge from the var symbol to the handler."""
+        p = tmp_path / "cmd.go"
+        p.write_text(
+            'package main\n\n'
+            'import "github.com/spf13/cobra"\n\n'
+            'var rootCmd = &cobra.Command{\n'
+            '    Use:  "root",\n'
+            '    RunE: rootRun,\n'
+            '}\n\n'
+            'func rootRun(cmd *cobra.Command, args []string) error {\n'
+            '    return nil\n'
+            '}\n',
+        )
+
+        var_sym = Symbol(
+            id=f"go:{p}:5-8:rootCmd:variable",
+            name="rootCmd",
+            kind="variable",
+            language="go",
+            path=str(p),
+            span=Span(start_line=5, end_line=8, start_col=0, end_col=0),
+        )
+        handler_sym = Symbol(
+            id=f"go:{p}:10-12:rootRun:function",
+            name="rootRun",
+            kind="function",
+            language="go",
+            path=str(p),
+            span=Span(start_line=10, end_line=12, start_col=0, end_col=0),
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[var_sym, handler_sym],
+            detected_languages={"go"},
+        )
+        result = go_cobra_linker(ctx)
+        # Package-level var → edge from var symbol to handler.
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == var_sym.id
+        assert edge.dst == handler_sym.id
+        assert edge.edge_type == "dispatches_to"
+
+    def test_package_level_var_no_var_symbol_yields_no_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        """When the cobra.Command literal is at package level and no
+        var symbol is provided, the linker skips rather than emitting a
         misattributed edge."""
         p = tmp_path / "cmd.go"
         p.write_text(
@@ -450,7 +497,7 @@ class TestGoCobraLinkerIntegration:
             detected_languages={"go"},
         )
         result = go_cobra_linker(ctx)
-        # No enclosing function at package level → no edges.
+        # No var symbol and no enclosing function → no edges.
         assert result.edges == []
 
     def test_pattern_compiles(self) -> None:

@@ -536,6 +536,145 @@ members = ["crates/*"]
         assert lib_result.tier < example_result.tier
 
 
+class TestGradleWorkspaces:
+    """Gradle multi-project workspace detection (WI-zizuf)."""
+
+    def test_settings_gradle_includes(self, tmp_path):
+        """Detect Gradle subprojects from settings.gradle include directives."""
+        settings = tmp_path / "settings.gradle"
+        settings.write_text("include 'clients', 'core', 'streams'\n")
+
+        for mod in ["clients", "core", "streams"]:
+            (tmp_path / mod).mkdir()
+
+        roots = detect_package_roots(tmp_path)
+        assert tmp_path / "clients" in roots
+        assert tmp_path / "core" in roots
+        assert tmp_path / "streams" in roots
+
+    def test_settings_gradle_kts_includes(self, tmp_path):
+        """Detect Gradle subprojects from settings.gradle.kts."""
+        settings = tmp_path / "settings.gradle.kts"
+        settings.write_text('include("clients", "core")\n')
+
+        for mod in ["clients", "core"]:
+            (tmp_path / mod).mkdir()
+
+        roots = detect_package_roots(tmp_path)
+        assert tmp_path / "clients" in roots
+        assert tmp_path / "core" in roots
+
+    def test_settings_gradle_colon_prefix(self, tmp_path):
+        """Handle Gradle include(':module') syntax with colon prefix."""
+        settings = tmp_path / "settings.gradle"
+        settings.write_text("include ':clients'\ninclude ':core'\n")
+
+        for mod in ["clients", "core"]:
+            (tmp_path / mod).mkdir()
+
+        roots = detect_package_roots(tmp_path)
+        assert tmp_path / "clients" in roots
+        assert tmp_path / "core" in roots
+
+    def test_settings_gradle_nested_subproject(self, tmp_path):
+        """Handle Gradle nested subprojects like 'connect:api' → connect/api/."""
+        settings = tmp_path / "settings.gradle"
+        settings.write_text("include 'connect:api', 'connect:runtime'\n")
+
+        for mod in ["connect/api", "connect/runtime"]:
+            (tmp_path / mod).mkdir(parents=True)
+
+        roots = detect_package_roots(tmp_path)
+        assert tmp_path / "connect" / "api" in roots
+        assert tmp_path / "connect" / "runtime" in roots
+
+    def test_settings_gradle_nonexistent_module(self, tmp_path):
+        """Gradle modules that don't exist on disk are ignored."""
+        settings = tmp_path / "settings.gradle"
+        settings.write_text("include 'exists', 'does-not-exist'\n")
+
+        (tmp_path / "exists").mkdir()
+        roots = detect_package_roots(tmp_path)
+        assert tmp_path / "exists" in roots
+        assert tmp_path / "does-not-exist" not in roots
+
+    def test_settings_gradle_empty_or_no_includes(self, tmp_path):
+        """settings.gradle without include directives produces no roots."""
+        settings = tmp_path / "settings.gradle"
+        settings.write_text("rootProject.name = 'myapp'\n")
+
+        roots = detect_package_roots(tmp_path)
+        # No Gradle includes, and no other workspace configs → empty
+        assert roots == set()
+
+    def test_gradle_subproject_files_are_first_party(self, tmp_path):
+        """Files in Gradle subprojects are classified as first-party via workspace."""
+        settings = tmp_path / "settings.gradle"
+        settings.write_text("include 'clients'\n")
+
+        src = tmp_path / "clients" / "src" / "main" / "java" / "org"
+        src.mkdir(parents=True)
+        (src / "App.java").write_text("class App {}")
+
+        roots = detect_package_roots(tmp_path)
+        result = classify_file(src / "App.java", tmp_path, roots)
+        assert result.tier == Tier.FIRST_PARTY
+        assert "clients" in result.reason
+
+    def test_gradle_subproject_test_dir_is_internal_dep(self, tmp_path):
+        """Test directories within Gradle subprojects are tier 2."""
+        settings = tmp_path / "settings.gradle"
+        settings.write_text("include 'clients'\n")
+
+        test_dir = tmp_path / "clients" / "src" / "test" / "java"
+        test_dir.mkdir(parents=True)
+        (test_dir / "AppTest.java").write_text("class AppTest {}")
+
+        roots = detect_package_roots(tmp_path)
+        result = classify_file(test_dir / "AppTest.java", tmp_path, roots)
+        assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
+
+    def test_malformed_settings_gradle(self, tmp_path):
+        """Malformed settings.gradle doesn't crash."""
+        settings = tmp_path / "settings.gradle"
+        settings.write_text("this is not valid groovy\n{{{broken")
+
+        roots = detect_package_roots(tmp_path)
+        # Should not crash; may or may not find roots depending on parsing
+        assert isinstance(roots, set)
+
+    def test_unreadable_settings_gradle(self, tmp_path):
+        """Unreadable settings.gradle doesn't crash (OSError path)."""
+        settings = tmp_path / "settings.gradle"
+        settings.write_text("include 'core'\n")
+        (tmp_path / "core").mkdir()
+        settings.chmod(0o000)
+
+        roots = detect_package_roots(tmp_path)
+        # OSError on read → silently skipped, no Gradle roots detected
+        assert tmp_path / "core" not in roots
+        # Restore permissions so tmp_path cleanup succeeds
+        settings.chmod(0o644)
+
+    def test_settings_gradle_multiple_include_lines(self, tmp_path):
+        """Multiple include lines are all parsed."""
+        settings = tmp_path / "settings.gradle"
+        settings.write_text(
+            "include 'clients'\n"
+            "include 'core'\n"
+            "include 'streams'\n"
+        )
+
+        for mod in ["clients", "core", "streams"]:
+            (tmp_path / mod).mkdir()
+
+        roots = detect_package_roots(tmp_path)
+        assert tmp_path / "clients" in roots
+        assert tmp_path / "core" in roots
+        assert tmp_path / "streams" in roots
+
+
 class TestDocCClassification:
     """DocC documentation directories should be tier 2 (not first-party)."""
 

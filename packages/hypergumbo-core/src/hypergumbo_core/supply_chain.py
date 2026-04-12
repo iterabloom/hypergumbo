@@ -642,6 +642,7 @@ def detect_package_roots(repo_root: Path) -> set[Path]:
     - npm/yarn/pnpm workspaces in package.json
     - Cargo workspace members in Cargo.toml
     - Maven modules in pom.xml
+    - Gradle subprojects in settings.gradle / settings.gradle.kts
 
     Args:
         repo_root: Root directory of the repository
@@ -716,6 +717,33 @@ def detect_package_roots(repo_root: Path) -> set[Path]:
                             roots.add(mod_path)
         except (OSError, ET.ParseError):
             pass
+
+    # Gradle multi-project builds (WI-zizuf)
+    # settings.gradle or settings.gradle.kts declares subprojects via
+    # include('mod') or include 'mod'.  Colon separators (e.g., 'connect:api')
+    # map to directory nesting (connect/api/).
+    for settings_name in ("settings.gradle", "settings.gradle.kts"):
+        settings_file = repo_root / settings_name
+        if settings_file.exists():
+            try:
+                content = settings_file.read_text()
+                # Match both Groovy (include 'a', 'b') and Kotlin DSL
+                # (include("a", "b")) styles. Each include() call may
+                # list multiple projects separated by commas.
+                for m in re.finditer(
+                    r"""include\s*\(?\s*((?:['"]:?[^'"]*['"],?\s*)+)\)?""",
+                    content,
+                ):
+                    for name in re.findall(r"""['"][:.]?([^'"]+)['"]""", m.group(1)):
+                        if not name:  # pragma: no cover - regex guarantees non-empty
+                            continue
+                        # Gradle ':' separator maps to directory '/'
+                        dir_name = name.replace(":", "/")
+                        mod_path = repo_root / dir_name
+                        if mod_path.is_dir():
+                            roots.add(mod_path)
+            except OSError:
+                pass
 
     return roots
 

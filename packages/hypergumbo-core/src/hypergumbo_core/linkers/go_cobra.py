@@ -30,9 +30,10 @@ Matching strategy
    already reachable via containment.
 3. For each captured ``(field, identifier)`` pair, resolve
    ``identifier`` to a Symbol via ``ctx.find_symbols_by_name`` and emit
-   a ``dispatches_to`` edge from the enclosing function (or the
-   cobra.Command site if no enclosing function can be found) to the
-   handler.
+   a ``dispatches_to`` edge from the enclosing function to the handler.
+   When the cobra.Command literal is at package level (inside a
+   ``var … = &cobra.Command{…}`` declaration), the linker falls back
+   to the enclosing variable symbol as the edge source.
 
 Why regex and not tree-sitter
 -----------------------------
@@ -212,8 +213,13 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
 
             # Find the enclosing function. If the cobra.Command literal
             # is outside any function (e.g., a package-level var init),
-            # fall back to the first file-level symbol.
+            # fall back to the enclosing variable symbol — the most
+            # common Go cobra pattern is ``var rootCmd = &cobra.Command{…}``.
             enclosing = ctx.find_enclosing_symbol(str(file_path), line)
+            if enclosing is None:
+                enclosing = ctx.find_enclosing_symbol(
+                    str(file_path), line, kinds=("variable",),
+                )
             if enclosing is None:
                 continue
 
