@@ -27,6 +27,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+#### Developer experience
+
+- **`auto-pr --tracker-id <FULL_ID>`** (WI-mokak): the `scripts/auto-pr` script accepts a full tracker item ID (`WI-*`, `INV-*`, `META-*`, …). On a successful merge — covering all three merge-success sites (`do_pr`, `flush_queue`, and the WI-bahuf already-merged recovery path) — auto-pr appends a discussion entry to the referenced tracker item citing the durable identifiers it already captures for the WI-miriz sentinel: `"Merged as PR #<N>, dev SHA <short-12>."`. Fixes the previous pattern where the agent wrote a pre-merge discussion entry citing the feature-branch commit SHA, which is preserved by fast-forward merges but silently changed by rebase-before-merge and squash fallback. Missing flag is a no-op; tracker-discuss failure is warned but tolerated (merge bookkeeping must never gate a merge that already succeeded on the forge). Tracker binary path is overridable via `AUTOPR_TRACKER_CMD` for test stubs, and `AUTOPR_SOURCE_ONLY=1` lets tests source the script without running main dispatch.
+
 #### Slice telemetry
 
 - **Forward-dataflow admission-rule telemetry** (WI-hukoh Phase A): `SliceResult.admission_stats` is a per-rule counter dictionary populated whenever `dataflow=True`, recording how many edges were admitted or rejected by each BFS rule during forward slicing. Keys: `admitted_writer_src`, `admitted_downstream_read` (WI-saful option 1 terminal admission), `admitted_no_annotation` (graceful-degrade), `admitted_reverse_read`, `rejected_read_from_non_writer`, `rejected_other`, and `would_admit_dst_reader` — the last is a predictive counter measuring how many edges option 2 (dst_access_mode OR-check) would admit if implemented, without requiring the behavior change. This is the baseline instrumentation for the forward-dataflow option-2-vs-3 decision gate. Dict is empty when `dataflow=False`. Surfaced in `SliceResult.to_dict()` when non-empty.

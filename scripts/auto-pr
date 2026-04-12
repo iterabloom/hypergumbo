@@ -44,6 +44,9 @@ QUEUE_FILE="$REPO_ROOT/.git/PR_QUEUE"
 FORCE_SQUASH=false
 CI_POLL_TIMEOUT=""
 GOVERNANCE_MODE=false
+# WI-mokak: full tracker item ID whose discussion thread should receive a
+# post-merge entry citing the durable PR number + dev SHA. Empty = no-op.
+TRACKER_ID=""
 
 # ------------------------------------------------------------------
 # WI-miriz: AUTOPR_LAST_RESULT.json sentinel
@@ -134,6 +137,46 @@ _autopr_finalize() {
 }
 
 # ------------------------------------------------------------------
+# WI-mokak: post-merge tracker discussion append
+#
+# Problem (see WI-mokak): when the agent resolves a tracker item via
+# auto-pr, it previously had to manually record a pre-merge discussion
+# entry citing the feature-branch commit SHA. That SHA is fragile —
+# fast-forward preserves it, but rebase-before-merge and --squash change
+# it, so readers have no guaranteed-durable identifier to follow.
+#
+# Fix: if the caller passes --tracker-id <FULL_ID>, auto-pr appends a
+# discussion entry to that item on successful merge, citing the durable
+# identifiers it already captures for the WI-miriz sentinel (PR_NUM,
+# _autopr_state_merged_sha). Missing flag is a no-op: not every auto-pr
+# invocation is scoped to a tracker item.
+#
+# The tracker binary path is overridable via AUTOPR_TRACKER_CMD (tests
+# use this to substitute a stub logger). Failure is warned but tolerated
+# — tracker-discussion bookkeeping must never gate a merge that has
+# already succeeded on the forge.
+# ------------------------------------------------------------------
+_autopr_append_tracker_discussion() {
+	local tracker_id="${1:-}"
+	local pr_num="${2:-}"
+	local merged_sha="${3:-}"
+
+	if [[ -z "$tracker_id" ]]; then
+		return 0
+	fi
+
+	local tracker_bin="${AUTOPR_TRACKER_CMD:-$SCRIPT_DIR/tracker}"
+	local short_sha="${merged_sha:0:12}"
+	local pr_display="${pr_num:-unknown}"
+	local msg="Merged as PR #${pr_display}, dev SHA ${short_sha}."
+
+	if ! "$tracker_bin" discuss "$tracker_id" "$msg" >/dev/null 2>&1; then
+		echo "⚠️  tracker discuss ${tracker_id} failed — continuing" >&2
+	fi
+	return 0
+}
+
+# ------------------------------------------------------------------
 # WI-bahuf: detect 'commit is the same as the old commit' rejection
 #
 # When a refs/for/ push is rejected by Forgejo with this message, the
@@ -204,6 +247,12 @@ _autopr_handle_already_merged() {
 
 	_autopr_state_final="already_merged"
 	_autopr_state_merged_sha="$local_sha"
+
+	# WI-mokak: append a durable discussion entry to the referenced
+	# tracker item, if one was supplied. This catches the WI-miriz
+	# failure mode where a silent backgrounded success is re-run and
+	# the first run never got to record the merge.
+	_autopr_append_tracker_discussion "$TRACKER_ID" "$pr_num" "$local_sha"
 
 	# Cleanup mirrors the post-merge path in do_pr but does NOT touch
 	# tracker ops or attempt to amend the (already-merged) commit.
@@ -817,6 +866,10 @@ Individual commits are preserved in the history."
 	_autopr_state_final="merged"
 	_autopr_state_merged_sha="$tip_sha"
 
+	# WI-mokak: append durable post-merge discussion entry to the
+	# tracker item, if one was referenced by --tracker-id.
+	_autopr_append_tracker_discussion "$TRACKER_ID" "$PR_NUM" "$tip_sha"
+
 	# Cleanup
 	echo "---------------------------------------------------"
 	echo "🧹 Cleaning up..."
@@ -1328,6 +1381,10 @@ do_pr() {
 	_autopr_state_final="merged"
 	_autopr_state_merged_sha="$LOCAL_SHA"
 
+	# WI-mokak: append durable post-merge discussion entry to the
+	# tracker item, if one was referenced by --tracker-id.
+	_autopr_append_tracker_discussion "$TRACKER_ID" "$PR_NUM" "$LOCAL_SHA"
+
 	# Record merged PR in failover state
 	if [[ "$FAILOVER_ACTIVE" == "true" ]] && [[ -f "$REPO_ROOT/.git/CI_FAILOVER_ACTIVE" ]]; then
 		_FAILOVER_PR_TITLE="$TITLE" python3 -c "
@@ -1400,6 +1457,13 @@ cleanup_local() {
 # Main dispatch
 # ------------------------------------------------------------------
 
+# WI-mokak: AUTOPR_SOURCE_ONLY=1 lets tests source this script (to reach
+# individual helper functions like _autopr_append_tracker_discussion) without
+# running main dispatch. No effect on normal invocations.
+if [[ "${AUTOPR_SOURCE_ONLY:-0}" == "1" ]]; then
+	return 0 2>/dev/null || exit 0
+fi
+
 # Parse global flags
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -1423,6 +1487,17 @@ while [[ $# -gt 0 ]]; do
 	--gov)
 		GOVERNANCE_MODE=true
 		shift
+		;;
+	--tracker-id)
+		# WI-mokak: full tracker item ID (WI-*, INV-*, META-*, etc).
+		# Missing value or another flag as value is a hard error — we
+		# refuse to silently treat the next positional arg as an ID.
+		if [[ -z "${2:-}" ]] || [[ "${2}" == --* ]]; then
+			echo "❌ --tracker-id requires a value (full tracker item ID, e.g. WI-foo-bar-baz)" >&2
+			exit 1
+		fi
+		TRACKER_ID="$2"
+		shift 2
 		;;
 	*)
 		break
@@ -1499,10 +1574,13 @@ help | --help | -h)
 	echo "Usage: auto-pr [options] [command] [args]"
 	echo ""
 	echo "Options:"
-	echo "  --squash        Force squash merge (discouraged; use only if fast-forward fails)"
-	echo "                  Commit body is preserved via git notes, subject includes [from <sha>]"
-	echo "  --timeout SECS  CI polling timeout in seconds (default: 2400 = 40 min)"
-	echo "  --gov           Governance mode: push + CI, but do NOT auto-merge (human reviews)"
+	echo "  --squash            Force squash merge (discouraged; use only if fast-forward fails)"
+	echo "                      Commit body is preserved via git notes, subject includes [from <sha>]"
+	echo "  --timeout SECS      CI polling timeout in seconds (default: 2400 = 40 min)"
+	echo "  --gov               Governance mode: push + CI, but do NOT auto-merge (human reviews)"
+	echo "  --tracker-id ID     Full tracker item ID (WI-*, INV-*, etc). On successful merge,"
+	echo "                      appends a discussion entry to that item citing the PR number and"
+	echo "                      merged dev SHA. Missing flag is a no-op."
 	echo ""
 	echo "Commands:"
 	echo "  (default)       Push branch as PR (uses fast-forward merge by default)"
