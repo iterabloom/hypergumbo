@@ -33,3 +33,12 @@
   clock: 3  # 5e58
   nonce: '5e58'  # 5e58
   message: "V1 shipped. scripts/tracker-path-linter detects backtick and bare path tokens in tracker item descriptions/discussions, verifies each against the repo filesystem, emits stale references with fuzzy basename suggestions via git ls-files index. 36 tests. False-positive mitigation (fenced-code detection, opt-out tag) deferred."  # 5e58
+- op: update  # 76e5
+  at: '2026-04-12T07:03:20Z'  # 76e5
+  by: human  # 76e5
+  actor: jgstern  # 76e5
+  clock: 4  # 76e5
+  nonce: '76e5'  # 76e5
+  set: {}  # 76e5
+  add:  # 76e5
+    tags: [done-ish]  # 76e5

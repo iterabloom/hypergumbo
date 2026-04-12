@@ -27,3 +27,20 @@
   clock: 2  # b411
   nonce: b411  # b411
   message: "that artifact in /tmp should probably be copied to the lab notebook. if it is > 50 MB please zip it."  # b411
+- op: update  # 8bf2
+  at: '2026-04-12T07:59:06Z'  # 8bf2
+  by: human  # 8bf2
+  actor: jgstern  # 8bf2
+  clock: 3  # 8bf2
+  nonce: 8bf2  # 8bf2
+  set:  # 8bf2
+    status: todo_hard  # 8bf2
+    priority: 1  # 8bf2
+- op: update  # b76a
+  at: '2026-04-12T08:00:22Z'  # b76a
+  by: human  # b76a
+  actor: jgstern  # b76a
+  clock: 4  # b76a
+  nonce: b76a  # b76a
+  set:  # b76a
+    priority: 0  # b76a
