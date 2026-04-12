@@ -37,3 +37,10 @@
   clock: 3  # b650
   nonce: b650  # b650
   message: "Shipped in PR #2952. New go_cobra_linker (regex-based) detects cobra.Command{} literals, extracts all 10 handler fields (Run/RunE/PreRun/PreRunE/PostRun/PostRunE/PersistentPreRun/PersistentPreRunE/PersistentPostRun/PersistentPostRunE), and emits dispatches_to edges from enclosing function to handler. 21 tests, 100% coverage. Acceptance validation (alertmanager 20 dead functions → reachable) deferred to next prospector run."  # b650
+- op: discuss  # e606
+  at: '2026-04-12T01:22:24Z'  # e606
+  by: agent  # e606
+  actor: jgstern_agent  # e606
+  clock: 4  # e606
+  nonce: e606  # e606
+  message: "Validation bakeoff complete (2026-04-11, PARTIAL PASS). Alertmanager doesn't actually use cobra (it uses alecthomas/kingpin), so the original alertmanager validation target is moot — the 'cobra_cli_dispatch' category in the WI-juhov triage was a categorizer misclassification. Validated instead on buildah (79MB, uses spf13/cobra with 5 named RunE handlers: tagCmd, renameCmd, umountCmd, unshareCmd, dumpBoltCmd). Result: only 1/5 handlers (umountCmd) received a go-cobra-linker-v1 dispatches_to edge and was removed from the dead list; the other 4 (tagCmd, renameCmd, unshareCmd, dumpBoltCmd) remained in the dead-code candidate list. Root cause: umountCmd is defined inside an init() function (`func init() { cobra.Command{RunE: umountCmd} }`) while the other 4 use the more common `var tagCommand = &cobra.Command{RunE: tagCmd}` package-level var pattern — the linker's regex anchor only fires for in-function literals. Additionally the 1 edge that was emitted had the wrong src (Builder.Mount in buildah/mount.go instead of init in cmd/buildah/umount.go), pointing to an enclosing-function-lookup bug that picked the nearest function across files. Filed follow-up: WI-lihih-putuz-rilur-nazir-pakus-fasih-farat-tubij (todo_soft, P3) to fix both gaps. WI-gohad is technically shipped and works for inline cobra.Command literals, but effective coverage on real cobra-heavy repos is very limited until the follow-up lands."  # e606

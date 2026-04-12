@@ -1,0 +1,20 @@
+- op: create  # a955
+  at: '2026-04-12T01:41:21Z'  # a955
+  by: agent  # a955
+  actor: jgstern_agent  # a955
+  clock: 1  # a955
+  nonce: a955  # a955
+  data:  # a955
+    kind: work_item  # a955
+    title: "is_generated tier demotion leaks ~10% of symbols in TS openapi-gen files"  # a955
+    status: todo_soft  # a955
+    priority: 4  # a955
+    parent:  # a955
+    tags:  # a955
+    - analysis_quality  # a955
+    before: []  # a955
+    duplicate_of: []  # a955
+    not_duplicate_of: []  # a955
+    pr_ref:  # a955
+    description: "WI-vubad validation on airflow (2026-04-11) showed the openapi-gen regex is applied correctly but ~10% of symbols from flagged-generated files still appear in the dead-code candidate list. Concrete residual: 57 candidates in /openapi-gen/ paths (down from 599 pre-fix), all from 4 file types — CancelablePromise.ts, request.ts, OpenAPI.ts, ApiError.ts — across 3 copies of the openapi-gen tree in airflow. Symbol names leaking through: path, process, append, headers, encodePair, getUrl, onCancel, onReject, onResolve, CancelablePromise.{then,catch,cancel,finally,constructor}, Interceptors.{constructor,eject,use}, ApiError.constructor, CancelError.constructor. The file-level is_generated flag IS flipping (90% of candidates correctly dropped), but something about how hypergumbo extracts and tier-classifies individual symbols from these 4 file types leaves a subset exposed. Likely cause: tier demotion cascades at file level but symbol records carry an earlier tier snapshot, or the TS analyzer extracts certain symbol shapes (arrow functions, class method exports) via a code path that bypasses the file-level metadata. Investigate in js_ts.py symbol extraction and supply_chain.py tier propagation. Low priority because bulk effect (90% drop) already delivered; this is the residual long tail."  # a955
+    fields: {}  # a955

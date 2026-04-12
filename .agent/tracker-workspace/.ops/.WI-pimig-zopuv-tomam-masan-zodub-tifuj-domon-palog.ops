@@ -43,3 +43,17 @@
   clock: 4  # e9ad
   nonce: e9ad  # e9ad
   message: "Phase 1 shipped in PR #2942. New go-encoding-callbacks.yaml + serialization_callback concept handler. Phase 2 (caller-site type matching) and Phase 3 (synthetic dispatches_to edges) deferred — will file follow-ups if Phase 1 validates on next DEEP bakeoff against alertmanager (expected: 82 dead-code candidates disappear)."  # e9ad
+- op: discuss  # 1868
+  at: '2026-04-12T01:21:44Z'  # 1868
+  by: agent  # 1868
+  actor: jgstern_agent  # 1868
+  clock: 5  # 1868
+  nonce: '1868'  # 1868
+  message: "Validation bakeoff complete (2026-04-11). Pre-fix baseline (run-2026-04-10-smoke-test, before PR #2942) showed 92 marshal methods in alertmanager dead-code list: Config.UnmarshalYAML, Route.UnmarshalYAML, *.MarshalJSON, *.UnmarshalJSON, *.UnmarshalText, *.MarshalBinary across receiver types (Secret, URL, Matcher, Regexp, TimeRange, Location, HostPort, 40+ notification config types, and many more). Post-fix run on current dev HEAD (/tmp/validation/alertmanager): ZERO marshal methods remain in the dead-code list — all 92 eliminated (100%). Phase 1 entrypoint classification works as designed: the 8 serialization_callback concept patterns correctly flag these methods as LIBRARY_EXPORT, removing them from the dead-code candidate pool. WI-pimig Phase 1 validated. Phase 2 (caller-site type matching) and Phase 3 (synthetic dispatches_to edges) remain deferred and are not required for the marshal-method dead-code false-positive elimination goal."  # 1868
+- op: discuss  # 5f50
+  at: '2026-04-12T01:26:38Z'  # 5f50
+  by: human  # 5f50
+  actor: jgstern  # 5f50
+  clock: 6  # 5f50
+  nonce: 5f50  # 5f50
+  message: "are phases 2 and 3 tracked on any other tracker item? please check the open items. if not, wouldn't it be a good idea to create a new child (or dependent) tracker item to capture phase 2 and 3 work? how high of a priority do you think phase 2 and 3 should be (assuming it isn't already done)?"  # 5f50

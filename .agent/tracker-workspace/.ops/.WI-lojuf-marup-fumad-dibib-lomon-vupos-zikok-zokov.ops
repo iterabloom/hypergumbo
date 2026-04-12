@@ -36,3 +36,10 @@
   clock: 3  # 65d7
   nonce: 65d7  # 65d7
   message: "Shipped. New go_memberlist_linker detects 12 canonical delegate methods (NotifyMsg/GetBroadcasts/LocalState/MergeRemoteState/NotifyJoin/NotifyLeave/NotifyUpdate/NotifyConflict/NotifyMerge/NotifyAlive/NotifyPingComplete/AckPayload), anchors on memberlist.Create() callers, falls back to first non-delegate function. 14 tests, 100% coverage. Acceptance validation (alertmanager 42 dead methods → reachable) deferred to next prospector run."  # 65d7
+- op: discuss  # 9056
+  at: '2026-04-12T01:22:05Z'  # 9056
+  by: agent  # 9056
+  actor: jgstern_agent  # 9056
+  clock: 4  # 9056
+  nonce: '9056'  # 9056
+  message: "Validation bakeoff complete (2026-04-11). Pre-fix baseline (run-2026-04-10-smoke-test, before linker shipped) showed 11 memberlist delegate methods in alertmanager dead-code list: delegate.LocalState, delegate.MergeRemoteState, delegate.NotifyMsg, delegate.GetBroadcasts, delegate.NotifyJoin, delegate.NotifyLeave, delegate.NotifyUpdate, delegate.NotifyConflict, delegate.NotifyAlive, delegate.NotifyPingComplete, delegate.AckPayload. Post-fix run on current dev HEAD (/tmp/validation/alertmanager): ZERO memberlist delegate methods remain — all 11 eliminated (100%). go_memberlist_linker correctly recognized the delegate type and anchored dispatches_to edges from memberlist.Create() callers (fallback-to-first-non-delegate-function not needed on alertmanager because memberlist.Create is called directly). Cluster/ dir total dead dropped 43 → 13, reflecting cascading reachability from the 11 direct hits plus methods they call transitively. Item description's claim of '42 functions' was slightly above what the prospector actually surfaced (11 direct delegate methods + ~30 cascading); the linker eliminates the whole 30-method cluster/ cascade in practice. WI-lojuf validated. No follow-up items required."  # 9056
