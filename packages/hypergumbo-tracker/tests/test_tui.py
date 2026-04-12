@@ -6214,8 +6214,10 @@ class TestPersistence:
 def _make_tracker_set_with_deps(tmp_path: Path) -> TrackerSet:
     """Create a TrackerSet with before-links for dependency visualization tests.
 
-    Creates items: A, B, C where B depends on A (B.before = [A]),
-    and C depends on B (C.before = [B]), forming a chain A → B → C.
+    Creates items A, B, C forming a chain where A must finish before B, and
+    B must finish before C (temporal order: A → B → C). Under the CLI
+    semantic that ``X.before = [Y]`` means "X blocks Y" (X runs first), this
+    translates to ``A.before = [B]`` and ``B.before = [C]``.
     """
     from helpers import make_test_config_dict
 
@@ -6242,9 +6244,9 @@ def _make_tracker_set_with_deps(tmp_path: Path) -> TrackerSet:
     id_c = ts.add(kind="work_item", title="Final integration",
                   status="todo_soft", priority=3)
 
-    # B depends on A, C depends on B
-    ts.update(id_b, add_fields={"before": [id_a]})
-    ts.update(id_c, add_fields={"before": [id_b]})
+    # A blocks B, B blocks C (foundation first, integration last)
+    ts.update(id_a, add_fields={"before": [id_b]})
+    ts.update(id_b, add_fields={"before": [id_c]})
 
     return ts
 
@@ -6278,14 +6280,14 @@ class TestBuildDepIndex:
         assert deps == {}
 
     def test_single_dependency(self) -> None:
-        """B depends on A: blockers_of[B] = [A], dependents_of[A] = [B]."""
+        """A blocks B (A.before=[B]): blockers_of[B]=[A], dependents_of[A]=[B]."""
 
         items = [
             CompiledItem(id="WI-aaaaa", kind="work_item",
-                         title="A", status="todo_hard"),
+                         title="A", status="todo_hard",
+                         before=["WI-bbbbb"]),
             CompiledItem(id="WI-bbbbb", kind="work_item",
-                         title="B", status="todo_hard",
-                         before=["WI-aaaaa"]),
+                         title="B", status="todo_hard"),
         ]
         blockers, deps = _build_dep_index(items)
         assert blockers == {"WI-bbbbb": ["WI-aaaaa"]}
@@ -6304,17 +6306,17 @@ class TestBuildDepIndex:
         assert deps == {}
 
     def test_chain_a_b_c(self) -> None:
-        """Chain A → B → C produces correct bidirectional maps."""
+        """Chain A → B → C (A blocks B, B blocks C) produces correct maps."""
 
         items = [
             CompiledItem(id="WI-aaaaa", kind="work_item",
-                         title="A", status="todo_hard"),
+                         title="A", status="todo_hard",
+                         before=["WI-bbbbb"]),
             CompiledItem(id="WI-bbbbb", kind="work_item",
                          title="B", status="todo_hard",
-                         before=["WI-aaaaa"]),
+                         before=["WI-ccccc"]),
             CompiledItem(id="WI-ccccc", kind="work_item",
-                         title="C", status="todo_hard",
-                         before=["WI-bbbbb"]),
+                         title="C", status="todo_hard"),
         ]
         blockers, deps = _build_dep_index(items)
         assert blockers == {
@@ -6327,16 +6329,17 @@ class TestBuildDepIndex:
         }
 
     def test_multiple_blockers(self) -> None:
-        """C blocked by both A and B."""
+        """C blocked by both A and B (both A and B block C)."""
 
         items = [
             CompiledItem(id="WI-aaaaa", kind="work_item",
-                         title="A", status="todo_hard"),
+                         title="A", status="todo_hard",
+                         before=["WI-ccccc"]),
             CompiledItem(id="WI-bbbbb", kind="work_item",
-                         title="B", status="todo_hard"),
+                         title="B", status="todo_hard",
+                         before=["WI-ccccc"]),
             CompiledItem(id="WI-ccccc", kind="work_item",
-                         title="C", status="todo_hard",
-                         before=["WI-aaaaa", "WI-bbbbb"]),
+                         title="C", status="todo_hard"),
         ]
         blockers, deps = _build_dep_index(items)
         assert blockers["WI-ccccc"] == ["WI-aaaaa", "WI-bbbbb"]
@@ -6539,50 +6542,56 @@ class TestFormatDepPills:
 
 
 class TestFormatDetailLinesDeps:
-    """Test that detail panel shows Blocked by and Blocks lines."""
+    """Test that detail panel shows Blocks and Blocked by lines.
+
+    Under the CLI semantic ``X.before = [Y]`` means "X blocks Y" — so
+    ``item.before`` is rendered as the ``Blocks:`` line, and
+    ``blockers_of[item.id]`` (reverse lookup) is rendered as the
+    ``Blocked by:`` line.
+    """
 
     def test_before_links_shown(self) -> None:
-        """Item with before-links shows 'Blocked by' line."""
-        item = CompiledItem(
-            id="WI-bbbbb", kind="work_item",
-            title="Build", status="todo_hard",
-            tier=Tier.WORKSPACE,
-            before=["WI-aaaaa"],
-        )
-        lines = _format_detail_lines(item)
-        text = _strip_markup("\n".join(lines))
-        assert "Blocked by:" in text
-        assert "WI-aaaaa" in text
-
-    def test_before_locked_shown(self) -> None:
-        """Locked before field shows [locked] indicator."""
-        item = CompiledItem(
-            id="WI-bbbbb", kind="work_item",
-            title="Build", status="todo_hard",
-            tier=Tier.WORKSPACE,
-            before=["WI-aaaaa"],
-            locked_fields={"before"},
-        )
-        lines = _format_detail_lines(item)
-        text = _strip_markup("\n".join(lines))
-        assert "Blocked by [locked]:" in text
-
-    def test_dependents_shown(self) -> None:
-        """When dependents_of is provided, shows 'Blocks' line."""
+        """Item with before-links shows 'Blocks' line (item blocks those IDs)."""
         item = CompiledItem(
             id="WI-aaaaa", kind="work_item",
             title="Foundation", status="todo_hard",
             tier=Tier.WORKSPACE,
+            before=["WI-bbbbb"],
         )
-        deps = {"WI-aaaaa": ["WI-bbbbb", "WI-ccccc"]}
-        lines = _format_detail_lines(item, dependents_of=deps)
+        lines = _format_detail_lines(item)
         text = _strip_markup("\n".join(lines))
         assert "Blocks:" in text
         assert "WI-bbbbb" in text
-        assert "WI-ccccc" in text
+
+    def test_before_locked_shown(self) -> None:
+        """Locked before field shows [locked] indicator on Blocks line."""
+        item = CompiledItem(
+            id="WI-aaaaa", kind="work_item",
+            title="Foundation", status="todo_hard",
+            tier=Tier.WORKSPACE,
+            before=["WI-bbbbb"],
+            locked_fields={"before"},
+        )
+        lines = _format_detail_lines(item)
+        text = _strip_markup("\n".join(lines))
+        assert "Blocks [locked]:" in text
+
+    def test_blockers_shown(self) -> None:
+        """When blockers_of is provided, shows 'Blocked by' line."""
+        item = CompiledItem(
+            id="WI-ccccc", kind="work_item",
+            title="Integration", status="todo_hard",
+            tier=Tier.WORKSPACE,
+        )
+        blockers = {"WI-ccccc": ["WI-aaaaa", "WI-bbbbb"]}
+        lines = _format_detail_lines(item, blockers_of=blockers)
+        text = _strip_markup("\n".join(lines))
+        assert "Blocked by:" in text
+        assert "WI-aaaaa" in text
+        assert "WI-bbbbb" in text
 
     def test_no_deps_no_lines(self) -> None:
-        """Item without deps doesn't show Blocked by or Blocks."""
+        """Item without deps doesn't show Blocks or Blocked by."""
         item = CompiledItem(
             id="WI-aaaaa", kind="work_item",
             title="Solo", status="todo_hard",
@@ -6590,19 +6599,19 @@ class TestFormatDetailLinesDeps:
         )
         lines = _format_detail_lines(item)
         text = _strip_markup("\n".join(lines))
-        assert "Blocked by" not in text
         assert "Blocks:" not in text
+        assert "Blocked by" not in text
 
-    def test_dependents_not_shown_without_param(self) -> None:
-        """Without dependents_of parameter, no Blocks line even if item exists."""
+    def test_blockers_not_shown_without_param(self) -> None:
+        """Without blockers_of parameter, no Blocked by line."""
         item = CompiledItem(
             id="WI-aaaaa", kind="work_item",
             title="Solo", status="todo_hard",
             tier=Tier.WORKSPACE,
         )
-        lines = _format_detail_lines(item, dependents_of=None)
+        lines = _format_detail_lines(item, blockers_of=None)
         text = _strip_markup("\n".join(lines))
-        assert "Blocks:" not in text
+        assert "Blocked by:" not in text
 
 
 # ---------------------------------------------------------------------------
@@ -7054,8 +7063,9 @@ class TestChainHighlighting:
 def _make_tracker_set_with_done_dep(tmp_path: Path) -> TrackerSet:
     """Create a TrackerSet where A (todo_hard) blocks B (done).
 
-    When "done" status is hidden, B disappears from the table.
-    Selecting A should surface B as a ghost row.
+    Under the CLI semantic ``X.before = [Y]`` means "X blocks Y", so A's
+    before-list contains B. When "done" status is hidden, B disappears from
+    the table; selecting A should surface B as a ghost row.
     """
     from helpers import make_test_config_dict
 
@@ -7080,8 +7090,8 @@ def _make_tracker_set_with_done_dep(tmp_path: Path) -> TrackerSet:
     id_b = ts.add(kind="work_item", title="Done dependent",
                   status="done", priority=2)
 
-    # B depends on A (B.before = [A])
-    ts.update(id_b, add_fields={"before": [id_a]})
+    # A blocks B (A.before = [B])
+    ts.update(id_a, add_fields={"before": [id_b]})
 
     return ts
 

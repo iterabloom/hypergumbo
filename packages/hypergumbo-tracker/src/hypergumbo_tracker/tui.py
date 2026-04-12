@@ -605,11 +605,17 @@ def _build_dep_index(
 ) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     """Build blockers/dependents maps from item before-links.
 
+    Semantics: ``X.before = [Y]`` means **X blocks Y** (X must finish before
+    Y can start). This matches the CLI's interpretation — see
+    ``_describe_changes`` in ``cli.py`` which logs ``"{id} now blocks
+    {label}"`` when anything is added to ``new.before``, and the
+    ``--add-blocked-by`` help text which describes the inverse relationship.
+
     Returns ``(blockers_of, dependents_of)`` where:
     - ``blockers_of[id]`` = list of IDs that *block* this item
-      (i.e. the item's ``before`` field, filtered to valid IDs)
+      (i.e. items whose ``before`` field contains this ID)
     - ``dependents_of[id]`` = list of IDs that this item *blocks*
-      (i.e. items that list this ID in their ``before``)
+      (i.e. this item's own ``before`` field, filtered to valid IDs)
 
     Dangling references (IDs not present in *items*) are silently dropped.
     """
@@ -619,9 +625,9 @@ def _build_dep_index(
     for item in items:
         valid_before = [b for b in item.before if b in valid_ids]
         if valid_before:
-            blockers_of[item.id] = valid_before
+            dependents_of[item.id] = valid_before
             for b in valid_before:
-                dependents_of.setdefault(b, []).append(item.id)
+                blockers_of.setdefault(b, []).append(item.id)
     return blockers_of, dependents_of
 
 
@@ -723,7 +729,7 @@ def _format_detail_lines(
     item: CompiledItem,
     tier: str = "standard",
     fields_schema: dict[str, FieldSchema] | None = None,
-    dependents_of: dict[str, list[str]] | None = None,
+    blockers_of: dict[str, list[str]] | None = None,
 ) -> list[str]:
     """Format a CompiledItem into lines for detail display.
 
@@ -770,9 +776,9 @@ def _format_detail_lines(
 
     if item.before:
         lock_b = " [locked]" if "before" in item.locked_fields else ""
-        lines.append(f"{_label(f'Blocked by{lock_b}:')} {', '.join(item.before)}")
-    if dependents_of and item.id in dependents_of:
-        lines.append(f"{_label('Blocks:')} {', '.join(dependents_of[item.id])}")
+        lines.append(f"{_label(f'Blocks{lock_b}:')} {', '.join(item.before)}")
+    if blockers_of and item.id in blockers_of:
+        lines.append(f"{_label('Blocked by:')} {', '.join(blockers_of[item.id])}")
 
     lock_desc = " [locked]" if "description" in item.locked_fields else ""
     if item.description:
@@ -2583,7 +2589,7 @@ class TrackerApp(App):
         fields_schema = self._get_fields_schema(item)
         lines = _format_detail_lines(
             item, fields_schema=fields_schema,
-            dependents_of=self._dependents_of,
+            blockers_of=self._blockers_of,
         )
         if item.frozen:
             drift = self._tracker_set.drift_check(item.id)
@@ -2608,7 +2614,7 @@ class TrackerApp(App):
         fields_schema = self._get_fields_schema(item)
         lines = _format_detail_lines(
             item, tier=self._layout_tier, fields_schema=fields_schema,
-            dependents_of=self._dependents_of,
+            blockers_of=self._blockers_of,
         )
         if item.frozen:
             drift = self._tracker_set.drift_check(item.id)
@@ -3343,7 +3349,7 @@ class TrackerApp(App):
         fields_schema = self._get_fields_schema(item)
         lines = _format_detail_lines(
             item, tier=self._layout_tier, fields_schema=fields_schema,
-            dependents_of=self._dependents_of,
+            blockers_of=self._blockers_of,
         )
         plain_text = Text.from_markup("\n".join(lines)).plain
         self.copy_to_clipboard(plain_text)
