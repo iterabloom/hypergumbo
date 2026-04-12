@@ -20,3 +20,10 @@
     pr_ref:  # aae3
     description: "WI-gohad validation on buildah (2026-04-11) revealed that go_cobra_linker only handles cobra.Command literals defined inside a function body (like init()). Package-level `var tagCommand = &cobra.Command{...}` declarations — the most common Go cobra pattern — are NOT detected. Buildah has 5 named RunE handlers: tagCmd, renameCmd, umountCmd, unshareCmd, dumpBoltCmd. Only umountCmd (defined inside init()) received a dispatches_to edge; the other 4 (all package-level var declarations) still appear in the dead-code list. Additionally, the 1 edge that was emitted had the wrong src — Builder.Mount in buildah/mount.go instead of init in cmd/buildah/umount.go. Two gaps to fix: (1) extend the regex anchor to match package-level var = &cobra.Command{...} literals, and (2) correct the enclosing-function lookup so the src is in the same file as the cobra.Command literal. Evidence: /tmp/validation/buildah/buildah.json, 1 go-cobra-linker-v1 edge out of 5 expected."  # aae3
     fields: {}  # aae3
+- op: discuss  # b411
+  at: '2026-04-12T01:29:39Z'  # b411
+  by: human  # b411
+  actor: jgstern  # b411
+  clock: 2  # b411
+  nonce: b411  # b411
+  message: "that artifact in /tmp should probably be copied to the lab notebook. if it is > 50 MB please zip it."  # b411
