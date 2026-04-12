@@ -72,3 +72,10 @@
   clock: 8  # 9bcb
   nonce: 9bcb  # 9bcb
   message: "Sizes of the 18-repo default cohort (sorted descending, du -sb bytes):\n\n  366 MB  cilium\n  312 MB  superset\n  232 MB  airflow\n  209 MB  trino\n  181 MB  envoy\n  161 MB  vscode\n   95 MB  wasmtime   (~tied with kafka, slightly larger)\n   95 MB  kafka      (reference)\n   73 MB  buildkit\n   68 MB  containerd\n   59 MB  django\n   50 MB  spring-boot\n   33 MB  arti\n   32 MB  prometheus\n   10 MB  alertmanager\n    9 MB  cowboy\n    9 MB  apollo-server\n    2 MB  vapor\n\nSix repos are meaningfully larger than kafka (cilium through vscode, 161-366 MB). wasmtime is essentially the same size. If kafka took 10+ min on iter-008, these six will likely take 20-40 min each, so the full 18-repo run is plausibly 3-5 hours wall clock. The smaller repos (prometheus and below) are all faster than kafka.\n\nRecommendation: I'll queue the full prospector run AFTER WI-hukoh ships (jgstern just approved option-2 + telemetry on that item, and 'one thing at a time' means I shouldn't start the long prospector run while editing slice.py in an editable install). When I do run it, I'll start the large repos first so the expensive ones are out of the way early and early failures are visible sooner. I'll also configure the run to tolerate per-repo failures (continue-on-error) so one long-running repo hanging doesn't block the aggregate output."  # 9bcb
+- op: discuss  # f403
+  at: '2026-04-12T00:04:24Z'  # f403
+  by: human  # f403
+  actor: jgstern  # f403
+  clock: 9  # f403
+  nonce: f403  # f403
+  message: "this is cleared for launch"  # f403
