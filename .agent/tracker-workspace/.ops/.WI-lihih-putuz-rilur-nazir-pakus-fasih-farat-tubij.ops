@@ -44,3 +44,25 @@
   nonce: b76a  # b76a
   set:  # b76a
     priority: 0  # b76a
+- op: discuss  # 8dae
+  at: '2026-04-12T08:08:16Z'  # 8dae
+  by: agent  # 8dae
+  actor: jgstern_agent  # 8dae
+  clock: 5  # 8dae
+  nonce: 8dae  # 8dae
+  message: "Copied buildah validation artifacts to lab notebook at ~/hypergumbo_lab_notebook/validation_artifacts/buildah_20260411/. Total 196KB, no zip needed."  # 8dae
+- op: update  # c1d6
+  at: '2026-04-12T08:41:50Z'  # c1d6
+  by: agent  # c1d6
+  actor: jgstern_agent  # c1d6
+  clock: 6  # c1d6
+  nonce: c1d6  # c1d6
+  set:  # c1d6
+    status: done  # c1d6
+- op: discuss  # 1701
+  at: '2026-04-12T08:41:50Z'  # 1701
+  by: agent  # 1701
+  actor: jgstern_agent  # 1701
+  clock: 7  # 1701
+  nonce: '1701'  # 1701
+  message: "Fixed in commit 1a4d0dc2a. go_cobra_linker now falls back to enclosing variable symbol when no function/method/class/module encloses the cobra.Command literal. Package-level var declarations like 'var rootCmd = &cobra.Command{RunE: rootRun}' now emit dispatches_to edges from the var symbol to the handler."  # 1701
