@@ -420,8 +420,19 @@ jobs:
             BASE="${{ github.event.pull_request.base.sha }}"
             HEAD="${{ github.event.pull_request.head.sha }}"
 
+            # Release PRs (dev → main) contain cumulative changes already
+            # validated per-commit on dev.  The targeted-manifest model
+            # cannot cover a full-release diff, so skip pytest here;
+            # full-suite.yml validates after merge.
+            PR_HEAD_REF="${{ github.head_ref }}"
+            if [[ "$PR_HEAD_REF" == release/* ]]; then
+              echo "✅ Release branch ($PR_HEAD_REF) — skipping pytest (validated per-commit on dev)"
+              echo "skip_tests=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
             echo "=== Changed files (BASE=$BASE HEAD=$HEAD) ==="
-            git diff --name-only "$BASE" "$HEAD" | head -20
+            git diff --name-only "$BASE" "$HEAD" | head -20 || true
 
             # Check if core infrastructure changed (requires full suite regardless)
             CORE_CHANGED=false
@@ -448,7 +459,7 @@ jobs:
 
             echo "=== Validating committed manifest ==="
             # Show header only (not the test list, which is long and confusing when truncated)
-            grep "^#" "$MANIFEST" | head -10
+            grep "^#" "$MANIFEST" | head -10 || true
             TEST_COUNT=$(grep -c "^packages/" "$MANIFEST" || echo 0)
             echo "# (manifest lists $TEST_COUNT test files)"
 
@@ -801,13 +812,21 @@ jobs:
             BASE="${{ github.event.pull_request.base.sha }}"
             HEAD="${{ github.event.pull_request.head.sha }}"
 
+            # Release PRs skip pytest (same logic as primary job)
+            PR_HEAD_REF="${{ github.head_ref }}"
+            if [[ "$PR_HEAD_REF" == release/* ]]; then
+              echo "✅ Release branch ($PR_HEAD_REF) — skipping pytest"
+              echo "skip_tests=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
             if [ ! -f "$MANIFEST" ]; then
               echo "❌ No manifest committed"
               exit 1
             fi
 
             echo "=== Validating committed manifest (retry) ==="
-            grep "^#" "$MANIFEST" | head -10
+            grep "^#" "$MANIFEST" | head -10 || true
             TEST_COUNT=$(grep -c "^packages/" "$MANIFEST" || echo 0)
             echo "# (manifest lists $TEST_COUNT test files)"
 
