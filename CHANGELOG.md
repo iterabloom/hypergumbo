@@ -12,110 +12,76 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
-#### Per-session transcript sync (ADR-0018 amendment, INV-filaj)
-
-- **Per-session isolation**: each session writes to its own current files keyed by `session_id`. Concurrent sessions no longer race on a shared DEST or PID.
-- **Rotation on session end**: `rotate-on-session-end.sh` atomically promotes ended session files into `.last_*`/`.second_to_last_*` slots under `flock`. Crashed sessions archived to `.archived-transcripts/`.
-- **Cursor exempted**: single-session-per-repo via sibling check (global SQLite store). Per-conversation extractor deferred to WI-rijoj.
-- **Injection-history sidecar**: parallel `.current_injection_history.<session_id>.jsonl` records playbook injection events.
-
-#### Forward-dataflow slice: option 2 evaluated and deferred (WI-hukoh)
-
-- **Decision**: keep option 1 (writer-source admission) as canonical forward-slice rule. Option 2 (dst_access_mode OR-check) deferred — telemetry across 4 repos (~188k edges) shows ZERO edges option 2 would admit beyond option 1. Re-evaluation trigger documented in ADR-0015 §6.1.
-
-#### Stop hook: relax aggregate-required on CONVERGED bakeoffs (WI-bibul)
-
-- When latest bakeoff is CONVERGED and the tracker has ready items, stop hook guidance now leads with `tracker ready` instead of reflect/aggregate. Unconverged bakeoff guidance softened to "recommended, not mandatory" with `tracker ready` as an alternative.
-
-#### Bakeoff-deep: defensive hub-collision warning for rslice seeds (WI-gapom)
-
-- `pick_reverse_slice_seeds` now emits a stderr warning when a picked seed has `prod_in_degree > 1000`. Catches legitimate framework hubs and future collision artifacts.
-
-#### Generated-file detection: go-swagger output paths (WI-sozah)
-
-- Six new patterns in `GENERATED_CODE_PATTERNS` for go-swagger output (`api/v2/restapi/`, `api/v2/models/`, fingerprint files). Fixes "tier1 vs tier2 slice indistinguishable" bakeoff signal on alertmanager. Header-magic detection for `// Code generated ... DO NOT EDIT.` deferred (now landed separately as WI-pofin).
-
-#### `hypergumbo io-boundaries` defaults to production-only (WI-sifif)
-
-- Test chains are now excluded by default (was 78% noise on alertmanager). `--include-tests` opts back in. `--exclude-tests` kept as no-op for backward compatibility.
+- **Per-session transcript sync** (ADR-0018 amendment, INV-filaj): concurrent sessions now write to isolated files keyed by `session_id` instead of racing on shared state. Session-end rotation atomically promotes files into `.last_*`/`.second_to_last_*` slots. Cursor exempted via sibling check; injection-history sidecar tracks playbook events.
+- **Forward-dataflow slice option 2 deferred** (WI-hukoh): telemetry across 4 repos (~188k edges) shows zero additional edges from option 2. Option 1 (writer-source admission) remains canonical. Re-evaluation trigger in ADR-0015 §6.1.
+- **Stop hook relaxed on CONVERGED bakeoffs** (WI-bibul): guidance now leads with `tracker ready` instead of requiring reflect/aggregate when bakeoff is converged.
+- **Bakeoff-deep hub-collision warning** (WI-gapom): `pick_reverse_slice_seeds` warns on seeds with `prod_in_degree > 1000`.
+- **Generated-file detection: go-swagger paths** (WI-sozah): six new `GENERATED_CODE_PATTERNS` for go-swagger output directories and fingerprint files.
+- **`io-boundaries` defaults to production-only** (WI-sifif): test chains excluded by default (was 78% noise). `--include-tests` opts back in.
 
 ### Added
 
 #### Developer experience
 
-- **`auto-pr --tracker-id <FULL_ID>`** (WI-mokak): on successful merge, auto-pr appends a discussion entry to the referenced tracker item citing durable identifiers (`"Merged as PR #<N>, dev SHA <short-12>."`). Covers all three merge-success sites (do_pr, flush_queue, already-merged recovery). Fixes prior pattern where pre-merge entries cited feature-branch SHAs that rebase/squash silently changed.
-- **`bakeoff-map` script**: read-only Python script that walks `~/hypergumbo_lab_notebook/bakeoff_artifacts/` and emits a chronological map of every bakeoff session — kind, era, cohort count, iteration count, convergence verdict, pipeline-stage completion, and anomalies. Handles three format eras plus zip/tarball archives. Standalone, stdlib-only.
-- **`tracker-path-linter` V1** (WI-sihih): scans tracker item descriptions and discussion entries for file-path tokens and verifies each resolves to a real file at repo HEAD. Stale references carry a fuzzy-match suggestion via basename lookup against `git ls-files`.
-- **`audit-stale-timestamps` V1** (WI-sofop): checks agent state files for embedded-timestamp drift (e.g. `last_completed_utc` drifting while file mtime stays fresh). Two hardcoded rules covering the post-split stop-hook state file. Exits 0 clean, 1 on drift.
+- **`auto-pr --tracker-id`** (WI-mokak): on merge, appends a discussion entry to the referenced tracker item citing the PR number and dev SHA.
+- **`bakeoff-map` script**: walks bakeoff artifacts and emits a chronological map of sessions with convergence verdicts, pipeline-stage completion, and anomalies.
+- **`tracker-path-linter` V1** (WI-sihih): verifies file-path tokens in tracker items resolve to real files. Stale references carry fuzzy-match suggestions.
+- **`audit-stale-timestamps` V1** (WI-sofop): checks agent state files for embedded-timestamp drift (e.g. `last_completed_utc` vs file mtime).
 
 #### Slice telemetry
 
-- **Forward-dataflow admission-rule telemetry** (WI-hukoh Phase A): `SliceResult.admission_stats` records per-rule counters for edges admitted/rejected during forward dataflow BFS. Includes a predictive `would_admit_dst_reader` counter measuring how many edges option 2 would admit beyond option 1 — baseline instrumentation for the forward-dataflow decision gate. Empty when `dataflow=False`.
+- **Forward-dataflow admission-rule telemetry** (WI-hukoh Phase A): `SliceResult.admission_stats` records per-rule counters for edges admitted/rejected during forward dataflow BFS. Includes a predictive `would_admit_dst_reader` counter for the option 2 decision gate.
 
 #### Cross-language linkers
 
-- **`go_memberlist` linker: hashicorp/memberlist delegate callbacks** (WI-lojuf): emits `dispatches_to` edges from `memberlist.Create` anchor functions to the 12 canonical delegate methods (`NotifyMsg`, `GetBroadcasts`, `LocalState`, etc.) whose bodies are unreachable from any explicit call site. Used by alertmanager, consul, nomad, serf, vault. Eliminates 42 functions / 432 LOC from dead-code candidates on alertmanager.
-- **`go_cobra` linker: spf13/cobra CLI command dispatch** (WI-gohad): detects `cobra.Command{…}` struct literals and emits `dispatches_to` edges to handler functions referenced in `Run`/`RunE`/`PreRun`/`PreRunE`/`PostRun`/`PostRunE` and their `Persistent*` variants. Used by kubectl, helm, hugo, prometheus, terraform, docker. Eliminates 20 functions / 211 LOC from dead-code candidates on alertmanager.
+- **`go_memberlist` linker** (WI-lojuf): `dispatches_to` edges from `memberlist.Create` to the 12 canonical delegate methods (`NotifyMsg`, `GetBroadcasts`, `LocalState`, etc.). Used by alertmanager, consul, nomad, serf, vault.
+- **`go_cobra` linker** (WI-gohad): `dispatches_to` edges from `cobra.Command{…}` struct literals to handler functions in `Run`/`RunE`/`PreRun`/`PostRun` and `Persistent*` variants. Used by kubectl, helm, hugo, prometheus, terraform, docker.
 
 #### Behavior map
 
-- **Content-based `@generated` header detection** (WI-pofin): `classify_file` now scans the first 4 KiB of text-like source files for canonical generated-code headers (`// @generated`, `// Code generated by … DO NOT EDIT.`, `Autogenerated`, etc.) in addition to the existing path-pattern check. Gated on 36 text-like extensions so binary files are not opened.
-- **`is_generated_file` detection for TypeScript `openapi-gen/` output** (WI-vubad): files under `openapi-gen/` with JS/TS extensions are now flagged as generated. Eliminates ~200 dead-code false positives per airflow run.
-- **Scala secondary constructors extracted as `kind="constructor"`** (WI-rupum): `def this(args) = this(...)` is now recognized as a constructor rather than a method, so `dead-code-maybe` skips it automatically. Also sets `is_exported=True`. Eliminates top-ranked Kafka false positives.
-- **Kotlin extension functions → `Symbol.is_exported`** (WI-fuhav): extension functions (`fun Receiver.name()`) are detected and marked `is_exported=True` with `meta.extension_receiver`. Eliminates spring-boot dead-code false positives.
-- **TypeScript/JavaScript `export` → `Symbol.is_exported`** (WI-zimum Phase 2b, WI-nimug): top-level declarations under `export_statement` are marked `is_exported=True`. Covers `export function/class/const`, `export { foo, bar }`, `export default`, and alias forms. Pairs with Python `__all__` to close out WI-zimum Phase 2.
-- **Python `__all__` → `Symbol.is_exported`** (WI-zimum Phase 2, WI-gipag): `is_exported` for top-level classes/functions based on `__all__` (when present) or leading-underscore convention (when absent). Drops Python framework libraries (Airflow 70%, Django 83%, Superset 78% false-positive rates) out of the dead-code bucket.
-- **`--exclude-exports` filter for `dead-code-maybe`** (WI-zafab filter 3): drops any candidate with `is_exported=True` from the dead-code list. Completes the three-filter set (polyglot-only + exclude-annotated + exclude-exports).
-- **FFI-signature auto-flag for `dead-code-maybe` ranking** (WI-hadap Heuristic 2): candidates with FFI markers (Rust `#[pyo3*]`/`#[no_mangle]`, Python `@ctypes.CFUNCTYPE`, C `JNIEXPORT`/`extern "C"`, Java `native`, etc.) get `ffi_signature: true` and a +10 rank boost — a missing linker edge is the most likely explanation.
-- **`Symbol.is_exported` field and `--seeds exports` mode** (WI-zimum Phase 1): new boolean on `Symbol` marking public-API callables (Go capitalized identifiers, Rust `pub`/`pub(crate)`, any language with `public` modifier). Derived from analyzer-provided modifiers via `is_exported_from_modifiers`. `dead-code-maybe --seeds exports` treats exported symbols as reachability seeds; `--seeds all` combines entrypoints + tests + exports.
-- **`hypergumbo dead-code-maybe` subcommand** (WI-fisam): finds production callables unreachable from entrypoints via BFS over call edges. Supports `--seeds {entrypoints,tests,exports,all}` for configurable seed sets, `--format {text,json}` output, and `--min-confidence` for entrypoint filtering. Dead candidates are ranked by LOC (largest unreachable functions first). Foundation for downstream dead-code prospector tooling.
-- **Cross-language string collision signal for dead-code-maybe** (WI-pimig): each dead candidate's name is searched as a substring across files of different languages in the repo. A cross-language hit (e.g., Go function name appearing in a Python file) is a near-certain signal of a missing linker edge (HTTP path, RPC method, MQ topic, FFI name). Results are ranked by collision count (descending), then LOC. The `cross_language_hits` field appears in JSON output.
-- **Co-located test files classified as tier 1** (WI-gifuz): files matching test naming conventions (`_test.go`, `.test.js`, `.spec.ts`, etc.) co-located with source code are now tier 1 with `is_test=True`, not tier 2. Dedicated test directories remain tier 2.
-- **Event-sourcing linker expansion** (WI-zadat): extends event detection to Guava EventBus, generic Java event bus patterns, Go channel-based events, and Go event bus method calls. Go `.go` files now scanned alongside Python, JS/TS, and Java.
-- **Go closure wrapper edges** (WI-nikul): route registrations through closure wrappers (e.g., `r.Get("/query", wrapAgent(api.query))`) now emit `wraps` edges from the wrapper to the inner handler. Covers Gin/Echo/Fiber and Gorilla mux/stdlib patterns.
-- **Generated code centrality demotion and `is_generated_file` flag** (WI-tizij): `is_generated` on `FileClassification`/`Symbol` detects OpenAPI models, protobuf stubs (`_pb2.py`, `.pb.go`), and K8s code-gen (`zz_generated.*.go`). Generated code receives a 95% centrality penalty in `rank_symbols`.
-- **`is_test_file` as independent classification axis** (WI-rigun-patuz): `is_test` on `FileClassification`/`Symbol` decouples test-ness from supply-chain tier. Production = `tier <= 1 AND NOT is_test_file`; real third-party deps = `tier == 2 AND NOT is_test_file`.
-- **Return-type registry for chained receiver resolution** (WI-kuroj / INV-dihos Phase 1): `method_return_types` populated during Pass 1 for Go and Java. Enables `x := e.Query(); x.Rows()` to resolve via the registry when `_type_from_rhs` can't infer the type directly.
-- **Import-based framework validation**: manifest-detected frameworks cross-referenced against import edges. Frameworks imported only by tests or not at all are reclassified as `dev_frameworks`.
-- **Go tier 2/3 classification via go.mod parsing** (WI-vovuk): unresolved Go external references classified using `go.mod` — direct deps get tier 2, indirect/stdlib get tier 3. Language-agnostic `DependencyManifest` enables future extension to npm/Cargo/pyproject.
+- **`hypergumbo dead-code-maybe` subcommand** (WI-fisam): finds production callables unreachable from entrypoints via BFS. Configurable seed sets (`--seeds {entrypoints,tests,exports,all}`), text/JSON output, `--min-confidence` filtering, ranked by LOC. Cross-language string collision signal (WI-pimig) detects missing linker edges; FFI-signature auto-flag (WI-hadap) boosts FFI-marked candidates; `--exclude-exports` filter (WI-zafab) completes the three-filter set.
+- **`Symbol.is_exported` across 5 languages** (WI-zimum, WI-gipag, WI-nimug, WI-fuhav, WI-rupum): new boolean marking public-API callables. Go capitalized identifiers, Rust `pub`/`pub(crate)`, `public` modifier (Phase 1); Python `__all__` / leading-underscore (Phase 2); TS/JS `export` statements; Kotlin extension functions; Scala secondary constructors. `--seeds exports` treats exports as reachability seeds. Drops dead-code false-positive rates 70-83% on Python framework libraries.
+- **Generated-code detection and centrality demotion** (WI-tizij, WI-pofin, WI-vubad): `is_generated` flag on files/symbols detects OpenAPI models, protobuf stubs, K8s code-gen, go-swagger output, and `openapi-gen/` directories. Content-based header scanning (`// @generated`, `// Code generated … DO NOT EDIT.`) in the first 4 KiB of 36 text-like extensions. Generated code receives 95% centrality penalty.
+- **Test file classification** (WI-rigun-patuz, WI-gifuz): `is_test` decoupled from supply-chain tier as independent axis. Co-located test files (`_test.go`, `.test.js`, `.spec.ts`) classified as tier 1 instead of tier 2.
+- **Return-type registry for chained receiver resolution** (WI-kuroj / INV-dihos Phase 1): `method_return_types` populated during Pass 1 for Go and Java. Enables `x := e.Query(); x.Rows()` resolution via the registry.
+- **Event-sourcing linker expansion** (WI-zadat): extends event detection to Guava EventBus, generic Java event bus, Go channel-based events, and Go event bus method calls.
+- **Go closure wrapper edges** (WI-nikul): route registrations through closure wrappers (e.g. `wrapAgent(api.query)`) emit `wraps` edges. Covers Gin/Echo/Fiber and Gorilla mux/stdlib.
+- **Import-based framework validation**: manifest-detected frameworks cross-referenced against import edges. Test-only or unimported frameworks reclassified as `dev_frameworks`.
+- **Go tier 2/3 classification via go.mod** (WI-vovuk): unresolved Go external references classified using `go.mod` — direct deps tier 2, indirect/stdlib tier 3. Language-agnostic `DependencyManifest` enables future extension.
 
 #### Language analyzers
 
-- **TLA+** (WI-jurin, WI-ludil): new tree-sitter analyzer for `.tla` formal specification files. Extracts module, operator, constant, variable, theorem, and assumption symbols. EXTENDS/INSTANCE as `imports` edges, cross-references as `references` edges. Profile and LOC detection added so `.tla` files appear in the sketch Overview.
+- **TLA+** (WI-jurin, WI-ludil): tree-sitter analyzer for `.tla` formal specification files. Extracts module, operator, constant, variable, theorem, and assumption symbols. EXTENDS/INSTANCE as `imports`, cross-references as `references`.
 
 #### Dataflow library_patterns expansions
 
-- **Python AST wiring** (WI-hivud): `python.yaml` ships a `library_patterns` section covering common mutating/reading methods (`.append`, `.write`, `.read`, `.send`, `.get`, `.pop`, etc.). `annotate_dataflow_ast` now consumes it as a per-language fallback, mirroring `annotate_dataflow` for tree-sitter languages. Without this, library_patterns was dead code for Python: kserve measured 0 of 98 `.append` calls and 0 of 30 `.write` calls annotated.
-- **Python serialization + file-position primitives** (WI-fogis): 14 patterns added to `python.yaml` — `json.dump`/`pickle.dump`/`yaml.dump` as `write`; `json.load`/`pickle.load`/`yaml.load` as `read`; `.seek(` as `mutate`; `.truncate(` as `write`.
-- **Cross-language library_patterns for Java, JS/TS, C#, Kotlin** (WI-vinub): adds name-based state-mutating and reading method heuristics to 5 languages that previously had none. Java: 25 patterns (add/put/set/remove/clear/get/contains/etc). JavaScript + TypeScript: 23 patterns each (push/splice/set/delete/clear/get/has/etc). C#: 24 patterns (Add/Remove/Clear/Dispose/TryGetValue/etc). Kotlin: 17 patterns (add/put/remove/clear/get/contains/etc). Enables `access_mode` annotation on call edges for dataflow slicing in these languages.
-- **Go state-mutating verbs** (WI-supih): six verbs added to `go.yaml` — `.Expire(`, `.GC(`, `.Truncate(`, `.Drop(`, `.Init(`, `.Reload(` — all tagged `access_mode=write`. Surfaced by alertmanager's `Silences.Expire` (9 calls).
+- **Python AST wiring** (WI-hivud): `python.yaml` ships `library_patterns` for common mutating/reading methods. `annotate_dataflow_ast` now consumes these as a per-language fallback for Python's AST analyzer.
+- **Python serialization + file-position primitives** (WI-fogis): 14 patterns — `json.dump`/`pickle.dump`/`yaml.dump` as write, `json.load`/`pickle.load`/`yaml.load` as read, `.seek` as mutate, `.truncate` as write.
+- **Cross-language library_patterns** (WI-vinub): name-based access_mode heuristics for Java (25 patterns), JS/TS (23 each), C# (24), and Kotlin (17). Enables `access_mode` annotation for dataflow slicing in these languages.
+- **Go state-mutating verbs** (WI-supih): `.Expire`, `.GC`, `.Truncate`, `.Drop`, `.Init`, `.Reload` tagged `access_mode=write`.
 
 #### Training data pipeline
 
-- **Backfill script for v0 training corpus cohort tags** (WI-gigil): `scripts/backfill-training-data-cohort-tags.py` walks a v0 training-data JSONL snapshot and writes a parallel sidecar with per-entry `infra_sha`, `playbook_registry_sha`, `playbook_count_actual`, `playbook_count_in_prompt`, and `main_llm_presumed`. Resolves SHAs from git history via binary search on a pre-built commit timeline. Re-runnable, does not modify the original corpus. Sidecar for the v0 snapshot (12,738 entries) written to `.agent/.deprecated-datasets/`.
-- **Per-entry cohort metadata for training corpus** (WI-tatuh / INV-gajap): `log_training_example` in `.agent/hooks/_shared/on_transcript_change.py` now writes seven top-level cohort metadata fields on every training entry: `pipeline_version` (`"v1"`), `infra_sha`, `playbook_registry_sha`, `main_llm`, `vendor` (`"claude-code"`), `vendor_version`, and `scoring_model`. The legacy `model` field is preserved for backward compatibility. `main_llm` and `vendor_version` are extracted from the filtered transcript JSONL; git SHAs are resolved via `git log` and cached per-process. Distribution shifts in the pipeline, playbook registry, main LLM, or vendor are now discoverable from the corpus alone.
-- **Multi-vendor interjection normalization** (WI-nadud): `filter-transcript.py` now emits `normalized_user_interjection` synthetic rows alongside vendor-specific originals when it detects a user interjection (message sent while the agent is busy). Three vendor adapters in `.agent/hooks/_shared/normalize_interjections.py`: Claude Code (explicit `queue-operation` events, confidence 1.0), Codex CLI (`turn_aborted(interrupted)` + `user_message` sequence, confidence 0.9), OpenHands (`MessageObservation` during unclosed `CmdRunAction`, confidence 0.8). Vendor auto-detected from row content and cached in filter state. `pipeline_version` bumped from `v1` to `v2` to mark the training corpus cohort boundary; v1 corpus snapshotted to `.agent/.training-data-v1-snapshot-20260409.jsonl`. Agentic-session-retrospective playbook updated to reference normalized rows for vendor-agnostic interjection scanning.
-
-#### Developer experience
-
-- **`hypergumbo config <lang>` subcommand** (WI-siran): new CLI command shows all per-language configuration in one view. Walks `dataflow_patterns/`, `io_primitives/`, and `function_summaries/` YAML directories and merges them for the requested language. Supports `--format json|yaml|text`. Unknown languages produce empty sections with a warning. Enables users and agents to discover what hypergumbo knows about a language without grepping the wheel.
-- **smart-test flock guard** (WI-sinap): concurrent `smart-test` invocations are now structurally prevented via `flock`. A second invocation while one is already running exits immediately with a clear error message naming the holding PID. Prevents the double-`pytest -n auto` scenario that consumed all CPU cores and caused xdist flakes.
+- **v0 corpus cohort backfill** (WI-gigil): `backfill-training-data-cohort-tags.py` writes a sidecar with per-entry `infra_sha`, `playbook_registry_sha`, `main_llm_presumed`, and playbook counts. Re-runnable, non-destructive.
+- **Per-entry cohort metadata** (WI-tatuh / INV-gajap): `log_training_example` now writes `pipeline_version`, `infra_sha`, `playbook_registry_sha`, `main_llm`, `vendor`, `vendor_version`, and `scoring_model` on every entry. Distribution shifts discoverable from the corpus alone.
+- **Multi-vendor interjection normalization** (WI-nadud): `filter-transcript.py` emits `normalized_user_interjection` rows for user interjections across Claude Code, Codex CLI, and OpenHands. `pipeline_version` bumped to v2.
 
 #### CLI & infrastructure
 
-- **`auto-pr list/status` reconcile vPR queue + new `prune` subcommand** (WI-kugob): `list` and `status` now detect stale vPR entries (already merged) via `git merge-base --is-ancestor`. `prune` removes stale entries. Pairs with WI-miriz (sentinel) and WI-bahuf (rejection hint) to cover all three observation points for silent-success-blip recovery.
-- **`auto-pr` already-merged detection** (WI-bahuf): when Forgejo rejects a push because the commit is already in the merge target, auto-pr now verifies HEAD is reachable, looks up the merged PR, records it in the sentinel, and does local cleanup instead of queuing a stale vPR.
-- **`auto-pr` writes `.git/AUTOPR_LAST_RESULT.json` sentinel** (WI-miriz): records `exit_code`, `pr_number`, `merged_sha`, `final_state`, and timestamp on every action exit. Prevents the silent-success class of failures where a backgrounded auto-pr completes but stdout is lost.
-- **`merge-pr close <PR>` subcommand** (WI-vonis): close a PR without merging. Validates state, optional `--reason "text"` audit-trail comment.
-- **Bakeoff-deep integration tests** (WI-gutan): 13 tests exercising `init → cohort → cycle → iter-NNN/` end-to-end.
+- **`hypergumbo config <lang>`** (WI-siran): shows all per-language configuration (dataflow patterns, IO primitives, function summaries) in one view. Supports `--format json|yaml|text`.
+- **smart-test flock guard** (WI-sinap): concurrent invocations prevented via `flock`. Second invocation exits immediately naming the holding PID.
 
-#### Dead-code prospector: polyglot-only filter (WI-zafab filter 1)
+- **`auto-pr` resilience** (WI-kugob, WI-bahuf, WI-miriz): `list`/`status` detect and `prune` removes stale vPR entries. Already-merged push rejections handled gracefully. New `.git/AUTOPR_LAST_RESULT.json` sentinel records outcome on every exit.
+- **`merge-pr close <PR>`** (WI-vonis): close a PR without merging, with optional `--reason` audit-trail comment.
+- **Bakeoff-deep integration tests** (WI-gutan): 13 tests covering `init → cohort → cycle → iter-NNN/` end-to-end.
 
-- `dead-code-prospector-run.py` now skips monoglot repos (fewer than 2 languages with ≥10 files each). Monoglot repos rarely have cross-language linker gaps, diluting the prospector signal. `--include-monoglot` flag bypasses the filter. 18 source languages recognized.
+#### Dead-code prospector: polyglot-only filter (WI-zafab)
+
+- `dead-code-prospector-run.py` skips monoglot repos (fewer than 2 languages with ≥10 files each). `--include-monoglot` bypasses.
 
 #### Go encoding/serialization callback entrypoints (WI-pimig Phase 1)
 
-- Go marshal/unmarshal methods (`MarshalJSON`, `UnmarshalYAML`, etc.) are now detected as `serialization_callback` entrypoints via `go-encoding-callbacks.yaml`. These methods are dispatched reflectively and were previously invisible to the call graph — 82 false-positive dead-code candidates on alertmanager alone. Phase 2 (caller-site type matching) deferred.
+- Go marshal/unmarshal methods (`MarshalJSON`, `UnmarshalYAML`, etc.) detected as `serialization_callback` entrypoints via `go-encoding-callbacks.yaml`. Previously invisible to the call graph.
 
 #### Broker / server lifecycle entrypoint heuristics (WI-nazir)
 
@@ -123,97 +89,94 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
-#### Go analyzer: receiver-type guard for interface_dispatch (WI-jopar)
+#### Java analyzer
 
-- Calls on external/stdlib receivers (e.g. `q.Set("k", "v")` on `url.Values`) no longer dispatch to local interface methods of the same name. When a variable is in `var_types` but the qualified `Type.Method` isn't in the codebase, the destination is external — emit an unresolved edge instead of picking an arbitrary local match. Eliminated 13 spurious edges into `Alerts.Set` on alertmanager.
-
-#### Java analyzer: short-name collision absorbs cross-file calls (WI-fuhaj)
-
-- When a local class's simple name collides with a library class (e.g. a POJO named `Logger` vs. slf4j `Logger`), three call-resolution paths (static calls, fallback class-level edges, catch-all fallback) now consult `_is_import_class_mismatch` before emitting edges. Eliminated 2057+ bogus edges on Kafka targeting a 50-line POJO.
+- **Short-name collision** (WI-fuhaj): local classes with names colliding with library classes (e.g. `Logger` POJO vs slf4j `Logger`) no longer absorb cross-file calls. Eliminated 2057+ bogus edges on Kafka.
 
 #### Hook test infrastructure (INV-pofam)
 
-- Fixed pre-existing silent failures in `.githooks/test_hooks.sh` (stale PID from command-substitution subshell). Wired the test script into CI as a `hook-tests` job that runs on every PR and blocks merge on failure.
+- Fixed silent failures in `.githooks/test_hooks.sh` (stale PID from command-substitution subshell). Wired into CI as a `hook-tests` job.
 
 #### Dataflow annotation preservation
 
-- **Preserve `access_mode` / `dest_access_mode` through 4 linkers** (INV-forim): `event_sourcing`, `ipc`, `websocket`, and `message_queue` linkers were overwriting the meta dict after `Edge.create`, silently stripping dataflow fields from all edges of those types. Fix: pass metadata as `meta={...}` kwarg to `Edge.create`. Unblocks WI-hukoh Phase C decision gate.
+- **`access_mode`/`dest_access_mode` preserved through 4 linkers** (INV-forim): `event_sourcing`, `ipc`, `websocket`, and `message_queue` linkers were overwriting the meta dict, stripping dataflow fields. Fix: pass metadata via `Edge.create` kwarg.
 
 #### Agent state recovery
 
-- **Delete vestigial `.agent/last_stop_check.json`** (INV-jofaf facet 1): stale file left in repo after migration to `~/hypergumbo_lab_notebook/guidance_log/`. Removed from tracking.
-- **Split stop-hook state file + dedicated `agent-notes` tool** (INV-jofaf facet 2): split mixed-ownership `last_stop_check.json` into `stop_hook_state.json` (hook-written) and `agent_notes.json` (agent-written via `scripts/agent-notes`). Prevents agent note updates from leaving hook-owned fields like `last_completed_utc` stale.
+- **Delete vestigial `.agent/last_stop_check.json`** (INV-jofaf facet 1): removed stale file left after migration to guidance_log.
+- **Split stop-hook state file** (INV-jofaf facet 2): split into `stop_hook_state.json` (hook-written) and `agent_notes.json` (agent-written via `scripts/agent-notes`).
 
 #### Symbol ranking
 
-- **Orchestration hub floor for high-out-degree functions**: functions with out-degree >= 20 (main/run/app orchestration hubs) get a minimum effective in-degree of `sqrt(out_degree) * 0.8`, preventing within-file dampening and per-file capping from burying them. On alertmanager, `run` (in=9 all same-file, out=128) was ranked #45 with effective_in=0.90 after 0.3x within-file weight and max_per_file_in=5; now ranks #1 with floor=9.05. Does not affect functions with fewer than 20 outgoing edges.
-- **`event_subscribes` and `event_publishes` added to `DEFAULT_EDGE_TYPE_WEIGHTS` at 0.8**: event-driven callback edges previously defaulted to 0.5 weight, under-counting the centrality of event handlers. Now weighted at 0.8, matching `routes_to` and `message_dispatch`. Also added `dispatches_to` at 0.6 for interface dispatch edges.
+- **Orchestration hub floor**: functions with out-degree ≥ 20 get a minimum effective in-degree of `sqrt(out_degree) * 0.8`, preventing orchestration hubs (main, run, app) from being buried by within-file dampening.
+- **Event edge type weights**: `event_subscribes`/`event_publishes` raised to 0.8 (was 0.5). `dispatches_to` added at 0.6.
 
 #### IO boundaries
 
-- **Go logging reclassified from `ipc_send` to `logging`**: `fmt.Print*`, `log.*`, and `log/slog.*` functions were classified as `ipc_send` (inter-process communication), producing 134 false-positive IPC chains in alertmanager — all from structured logging calls (slog.Debug, slog.Warn, fmt.Fprintf). These are now classified as `logging`, a dedicated boundary type already supported by the io-boundary module. On alertmanager: `ipc_send` drops from 134 to 0 chains; `logging` gains 134 chains; `net_send` (33 real network chains) is unchanged. `os.Stdout`/`os.Stderr` raw attributes remain in `ipc_send` for CLI output scenarios.
+- **Go logging reclassified**: `fmt.Print*`, `log.*`, `log/slog.*` moved from `ipc_send` to `logging`. Eliminates 134 false-positive IPC chains on alertmanager. `os.Stdout`/`os.Stderr` remain `ipc_send`.
 
 #### Dead code analysis
 
-- **`dead-code-maybe` BFS follows `dispatches_to`, `routes_to`, and `wraps` edges**: the reachability BFS only followed `calls` edges, so interface dispatch targets (Go `Notifier.Notify` implementations), HTTP route handlers, and middleware-wrapped functions were all flagged as dead code. On alertmanager, this fix reduced false positives from 781 to 634 (147 functions correctly reclassified as reachable), and eliminated all 16 `Notifier.Notify` false positives. The BFS now follows the same call-flow edge types that the slice BFS uses.
+- **BFS follows `dispatches_to`, `routes_to`, and `wraps` edges**: previously only `calls`, so interface dispatch targets, route handlers, and middleware-wrapped functions were false positives. Reduced alertmanager false positives 781 → 634.
 
 #### Go analyzer
 
-- **Cross-file struct method aggregation** (WI-hobuk): the structural interface matcher iterated per-file, so methods defined in a sibling file of the same package were dropped from the struct's effective method set. Fix: aggregate `struct_method_sets` per package directory before iterating struct candidates. Two structs of the same name in *different* directories still keep disjoint method sets (preserving the INV-zomuk fix). Scope expansion from INV-zomuk.
-- **Cross-package struct collision in structural matcher** (INV-zomuk): the matcher keyed `global_struct_methods` and `struct_syms` by struct short name, so 18 alertmanager packages each declaring `type Notifier struct` had their method sets merged globally and only the first got the `base_classes` annotation. Fix: iterate per-file struct method sets and look up symbols within each file. Validation: alertmanager `dispatches_to` from `notify.Notifier.Notify` 3 → 19; `implements` edges 3 → 19.
-- **Structural interface arity matching**: structural interface satisfaction now verifies method arity (parameter count and return count), not just method names. Previously, `Close(ctx context.Context) error` would falsely satisfy an interface with `Close() error`. Removes hundreds of false `dispatches_to` edges in large Go codebases (463 in alertmanager).
-- **Cross-package interface dispatch resolution**: a struct field with a cross-package interface type (e.g. `stage notify.Stage`) now resolves `d.stage.Exec()` to the interface method symbol (`Stage.Exec`) instead of producing unresolved edges. Root cause: `_resolve_field_chain` returned `"notify.Stage"`, but symbols are stored with bare type names. Fix: strip the package prefix before method-name construction.
-- **Route resolver receiver-method shadow** (INV-kunam): for `r.Get("/query", api.query)` in prometheus's `web/api/v1/api.go`, the handler name `api.query` (lowercase variable receiver) couldn't match the symbol `API.query` (uppercase type), so the short-name fallback picked the unrelated `cmd/promtool/unittest.go:query` — the worst possible failure for refactoring. Fix: build a `symbols_by_short_name` index in the route-handler linker and prefer same-file candidates. Verified: `GET /query` and `POST /query` now resolve to `API.query` on real prometheus.
+- **Receiver-type guard for interface_dispatch** (WI-jopar): calls on external/stdlib receivers no longer dispatch to local interface methods of the same name. Eliminated 13 spurious edges on alertmanager.
+- **Cross-file struct method aggregation** (WI-hobuk): structural interface matcher now aggregates `struct_method_sets` per package directory. Methods in sibling files within the same package are no longer dropped.
+- **Cross-package struct collision** (INV-zomuk): struct method sets keyed by short name caused merging across packages. Fix: iterate per-file. `dispatches_to` edges 3 → 19 on alertmanager.
+- **Structural interface arity matching**: satisfaction check now verifies parameter and return counts, not just method names. Removes 463 false `dispatches_to` edges on alertmanager.
+- **Cross-package interface dispatch resolution**: cross-package interface fields (e.g. `stage notify.Stage`) now strip package prefix before method lookup.
+- **Route resolver receiver-method shadow** (INV-kunam): handler `api.query` (lowercase receiver) couldn't match symbol `API.query` (uppercase type). Fix: prefer same-file candidates via `symbols_by_short_name` index.
 
 #### Symbol resolution
 
-- **Go inline chained method call resolution via return-type registry** (WI-vadin): `e.NewQuery().Exec()` now resolves to `Query.Exec` when the return-type registry maps `Engine.NewQuery → Query`. New evidence type `chained_return_type_call` at confidence 0.75.
-- **Go build-tag-gated alternate definitions** (WI-potun): `//go:build` directives emit `build_tag_alternative_of` edges between same-named symbols in mutually exclusive build-tagged files. Unifies centrality and enables slice/explain to surface alternates.
-- **Go promoted-method interface satisfaction** (WI-tudib): the structural interface matcher now traverses embedding chains. Promoted methods from embedded types are included in the satisfaction check. Handles transitive embedding.
-- **Type hierarchy: per-language gate on concrete-extends → virtual dispatch** (WI-sukav): `extends` edges in Go, C++, Rust, and C# no longer emit `dispatches_to` (struct embedding is composition, not inheritance). `implements` edges unaffected. Eliminated false edges polluting reverse slices on alertmanager.
-- **Type hierarchy linker concrete→concrete fan-out**: same-named concrete types across packages (e.g. multiple `Notifier` structs) no longer produce false `dispatches_to` edges. 70% of alertmanager's 459 `dispatches_to` edges were false positives from this.
-- **`ListNameResolver` path-hint substring false positives** (INV-popup): path hints now require segment-level suffix matching instead of substring matching. Fixes cases where `api.New(...)` admitted swagger-generated candidates via `api/v2/client/...` substring.
-- **`library_patterns` YAML never applied to call edges** (INV-halar): `scan_library_patterns` had no production callers — wired into `annotate_dataflow` as a per-language fallback. Alertmanager `access_mode='write'` edges: 0 → 274.
+- **Go chained method call resolution** (WI-vadin): `e.NewQuery().Exec()` resolves to `Query.Exec` via return-type registry. New evidence type `chained_return_type_call` at confidence 0.75.
+- **Go build-tag-gated alternate definitions** (WI-potun): `//go:build` directives emit `build_tag_alternative_of` edges between same-named symbols in mutually exclusive files.
+- **Go promoted-method interface satisfaction** (WI-tudib): structural interface matcher traverses embedding chains. Promoted methods included in satisfaction check.
+- **Type hierarchy per-language gate** (WI-sukav): `extends` edges in Go, C++, Rust, C# no longer emit `dispatches_to` (composition, not inheritance). Eliminated false edges in reverse slices.
+- **Type hierarchy concrete→concrete fan-out**: same-named concrete types across packages no longer produce false `dispatches_to` edges. 70% of alertmanager's 459 edges were false positives.
+- **`ListNameResolver` path-hint false positives** (INV-popup): path hints require segment-level suffix matching instead of substring.
+- **`library_patterns` YAML never applied** (INV-halar): `scan_library_patterns` had no callers — wired into `annotate_dataflow`. Alertmanager `access_mode='write'` edges: 0 → 274.
 
 #### Slice
 
-- **Forward dataflow slice excludes downstream reads** (WI-saful): forward dataflow BFS only followed `write`/`mutate` edges, so `read`-typed edges downstream of a writer never entered the slice — contradicting ADR-0015 §6 ("data flows OUT: write site → downstream reads of what was written"). Prometheus had 0 of 132 edges in `slice.dataflow.0` as reads despite 24549 globally. Fix: precompute writer nodes, then admit each writer's outgoing `read` edges as one-hop terminals (edge and dst enter the slice but dst is not enqueued for further expansion).
-- **Reverse-slice filename collision**: `hypergumbo slice --entry X` and `--entry X --reverse` no longer silently overwrite each other. Reverse slices now write to `slice.<name>.reverse.json`.
-- **Adaptive hop limit removed**: the 3-10 hop limit (scaled by node count) has been removed. `max_files` (default 100) and hub pruning (threshold 50) are sufficient to bound slice size. Previously, graphs >2000 nodes were capped at 3 hops, causing forward slices to use only 17% of the file budget. `--max-hops` is still available for explicit control.
+- **Forward dataflow admits downstream reads** (WI-saful): read edges downstream of writers now admitted as one-hop terminals in forward slices, per ADR-0015 §6.
+- **Reverse-slice filename collision**: reverse slices now write to `slice.<name>.reverse.json` to avoid overwriting forward slices.
+- **Adaptive hop limit removed**: 3-10 hop limit replaced by `max_files` (100) and hub pruning (50). Fixes forward slices using only 17% of file budget on large graphs. `--max-hops` still available.
 
 #### Profile & sketch
 
-- **Profile LOC always zero in behavior map**: `hypergumbo run` now populates per-language LOC in the profile. Previously LOC was deferred and only backfilled in the sketch path, so `profile.languages.*.loc` was always 0 in JSON output. LOC counting consolidated in `_detect_languages` as the single source of truth.
-- **False positive `cargo test` in sketch test framework detection**: short, ambiguous test framework patterns (e.g. Rust `#[test]`) are now scoped to their language's file extensions. Previously the sketch scanned all test files with all patterns regardless of language, so a Python file or YAML catalog containing a literal `#[test]` string falsely reported `cargo test`.
+- **Profile LOC always zero in behavior map**: `hypergumbo run` now populates per-language LOC in the profile. Previously LOC was only backfilled in the sketch path.
+- **False positive `cargo test` in sketch**: ambiguous test framework patterns (e.g. `#[test]`) now scoped to their language's file extensions.
 
 #### Bakeoff signals
 
-- **`bakeoff-deep init` recency check** (WI-kumub): `init` always created a new timestamped session even when a recent same-pool + same-code-hash session existed that the user almost certainly wanted to iterate into via `cycle`. Fix: warn (and sleep 5s) before creating a new session if a session under 7 days old matches both the current pool path and the editable-install code hash. Opt out via `BAKEOFF_DEEP_SKIP_RECENT_WARNING=1`.
-- **`bakeoff-deep compare` metric ranking** (WI-lazat): `cmd_compare` displayed only four hardcoded metrics, hiding any verdict change driven by a newer metric (e.g. `slice_access_mode_coverage`). Fix: `_select_key_metrics` dynamically ranks every numeric metric in the intersection of both sessions by mean absolute delta and returns the top-N (default 6), with a verdict-driving fallback set when all deltas are zero.
-- **`LOW_DATAFLOW_SLICE_RATIO` false alarm from denominator-only growth** (WI-tutob): the metric fired WARN on prometheus when the INV-kunam route resolver fix grew slice.0 from ~962 to 1689 nodes, dropping the ratio even though the dataflow slice itself didn't shrink. Fix: compute `slice_access_mode_coverage` (call edges in slice.0 with `access_mode` set / total call edges in slice.0) and suppress the LOW WARN when coverage is at or above 50%.
-- **`slice.tier1.json` == `slice.tier2.json` byte-identical artifacts** (WI-puvab): tier-bounded queries used `--entry auto --exclude-tests`, but in test-dominated repos like alertmanager (800 of 801 tier-2 nodes are tests) the test filter eliminated all tier-2 entries and the BFS from main never crossed a tier boundary. Fix: tier slices use the same explicit non-test entry as `slice.0.json`; `--exclude-tests` is dropped from tier-slice CLI invocations. Skipped with `SKIP (no non-test entries)` when no non-test entries exist.
-- **`cross_language_io_pct` false WARN on web-polyglot repos**: the FFI-call metric no longer triggers WARN on Go-backend + TS-frontend repos communicating via HTTP. Assessment is now gated on the presence of FFI bridge edges in the graph.
+- **`bakeoff-deep init` recency check** (WI-kumub): warns before creating a new session when a recent one (< 7 days) matches the same pool and code hash.
+- **`bakeoff-deep compare` metric ranking** (WI-lazat): dynamically ranks metrics by mean absolute delta instead of using a hardcoded set.
+- **`LOW_DATAFLOW_SLICE_RATIO` false alarm** (WI-tutob): suppressed when `slice_access_mode_coverage ≥ 50%` (denominator growth was inflating the metric).
+- **Tier slice byte-identical artifacts** (WI-puvab): tier slices use explicit non-test entry instead of `--entry auto --exclude-tests`, which eliminated all entries in test-dominated repos.
+- **`cross_language_io_pct` false WARN**: gated on FFI bridge edges; no longer fires on HTTP-connected polyglot repos.
 
 #### CI debug
 
-- **`ci-debug` returns null on freshly-pushed PR head**: the Forgejo `commits/{sha}/status` endpoint returns HTTP 200 with `"statuses": null` for SHAs with no commit-status entries. `ci-debug` parsed this with `data.get('statuses', [])`, which returned the explicit `null` rather than the default empty list, then crashed. Fix: treat `null` and missing the same way.
-- **`ci-debug` job log fetch 404s on Codeberg**: `fetch_job_log()` was hardcoded to use `/logs`, which works on self-hosted Forgejo but returns 404 on Codeberg's Forgejo v14+ where `/attempt/1/logs` is required. Fix: select the path by Forgejo version and check HTTP status before parsing.
+- **Null statuses on freshly-pushed PR head**: `ci-debug` crashed when `commits/{sha}/status` returned `"statuses": null`. Fix: treat null and missing the same way.
+- **Job log fetch 404s on Codeberg**: `fetch_job_log()` now selects log path by Forgejo version (`/logs` vs `/attempt/1/logs`).
 
 #### Hooks
 
-- **Stop hook hash recording throttle**: the stop hook recorded a file-change hash on every fire, so 5 fires could accumulate in ~2.5 minutes when the agent was idle waiting for background sub-agents — tripping the circuit breaker mid-flight. Fix: 150-second pause before recording each hash, so 5 identical hashes take at least 12.5 minutes (longer than typical background-agent waits). `STOP_HOOK_DRY_RUN` skips the pause for tests.
+- **Stop hook hash recording throttle**: 150-second pause between hash recordings prevents the circuit breaker from tripping during background sub-agent waits.
 
 #### Other
 
-- **`loop-toggle` rejects uppercase mode arguments**: the session-start hook prompts with uppercase `BROAD`/`DEEP`/`OFF`, but `loop-toggle`'s case statement only matched the lowercase forms, so agents that copied the prompt verbatim hit `Unknown command: OFF`. Fix: lowercase the dispatch argument with `${var,,}` before the case statement.
-- **Flaky auto-run tests via stale cache state leakage** (WI-miguf): pytest's rotating tmp dir counter could reuse an N whose `~/.cache/hypergumbo/<fingerprint>/results/.../hypergumbo.results.json` still existed from a prior session, short-circuiting the auto-run check. Fix: an autouse `isolate_hypergumbo_cache` fixture redirects `XDG_CACHE_HOME` to a per-test temp dir.
+- **`loop-toggle` accepts uppercase mode arguments**: case-insensitive dispatch via `${var,,}`.
+- **Flaky auto-run tests** (WI-miguf): stale cache state from prior sessions could short-circuit the auto-run check. Fix: autouse `isolate_hypergumbo_cache` fixture redirects `XDG_CACHE_HOME` per test.
 
 ### Documentation
 
-- **ADR-0006 augmented with Return-Type Registry Pre-Pass** (INV-dihos): adds source 5 ("return-type chaining via global registry") to §"Type Inference Sources", contrasting with the existing local source 4 (current function's return type). A new "Chained" column in the implementation table shows that all eight statically-typed analyzers (Java, Go, Kotlin, C#, Rust, C++, Scala, Swift) currently lack global return-type chaining, with phase annotations mapping each row to the rollout plan.
-- **Stash safety rule for `.ci/affected-tests.txt`** added to AGENTS.md and the smart-test playbook. `smart-test` regenerates this tracked file on every run, so tests run between `git stash` and `git stash pop` cause a merge conflict that blocks the restore. Reset the file with `git checkout` before popping.
-- **Bakeoff iteration vs. new session clarification**: bakeoff-artifacts-guide gains an "Iteration vs. New Session" section explaining the session/cohort/iteration nesting model and the rule that fix-iterate validation should reuse the existing session via `cycle` rather than calling `init` each time.
-- **Dogfooding playbook IR class names corrected**: `IRNode`/`IREdge` don't exist; the actual IR classes are `Symbol`, `Edge`, `Span`, `AnalysisRun`. Sanity check script gains an edge type breakdown with a comment noting the field is `type` (not `kind`).
+- **ADR-0006 augmented with Return-Type Registry Pre-Pass** (INV-dihos): adds source 5 ("return-type chaining via global registry") to §"Type Inference Sources" with rollout plan.
+- **Stash safety rule for `.ci/affected-tests.txt`**: added to AGENTS.md and smart-test playbook. Reset the file before `git stash pop` to avoid merge conflicts.
+- **Bakeoff iteration vs. new session clarification**: artifacts guide explains session/cohort/iteration nesting and the `cycle` vs `init` rule.
+- **Dogfooding playbook IR class names corrected**: `IRNode`/`IREdge` → `Symbol`, `Edge`, `Span`, `AnalysisRun`.
 
 ## [2.5.1] - 2026-04-05
 
