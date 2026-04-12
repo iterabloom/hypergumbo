@@ -1,0 +1,22 @@
+- op: create  # aae3
+  at: '2026-04-12T01:20:03Z'  # aae3
+  by: agent  # aae3
+  actor: jgstern_agent  # aae3
+  clock: 1  # aae3
+  nonce: aae3  # aae3
+  data:  # aae3
+    kind: work_item  # aae3
+    title: "go_cobra_linker misses package-var-assigned cobra.Command literals"  # aae3
+    status: todo_soft  # aae3
+    priority: 3  # aae3
+    parent:  # aae3
+    tags:  # aae3
+    - linker_gap  # aae3
+    - go_analyzer  # aae3
+    - cross_language_linkers  # aae3
+    before: []  # aae3
+    duplicate_of: []  # aae3
+    not_duplicate_of: []  # aae3
+    pr_ref:  # aae3
+    description: "WI-gohad validation on buildah (2026-04-11) revealed that go_cobra_linker only handles cobra.Command literals defined inside a function body (like init()). Package-level `var tagCommand = &cobra.Command{...}` declarations — the most common Go cobra pattern — are NOT detected. Buildah has 5 named RunE handlers: tagCmd, renameCmd, umountCmd, unshareCmd, dumpBoltCmd. Only umountCmd (defined inside init()) received a dispatches_to edge; the other 4 (all package-level var declarations) still appear in the dead-code list. Additionally, the 1 edge that was emitted had the wrong src — Builder.Mount in buildah/mount.go instead of init in cmd/buildah/umount.go. Two gaps to fix: (1) extend the regex anchor to match package-level var = &cobra.Command{...} literals, and (2) correct the enclosing-function lookup so the src is in the same file as the cobra.Command literal. Evidence: /tmp/validation/buildah/buildah.json, 1 go-cobra-linker-v1 edge out of 5 expected."  # aae3
+    fields: {}  # aae3

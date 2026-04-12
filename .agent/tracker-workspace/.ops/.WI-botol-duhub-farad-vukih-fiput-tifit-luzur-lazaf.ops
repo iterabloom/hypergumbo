@@ -21,3 +21,11 @@
     pr_ref:  # 6269
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1355.md 'Recommended shape of the experiment' §2-3: after the base tool + cheap filters + string-literal collision signal are in place, run dead-code-maybe once across the full 200-repo corpus (polyglot subset selected by the polyglot filter). Sort candidates globally by string-literal cross-language collision count.\n\n**Framed explicitly as a one-shot prospecting run**, not a recurring pipeline. Do not wire into a recurring bakeoff cycle.\n\nDeliverable: a single JSON/CSV artifact of top ~200 ranked candidates with fields (repo, symbol, path, language, collision_count, other_lang_files_matched). Store under ~/hypergumbo_lab_notebook/prospector_runs/<timestamp>/. Does NOT depend on the ranking-boost filters (path shape + FFI signatures) — those can land after if the initial pass shows they'd help."  # 6269
     fields: {}  # 6269
+- op: update  # 9851
+  at: '2026-04-12T01:02:43Z'  # 9851
+  by: human  # 9851
+  actor: jgstern  # 9851
+  clock: 2  # 9851
+  nonce: '9851'  # 9851
+  set:  # 9851
+    priority: 4  # 9851
