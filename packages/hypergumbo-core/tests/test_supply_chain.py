@@ -644,18 +644,25 @@ class TestGradleWorkspaces:
         # Should not crash; may or may not find roots depending on parsing
         assert isinstance(roots, set)
 
-    def test_unreadable_settings_gradle(self, tmp_path):
+    def test_unreadable_settings_gradle(self, tmp_path, monkeypatch):
         """Unreadable settings.gradle doesn't crash (OSError path)."""
         settings = tmp_path / "settings.gradle"
         settings.write_text("include 'core'\n")
         (tmp_path / "core").mkdir()
-        settings.chmod(0o000)
+
+        # Mock read_text to raise OSError (chmod doesn't work as root in CI)
+        original_read_text = Path.read_text
+
+        def _raise_on_settings(self, *args, **kwargs):
+            if self.name.startswith("settings.gradle"):
+                raise OSError("Permission denied")
+            return original_read_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", _raise_on_settings)
 
         roots = detect_package_roots(tmp_path)
         # OSError on read → silently skipped, no Gradle roots detected
         assert tmp_path / "core" not in roots
-        # Restore permissions so tmp_path cleanup succeeds
-        settings.chmod(0o644)
 
     def test_settings_gradle_multiple_include_lines(self, tmp_path):
         """Multiple include lines are all parsed."""
