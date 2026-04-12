@@ -1,0 +1,894 @@
+#!/usr/bin/env python3
+"""
+bakeoff-map - Chronicle and map hypergumbo bakeoff artifacts.
+
+Walks `~/hypergumbo_lab_notebook/bakeoff_artifacts/` (or a path passed via
+`--root`) and produces a chronological, structured map of every bakeoff
+session: what kind, what era, how many cohorts/iterations, whether it
+converged, which pipeline stages ran, what's missing, and anomalies like
+stale `state.json` fields.
+
+The directory is read-only. Zip archives are inspected via their central
+directory (fast, no extraction) unless `--zip-deep` is passed, in which
+case each zip is unpacked one-at-a-time to a temp dir that is cleaned up
+even on exception.
+
+Three session formats are recognized (the chronicle spans three months
+and the pipeline evolved):
+
+  PHASE12 (Jan 5-23, 2026):  pre-state.json era. Flat `out/<repo>/`.
+  Early BROAD/DEEP (late Jan-late Feb): partial state.json; inconsistent
+    cohort/iter nesting.
+  Modern BROAD/DEEP (late Feb+): full state.json, cohort-NNN/iter-NNN,
+    diag/, reflect/.
+
+`deprecated/` is explicitly excluded from all walks and counters.
+
+Usage:
+    scripts/bakeoff-map                       # text timeline + counters
+    scripts/bakeoff-map --format json         # structured dump
+    scripts/bakeoff-map --missing             # only sessions with gaps
+    scripts/bakeoff-map --kind deep           # filter by kind
+    scripts/bakeoff-map --since 2026-03-01    # date window
+    scripts/bakeoff-map --only deep-20260409-054615
+    scripts/bakeoff-map --zip-deep            # deep-probe zips
+
+Read-only. No hypergumbo imports. Standard library only.
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+import tarfile
+import tempfile
+import zipfile
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Iterable, Optional
+
+DEFAULT_ROOT = Path.home() / "hypergumbo_lab_notebook" / "bakeoff_artifacts"
+
+PHASE12_RE = re.compile(r"^phase12-(\d{2})-(\d{8})(?:-(\d{4}))?")
+BROAD_RE = re.compile(r"^broad-(\d{8})-(\d{6})$")
+DEEP_RE = re.compile(r"^deep-(\d{8})-(\d{6})$")
+ADHOC_RE = re.compile(r"^adhoc-(\d{8})(?:-(\d{4,6}))?")
+PHASE12_MISC_RE = re.compile(r"^phase12-misc-(\d{8})(?:-(\d{4}))?")
+
+ERA_MODERN_START = datetime(2026, 2, 20)
+
+STAGE_KEYS = ["run", "diagnose", "reflect_prompts", "reflect_assessments", "reflect_summary"]
+
+COHORT_DIR_RE = re.compile(r"cohort-(\d+)")
+ITER_DIR_RE = re.compile(r"iter-(\d+)")
+
+
+@dataclass
+class StageInfo:
+    """Presence of a single pipeline stage across cohorts/iterations."""
+
+    status: str = "missing"  # "done" | "partial" | "missing" | "not_applicable"
+    count: int = 0           # how many cohort/iter pairs have this stage
+
+
+@dataclass
+class ConvergenceSummary:
+    verdict: str = "unknown"  # "converged" | "clean_first_pass" | "not_converged" | "n/a" | "unknown"
+    detail: str = ""
+
+
+@dataclass
+class VerdictSummary:
+    repo: str
+    verdict: str
+    concern_count: int
+
+
+@dataclass
+class SessionRecord:
+    name: str
+    path: str
+    kind: str                 # "phase12" | "broad" | "deep" | "adhoc" | "special" | "unknown"
+    era: str                  # "phase12" | "early" | "modern" | "n/a"
+    archived: bool
+    timestamp: Optional[str]  # ISO8601 or None
+    size_bytes: int = 0
+    has_state_json: bool = False
+    state_session_id: Optional[str] = None
+    iteration: Optional[int] = None
+    cohort_number: Optional[int] = None
+    cohort_count_on_disk: int = 0
+    iteration_count_on_disk: int = 0
+    per_cohort_iterations: dict = field(default_factory=dict)
+    stages: dict = field(default_factory=dict)
+    verdicts: list = field(default_factory=list)
+    convergence: ConvergenceSummary = field(default_factory=ConvergenceSummary)
+    issues_critical: Optional[int] = None
+    issues_high: Optional[int] = None
+    code_hash: Optional[str] = None
+    missing: list = field(default_factory=list)
+    anomalies: list = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Classification
+# ---------------------------------------------------------------------------
+
+
+def classify(name: str) -> tuple[str, str, Optional[str]]:
+    """Return (kind, era, iso_timestamp) from a top-level entry name.
+
+    Strips `.zip`/`.tar.gz` for matching, but the caller tracks `archived`
+    separately. `era` is derived from the parsed date when possible.
+    """
+    stem = name
+    if stem.endswith(".zip"):
+        stem = stem[: -len(".zip")]
+    elif stem.endswith(".tar.gz"):
+        stem = stem[: -len(".tar.gz")]
+
+    m = PHASE12_MISC_RE.match(stem)
+    if m:
+        return "phase12", "phase12", _iso_from_parts(m.group(1), m.group(2))
+
+    m = PHASE12_RE.match(stem)
+    if m:
+        return "phase12", "phase12", _iso_from_parts(m.group(2), m.group(3))
+
+    m = BROAD_RE.match(stem)
+    if m:
+        iso = _iso_from_parts(m.group(1), m.group(2))
+        return "broad", _era_for(iso), iso
+
+    m = DEEP_RE.match(stem)
+    if m:
+        iso = _iso_from_parts(m.group(1), m.group(2))
+        return "deep", _era_for(iso), iso
+
+    m = ADHOC_RE.match(stem)
+    if m:
+        return "adhoc", "n/a", _iso_from_parts(m.group(1), m.group(2))
+
+    # Non-standard named sessions: deep-postfix-*, deep-reval-*, broad-*-post-fixes, etc.
+    if stem.startswith(("deep-", "broad-", "phase12-")):
+        return "special", "n/a", _scan_for_date(stem)
+
+    if stem.startswith("bakeoff_session_"):
+        # e.g. bakeoff_session_2026-02-04.tar.gz
+        iso = _scan_for_date(stem)
+        return "special", "n/a", iso
+
+    return "unknown", "n/a", None
+
+
+def _iso_from_parts(date_part: Optional[str], time_part: Optional[str]) -> Optional[str]:
+    if not date_part:
+        return None
+    try:
+        if len(date_part) == 8:
+            y, mo, d = date_part[:4], date_part[4:6], date_part[6:]
+        elif len(date_part) == 10 and "-" in date_part:
+            y, mo, d = date_part.split("-")
+        else:
+            return None
+        if time_part and len(time_part) >= 4:
+            h = time_part[:2]
+            mi = time_part[2:4]
+            s = time_part[4:6] if len(time_part) >= 6 else "00"
+            return f"{y}-{mo}-{d}T{h}:{mi}:{s}"
+        return f"{y}-{mo}-{d}T00:00:00"
+    except Exception:
+        return None
+
+
+def _scan_for_date(stem: str) -> Optional[str]:
+    m = re.search(r"(\d{8})(?:-(\d{4,6}))?", stem)
+    if m:
+        return _iso_from_parts(m.group(1), m.group(2))
+    m = re.search(r"(\d{4}-\d{2}-\d{2})", stem)
+    if m:
+        return _iso_from_parts(m.group(1), None)
+    return None
+
+
+def _era_for(iso: Optional[str]) -> str:
+    if not iso:
+        return "n/a"
+    try:
+        dt = datetime.fromisoformat(iso)
+    except ValueError:
+        return "n/a"
+    return "modern" if dt >= ERA_MODERN_START else "early"
+
+
+# ---------------------------------------------------------------------------
+# Live session probing
+# ---------------------------------------------------------------------------
+
+
+def probe_live_session(path: Path, rec: SessionRecord) -> None:
+    """Fill in `rec` by scanning a directory on disk. Read-only."""
+    rec.size_bytes = _dir_size(path)
+
+    state = _read_state_json(path / "state.json", rec)
+    if state is not None:
+        rec.has_state_json = True
+        _apply_state(state, rec)
+
+    # Cohorts advertised on disk (via cohorts/cohort-NNN/)
+    cohorts_dir = path / "cohorts"
+    per_cohort_iters: dict[int, int] = {}
+    if cohorts_dir.is_dir():
+        for entry in _safe_iterdir(cohorts_dir):
+            m = COHORT_DIR_RE.match(entry.name)
+            if m and entry.is_dir():
+                per_cohort_iters.setdefault(int(m.group(1)), 0)
+
+    # Iteration counts from out/cohort-NNN/iter-NNN/
+    out_dir = path / "out"
+    out_cohort_iters = _scan_cohort_iters(out_dir)
+    for cohort, iters in out_cohort_iters.items():
+        per_cohort_iters[cohort] = max(per_cohort_iters.get(cohort, 0), max(iters) if iters else 0)
+
+    # Diag and reflect
+    diag_cohort_iters = _scan_cohort_iters(path / "diag")
+    reflect_cohort_iters = _scan_cohort_iters(path / "reflect")
+
+    # Stage presence
+    if rec.kind == "phase12":
+        # Flat out/<repo>/ layout — only `run` applies, others are N/A.
+        run_status = "done" if (out_dir.is_dir() and any(out_dir.iterdir())) else "missing"
+        rec.stages["run"] = StageInfo(status=run_status, count=1 if run_status == "done" else 0)
+        for key in ["diagnose", "reflect_prompts", "reflect_assessments", "reflect_summary"]:
+            rec.stages[key] = StageInfo(status="not_applicable", count=0)
+        rec.convergence = ConvergenceSummary(verdict="n/a", detail="phase12 era")
+        rec.cohort_count_on_disk = _count_phase12_repos(out_dir)
+        return
+
+    rec.cohort_count_on_disk = len(per_cohort_iters)
+    rec.iteration_count_on_disk = max(per_cohort_iters.values(), default=0)
+    rec.per_cohort_iterations = dict(sorted(per_cohort_iters.items()))
+
+    # Run: counted as one "done" unit per cohort/iter in out/
+    rec.stages["run"] = _aggregate_stage(out_cohort_iters, per_cohort_iters)
+
+    # Diagnose: we count a cohort/iter as "done" only if its report.yaml exists.
+    diag_present = _scan_cohort_iter_file(path / "diag", "report.yaml")
+    rec.stages["diagnose"] = _aggregate_file_stage(diag_present, per_cohort_iters)
+
+    # Reflect prompts: any *.prompt.md in reflect/cohort-*/iter-*/
+    prompt_present = _scan_cohort_iter_glob(path / "reflect", "*.prompt.md")
+    rec.stages["reflect_prompts"] = _aggregate_file_stage(prompt_present, per_cohort_iters)
+
+    assess_present = _scan_cohort_iter_glob(path / "reflect", "*.assessment.yaml")
+    rec.stages["reflect_assessments"] = _aggregate_file_stage(assess_present, per_cohort_iters)
+
+    summary_present = _scan_cohort_iter_file(path / "reflect", "summary.yaml")
+    rec.stages["reflect_summary"] = _aggregate_file_stage(summary_present, per_cohort_iters)
+
+    # Consistency check: state.json `reflect_statuses` vs what's actually on disk.
+    _check_stale_reflect_status(state, rec, prompt_present, assess_present, summary_present)
+
+    # Convergence
+    rec.convergence = _derive_convergence(rec, state)
+
+    # Missing list
+    rec.missing = _derive_missing(rec)
+
+
+def _dir_size(path: Path) -> int:
+    total = 0
+    try:
+        for root, _dirs, files in os.walk(path):
+            for f in files:
+                try:
+                    total += (Path(root) / f).stat().st_size
+                except OSError:
+                    continue
+    except OSError:
+        return 0
+    return total
+
+
+def _read_state_json(path: Path, rec: SessionRecord) -> Optional[dict]:
+    if not path.is_file():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        rec.anomalies.append(f"state.json unreadable: {type(e).__name__}")
+        return None
+
+
+def _apply_state(state: dict, rec: SessionRecord) -> None:
+    rec.state_session_id = state.get("session_id")
+    rec.iteration = state.get("iteration")
+    rec.cohort_number = state.get("cohort_number")
+    rec.code_hash = state.get("hypergumbo_code_hash")
+
+    if "verdicts" in state:
+        rec.verdicts = [
+            VerdictSummary(
+                repo=v.get("repo_name", "?"),
+                verdict=v.get("verdict", "?"),
+                concern_count=len(v.get("concerns") or []),
+            )
+            for v in state.get("verdicts") or []
+        ]
+
+    conv_hist = state.get("convergence_history")
+    if conv_hist:
+        last = conv_hist[-1]
+        rec.issues_critical = last.get("critical")
+        rec.issues_high = last.get("high")
+
+
+def _safe_iterdir(path: Path) -> Iterable[Path]:
+    try:
+        return list(path.iterdir())
+    except OSError:
+        return []
+
+
+def _scan_cohort_iters(base: Path) -> dict[int, list[int]]:
+    """Return {cohort_num: [iter_nums]} found under base/cohort-NNN/iter-NNN/."""
+    result: dict[int, list[int]] = {}
+    if not base.is_dir():
+        return result
+    for cohort_entry in _safe_iterdir(base):
+        m = COHORT_DIR_RE.match(cohort_entry.name)
+        if not m or not cohort_entry.is_dir():
+            continue
+        cohort = int(m.group(1))
+        iters: list[int] = []
+        for iter_entry in _safe_iterdir(cohort_entry):
+            im = ITER_DIR_RE.match(iter_entry.name)
+            if im and iter_entry.is_dir():
+                iters.append(int(im.group(1)))
+        result[cohort] = sorted(iters)
+    return result
+
+
+def _scan_cohort_iter_file(base: Path, filename: str) -> set[tuple[int, int]]:
+    """Return the set of (cohort, iter) pairs whose dir contains `filename`."""
+    present: set[tuple[int, int]] = set()
+    if not base.is_dir():
+        return present
+    for cohort_entry in _safe_iterdir(base):
+        cm = COHORT_DIR_RE.match(cohort_entry.name)
+        if not cm or not cohort_entry.is_dir():
+            continue
+        for iter_entry in _safe_iterdir(cohort_entry):
+            im = ITER_DIR_RE.match(iter_entry.name)
+            if not im or not iter_entry.is_dir():
+                continue
+            if (iter_entry / filename).is_file():
+                present.add((int(cm.group(1)), int(im.group(1))))
+    return present
+
+
+def _scan_cohort_iter_glob(base: Path, pattern: str) -> set[tuple[int, int]]:
+    """Return the set of (cohort, iter) pairs whose dir has any match for `pattern`."""
+    present: set[tuple[int, int]] = set()
+    if not base.is_dir():
+        return present
+    for cohort_entry in _safe_iterdir(base):
+        cm = COHORT_DIR_RE.match(cohort_entry.name)
+        if not cm or not cohort_entry.is_dir():
+            continue
+        for iter_entry in _safe_iterdir(cohort_entry):
+            im = ITER_DIR_RE.match(iter_entry.name)
+            if not im or not iter_entry.is_dir():
+                continue
+            try:
+                if any(iter_entry.glob(pattern)):
+                    present.add((int(cm.group(1)), int(im.group(1))))
+            except OSError:
+                continue
+    return present
+
+
+def _aggregate_stage(
+    stage_cohort_iters: dict[int, list[int]],
+    expected_cohort_iters: dict[int, int],
+) -> StageInfo:
+    """For `run` stage: compare iter dirs in out/ vs expected max iter per cohort."""
+    if not expected_cohort_iters:
+        if stage_cohort_iters:
+            total = sum(len(v) for v in stage_cohort_iters.values())
+            return StageInfo(status="done", count=total)
+        return StageInfo(status="missing", count=0)
+    done = 0
+    partial = False
+    for cohort, max_iter in expected_cohort_iters.items():
+        if cohort not in stage_cohort_iters:
+            partial = True
+            continue
+        actual_iters = stage_cohort_iters[cohort]
+        done += len(actual_iters)
+        if len(actual_iters) < max_iter:
+            partial = True
+    if done == 0:
+        return StageInfo(status="missing", count=0)
+    return StageInfo(status="partial" if partial else "done", count=done)
+
+
+def _aggregate_file_stage(
+    present: set[tuple[int, int]],
+    expected_cohort_iters: dict[int, int],
+) -> StageInfo:
+    """Count how many (cohort,iter) slots have the expected file/glob."""
+    if not present:
+        return StageInfo(status="missing", count=0)
+    count = len(present)
+    expected_total = sum(expected_cohort_iters.values()) if expected_cohort_iters else count
+    if expected_total == 0:
+        return StageInfo(status="done", count=count)
+    return StageInfo(status="done" if count >= expected_total else "partial", count=count)
+
+
+def _check_stale_reflect_status(
+    state: Optional[dict],
+    rec: SessionRecord,
+    prompts: set[tuple[int, int]],
+    assessments: set[tuple[int, int]],
+    summaries: set[tuple[int, int]],
+) -> None:
+    """Flag `state.json[reflect_statuses]` that contradict the filesystem."""
+    if not state:
+        return
+    statuses = state.get("reflect_statuses") or []
+    for entry in statuses:
+        cohort = entry.get("cohort_number")
+        if cohort is None:
+            continue
+        has_prompts_state = bool(entry.get("has_prompts"))
+        has_prompts_disk = any(c == cohort for c, _ in prompts)
+        if has_prompts_disk and not has_prompts_state:
+            rec.anomalies.append(f"stale reflect_statuses: cohort {cohort} has prompts on disk")
+            break
+        has_assess_state = bool(entry.get("has_assessments"))
+        has_assess_disk = any(c == cohort for c, _ in assessments)
+        if has_assess_disk and not has_assess_state:
+            rec.anomalies.append(f"stale reflect_statuses: cohort {cohort} has assessments on disk")
+            break
+        has_summary_state = bool(entry.get("has_summary"))
+        has_summary_disk = any(c == cohort for c, _ in summaries)
+        if has_summary_disk and not has_summary_state:
+            rec.anomalies.append(f"stale reflect_statuses: cohort {cohort} has summary on disk")
+            break
+
+
+def _derive_convergence(rec: SessionRecord, state: Optional[dict]) -> ConvergenceSummary:
+    if rec.kind == "broad":
+        if not state or not state.get("convergence_history"):
+            return ConvergenceSummary(verdict="unknown", detail="no history")
+        hist = state["convergence_history"]
+        last = hist[-1]
+        critical = last.get("critical", 0)
+        high = last.get("high", 0)
+        new_issues = last.get("new_issues", 0)
+        if critical == 0 and high == 0 and new_issues == 0:
+            return ConvergenceSummary(verdict="converged", detail=f"0 crit/high after iter {last.get('iteration')}")
+        return ConvergenceSummary(
+            verdict="not_converged",
+            detail=f"crit={critical} high={high} new={new_issues} @iter{last.get('iteration')}",
+        )
+
+    if rec.kind == "deep":
+        if not rec.verdicts:
+            return ConvergenceSummary(verdict="unknown", detail="no verdicts")
+        all_good = all(v.verdict == "GOOD" for v in rec.verdicts)
+        if rec.iteration and rec.iteration >= 2 and all_good:
+            return ConvergenceSummary(verdict="converged", detail=f"all GOOD @iter{rec.iteration}")
+        if all_good:
+            return ConvergenceSummary(verdict="clean_first_pass", detail="all GOOD on first pass")
+        warn_fail = [v for v in rec.verdicts if v.verdict != "GOOD"]
+        return ConvergenceSummary(
+            verdict="not_converged",
+            detail=f"{len(warn_fail)}/{len(rec.verdicts)} not GOOD",
+        )
+
+    return ConvergenceSummary(verdict="n/a", detail=rec.kind)
+
+
+def _derive_missing(rec: SessionRecord) -> list[str]:
+    gaps: list[str] = []
+    for key in STAGE_KEYS:
+        info = rec.stages.get(key)
+        if not info:
+            continue
+        if info.status == "missing":
+            gaps.append(f"{key}: missing")
+        elif info.status == "partial":
+            gaps.append(f"{key}: partial ({info.count} found)")
+    return gaps
+
+
+def _count_phase12_repos(out_dir: Path) -> int:
+    if not out_dir.is_dir():
+        return 0
+    return sum(1 for p in _safe_iterdir(out_dir) if p.is_dir())
+
+
+# ---------------------------------------------------------------------------
+# Zip/tarball probing
+# ---------------------------------------------------------------------------
+
+
+def probe_zip_session(path: Path, rec: SessionRecord, deep: bool) -> None:
+    rec.size_bytes = path.stat().st_size
+    rec.archived = True
+
+    if deep:
+        _probe_zip_via_extract(path, rec)
+        return
+
+    try:
+        with zipfile.ZipFile(path) as zf:
+            names = zf.namelist()
+            state_member = _find_state_member(names)
+            if state_member:
+                try:
+                    data = zf.read(state_member)
+                    state = json.loads(data.decode("utf-8"))
+                    rec.has_state_json = True
+                    _apply_state(state, rec)
+                except (json.JSONDecodeError, KeyError, OSError):
+                    rec.anomalies.append("zipped state.json unreadable")
+                    state = None
+            else:
+                state = None
+    except (zipfile.BadZipFile, OSError) as e:
+        rec.anomalies.append(f"zip unreadable: {type(e).__name__}")
+        return
+
+    _apply_zip_name_heuristics(names, rec)
+    rec.convergence = _derive_convergence(rec, state) if state else ConvergenceSummary(
+        verdict="unknown", detail="zipped; no state.json"
+    )
+    rec.missing = _derive_missing(rec)
+
+
+def _find_state_member(names: list[str]) -> Optional[str]:
+    for n in names:
+        tail = n.rsplit("/", 1)[-1]
+        if tail == "state.json":
+            return n
+    return None
+
+
+def _apply_zip_name_heuristics(names: list[str], rec: SessionRecord) -> None:
+    """Populate stages by matching names from the zip's central directory."""
+    cohort_iters_out: dict[int, set[int]] = {}
+    cohort_iters_diag: set[tuple[int, int]] = set()
+    cohort_iters_prompts: set[tuple[int, int]] = set()
+    cohort_iters_assess: set[tuple[int, int]] = set()
+    cohort_iters_summary: set[tuple[int, int]] = set()
+
+    out_re = re.compile(r"(?:^|/)out/cohort-(\d+)/iter-(\d+)/")
+    diag_re = re.compile(r"(?:^|/)diag/cohort-(\d+)/iter-(\d+)/report\.yaml$")
+    prompt_re = re.compile(r"(?:^|/)reflect/cohort-(\d+)/iter-(\d+)/[^/]+\.prompt\.md$")
+    assess_re = re.compile(r"(?:^|/)reflect/cohort-(\d+)/iter-(\d+)/[^/]+\.assessment\.yaml$")
+    summary_re = re.compile(r"(?:^|/)reflect/cohort-(\d+)/iter-(\d+)/summary\.yaml$")
+    phase12_out_re = re.compile(r"(?:^|/)out/([^/]+)/")
+
+    phase12_repos: set[str] = set()
+
+    for name in names:
+        m = out_re.search(name)
+        if m:
+            cohort = int(m.group(1))
+            it = int(m.group(2))
+            cohort_iters_out.setdefault(cohort, set()).add(it)
+            continue
+        if rec.kind in ("phase12", "adhoc", "special"):
+            pm = phase12_out_re.search(name)
+            if pm:
+                phase12_repos.add(pm.group(1))
+
+        m = diag_re.search(name)
+        if m:
+            cohort_iters_diag.add((int(m.group(1)), int(m.group(2))))
+            continue
+        m = prompt_re.search(name)
+        if m:
+            cohort_iters_prompts.add((int(m.group(1)), int(m.group(2))))
+            continue
+        m = assess_re.search(name)
+        if m:
+            cohort_iters_assess.add((int(m.group(1)), int(m.group(2))))
+            continue
+        m = summary_re.search(name)
+        if m:
+            cohort_iters_summary.add((int(m.group(1)), int(m.group(2))))
+
+    per_cohort_iters = {c: (max(iters) if iters else 0) for c, iters in cohort_iters_out.items()}
+    rec.cohort_count_on_disk = len(per_cohort_iters) or (1 if phase12_repos else 0)
+    rec.iteration_count_on_disk = max(per_cohort_iters.values(), default=0)
+    rec.per_cohort_iterations = dict(sorted(per_cohort_iters.items()))
+
+    if per_cohort_iters:
+        total_iters = sum(len(s) for s in cohort_iters_out.values())
+        rec.stages["run"] = StageInfo(status="done", count=total_iters)
+        for key, present in (
+            ("diagnose", cohort_iters_diag),
+            ("reflect_prompts", cohort_iters_prompts),
+            ("reflect_assessments", cohort_iters_assess),
+            ("reflect_summary", cohort_iters_summary),
+        ):
+            if not present:
+                rec.stages[key] = StageInfo(status="missing", count=0)
+            elif len(present) >= total_iters:
+                rec.stages[key] = StageInfo(status="done", count=len(present))
+            else:
+                rec.stages[key] = StageInfo(status="partial", count=len(present))
+    elif phase12_repos:
+        rec.stages["run"] = StageInfo(status="done", count=len(phase12_repos))
+        for key in ("diagnose", "reflect_prompts", "reflect_assessments", "reflect_summary"):
+            rec.stages[key] = StageInfo(status="not_applicable", count=0)
+        rec.cohort_count_on_disk = len(phase12_repos)
+    else:
+        for key in STAGE_KEYS:
+            rec.stages[key] = StageInfo(status="missing", count=0)
+
+
+def _probe_zip_via_extract(path: Path, rec: SessionRecord) -> None:
+    compressed_size = path.stat().st_size
+    with tempfile.TemporaryDirectory(prefix="bakeoff-map-") as tmp:
+        try:
+            with zipfile.ZipFile(path) as zf:
+                zf.extractall(tmp)
+        except (zipfile.BadZipFile, OSError) as e:
+            rec.anomalies.append(f"zip extract failed: {type(e).__name__}")
+            return
+        tmp_path = Path(tmp)
+        children = [p for p in tmp_path.iterdir() if p.is_dir()]
+        session_root = children[0] if len(children) == 1 else tmp_path
+        probe_live_session(session_root, rec)
+        rec.path = str(path)  # preserve original path, not tmp
+        rec.size_bytes = compressed_size  # on-disk footprint, not extracted size
+
+
+def probe_tarball(path: Path, rec: SessionRecord) -> None:
+    rec.size_bytes = path.stat().st_size
+    rec.archived = True
+    try:
+        with tarfile.open(path, "r:*") as tf:
+            names = tf.getnames()
+    except (tarfile.TarError, OSError) as e:
+        rec.anomalies.append(f"tar unreadable: {type(e).__name__}")
+        return
+    _apply_zip_name_heuristics(names, rec)
+    rec.convergence = ConvergenceSummary(verdict="unknown", detail="tarball; not deep-probed")
+    rec.missing = _derive_missing(rec)
+
+
+# ---------------------------------------------------------------------------
+# Walking
+# ---------------------------------------------------------------------------
+
+
+def walk_root(root: Path, *, deep_zips: bool) -> list[SessionRecord]:
+    records: list[SessionRecord] = []
+    for entry in sorted(_safe_iterdir(root), key=lambda p: p.name):
+        if entry.name == "deprecated":
+            continue
+        rec = build_record(entry)
+        try:
+            if entry.is_dir():
+                probe_live_session(entry, rec)
+            elif entry.name.endswith(".zip"):
+                probe_zip_session(entry, rec, deep=deep_zips)
+            elif entry.name.endswith((".tar.gz", ".tgz")):
+                probe_tarball(entry, rec)
+            else:
+                rec.anomalies.append("unrecognized top-level file")
+        except OSError as e:
+            rec.anomalies.append(f"probe failed: {type(e).__name__}")
+        records.append(rec)
+    records.sort(key=lambda r: (r.timestamp or "", r.name))
+    return records
+
+
+def build_record(entry: Path) -> SessionRecord:
+    kind, era, iso = classify(entry.name)
+    archived = entry.name.endswith(".zip") or entry.name.endswith((".tar.gz", ".tgz"))
+    rec = SessionRecord(
+        name=entry.name,
+        path=str(entry),
+        kind=kind,
+        era=era,
+        archived=archived,
+        timestamp=iso,
+    )
+    for key in STAGE_KEYS:
+        rec.stages[key] = StageInfo(status="missing", count=0)
+    return rec
+
+
+# ---------------------------------------------------------------------------
+# Filtering
+# ---------------------------------------------------------------------------
+
+
+def apply_filters(records: list[SessionRecord], args: argparse.Namespace) -> list[SessionRecord]:
+    out = records
+    if args.only:
+        out = [r for r in out if r.name == args.only]
+    if args.kind:
+        out = [r for r in out if r.kind == args.kind]
+    if args.since:
+        out = [r for r in out if (r.timestamp or "") >= args.since]
+    if args.until:
+        out = [r for r in out if (r.timestamp or "") <= args.until + "T23:59:59"]
+    if args.missing:
+        out = [r for r in out if r.missing]
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Rendering
+# ---------------------------------------------------------------------------
+
+
+def _fmt_size(n: int) -> str:
+    for unit in ("B", "K", "M", "G", "T"):
+        if n < 1024:
+            return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
+        n /= 1024
+    return f"{n:.1f}P"
+
+
+def _fmt_stages(rec: SessionRecord) -> str:
+    if rec.kind == "phase12":
+        return "run only"
+    parts: list[str] = []
+    for key, short in (
+        ("run", "run"),
+        ("diagnose", "diag"),
+        ("reflect_prompts", "prompt"),
+        ("reflect_assessments", "asmt"),
+        ("reflect_summary", "sum"),
+    ):
+        info = rec.stages.get(key)
+        if not info:
+            continue
+        if info.status == "done":
+            parts.append(short)
+        elif info.status == "partial":
+            parts.append(short + "*")
+    return "+".join(parts) if parts else "-"
+
+
+def _fmt_convergence(rec: SessionRecord) -> str:
+    table = {
+        "converged": "YES",
+        "clean_first_pass": "clean1",
+        "not_converged": "no",
+        "n/a": "n/a",
+        "unknown": "?",
+    }
+    return table.get(rec.convergence.verdict, rec.convergence.verdict)
+
+
+def render_text(records: list[SessionRecord], root: Path, *, excluded: list[str]) -> str:
+    lines: list[str] = []
+    lines.append(f"bakeoff-map: {root}")
+    lines.append("-" * 100)
+    header = f"{'DATE':<11} {'KIND':<8} {'NAME':<42} {'COHO':>4} {'ITER':>4} {'CONV':<8} {'STAGES':<22} {'SIZE':>8}"
+    lines.append(header)
+    lines.append("-" * 100)
+    for rec in records:
+        date = (rec.timestamp or "")[:10] or "?"
+        name = rec.name if len(rec.name) <= 42 else rec.name[:39] + "..."
+        cohort_col = f"{rec.cohort_count_on_disk}" if rec.cohort_count_on_disk else "-"
+        iter_col = f"{rec.iteration_count_on_disk}" if rec.iteration_count_on_disk else "-"
+        lines.append(
+            f"{date:<11} {rec.kind:<8} {name:<42} {cohort_col:>4} {iter_col:>4} "
+            f"{_fmt_convergence(rec):<8} {_fmt_stages(rec):<22} {_fmt_size(rec.size_bytes):>8}"
+        )
+
+    gap_lines: list[str] = []
+    anom_lines: list[str] = []
+    for rec in records:
+        for gap in rec.missing:
+            gap_lines.append(f"  {rec.name}: {gap}")
+        for anom in rec.anomalies:
+            anom_lines.append(f"  {rec.name}: {anom}")
+
+    if gap_lines:
+        lines.append("")
+        lines.append("MISSING STAGES")
+        lines.append("-" * 100)
+        lines.extend(gap_lines)
+    if anom_lines:
+        lines.append("")
+        lines.append("ANOMALIES")
+        lines.append("-" * 100)
+        lines.extend(anom_lines)
+
+    lines.append("")
+    lines.append("SUMMARY")
+    lines.append("-" * 100)
+    kinds: dict[str, int] = {}
+    for rec in records:
+        kinds[rec.kind] = kinds.get(rec.kind, 0) + 1
+    lines.append("By kind: " + "  ".join(f"{k}={v}" for k, v in sorted(kinds.items())))
+
+    converged = sum(1 for r in records if r.convergence.verdict == "converged")
+    clean1 = sum(1 for r in records if r.convergence.verdict == "clean_first_pass")
+    not_conv = sum(1 for r in records if r.convergence.verdict == "not_converged")
+    unknown = sum(1 for r in records if r.convergence.verdict == "unknown")
+    lines.append(
+        f"Convergence: converged={converged}  clean_first_pass={clean1}  "
+        f"not_converged={not_conv}  unknown={unknown}"
+    )
+
+    total_size = sum(r.size_bytes for r in records)
+    archived_size = sum(r.size_bytes for r in records if r.archived)
+    lines.append(f"Total size: {_fmt_size(total_size)}  (archived: {_fmt_size(archived_size)})")
+
+    dates = [r.timestamp for r in records if r.timestamp]
+    if dates:
+        lines.append(f"Date range: {min(dates)[:10]} -> {max(dates)[:10]}")
+
+    lines.append(f"Total sessions shown: {len(records)}")
+    if excluded:
+        lines.append(f"Excluded (not scanned): {', '.join(excluded)}")
+    return "\n".join(lines)
+
+
+def render_json(records: list[SessionRecord]) -> str:
+    def encode(obj):
+        if isinstance(obj, (SessionRecord, StageInfo, ConvergenceSummary, VerdictSummary)):
+            return asdict(obj)
+        raise TypeError(type(obj).__name__)
+    plain = [asdict(r) for r in records]
+    return json.dumps(plain, indent=2, default=encode)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="bakeoff-map",
+        description="Chronicle and map hypergumbo bakeoff artifacts (read-only).",
+    )
+    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="Artifacts root dir")
+    parser.add_argument("--format", choices=("text", "json"), default="text")
+    parser.add_argument("--kind", choices=("phase12", "broad", "deep", "adhoc", "special", "unknown"))
+    parser.add_argument("--since", help="ISO date lower bound (YYYY-MM-DD)")
+    parser.add_argument("--until", help="ISO date upper bound (YYYY-MM-DD)")
+    parser.add_argument("--only", help="Restrict to a single entry by name")
+    parser.add_argument("--missing", action="store_true", help="Only show sessions with missing/partial stages")
+    parser.add_argument("--zip-deep", action="store_true", help="Deep-probe zips via temp extract")
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    args = parse_args(argv)
+    root: Path = args.root
+    if not root.is_dir():
+        print(f"bakeoff-map: root not found: {root}", file=sys.stderr)
+        return 2
+
+    excluded = ["deprecated/"] if (root / "deprecated").exists() else []
+    records = walk_root(root, deep_zips=args.zip_deep)
+    records = apply_filters(records, args)
+
+    if args.format == "json":
+        print(render_json(records))
+    else:
+        print(render_text(records, root, excluded=excluded))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
