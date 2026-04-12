@@ -783,6 +783,109 @@ def test_fmt_convergence_unknown_passthrough(bmap):
     assert bmap._fmt_convergence(rec) == "something_odd"
 
 
+def test_fmt_missing_compact_all_missing(bmap):
+    rec = bmap.build_record(Path("/fake/deep-postfix-validation"))
+    # All stages are initialized to "missing" by build_record
+    rec.missing = bmap._derive_missing(rec)
+    assert rec.missing  # sanity — there are gaps
+    result = bmap._fmt_missing_compact(rec)
+    assert result == "all stages missing"
+
+
+def test_fmt_missing_compact_partial_stages(bmap):
+    rec = bmap.build_record(Path("/fake/deep-20260409-054615"))
+    rec.stages["run"] = bmap.StageInfo(status="done", count=8)
+    rec.stages["diagnose"] = bmap.StageInfo(status="done", count=8)
+    rec.stages["reflect_prompts"] = bmap.StageInfo(status="partial", count=6)
+    rec.stages["reflect_assessments"] = bmap.StageInfo(status="missing", count=0)
+    rec.stages["reflect_summary"] = bmap.StageInfo(status="partial", count=3)
+    rec.missing = bmap._derive_missing(rec)
+    result = bmap._fmt_missing_compact(rec)
+    assert "asmt=NONE" in result
+    assert "prompt=6/?" in result
+    assert "sum=3/?" in result
+    assert "run" not in result  # run is done, shouldn't appear
+
+
+def test_fmt_missing_compact_only_reflect_missing(bmap):
+    rec = bmap.build_record(Path("/fake/broad-20260124-001510"))
+    rec.stages["run"] = bmap.StageInfo(status="done", count=1)
+    rec.stages["diagnose"] = bmap.StageInfo(status="missing", count=0)
+    rec.stages["reflect_prompts"] = bmap.StageInfo(status="missing", count=0)
+    rec.stages["reflect_assessments"] = bmap.StageInfo(status="missing", count=0)
+    rec.stages["reflect_summary"] = bmap.StageInfo(status="missing", count=0)
+    rec.missing = bmap._derive_missing(rec)
+    result = bmap._fmt_missing_compact(rec)
+    assert "diag=NONE" in result
+    assert "prompt=NONE" in result
+    # Should NOT say "all stages missing" since run is done
+    assert result != "all stages missing"
+
+
+def test_convergence_special_session_with_verdicts(bmap, tmp_path):
+    """Special sessions with deep-style verdicts should get proper convergence."""
+    session = tmp_path / "deep-20260306-0400"
+    session.mkdir()
+    state = {
+        "session_id": "sp",
+        "iteration": 1,
+        "verdicts": [
+            {"repo_name": "a", "verdict": "GOOD", "concerns": [], "metrics": {}},
+            {"repo_name": "b", "verdict": "WARN", "concerns": ["BAD"], "metrics": {}},
+        ],
+        "reflect_statuses": [],
+    }
+    _write_state(session, state)
+    _make_cohort_iter(session, 1, 1, "a")
+    rec = bmap.build_record(session)
+    assert rec.kind == "special"  # non-standard name
+    bmap.probe_live_session(session, rec)
+    # Should assess convergence via verdicts, not return n/a
+    assert rec.convergence.verdict == "not_converged"
+    assert "1/2 not GOOD" in rec.convergence.detail
+
+
+def test_convergence_special_session_with_conv_history(bmap, tmp_path):
+    """Special sessions with broad-style convergence_history should get assessed."""
+    session = tmp_path / "broad-20260307-post-fixes"
+    session.mkdir()
+    state = {
+        "session_id": "sp2",
+        "iteration": 1,
+        "convergence_history": [
+            {"iteration": 1, "cohort": 1, "critical": 0, "high": 0, "new_issues": 0},
+        ],
+    }
+    _write_state(session, state)
+    rec = bmap.build_record(session)
+    assert rec.kind == "special"
+    bmap.probe_live_session(session, rec)
+    assert rec.convergence.verdict == "converged"
+
+
+def test_missing_section_is_compact_in_render(bmap, tmp_path):
+    """Each session with gaps gets exactly one line in the MISSING section."""
+    session = tmp_path / "broad-20260124-001510"
+    session.mkdir()
+    state = {
+        "session_id": "b",
+        "iteration": 1,
+        "convergence_history": [
+            {"iteration": 1, "cohort": 1, "critical": 0, "high": 0, "new_issues": 0},
+        ],
+    }
+    _write_state(session, state)
+    _make_cohort_metadata(session, 1, ["r"])
+    _make_cohort_iter(session, 1, 1, "r")
+    records = bmap.walk_root(tmp_path, deep_zips=False)
+    out = bmap.render_text(records, tmp_path, excluded=[])
+    missing_section = out.split("MISSING STAGES\n")[1].split("\n\n")[0] if "MISSING STAGES" in out else ""
+    # Should be exactly one content line (the dashes header + one entry)
+    content_lines = [l for l in missing_section.split("\n") if l.strip() and not l.startswith("-")]
+    assert len(content_lines) == 1
+    assert "broad-20260124-001510" in content_lines[0]
+
+
 # ---------------------------------------------------------------------------
 # Main / CLI
 # ---------------------------------------------------------------------------

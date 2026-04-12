@@ -463,8 +463,10 @@ def _check_stale_reflect_status(
 
 
 def _derive_convergence(rec: SessionRecord, state: Optional[dict]) -> ConvergenceSummary:
-    if rec.kind == "broad":
-        if not state or not state.get("convergence_history"):
+    # Broad convergence: use convergence_history if available.
+    has_conv_hist = state and state.get("convergence_history")
+    if rec.kind == "broad" or (has_conv_hist and rec.kind not in ("deep", "phase12")):
+        if not has_conv_hist:
             return ConvergenceSummary(verdict="unknown", detail="no history")
         hist = state["convergence_history"]
         last = hist[-1]
@@ -478,7 +480,8 @@ def _derive_convergence(rec: SessionRecord, state: Optional[dict]) -> Convergenc
             detail=f"crit={critical} high={high} new={new_issues} @iter{last.get('iteration')}",
         )
 
-    if rec.kind == "deep":
+    # Deep convergence: use verdicts if available.
+    if rec.kind == "deep" or rec.verdicts:
         if not rec.verdicts:
             return ConvergenceSummary(verdict="unknown", detail="no verdicts")
         all_good = all(v.verdict == "GOOD" for v in rec.verdicts)
@@ -775,6 +778,30 @@ def _fmt_convergence(rec: SessionRecord) -> str:
     return table.get(rec.convergence.verdict, rec.convergence.verdict)
 
 
+def _fmt_missing_compact(rec: SessionRecord) -> str:
+    """One-line summary of all missing/partial stages for a session."""
+    stage_labels = {
+        "run": "run",
+        "diagnose": "diag",
+        "reflect_prompts": "prompt",
+        "reflect_assessments": "asmt",
+        "reflect_summary": "sum",
+    }
+    missing_keys = [k for k in STAGE_KEYS if rec.stages.get(k) and rec.stages[k].status == "missing"]
+    partial_keys = [k for k in STAGE_KEYS if rec.stages.get(k) and rec.stages[k].status == "partial"]
+
+    if len(missing_keys) == len(STAGE_KEYS):
+        return "all stages missing"
+
+    parts: list[str] = []
+    for k in missing_keys:
+        parts.append(f"{stage_labels[k]}=NONE")
+    for k in partial_keys:
+        info = rec.stages[k]
+        parts.append(f"{stage_labels[k]}={info.count}/?")
+    return "  ".join(parts)
+
+
 def render_text(records: list[SessionRecord], root: Path, *, excluded: list[str]) -> str:
     lines: list[str] = []
     lines.append(f"bakeoff-map: {root}")
@@ -795,8 +822,8 @@ def render_text(records: list[SessionRecord], root: Path, *, excluded: list[str]
     gap_lines: list[str] = []
     anom_lines: list[str] = []
     for rec in records:
-        for gap in rec.missing:
-            gap_lines.append(f"  {rec.name}: {gap}")
+        if rec.missing:
+            gap_lines.append(f"  {rec.name}: {_fmt_missing_compact(rec)}")
         for anom in rec.anomalies:
             anom_lines.append(f"  {rec.name}: {anom}")
 
