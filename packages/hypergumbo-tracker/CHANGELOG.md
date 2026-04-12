@@ -7,6 +7,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-12
+
 ### Added
 
 - **TUI background reload on external writes**: `htrac tui` polls ops directory mtimes every `HTRAC_RELOAD_INTERVAL` seconds (default 5.0) and auto-refreshes when another process modifies tracker state. Preserves cursor position, scroll offset, filter text, and in-flight chat input across reloads. Deferred while modal screens are open. Also fixes a latent bug where scroll position reset to top after any TUI-initiated write.
