@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Changed
+
+- **Renamed `before` field to `isbefore`** (WI-tunag): the dependency-link field on tracker items is now `isbefore` (`X.isbefore = [Y]` → "X is before Y"). CLI flags renamed: `--isbefore`, `--add-isbefore`, `--remove-isbefore`. Old ops files using `before` are read transparently (backward compatible); new writes use `isbefore`. Prevents the directional confusion that caused the TUI inversion bug (PR #2981).
+
 ## [0.3.0] - 2026-04-12
 
 ### Added
@@ -22,7 +26,7 @@ This package is independently versioned from the main hypergumbo tool and licens
 ### Fixed
 
 - **`cache-rebuild` writes to XDG cache dir, not legacy path**: `_cmd_cache_rebuild` hardcoded the pre-ADR-0013 location. Fix: reuse `_get_cache_dir()` instances.
-- **TUI displayed `before` field with inverted direction**: `_build_dep_index` swapped blockers and dependents, so every detail panel, chain summary, and dep pill rendered arrows upside down. Fix: populate under CLI semantics — `item.before` renders as "Blocks:", not "Blocked by:".
+- **TUI displayed `before` field with inverted direction**: `_build_dep_index` swapped blockers and dependents, so every detail panel, chain summary, and dep pill rendered arrows upside down. Fix: populate under CLI semantics — `item.isbefore` renders as "Blocks:", not "Blocked by:". (Field was later renamed from `before` to `isbefore`.)
 - **`_maybe_auto_sync` guarded against `tracker_root` outside `repo_root`**: auto-sync derived `repo_root` from cwd instead of the parameter, causing test hangs when cwd had pending ops and `PR_PENDING`. Fix: verify containment and return early if not.
 - **Fold-induced nonce injection in YAML serializer** (WI-pusif-bukor): `_serialize_op` now sets `ry.width = sys.maxsize` to prevent ruamel.yaml from folding long scalars, which embedded nonce comments inside field values on read-back.
 - **TUI crash on bracketed text in user content**: Rich's markup parser interpreted literal `[` in titles/tags/discussions as style tags. Fix: `_escape_user` helper escapes `[` to `\[` in user-controlled text.

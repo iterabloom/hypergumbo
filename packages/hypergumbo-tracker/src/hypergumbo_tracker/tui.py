@@ -603,19 +603,19 @@ def _apply_custom_order(
 def _build_dep_index(
     items: list[CompiledItem],
 ) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
-    """Build blockers/dependents maps from item before-links.
+    """Build blockers/dependents maps from item isbefore-links.
 
-    Semantics: ``X.before = [Y]`` means **X blocks Y** (X must finish before
+    Semantics: ``X.isbefore = [Y]`` means **X blocks Y** (X must finish before
     Y can start). This matches the CLI's interpretation — see
     ``_describe_changes`` in ``cli.py`` which logs ``"{id} now blocks
-    {label}"`` when anything is added to ``new.before``, and the
+    {label}"`` when anything is added to ``new.isbefore``, and the
     ``--add-blocked-by`` help text which describes the inverse relationship.
 
     Returns ``(blockers_of, dependents_of)`` where:
     - ``blockers_of[id]`` = list of IDs that *block* this item
-      (i.e. items whose ``before`` field contains this ID)
+      (i.e. items whose ``isbefore`` field contains this ID)
     - ``dependents_of[id]`` = list of IDs that this item *blocks*
-      (i.e. this item's own ``before`` field, filtered to valid IDs)
+      (i.e. this item's own ``isbefore`` field, filtered to valid IDs)
 
     Dangling references (IDs not present in *items*) are silently dropped.
     """
@@ -623,10 +623,10 @@ def _build_dep_index(
     blockers_of: dict[str, list[str]] = {}
     dependents_of: dict[str, list[str]] = {}
     for item in items:
-        valid_before = [b for b in item.before if b in valid_ids]
-        if valid_before:
-            dependents_of[item.id] = valid_before
-            for b in valid_before:
+        valid_isbefore = [b for b in item.isbefore if b in valid_ids]
+        if valid_isbefore:
+            dependents_of[item.id] = valid_isbefore
+            for b in valid_isbefore:
                 blockers_of.setdefault(b, []).append(item.id)
     return blockers_of, dependents_of
 
@@ -774,9 +774,9 @@ def _format_detail_lines(
     if item.parent:
         lines.append(f"{_label('Parent:')} {item.parent}")
 
-    if item.before:
-        lock_b = " [locked]" if "before" in item.locked_fields else ""
-        lines.append(f"{_label(f'Blocks{lock_b}:')} {', '.join(item.before)}")
+    if item.isbefore:
+        lock_b = " [locked]" if "isbefore" in item.locked_fields else ""
+        lines.append(f"{_label(f'Blocks{lock_b}:')} {', '.join(item.isbefore)}")
     if blockers_of and item.id in blockers_of:
         lines.append(f"{_label('Blocked by:')} {', '.join(blockers_of[item.id])}")
 
@@ -1300,9 +1300,9 @@ class ParentScreen(ModalScreen[str | None]):
 
 
 class BeforeScreen(ModalScreen[dict[str, list[str]] | None]):
-    """Modal for editing before (dependency) links.
+    """Modal for editing isbefore (dependency) links.
 
-    Shows current before links and provides inputs for IDs to add and
+    Shows current isbefore links and provides inputs for IDs to add and
     IDs to remove. Returns ``{"add": [...], "remove": [...]}`` or None.
     """
 
@@ -1312,20 +1312,20 @@ class BeforeScreen(ModalScreen[dict[str, list[str]] | None]):
 
     DEFAULT_CSS = _modal_css("BeforeScreen")
 
-    def __init__(self, item_id: str, current_before: list[str]) -> None:
+    def __init__(self, item_id: str, current_isbefore: list[str]) -> None:
         super().__init__()
         self._item_id = item_id
-        self._current_before = current_before
+        self._current_isbefore = current_isbefore
 
     def compose(self) -> ComposeResult:
-        before_str = (
-            ", ".join(self._current_before)
-            if self._current_before
+        isbefore_str = (
+            ", ".join(self._current_isbefore)
+            if self._current_isbefore
             else "(none)"
         )
         with Vertical(id="modal-dialog"):
-            yield Static("Edit Before Links", id="modal-title")
-            yield Static(f"Current: {before_str}")
+            yield Static("Edit Isbefore Links", id="modal-title")
+            yield Static(f"Current: {isbefore_str}")
             yield Static("Add IDs (comma-separated):")
             yield Input(placeholder="IDs to add", id="add-input")
             yield Static("Remove IDs (comma-separated):")
@@ -3977,20 +3977,20 @@ class TrackerApp(App):
             self.notify(str(e), severity="error")
 
     def action_edit_before(self) -> None:
-        """Open the before-links modal for the selected item."""
+        """Open the isbefore-links modal for the selected item."""
         item = self._get_selected_item()
         if not item:
             self.notify("No item selected", severity="warning")
             return
         self.push_screen(
-            BeforeScreen(item.id, list(item.before)),
+            BeforeScreen(item.id, list(item.isbefore)),
             callback=partial(self._on_edit_before, item.id),
         )
 
     def _on_edit_before(
         self, item_id: str, result: dict[str, list[str]] | None,
     ) -> None:
-        """Handle before-links modal result with prefix resolution."""
+        """Handle isbefore-links modal result with prefix resolution."""
         if result is None:
             return
         add_ids = result.get("add", [])
@@ -4001,16 +4001,16 @@ class TrackerApp(App):
             resolved_remove: list[str] | None,
         ) -> None:
             try:
-                a_fields = {"before": resolved_add} if resolved_add else None
+                a_fields = {"isbefore": resolved_add} if resolved_add else None
                 r_fields = (
-                    {"before": resolved_remove} if resolved_remove else None
+                    {"isbefore": resolved_remove} if resolved_remove else None
                 )
                 self._tracker_set.update(
                     item_id,
                     add_fields=a_fields,
                     remove_fields=r_fields,
                 )
-                self.notify(f"Before links updated for {item_id}")
+                self.notify(f"Isbefore links updated for {item_id}")
                 self._reload_after_write(item_id)
             except (
                 ItemNotFoundError, LockedFieldError, AmbiguousPrefixError,

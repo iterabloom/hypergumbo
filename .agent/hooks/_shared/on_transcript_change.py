@@ -299,10 +299,10 @@ PLAYBOOKS = [
      ".agent/agent_playbooks_protocols_sops_skills/trackerize-playbook.md",
      "When the user says 'trackerize', decompose the plan under discussion into individual "
      "self-contained tracker items. Check existing tracker items first to avoid duplicates and "
-     "inform priority assignment (0-4). Use --before for real dependencies between items, tags "
+     "inform priority assignment (0-4). Use --isbefore for real dependencies between items, tags "
      "for filterability, and parent relationships only when structurally compelling. Prefer flat "
      "lists. If what to trackerize is ambiguous, ask the user to clarify. Create items in "
-     "dependency order so --before references are valid. Summarize created items for the user."),
+     "dependency order so --isbefore references are valid. Summarize created items for the user."),
 
     ("tracker-reply-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/tracker-reply-playbook.md",

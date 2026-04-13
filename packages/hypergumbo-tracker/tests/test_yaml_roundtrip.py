@@ -46,7 +46,7 @@ class TestNonceOnEveryLine:
                 "priority": 2,
                 "parent": None,
                 "tags": ["analysis_quality"],
-                "before": [],
+                "isbefore": [],
                 "duplicate_of": [],
                 "not_duplicate_of": [],
                 "pr_ref": None,
@@ -118,7 +118,7 @@ class TestCanonicalFieldOrder:
                 "priority": 2,
                 "parent": None,
                 "tags": [],
-                "before": [],
+                "isbefore": [],
                 "duplicate_of": [],
                 "not_duplicate_of": [],
                 "pr_ref": None,
@@ -144,7 +144,7 @@ class TestCanonicalFieldOrder:
 
         expected = [
             "kind", "title", "status", "priority", "parent", "tags",
-            "before", "duplicate_of", "not_duplicate_of", "pr_ref",
+            "isbefore", "duplicate_of", "not_duplicate_of", "pr_ref",
             "description", "fields",
         ]
         assert data_fields == expected
@@ -300,7 +300,7 @@ class TestCSafeLoaderRuamelParity:
                 "priority": 2,
                 "parent": None,
                 "tags": ["analysis_quality"],
-                "before": [],
+                "isbefore": [],
                 "duplicate_of": [],
                 "not_duplicate_of": [],
                 "pr_ref": None,
@@ -402,7 +402,7 @@ class TestFlowStyleUpdateLists:
             "op": "update",
             **COMMON,
             "set": {},
-            "remove": {"tags": ["old_tag"], "before": ["WI-xxx", "WI-yyy"]},
+            "remove": {"tags": ["old_tag"], "isbefore": ["WI-xxx", "WI-yyy"]},
         }
         serialized = _serialize_op(op)
         assert "[old_tag]" in serialized
@@ -415,7 +415,7 @@ class TestFlowStyleUpdateLists:
             **COMMON,
             "set": {},
             "add": {"tags": ["a", "b", "c"]},
-            "remove": {"before": ["WI-x"]},
+            "remove": {"isbefore": ["WI-x"]},
         }
         serialized = _serialize_op(op)
         # Strip nonce comments for parsing
@@ -428,7 +428,7 @@ class TestFlowStyleUpdateLists:
         parsed = yaml.load(clean_yaml, Loader=yaml.CSafeLoader)
         assert parsed is not None
         assert parsed[0]["add"]["tags"] == ["a", "b", "c"]
-        assert parsed[0]["remove"]["before"] == ["WI-x"]
+        assert parsed[0]["remove"]["isbefore"] == ["WI-x"]
 
     def test_add_empty_list_flow_style(self) -> None:
         """Empty lists in add/remove should also be flow-style."""

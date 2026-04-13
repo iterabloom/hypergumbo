@@ -400,19 +400,60 @@ class TestCompile:
                 "clock": 1, "nonce": "n1",
                 "data": {"kind": "invariant", "title": "t", "status": "todo_hard",
                          "priority": 2, "description": "",
-                         "before": ["INV-aaa"], "fields": {}},
+                         "isbefore": ["INV-aaa"], "fields": {}},
             },
             {
                 "op": "update", "at": "T2", "by": "agent", "actor": "a",
                 "clock": 2, "nonce": "n2",
                 "set": {},
-                "add": {"before": ["INV-bbb"]},
-                "remove": {"before": ["INV-aaa"]},
+                "add": {"isbefore": ["INV-bbb"]},
+                "remove": {"isbefore": ["INV-aaa"]},
             },
         ]
         item = compile_ops(ops, "INV-test")
-        assert "INV-aaa" not in item.before
-        assert "INV-bbb" in item.before
+        assert "INV-aaa" not in item.isbefore
+        assert "INV-bbb" in item.isbefore
+
+    def test_legacy_before_field_backward_compat(self) -> None:
+        """Old ops files using 'before' key compile into 'isbefore' field."""
+        ops = [
+            {
+                "op": "create", "at": "T1", "by": "agent", "actor": "a",
+                "clock": 1, "nonce": "n1",
+                "data": {"kind": "invariant", "title": "t", "status": "todo_hard",
+                         "priority": 2, "description": "",
+                         "before": ["INV-legacy"], "fields": {}},
+            },
+            {
+                "op": "update", "at": "T2", "by": "agent", "actor": "a",
+                "clock": 2, "nonce": "n2",
+                "set": {},
+                "add": {"before": ["INV-added"]},
+                "remove": {"before": ["INV-legacy"]},
+            },
+        ]
+        item = compile_ops(ops, "INV-test")
+        assert "INV-legacy" not in item.isbefore
+        assert "INV-added" in item.isbefore
+
+    def test_legacy_before_field_set_op_backward_compat(self) -> None:
+        """Old ops using 'before' in set dict compile into 'isbefore' field."""
+        ops = [
+            {
+                "op": "create", "at": "T1", "by": "agent", "actor": "a",
+                "clock": 1, "nonce": "n1",
+                "data": {"kind": "invariant", "title": "t", "status": "todo_hard",
+                         "priority": 2, "description": "",
+                         "before": ["INV-old"], "fields": {}},
+            },
+            {
+                "op": "update", "at": "T2", "by": "agent", "actor": "a",
+                "clock": 2, "nonce": "n2",
+                "set": {"before": ["INV-replaced"]},
+            },
+        ]
+        item = compile_ops(ops, "INV-test")
+        assert item.isbefore == ["INV-replaced"]
 
     def test_add_does_not_duplicate(self) -> None:
         ops = [
@@ -547,7 +588,7 @@ class TestStoreAdd:
             status="violated",
             priority=1,
             tags=["analysis_quality"],
-            before=["INV-other"],
+            isbefore=["INV-other"],
             description="Full description",
             fields={"statement": "test stmt", "root_cause": "test cause"},
             pr_ref="PR-42",
@@ -556,7 +597,7 @@ class TestStoreAdd:
         assert item.status == "violated"
         assert item.priority == 1
         assert "analysis_quality" in item.tags
-        assert "INV-other" in item.before
+        assert "INV-other" in item.isbefore
         assert item.description == "Full description"
         assert item.fields["statement"] == "test stmt"
         assert item.pr_ref == "PR-42"
@@ -1029,15 +1070,15 @@ class TestReadyAndList:
         blocker_id = store.add(kind="work_item", title="Blocker", status="todo_hard")
         blocked_id = store.add(kind="work_item", title="Blocked", status="todo_hard")
 
-        # blocker.before = [blocked_id] means "finish Blocker before Blocked"
+        # blocker.isbefore = [blocked_id] means "finish Blocker before Blocked"
         # So Blocked is blocked by Blocker
-        store.update(blocker_id, add_fields={"before": [blocked_id]})
+        store.update(blocker_id, add_fields={"isbefore": [blocked_id]})
 
         ready = store.ready()
         ready_ids = {r.id for r in ready}
         # Blocker is ready (nothing blocks it)
         assert blocker_id in ready_ids
-        # Blocked is NOT ready (Blocker has before=[Blocked] and is unresolved)
+        # Blocked is NOT ready (Blocker has isbefore=[Blocked] and is unresolved)
         assert blocked_id not in ready_ids
 
     def test_ready_excludes_duplicates(self, ops_dir: Path, mock_agent_uid: None) -> None:
@@ -1096,7 +1137,7 @@ class TestBeforeCycles:
     def test_no_cycles(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
         id1 = store.add(kind="invariant", fields=_INV_FIELDS, title="A")
-        store.add(kind="invariant", fields=_INV_FIELDS, title="B", before=[id1])
+        store.add(kind="invariant", fields=_INV_FIELDS, title="B", isbefore=[id1])
         cycles = store.check_before_cycles()
         assert cycles == []
 
@@ -1230,10 +1271,10 @@ class TestFindGitDir:
 # ---------------------------------------------------------------------------
 
 
-class TestReadyBeforeSemantics:
-    """Test that ready() correctly implements before semantics.
+class TestReadyIsbeforeSemantics:
+    """Test that ready() correctly implements isbefore semantics.
 
-    X.before = [Y] means "X blocks Y — finish X before starting Y."
+    X.isbefore = [Y] means "X blocks Y — finish X before starting Y."
     So Y is blocked until X is resolved.
     """
 
@@ -1242,15 +1283,15 @@ class TestReadyBeforeSemantics:
         blocker_id = store.add(kind="work_item", title="Blocker", status="todo_hard")
         blocked_id = store.add(kind="work_item", title="Blocked", status="todo_hard")
 
-        # blocker.before = [blocked_id] → blocker blocks blocked_id
-        store.update(blocker_id, add_fields={"before": [blocked_id]})
+        # blocker.isbefore = [blocked_id] → blocker blocks blocked_id
+        store.update(blocker_id, add_fields={"isbefore": [blocked_id]})
 
         ready = store.ready()
         ready_ids = {r.id for r in ready}
 
-        # Blocker is ready (nothing in any item's before field targets blocker)
+        # Blocker is ready (nothing in any item's isbefore field targets blocker)
         assert blocker_id in ready_ids
-        # Blocked is NOT ready (blocker.before contains blocked_id and blocker is unresolved)
+        # Blocked is NOT ready (blocker.isbefore contains blocked_id and blocker is unresolved)
         assert blocked_id not in ready_ids
 
     def test_resolved_blocker_unblocks(self, ops_dir: Path, mock_agent_uid: None) -> None:
@@ -1258,7 +1299,7 @@ class TestReadyBeforeSemantics:
         blocker_id = store.add(kind="work_item", title="Blocker", status="todo_hard")
         blocked_id = store.add(kind="work_item", title="Blocked", status="todo_hard")
 
-        store.update(blocker_id, add_fields={"before": [blocked_id]})
+        store.update(blocker_id, add_fields={"isbefore": [blocked_id]})
         # Resolve the blocker
         store.update(blocker_id, set_fields={"status": "done"})
 
@@ -2479,10 +2520,10 @@ class TestBeforeCycleDetection:
         id_a = store.add(kind="invariant", fields=_INV_FIELDS, title="A")
         id_b = store.add(kind="invariant", fields=_INV_FIELDS, title="B")
 
-        # A.before = [B] means A blocks B
-        store.update(id_a, add_fields={"before": [id_b]})
-        # B.before = [A] means B blocks A → cycle
-        store.update(id_b, add_fields={"before": [id_a]})
+        # A.isbefore = [B] means A blocks B
+        store.update(id_a, add_fields={"isbefore": [id_b]})
+        # B.isbefore = [A] means B blocks A → cycle
+        store.update(id_b, add_fields={"isbefore": [id_a]})
 
         cycles = store.check_before_cycles()
         assert len(cycles) > 0
@@ -3270,8 +3311,8 @@ class TestHumanOnlyStatuses:
         # Create blocker and blocked items
         blocker_id = store.add(kind="work_item", title="Blocker item for test")
         blocked_id = store.add(kind="work_item", title="Blocked item for test")
-        # X.before = [Y] means "X blocks Y" (finish X before Y).
-        store.update(blocker_id, add_fields={"before": [blocked_id]})
+        # X.isbefore = [Y] means "X blocks Y" (finish X before Y).
+        store.update(blocker_id, add_fields={"isbefore": [blocked_id]})
         # blocked_id should not be ready because blocker is unresolved
         ready_ids = {i.id for i in store.ready()}
         assert blocked_id not in ready_ids

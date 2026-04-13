@@ -1068,7 +1068,7 @@ class TestCrossFileValidation:
         (canonical_ops / ".WI-item-b.ops").write_text(ops_b)
 
         result = validate_all(tracker_root, _make_config())
-        assert any("cycle in before links" in e for e in result.errors)
+        assert any("cycle in isbefore links" in e for e in result.errors)
 
 
 

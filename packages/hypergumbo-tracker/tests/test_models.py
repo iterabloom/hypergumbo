@@ -301,7 +301,7 @@ class TestCompiledItem:
         assert item.priority == 2
         assert item.parent is None
         assert item.tags == []
-        assert item.before == []
+        assert item.isbefore == []
         assert item.duplicate_of == []
         assert item.not_duplicate_of == []
         assert item.pr_ref is None

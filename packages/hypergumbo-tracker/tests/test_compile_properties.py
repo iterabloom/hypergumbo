@@ -51,7 +51,7 @@ def create_op(draw: st.DrawFn) -> dict[str, Any]:
             "priority": draw(st.integers(min_value=0, max_value=4)),
             "parent": None,
             "tags": draw(st.lists(st.sampled_from(["tag_a", "tag_b", "tag_c"]), max_size=3)),
-            "before": [],
+            "isbefore": [],
             "duplicate_of": [],
             "not_duplicate_of": [],
             "pr_ref": None,

@@ -773,7 +773,7 @@ class TestWriteCommands:
             main([
                 "--tracker-root", str(tracker_root),
                 "add", "--kind", "work_item", "--title", "Test",
-                "--before", "WI-before-target",
+                "--isbefore", "WI-before-target",
                 "--pr-ref", "#123",
                 "--parent", "WI-parent-target",
             ])
@@ -930,7 +930,7 @@ class TestWriteCommands:
                 "--tracker-root", str(tracker_root),
                 "update", "WI-test",
                 "--add-tag", "new_tag",
-                "--remove-before", "WI-old",
+                "--remove-isbefore", "WI-old",
             ])
         assert exc.value.code == EXIT_SUCCESS
 
@@ -1063,7 +1063,7 @@ class TestWriteCommands:
                 "--parent", "WI-parent-ref",
                 "--pr-ref", "#456",
                 "--description", "new desc",
-                "--add-before", "WI-before-ref",
+                "--add-isbefore", "WI-before-ref",
                 "--remove-tag", "old",
                 "--add-duplicate-of", "WI-dup-ref",
                 "--add-not-duplicate-of", "WI-nodup-ref",
@@ -1433,11 +1433,11 @@ class TestVerboseConfirmations:
         assert "P2" in out
         assert "P1" in out
 
-    def test_update_add_before_shows_relationship(
+    def test_update_add_isbefore_shows_relationship(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None,
     ) -> None:
-        """--add-before prints the relationship with item titles."""
+        """--add-isbefore prints the relationship with item titles."""
         tracker_root = _setup_tracker(tmp_path)
         ops_dir = tracker_root / "tracker-workspace" / ".ops"
         _add_item(ops_dir, "WI-alpha", title="Alpha task")
@@ -1445,34 +1445,34 @@ class TestVerboseConfirmations:
         with pytest.raises(SystemExit) as exc:
             main([
                 "--tracker-root", str(tracker_root),
-                "update", "WI-alpha", "--add-before", "WI-beta",
+                "update", "WI-alpha", "--add-isbefore", "WI-beta",
             ])
         assert exc.value.code == EXIT_SUCCESS
         out = capsys.readouterr().out
         assert "updated" in out
-        assert "blocks" in out.lower() or "before" in out.lower()
+        assert "blocks" in out.lower() or "isbefore" in out.lower()
 
-    def test_update_remove_before_shows_relationship(
+    def test_update_remove_isbefore_shows_relationship(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None,
     ) -> None:
-        """--remove-before prints the unlinked relationship."""
+        """--remove-isbefore prints the unlinked relationship."""
         tracker_root = _setup_tracker(tmp_path)
         ops_dir = tracker_root / "tracker-workspace" / ".ops"
         _add_item(ops_dir, "WI-alpha", title="Alpha task")
         _add_item(ops_dir, "WI-beta", title="Beta task")
-        # First add the before link
+        # First add the isbefore link
         with pytest.raises(SystemExit):
             main([
                 "--tracker-root", str(tracker_root),
-                "update", "WI-alpha", "--add-before", "WI-beta",
+                "update", "WI-alpha", "--add-isbefore", "WI-beta",
             ])
         capsys.readouterr()  # clear
         # Now remove it
         with pytest.raises(SystemExit) as exc:
             main([
                 "--tracker-root", str(tracker_root),
-                "update", "WI-alpha", "--remove-before", "WI-beta",
+                "update", "WI-alpha", "--remove-isbefore", "WI-beta",
             ])
         assert exc.value.code == EXIT_SUCCESS
         out = capsys.readouterr().out
@@ -1806,7 +1806,7 @@ class TestDepsCommand:
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None,
     ) -> None:
-        """deps shows before/blocked-by relationships."""
+        """deps shows isbefore/blocked-by relationships."""
         tracker_root = _setup_tracker(tmp_path)
         ops_dir = tracker_root / "tracker-workspace" / ".ops"
         _add_item(ops_dir, "WI-blocker", title="Blocker task")
@@ -1814,7 +1814,7 @@ class TestDepsCommand:
         with pytest.raises(SystemExit):
             main([
                 "--tracker-root", str(tracker_root),
-                "update", "WI-blocker", "--add-before", "WI-blocked",
+                "update", "WI-blocker", "--add-isbefore", "WI-blocked",
             ])
         capsys.readouterr()
         with pytest.raises(SystemExit) as exc:
@@ -1864,7 +1864,7 @@ class TestDepsCommand:
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None,
     ) -> None:
-        """deps shows items that block the target (inverse before)."""
+        """deps shows items that block the target (inverse isbefore)."""
         tracker_root = _setup_tracker(tmp_path)
         ops_dir = tracker_root / "tracker-workspace" / ".ops"
         _add_item(ops_dir, "INV-target", kind="invariant", title="Target inv")
@@ -1872,7 +1872,7 @@ class TestDepsCommand:
         with pytest.raises(SystemExit):
             main([
                 "--tracker-root", str(tracker_root),
-                "update", "WI-blocker", "--add-before", "INV-target",
+                "update", "WI-blocker", "--add-isbefore", "INV-target",
             ])
         capsys.readouterr()
         with pytest.raises(SystemExit) as exc:
@@ -1906,13 +1906,13 @@ class TestDepsCommand:
         with pytest.raises(SystemExit):
             main([
                 "--tracker-root", str(tracker_root),
-                "update", "WI-child", "--add-before", "WI-target2",
+                "update", "WI-child", "--add-isbefore", "WI-target2",
             ])
         # WI-blocker2 blocks WI-child
         with pytest.raises(SystemExit):
             main([
                 "--tracker-root", str(tracker_root),
-                "update", "WI-blocker2", "--add-before", "WI-child",
+                "update", "WI-blocker2", "--add-isbefore", "WI-child",
             ])
         capsys.readouterr()
         with pytest.raises(SystemExit) as exc:
@@ -1984,7 +1984,7 @@ class TestBulkRelationships:
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None,
     ) -> None:
-        """--add-blocked-by sets before links on the referenced items."""
+        """--add-blocked-by sets isbefore links on the referenced items."""
         tracker_root = _setup_tracker(tmp_path)
         ops_dir = tracker_root / "tracker-workspace" / ".ops"
         _add_item(ops_dir, "INV-target", kind="invariant", title="Target inv")
@@ -1999,14 +1999,14 @@ class TestBulkRelationships:
             ])
         assert exc.value.code == EXIT_SUCCESS
         out = capsys.readouterr().out
-        # Both blockers should now have before: [INV-target]
+        # Both blockers should now have isbefore: [INV-target]
         assert "blocks" in out.lower() or "blocked-by" in out.lower()
 
     def test_add_blocked_by_sets_before_on_other_items(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None,
     ) -> None:
-        """Verify the before link is actually set on the blocker items."""
+        """Verify the isbefore link is actually set on the blocker items."""
         tracker_root = _setup_tracker(tmp_path)
         ops_dir = tracker_root / "tracker-workspace" / ".ops"
         _add_item(ops_dir, "INV-target", kind="invariant", title="Target")
@@ -2031,7 +2031,7 @@ class TestBulkRelationships:
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None,
     ) -> None:
-        """--remove-blocked-by removes before links from the referenced items."""
+        """--remove-blocked-by removes isbefore links from the referenced items."""
         tracker_root = _setup_tracker(tmp_path)
         ops_dir = tracker_root / "tracker-workspace" / ".ops"
         _add_item(ops_dir, "INV-target", kind="invariant", title="Target inv")
@@ -3413,39 +3413,39 @@ class TestDuplicateFlags:
         assert exc.value.code == EXIT_USER_ERROR
 
 
-class TestRemoveBeforePrefixResolution:
-    """--remove-before must resolve short prefixes like --add-before does."""
+class TestRemoveIsbeforePrefixResolution:
+    """--remove-isbefore must resolve short prefixes like --add-isbefore does."""
 
-    def test_remove_before_resolves_prefix(
+    def test_remove_isbefore_resolves_prefix(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None,
     ) -> None:
-        """--remove-before with a short prefix resolves to the full ID."""
+        """--remove-isbefore with a short prefix resolves to the full ID."""
         tracker_root = _setup_tracker(tmp_path)
         ops_dir = tracker_root / "tracker-workspace" / ".ops"
         full_id = "WI-abcde-fghij-klmno-pqrst-uvwxy-zabcd-efghi-jklmn"
         _add_item(ops_dir, "WI-test")
-        _add_item(ops_dir, full_id, title="Before target")
+        _add_item(ops_dir, full_id, title="Isbefore target")
         with pytest.raises(SystemExit) as exc:
             main([
                 "--tracker-root", str(tracker_root),
                 "update", "WI-test",
-                "--remove-before", "WI-abcde",
+                "--remove-isbefore", "WI-abcde",
             ])
         assert exc.value.code == EXIT_SUCCESS
 
-    def test_remove_before_nonexistent_fails(
+    def test_remove_isbefore_nonexistent_fails(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None,
     ) -> None:
-        """--remove-before with a nonexistent prefix fails."""
+        """--remove-isbefore with a nonexistent prefix fails."""
         tracker_root = _setup_tracker(tmp_path)
         _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
         with pytest.raises(SystemExit) as exc:
             main([
                 "--tracker-root", str(tracker_root),
                 "update", "WI-test",
-                "--remove-before", "WI-nonexistent",
+                "--remove-isbefore", "WI-nonexistent",
             ])
         assert exc.value.code == EXIT_USER_ERROR
 

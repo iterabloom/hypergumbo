@@ -366,7 +366,7 @@ class CompiledItem:
     priority: int = 2
     parent: str | None = None
     tags: list[str] = field(default_factory=list)
-    before: list[str] = field(default_factory=list)
+    isbefore: list[str] = field(default_factory=list)
     duplicate_of: list[str] = field(default_factory=list)
     not_duplicate_of: list[str] = field(default_factory=list)
     pr_ref: str | None = None

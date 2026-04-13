@@ -200,7 +200,7 @@ deterministic, collision-resistant, pronounceable.
 
 Move items between tiers: `promote`, `demote`, `stealth`, `unstealth`.
 
-**Dependencies:** `X.before = [Y]` means finish X before Y. The `ready`
+**Dependencies:** `X.isbefore = [Y]` means finish X before Y. The `ready`
 command respects this.
 
 **Auto-sync:** When pending ops exceed a threshold (default 40 lines), the
