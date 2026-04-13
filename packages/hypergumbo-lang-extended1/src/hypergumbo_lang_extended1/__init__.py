@@ -6,7 +6,7 @@ including systems programming alternatives, proof assistants, blockchain,
 hardware description languages, and niche domain-specific languages.
 """
 
-__version__ = "2.5.1"
+__version__ = "2.6.0"
 
 # Module paths for analyzer discovery via entry-points (ADR-0012 Step 1).
 # Importing each module triggers the @register_analyzer decorator within it.
