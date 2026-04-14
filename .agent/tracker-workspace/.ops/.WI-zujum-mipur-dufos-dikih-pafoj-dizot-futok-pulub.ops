@@ -20,3 +20,18 @@
     pr_ref:  # cb01
     description: "UAT 2026-04-13 BUG-04: `hypergumbo file.tla` prints a helpful hint suggesting the repo root, then proceeds anyway and crashes with `NotADirectoryError` traceback. The hint logic should `sys.exit(1)` (or appropriate code) immediately. Crashes-with-traceback are a tooling smell."  # cb01
     fields: {}  # cb01
+- op: update  # 19d4
+  at: '2026-04-14T15:24:52Z'  # 19d4
+  by: agent  # 19d4
+  actor: jgstern_agent  # 19d4
+  clock: 2  # 19d4
+  nonce: 19d4  # 19d4
+  set:  # 19d4
+    status: done  # 19d4
+- op: discuss  # 3904
+  at: '2026-04-14T15:24:52Z'  # 3904
+  by: agent  # 3904
+  actor: jgstern_agent  # 3904
+  clock: 3  # 3904
+  nonce: '3904'  # 3904
+  message: "Fixed. Added is_dir() guard in cmd_sketch and cmd_run after the existence check: print a clear error pointing at the file's parent directory and return 1, instead of crashing in _format_structure_tree_fallback with NotADirectoryError from Path.iterdir(). cmd_run also gained the missing existence check (it previously crashed with a different traceback for nonexistent paths)."  # 3904

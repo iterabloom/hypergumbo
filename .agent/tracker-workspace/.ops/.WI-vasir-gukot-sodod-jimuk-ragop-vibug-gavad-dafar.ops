@@ -20,3 +20,18 @@
     pr_ref:  # 1857
     description: "UAT 2026-04-13 UX-05: every tested repo gets 1-7 stderr warnings from linkers irrelevant to its languages: NAPI, TAURI_IPC, SOLIDITY_ABI on Go-only repos; a Circom grammar warning fires universally. High visibility (every invocation), zero signal. Fix: gate linker activation on detected languages OR demote warnings to debug log when no relevant files are present."  # 1857
     fields: {}  # 1857
+- op: update  # f8c8
+  at: '2026-04-14T16:52:09Z'  # f8c8
+  by: agent  # f8c8
+  actor: jgstern_agent  # f8c8
+  clock: 2  # f8c8
+  nonce: f8c8  # f8c8
+  set:  # f8c8
+    status: done  # f8c8
+- op: discuss  # 0137
+  at: '2026-04-14T16:52:09Z'  # 0137
+  by: agent  # 0137
+  actor: jgstern_agent  # 0137
+  clock: 3  # 0137
+  nonce: '0137'  # 0137
+  message: "Fixed. Merged via auto-pr. Suppresses partial-linker warnings when the ONLY met requirements are language-file presence checks (\\`*_files\\` names). On alertmanager: 8 warnings -> 1 (-87%). NAPI/TAURI_IPC/SOLIDITY_ABI/WASM_BINDGEN/IPC/LUA_FFI/RUBY_FFI/PYFFI all fall into this category — their 'partial' state on a polyglot repo was 'has the language files' but 0 actual pattern matches, which isn't signal. The remaining DEPENDENCY warning (Go repo with 0 TOML deps but 2785 import edges) is a different signal class and not addressed here."  # 0137
