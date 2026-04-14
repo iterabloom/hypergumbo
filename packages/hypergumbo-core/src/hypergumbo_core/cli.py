@@ -4034,6 +4034,27 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     return 0
 
 
+def _positive_token_budget(raw: str) -> int:
+    """argparse type for --tokens: require a positive integer.
+
+    WI-pokor (UAT BUG-02+03): ``-t 0`` was silently treated as "no budget"
+    and produced the default 8000-token sketch; negative values produced
+    a header-only output with exit code 0. Both are configuration errors
+    and should fail fast with a clear message.
+    """
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(
+            f"token budget must be a positive integer, got {raw!r}"
+        ) from exc
+    if value <= 0:
+        raise argparse.ArgumentTypeError(
+            f"token budget must be a positive integer, got {value}"
+        )
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Main parser with comprehensive help
     main_description = """\
@@ -4134,9 +4155,9 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
     )
     p_sketch.add_argument(
         "-t", "--tokens",
-        type=int,
+        type=_positive_token_budget,
         default=None,
-        help="Limit output to approximately N tokens",
+        help="Limit output to approximately N tokens (must be a positive integer)",
     )
     p_sketch.add_argument(
         "-x", "--exclude-tests",
@@ -4703,10 +4724,10 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_explain.add_argument(
         "-t",
         "--tokens",
-        type=int,
+        type=_positive_token_budget,
         default=None,
         dest="tokens",
-        help="Token budget for source code (omits low-priority sources when exceeded)",
+        help="Token budget for source code (must be a positive integer; omits low-priority sources when exceeded)",
     )
     p_explain.set_defaults(func=cmd_explain)
 

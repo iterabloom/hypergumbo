@@ -2437,6 +2437,49 @@ def test_cmd_run_single_file_input_exits_cleanly(tmp_path: Path, capsys) -> None
     assert "Traceback" not in err
 
 
+def test_positive_token_budget_accepts_positive_int() -> None:
+    """The validator returns the int unchanged for valid positive values."""
+    from hypergumbo_core.cli import _positive_token_budget
+    assert _positive_token_budget("8000") == 8000
+    assert _positive_token_budget("1") == 1
+
+
+def test_positive_token_budget_rejects_zero() -> None:
+    """`-t 0` is rejected (WI-pokor / UAT BUG-02)."""
+    import argparse
+    from hypergumbo_core.cli import _positive_token_budget
+    with pytest.raises(argparse.ArgumentTypeError, match="token budget"):
+        _positive_token_budget("0")
+
+
+def test_positive_token_budget_rejects_negative() -> None:
+    """`-t -1` / `-t -100` are rejected (WI-pokor / UAT BUG-03)."""
+    import argparse
+    from hypergumbo_core.cli import _positive_token_budget
+    with pytest.raises(argparse.ArgumentTypeError, match="token budget"):
+        _positive_token_budget("-1")
+    with pytest.raises(argparse.ArgumentTypeError, match="token budget"):
+        _positive_token_budget("-100")
+
+
+def test_positive_token_budget_rejects_non_int() -> None:
+    """Non-integer values produce a clear error."""
+    import argparse
+    from hypergumbo_core.cli import _positive_token_budget
+    with pytest.raises(argparse.ArgumentTypeError, match="token budget"):
+        _positive_token_budget("abc")
+    with pytest.raises(argparse.ArgumentTypeError, match="token budget"):
+        _positive_token_budget("1.5")
+
+
+def test_sketch_parser_rejects_zero_tokens() -> None:
+    """argparse uses the validator on the sketch -t flag (integration)."""
+    from hypergumbo_core.cli import build_parser
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["sketch", ".", "-t", "0"])
+
+
 def test_cmd_sketch_warns_about_git_root(tmp_path: Path, capsys) -> None:
     """Test cmd_sketch warns when analyzing a subdirectory of a git repo."""
     # Create a git repo structure
