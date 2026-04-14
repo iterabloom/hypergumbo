@@ -32,6 +32,80 @@ def test_is_excluded_with_custom_patterns(tmp_path: Path) -> None:
     assert is_excluded(third_party, tmp_path, excludes=["third_party"]) is True
 
 
+def test_is_excluded_normalizes_trailing_slash(tmp_path: Path) -> None:
+    """`-e ui/` (trailing slash) should match the same paths as `-e ui`.
+
+    Per WI-zirik (UAT 2026-04-13 BUG-01): user-supplied exclude patterns
+    with a trailing slash were silently ignored because per-part fnmatch
+    never matches a part containing '/'.
+    """
+    ui_file = tmp_path / "ui" / "app.tsx"
+    assert is_excluded(ui_file, tmp_path, excludes=["ui/"]) is True
+
+
+def test_is_excluded_normalizes_glob_double_star_suffix(tmp_path: Path) -> None:
+    """`-e ui/**` (gitignore-style) should match files under ui/.
+
+    Per WI-zirik: this was silently ignored because per-part fnmatch
+    cannot match 'ui/**' against any single path component.
+    """
+    ui_file = tmp_path / "ui" / "app" / "src" / "main.elm"
+    assert is_excluded(ui_file, tmp_path, excludes=["ui/**"]) is True
+
+
+def test_is_excluded_normalizes_glob_double_star_prefix(tmp_path: Path) -> None:
+    """`-e **/ui/**` should match a `ui` directory at any depth.
+
+    Per WI-zirik: silently ignored due to the same per-part fnmatch issue.
+    """
+    nested = tmp_path / "src" / "ui" / "app.tsx"
+    assert is_excluded(nested, tmp_path, excludes=["**/ui/**"]) is True
+    deep = tmp_path / "a" / "b" / "ui" / "c" / "d.tsx"
+    assert is_excluded(deep, tmp_path, excludes=["**/ui/**"]) is True
+
+
+def test_is_excluded_normalizes_glob_double_star_prefix_only(tmp_path: Path) -> None:
+    """`-e **/ui` should match a directory named `ui` at any depth."""
+    nested = tmp_path / "src" / "ui" / "app.tsx"
+    assert is_excluded(nested, tmp_path, excludes=["**/ui"]) is True
+
+
+def test_is_excluded_path_aware_glob(tmp_path: Path) -> None:
+    """Patterns containing '/' (after normalization) match relative path.
+
+    `-e cmd/server.go` should exclude exactly that one file, not any file
+    named `server.go` at any depth.
+    """
+    target = tmp_path / "cmd" / "server.go"
+    assert is_excluded(target, tmp_path, excludes=["cmd/server.go"]) is True
+
+    elsewhere = tmp_path / "other" / "server.go"
+    assert is_excluded(elsewhere, tmp_path, excludes=["cmd/server.go"]) is False
+
+
+def test_is_excluded_empty_pattern_after_normalization(tmp_path: Path) -> None:
+    """Patterns that normalize to empty string should not match anything.
+
+    `-e /` and `-e **/` both normalize to empty; they must not be
+    treated as "match everything".
+    """
+    src_file = tmp_path / "src" / "main.py"
+    assert is_excluded(src_file, tmp_path, excludes=["/"]) is False
+    assert is_excluded(src_file, tmp_path, excludes=["**/"]) is False
+
+
+def test_is_excluded_does_not_match_substring_of_part(tmp_path: Path) -> None:
+    """`-e ui` should not match a directory named `gui` or `quiet`.
+
+    Regression guard: per-part fnmatch already gives this correctly,
+    but the path-aware fallback must not weaken it.
+    """
+    gui_file = tmp_path / "gui" / "main.py"
+    assert is_excluded(gui_file, tmp_path, excludes=["ui"]) is False
+    quiet_file = tmp_path / "quiet" / "main.py"
+    assert is_excluded(quiet_file, tmp_path, excludes=["ui"]) is False
+
+
 def test_is_excluded_with_path_outside_repo_root(tmp_path: Path) -> None:
     """Should handle paths that are not relative to repo_root."""
     # Create a path that's not under tmp_path
@@ -603,6 +677,47 @@ class TestFileIndex:
         (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main")
         (tmp_path / "sub").mkdir()
         (tmp_path / "sub" / "justfile").write_text("default:")
+
+    def test_build_path_anchored_excludes(self, tmp_path: Path) -> None:
+        """FileIndex should honor relative-path exclude patterns (WI-zirik).
+
+        Patterns containing '/' (after normalization) are matched against
+        the relative path string, not just per-name. Both file-level
+        (``cmd/server.go``) and directory-level (``ui/**`` -> reduces to
+        ``ui`` so handled by name; ``cmd/foo/**`` -> reduces to
+        ``cmd/foo`` which is path-anchored) forms must work.
+        """
+        from hypergumbo_core.discovery import FileIndex
+
+        (tmp_path / "cmd").mkdir()
+        (tmp_path / "cmd" / "server.go").write_text("package main")
+        (tmp_path / "cmd" / "client.go").write_text("package main")
+        (tmp_path / "other").mkdir()
+        (tmp_path / "other" / "server.go").write_text("package main")
+        (tmp_path / "internal").mkdir()
+        (tmp_path / "internal" / "deep").mkdir()
+        (tmp_path / "internal" / "deep" / "x.go").write_text("package deep")
+
+        idx = FileIndex.build(tmp_path, excludes=["cmd/server.go", "internal/deep/**"])
+        rels = {f.relative_to(tmp_path).as_posix() for f in idx.all_files()}
+        assert "cmd/server.go" not in rels  # file-level path exclude
+        assert "cmd/client.go" in rels      # sibling kept
+        assert "other/server.go" in rels    # not anchored to cmd/
+        assert "internal/deep/x.go" not in rels  # directory pruned
+
+    def test_build_glob_directory_exclude(self, tmp_path: Path) -> None:
+        """FileIndex should prune directories matching glob name patterns."""
+        from hypergumbo_core.discovery import FileIndex
+
+        (tmp_path / "mypkg.egg-info").mkdir()
+        (tmp_path / "mypkg.egg-info" / "PKG-INFO").write_text("name: x")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("# ok")
+
+        idx = FileIndex.build(tmp_path)
+        rels = {f.relative_to(tmp_path).as_posix() for f in idx.all_files()}
+        assert "mypkg.egg-info/PKG-INFO" not in rels
+        assert "src/main.py" in rels
 
     def test_build_indexes_all_files(self, tmp_path: Path) -> None:
         """Build should index all non-excluded files."""

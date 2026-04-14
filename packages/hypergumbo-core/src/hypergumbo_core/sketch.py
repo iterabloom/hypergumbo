@@ -2497,6 +2497,27 @@ def _format_language_stats(
     return f"{lang_line} · {total_files} files · ~{total_loc:,} LOC{ignore_marker}"  # pragma: no cover
 
 
+def _normalize_name_excludes(excludes: list[str]) -> list[str]:
+    """Strip path-anchored patterns and normalise the rest to bare names.
+
+    Per WI-zirik: the structure-tree code matches patterns against a
+    single name part using fnmatch, which silently ignores any pattern
+    containing '/'. Normalising 'ui/', 'ui/**', '**/ui/**' all to 'ui'
+    makes the user-facing exclude flag work consistently with the
+    discovery layer. Truly path-anchored patterns (e.g. 'cmd/server.go')
+    are dropped here; they are still honoured by the file-discovery
+    pipeline that produces ``important_files``.
+    """
+    from .discovery import _normalize_exclude_pattern
+
+    out: list[str] = []
+    for raw in excludes:
+        norm = _normalize_exclude_pattern(raw)
+        if norm and "/" not in norm:
+            out.append(norm)
+    return out
+
+
 def _count_root_items(repo_root: Path, excludes: list[str]) -> int:
     """Count all non-excluded items (files and directories) at root level.
 
@@ -2512,9 +2533,10 @@ def _count_root_items(repo_root: Path, excludes: list[str]) -> int:
     """
     from fnmatch import fnmatch
 
+    name_excludes = _normalize_name_excludes(excludes)
     count = 0
     for item in repo_root.iterdir():
-        if any(fnmatch(item.name, pat) for pat in excludes):
+        if any(fnmatch(item.name, pat) for pat in name_excludes):
             continue
         count += 1
     return count
@@ -2541,6 +2563,11 @@ def _format_structure_tree_fallback(
     """
     from fnmatch import fnmatch
 
+    # WI-zirik: normalise 'ui/', 'ui/**', '**/ui/**', '**/ui' all to 'ui'
+    # so per-name fnmatch matches them. Path-anchored patterns are dropped
+    # here; they're enforced by the file-discovery layer.
+    name_excludes = _normalize_name_excludes(excludes)
+
     lines = [_section_header("Structure", exclude_tests), "", "```"]
     lines.append(f"{repo_root.name}/")
 
@@ -2549,7 +2576,7 @@ def _format_structure_tree_fallback(
     for d in repo_root.iterdir():
         if not d.is_dir():
             continue
-        excluded = any(fnmatch(d.name, pattern) for pattern in excludes)
+        excluded = any(fnmatch(d.name, pattern) for pattern in name_excludes)
         if not excluded:
             dirs.append(d.name)
 
@@ -2567,7 +2594,7 @@ def _format_structure_tree_fallback(
     for f in repo_root.iterdir():
         if not f.is_file():
             continue
-        if any(fnmatch(f.name, pattern) for pattern in excludes):
+        if any(fnmatch(f.name, pattern) for pattern in name_excludes):
             continue
         # Include source files and additional file candidates (CONFIG/DOCUMENTATION)
         if is_source_file(f.name) or is_additional_file_candidate(f):
@@ -2590,7 +2617,7 @@ def _format_structure_tree_fallback(
         try:
             for item in dir_path.iterdir():
                 # Skip excluded items
-                if any(fnmatch(item.name, p) for p in excludes):
+                if any(fnmatch(item.name, p) for p in name_excludes):
                     continue
                 # When excluding tests, skip test files but keep config/doc files
                 if exclude_tests:
@@ -2694,6 +2721,10 @@ def _format_structure_tree(
     if extra_excludes:
         excludes.extend(extra_excludes)
 
+    # WI-zirik: normalise patterns once for the per-name fnmatch checks
+    # below so 'ui/', 'ui/**', '**/ui/**', '**/ui' all behave as 'ui'.
+    name_excludes = _normalize_name_excludes(excludes)
+
     # If no important files, show top-level directories in tree format
     # (Don't fall back to deprecated bullet-list format)
     if not important_files:
@@ -2738,7 +2769,7 @@ def _format_structure_tree(
         count = 0
         try:
             for item in path.iterdir():
-                if any(fnmatch(item.name, pat) for pat in excludes):
+                if any(fnmatch(item.name, pat) for pat in name_excludes):
                     continue
                 count += 1
         except OSError:  # pragma: no cover

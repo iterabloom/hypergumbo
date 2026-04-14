@@ -469,31 +469,115 @@ def _has_glob_chars(pattern: str) -> bool:
     return any(c in pattern for c in "*?[")
 
 
+def _normalize_exclude_pattern(pattern: str) -> str:
+    """Normalize a user-supplied exclude pattern to gitignore-style semantics.
+
+    User intent for directory excludes is conveyed multiple ways that all
+    mean "exclude this directory and its contents":
+
+        ui            ui/           ui/**         **/ui/**         **/ui
+
+    The pre-WI-zirik implementation matched patterns against each path part
+    independently, so anything containing a '/' silently matched nothing.
+    This helper collapses the four "directory under any depth" forms above
+    into the bare name "ui" so per-part fnmatch handles them.
+
+    For path-anchored patterns (e.g. ``cmd/server.go``), the leading and
+    trailing decorations are stripped but the remaining ``/`` is preserved
+    so the caller can recognise it as a relative-path pattern.
+    """
+    p = pattern.strip()
+    if p.endswith("/"):
+        p = p.rstrip("/")
+    while p.startswith("**/"):
+        p = p[3:]
+    while p.endswith("/**"):
+        p = p[:-3]
+    # A pattern that reduces to bare '**' (or '/') is meaningless on its
+    # own — it would match every name. Treat it as empty so the caller
+    # drops it instead of silently widening the exclusion to all files.
+    if p == "**":
+        p = ""
+    return p
+
+
+def _classify_pattern(pattern: str) -> str:
+    """Bucket a normalised pattern: 'empty', 'exact', 'glob', or 'path'.
+
+    - 'empty': normalisation reduced the pattern to "" (e.g. ``/`` or ``**/``)
+    - 'exact': bare directory/file name, no glob or slash
+    - 'glob':  per-part fnmatch pattern (contains '*' '?' '[' but no '/')
+    - 'path':  contains '/' — matched against the relative path string
+    """
+    if not pattern:
+        return "empty"
+    if "/" in pattern:
+        return "path"
+    if _has_glob_chars(pattern):
+        return "glob"
+    return "exact"
+
+
+def _bucket_default_excludes() -> tuple[
+    frozenset[str], tuple[str, ...], tuple[str, ...]
+]:
+    exact: set[str] = set()
+    globs: list[str] = []
+    paths: list[str] = []
+    for raw in DEFAULT_EXCLUDES:
+        p = _normalize_exclude_pattern(raw)
+        kind = _classify_pattern(p)
+        if kind == "exact":
+            exact.add(p)
+        elif kind == "glob":
+            globs.append(p)
+        elif kind == "path":  # pragma: no cover - DEFAULT_EXCLUDES has no path patterns today
+            paths.append(p)
+    return frozenset(exact), tuple(globs), tuple(paths)
+
+
 # Pre-classify DEFAULT_EXCLUDES at module load time for fast matching.
 # Exact names (no glob chars) use O(1) frozenset lookup; only the 2 glob
 # patterns (*.egg-info, hypergumbo.results*.json) fall back to fnmatch.
-_EXACT_DEFAULT_EXCLUDES = frozenset(
-    p for p in DEFAULT_EXCLUDES if not _has_glob_chars(p)
-)
-_GLOB_DEFAULT_EXCLUDES = tuple(
-    p for p in DEFAULT_EXCLUDES if _has_glob_chars(p)
-)
+(
+    _EXACT_DEFAULT_EXCLUDES,
+    _GLOB_DEFAULT_EXCLUDES,
+    _PATH_DEFAULT_EXCLUDES,
+) = _bucket_default_excludes()
 
 
 def _classify_excludes(
     excludes: list[str],
-) -> tuple[frozenset[str], tuple[str, ...]]:
-    """Split exclude patterns into exact names and glob patterns.
+) -> tuple[frozenset[str], tuple[str, ...], tuple[str, ...]]:
+    """Split exclude patterns into exact names, glob patterns, and path patterns.
 
-    Exact names are matched via frozenset membership (O(1) per check).
-    Glob patterns are matched via fnmatch (O(n) per check, but n is
-    typically 2 for DEFAULT_EXCLUDES).
+    Each pattern is first normalised (see ``_normalize_exclude_pattern``) so
+    that ``ui``, ``ui/``, ``ui/**``, ``**/ui/**`` and ``**/ui`` all classify
+    as the bare name ``ui``. Patterns that retain a ``/`` after normalisation
+    are routed to the path bucket and matched against the relative path.
+
+    Returns three buckets:
+      - exact: O(1) frozenset of bare names
+      - globs: per-part fnmatch patterns (e.g. ``*.egg-info``)
+      - paths: relative-path fnmatch patterns (e.g. ``cmd/server.go``)
     """
     if excludes is DEFAULT_EXCLUDES:
-        return _EXACT_DEFAULT_EXCLUDES, _GLOB_DEFAULT_EXCLUDES
-    exact = frozenset(p for p in excludes if not _has_glob_chars(p))
-    globs = tuple(p for p in excludes if _has_glob_chars(p))
-    return exact, globs
+        return _EXACT_DEFAULT_EXCLUDES, _GLOB_DEFAULT_EXCLUDES, _PATH_DEFAULT_EXCLUDES
+    exact: set[str] = set()
+    globs: list[str] = []
+    paths: list[str] = []
+    for raw in excludes:
+        p = _normalize_exclude_pattern(raw)
+        kind = _classify_pattern(p)
+        if kind == "exact":
+            exact.add(p)
+        elif kind == "glob":
+            globs.append(p)
+        elif kind == "path":
+            paths.append(p)
+        # 'empty' is dropped silently — a pattern that normalises to ""
+        # would otherwise match every path.
+    return frozenset(exact), tuple(globs), tuple(paths)
 
 
 def _is_excluded_classified(
@@ -501,11 +585,13 @@ def _is_excluded_classified(
     repo_root: Path,
     exact: frozenset[str],
     globs: tuple[str, ...],
+    paths: tuple[str, ...] = (),
 ) -> bool:
     """Fast exclusion check using pre-classified patterns.
 
     Uses frozenset membership for exact names and fnmatch only for
-    the small number of glob patterns.
+    the small number of glob patterns. Path-anchored patterns (containing
+    '/') are matched against the full relative path string.
     """
     try:
         rel_path = path.relative_to(repo_root)
@@ -517,6 +603,12 @@ def _is_excluded_classified(
             return True
         for pattern in globs:
             if fnmatch(part, pattern):
+                return True
+
+    if paths:
+        rel_str = rel_path.as_posix()
+        for pattern in paths:
+            if fnmatch(rel_str, pattern):
                 return True
 
     return False
@@ -540,8 +632,8 @@ def is_excluded(path: Path, repo_root: Path, excludes: list[str] | None = None) 
     if excludes is None:
         excludes = DEFAULT_EXCLUDES
 
-    exact, globs = _classify_excludes(excludes)
-    return _is_excluded_classified(path, repo_root, exact, globs)
+    exact, globs, paths = _classify_excludes(excludes)
+    return _is_excluded_classified(path, repo_root, exact, globs, paths)
 
 
 # ---------------------------------------------------------------------------
@@ -623,7 +715,7 @@ class FileIndex:
         if locale_excludes is None:
             locale_excludes = _global_locale_excludes
 
-        exact_exc, glob_exc = _classify_excludes(excludes)
+        exact_exc, glob_exc, path_exc = _classify_excludes(excludes)
 
         by_ext: dict[str, list[Path]] = {}
         by_name: dict[str, list[Path]] = {}
@@ -633,12 +725,24 @@ class FileIndex:
             dirpath = Path(dirpath_str)
 
             # Prune excluded directories in-place (prevents os.walk
-            # from descending into them).
-            dirnames[:] = [
-                d for d in dirnames
-                if d not in exact_exc
-                and not any(fnmatch(d, g) for g in glob_exc)
-            ]
+            # from descending into them). Path-anchored patterns are
+            # checked separately below because they need a full
+            # relative path for fnmatch.
+            kept_dirs: list[str] = []
+            for d in dirnames:
+                if d in exact_exc:
+                    continue
+                if any(fnmatch(d, g) for g in glob_exc):
+                    continue
+                if path_exc:
+                    rel_dir = (dirpath / d).relative_to(repo_root).as_posix()
+                    if any(
+                        fnmatch(rel_dir, p) or rel_dir.startswith(p + "/")
+                        for p in path_exc
+                    ):
+                        continue
+                kept_dirs.append(d)
+            dirnames[:] = kept_dirs
 
             # Prune locale-excluded directories
             if locale_excludes:
@@ -656,6 +760,10 @@ class FileIndex:
                     continue
                 if any(fnmatch(fname, g) for g in glob_exc):
                     continue
+                if path_exc:
+                    rel_file = (dirpath / fname).relative_to(repo_root).as_posix()
+                    if any(fnmatch(rel_file, p) for p in path_exc):
+                        continue
 
                 fpath = dirpath / fname
                 all_files.append(fpath)
@@ -830,7 +938,7 @@ def find_files(
         return
 
     # Slow path: no index available, fall back to rglob()
-    exact, globs = _classify_excludes(excludes)
+    exact, globs, paths = _classify_excludes(excludes)
 
     count = 0
     for pattern in patterns:
@@ -839,7 +947,7 @@ def find_files(
                 return
             if not path.is_file():
                 continue
-            if _is_excluded_classified(path, repo_root, exact, globs):
+            if _is_excluded_classified(path, repo_root, exact, globs, paths):
                 continue
             if _is_under_locale_exclude(path):
                 continue
