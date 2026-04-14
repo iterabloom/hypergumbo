@@ -20,3 +20,19 @@
     pr_ref:  # cb3a
     description: "UAT 2026-04-13 BUG-09a: io-boundaries returns 0 boundaries for TypeScript repos despite extensive HTTP, fs, and subprocess use. workadventure agent simulation confirms this is the largest user-visible io-boundaries gap (Node.js + browser ecosystem). Add TS/JS I/O primitive YAML covering `fs.*`, `fetch`, `http.request`, `child_process.spawn/exec`, `WebSocket`, `process.env`, `console.*` (logging), `localStorage` (browser), etc. Per UAT: this unlocks taint-flow for the largest language ecosystem and is the highest-leverage io-boundaries fix."  # cb3a
     fields: {}  # cb3a
+- op: update  # bf21
+  at: '2026-04-14T14:01:43Z'  # bf21
+  by: agent  # bf21
+  actor: jgstern_agent  # bf21
+  clock: 2  # bf21
+  nonce: bf21  # bf21
+  set:  # bf21
+    status: done  # bf21
+    pr_ref: '3007'  # bf21
+- op: discuss  # d24d
+  at: '2026-04-14T14:01:43Z'  # d24d
+  by: agent  # d24d
+  actor: jgstern_agent  # d24d
+  clock: 3  # d24d
+  nonce: d24d  # d24d
+  message: "Fixed in PR #3007. The catalog already existed (javascript.yaml shared by JS/TS via alias), so the original framing missed two structural gaps the UAT findings really pointed at. Both addressed in this PR:\n\n(1) JS/TS analyzer never emitted call edges to imported names that didn't resolve to an intra-repo symbol. Added unresolved-edge fallback in the bare-name call path: when func_name in named_imports and no callee resolves, emit dst='<lang>:<module_hint>:0-0:<name>:unresolved' with the import path normalised (strip 'node:' prefix and './ ../' leaders).\n\n(2) Catalog was Node-only. Added browser/web-API entries: WebSocket / EventSource / BroadcastChannel / XMLHttpRequest / navigator.sendBeacon / window.fetch (net), localStorage / sessionStorage / indexedDB / caches (fs_read+fs_write), console.* (logging), navigator/window/document env reads, plus ky/got/superagent/undici HTTP clients.\n\nVerified on nextjs/packages/create-next-app: total_io_edges 0 -> 27 (fs_read 17 chains, fs_write 4, subprocess 6). apollo-server: 0 -> 7 (logging+net_recv via console.log + http.createServer). Member calls on namespace and default imports (fs.readFileSync after 'import * as fs', axios.get after 'import axios') still emit no edge — filed as WI-vurop."  # d24d

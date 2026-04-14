@@ -1,0 +1,23 @@
+- op: create  # b115
+  at: '2026-04-14T10:01:24Z'  # b115
+  by: agent  # b115
+  actor: jgstern_agent  # b115
+  clock: 1  # b115
+  nonce: b115  # b115
+  data:  # b115
+    kind: work_item  # b115
+    title: "JS/TS analyzer: emit unresolved-call edges for member calls on namespace imports"  # b115
+    status: todo_hard  # b115
+    priority: 2  # b115
+    parent:  # b115
+    tags:  # b115
+    - uat_2026_04_13  # b115
+    - io-boundary  # b115
+    - js_ts_analyzer  # b115
+    - analyzer_call_edges  # b115
+    isbefore: []  # b115
+    duplicate_of: []  # b115
+    not_duplicate_of: []  # b115
+    pr_ref:  # b115
+    description: "WI-banaf addressed bare-name imported calls (e.g. existsSync() from 'node:fs') by emitting unresolved-call edges in js_ts.py. The same treatment is needed for the OTHER imported-call shapes that are common in TS/JS:\n\n1. Member calls on namespace imports: import * as fs from 'fs'; fs.readFileSync()\n   - existing handler at js_ts.py:3767 (ast_call_namespace) already resolves intra-repo\n   - need: emit unresolved edge with module hint = namespace import path when no callee resolves\n\n2. Member calls on default imports: import axios from 'axios'; axios.get()\n   - default-import alias should be tracked similarly to namespace alias\n   - emit unresolved edge with module hint = the import path\n\n3. Member calls on named imports: import { fs } from 'something'; fs.readFile()\n   - covered by namespace-import case if the alias matches an import root\n\n4. Bare global identifiers without an explicit import: console.log(), localStorage.getItem(), WebSocket.send()\n   - some of these are tracked in named_imports if the project does import it; many TS/JS use them as globals\n   - need: emit unresolved edge for known global object.method patterns (catalog-driven; consume the existing catalog's modules: localStorage, sessionStorage, navigator, document, window, console, WebSocket, etc.)\n\nEVIDENCE: Verified on apollo-server (TS) post-bare-name fix: total_io_edges = 7 (logging+net_recv via console.log/http.createServer). create-next-app went from 0 -> 27 boundaries (fs_read/fs_write/subprocess populated). The remaining gap is entirely in the namespace and default-import cases — both common in browser-heavy projects (workadventure/vscode-style).\n\nREGRESSION TEST: After this lands, apollo-server should show 30+ boundaries (including fs/net from member calls), and a Node project that does 'import * as fs from \"fs\"; fs.readFileSync()' must produce a fs_read chain.\n\nDEPENDENCIES: WI-banaf (the catalog and bare-name fix) — done."  # b115
+    fields: {}  # b115
