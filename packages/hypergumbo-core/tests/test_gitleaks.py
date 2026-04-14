@@ -377,6 +377,151 @@ class TestScanContentEdgeCases:
         assert findings == []
 
 
+class TestScanContentCached:
+    """Tests for content-hash-keyed scan caching (WI-julir)."""
+
+    def test_cached_first_call_invokes_gitleaks(self, tmp_path: Path) -> None:
+        """First call with a given content hash actually scans."""
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        mock_output = json.dumps([
+            {
+                "File": "<stdin>",
+                "StartLine": 1,
+                "RuleID": "test",
+                "Description": "Test",
+                "Match": "secret",
+            }
+        ])
+        mock_result = MagicMock()
+        mock_result.stdout = mock_output.encode()
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
+            with patch("subprocess.run", return_value=mock_result) as mock_run:
+                findings = scan_content_cached("API_KEY=abc", tmp_path)
+
+        assert mock_run.call_count == 1
+        assert len(findings) == 1
+        assert findings[0].rule_id == "test"
+
+    def test_cached_second_call_skips_gitleaks(self, tmp_path: Path) -> None:
+        """Second call with identical content returns cached result without subprocess."""
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        mock_output = json.dumps([
+            {
+                "File": "<stdin>",
+                "StartLine": 1,
+                "RuleID": "test",
+                "Description": "Test",
+                "Match": "secret",
+            }
+        ])
+        mock_result = MagicMock()
+        mock_result.stdout = mock_output.encode()
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
+            with patch("subprocess.run", return_value=mock_result) as mock_run:
+                first = scan_content_cached("API_KEY=abc", tmp_path)
+                second = scan_content_cached("API_KEY=abc", tmp_path)
+
+        assert mock_run.call_count == 1, "second call must hit cache"
+        assert [f.rule_id for f in first] == [f.rule_id for f in second]
+        assert [f.line for f in first] == [f.line for f in second]
+
+    def test_cached_different_content_misses_cache(self, tmp_path: Path) -> None:
+        """Different content hash bypasses the cache and rescans."""
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        mock_result = MagicMock()
+        mock_result.stdout = b"null"
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
+            with patch("subprocess.run", return_value=mock_result) as mock_run:
+                scan_content_cached("content A", tmp_path)
+                scan_content_cached("content B", tmp_path)
+
+        assert mock_run.call_count == 2
+
+    def test_cached_no_cache_dir_falls_back(self) -> None:
+        """When cache_dir is None, behaves like uncached scan_content."""
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        mock_result = MagicMock()
+        mock_result.stdout = b"null"
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
+            with patch("subprocess.run", return_value=mock_result) as mock_run:
+                scan_content_cached("content", None)
+                scan_content_cached("content", None)
+
+        assert mock_run.call_count == 2  # no cache means no skip
+
+    def test_cached_evicts_oldest_when_full(self, tmp_path: Path) -> None:
+        """Cache is bounded; oldest entries are evicted past max_entries."""
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        mock_result = MagicMock()
+        mock_result.stdout = b"null"
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
+            with patch("subprocess.run", return_value=mock_result):
+                # Fill cache past the limit
+                for i in range(5):
+                    scan_content_cached(f"content {i}", tmp_path, max_entries=3)
+
+        cache_file = tmp_path / "secret_scan_cache.json"
+        cache = json.loads(cache_file.read_text())
+        assert len(cache) == 3, "cache must respect max_entries"
+
+    def test_cached_corrupt_cache_file_recovers(self, tmp_path: Path) -> None:
+        """A corrupt cache file is treated as empty, scan proceeds."""
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        cache_file = tmp_path / "secret_scan_cache.json"
+        cache_file.write_text("{not json")
+
+        mock_result = MagicMock()
+        mock_result.stdout = b"null"
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
+            with patch("subprocess.run", return_value=mock_result) as mock_run:
+                findings = scan_content_cached("content", tmp_path)
+
+        assert findings == []
+        assert mock_run.call_count == 1
+
+    def test_cached_round_trip_preserves_finding_fields(self, tmp_path: Path) -> None:
+        """All SecretFinding fields survive the cache serialization round-trip."""
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        mock_output = json.dumps([
+            {
+                "File": "config.py",
+                "StartLine": 42,
+                "RuleID": "aws-key",
+                "Description": "AWS Access Key",
+                "Match": "AKIAIOSFODNN7EXAMPLE",
+            }
+        ])
+        mock_result = MagicMock()
+        mock_result.stdout = mock_output.encode()
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
+            with patch("subprocess.run", return_value=mock_result):
+                scan_content_cached("AKIAIOSFODNN7EXAMPLE", tmp_path)
+            # Now serve from cache (subprocess patched away → would error if called)
+            cached = scan_content_cached("AKIAIOSFODNN7EXAMPLE", tmp_path)
+
+        assert len(cached) == 1
+        f = cached[0]
+        assert f.file == "config.py"
+        assert f.line == 42
+        assert f.rule_id == "aws-key"
+        assert f.description == "AWS Access Key"
+        assert f.match == "AKIAIOSFODNN7EXAMPLE"
+
+
 class TestSketchSecretScanning:
     """Tests for secret scanning integration in sketch command."""
 
@@ -441,7 +586,7 @@ class TestSketchSecretScanning:
         )
 
         with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
-            with patch("hypergumbo_core.cli.scan_content", return_value=[]):
+            with patch("hypergumbo_core.cli.scan_content_cached", return_value=[]):
                 cmd_sketch(args)
 
         captured = capsys.readouterr()
@@ -479,7 +624,7 @@ class TestSketchSecretScanning:
         ]
 
         with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
-            with patch("hypergumbo_core.cli.scan_content", return_value=mock_findings):
+            with patch("hypergumbo_core.cli.scan_content_cached", return_value=mock_findings):
                 cmd_sketch(args)
 
         captured = capsys.readouterr()

@@ -283,6 +283,78 @@ def scan_content(content: str) -> list[SecretFinding]:
         return []
 
 
+def scan_content_cached(
+    content: str,
+    cache_dir: "Optional[Path]",
+    max_entries: int = 8,
+) -> list[SecretFinding]:
+    """Cached wrapper around ``scan_content``.
+
+    Why this exists: gitleaks invocation costs ~8s on a small repo and
+    dominates wall-clock for warm sketch runs that reuse cached analysis
+    (UAT 2026-04-13 BUG-20 / WI-julir). The sketch text itself is the
+    only input that affects the scan, so a sha256 of the content is a
+    sufficient cache key. The cache lives next to the per-state results
+    cache, so source-file changes naturally invalidate it (the state
+    hash directory changes, taking the cache file with it).
+
+    The cap of 8 entries comfortably accommodates the 1-3 sketches that
+    a single ``hypergumbo sketch`` call may produce (main + 4x + 16x
+    budgets, though only the main sketch is scanned today).
+
+    Failure modes are silent — a missing/unwritable cache_dir, a
+    corrupt cache file, or an OSError on write all degrade to the
+    uncached path without surfacing an error to the user.
+    """
+    if cache_dir is None:
+        return scan_content(content)
+
+    import hashlib
+    import time
+    from dataclasses import asdict
+
+    content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    cache_file = cache_dir / "secret_scan_cache.json"
+
+    cache: dict = {}
+    if cache_file.exists():
+        try:
+            raw = json.loads(cache_file.read_text())
+            if isinstance(raw, dict):
+                cache = raw
+        except (OSError, json.JSONDecodeError):
+            cache = {}
+
+    entry = cache.get(content_hash)
+    if isinstance(entry, dict) and isinstance(entry.get("findings"), list):
+        try:
+            return [SecretFinding(**f) for f in entry["findings"]]
+        except TypeError:  # pragma: no cover - defensive against schema drift
+            pass
+
+    findings = scan_content(content)
+
+    cache[content_hash] = {
+        "findings": [asdict(f) for f in findings],
+        "ts": time.time(),
+    }
+    if len(cache) > max_entries:
+        sorted_keys = sorted(
+            cache.keys(),
+            key=lambda k: cache[k].get("ts", 0) if isinstance(cache.get(k), dict) else 0,
+        )
+        for k in sorted_keys[: len(cache) - max_entries]:
+            del cache[k]
+
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(json.dumps(cache, indent=2))
+    except OSError:  # pragma: no cover - cache write failure must not break scan
+        pass
+
+    return findings
+
+
 def format_secret_warning(findings: list[SecretFinding]) -> str:
     """Format findings into a warning message for stderr.
 

@@ -122,7 +122,7 @@ from .gitleaks import (
     is_gitleaks_available,
     install_gitleaks,
     uninstall_gitleaks,
-    scan_content,
+    scan_content_cached,
     format_secret_warning,
     get_install_nag,
 )
@@ -706,11 +706,15 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         require_sections=getattr(args, "require_sections", None) or None,
     )
 
-    # Secret scanning (opt-out with --no-secret-scan)
+    # Secret scanning (opt-out with --no-secret-scan).
+    # WI-julir: use scan_content_cached so warm sketch runs reuse a prior
+    # gitleaks result keyed on the sketch content hash. The per-state
+    # cache_dir already lives under the per-repo-state directory, so any
+    # source-file change rotates the directory and invalidates the cache.
     no_secret_scan = getattr(args, "no_secret_scan", False)
     if not no_secret_scan:
         if is_gitleaks_available():
-            findings = scan_content(sketch)
+            findings = scan_content_cached(sketch, cache_dir)
             if findings:
                 print(format_secret_warning(findings), file=sys.stderr)
             else:

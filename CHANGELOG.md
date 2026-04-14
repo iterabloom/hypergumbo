@@ -14,6 +14,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **`-e/--exclude` glob normalization** (WI-zirik / UAT BUG-01): user patterns `ui/`, `ui/**`, `**/ui/**`, `**/ui` now behave consistently with the bare-name form `ui` (per-name fnmatch previously silently dropped any pattern containing `/`). Path-anchored patterns such as `cmd/server.go` are honored against the relative path. Affects both `run` and `sketch`; structure-tree code uses the same normalization.
 
+### Performance
+
+- **Cached secret-scan results across warm sketch runs** (WI-julir / UAT BUG-20): `scan_content_cached` keys gitleaks output by sha256 of the sketch content and stores up to 8 entries in the per-state results cache directory. A warm `hypergumbo sketch` now completes in roughly the `--no-secret-scan` time (~7s on alertmanager) instead of paying the ~8s gitleaks cost on every invocation. The cache invalidates automatically when the repo state hash changes (the cache lives inside the per-state directory).
+
 ## [2.6.0] - 2026-04-12
 
 ### Changed
