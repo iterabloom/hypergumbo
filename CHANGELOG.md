@@ -18,6 +18,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Cached secret-scan results across warm sketch runs** (WI-julir / UAT BUG-20): `scan_content_cached` keys gitleaks output by sha256 of the sketch content and stores up to 8 entries in the per-state results cache directory. A warm `hypergumbo sketch` now completes in roughly the `--no-secret-scan` time (~7s on alertmanager) instead of paying the ~8s gitleaks cost on every invocation. The cache invalidates automatically when the repo state hash changes (the cache lives inside the per-state directory).
 
+### Added
+
+- **TypeScript/JavaScript I/O boundary tracing** (WI-banaf / UAT BUG-09a): the JS/TS analyzer now emits unresolved-call edges for bare-name calls to named imports (e.g. `import { existsSync } from 'node:fs'; existsSync()`), so the io-boundaries pipeline can match them against the catalog. Browser-API entries added to the JavaScript catalog: WebSocket, EventSource, BroadcastChannel, XMLHttpRequest, navigator.sendBeacon, localStorage / sessionStorage / indexedDB / caches, console logging, navigator/window/document env reads, and HTTP-client modules ky/got/superagent/undici. Verified on `nextjs/packages/create-next-app`: total_io_edges 0 → 27 (fs_read/fs_write/subprocess populated). Member calls on namespace and default imports remain a follow-up (WI-vurop).
+
 ## [2.6.0] - 2026-04-12
 
 ### Changed

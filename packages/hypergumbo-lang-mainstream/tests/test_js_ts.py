@@ -266,6 +266,85 @@ function main() {
         # main calls helper
         assert any("helper" in e.dst for e in call_edges)
 
+    def test_unresolved_call_to_named_import_emits_edge(self, tmp_path: Path) -> None:
+        """Bare-name calls to named imports emit unresolved call edges (WI-banaf).
+
+        Without these edges io-boundaries cannot match Node/browser I/O
+        primitives in TypeScript projects (UAT 2026-04-13 BUG-09a). The
+        destination ID encodes the import path as the module hint so the
+        catalog lookup can disambiguate (``fs`` vs ``crypto`` etc.).
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+import { existsSync, readFileSync } from 'node:fs';
+
+export function loadConfig(path: string) {
+  if (!existsSync(path)) return null;
+  return readFileSync(path, 'utf8');
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        ]
+        callees = {e.dst for e in unresolved}
+        assert any("existsSync" in c for c in callees), callees
+        assert any("readFileSync" in c for c in callees), callees
+        # Module hint encoded in dst (second colon-separated segment).
+        for c in callees:
+            if "existsSync" in c or "readFileSync" in c:
+                # typescript:<module>:0-0:<name>:unresolved
+                segs = c.split(":")
+                # 'node:fs' contains a colon, so we expect either 'fs' or 'node'.
+                # The module hint normalisation strips the 'node:' prefix.
+                module = segs[1]
+                assert module in ("fs", "node"), c
+
+    def test_resolved_call_does_not_emit_unresolved_edge(self, tmp_path: Path) -> None:
+        """When a callee resolves intra-repo we do NOT also emit an unresolved edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function helper() { return 1; }
+function main() { helper(); }
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        ]
+        assert all("helper" not in e.dst for e in unresolved)
+
+    def test_unresolved_skips_unimported_names(self, tmp_path: Path) -> None:
+        """Calls to unknown bare names without an import do not produce noise.
+
+        Only names that appear in the file's named-import map become
+        unresolved edges. This bounds the noise to legitimate import sites
+        and keeps the catalog match precise.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function main() {
+  somethingNobodyImported();
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        ]
+        assert all("somethingNobodyImported" not in e.dst for e in unresolved)
+
     def test_typescript_with_types(self, tmp_path: Path) -> None:
         """Handles TypeScript files with type annotations."""
         pytest.importorskip("tree_sitter_typescript")

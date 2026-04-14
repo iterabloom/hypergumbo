@@ -308,6 +308,30 @@ def _get_parser_for_file(file_path: Path) -> Optional["tree_sitter.Parser"]:
         return parser
 
 
+def _normalize_import_module_hint(module: str) -> str:
+    """Normalise an import path to a module hint usable in symbol IDs.
+
+    Symbol IDs are colon-delimited (``lang:module:span:name:kind``) so a
+    raw ``node:fs`` import path would corrupt the parse downstream.  We
+    strip the ``node:`` prefix (Node 16+ canonical form for built-ins)
+    and the relative-path leaders (``./``, ``../``) so the module hint
+    becomes the bare module name expected by the I/O catalog
+    (``fs``, ``child_process``, ``axios``).
+
+    Examples:
+        node:fs           -> fs
+        node:child_process -> child_process
+        ./utils           -> utils
+        ../helpers/git    -> helpers/git
+        @scope/pkg        -> @scope/pkg (unchanged)
+    """
+    if module.startswith("node:"):
+        return module[5:]
+    while module.startswith("./") or module.startswith("../"):
+        module = module[2:] if module.startswith("./") else module[3:]
+    return module
+
+
 def _extract_namespace_imports(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -3670,7 +3694,32 @@ def _extract_edges(
                                 confidence=edge_confidence,
                             )
                             edges.append(edge)
+                        elif (named_imports or {}).get(func_name):
+                            # WI-banaf: when a named-imported function is
+                            # called but doesn't resolve to an intra-repo
+                            # symbol (the common case for Node/browser
+                            # built-ins like ``existsSync`` from ``node:fs``),
+                            # emit an unresolved-call edge with the import
+                            # path as the module hint. The io-boundaries
+                            # layer matches the callee name against the
+                            # JavaScript catalog and tags the edge.
+                            module_hint = _normalize_import_module_hint(
+                                named_imports[func_name]
+                            )
+                            dst_id = f"{lang}:{module_hint}:0-0:{func_name}:unresolved"
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=dst_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_call_unresolved_import",
+                                confidence=0.70,
+                            )
+                            edges.append(edge)
 
+                        if callee is not None:
                             # Return type inference: if function has a return
                             # type annotation, track the variable's type
                             if callee.kind in ("function", "method"):
