@@ -1,0 +1,21 @@
+- op: create  # 3f0a
+  at: '2026-04-14T01:59:04Z'  # 3f0a
+  by: agent  # 3f0a
+  actor: jgstern_agent  # 3f0a
+  clock: 1  # 3f0a
+  nonce: 3f0a  # 3f0a
+  data:  # 3f0a
+    kind: work_item  # 3f0a
+    title: "Bump pytest to >=9.0.3 when pytest-textual-snapshot PR #24 lands"  # 3f0a
+    status: todo_soft  # 3f0a
+    priority: 3  # 3f0a
+    parent:  # 3f0a
+    tags:  # 3f0a
+    - developer_experience  # 3f0a
+    - ci_infrastructure  # 3f0a
+    isbefore: []  # 3f0a
+    duplicate_of: []  # 3f0a
+    not_duplicate_of: []  # 3f0a
+    pr_ref:  # 3f0a
+    description: "Upstream PR https://github.com/Textualize/pytest-textual-snapshot/pull/24 (mrossinek/update-syrupy, commit 4ed080a406331e697f64187e9cff29b04d0c7c61) relaxes the syrupy pin from ==4.8.0 to >=5.0.0 so pytest-textual-snapshot can coexist with pytest 9.x. Once that PR merges AND a new pytest-textual-snapshot release (>1.1.0) ships to PyPI: (1) bump pytest to ~=9.0.3 in packages/hypergumbo-tracker/pyproject.toml (and optionally the dead pins in hypergumbo-core, hypergumbo); (2) drop '--ignore-vuln CVE-2025-71176' from .github/workflows/ci.yml; (3) remove the associated rationale comment block; (4) verify TUI snapshot tests still pass against the new syrupy 5.x API (the PR description says 'all snapshot tests pass', but we should confirm in our repo). This closes out the CVE-2025-71176 exposure documented inline in ci.yml."  # 3f0a
+    fields: {}  # 3f0a

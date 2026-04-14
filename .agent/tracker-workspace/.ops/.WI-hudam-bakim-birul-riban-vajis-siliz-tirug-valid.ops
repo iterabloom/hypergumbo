@@ -36,3 +36,21 @@
   nonce: dbd2  # dbd2
   set:  # dbd2
     priority: 4  # dbd2
+- op: update  # 8a51
+  at: '2026-04-14T04:50:08Z'  # 8a51
+  by: agent  # 8a51
+  actor: jgstern_agent  # 8a51
+  clock: 4  # 8a51
+  nonce: 8a51  # 8a51
+  set: {}  # 8a51
+  add:  # 8a51
+    isbefore: [WI-fukut-godin-gidil-filif-dajob-kulik-luvud-total]  # 8a51
+  remove:  # 8a51
+    isbefore: [WI-titor-habak-faduh-tuzih-dilog-rutil-fogum-sasuf]  # 8a51
+- op: discuss  # 30eb
+  at: '2026-04-14T04:50:08Z'  # 30eb
+  by: agent  # 30eb
+  actor: jgstern_agent  # 30eb
+  clock: 5  # 30eb
+  nonce: 30eb  # 30eb
+  message: "Fix inverted INV-dihos phase chain: Phase 4 (this) should block Phase 5 (fukut), not Phase 3 (titor)."  # 30eb

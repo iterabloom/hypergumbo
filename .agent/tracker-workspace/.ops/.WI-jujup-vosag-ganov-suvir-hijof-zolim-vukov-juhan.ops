@@ -36,3 +36,21 @@
   nonce: '9990'  # 9990
   set:  # 9990
     priority: 4  # 9990
+- op: update  # 2afb
+  at: '2026-04-14T04:48:58Z'  # 2afb
+  by: agent  # 2afb
+  actor: jgstern_agent  # 2afb
+  clock: 4  # 2afb
+  nonce: 2afb  # 2afb
+  set: {}  # 2afb
+  add:  # 2afb
+    isbefore: [WI-titor-habak-faduh-tuzih-dilog-rutil-fogum-sasuf]  # 2afb
+  remove:  # 2afb
+    isbefore: [WI-kuroj-gitar-kisot-nijin-somal-baruf-natof-junav]  # 2afb
+- op: discuss  # a1af
+  at: '2026-04-14T04:48:58Z'  # a1af
+  by: agent  # a1af
+  actor: jgstern_agent  # a1af
+  clock: 5  # a1af
+  nonce: a1af  # a1af
+  message: "Fix inverted INV-dihos phase chain: Phase 2 (this) should block Phase 3 (titor), not Phase 1 (kuroj). Phase 1 is already done."  # a1af
