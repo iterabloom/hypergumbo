@@ -153,3 +153,19 @@
   clock: 19  # b799
   nonce: b799  # b799
   message: "Demote P3->P4: instrumentation task with uncertain payoff. Lower-priority until measurement strategy is justified."  # b799
+- op: unlock  # 1ccb
+  at: '2026-04-14T07:11:28Z'  # 1ccb
+  by: human  # 1ccb
+  actor: jgstern  # 1ccb
+  clock: 20  # 1ccb
+  nonce: 1ccb  # 1ccb
+  unlock:  # 1ccb
+  - status  # 1ccb
+- op: update  # da66
+  at: '2026-04-14T07:11:42Z'  # da66
+  by: human  # da66
+  actor: jgstern  # da66
+  clock: 21  # da66
+  nonce: da66  # da66
+  set:  # da66
+    status: done  # da66

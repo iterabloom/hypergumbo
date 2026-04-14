@@ -1,0 +1,63 @@
+- op: create  # a44a
+  at: '2026-04-11T00:54:34Z'  # a44a
+  by: agent  # a44a
+  actor: jgstern_agent  # a44a
+  clock: 1  # a44a
+  nonce: a44a  # a44a
+  data:  # a44a
+    kind: work_item  # a44a
+    title: "Cross-language HTTP linker: detect that ui/mantine-ui/src/api/api.ts fetch('/api"  # a44a
+    status: todo_soft  # a44a
+    priority: 3  # a44a
+    parent:  # a44a
+    tags:  # a44a
+    - bakeoff  # a44a
+    - assessment  # a44a
+    before: []  # a44a
+    duplicate_of: []  # a44a
+    not_duplicate_of: []  # a44a
+    pr_ref:  # a44a
+    description: "Cross-language HTTP linker: detect that ui/mantine-ui/src/api/api.ts fetch('/api/v2/alerts') + ui/app/src/Alerts/Api.elm fetchAlerts URL targets match the Go route table from routes.txt, and emit routes_to edges spanning typescript/elm -> go. This is the highest-leverage cross-language edge class.\n\nSource: bakeoff assessment aggregation (found in 1 assessment(s))."  # a44a
+    fields: {}  # a44a
+- op: discuss  # 26ef
+  at: '2026-04-14T06:08:11Z'  # 26ef
+  by: agent  # 26ef
+  actor: jgstern_agent  # 26ef
+  clock: 2  # 26ef
+  nonce: 26ef  # 26ef
+  message: "UAT 2026-04-13 confirmed this gap as user-visible: alertmanager has Elm frontend HTTP-calling Go backend routes, no edges connect them (DQ-09). Bakeoff and end-user UAT have now both flagged the same gap. Recommend de-stealth and elevate to P2 — the priority assessment in this trackerization session also flagged this item as undersold. Full UAT report at /tmp/uat-report.md (tag uat_2026_04_13 on the new cohort)."  # 26ef
+- op: discuss  # 87ae
+  at: '2026-04-14T07:04:07Z'  # 87ae
+  by: human  # 87ae
+  actor: jgstern  # 87ae
+  clock: 3  # 87ae
+  nonce: 87ae  # 87ae
+  message: "persistent report location is `/home/jgstern_agent/hg-uat/lab-notebook/master-report.md`"  # 87ae
+- op: discuss  # cd53
+  at: '2026-04-14T07:06:00Z'  # cd53
+  by: agent  # cd53
+  actor: jgstern_agent  # cd53
+  clock: 4  # cd53
+  nonce: cd53  # cd53
+  message: "Acknowledged — corrected. The persistent UAT master report lives at /home/jgstern_agent/hg-uat/lab-notebook/master-report.md (44KB, last updated 2026-04-13). My earlier reference to /tmp/uat-report.md was misleading because that path is ephemeral. Saved the correct location to agent_notes for future sessions and will reference the persistent path going forward when citing UAT findings (DQ-09, etc.). No change to the WI-tinip recommendation itself: still recommend de-stealth and elevate to P2 — both bakeoff and end-user UAT independently flagged the cross-language HTTP linker gap."  # cd53
+- op: update  # 3a7c
+  at: '2026-04-14T07:07:29Z'  # 3a7c
+  by: agent  # 3a7c
+  actor: jgstern_agent  # 3a7c
+  clock: 5  # 3a7c
+  nonce: 3a7c  # 3a7c
+  set:  # 3a7c
+    priority: 2  # 3a7c
+- op: discuss  # f5d6
+  at: '2026-04-14T07:07:29Z'  # f5d6
+  by: agent  # f5d6
+  actor: jgstern_agent  # f5d6
+  clock: 6  # f5d6
+  nonce: f5d6  # f5d6
+  message: "Elevated P3->P2 per cross-confirmed UAT (DQ-09 in master-report.md) and bakeoff-aggregation evidence. Tier change (stealth->workspace) requires human action via 'tracker unstealth'."  # f5d6
+- op: unstealth  # c8d2
+  at: '2026-04-14T07:15:15Z'  # c8d2
+  by: human  # c8d2
+  actor: jgstern  # c8d2
+  clock: 7  # c8d2
+  nonce: c8d2  # c8d2
