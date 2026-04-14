@@ -7277,6 +7277,45 @@ class TestRequireSections:
         )
         assert "## Source Files" in sketch_with
 
+    def test_markdown_content_headings_do_not_bleed(self, tmp_path: Path) -> None:
+        """Markdown content rendered in Additional Files Content must not
+        produce H1/H2 headings that compete with hypergumbo's structural
+        sections (WI-bilul / UAT BUG-06).
+
+        The README has '## Installation', '## Usage', etc. After fix, the
+        sketch must NOT contain any '## Installation' style line at the
+        structural-H2 level — markdown content headings should be demoted
+        so they are clearly subordinate to the tool's own H2 sections.
+        """
+        (tmp_path / "README.md").write_text(
+            "# My Project\n\nA sample.\n\n"
+            "## Installation\n\nRun `pip install foo`.\n\n"
+            "## Usage\n\nUse `foo` as follows.\n\n"
+            "## Contributing\n\nPlease contribute.\n\n"
+            "## License\n\nMIT.\n"
+        )
+        (tmp_path / "main.py").write_text("def hello():\n    return 'hi'\n")
+
+        # `with_source=True` is the CLI default — the bleed only manifests
+        # when README is rendered as Additional Files Content.
+        sketch = generate_sketch(tmp_path, max_tokens=8000, with_source=True)
+
+        # Bleeding headings would appear as standalone '## Installation' etc.
+        # at the start of a line. After the demote fix they should appear at
+        # ## level 4+ (e.g. '#### Installation').
+        sketch_lines = set(sketch.split("\n"))
+        for bleed_heading in (
+            "## Installation",
+            "## Usage",
+            "## Contributing",
+            "## License",
+        ):
+            assert bleed_heading not in sketch_lines, (
+                f"Markdown content heading {bleed_heading!r} bled into "
+                "the sketch's structural-H2 namespace; it should be "
+                "demoted to a deeper level when rendered as content."
+            )
+
     def test_require_section_empty_list(self, tmp_path: Path) -> None:
         """Empty require_sections list is a no-op."""
         (tmp_path / "main.py").write_text("x = 1\n")

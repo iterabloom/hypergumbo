@@ -2223,6 +2223,39 @@ def _format_config_section(config_info: str, exclude_tests: bool = False) -> str
     return "\n".join(lines)
 
 
+_MARKDOWN_HEADING_BLEED_EXTS = frozenset({".md", ".mdx", ".markdown", ".rst"})
+
+
+def _demote_markdown_headings(content: str, levels: int = 2) -> str:
+    """Demote ATX-style markdown headings in *content* by *levels* levels.
+
+    WI-bilul (UAT BUG-06): markdown content embedded as Additional Files
+    Content reads as having H1/H2 headings that compete with hypergumbo's
+    own structural sections (``## Overview``, ``## Structure``, ...). A
+    consumer treating the sketch as a structured document sees the
+    README's ``## Installation`` as a sibling of those sections.
+
+    Demoting any ATX heading by 2 levels guarantees the embedded content
+    cannot reach the structural-H2 namespace: ``# X`` becomes ``### X``
+    and ``## X`` becomes ``#### X``. Markdown caps headings at level 6;
+    we do not over-demote past that. Setext underlines (``===`` / ``---``)
+    are not handled — they are uncommon in modern markdown and would
+    require multi-line lookahead.
+    """
+    out_lines: list[str] = []
+    for line in content.split("\n"):
+        # Only ATX headings (no leading whitespace, then 1-6 `#` then space).
+        i = 0
+        n = len(line)
+        while i < n and line[i] == "#":
+            i += 1
+        if 0 < i <= 6 and i < n and line[i] == " ":
+            new_level = min(i + levels, 6)
+            line = "#" * new_level + line[i:]
+        out_lines.append(line)
+    return "\n".join(out_lines)
+
+
 def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     """Format file content with visible START/END markers.
 
@@ -2237,6 +2270,15 @@ def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     Returns:
         List of lines including START marker, code block, and END marker.
     """
+    # WI-bilul: demote ATX headings inside markdown-like content so the
+    # embedded ``## Section`` lines don't read as structural sections of
+    # the sketch itself. Code-fenced markdown content is technically
+    # neutralised for CommonMark renderers, but plain-text and LLM
+    # consumers still parse the content lines as headings.
+    rel_lower = rel_path.lower()
+    if any(rel_lower.endswith(ext) for ext in _MARKDOWN_HEADING_BLEED_EXTS):
+        content = _demote_markdown_headings(content)
+
     # Build visually distinctive markers
     # Pad to ~60 chars total for visual balance
     start_marker = f"------------------- START of {rel_path} "
