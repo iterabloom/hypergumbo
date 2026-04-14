@@ -49,6 +49,35 @@ def _make_jni_diagnostics(
     return [mock_diag]
 
 
+def _make_file_presence_diagnostics(js_ts_file_count: int, pattern_count: int) -> list:
+    """Mock diagnostics where the met requirement is a ``*_files`` presence check.
+
+    Mirrors the structure of NAPI/TAURI_IPC/SOLIDITY_ABI/etc.: one requirement
+    is a language file count (suffix ``_files``) and the other is the actual
+    pattern match that would indicate intentional linker use.
+    """
+    from unittest.mock import MagicMock
+
+    mock_diag = MagicMock()
+    mock_diag.linker_name = "napi"
+    mock_diag.linker_description = "NAPI linker"
+
+    js_req = MagicMock()
+    js_req.name = "js_ts_files"
+    js_req.description = "JavaScript/TypeScript files (potential native addon callers)"
+    js_req.count = js_ts_file_count
+    js_req.met = js_ts_file_count > 0
+
+    pattern_req = MagicMock()
+    pattern_req.name = "c_cpp_napi_functions"
+    pattern_req.description = "C/C++ N-API function implementations"
+    pattern_req.count = pattern_count
+    pattern_req.met = pattern_count > 0
+
+    mock_diag.requirements = [js_req, pattern_req]
+    return [mock_diag]
+
+
 class TestCheckUnanalyzedFiles:
     """Tests for unanalyzed files detection."""
 
@@ -258,6 +287,91 @@ class TestCheckPartialLinkerRequirements:
         assert "JNI" in warning.message
         assert "Java native method declarations" in warning.message
         assert "C/C++ JNI implementation functions" in warning.message
+
+    def test_file_presence_only_met_suppresses_warning(self) -> None:
+        """WI-vasir: cross-language linkers with only ``_files`` met are silent.
+
+        NAPI / TAURI_IPC / SOLIDITY_ABI / WASM_BINDGEN / IPC / LUA_FFI /
+        RUBY_FFI / PYFFI all define a ``<lang>_files`` requirement plus a
+        concrete-pattern requirement. On any polyglot repo the file count
+        triggers the partial-install warning even though the repo plainly
+        doesn't use the linker's target integration. Suppress the warning
+        when the met requirements are all file-presence checks.
+        """
+        from unittest.mock import patch
+
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        ctx = LinkerContext(
+            repo_root=None,  # type: ignore[arg-type]
+            symbols=[],
+            edges=[],
+        )
+
+        with patch(
+            "hypergumbo_core.linkers.registry.check_linker_requirements",
+            return_value=_make_file_presence_diagnostics(
+                js_ts_file_count=19, pattern_count=0,
+            ),
+        ):
+            warnings_list = check_partial_linker_requirements(ctx)
+
+        assert all(w.linker != "napi" for w in warnings_list), (
+            "Partial warning must be suppressed when the only met "
+            "requirement is a language-file presence check."
+        )
+
+    def test_file_presence_plus_pattern_met_still_warns(self) -> None:
+        """When a pattern-level requirement IS met, the partial warning still fires.
+
+        Regression guard against the WI-vasir suppression widening past its
+        intended scope: if a repo has both JS/TS files AND some NAPI
+        patterns, a missing complementary requirement is real signal.
+        """
+        from unittest.mock import MagicMock, patch
+
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        ctx = LinkerContext(
+            repo_root=None,  # type: ignore[arg-type]
+            symbols=[],
+            edges=[],
+        )
+
+        # Three requirements: js_ts_files (met), napi_patterns (met),
+        # third_addon_src (unmet). Met side includes a non-_files entry
+        # so the suppression should NOT apply.
+        mock_diag = MagicMock()
+        mock_diag.linker_name = "napi"
+        mock_diag.linker_description = "NAPI linker"
+        js_req = MagicMock()
+        js_req.name = "js_ts_files"
+        js_req.description = "JavaScript/TypeScript files"
+        js_req.count = 10
+        js_req.met = True
+        pat_req = MagicMock()
+        pat_req.name = "napi_patterns"
+        pat_req.description = "napi_create_function call sites"
+        pat_req.count = 3
+        pat_req.met = True
+        src_req = MagicMock()
+        src_req.name = "c_cpp_napi_functions"
+        src_req.description = "C/C++ N-API function implementations"
+        src_req.count = 0
+        src_req.met = False
+        mock_diag.requirements = [js_req, pat_req, src_req]
+
+        with patch(
+            "hypergumbo_core.linkers.registry.check_linker_requirements",
+            return_value=[mock_diag],
+        ):
+            warnings_list = check_partial_linker_requirements(ctx)
+
+        napi_warnings = [w for w in warnings_list if w.linker == "napi"]
+        assert len(napi_warnings) == 1, (
+            "Partial warning must still fire when a pattern-level "
+            "requirement is met alongside the file presence check."
+        )
 
     def test_partial_linker_suggests_correct_package(self) -> None:
         """Partial linker warning suggests correct package for missing language."""

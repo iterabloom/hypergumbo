@@ -288,6 +288,20 @@ def check_partial_linker_requirements(
         met_reqs = [r for r in diag.requirements if r.met]
         unmet_reqs = [r for r in diag.requirements if not r.met]
 
+        # WI-vasir: cross-language linkers define two requirements —
+        # one counts language-file presence (name ends with ``_files``)
+        # and one counts the actual pattern (JNI funcs, .proto services,
+        # napi_create_function, etc.). If the only met requirement(s)
+        # are file-presence ones, the "partial install" inference is
+        # unreliable: on any polyglot repo (alertmanager has Go+JS;
+        # the UAT observed warnings on 1-7 linkers per repo) the JS/TS
+        # file count alone triggers NAPI/TAURI_IPC/SOLIDITY_ABI/
+        # WASM_BINDGEN/IPC/LUA_FFI/RUBY_FFI/PYFFI noise. Real signal
+        # requires at least one pattern-level match; without it,
+        # suppress the warning.
+        if all(r.name.endswith("_files") for r in met_reqs):
+            continue
+
         met_str = ", ".join(
             f"{r.count} {r.description}" for r in met_reqs
         )
