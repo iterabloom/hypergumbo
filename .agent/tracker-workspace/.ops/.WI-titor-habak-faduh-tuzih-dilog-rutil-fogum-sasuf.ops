@@ -46,3 +46,18 @@
   clock: 4  # c492
   nonce: c492  # c492
   message: "Fix inverted INV-dihos phase chain: Phase 3 (this) should block Phase 4 (hudam), not Phase 2 (jujup)."  # c492
+- op: update  # 390a
+  at: '2026-04-14T05:16:18Z'  # 390a
+  by: agent  # 390a
+  actor: jgstern_agent  # 390a
+  clock: 5  # 390a
+  nonce: 390a  # 390a
+  set:  # 390a
+    priority: 4  # 390a
+- op: discuss  # 2f6c
+  at: '2026-04-14T05:16:18Z'  # 2f6c
+  by: agent  # 2f6c
+  actor: jgstern_agent  # 2f6c
+  clock: 6  # 2f6c
+  nonce: 2f6c  # 2f6c
+  message: "Demote P3->P4: parent INV-dihos already satisfied by Phase 1; Phases 2-5 are extensions, not requirements. Resolves priority inversion with Phase 2 (jujup, P4) which isbefore this item."  # 2f6c

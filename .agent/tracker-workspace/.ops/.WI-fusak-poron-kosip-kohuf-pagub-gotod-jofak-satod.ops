@@ -138,3 +138,18 @@
   nonce: 11ed  # 11ed
   set:  # 11ed
     status: needs_human_review  # 11ed
+- op: update  # 6dd1
+  at: '2026-04-14T05:17:17Z'  # 6dd1
+  by: agent  # 6dd1
+  actor: jgstern_agent  # 6dd1
+  clock: 18  # 6dd1
+  nonce: 6dd1  # 6dd1
+  set:  # 6dd1
+    priority: 4  # 6dd1
+- op: discuss  # b799
+  at: '2026-04-14T05:17:18Z'  # b799
+  by: agent  # b799
+  actor: jgstern_agent  # b799
+  clock: 19  # b799
+  nonce: b799  # b799
+  message: "Demote P3->P4: instrumentation task with uncertain payoff. Lower-priority until measurement strategy is justified."  # b799

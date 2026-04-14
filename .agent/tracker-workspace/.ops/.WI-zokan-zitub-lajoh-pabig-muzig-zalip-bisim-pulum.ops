@@ -19,3 +19,18 @@
     pr_ref:  # 3f0a
     description: "Upstream PR https://github.com/Textualize/pytest-textual-snapshot/pull/24 (mrossinek/update-syrupy, commit 4ed080a406331e697f64187e9cff29b04d0c7c61) relaxes the syrupy pin from ==4.8.0 to >=5.0.0 so pytest-textual-snapshot can coexist with pytest 9.x. Once that PR merges AND a new pytest-textual-snapshot release (>1.1.0) ships to PyPI: (1) bump pytest to ~=9.0.3 in packages/hypergumbo-tracker/pyproject.toml (and optionally the dead pins in hypergumbo-core, hypergumbo); (2) drop '--ignore-vuln CVE-2025-71176' from .github/workflows/ci.yml; (3) remove the associated rationale comment block; (4) verify TUI snapshot tests still pass against the new syrupy 5.x API (the PR description says 'all snapshot tests pass', but we should confirm in our repo). This closes out the CVE-2025-71176 exposure documented inline in ci.yml."  # 3f0a
     fields: {}  # 3f0a
+- op: update  # 84b4
+  at: '2026-04-14T05:17:47Z'  # 84b4
+  by: agent  # 84b4
+  actor: jgstern_agent  # 84b4
+  clock: 2  # 84b4
+  nonce: 84b4  # 84b4
+  set:  # 84b4
+    priority: 4  # 84b4
+- op: discuss  # 80f2
+  at: '2026-04-14T05:17:47Z'  # 80f2
+  by: agent  # 80f2
+  actor: jgstern_agent  # 80f2
+  clock: 3  # 80f2
+  nonce: 80f2  # 80f2
+  message: "Demote P3->P4: passive wait on upstream pytest-textual-snapshot PR #24. No agent action possible until upstream lands."  # 80f2

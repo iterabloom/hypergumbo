@@ -34,3 +34,18 @@
   clock: 3  # eaf2
   nonce: eaf2  # eaf2
   message: "Requires changes to .agent/hooks/ (governance files). WI-zufuj (--ack-thread gate) merged in PR #2896 — this is the companion item that suppresses the drive prompt while reply debt exists. Awaiting human approval to modify governance files."  # eaf2
+- op: update  # 73b6
+  at: '2026-04-14T04:51:41Z'  # 73b6
+  by: agent  # 73b6
+  actor: jgstern_agent  # 73b6
+  clock: 4  # 73b6
+  nonce: 73b6  # 73b6
+  set:  # 73b6
+    priority: 2  # 73b6
+- op: discuss  # e5ea
+  at: '2026-04-14T04:51:41Z'  # e5ea
+  by: agent  # e5ea
+  actor: jgstern_agent  # e5ea
+  clock: 5  # e5ea
+  nonce: e5ea  # e5ea
+  message: "Promote P3→P2 to reflect the user's framing in notebookjournal_04072026_1518.md: 'the clearest remedy because it is the only proposal that changes the agent's incentive structure rather than adding tools/text.' Higher priority than the sibling stop-hook items (WI-sudoj, WI-tubuk, WI-fusak)."  # e5ea
