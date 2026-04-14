@@ -5688,10 +5688,14 @@ def generate_sketch(
     def _section_ok(name: str, remaining: int, threshold: int = 50) -> bool:
         """Check whether a section should be rendered.
 
-        If the section is in ``require_sections``, the threshold is 0.
+        Sections listed in ``require_sections`` render unconditionally:
+        the whole purpose of the flag (WI-nakam) is to force inclusion
+        even when the budget is exhausted. Non-required sections keep
+        the original ``remaining > threshold`` gate.
         """
-        effective_threshold = 0 if name in _required else threshold
-        return remaining > effective_threshold
+        if name in _required:
+            return True
+        return remaining > threshold
 
     # Initialize progress reporter
     prog = SketchProgress()
@@ -5860,15 +5864,22 @@ def generate_sketch(
             shell_integration_count = len(shell_tests)
 
     # Note: max_tokens is always set (defaults to 8000 in CLI)
-    # If budget is very small, return truncated base sketch
-    if max_tokens <= base_tokens:
+    # If budget is very small, return truncated base sketch — UNLESS the
+    # caller passed ``require_sections``, in which case the whole point
+    # of the flag is to force those sections even when the budget is
+    # exhausted by the base. See WI-nakam.
+    if max_tokens <= base_tokens and not _required:
         # Set token_budget before early return so Representativeness Table shows correct value
         if stats_out is not None:
             stats_out.token_budget = max_tokens
         prog.finish()
         return truncate_to_tokens(base_sketch, max_tokens)
 
-    # We have room to expand - calculate remaining budget
+    # We have room to expand - calculate remaining budget. When
+    # ``require_sections`` kept us past the early-return but the base
+    # already consumed the budget, ``remaining_tokens`` goes negative;
+    # ``_section_ok`` still returns True for required sections, and
+    # non-required sections naturally fail their ``> threshold`` check.
     remaining_tokens = max_tokens - base_tokens
 
     # source_files already collected early (at start of function) for accurate LOC counts
@@ -5883,11 +5894,19 @@ def generate_sketch(
     tokens_per_symbol = 35
 
     # Run static analysis early to enable density-based source file ordering
-    # (needed before the source files section)
+    # (needed before the source files section). WI-nakam: when the caller
+    # passed ``require_sections``, run analysis regardless of remaining
+    # budget so any required symbol-based section (Entry Points, Key
+    # Symbols, Data Models) has data to render.
+    _has_required_analysis_section = bool(_required & {
+        "Entry Points", "Data Models", "Key Symbols", "Source Files",
+        "Additional Files", "Source Files Content",
+        "Additional Files Content",
+    })
     using_cached_analysis = (
         cached_results is not None
         and "nodes" in cached_results
-        and remaining_tokens > 50
+        and (remaining_tokens > 50 or _has_required_analysis_section)
     )
     prog.start_phase("analysis", cached=using_cached_analysis)
     symbols: list[Symbol] = []
@@ -5899,7 +5918,7 @@ def generate_sketch(
     def analysis_progress_with_budget(current: int, total: int, lang: str) -> None:  # pragma: no cover
         prog.update_item_progress(f"Analyzing {lang}", current, total)
 
-    if remaining_tokens > 50:  # Run analysis if we have any room to expand
+    if remaining_tokens > 50 or _has_required_analysis_section:  # WI-nakam: force analysis when a required section depends on it
         if using_cached_analysis:
             # Use cached symbols and edges from behavior map
             _log("Using cached analysis results...")
@@ -6411,9 +6430,16 @@ def generate_sketch(
     # Combine all sections
     full_sketch = "\n\n".join(sections)
 
-    # Final truncation to ensure we don't exceed budget
+    # Final truncation to ensure we don't exceed budget. WI-nakam: when
+    # the caller passed ``require_sections``, honouring the flag's
+    # documented "force inclusion under budget pressure" semantics means
+    # the output is allowed to exceed max_tokens — otherwise the final
+    # truncate would chop off the very sections we were asked to keep.
     prog.finish()
-    result = truncate_to_tokens(full_sketch, max_tokens)
+    if _required:
+        result = full_sketch
+    else:
+        result = truncate_to_tokens(full_sketch, max_tokens)
 
     # Ensure output ends with a newline (standard for text files)
     if not result.endswith("\n"):

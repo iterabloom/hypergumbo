@@ -7200,6 +7200,83 @@ class TestRequireSections:
         if "## Key Symbols" not in sketch_without:
             assert "## Key Symbols" in sketch_with
 
+    def test_require_section_survives_base_overflow(self, tmp_path: Path) -> None:
+        """Required sections render even when max_tokens <= base_tokens.
+
+        Per WI-nakam (UAT 2026-04-13 BUG-05): the previous early-return
+        at ``max_tokens <= base_tokens`` truncated the base sketch and
+        skipped all extended sections regardless of --require-section,
+        which is the exact case the flag exists to handle. This test
+        forces the early-return scenario (large README -> large base
+        sketch) and asserts Key Symbols still appears when required.
+        """
+        # Large README + config files produce a large base section that
+        # exceeds the 500-token budget. Without the fix, Key Symbols is
+        # dropped; with the fix it appears because it's required.
+        big_readme = "# Test project\n\n" + ("Lorem ipsum dolor sit amet. " * 200)
+        (tmp_path / "README.md").write_text(big_readme)
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "x"\nversion = "0.1.0"\n'
+        )
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.py").write_text(
+            "def entrypoint():\n"
+            "    '''The main entrypoint.'''\n"
+            "    return 42\n"
+        )
+
+        # Budget 100 is well below any plausible base-sketch size, so the
+        # early-return at ``max_tokens <= base_tokens`` fires deterministically.
+        sketch_without = generate_sketch(tmp_path, max_tokens=100)
+        sketch_with = generate_sketch(
+            tmp_path, max_tokens=100,
+            require_sections=["Key Symbols"],
+        )
+
+        assert "## Key Symbols" not in sketch_without, (
+            "Test precondition: at budget 100 the base sketch overflows "
+            "and Key Symbols is naturally dropped."
+        )
+        assert "## Key Symbols" in sketch_with, (
+            "--require-section must force the section even when the "
+            "base sketch alone exceeds the budget."
+        )
+
+    def test_require_section_forces_gated_section(self, tmp_path: Path) -> None:
+        """Required gated sections (Entry Points, etc.) bypass the `_section_ok`
+        threshold and render unconditionally (WI-nakam).
+
+        Covers the ``name in _required → True`` branch in ``_section_ok``,
+        which only gated sections (Entry Points, Data Models, Source Files,
+        Additional Files, *Content) actually call.
+        """
+        big_readme = "# Test\n\n" + ("Lorem ipsum dolor sit amet. " * 200)
+        (tmp_path / "README.md").write_text(big_readme)
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "x"\nversion = "0.1.0"\n'
+        )
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.py").write_text(
+            "def cli_main():\n"
+            "    '''Entry point.'''\n"
+            "    return 0\n"
+        )
+
+        # Source Files is a content-driven gated section that always renders
+        # when source_files exist (no entrypoint detection required).
+        sketch_with = generate_sketch(
+            tmp_path, max_tokens=100,
+            require_sections=["Source Files"],
+        )
+        sketch_without = generate_sketch(tmp_path, max_tokens=100)
+        assert "## Source Files" not in sketch_without, (
+            "Test precondition: at budget 100 the gated Source Files "
+            "section is naturally dropped."
+        )
+        assert "## Source Files" in sketch_with
+
     def test_require_section_empty_list(self, tmp_path: Path) -> None:
         """Empty require_sections list is a no-op."""
         (tmp_path / "main.py").write_text("x = 1\n")
