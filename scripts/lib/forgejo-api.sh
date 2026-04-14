@@ -283,6 +283,30 @@ sys.exit(1)
 # ------------------------------------------------------------------
 poll_ci() {
 	local head_sha="$1"
+
+	# WI-dotod test seam: when AUTOPR_TEST_POLL_EXITS is set, return exit
+	# codes from a colon-separated sequence (e.g. "2:0" yields 2 on the
+	# first call and 0 on the second). The position is tracked in
+	# ${AUTOPR_TEST_POLL_EXITS}.pos. Mirrors AUTO_PR_SIMULATE_OUTAGE
+	# pattern — exists only to let the Exit 2 retry loop be tested
+	# without a live Forgejo instance.
+	if [[ -n "${AUTOPR_TEST_POLL_EXITS:-}" ]]; then
+		local _pos_file="${AUTOPR_TEST_POLL_EXITS_POS:-/tmp/autopr_test_poll_pos}"
+		local _pos
+		_pos=$(cat "$_pos_file" 2>/dev/null || echo 0)
+		local -a _exits
+		IFS=':' read -ra _exits <<< "$AUTOPR_TEST_POLL_EXITS"
+		local _code
+		if [[ $_pos -ge ${#_exits[@]} ]]; then
+			_code=0
+		else
+			_code="${_exits[$_pos]}"
+		fi
+		echo $((_pos + 1)) > "$_pos_file"
+		echo "[test-seam] poll_ci call #$((_pos + 1)) returning $_code"
+		return "$_code"
+	fi
+
 	local timeout="${CI_TIMEOUT_SECONDS:-2400}"
 	local stale_pending_threshold="${CI_STALE_PENDING_SECONDS:-300}"  # 5 min default
 	local start_time elapsed
