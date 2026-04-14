@@ -268,9 +268,18 @@ jobs:
           pip install "requests~=2.33.0"
       - name: Run pip-audit (dependency vulnerabilities)
         run: |
-          # CVE-2026-4539: pygments 2.19.2 — no upstream fix available yet (latest version)
-          # CVE-2025-71176: pytest 9.0.2 — fix in 9.0.3; transitive dep, unrelated to runtime
-          pip-audit --skip-editable --ignore-vuln CVE-2026-4539 --ignore-vuln CVE-2025-71176
+          # CVE-2025-71176: pytest /tmp/pytest-of-{user} TOCTOU on UNIX.
+          # Fix is pytest 9.0.3, but we are pinned below 9.0.0 transitively by
+          # syrupy 4.8.0 (hard-pinned by pytest-textual-snapshot 1.1.0).
+          # Impact assessment: local attack boundary only, reachable solely in
+          # CI/dev environments — pytest is a dev-only dep, never installed on
+          # end-user systems running hypergumbo. Our self-hosted runners are
+          # single-tenant, so practical exploitability is ~0.
+          # Exit plan: upstream PR to relax the syrupy pin is tracked at
+          # https://github.com/Textualize/pytest-textual-snapshot/pull/24
+          # When that merges and a new pytest-textual-snapshot release ships,
+          # bump pytest to 9.0.3+ and drop this ignore.
+          pip-audit --skip-editable --ignore-vuln CVE-2025-71176
 
   verify-generated:
     needs: [changes, stop-the-line]
