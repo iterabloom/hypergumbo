@@ -266,6 +266,11 @@ jobs:
           pip install pip-audit
           # CVE-2026-25645: requests 2.32.5 — fix in 2.33.0
           pip install "requests~=2.33.0"
+          # CVE-2026-4539: pygments AdlLexer ReDoS — fix in 2.20.0.
+          # The self-hosted runner's baseline Python can ship an older
+          # pygments. Mirror our pyproject.toml pin here so the audit scans
+          # the same version our packages install at runtime.
+          pip install "pygments~=2.20.0"
       - name: Run pip-audit (dependency vulnerabilities)
         run: |
           # CVE-2025-71176: pytest /tmp/pytest-of-{user} TOCTOU on UNIX.
