@@ -2378,6 +2378,65 @@ def test_cmd_sketch_nonexistent_path(capsys) -> None:
     assert "does not exist" in err
 
 
+def test_cmd_sketch_single_file_input_exits_cleanly(tmp_path: Path, capsys) -> None:
+    """Pointing sketch at a file (not a directory) exits cleanly with a hint.
+
+    Per WI-zujum (UAT 2026-04-13 BUG-04): the prior behaviour printed a
+    helpful hint, then proceeded into ``generate_sketch`` and crashed with
+    ``NotADirectoryError`` from ``Path.iterdir()``. The hint must terminate
+    the command so users see the suggestion, not a traceback.
+    """
+    sample = tmp_path / "thing.tla"
+    sample.write_text("---- MODULE Thing ----\n==== ")
+
+    args = FakeArgs()
+    args.path = str(sample)
+    args.tokens = None
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+
+    result = cmd_sketch(args)
+
+    assert result == 1
+    _, err = capsys.readouterr()
+    assert "directory" in err.lower()
+    assert "thing.tla" in err  # mention what they pointed at
+    # Must not crash with traceback
+    assert "Traceback" not in err
+
+
+def test_cmd_run_nonexistent_path_exits_cleanly(capsys) -> None:
+    """``hypergumbo run /does/not/exist`` exits with a clean error, not a crash."""
+    args = FakeArgs()
+    args.path = "/nonexistent/path/that/does/not/exist"
+    args.out = None
+
+    result = cmd_run(args)
+
+    assert result == 1
+    _, err = capsys.readouterr()
+    assert "does not exist" in err
+
+
+def test_cmd_run_single_file_input_exits_cleanly(tmp_path: Path, capsys) -> None:
+    """``hypergumbo run /path/to/file`` should exit cleanly, not crash."""
+    sample = tmp_path / "thing.tla"
+    sample.write_text("---- MODULE Thing ----\n==== ")
+
+    args = FakeArgs()
+    args.path = str(sample)
+    args.out = None
+
+    result = cmd_run(args)
+
+    assert result == 1
+    _, err = capsys.readouterr()
+    assert "directory" in err.lower()
+    assert "Traceback" not in err
+
+
 def test_cmd_sketch_warns_about_git_root(tmp_path: Path, capsys) -> None:
     """Test cmd_sketch warns when analyzing a subdirectory of a git repo."""
     # Create a git repo structure

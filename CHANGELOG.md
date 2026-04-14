@@ -13,6 +13,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Fixed
 
 - **`-e/--exclude` glob normalization** (WI-zirik / UAT BUG-01): user patterns `ui/`, `ui/**`, `**/ui/**`, `**/ui` now behave consistently with the bare-name form `ui` (per-name fnmatch previously silently dropped any pattern containing `/`). Path-anchored patterns such as `cmd/server.go` are honored against the relative path. Affects both `run` and `sketch`; structure-tree code uses the same normalization.
+- **Single-file input exits cleanly** (WI-zujum / UAT BUG-04): `hypergumbo run` / `sketch` pointed at a file (not a directory) now print an actionable hint and `sys.exit(1)` instead of crashing with `NotADirectoryError` from `Path.iterdir()`. The hint points at the file's parent directory as a likely target.
 
 ### Performance
 

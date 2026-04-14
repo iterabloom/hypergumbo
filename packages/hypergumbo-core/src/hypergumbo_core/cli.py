@@ -573,6 +573,20 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         print(f"Error: path does not exist: {repo_root}", file=sys.stderr)
         return 1
 
+    # WI-zujum: a single-file argument crashes downstream in
+    # _format_structure_tree_fallback (Path.iterdir() raises
+    # NotADirectoryError). Reject early with a hint pointing at the
+    # likely intent — analyse the parent directory.
+    if not repo_root.is_dir():
+        parent = repo_root.parent
+        print(
+            f"Error: {repo_root} is a file, not a directory.\n"
+            f"hypergumbo analyses repositories. Try its parent directory:\n"
+            f"  hypergumbo {parent}",
+            file=sys.stderr,
+        )
+        return 1
+
     # Warn if analyzing a subdirectory of a git repo
     git_root = _find_git_root(repo_root)
     if git_root is not None and git_root.resolve() != repo_root.resolve():
@@ -866,6 +880,22 @@ def cmd_sketch(args: argparse.Namespace) -> int:
 def cmd_run(args: argparse.Namespace) -> int:
     # The positional argument for `run` is called `path` in the parser below.
     repo_root = Path(args.path).resolve()
+
+    # WI-zujum: same single-file guard as cmd_sketch — analysing a single
+    # file is not a supported mode and crashes deeper in the pipeline.
+    if not repo_root.exists():
+        print(f"Error: path does not exist: {repo_root}", file=sys.stderr)
+        return 1
+    if not repo_root.is_dir():
+        parent = repo_root.parent
+        print(
+            f"Error: {repo_root} is a file, not a directory.\n"
+            f"hypergumbo analyses repositories. Try its parent directory:\n"
+            f"  hypergumbo run {parent}",
+            file=sys.stderr,
+        )
+        return 1
+
     out_path = Path(args.out) if args.out else None
     max_tier = getattr(args, "max_tier", None)
     max_files = getattr(args, "max_files", None)
