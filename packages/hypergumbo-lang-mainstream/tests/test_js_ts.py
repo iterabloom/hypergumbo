@@ -322,6 +322,68 @@ function main() { helper(); }
         ]
         assert all("helper" not in e.dst for e in unresolved)
 
+    def test_unresolved_call_to_namespace_import_member(self, tmp_path: Path) -> None:
+        """`import * as fs from 'node:fs'; fs.readFileSync()` emits unresolved edge.
+
+        Per WI-vurop: the namespace-import member-call path also needs the
+        unresolved fallback so io-boundaries can match Node fs / HTTP /
+        subprocess calls invoked through namespace aliases.
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+import * as fs from 'node:fs';
+
+export function loadConfig(path: string) {
+  return fs.readFileSync(path, 'utf8');
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        ]
+        callees = {e.dst for e in unresolved}
+        assert any("readFileSync" in c for c in callees), callees
+        for c in callees:
+            if "readFileSync" in c:
+                segs = c.split(":")
+                # typescript:<module>:0-0:<name>:unresolved
+                assert segs[1] == "fs", c
+
+    def test_unresolved_call_to_default_import_member(self, tmp_path: Path) -> None:
+        """`import axios from 'axios'; axios.get(url)` emits unresolved edge.
+
+        Default imports are stored in the same ``namespace_imports`` map as
+        ``import * as`` aliases, so the fallback covers both.
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+import axios from 'axios';
+
+export async function fetchUser(id: string) {
+  return await axios.get(`/users/${id}`);
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        ]
+        callees = {e.dst for e in unresolved}
+        assert any("axios" in c and ":get:unresolved" in c for c in callees), callees
+        for c in callees:
+            if ":get:unresolved" in c:
+                segs = c.split(":")
+                assert segs[1] == "axios", c
+
     def test_unresolved_skips_unimported_names(self, tmp_path: Path) -> None:
         """Calls to unknown bare names without an import do not produce noise.
 

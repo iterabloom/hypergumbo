@@ -23,6 +23,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **Unresolved-call edges for TS/JS member calls on namespace/default imports** (WI-vurop, follow-up to WI-banaf): extend the WI-banaf fix to cover `import * as fs from 'node:fs'; fs.readFileSync()` and `import axios from 'axios'; axios.get()`. Emits an unresolved-call edge with the import path as module hint when the namespace-alias method call doesn't resolve to an intra-repo symbol. Verified: apollo-server boundaries 7 → 14 (env_read +6 via os.*); create-next-app 27 → 35.
 - **TypeScript/JavaScript I/O boundary tracing** (WI-banaf / UAT BUG-09a): the JS/TS analyzer now emits unresolved-call edges for bare-name calls to named imports (e.g. `import { existsSync } from 'node:fs'; existsSync()`), so the io-boundaries pipeline can match them against the catalog. Browser-API entries added to the JavaScript catalog: WebSocket, EventSource, BroadcastChannel, XMLHttpRequest, navigator.sendBeacon, localStorage / sessionStorage / indexedDB / caches, console logging, navigator/window/document env reads, and HTTP-client modules ky/got/superagent/undici. Verified on `nextjs/packages/create-next-app`: total_io_edges 0 → 27 (fs_read/fs_write/subprocess populated). Member calls on namespace and default imports remain a follow-up (WI-vurop).
 
 ## [2.6.0] - 2026-04-12

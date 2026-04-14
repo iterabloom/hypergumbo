@@ -3838,6 +3838,26 @@ def _extract_edges(
                                     )
                                     edges.append(edge)
                                     edge_added = True
+                            if not edge_added:
+                                # WI-vurop: fall back to an unresolved-call
+                                # edge so io-boundaries can match the catalog
+                                # against Node built-ins and third-party HTTP
+                                # clients imported via ``import * as fs`` or
+                                # ``import axios from 'axios'``.
+                                module_hint = _normalize_import_module_hint(import_path)
+                                dst_id = f"{lang}:{module_hint}:0-0:{method_name}:unresolved"
+                                edge = Edge.create(
+                                    src=current_function.id,
+                                    dst=dst_id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1 + line_offset,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_method_unresolved_namespace",
+                                    confidence=0.70,
+                                )
+                                edges.append(edge)
+                                edge_added = True
 
                         # Case 3: variable.method() via type inference
                         elif obj_name and obj_name in var_types:
