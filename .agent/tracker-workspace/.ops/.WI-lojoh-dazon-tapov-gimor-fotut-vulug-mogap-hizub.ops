@@ -27,3 +27,10 @@
   clock: 2  # cee9
   nonce: cee9  # cee9
   message: "Scoped investigation: reproduced on a minimal Django repo (urls.py uses re_path → views.py classes with post/patch/get methods). All 3 routes render as [GET] regardless of the class's declared methods.\n\nImplementation plan (deferred for a focused follow-up session):\n1. Extend frameworks/django.yaml to mark re_path / path / url patterns targeting *.as_view() as class-based. Capture the view class name in a new metadata slot (e.g., metadata.view_class).\n2. Post-analysis enrichment (probably in enrichment pass or _dedup_routes in cli.py): for each route with meta.view_class set, look up the class symbol, enumerate its method children with names in {get, post, put, patch, delete, head, options, trace}, and emit a route variant per method.\n3. If no methods match (class inherits from generic views like DetailView/ListView), fall back to framework-specific defaults (DetailView=GET, CreateView=GET+POST, etc.).\n4. Update routes command dedup to key on (method, path, view_class) so multiple methods for the same path don't collide.\n\nScope: spans django.yaml (1-2 new extract rules), enrichment stage (new class-method introspection pass), and cli.py routes rendering (dedup key change). Estimate: ~4-6 hours focused work.\n\nNOT currently blocked; leaving as todo_hard. The UAT observation is correct and the fix is tractable, it just needs a session focused on framework-pattern-method-inference as its main thread."  # cee9
+- op: discuss  # d094
+  at: '2026-04-14T19:12:22Z'  # d094
+  by: human  # d094
+  actor: jgstern  # d094
+  clock: 3  # d094
+  nonce: d094  # d094
+  message: "are you suggesting that this issue may have other analogous issues for other parts of hypergumbo? or that in the course of resolving this issue we might discover such analogs?"  # d094

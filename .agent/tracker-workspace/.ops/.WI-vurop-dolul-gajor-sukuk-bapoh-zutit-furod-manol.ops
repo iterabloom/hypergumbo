@@ -36,3 +36,10 @@
   clock: 3  # 3922
   nonce: '3922'  # 3922
   message: "Fixed. Extends WI-banaf: namespace-alias member calls (import * as fs / import axios) now emit unresolved-call edges with the normalised import path as module hint. Verified: apollo-server io-boundaries 7 -> 14 (+7, env_read picks up 6 via os.* namespace calls); create-next-app 27 -> 35. Remaining gap: 'known globals without imports' (console.log in browser code, localStorage, etc.) — left for a follow-up item if/when UAT identifies it as material."  # 3922
+- op: discuss  # 972a
+  at: '2026-04-14T19:04:02Z'  # 972a
+  by: human  # 972a
+  actor: jgstern  # 972a
+  clock: 4  # 972a
+  nonce: 972a  # 972a
+  message: "please ensure there is a priority 4 tracker item for the remaining gap"  # 972a
