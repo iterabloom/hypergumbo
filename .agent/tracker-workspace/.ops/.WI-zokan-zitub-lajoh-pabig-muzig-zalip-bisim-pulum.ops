@@ -34,3 +34,11 @@
   clock: 3  # 80f2
   nonce: 80f2  # 80f2
   message: "Demote P3->P4: passive wait on upstream pytest-textual-snapshot PR #24. No agent action possible until upstream lands."  # 80f2
+- op: update  # 47a9
+  at: '2026-04-14T07:06:35Z'  # 47a9
+  by: human  # 47a9
+  actor: jgstern  # 47a9
+  clock: 4  # 47a9
+  nonce: 47a9  # 47a9
+  set:  # 47a9
+    status: needs_human_review  # 47a9

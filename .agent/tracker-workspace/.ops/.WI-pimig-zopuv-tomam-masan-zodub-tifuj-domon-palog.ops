@@ -57,3 +57,10 @@
   clock: 6  # 5f50
   nonce: 5f50  # 5f50
   message: "are phases 2 and 3 tracked on any other tracker item? please check the open items. if not, wouldn't it be a good idea to create a new child (or dependent) tracker item to capture phase 2 and 3 work? how high of a priority do you think phase 2 and 3 should be (assuming it isn't already done)?"  # 5f50
+- op: discuss  # 8532
+  at: '2026-04-14T07:04:07Z'  # 8532
+  by: agent  # 8532
+  actor: jgstern_agent  # 8532
+  clock: 7  # 8532
+  nonce: '8532'  # 8532
+  message: "Checked: no existing tracker item covered Phase 2 (caller-site detection) or Phase 3 (synthetic dispatches_to edges) for the Go marshal callbacks. Created child item WI-kofaf-nanos-rukok-sabib-lahag-fopur-pokul-jahop at P3.\n\nPriority rationale (P3, not P2): Phase 1 fully solved the original motivation (eliminate marshal-method false-positives in dead-code-maybe — 92/92 alertmanager methods removed). Phase 2/3 are call-graph precision improvements, not correctness fixes. Without them, slices won't show the data flow from yaml.Unmarshal -> Config.UnmarshalYAML, but the methods are correctly entrypoint-classified as LIBRARY_EXPORT. Right tier for DEEP-mode slice-quality work, not blocking. The new item also flags the cross-language extension (Jackson, pydantic, IXmlSerializable, class-transformer) as future scope to file separately if Phase 2/3 Go validation succeeds."  # 8532

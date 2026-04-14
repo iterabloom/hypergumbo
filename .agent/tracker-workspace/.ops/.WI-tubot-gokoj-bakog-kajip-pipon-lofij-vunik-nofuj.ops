@@ -79,3 +79,10 @@
   clock: 9  # f403
   nonce: f403  # f403
   message: "this is cleared for launch"  # f403
+- op: discuss  # 6a4a
+  at: '2026-04-14T07:04:27Z'  # 6a4a
+  by: agent  # 6a4a
+  actor: jgstern_agent  # 6a4a
+  clock: 10  # 6a4a
+  nonce: 6a4a  # 6a4a
+  message: "Launch executed 2026-04-11. Artifact: ~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-11-full/\n\nResults summary (11 repos analyzed, 92218 total candidates):\n- 3 repos failed: trino, envoy, vscode (need investigation — likely OOM or analyzer crash on the largest repos)\n- 4 repos skipped as monoglot (not polyglot enough for cross-language linker analysis): buildkit (go), containerd (go), cowboy (erlang), vapor (swift+c)\n- Top categorized gaps:\n    3187  cross_language_api\n    1631  handler_or_dto\n     514  swagger_generated\n     100  memberlist_callbacks\n      25  goroutine_lifecycle\n      20  yaml_json_marshal  (down from 146 in smoke-test, post-WI-pimig Phase 1)\n       7  pipeline_stage_dispatch\n       3  cobra_cli_dispatch\n- 86731 (94%) uncategorized — categorizer is the bottleneck for actionable signal, not the linker gaps themselves.\n\nThe biggest finding is that the categorizer needs work before the prospector output is actionable for prioritizing linker investment — 94% bucket-uncategorized means the rank-by-frequency signal is noisy. Will file follow-up tracker items for: (a) categorizer improvement (the actual blocker for using this output), (b) investigation of the 3 failed repos (trino/envoy/vscode), and (c) consideration of WI-botol (full 200-repo run) deferral status given the categorizer issue."  # 6a4a
