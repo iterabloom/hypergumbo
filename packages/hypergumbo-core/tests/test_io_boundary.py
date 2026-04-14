@@ -311,6 +311,64 @@ class TestLoadCatalog:
         assert match is not None
         assert match.boundary == "net_send"
 
+    def test_java_catalog_covers_jdbc_and_jpa(self) -> None:
+        """WI-sakan: JDBC, JPA, Hibernate, Spring Data covered under db_read / db_write."""
+        catalog = load_catalog("java")
+        qnames = {p.qualified_name: p for p in catalog.primitives}
+
+        # JDBC read path
+        assert qnames["java.sql.Statement.executeQuery"].boundary == "db_read"
+        assert qnames["java.sql.PreparedStatement.executeQuery"].boundary == "db_read"
+        assert qnames["java.sql.ResultSet.next"].boundary == "db_read"
+        # JDBC write path
+        assert qnames["java.sql.Statement.executeUpdate"].boundary == "db_write"
+        assert qnames["java.sql.PreparedStatement.executeUpdate"].boundary == "db_write"
+        # Transaction control
+        assert qnames["java.sql.Connection.commit"].boundary == "db_write"
+        # JPA (both javax and jakarta namespaces)
+        assert qnames["javax.persistence.EntityManager.find"].boundary == "db_read"
+        assert qnames["jakarta.persistence.EntityManager.persist"].boundary == "db_write"
+        # Spring Data / JdbcTemplate
+        assert qnames["org.springframework.jdbc.core.JdbcTemplate.query"].boundary == "db_read"
+        assert qnames["org.springframework.jdbc.core.JdbcTemplate.update"].boundary == "db_write"
+        assert qnames["org.springframework.data.repository.CrudRepository.findById"].boundary == "db_read"
+        assert qnames["org.springframework.data.repository.CrudRepository.save"].boundary == "db_write"
+        # Hibernate Session
+        assert qnames["org.hibernate.Session.get"].boundary == "db_read"
+        assert qnames["org.hibernate.Session.save"].boundary == "db_write"
+
+    def test_java_catalog_covers_logging_facades(self) -> None:
+        """WI-sakan: SLF4J, Log4j, java.util.logging, Logback covered under logging."""
+        catalog = load_catalog("java")
+        qnames = {p.qualified_name: p for p in catalog.primitives}
+
+        assert qnames["org.slf4j.Logger.info"].boundary == "logging"
+        assert qnames["org.slf4j.Logger.error"].boundary == "logging"
+        assert qnames["org.apache.logging.log4j.Logger.info"].boundary == "logging"
+        assert qnames["org.apache.log4j.Logger.info"].boundary == "logging"
+        assert qnames["java.util.logging.Logger.info"].boundary == "logging"
+        assert qnames["ch.qos.logback.classic.Logger.info"].boundary == "logging"
+
+    def test_java_catalog_covers_http_clients(self) -> None:
+        """WI-sakan: Apache HttpClient 4.x/5.x, WebClient, Unirest, Retrofit."""
+        catalog = load_catalog("java")
+        qnames = {p.qualified_name: p for p in catalog.primitives}
+
+        assert qnames["org.apache.http.client.HttpClient.execute"].boundary == "net_send"
+        assert qnames["org.apache.hc.client5.http.classic.HttpClient.execute"].boundary == "net_send"
+        assert qnames["org.springframework.web.reactive.function.client.WebClient.get"].boundary == "net_send"
+        assert qnames["kong.unirest.Unirest.post"].boundary == "net_send"
+        assert qnames["retrofit2.Call.execute"].boundary == "net_send"
+
+    def test_java_catalog_covers_commons_io(self) -> None:
+        """WI-sakan: Apache Commons IO file helpers covered under fs_read / fs_write."""
+        catalog = load_catalog("java")
+        qnames = {p.qualified_name: p for p in catalog.primitives}
+
+        assert qnames["org.apache.commons.io.FileUtils.readFileToString"].boundary == "fs_read"
+        assert qnames["org.apache.commons.io.FileUtils.writeStringToFile"].boundary == "fs_write"
+        assert qnames["org.apache.commons.io.IOUtils.toString"].boundary == "fs_read"
+
     def test_kotlin_alias_loads_java_catalog(self) -> None:
         """Kotlin uses the Java IO catalog via alias."""
         catalog = load_catalog("kotlin")
