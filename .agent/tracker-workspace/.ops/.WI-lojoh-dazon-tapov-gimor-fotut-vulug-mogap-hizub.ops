@@ -20,3 +20,10 @@
     pr_ref:  # b9cd
     description: "UAT 2026-04-13 BUG-08: all `re_path()` routes labeled `[GET]` regardless of view class HTTP method definitions. UAT verified on pretix: `InitializeView`, `UpdateView`, `RollKeyView`, `RevokeKeyView` are POST-only but reported GET. The Django route extractor does not inspect view class method definitions (`def post(self, request):`). Fix: resolve view class symbol and read its declared HTTP method handlers."  # b9cd
     fields: {}  # b9cd
+- op: discuss  # cee9
+  at: '2026-04-14T17:25:43Z'  # cee9
+  by: agent  # cee9
+  actor: jgstern_agent  # cee9
+  clock: 2  # cee9
+  nonce: cee9  # cee9
+  message: "Scoped investigation: reproduced on a minimal Django repo (urls.py uses re_path → views.py classes with post/patch/get methods). All 3 routes render as [GET] regardless of the class's declared methods.\n\nImplementation plan (deferred for a focused follow-up session):\n1. Extend frameworks/django.yaml to mark re_path / path / url patterns targeting *.as_view() as class-based. Capture the view class name in a new metadata slot (e.g., metadata.view_class).\n2. Post-analysis enrichment (probably in enrichment pass or _dedup_routes in cli.py): for each route with meta.view_class set, look up the class symbol, enumerate its method children with names in {get, post, put, patch, delete, head, options, trace}, and emit a route variant per method.\n3. If no methods match (class inherits from generic views like DetailView/ListView), fall back to framework-specific defaults (DetailView=GET, CreateView=GET+POST, etc.).\n4. Update routes command dedup to key on (method, path, view_class) so multiple methods for the same path don't collide.\n\nScope: spans django.yaml (1-2 new extract rules), enrichment stage (new class-method introspection pass), and cli.py routes rendering (dedup key change). Estimate: ~4-6 hours focused work.\n\nNOT currently blocked; leaving as todo_hard. The UAT observation is correct and the fix is tractable, it just needs a session focused on framework-pattern-method-inference as its main thread."  # cee9

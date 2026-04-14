@@ -20,3 +20,18 @@
     pr_ref:  # 0f84
     description: "UAT 2026-04-13 BUG-02+BUG-03: `-t 0` silently produces full 8000-token output (treated as 'no budget'). `-t -1` and `-t -100` produce header-only output (~985 bytes) with exit 0. Both should be rejected with a clear error before any work runs. A single argparse type-validator handles both."  # 0f84
     fields: {}  # 0f84
+- op: update  # a24b
+  at: '2026-04-14T18:09:39Z'  # a24b
+  by: agent  # a24b
+  actor: jgstern_agent  # a24b
+  clock: 2  # a24b
+  nonce: a24b  # a24b
+  set:  # a24b
+    status: done  # a24b
+- op: discuss  # 4ad4
+  at: '2026-04-14T18:09:39Z'  # 4ad4
+  by: agent  # 4ad4
+  actor: jgstern_agent  # 4ad4
+  clock: 3  # 4ad4
+  nonce: 4ad4  # 4ad4
+  message: "Fixed. Added _positive_token_budget argparse type validator that rejects 0, negative, and non-integer values up front. Wired into both --tokens flags (sketch and explain). Verified: 'hypergumbo . -t 0' now exits 2 with 'argument -t/--tokens: token budget must be a positive integer, got 0'."  # 4ad4
