@@ -1,0 +1,22 @@
+- op: create  # 735d
+  at: '2026-04-14T06:05:23Z'  # 735d
+  by: agent  # 735d
+  actor: jgstern_agent  # 735d
+  clock: 1  # 735d
+  nonce: 735d  # 735d
+  data:  # 735d
+    kind: work_item  # 735d
+    title: "Django dual-reporting inflates route counts ~2x"  # 735d
+    status: todo_soft  # 735d
+    priority: 3  # 735d
+    parent:  # 735d
+    tags:  # 735d
+    - uat_2026_04_13  # 735d
+    - routes  # 735d
+    - framework_detection  # 735d
+    isbefore: []  # 735d
+    duplicate_of: []  # 735d
+    not_duplicate_of: []  # 735d
+    pr_ref:  # 735d
+    description: "UAT 2026-04-13 DQ-01: the same route appears twice in pretix output — once from urls.py URL configuration and once from the view class definition (985 vs ~500 unique patterns). Either suppress one source or emit a single canonical route per (url, view) pair."  # 735d
+    fields: {}  # 735d

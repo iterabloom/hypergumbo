@@ -1,0 +1,22 @@
+- op: create  # 5528
+  at: '2026-04-14T06:05:21Z'  # 5528
+  by: agent  # 5528
+  actor: jgstern_agent  # 5528
+  clock: 1  # 5528
+  nonce: '5528'  # 5528
+  data:  # 5528
+    kind: work_item  # 5528
+    title: "`--require-section` flag is a no-op"  # 5528
+    status: todo_hard  # 5528
+    priority: 2  # 5528
+    parent:  # 5528
+    tags:  # 5528
+    - uat_2026_04_13  # 5528
+    - sketch  # 5528
+    - ergonomics  # 5528
+    isbefore: []  # 5528
+    duplicate_of: []  # 5528
+    not_duplicate_of: []  # 5528
+    pr_ref:  # 5528
+    description: "UAT 2026-04-13 BUG-05: `--require-section` is documented to force inclusion of a named section under budget pressure. UAT tested below natural inclusion threshold and with bogus section names: zero observable effect either way. Either non-functional or silently ignored. Either fix the implementation or remove the flag from the CLI surface and docs."  # 5528
+    fields: {}  # 5528

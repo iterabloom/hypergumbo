@@ -1,0 +1,22 @@
+- op: create  # 39e2
+  at: '2026-04-14T06:05:24Z'  # 39e2
+  by: agent  # 39e2
+  actor: jgstern_agent  # 39e2
+  clock: 1  # 39e2
+  nonce: '39e2'  # 39e2
+  data:  # 39e2
+    kind: work_item  # 39e2
+    title: "`routes` includes test-file routes by default"  # 39e2
+    status: todo_soft  # 39e2
+    priority: 4  # 39e2
+    parent:  # 39e2
+    tags:  # 39e2
+    - uat_2026_04_13  # 39e2
+    - routes  # 39e2
+    - ergonomics  # 39e2
+    isbefore: []  # 39e2
+    duplicate_of: []  # 39e2
+    not_duplicate_of: []  # 39e2
+    pr_ref:  # 39e2
+    description: "UAT 2026-04-13 DQ-02: plausible has 38 (14.3%) of reported routes from test files. The `-x` flag suppresses correctly, but default behavior includes them. Consider making `-x` the default for `routes`, with `--include-tests` opt-in. Low-impact UX change."  # 39e2
+    fields: {}  # 39e2

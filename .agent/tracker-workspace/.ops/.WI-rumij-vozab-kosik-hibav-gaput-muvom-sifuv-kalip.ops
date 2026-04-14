@@ -1,0 +1,22 @@
+- op: create  # 4f64
+  at: '2026-04-14T06:05:29Z'  # 4f64
+  by: agent  # 4f64
+  actor: jgstern_agent  # 4f64
+  clock: 1  # 4f64
+  nonce: 4f64  # 4f64
+  data:  # 4f64
+    kind: work_item  # 4f64
+    title: "Framework-registered code flagged dead; expand annotation exclusion"  # 4f64
+    status: todo_soft  # 4f64
+    priority: 3  # 4f64
+    parent:  # 4f64
+    tags:  # 4f64
+    - uat_2026_04_13  # 4f64
+    - dead_code_prospector  # 4f64
+    - analysis_quality  # 4f64
+    isbefore: []  # 4f64
+    duplicate_of: []  # 4f64
+    not_duplicate_of: []  # 4f64
+    pr_ref:  # 4f64
+    description: "UAT 2026-04-13 DQ-06: 0 of 15 verified dead-code candidates were truly dead across openzeppelin, spring-petclinic, shellcheck. Causes: Spring `@ModelAttribute`, `@Bean`, `@InitBinder`; Solidity `using...for`; Haskell exports + Template Haskell. The `--exclude-annotated` flag helps for Java (61.9% -> 38.1% on spring-petclinic) but doesn't catch all patterns. Expand annotation list per language; document known per-language blind spots. Partly subsumed by U18/U19/U20 for Haskell+Solidity."  # 4f64
+    fields: {}  # 4f64

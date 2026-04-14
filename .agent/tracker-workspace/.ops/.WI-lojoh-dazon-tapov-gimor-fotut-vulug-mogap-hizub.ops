@@ -1,0 +1,22 @@
+- op: create  # b9cd
+  at: '2026-04-14T06:05:23Z'  # b9cd
+  by: agent  # b9cd
+  actor: jgstern_agent  # b9cd
+  clock: 1  # b9cd
+  nonce: b9cd  # b9cd
+  data:  # b9cd
+    kind: work_item  # b9cd
+    title: "Django `re_path()` routes default to GET regardless of view methods"  # b9cd
+    status: todo_hard  # b9cd
+    priority: 2  # b9cd
+    parent:  # b9cd
+    tags:  # b9cd
+    - uat_2026_04_13  # b9cd
+    - routes  # b9cd
+    - framework_detection  # b9cd
+    isbefore: []  # b9cd
+    duplicate_of: []  # b9cd
+    not_duplicate_of: []  # b9cd
+    pr_ref:  # b9cd
+    description: "UAT 2026-04-13 BUG-08: all `re_path()` routes labeled `[GET]` regardless of view class HTTP method definitions. UAT verified on pretix: `InitializeView`, `UpdateView`, `RollKeyView`, `RevokeKeyView` are POST-only but reported GET. The Django route extractor does not inspect view class method definitions (`def post(self, request):`). Fix: resolve view class symbol and read its declared HTTP method handlers."  # b9cd
+    fields: {}  # b9cd

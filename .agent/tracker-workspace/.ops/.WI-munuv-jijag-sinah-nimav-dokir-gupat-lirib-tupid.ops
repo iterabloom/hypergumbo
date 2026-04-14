@@ -1,0 +1,22 @@
+- op: create  # 6947
+  at: '2026-04-14T06:05:32Z'  # 6947
+  by: agent  # 6947
+  actor: jgstern_agent  # 6947
+  clock: 1  # 6947
+  nonce: '6947'  # 6947
+  data:  # 6947
+    kind: work_item  # 6947
+    title: "Standardize path argument convention across subcommands"  # 6947
+    status: todo_soft  # 6947
+    priority: 3  # 6947
+    parent:  # 6947
+    tags:  # 6947
+    - uat_2026_04_13  # 6947
+    - ergonomics  # 6947
+    - developer_experience  # 6947
+    isbefore: []  # 6947
+    duplicate_of: []  # 6947
+    not_duplicate_of: []  # 6947
+    pr_ref:  # 6947
+    description: "UAT 2026-04-13 UX-01: some commands take repo path positionally (`hypergumbo sketch /path`), others via `--path` (`hypergumbo routes --path /path`), `catalog` accepts neither (CWD only). Causes errors when users carry syntax between commands. Standardize: accept both positional and `--path` on every subcommand; if both given, error."  # 6947
+    fields: {}  # 6947

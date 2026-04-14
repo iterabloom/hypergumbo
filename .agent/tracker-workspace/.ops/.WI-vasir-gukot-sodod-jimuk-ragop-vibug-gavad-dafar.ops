@@ -1,0 +1,22 @@
+- op: create  # 1857
+  at: '2026-04-14T06:05:33Z'  # 1857
+  by: agent  # 1857
+  actor: jgstern_agent  # 1857
+  clock: 1  # 1857
+  nonce: '1857'  # 1857
+  data:  # 1857
+    kind: work_item  # 1857
+    title: "Suppress false-positive linker warnings on every repo"  # 1857
+    status: todo_hard  # 1857
+    priority: 2  # 1857
+    parent:  # 1857
+    tags:  # 1857
+    - uat_2026_04_13  # 1857
+    - ergonomics  # 1857
+    - cross_language_linkers  # 1857
+    isbefore: []  # 1857
+    duplicate_of: []  # 1857
+    not_duplicate_of: []  # 1857
+    pr_ref:  # 1857
+    description: "UAT 2026-04-13 UX-05: every tested repo gets 1-7 stderr warnings from linkers irrelevant to its languages: NAPI, TAURI_IPC, SOLIDITY_ABI on Go-only repos; a Circom grammar warning fires universally. High visibility (every invocation), zero signal. Fix: gate linker activation on detected languages OR demote warnings to debug log when no relevant files are present."  # 1857
+    fields: {}  # 1857

@@ -1,0 +1,22 @@
+- op: create  # fd1a
+  at: '2026-04-14T06:05:34Z'  # fd1a
+  by: agent  # fd1a
+  actor: jgstern_agent  # fd1a
+  clock: 1  # fd1a
+  nonce: fd1a  # fd1a
+  data:  # fd1a
+    kind: work_item  # fd1a
+    title: "Use repo-relative paths in JSON node IDs"  # fd1a
+    status: todo_soft  # fd1a
+    priority: 3  # fd1a
+    parent:  # fd1a
+    tags:  # fd1a
+    - uat_2026_04_13  # fd1a
+    - ergonomics  # fd1a
+    - developer_experience  # fd1a
+    isbefore: []  # fd1a
+    duplicate_of: []  # fd1a
+    not_duplicate_of: []  # fd1a
+    pr_ref:  # fd1a
+    description: "UAT 2026-04-13 UX-06: JSON behavior map node IDs contain absolute paths (`go:/home/user/repos/...`), making output non-portable across machines. The `path` field correctly uses repo-relative paths and stable_id/shape_id are also available, but the primary ID is absolute. Switch primary ID to repo-relative; this is a schema-compat-affecting change — coordinate with Appendix C of docs/hypergumbo-spec.md."  # fd1a
+    fields: {}  # fd1a

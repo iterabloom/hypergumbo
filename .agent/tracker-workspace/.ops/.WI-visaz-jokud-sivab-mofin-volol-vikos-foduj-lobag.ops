@@ -27,3 +27,10 @@
   nonce: e1b1  # e1b1
   set:  # e1b1
     parent: WI-fuhav-rigah-mojit-fuvom-vohim-jokiv-tosuj-ponah  # e1b1
+- op: discuss  # 25a1
+  at: '2026-04-14T06:08:11Z'  # 25a1
+  by: agent  # 25a1
+  actor: jgstern_agent  # 25a1
+  clock: 3  # 25a1
+  nonce: 25a1  # 25a1
+  message: "UAT 2026-04-13 BUG-14 reports a related but distinct slice-traversal bug: when forward slice resolves a call to a class node (e.g., CliRunner from CliRunner().run(args)), it does not traverse contains edges to reach the called method. WI-visaz fixes the call-edge-emission side; BUG-14 requires the slicer to follow contains after class resolution. Tracked separately as WI-gigoz-kiduz-damob-jovuk-doloj-gahin-gilak-polus — fixing both is needed for forward slice to behave correctly on Kotlin/Java entry points."  # 25a1

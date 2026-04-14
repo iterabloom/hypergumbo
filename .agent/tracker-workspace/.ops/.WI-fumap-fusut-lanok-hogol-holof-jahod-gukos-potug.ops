@@ -1,0 +1,21 @@
+- op: create  # 4d7f
+  at: '2026-04-14T06:05:31Z'  # 4d7f
+  by: agent  # 4d7f
+  actor: jgstern_agent  # 4d7f
+  clock: 1  # 4d7f
+  nonce: 4d7f  # 4d7f
+  data:  # 4d7f
+    kind: work_item  # 4d7f
+    title: "`--config-extraction` mode selector has no observable effect (investigate)"  # 4d7f
+    status: todo_soft  # 4d7f
+    priority: 3  # 4d7f
+    parent:  # 4d7f
+    tags:  # 4d7f
+    - uat_2026_04_13  # 4d7f
+    - ergonomics  # 4d7f
+    isbefore: []  # 4d7f
+    duplicate_of: []  # 4d7f
+    not_duplicate_of: []  # 4d7f
+    pr_ref:  # 4d7f
+    description: "UAT 2026-04-13 DQ-07: three modes (heuristic, embedding, hybrid) produce identical Configuration sections and identical timing on alertmanager. Either the mode selector is wired incorrectly, alertmanager doesn't exercise the difference, or embedding/hybrid silently fall back to heuristic. Investigate: pick a repo where modes SHOULD differ (config files with implicit grouping), then verify whether the mode flag actually changes the code path."  # 4d7f
+    fields: {}  # 4d7f

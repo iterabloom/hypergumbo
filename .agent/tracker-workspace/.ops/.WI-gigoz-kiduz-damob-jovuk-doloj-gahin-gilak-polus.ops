@@ -1,0 +1,22 @@
+- op: create  # 9190
+  at: '2026-04-14T06:05:29Z'  # 9190
+  by: agent  # 9190
+  actor: jgstern_agent  # 9190
+  clock: 1  # 9190
+  nonce: '9190'  # 9190
+  data:  # 9190
+    kind: work_item  # 9190
+    title: "Forward slice dead-ends at class boundaries (Kotlin/Java)"  # 9190
+    status: todo_hard  # 9190
+    priority: 2  # 9190
+    parent:  # 9190
+    tags:  # 9190
+    - uat_2026_04_13  # 9190
+    - slice  # 9190
+    - analysis_quality  # 9190
+    isbefore: []  # 9190
+    duplicate_of: []  # 9190
+    not_duplicate_of: []  # 9190
+    pr_ref:  # 9190
+    description: "UAT 2026-04-13 BUG-14: `main()` calling `CliRunner().run(args)` resolves to the `CliRunner` class node rather than the `run` method. Forward slice does not traverse `contains` edges reached via a call, yielding 2 nodes (main + CliRunner class) instead of 19 nodes from slicing CliRunner directly. Fix: when call resolution lands on a class node, follow its `contains` edges to constructors/methods. Related to but distinct from WI-visaz (Kotlin extension call dispatch); see discussion note added there."  # 9190
+    fields: {}  # 9190

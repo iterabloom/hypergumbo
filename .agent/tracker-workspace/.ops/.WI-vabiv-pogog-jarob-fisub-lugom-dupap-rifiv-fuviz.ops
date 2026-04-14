@@ -1,0 +1,21 @@
+- op: create  # f70e
+  at: '2026-04-14T06:05:30Z'  # f70e
+  by: agent  # f70e
+  actor: jgstern_agent  # f70e
+  clock: 1  # f70e
+  nonce: f70e  # f70e
+  data:  # f70e
+    kind: work_item  # f70e
+    title: "Add YAML framework patterns: http4s, Yesod, Play, Flask-AppBuilder"  # f70e
+    status: todo_soft  # f70e
+    priority: 3  # f70e
+    parent:  # f70e
+    tags:  # f70e
+    - uat_2026_04_13  # f70e
+    - framework_detection  # f70e
+    isbefore: []  # f70e
+    duplicate_of: []  # f70e
+    not_duplicate_of: []  # f70e
+    pr_ref:  # f70e
+    description: "UAT 2026-04-13 BUG-15+BUG-16+Play+Flask-AppBuilder: missing YAML patterns for http4s (Scala — docspell), Yesod (Haskell — haskellers), Play (Scala — lila), Flask-AppBuilder (Python — superset). Add detection patterns; verify against listed repos."  # f70e
+    fields: {}  # f70e

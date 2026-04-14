@@ -1,0 +1,22 @@
+- op: create  # cb3a
+  at: '2026-04-14T06:05:24Z'  # cb3a
+  by: agent  # cb3a
+  actor: jgstern_agent  # cb3a
+  clock: 1  # cb3a
+  nonce: cb3a  # cb3a
+  data:  # cb3a
+    kind: work_item  # cb3a
+    title: "io-boundaries: TypeScript I/O primitive catalog"  # cb3a
+    status: todo_hard  # cb3a
+    priority: 1  # cb3a
+    parent:  # cb3a
+    tags:  # cb3a
+    - uat_2026_04_13  # cb3a
+    - io-boundary  # cb3a
+    - language_additions  # cb3a
+    isbefore: []  # cb3a
+    duplicate_of: []  # cb3a
+    not_duplicate_of: []  # cb3a
+    pr_ref:  # cb3a
+    description: "UAT 2026-04-13 BUG-09a: io-boundaries returns 0 boundaries for TypeScript repos despite extensive HTTP, fs, and subprocess use. workadventure agent simulation confirms this is the largest user-visible io-boundaries gap (Node.js + browser ecosystem). Add TS/JS I/O primitive YAML covering `fs.*`, `fetch`, `http.request`, `child_process.spawn/exec`, `WebSocket`, `process.env`, `console.*` (logging), `localStorage` (browser), etc. Per UAT: this unlocks taint-flow for the largest language ecosystem and is the highest-leverage io-boundaries fix."  # cb3a
+    fields: {}  # cb3a

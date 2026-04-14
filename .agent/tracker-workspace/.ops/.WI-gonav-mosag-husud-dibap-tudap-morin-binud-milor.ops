@@ -1,0 +1,22 @@
+- op: create  # 3430
+  at: '2026-04-14T06:05:26Z'  # 3430
+  by: agent  # 3430
+  actor: jgstern_agent  # 3430
+  clock: 1  # 3430
+  nonce: '3430'  # 3430
+  data:  # 3430
+    kind: work_item  # 3430
+    title: "Java `List.size()` misclassified as `Files.size` by io-boundaries"  # 3430
+    status: todo_soft  # 3430
+    priority: 3  # 3430
+    parent:  # 3430
+    tags:  # 3430
+    - uat_2026_04_13  # 3430
+    - io-boundary  # 3430
+    - analysis_quality  # 3430
+    isbefore: []  # 3430
+    duplicate_of: []  # 3430
+    not_duplicate_of: []  # 3430
+    pr_ref:  # 3430
+    description: "UAT 2026-04-13 BUG-10: at Vet.java:66, `getSpecialtiesInternal().size()` (a `List.size()` call) is reported as `java.nio.file.Files.size`. The Java io-boundary catalog matches the unqualified method name without verifying receiver type. Same pattern as the Go INV-dihos issue. Likely subsumed by U14 if implemented type-aware, but kept as a separate item to track the specific fix and prevent regression."  # 3430
+    fields: {}  # 3430

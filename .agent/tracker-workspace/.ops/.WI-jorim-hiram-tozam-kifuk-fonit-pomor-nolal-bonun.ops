@@ -1,0 +1,22 @@
+- op: create  # 8774
+  at: '2026-04-14T06:05:23Z'  # 8774
+  by: agent  # 8774
+  actor: jgstern_agent  # 8774
+  clock: 1  # 8774
+  nonce: '8774'  # 8774
+  data:  # 8774
+    kind: work_item  # 8774
+    title: "Laravel `apiResource()` generates phantom routes; `.except()` ignored"  # 8774
+    status: todo_hard  # 8774
+    priority: 2  # 8774
+    parent:  # 8774
+    tags:  # 8774
+    - uat_2026_04_13  # 8774
+    - routes  # 8774
+    - framework_detection  # 8774
+    isbefore: []  # 8774
+    duplicate_of: []  # 8774
+    not_duplicate_of: []  # 8774
+    pr_ref:  # 8774
+    description: "UAT 2026-04-13 BUG-07: `Route::apiResource()` explicitly excludes `GET /create` and `GET /{id}/edit` (HTML form routes), but hypergumbo emits them anyway, treating `apiResource()` identically to `resource()`. The `.except()` modifier is also silently ignored. On koel: 40 phantom routes (19.3% of 207 reported). Fix in the Laravel route-extraction logic — distinguish `apiResource` from `resource` and parse `.except()`/`.only()` modifiers."  # 8774
+    fields: {}  # 8774

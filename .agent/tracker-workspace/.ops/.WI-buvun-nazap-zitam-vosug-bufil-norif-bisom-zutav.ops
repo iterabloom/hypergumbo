@@ -1,0 +1,22 @@
+- op: create  # 3f3f
+  at: '2026-04-14T06:05:27Z'  # 3f3f
+  by: agent  # 3f3f
+  actor: jgstern_agent  # 3f3f
+  clock: 1  # 3f3f
+  nonce: 3f3f  # 3f3f
+  data:  # 3f3f
+    kind: work_item  # 3f3f
+    title: "Haskell module exports not recognized as dead-code seeds"  # 3f3f
+    status: todo_soft  # 3f3f
+    priority: 3  # 3f3f
+    parent:  # 3f3f
+    tags:  # 3f3f
+    - uat_2026_04_13  # 3f3f
+    - dead_code_prospector  # 3f3f
+    - language_additions  # 3f3f
+    isbefore: []  # 3f3f
+    duplicate_of: []  # 3f3f
+    not_duplicate_of: []  # 3f3f
+    pr_ref:  # 3f3f
+    description: "UAT 2026-04-13 BUG-12: shellcheck has 0 recognized exports despite every module declaring `module X (export1, export2, ...) where`. The `exports` and `tests` seed sets for dead-code-maybe are therefore useless on Haskell. Parse the module export list; mark exported symbols as seeds."  # 3f3f
+    fields: {}  # 3f3f

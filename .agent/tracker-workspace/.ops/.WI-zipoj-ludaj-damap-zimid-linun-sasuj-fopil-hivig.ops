@@ -1,0 +1,22 @@
+- op: create  # 3107
+  at: '2026-04-14T06:05:22Z'  # 3107
+  by: agent  # 3107
+  actor: jgstern_agent  # 3107
+  clock: 1  # 3107
+  nonce: '3107'  # 3107
+  data:  # 3107
+    kind: work_item  # 3107
+    title: "Large-repo (>1M LOC) warm sketch takes 14-22+ minutes"  # 3107
+    status: todo_soft  # 3107
+    priority: 3  # 3107
+    parent:  # 3107
+    tags:  # 3107
+    - uat_2026_04_13  # 3107
+    - performance  # 3107
+    - sketch  # 3107
+    isbefore: []  # 3107
+    duplicate_of: []  # 3107
+    not_duplicate_of: []  # 3107
+    pr_ref:  # 3107
+    description: "UAT 2026-04-13 DQ-08: airflow (1.5M LOC) and keycloak (1.1M LOC) complete analysis in minutes but warm sketch rendering takes 14-22 min. Java repos disproportionately slow (deep package hierarchies suspected). The docs claim 'Subsequent runs are instant (cached)' — accurate for query commands, inaccurate for sketch on large repos. Investigate sketch rendering hot path; consider making comparison-sketch passes optional."  # 3107
+    fields: {}  # 3107

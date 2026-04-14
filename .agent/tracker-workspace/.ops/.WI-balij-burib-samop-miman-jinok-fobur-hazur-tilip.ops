@@ -1,0 +1,22 @@
+- op: create  # 4718
+  at: '2026-04-14T06:05:33Z'  # 4718
+  by: agent  # 4718
+  actor: jgstern_agent  # 4718
+  clock: 1  # 4718
+  nonce: '4718'  # 4718
+  data:  # 4718
+    kind: work_item  # 4718
+    title: "Subcommand parser cleanup: invalid subcommand error and `--debug` placement"  # 4718
+    status: todo_soft  # 4718
+    priority: 3  # 4718
+    parent:  # 4718
+    tags:  # 4718
+    - uat_2026_04_13  # 4718
+    - ergonomics  # 4718
+    - developer_experience  # 4718
+    isbefore: []  # 4718
+    duplicate_of: []  # 4718
+    not_duplicate_of: []  # 4718
+    pr_ref:  # 4718
+    description: "UAT 2026-04-13 UX-03+UX-04: (a) `hypergumbo foobar` reports 'Error: path does not exist' — the parser treats unrecognized words as path arguments. Should suggest valid subcommands. (b) `hypergumbo sketch . --debug` fails with 'unrecognized arguments'; correct syntax is `hypergumbo --debug sketch .`. Either accept `--debug` after subcommand or improve the error message. Both are argparse plumbing issues; fix together."  # 4718
+    fields: {}  # 4718

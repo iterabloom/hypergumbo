@@ -1,0 +1,31 @@
+- op: create  # 331c
+  at: '2026-04-14T06:06:18Z'  # 331c
+  by: agent  # 331c
+  actor: jgstern_agent  # 331c
+  clock: 1  # 331c
+  nonce: 331c  # 331c
+  data:  # 331c
+    kind: invariant  # 331c
+    title: "io-boundaries / taint-flow must distinguish \"no I/O\" from \"language unsupported\""  # 331c
+    status: violated  # 331c
+    priority: 2  # 331c
+    parent:  # 331c
+    tags:  # 331c
+    - uat_2026_04_13  # 331c
+    - io-boundary  # 331c
+    - taint-flow  # 331c
+    isbefore: []  # 331c
+    duplicate_of: []  # 331c
+    not_duplicate_of: []  # 331c
+    pr_ref:  # 331c
+    description: "UAT 2026-04-13 DQ-03+DQ-04: combined invariant for the silent-failure class. When io-boundaries returns nothing for an unsupported language, output is identical to a clean codebase. Worse, taint-flow trivially passes on every assertion in those languages, giving false security confidence. The fix has two parts: (1) io-boundaries emits \"language X unsupported for io-boundaries\" when no catalog exists; (2) taint-flow refuses to assert success (or annotates with `unsupported_language` qualifier) when io-boundaries signals the unsupported condition. Independent of language coverage expansion (U12-U15 / BUG-09a-d)."  # 331c
+    fields:  # 331c
+      statement: "When a language has no I/O primitive catalog, io-boundaries and taint-flow MUST emit an explicit \"language unsupported\" signal. io-boundaries must not silently return zero boundaries (indistinguishable from a clean codebase), and taint-flow must not assert confirmed/success status on unsupported languages (which creates false security confidence)."  # 331c
+      root_cause: "The io-boundary extractor and taint-flow checker both treat \"no primitives matched\" as equivalent to \"no I/O in this code\", with no distinction made for languages that have no primitive catalog at all. taint-flow further depends on io-boundaries for sink identification, so it trivially passes (\"0 evidence -> claim confirmed\") on every claim in unsupported languages. UAT 2026-04-13 demonstrated this on TypeScript, Elixir, Java, Kotlin, Nim, and Solidity."  # 331c
+- op: discuss  # be8b
+  at: '2026-04-14T06:10:32Z'  # be8b
+  by: agent  # be8b
+  actor: jgstern_agent  # be8b
+  clock: 2  # be8b
+  nonce: be8b  # be8b
+  message: "Cross-reference: the per-language io-boundaries coverage items (WI-banaf TypeScript, WI-vibur Elixir, WI-sakan Java, WI-rujos Kotlin) mitigate this invariant's scope organically. However, the invariant should hold independently — even after coverage expands, there will always be some language for which no catalog exists (per ADR context, hypergumbo supports 100+ languages via tree-sitter but only a subset get io-boundary catalogs). The explicit-unsupported-warning fix is therefore orthogonal and should ship regardless of coverage progress."  # be8b

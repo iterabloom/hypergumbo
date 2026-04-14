@@ -1,0 +1,22 @@
+- op: create  # 858c
+  at: '2026-04-14T06:05:28Z'  # 858c
+  by: agent  # 858c
+  actor: jgstern_agent  # 858c
+  clock: 1  # 858c
+  nonce: 858c  # 858c
+  data:  # 858c
+    kind: work_item  # 858c
+    title: "Document test-coverage 80% false-negative rate per language"  # 858c
+    status: todo_soft  # 858c
+    priority: 3  # 858c
+    parent:  # 858c
+    tags:  # 858c
+    - uat_2026_04_13  # 858c
+    - test-coverage  # 858c
+    - developer_experience  # 858c
+    isbefore: []  # 858c
+    duplicate_of: []  # 858c
+    not_duplicate_of: []  # 858c
+    pr_ref:  # 858c
+    description: "UAT 2026-04-13 DQ-05: across 4 languages, test-coverage has 100% precision but ~20% recall (80% of actually-tested functions reported untested). Misses framework dispatch (Spring MockMvc, Kotlin PSI visitor, Go YAML reflection). The tool correctly notes it is static-only, but the limitation is severe enough to warrant prominent documentation in `--help`, README, and any 'untested' output header. Add per-language caveat lines listing known dispatch blind spots."  # 858c
+    fields: {}  # 858c

@@ -1,0 +1,22 @@
+- op: create  # a207
+  at: '2026-04-14T06:05:30Z'  # a207
+  by: agent  # a207
+  actor: jgstern_agent  # a207
+  clock: 1  # a207
+  nonce: a207  # a207
+  data:  # a207
+    kind: work_item  # a207
+    title: "detekt incorrectly detects React framework (investigate trigger)"  # a207
+    status: todo_soft  # a207
+    priority: 4  # a207
+    parent:  # a207
+    tags:  # a207
+    - uat_2026_04_13  # a207
+    - framework_detection  # a207
+    - analysis_quality  # a207
+    isbefore: []  # a207
+    duplicate_of: []  # a207
+    not_duplicate_of: []  # a207
+    pr_ref:  # a207
+    description: "UAT 2026-04-13 BUG-19: detekt is a pure Kotlin static-analysis tool with no React code but reports 'react' as detected. Likely triggered by test fixtures or documentation containing JSX-like syntax. Investigate trigger; tighten the React pattern (require both JSX-like syntax AND a manifest signal like package.json `react` dep). Also consider a minimum-confidence threshold for framework labels."  # a207
+    fields: {}  # a207

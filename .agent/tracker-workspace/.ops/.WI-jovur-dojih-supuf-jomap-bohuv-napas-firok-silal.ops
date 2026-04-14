@@ -1,0 +1,23 @@
+- op: create  # 9db8
+  at: '2026-04-14T06:05:28Z'  # 9db8
+  by: agent  # 9db8
+  actor: jgstern_agent  # 9db8
+  clock: 1  # 9db8
+  nonce: 9db8  # 9db8
+  data:  # 9db8
+    kind: work_item  # 9db8
+    title: "Solidity `using X for Y` dispatch not traced"  # 9db8
+    status: todo_soft  # 9db8
+    priority: 3  # 9db8
+    parent:  # 9db8
+    tags:  # 9db8
+    - uat_2026_04_13  # 9db8
+    - dead_code_prospector  # 9db8
+    - language_additions  # 9db8
+    - cross_language_linkers  # 9db8
+    isbefore: []  # 9db8
+    duplicate_of: []  # 9db8
+    not_duplicate_of: []  # 9db8
+    pr_ref:  # 9db8
+    description: "UAT 2026-04-13 BUG-13: `Memory.load` has 6+ callers via `using Memory for Slice` (invoked as `slice.load(0)`) but is flagged dead. Only direct `Library.function()` syntax is traced. Add Solidity `using...for` dispatch resolution to the Solidity edge extractor."  # 9db8
+    fields: {}  # 9db8

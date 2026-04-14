@@ -1,0 +1,22 @@
+- op: create  # 0f84
+  at: '2026-04-14T06:05:20Z'  # 0f84
+  by: agent  # 0f84
+  actor: jgstern_agent  # 0f84
+  clock: 1  # 0f84
+  nonce: 0f84  # 0f84
+  data:  # 0f84
+    kind: work_item  # 0f84
+    title: "Validate token budget: reject `-t 0` and negative values"  # 0f84
+    status: todo_soft  # 0f84
+    priority: 3  # 0f84
+    parent:  # 0f84
+    tags:  # 0f84
+    - uat_2026_04_13  # 0f84
+    - sketch  # 0f84
+    - ergonomics  # 0f84
+    isbefore: []  # 0f84
+    duplicate_of: []  # 0f84
+    not_duplicate_of: []  # 0f84
+    pr_ref:  # 0f84
+    description: "UAT 2026-04-13 BUG-02+BUG-03: `-t 0` silently produces full 8000-token output (treated as 'no budget'). `-t -1` and `-t -100` produce header-only output (~985 bytes) with exit 0. Both should be rejected with a clear error before any work runs. A single argparse type-validator handles both."  # 0f84
+    fields: {}  # 0f84

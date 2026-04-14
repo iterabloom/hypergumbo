@@ -1,0 +1,21 @@
+- op: create  # 15bb
+  at: '2026-04-14T06:05:21Z'  # 15bb
+  by: agent  # 15bb
+  actor: jgstern_agent  # 15bb
+  clock: 1  # 15bb
+  nonce: 15bb  # 15bb
+  data:  # 15bb
+    kind: work_item  # 15bb
+    title: "README H2 headings bleed into sketch structural sections"  # 15bb
+    status: todo_soft  # 15bb
+    priority: 2  # 15bb
+    parent:  # 15bb
+    tags:  # 15bb
+    - uat_2026_04_13  # 15bb
+    - sketch  # 15bb
+    isbefore: []  # 15bb
+    duplicate_of: []  # 15bb
+    not_duplicate_of: []  # 15bb
+    pr_ref:  # 15bb
+    description: "UAT 2026-04-13 BUG-06: README content rendered at the same H2 level as hypergumbo's own structural sections (e.g., `## Installation` from README sits alongside `## Structure` from the tool). gemini-cli has 12 bleeding headings, alertmanager has 2. Breaks both human readability and machine parsing. Fix: demote README headings by one level when including, or scope all README content under a single `## README` H2."  # 15bb
+    fields: {}  # 15bb

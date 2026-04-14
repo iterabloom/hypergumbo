@@ -1,0 +1,22 @@
+- op: create  # d301
+  at: '2026-04-14T06:05:26Z'  # d301
+  by: agent  # d301
+  actor: jgstern_agent  # d301
+  clock: 1  # d301
+  nonce: d301  # d301
+  data:  # d301
+    kind: work_item  # d301
+    title: "io-boundaries: Kotlin I/O primitive catalog (expand beyond net_send)"  # d301
+    status: todo_soft  # d301
+    priority: 2  # d301
+    parent:  # d301
+    tags:  # d301
+    - uat_2026_04_13  # d301
+    - io-boundary  # d301
+    - language_additions  # d301
+    isbefore: []  # d301
+    duplicate_of: []  # d301
+    not_duplicate_of: []  # d301
+    pr_ref:  # d301
+    description: "UAT 2026-04-13 BUG-09d: detekt reports 1 io-boundary (net_send only). Kotlin can largely reuse Java primitives plus Kotlin-specific stdlib (`File.readText`, `File.writeText`, ktor client, exposed ORM, `println`, `Log.*`)."  # d301
+    fields: {}  # d301

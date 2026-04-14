@@ -1,0 +1,22 @@
+- op: create  # cb01
+  at: '2026-04-14T06:05:20Z'  # cb01
+  by: agent  # cb01
+  actor: jgstern_agent  # cb01
+  clock: 1  # cb01
+  nonce: cb01  # cb01
+  data:  # cb01
+    kind: work_item  # cb01
+    title: "Single-file input crashes with NotADirectoryError"  # cb01
+    status: todo_hard  # cb01
+    priority: 2  # cb01
+    parent:  # cb01
+    tags:  # cb01
+    - uat_2026_04_13  # cb01
+    - sketch  # cb01
+    - ergonomics  # cb01
+    isbefore: []  # cb01
+    duplicate_of: []  # cb01
+    not_duplicate_of: []  # cb01
+    pr_ref:  # cb01
+    description: "UAT 2026-04-13 BUG-04: `hypergumbo file.tla` prints a helpful hint suggesting the repo root, then proceeds anyway and crashes with `NotADirectoryError` traceback. The hint logic should `sys.exit(1)` (or appropriate code) immediately. Crashes-with-traceback are a tooling smell."  # cb01
+    fields: {}  # cb01

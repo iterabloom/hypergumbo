@@ -1,0 +1,22 @@
+- op: create  # 9417
+  at: '2026-04-14T06:05:19Z'  # 9417
+  by: agent  # 9417
+  actor: jgstern_agent  # 9417
+  clock: 1  # 9417
+  nonce: '9417'  # 9417
+  data:  # 9417
+    kind: work_item  # 9417
+    title: "Sketch `-e/--exclude` flag has no effect (works on `run`)"  # 9417
+    status: todo_hard  # 9417
+    priority: 1  # 9417
+    parent:  # 9417
+    tags:  # 9417
+    - uat_2026_04_13  # 9417
+    - sketch  # 9417
+    - ergonomics  # 9417
+    isbefore: []  # 9417
+    duplicate_of: []  # 9417
+    not_duplicate_of: []  # 9417
+    pr_ref:  # 9417
+    description: "UAT 2026-04-13 BUG-01: the `-e/--exclude` glob flag is documented and works correctly when passed to `hypergumbo run` (JSON output) but produces byte-identical sketch output for any glob, suggesting the sketch renderer never receives the exclude list. UAT verified with 5 glob variants. Asymmetry between `run` and sketch suggests a plumbing miss in the sketch entry point — investigate where `run` consumes excludes and verify the sketch path does the same."  # 9417
+    fields: {}  # 9417

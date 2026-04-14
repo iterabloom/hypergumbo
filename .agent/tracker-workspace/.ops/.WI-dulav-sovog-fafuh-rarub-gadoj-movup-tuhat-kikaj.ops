@@ -1,0 +1,22 @@
+- op: create  # f0be
+  at: '2026-04-14T06:05:27Z'  # f0be
+  by: agent  # f0be
+  actor: jgstern_agent  # f0be
+  clock: 1  # f0be
+  nonce: f0be  # f0be
+  data:  # f0be
+    kind: work_item  # f0be
+    title: "Haskell Template Haskell test discovery (`$forAllProperties`)"  # f0be
+    status: todo_soft  # f0be
+    priority: 3  # f0be
+    parent:  # f0be
+    tags:  # f0be
+    - uat_2026_04_13  # f0be
+    - test-coverage  # f0be
+    - language_additions  # f0be
+    isbefore: []  # f0be
+    duplicate_of: []  # f0be
+    not_duplicate_of: []  # f0be
+    pr_ref:  # f0be
+    description: "UAT 2026-04-13 BUG-11: shellcheck uses Template Haskell `$forAllProperties` to discover and run 2,214 `prop_*` test functions. Tool reports 0% coverage, making test-coverage unusable for Haskell projects with property-based testing. Per UAT: 'P2 for prioritization, P0 if Haskell is a priority'. Fix: heuristic recognition of `prop_*` functions in Haskell test files OR explicit Template Haskell expansion (the structural fix)."  # f0be
+    fields: {}  # f0be
