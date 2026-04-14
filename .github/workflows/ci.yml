@@ -269,7 +269,8 @@ jobs:
       - name: Run pip-audit (dependency vulnerabilities)
         run: |
           # CVE-2026-4539: pygments 2.19.2 — no upstream fix available yet (latest version)
-          pip-audit --skip-editable --ignore-vuln CVE-2026-4539
+          # CVE-2025-71176: pytest 9.0.2 — fix in 9.0.3; transitive dep, unrelated to runtime
+          pip-audit --skip-editable --ignore-vuln CVE-2026-4539 --ignore-vuln CVE-2025-71176
 
   verify-generated:
     needs: [changes, stop-the-line]
