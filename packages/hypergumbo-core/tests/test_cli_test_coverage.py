@@ -1012,3 +1012,121 @@ def test_help_all_shows_group_headers(capsys) -> None:
     core_pos = out.find("CORE ANALYSIS COMMANDS")
     maint_pos = out.find("INSTALLATION & MAINTENANCE COMMANDS")
     assert core_pos < maint_pos
+
+
+# WI-hular: per-language false-negative caveats
+
+
+def _make_minimal_results(tmp_path: Path, language: str) -> Path:
+    """Tiny behavior map with one production function in the given language
+    so cmd_test_coverage exits 0 and reaches the caveat-emission paths."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": f"{language}:src/x.py:1-10:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": language,
+                "path": "src/x.py",
+                "span": {"start_line": 1, "end_line": 10},
+            },
+        ],
+        "edges": [],
+    }
+    p = tmp_path / "hypergumbo.results.json"
+    p.write_text(json.dumps(behavior_map))
+    return p
+
+
+def _run_cmd(tmp_path: Path, fmt: str = "text"):
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.format = fmt
+    args.min_tests = None
+    args.max_tests = None
+    args.top = None
+    return cmd_test_coverage(args)
+
+
+def test_test_coverage_text_emits_recall_disclaimer(
+    tmp_path: Path, capsys,
+) -> None:
+    """Every text-format test-coverage run must emit a prominent recall
+    disclaimer — static analysis misses framework dispatch (Spring MockMvc,
+    Kotlin PSI visitor, Go reflection) and produces ~20% false negatives.
+    """
+    _make_minimal_results(tmp_path, "java")
+    assert _run_cmd(tmp_path) == 0
+    out, _ = capsys.readouterr()
+    assert "static analysis only" in out.lower()
+    assert "false-negative" in out.lower() or "false negative" in out.lower()
+
+
+def test_test_coverage_text_emits_java_caveat(
+    tmp_path: Path, capsys,
+) -> None:
+    """Java repos surface the Spring-dispatch caveat (MockMvc / Spring
+    test runners look like reflection from a static slice)."""
+    _make_minimal_results(tmp_path, "java")
+    assert _run_cmd(tmp_path) == 0
+    out, _ = capsys.readouterr()
+    out_l = out.lower()
+    assert "java" in out_l
+    assert "spring" in out_l or "mockmvc" in out_l
+
+
+def test_test_coverage_text_emits_kotlin_caveat(
+    tmp_path: Path, capsys,
+) -> None:
+    """Kotlin repos surface the PSI-visitor caveat."""
+    _make_minimal_results(tmp_path, "kotlin")
+    assert _run_cmd(tmp_path) == 0
+    out, _ = capsys.readouterr()
+    out_l = out.lower()
+    assert "kotlin" in out_l
+    assert "psi" in out_l or "visitor" in out_l
+
+
+def test_test_coverage_text_emits_go_caveat(
+    tmp_path: Path, capsys,
+) -> None:
+    """Go repos surface the YAML-reflection caveat."""
+    _make_minimal_results(tmp_path, "go")
+    assert _run_cmd(tmp_path) == 0
+    out, _ = capsys.readouterr()
+    out_l = out.lower()
+    assert "go " in out_l or " go." in out_l or "go:" in out_l
+    assert "reflection" in out_l or "reflect" in out_l
+
+
+def test_test_coverage_skips_caveats_for_language_without_known_blind_spots(
+    tmp_path: Path, capsys,
+) -> None:
+    """Languages without a documented blind-spot (e.g., a hypothetical
+    'fakelang') do not pollute output with empty per-language caveats —
+    only the generic recall disclaimer fires."""
+    _make_minimal_results(tmp_path, "fakelang")
+    assert _run_cmd(tmp_path) == 0
+    out, _ = capsys.readouterr()
+    assert "static analysis only" in out.lower()
+    # No per-language caveat block should appear (only the generic line)
+    assert "fakelang" not in out.lower() or "blind spot" not in out.lower()
+
+
+def test_test_coverage_json_includes_caveats_field(
+    tmp_path: Path, capsys,
+) -> None:
+    """JSON consumers see a structured ``caveats`` field listing per-language
+    known blind spots and the generic recall disclaimer."""
+    _make_minimal_results(tmp_path, "java")
+    assert _run_cmd(tmp_path, fmt="json") == 0
+    out, _ = capsys.readouterr()
+    payload = json.loads(out)
+    assert "caveats" in payload
+    cav = payload["caveats"]
+    assert isinstance(cav, dict)
+    assert "recall_disclaimer" in cav
+    assert "per_language" in cav
+    assert "java" in cav["per_language"]

@@ -3419,6 +3419,97 @@ def cmd_config(args: argparse.Namespace) -> int:
     return 0
 
 
+# WI-hular: per-language test-coverage blind spots.
+#
+# `hypergumbo test-coverage` is a static analysis. Across UAT 2026-04-13
+# (4 languages) it had 100% precision but ~20% recall — i.e., 80% of
+# actually-tested functions were correctly recognised, and ~20% of
+# tested functions were incorrectly reported as untested. The dispatch
+# patterns below are the documented per-language sources of that
+# recall gap. Surfacing them in --help, the human output footer, and
+# the JSON ``caveats`` field gives users a concrete reason to discount
+# raw "untested" counts before acting on them.
+_TEST_COVERAGE_PER_LANGUAGE_CAVEATS: dict[str, str] = {
+    "java": (
+        "Java: Spring MockMvc / Spring test runners and JUnit @ParameterizedTest "
+        "providers dispatch through reflection and look like indirection from a "
+        "static slice. Controllers exercised only via MockMvc may be reported "
+        "untested."
+    ),
+    "kotlin": (
+        "Kotlin: PSI visitor patterns (Detekt / Compiler plugin tests) drive "
+        "production code via visitor-pattern reflection that is not visible to "
+        "the static call graph. Visitor leaves may be reported untested."
+    ),
+    "go": (
+        "Go: tests that drive code via YAML/JSON reflection (config-driven "
+        "table tests, encoding/json round-trip) call deserialization handlers "
+        "without a direct call edge. Reflective handlers may be reported "
+        "untested."
+    ),
+    "scala": (
+        "Scala: ScalaTest / Specs2 macro-expanded suites and Cats Effect "
+        "test runners produce dispatch the static analyzer cannot see. "
+        "Effects under IO/Resource may be reported untested."
+    ),
+    "ruby": (
+        "Ruby: RSpec ``described_class`` and Rails fixtures dispatch via "
+        "metaprogramming the static analyzer cannot see. Methods called only "
+        "through stubbed-class indirection may be reported untested."
+    ),
+    "python": (
+        "Python: pytest fixtures injected by name, ``parametrize`` / "
+        "``mark.parametrize`` argument expansion, and patch.object decorators "
+        "produce indirect dispatch the static analyzer may not trace. "
+        "Fixture-only entry points may be reported untested."
+    ),
+    "javascript": (
+        "JavaScript/Jest: ``describe.each`` / ``it.each``, dynamic "
+        "``require``, and ESM tree-shaken re-exports break the static call "
+        "graph. Indirect imports may be reported untested."
+    ),
+    "typescript": (
+        "TypeScript/Jest: ``describe.each`` / ``it.each``, dynamic "
+        "``require``, and ESM tree-shaken re-exports break the static call "
+        "graph. Indirect imports may be reported untested."
+    ),
+    "csharp": (
+        "C#: xUnit ``[Theory]`` / ``[MemberData]`` providers and Moq/NSubstitute "
+        "proxy dispatch are reflection-based and invisible to the static call "
+        "graph. Methods exercised only through mocks may be reported untested."
+    ),
+}
+
+_TEST_COVERAGE_RECALL_DISCLAIMER = (
+    "test-coverage uses static analysis only and does not execute code. "
+    "Empirical false-negative rate ~20% across measured languages "
+    "(UAT 2026-04-13, 4 languages, n=hundreds): the tool has high "
+    "precision (when it says a function is tested, it is) but limited "
+    "recall (some genuinely-tested functions appear in 'Cold Spots' "
+    "because the tests reach them via dispatch the static call graph "
+    "cannot see). Treat 'untested' as 'unreached by static call graph', "
+    "not 'definitely untested'."
+)
+
+
+def _test_coverage_caveats(detected_languages: set[str]) -> dict[str, object]:
+    """Return the recall disclaimer and per-language caveats applicable
+    to the given detected languages.
+
+    Languages without a documented blind spot are silently skipped so
+    output stays focused (no empty caveat lines).
+    """
+    per_language: dict[str, str] = {}
+    for lang in sorted(detected_languages):
+        caveat = _TEST_COVERAGE_PER_LANGUAGE_CAVEATS.get(lang)
+        if caveat:
+            per_language[lang] = caveat
+    return {
+        "recall_disclaimer": _TEST_COVERAGE_RECALL_DISCLAIMER,
+        "per_language": per_language,
+    }
+
+
 def cmd_test_coverage(args: argparse.Namespace) -> int:
     """Estimate test coverage by analyzing which functions are called by tests.
 
@@ -3526,12 +3617,22 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     coverage_percent = (tested_functions / total_functions * 100) if total_functions > 0 else 0.0
     total_tests = len(test_symbols)
 
+    # WI-hular: collect detected languages so caveats only fire for the
+    # languages actually present in the analyzed repo.
+    detected_languages: set[str] = set()
+    for node in nodes:
+        lang = node.get("language")
+        if lang:
+            detected_languages.add(lang)
+    caveats = _test_coverage_caveats(detected_languages)
+
     # Output
     if args.format == "json":
         # JSON output
         output = {
             "schema_version": "0.1.0",
             "view": "test-coverage",
+            "caveats": caveats,
             "summary": {
                 "total_functions": total_functions,
                 "tested_functions": tested_functions,
@@ -3616,6 +3717,18 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         # Show if results were truncated
         if top_n and (len(test_dense) > top_n or len(cold_spots) > top_n):
             print(f"\n(Showing top {top_n}. Use --top to see more.)")
+
+        # WI-hular: emit the recall disclaimer + per-language blind spots
+        # as a footer so users see them every time, not just on --help.
+        print("\nCaveats (test-coverage is static analysis only)")
+        print("-" * 47)
+        print(_TEST_COVERAGE_RECALL_DISCLAIMER)
+        per_lang = caveats["per_language"]
+        if per_lang:
+            print()
+            print("Known per-language blind spots in the analyzed repo:")
+            for _lang, msg in per_lang.items():
+                print(f"  - {msg}")
 
     # Output summary (to stderr for JSON mode to avoid breaking JSON parsing)
     summary_file = sys.stderr if args.format == "json" else None
@@ -4989,6 +5102,15 @@ Examples:
 Analyzes the call graph to estimate which functions are tested.
 Does NOT execute code - uses static analysis only.
 Language agnostic - works with any language hypergumbo supports.
+
+Recall caveat (WI-hular): empirical false-negative rate ~20% across
+4 languages measured in UAT 2026-04-13. The tool has high precision
+but limited recall: tests that reach production code via reflection,
+dispatch macros, or visitor patterns produce 'untested' false alarms.
+Known per-language blind spots are listed in every text-format run as
+a footer, and in JSON output under the 'caveats' field. Treat
+'untested' as 'unreached by static call graph', not 'definitely
+untested', before taking action on the cold-spot list.
 
 Auto-discovers cached results from 'hypergumbo run', or specify --input."""
 
