@@ -3,6 +3,8 @@
 
 **Dr. Tyler Durden**
 Karl Friston Endowed Chair of Rugged Hyperparameter Landscapes, Late Capitalism, and Test Driven Development
+Jamal Khashoggi School of Journalism
+King Abdullah University of Science and Technology, Thuwal, Saudi Arabia
 Lab notebook — 13 April 2026, 22:39 local
 
 ---
@@ -65,7 +67,11 @@ A note on proportion, since we have been borrowing heavy words. Nobody was disme
 
 Institutions do not usually suppress dissent. They *metabolize* it. The mechanism is a permitted outlet that changes nothing — a channel expensive enough to use that the next act of dissent is less likely, and public enough to point at that the institution gets to say *see, we listen.* The dissent is allowed. The bar it was supposed to move does not move.
 
-One concrete case, named honestly. Khashoggi kept writing. The *Washington Post* kept publishing. The regime killed him at a consulate anyway. The international consequences were limited; state visits resumed; the columns still stand in the archive. A critic spoke, at full cost, and the institution absorbed it and continued. That is not *suppression* in the older sense — the dissent was permitted, before the killing and after it. It is metabolism. The regime paid for the critic and went back to work.
+Jamal Khashoggi was not a revolutionary. He was a Saudi insider — edited a major Riyadh paper, worked close to the royal family for decades — who had come around to arguing, specifically, that MBS's reform project would work better if the people who had agitated for the reforms weren't being jailed for having agitated. *Release the women who demanded the right to drive* is the shape of the argument. Not a call to bring the regime down. A call to let the regime's own logic run through to its conclusion. That is what made him dangerous, and not-dismissable, and eventually dead.
+
+The mechanism that followed is the part this essay is actually about. Saudi Arabia ran a trial. Low-level operatives were convicted. Five were sentenced to death; those sentences were later commuted to prison terms after Khashoggi's children issued a pardon. The men who ordered the killing were never charged. An accountability *process* was run, in public, and produced no accountability. State visits resumed. The columns remained in the archive. A permitted outlet that changed nothing.
+
+The byline up top claims a journalism school that does not exist, at a real institution whose host regime murdered the man the school is named after. The regime does not name buildings after the journalists it kills. The journalist names the building. Then the journalist publishes.
 
 The engineering analog is a prediction, not a diagnosis. If `# pragma: no cover` in this repo ever comes to require a committee, three approvals, and a written justification — especially approvals routed back to the same people who set the coverage floor — the exception mechanism will have been recuperated. The team will get to point at the process and say *see, we have a way to disagree.* The disagreement will not move the bar. **The pragma comment is only an epistemic act if it is cheap to write.** The moment it requires justification to a committee, it has been absorbed.
 
