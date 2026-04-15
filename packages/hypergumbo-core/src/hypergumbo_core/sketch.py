@@ -2071,20 +2071,32 @@ def _extract_config_hybrid(
 _embedding_fallback_warned: bool = False
 
 
+def _try_import_embedding_stack() -> bool:
+    """Attempt the sentence-transformers + numpy imports.
+
+    Factored out from `_embedding_extraction_available` so coverage
+    tests can monkeypatch this single helper to flip the answer
+    deterministically without depending on whether the embedding
+    stack is installed in the current environment.
+
+    Returns True if both imports succeed, False on ImportError.
+    """
+    try:
+        from .sketch_embeddings import _load_embedding_model  # noqa: F401
+        import numpy  # noqa: F401
+    except ImportError:  # pragma: no cover - exercised only when embedding stack absent
+        return False
+    return True
+
+
 def _embedding_extraction_available() -> bool:
     """Return whether sentence-transformers can be imported.
 
     Used by the config-extraction dispatcher to decide whether
     EMBEDDING / HYBRID modes can actually run, or whether they would
-    silently fall back to HEURISTIC. Tested separately so coverage
-    doesn't depend on the embedding stack being installed.
+    silently fall back to HEURISTIC.
     """
-    try:
-        from .sketch_embeddings import _load_embedding_model  # noqa: F401
-        import numpy  # noqa: F401
-    except ImportError:  # pragma: no cover - exercised on machines without embeddings
-        return False
-    return True
+    return _try_import_embedding_stack()
 
 
 def _warn_embedding_fallback_once(requested_mode: "ConfigExtractionMode") -> None:

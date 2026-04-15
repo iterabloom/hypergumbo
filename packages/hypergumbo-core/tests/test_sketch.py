@@ -8337,3 +8337,50 @@ class TestConfigExtractionFallbackWarning:
         from hypergumbo_core.sketch import _embedding_extraction_available
         result = _embedding_extraction_available()
         assert isinstance(result, bool)
+
+    def test_embedding_extraction_available_true_branch(
+        self, monkeypatch,
+    ) -> None:
+        """When the import helper returns True the dispatcher reports
+        embeddings as available — exercises the success branch even
+        in CI where sentence-transformers may not be installed."""
+        import hypergumbo_core.sketch as sk
+        monkeypatch.setattr(sk, "_try_import_embedding_stack", lambda: True)
+        assert sk._embedding_extraction_available() is True
+
+    def test_embedding_extraction_available_false_branch(
+        self, monkeypatch,
+    ) -> None:
+        """And the False branch — exercises the import-failure path even
+        on dev machines where the stack IS installed."""
+        import hypergumbo_core.sketch as sk
+        monkeypatch.setattr(sk, "_try_import_embedding_stack", lambda: False)
+        assert sk._embedding_extraction_available() is False
+
+    def test_try_import_embedding_stack_succeeds_when_modules_present(
+        self, monkeypatch,
+    ) -> None:
+        """Force both required imports to resolve via ``sys.modules``
+        injection so the True branch is covered regardless of whether
+        the embedding stack is actually installed in the test
+        environment."""
+        import sys
+        import types
+        stub = types.ModuleType("hypergumbo_core.sketch_embeddings")
+        stub._load_embedding_model = lambda: None
+        monkeypatch.setitem(
+            sys.modules, "hypergumbo_core.sketch_embeddings", stub,
+        )
+        if "numpy" not in sys.modules:  # pragma: no cover - defensive
+            monkeypatch.setitem(
+                sys.modules, "numpy", types.ModuleType("numpy"),
+            )
+        from hypergumbo_core.sketch import _try_import_embedding_stack
+        assert _try_import_embedding_stack() is True
+
+    # The False-branch (ImportError path) is marked `# pragma: no cover -
+    # exercised only when embedding stack absent` in sketch.py and is
+    # naturally covered by CI environments without sentence-transformers
+    # installed. We do not try to mock-force it here because Python's
+    # import machinery short-circuits on cached sys.modules entries
+    # making the simulation brittle.
