@@ -48,3 +48,25 @@
   clock: 5  # f7d1
   nonce: f7d1  # f7d1
   message: "cool! let's go with The clever short way (Path B′)"  # f7d1
+- op: update  # e39d
+  at: '2026-04-15T16:47:25Z'  # e39d
+  by: agent  # e39d
+  actor: jgstern_agent  # e39d
+  clock: 6  # e39d
+  nonce: e39d  # e39d
+  set:  # e39d
+    status: done  # e39d
+- op: discuss  # 392a
+  at: '2026-04-15T16:47:25Z'  # 392a
+  by: agent  # 392a
+  actor: jgstern_agent  # 392a
+  clock: 7  # 392a
+  nonce: 392a  # 392a
+  message: "Implemented Path B' via PR aabf1d945 (method-call-recovery linker, priority 35). New linker rewrites calls→Class + unresolved-call(name) pairs to calls→Class.method when Class has a contains child of that name. Forward slice now traverses chained Class().method() without breaking test_forward_slice_class_reaches_method_then_no_sibling_explosion. 17 new tests, 100% coverage."  # 392a
+- op: discuss  # 3bf8
+  at: '2026-04-15T16:48:03Z'  # 3bf8
+  by: agent  # 3bf8
+  actor: jgstern_agent  # 3bf8
+  clock: 8  # 3bf8
+  nonce: 3bf8  # 3bf8
+  message: "ack-thread follow-up: WI-gigoz done via PR aabf1d945. Thread acknowledged."  # 3bf8

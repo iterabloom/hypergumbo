@@ -1,0 +1,22 @@
+- op: create  # 85c4
+  at: '2026-04-15T16:47:44Z'  # 85c4
+  by: agent  # 85c4
+  actor: jgstern_agent  # 85c4
+  clock: 1  # 85c4
+  nonce: 85c4  # 85c4
+  data:  # 85c4
+    kind: work_item  # 85c4
+    title: "Framework YAMLs deployed but not detecting: http4s, Play, Flask-AppBuilder"  # 85c4
+    status: todo_hard  # 85c4
+    priority: 2  # 85c4
+    parent:  # 85c4
+    tags:  # 85c4
+    - framework_detection  # 85c4
+    - uat_2026_04_13  # 85c4
+    - analysis_quality  # 85c4
+    isbefore: []  # 85c4
+    duplicate_of: []  # 85c4
+    not_duplicate_of: []  # 85c4
+    pr_ref:  # 85c4
+    description: "Investigation on docspell (~/ALL_REPOS/repos_Apr12_2026/docspell) confirmed http4s.yaml exists in the repo but does NOT fire on real http4s-heavy code. hypergumbo run on docspell (which imports org.http4s._, HttpRoutes.of[F], Http4sDsl, Http4sClientDsl, BlazeServerBuilder on hundreds of lines; build.sbt pulls http4sClient/http4sCirce/http4sDsl) produces profile.frameworks=[], profile.dev_frameworks=[], metrics.detected_frameworks=[], and 'hypergumbo routes' says 'No API routes found'. Play (lila) and Flask-AppBuilder (superset) almost certainly have the same silent-detector issue — need to clone those repos (not currently in ~/ALL_REPOS) and verify. Likely root causes to investigate: (1) pattern regex format — http4s.yaml expects usage.kind=call,usage.name=^HttpRoutes$ but the Scala analyzer may emit imports/instantiates/qualified names that miss that pattern, (2) framework-detection pass may not run against Scala symbols at all, (3) dependency-based detection may not read build.sbt. Follow-up from WI-vabiv human correction 2026-04-15T15:17:35Z — having a YAML file does not mean the detector actually works."  # 85c4
+    fields: {}  # 85c4
