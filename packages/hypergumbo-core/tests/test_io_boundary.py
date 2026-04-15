@@ -1731,6 +1731,53 @@ class TestAmbiguousNameFiltering:
         count = tag_io_boundaries([edge], {"go": catalog})
         assert count == 1, "Go external matching should still work for distinctive names"
 
+    # --- Java ambiguous names (WI-gonav) ---
+
+    def test_java_size_not_matched_as_files_size(self) -> None:
+        """Java's ``List.size()`` / ``Map.size()`` / ``Collection.size()`` must
+        NOT be classified as ``java.nio.file.Files.size`` (fs_read) just
+        because the bare method name happens to collide.
+
+        UAT 2026-04-13 BUG-10: at Vet.java:66,
+        ``getSpecialtiesInternal().size()`` was reported as ``Files.size``.
+        """
+        catalog = load_catalog("java")
+        edge = self._make_edge(
+            src="java:Vet.java:66:getSpecialtiesInternal:method",
+            dst="java:external:0-0:size:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"java": catalog})
+        assert count == 0, (
+            "Generic 'size' should not match Files.size without module context"
+        )
+
+    def test_java_length_not_matched_without_module(self) -> None:
+        """Java's ``String.length()`` / ``array.length`` must NOT match
+        ``java.io.File.length`` (fs_read) on short-name alone."""
+        catalog = load_catalog("java")
+        edge = self._make_edge(
+            src="java:User.java:42:getName:method",
+            dst="java:external:0-0:length:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"java": catalog})
+        assert count == 0, (
+            "Generic 'length' should not match File.length without module context"
+        )
+
+    def test_java_resolved_files_size_still_matches(self) -> None:
+        """When module context confirms ``java.nio.file.Files``, a resolved
+        ``size`` call STILL matches as fs_read (the ambiguous filter only
+        rejects unresolved-external short-name matches)."""
+        catalog = load_catalog("java")
+        edge = self._make_edge(
+            src="java:FileUtil.java:10:fileSize:method",
+            dst="java:java.nio.file.Files:0-0:size:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"java": catalog})
+        assert count == 1, (
+            "Resolved Files.size should still match as fs_read"
+        )
+
     # --- Go ambiguous names ---
 
     def test_go_bare_run_not_matched(self) -> None:

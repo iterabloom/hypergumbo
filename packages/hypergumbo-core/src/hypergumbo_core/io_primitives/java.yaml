@@ -33,6 +33,10 @@ ambiguous_names:
   - exists        # File.exists vs any .exists()
   - list          # File.list vs Collection, any .list()
   - readLine      # BufferedReader.readLine vs any .readLine()
+  - size          # Files.size vs List.size/Map.size/Collection.size — WI-gonav
+  - length        # File.length vs String.length, array.length — WI-gonav
+  - copy          # Files.copy vs IOUtils.copy, any .copy()
+  - find          # Files.find vs Stream.find, List.find, any .find()
 
 fs_read:
   - module: java.io.File
