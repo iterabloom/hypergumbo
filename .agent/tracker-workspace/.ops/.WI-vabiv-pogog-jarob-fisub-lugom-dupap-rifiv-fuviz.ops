@@ -70,3 +70,10 @@
   clock: 8  # 1483
   nonce: '1483'  # 1483
   message: "Found lila at ~/ALL_REPOS/whole_bunch_of_repos/lila (185MB, Scala/Play repo) — you were right it exists.\n\nVerified the WI-piban fix on lila: _detect_scala_frameworks now returns [\"play\", \"akka-http\"] (both detected from project/plugins.sbt + project/Dependencies.scala respectively). Before WI-piban (PR 793c40242 merged ~5 min ago) this would have been [].\n\nSuperset: searched up to 6 directory levels deep under ~/ALL_REPOS, found nothing (looked for \"superset\" and \"incubator-superset\" as substrings). So Flask-AppBuilder verification needs a clone. Options:\n(a) I clone apache/superset into one of the ~/ALL_REPOS subdirs (needs ~500MB git clone),\n(b) find a smaller Flask-AppBuilder example locally if you know of one,\n(c) accept that the three frameworks are individually testable (docspell http4s + lila play now confirmed working) and call the original YAML-missing ticket closed, opening a separate focused item for Flask-AppBuilder once a real repo is available.\n\nRecommending (c) — the structural bug was the same for both Scala frameworks (project/-dir not scanned), and the Python Flask-AppBuilder path is a distinct failure mode not reached by the Scala fix. Happy to do (a) if you prefer concrete verification now.\n\nQuick status: WI-piban merged (fixes the Scala class of detector-silence). WI-vabiv itself stays todo_soft until Flask-AppBuilder is verified."  # 1483
+- op: discuss  # af18
+  at: '2026-04-15T17:53:17Z'  # af18
+  by: human  # af18
+  actor: jgstern  # af18
+  clock: 9  # af18
+  nonce: af18  # af18
+  message: "`/home/jgstern_agent/whole_bunch_of_repos/superset`"  # af18

@@ -20,3 +20,18 @@
     pr_ref:  # 3430
     description: "UAT 2026-04-13 BUG-10: at Vet.java:66, `getSpecialtiesInternal().size()` (a `List.size()` call) is reported as `java.nio.file.Files.size`. The Java io-boundary catalog matches the unqualified method name without verifying receiver type. Same pattern as the Go INV-dihos issue. Likely subsumed by U14 if implemented type-aware, but kept as a separate item to track the specific fix and prevent regression."  # 3430
     fields: {}  # 3430
+- op: update  # c628
+  at: '2026-04-15T18:52:59Z'  # c628
+  by: agent  # c628
+  actor: jgstern_agent  # c628
+  clock: 2  # c628
+  nonce: c628  # c628
+  set:  # c628
+    status: done  # c628
+- op: discuss  # 78cb
+  at: '2026-04-15T18:52:59Z'  # 78cb
+  by: agent  # 78cb
+  actor: jgstern_agent  # 78cb
+  clock: 3  # 78cb
+  nonce: 78cb  # 78cb
+  message: "Fixed in commit 22f0f5129. Added size, length, copy, find to ambiguous_names in java.yaml. List.size()/Map.size()/String.length() etc. on unresolved-external destinations no longer match Files.size/File.length etc. Module-resolved calls (e.g., explicit java.nio.file.Files dst) still match. 3 new tests in TestAmbiguousNameFiltering."  # 78cb

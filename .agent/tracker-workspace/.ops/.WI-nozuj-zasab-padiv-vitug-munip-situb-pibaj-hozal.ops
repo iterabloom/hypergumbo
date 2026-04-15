@@ -1,0 +1,21 @@
+- op: create  # 8da3
+  at: '2026-04-15T18:54:31Z'  # 8da3
+  by: agent  # 8da3
+  actor: jgstern_agent  # 8da3
+  clock: 1  # 8da3
+  nonce: 8da3  # 8da3
+  data:  # 8da3
+    kind: work_item  # 8da3
+    title: "Better agentic guidance: Monitor + long-running tools (vendor-agnostic)"  # 8da3
+    status: needs_human_review  # 8da3
+    priority: 3  # 8da3
+    parent:  # 8da3
+    tags:  # 8da3
+    - developer_experience  # 8da3
+    - agent_infrastructure  # 8da3
+    isbefore: []  # 8da3
+    duplicate_of: []  # 8da3
+    not_duplicate_of: []  # 8da3
+    pr_ref:  # 8da3
+    description: "Today's session surfaced a recurring pattern: agent watches an auto-pr (or pytest, bakeoff, etc.) via the Monitor harness tool with timeout_ms=2400000, the Monitor times out before the underlying work completes, and the agent then either (a) over-margins a ScheduleWakeup ('20 min') and leaves merged PRs sitting unactioned for ~10 min or (b) under-margins and never re-arms, missing the completion entirely. The actual work is unaffected by Monitor timeout because auto-pr was started via a separate Bash run_in_background (which DOES emit its own completion notification), but the agent's mental model conflates the two channels. \\n\\nGoal: codify guidance — playbook or hook — that helps any agent (Claude Code today, OpenAI/Cursor/etc. tomorrow) reason correctly about: (1) when Monitor is appropriate vs. just relying on the background-task completion notification; (2) how to size Monitor timeouts relative to expected wall-clock; (3) when to re-arm vs. switch to one-shot status checks; (4) how to set ScheduleWakeup intervals tight enough to act on completion without over-polling. The guidance must be vendor-agnostic — describe the *pattern* (foreground watcher streams events; background command emits one completion event) rather than the specific Monitor/run_in_background tool names.\\n\\nPlausible deliverables: a new playbook .agent/agent_playbooks_protocols_sops_skills/long-running-task-monitoring.md, a hook summary registration, an essentialization in AGENTS.md. Possibly tighten auto-pr's own behavior (e.g., emit progress lines that are easier to grep) so Monitor filters don't go silent for long stretches.\\n\\nNeeds human review before implementation: governance files (.agent/hooks, AGENTS.md, scripts/auto-pr) are touched.\\n\\nOriginating discussion: 2026-04-15 session, after the agent set ScheduleWakeup for 1200s when smart-test finished in ~570s, leaving the user waiting ~10 min unnecessarily; user asked 'what happens if your Monitor tool wakes up and the thing still isn't done?' and 'eg what if you set it for 10 minutes but it needs 11 minutes' to surface the gap."  # 8da3
+    fields: {}  # 8da3
