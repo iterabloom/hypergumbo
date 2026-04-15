@@ -4058,6 +4058,36 @@ def _positive_token_budget(raw: str) -> int:
     return value
 
 
+def _add_path_argument(parser: argparse.ArgumentParser) -> None:
+    """Standard repo-path argument shared by all subcommands (WI-munuv).
+
+    Each subcommand accepts both forms interchangeably:
+
+        hypergumbo <cmd> /path/to/repo       # positional
+        hypergumbo <cmd> --path /path/...    # flag
+
+    Both default to ``None`` here; the post-process in ``main()``
+    resolves to ``"."`` when neither is set, and reports an error
+    when both are set explicitly. Keeping the destination split
+    (``path`` for positional, ``_path_flag`` for the option) is the
+    only way to register both — argparse rejects two adds with the
+    same dest. The post-process reunifies them so cmd functions can
+    keep reading ``args.path`` unchanged.
+    """
+    parser.add_argument(
+        "path",
+        nargs="?",
+        default=None,
+        help="Path to repo root (default: current directory)",
+    )
+    parser.add_argument(
+        "--path",
+        dest="_path_flag",
+        default=None,
+        help="Path to repo root (alternative to positional argument)",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Main parser with comprehensive help
     main_description = """\
@@ -4143,12 +4173,7 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         epilog=sketch_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_sketch.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        help="Path to repo (default: current directory)",
-    )
+    _add_path_argument(p_sketch)
     p_sketch.add_argument(
         "--input",
         type=str,
@@ -4297,12 +4322,7 @@ Cache location:
         epilog=run_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_run.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_run)
     p_run.add_argument(
         "--out",
         default=None,
@@ -4448,12 +4468,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         epilog=slice_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_slice.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_slice)
     p_slice.add_argument(
         "--entry",
         default="auto",
@@ -4605,11 +4620,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         "pattern",
         help="Pattern to search for (case-insensitive substring match)",
     )
-    p_search.add_argument(
-        "--path",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_search)
     p_search.add_argument(
         "--input",
         default=None,
@@ -4649,11 +4660,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         epilog=routes_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_routes.add_argument(
-        "--path",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_routes)
     p_routes.add_argument(
         "--input",
         default=None,
@@ -4704,11 +4711,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         "symbol",
         help="Symbol name to explain (case-insensitive)",
     )
-    p_explain.add_argument(
-        "--path",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_explain)
     p_explain.add_argument(
         "--input",
         default=None,
@@ -4930,12 +4933,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         epilog=test_coverage_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_test_cov.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_test_cov)
     p_test_cov.add_argument(
         "--input",
         default=None,
@@ -4973,10 +4971,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         help="Find potentially dead code unreachable from entrypoints",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_dead_code.add_argument(
-        "path", nargs="?", default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_dead_code)
     p_dead_code.add_argument(
         "--input", default=None,
         help="Input behavior map file (default: auto-detect cached results)",
@@ -5031,11 +5026,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         epilog=symbols_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_symbols.add_argument(
-        "--path",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_symbols)
     p_symbols.add_argument(
         "--input",
         default=None,
@@ -5161,11 +5152,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         epilog=io_boundaries_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_io.add_argument(
-        "--path",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_io)
     p_io.add_argument(
         "--input",
         default=None,
@@ -5248,11 +5235,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         metavar="FILE",
         help="YAML file with security claims to verify",
     )
-    p_vc.add_argument(
-        "--path",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_vc)
     p_vc.add_argument(
         "--input",
         default=None,
@@ -6026,6 +6009,25 @@ def main(argv=None) -> int:
         argv = ["sketch"] + list(argv)
 
     args = parser.parse_args(argv)
+
+    # WI-munuv: unify the positional `path` and the `--path` flag.
+    # Subcommands that called _add_path_argument accept both forms;
+    # this collapses them into a single args.path so cmd functions
+    # don't need to know which form was used. Setting both is a user
+    # error (ambiguous intent).
+    if hasattr(args, "_path_flag"):
+        pos = getattr(args, "path", None)
+        flag = args._path_flag
+        if pos is not None and flag is not None:
+            print(
+                "hypergumbo: error: provide either positional <path> "
+                "OR --path, not both",
+                file=sys.stderr,
+            )
+            return 2
+        args.path = pos if pos is not None else (
+            flag if flag is not None else "."
+        )
 
     # Configure logging if --debug is set (in any position)
     if debug_flag or getattr(args, "debug", False):

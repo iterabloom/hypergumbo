@@ -4166,3 +4166,135 @@ def test_no_debug_flag_does_not_call_basicconfig(
     main(["sketch", str(tmp_path)])
 
     assert called["count"] == 0
+
+
+# ============================================================================
+# WI-munuv: unified path argument across subcommands
+# ============================================================================
+
+
+def test_routes_accepts_positional_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo routes /path` works (previously --path-only)."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_routes",
+        lambda args: captured.update({"path": args.path}) or 0,
+    )
+    result = main(["routes", str(tmp_path)])
+    assert result == 0
+    assert captured["path"] == str(tmp_path)
+
+
+def test_routes_accepts_path_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo routes --path /path` still works (regression guard)."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_routes",
+        lambda args: captured.update({"path": args.path}) or 0,
+    )
+    result = main(["routes", "--path", str(tmp_path)])
+    assert result == 0
+    assert captured["path"] == str(tmp_path)
+
+
+def test_sketch_accepts_path_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo sketch --path /path` works (previously positional-only)."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_sketch",
+        lambda args: captured.update({"path": args.path}) or 0,
+    )
+    result = main(["sketch", "--path", str(tmp_path)])
+    assert result == 0
+    assert captured["path"] == str(tmp_path)
+
+
+def test_sketch_accepts_positional_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo sketch /path` still works (regression guard)."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_sketch",
+        lambda args: captured.update({"path": args.path}) or 0,
+    )
+    result = main(["sketch", str(tmp_path)])
+    assert result == 0
+    assert captured["path"] == str(tmp_path)
+
+
+def test_search_accepts_positional_path_after_pattern(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo search foo /repo` works alongside `--path`.
+
+    Required positional `pattern` comes first; optional `path` follows.
+    """
+    captured: dict = {}
+    def _fake(args):
+        captured.update({"path": args.path, "pattern": args.pattern})
+        return 0
+    monkeypatch.setattr("hypergumbo_core.cli.cmd_search", _fake)
+    result = main(["search", "foo", str(tmp_path)])
+    assert result == 0
+    assert captured["pattern"] == "foo"
+    assert captured["path"] == str(tmp_path)
+
+
+def test_explain_accepts_positional_path_after_symbol(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo explain SymName /repo` mirrors the search shape."""
+    captured: dict = {}
+    def _fake(args):
+        captured.update({"path": args.path, "symbol": args.symbol})
+        return 0
+    monkeypatch.setattr("hypergumbo_core.cli.cmd_explain", _fake)
+    result = main(["explain", "MySymbol", str(tmp_path)])
+    assert result == 0
+    assert captured["symbol"] == "MySymbol"
+    assert captured["path"] == str(tmp_path)
+
+
+def test_default_path_is_cwd_when_neither_form_given(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both forms unset → args.path defaults to '.'."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_routes",
+        lambda args: captured.update({"path": args.path}) or 0,
+    )
+    result = main(["routes"])
+    assert result == 0
+    assert captured["path"] == "."
+
+
+def test_both_forms_explicit_is_user_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture,
+) -> None:
+    """Setting both positional and --path is ambiguous — exit 2."""
+    result = main(["routes", str(tmp_path), "--path", str(tmp_path)])
+    assert result == 2
+    _, err = capsys.readouterr()
+    assert "either positional <path> OR --path" in err
+
+
+def test_io_boundaries_accepts_positional_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo io-boundaries /path` works (previously --path-only)."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_io_boundaries",
+        lambda args: captured.update({"path": args.path}) or 0,
+    )
+    result = main(["io-boundaries", str(tmp_path)])
+    assert result == 0
+    assert captured["path"] == str(tmp_path)

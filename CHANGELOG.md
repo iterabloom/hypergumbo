@@ -12,6 +12,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **Unified path argument across subcommands** (WI-munuv / UAT UX-01): every subcommand that takes a repo path now accepts both `hypergumbo <cmd> /path` (positional) and `hypergumbo <cmd> --path /path` (flag) interchangeably. Previously, some commands took only the positional form (`sketch`, `run`, `slice`, `test-coverage`, `dead-code-maybe`) and others only `--path` (`search`, `routes`, `explain`, `symbols`, `io-boundaries`, `verify-claims`), causing errors when users carried syntax between commands. Setting both forms in the same invocation is a user error and exits 2 with a clear message. New helper `_add_path_argument()` centralizes the convention; `main()` post-process resolves the two destinations into a single `args.path` so command functions need no changes.
 - **`routes` excludes test-file routes by default** (WI-godos / UAT DQ-02): UAT found 14% of plausible's reported routes were from test files, polluting the visible output. New default behavior excludes them; `--include-tests` opts back in. The legacy `-x/--exclude-tests` flag is preserved as a no-op alias for backward compatibility — existing scripts continue to behave correctly.
 
 ### Fixed
