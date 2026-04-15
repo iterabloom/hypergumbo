@@ -20,3 +20,18 @@
     pr_ref:  # 858c
     description: "UAT 2026-04-13 DQ-05: across 4 languages, test-coverage has 100% precision but ~20% recall (80% of actually-tested functions reported untested). Misses framework dispatch (Spring MockMvc, Kotlin PSI visitor, Go YAML reflection). The tool correctly notes it is static-only, but the limitation is severe enough to warrant prominent documentation in `--help`, README, and any 'untested' output header. Add per-language caveat lines listing known dispatch blind spots."  # 858c
     fields: {}  # 858c
+- op: update  # c8ae
+  at: '2026-04-15T19:39:34Z'  # c8ae
+  by: agent  # c8ae
+  actor: jgstern_agent  # c8ae
+  clock: 2  # c8ae
+  nonce: c8ae  # c8ae
+  set:  # c8ae
+    status: done  # c8ae
+- op: discuss  # 6682
+  at: '2026-04-15T19:39:34Z'  # 6682
+  by: agent  # 6682
+  actor: jgstern_agent  # 6682
+  clock: 3  # 6682
+  nonce: '6682'  # 6682
+  message: "Fixed in commit 2846f4a17. test-coverage now emits per-language false-negative caveats in text output (footer), JSON output (caveats field), and --help epilog. Recall_disclaimer + per_language entries for Java/Spring/MockMvc, Kotlin/PSI, Go/reflection, Scala/ScalaTest, Ruby/RSpec, Python/pytest, JS-TS/Jest, C#/xUnit. Languages without documented blind spots silently skip caveats. 6 new tests cover all surfaces."  # 6682

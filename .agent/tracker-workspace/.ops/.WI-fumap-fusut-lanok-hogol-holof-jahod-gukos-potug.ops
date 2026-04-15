@@ -19,3 +19,32 @@
     pr_ref:  # 4d7f
     description: "UAT 2026-04-13 DQ-07: three modes (heuristic, embedding, hybrid) produce identical Configuration sections and identical timing on alertmanager. Either the mode selector is wired incorrectly, alertmanager doesn't exercise the difference, or embedding/hybrid silently fall back to heuristic. Investigate: pick a repo where modes SHOULD differ (config files with implicit grouping), then verify whether the mode flag actually changes the code path."  # 4d7f
     fields: {}  # 4d7f
+- op: discuss  # 0e33
+  at: '2026-04-15T19:43:28Z'  # 0e33
+  by: agent  # 0e33
+  actor: jgstern_agent  # 0e33
+  clock: 2  # 0e33
+  nonce: '0e33'  # 0e33
+  message: "Investigation: the silent-fallback hypothesis is correct. `_extract_config_embedding` (sketch.py:1664-1669) wraps its sentence-transformers import in try/except ImportError → falls back to `_extract_config_heuristic`. `_extract_config_hybrid` shares the same import path and falls back the same way. So when sentence-transformers is not installed (or fails to load), all three modes produce identical output by silently degrading to heuristic — exactly what UAT observed on alertmanager.\n\nTwo distinct fixes:\n\n(1) **Visibility fix (small):** print a stderr warning when the embedding/hybrid mode requested falls back to heuristic, so users see 'embedding mode unavailable, falling back to heuristic — install sentence-transformers'. ~10 lines in sketch.py:1666 + a test for the warning. Closes 'has no observable effect' immediately even when modes genuinely converge.\n\n(2) **Modes-truly-differ fix (larger):** even WITH sentence-transformers, embedding/hybrid may produce identical lines on small repos because the heuristic catches everything embedding would. Need a repo where modes SHOULD differ to validate (config files with implicit grouping, or repos with semantic-only metadata). This is a bakeoff exercise rather than a bug fix.\n\nRecommend doing (1) first and leaving (2) as a separate bakeoff-driven verification. Tagging for future session — not picking up in current session because the contained 4-PR run (gigoz/piban/gonav/hular) is at a clean stopping point."  # 0e33
+- op: discuss  # 1a87
+  at: '2026-04-15T20:03:48Z'  # 1a87
+  by: human  # 1a87
+  actor: jgstern  # 1a87
+  clock: 3  # 1a87
+  nonce: 1a87  # 1a87
+  message: "agree with doing (1) although it shouldn't be 'embedding mode unavailable, falling back to heuristic — install sentence-transformers'\n\nbut rather\n\n'embedding mode unavailable, falling back to heuristic — run `hypergumbo install-embeddings --help`'"  # 1a87
+- op: update  # 30bd
+  at: '2026-04-15T20:54:51Z'  # 30bd
+  by: agent  # 30bd
+  actor: jgstern_agent  # 30bd
+  clock: 4  # 30bd
+  nonce: 30bd  # 30bd
+  set:  # 30bd
+    status: done  # 30bd
+- op: discuss  # ab17
+  at: '2026-04-15T20:54:51Z'  # ab17
+  by: agent  # ab17
+  actor: jgstern_agent  # ab17
+  clock: 5  # ab17
+  nonce: ab17  # ab17
+  message: "Fixed in commits 4276d0698 (initial) + 1c96c6366 (CI coverage fix). config-extraction=embedding/hybrid now emits a one-shot stderr notice when sentence-transformers is unavailable, instead of silently degrading to heuristic. Module-level dedup flag prevents double-firing. Pre-check at dispatcher entry — degrades to heuristic explicitly. 9 tests cover all surfaces. Embedding-mode behavior unchanged when stack is installed."  # ab17
