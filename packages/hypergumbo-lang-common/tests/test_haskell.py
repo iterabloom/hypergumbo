@@ -756,3 +756,126 @@ main = print (helper 42)
         assert len(helper_edges) >= 1
         for edge in helper_edges:
             assert edge.confidence > 0.50
+
+
+# ============================================================================
+# WI-buvun: module export list parsing → is_exported on symbols
+# ============================================================================
+
+
+class TestHaskellModuleExports:
+    """WI-buvun: dead-code-maybe needs is_exported on Haskell symbols.
+
+    Before this fix, every Haskell symbol had is_exported=False because
+    the analyzer never parsed module headers. The `exports` and `tests`
+    seed sets for `dead-code-maybe` were therefore empty on Haskell —
+    UAT BUG-12: shellcheck had 0 recognized exports.
+    """
+
+    def test_explicit_export_list_marks_listed_symbols(self, tmp_path) -> None:
+        """`module Foo (a, b) where` exports only a and b; c is private."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        (tmp_path / "Foo.hs").write_text("""module Foo (publicFn, exportedValue) where
+publicFn :: Int -> Int
+publicFn x = x + 1
+
+exportedValue :: Int
+exportedValue = 42
+
+privateHelper :: Int -> Int
+privateHelper x = x * 2
+""")
+        result = analyze_haskell(tmp_path)
+        by_name = {s.name: s for s in result.symbols if s.name in (
+            "publicFn", "exportedValue", "privateHelper",
+        )}
+        assert by_name["publicFn"].is_exported is True
+        assert by_name["exportedValue"].is_exported is True
+        assert by_name["privateHelper"].is_exported is False
+
+    def test_no_export_list_marks_all_top_level_exported(self, tmp_path) -> None:
+        """`module Foo where` (no parens) is Haskell's "export everything"
+        default — every top-level binding is exported.
+        """
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        (tmp_path / "Bar.hs").write_text("""module Bar where
+foo :: Int
+foo = 1
+
+bar :: Int -> Int
+bar x = x + foo
+
+baz :: String
+baz = "hello"
+""")
+        result = analyze_haskell(tmp_path)
+        for sym in result.symbols:
+            if sym.name in ("foo", "bar", "baz"):
+                assert sym.is_exported is True, (
+                    f"{sym.name} should be exported (no export list "
+                    f"means Haskell's export-everything default)"
+                )
+
+    def test_data_type_in_export_list_marks_exported(self, tmp_path) -> None:
+        """Type names in the export list (e.g. `Type(..)`) are exported."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        (tmp_path / "Types.hs").write_text("""module Types (Person(..), Address) where
+data Person = Person { name :: String, age :: Int }
+data Address = Address { street :: String }
+data Internal = Internal Int
+""")
+        result = analyze_haskell(tmp_path)
+        by_name = {s.name: s for s in result.symbols
+                   if s.name in ("Person", "Address", "Internal")}
+        assert by_name["Person"].is_exported is True
+        assert by_name["Address"].is_exported is True
+        assert by_name["Internal"].is_exported is False
+
+    def test_class_in_export_list_marks_exported(self, tmp_path) -> None:
+        """Type class names in the export list are exported."""
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        (tmp_path / "Classes.hs").write_text("""module Classes (Showable, internalClass) where
+class Showable a where
+  showMe :: a -> String
+
+class InternalClass a where
+  internalOp :: a -> Int
+
+internalClass :: Int
+internalClass = 0
+""")
+        result = analyze_haskell(tmp_path)
+        by_name = {s.name: s for s in result.symbols if s.name in (
+            "Showable", "InternalClass",
+        )}
+        assert by_name["Showable"].is_exported is True
+        assert by_name["InternalClass"].is_exported is False
+
+    def test_instance_exported_iff_class_or_type_exported(
+        self, tmp_path,
+    ) -> None:
+        """An instance `instance ClassName TypeName where ...` is
+        considered exported when ClassName or TypeName is in the export
+        list — instances aren't named explicitly in Haskell exports but
+        they're externally reachable through their class / type.
+        """
+        from hypergumbo_lang_common.haskell import analyze_haskell
+
+        (tmp_path / "Insts.hs").write_text("""module Insts (Showable, Person) where
+class Showable a where
+  showMe :: a -> String
+
+data Person = Person String
+
+instance Showable Person where
+  showMe (Person n) = n
+""")
+        result = analyze_haskell(tmp_path)
+        instance_syms = [s for s in result.symbols if s.kind == "instance"]
+        assert len(instance_syms) >= 1
+        # Both Showable and Person are in exports, so the instance is exported
+        assert any(s.is_exported for s in instance_syms)

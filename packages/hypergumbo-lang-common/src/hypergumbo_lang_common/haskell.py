@@ -146,6 +146,42 @@ def _extract_haskell_signature(
     return None  # pragma: no cover - defensive, called only when signature exists
 
 
+def _extract_module_exports(tree: "tree_sitter.Tree", source: bytes) -> Optional[set[str]]:
+    """Parse the module header's optional export list.
+
+    Returns a set of exported names when the module declares
+    ``module Foo.Bar (a, b, Type(..)) where``; returns None when no
+    export list is present (``module Foo.Bar where``) — Haskell's
+    default is to export every top-level binding in that case.
+
+    The caller uses the tri-state to decide the ``is_exported`` flag:
+    - None → mark all module-level symbols as exported (WI-buvun).
+    - a set → mark only names in the set as exported; others are
+      module-private.
+    """
+    for node in iter_tree(tree.root_node):
+        if node.type != "header":
+            continue
+        exports_node = find_child_by_type(node, "exports")
+        if exports_node is None:
+            return None
+        names: set[str] = set()
+        for child in exports_node.children:
+            if child.type != "export":
+                continue
+            # Each `export` has either a `variable` (fn/value) or a
+            # `name` (type / constructor). Both count as exported.
+            var = find_child_by_type(child, "variable")
+            if var is not None:
+                names.add(node_text(var, source))
+                continue
+            type_name = find_child_by_type(child, "name")
+            if type_name is not None:
+                names.add(node_text(type_name, source))
+        return names
+    return None  # pragma: no cover - every Haskell file has a header
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -162,6 +198,12 @@ def _extract_symbols_from_file(
     """
     symbols: list[Symbol] = []
     seen_names: set[str] = set()
+
+    # WI-buvun: parse the module header's export list so module-level
+    # symbols carry is_exported correctly. shellcheck had zero exports
+    # recognized before this — the `exports` and `tests` seed sets for
+    # `dead-code-maybe` were therefore useless on Haskell.
+    exported_names = _extract_module_exports(tree, source)
 
     # First pass: collect type signatures
     type_signatures: dict[str, str] = {}
@@ -196,6 +238,21 @@ def _extract_symbols_from_file(
             end_col=node.end_point[1],
         )
         sym_id = make_symbol_id("haskell", file_path, start_line, end_line, name, kind)
+        # WI-buvun: is_exported tri-state. No export list = all top-level
+        # bindings are exported (Haskell default). With a list, only
+        # names explicitly in it are exported. Instances aren't named in
+        # the export list the same way, so they follow the class they
+        # implement — if that's exported, they're externally reachable.
+        if exported_names is None:
+            is_exported = True
+        elif kind == "instance":
+            # Instance: exported iff its class/type name is exported.
+            # `name` here is "ClassName TypeName"; match either.
+            parts = name.split()
+            is_exported = any(p in exported_names for p in parts)
+        else:
+            is_exported = name in exported_names
+
         symbols.append(Symbol(
             id=sym_id,
             name=name,
@@ -206,6 +263,7 @@ def _extract_symbols_from_file(
             origin=PASS_ID,
             origin_run_id=run_id,
             signature=signature,
+            is_exported=is_exported,
         ))
 
     # Second pass: extract symbols
