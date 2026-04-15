@@ -439,6 +439,42 @@ class TestLoadCatalog:
         assert catalog.language == "brainfuck"
         assert len(catalog.primitives) == 0
 
+    def test_unsupported_language_flagged_is_supported_false(self) -> None:
+        """INV-javam: a language with no catalog/alias/parent returns
+        is_supported=False so callers can distinguish "found zero I/O"
+        from "language unsupported".
+        """
+        catalog = load_catalog("brainfuck")
+        assert catalog.is_supported is False
+
+    def test_supported_language_is_supported_true(self) -> None:
+        """INV-javam: a language with a catalog returns is_supported=True."""
+        assert load_catalog("python").is_supported is True
+        assert load_catalog("java").is_supported is True
+
+    def test_alias_language_is_supported(self) -> None:
+        """INV-javam: an aliased language (typescript → javascript) is
+        considered supported because the alias catalog loads.
+        """
+        assert load_catalog("typescript").is_supported is True
+        assert load_catalog("cpp").is_supported is True
+
+    def test_parent_language_is_supported(self) -> None:
+        """INV-javam: a language with a parent catalog (scala → java,
+        kotlin → java, elixir → erlang) is considered supported.
+        """
+        assert load_catalog("scala").is_supported is True
+        assert load_catalog("kotlin").is_supported is True
+        assert load_catalog("elixir").is_supported is True
+
+    def test_is_language_supported_helper(self) -> None:
+        """INV-javam: module-level helper mirrors the catalog flag for
+        callers that don't want to materialize the full catalog.
+        """
+        from hypergumbo_core.io_boundary import is_language_supported
+        assert is_language_supported("python") is True
+        assert is_language_supported("brainfuck") is False
+
     def test_cpp_alias_loads_c_catalog(self) -> None:
         """C++ has no dedicated catalog but falls back to C via alias."""
         catalog = load_catalog("cpp")

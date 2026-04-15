@@ -120,6 +120,13 @@ class IoBoundaryCatalog:
     language: str
     primitives: list[IoPrimitive] = field(default_factory=list)
     ambiguous_names: frozenset[str] = field(default_factory=frozenset)
+    # INV-javam: True when a YAML catalog (or alias/parent) was loaded
+    # for this language. False when no catalog exists — this is the
+    # signal callers (io-boundaries, taint-flow) use to distinguish
+    # "found zero I/O" from "language unsupported". Silent zeros are
+    # the class of bug the invariant guards against: output identical
+    # to a clean codebase, plus false security confidence in taint-flow.
+    is_supported: bool = True
     _by_qualified: dict[str, IoPrimitive] = field(
         default_factory=dict, repr=False,
     )
@@ -321,6 +328,14 @@ _CATALOG_PARENTS: dict[str, str] = {
 }
 
 
+def is_language_supported(language: str) -> bool:
+    """True if ``language`` has an I/O primitive catalog (directly, via
+    alias, or with a parent). Callers use this to distinguish "found
+    zero I/O" from "language unsupported" — the INV-javam invariant.
+    """
+    return load_catalog(language).is_supported
+
+
 def load_catalog(language: str) -> IoBoundaryCatalog:
     """Load the I/O primitive catalog for a language.
 
@@ -337,7 +352,10 @@ def load_catalog(language: str) -> IoBoundaryCatalog:
         if alias:
             path = _CATALOG_DIR / f"{alias}.yaml"
     if not path.exists():
-        return IoBoundaryCatalog(language=language)
+        # INV-javam: no catalog file (and no alias resolving to one) —
+        # callers use is_supported to emit explicit "language
+        # unsupported" output instead of silently returning zero I/O.
+        return IoBoundaryCatalog(language=language, is_supported=False)
     catalog = IoBoundaryCatalog.from_yaml(path)
 
     # Merge parent catalog if defined (e.g. scala inherits java entries)

@@ -961,3 +961,134 @@ class TestIoBoundariesExcludeTests:
         )
         chains = data["boundaries"]["fs_write"]["chains"]
         assert "test" not in chains[0]["io_edge_src"]
+
+
+# ============================================================================
+# INV-javam: distinguish "no I/O detected" from "language unsupported"
+# ============================================================================
+
+
+def test_cmd_io_boundaries_emits_notice_for_unsupported_language(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-javam: when the behavior map contains nodes in a language with
+    no IO primitive catalog, io-boundaries prints an explicit unsupported-
+    language notice to stderr. Without this, zero boundaries is
+    indistinguishable from a truly I/O-free codebase.
+    """
+    # A node in a language ("brainfuck") hypergumbo has no catalog for.
+    bmap = _make_behavior_map(
+        nodes=[
+            {
+                "id": "brainfuck:main.bf:1-3:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "brainfuck",
+                "path": "main.bf",
+                "span": {"start_line": 1, "end_line": 3},
+            },
+        ],
+        edges=[],
+    )
+    args = _make_args(tmp_path, bmap)
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+
+    _, err = capsys.readouterr()
+    assert "brainfuck" in err
+    assert "no I/O primitive catalog" in err
+    assert "does NOT mean" in err  # the key "don't misread zero" framing
+    assert "INV-javam" in err
+
+
+def test_cmd_io_boundaries_json_output_exposes_unsupported_languages(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-javam: JSON consumers get an `unsupported_languages` field so
+    programmatic pipelines (e.g., taint-flow) can refuse to assert
+    success when the language isn't actually supported.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {
+                "id": "brainfuck:main.bf:1-3:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "brainfuck",
+                "path": "main.bf",
+                "span": {"start_line": 1, "end_line": 3},
+            },
+            {
+                "id": "nim:src/thing.nim:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "nim",
+                "path": "src/thing.nim",
+                "span": {"start_line": 1, "end_line": 5},
+            },
+        ],
+        edges=[],
+    )
+    args = _make_args(tmp_path, bmap, json_output=True)
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert "unsupported_languages" in data
+    # Both languages have no catalog; list is sorted alphabetically
+    assert data["unsupported_languages"] == ["brainfuck", "nim"]
+
+
+def test_cmd_io_boundaries_no_notice_when_all_languages_supported(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-javam: the notice must NOT fire when every detected language
+    has a catalog. Anti-regression — we don't want to spam users on
+    fully-supported codebases.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {
+                "id": "python:src/api.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5},
+            },
+        ],
+        edges=[],
+    )
+    args = _make_args(tmp_path, bmap)
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+
+    _, err = capsys.readouterr()
+    assert "no I/O primitive catalog" not in err
+    assert "INV-javam" not in err
+
+
+def test_cmd_io_boundaries_json_output_empty_unsupported_when_all_supported(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-javam: programmatic consumers always get the field, even when
+    empty — keeps the JSON schema stable."""
+    bmap = _make_behavior_map(
+        nodes=[
+            {
+                "id": "python:src/api.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5},
+            },
+        ],
+        edges=[],
+    )
+    args = _make_args(tmp_path, bmap, json_output=True)
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["unsupported_languages"] == []

@@ -2925,9 +2925,17 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             languages.add(lang)
 
     # Load catalogs for detected languages
+    # INV-javam: track unsupported languages (no catalog) separately from
+    # supported-but-zero-matches languages. The former must be surfaced
+    # to callers so "zero I/O detected" isn't silently indistinguishable
+    # from "language has no catalog at all".
     catalogs = {}
-    for lang in languages:
+    unsupported_languages: list[str] = []
+    for lang in sorted(languages):
         catalog = load_catalog(lang)
+        if not catalog.is_supported:
+            unsupported_languages.append(lang)
+            continue
         if catalog.primitives:
             catalogs[lang] = catalog
             # Also key by the catalog's base language so edge-prefix lookups
@@ -3002,13 +3010,42 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             }
         else:
             output = bmap.to_dict()
+        # INV-javam: expose unsupported-language signal to programmatic
+        # consumers. Empty list when every detected language has a catalog.
+        output["unsupported_languages"] = unsupported_languages
         print(json.dumps(output, indent=2, sort_keys=True))
     elif getattr(args, "by_file", False):
         _print_io_boundaries_by_file(filtered_entries, nodes_by_id, repo_root)
+        _print_unsupported_languages_notice(unsupported_languages)
     else:
         _print_io_boundaries_by_type(filtered_entries, nodes_by_id, bmap, repo_root)
+        _print_unsupported_languages_notice(unsupported_languages)
 
     return 0
+
+
+def _print_unsupported_languages_notice(
+    unsupported_languages: list[str],
+) -> None:
+    """INV-javam: emit an explicit notice when the repo contains languages
+    with no I/O primitive catalog.
+
+    Without this, the human-readable output for an unsupported language
+    is indistinguishable from a genuinely I/O-free codebase — and
+    downstream taint-flow trivially passes every claim on those
+    languages (false security confidence). The notice runs to stderr so
+    piping the boundary report to a file / grep / jq is unaffected.
+    """
+    if not unsupported_languages:
+        return
+    langs = ", ".join(unsupported_languages)
+    print(
+        f"\nNote: no I/O primitive catalog for language(s): {langs}. "
+        "Zero boundaries reported for these languages does NOT mean "
+        "the code is I/O-free — it means hypergumbo cannot detect I/O "
+        "for this language yet. (INV-javam)",
+        file=sys.stderr,
+    )
 
 
 def _format_io_caller(
