@@ -8228,3 +8228,112 @@ class TestConfigFilesNoLockFiles:
                 f"already provides dependency information."
             )
 
+
+
+# WI-fumap: fallback warning when --config-extraction=embedding/hybrid
+# is requested but sentence-transformers is not installed.
+
+class TestConfigExtractionFallbackWarning:
+    """Embedding/hybrid modes must visibly degrade to heuristic when the
+    embedding stack is unavailable, instead of silently producing
+    heuristic-mode output (UAT 2026-04-13 DQ-07).
+    """
+
+    def _reset_warning_flag(self) -> None:
+        import hypergumbo_core.sketch as sk
+        sk._embedding_fallback_warned = False
+
+    def test_embedding_mode_warns_when_unavailable(
+        self, tmp_path, monkeypatch, capsys,
+    ) -> None:
+        from hypergumbo_core.sketch import (
+            _extract_config_info, ConfigExtractionMode,
+        )
+        import hypergumbo_core.sketch as sk
+        self._reset_warning_flag()
+        monkeypatch.setattr(sk, "_embedding_extraction_available", lambda: False)
+        (tmp_path / "package.json").write_text('{"name": "demo"}\n')
+
+        _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+        _, err = capsys.readouterr()
+        assert "embedding" in err
+        assert "sentence-transformers" in err
+        assert "WI-fumap" in err
+
+    def test_hybrid_mode_warns_when_unavailable(
+        self, tmp_path, monkeypatch, capsys,
+    ) -> None:
+        from hypergumbo_core.sketch import (
+            _extract_config_info, ConfigExtractionMode,
+        )
+        import hypergumbo_core.sketch as sk
+        self._reset_warning_flag()
+        monkeypatch.setattr(sk, "_embedding_extraction_available", lambda: False)
+        (tmp_path / "package.json").write_text('{"name": "demo"}\n')
+
+        _extract_config_info(tmp_path, mode=ConfigExtractionMode.HYBRID)
+        _, err = capsys.readouterr()
+        assert "hybrid" in err
+        assert "sentence-transformers" in err
+
+    def test_heuristic_mode_does_not_warn(
+        self, tmp_path, monkeypatch, capsys,
+    ) -> None:
+        from hypergumbo_core.sketch import (
+            _extract_config_info, ConfigExtractionMode,
+        )
+        import hypergumbo_core.sketch as sk
+        self._reset_warning_flag()
+        monkeypatch.setattr(sk, "_embedding_extraction_available", lambda: False)
+        (tmp_path / "package.json").write_text('{"name": "demo"}\n')
+
+        _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+        _, err = capsys.readouterr()
+        assert "WI-fumap" not in err
+
+    def test_warning_fires_only_once_per_process(
+        self, tmp_path, monkeypatch, capsys,
+    ) -> None:
+        from hypergumbo_core.sketch import (
+            _extract_config_info, ConfigExtractionMode,
+        )
+        import hypergumbo_core.sketch as sk
+        self._reset_warning_flag()
+        monkeypatch.setattr(sk, "_embedding_extraction_available", lambda: False)
+        (tmp_path / "package.json").write_text('{"name": "demo"}\n')
+
+        _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+        _extract_config_info(tmp_path, mode=ConfigExtractionMode.HYBRID)
+        _, err = capsys.readouterr()
+        # Only one warning line should fire across both calls
+        assert err.count("WI-fumap") == 1
+
+    def test_no_warning_when_embedding_available(
+        self, tmp_path, monkeypatch, capsys,
+    ) -> None:
+        from hypergumbo_core.sketch import (
+            _extract_config_info, ConfigExtractionMode,
+        )
+        import hypergumbo_core.sketch as sk
+        self._reset_warning_flag()
+        # Pretend embedding stack IS available — no warning, even in
+        # embedding mode.  We don't actually invoke the real embedding
+        # path here; the dispatcher's pre-check is what matters.
+        monkeypatch.setattr(sk, "_embedding_extraction_available", lambda: True)
+        # Stub the embedding extractor so the test doesn't require the
+        # real model.
+        monkeypatch.setattr(
+            sk, "_extract_config_embedding",
+            lambda *a, **kw: ["dummy: line"],
+        )
+        (tmp_path / "package.json").write_text('{"name": "demo"}\n')
+
+        _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+        _, err = capsys.readouterr()
+        assert "WI-fumap" not in err
+
+    def test_embedding_extraction_available_smoke(self) -> None:
+        """The helper itself returns a bool without raising."""
+        from hypergumbo_core.sketch import _embedding_extraction_available
+        result = _embedding_extraction_available()
+        assert isinstance(result, bool)

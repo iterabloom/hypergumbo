@@ -2062,6 +2062,56 @@ def _extract_config_hybrid(
     return combined
 
 
+# WI-fumap: track whether we've already warned about an embedding-mode
+# fallback within the current Python process. Without this, a single
+# command run would emit the warning twice (once for the dispatcher's
+# pre-check, once if `_extract_config_embedding` itself falls back).
+# The whole module is process-scoped, so a module-level flag is
+# sufficient — no thread-safety needed for our serial CLI usage.
+_embedding_fallback_warned: bool = False
+
+
+def _embedding_extraction_available() -> bool:
+    """Return whether sentence-transformers can be imported.
+
+    Used by the config-extraction dispatcher to decide whether
+    EMBEDDING / HYBRID modes can actually run, or whether they would
+    silently fall back to HEURISTIC. Tested separately so coverage
+    doesn't depend on the embedding stack being installed.
+    """
+    try:
+        from .sketch_embeddings import _load_embedding_model  # noqa: F401
+        import numpy  # noqa: F401
+    except ImportError:  # pragma: no cover - exercised on machines without embeddings
+        return False
+    return True
+
+
+def _warn_embedding_fallback_once(requested_mode: "ConfigExtractionMode") -> None:
+    """Emit a one-shot stderr notice when the requested config-extraction
+    mode requires sentence-transformers but the package is unavailable.
+
+    UAT 2026-04-13 DQ-07 / WI-fumap: ``--config-extraction embedding``
+    and ``--config-extraction hybrid`` would silently degrade to
+    heuristic on machines without sentence-transformers, producing
+    output identical to ``--config-extraction heuristic`` and giving
+    users no signal that the requested mode never ran. This warning
+    closes the ergonomics gap.
+    """
+    global _embedding_fallback_warned
+    if _embedding_fallback_warned:
+        return
+    import sys as _sys
+    print(
+        f"hypergumbo: --config-extraction={requested_mode.value} requested but "
+        "sentence-transformers is not installed; falling back to heuristic mode. "
+        "Output will be identical to --config-extraction=heuristic. "
+        "Install with: pip install hypergumbo-core[embeddings] (WI-fumap)",
+        file=_sys.stderr,
+    )
+    _embedding_fallback_warned = True
+
+
 def _extract_config_info(
     repo_root: Path,
     max_chars: int = 1500,
@@ -2094,7 +2144,15 @@ def _extract_config_info(
         Extracted config metadata as a formatted string, or empty string
         if no config files found.
     """
-    # Select extraction strategy based on mode
+    # Select extraction strategy based on mode.  WI-fumap: when the
+    # requested mode requires sentence-transformers but the package
+    # isn't available, warn (once) and degrade to heuristic explicitly
+    # rather than silently producing identical output.
+    if mode in (ConfigExtractionMode.EMBEDDING, ConfigExtractionMode.HYBRID):
+        if not _embedding_extraction_available():
+            _warn_embedding_fallback_once(mode)
+            mode = ConfigExtractionMode.HEURISTIC
+
     if mode == ConfigExtractionMode.EMBEDDING:
         max_lines = max(10, max_chars // 50)
         lines = _extract_config_embedding(
