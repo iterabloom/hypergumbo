@@ -20,3 +20,18 @@
     pr_ref:  # f89a
     description: "UAT 2026-04-13 UX-02: first analysis per session dumps 199 weight-loading progress bars + HuggingFace authentication warning to stderr. Not suppressed by `--no-progress`. Pollutes piped output. Fix: route loading progress through the same channel as `--no-progress`, or hide behind `--verbose`."  # f89a
     fields: {}  # f89a
+- op: update  # 0d02
+  at: '2026-04-15T08:35:38Z'  # 0d02
+  by: agent  # 0d02
+  actor: jgstern_agent  # 0d02
+  clock: 2  # 0d02
+  nonce: 0d02  # 0d02
+  set:  # 0d02
+    status: done  # 0d02
+- op: discuss  # af89
+  at: '2026-04-15T08:35:38Z'  # af89
+  by: agent  # af89
+  actor: jgstern_agent  # af89
+  clock: 3  # af89
+  nonce: af89  # af89
+  message: "Fixed in WIP PR. Added _hf_noise.suppress_hf_noise() that runs at sketch_embeddings import, setting HF_HUB_DISABLE_PROGRESS_BARS, TRANSFORMERS_VERBOSITY, HF_HUB_DISABLE_SYMLINKS_WARNING, TRANSFORMERS_NO_ADVISORY_WARNINGS via setdefault. Extracted to a separate module so the suppression is coverage-tested (sketch_embeddings.py is intentionally omitted from coverage because its loaders need heavy ML deps). 7 unit tests, 100% coverage on new module."  # af89

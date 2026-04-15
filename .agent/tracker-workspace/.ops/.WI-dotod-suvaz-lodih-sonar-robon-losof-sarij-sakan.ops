@@ -18,3 +18,18 @@
     pr_ref:  # 3d9d
     description: "Found during 2026-04-14 agentic session retrospective (WI-banaf lost ~3h to this gap; session_retrospective_04142026_1615.md).\n\nRoot cause (confirmed from scripts/auto-pr source):\n- The existing hung-run retry loop at lines 1248-1281 only fires on Exit 3 (no CI jobs ever started): 'while [[ $poll_result -eq 3 && $hung_retries -lt 4 ]]'.\n- Exit 2 (poll_ci timeout after CI started but didn't finish) has NO built-in retry — it jumps straight to 'Scenario B: CI is stuck or slow' and exits 2.\n- On 2026-04-14 WI-banaf the first auto-pr invocation hit Exit 2 at 10:03 UTC. The agent then did three 1-hour Scenario B polls (per AGENTS.md) until 13:53, when a fresh auto-pr invocation succeeded in 8 minutes — suggesting the stuck PR state was resolvable by close+repush, not by waiting for infrastructure.\n\nDesign (agreed with human reviewer):\n- On initial Exit 2, re-poll ONCE with a short follow-up timeout (300s) before escalating.\n- If still Exit 2, do ONE close-PR + sleep 60s + repush (same body as the Exit 3 loop, but capped at 1 retry, not 4).\n- If still Exit 2 after that: escalate to Scenario B as today.\n- Exit 1 and Exit 3 behaviors unchanged. Exit 3 loop still runs if cascade produces Exit 3.\n\nTest approach:\n- Add AUTOPR_TEST_POLL_EXITS env-var seam in lib/forgejo-api.sh poll_ci, mirroring existing AUTO_PR_SIMULATE_OUTAGE pattern. When set, poll_ci consumes the next exit code from a colon-separated list via a counter file.\n- New tests/test_autopr_exit2_retry.py exercises: (a) Exit 2 → 0 after re-poll (soft-retry succeeds, no close+repush), (b) Exit 2 → Exit 2 → 0 after close+repush (seam must simulate repush path), (c) Exit 2 → Exit 2 → Exit 2 escalates to Scenario B exit 2, (d) Exit 3 still uses existing 4-retry loop unchanged.\n\nGovernance note: scripts/auto-pr is a governance file. Human reviewer explicitly approved this change during retrospective session, including the auto-pr flow without gov flag."  # 3d9d
     fields: {}  # 3d9d
+- op: update  # ed50
+  at: '2026-04-15T08:45:36Z'  # ed50
+  by: agent  # ed50
+  actor: jgstern_agent  # ed50
+  clock: 2  # ed50
+  nonce: ed50  # ed50
+  set:  # ed50
+    status: done  # ed50
+- op: discuss  # 274f
+  at: '2026-04-15T08:45:36Z'  # 274f
+  by: agent  # 274f
+  actor: jgstern_agent  # 274f
+  clock: 3  # 274f
+  nonce: 274f  # 274f
+  message: "Implementation already merged (see CHANGELOG [Unreleased] '\\''auto-pr Exit 2 (timeout) soft-retry'\\''). Verified in scripts/auto-pr lines 1247-1268: on Exit 2, re-polls once with 300s timeout, then does one close-PR + repush, then escalates to Scenario B if still failing. AUTOPR_TEST_POLL_EXITS seam added to scripts/lib/forgejo-api.sh. Status was lagging behind the merged code."  # 274f

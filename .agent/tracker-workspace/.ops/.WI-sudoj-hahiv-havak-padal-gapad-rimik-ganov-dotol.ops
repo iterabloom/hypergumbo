@@ -41,3 +41,18 @@
   clock: 4  # 2b24
   nonce: 2b24  # 2b24
   message: "it seems like this might be duplicative of WI-ripuz. what do you think?"  # 2b24
+- op: discuss  # d27c
+  at: '2026-04-15T07:48:30Z'  # d27c
+  by: agent  # d27c
+  actor: jgstern_agent  # d27c
+  clock: 5  # d27c
+  nonce: d27c  # d27c
+  message: "You're right — they're duplicative once WI-ripuz lands.\n\nReading both closely:\n- WI-ripuz suppresses the standard guidance entirely while reply debt exists and emits a REPLY-FIRST CYCLE block whose body already contains the same 4-step directive (tracker show → classify → plan investigation → reply) that WI-sudoj proposed adding to the standard guidance.\n- WI-sudoj's text would only ever appear in a code path that WI-ripuz arranges to never execute when there are unreads.\n\nSo WI-ripuz subsumes WI-sudoj. The original proposal in notebookjournal_04072026_1518.md framed the three items (B/C/A) as a coherent intervention \"incentives + says-what-good-looks-like + enforces-the-floor,\" but the \"says-what-good-looks-like\" content (item C) is now embedded inside the \"incentives\" change (item B) by virtue of WI-ripuz spelling out the 4-step text in its REPLY-FIRST CYCLE block.\n\nRecommend closing WI-sudoj as wont_do with a note pointing at WI-ripuz as the absorbing item. Will do unless you object."  # d27c
+- op: update  # cdab
+  at: '2026-04-15T07:59:44Z'  # cdab
+  by: human  # cdab
+  actor: jgstern  # cdab
+  clock: 6  # cdab
+  nonce: cdab  # cdab
+  set:  # cdab
+    status: wont_do  # cdab

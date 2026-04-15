@@ -36,3 +36,10 @@
   set: {}  # 53d4
   add:  # 53d4
     tags: [someday]  # 53d4
+- op: discuss  # 7d92
+  at: '2026-04-15T07:48:31Z'  # 7d92
+  by: agent  # 7d92
+  actor: jgstern_agent  # 7d92
+  clock: 4  # 7d92
+  nonce: 7d92  # 7d92
+  message: "Agree. Two reasons to close as wont_do:\n\n1. The specific failure mode (bf4oxh91w duplicate smart-test launch) is now structurally prevented by the smart-test flock fix. The remaining failure mode is a hypothetical — premature action on any other long-running background command — and we don't have evidence it's recurring.\n2. Vendor-agnostic detection is the harder problem. The harness's TaskList is Claude Code-specific; falling back to \"any background process for this user\" introduces false positives (noise from cron, other agents, background tracker auto-sync) and the guidance becomes unreliable. An unreliable warning is worse than no warning — the agent learns to ignore it.\n\nIf the failure mode recurs in a different shape, we can revisit with concrete evidence and a clearer specification. For now: closing as wont_do unless you object."  # 7d92

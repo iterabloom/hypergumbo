@@ -1,0 +1,21 @@
+- op: create  # 37e8
+  at: '2026-04-15T07:49:22Z'  # 37e8
+  by: agent  # 37e8
+  actor: jgstern_agent  # 37e8
+  clock: 1  # 37e8
+  nonce: '37e8'  # 37e8
+  data:  # 37e8
+    kind: work_item  # 37e8
+    title: "tracker discuss: --ack-thread fails when placed before message; gate-message suggests broken order"  # 37e8
+    status: todo_soft  # 37e8
+    priority: 4  # 37e8
+    parent:  # 37e8
+    tags:  # 37e8
+    - tracker_ux  # 37e8
+    - developer_experience  # 37e8
+    isbefore: []  # 37e8
+    duplicate_of: []  # 37e8
+    not_duplicate_of: []  # 37e8
+    pr_ref:  # 37e8
+    description: "`tracker discuss <item-id> --ack-thread \"<msg>\"` fails with argparse \"unrecognized arguments: <first word of msg>\" when `--ack-thread` is positioned BEFORE the `message` positional. Must use `--ack-thread` AFTER the message: `tracker discuss <item-id> \"<msg>\" --ack-thread`.\n\nCause: argparse subparser ordering quirk — when a positional has `nargs=\"?\"` and an optional flag follows, argparse refuses to interleave. Workaround works but is non-obvious; the gate-message in `cli.py:781` even shows `--ack-thread \"<your reply>\"` (the broken order) as the suggested form.\n\nFix: either (a) update the gate-message in `cli.py:781` to print `\"<your reply>\" --ack-thread`, or (b) restructure the parser so order doesn't matter (e.g., make `--message TEXT` an optional flag and accept stdin). Option (a) is one line; option (b) is a small UX improvement.\n\nDiscovered while replying to four unread human-message threads on 2026-04-15. Three of four discuss calls failed silently before the order was corrected."  # 37e8
+    fields: {}  # 37e8
