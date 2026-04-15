@@ -1580,7 +1580,10 @@ def cmd_routes(args: argparse.Namespace) -> int:
 
     # Find route handlers - symbols with route concepts in meta.concepts
     # OR symbols with kind="route" (Go analyzer creates route symbols directly).
-    exclude_tests = getattr(args, "exclude_tests", False)
+    # WI-godos: tests excluded by default; --include-tests opts in.
+    # The legacy --exclude-tests flag is preserved as a no-op alias for
+    # backward compatibility with existing scripts.
+    exclude_tests = not getattr(args, "include_tests", False)
     routes: list[dict] = []
     for node in nodes:
         is_route = False
@@ -4661,12 +4664,22 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         default=None,
         help="Filter by language (e.g., python, javascript)",
     )
+    # WI-godos: routes excludes test-file routes by default (UAT DQ-02
+    # found 14% of plausible's reported routes were from tests). Use
+    # --include-tests to opt back in. The `-x` / `--exclude-tests` flag
+    # is kept as a no-op alias so existing scripts don't break.
+    p_routes.add_argument(
+        "--include-tests",
+        action="store_true",
+        dest="include_tests",
+        help="Include routes from test files (default: excluded)",
+    )
     p_routes.add_argument(
         "-x",
         "--exclude-tests",
         action="store_true",
         dest="exclude_tests",
-        help="Exclude routes from test files",
+        help="(deprecated; excluded by default) Exclude routes from test files",
     )
     p_routes.set_defaults(func=cmd_routes)
 

@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Changed
+
+- **`routes` excludes test-file routes by default** (WI-godos / UAT DQ-02): UAT found 14% of plausible's reported routes were from test files, polluting the visible output. New default behavior excludes them; `--include-tests` opts back in. The legacy `-x/--exclude-tests` flag is preserved as a no-op alias for backward compatibility — existing scripts continue to behave correctly.
+
 ### Fixed
 
 - **Laravel `apiResource()` no longer emits phantom HTML-form routes; `.except()` / `.only()` honored** (WI-jorim / UAT BUG-07): `Route::apiResource('posts', PostController::class)` now produces 5 routes (index/store/show/update/destroy) instead of 7 — the `GET /create` and `GET /{id}/edit` HTML-form routes that don't exist for an API resource are dropped. Chained `.except([...])` / `.only([...])` modifiers (variadic strings or array literal) are now parsed and applied to both `resource` and `apiResource`. Multiple modifiers compose in source-order. Variable args (e.g. `->except($actions)`) and unrelated chained methods (e.g. `->name(...)`, `->middleware(...)`) are correctly ignored. On koel: ~40 phantom routes were eliminated (~19% of the 207 originally reported). New constant `LARAVEL_RESOURCE_ACTIONS` and `LARAVEL_API_RESOURCE_EXCLUDED_ACTIONS` make the action set self-documenting.
