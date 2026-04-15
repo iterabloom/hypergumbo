@@ -9,7 +9,7 @@ Lab notebook — 13 April 2026, 22:39 local
 
 ---
 
-The Red Sea is black tonight and the terminal is green. I am looking at a coverage report.
+The Red Sea is black tonight and the terminal is green. I am looking at a coverage report, which is the smallest thing I could be looking at.
 
 Let me tell you what a test is. A test is a **prior**. Every assertion we write says: *I predict the system will not surprise me here.* In Friston's grammar, each `assert` reduces the expected free energy of some future observation, because the world becomes constrained, and a constrained world is cheap to model. A 100% coverage policy is a statement about the topology of priors: **every line of the artifact must lie inside somebody's prediction.** Nothing uninhabited. Nothing unclaimed. Every execution path settled, even if settled only by squatters.
 
@@ -42,6 +42,8 @@ The harder observation is this: **metrics differ in how much slack they leave be
 Cross-entropy loss looks like the limit case in the other direction: the metric **is** the probabilistic objective, with zero slack against itself. But the slack does not disappear — it migrates one level up, to the gap between training loss and generalization. That gap has a name. The name is *overfitting*. Goodhart was always there; he just moved.
 
 So no metric survives Goodhart on its own at the level of the thing you actually want. ML works anyway because the field stacks defenses around loss: held-out eval, multiple benchmarks, human pairwise preference, scaling-law sanity checks. **Loss is safe as a target only because it sits inside a portfolio of checks that are not loss.** The Chinchilla paper is a dispatch from behind enemy lines. No single measure survives. Only ensembles do.
+
+But ensembles are not a terminal defense either. A portfolio that becomes legible *as* a portfolio becomes a target itself — standardized testing was supposed to be one element in an evaluation portfolio, and ate the portfolio. The recursion bottoms out somewhere unmeasurable: in *culture*, in the engineer who is annoying about this in code review on principle, in the institution that protects the cost of being annoying. That is the floor. It is not a number, and that is the whole point. Every layer above the floor can be Goodharted; the floor is the layer that survives because it is made of people willing to say *this is theater* without getting fired.
 
 ---
 
@@ -87,7 +89,7 @@ And still you must speak. Mark the `pragma`. Name the metric. Say what the bar i
 2. **TUI scope, coverage is theatrical.** The syrupy incident is the empirical proof. A future refactor should carve visual modules out of the coverage target with `# pragma: no cover` and an explicit rationale comment, replaced by manual dogfooding. Not today.
 3. **Self-review rotation should include two questions.** *Does any part of the test suite require the test suite to be defended?* If yes, the suite owns you. *And: is `# pragma: no cover` cheap to write in this repo, or has it grown gatekeepers?* If the latter, the inversion has already happened — the dissent mechanism is doing recuperation work, not epistemic work. Name both inversions in the commit, not just the notebook.
 4. **Exit trigger on file.** `WI-zokan-zitub-lajoh-pabig-muzig-zalip-bisim-pulum` holds the revert plan for `CVE-2025-71176` when upstream `pytest-textual-snapshot` PR #24 lands. The item names the workaround as a workaround. That is the whole job.
-5. **No single metric survives Goodhart on its own.** Only portfolios do. If hypergumbo's test stack ever collapses to *just coverage* or *just bakeoff* or *just dogfooding*, we have lost the ensemble and the metric will rot. Keep all four layers alive.
+5. **No single metric survives Goodhart on its own.** Only portfolios do — and the portfolio survives only as long as someone is willing to be annoying about which layer is doing real work and which is performing. Keep all four layers alive: property tests, bakeoff, dogfooding, self-analysis. Keep alive, also, the floor below the portfolio — the engineer in review who will say *this is theater* without paying for it. The portfolio is not the bottom of the stack. They are.
 
 ---
 
