@@ -1,0 +1,204 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0016: I/O primitive catalog for Kotlin
+#
+# Kotlin-specific I/O primitives. This catalog is MERGED with java.yaml
+# (via _CATALOG_PARENTS) so all java.io.*, java.nio.*, java.net.*, JDBC,
+# JPA, SLF4J, etc. entries are also available — Kotlin code that calls
+# `java.io.FileInputStream` directly is matched via the parent. This file
+# adds the things Kotlin idiom favors over the raw Java APIs:
+#
+# - Kotlin stdlib top-level I/O (println, print, readLine).
+# - kotlin.io extension functions on java.io.File (readText, writeText,
+#   forEachLine, useLines, copyTo, walk, etc.).
+# - ktor client (the de facto Kotlin HTTP client).
+# - Android Log (very common in Kotlin codebases targeting Android).
+# - kotlin-logging (mu.KLogger) — popular SLF4J wrapper.
+# - Exposed (the Kotlin-native ORM commonly used with Postgres/MySQL).
+#
+# Was previously aliased to java.yaml outright; that produced 1 boundary
+# on detekt (net_send only) because none of the above are in java.yaml.
+# Splitting Kotlin into its own catalog with java as the parent is the
+# WI-rujos / UAT BUG-09d fix.
+language: kotlin
+
+# ---------------------------------------------------------------------------
+# Ambiguous short names — Kotlin idioms that collide with I/O primitive names.
+# ---------------------------------------------------------------------------
+# Kotlin stdlib has many extension functions whose names overlap with both
+# Java I/O methods and Kotlin's own collection / scope-function vocabulary.
+# These names are skipped for SHORT-NAME matching when module_hint is
+# "external" (unresolved). Qualified-name and module-filtered matching
+# still work normally.
+ambiguous_names:
+  # Kotlin scope functions and collection ops that collide with I/O verbs
+  - apply       # kotlin scope function vs Statement.apply (rare)
+  - run         # kotlin scope function vs Process.run / Runtime.exec
+  - let         # kotlin scope function — frequent
+  - also        # kotlin scope function
+  - with        # kotlin scope function
+  - use         # kotlin Resource.use vs anything named `use`
+  - takeIf      # kotlin idiom
+  - takeUnless  # kotlin idiom
+  - map         # collection map (ubiquitous)
+  - flatMap     # collection flatMap (ubiquitous)
+  - filter      # collection filter
+  - fold        # collection fold
+  - reduce      # collection reduce
+  - forEach     # collection forEach (ubiquitous)
+  - first       # collection first
+  - last        # collection last
+  - find        # collection find vs File.find (Files.find is FQN)
+  - get         # operator function (ubiquitous)
+  - set         # operator function (ubiquitous)
+  - copy        # data class copy vs File.copyTo
+  - to          # Pair construction (ubiquitous)
+  # Kotlin coroutines / Flow / Channel ops that collide with networking verbs
+  - send        # Channel.send vs Socket.send
+  - receive     # Channel.receive vs Socket.receive
+  - close       # Channel.close, Closeable.close
+  - flow        # Flow builder
+  - emit        # FlowCollector.emit
+  - collect     # Flow.collect (collides with collection.collect)
+  # Logging level names (every logging library has these)
+  - trace
+  - debug
+  - info
+  - warn
+  - warning
+  - error
+  - fatal
+
+# ---------------------------------------------------------------------------
+# Filesystem read — Kotlin extension functions on java.io.File / Path
+# ---------------------------------------------------------------------------
+fs_read:
+  - module: java.io.File
+    methods:
+      - readText
+      - readLines
+      - readBytes
+      - forEachLine
+      - useLines
+      - bufferedReader
+      - reader
+      - inputStream
+    notes: "kotlin.io extension functions on java.io.File"
+  - module: java.nio.file.Path
+    methods:
+      - readText
+      - readLines
+      - readBytes
+      - bufferedReader
+      - inputStream
+      - useLines
+      - forEachLine
+    notes: "Kotlin 1.5+ kotlin.io.path.* extensions"
+  - module: kotlin.io.FilesKt
+    methods:
+      - readText
+      - readLines
+      - readBytes
+      - forEachLine
+      - useLines
+    notes: "kotlin.io public top-level (compiler-emitted FilesKt receiver)"
+
+# ---------------------------------------------------------------------------
+# Filesystem write — Kotlin extension functions on java.io.File / Path
+# ---------------------------------------------------------------------------
+fs_write:
+  - module: java.io.File
+    methods:
+      - writeText
+      - writeBytes
+      - appendText
+      - appendBytes
+      - bufferedWriter
+      - writer
+      - outputStream
+      - printWriter
+      - copyTo
+      - copyRecursively
+      - deleteRecursively
+      - mkdir
+      - mkdirs
+    notes: "kotlin.io extension functions on java.io.File"
+  - module: java.nio.file.Path
+    methods:
+      - writeText
+      - writeBytes
+      - appendText
+      - appendBytes
+      - bufferedWriter
+      - outputStream
+      - copyTo
+      - moveTo
+      - createFile
+      - createDirectory
+      - createDirectories
+    notes: "Kotlin 1.5+ kotlin.io.path.* extensions"
+
+# ---------------------------------------------------------------------------
+# Net send — ktor client and OkHttp/Retrofit (already in java.yaml)
+# ---------------------------------------------------------------------------
+net_send:
+  - module: io.ktor.client.HttpClient
+    methods: [get, post, put, delete, patch, head, options, request]
+    notes: "ktor: idiomatic Kotlin HTTP client"
+  - module: io.ktor.client.statement.HttpStatement
+    methods: [execute, body, bodyAsText, bodyAsChannel, bodyAsBytes]
+    notes: "ktor: response materialization"
+  - module: io.ktor.client.request.HttpRequestBuilder
+    methods: [url, header, parameter, setBody]
+    notes: "ktor: request configuration verbs (signal, not sole evidence)"
+
+# ---------------------------------------------------------------------------
+# Net recv — ktor server
+# ---------------------------------------------------------------------------
+net_recv:
+  - module: io.ktor.server.routing.Route
+    methods: [get, post, put, delete, patch, head, options, route, handle]
+    notes: "ktor server routing — receive HTTP requests"
+  - module: io.ktor.server.routing.Routing
+    methods: [get, post, put, delete, patch, route]
+  - module: io.ktor.server.application.ApplicationCall
+    methods: [respond, respondText, respondBytes, respondFile, receive, receiveText]
+    notes: "ktor server: read request / write response"
+
+# ---------------------------------------------------------------------------
+# Logging — Kotlin top-level println/print + KotlinLogging + Android Log
+# ---------------------------------------------------------------------------
+logging:
+  - module: kotlin.io.ConsoleKt
+    methods: [println, print]
+    notes: "kotlin.io top-level println/print (compiler emits ConsoleKt receiver)"
+  - module: mu.KLogger
+    methods: [trace, debug, info, warn, error]
+    notes: "kotlin-logging facade — popular SLF4J wrapper"
+  - module: io.github.oshai.kotlinlogging.KLogger
+    methods: [trace, debug, info, warn, error]
+    notes: "kotlin-logging 5.x relocated package"
+  - module: android.util.Log
+    methods: [v, d, i, w, e, wtf]
+    notes: "Android logging — every Kotlin Android codebase uses this"
+  - module: io.ktor.util.logging.Logger
+    methods: [trace, debug, info, warn, error]
+    notes: "ktor's built-in logger"
+
+# ---------------------------------------------------------------------------
+# Database — Exposed (Kotlin-native ORM)
+# ---------------------------------------------------------------------------
+db_read:
+  - module: org.jetbrains.exposed.sql.Query
+    methods: [forEach, toList, count, single, singleOrNull, first, firstOrNull, empty, any]
+    notes: "Exposed: query result materialization"
+  - module: org.jetbrains.exposed.sql.Table
+    methods: [select, selectAll, slice]
+    notes: "Exposed: query construction (read path)"
+
+db_write:
+  - module: org.jetbrains.exposed.sql.Table
+    methods: [insert, insertAndGetId, insertIgnore, batchInsert, update, deleteWhere, deleteAll]
+    notes: "Exposed: write operations"
+  - module: org.jetbrains.exposed.sql.Transaction
+    methods: [commit, rollback, exec]
+    notes: "Exposed: transaction control"

@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **Kotlin I/O primitive catalog** (WI-rujos / UAT BUG-09d): new `io_primitives/kotlin.yaml` with Kotlin-specific entries. Kotlin was previously aliased to `java.yaml` verbatim via `_CATALOG_ALIASES`, which produced only 1 boundary (net_send) on detekt because Kotlin idiom uses extension functions and top-level stdlib functions that have no Java analog. The new catalog covers: `kotlin.io` File extensions (`readText`, `writeText`, `forEachLine`, `useLines`, `copyTo`, `walk`), `kotlin.io.path` Path extensions (Kotlin 1.5+), top-level `println`/`print` (receiver `kotlin.io.ConsoleKt`), ktor client + server, `android.util.Log`, `kotlin-logging` (`mu.KLogger` and the 5.x relocated `io.github.oshai.kotlinlogging.KLogger`), and Exposed ORM read/write. Kotlin-specific `ambiguous_names` prevent scope functions (`apply`, `run`, `let`, `use`) and coroutine/Flow verbs (`send`, `receive`, `collect`) from producing short-name false positives. `kotlin` moved from `_CATALOG_ALIASES` to `_CATALOG_PARENTS` so the Java parent still provides the raw `java.io/java.net/JDBC/SLF4J` entries for Kotlin code that uses those APIs directly.
+
 ### Changed
 
 - **Unified path argument across subcommands** (WI-munuv / UAT UX-01): every subcommand that takes a repo path now accepts both `hypergumbo <cmd> /path` (positional) and `hypergumbo <cmd> --path /path` (flag) interchangeably. Previously, some commands took only the positional form (`sketch`, `run`, `slice`, `test-coverage`, `dead-code-maybe`) and others only `--path` (`search`, `routes`, `explain`, `symbols`, `io-boundaries`, `verify-claims`), causing errors when users carried syntax between commands. Setting both forms in the same invocation is a user error and exits 2 with a clear message. New helper `_add_path_argument()` centralizes the convention; `main()` post-process resolves the two destinations into a single `args.path` so command functions need no changes.

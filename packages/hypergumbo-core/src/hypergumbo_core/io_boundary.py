@@ -302,7 +302,6 @@ _CATALOG_ALIASES: dict[str, str] = {
     "cpp": "c",
     "typescript": "javascript",
     # JVM languages that lack their own catalog share the Java IO catalog
-    "kotlin": "java",
     "groovy": "java",
     # Objective-C nodes have language="objective-c" but edge prefixes use "objc"
     "objective-c": "objc",
@@ -310,8 +309,12 @@ _CATALOG_ALIASES: dict[str, str] = {
 
 # Languages with their own catalog that also inherit from a parent.
 # The child catalog takes precedence; parent entries fill in the gaps.
+# Kotlin needs this rather than a plain alias so kotlin.yaml can add
+# Kotlin-specific stdlib / ktor / Android entries that have no Java
+# analog (WI-rujos / UAT BUG-09d).
 _CATALOG_PARENTS: dict[str, str] = {
     "scala": "java",
+    "kotlin": "java",
 }
 
 

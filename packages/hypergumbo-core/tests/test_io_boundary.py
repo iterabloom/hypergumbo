@@ -369,11 +369,59 @@ class TestLoadCatalog:
         assert qnames["org.apache.commons.io.FileUtils.writeStringToFile"].boundary == "fs_write"
         assert qnames["org.apache.commons.io.IOUtils.toString"].boundary == "fs_read"
 
-    def test_kotlin_alias_loads_java_catalog(self) -> None:
-        """Kotlin uses the Java IO catalog via alias."""
+    def test_kotlin_loads_own_catalog_with_java_parent(self) -> None:
+        """WI-rujos: Kotlin has its own catalog merged with Java parent.
+
+        Kotlin idiom favors extension functions on java.io.File (readText,
+        writeText, forEachLine) and top-level println/print that have no
+        Java analog. Plus ktor, kotlin-logging, Android Log, Exposed ORM.
+        The Java parent fills in the raw java.io/java.net/JDBC entries so
+        code using the underlying Java APIs directly is still matched.
+        """
         catalog = load_catalog("kotlin")
-        assert len(catalog.primitives) > 0
+        assert catalog.language == "kotlin"
+        # Java parent is merged in
         assert catalog.lookup("java.io.FileInputStream.read") is not None
+        # Kotlin-specific extensions are present
+        assert catalog.lookup("java.io.File.readText") is not None
+        assert catalog.lookup("java.io.File.writeText") is not None
+        # kotlin.io top-level println — what detekt et al. actually use
+        assert catalog.lookup("kotlin.io.ConsoleKt.println") is not None
+        # ktor client
+        assert catalog.lookup("io.ktor.client.HttpClient.get") is not None
+        # Android Log (very common in Kotlin Android codebases)
+        assert catalog.lookup("android.util.Log.d") is not None
+
+    def test_kotlin_catalog_covers_all_expected_boundaries(self) -> None:
+        """Kotlin catalog emits every boundary kind the UAT flagged missing.
+
+        UAT BUG-09d noted that detekt produced exactly one boundary
+        (net_send). With the catalog expansion, Kotlin-specific primitives
+        cover fs_read, fs_write, net_send, net_recv, logging, db_read,
+        and db_write — matching the breadth of the Java parent.
+        """
+        catalog = load_catalog("kotlin")
+        boundaries = {p.boundary for p in catalog.primitives}
+        for expected in (
+            "fs_read", "fs_write", "net_send", "net_recv",
+            "logging", "db_read", "db_write",
+        ):
+            assert expected in boundaries, (
+                f"Kotlin catalog missing boundary kind: {expected}"
+            )
+
+    def test_kotlin_is_not_a_plain_alias_anymore(self) -> None:
+        """Regression guard: kotlin was previously in _CATALOG_ALIASES, which
+        made it load java.yaml verbatim. The move to _CATALOG_PARENTS is what
+        enables Kotlin-specific entries. If kotlin ever reappears in the
+        alias map by mistake, its own catalog would be ignored and this
+        test's assertion on `catalog.language == "kotlin"` would regress.
+        """
+        from hypergumbo_core.io_boundary import (
+            _CATALOG_ALIASES, _CATALOG_PARENTS,
+        )
+        assert "kotlin" not in _CATALOG_ALIASES
+        assert _CATALOG_PARENTS.get("kotlin") == "java"
 
     def test_scala_loads_own_catalog_with_java_parent(self) -> None:
         """Scala has its own catalog merged with Java parent."""
