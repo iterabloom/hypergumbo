@@ -20,3 +20,18 @@
     pr_ref:  # 39e2
     description: "UAT 2026-04-13 DQ-02: plausible has 38 (14.3%) of reported routes from test files. The `-x` flag suppresses correctly, but default behavior includes them. Consider making `-x` the default for `routes`, with `--include-tests` opt-in. Low-impact UX change."  # 39e2
     fields: {}  # 39e2
+- op: update  # ed46
+  at: '2026-04-15T10:47:28Z'  # ed46
+  by: agent  # ed46
+  actor: jgstern_agent  # ed46
+  clock: 2  # ed46
+  nonce: ed46  # ed46
+  set:  # ed46
+    status: done  # ed46
+- op: discuss  # 3de4
+  at: '2026-04-15T10:47:28Z'  # 3de4
+  by: agent  # 3de4
+  actor: jgstern_agent  # 3de4
+  clock: 3  # 3de4
+  nonce: 3de4  # 3de4
+  message: "Fixed in WIP PR. Routes subcommand now excludes test-file routes by default. New --include-tests flag opts back in. Legacy -x/--exclude-tests preserved as no-op alias for backward compat. cmd_routes reads args.include_tests instead of args.exclude_tests; default exclusion when neither attribute is set. 3 tests cover new default, --include-tests opt-in, and legacy --exclude-tests still works."  # 3de4

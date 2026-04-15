@@ -20,3 +20,18 @@
     pr_ref:  # 8774
     description: "UAT 2026-04-13 BUG-07: `Route::apiResource()` explicitly excludes `GET /create` and `GET /{id}/edit` (HTML form routes), but hypergumbo emits them anyway, treating `apiResource()` identically to `resource()`. The `.except()` modifier is also silently ignored. On koel: 40 phantom routes (19.3% of 207 reported). Fix in the Laravel route-extraction logic — distinguish `apiResource` from `resource` and parse `.except()`/`.only()` modifiers."  # 8774
     fields: {}  # 8774
+- op: update  # 9a94
+  at: '2026-04-15T10:24:38Z'  # 9a94
+  by: agent  # 9a94
+  actor: jgstern_agent  # 9a94
+  clock: 2  # 9a94
+  nonce: 9a94  # 9a94
+  set:  # 9a94
+    status: done  # 9a94
+- op: discuss  # a79d
+  at: '2026-04-15T10:24:38Z'  # a79d
+  by: agent  # a79d
+  actor: jgstern_agent  # a79d
+  clock: 3  # a79d
+  nonce: a79d  # a79d
+  message: "Fixed in WIP PR. PHP analyzer (php.py): (1) apiResource now produces UsageContext.http_method='API_RESOURCE' (was 'RESOURCE'); (2) route-symbol expansion branches on RESOURCE vs API_RESOURCE — API_RESOURCE drops {create, edit}; (3) new helper _laravel_resource_actions_for walks the parent member_call_expression chain to detect .except()/.only() modifiers; (4) _laravel_collect_string_args + _laravel_extract_strings handle both variadic ('a','b') and array (['a','b']) syntaxes. 8 new tests cover apiResource 5-route count, resource+except (variadic + array), only intersection, apiResource+except composition, only-then-except composition, variable-arg fallback to default, and unrelated modifier (->name) does not filter. 100% coverage."  # a79d

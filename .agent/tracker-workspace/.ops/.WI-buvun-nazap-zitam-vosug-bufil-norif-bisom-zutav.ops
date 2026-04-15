@@ -20,3 +20,18 @@
     pr_ref:  # 3f3f
     description: "UAT 2026-04-13 BUG-12: shellcheck has 0 recognized exports despite every module declaring `module X (export1, export2, ...) where`. The `exports` and `tests` seed sets for dead-code-maybe are therefore useless on Haskell. Parse the module export list; mark exported symbols as seeds."  # 3f3f
     fields: {}  # 3f3f
+- op: update  # 5f16
+  at: '2026-04-15T14:37:19Z'  # 5f16
+  by: agent  # 5f16
+  actor: jgstern_agent  # 5f16
+  clock: 2  # 5f16
+  nonce: 5f16  # 5f16
+  set:  # 5f16
+    status: done  # 5f16
+- op: discuss  # 7f08
+  at: '2026-04-15T14:37:20Z'  # 7f08
+  by: agent  # 7f08
+  actor: jgstern_agent  # 7f08
+  clock: 3  # 7f08
+  nonce: 7f08  # 7f08
+  message: "Fixed in WIP PR. Haskell analyzer now parses module headers — _extract_module_exports returns set of names from header.exports children (variable for fns, name for types). Tri-state behavior: None (no list) = export-everything default per Haskell semantics; populated set = only listed names exported. Instances reachable through their class or type. 5 tests cover explicit list, no list, type names, classes, instances. dead-code-maybe's exports/tests seed sets are now functional on Haskell."  # 7f08

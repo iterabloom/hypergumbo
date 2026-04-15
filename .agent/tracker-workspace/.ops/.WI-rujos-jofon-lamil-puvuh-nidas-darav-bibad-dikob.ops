@@ -20,3 +20,18 @@
     pr_ref:  # d301
     description: "UAT 2026-04-13 BUG-09d: detekt reports 1 io-boundary (net_send only). Kotlin can largely reuse Java primitives plus Kotlin-specific stdlib (`File.readText`, `File.writeText`, ktor client, exposed ORM, `println`, `Log.*`)."  # d301
     fields: {}  # d301
+- op: update  # 6531
+  at: '2026-04-15T12:20:57Z'  # 6531
+  by: agent  # 6531
+  actor: jgstern_agent  # 6531
+  clock: 2  # 6531
+  nonce: '6531'  # 6531
+  set:  # 6531
+    status: done  # 6531
+- op: discuss  # 9874
+  at: '2026-04-15T12:20:57Z'  # 9874
+  by: agent  # 9874
+  actor: jgstern_agent  # 9874
+  clock: 3  # 9874
+  nonce: '9874'  # 9874
+  message: "Fixed in WIP PR. New io_primitives/kotlin.yaml with Kotlin stdlib (kotlin.io File/Path extensions + top-level println), ktor client/server, Android Log, kotlin-logging (both mu.KLogger and 5.x io.github.oshai variant), Exposed ORM. Moved kotlin from _CATALOG_ALIASES to _CATALOG_PARENTS so Java parent still covers raw java.io/java.net/JDBC. 3 new tests cover Java-parent merge, boundary-kind breadth, and the alias→parent regression guard."  # 9874
