@@ -1045,14 +1045,41 @@ def _detect_swift_frameworks(repo_root: Path) -> list[str]:
 
 
 def _detect_scala_frameworks(repo_root: Path) -> list[str]:
-    """Detect Scala frameworks from build.sbt.
+    """Detect Scala frameworks from SBT manifests.
 
-    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Standard SBT convention splits dependency declarations across two
+    locations:
+
+    - Top-level ``build.sbt`` — may contain ``libraryDependencies += ...``
+      coordinates directly, OR may reference scala helper objects.
+    - ``project/*.scala`` (typically ``project/Dependencies.scala``) —
+      where real-world SBT projects keep the actual
+      ``"groupId" %% "artifact" % version`` strings.
+    - ``project/*.sbt`` (typically ``project/plugins.sbt``) — declares
+      SBT plugins like Play's ``sbt-plugin``.
+
+    All three are concatenated and searched, because many real projects
+    (e.g. docspell) put every library coordinate in
+    ``project/Dependencies.scala`` and a detector that only reads
+    ``build.sbt`` would see nothing. WI-piban landed this expansion after
+    docspell — which imports org.http4s on hundreds of lines — produced
+    an empty ``profile.frameworks``.
     """
     detected = []
 
-    # Concatenate all build.sbt files
     content = _read_all_manifest_files(repo_root, "build.sbt")
+    # Add project-directory manifests (SBT meta-build).  These files
+    # carry the real dependency coordinates for projects that use a
+    # Dependencies.scala helper, and the plugin declarations for Play
+    # and similar frameworks.
+    project_dir = repo_root / "project"
+    if project_dir.is_dir():
+        for child in project_dir.iterdir():
+            if child.is_file() and child.suffix in (".scala", ".sbt"):
+                try:
+                    content += "\n" + child.read_text(errors="ignore").lower()
+                except (OSError, IOError):  # pragma: no cover - defensive
+                    pass
 
     for framework, patterns in SCALA_FRAMEWORKS.items():
         for pattern in patterns:

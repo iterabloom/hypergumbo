@@ -1000,6 +1000,76 @@ libraryDependencies += "org.http4s" %% "http4s-dsl" % "0.23.0"
     assert "http4s" in data["profile"]["frameworks"]
 
 
+def test_detects_scala_http4s_from_project_dependencies(tmp_path: Path) -> None:
+    """Should detect http4s when the dependency string lives in the
+    standard SBT ``project/Dependencies.scala`` file rather than in the
+    top-level ``build.sbt`` itself.
+
+    Real-world SBT projects (docspell is the canonical example) put all
+    library coordinates in ``project/Dependencies.scala`` and only
+    reference scala variables in ``build.sbt``
+    (e.g. ``Dependencies.http4sClient``). Before WI-piban the detector
+    only scanned ``build.sbt`` and missed these cases.
+    """
+    # Production code imports http4s — required so framework-validation
+    # (which moves non-imported candidates to dev_frameworks) keeps http4s
+    # in the confirmed ``frameworks`` list.
+    (tmp_path / "Main.scala").write_text(
+        'import org.http4s._\nimport org.http4s.dsl.Http4sDsl\n'
+        'object Main extends App\n'
+    )
+    (tmp_path / "build.sbt").write_text(
+        'name := "myapp"\nversion := "1.0"\n'
+        'libraryDependencies ++= Dependencies.http4sClient\n'
+    )
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "Dependencies.scala").write_text(
+        'import sbt._\nobject Dependencies {\n'
+        '  val http4sClient = Seq(\n'
+        '    "org.http4s" %% "http4s-ember-client" % "0.23.0",\n'
+        '    "org.http4s" %% "http4s-dsl" % "0.23.0",\n'
+        '  )\n'
+        '}\n'
+    )
+    (project_dir / "build.properties").write_text("sbt.version=1.9.0\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "http4s" in data["profile"]["frameworks"]
+
+
+def test_detects_scala_play_from_project_plugins(tmp_path: Path) -> None:
+    """Play projects declare the sbt-play plugin in ``project/plugins.sbt``
+    and the user's app code lives alongside a ``build.sbt`` that may not
+    itself reference ``com.typesafe.play`` directly.
+    """
+    # Production import so framework-validation keeps Play confirmed
+    # rather than demoting it to dev_frameworks.
+    (tmp_path / "Main.scala").write_text(
+        'import play.api._\nobject Main extends App\n'
+    )
+    (tmp_path / "build.sbt").write_text(
+        'name := "play-app"\nversion := "1.0"\nenablePlugins(PlayScala)\n'
+    )
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "plugins.sbt").write_text(
+        'addSbtPlugin("com.typesafe.play" %% "sbt-plugin" % "2.9.0")\n'
+    )
+    (project_dir / "build.properties").write_text("sbt.version=1.9.0\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "play" in (
+        data["profile"]["frameworks"] + data["profile"].get("dev_frameworks", [])
+    )
+
+
 # Ruby framework detection tests
 
 
