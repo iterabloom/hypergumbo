@@ -455,6 +455,50 @@ class TestLoadCatalog:
         assert "fs_read" in boundaries
         assert "net_send" in boundaries
 
+    def test_elixir_loads_own_catalog_with_erlang_parent(self) -> None:
+        """WI-vibur: Elixir has its own catalog merged with Erlang parent.
+
+        Elixir idiom uses its own modules (File, Logger, Ecto.Repo,
+        Phoenix.Router, HTTPoison/Tesla/Req/Finch/Mint) but atom-access
+        into Erlang is common (`:gen_tcp.send`, `:ets.lookup`). Erlang
+        parent covers those atom paths; the Elixir catalog adds the
+        idiomatic surface that UAT found missing on plausible (Phoenix/
+        Ecto). BUG-09b: io-boundaries returned 0 boundaries before this.
+        """
+        catalog = load_catalog("elixir")
+        assert catalog.language == "elixir"
+        # Erlang parent merged in — atom-access still matched
+        assert catalog.lookup("file.read_file") is not None
+        # Elixir-specific primitives
+        assert catalog.lookup("File.read") is not None
+        assert catalog.lookup("File.write") is not None
+        assert catalog.lookup("Ecto.Repo.all") is not None
+        assert catalog.lookup("Ecto.Repo.insert") is not None
+        assert catalog.lookup("HTTPoison.get") is not None
+        assert catalog.lookup("Tesla.get") is not None
+        assert catalog.lookup("Req.get") is not None
+        assert catalog.lookup("Phoenix.Router.get") is not None
+        assert catalog.lookup("Logger.info") is not None
+        assert catalog.lookup("System.cmd") is not None
+
+    def test_elixir_catalog_covers_all_expected_boundaries(self) -> None:
+        """Elixir catalog emits every boundary kind Phoenix/Ecto apps need.
+
+        UAT BUG-09b observed 0 boundaries on plausible. After this PR,
+        at minimum fs_read, fs_write, net_send, net_recv, logging,
+        db_read, db_write, subprocess, env_read, and ipc_send are all
+        covered.
+        """
+        catalog = load_catalog("elixir")
+        boundaries = {p.boundary for p in catalog.primitives}
+        for expected in (
+            "fs_read", "fs_write", "net_send", "net_recv", "logging",
+            "db_read", "db_write", "subprocess", "env_read", "ipc_send",
+        ):
+            assert expected in boundaries, (
+                f"Elixir catalog missing boundary kind: {expected}"
+            )
+
     def test_erlang_catalog_loads(self) -> None:
         """Erlang I/O catalog covers OTP stdlib, networking, ETS/Mnesia, and process primitives."""
         catalog = load_catalog("erlang")

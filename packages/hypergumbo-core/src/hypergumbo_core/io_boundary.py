@@ -315,6 +315,9 @@ _CATALOG_ALIASES: dict[str, str] = {
 _CATALOG_PARENTS: dict[str, str] = {
     "scala": "java",
     "kotlin": "java",
+    # Elixir inherits Erlang stdlib — `:gen_tcp.send` / `:file.read` /
+    # `:ets.lookup` all call the Erlang modules directly (WI-vibur).
+    "elixir": "erlang",
 }
 
 
