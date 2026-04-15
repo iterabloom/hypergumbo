@@ -4024,3 +4024,145 @@ def test_cmd_slice_auto_entry_prefers_main_over_route(
         "main() should be preferred over route handlers: "
         "main functions are canonical application roots"
     )
+
+
+# ============================================================================
+# WI-balij: subcommand parser cleanup tests
+# ============================================================================
+
+
+def test_invalid_subcommand_reports_error_with_exit_code_2(capsys) -> None:
+    """`hypergumbo foobar` exits 2 with a 'not a valid subcommand' message
+    instead of silently inserting `sketch` and reporting 'path does not exist'.
+    """
+    result = main(["foobar"])
+    assert result == 2
+    _, err = capsys.readouterr()
+    assert "'foobar' is not a valid subcommand" in err
+    assert "hypergumbo --help" in err
+
+
+def test_invalid_subcommand_suggests_close_match(capsys) -> None:
+    """A typo close to a real subcommand surfaces a Did-you-mean line."""
+    result = main(["scetch"])
+    assert result == 2
+    _, err = capsys.readouterr()
+    assert "Did you mean" in err
+    assert "sketch" in err
+
+
+def test_invalid_subcommand_no_suggestion_for_far_strings(capsys) -> None:
+    """A string with no close match still errors cleanly (no Did-you-mean)."""
+    result = main(["xyz"])
+    assert result == 2
+    _, err = capsys.readouterr()
+    assert "'xyz' is not a valid subcommand" in err
+    assert "Did you mean" not in err
+
+
+def test_path_argument_still_routes_to_default_sketch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real path (e.g. `hypergumbo .`) still routes to the default sketch
+    subcommand — it must NOT trip the new typo-detection branch.
+    """
+    captured: dict = {}
+
+    def _fake_sketch(args) -> int:
+        captured["path"] = args.path
+        return 0
+
+    monkeypatch.setattr("hypergumbo_core.cli.cmd_sketch", _fake_sketch)
+    result = main([str(tmp_path)])
+    assert result == 0
+    assert captured["path"] == str(tmp_path)
+
+
+def test_relative_path_routes_to_default_sketch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo ./subdir` is a path-like prefix and must NOT trigger
+    typo-detection — the leading `.` is the gate.
+    """
+    sub = tmp_path / "subdir"
+    sub.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    captured: dict = {}
+
+    def _fake_sketch(args) -> int:
+        captured["path"] = args.path
+        return 0
+
+    monkeypatch.setattr("hypergumbo_core.cli.cmd_sketch", _fake_sketch)
+    result = main(["./subdir"])
+    assert result == 0
+    assert captured["path"] == "./subdir"
+
+
+def test_debug_flag_accepted_after_subcommand(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo sketch <path> --debug` no longer fails with
+    'unrecognized arguments: --debug' — the flag works in any position.
+    """
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_sketch", lambda args: 0,
+    )
+    result = main(["sketch", str(tmp_path), "--debug"])
+    assert result == 0
+
+
+def test_debug_flag_accepted_before_subcommand(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The original `hypergumbo --debug sketch <path>` form still works
+    (regression guard for the WI-balij fix).
+    """
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_sketch", lambda args: 0,
+    )
+    result = main(["--debug", "sketch", str(tmp_path)])
+    assert result == 0
+
+
+def test_debug_flag_triggers_logging_basicconfig(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--debug invokes logging.basicConfig with DEBUG level (regression
+    guard that the strip-and-set flow keeps the side-effect)."""
+    captured: dict = {}
+
+    def _fake_basicconfig(**kwargs) -> None:
+        captured.update(kwargs)
+
+    import logging
+    monkeypatch.setattr(logging, "basicConfig", _fake_basicconfig)
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_sketch", lambda args: 0,
+    )
+
+    main(["sketch", str(tmp_path), "--debug"])
+
+    assert captured.get("level") == logging.DEBUG
+
+
+def test_no_debug_flag_does_not_call_basicconfig(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without --debug, logging.basicConfig is NOT called — confirms
+    the flag's strip path is not over-eager."""
+    called = {"count": 0}
+
+    def _fake_basicconfig(**kwargs) -> None:
+        called["count"] += 1
+
+    import logging
+    monkeypatch.setattr(logging, "basicConfig", _fake_basicconfig)
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_sketch", lambda args: 0,
+    )
+
+    main(["sketch", str(tmp_path)])
+
+    assert called["count"] == 0

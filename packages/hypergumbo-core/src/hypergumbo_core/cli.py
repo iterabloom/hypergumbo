@@ -5965,14 +5965,57 @@ def main(argv=None) -> int:
 
     subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
 
+    # WI-balij (UAT UX-04): accept --debug in any position. Strip it here so
+    # `hypergumbo sketch . --debug` and `hypergumbo --debug sketch .` both
+    # work — argparse otherwise rejects --debug after the subcommand because
+    # it's only registered on the root parser.
+    debug_flag = False
+    if "--debug" in argv:
+        debug_flag = True
+        argv = [a for a in argv if a != "--debug"]
+
+    # WI-balij (UAT UX-03): if the first positional doesn't name a known
+    # subcommand AND clearly isn't a path (no path separators, no leading
+    # dot/tilde, doesn't exist on disk), the user probably mistyped a
+    # subcommand. Surface that with a Did-you-mean suggestion instead of
+    # silently inserting "sketch" and reporting "path does not exist".
+    if argv and argv[0] not in subcommands and not argv[0].startswith("-"):
+        candidate = argv[0]
+        looks_like_subcommand_attempt = (
+            "/" not in candidate
+            and "\\" not in candidate
+            and not candidate.startswith(".")
+            and not candidate.startswith("~")
+            and not Path(candidate).exists()
+        )
+        if looks_like_subcommand_attempt:
+            import difflib
+            close = difflib.get_close_matches(
+                candidate, sorted(subcommands), n=3, cutoff=0.5,
+            )
+            print(
+                f"hypergumbo: error: '{candidate}' is not a valid subcommand.",
+                file=sys.stderr,
+            )
+            if close:
+                print(
+                    f"  Did you mean: {', '.join(close)}?",
+                    file=sys.stderr,
+                )
+            print(
+                "  Run 'hypergumbo --help' to see the full list.",
+                file=sys.stderr,
+            )
+            return 2
+
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):
         argv = ["sketch"] + list(argv)
 
     args = parser.parse_args(argv)
 
-    # Configure logging if --debug is set
-    if getattr(args, "debug", False):
+    # Configure logging if --debug is set (in any position)
+    if debug_flag or getattr(args, "debug", False):
         logging.basicConfig(
             level=logging.DEBUG,
             format="[%(name)s] %(levelname)s: %(message)s",
