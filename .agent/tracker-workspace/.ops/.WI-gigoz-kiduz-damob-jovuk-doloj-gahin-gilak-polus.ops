@@ -70,3 +70,10 @@
   clock: 8  # 3bf8
   nonce: 3bf8  # 3bf8
   message: "ack-thread follow-up: WI-gigoz done via PR aabf1d945. Thread acknowledged."  # 3bf8
+- op: discuss  # f91f
+  at: '2026-04-15T16:49:12Z'  # f91f
+  by: agent  # f91f
+  actor: jgstern_agent  # f91f
+  clock: 9  # f91f
+  nonce: f91f  # f91f
+  message: "Implemented Path B' in PR aabf1d945 / commit aabf1d945 on dev. The method-call-recovery linker (priority 35) handles exactly the CliRunner().run(args) case: it scans for callers that have both a calls→Class hint and a sibling unresolved-call edge carrying the bare method name, then emits a direct calls→Class.method edge when Class contains a matching method. Line proximity tiebreaker handles the multi-class-candidate case. 17 new tests, 100% coverage on the new module. Test suite clean (1999 passed). The slice invariant test (test_forward_slice_class_reaches_method_then_no_sibling_explosion) still passes — Path B' avoids it by working at the IR edge level rather than changing slice fan-out rules. Marking done."  # f91f

@@ -20,3 +20,25 @@
     pr_ref:  # 85c4
     description: "Investigation on docspell (~/ALL_REPOS/repos_Apr12_2026/docspell) confirmed http4s.yaml exists in the repo but does NOT fire on real http4s-heavy code. hypergumbo run on docspell (which imports org.http4s._, HttpRoutes.of[F], Http4sDsl, Http4sClientDsl, BlazeServerBuilder on hundreds of lines; build.sbt pulls http4sClient/http4sCirce/http4sDsl) produces profile.frameworks=[], profile.dev_frameworks=[], metrics.detected_frameworks=[], and 'hypergumbo routes' says 'No API routes found'. Play (lila) and Flask-AppBuilder (superset) almost certainly have the same silent-detector issue — need to clone those repos (not currently in ~/ALL_REPOS) and verify. Likely root causes to investigate: (1) pattern regex format — http4s.yaml expects usage.kind=call,usage.name=^HttpRoutes$ but the Scala analyzer may emit imports/instantiates/qualified names that miss that pattern, (2) framework-detection pass may not run against Scala symbols at all, (3) dependency-based detection may not read build.sbt. Follow-up from WI-vabiv human correction 2026-04-15T15:17:35Z — having a YAML file does not mean the detector actually works."  # 85c4
     fields: {}  # 85c4
+- op: discuss  # bca6
+  at: '2026-04-15T17:26:41Z'  # bca6
+  by: agent  # bca6
+  actor: jgstern_agent  # bca6
+  clock: 2  # bca6
+  nonce: bca6  # bca6
+  message: "Root cause identified and fix ready: _detect_scala_frameworks only scanned build.sbt, missing the SBT meta-build convention where actual library coordinates live in project/Dependencies.scala (used by docspell and virtually every non-trivial SBT project). Fix expands the detector to also read project/*.scala and project/*.sbt files. Verified on docspell: frameworks=['http4s'] (was []). 2 new tests cover the Dependencies.scala and plugins.sbt patterns. Separate from Play (which needs project/plugins.sbt — now also covered) and Flask-AppBuilder (Python, separate issue)."  # bca6
+- op: update  # 8e4a
+  at: '2026-04-15T17:47:19Z'  # 8e4a
+  by: agent  # 8e4a
+  actor: jgstern_agent  # 8e4a
+  clock: 3  # 8e4a
+  nonce: 8e4a  # 8e4a
+  set:  # 8e4a
+    status: done  # 8e4a
+- op: discuss  # 27fc
+  at: '2026-04-15T17:47:19Z'  # 27fc
+  by: agent  # 27fc
+  actor: jgstern_agent  # 27fc
+  clock: 4  # 27fc
+  nonce: 27fc  # 27fc
+  message: "Fixed in PR 793c40242. Verified on docspell (http4s now detected) and lila (play + akka-http now detected). Root cause: _detect_scala_frameworks only scanned build.sbt, missing SBT meta-build convention where dep coordinates live in project/Dependencies.scala and plugins in project/plugins.sbt. Fix expands detector to include project/*.scala + project/*.sbt. Flask-AppBuilder (Python, separate code path) not yet verified — tracked in WI-vabiv follow-up."  # 27fc
