@@ -31,6 +31,12 @@ _EMBEDDING_MODEL = "microsoft/unixcoder-base"
 # Regex pattern for IPv6 CIDR (contains :: and /prefix, e.g., fd00:200::/40)
 _IPV6_CIDR_PATTERN = re.compile(r"[0-9a-fA-F:]*::[0-9a-fA-F:]*/\d+")
 
+# Set HF env vars BEFORE importing sentence_transformers downstream — most
+# HuggingFace libraries cache these at their own import time (WI-gatot).
+from ._hf_noise import suppress_hf_noise as _suppress_hf_noise  # noqa: E402
+
+_suppress_hf_noise()
+
 
 def _sanitize_no_proxy_for_httpx() -> tuple[str | None, str | None]:
     """Temporarily remove IPv6 CIDR entries from NO_PROXY for httpx compatibility.
