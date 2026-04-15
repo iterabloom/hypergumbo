@@ -393,6 +393,8 @@ SOLIDITY_FRAMEWORKS = {
 HASKELL_FRAMEWORKS = {
     "servant": ["servant", "servant-server"],
     "scotty": ["scotty"],
+    # Yesod — Rails-inspired Haskell web framework (haskellers et al.)
+    "yesod": ["yesod", "yesod-core", "yesod-auth", "yesod-persistent"],
 }
 
 # Clojure framework detection patterns (from deps.edn, project.clj)

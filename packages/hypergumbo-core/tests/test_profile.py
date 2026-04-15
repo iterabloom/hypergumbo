@@ -1661,6 +1661,66 @@ dependencies:
     assert "servant" in data["profile"]["frameworks"]
 
 
+def test_detects_haskell_yesod_framework_from_cabal(tmp_path: Path) -> None:
+    """WI-vabiv: detect Yesod from *.cabal dependency.
+
+    Yesod (UAT BUG-16 / haskellers) is the Rails-inspired Haskell web
+    framework; detection wires it up like Servant / Scotty so the new
+    yesod.yaml patterns are loaded when a repo declares the dependency.
+    """
+    (tmp_path / "Main.hs").write_text("main = putStrLn \"Hello\"\n")
+    (tmp_path / "myapp.cabal").write_text("""name: myapp
+version: 0.1.0.0
+build-depends:
+    base >=4.7 && <5,
+    yesod,
+    yesod-core,
+    yesod-auth
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "yesod" in data["profile"]["frameworks"]
+
+
+def test_detects_haskell_yesod_from_package_yaml(tmp_path: Path) -> None:
+    """WI-vabiv: detect Yesod from package.yaml (hpack)."""
+    (tmp_path / "Main.hs").write_text("main = putStrLn \"Hello\"\n")
+    (tmp_path / "package.yaml").write_text("""name: myapp
+dependencies:
+  - base >= 4.7 && < 5
+  - yesod
+  - yesod-persistent
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "yesod" in data["profile"]["frameworks"]
+
+
+def test_yesod_framework_yaml_loads(tmp_path: Path) -> None:
+    """WI-vabiv: yesod.yaml loads via load_framework_patterns and declares
+    the expected concepts (application, router, route, auth, model, etc.).
+    Guards against typos or schema drift in the new file.
+    """
+    from hypergumbo_core.framework_patterns import load_framework_patterns
+
+    pattern_def = load_framework_patterns("yesod")
+    assert pattern_def is not None, "yesod.yaml must load"
+    assert pattern_def.id == "yesod"
+    assert pattern_def.language == "haskell"
+
+    concepts = {p.concept for p in pattern_def.patterns}
+    for required in ("application", "router", "route", "auth", "model"):
+        assert required in concepts, (
+            f"yesod pattern set missing concept: {required}"
+        )
+
+
 # Clojure framework detection tests
 
 
