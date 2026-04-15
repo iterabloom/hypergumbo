@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Fixed
+
+- **`discuss` gate-message shows the working `--ack-thread` arg order** (WI-foril): the re-run hint printed when the gate fires now reads `tracker discuss <id> "<your reply>" --ack-thread` instead of the previous form `--ack-thread "<your reply>"`. Argparse's subparser parsing rejects the flag-before-positional form (an `nargs="?"` positional with a following optional flag won't accept the message after the flag — it's parsed as extra args). The fix is cosmetic but high-leverage: agents and humans alike were following the broken example shown by the gate itself. Also adds a regression check that the broken order really does still fail.
+
 ### Changed
 
 - **Renamed `before` field to `isbefore`** (WI-tunag): the dependency-link field on tracker items is now `isbefore` (`X.isbefore = [Y]` → "X is before Y"). CLI flags renamed: `--isbefore`, `--add-isbefore`, `--remove-isbefore`. Old ops files using `before` are read transparently (backward compatible); new writes use `isbefore`. Prevents the directional confusion that caused the TUI inversion bug (PR #2981).

@@ -775,10 +775,13 @@ def _warn_unread_human_messages(item_id: str, ts: TrackerSet) -> bool:
             prefix = "(summary) " if entry.is_summary else ""
             print(f"  [{entry.at}] {entry.actor} ({entry.by}): {prefix}{entry.message}")
     print()
+    # WI-foril: argparse with `nargs="?"` positional + optional flag
+    # rejects `--ack-thread "<msg>"` (flag before positional). Show the
+    # working order: message first, then `--ack-thread`.
     print(
         "To proceed, re-run with --ack-thread to confirm you have "
         "read the thread:\n"
-        f"  tracker discuss {item_id} --ack-thread \"<your reply>\""
+        f"  tracker discuss {item_id} \"<your reply>\" --ack-thread"
     )
     return True
     print()

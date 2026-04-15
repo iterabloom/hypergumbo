@@ -1204,6 +1204,68 @@ class TestWriteCommands:
         out = capsys.readouterr().out
         assert "discussed" in out
 
+    def test_discuss_gate_message_shows_working_arg_order(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """WI-foril: the gate-message points at the working arg order
+        (`message`, then `--ack-thread`), not the argparse-rejected order.
+
+        Argparse subparsers with `nargs="?"` positional + a following
+        optional flag refuse to accept `--ack-thread "<msg>"` (flag before
+        positional) — the message gets parsed as extra args. The fix is
+        cosmetic: the printed re-run hint must show the working order so
+        users (and agents) don't follow the broken example.
+        """
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item_with_discussion(ops_dir, "WI-test", [
+            {"at": "2026-01-01T01:00:00Z", "by": "agent",
+             "actor": "test_agent", "message": "Initial note"},
+            {"at": "2026-01-02T01:00:00Z", "by": "human",
+             "actor": "jgstern", "message": "Please investigate this"},
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "discuss", "WI-test", "Will do",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+        out = capsys.readouterr().out
+        # Working order: message first, then --ack-thread
+        assert "\"<your reply>\" --ack-thread" in out
+        # Anti-regression: must NOT show the broken order
+        assert "--ack-thread \"<your reply>\"" not in out
+
+    def test_discuss_rejects_ack_thread_before_message(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """WI-foril: regression check that argparse really does reject the
+        broken order. If a future Python or argparse change ever made the
+        broken order work, this test would fail and we'd revisit the
+        gate-message text. Until then, the fix in the gate-message is the
+        right shape (steer users away from a still-broken pattern).
+        """
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item_with_discussion(ops_dir, "WI-test", [
+            {"at": "2026-01-01T01:00:00Z", "by": "agent",
+             "actor": "test_agent", "message": "Initial note"},
+            {"at": "2026-01-02T01:00:00Z", "by": "human",
+             "actor": "jgstern", "message": "Please investigate this"},
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "discuss", "WI-test",
+                "--ack-thread", "Reply text",
+            ])
+        # argparse exits 2 (SystemExit) on unrecognized arguments
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "unrecognized arguments" in err
+
     def test_discuss_no_warning_when_last_is_agent(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
         mock_agent_uid: None,
