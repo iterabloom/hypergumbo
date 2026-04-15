@@ -3270,6 +3270,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # Run taint-flow analysis if any claims have taint_flow constraints
     taint_findings = None
+    # INV-javam: track languages with no taint coverage so callers can
+    # distinguish "no taint-flow violations" from "language not analyzed".
+    # Without this, taint-flow trivially passes every claim on unsupported
+    # languages and the verify-claims output lies by omission.
+    unsupported_taint_languages: list[str] = []
     has_taint_claims = any(c.constraint_taint_flow is not None for c in claims)
     if has_taint_claims:
         from .taint import load_builtin_taint_catalog, propagate_taint_structural
@@ -3282,7 +3287,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         all_sources = []
         all_sinks = []
         all_sanitizers = []
-        for lang in languages:
+        for lang in sorted(languages):
+            src_count = len(taint_catalog.sources_for_language(lang))
+            snk_count = len(taint_catalog.sinks_for_language(lang))
+            if src_count == 0 and snk_count == 0:
+                # Neither sources nor sinks for this language — taint-flow
+                # cannot meaningfully analyze it. Surface the gap.
+                unsupported_taint_languages.append(lang)
             all_sources.extend(taint_catalog.sources_for_language(lang))
             all_sinks.extend(taint_catalog.sinks_for_language(lang))
             all_sanitizers.extend(taint_catalog.sanitizers_for_language(lang))
@@ -3297,6 +3308,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # Output
     if getattr(args, "json_output", False):
+        # Preserve the legacy flat-list schema for programmatic consumers;
+        # INV-javam's unsupported_taint_languages signal goes to stderr to
+        # avoid breaking existing pipelines that parse verify-claims JSON.
         print(json.dumps([v.to_dict() for v in verdicts], indent=2))
     else:
         violated = 0
@@ -3313,6 +3327,19 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             print(f"{violated}/{len(verdicts)} claim(s) VIOLATED")
         else:
             print(f"All {len(verdicts)} claim(s) CONFIRMED")
+
+    # INV-javam: warn to stderr when taint claims were evaluated against a
+    # repo whose languages have no taint catalog coverage. Even a "all
+    # confirmed" verdict is misleading when the language wasn't analyzed.
+    if has_taint_claims and unsupported_taint_languages:
+        langs = ", ".join(unsupported_taint_languages)
+        print(
+            f"\nNote: no taint-flow catalog for language(s): {langs}. "
+            "Claims touching these languages are NOT actually verified — "
+            "taint-flow has no sources/sinks to trace. Treat 'confirmed' "
+            "verdicts on these languages as inconclusive. (INV-javam)",
+            file=sys.stderr,
+        )
 
     has_violations = any(v.verdict == "violated" for v in verdicts)
     return 1 if has_violations else 0
