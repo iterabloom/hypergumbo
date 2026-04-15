@@ -3,8 +3,6 @@
 
 **Dr. Tyler Durden**
 Karl Friston Endowed Chair of Rugged Hyperparameter Landscapes, Late Capitalism, and Test Driven Development
-Jamal Khashoggi School of Journalism
-King Abdullah University of Science and Technology, Thuwal, Saudi Arabia
 Lab notebook — 13 April 2026, 22:39 local
 
 ---
@@ -65,7 +63,15 @@ The first rule of fascism is you do not talk about fascism. The first rule of co
 
 A note on proportion, since we have been borrowing heavy words. Nobody was dismembered over a coverage threshold. A journalist is dead; a snapshot library is hard-pinned; these are not comparable weights. The figure here is a lowercase fascism — it names a *shape* of regime, where a KPI has eaten the justification it was supposed to serve. The costume is small. The pattern underneath, unfortunately, is not.
 
-The byline up top names a journalism school that does not exist, at an institution whose host regime murdered the man the school is named after. The regime does not name buildings after the journalists it kills. The journalist names the building. Then the journalist publishes. The reminder is: *institutions consume the critics who make them legible.* And still you must speak. Mark the `pragma`. Name the metric. Say what the bar is for, and what it is not for, and which cases are which. Put it in the `pyproject.toml`. Put it in the commit message. Put it — and this is the crucial part — **in writing**. Writing is the commitment device.
+Institutions do not usually suppress dissent. They *metabolize* it. The mechanism is a permitted outlet that changes nothing — a channel expensive enough to use that the next act of dissent is less likely, and public enough to point at that the institution gets to say *see, we listen.* The dissent is allowed. The bar it was supposed to move does not move.
+
+One concrete case, named honestly. Khashoggi kept writing. The *Washington Post* kept publishing. The regime killed him at a consulate anyway. The international consequences were limited; state visits resumed; the columns still stand in the archive. A critic spoke, at full cost, and the institution absorbed it and continued. That is not *suppression* in the older sense — the dissent was permitted, before the killing and after it. It is metabolism. The regime paid for the critic and went back to work.
+
+The engineering analog is a prediction, not a diagnosis. If `# pragma: no cover` in this repo ever comes to require a committee, three approvals, and a written justification — especially approvals routed back to the same people who set the coverage floor — the exception mechanism will have been recuperated. The team will get to point at the process and say *see, we have a way to disagree.* The disagreement will not move the bar. **The pragma comment is only an epistemic act if it is cheap to write.** The moment it requires justification to a committee, it has been absorbed.
+
+One sharpening, since *cheap vs. expensive* is not quite the right axis. The real question is **who decides where the cost of dissent sits.** If the people who gate the exception are the same people who set the target, the exception is recuperation regardless of how many forms are involved, because the object of dissent gets to price the dissent. Keep those two authorities separate, or the predicate collapses.
+
+And still you must speak. Mark the `pragma`. Name the metric. Say what the bar is for, and what it is not for, and which cases are which. Put it in the `pyproject.toml`. Put it in the commit message. Put it — and this is the crucial part — **in writing**. Writing is the commitment device, but only if the commitment is cheap to make.
 
 ---
 
@@ -73,7 +79,7 @@ The byline up top names a journalism school that does not exist, at an instituti
 
 1. **Core scope, coverage stays at 100%.** Analyzers, IR, linkers, store, slice, CLI plumbing. Coverage is a real floor here because the other layers of the portfolio (property tests, bakeoff, dogfooding, self-analysis) are present to catch its Goodhart failure mode. The ensemble, not any single measure, carries the epistemic load.
 2. **TUI scope, coverage is theatrical.** The syrupy incident is the empirical proof. A future refactor should carve visual modules out of the coverage target with `# pragma: no cover` and an explicit rationale comment, replaced by manual dogfooding. Not today.
-3. **Self-review rotation should include one question.** *Does any part of the test suite require the test suite to be defended?* If yes, the suite owns you. Name the inversion in the commit, not just the notebook.
+3. **Self-review rotation should include two questions.** *Does any part of the test suite require the test suite to be defended?* If yes, the suite owns you. *And: is `# pragma: no cover` cheap to write in this repo, or has it grown gatekeepers?* If the latter, the inversion has already happened — the dissent mechanism is doing recuperation work, not epistemic work. Name both inversions in the commit, not just the notebook.
 4. **Exit trigger on file.** `WI-zokan-zitub-lajoh-pabig-muzig-zalip-bisim-pulum` holds the revert plan for `CVE-2025-71176` when upstream `pytest-textual-snapshot` PR #24 lands. The item names the workaround as a workaround. That is the whole job.
 5. **No single metric survives Goodhart on its own.** Only portfolios do. If hypergumbo's test stack ever collapses to *just coverage* or *just bakeoff* or *just dogfooding*, we have lost the ensemble and the metric will rot. Keep all four layers alive.
 
