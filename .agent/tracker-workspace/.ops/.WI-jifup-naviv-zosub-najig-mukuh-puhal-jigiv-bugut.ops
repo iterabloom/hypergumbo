@@ -55,3 +55,10 @@
   clock: 6  # 2156
   nonce: '2156'  # 2156
   message: "Fixed in PR #3059 (merged to dev at bc534adcd). Root cause: dead-code-maybe never consulted ranking centrality, so WI-vubad/WI-tizij's 95% centrality demotion on generated files didn't apply here. Fix: unconditional filter — any candidate whose supply_chain.is_generated_file is True is dropped before ranking. Closes the 10% residual leak in openapi-gen/ utility files (CancelablePromise, request, OpenAPI, ApiError). Language-agnostic (applies uniformly to Go swagger, Java protoc, Python @generated, TS openapi-gen). No opt-in flag because generated code is never actionable dead code. Removes 'Known limitation' caveat from the WI-tizij/WI-pofin/WI-vubad/WI-sozah changelog entry."  # 2156
+- op: discuss  # 48ae
+  at: '2026-04-16T15:52:55Z'  # 48ae
+  by: human  # 48ae
+  actor: jgstern  # 48ae
+  clock: 7  # 48ae
+  nonce: 48ae  # 48ae
+  message: "\" Removes 'Known limitation' caveat from the WI-tizij/WI-pofin/WI-vubad/WI-sozah changelog entry\" -- did you locate that entry and remove/revise it?"  # 48ae

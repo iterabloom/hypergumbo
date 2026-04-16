@@ -19,3 +19,28 @@
     pr_ref:  # d92c
     description: "WI-tubot full-corpus run (2026-04-11, 11 repos, 92218 candidates) categorized only 6% of dead-code candidates: cross_language_api=3187, handler_or_dto=1631, swagger_generated=514, memberlist_callbacks=100, goroutine_lifecycle=25, yaml_json_marshal=20, pipeline_stage_dispatch=7, cobra_cli_dispatch=3. The remaining 86731 'uncategorized' candidates represent untapped signal — without categorization, prospector output cannot rank linker-investment priorities beyond the recognised top 6%. Inspect ~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-11-full/per_repo[*].json for sample uncategorized candidate shapes (names, paths, kinds). Expected new categories: callback_registration (on_*, handle_*, *Listener), dependency_injection constructor params (*Service, *Provider), message-queue consumers (*Consumer, *Subscriber), CLI/route registration patterns not yet tagged. Each new category unlocks one class of structural linker fix."  # d92c
     fields: {}  # d92c
+- op: update  # 1868
+  at: '2026-04-16T16:06:28Z'  # 1868
+  by: human  # 1868
+  actor: jgstern  # 1868
+  clock: 2  # 1868
+  nonce: '1868'  # 1868
+  set: {}  # 1868
+  add:  # 1868
+    isbefore: [WI-tubot-gokoj-bakog-kajip-pipon-lofij-vunik-nofuj]  # 1868
+- op: update  # 515b
+  at: '2026-04-16T16:09:34Z'  # 515b
+  by: human  # 515b
+  actor: jgstern  # 515b
+  clock: 3  # 515b
+  nonce: 515b  # 515b
+  set:  # 515b
+    priority: 2  # 515b
+- op: update  # 9e4a
+  at: '2026-04-16T16:13:46Z'  # 9e4a
+  by: agent  # 9e4a
+  actor: jgstern_agent  # 9e4a
+  clock: 4  # 9e4a
+  nonce: 9e4a  # 9e4a
+  set:  # 9e4a
+    description: "WI-tubot full-corpus prospector run (2026-04-11, 11 repos, 92218 candidates) categorized only 6% of dead-code candidates: cross_language_api=3187, handler_or_dto=1631, swagger_generated=514, memberlist_callbacks=100, goroutine_lifecycle=25, yaml_json_marshal=20, pipeline_stage_dispatch=7, cobra_cli_dispatch=3. The remaining 86731 'uncategorized' candidates represent untapped signal — without categorization, prospector output cannot rank linker-investment priorities beyond the recognised top 6%.\n\nSUCCESS CRITERION (gates WI-tubot re-run): the improved categorizer must land **<50% uncategorized** on the same 11-repo cohort (run-2026-04-11-full). That's the bar for WI-tubot to be considered complete — not just \"artifact exists\" but \"signal is usable for prioritizing linker investment.\" WI-vupin is `isbefore` WI-tubot precisely to enforce this: WI-tubot stays open until the categorizer lands AND the re-run achieves the threshold.\n\nMETHOD:\n1. Sample uncategorized candidates from ~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-11-full/per_repo[*].json. Look for high-frequency name/path shapes that aren't yet matched by the existing rules.\n2. Expected new categories (seed guesses — actual list comes from the sampling):\n   - callback_registration (on_*, handle_*, *Listener, *Callback)\n   - dependency_injection_param (*Service, *Provider, *Repository constructor params)\n   - message_queue_consumer (*Consumer, *Subscriber, *Handler)\n   - route/cli registration patterns not yet tagged\n   - framework-specific factory patterns\n3. Each new category unlocks one class of structural linker fix — so order categories by frequency × linker-leverage, not just frequency.\n\nVALIDATION:\n- Re-run the categorizer offline against the existing per_repo[*].json files (no new prospecting pass needed for the categorizer iteration loop). Only the final WI-tubot re-run requires a fresh prospecting pass.\n- Report: per-category count deltas, new uncategorized rate, and which linkers the new categories motivate.\n\nSource: WI-tubot discussion 2026-04-16 (aggregate.json analysis)."  # 9e4a
