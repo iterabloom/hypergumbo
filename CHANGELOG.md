@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **HTTP linker: Elm client detection (WI-tinip Phase 1)**: the cross-language HTTP linker (`packages/hypergumbo-core/src/hypergumbo_core/linkers/http.py`) now scans `*.elm` files and emits `http_calls` edges from Elm HTTP calls to server-side route handlers (Go, Python, Ruby, Java, JS — anything that exposes a `route:` concept). Three idioms are recognised: (1) the `Utils.Api.get|post|put|patch|delete|head|options (apiUrl ++ "/path") ...` wrapper-module style used by Alertmanager/Prometheus-style Elm UIs, (2) the `Http.get|post|... { url = "...", ... }` record form from the `elm/http` core library, and (3) both orderings of `Http.request { method = "POST", url = "...", ... }`. Closes UAT DQ-09 for the Alertmanager Elm→Go handler linkage. The `let`-bound/`String.join`-built URL forms (a minority of real-world calls) are deferred to a follow-up full Elm analyzer.
+
 ### Changed
 
 - **Dead-code-prospector categorizer expanded from 8 to 46 gap categories** (WI-vupin): `scripts/dead-code-prospector-run.py::_categorize_candidate` now accepts an optional `language` argument and applies language-gated rules (Rust trait impls, Python dunders / Django ORM / Airflow framework, Go receiver methods / k8s watchers / Cilium eBPF dispatch, Java JavaBean accessors / Kafka streams internals / Spring bean config, TS/JS React lifecycle / Redux / Superset chart plugin / Apollo). Reduces `uncategorized` rate on the WI-tubot 2026-04-11 prospector corpus (92,218 candidates across 11 polyglot repos) from **94.0% → 43.5%** — below WI-vupin's success-criterion threshold of 50%. Convergence observed at the 3pp-per-iteration bar: pass-3 was 6.2pp, pass-4 was 3.7pp, pass-5 was 2.3pp, so further heuristic additions overfit the corpus without producing new actionable signal (see WI-vupin discussion for full reflection on why heuristic categorization plateaus and which alternative strategies — class-hierarchy-aware linker hints, framework annotation detection, LLM-assisted clustering — would be needed to categorize the remaining residual).

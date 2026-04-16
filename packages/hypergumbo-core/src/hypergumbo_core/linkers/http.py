@@ -219,6 +219,75 @@ JS_JQUERY_SHORTHAND_PATTERN = re.compile(
 )
 
 
+# ---------------------------------------------------------------------------
+# Elm HTTP client patterns (WI-tinip)
+# ---------------------------------------------------------------------------
+#
+# Elm's HTTP idioms vary by library, but the dominant pattern in the
+# Alertmanager UI (and most Elm 0.19+ apps) is to thread an `apiUrl`
+# parameter through a wrapper module (`Utils.Api`) that exposes
+# `get`/`post`/`put`/`delete` functions. The URL is built with `++`
+# string concatenation:
+#
+#     Utils.Api.get (apiUrl ++ "/receivers") decoder
+#     Utils.Api.post (apiUrl ++ "/silences") body decoder
+#
+# We also catch the stdlib `Http.get { url = "...", ... }` form and
+# its `Http.request { method = "POST", url = "...", ... }` cousin.
+#
+# Captured in group 1 is the literal path portion (including the
+# leading slash). The concatenated `apiUrl` prefix is treated as a
+# host/base, so the path that remains is what we match against the Go
+# route table (e.g. `/api/v2/alerts`). url_type is always "literal"
+# because the string after `++` is a literal.
+#
+# Note: the function-definition forms with `let`-bound URLs (e.g.
+# `fetchAlerts` in Alerts/Api.elm uses `String.join "/"` over a list)
+# are harder to resolve without a proper Elm analyzer and are deferred
+# to a follow-up. The majority of routes (`fetchReceivers`,
+# `fetchSilences`, `fetchStatus`, etc. in the Alertmanager corpus) use
+# the direct `apiUrl ++ "/path"` form and are captured here.
+ELM_UTILS_API_PATTERN = re.compile(
+    r"""Utils\.Api\.(get|post|put|patch|delete|head|options)
+        \s*\(\s*
+        [a-zA-Z_][a-zA-Z0-9_]*     # base-url variable (apiUrl, baseUrl, etc.)
+        \s*\+\+\s*
+        "([^"]+)"                   # literal path segment
+    """,
+    re.VERBOSE,
+)
+
+# Http.get { url = "..." } / Http.post { url = "..." } — core-library form
+# Captures method from the call name, URL from the record field.
+ELM_HTTP_RECORD_PATTERN = re.compile(
+    r"""Http\.(get|post|put|patch|delete|head|options)
+        \s*\{\s*[^}]*?
+        url\s*=\s*"([^"]+)"
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+# Http.request { method = "GET", url = "...", ... } — explicit-method form
+ELM_HTTP_REQUEST_METHOD_PATTERN = re.compile(
+    r"""Http\.request
+        \s*\{\s*[^}]*?
+        method\s*=\s*"(\w+)"[^}]*?
+        url\s*=\s*"([^"]+)"
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+# Http.request { url = "...", method = "GET", ... } — url before method
+ELM_HTTP_REQUEST_URL_FIRST_PATTERN = re.compile(
+    r"""Http\.request
+        \s*\{\s*[^}]*?
+        url\s*=\s*"([^"]+)"[^}]*?
+        method\s*=\s*"(\w+)"
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+
 def _extract_url_from_match(match: re.Match, literal_group: int = 1, var_group: int = 2) -> tuple[str, str]:
     """Extract URL and url_type from a regex match.
 
@@ -388,7 +457,7 @@ def _find_source_files(root: Path) -> Iterator[Path]:
     """
     patterns = [
         "**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx",
-        "**/*.go", "**/*.rb", "**/*.java",
+        "**/*.go", "**/*.rb", "**/*.java", "**/*.elm",
     ]
     for path in find_files(root, patterns):
         if path.stem.endswith(".min"):
@@ -833,6 +902,90 @@ def _scan_java_file(file_path: Path, content: str) -> list[HttpClientCall]:
     return calls
 
 
+def _scan_elm_file(file_path: Path, content: str) -> list[HttpClientCall]:
+    """Scan an Elm file for HTTP client calls.
+
+    Detects three idioms (WI-tinip):
+
+    1. ``Utils.Api.get (apiUrl ++ "/path") ...`` — the Alertmanager-style
+       wrapper-module pattern where a base-URL parameter is concatenated
+       with a literal path.
+    2. ``Http.get { url = "...", expect = ... }`` and the other
+       method-named record forms from the ``elm/http`` core library.
+    3. ``Http.request { method = "POST", url = "...", ... }`` and its
+       reverse-order variant, for cases where the HTTP method is
+       spelled out as a string field.
+
+    URL-building idioms that involve ``let``-bound expressions or
+    ``String.join`` over a list (a smaller minority of calls in
+    practice) are not captured by the regex layer and are deferred to
+    a proper Elm analyzer.
+    """
+    calls: list[HttpClientCall] = []
+
+    for match in ELM_UTILS_API_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="elm",
+                url_type="literal",
+            )
+        )
+
+    for match in ELM_HTTP_RECORD_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="elm",
+                url_type="literal",
+            )
+        )
+
+    for match in ELM_HTTP_REQUEST_METHOD_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="elm",
+                url_type="literal",
+            )
+        )
+
+    for match in ELM_HTTP_REQUEST_URL_FIRST_PATTERN.finditer(content):
+        url = match.group(1)
+        method = match.group(2).upper()
+        line_num = content[: match.start()].count("\n") + 1
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="elm",
+                url_type="literal",
+            )
+        )
+
+    return calls
+
+
 def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
     """Create a symbol for an HTTP client call."""
     rel_path = Path(call.file_path).relative_to(root) if root else Path(call.file_path)
@@ -894,6 +1047,8 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                 calls = _scan_ruby_file(file_path, content)
             elif file_path.suffix == ".java":
                 calls = _scan_java_file(file_path, content)
+            elif file_path.suffix == ".elm":
+                calls = _scan_elm_file(file_path, content)
             else:
                 calls = _scan_javascript_file(file_path, content)
 

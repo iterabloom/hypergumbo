@@ -11,6 +11,7 @@ from hypergumbo_core.linkers.http import (
     _extract_path_from_url,
     _find_source_files,
     _match_route_pattern,
+    _scan_elm_file,
     _scan_go_file,
     _scan_java_file,
     _scan_javascript_file,
@@ -1882,3 +1883,228 @@ class TestCreateClientSymbolStableId:
         sym_path = _create_client_symbol(call_path, tmp_path)
         # Both should resolve to the same stable_id since paths match
         assert sym_full.stable_id == sym_path.stable_id
+
+
+# ---------------------------------------------------------------------------
+# Tests: Elm HTTP scanner (WI-tinip)
+# ---------------------------------------------------------------------------
+
+
+class TestScanElmFile:
+    """Tests for Elm HTTP client call detection."""
+
+    def test_utils_api_get(self) -> None:
+        """``Utils.Api.get (apiUrl ++ "/receivers") ...`` → GET /receivers."""
+        code = dedent('''
+            module Alerts.Api exposing (fetchReceivers)
+
+            fetchReceivers apiUrl =
+                Utils.Api.send
+                    (Utils.Api.get
+                        (apiUrl ++ "/receivers")
+                        decoder
+                    )
+        ''')
+        calls = _scan_elm_file(Path("Alerts/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/receivers"
+        assert calls[0].language == "elm"
+        assert calls[0].url_type == "literal"
+
+    def test_utils_api_post(self) -> None:
+        """``Utils.Api.post (apiUrl ++ "/silences") body ...`` → POST /silences."""
+        code = dedent('''
+            createSilence apiUrl body =
+                Utils.Api.post (apiUrl ++ "/silences") body
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/silences"
+
+    def test_utils_api_delete(self) -> None:
+        """``Utils.Api.delete`` is supported."""
+        code = dedent('''
+            deleteSilence apiUrl id =
+                Utils.Api.delete (apiUrl ++ "/silence/abc-123")
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+        assert calls[0].url == "/silence/abc-123"
+
+    def test_http_get_record_form(self) -> None:
+        """``Http.get { url = "..." }`` from the core library."""
+        code = dedent('''
+            getStatus =
+                Http.get
+                    { url = "/api/status"
+                    , expect = Http.expectJson GotStatus decoder
+                    }
+        ''')
+        calls = _scan_elm_file(Path("Status.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/status"
+
+    def test_http_post_record_form(self) -> None:
+        """``Http.post { url = "..." }`` POST variant."""
+        code = dedent('''
+            submitForm body =
+                Http.post
+                    { url = "/api/v1/submit"
+                    , body = Http.jsonBody body
+                    , expect = Http.expectJson Submitted decoder
+                    }
+        ''')
+        calls = _scan_elm_file(Path("Form.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/v1/submit"
+
+    def test_http_request_method_first(self) -> None:
+        """``Http.request { method = "PUT", url = "...", ... }`` explicit method."""
+        code = dedent('''
+            updateUser id data =
+                Http.request
+                    { method = "PUT"
+                    , headers = []
+                    , url = "/api/users/1"
+                    , body = Http.jsonBody data
+                    , expect = Http.expectJson Updated decoder
+                    , timeout = Nothing
+                    , tracker = Nothing
+                    }
+        ''')
+        calls = _scan_elm_file(Path("Users.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PUT"
+        assert calls[0].url == "/api/users/1"
+
+    def test_http_request_url_first(self) -> None:
+        """``Http.request { url = "...", method = "DELETE", ... }`` — url before method."""
+        code = dedent('''
+            removeUser id =
+                Http.request
+                    { url = "/api/users/1"
+                    , method = "DELETE"
+                    , headers = []
+                    , body = Http.emptyBody
+                    , expect = Http.expectWhatever Removed
+                    , timeout = Nothing
+                    , tracker = Nothing
+                    }
+        ''')
+        calls = _scan_elm_file(Path("Users.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+        assert calls[0].url == "/api/users/1"
+
+    def test_multiple_calls_in_module(self) -> None:
+        """A single Elm module can define many endpoint functions."""
+        code = dedent('''
+            module Alerts.Api exposing (fetchAlerts, fetchReceivers)
+
+            fetchAlerts apiUrl =
+                Utils.Api.get (apiUrl ++ "/alerts") decoder
+
+            fetchReceivers apiUrl =
+                Utils.Api.get (apiUrl ++ "/receivers") decoder
+
+            postAlert apiUrl body =
+                Utils.Api.post (apiUrl ++ "/alerts") body
+        ''')
+        calls = _scan_elm_file(Path("Api.elm"), code)
+        assert len(calls) == 3
+        methods = sorted((c.method, c.url) for c in calls)
+        assert methods == [
+            ("GET", "/alerts"),
+            ("GET", "/receivers"),
+            ("POST", "/alerts"),
+        ]
+
+    def test_no_http_calls_returns_empty(self) -> None:
+        """An Elm module with no HTTP calls returns no calls."""
+        code = dedent('''
+            module Types exposing (Foo, bar)
+
+            type Foo = Bar | Baz
+
+            bar : Int -> Int
+            bar x = x + 1
+        ''')
+        calls = _scan_elm_file(Path("Types.elm"), code)
+        assert calls == []
+
+    def test_line_numbers_recorded(self) -> None:
+        """Each detected call records its line number correctly."""
+        code = dedent('''
+            module Api exposing (..)
+
+
+
+
+            fetchA apiUrl =
+                Utils.Api.get (apiUrl ++ "/a") decoder
+        ''').lstrip("\n")
+        calls = _scan_elm_file(Path("Api.elm"), code)
+        assert len(calls) == 1
+        # The Utils.Api.get line is line 7 (1-indexed) after the blank lines
+        assert calls[0].line == 7
+
+
+class TestElmFilesAreScanned:
+    """Integration: _find_source_files should include .elm files so the
+    scanner is reached by link_http."""
+
+    def test_elm_file_listed(self, tmp_path: Path) -> None:
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "Alerts.elm").write_text(
+            "module Alerts exposing (fetch)\n"
+            "fetch apiUrl = Utils.Api.get (apiUrl ++ \"/alerts\")"
+        )
+        files = list(_find_source_files(tmp_path))
+        assert any(f.suffix == ".elm" for f in files), (
+            f"Expected .elm file in discovery set; got {[str(f) for f in files]}"
+        )
+
+    def test_link_http_routes_elm_to_go(self, tmp_path: Path) -> None:
+        """End-to-end: an Elm client calling /api/alerts should be linked
+        to a Go route symbol declared with that same path.
+        """
+        (tmp_path / "ui").mkdir()
+        (tmp_path / "ui" / "Alerts.elm").write_text(dedent('''
+            module Alerts exposing (..)
+
+            fetchAlerts apiUrl =
+                Utils.Api.get (apiUrl ++ "/api/v2/alerts") decoder
+        ''').lstrip("\n"))
+
+        # Mock a Go route symbol with route info in meta
+        # (format mirrors what Go/Ruby/PHP analyzers emit — see
+        # _get_route_info_from_concept).
+        route = Symbol(
+            id="api/alerts.go::handleAlerts",
+            name="handleAlerts",
+            kind="route",
+            path=str(tmp_path / "api" / "alerts.go"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+            language="go",
+            meta={
+                "route_path": "/api/v2/alerts",
+                "http_method": "GET",
+            },
+        )
+
+        result = link_http(tmp_path, [route])
+
+        # Elm symbol should have been created
+        elm_syms = [s for s in result.symbols if s.language == "elm"]
+        assert len(elm_syms) == 1
+        # And a cross-language edge should exist
+        assert any(
+            e.src == elm_syms[0].id and e.dst == route.id
+            and e.edge_type == "http_calls"
+            for e in result.edges
+        ), "Elm → Go route edge missing from link_http result"
