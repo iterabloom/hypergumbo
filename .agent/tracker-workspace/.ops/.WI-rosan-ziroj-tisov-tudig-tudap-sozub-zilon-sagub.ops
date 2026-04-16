@@ -36,3 +36,11 @@
   set: {}  # 5b01
   add:  # 5b01
     isbefore: [WI-tinip-zosus-puban-lakok-didil-sahar-bohod-lutud]  # 5b01
+- op: update  # 901a
+  at: '2026-04-16T19:11:52Z'  # 901a
+  by: agent  # 901a
+  actor: jgstern_agent  # 901a
+  clock: 4  # 901a
+  nonce: 901a  # 901a
+  set:  # 901a
+    parent: INV-miloj-tagum-garuk-jataf-lupas-ligis-gazaz-pimon  # 901a

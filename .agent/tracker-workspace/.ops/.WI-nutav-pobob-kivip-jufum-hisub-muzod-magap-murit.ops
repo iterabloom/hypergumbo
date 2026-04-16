@@ -1,0 +1,22 @@
+- op: create  # fdb4
+  at: '2026-04-16T19:18:20Z'  # fdb4
+  by: agent  # fdb4
+  actor: jgstern_agent  # fdb4
+  clock: 1  # fdb4
+  nonce: fdb4  # fdb4
+  data:  # fdb4
+    kind: work_item  # fdb4
+    title: "Airflow framework-dispatch linker: Hook.get_conn / Sensor.poke / Trigger.run / Operator.execute"  # fdb4
+    status: todo_soft  # fdb4
+    priority: 2  # fdb4
+    parent:  # fdb4
+    tags:  # fdb4
+    - cross_language_linkers  # fdb4
+    - analysis_quality  # fdb4
+    - airflow  # fdb4
+    isbefore: []  # fdb4
+    duplicate_of: []  # fdb4
+    not_duplicate_of: []  # fdb4
+    pr_ref:  # fdb4
+    description: "WI-tubot aggregate-v5 analysis (2026-04-16): python_airflow_framework + airflow_operator_hook combined = 4511 candidates (4.9% of the pool). Top samples: GCSHook.copy, AirflowConfigParser.read, SsmRunCommandTrigger.hook, AthenaTrigger.hook, GlueCrawlerCompleteTrigger.hook.\n\nCurrent state: decorator_dispatch.py handles @dag / @task decorator-registered tasks but not the class-based framework-dispatch shape where Airflow internals invoke Hook.get_conn(), Sensor.poke(), Trigger.run(), Operator.execute() at runtime from the scheduler/executor — a dispatch the static call graph never sees.\n\nScope: a new linker (airflow_framework_dispatch.py) that:\n1. Detects classes inheriting from BaseHook / BaseSensor / BaseTrigger / BaseOperator\n2. Treats the framework-called methods (execute, execute_complete, poke, on_kill, pre_execute, post_execute, run, hook, get_conn, test_connection) as reachable from an Airflow-framework-entry pseudo-source\n3. Emits framework_dispatches_to edges from the pseudo-source to each override\n\nCross-language relevance: Hook.get_conn dispatches to cloud-SDK clients (AWS boto3, Google google-cloud, Azure azure-sdk) — the targets are in external packages, but the dispatching methods themselves become visible to dead-code analysis.\n\nAcceptance: re-run of dead-code-prospector on the 2026-04-11 corpus shows combined python_airflow_framework + airflow_operator_hook below 1500 (67% reduction)."  # fdb4
+    fields: {}  # fdb4

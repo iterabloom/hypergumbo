@@ -1,0 +1,21 @@
+- op: create  # 2427
+  at: '2026-04-16T19:17:38Z'  # 2427
+  by: agent  # 2427
+  actor: jgstern_agent  # 2427
+  clock: 1  # 2427
+  nonce: '2427'  # 2427
+  data:  # 2427
+    kind: work_item  # 2427
+    title: "Jackson/JavaBean serialization linker: link @JsonProperty + getX/setX accessors to their JSON serialization call-sites"  # 2427
+    status: todo_soft  # 2427
+    priority: 2  # 2427
+    parent:  # 2427
+    tags:  # 2427
+    - cross_language_linkers  # 2427
+    - analysis_quality  # 2427
+    isbefore: []  # 2427
+    duplicate_of: []  # 2427
+    not_duplicate_of: []  # 2427
+    pr_ref:  # 2427
+    description: "WI-tubot aggregate-v5 analysis (2026-04-16): java_bean_accessor is the #1 category after uncategorized — 7614 candidates (8.3% of the 92218-candidate pool). Top samples (FetchSession.isEmpty, ReplicaManager.getLog, MyUserHandler.getUser, etc.) are bean-convention accessors dispatched via Jackson/Gson/JavaBeans reflection: ObjectMapper.writeValueAsString(obj) calls the getters reflectively at serialization time, so static call-graph analysis sees them as dead.\n\nScope: create or extend a linker (possibly within annotation_convention.py, or a new jackson_dispatch.py) that:\n1. Recognises JavaBean getter/setter patterns (getX/setX, isX, Kotlin data-class accessors, Scala case-class accessors)\n2. Links them to ObjectMapper-style serialization call-sites in the same repo via 'dispatches_to' / 'serializes_via' edges\n3. For types annotated with @JsonProperty / @XmlElement / @Field / Spring @ConfigurationProperties / Jackson @JsonCreator, emits the annotation as positive evidence\n\nCross-language relevance: these Java bean fields become JSON keys that TS/JS/Python clients consume. Together with existing openapi.py linker, this closes the serialization boundary gap.\n\nAcceptance: a re-run of dead-code-prospector on the 2026-04-11 corpus shows java_bean_accessor drops below 3000 (60% reduction) without false-negative regressions.\n\nParent: INV-miloj-tagum-garuk-jataf-lupas-ligis-gazaz-pimon is a closely related umbrella (URL extraction folding), but this item is for serialization dispatch — a sibling invariant space. Not parenting under INV-miloj because they're adjacent, not nested."  # 2427
+    fields: {}  # 2427
