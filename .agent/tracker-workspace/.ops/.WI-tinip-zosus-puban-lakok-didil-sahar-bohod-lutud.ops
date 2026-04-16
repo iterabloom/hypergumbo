@@ -61,3 +61,10 @@
   actor: jgstern  # c8d2
   clock: 7  # c8d2
   nonce: c8d2  # c8d2
+- op: discuss  # c990
+  at: '2026-04-16T18:37:04Z'  # c990
+  by: agent  # c990
+  actor: jgstern_agent  # c990
+  clock: 8  # c990
+  nonce: c990  # c990
+  message: "Phase 1 landed (PR #3070, dev SHA 8aa5247e2ebc). Elm client scanner added to the HTTP linker with three idioms: (1) Utils.Api.get|post|... (apiUrl ++ \"/path\") — Alertmanager wrapper-module pattern; (2) Http.get|post|... { url = \"...\", ... } — elm/http record form; (3) Http.request { method = \"POST\", url = \"...\", ... } and reverse field order — explicit method form. 12 unit tests + 1 end-to-end link_http test verify scanner output, .elm discovery inclusion, and cross-language Elm→Go routes_to edges. http.py still 100% coverage. Closes the UAT DQ-09 gap for the Alertmanager UI on the direct apiUrl++\"/path\" majority; the let-bound / String.join URL-build idioms remain uncovered and are deferred to a full Elm analyzer (separate follow-up item warranted)."  # c990
