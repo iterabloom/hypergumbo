@@ -1,0 +1,23 @@
+- op: create  # a93b
+  at: '2026-04-16T19:07:56Z'  # a93b
+  by: agent  # a93b
+  actor: jgstern_agent  # a93b
+  clock: 1  # a93b
+  nonce: a93b  # a93b
+  data:  # a93b
+    kind: invariant  # a93b
+    title: "INV: HTTP-linker URL extraction folds constant-composed URLs across all source languages"  # a93b
+    status: needs_human_review  # a93b
+    priority: 4  # a93b
+    parent:  # a93b
+    tags:  # a93b
+    - cross_language_linkers  # a93b
+    - analysis_quality  # a93b
+    isbefore: []  # a93b
+    duplicate_of: []  # a93b
+    not_duplicate_of: []  # a93b
+    pr_ref:  # a93b
+    description: "Umbrella invariant covering per-language URL-folding gaps in the HTTP linker. Instances:\n  - WI-rosan: Elm let-bound + String.join URL idioms\n  - WI-sijoh: JS/TS backtick template literals with module-constant interpolation\n\nFuture instances (not filed; no signal yet): Python f-strings, Go fmt.Sprintf, Kotlin/Ruby/Scala interpolation, Java String.format / StringBuilder.\n\nFiled at P4 / needs_human_review because there is no acute signal today beyond the Alertmanager and Prometheus mantine-ui gaps already covered by the two instance items. Purpose is to capture the generalised thinking so that when bakeoff or UAT surfaces analogous gaps in other languages we attach sibling items under this umbrella rather than re-deriving the abstraction.\n\nClosure criterion: either (a) every language whose route-detector is active also has a URL-folding extractor that passes a corpus-wide 'composed URL recovery' test, OR (b) a deliberate scope decision is recorded documenting which languages are intentionally left with literal-only extraction and why."  # a93b
+    fields:  # a93b
+      statement: "The cross-language HTTP linker's URL extraction stage recovers the literal skeleton of a composed URL — regardless of how that URL is built in the source language — and passes that skeleton to the route-matcher. Variable segments may remain as holes (matched against parameterised routes); literal segments must be folded through constants, let-bindings, template literals, f-strings, sprintf-class formatters, and string-composition expressions so that route-identity fragments are visible."  # a93b
+      root_cause: "Every source language composes URLs via a different syntactic mechanism (JS/TS template literals, Python f-strings, Go fmt.Sprintf, Kotlin/Ruby/Scala interpolation, Elm ++ and String.join, Java String.format / StringBuilder, etc.). The current scanners extract URLs only when they appear as a bare string literal or bare identifier at the call site. Any language whose idiomatic URL-composition form differs from that is silently invisible to the HTTP linker even though the route matcher itself could handle the folded output."  # a93b

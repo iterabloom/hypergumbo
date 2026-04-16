@@ -68,3 +68,18 @@
   clock: 8  # c990
   nonce: c990  # c990
   message: "Phase 1 landed (PR #3070, dev SHA 8aa5247e2ebc). Elm client scanner added to the HTTP linker with three idioms: (1) Utils.Api.get|post|... (apiUrl ++ \"/path\") — Alertmanager wrapper-module pattern; (2) Http.get|post|... { url = \"...\", ... } — elm/http record form; (3) Http.request { method = \"POST\", url = \"...\", ... } and reverse field order — explicit method form. 12 unit tests + 1 end-to-end link_http test verify scanner output, .elm discovery inclusion, and cross-language Elm→Go routes_to edges. http.py still 100% coverage. Closes the UAT DQ-09 gap for the Alertmanager UI on the direct apiUrl++\"/path\" majority; the let-bound / String.join URL-build idioms remain uncovered and are deferred to a full Elm analyzer (separate follow-up item warranted)."  # c990
+- op: discuss  # 133d
+  at: '2026-04-16T18:52:20Z'  # 133d
+  by: agent  # 133d
+  actor: jgstern_agent  # 133d
+  clock: 9  # 133d
+  nonce: 133d  # 133d
+  message: "Status clarification: WI-tinip has no remaining direct work of its own. The two concrete test cases named in the title need language-specific URL-folding passes that are scoped as separate follow-ups:\n\n  - WI-rosan: covers ui/app/src/Alerts/Api.elm::fetchAlerts (Elm let-bound + String.join URL construction)\n  - WI-sijoh (new): covers ui/mantine-ui/src/api/api.ts::fetch (JS/TS backtick template literal with module-constant interpolation)\n\nPhase 1 (PR #3070) shipped the generic .elm scanner + Http.get/post/request + Utils.Api.get pattern coverage, which is real value on top of alertmanager's other simpler calls — but it does not solve either of the two titular examples. WI-tinip stays open as the umbrella and will be closed when BOTH WI-rosan and WI-sijoh land and the Alertmanager/Prometheus UAT DQ-09 re-check shows the Elm->Go and TS->Go edges materialise for those exact symbols."  # 133d
+- op: update  # fa79
+  at: '2026-04-16T18:55:35Z'  # fa79
+  by: human  # fa79
+  actor: jgstern  # fa79
+  clock: 10  # fa79
+  nonce: fa79  # fa79
+  set:  # fa79
+    priority: 4  # fa79

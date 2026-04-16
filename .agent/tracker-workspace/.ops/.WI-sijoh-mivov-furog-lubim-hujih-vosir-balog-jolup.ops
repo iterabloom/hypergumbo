@@ -19,3 +19,20 @@
     pr_ref:  # 9fb5
     description: "The cross-language HTTP linker's JavaScript/TypeScript scanner currently matches only bare string literals (`fetch(\"/api/foo\")`) and identifier references (`fetch(API_URL)`). It does NOT capture backtick template literals with variable interpolation.\n\nConcrete failing case from WI-tinip's title:\n```ts\n// prometheus/web/ui/mantine-ui/src/api/api.ts\nexport const API_PATH = \"api/v1\";\n\nconst res = await fetch(\n    `${pathPrefix}/${API_PATH}${path}${queryString}`,\n    { cache: \"no-store\", ... }\n);\n```\n\nSolving this requires (1) recognising the backtick template-literal form in the regex or, better, via a tree-sitter pass, and (2) folding module-scope `const` assignments so `${API_PATH}` resolves to `\"api/v1\"` at analysis time. Call-site path arguments (`${path}`) can stay variable — emit with url_type='variable' and matched to route patterns by the literal prefix.\n\nScope: JS/TS only. Elm's equivalent (let-bound + String.join) is tracked separately in WI-rosan. Together with WI-rosan, this closes the two concrete test cases named in WI-tinip's title.\n\nPrior art: `method_call_recovery` linker already has machinery for resolving identifier→source via `contains` edges; similar constant-propagation could slot in here."  # 9fb5
     fields: {}  # 9fb5
+- op: update  # cf3f
+  at: '2026-04-16T18:53:14Z'  # cf3f
+  by: agent  # cf3f
+  actor: jgstern_agent  # cf3f
+  clock: 2  # cf3f
+  nonce: cf3f  # cf3f
+  set: {}  # cf3f
+  add:  # cf3f
+    isbefore: [WI-tinip-zosus-puban-lakok-didil-sahar-bohod-lutud]  # cf3f
+- op: update  # 8b72
+  at: '2026-04-16T18:57:21Z'  # 8b72
+  by: human  # 8b72
+  actor: jgstern  # 8b72
+  clock: 3  # 8b72
+  nonce: 8b72  # 8b72
+  set:  # 8b72
+    priority: 4  # 8b72
