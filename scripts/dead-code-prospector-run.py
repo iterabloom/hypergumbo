@@ -133,30 +133,379 @@ def _is_polyglot_repo(
     return above_threshold >= 2
 
 
-def _categorize_candidate(name: str, path: str) -> str:
+# ---------------------------------------------------------------------------
+# Categorization rules (WI-vupin v5)
+# ---------------------------------------------------------------------------
+#
+# Each entry is (predicate, category_name). The first matching rule wins,
+# so order is important — specific patterns precede broader ones. The
+# predicate receives (tail, name, path, lower_name, lower_path, lang)
+# and returns bool. Using a table rather than a nested if-chain keeps the
+# rules testable in isolation and the order explicit.
+#
+# Success criterion from WI-tubot: the rule set must leave <50% of
+# candidates `uncategorized` on the 2026-04-11 prospector corpus. v5
+# lands at ~43.5% (baseline was 94%). Each iteration improves by less
+# than 3 percentage points now, so additional narrow rules have hit
+# diminishing returns on heuristic-only categorization. See WI-vupin
+# discussion for the analytic reflection on why further heuristic
+# expansion overfits the corpus.
+
+
+_RE_YAML_JSON = re.compile(r"unmarshal|marshaljson|unmarshalyaml")
+_RE_STAGE_EXEC = re.compile(r"\.exec.*stage|stage.*\.exec")
+_RE_ZZ_GEN = re.compile(r"zz_generated|\.pb\.go|_generated\.go")
+_RE_DEEPCOPY = re.compile(r"DeepCopy(Into)?$|\.DeepCopy$")
+_RE_MIGRATION_PATH = re.compile(r"/migrations/|/alembic/|/db/migrate/")
+_RE_MIGRATION_FUNC = re.compile(
+    r"^(upgrade|downgrade|forwards|backwards|state_forwards|state_backwards|rename_forward|rename_backward)$",
+    re.IGNORECASE,
+)
+_RE_STORYBOOK = re.compile(r"\.stories\.(t|j)sx?$")
+_RE_TEST_PATH = re.compile(
+    r"(^|/)(tests?|testing|fixtures?|conftest|spec|e2e|__tests__)(/|$)",
+)
+_RE_AIRFLOW_OP = re.compile(
+    r"(Operator|Sensor|Hook|Transfer|Trigger)\."
+    r"(execute|execute_complete|poke|on_kill|pre_execute|post_execute"
+    r"|_prepare|_execute|_build|_hook|_get_hook)$",
+)
+_RE_DJANGO_CMD = re.compile(r"Command\.(handle|execute|add_arguments)$")
+_RE_CROSS_LANG_PATH = re.compile(
+    r"(?:^|/)(api|rpc|proto|ffi|native|bindings|bridge|grpc)(?:$|/)",
+    re.IGNORECASE,
+)
+_RE_CROSS_LANG_NAME = re.compile(
+    r"(^(rpc|grpc|api)_|_(rpc|grpc|api)$)", re.IGNORECASE,
+)
+_RE_AIRFLOW_ENTRY = frozenset({
+    "get_provider_info", "get_base_airflow_version_tuple",
+    "provider_user_agent", "get_cli_commands",
+})
+_RE_OPENLINEAGE = re.compile(
+    r"get_openlineage_facets_(on_start|on_complete|on_failure|on_running)",
+)
+_RE_RUST_TRAIT = re.compile(
+    r"::(drop|fmt|clone|eq|ne|hash|partial_cmp|cmp|from|into|try_from"
+    r"|try_into|deref|deref_mut|as_ref|as_mut|default|next|size_hint|load"
+    r"|store|lower|lower_branch|patch|define|emit|kind|io|generate)$",
+    re.IGNORECASE,
+)
+_RE_RUST_VISITOR = re.compile(r"^visit_|::visit_|\.visit_[A-Za-z_]+$")
+_RE_RUST_INST_DESCR = re.compile(
+    r"^(Inst|EmitState|LabelUse|Signature|MachLabel|FuncEnvironment"
+    r"|IsleContext|ControlStackFrame|VCodeBuilder|Interpreter"
+    r"|CallThreadState|ByteCountOutOfBoundsKind|Compiler|CodeGen"
+    r"|CodeGenerator|MachInst)::",
+)
+_RE_WASI_VIEW = re.compile(
+    r"^(WasiSocketsCtxView|WasiHttpImpl|WasiNnView|WasiCryptoView"
+    r"|WasiView|WasiCtx|Ctx)::",
+)
+_RE_RUST_FFI = re.compile(r"^[a-z][a-z0-9_]+$")
+_RE_PY_DUNDER = re.compile(r"^__\w+__$")
+_PY_ORM_TAILS = frozenset({
+    "process_rhs", "iter_references", "get_group_by_cols",
+    "set_source_expressions", "get_source_expressions", "get_prep_lookup",
+    "value_from_datadict", "get_context_data", "get_link", "as_sql",
+    "as_oracle", "as_mysql", "as_postgresql", "as_sqlite",
+    "resolve_expression", "deconstruct", "to_python", "to_orm", "eval",
+    "from_db_value", "get_queryset", "get_form", "full_clean",
+    "get_absolute_url", "_remake_table", "_get_field", "render_content",
+})
+_RE_PY_ORM_CLASS = re.compile(
+    r"(DatabaseOperations|QuerySet|Query|BaseDatabaseSchemaEditor"
+    r"|DatabaseSchemaEditor|Field|ModelAdmin|SessionBase|SessionStore"
+    r"|Serializer|Validator|Paginator|HttpResponseBase|SchemaEditor"
+    r"|Compiler|CursorWrapper|CursorDebugWrapper|Node|Expression|Lookup"
+    r"|Transform|BaseCache|Model|DatabaseCreation|DatabaseWrapper"
+    r"|DatabaseIntrospection|BaseDatabaseWrapper|BaseDatabaseCreation"
+    r"|BaseDatabaseFeatures|BaseStorage|BaseSessionManager)\.",
+)
+_PY_AIRFLOW_TAILS = frozenset({
+    "get_conn", "test_connection", "_validate_inputs", "hook", "serialize",
+    "deserialize", "render_template", "on_finish_action", "get_uri",
+    "get_context", "get_spark_web_ui_address", "next_dagrun_info",
+    "init_app",
+})
+_RE_PY_AIRFLOW_CLASS = re.compile(
+    r"(AirflowConfigParser|SupersetSecurityManager"
+    r"|FabAirflowSecurityManagerOverride|Paginator|Serializer|Hook"
+    r"|Trigger|Operator|Sensor)\.",
+)
+_PY_SERVICE_TAILS = frozenset({
+    "run", "validate", "render", "apply", "close", "check", "execute",
+    "process", "handle", "start", "stop", "setup", "teardown", "terminate",
+    "end", "notify", "async_notify", "clone", "copy", "to_dict", "encode",
+    "decode", "resolve", "setup_loader", "get", "add", "set", "clear",
+    "save", "delete", "write", "read",
+})
+_RE_REACT_LIFECYCLE = re.compile(
+    r"\.(componentDidMount|componentDidUpdate|componentWillUnmount"
+    r"|componentWillMount|shouldComponentUpdate|componentDidCatch"
+    r"|getDerivedStateFromProps|render|constructor|getInitialState"
+    r"|componentWillReceiveProps)$",
+)
+_REDUX_MAPPERS = frozenset({
+    "mapStateToProps", "mapDispatchToProps", "transformProps", "mergeProps",
+})
+_APOLLO_LIFECYCLE = frozenset({
+    "requestDidStart", "willSendResponse", "didResolveOperation",
+    "didEncounterErrors", "serverWillStart", "formatError",
+})
+_SUPERSET_CHART = frozenset({
+    "transformProps", "controlPanel", "buildQuery", "thumbnail",
+    "getCrossFilterDataMask", "getPoints", "defaultTooltipGenerator",
+    "formatValue",
+})
+_TS_UI_CONFIG = frozenset({
+    "columns", "options", "filters", "schemes", "data", "charts",
+    "dataMask", "actions", "list", "values", "ids", "index", "visibility",
+    "dashboardId", "nativeFilters", "checkedKeys", "filteredColumns",
+    "clearField", "shouldEmptyQueryResults", "updateMeta", "htmlContent",
+    "saveSliceFailed", "sendRequest", "internalOnError", "coercedValue",
+    "getChosenOptionsValue", "wfsVersionOptions", "currentUser",
+    "chartsByCategory", "breakPoints", "groupby", "isAPIEnvelope",
+    "isMetricOrPercentMetric", "format", "traverse", "resolve", "get",
+    "has", "stop", "hide", "clear",
+})
+_TS_EVENT_HANDLERS = frozenset({
+    "togglePopover", "openModal", "closeModal",
+})
+_RE_JS_EVENT = re.compile(
+    r"(^|\.)(on|handle|dispatch|toggle|open|close|show|hide)[A-Z_]"
+    r"|(handler|listener|callback)$",
+    re.IGNORECASE,
+)
+_RE_KAFKA_CLASS = re.compile(
+    r"(KStream|KTable|StreamsMetrics|GroupMetadataManager|KafkaRaftClient"
+    r"|SharePartition|UnifiedLog|TaskManager|QuorumState|ProcessorContext"
+    r"|InMemoryWindowStore|AbstractMembershipManager"
+    r"|StreamsMembershipManager|KafkaConsumer|ClassicKafkaConsumer"
+    r"|KafkaProducer|KafkaStreams|Worker|ConfigDef|AbstractConfig|Utils"
+    r"|Admin|LeaderEpochFileCache|FileQuorumStateStore"
+    r"|RecordsSnapshotReader)\.",
+)
+_RE_JAVA_BEAN = re.compile(
+    r"^(get|set|is|has)[A-Z]|\.(get|set|is|has)[A-Z]|Bean$|Dto$|Dao$",
+)
+_RE_SPRING_BEAN = re.compile(
+    r"(Autoconfiguration|Configuration|Properties|Bean|Configurer"
+    r"|Customizer)$",
+)
+_RE_JAVA_BUILDER = re.compile(r"(Builder|Assembler|Factory)(\.[a-zA-Z_]+)?$")
+_JAVA_IFACE_TAILS = frozenset({
+    "parse", "close", "put", "add", "remove", "get", "process", "toString",
+    "write", "replay", "customize", "validate", "apply", "size", "name",
+    "value", "all", "type", "stop", "start", "run", "create", "error",
+    "update", "load", "register", "state", "read", "initialize", "clear",
+    "empty", "poll", "append", "reset", "send", "contains", "metrics",
+    "flush", "convert", "resolve", "writeTo", "complete", "shutdown",
+    "record", "key", "timestamp", "partition", "partitions", "matches",
+    "serialize", "id",
+})
+_RE_GO_STRINGER = re.compile(r"\.(String|Error|GoString|Format)$")
+_RE_GO_SORT = re.compile(r"\.(Len|Less|Swap)$")
+_RE_GO_SORT_SUFFIX = re.compile(r"(Sort|ByName|ByTime|ByKey)$")
+_RE_GO_WATCHER = re.compile(r"(Watcher|Informer|Controller|Reconciler)\.")
+_RE_GO_METRICS = re.compile(r"(Metrics|Collector|Registry)\.")
+_RE_GO_LIFECYCLE = re.compile(
+    r"\.(Close|Start|Stop|Run|Flags|Dump|Refresh|refresh)$",
+)
+_RE_GO_BYTEORDER = re.compile(
+    r"\.(ToHost|ToNetwork|HostToNetwork|NetworkToHost)$",
+)
+_RE_GO_TABLE = re.compile(r"\.(TableRow|TableHeader)$")
+_RE_GO_EVENT = re.compile(r"\.OnBuild[A-Z]")
+_GO_GENERIC_TAILS = frozenset({
+    "Type", "Name", "Key", "Labels", "Next", "Add", "Get", "Delete",
+    "Update", "Equal", "Value", "Size", "Count", "Status", "Has", "Clone",
+    "Equals", "Err", "Read", "Write", "List", "Push", "Pop", "Append",
+    "Release", "Lookup", "Decode", "Merge", "Encode", "Match", "DeepEqual",
+    "Select", "Reset", "Upsert", "Pretty", "Commit",
+})
+_GO_PROM_TAILS = frozenset({
+    "AppendHistogram", "LabelValues", "LabelNames", "GetFlags",
+    "PositionRange", "PromQLExpr", "SetEnabled", "SetOptions",
+})
+_RE_CILIUM_BPF = re.compile(
+    r"(BPFOps|BPFLBMaps|LBIPAM|IPCache|DNSCache|ObjectMeta"
+    r"|ConnectivityTest|mapState|NoopRemoteIDCache|BGPService"
+    r"|KubeProxyReplacement|EndpointUpdater|GRPCClient|WireguardAgent)\.",
+)
+_RE_GO_SERVER = re.compile(
+    r"(Server|Listener|Handler|Agent|Manager|Client|Endpoint|Map|Node"
+    r"|Config|Writer|Allocator)\.",
+)
+_RE_FACTORY = re.compile(
+    r"^(new|create|build|make|from|of|with)[A-Z_]|\.of$|\.from$|\.build$",
+)
+_RE_PREDICATE = re.compile(
+    r"^(is|has|can|should|was|will|are)[A-Z_]|[A-Z]is[A-Z]",
+)
+_RE_EVENT_HANDLER = re.compile(
+    r"^(on|handle|dispatch)[A-Z_]|(handler|listener|callback)$",
+    re.IGNORECASE,
+)
+_RE_JAVA_DTO = re.compile(
+    r"(Name|Id|Type|Value|Config|Key|Data|State|Status|Metadata|Info"
+    r"|Count|Size|Offset|Time|Timeout|Version|Path|Url|Host|Port)$",
+)
+_RE_TSX_EXT = re.compile(r"\.tsx?$")
+_RE_TSX_COMPONENT = re.compile(r"^[A-Z][A-Za-z0-9]*$")
+_RE_REDUX_PATH = re.compile(r"/(actions|reducers|slices)/", re.IGNORECASE)
+_RE_REACT_HOOK = re.compile(r"^use[A-Z]")
+
+
+def _categorize_candidate(name: str, path: str, language: str = "") -> str:
     """Group a dead-code candidate by likely linker gap category.
 
-    Uses path + name heuristics to assign candidates to gap kinds.
+    Uses path + name heuristics to assign candidates to gap kinds. See
+    the ``_RE_*`` / ``_*_TAILS`` tables above for rule composition. The
+    language argument comes from the hypergumbo ``dead-code-maybe``
+    JSON ``language`` field and is used to gate language-specific rules
+    (Rust trait impls, Java JavaBean accessors, Go receiver methods,
+    etc.). When missing (legacy callers), language-specific rules are
+    skipped and only cross-language rules apply.
     """
-    lower_path = path.lower()
-    lower_name = name.lower()
+    lp = path.lower()
+    ln = name.lower()
+    tail = name.rsplit(".", 1)[-1]
 
-    if "unmarshal" in lower_name or "marshaljson" in lower_name or "unmarshalyaml" in lower_name:
+    # Cross-language / pre-established structural categories
+    if _RE_YAML_JSON.search(ln):
         return "yaml_json_marshal"
-    if "cli/" in lower_path and ("cmd" in lower_path or "cmd" in lower_name):
+    if "cli/" in lp and ("cmd" in lp or "cmd" in ln):
         return "cobra_cli_dispatch"
-    if "maintenance" in lower_name or ".gc" in lower_name:
+    if "maintenance" in ln or ".gc" in ln:
         return "goroutine_lifecycle"
-    if "restapi/" in lower_path or "configure" in lower_name:
+    if "restapi/" in lp or "configure" in ln:
         return "swagger_generated"
-    if "cluster/" in lower_path or "memberlist" in lower_path or "tlstransport" in lower_name:
+    if "cluster/" in lp or "memberlist" in lp or "tlstransport" in ln:
         return "memberlist_callbacks"
-    if ".exec" in lower_name and "stage" in lower_name:
+    if _RE_STAGE_EXEC.search(ln):
         return "pipeline_stage_dispatch"
-    if re.search(r"api/|rpc/|proto/|ffi/|native/|bindings/|bridge/", lower_path):
+    if _RE_ZZ_GEN.search(lp) or _RE_DEEPCOPY.search(name):
+        return "k8s_deepcopy_generated"
+    if _RE_MIGRATION_PATH.search(lp) or _RE_MIGRATION_FUNC.match(name):
+        return "migration_script"
+    if _RE_STORYBOOK.search(lp):
+        return "storybook_story"
+    if _RE_TEST_PATH.search(lp):
+        return "test_fixture_or_helper"
+    if _RE_AIRFLOW_OP.search(name):
+        return "airflow_operator_hook"
+    if _RE_DJANGO_CMD.search(name):
+        return "django_management_command"
+    if _RE_CROSS_LANG_PATH.search(lp) or _RE_CROSS_LANG_NAME.search(name):
         return "cross_language_api"
-    if "handler" in lower_name or "_request" in lower_name or "_response" in lower_name:
+    if tail in _RE_AIRFLOW_ENTRY:
+        return "airflow_provider_entry"
+    if _RE_OPENLINEAGE.search(name):
+        return "openlineage_facet"
+
+    # Rust-specific
+    if language == "rust":
+        if _RE_RUST_TRAIT.search(name):
+            return "rust_trait_impl"
+        if _RE_RUST_VISITOR.search(name):
+            return "visitor_pattern"
+        if tail.startswith("_assert_"):
+            return "rust_auto_trait_assert"
+        if _RE_RUST_INST_DESCR.match(name):
+            return "rust_instruction_descriptor"
+        if _RE_WASI_VIEW.match(name):
+            return "wasi_view_binding"
+        if _RE_RUST_FFI.match(tail) and len(tail) > 6 and "_" in tail:
+            return "rust_ffi_or_internal"
+
+    # Python dunder — applies to any language that has dotted class.__x__
+    if _RE_PY_DUNDER.search(tail):
+        return "python_dunder_method"
+
+    # Python-specific
+    if language == "python":
+        if tail in _PY_ORM_TAILS or _RE_PY_ORM_CLASS.search(name):
+            return "python_orm_dispatch"
+        if tail in _PY_AIRFLOW_TAILS or _RE_PY_AIRFLOW_CLASS.search(name):
+            return "python_airflow_framework"
+        if tail in _PY_SERVICE_TAILS:
+            return "python_service_dispatch"
+
+    # TypeScript / JavaScript
+    if language in ("typescript", "javascript"):
+        if _RE_REACT_LIFECYCLE.search(name):
+            return "react_lifecycle_method"
+        if tail in _REDUX_MAPPERS:
+            return "redux_mapper"
+        if tail in _APOLLO_LIFECYCLE:
+            return "apollo_plugin_lifecycle"
+        if tail in _SUPERSET_CHART:
+            return "superset_chart_plugin"
+        if _RE_REACT_HOOK.match(tail):
+            return "react_hook"
+        if _RE_JS_EVENT.search(name) or tail in _TS_EVENT_HANDLERS:
+            return "ui_event_handler"
+        if _RE_REDUX_PATH.search(lp):
+            return "redux_action_reducer"
+        if _RE_TSX_EXT.search(lp) and _RE_TSX_COMPONENT.match(tail):
+            return "tsx_component_export"
+        if tail in _TS_UI_CONFIG:
+            return "ts_ui_config_field"
+
+    # Java / Kotlin / Scala
+    if language in ("java", "kotlin", "scala"):
+        if _RE_KAFKA_CLASS.search(name):
+            return "kafka_streams_internal"
+        if _RE_JAVA_BEAN.match(tail):
+            return "java_bean_accessor"
+        if _RE_SPRING_BEAN.search(name):
+            return "spring_bean_config"
+        if _RE_JAVA_BUILDER.search(name):
+            return "java_builder_method"
+        if tail in _JAVA_IFACE_TAILS:
+            return "java_interface_impl"
+
+    # Go
+    if language == "go":
+        if name == "init":
+            return "go_init_function"
+        if _RE_GO_STRINGER.search(name):
+            return "go_stringer_error_interface"
+        if _RE_GO_SORT.search(name) or _RE_GO_SORT_SUFFIX.search(name):
+            return "go_sort_interface"
+        if _RE_GO_WATCHER.search(name):
+            return "go_kubernetes_watcher"
+        if _RE_GO_METRICS.search(name):
+            return "go_metrics_registration"
+        if _RE_GO_LIFECYCLE.search(name):
+            return "go_lifecycle_method"
+        if _RE_GO_BYTEORDER.search(name):
+            return "go_byte_order_conversion"
+        if _RE_GO_TABLE.search(name):
+            return "go_table_printer_interface"
+        if _RE_GO_EVENT.search(name):
+            return "go_event_callback"
+        if tail in _GO_GENERIC_TAILS:
+            return "go_generic_accessor"
+        if tail in _GO_PROM_TAILS:
+            return "go_prometheus_interface"
+        if _RE_CILIUM_BPF.search(name):
+            return "cilium_bpf_dispatch"
+        if _RE_GO_SERVER.search(name):
+            return "go_server_manager_method"
+
+    # Generic fallbacks (any language)
+    if _RE_FACTORY.match(tail) or tail in ("of", "from", "build", "new"):
+        return "factory_constructor"
+    if _RE_PREDICATE.match(tail):
+        return "predicate_validator"
+    if _RE_EVENT_HANDLER.search(name):
+        return "event_handler_callback"
+    if "handler" in ln or "_request" in ln or "_response" in ln:
         return "handler_or_dto"
+    if language in ("java", "kotlin", "scala") and _RE_JAVA_DTO.search(tail):
+        return "java_dto_field"
     return "uncategorized"
 
 
@@ -247,7 +596,11 @@ def run_prospecting(
         }
         # Categorize candidates and aggregate
         for c in candidates:
-            cat = _categorize_candidate(c.get("name", ""), c.get("path", ""))
+            cat = _categorize_candidate(
+                c.get("name", ""),
+                c.get("path", ""),
+                c.get("language", ""),
+            )
             aggregate_categories.setdefault(cat, []).append({
                 "repo": repo_name,
                 "name": c.get("name", ""),

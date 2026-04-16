@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Changed
+
+- **Dead-code-prospector categorizer expanded from 8 to 46 gap categories** (WI-vupin): `scripts/dead-code-prospector-run.py::_categorize_candidate` now accepts an optional `language` argument and applies language-gated rules (Rust trait impls, Python dunders / Django ORM / Airflow framework, Go receiver methods / k8s watchers / Cilium eBPF dispatch, Java JavaBean accessors / Kafka streams internals / Spring bean config, TS/JS React lifecycle / Redux / Superset chart plugin / Apollo). Reduces `uncategorized` rate on the WI-tubot 2026-04-11 prospector corpus (92,218 candidates across 11 polyglot repos) from **94.0% → 43.5%** — below WI-vupin's success-criterion threshold of 50%. Convergence observed at the 3pp-per-iteration bar: pass-3 was 6.2pp, pass-4 was 3.7pp, pass-5 was 2.3pp, so further heuristic additions overfit the corpus without producing new actionable signal (see WI-vupin discussion for full reflection on why heuristic categorization plateaus and which alternative strategies — class-hierarchy-aware linker hints, framework annotation detection, LLM-assisted clustering — would be needed to categorize the remaining residual).
+
 ### Fixed
 
 - **Solidity file-level `using X for Y;` applies to calls inside contracts** (WI-jovur / UAT BUG-13): the Solidity edge extractor keyed its `using_libraries` map by the call-site's enclosing contract only, so a file-level `using` directive (keyed under `""`) was invisible to any call that lived inside a contract or library in the same file. Closes the shellcheck-style pattern where `Memory.load` was flagged dead despite 6+ callers via `using Memory for Slice;` at file scope invoked as `s.load(0)`. Fix: when dispatching a member call inside a contract, union the contract-scoped library set with the file-level (`""`) set before probing for `{Library}.{method}`. Works across files: the library's qualified symbol (`Memory.load`) is resolved through `global_symbols`.
