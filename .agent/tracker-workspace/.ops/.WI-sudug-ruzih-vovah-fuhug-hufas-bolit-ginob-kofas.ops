@@ -20,3 +20,18 @@
     pr_ref:  # a207
     description: "UAT 2026-04-13 BUG-19: detekt is a pure Kotlin static-analysis tool with no React code but reports 'react' as detected. Likely triggered by test fixtures or documentation containing JSX-like syntax. Investigate trigger; tighten the React pattern (require both JSX-like syntax AND a manifest signal like package.json `react` dep). Also consider a minimum-confidence threshold for framework labels."  # a207
     fields: {}  # a207
+- op: update  # 01fb
+  at: '2026-04-16T05:16:18Z'  # 01fb
+  by: agent  # 01fb
+  actor: jgstern_agent  # 01fb
+  clock: 2  # 01fb
+  nonce: 01fb  # 01fb
+  set:  # 01fb
+    status: done  # 01fb
+- op: discuss  # 4eff
+  at: '2026-04-16T05:16:18Z'  # 4eff
+  by: agent  # 4eff
+  actor: jgstern_agent  # 4eff
+  clock: 3  # 4eff
+  nonce: 4eff  # 4eff
+  message: "Fixed in PR #3054 (commit 2f2d54b75). _find_manifest_files now skips manifests inside test-fixture directories via paths.is_test_file. Prevents false-positive framework labels from test fixtures (e.g., detekt's Kotlin test fixtures contain package.json with react dep). 2 new tests."  # 4eff
