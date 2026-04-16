@@ -266,6 +266,121 @@ def test_cmd_test_coverage_no_tests(tmp_path: Path, capsys) -> None:
     assert "Total test functions: 0" in out
 
 
+def test_cmd_test_coverage_recognises_concept_tagged_tests(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-dulav: functions enriched with ``concept: test_function`` count
+    as tests even when they live outside a test-path.
+
+    Covers the Template-Haskell / QuickCheck case where ``prop_*``
+    properties live in the same module as the production code they
+    test and get discovered at compile time via ``$forAllProperties``
+    (shellcheck: 2214 ``prop_*`` functions in ``src/`` reported 0%
+    coverage before WI-dulav). The framework-patterns layer already
+    tags those with ``concept: test_function`` via the Haskell
+    QuickCheck rule in ``frameworks/test-frameworks.yaml``; this test
+    asserts that ``cmd_test_coverage`` actually consumes that tag.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            # QuickCheck property function tagged by framework enrichment.
+            # Lives in ``src/`` (not a test path) — only the concept tag
+            # marks it as a test.
+            {
+                "id": "haskell:src/ShellCheck/Checker.hs:10-15:prop_foo:function",
+                "name": "prop_foo",
+                "kind": "function",
+                "language": "haskell",
+                "path": "src/ShellCheck/Checker.hs",
+                "span": {"start_line": 10, "end_line": 15},
+                "meta": {"concepts": [{"concept": "test_function"}]},
+            },
+            # Production function in same file — target of the test.
+            {
+                "id": "haskell:src/ShellCheck/Checker.hs:1-8:check:function",
+                "name": "check",
+                "kind": "function",
+                "language": "haskell",
+                "path": "src/ShellCheck/Checker.hs",
+                "span": {"start_line": 1, "end_line": 8},
+                "lines_of_code": 8,
+            },
+        ],
+        "edges": [
+            {
+                "type": "calls",
+                "src": "haskell:src/ShellCheck/Checker.hs:10-15:prop_foo:function",
+                "dst": "haskell:src/ShellCheck/Checker.hs:1-8:check:function",
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.format = "json"
+    args.min_tests = None
+    args.max_tests = None
+    args.top = None
+
+    result = cmd_test_coverage(args)
+    assert result == 0
+    out, _ = capsys.readouterr()
+    payload = json.loads(out)
+
+    # prop_foo was counted as a test (not a target).
+    assert payload["summary"]["total_tests"] == 1, payload["summary"]
+    # The single target (``check``) is tested.
+    assert payload["summary"]["total_functions"] == 1, payload["summary"]
+    assert payload["summary"]["tested_functions"] == 1, payload["summary"]
+    assert payload["summary"]["untested_functions"] == 0, payload["summary"]
+
+
+def test_cmd_test_coverage_concept_test_function_excluded_from_targets(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-dulav: a concept-tagged test is NOT counted as a coverage target.
+
+    Without this rule a ``prop_*`` function in ``src/`` would be both a
+    test (by concept) and a target (by path) — falsely inflating the
+    untested count and cold-spot list.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "haskell:src/Props.hs:1-3:prop_only:function",
+                "name": "prop_only",
+                "kind": "function",
+                "language": "haskell",
+                "path": "src/Props.hs",
+                "span": {"start_line": 1, "end_line": 3},
+                "meta": {"concepts": [{"concept": "test_function"}]},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.format = "text"
+    args.min_tests = None
+    args.max_tests = None
+    args.top = None
+
+    result = cmd_test_coverage(args)
+    assert result == 0
+    _, err = capsys.readouterr()
+    # The single symbol is classified as test, so there are no targets.
+    assert "No functions found" in err
+
+
 def test_cmd_test_coverage_all_tested(tmp_path: Path, capsys) -> None:
     """Test coverage when all functions are tested."""
     behavior_map = {

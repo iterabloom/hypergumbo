@@ -3537,21 +3537,48 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     # Build lookup tables
     nodes_by_id = {n["id"]: n for n in nodes}
 
-    # Identify test symbols (functions/methods in test files)
+    # WI-dulav: a symbol counts as a test when EITHER its path matches
+    # a known test-path heuristic OR the framework-pattern enrichment
+    # layer tagged it with a ``test_*`` concept. The second clause
+    # catches the Template-Haskell / QuickCheck pattern where ``prop_*``
+    # functions live in the same module as the production code they
+    # test and get discovered at compile time via ``$forAllProperties``
+    # (shellcheck: 2214 ``prop_*`` functions in ``src/`` got 0% coverage
+    # before this). Framework concepts recognised as test: anything with
+    # ``concept`` starting with ``test`` — covers ``test_function``,
+    # ``test_suite``, ``test_lifecycle``, ``test_fixture``, and
+    # language-specific variants emitted by the per-framework YAMLs.
+    def _has_test_concept(node: dict) -> bool:
+        meta = node.get("meta") or {}
+        for c in meta.get("concepts", ()) or ():
+            name = c.get("concept") if isinstance(c, dict) else None
+            if isinstance(name, str) and name.startswith("test"):
+                return True
+        return False
+
+    # Identify test symbols (functions/methods in test files OR
+    # framework-tagged as tests).
     test_symbols: set[str] = set()
     for node in nodes:
         path = node.get("path", "")
         kind = node.get("kind", "")
-        if _is_test_path(path) and kind in ("function", "method"):
+        if kind not in ("function", "method"):
+            continue
+        if _is_test_path(path) or _has_test_concept(node):
             test_symbols.add(node["id"])
 
-    # Identify non-test callable symbols (coverage targets)
+    # Identify non-test callable symbols (coverage targets).
+    # Tests (by path OR by concept) are never targets — a function
+    # cannot simultaneously be the test and the thing-under-test.
     target_symbols: dict[str, dict] = {}
     for node in nodes:
         path = node.get("path", "")
         kind = node.get("kind", "")
-        if not _is_test_path(path) and kind in ("function", "method"):
-            target_symbols[node["id"]] = node
+        if kind not in ("function", "method"):
+            continue
+        if _is_test_path(path) or _has_test_concept(node):
+            continue
+        target_symbols[node["id"]] = node
 
     if not target_symbols:
         print("No functions found to analyze.", file=sys.stderr)
