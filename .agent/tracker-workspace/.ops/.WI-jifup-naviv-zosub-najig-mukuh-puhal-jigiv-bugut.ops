@@ -33,3 +33,25 @@
   clock: 3  # 1fa1
   nonce: 1fa1  # 1fa1
   message: "Bump P4->P3: quantified residual (57 candidates leaking, all from 4 file types in openapi-gen). Directly affects dead-code precision, which UAT 2.6.0 round 05 flagged as 93-100% FP rate."  # 1fa1
+- op: discuss  # 5342
+  at: '2026-04-16T10:37:28Z'  # 5342
+  by: agent  # 5342
+  actor: jgstern_agent  # 5342
+  clock: 4  # 5342
+  nonce: '5342'  # 5342
+  message: "Merged as PR #3059, dev SHA bc534adcdf4e."  # 5342
+- op: update  # bc15
+  at: '2026-04-16T10:38:31Z'  # bc15
+  by: agent  # bc15
+  actor: jgstern_agent  # bc15
+  clock: 5  # bc15
+  nonce: bc15  # bc15
+  set:  # bc15
+    status: done  # bc15
+- op: discuss  # 2156
+  at: '2026-04-16T10:38:31Z'  # 2156
+  by: agent  # 2156
+  actor: jgstern_agent  # 2156
+  clock: 6  # 2156
+  nonce: '2156'  # 2156
+  message: "Fixed in PR #3059 (merged to dev at bc534adcd). Root cause: dead-code-maybe never consulted ranking centrality, so WI-vubad/WI-tizij's 95% centrality demotion on generated files didn't apply here. Fix: unconditional filter — any candidate whose supply_chain.is_generated_file is True is dropped before ranking. Closes the 10% residual leak in openapi-gen/ utility files (CancelablePromise, request, OpenAPI, ApiError). Language-agnostic (applies uniformly to Go swagger, Java protoc, Python @generated, TS openapi-gen). No opt-in flag because generated code is never actionable dead code. Removes 'Known limitation' caveat from the WI-tizij/WI-pofin/WI-vubad/WI-sozah changelog entry."  # 2156

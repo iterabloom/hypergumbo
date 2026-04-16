@@ -28,3 +28,25 @@
   clock: 2  # 1238
   nonce: '1238'  # 1238
   message: "Recovery note: this item's create op was lost from local tracker between 2026-04-15T07:40Z (creation) and the next auto-sync — only present in PR #3023 which became unmergeable due to massive divergence from dev. Restored from pr-3023 ops file on 2026-04-16. PR #3023 to be closed as superseded."  # 1238
+- op: discuss  # 895f
+  at: '2026-04-16T10:06:21Z'  # 895f
+  by: agent  # 895f
+  actor: jgstern_agent  # 895f
+  clock: 3  # 895f
+  nonce: 895f  # 895f
+  message: "Merged as PR #3058, dev SHA 1850f635d5e1."  # 895f
+- op: update  # 978c
+  at: '2026-04-16T10:07:10Z'  # 978c
+  by: agent  # 978c
+  actor: jgstern_agent  # 978c
+  clock: 4  # 978c
+  nonce: 978c  # 978c
+  set:  # 978c
+    status: done  # 978c
+- op: discuss  # 11e4
+  at: '2026-04-16T10:07:10Z'  # 11e4
+  by: agent  # 11e4
+  actor: jgstern_agent  # 11e4
+  clock: 5  # 11e4
+  nonce: '11e4'  # 11e4
+  message: "Fixed in PR #3058 (merged to dev at 1850f635d). Added JS_KNOWN_GLOBALS frozenset in js_ts.py mirroring javascript.yaml globals (console, localStorage, sessionStorage, document, navigator, window, Deno). Extends the WI-banaf/WI-vurop unresolved-call fallback to the no-import case — bare 'Object.method()' on globals now emits calls→{lang}:{obj}:0-0:{method}:unresolved edges for the io-boundaries layer to tag. Shadowing by named_imports, namespace_imports, or typed var_types preserved. 4 regression tests added (main, 2 import-shadowing, 1 typed-parameter shadowing). Full js_ts suite: 329 passed. Smart-test: 2428 passed, 100% coverage."  # 11e4
