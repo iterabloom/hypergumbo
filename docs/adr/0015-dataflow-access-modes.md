@@ -225,7 +225,7 @@ When both tiers could apply (e.g., a language analyzer creates a `calls` edge to
 
 A single-tier design was considered and rejected:
 
-- **All-automatic** (post-hoc pass over all edges): doesn't work for cross-language linker edges because there's no AST context. The event sourcing linker knows `emit` is a write, but an AST-level scan sees only a method call.
+- **All-automatic** (post-hoc pass over all edges): doesn't work for linker-emitted edges because there's no AST context. The event sourcing linker knows `emit` is a write, but an AST-level scan sees only a method call.
 
 - **All-explicit** (every edge producer calls `classify_access` manually): works correctly but requires touching every `Edge.create` call site across every analyzer. Error-prone, easy to forget, and creates N integration points instead of one.
 
@@ -277,7 +277,7 @@ On 4 sampled repos (alertmanager, buildkit, apollo-server, wasmtime, ~188k total
 | apollo-server| 7,710       | 320       | 10        | 0          | 310      | 0         | 0            | 0     |
 | wasmtime     | 125,152     | ~25,405   | 2,163     | 498        | 22,376   | 46        | 322          | 0     |
 
-**Critical pattern**: every single edge with `dest_access_mode` populated ALSO has `access_mode=write`. There are ZERO edges where src is `read`, `mutate`, `delete`, or `-` with dst as `read` or `mutate`. All 16 polyglot linkers that populate `dest_access_mode` always ALSO populate `access_mode=write` at the same call site. Empirically, option 2's unique contribution over option 1 is **zero edges on any tested repo**.
+**Critical pattern**: every single edge with `dest_access_mode` populated ALSO has `access_mode=write`. There are ZERO edges where src is `read`, `mutate`, `delete`, or `-` with dst as `read` or `mutate`. All 16 linkers that populate `dest_access_mode` always ALSO populate `access_mode=write` at the same call site. Empirically, option 2's unique contribution over option 1 is **zero edges on any tested repo**.
 
 **Decision**: defer option 2 indefinitely. Ship option 1 (already in place) as the canonical forward-slice admission rule. Do NOT add the `dst_mode` OR-check as dormant future-proofing — speculative complexity that must be maintained, reviewed, and tested carries non-zero cost for zero measured benefit, and the maintenance risks documented in the WI-hukoh thread (cognitive overhead of multi-branch admission rule, state-space doubling for option 3, deprecation cliff uncertainty) remain real even for dormant code.
 
@@ -285,7 +285,7 @@ On 4 sampled repos (alertmanager, buildkit, apollo-server, wasmtime, ~188k total
 
 **Option 3 (writer-chain BFS state)** was not separately evaluated on real data because option 2 had to be proven insufficient first — which it was not, because no edges in current behavior maps would exercise the dst-mode path at all. Option 3 is also deferred. If option 2 ever becomes active and multi-hop `write→passthrough→read` chains turn out to be a meaningful missed-case, option 3 can be evaluated then.
 
-**INV-forim prerequisite**: Phase A baseline data collection exposed INV-forim, a structural bug where 4 cross-language linkers (`event_sourcing`, `ipc`, `websocket`, `message_queue`) silently destroyed `access_mode`/`dest_access_mode` annotations by reassigning `edge.meta = {...}` after `Edge.create` had merged them. Fixed in PR #2925 before the Phase C decision data was collected — without that fix, the `would_admit_dst_reader` counter was reading zero on every repo for a different (structural) reason, which would have falsely validated the "option 2 is useless" conclusion for the wrong reason.
+**INV-forim prerequisite**: Phase A baseline data collection exposed INV-forim, a structural bug where 4 linkers (`event_sourcing`, `ipc`, `websocket`, `message_queue` — all Protocol subcategory per [ADR-0003-ext](0003-linker-subcategory-restoration.md)) silently destroyed `access_mode`/`dest_access_mode` annotations by reassigning `edge.meta = {...}` after `Edge.create` had merged them. Fixed in PR #2925 before the Phase C decision data was collected — without that fix, the `would_admit_dst_reader` counter was reading zero on every repo for a different (structural) reason, which would have falsely validated the "option 2 is useless" conclusion for the wrong reason.
 
 ### 7. Unification of existing linkers
 
@@ -334,5 +334,5 @@ This also addresses the PlazaFlow team's annotation convention request (`@hg:pub
 - **Test isolation analysis**: the shared mutable state detection enabled by this ADR directly addresses the Textual Pilot test interaction failures observed in hypergumbo's own test suite — module-level globals that are written by one test and read by another can be enumerated by querying for symbols with both `write` and `read` edges from different test scopes.
 - **WI-saful**: shipped "option 1" forward-slice admission rule (writer source + one-hop downstream read + graceful degradation). See §6.
 - **WI-hukoh**: evaluated "option 2" (dst_mode OR-check) and "option 3" (writer-chain BFS state) on real data; both deferred indefinitely because no edges in any sampled repo would exercise the dst-mode path. See §6.1 for the data and the re-evaluation trigger.
-- **INV-forim**: structural bug where 4 cross-language linkers destroyed dataflow annotations via `edge.meta = {...}` reassignment after `Edge.create`. Discovered during WI-hukoh Phase A baseline data collection, fixed in PR #2925. Was a prerequisite for WI-hukoh Phase C: without the fix, the telemetry was falsely reporting zero for a different (structural) reason.
+- **INV-forim**: structural bug where 4 linkers (Protocol subcategory: `event_sourcing`, `ipc`, `websocket`, `message_queue`) destroyed dataflow annotations via `edge.meta = {...}` reassignment after `Edge.create`. Discovered during WI-hukoh Phase A baseline data collection, fixed in PR #2925. Was a prerequisite for WI-hukoh Phase C: without the fix, the telemetry was falsely reporting zero for a different (structural) reason.
 - **INV-dihos Phase 5**: cross-linker signature-registry integration. If this ever begins populating `dest_access_mode` on edges without `access_mode=write`, the WI-hukoh decision to skip option 2 must be revisited. The `SliceResult.admission_stats.would_admit_dst_reader` counter is the trigger.

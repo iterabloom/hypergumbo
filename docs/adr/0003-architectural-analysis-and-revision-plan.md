@@ -1,6 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Hypergumbo Architectural Analysis — January 7, 2026 (updated 21:30)
 
+**Supplemented by:** [ADR-0003-ext: Linker Subcategory Restoration](0003-linker-subcategory-restoration.md) — the §2.4 Protocol / Bridge / Framework subcategory vocabulary defined here is restored as the authoritative classification, extended with a fourth subcategory (Infrastructure), and made actively maintained across the linker catalogue, the spec, and the bakeoff playbooks.
+
 ## Summary
 
 Hypergumbo's architecture grew organically, resulting in some incoherent abstractions and disconnected data flows. This document establishes a principled taxonomy and identifies concrete architectural improvements.
@@ -503,7 +505,7 @@ Some frameworks span multiple languages:
 | JNI          | Java + C/C++                    | FFI bridge         |
 | React Native | JavaScript + Swift/Kotlin       | Platform bridge    |
 | Electron     | JavaScript + Node.js            | IPC                |
-This is why linkers exist—they're the cross-language counterpart to analyzers.
+This is why linkers exist—they're the cross-language counterpart to analyzers. (This framing privileges the Bridge and cross-language Framework use cases. The ADR's own §2.4 enumerates Protocol Linkers as framework-agnostic, within-language-capable patterns; for the restored subcategory vocabulary — Protocol / Bridge / Framework / Infrastructure — and the current catalogue, see [ADR-0003-ext: Linker Subcategory Restoration](0003-linker-subcategory-restoration.md).)
 
 ---
 
@@ -758,7 +760,7 @@ Version detection from manifests is complex and probably not worth it unless pat
 
 ### 6.5 Resolved Questions
 1. **Where is the boundary between analyzer and linker?**
-   - **Resolved:** Analyzers capture syntax-visible data (symbols, edges, metadata). FRAMEWORK_PATTERNS enriches symbols with concept metadata. Linkers create cross-boundary edges.
+   - **Resolved:** Analyzers capture syntax-visible data (symbols, edges, metadata). FRAMEWORK_PATTERNS enriches symbols with concept metadata. Linkers create edges across either language boundaries (Bridge, some Framework) or dispatch boundaries (Protocol, some Framework), and populate graph-structural relationships (Infrastructure). See [ADR-0003-ext §2](0003-linker-subcategory-restoration.md) for subcategory definitions.
    - Framework concept detection is NEITHER in analyzers NOR in linkers—it's in FRAMEWORK_PATTERNS.
 2. **Should there be a "framework pack" that bundles analyzer config + linkers?**
    - **Resolved:** In the new architecture, a "framework" IS essentially a pack: it specifies which pattern YAML to use, which linkers to activate, and which entry kinds result.
