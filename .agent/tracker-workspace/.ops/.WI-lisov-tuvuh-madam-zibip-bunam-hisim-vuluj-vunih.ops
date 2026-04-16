@@ -1,0 +1,22 @@
+- op: create  # 0731
+  at: '2026-04-16T19:20:16Z'  # 0731
+  by: agent  # 0731
+  actor: jgstern_agent  # 0731
+  clock: 1  # 0731
+  nonce: '0731'  # 0731
+  data:  # 0731
+    kind: work_item  # 0731
+    title: "Kafka Streams topology-builder linker: DSL calls → processor/transformer/supplier impls"  # 0731
+    status: todo_soft  # 0731
+    priority: 3  # 0731
+    parent:  # 0731
+    tags:  # 0731
+    - cross_language_linkers  # 0731
+    - analysis_quality  # 0731
+    - kafka  # 0731
+    isbefore: []  # 0731
+    duplicate_of: []  # 0731
+    not_duplicate_of: []  # 0731
+    pr_ref:  # 0731
+    description: "WI-tubot aggregate-v5 analysis (2026-04-16): kafka_streams_internal = 2386 candidates (2.6% of the pool). Top samples: KStream.process, KStream.filter, KStream.map, WorkerManager.Worker.spec, Utils.require.\n\nCurrent state: no linker covers Kafka Streams topology dispatch. The DSL (StreamsBuilder.stream().filter().map().through().to()) registers processors/transformers/suppliers at build time; the static call graph sees the registrations but not the per-record callbacks the framework invokes at runtime (ValueMapper.apply, ValueTransformer.transform, ProcessorSupplier.get, etc.).\n\nScope: a kafka_streams_dispatch.py linker (or an extension of message_dispatch.py) that:\n1. Recognises ValueMapper / ValueTransformer / ProcessorSupplier / KeyValueMapper / Predicate / ForeachAction / TransformerSupplier / Aggregator / Reducer / Initializer / Merger base types from org.apache.kafka.streams.kstream\n2. For each concrete impl, marks the framework-called methods (apply, transform, process, get, init, close) as reachable from the enclosing topology-builder call-site via framework_dispatches_to edges\n3. Does the same for the .streams-scala wrapper types used by Scala consumers\n\nCross-language relevance: Kafka topologies cross language boundaries via Kafka records. SerDe classes (Serializer.serialize / Deserializer.deserialize) are also dispatched this way and could share machinery.\n\nAcceptance: re-run of dead-code-prospector shows kafka_streams_internal drops below 800 (67% reduction)."  # 0731
+    fields: {}  # 0731
