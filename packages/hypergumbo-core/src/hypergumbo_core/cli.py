@@ -5712,10 +5712,23 @@ def run_behavior_map(
     # methods with concept=route but don't create kind="route" IR nodes.
     # This step creates those nodes so the route_handler linker can produce
     # routes_to edges.
-    from .framework_patterns import materialize_route_symbols
+    from .framework_patterns import (
+        expand_class_based_view_routes,
+        materialize_route_symbols,
+    )
     materialized_routes = materialize_route_symbols(all_symbols)
     if materialized_routes:
         all_symbols.extend(materialized_routes)
+
+    # WI-lojoh: expand Django CBV routes (single ANY route per as_view()
+    # registration) into one route per declared HTTP method on the view
+    # class. Runs after materialize_route_symbols so any newly minted route
+    # symbols can also be expanded.
+    cbv_expanded, cbv_removed_ids = expand_class_based_view_routes(all_symbols)
+    if cbv_removed_ids:
+        all_symbols = [s for s in all_symbols if s.id not in cbv_removed_ids]
+    if cbv_expanded:
+        all_symbols.extend(cbv_expanded)
 
     # Run cross-language linkers
     show_progress("Running linkers", 55)

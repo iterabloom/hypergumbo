@@ -755,6 +755,7 @@ def _extract_django_usage_contexts(
         # Extract view reference from second argument
         view_ref = None
         view_name = None
+        is_class_based = False
         if len(node.args) >= 2:
             second_arg = node.args[1]
             if isinstance(second_arg, ast.Attribute):
@@ -771,6 +772,7 @@ def _extract_django_usage_contexts(
                 # TemplateView.as_view(template_name='...') -> "TemplateView"
                 call_func = second_arg.func
                 if isinstance(call_func, ast.Attribute) and call_func.attr == "as_view":
+                    is_class_based = True
                     # Extract the class name from the as_view() call
                     if isinstance(call_func.value, ast.Attribute):
                         # views.LoginView.as_view() -> LoginView
@@ -825,6 +827,7 @@ def _extract_django_usage_contexts(
                 "args": args_values,
                 "route_path": normalized_path,
                 "view_name": view_name,
+                "is_class_based_view": is_class_based,
             },
         )
         contexts.append(ctx)
@@ -2119,9 +2122,27 @@ def _extract_file_analysis(
     usage_contexts.extend(flask_contexts)
 
     # Create route symbols from Django usage contexts.
+    #
+    # WI-lojoh: class-based views (registered via Cls.as_view()) get
+    # http_method="ANY" so the post-pass `expand_class_based_view_routes`
+    # can introspect the view class's get/post/put/patch/delete/head/options
+    # methods and emit one route variant per declared method. When the view
+    # class lives outside the analyzed repo (e.g. django.contrib.auth.views),
+    # the route stays at "ANY" — better than fabricating a wrong "GET".
+    # Function-based views keep "GET" (Django dispatches them for any HTTP
+    # verb, but GET is the conventional default for static-analysis output).
     for ctx in django_contexts:
         route_path = ctx.metadata.get("route_path", "")
         view_name = ctx.metadata.get("view_name")
+        is_cbv = bool(ctx.metadata.get("is_class_based_view"))
+        http_method = "ANY" if is_cbv else "GET"
+        meta = {
+            "route_path": route_path,
+            "http_method": http_method,
+            "view_name": view_name,
+        }
+        if is_cbv:
+            meta["is_class_based_view"] = True
         symbol = Symbol(
             id=_make_symbol_id(str(py_file), ctx.span.start_line, ctx.span.end_line, route_path, "route"),
             name=f"django:{view_name or 'unknown'}",
@@ -2129,12 +2150,8 @@ def _extract_file_analysis(
             language="python",
             path=str(py_file),
             span=ctx.span,
-            stable_id=make_route_stable_id("GET", route_path),
-            meta={
-                "route_path": route_path,
-                "http_method": "GET",
-                "view_name": view_name,
-            },
+            stable_id=make_route_stable_id(http_method, route_path),
+            meta=meta,
         )
         symbols.append(symbol)
 

@@ -1663,6 +1663,121 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
     return new_route_symbols
 
 
+_HTTP_METHOD_NAMES: frozenset[str] = frozenset(
+    {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
+)
+
+
+def expand_class_based_view_routes(
+    symbols: list,
+) -> tuple[list, set[str]]:
+    """Expand CBV routes into one route per declared HTTP method.
+
+    WI-lojoh: when a Django ``re_path``/``path``/``url`` registers a view via
+    ``Cls.as_view()``, the analyzer emits a single ``kind='route'`` symbol
+    with ``http_method='ANY'`` and ``meta.view_name`` set to the class name.
+    This pass looks up the view class's child methods (named ``get``, ``post``,
+    ``put``, ``patch``, ``delete``, ``head``, ``options``, ``trace``) by
+    walking the global symbol list and emits one new route per declared
+    method. The original "ANY" route is dropped only when expansion succeeds
+    — otherwise it stays as-is so unresolved cross-file CBVs (e.g. views
+    imported from a third-party Django app) still surface in ``routes``
+    output, just labeled ``[ANY]`` instead of falsely labeled ``[GET]``.
+
+    The lookup is name-only (no module qualification): if two unrelated
+    classes share a name like ``LoginView``, their methods are unioned. This
+    is conservative — better to over-report HTTP methods than to miss real
+    handlers — and matches how Django itself dispatches in practice (the
+    URLconf binds whichever class is in scope at registration time).
+
+    Args:
+        symbols: All symbols in the behavior map (read-only).
+
+    Returns:
+        A tuple ``(new_routes, removed_route_ids)``:
+        - ``new_routes`` is the list of newly minted per-method route
+          symbols to extend the symbol list with.
+        - ``removed_route_ids`` is the set of original "ANY" route IDs that
+          should be dropped (only populated when expansion succeeded for
+          that route).
+    """
+    from .analyze.base import make_route_stable_id
+    from .ir import Span, Symbol as SymbolCls, make_pass_id
+
+    # Build view_class_name -> set of declared HTTP method names.
+    # Method symbols are named "ClassName.method"; a class can define a
+    # subset like {"get", "post"}.
+    cls_methods: dict[str, set[str]] = {}
+    for sym in symbols:
+        if sym.kind != "method" or not sym.name:
+            continue
+        if "." not in sym.name:
+            continue
+        cls_name, _, method_name = sym.name.rpartition(".")
+        if method_name in _HTTP_METHOD_NAMES:
+            cls_methods.setdefault(cls_name, set()).add(method_name)
+
+    pass_id = make_pass_id("django-cbv-method-expander")
+    new_routes: list = []
+    removed_ids: set[str] = set()
+
+    for sym in symbols:
+        if sym.kind != "route" or not sym.meta:
+            continue
+        meta = sym.meta
+        # Only expand routes flagged as class-based with method=ANY.
+        if not meta.get("is_class_based_view"):
+            continue
+        if (meta.get("http_method") or "").upper() != "ANY":
+            continue
+        view_name = meta.get("view_name")
+        if not view_name:
+            continue
+        methods = cls_methods.get(view_name)
+        if not methods:
+            # Cross-file CBV (e.g., django.contrib.auth.views.LoginView)
+            # whose class definition isn't in the analyzed repo. Leave the
+            # ANY route in place — honest "we don't know" beats a fabricated
+            # "GET" default.
+            continue
+
+        route_path = meta.get("route_path") or "/"
+        for method_name in sorted(methods):
+            http_method = method_name.upper()
+            new_meta = {
+                "route_path": route_path,
+                "http_method": http_method,
+                "view_name": view_name,
+                "view_method": method_name,
+                "expanded_from": sym.id,
+            }
+            new_id = (
+                f"{sym.language}:{sym.path}:{sym.span.start_line}-"
+                f"{sym.span.end_line}:{route_path}:{http_method}:route"
+            )
+            new_routes.append(
+                SymbolCls(
+                    id=new_id,
+                    name=f"{sym.name}.{method_name}",
+                    kind="route",
+                    language=sym.language,
+                    path=sym.path,
+                    span=Span(
+                        start_line=sym.span.start_line,
+                        end_line=sym.span.end_line,
+                        start_col=sym.span.start_col,
+                        end_col=sym.span.end_col,
+                    ),
+                    origin=pass_id,
+                    stable_id=make_route_stable_id(http_method, route_path),
+                    meta=new_meta,
+                )
+            )
+        removed_ids.add(sym.id)
+
+    return new_routes, removed_ids
+
+
 def clear_pattern_cache() -> None:
     """Clear the pattern cache. For testing only."""
     _PATTERN_CACHE.clear()
