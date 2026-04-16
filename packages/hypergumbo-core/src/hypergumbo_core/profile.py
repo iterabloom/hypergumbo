@@ -784,6 +784,15 @@ def _find_manifest_files(repo_root: Path, filename: str, max_depth: int = 3) -> 
                     for p in parts[:-1]
                 ):
                     continue
+                # WI-sudug: skip manifests inside test-fixture directories.
+                # detekt (Kotlin static-analysis tool) triggered a false
+                # positive "react framework detected" because its test
+                # fixtures contained package.json files referencing react.
+                # Test fixtures do NOT represent real project dependencies.
+                from .paths import is_test_file as _is_test_file
+                rel_for_fixture_check = "/".join(parts)
+                if _is_test_file(rel_for_fixture_check):
+                    continue
                 found.append(path)
 
     return found

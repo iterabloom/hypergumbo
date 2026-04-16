@@ -1656,6 +1656,53 @@ def test_find_manifest_files_helper(tmp_path: Path) -> None:
     assert "services/api/pyproject.toml" in paths
 
 
+def test_find_manifest_skips_test_fixtures(tmp_path: Path) -> None:
+    """WI-sudug: manifest files inside test-fixture dirs are skipped.
+
+    Prevents false-positive framework detection from test fixtures. E.g.,
+    detekt is a Kotlin tool with no React; its test fixtures contain
+    package.json files referencing react for testing purposes.
+    """
+    from hypergumbo_core.profile import _find_manifest_files
+
+    # Real manifest at root
+    (tmp_path / "package.json").write_text('{"dependencies": {"vue": "3.0"}}')
+
+    # Test fixture manifest in various conventional locations
+    (tmp_path / "testdata" / "fixture1").mkdir(parents=True)
+    (tmp_path / "testdata" / "fixture1" / "package.json").write_text(
+        '{"dependencies": {"react": "18.0"}}'
+    )
+    (tmp_path / "src" / "test" / "resources" / "bad").mkdir(parents=True)
+    (tmp_path / "src" / "test" / "resources" / "bad" / "package.json").write_text(
+        '{"dependencies": {"react": "18.0"}}'
+    )
+
+    found = _find_manifest_files(tmp_path, "package.json")
+    paths = [str(p.relative_to(tmp_path)) for p in found]
+
+    # Root package.json included
+    assert "package.json" in paths
+    # Test-fixture package.json files excluded
+    assert not any("testdata" in p for p in paths)
+    assert not any("test/resources" in p for p in paths)
+
+
+def test_detect_js_frameworks_ignores_test_fixture_react(tmp_path: Path) -> None:
+    """WI-sudug: React in a test-fixture package.json does not trigger detection."""
+    from hypergumbo_core.profile import _detect_js_frameworks
+
+    # Kotlin tool like detekt: no JS deps at root
+    # But test fixtures have package.json with react
+    (tmp_path / "testdata" / "fixture").mkdir(parents=True)
+    (tmp_path / "testdata" / "fixture" / "package.json").write_text(
+        '{"dependencies": {"react": "18.0"}}'
+    )
+
+    frameworks = _detect_js_frameworks(tmp_path)
+    assert "react" not in frameworks
+
+
 def test_detects_flutter_in_subdirectory(tmp_path: Path) -> None:
     """Should detect Flutter from pubspec.yaml in a subdirectory."""
     # Simulate monorepo with Flutter app in subdirectory
