@@ -1583,6 +1583,22 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
     new_route_symbols: list[SymbolCls] = []
     seen_routes: set[str] = set()  # Dedupe by (method, path)
 
+    # WI-tizad: also dedupe against analyzer-emitted kind="route" symbols.
+    # Django's urls.py analyzer creates routes at the URL registration site
+    # (e.g. `path("/users/", UsersView.as_view())`) AND the view class's
+    # get/post methods get concept=route via framework enrichment. Without
+    # this pre-populate, the same (method, path) pair is emitted twice:
+    # once at urls.py and once at the view method. Pretix UAT saw 985 routes
+    # where only ~500 were unique.
+    for existing in symbols:
+        if existing.kind != "route":
+            continue
+        em = existing.meta or {}
+        ex_method = str(em.get("http_method") or "").upper()
+        ex_path = em.get("route_path") or ""
+        if ex_method and ex_method != "ANY":
+            seen_routes.add(f"{ex_method}:{ex_path}")
+
     for sym in symbols:
         if not sym.meta:
             continue

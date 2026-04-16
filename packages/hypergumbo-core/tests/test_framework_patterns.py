@@ -18477,6 +18477,61 @@ class TestMaterializeRouteSymbols:
         routes = materialize_route_symbols([sym])
         assert len(routes) == 0
 
+    def test_skip_when_analyzer_already_emitted_route(self):
+        """WI-tizad: dedupe against analyzer-emitted kind=route symbols."""
+        existing_route = Symbol(
+            id="python:urls.py:1-1:GET /users/:route",
+            name="GET /users/", kind="route", language="python",
+            path="urls.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            meta={"route_path": "/users/", "http_method": "GET"},
+        )
+        handler = Symbol(
+            id="python:views.py:10-20:UsersView.get:method",
+            name="UsersView.get", kind="method", language="python",
+            path="views.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/users/"}]},
+        )
+        routes = materialize_route_symbols([existing_route, handler])
+        # Materializer must NOT produce a second GET /users/ symbol
+        assert len(routes) == 0
+
+    def test_materializer_still_emits_when_no_analyzer_route(self):
+        """Materializer still fires when no analyzer route covers (method, path)."""
+        handler = Symbol(
+            id="java:Api.java:10-20:Api.handle:method",
+            name="Api.handle", kind="method", language="java",
+            path="Api.java",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/api"}]},
+        )
+        routes = materialize_route_symbols([handler])
+        assert len(routes) == 1
+        assert routes[0].meta["http_method"] == "POST"
+
+    def test_materializer_still_fires_when_analyzer_route_is_ANY(self):
+        """ANY routes (CBV pending expansion) do not suppress materializer."""
+        any_route = Symbol(
+            id="python:urls.py:1-1:ANY /foo/:route",
+            name="ANY /foo/", kind="route", language="python",
+            path="urls.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            meta={"route_path": "/foo/", "http_method": "ANY",
+                  "is_class_based_view": True},
+        )
+        handler = Symbol(
+            id="python:views.py:10-20:FooView.get:method",
+            name="FooView.get", kind="method", language="python",
+            path="views.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/foo/"}]},
+        )
+        routes = materialize_route_symbols([any_route, handler])
+        # ANY route doesn't block the specific GET materialization
+        assert len(routes) == 1
+        assert routes[0].meta["http_method"] == "GET"
+
 
 class TestExpandClassBasedViewRoutes:
     """Tests for expand_class_based_view_routes (WI-lojoh)."""
