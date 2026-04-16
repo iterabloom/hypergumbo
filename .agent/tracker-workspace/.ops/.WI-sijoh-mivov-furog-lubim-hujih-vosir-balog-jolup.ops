@@ -1,0 +1,21 @@
+- op: create  # 9fb5
+  at: '2026-04-16T18:50:53Z'  # 9fb5
+  by: agent  # 9fb5
+  actor: jgstern_agent  # 9fb5
+  clock: 1  # 9fb5
+  nonce: 9fb5  # 9fb5
+  data:  # 9fb5
+    kind: work_item  # 9fb5
+    title: "HTTP linker: fold JS/TS template-literal fetch URLs with module-constant interpolation"  # 9fb5
+    status: todo_soft  # 9fb5
+    priority: 3  # 9fb5
+    parent:  # 9fb5
+    tags:  # 9fb5
+    - cross_language_linkers  # 9fb5
+    - typescript  # 9fb5
+    isbefore: []  # 9fb5
+    duplicate_of: []  # 9fb5
+    not_duplicate_of: []  # 9fb5
+    pr_ref:  # 9fb5
+    description: "The cross-language HTTP linker's JavaScript/TypeScript scanner currently matches only bare string literals (`fetch(\"/api/foo\")`) and identifier references (`fetch(API_URL)`). It does NOT capture backtick template literals with variable interpolation.\n\nConcrete failing case from WI-tinip's title:\n```ts\n// prometheus/web/ui/mantine-ui/src/api/api.ts\nexport const API_PATH = \"api/v1\";\n\nconst res = await fetch(\n    `${pathPrefix}/${API_PATH}${path}${queryString}`,\n    { cache: \"no-store\", ... }\n);\n```\n\nSolving this requires (1) recognising the backtick template-literal form in the regex or, better, via a tree-sitter pass, and (2) folding module-scope `const` assignments so `${API_PATH}` resolves to `\"api/v1\"` at analysis time. Call-site path arguments (`${path}`) can stay variable — emit with url_type='variable' and matched to route patterns by the literal prefix.\n\nScope: JS/TS only. Elm's equivalent (let-bound + String.join) is tracked separately in WI-rosan. Together with WI-rosan, this closes the two concrete test cases named in WI-tinip's title.\n\nPrior art: `method_call_recovery` linker already has machinery for resolving identifier→source via `contains` edges; similar constant-propagation could slot in here."  # 9fb5
+    fields: {}  # 9fb5

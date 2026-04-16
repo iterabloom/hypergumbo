@@ -1,0 +1,29 @@
+- op: create  # 1f6f
+  at: '2026-04-16T18:39:33Z'  # 1f6f
+  by: agent  # 1f6f
+  actor: jgstern_agent  # 1f6f
+  clock: 1  # 1f6f
+  nonce: 1f6f  # 1f6f
+  data:  # 1f6f
+    kind: work_item  # 1f6f
+    title: "HTTP linker: capture Elm let-bound and String.join URL idioms"  # 1f6f
+    status: todo_soft  # 1f6f
+    priority: 3  # 1f6f
+    parent:  # 1f6f
+    tags:  # 1f6f
+    - cross_language_linkers  # 1f6f
+    - elm  # 1f6f
+    isbefore: []  # 1f6f
+    duplicate_of: []  # 1f6f
+    not_duplicate_of: []  # 1f6f
+    pr_ref:  # 1f6f
+    description: "WI-tinip Phase 1 (PR #3070) covered the direct `Utils.Api.get (apiUrl ++ \"/path\")`, `Http.get { url = \"...\" }`, and `Http.request { method = ..., url = ... }` idioms. A smaller minority of Elm HTTP calls use let-bound URLs (e.g. Alerts/Api.elm `fetchAlerts` where a let-in block constructs `url = String.join \"/\" [ apiUrl, \"alerts\" ++ ... ]` and passes it as a variable). These aren't captured by regex because the path fragment lives inside a nested expression that threads through a variable binding. A proper fix needs the Elm analyzer to track let-bindings and fold string-concatenation literals, probably as its own package (hypergumbo-lang-elm). Not blocking on the common case — the phase-1 scanner covers the majority of Alertmanager and Prometheus calls. Follow-up to WI-tinip."  # 1f6f
+    fields: {}  # 1f6f
+- op: update  # f53c
+  at: '2026-04-16T18:42:41Z'  # f53c
+  by: human  # f53c
+  actor: jgstern  # f53c
+  clock: 2  # f53c
+  nonce: f53c  # f53c
+  set:  # f53c
+    priority: 4  # f53c
