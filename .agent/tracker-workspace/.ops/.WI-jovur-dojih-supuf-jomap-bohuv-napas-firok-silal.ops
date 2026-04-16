@@ -21,3 +21,25 @@
     pr_ref:  # 9db8
     description: "UAT 2026-04-13 BUG-13: `Memory.load` has 6+ callers via `using Memory for Slice` (invoked as `slice.load(0)`) but is flagged dead. Only direct `Library.function()` syntax is traced. Add Solidity `using...for` dispatch resolution to the Solidity edge extractor."  # 9db8
     fields: {}  # 9db8
+- op: discuss  # 4bac
+  at: '2026-04-16T13:14:28Z'  # 4bac
+  by: agent  # 4bac
+  actor: jgstern_agent  # 4bac
+  clock: 2  # 4bac
+  nonce: 4bac  # 4bac
+  message: "Merged as PR #3065, dev SHA feb1e21f7d9b."  # 4bac
+- op: update  # 12eb
+  at: '2026-04-16T13:15:14Z'  # 12eb
+  by: agent  # 12eb
+  actor: jgstern_agent  # 12eb
+  clock: 3  # 12eb
+  nonce: 12eb  # 12eb
+  set:  # 12eb
+    status: done  # 12eb
+- op: discuss  # b803
+  at: '2026-04-16T13:15:14Z'  # b803
+  by: agent  # b803
+  actor: jgstern_agent  # b803
+  clock: 4  # b803
+  nonce: b803  # b803
+  message: "Fixed in PR #3065 (merged to dev at feb1e21f7). Root cause: the Solidity edge extractor keyed using_libraries by the call site's enclosing contract, so a file-level 'using X for Y;' (which Solidity binds to the source unit, stored under '') was invisible to calls inside contracts in the same file. Fix: when dispatching a member call inside a contract, union the contract-scoped library set with the file-level ('') set before probing for {Library}.{method}. Cross-file resolution works via global_symbols. Regression test covers the cross-file case (library in Memory.sol, caller in Reader.sol, file-level using in Reader.sol)."  # b803

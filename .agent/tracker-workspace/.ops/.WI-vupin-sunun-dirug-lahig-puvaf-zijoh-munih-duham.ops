@@ -1,0 +1,21 @@
+- op: create  # d92c
+  at: '2026-04-16T13:24:12Z'  # d92c
+  by: agent  # d92c
+  actor: jgstern_agent  # d92c
+  clock: 1  # d92c
+  nonce: d92c  # d92c
+  data:  # d92c
+    kind: work_item  # d92c
+    title: "Dead-code-prospector: categorization ruleset leaves 94% uncategorized"  # d92c
+    status: todo_soft  # d92c
+    priority: 3  # d92c
+    parent:  # d92c
+    tags:  # d92c
+    - dead_code_prospector  # d92c
+    - analysis_quality  # d92c
+    isbefore: []  # d92c
+    duplicate_of: []  # d92c
+    not_duplicate_of: []  # d92c
+    pr_ref:  # d92c
+    description: "WI-tubot full-corpus run (2026-04-11, 11 repos, 92218 candidates) categorized only 6% of dead-code candidates: cross_language_api=3187, handler_or_dto=1631, swagger_generated=514, memberlist_callbacks=100, goroutine_lifecycle=25, yaml_json_marshal=20, pipeline_stage_dispatch=7, cobra_cli_dispatch=3. The remaining 86731 'uncategorized' candidates represent untapped signal — without categorization, prospector output cannot rank linker-investment priorities beyond the recognised top 6%. Inspect ~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-11-full/per_repo[*].json for sample uncategorized candidate shapes (names, paths, kinds). Expected new categories: callback_registration (on_*, handle_*, *Listener), dependency_injection constructor params (*Service, *Provider), message-queue consumers (*Consumer, *Subscriber), CLI/route registration patterns not yet tagged. Each new category unlocks one class of structural linker fix."  # d92c
+    fields: {}  # d92c
