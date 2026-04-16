@@ -314,6 +314,7 @@ def is_test_file(path: str) -> bool:
         "testing", "testsuite",  # Go/Java convention (e.g., keycloak testsuite/)
         "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
         "fixtures", "testdata", "testutils", "testutil",  # Test support directories
+        "testfixtures",  # Gradle testFixtures convention (sibling to main)
         "testhelper", "testhelpers",  # Test helper directories
         "fv", "harnesses",  # Formal verification / test harness directories
         "bench", "benches", "benchmark", "benchmarks",  # Benchmark directories

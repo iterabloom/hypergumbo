@@ -90,6 +90,8 @@ def parse_gradle_dependencies(repo_root: Path) -> DependencyManifest:
     distinguish direct/indirect in the build file itself (that's a
     resolution-time concept in the lockfile).
     """
+    from hypergumbo_core.paths import is_test_file
+
     entries: dict[str, dict] = {}
 
     for name in ("build.gradle", "build.gradle.kts"):
@@ -99,6 +101,11 @@ def parse_gradle_dependencies(repo_root: Path) -> DependencyManifest:
 
     for child in repo_root.iterdir():
         if not child.is_dir():
+            continue
+        # WI-bukof: skip test-fixture directories (testFixtures/, testdata/,
+        # fixtures/, tests/, etc.) — their build.gradle declarations are
+        # scaffolding for test fixtures, not real project dependencies.
+        if is_test_file(child.name):
             continue
         for name in ("build.gradle", "build.gradle.kts"):
             sub_file = child / name
@@ -139,6 +146,8 @@ def parse_maven_dependencies(repo_root: Path) -> DependencyManifest:
 
     Returns a DependencyManifest mapping groupId strings to ``{direct: True}``.
     """
+    from hypergumbo_core.paths import is_test_file
+
     entries: dict[str, dict] = {}
 
     root_pom = repo_root / "pom.xml"
@@ -147,6 +156,9 @@ def parse_maven_dependencies(repo_root: Path) -> DependencyManifest:
 
     for child in repo_root.iterdir():
         if not child.is_dir():
+            continue
+        # WI-bukof: skip test-fixture subdirectories.
+        if is_test_file(child.name):
             continue
         sub_pom = child / "pom.xml"
         if sub_pom.exists():

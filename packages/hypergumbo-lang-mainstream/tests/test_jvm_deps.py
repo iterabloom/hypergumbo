@@ -380,3 +380,55 @@ class TestParseJvmDependencies:
         )
         manifest = parse_jvm_dependencies(tmp_path)
         assert manifest.classify_import("org.unknown.pkg") == Tier.EXTERNAL_DEP
+
+
+class TestSkipTestFixtureSubdirs:
+    """WI-bukof: jvm_deps skips test-fixture subdirectories."""
+
+    def test_gradle_skips_test_fixture_subdir(self, tmp_path: Path) -> None:
+        """build.gradle inside testFixtures/ is ignored."""
+        from hypergumbo_lang_mainstream.jvm_deps import parse_gradle_dependencies
+
+        # Root project has no Gradle file
+        fixture = tmp_path / "testFixtures"
+        fixture.mkdir()
+        (fixture / "build.gradle").write_text(
+            "dependencies {\n"
+            "    implementation 'com.example.fixture:lib:1.0'\n"
+            "}\n"
+        )
+        manifest = parse_gradle_dependencies(tmp_path)
+        assert manifest.entries == {}
+
+    def test_maven_skips_testdata_subdir(self, tmp_path: Path) -> None:
+        """pom.xml inside testdata/ is ignored."""
+        from hypergumbo_lang_mainstream.jvm_deps import parse_maven_dependencies
+
+        fixture = tmp_path / "testdata"
+        fixture.mkdir()
+        (fixture / "pom.xml").write_text(
+            "<project>\n"
+            "  <dependencies>\n"
+            "    <dependency>\n"
+            "      <groupId>com.example.fixture</groupId>\n"
+            "      <artifactId>lib</artifactId>\n"
+            "    </dependency>\n"
+            "  </dependencies>\n"
+            "</project>\n"
+        )
+        manifest = parse_maven_dependencies(tmp_path)
+        assert manifest.entries == {}
+
+    def test_gradle_still_scans_real_subprojects(self, tmp_path: Path) -> None:
+        """Non-test subprojects (e.g. clients/) are still scanned."""
+        from hypergumbo_lang_mainstream.jvm_deps import parse_gradle_dependencies
+
+        sub = tmp_path / "clients"
+        sub.mkdir()
+        (sub / "build.gradle").write_text(
+            "dependencies {\n"
+            "    implementation 'org.slf4j:slf4j-api:2.0.0'\n"
+            "}\n"
+        )
+        manifest = parse_gradle_dependencies(tmp_path)
+        assert manifest.classify_import("org.slf4j") == Tier.INTERNAL_DEP
