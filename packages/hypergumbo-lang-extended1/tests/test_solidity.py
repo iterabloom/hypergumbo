@@ -1141,6 +1141,117 @@ contract Token {
         assert len(call_edges) >= 1, "Should resolve to MathA.add, not MathB.add"
 
 
+    def test_using_at_file_level_applies_to_calls_inside_contract(
+        self, temp_repo: Path,
+    ) -> None:
+        """WI-jovur: `using X for Y;` at file scope applies to calls inside
+        contracts in the same file.
+
+        The existing dispatcher keyed ``using_libraries`` only by the
+        *enclosing contract* of the call site. File-level ``using`` binds
+        to the source unit, not any contract — so when
+        ``_get_enclosing_contract(using_node)`` returns an outer contract
+        name (because of tree-sitter nesting quirks), the library is
+        silently scoped to that contract and invisible elsewhere.
+        """
+        (temp_repo / "Main.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+struct Slice { uint256 start; uint256 len; }
+
+library Memory {
+    function load(Slice memory s, uint256 offset) internal pure returns (uint256) {
+        return s.start + offset;
+    }
+}
+
+using Memory for Slice;
+
+contract Reader {
+    function fetch(Slice memory s) public pure returns (uint256) {
+        return s.load(0);
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        fetch_fn = next(
+            s for s in result.symbols
+            if "fetch" in s.name and s.kind == "function"
+        )
+        load_fn = next(
+            s for s in result.symbols
+            if s.name == "Memory.load" and s.kind == "function"
+        )
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == fetch_fn.id and e.dst == load_fn.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) >= 1, (
+            f"Expected call edge from fetch→Memory.load via file-level "
+            f"'using Memory for Slice', found {len(call_edges)}"
+        )
+
+    def test_using_across_files_resolves_method_dispatch(
+        self, temp_repo: Path,
+    ) -> None:
+        """WI-jovur: library + caller in separate files, ``using`` at file
+        level in the caller's file, should resolve ``s.load(0)`` through
+        the cross-file global symbol table.
+        """
+        (temp_repo / "Memory.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+struct Slice { uint256 start; uint256 len; }
+
+library Memory {
+    function load(Slice memory s, uint256 offset) internal pure returns (uint256) {
+        return s.start + offset;
+    }
+}
+""")
+        (temp_repo / "Reader.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "./Memory.sol";
+
+using Memory for Slice;
+
+contract Reader {
+    function fetch(Slice memory s) public pure returns (uint256) {
+        return s.load(0);
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        fetch_fn = next(
+            s for s in result.symbols
+            if "fetch" in s.name and s.kind == "function"
+        )
+        load_fn = next(
+            s for s in result.symbols
+            if s.name == "Memory.load" and s.kind == "function"
+        )
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == fetch_fn.id and e.dst == load_fn.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) >= 1, (
+            f"Expected call edge from fetch→Memory.load across files, "
+            f"found {len(call_edges)}"
+        )
+
+
 class TestSoliditySignatureExtraction:
     """Tests for Solidity function signature extraction."""
 

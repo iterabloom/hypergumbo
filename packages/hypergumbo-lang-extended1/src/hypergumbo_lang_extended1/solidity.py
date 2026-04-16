@@ -446,11 +446,31 @@ def _extract_edges_from_tree(
                         # Prefer library-qualified lookup via using directives.
                         # This correctly resolves x.add(y) -> SafeMath.add
                         # when 'using SafeMath for uint256' is declared.
+                        #
+                        # WI-jovur: a Solidity ``using L for T;`` at file
+                        # level binds to the source unit, so the key
+                        # ``""`` (no enclosing contract) collects the
+                        # libraries applicable to every call site in the
+                        # same file. Probe both the call site's
+                        # enclosing contract (contract-scoped using) AND
+                        # the file-level ``""`` bucket so file-level
+                        # directives still dispatch calls that occur
+                        # inside contracts. Closes UAT BUG-13: the
+                        # shellcheck-style pattern where ``Memory.load``
+                        # is invoked via ``s.load(0)`` with a
+                        # file-level ``using Memory for Slice;``.
                         enclosing_contract = _get_enclosing_contract(
                             node, source,
                         ) or ""
+                        applicable_libs = set(
+                            using_libraries.get(enclosing_contract, ())
+                        )
+                        if enclosing_contract:
+                            applicable_libs.update(
+                                using_libraries.get("", ())
+                            )
                         member_target = None
-                        for lib_name in using_libraries.get(enclosing_contract, ()):
+                        for lib_name in applicable_libs:
                             qualified = f"{lib_name}.{method_name}"
                             candidate = (
                                 local_symbols.get(qualified)
