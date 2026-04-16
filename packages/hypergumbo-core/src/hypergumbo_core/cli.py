@@ -4117,6 +4117,18 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
 
     for sym_id, node in production_symbols.items():
         if sym_id not in reachable:
+            # WI-jifup: symbols in generated files are never actionable
+            # dead-code targets — you regenerate them, not delete them
+            # manually. Unconditional drop (no opt-in flag) because there
+            # is no use case in which the user wants "dead generated
+            # code" surfaced. Closes the residual leak in openapi-gen
+            # utility files (CancelablePromise.ts, request.ts, OpenAPI.ts,
+            # ApiError.ts) that bypassed the ranking-side centrality
+            # penalty (WI-tizij / WI-vubad) because dead-code-maybe does
+            # not use centrality at all.
+            sc = node.get("supply_chain") or {}
+            if sc.get("is_generated_file"):
+                continue
             # --exclude-annotated: skip candidates with decorators,
             # annotations, or framework concepts (these are likely
             # framework-registered callbacks, not linker gaps).

@@ -949,6 +949,77 @@ class TestDeadCodeMaybe:
         output = json.loads(captured.getvalue())
         assert output["dead_candidates"][0]["ffi_signature"] is True
 
+    def test_generated_file_symbols_never_appear_as_dead(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-jifup: symbols in generated files never appear as dead candidates.
+
+        Generated code is not actionable — you regenerate it, you don't
+        delete it manually. The file-level ``is_generated_file`` flag on a
+        symbol's supply_chain is an unconditional drop for dead-code-maybe
+        (no flag opt-in needed). Covers the four TS utility-file types
+        that leaked past WI-vubad's centrality demotion: ``CancelablePromise.ts``,
+        ``request.ts``, ``OpenAPI.ts``, ``ApiError.ts``.
+        """
+        import argparse
+
+        nodes = [
+            # Generated utility methods — must be dropped.
+            {"id": "ts:openapi-gen/CancelablePromise.ts:1-5:then:method",
+             "name": "then", "kind": "method", "language": "typescript",
+             "path": "src/openapi-gen/CancelablePromise.ts",
+             "span": {"start_line": 1, "end_line": 5},
+             "supply_chain": {"tier": 1, "is_generated_file": True}},
+            {"id": "ts:openapi-gen/request.ts:7-15:encodePair:function",
+             "name": "encodePair", "kind": "function",
+             "language": "typescript",
+             "path": "src/openapi-gen/request.ts",
+             "span": {"start_line": 7, "end_line": 15},
+             "supply_chain": {"tier": 1, "is_generated_file": True}},
+            {"id": "ts:openapi-gen/OpenAPI.ts:17-25:Interceptors.use:method",
+             "name": "use", "kind": "method", "language": "typescript",
+             "path": "src/openapi-gen/OpenAPI.ts",
+             "span": {"start_line": 17, "end_line": 25},
+             "supply_chain": {"tier": 1, "is_generated_file": True}},
+            {"id": "ts:openapi-gen/ApiError.ts:27-30:ApiError.constructor:method",
+             "name": "constructor", "kind": "method",
+             "language": "typescript",
+             "path": "src/openapi-gen/ApiError.ts",
+             "span": {"start_line": 27, "end_line": 30},
+             "supply_chain": {"tier": 1, "is_generated_file": True}},
+            # Handwritten helper — should remain in the candidate list.
+            {"id": "ts:src/util.ts:1-5:handwrittenHelper:function",
+             "name": "handwrittenHelper", "kind": "function",
+             "language": "typescript",
+             "path": "src/util.ts",
+             "span": {"start_line": 1, "end_line": 5},
+             "supply_chain": {"tier": 1, "is_generated_file": False}},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, [])
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+            exclude_annotated=False, exclude_exports=False,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        dead_names = {c["name"] for c in output["dead_candidates"]}
+        assert "then" not in dead_names, dead_names
+        assert "encodePair" not in dead_names, dead_names
+        assert "use" not in dead_names, dead_names
+        assert "constructor" not in dead_names, dead_names
+        # Handwritten helper is unreachable and should be in the list.
+        assert "handwrittenHelper" in dead_names, dead_names
+
     def test_exclude_exports_drops_public_api(
         self, tmp_path: Path,
     ) -> None:
