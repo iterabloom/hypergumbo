@@ -607,6 +607,141 @@ class TestDeadCodeMaybe:
         # libFunc has concepts → excluded
         assert "libFunc" not in dead_names
 
+    def test_exclude_annotated_propagates_from_class(self, tmp_path: Path) -> None:
+        """WI-rumij: class-level annotations propagate to contained methods for exclusion."""
+        import argparse
+
+        nodes = [
+            # Class annotated with @RestController (Spring registration pattern)
+            {"id": "java:UserController.java:1-30:UserController:class",
+             "name": "UserController", "kind": "class", "language": "java",
+             "path": "UserController.java",
+             "span": {"start_line": 1, "end_line": 30},
+             "meta": {"annotations": ["@RestController", "@RequestMapping"]}},
+            # Handler method with no own annotations (framework-dispatched)
+            {"id": "java:UserController.java:5-10:listUsers:method",
+             "name": "listUsers", "kind": "method", "language": "java",
+             "path": "UserController.java",
+             "span": {"start_line": 5, "end_line": 10},
+             "meta": {}},
+            # Plain function with no parent class → kept
+            {"id": "java:Util.java:1-5:orphan:method",
+             "name": "orphan", "kind": "method", "language": "java",
+             "path": "Util.java",
+             "span": {"start_line": 1, "end_line": 5}},
+        ]
+        edges = [
+            # Class contains the handler method
+            {"id": "e1", "src": "java:UserController.java:1-30:UserController:class",
+             "dst": "java:UserController.java:5-10:listUsers:method",
+             "type": "contains", "line": 5, "confidence": 1.0},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, edges)
+
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+            exclude_annotated=True,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        # listUsers is inside annotated class → excluded
+        assert "listUsers" not in dead_names
+        # orphan has no parent class with annotations → kept
+        assert "orphan" in dead_names
+
+    def test_exclude_annotated_class_decorators_propagate(self, tmp_path: Path) -> None:
+        """Class-level decorators (Python-style) also propagate to methods."""
+        import argparse
+
+        nodes = [
+            {"id": "py:views.py:1-30:UserView:class",
+             "name": "UserView", "kind": "class", "language": "python",
+             "path": "views.py",
+             "span": {"start_line": 1, "end_line": 30},
+             "meta": {"decorators": ["@register_view"]}},
+            {"id": "py:views.py:5-10:get:method",
+             "name": "get", "kind": "method", "language": "python",
+             "path": "views.py",
+             "span": {"start_line": 5, "end_line": 10},
+             "meta": {}},
+        ]
+        edges = [
+            {"id": "e1", "src": "py:views.py:1-30:UserView:class",
+             "dst": "py:views.py:5-10:get:method",
+             "type": "contains", "line": 5, "confidence": 1.0},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, edges)
+
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+            exclude_annotated=True,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        assert "get" not in dead_names
+
+    def test_exclude_annotated_unannotated_class_allows_method(self, tmp_path: Path) -> None:
+        """Method in a plain class with no annotations is kept when unreachable."""
+        import argparse
+
+        nodes = [
+            {"id": "java:Plain.java:1-30:Plain:class",
+             "name": "Plain", "kind": "class", "language": "java",
+             "path": "Plain.java",
+             "span": {"start_line": 1, "end_line": 30}},
+            {"id": "java:Plain.java:5-10:doWork:method",
+             "name": "doWork", "kind": "method", "language": "java",
+             "path": "Plain.java",
+             "span": {"start_line": 5, "end_line": 10}},
+        ]
+        edges = [
+            {"id": "e1", "src": "java:Plain.java:1-30:Plain:class",
+             "dst": "java:Plain.java:5-10:doWork:method",
+             "type": "contains", "line": 5, "confidence": 1.0},
+        ]
+        bm_path = _make_behavior_map(tmp_path, nodes, edges)
+
+        args = argparse.Namespace(
+            path=str(tmp_path), input=str(bm_path), format="json",
+            seeds="entrypoints", min_confidence=0.0,
+            exclude_annotated=True,
+        )
+        import io
+        import sys
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            cmd_dead_code_maybe(args)
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(captured.getvalue())
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        assert "doWork" in dead_names
+
     def test_path_shape_boost_api_dir(self, tmp_path: Path) -> None:
         """Candidates in api/ dir get a path_shape_boost of 1."""
         import argparse

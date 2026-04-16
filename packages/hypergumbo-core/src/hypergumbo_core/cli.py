@@ -4091,6 +4091,30 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     dead_candidates = []
     exclude_annotated = getattr(args, "exclude_annotated", False)
     exclude_exports = getattr(args, "exclude_exports", False)
+
+    # WI-rumij: propagate class-level annotations to contained methods.
+    # Spring frameworks typically annotate the controller class (@Controller,
+    # @RestController, @Service) without re-annotating each handler method,
+    # so methods report no annotations and slip past --exclude-annotated.
+    # Build a class-meta-index keyed by class symbol ID, then for each
+    # method, also check its containing class's meta when the method's own
+    # meta is empty.
+    class_meta_by_id: dict[str, dict] = {}
+    for node in nodes:
+        if node.get("kind") in ("class", "interface", "struct", "trait", "enum"):
+            class_meta_by_id[node["id"]] = node.get("meta") or {}
+    method_to_class: dict[str, str] = {}
+    for edge in edges:
+        if edge.get("type") == "contains":
+            src = edge.get("src", "")
+            dst = edge.get("dst", "")
+            if src in class_meta_by_id and dst:
+                method_to_class[dst] = src
+
+    def _has_annotation_signal(meta: dict) -> bool:
+        return bool(meta.get("decorators") or meta.get("annotations")
+                    or meta.get("concepts"))
+
     for sym_id, node in production_symbols.items():
         if sym_id not in reachable:
             # --exclude-annotated: skip candidates with decorators,
@@ -4098,9 +4122,14 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             # framework-registered callbacks, not linker gaps).
             if exclude_annotated:
                 meta = node.get("meta") or {}
-                if (meta.get("decorators") or meta.get("annotations")
-                        or meta.get("concepts")):
+                if _has_annotation_signal(meta):
                     continue
+                # WI-rumij: check containing class's annotations too
+                parent_class_id = method_to_class.get(sym_id)
+                if parent_class_id is not None:
+                    parent_meta = class_meta_by_id.get(parent_class_id, {})
+                    if _has_annotation_signal(parent_meta):
+                        continue
             # WI-zafab filter 3: skip candidates that are part of the
             # repo's public API (Symbol.is_exported=True). Exported
             # symbols are reachable by external callers outside the
