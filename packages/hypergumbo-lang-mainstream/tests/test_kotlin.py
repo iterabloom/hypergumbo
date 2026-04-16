@@ -142,6 +142,99 @@ class TestKotlinExtensionFunctions:
         # Generic receiver text is preserved in the meta.
         assert "List" in (sum_safe.meta or {}).get("extension_receiver", "")
 
+    def test_extension_call_emits_edge_via_var_types(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-visaz: ``receiver.extFn()`` emits a calls edge to the extension.
+
+        ``fun SpringApplication.configure(...)`` defined in one file, called
+        as ``app.configure { ... }`` in another file where ``app`` has
+        declared type ``SpringApplication``. The call site must reach the
+        extension function via a ``calls`` edge so dead-code-maybe,
+        slice, and reverse-slice see it as live.
+        """
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        ext_file = tmp_path / "SpringApplicationExtensions.kt"
+        ext_file.write_text(
+            "package org.springframework.boot\n\n"
+            "class SpringApplication\n\n"
+            "fun SpringApplication.configure(block: () -> Unit) {\n"
+            "    block()\n"
+            "}\n",
+        )
+        caller_file = tmp_path / "Main.kt"
+        caller_file.write_text(
+            "package demo\n\n"
+            "import org.springframework.boot.SpringApplication\n"
+            "import org.springframework.boot.configure\n\n"
+            "fun main() {\n"
+            "    val app: SpringApplication = SpringApplication()\n"
+            "    app.configure { println(\"hello\") }\n"
+            "}\n",
+        )
+
+        result = analyze_kotlin(tmp_path)
+        configure_sym = next(
+            (s for s in result.symbols
+             if s.kind == "function" and s.name == "configure"),
+            None,
+        )
+        assert configure_sym is not None, (
+            "configure extension function symbol not found"
+        )
+
+        calls_to_configure = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == configure_sym.id
+        ]
+        assert len(calls_to_configure) >= 1, (
+            f"expected at least one calls→configure edge, got "
+            f"{[(e.src, e.dst, e.evidence_type) for e in result.edges]}"
+        )
+
+    def test_extension_call_with_generic_receiver(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-visaz: generic receivers (``List<T>``) match on the base name.
+
+        ``fun List<Int>.sumSafe(): Int`` defined in one file, called as
+        ``nums.sumSafe()`` where ``nums: List<Int>``. The lookup must strip
+        the generic parameter and match on ``List``.
+        """
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        ext_file = tmp_path / "Ext.kt"
+        ext_file.write_text(
+            "package utils\n\n"
+            "fun List<Int>.sumSafe(): Int = this.fold(0) { acc, x -> acc + x }\n",
+        )
+        caller_file = tmp_path / "Caller.kt"
+        caller_file.write_text(
+            "package demo\n\n"
+            "import utils.sumSafe\n\n"
+            "fun run(nums: List<Int>): Int {\n"
+            "    return nums.sumSafe()\n"
+            "}\n",
+        )
+
+        result = analyze_kotlin(tmp_path)
+        sum_safe = next(
+            (s for s in result.symbols
+             if s.kind == "function" and s.name == "sumSafe"),
+            None,
+        )
+        assert sum_safe is not None
+
+        calls_to_sum_safe = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst == sum_safe.id
+        ]
+        assert len(calls_to_sum_safe) >= 1, (
+            f"expected calls→sumSafe edge, got "
+            f"{[(e.src, e.dst, e.evidence_type) for e in result.edges]}"
+        )
+
 
 class TestKotlinClassExtraction:
     """Tests for extracting Kotlin classes."""
