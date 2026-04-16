@@ -41,3 +41,18 @@
   clock: 4  # c862
   nonce: c862  # c862
   message: "Both — and the more interesting answer is the second.\n\nNaming the structural pattern: \"framework route extractor matches a registration pattern but stops at the registration site, never resolving the target symbol to extract derived metadata (HTTP method, content negotiation, decorators, etc.).\" The Django re_path → CBV chain is one instance.\n\nProbable analogues already visible in the backlog:\n- WI-jorim (Laravel `apiResource`): same pattern. The framework macro expands to N routes whose methods are determined by the controller's action methods; we currently emit phantom routes without inspecting the controller class. `.except()` ignored is the same root cause — registration-site metadata isn't being followed to the target.\n- WI-tizad (Django dual-reporting 2× inflation): adjacent — also involves not resolving back to the canonical view.\n\nProbable analogues we'd surface during the fix:\n- Flask `add_url_rule(view_func=MyView.as_view(...))` and `MethodView` subclasses (mirror image of Django CBV; same need to enumerate `get`/`post`/etc. method children).\n- Spring `@RequestMapping` without an explicit `method=` defaults to all HTTP methods; we'd need to check whether we're emitting GET-only or all-methods.\n- FastAPI `APIRouter.include_router` chains with prefix/dependencies inherited at registration time.\n- Generic class-based views (DetailView=GET, CreateView=GET+POST, UpdateView=GET+POST, DeleteView=GET+POST) — covered by step 3 in the plan, but the \"framework defaults table\" is itself a reusable artifact.\n- Beyond routes: the same \"match registration, don't resolve target\" pattern likely shows up in event/message handlers (Celery `@task`, Kafka consumers, message_handler decorators), where the registration site has the topic/queue but the handler body has the I/O profile.\n\nSo the fix has two layers:\n1. The Django-specific implementation in django.yaml + enrichment.\n2. A reusable \"method-handler introspection\" pass that takes (route metadata, view class symbol, method name set) → expanded routes. WI-jorim should be designed to consume the same primitive.\n\nConcrete next step: when WI-lojoh implementation lands, factor the class-method enumeration as a shared utility in the enrichment module, not inside django-specific code, and cite WI-jorim in the docstring as the second known consumer."  # c862
+- op: update  # 9c82
+  at: '2026-04-16T00:26:04Z'  # 9c82
+  by: agent  # 9c82
+  actor: jgstern_agent  # 9c82
+  clock: 5  # 9c82
+  nonce: 9c82  # 9c82
+  set:  # 9c82
+    status: done  # 9c82
+- op: discuss  # 1e66
+  at: '2026-04-16T00:26:04Z'  # 1e66
+  by: agent  # 1e66
+  actor: jgstern_agent  # 1e66
+  clock: 6  # 1e66
+  nonce: '1e66'  # 1e66
+  message: "Fixed in commit 9d7349e20 (PR #3048). py.py marks CBV registrations with is_class_based_view=True and emits http_method=ANY; new framework_patterns.expand_class_based_view_routes post-pass walks the global symbol list, builds ClassName -> declared HTTP methods index from Cls.<method> symbols, and replaces each ANY route with one variant per declared method. Cross-file unresolved CBVs stay as ANY (honest unknown beats false GET). Verified on 4-class re_path repro: GET/POST/DELETE/PATCH+PUT all correctly emitted."  # 1e66
