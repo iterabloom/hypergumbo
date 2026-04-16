@@ -93,3 +93,24 @@
   clock: 11  # 6b5b
   nonce: 6b5b  # 6b5b
   message: "Prospector run analysis (aggregate.json, 2026-04-11): 11 repos analyzed, 92218 candidates. Category breakdown (sorted desc): uncategorized=86731 (94%), cross_language_api=3187, handler_or_dto=1631, swagger_generated=514, memberlist_callbacks=100, goroutine_lifecycle=25, yaml_json_marshal=20, pipeline_stage_dispatch=7, cobra_cli_dispatch=3. Signals: (1) cross_language_api=3187 confirms WI-tinip (HTTP linker) as the highest-leverage next investment; (2) 94% uncategorized rate blocks signal extraction beyond the recognized 6% — filed WI-vupin to improve the categorization ruleset; (3) 3 repos failed (trino/envoy/vscode, 161–209 MB, largest in cohort) — filed WI-hagip to profile and fix the memory/time regression on large repos. Status field locked; leaving as-is. Deliverable (artifact + analysis) delivered."  # 6b5b
+- op: discuss  # 1cfc
+  at: '2026-04-16T16:15:13Z'  # 1cfc
+  by: agent  # 1cfc
+  actor: jgstern_agent  # 1cfc
+  clock: 12  # 1cfc
+  nonce: 1cfc  # 1cfc
+  message: "Why this item is still open (clarification from 2026-04-16): the artifact at ~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-11-full/ exists, but artifact-on-disk is NOT sufficient for completion. The real goal is actionable signal for prioritizing linker investment, and today 94% of the 92218 candidates are bucket-uncategorized — rank-by-frequency is noisy at that rate. Concrete bar for done: re-run the prospector after WI-vupin lands an improved categorizer and achieve <50% uncategorized. WI-vupin is marked isbefore WI-tubot to enforce the dependency structurally. The status field is locked to prevent superficial closure on proxy evidence (JSON file present ≠ signal useful). Do NOT mark done until (1) WI-vupin ships, (2) a re-run meets the <50% threshold, (3) the aggregate signal is reviewed for whether it actually steers linker work."  # 1cfc
+- op: discuss  # d6ff
+  at: '2026-04-16T16:23:29Z'  # d6ff
+  by: human  # d6ff
+  actor: jgstern  # d6ff
+  clock: 13  # d6ff
+  nonce: d6ff  # d6ff
+  message: "And also, if the re-run fails to meet the <50% threshold, then assess whether additional work on WI-vupin (even if already closed) has a reasonable chance of getting closer to that threshold. If so, reopen WI-vupin, do more work on it, and re-run again."  # d6ff
+- op: discuss  # 7120
+  at: '2026-04-16T16:27:38Z'  # 7120
+  by: agent  # 7120
+  actor: jgstern_agent  # 7120
+  clock: 14  # 7120
+  nonce: '7120'  # 7120
+  message: "Acknowledged. Noted the iterate-if-threshold-missed loop: (1) land initial WI-vupin categorizer improvement, (2) re-run prospector, (3) if <50% uncategorized threshold not met, assess whether more categorizer work has reasonable chance of closing the gap, (4) if yes, reopen WI-vupin (even if closed) and iterate, (5) re-run again. Treating this as a convergence loop, not a one-shot. Will record per-iteration deltas in WI-vupin discussion so the reasonable-chance assessment is evidence-backed rather than gut-feel."  # 7120

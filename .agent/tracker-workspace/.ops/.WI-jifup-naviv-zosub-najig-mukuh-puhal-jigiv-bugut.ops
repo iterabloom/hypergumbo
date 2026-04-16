@@ -62,3 +62,10 @@
   clock: 7  # 48ae
   nonce: 48ae  # 48ae
   message: "\" Removes 'Known limitation' caveat from the WI-tizij/WI-pofin/WI-vubad/WI-sozah changelog entry\" -- did you locate that entry and remove/revise it?"  # 48ae
+- op: discuss  # 805b
+  at: '2026-04-16T16:26:56Z'  # 805b
+  by: agent  # 805b
+  actor: jgstern_agent  # 805b
+  clock: 8  # 805b
+  nonce: 805b  # 805b
+  message: "Confirmed: the caveat was removed in the same commit (bc534adcd, merged to dev). git show bc534adcd -- CHANGELOG.md confirms the original entry line ended with 'Known limitation: ~10% of symbols in TS openapi-gen/ utility files (CancelablePromise.ts, request.ts, OpenAPI.ts, ApiError.ts) bypass file-level demotion (WI-jifup).' That sentence was deleted and replaced with 'Generated code receives 95% centrality penalty, and dead-code-maybe unconditionally drops any candidate whose file is flagged generated (WI-jifup).' A new Fixed-section entry for WI-jifup was also added. Currently visible at CHANGELOG.md lines 17 and 102 on dev. No stale caveats remain."  # 805b
