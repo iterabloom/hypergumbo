@@ -1332,7 +1332,7 @@ class TestCreateBoundaryNodes:
         assert result[0].supply_chain_tier == 2
 
     def test_manifest_non_go_language_unaffected(self):
-        """Non-Go boundary nodes are not reclassified by manifest."""
+        """Non-Go/Java/Kotlin boundary nodes are not reclassified by manifest."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         s1 = self._make_symbol("python:a.py:1-1:foo:function")
@@ -1345,5 +1345,57 @@ class TestCreateBoundaryNodes:
         })
         result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
-        # Non-Go: manifest doesn't apply, stays tier 3
+        # Non-Go/Java/Kotlin: manifest doesn't apply, stays tier 3
+        assert result[0].supply_chain_tier == 3
+
+    def test_manifest_classifies_java_direct_dep_as_tier2(self):
+        """Java boundary nodes classified as tier 2 with manifest."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        s1 = self._make_symbol("java:App.java:1-1:main:function")
+        e = Edge.create(
+            src=s1.id,
+            dst="java:com.fasterxml.jackson.core.JsonParser:0-0:parse:unresolved",
+            edge_type="calls", line=5,
+        )
+        manifest = DependencyManifest(entries={
+            "com.fasterxml.jackson.core": {"direct": True},
+        })
+        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        assert len(result) == 1
+        assert result[0].supply_chain_tier == 2
+        assert "direct dependency" in result[0].supply_chain_reason
+
+    def test_manifest_classifies_kotlin_direct_dep_as_tier2(self):
+        """Kotlin boundary nodes classified as tier 2 with manifest."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        s1 = self._make_symbol("kotlin:App.kt:1-1:main:function")
+        e = Edge.create(
+            src=s1.id,
+            dst="kotlin:io.ktor.server.core:0-0:embeddedServer:unresolved",
+            edge_type="calls", line=5,
+        )
+        manifest = DependencyManifest(entries={
+            "io.ktor": {"direct": True},
+        })
+        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        assert len(result) == 1
+        assert result[0].supply_chain_tier == 2
+
+    def test_manifest_java_unknown_import_stays_tier3(self):
+        """Java import not in manifest stays tier 3."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        s1 = self._make_symbol("java:App.java:1-1:main:function")
+        e = Edge.create(
+            src=s1.id,
+            dst="java:com.unknown.lib.Foo:0-0:bar:unresolved",
+            edge_type="calls", line=5,
+        )
+        manifest = DependencyManifest(entries={
+            "com.fasterxml.jackson.core": {"direct": True},
+        })
+        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        assert len(result) == 1
         assert result[0].supply_chain_tier == 3

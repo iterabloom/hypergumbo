@@ -1544,10 +1544,15 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
         annotation_edges = _extract_annotation_edges(all_symbols, global_symbols, run)
         all_edges.extend(annotation_edges)
 
+        # Parse Gradle/Maven deps for tier classification of boundary nodes (WI-duhom)
+        from hypergumbo_lang_mainstream.jvm_deps import parse_jvm_dependencies
+        jvm_manifest = parse_jvm_dependencies(repo_root)
+
         return AnalysisResult(
             symbols=all_symbols,
             edges=all_edges,
             run=run,
+            dependency_manifest=jvm_manifest if jvm_manifest.entries else None,
         )
 
 

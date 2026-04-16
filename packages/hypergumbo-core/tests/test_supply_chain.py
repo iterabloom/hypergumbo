@@ -2253,3 +2253,53 @@ class TestDependencyManifest:
         assert manifest.classify_import(
             "github.com/alecthomas/kingpin/v2/cmd"
         ) == Tier.INTERNAL_DEP
+
+    def test_classify_java_direct_dep(self) -> None:
+        """Java/Maven groupId as manifest entry, dot-separated prefix match."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        manifest = DependencyManifest(entries={
+            "com.fasterxml.jackson.core": {"direct": True},
+        })
+        assert manifest.classify_import(
+            "com.fasterxml.jackson.core.JsonParser"
+        ) == Tier.INTERNAL_DEP
+
+    def test_classify_java_subpackage_prefix(self) -> None:
+        """Dot-separated subpackage matches groupId prefix."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        manifest = DependencyManifest(entries={
+            "org.apache.kafka": {"direct": True},
+        })
+        assert manifest.classify_import(
+            "org.apache.kafka.clients.producer.KafkaProducer"
+        ) == Tier.INTERNAL_DEP
+
+    def test_classify_java_unknown_import(self) -> None:
+        """Java import not in manifest → EXTERNAL_DEP."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        manifest = DependencyManifest(entries={
+            "org.apache.kafka": {"direct": True},
+        })
+        assert manifest.classify_import(
+            "com.unknown.library.Foo"
+        ) == Tier.EXTERNAL_DEP
+
+    def test_classify_java_stdlib(self) -> None:
+        """Java stdlib (java.*, javax.*) → EXTERNAL_DEP when not in manifest."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        manifest = DependencyManifest(entries={})
+        assert manifest.classify_import("java.util.List") == Tier.EXTERNAL_DEP
+        assert manifest.classify_import("javax.servlet.http.HttpServlet") == Tier.EXTERNAL_DEP
+
+    def test_classify_dot_separated_exact_match(self) -> None:
+        """Exact match on dot-separated entry works."""
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        manifest = DependencyManifest(entries={
+            "junit": {"direct": True},
+        })
+        assert manifest.classify_import("junit") == Tier.INTERNAL_DEP

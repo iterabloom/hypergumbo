@@ -264,3 +264,42 @@ def test_run_behavior_map_with_extra_excludes(tmp_path: Path) -> None:
     # The excluded dir's file should not appear in symbols
     paths = {s["path"] for s in data.get("symbols", [])}
     assert not any("custom_vendor" in p for p in paths)
+
+
+def test_run_behavior_map_cbv_expansion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """CBV route expansion is applied in the pipeline (WI-lojoh call-site coverage)."""
+    from unittest.mock import patch
+
+    from hypergumbo_core.cli import run_behavior_map
+    from hypergumbo_core.ir import Span, Symbol
+
+    (tmp_path / "test.py").write_text("def hello(): pass\n")
+
+    fake_expanded = [Symbol(
+        id="python:views.py:0-0:GET /foo/:route",
+        name="GET /foo/",
+        kind="route",
+        language="python",
+        path="views.py",
+        span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+        meta={"http_method": "GET", "expanded_from_cbv": True},
+    )]
+    fake_removed = {"python:views.py:0-0:ANY /foo/:route"}
+
+    original_expand = None
+
+    def mock_expand(symbols):
+        return fake_expanded, fake_removed
+
+    import hypergumbo_core.framework_patterns as fp_mod
+    monkeypatch.setattr(fp_mod, "expand_class_based_view_routes", mock_expand)
+
+    out_path = tmp_path / "results.json"
+    run_behavior_map(
+        tmp_path, out_path, budgets="none", include_sketch_precomputed=False,
+    )
+
+    data = json.loads(out_path.read_text())
+    ids = {n["id"] for n in data.get("nodes", [])}
+    assert "python:views.py:0-0:GET /foo/:route" in ids
+    assert "python:views.py:0-0:ANY /foo/:route" not in ids
