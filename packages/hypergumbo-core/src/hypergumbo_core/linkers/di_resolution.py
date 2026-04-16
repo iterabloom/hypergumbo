@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Multi-language dependency injection resolution linker.
+"""Framework linker: multi-language dependency injection resolution.
 
 Creates ``di_resolves`` edges from interface methods to implementation methods
 when DI bindings can be determined with high confidence.

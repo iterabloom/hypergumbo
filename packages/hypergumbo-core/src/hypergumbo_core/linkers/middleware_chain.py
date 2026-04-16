@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Middleware chain linker for connecting consecutive middleware functions.
+"""Framework linker: middleware chain for connecting consecutive middleware functions.
 
 Creates ``middleware_chain`` edges between consecutive middleware symbols
 in the same file, ordered by source line. This enables forward/reverse

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Go spf13/cobra CLI command dispatch linker.
+"""Framework linker: Go spf13/cobra CLI command dispatch.
 
 Bridges ``cobra.Command`` struct literals to their handler functions.
 The ``github.com/spf13/cobra`` library dispatches CLI subcommand

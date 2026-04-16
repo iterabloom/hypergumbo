@@ -8,7 +8,7 @@ Core infrastructure for hypergumbo repo behavior map generator.
 - **CLI**: Command-line interface (`hypergumbo run`, `hypergumbo sketch`, etc.)
 - **IR**: Data structures (Symbol, Edge, Span, AnalysisRun)
 - **Analysis Framework**: Base classes and registry for language analyzers
-- **Linkers**: Cross-language relationship detection (gRPC, HTTP, IPC, etc.)
+- **Linkers**: Tier 2 edge-recovery across Protocol / Bridge / Framework / Infrastructure subcategories (HTTP, gRPC, IPC, DI, and more — see docs/LINKERS.md)
 - **Framework Patterns**: Route and handler detection for 150+ frameworks
 - **Slice**: Forward and reverse dependency analysis
 - **Sketch**: Token-budgeted codebase overview generation

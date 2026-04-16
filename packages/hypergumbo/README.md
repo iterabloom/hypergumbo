@@ -150,7 +150,7 @@ See `hypergumbo --help` for all options.
 ## What It Understands
 
 - **Language analyzers**: Python, JS/TS, Java, Rust, Go, C/C++, and [many more](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md)
-- **Cross-language linkers**: JNI, HTTP, WebSocket, gRPC, GraphQL, message queues ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md))
+- **Linkers**: Tier 2 edge-recovery passes across four subcategories — Protocol (HTTP, WebSocket, message queues, SQL), Bridge (JNI, wasm_bindgen, Tauri IPC, language-pair FFI), Framework (gRPC, GraphQL, React components, DI resolution, ORM), Infrastructure (containment, inheritance, module imports). [Full catalogue](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md).
 - **Framework patterns**: FastAPI, Django, Rails, Spring Boot, Phoenix, Express, and [many more](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/FRAMEWORKS.md)
 - **I/O boundary detection**: Maps every call chain that reaches the filesystem, network, subprocesses, or environment — across FFI boundaries
 - **Taint-flow analysis**: Traces data from sensitive sources (crypto keys, plaintext) to sinks (filesystem, network), with sanitizer awareness
@@ -174,7 +174,7 @@ All analyzers produce the same IR types:
 - **Edge**: A relationship between symbols (calls, imports, extends, implements)
 - **Span**: Source location (file, line, column)
 
-This uniform IR is what allows all language analyzers and cross-language linkers to work together coherently.
+This uniform IR is what allows all language analyzers and linkers (Protocol / Bridge / Framework / Infrastructure — see [ADR-0003-ext](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/adr/0003-linker-subcategory-restoration.md)) to work together coherently.
 
 ## Architecture
 
@@ -186,7 +186,7 @@ packages/
 │       ├── ir.py              # Symbol, Edge, Span
 │       ├── sketch.py          # Token-budgeted Markdown
 │       ├── slice.py           # Subgraph extraction
-│       ├── linkers/           # Cross-language linkers
+│       ├── linkers/           # Tier 2 edge-recovery passes (Protocol/Bridge/Framework/Infrastructure)
 │       └── frameworks/        # Framework detection (YAML patterns)
 ├── hypergumbo-lang-mainstream/  # Python, JS, Java, Go, Rust, etc.
 ├── hypergumbo-lang-common/      # Haskell, Elixir, GraphQL, etc.
@@ -221,7 +221,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for PR workflow (including fork-based wor
 - [docs/USE-CASES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/USE-CASES.md) — Practical workflows and examples
 - [CHANGELOG.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/CHANGELOG.md) — Implementation history
 - [docs/LANGUAGES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md) — Supported languages
-- [docs/LINKERS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md) — Cross-language linkers
+- [docs/LINKERS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md) — Linkers catalogue (Protocol / Bridge / Framework / Infrastructure)
 - [docs/FRAMEWORKS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/FRAMEWORKS.md) — Framework patterns
 - [docs/hypergumbo-spec.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/hypergumbo-spec.md) — Detailed specification
 - [docs/CITATIONS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/CITATIONS.md) — Paper citations for embedding models

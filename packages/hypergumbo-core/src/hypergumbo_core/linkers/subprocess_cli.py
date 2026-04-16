@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Subprocess-to-CLI linker for detecting cross-process CLI invocations.
+"""Protocol linker: subprocess-to-CLI for detecting cross-process CLI invocations.
 
 This linker detects subprocess calls (subprocess.run, subprocess.call,
 subprocess.Popen) in Python code and links them to CLI command entry points

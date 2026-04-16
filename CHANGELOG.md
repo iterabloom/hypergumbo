@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Changed
+
+- **Linker subcategory vocabulary restored** (ADR-0003-ext): the Protocol / Bridge / Framework subcategory taxonomy from ADR-0003 §2.4, unused since the ADR was authored on 2026-01-07, is now a first-class classification. Every linker module's docstring declares its subcategory (Protocol / Bridge / Framework / Infrastructure). `docs/LINKERS.md` renamed from "Cross-Language Linkers" to "Linkers" and now enumerates all 45 linker files with a Subcategory column. `docs/hypergumbo-spec.md` §7 renamed and restructured; ADR-0003/0010/0012/0015 corrected in-place where the "cross-language linker" framing was factually wrong. The "Infrastructure" subcategory is a fourth addition to ADR-0003 §2.4's original three, covering graph-structural utilities (`containment`, `inheritance`, `js_module`, `build_target`, `dependency`, `vue_component`). Prioritisation of new linker work follows `INV-nimuj` (false-positive-reduction volume on the prospector corpus, not novelty of language pair).
+
 ### Added
 
 - **HTTP linker: Elm client detection (WI-tinip Phase 1)**: the cross-language HTTP linker (`packages/hypergumbo-core/src/hypergumbo_core/linkers/http.py`) now scans `*.elm` files and emits `http_calls` edges from Elm HTTP calls to server-side route handlers (Go, Python, Ruby, Java, JS — anything that exposes a `route:` concept). Three idioms are recognised: (1) the `Utils.Api.get|post|put|patch|delete|head|options (apiUrl ++ "/path") ...` wrapper-module style used by Alertmanager/Prometheus-style Elm UIs, (2) the `Http.get|post|... { url = "...", ... }` record form from the `elm/http` core library, and (3) both orderings of `Http.request { method = "POST", url = "...", ... }`. Closes UAT DQ-09 for the Alertmanager Elm→Go handler linkage. The `let`-bound/`String.join`-built URL forms (a minority of real-world calls) are deferred to a follow-up full Elm analyzer.
@@ -98,7 +102,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Forward-dataflow admission-rule telemetry and option 2 evaluation** (WI-hukoh): `SliceResult.admission_stats` records per-rule counters for edges admitted/rejected during forward dataflow BFS. Telemetry across 4 repos (~188k edges) shows zero additional edges from option 2 — option 1 (writer-source admission) remains canonical. Re-evaluation trigger in ADR-0015 §6.1.
 
-#### Cross-language linkers
+#### Linkers (Framework subcategory)
 
 - **`go_memberlist` linker** (WI-lojuf): `dispatches_to` edges from `memberlist.Create` to the 12 canonical delegate methods (`NotifyMsg`, `GetBroadcasts`, `LocalState`, etc.). Used by alertmanager, consul, nomad, serf, vault.
 - **`go_cobra` linker** (WI-gohad): `dispatches_to` edges from `cobra.Command{…}` struct literals to handler functions in `Run`/`RunE`/`PreRun`/`PostRun` and `Persistent*` variants. Used by kubectl, helm, hugo, prometheus, terraform, docker. Package-level `var cmd = &cobra.Command{…}` declarations (WI-lihih) now emit edges from the var symbol when no enclosing function exists.

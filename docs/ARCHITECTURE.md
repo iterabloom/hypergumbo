@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Architecture
 
 > **Auto-generated** by running hypergumbo on itself.
@@ -13,7 +14,7 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **223** Python modules (121 analyzers, 43 linkers, 29 core, 4 CLI, 26 tracker)
+- **223** Python modules (121 analyzers, 45 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 18, Infrastructure 6; 29 core, 4 CLI, 26 tracker)
 - **4046** symbols (functions, classes, methods)
 - **52323** edges by type:
   - calls: 35902
@@ -49,7 +50,7 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 43 linkers, 103 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 45 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-0003-ext), 103 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
 | **hypergumbo-lang-mainstream** | 40 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 40 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
@@ -98,9 +99,11 @@ Source Files
      ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                        5. LINKERS                               │
-│  Cross-language/cross-file edge creation                        │
-│  Match via meta.concepts (route paths, gRPC services, etc.)     │
-│  43 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │
+│  Tier 2 edge recovery (ADR-0003-ext — Protocol / Bridge /       │
+│  Framework / Infrastructure). Match via meta.concepts and       │
+│  symbol metadata across files and language boundaries.          │
+│  45 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI,          │
+│  di_resolution, react_component, inheritance, etc.              │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼

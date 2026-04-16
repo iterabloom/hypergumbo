@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Crypto-flow linker for detecting encryption/decryption boundary crossings.
+"""Protocol linker: crypto-flow for detecting encryption/decryption boundary crossings.
 
 Detects data-mediated coupling through cryptographic APIs where key material
 flows between derivation, encryption, and decryption sites across files.

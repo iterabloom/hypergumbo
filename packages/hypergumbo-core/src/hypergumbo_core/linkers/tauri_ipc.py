@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tauri IPC linker for connecting TypeScript/JavaScript invoke() calls to Rust commands.
+"""Bridge linker: Tauri IPC for connecting TypeScript/JavaScript invoke() calls to Rust commands.
 
 This linker creates ipc_calls edges between TypeScript/JavaScript code that
 calls Rust functions via Tauri's IPC bridge (``invoke('command_name', ...)``)

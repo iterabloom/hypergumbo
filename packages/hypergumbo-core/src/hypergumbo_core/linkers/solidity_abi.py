@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Solidity ABI bridge linker for connecting TS/JS contract calls to Solidity functions.
+"""Bridge linker: Solidity ABI bridge for connecting TS/JS contract calls to Solidity functions.
 
 This linker creates ``abi_call`` edges between TypeScript/JavaScript code that
 calls Solidity contract methods (via ethers.js, viem, or similar libraries)

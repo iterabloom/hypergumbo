@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Ruby FFI linker for connecting Ruby FFI gem calls and C extension registrations
+"""Bridge linker: Ruby FFI for connecting Ruby FFI gem calls and C extension registrations
 to C/C++ function implementations.
 
 This linker creates ffi_bridge edges for two Ruby-C/C++ interop mechanisms:

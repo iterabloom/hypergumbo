@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""IPC linker for detecting inter-process communication patterns.
+"""Protocol linker: IPC for detecting inter-process communication patterns.
 
 This linker detects IPC patterns in JavaScript/TypeScript code and creates
 message_send and message_receive edges for cross-process communication.

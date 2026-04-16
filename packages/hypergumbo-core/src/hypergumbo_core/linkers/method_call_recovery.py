@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Method-call recovery linker (WI-gigoz / Path B').
+"""Protocol linker: method-call recovery (WI-gigoz / Path B').
 
 Solves the chained-method-call dead-end problem at the IR level so the
 forward slice can traverse from a caller through ``Class().method()``

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Database query linker for detecting SQL queries in application code.
+"""Protocol linker: database query for detecting SQL queries in application code.
 
 This linker detects SQL queries embedded in Python, JavaScript, and Java code
 and links them to table definitions in SQL schema files.

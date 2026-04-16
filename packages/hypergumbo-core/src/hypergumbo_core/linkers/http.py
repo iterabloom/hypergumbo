@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""HTTP client-server linker for detecting cross-language API calls.
+"""Protocol linker: HTTP client-server for detecting cross-language API calls.
 
 This linker detects HTTP client calls (fetch, axios, AngularJS $http, jQuery $.ajax,
 requests, OpenAPI clients, RestClient, HTTParty, Faraday, Net::HTTP, RestTemplate,
