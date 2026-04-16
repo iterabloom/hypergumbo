@@ -587,6 +587,25 @@ JS_BUILTIN_NAMES: set[str] = {
     "console", "require",
 }
 
+# Browser/runtime globals that may be called as ``obj.method()`` without an
+# explicit import. Mirrors the module names used in
+# ``hypergumbo-core/src/hypergumbo_core/io_primitives/javascript.yaml`` so
+# the io-boundaries layer can tag the resulting unresolved-call edges.
+# Only includes names actually used in the bare-global ``Object.method()``
+# pattern — constructor-style globals (WebSocket, XMLHttpRequest,
+# EventSource, BroadcastChannel) are typically ``new``'d first and reach
+# io-boundaries through the instance path, not this fallback.
+# See WI-pinop / WI-banaf / WI-vurop (UAT 2026-04-13 BUG-09a).
+JS_KNOWN_GLOBALS: frozenset[str] = frozenset({
+    "console",        # logging (console.log/info/warn/error/debug/trace)
+    "localStorage",   # fs_read/fs_write (getItem, setItem, removeItem, clear)
+    "sessionStorage", # fs_read/fs_write (same methods)
+    "document",       # env_read (cookie, location, referrer attributes; DOM methods)
+    "navigator",      # net_send / env_read (sendBeacon, userAgent, geolocation)
+    "window",         # net_send / env_read (fetch, location, navigator, screen)
+    "Deno",           # Deno runtime (readFile, writeFile, connect, listen, ...)
+})
+
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
 # Note: Express-style route detection uses function calls (app.get, router.post) rather
 # than decorators. These are now matched via UsageContext (ADR-0003 v1.1.x) which
@@ -3887,6 +3906,41 @@ def _extract_edges(
                                 )
                                 edges.append(edge)
                                 edge_added = True
+
+                        # Case 3b (WI-pinop): bare global ``Object.method()`` not
+                        # shadowed by an import or a locally-typed variable.
+                        # Common in browser projects that never import console,
+                        # localStorage, navigator, window, document, or Deno.
+                        # Emits an unresolved-call edge with the global name as
+                        # module hint so the io-boundaries layer can match the
+                        # catalog (javascript.yaml uses the same module names).
+                        #
+                        # Shadowing checks: a named/namespace import or a
+                        # typed-parameter/var binding with the same name must
+                        # route through the existing cases, never this global
+                        # fallback. (Namespace shadowing is guaranteed by the
+                        # Case 2 elif — if obj_name is in namespace_imports the
+                        # WI-vurop fallback already set edge_added.)
+                        if (
+                            not edge_added
+                            and obj_name
+                            and obj_name in JS_KNOWN_GLOBALS
+                            and obj_name not in (named_imports or {})
+                            and obj_name not in var_types
+                        ):
+                            dst_id = f"{lang}:{obj_name}:0-0:{method_name}:unresolved"
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=dst_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_method_unresolved_global",
+                                confidence=0.65,
+                            )
+                            edges.append(edge)
+                            edge_added = True
 
                         # Case 4: Fallback - method name match with low confidence.
                         # Emit only one edge to the best candidate (not all

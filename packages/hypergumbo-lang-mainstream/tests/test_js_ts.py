@@ -407,6 +407,133 @@ function main() {
         ]
         assert all("somethingNobodyImported" not in e.dst for e in unresolved)
 
+    def test_unresolved_call_to_global_object_methods(self, tmp_path: Path) -> None:
+        """`console.log()` + `localStorage.setItem()` with no imports emit edges.
+
+        WI-pinop: bare global object.method() patterns where no import or
+        local binding shadows the object. Needed so the io-boundaries layer
+        can tag browser projects that never import anything for console or
+        storage.
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+export function run(x: string) {
+  console.log(x);
+  localStorage.setItem("k", "v");
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        ]
+        callees = {e.dst for e in unresolved}
+        assert any(":console:" in c and ":log:unresolved" in c for c in callees), callees
+        assert any(
+            ":localStorage:" in c and ":setItem:unresolved" in c for c in callees
+        ), callees
+
+    def test_unresolved_global_shadowed_by_named_import(
+        self, tmp_path: Path,
+    ) -> None:
+        """Named-import shadowing suppresses the WI-pinop global edge.
+
+        If a file does ``import { console } from './my-console'``, the
+        ``console.log(...)`` calls should be treated as calls into the
+        imported module (via the existing WI-banaf/WI-vurop paths), not as
+        a browser-global.
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+import { console } from './my-console';
+
+export function run(x: string) {
+  console.log(x);
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        # No WI-pinop edge: any console.log unresolved edge that uses the
+        # global ``console`` as module hint would be wrong here. The import
+        # path './my-console' (or a resolved intra-repo symbol) is correct.
+        for c in callees:
+            if ":log:unresolved" in c:
+                segs = c.split(":")
+                assert segs[1] != "console", c
+
+    def test_unresolved_global_shadowed_by_typed_parameter(
+        self, tmp_path: Path,
+    ) -> None:
+        """A typed parameter named ``console`` shadows the global.
+
+        If a user writes ``function f(console: Logger) { console.log(x); }``,
+        the parameter's type annotation lands in ``var_types`` and Case 3
+        should take precedence. The WI-pinop fallback must not fire, even if
+        the intra-repo resolve fails.
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+export function run(console: Logger, x: string) {
+  console.log(x);
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        for c in callees:
+            if ":log:unresolved" in c:
+                segs = c.split(":")
+                assert segs[1] != "console", c
+
+    def test_unresolved_global_shadowed_by_namespace_import(
+        self, tmp_path: Path,
+    ) -> None:
+        """Namespace-import shadowing also suppresses the WI-pinop path.
+
+        ``import * as console from './my-console'; console.log()`` must
+        resolve through Case 2 (namespace import) rather than the WI-pinop
+        global fallback, so the module hint points at the user module.
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+import * as console from './my-console';
+
+export function run(x: string) {
+  console.log(x);
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        for c in callees:
+            if ":log:unresolved" in c:
+                # Module hint should be the user path, not the 'console' global.
+                segs = c.split(":")
+                assert segs[1] != "console", c
+
     def test_typescript_with_types(self, tmp_path: Path) -> None:
         """Handles TypeScript files with type annotations."""
         pytest.importorskip("tree_sitter_typescript")
