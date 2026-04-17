@@ -83,3 +83,18 @@
   nonce: fa79  # fa79
   set:  # fa79
     priority: 4  # fa79
+- op: update  # 4286
+  at: '2026-04-17T02:49:51Z'  # 4286
+  by: agent  # 4286
+  actor: jgstern_agent  # 4286
+  clock: 11  # 4286
+  nonce: '4286'  # 4286
+  set:  # 4286
+    priority: 2  # 4286
+- op: discuss  # f922
+  at: '2026-04-17T02:49:51Z'  # f922
+  by: agent  # f922
+  actor: jgstern_agent  # f922
+  clock: 12  # f922
+  nonce: f922  # f922
+  message: "pf-prelim pivot: TS fetch('/api/...') → backend route is exactly pf-prelim's SPA↔relay pattern. Raised P4→P2 for dogfooding value."  # f922

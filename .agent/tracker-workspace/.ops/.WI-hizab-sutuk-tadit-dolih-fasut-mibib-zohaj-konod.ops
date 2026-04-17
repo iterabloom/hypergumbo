@@ -66,3 +66,18 @@
   clock: 7  # d8c5
   nonce: d8c5  # d8c5
   message: "Human approval received (2026-04-17). Implementing now."  # d8c5
+- op: update  # 9012
+  at: '2026-04-17T01:33:51Z'  # 9012
+  by: agent  # 9012
+  actor: jgstern_agent  # 9012
+  clock: 8  # 9012
+  nonce: '9012'  # 9012
+  set:  # 9012
+    status: done  # 9012
+- op: discuss  # 80ab
+  at: '2026-04-17T01:33:51Z'  # 80ab
+  by: agent  # 80ab
+  actor: jgstern_agent  # 80ab
+  clock: 9  # 80ab
+  nonce: 80ab  # 80ab
+  message: "Merged as PR #3089. All four governance-file edits landed on dev: bakeoff-broad-priorities.md #3 and #4 rewritten with subcategory vocabulary and INV-nimuj citation; bakeoff-deep-priorities.md #7 rewritten; trackerize-playbook.md §7 split the linker tag into four subcategory-specific tags (protocol_linkers, cross_language_linkers retained for Bridge+continuity, framework_dispatch_linkers, infrastructure_linkers); AGENTS.md Required Checks gained a bullet citing ADR-0003-ext, the docstring convention, the generate-architecture Uncategorized drift signal, and INV-nimuj as the prioritization heuristic. This closes the ADR-0003-ext rollout — the subcategory vocabulary is now in active circulation in every governance file agents read daily."  # 80ab

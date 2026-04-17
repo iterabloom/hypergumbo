@@ -44,3 +44,18 @@
   nonce: '4840'  # 4840
   set:  # 4840
     parent: INV-miloj-tagum-garuk-jataf-lupas-ligis-gazaz-pimon  # 4840
+- op: update  # 2e1a
+  at: '2026-04-17T02:50:51Z'  # 2e1a
+  by: agent  # 2e1a
+  actor: jgstern_agent  # 2e1a
+  clock: 5  # 2e1a
+  nonce: 2e1a  # 2e1a
+  set:  # 2e1a
+    priority: 3  # 2e1a
+- op: discuss  # dfa6
+  at: '2026-04-17T02:50:52Z'  # dfa6
+  by: agent  # dfa6
+  actor: jgstern_agent  # dfa6
+  clock: 6  # dfa6
+  nonce: dfa6  # dfa6
+  message: "pf-prelim pivot: pairs with WI-tinip for TS URL extraction on pf-prelim SPA. Raised P4→P3."  # dfa6
