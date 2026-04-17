@@ -20,3 +20,18 @@
     pr_ref:  # fd1a
     description: "UAT 2026-04-13 UX-06: JSON behavior map node IDs contain absolute paths (`go:/home/user/repos/...`), making output non-portable across machines. The `path` field correctly uses repo-relative paths and stable_id/shape_id are also available, but the primary ID is absolute. Switch primary ID to repo-relative; this is a schema-compat-affecting change — coordinate with Appendix C of docs/hypergumbo-spec.md."  # fd1a
     fields: {}  # fd1a
+- op: update  # 93d9
+  at: '2026-04-17T02:54:05Z'  # 93d9
+  by: agent  # 93d9
+  actor: jgstern_agent  # 93d9
+  clock: 2  # 93d9
+  nonce: 93d9  # 93d9
+  set:  # 93d9
+    priority: 2  # 93d9
+- op: discuss  # 5479
+  at: '2026-04-17T02:54:05Z'  # 5479
+  by: agent  # 5479
+  actor: jgstern_agent  # 5479
+  clock: 3  # 5479
+  nonce: '5479'  # 5479
+  message: "pf-prelim pivot: small fix, big dogfooding value when running hypergumbo on pf-prelim from multiple machines/branches. Raised P3→P2."  # 5479

@@ -43,3 +43,18 @@
   clock: 4  # cd29
   nonce: cd29  # cd29
   message: "Tag cleanup (2026-04-17): removed `cross_language_linkers` tag. Per the 2026-04-16 discussion clarification above and ADR-0003-ext, this is a **Framework-subcategory** linker (Python-internal Airflow framework dispatch). The cross-language consequence (Hook.get_conn invokes cloud SDKs) is a leaf IO boundary, not a linker edge. Keeping `analysis_quality` and `airflow`."  # cd29
+- op: update  # 3781
+  at: '2026-04-17T02:54:29Z'  # 3781
+  by: agent  # 3781
+  actor: jgstern_agent  # 3781
+  clock: 5  # 3781
+  nonce: '3781'  # 3781
+  set:  # 3781
+    priority: 3  # 3781
+- op: discuss  # 6e51
+  at: '2026-04-17T02:54:29Z'  # 6e51
+  by: agent  # 6e51
+  actor: jgstern_agent  # 6e51
+  clock: 6  # 6e51
+  nonce: '6e51'  # 6e51
+  message: "pf-prelim pivot: Python/Airflow-specific dispatch, not in pf-prelim stack. Deferred P2→P3."  # 6e51

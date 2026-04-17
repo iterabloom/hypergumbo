@@ -42,3 +42,18 @@
   clock: 4  # aeb0
   nonce: aeb0  # aeb0
   message: "Tag cleanup (2026-04-17): removed `cross_language_linkers` tag. Per the 2026-04-16 discussion clarification above and ADR-0003-ext, this is a **Framework-subcategory** linker (Java/Kotlin/Scala internal framework dispatch via Jackson reflection). The cross-language consequence (serialized JSON is parsed by downstream TS/Python/Ruby clients) is downstream of the linker; the existing `openapi.py` / `http.py` already connect the boundary. Keeping `analysis_quality` tag."  # aeb0
+- op: update  # 6447
+  at: '2026-04-17T02:54:16Z'  # 6447
+  by: agent  # 6447
+  actor: jgstern_agent  # 6447
+  clock: 5  # 6447
+  nonce: '6447'  # 6447
+  set:  # 6447
+    priority: 3  # 6447
+- op: discuss  # 8937
+  at: '2026-04-17T02:54:16Z'  # 8937
+  by: agent  # 8937
+  actor: jgstern_agent  # 8937
+  clock: 6  # 8937
+  nonce: '8937'  # 8937
+  message: "pf-prelim pivot: Java-only linker, pf-prelim has no Java. Deferred P2→P3."  # 8937
