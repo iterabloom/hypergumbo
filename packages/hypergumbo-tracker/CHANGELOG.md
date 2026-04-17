@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Changed
+
+- **Stop-hook REPLY-FIRST CYCLE branch when reply debt exists** (WI-ripuz, Phase 1): `stop_hook.py::generate_guidance` now branches when any unread human messages are present (blocking or non-blocking) and emits a REPLY-FIRST CYCLE guidance document instead of the default TODO listing. Hard/violated/soft sections are suppressed, replaced with a 4-step protocol (`tracker show` → classify → plan investigation → `tracker discuss`) and a per-item list of blocking and non-blocking unreads. Companion change in `.agent/hooks/*/stop.sh` (claude-code, cursor, codex-cli, gemini-cli) reads a new `UNREAD_COUNT` export from `stop_logic.sh` and switches the one-line reason text from "AUTONOMOUS MODE: N TODOs block stopping…" to "REPLY-FIRST CYCLE: N unread human message(s)…" whenever `UNREAD_COUNT > 0`. This hides the TODO-count forward-march framing entirely while reply debt exists — the behavioural lever from the WI-ripuz design rationale (the only proposal that changes the agent's incentive structure rather than adding more text). The `[[…]]` preface + LLM-gate refinement is tracked separately as a follow-up item.
+
 ### Fixed
 
 - **`discuss` gate-message shows the working `--ack-thread` arg order** (WI-foril): the re-run hint printed when the gate fires now reads `tracker discuss <id> "<your reply>" --ack-thread` instead of the previous form `--ack-thread "<your reply>"`. Argparse's subparser parsing rejects the flag-before-positional form (an `nargs="?"` positional with a following optional flag won't accept the message after the flag — it's parsed as extra args). The fix is cosmetic but high-leverage: agents and humans alike were following the broken example shown by the gate itself. Also adds a regression check that the broken order really does still fail.

@@ -43,7 +43,14 @@ fi
 
 # --- Path 1: TODOs exist (both flavors block, subject to circuit breaker) ---
 if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
-  REASON=$(printf 'AUTONOMOUS MODE: %d TODO(s) block stopping (%d hard, %d soft). Read %s for details.' "$TOTAL_TODOS" "$TOTAL_HARD" "$TOTAL_SOFT" "$GUIDANCE_FILE" | jq -Rs .)
+  # WI-ripuz: when reply debt exists, the AUTONOMOUS MODE TODO count is
+  # intentionally hidden — the reason text steers the agent to the
+  # REPLY-FIRST CYCLE guidance file instead of forward-march TODO work.
+  if [[ "${UNREAD_COUNT:-0}" -gt 0 ]]; then
+    REASON=$(printf 'REPLY-FIRST CYCLE: %d unread human message(s). Do not pick from tracker ready, do not start new code, do not run bakeoffs. Read %s and clear reply debt first.' "$UNREAD_COUNT" "$GUIDANCE_FILE" | jq -Rs .)
+  else
+    REASON=$(printf 'AUTONOMOUS MODE: %d TODO(s) block stopping (%d hard, %d soft). Read %s for details.' "$TOTAL_TODOS" "$TOTAL_HARD" "$TOTAL_SOFT" "$GUIDANCE_FILE" | jq -Rs .)
+  fi
   echo "{\"decision\":\"block\",\"reason\":$REASON}"
   exit 0
 fi

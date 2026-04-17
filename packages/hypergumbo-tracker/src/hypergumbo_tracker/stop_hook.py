@@ -271,65 +271,53 @@ def generate_guidance(
     filename = f"stop_guidance_{timestamp.strftime('%m%d%Y_%H%M')}.md"
     filepath = guidance_dir / filename
 
+    # REPLY-FIRST CYCLE branch (WI-ripuz): when any unread human messages
+    # exist — blocking or non-blocking — the guidance document changes
+    # shape entirely. The TODO list is suppressed to force the agent off
+    # the "forward-march vibe" and onto reply debt. See ADR-0008 and
+    # WI-ripuz for the rationale.
+    unread_total = len(items_with_unread_blocking) + len(unread_non_blocking)
+    if unread_total > 0:
+        filepath.write_text(
+            _build_reply_first_guidance(
+                timestamp=timestamp,
+                all_items=all_items,
+                items_with_unread_blocking=items_with_unread_blocking,
+                unread_non_blocking=unread_non_blocking,
+            )
+        )
+        return str(filepath.resolve())
+
+    # Default (no-reply-debt) branch: the REPLY-FIRST branch above handles
+    # any scenario where unread_non_blocking or items_with_unread_blocking
+    # is non-empty, so here both are empty and we only emit the straight
+    # TODO / violated / soft listing.
     lines: list[str] = []
     lines.append(f"# Stop Hook Guidance — {timestamp.strftime('%Y-%m-%dT%H:%M:%SZ')}")
     lines.append("")
     lines.append("## Status")
     lines.append(f"- Hard TODO Items: {len(hard_items)}")
-    unread_hard_count = sum(1 for i in hard_items if i.id in items_with_unread_blocking)
-    if unread_hard_count:
-        lines.append(f"  > {unread_hard_count} with unread human message(s)")
     if violated_items:
         lines.append(f"- Invariant Violations: {len(violated_items)}")
-        unread_violated_count = sum(
-            1 for i in violated_items if i.id in items_with_unread_blocking
-        )
-        if unread_violated_count:
-            lines.append(f"  > {unread_violated_count} with unread human message(s)")
     lines.append(f"- Soft TODO Items: {len(soft_items)}")
-    unread_soft_count = sum(1 for i in soft_items if i.id in items_with_unread_blocking)
-    if unread_soft_count:
-        lines.append(f"  > {unread_soft_count} with unread human message(s)")
-    if unread_non_blocking:
-        lines.append(f"- Non-blocking items with unread messages: {len(unread_non_blocking)}")
     lines.append("")
 
     if hard_items:
         lines.append("## Hard TODO Items")
         for item in hard_items:
-            unread_tag = " **[UNREAD]**" if item.id in items_with_unread_blocking else ""
-            lines.append(
-                f"- [{item.id}] P{item.priority} {item.title}{unread_tag}"
-            )
+            lines.append(f"- [{item.id}] P{item.priority} {item.title}")
         lines.append("")
 
     if violated_items:
         lines.append("## Invariant Violations")
         for item in violated_items:
-            unread_tag = " **[UNREAD]**" if item.id in items_with_unread_blocking else ""
-            lines.append(
-                f"- [{item.id}] P{item.priority} {item.title}{unread_tag}"
-            )
+            lines.append(f"- [{item.id}] P{item.priority} {item.title}")
         lines.append("")
 
     if soft_items:
         lines.append("## Soft TODO Items")
         for item in soft_items:
-            unread_tag = " **[UNREAD]**" if item.id in items_with_unread_blocking else ""
-            lines.append(
-                f"- [{item.id}] P{item.priority} {item.title}{unread_tag}"
-            )
-        lines.append("")
-
-    if unread_non_blocking:
-        lines.append("## Unread Human Messages (non-blocking)")
-        lines.append("These items have unread human messages but are not in blocking status.")
-        for item in unread_non_blocking:
-            msgs = unread_human_messages(item)
-            lines.append(
-                f"- [{item.id}] P{item.priority} {item.title} "
-                f"({len(msgs)} unread)"
-            )
+            lines.append(f"- [{item.id}] P{item.priority} {item.title}")
         lines.append("")
 
     lines.append("## Guidance")
@@ -346,15 +334,85 @@ def generate_guidance(
         "Soft TODO items: resolve the issue normally. As always, "
         "revise your beliefs when new information comes to light."
     )
-    if items_with_unread_blocking or unread_non_blocking:
-        lines.append(
-            "Use `scripts/tracker check-messages` to read and reply to "
-            "unread human messages."
-        )
     lines.append("")
 
     filepath.write_text("\n".join(lines))
     return str(filepath.resolve())
+
+
+def _build_reply_first_guidance(
+    *,
+    timestamp: datetime.datetime,
+    all_items: list[CompiledItem],
+    items_with_unread_blocking: set[str],
+    unread_non_blocking: list[CompiledItem],
+) -> str:
+    """Render the REPLY-FIRST CYCLE guidance document (WI-ripuz).
+
+    Called from generate_guidance when any unread human messages exist.
+    Deliberately omits the hard/violated/soft TODO listings and the
+    normal "Guidance" paragraph — the whole point of this branch is to
+    make reply debt the only visible assignment.
+    """
+    ts = timestamp.strftime('%Y-%m-%dT%H:%M:%SZ')
+    blocked = [i for i in all_items if i.id in items_with_unread_blocking]
+    blocked.sort(key=lambda i: (i.priority, i.id))
+    unread_total = len(blocked) + len(unread_non_blocking)
+
+    lines: list[str] = []
+    lines.append(f"# REPLY-FIRST CYCLE — {ts}")
+    lines.append("")
+    lines.append(
+        f"**{unread_total} unread human message(s) across "
+        f"{unread_total} item(s).**"
+    )
+    lines.append("")
+    lines.append(
+        "Take a breather from the \"forward-march vibe\" of autonomous "
+        "mode. Do not start new code tasks, do not run bakeoffs, do "
+        "not pick from tracker ready. Your only assignment is to clear "
+        "reply debt. For each item:"
+    )
+    lines.append("")
+    lines.append(
+        "1. `scripts/tracker show <ID>` — load the full thread + description"
+    )
+    lines.append("2. Classify: approval, directive, or question")
+    lines.append(
+        "3. Questions: plan the investigation (Read/Grep, Explore subagent, "
+        "WebSearch on allowlisted domains) BEFORE drafting"
+    )
+    lines.append(
+        "4. `scripts/tracker discuss <ID>` — post the reply"
+    )
+    lines.append("")
+
+    if blocked:
+        lines.append("## Blocking items with unread messages")
+        for item in blocked:
+            msgs = unread_human_messages(item)
+            lines.append(
+                f"- [{item.id}] P{item.priority} {item.title} "
+                f"({len(msgs)} unread)"
+            )
+        lines.append("")
+
+    if unread_non_blocking:
+        lines.append("## Non-blocking items with unread messages")
+        for item in unread_non_blocking:
+            msgs = unread_human_messages(item)
+            lines.append(
+                f"- [{item.id}] P{item.priority} {item.title} "
+                f"({len(msgs)} unread)"
+            )
+        lines.append("")
+
+    lines.append(
+        "Reply to every item above before resuming TODO or bakeoff work. "
+        "The TODO listing is intentionally suppressed in this cycle."
+    )
+    lines.append("")
+    return "\n".join(lines)
 
 
 def generate_guidance_safe(

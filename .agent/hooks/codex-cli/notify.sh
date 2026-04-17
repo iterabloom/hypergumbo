@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Codex CLI notification hook adapter
 # See ADR-0008 for governance protocol
 #
@@ -53,7 +54,18 @@ fi
 
 # --- Path 1: Surface pending TODO items ---
 if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
-  cat >&2 <<BANNER
+  # WI-ripuz: REPLY-FIRST CYCLE takes over the banner when reply debt exists.
+  if [[ "${UNREAD_COUNT:-0}" -gt 0 ]]; then
+    cat >&2 <<BANNER
+================================================================
+  REPLY-FIRST CYCLE: $UNREAD_COUNT UNREAD HUMAN MESSAGE(S)
+  Do NOT pick from tracker ready, do NOT start new code, do NOT run bakeoffs.
+  Read $GUIDANCE_FILE and clear reply debt first.
+================================================================
+
+BANNER
+  else
+    cat >&2 <<BANNER
 ================================================================
   AUTONOMOUS MODE: $TOTAL_TODOS PENDING TODO(s) ($TOTAL_HARD hard, $TOTAL_SOFT soft)
   Read $GUIDANCE_FILE for details.
@@ -61,6 +73,7 @@ if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
 ================================================================
 
 BANNER
+  fi
   exit 0
 fi
 if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "true" ]]; then

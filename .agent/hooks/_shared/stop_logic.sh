@@ -99,6 +99,20 @@ if [[ -x "$REPO_ROOT/scripts/tracker" ]] && [[ -d "$REPO_ROOT/.agent/tracker" ]]
 fi
 TOTAL_TODOS=$((TOTAL_HARD + TOTAL_SOFT))
 
+# --- Reply debt (WI-ripuz) ---
+# Count unread human messages across all items (blocking + non-blocking).
+# When UNREAD_COUNT > 0, the guidance file switches to REPLY-FIRST CYCLE
+# shape (in generate_guidance) AND the vendor hook's one-line reason text
+# switches to REPLY-FIRST wording — the TODO count is intentionally hidden
+# to force the agent off forward-march and onto reply debt.
+UNREAD_COUNT=0
+if [[ -x "$REPO_ROOT/scripts/tracker" ]] && [[ -d "$REPO_ROOT/.agent/tracker" ]]; then
+  if command -v jq &>/dev/null; then
+    UNREAD_COUNT=$("$REPO_ROOT/scripts/tracker" --json check-messages 2>/dev/null | jq 'length' 2>/dev/null || echo 0)
+    [[ -z "$UNREAD_COUNT" ]] && UNREAD_COUNT=0
+  fi
+fi
+
 # --- Circuit breaker (file-change-based no-progress detection) ---
 # Hashes file modification times in sentinel directories to detect whether
 # real work product changed between stop events.  This measures whether the

@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Gemini CLI AfterAgent hook adapter
 # See ADR-0008 for governance protocol
 #
@@ -57,7 +58,13 @@ fi
 
 # --- Path 1: TODOs exist (both flavors block, subject to circuit breaker) ---
 if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
-  REASON=$(printf 'AUTONOMOUS MODE: %d TODO(s) block stopping (%d hard, %d soft). Read %s for details.' "$TOTAL_TODOS" "$TOTAL_HARD" "$TOTAL_SOFT" "$GUIDANCE_FILE" | jq -Rs .)
+  # WI-ripuz: REPLY-FIRST CYCLE overrides AUTONOMOUS MODE wording when
+  # unread human messages exist.
+  if [[ "${UNREAD_COUNT:-0}" -gt 0 ]]; then
+    REASON=$(printf 'REPLY-FIRST CYCLE: %d unread human message(s). Do not pick from tracker ready, do not start new code, do not run bakeoffs. Read %s and clear reply debt first.' "$UNREAD_COUNT" "$GUIDANCE_FILE" | jq -Rs .)
+  else
+    REASON=$(printf 'AUTONOMOUS MODE: %d TODO(s) block stopping (%d hard, %d soft). Read %s for details.' "$TOTAL_TODOS" "$TOTAL_HARD" "$TOTAL_SOFT" "$GUIDANCE_FILE" | jq -Rs .)
+  fi
   echo "{\"decision\":\"deny\",\"reason\":$REASON}"
   exit 0
 fi

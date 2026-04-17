@@ -595,8 +595,18 @@ def _add_item_with_discussion(
 
 
 class TestGenerateGuidanceUnreadMessages:
-    def test_blocking_item_with_unread_gets_tag(self, tmp_path: Path) -> None:
-        """Blocking item with trailing human message gets [UNREAD] tag."""
+    """REPLY-FIRST CYCLE branch (WI-ripuz).
+
+    When ANY unread human messages exist (blocking or non-blocking), the
+    guidance document changes shape entirely: TODO/violated/soft sections
+    are suppressed, and the document instructs the agent to clear reply
+    debt before resuming autonomous work.
+    """
+
+    def test_blocking_item_with_unread_triggers_reply_first(
+        self, tmp_path: Path,
+    ) -> None:
+        """Blocking item with trailing human message triggers REPLY-FIRST."""
         tracker_root = _setup_tracker(tmp_path)
         canonical_ops = tracker_root / "tracker" / ".ops"
         _add_item_with_discussion(
@@ -612,16 +622,24 @@ class TestGenerateGuidanceUnreadMessages:
             tracker_root, guidance_dir=guidance_dir, config=config,
         )
         content = Path(result).read_text()
-        assert "**[UNREAD]**" in content
+        assert "REPLY-FIRST CYCLE" in content
+        assert "1 unread human message(s)" in content
         assert "WI-ur" in content
-        assert "1 with unread human message(s)" in content
-        assert "check-messages" in content
+        assert "Blocking items with unread messages" in content
+        assert "Take a breather" in content
+        assert "do not start new code tasks" in content.lower()
+        assert "tracker discuss" in content
+        # TODO/violated/soft listings must be suppressed
+        assert "## Hard TODO Items" not in content
+        assert "## Invariant Violations" not in content
+        assert "## Soft TODO Items" not in content
 
-    def test_violated_item_with_unread_gets_count(self, tmp_path: Path) -> None:
-        """Violated invariant with unread message shows count in status."""
+    def test_violated_item_with_unread_triggers_reply_first(
+        self, tmp_path: Path,
+    ) -> None:
+        """Violated invariant with unread message triggers REPLY-FIRST."""
         tracker_root = _setup_tracker(tmp_path)
         canonical_ops = tracker_root / "tracker" / ".ops"
-        # Write invariant ops with discussion inline
         ops_content = textwrap.dedent("""\
             - op: create
               at: "2026-01-01T00:00:00Z"
@@ -653,13 +671,14 @@ class TestGenerateGuidanceUnreadMessages:
             tracker_root, guidance_dir=guidance_dir, config=config,
         )
         content = Path(result).read_text()
-        assert "Invariant Violations: 1" in content
-        assert "1 with unread human message(s)" in content
+        assert "REPLY-FIRST CYCLE" in content
         assert "INV-viol" in content
-        assert "**[UNREAD]**" in content
+        assert "## Invariant Violations" not in content
 
-    def test_non_blocking_item_with_unread(self, tmp_path: Path) -> None:
-        """Non-blocking item with trailing human message appears in separate section."""
+    def test_non_blocking_item_with_unread_triggers_reply_first(
+        self, tmp_path: Path,
+    ) -> None:
+        """Non-blocking item with trailing human message triggers REPLY-FIRST."""
         tracker_root = _setup_tracker(tmp_path)
         canonical_ops = tracker_root / "tracker" / ".ops"
         _add_item_with_discussion(
@@ -675,12 +694,15 @@ class TestGenerateGuidanceUnreadMessages:
             tracker_root, guidance_dir=guidance_dir, config=config,
         )
         content = Path(result).read_text()
-        assert "Unread Human Messages (non-blocking)" in content
+        assert "REPLY-FIRST CYCLE" in content
+        assert "Non-blocking items with unread messages" in content
         assert "WI-done" in content
         assert "1 unread)" in content
 
-    def test_no_unread_messages_backward_compatible(self, tmp_path: Path) -> None:
-        """No unread messages: no unread section, no check-messages hint."""
+    def test_no_unread_messages_uses_default_guidance(
+        self, tmp_path: Path,
+    ) -> None:
+        """No unread messages: default guidance shape (TODO listings)."""
         tracker_root = _setup_tracker(tmp_path)
         canonical_ops = tracker_root / "tracker" / ".ops"
         _add_item(canonical_ops, "WI-a", "todo_hard")
@@ -691,23 +713,25 @@ class TestGenerateGuidanceUnreadMessages:
             tracker_root, guidance_dir=guidance_dir, config=config,
         )
         content = Path(result).read_text()
-        assert "**[UNREAD]**" not in content
-        assert "Unread Human Messages" not in content
-        assert "check-messages" not in content
+        assert "REPLY-FIRST CYCLE" not in content
+        assert "## Hard TODO Items" in content
+        assert "WI-a" in content
 
-    def test_unread_count_in_status_section(self, tmp_path: Path) -> None:
-        """Status section shows unread counts for hard and soft items."""
+    def test_reply_first_lists_all_unread_by_priority(
+        self, tmp_path: Path,
+    ) -> None:
+        """REPLY-FIRST lists blocking + non-blocking items sorted by priority."""
         tracker_root = _setup_tracker(tmp_path)
         canonical_ops = tracker_root / "tracker" / ".ops"
         _add_item_with_discussion(
-            canonical_ops, "WI-hard", "todo_hard",
+            canonical_ops, "WI-hard", "todo_hard", priority=1,
             discussion_ops=[
                 {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
                  "message": "check this"},
             ],
         )
         _add_item_with_discussion(
-            canonical_ops, "WI-soft", "todo_soft",
+            canonical_ops, "WI-soft", "todo_soft", priority=3,
             discussion_ops=[
                 {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
                  "message": "also this"},
@@ -719,23 +743,28 @@ class TestGenerateGuidanceUnreadMessages:
             tracker_root, guidance_dir=guidance_dir, config=config,
         )
         content = Path(result).read_text()
-        # Both sections should have unread count annotations
-        lines = content.split("\n")
-        hard_count_lines = [l for l in lines if "Hard TODO Items:" in l]
-        assert len(hard_count_lines) == 1
-        # After the hard count line, there should be an unread count line
-        hard_idx = lines.index(hard_count_lines[0])
-        assert "1 with unread human message(s)" in lines[hard_idx + 1]
+        assert "REPLY-FIRST CYCLE" in content
+        assert "2 unread human message(s)" in content
+        assert "WI-hard" in content
+        assert "WI-soft" in content
+        # Hard item (P1) should appear before soft item (P3) in the blocking
+        # section — both are blocking since todo_soft is in default blocking
+        # statuses.
+        idx_hard = content.index("WI-hard")
+        idx_soft = content.index("WI-soft")
+        assert idx_hard < idx_soft
 
-    def test_non_blocking_unread_count_in_status(self, tmp_path: Path) -> None:
-        """Non-blocking unread count shows in status section."""
+    def test_reply_first_suppresses_guidance_paragraph(
+        self, tmp_path: Path,
+    ) -> None:
+        """REPLY-FIRST branch omits the default 'Guidance' paragraph entirely."""
         tracker_root = _setup_tracker(tmp_path)
         canonical_ops = tracker_root / "tracker" / ".ops"
         _add_item_with_discussion(
-            canonical_ops, "WI-nr", "done",
+            canonical_ops, "WI-ur", "todo_hard",
             discussion_ops=[
                 {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
-                 "message": "info"},
+                 "message": "please check"},
             ],
         )
         config = _make_config()
@@ -744,4 +773,31 @@ class TestGenerateGuidanceUnreadMessages:
             tracker_root, guidance_dir=guidance_dir, config=config,
         )
         content = Path(result).read_text()
-        assert "Non-blocking items with unread messages: 1" in content
+        assert "## Guidance" not in content
+        assert "assume the item is" not in content
+        assert (
+            "The TODO listing is intentionally suppressed in this cycle."
+            in content
+        )
+
+    def test_reply_first_blocking_only_no_non_blocking_section(
+        self, tmp_path: Path,
+    ) -> None:
+        """With only blocking unreads, non-blocking section is absent."""
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        _add_item_with_discussion(
+            canonical_ops, "WI-b", "todo_hard",
+            discussion_ops=[
+                {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "hi"},
+            ],
+        )
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        content = Path(result).read_text()
+        assert "## Blocking items with unread messages" in content
+        assert "## Non-blocking items with unread messages" not in content
