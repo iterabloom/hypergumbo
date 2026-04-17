@@ -4718,8 +4718,9 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_slice.add_argument(
         "--entry",
         default="auto",
-        help="Entrypoint to slice from: symbol name, file path, node ID, or 'auto' "
-             "to detect automatically (default: auto)",
+        help="Entrypoint to slice from: symbol name, file path, node ID, "
+             "'module:name' shorthand (e.g. cli:main), or 'auto' to detect "
+             "automatically (default: auto)",
     )
     p_slice.add_argument(
         "--list-entries",
