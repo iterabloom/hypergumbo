@@ -1,0 +1,31 @@
+- op: create  # fc88
+  at: '2026-04-17T17:14:27Z'  # fc88
+  by: agent  # fc88
+  actor: jgstern_agent  # fc88
+  clock: 1  # fc88
+  nonce: fc88  # fc88
+  data:  # fc88
+    kind: work_item  # fc88
+    title: "Respawn mechanism: on circuit-breaker trip, spawn fresh same-vendor tmux session with relay prompt"  # fc88
+    status: needs_human_review  # fc88
+    priority: 1  # fc88
+    parent:  # fc88
+    tags:  # fc88
+    - retrospective  # fc88
+    - governance  # fc88
+    - hooks  # fc88
+    isbefore: []  # fc88
+    duplicate_of: []  # fc88
+    not_duplicate_of: []  # fc88
+    pr_ref:  # fc88
+    description: "## Motivation\n\nObserved in `session_retrospective_04172026_1012.md` Finding 1: the circuit breaker \"works\" in the narrow sense that it eventually permits termination when the agent is stuck, but it works too well — it gives a stagnating agent a shortcut out of a DEEP session with plenty of ready work. Rewording AGENTS.md is not a fix (WI-vapap, WI-furap, WI-duput, all closed), because the agent already had the rules and ignored them. Replacing the stagnating context with a fresh one is a structural fix.\n\n## Proposal\n\nWhen the circuit breaker trips (5 consecutive identical no-progress hashes), do not simply permit termination. Instead, **spawn a fresh detached tmux session running the same vendor's CLI**, seeded with a relay prompt, and only then let the stagnating session end.\n\n## Decisions (from human directive 2026-04-17)\n\n- **Vendor selection:** same vendor as the dying/stagnating session. Read the vendor marker from the session_id / transcript metadata.\n- **Tmux lifecycle:** new **detached** tmux session named by UTC timestamp (e.g. `hypergumbo-relay-20260417T093000Z`). Explicitly NOT a new window in the existing session.\n- **Circuit-breaker philosophy:** the existing breaker \"works\" but is too narrow. The replacement needs to be more flexible / robust / intelligent — likely parameterized by mode (DEEP/BROAD/OFF), by backlog state, and by prior respawn chain length.\n\n## Open design questions\n\n1. **Seed prompt.** Options: (a) literal re-invocation of the last user prompt, (b) a fresh \"relay\" prompt pointing at `guidance_log/stop_hook_state.json`, `agent_notes.json`, and `tracker ready`. The recover-state playbook was designed for this handoff, so (b) is probably right — but we need to confirm it does not re-anchor the new session to the prior rationalization.\n2. **Anti-fork-bomb / intelligent breaker.** A naive per-hour cap is too blunt. Needs: (i) backoff on consecutive no-progress respawns, (ii) hard-stop after N chained respawns (suggests agent-model-level bias, not context staleness), (iii) honor `AUTONOMOUS_MODE=OFF`, (iv) detect if a human is attached to the tmux session and skip, (v) record the chain so retrospectives can measure respawn value.\n3. **Garbage collection of stale tmux sessions.** Likely a combination of an external cron/systemd timer script and internal hooks. Must not kill a session the human is actively attached to.\n4. **Zombie protection.** A stale/dead/stagnant session must not come back to life. Sentinel file keyed by tmux session name, verified on respawn, refused if already marked dead. Consider `tmux wait-for` or a pid-based liveness probe.\n5. **Vendor parity of the mechanism.** Claude Code, Codex CLI, Gemini CLI, Cursor all need a \"resume with this prompt, autonomous mode\" invocation path. Cursor is already the awkward case (global SQLite, single-session-per-repo per WI-rijoj). Need to confirm each vendor can be launched non-interactively with a seed prompt.\n6. **Interaction with the existing stop-hook circuit breaker.** The breaker currently produces a \"approve termination\" signal. That signal becomes \"approve termination AFTER successfully spawning a relay.\" If the relay spawn fails (tmux unavailable, vendor CLI missing, anti-fork-bomb tripped), do we still terminate, or hold and re-try?\n\n## Governance\n\nTouches `.agent/hooks/**`, likely new scripts under `scripts/`. Needs human approval before implementation per AGENTS.md governance rule. File is `needs_human_review` until the six open questions are resolved with the human."  # fc88
+    fields: {}  # fc88
+- op: update  # e8b5
+  at: '2026-04-17T17:16:43Z'  # e8b5
+  by: agent  # e8b5
+  actor: jgstern_agent  # e8b5
+  clock: 2  # e8b5
+  nonce: e8b5  # e8b5
+  set: {}  # e8b5
+  add:  # e8b5
+    not_duplicate_of: [WI-zijos-johah-jopon-falid-tasol-pobal-padoj-dituh]  # e8b5

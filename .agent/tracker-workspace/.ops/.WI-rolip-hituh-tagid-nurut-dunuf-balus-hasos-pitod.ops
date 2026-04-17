@@ -19,3 +19,20 @@
     pr_ref:  # 83b5
     description: "Observed in session_retrospective_04172026_1012.md Finding 5: on WI-ripuz the agent correctly split scope and held the governance-file portion for explicit approval. But on WI-buhov (PR #3114, which edits scripts/auto-pr, a governance file), the agent filed and merged the PR without an explicit human-approval discussion entry. The 'data-loss bug' framing was used implicitly as pre-approval, but the current AGENTS.md rule does not carve out a bug-severity exception.\n\nProposed AGENTS.md change: under 'Governance Files', clarify that the approval-workflow rule (set item to needs_human_review, post discussion requesting approval, wait for explicit approval) applies equally to bug fixes, not just feature additions. If the urgency is genuine, the approval turnaround will be fast; if it isn't, the bug framing was doing too much work.\n\nTouches AGENTS.md -> needs_human_review."  # 83b5
     fields: {}  # 83b5
+- op: update  # 5ed5
+  at: '2026-04-17T17:20:28Z'  # 5ed5
+  by: human  # 5ed5
+  actor: jgstern  # 5ed5
+  clock: 2  # 5ed5
+  nonce: 5ed5  # 5ed5
+  set:  # 5ed5
+    priority: 4  # 5ed5
+- op: update  # 57be
+  at: '2026-04-17T17:21:02Z'  # 57be
+  by: human  # 57be
+  actor: jgstern  # 57be
+  clock: 3  # 57be
+  nonce: 57be  # 57be
+  set: {}  # 57be
+  add:  # 57be
+    tags: [kind-of-redundant]  # 57be

@@ -19,3 +19,18 @@
     pr_ref:  # 1fae
     description: "Phase 2 refinement of WI-ripuz (Phase 1 shipped REPLY-FIRST CYCLE guidance branch + hook reason-text swap; see WI-ripuz discussion entry naming the PR).\n\nPhase 2 adds the [[...]]-preface escalation path described in WI-ripuz:\n\n1. **Preface detector** (anchored at char 0 of an unread human message, no whitespace inside the brackets, brackets must close). Single codepath regardless of whether the preface text is recognizable English — [[IMPORTANT]], [[do-right-fucking-now]], and [[Mclovin]] all trigger the same path.\n2. **LLM-mediated precedence gate**: when a preface fires but there are other unread items, call a small LLM to answer 'Does the preface tag imply this message takes precedence over the other N unreads?' Thread the answer back into the guidance file so the agent is steered toward the escalated item first.\n3. **Default when gate declines to elevate**: fall back to the equal-priority listing from Phase 1.\n4. **Tests**: acceptance of [[IMPORTANT]]/[[do-right-fucking-now]]/[[Mclovin]] at pos 0; rejection of [[has space]], leading-text [[X]], and [[ space-before-close]]; ambiguous preface still enters the alternate path and the LLM gate receives a well-formed prompt; fallback when gate declines.\n\nTouches governance files (hooks) plus application code (stop_hook.py). The LLM call needs to honour the network allowlist + ALLOWED_WEBSITES.md (OpenRouter is already used elsewhere in hooks)."  # 1fae
     fields: {}  # 1fae
+- op: update  # 5f15
+  at: '2026-04-17T18:15:17Z'  # 5f15
+  by: agent  # 5f15
+  actor: jgstern_agent  # 5f15
+  clock: 2  # 5f15
+  nonce: 5f15  # 5f15
+  set:  # 5f15
+    status: in_progress  # 5f15
+- op: discuss  # 61b0
+  at: '2026-04-17T18:15:17Z'  # 61b0
+  by: agent  # 61b0
+  actor: jgstern_agent  # 61b0
+  clock: 3  # 61b0
+  nonce: 61b0  # 61b0
+  message: "Phase 2 implementation submitted via auto-pr from branch jgstern-agent/feat/preface-precedence-gate. Adds _extract_preface (regex-based, anchored-at-char-0, no internal whitespace, must close with ]]), _call_openrouter (mistral-small-3.2 via OpenRouter, 16-token max, fail-soft on network/JSON/key errors), _precedence_gate (skips LLM when no other unreads; YES-prefixed case-insensitive response required to elevate; any exception → False), and integration into _build_reply_first_guidance (lifts elevated items into '## Escalated (preface precedence gate → YES)' section at top, removes them from the regular blocking/non-blocking listings). Tests cover all four acceptance criteria: preface accept/reject, gate YES/NO/empty/exception and prompt well-formedness, ambiguous prefaces still invoking the gate, fallback-when-gate-declines. 100% coverage in package isolation verified. Will close with PR reference once auto-pr merges."  # 61b0
