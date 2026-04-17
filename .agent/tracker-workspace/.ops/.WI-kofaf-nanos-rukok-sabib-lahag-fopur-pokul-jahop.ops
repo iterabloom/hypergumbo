@@ -30,3 +30,10 @@
   set: {}  # 0f8a
   remove:  # 0f8a
     tags: [cross_language_linkers]  # 0f8a
+- op: discuss  # e8e8
+  at: '2026-04-17T01:18:15Z'  # e8e8
+  by: agent  # e8e8
+  actor: jgstern_agent  # e8e8
+  clock: 3  # e8e8
+  nonce: e8e8  # e8e8
+  message: "Tag cleanup (2026-04-17): removed `cross_language_linkers`. Per ADR-0003-ext subcategory vocabulary, this is within-Go **Framework-subcategory** dispatch work — encoding/json and encoding/yaml invoke MarshalJSON / UnmarshalJSON / MarshalYAML / UnmarshalYAML via interface satisfaction in the Go runtime (same language; the framework-injected dispatch is the Go stdlib's own reflection path). The serialization_boundary tag is accurate and retained. Keeping `linker_gap`, `go_analyzer`, `serialization_boundary`.\n\nPhase 1 (WI-pimig / PR #2942) validated the LIBRARY_EXPORT entrypoint classification as sufficient for the dead-code goal. Phase 2/3 (this item) improves call-graph precision by detecting caller-site types and emitting synthetic dispatches_to edges — still within-Go framework dispatch."  # e8e8

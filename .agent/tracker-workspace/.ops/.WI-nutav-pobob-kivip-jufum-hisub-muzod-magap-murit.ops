@@ -36,3 +36,10 @@
   set: {}  # 3c45
   remove:  # 3c45
     tags: [cross_language_linkers]  # 3c45
+- op: discuss  # cd29
+  at: '2026-04-17T01:17:40Z'  # cd29
+  by: agent  # cd29
+  actor: jgstern_agent  # cd29
+  clock: 4  # cd29
+  nonce: cd29  # cd29
+  message: "Tag cleanup (2026-04-17): removed `cross_language_linkers` tag. Per the 2026-04-16 discussion clarification above and ADR-0003-ext, this is a **Framework-subcategory** linker (Python-internal Airflow framework dispatch). The cross-language consequence (Hook.get_conn invokes cloud SDKs) is a leaf IO boundary, not a linker edge. Keeping `analysis_quality` and `airflow`."  # cd29

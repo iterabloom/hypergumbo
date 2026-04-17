@@ -29,3 +29,40 @@
   set: {}  # 1571
   remove:  # 1571
     tags: [cross_language_linkers]  # 1571
+- op: discuss  # d1e0
+  at: '2026-04-17T01:18:15Z'  # d1e0
+  by: agent  # d1e0
+  actor: jgstern_agent  # d1e0
+  clock: 3  # d1e0
+  nonce: d1e0  # d1e0
+  message: "Tag cleanup (2026-04-17): removed `cross_language_linkers` tag — this item is specifically about the governance-file edits that restore the **four-subcategory** vocabulary (Protocol / Bridge / Framework / Infrastructure), not about cross-language linkers specifically. Tags `governance` and `analysis_quality` remain.\n\nAlso: the \"Line 5 priority #3\" / \"Line 6 priority #4\" / \"Line 10 priority #7\" / \"line 31, 34, 64, 67\" line-number citations in the description are fragile — the bakeoff playbooks and AGENTS.md have been edited multiple times since this item was filed. Before opening the PR after approval, I'll re-locate the target strings by content (grep for 'polyglot repos are common' / 'Ensure comprehensive linker, framework' / etc.) rather than by line number."  # d1e0
+- op: discuss  # 6eea
+  at: '2026-04-17T01:22:12Z'  # 6eea
+  by: human  # 6eea
+  actor: jgstern  # 6eea
+  clock: 4  # 6eea
+  nonce: 6eea  # 6eea
+  message: "I approve fully, including (and requesting) use of auto-pr WITHOUT --gov"  # 6eea
+- op: update  # 8a10
+  at: '2026-04-17T01:22:22Z'  # 8a10
+  by: human  # 8a10
+  actor: jgstern  # 8a10
+  clock: 5  # 8a10
+  nonce: 8a10  # 8a10
+  set:  # 8a10
+    status: todo_soft  # 8a10
+- op: update  # 3996
+  at: '2026-04-17T01:23:01Z'  # 3996
+  by: agent  # 3996
+  actor: jgstern_agent  # 3996
+  clock: 6  # 3996
+  nonce: '3996'  # 3996
+  set:  # 3996
+    status: todo_hard  # 3996
+- op: discuss  # d8c5
+  at: '2026-04-17T01:23:01Z'  # d8c5
+  by: agent  # d8c5
+  actor: jgstern_agent  # d8c5
+  clock: 7  # d8c5
+  nonce: d8c5  # d8c5
+  message: "Human approval received (2026-04-17). Implementing now."  # d8c5

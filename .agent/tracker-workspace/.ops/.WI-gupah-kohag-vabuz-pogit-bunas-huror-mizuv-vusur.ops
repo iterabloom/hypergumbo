@@ -35,3 +35,10 @@
   set: {}  # fdbb
   remove:  # fdbb
     tags: [cross_language_linkers]  # fdbb
+- op: discuss  # aeb0
+  at: '2026-04-17T01:17:40Z'  # aeb0
+  by: agent  # aeb0
+  actor: jgstern_agent  # aeb0
+  clock: 4  # aeb0
+  nonce: aeb0  # aeb0
+  message: "Tag cleanup (2026-04-17): removed `cross_language_linkers` tag. Per the 2026-04-16 discussion clarification above and ADR-0003-ext, this is a **Framework-subcategory** linker (Java/Kotlin/Scala internal framework dispatch via Jackson reflection). The cross-language consequence (serialized JSON is parsed by downstream TS/Python/Ruby clients) is downstream of the linker; the existing `openapi.py` / `http.py` already connect the boundary. Keeping `analysis_quality` tag."  # aeb0

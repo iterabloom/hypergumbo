@@ -36,3 +36,10 @@
   set: {}  # 5cc7
   remove:  # 5cc7
     tags: [cross_language_linkers]  # 5cc7
+- op: discuss  # b4ef
+  at: '2026-04-17T01:17:40Z'  # b4ef
+  by: agent  # b4ef
+  actor: jgstern_agent  # b4ef
+  clock: 4  # b4ef
+  nonce: b4ef  # b4ef
+  message: "Tag cleanup (2026-04-17): removed `cross_language_linkers` tag. Per the 2026-04-16 discussion clarification above and ADR-0003-ext, this is a **Framework-subcategory** linker (JVM-internal Kafka Streams topology dispatch). True cross-language edges along the Kafka record path would be a separate Bridge-style linker reusing SerDe fingerprints — not this item. Keeping `analysis_quality` and `kafka`."  # b4ef
