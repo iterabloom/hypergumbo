@@ -7,7 +7,9 @@ slices to traverse the middleware execution pipeline.
 
 How It Works
 ------------
-1. Find all symbols with ``"middleware"`` in ``meta.concepts``
+1. Find all symbols whose ``meta.concepts`` contains a dict with
+   ``"concept": "middleware"`` (the shape emitted by
+   ``framework_patterns.py``; see INV-tuzub for the uniformity invariant).
 2. Group by file path (middleware in different files are independent chains)
 3. Sort each group by source line (registration/declaration order)
 4. Create ``references`` edges with ``evidence_type="middleware_chain"``
@@ -79,7 +81,10 @@ def link_middleware_chain(ctx: LinkerContext) -> LinkerResult:
         if not sym.meta:
             continue
         concepts = sym.meta.get("concepts", [])
-        if "middleware" not in concepts:
+        if not any(
+            isinstance(c, dict) and c.get("concept") == "middleware"
+            for c in concepts
+        ):
             continue
         if sym.span is None:
             continue
