@@ -1,0 +1,21 @@
+- op: create  # 0749
+  at: '2026-04-17T03:09:13Z'  # 0749
+  by: agent  # 0749
+  actor: jgstern_agent  # 0749
+  clock: 1  # 0749
+  nonce: '0749'  # 0749
+  data:  # 0749
+    kind: work_item  # 0749
+    title: "Django ORM method dispatch linker: resolve QuerySet/Manager method calls to Model definitions"  # 0749
+    status: todo_soft  # 0749
+    priority: 3  # 0749
+    parent:  # 0749
+    tags:  # 0749
+    - framework_dispatch_linkers  # 0749
+    - analysis_quality  # 0749
+    isbefore: []  # 0749
+    duplicate_of: []  # 0749
+    not_duplicate_of: []  # 0749
+    pr_ref:  # 0749
+    description: "Per aggregate-v5 prospector signal (2026-04-11 run, 2441 candidates in python_orm_dispatch category): Django ORM method calls via QuerySet/Manager (e.g. MyModel.objects.filter(), MyModel.objects.get(), instance.save()) are not resolved to the Model class definitions that provide the fields/methods being accessed. This produces dead-code-maybe false positives where Model methods appear unused because the callers go through the QuerySet/Manager proxy.\n\nScope: audit existing packages/hypergumbo-lang-python/src/hypergumbo_lang_python/orm.py (which already handles some SQLAlchemy/ORM patterns per agent note 'likely fits inside existing orm.py'). Extend to capture Django's QuerySet/Manager -> Model method resolution. Emit uses edges from the call site to Model method definitions so dispatch is visible in the graph.\n\nSuccess criterion: re-run dead-code-prospector aggregate and verify python_orm_dispatch count drops meaningfully below 2441.\n\nSource: WI-tubot aggregate-v5 analysis, 2026-04-16T19:25:09Z discussion entry."  # 0749
+    fields: {}  # 0749

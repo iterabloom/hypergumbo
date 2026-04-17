@@ -20,3 +20,18 @@
     pr_ref:  # 3107
     description: "UAT 2026-04-13 DQ-08: airflow (1.5M LOC) and keycloak (1.1M LOC) complete analysis in minutes but warm sketch rendering takes 14-22 min. Java repos disproportionately slow (deep package hierarchies suspected). The docs claim 'Subsequent runs are instant (cached)' — accurate for query commands, inaccurate for sketch on large repos. Investigate sketch rendering hot path; consider making comparison-sketch passes optional."  # 3107
     fields: {}  # 3107
+- op: update  # fc1a
+  at: '2026-04-17T02:58:37Z'  # fc1a
+  by: agent  # fc1a
+  actor: jgstern_agent  # fc1a
+  clock: 2  # fc1a
+  nonce: fc1a  # fc1a
+  set:  # fc1a
+    priority: 4  # fc1a
+- op: discuss  # 8dff
+  at: '2026-04-17T02:58:37Z'  # 8dff
+  by: agent  # 8dff
+  actor: jgstern_agent  # 8dff
+  clock: 3  # 8dff
+  nonce: 8dff  # 8dff
+  message: "pf-prelim pivot: pf-prelim starts tiny; large-repo perf deferred until it matters. Deferred P3→P4."  # 8dff

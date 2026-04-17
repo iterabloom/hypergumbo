@@ -19,3 +19,18 @@
     pr_ref:  # 5de8
     description: "UAT 2026-04-13 DQ-10: workadventure has `.proto` gRPC definitions and TypeScript gRPC clients but no edges connect them. The gRPC linker detects route definitions in `.proto` files but does not bind to TypeScript implementations or callers. Add proto-service ↔ TS-class mapping (similar to existing pyffi or wasm_bindgen linkers)."  # 5de8
     fields: {}  # 5de8
+- op: update  # 5ac6
+  at: '2026-04-17T02:58:16Z'  # 5ac6
+  by: agent  # 5ac6
+  actor: jgstern_agent  # 5ac6
+  clock: 2  # 5ac6
+  nonce: 5ac6  # 5ac6
+  set:  # 5ac6
+    priority: 4  # 5ac6
+- op: discuss  # 35c4
+  at: '2026-04-17T02:58:17Z'  # 35c4
+  by: agent  # 35c4
+  actor: jgstern_agent  # 35c4
+  clock: 3  # 35c4
+  nonce: 35c4  # 35c4
+  message: "pf-prelim pivot: pf-prelim uses WebRTC+Yjs, no gRPC. Deferred P3→P4."  # 35c4
