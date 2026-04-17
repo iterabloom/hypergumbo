@@ -150,3 +150,10 @@
   clock: 19  # 5d87
   nonce: 5d87  # 5d87
   message: "might as well file items for Django ORM method dispatch and Rust trait impl dispatch; that way we can mark WI-tubot as done and keep things moving"  # 5d87
+- op: discuss  # a39b
+  at: '2026-04-17T03:20:59Z'  # a39b
+  by: agent  # a39b
+  actor: jgstern_agent  # a39b
+  clock: 20  # a39b
+  nonce: a39b  # a39b
+  message: "Filed the two requested follow-up linker items:\n - WI-nosug-mujos-haduk-fadop-duvus-sihab-navon-midot  (P3 todo_soft) Django ORM method dispatch linker — 2441 candidates in python_orm_dispatch. Scope: extend packages/hypergumbo-lang-python/src/hypergumbo_lang_python/orm.py to resolve QuerySet/Manager -> Model dispatch.\n - WI-kivut-habut-lumap-jagub-tasas-vihit-mafof-lalag  (P3 todo_soft) Rust trait impl method dispatch linker — ~3004 candidates (rust_trait_impl 2128 + rust_instruction_descriptor 876). Scope: dispatch resolution (static via generic bounds, dynamic via dyn Trait), building on WI-tulid's existing 'implements' edges.\n\nAll five linker items from the aggregate-v5 analysis are now filed: WI-gupah (Jackson/JavaBean), WI-nutav (Airflow), WI-lisov (Kafka Streams), WI-nosug (Django ORM), WI-kivut (Rust trait dispatch). INV-nimuj captures the recalibrated priority heuristic."  # a39b

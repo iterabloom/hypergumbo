@@ -1,0 +1,21 @@
+- op: create  # 78ae
+  at: '2026-04-17T03:10:43Z'  # 78ae
+  by: agent  # 78ae
+  actor: jgstern_agent  # 78ae
+  clock: 1  # 78ae
+  nonce: 78ae  # 78ae
+  data:  # 78ae
+    kind: work_item  # 78ae
+    title: "Rust trait impl method dispatch linker: resolve trait method calls to concrete impl blocks"  # 78ae
+    status: todo_soft  # 78ae
+    priority: 3  # 78ae
+    parent:  # 78ae
+    tags:  # 78ae
+    - framework_dispatch_linkers  # 78ae
+    - analysis_quality  # 78ae
+    isbefore: []  # 78ae
+    duplicate_of: []  # 78ae
+    not_duplicate_of: []  # 78ae
+    pr_ref:  # 78ae
+    description: "Per aggregate-v5 prospector signal (2026-04-11 run, 2128 candidates in rust_trait_impl + 876 in rust_instruction_descriptor = ~3004 total): Rust trait method call sites are not resolved to the concrete impl blocks that provide the method body. WI-tulid (2026-03-06) confirmed that 'implements' edges between structs and traits are captured (candle=584, zed=2766, codex=255), so the inheritance relationship is visible — but the dispatch step (call to trait method -> concrete impl<T> { fn method() }) is not emitted as a uses/dispatches_to edge. This leaves concrete impl methods looking dead even when they're invoked via trait objects or generic bounds.\n\nScope: audit packages/hypergumbo-lang-rust/ for existing trait / impl handling (particularly inheritance.py for trait-impl edges). Design dispatch resolution that:\n - for static dispatch (generic bounds like fn f<T: Trait>(x: T)), emits uses edges from call site to all concrete impls of the trait reachable in the crate graph\n - for dynamic dispatch (dyn Trait trait objects), emits an is_dispatched_by edge from call site to the trait, relying on the existing implements edges to fan out\n\nSuccess criterion: re-run dead-code-prospector aggregate and verify rust_trait_impl + rust_instruction_descriptor count drops meaningfully below 3004.\n\nSource: WI-tubot aggregate-v5 analysis, 2026-04-16T19:25:09Z discussion entry. Related (done): WI-tulid (implements edges)."  # 78ae
+    fields: {}  # 78ae

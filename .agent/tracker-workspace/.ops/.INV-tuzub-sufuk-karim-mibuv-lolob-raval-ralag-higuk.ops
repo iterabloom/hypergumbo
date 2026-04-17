@@ -1,0 +1,24 @@
+- op: create  # 2e4f
+  at: '2026-04-17T03:39:01Z'  # 2e4f
+  by: agent  # 2e4f
+  actor: jgstern_agent  # 2e4f
+  clock: 1  # 2e4f
+  nonce: 2e4f  # 2e4f
+  data:  # 2e4f
+    kind: invariant  # 2e4f
+    title: "Concept-tag shape uniformity: symbol.meta['concepts'] must be list[dict] with 'concept' key"  # 2e4f
+    status: violated  # 2e4f
+    priority: 2  # 2e4f
+    parent:  # 2e4f
+    tags:  # 2e4f
+    - analysis_quality  # 2e4f
+    - framework_dispatch_linkers  # 2e4f
+    isbefore: []  # 2e4f
+    duplicate_of: []  # 2e4f
+    not_duplicate_of: []  # 2e4f
+    pr_ref:  # 2e4f
+    description: "Symptom evidence: see audit report /home/jgstern_agent/hypergumbo_lab_notebook/concept_tag_audit_04172026_0335.md. middleware_chain linker is silently inert in production despite its test suite passing at 100% coverage. Resolution requires (a) fix middleware_chain.py filter + test fixture (filed as WI-fix-middleware-chain-filter), (b) shared has_concept helper to prevent regression (filed as WI-concept-helper-util)."  # 2e4f
+    fields:  # 2e4f
+      statement: "Every consumer of symbol.meta['concepts'] must treat the value as a list of dicts, where each dict has a 'concept' key whose value is a string naming the concept. No consumer may treat entries as bare strings. Source of truth: framework_patterns.py match_patterns/match_usage_patterns emit dicts (match_patterns returns list[dict]; dedup logic at line 1372-1381 uses c.items() confirming dict semantics)."  # 2e4f
+      root_cause: "Absence of a shared has_concept(symbol, name) helper allowed three Framework-subcategory linkers (orm.py, subprocess_cli.py, http.py/openapi.py) to independently arrive at the correct is_instance+dict.get('concept') pattern while middleware_chain.py diverged to a list[str] membership test. Test fixture tests/test_middleware_chain_linker.py supplies list[str] inputs that do not match the production emitter, so 100% coverage masked the defect."  # 2e4f
+      verification: "Audit report at /home/jgstern_agent/hypergumbo_lab_notebook/concept_tag_audit_04172026_0335.md Phase 4 cross-reference: MATCH=6, SHAPE_MISMATCH=1. The mismatch is middleware_chain.py:81-82: concepts = sym.meta.get('concepts', []) / if 'middleware' not in concepts: continue. In production this filter is always False (string never in list[dict]), so the continue fires and the linker silently produces zero middleware-chain edges."  # 2e4f
