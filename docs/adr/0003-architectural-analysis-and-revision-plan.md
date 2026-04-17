@@ -1,7 +1,12 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Hypergumbo Architectural Analysis — January 7, 2026 (updated 21:30)
 
-**Supplemented by:** [ADR-0003-ext: Linker Subcategory Restoration](0003-linker-subcategory-restoration.md) — the §2.4 Protocol / Bridge / Framework subcategory vocabulary defined here is restored as the authoritative classification, extended with a fourth subcategory (Infrastructure), and made actively maintained across the linker catalogue, the spec, and the bakeoff playbooks.
+**Status:** Accepted — the architectural analysis and taxonomy in this document remain the current contract (§1 Language/Dialect/Framework distinction, §2 analyzer-vs-linker principle with §2.4 subcategory vocabulary, §2.6 FRAMEWORK_PATTERNS phase, §3 framework-afforded concept taxonomy, §6 semantic entry detection). The §5 Migration Path (v0.7.x / v0.8.x / v0.9.x phases) is complete and retained for historical context. The design-target portions flagged 🟪 in `docs/hypergumbo-spec.md` (notably the unified `AnalysisPass(Protocol)`) are addressed by later ADRs.
+
+**Supplemented by:**
+- [ADR-0003-ext: Linker Subcategory Restoration](0003-linker-subcategory-restoration.md) — the §2.4 Protocol / Bridge / Framework subcategory vocabulary defined here is restored as the authoritative classification, extended with a fourth subcategory (Infrastructure), and made actively maintained across the linker catalogue, the spec, and the bakeoff playbooks.
+- [ADR-0010: Modular Packages and Smart Testing](0010-modular-packages-and-smart-testing.md) — implements the package decomposition implied by §1's taxonomy (`hypergumbo-core`, `hypergumbo-lang-*` packages).
+- [ADR-0012: Pass Unification and Multi-Fidelity](0012-pass-unification-and-multi-fidelity.md) — describes the two-tier execution model (analyzers → linkers) that this document establishes, and carries forward the multi-fidelity design target.
 
 ## Summary
 
