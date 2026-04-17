@@ -81,3 +81,10 @@
   nonce: e298  # e298
   set:  # e298
     status: todo_soft  # e298
+- op: discuss  # e500
+  at: '2026-04-17T07:24:39Z'  # e500
+  by: agent  # e500
+  actor: jgstern_agent  # e500
+  clock: 10  # e500
+  nonce: e500  # e500
+  message: "Phase 1 merged: PR #3110 → commit 98ecb22ca on dev. generate_guidance now branches to a REPLY-FIRST CYCLE document when any unread human messages exist (blocking or non-blocking): TODO/violated/soft sections suppressed, replaced with a 4-step protocol + per-item unread list. Companion change in .agent/hooks/*/stop.sh (claude-code, cursor, codex-cli, gemini-cli) reads a new UNREAD_COUNT export from stop_logic.sh and swaps the one-line reason text to 'REPLY-FIRST CYCLE: N unread human message(s)…' hiding the TODO count entirely while reply debt exists.\n\nTests (all passing, 100% coverage in package isolation): branch-firing on blocking/non-blocking/both, suppression of Hard/Invariant/Soft sections, priority-sorted listing, and the default path when no unreads exist.\n\nPhase 2 ([[...]] preface detector + LLM-mediated precedence gate) filed as WI-mofaz-dinip-falil-hugus-fupoj-kinij-jusiz-lakop.\n\nLeaving THIS item open until Phase 2 lands — the six validation metrics from the item description still apply to Phase 1 alone (reply length, tool calls per reply, code/ADR/PR citations, WebSearch usage).\n\nNB: I posted an earlier version of this update before the PR merged. The auto-pr rebase/restore cycle (backed up .ops to /tmp/ops-backup- then restored after rebase) silently overwrote that earlier discuss entry. Data-loss bug in auto-pr's .ops-restore logic — filing a tracker item."  # e500
