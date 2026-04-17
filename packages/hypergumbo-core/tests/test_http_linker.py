@@ -8,8 +8,10 @@ from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.linkers.http import (
     HttpClientCall,
     _create_client_symbol,
+    _extract_module_constants,
     _extract_path_from_url,
     _find_source_files,
+    _fold_template_literal,
     _match_route_pattern,
     _scan_elm_file,
     _scan_go_file,
@@ -2108,3 +2110,316 @@ class TestElmFilesAreScanned:
             and e.edge_type == "http_calls"
             for e in result.edges
         ), "Elm → Go route edge missing from link_http result"
+
+
+class TestExtractModuleConstants:
+    """Tests for JS/TS module-scope const assignment extraction (WI-sijoh)."""
+
+    def test_extracts_const_with_double_quotes(self):
+        code = dedent('''
+            const API_PATH = "api/v1";
+        ''')
+        assert _extract_module_constants(code) == {"API_PATH": "api/v1"}
+
+    def test_extracts_const_with_single_quotes(self):
+        code = dedent('''
+            const API_URL = '/api';
+        ''')
+        assert _extract_module_constants(code) == {"API_URL": "/api"}
+
+    def test_extracts_exported_const(self):
+        code = dedent('''
+            export const BASE = "/v2";
+        ''')
+        assert _extract_module_constants(code) == {"BASE": "/v2"}
+
+    def test_extracts_let_and_var(self):
+        code = dedent('''
+            let FOO = "/foo";
+            var BAR = "/bar";
+        ''')
+        assert _extract_module_constants(code) == {"FOO": "/foo", "BAR": "/bar"}
+
+    def test_extracts_multiple_consts(self):
+        code = dedent('''
+            const A = "/a";
+            const B = "/b";
+            export const C = "/c";
+        ''')
+        assert _extract_module_constants(code) == {"A": "/a", "B": "/b", "C": "/c"}
+
+    def test_skips_non_string_consts(self):
+        """Numeric / object / array consts are not URL candidates."""
+        code = dedent('''
+            const COUNT = 42;
+            const CONFIG = { url: "/api" };
+            const TAGS = ["a", "b"];
+        ''')
+        # COUNT is skipped (numeric), CONFIG/TAGS skipped (not plain strings).
+        assert _extract_module_constants(code) == {}
+
+    def test_skips_function_scope_const(self):
+        """Only module-scope (top-level) consts should be folded."""
+        code = dedent('''
+            function makeUrl() {
+                const LOCAL = "/local";
+                return LOCAL;
+            }
+        ''')
+        # Indented const inside a function is not a module-level binding.
+        assert _extract_module_constants(code) == {}
+
+
+class TestFoldTemplateLiteral:
+    """Tests for template-literal folding (WI-sijoh)."""
+
+    def test_no_interpolation_yields_literal(self):
+        url, url_type = _fold_template_literal("/api/users", {})
+        assert url == "/api/users"
+        assert url_type == "literal"
+
+    def test_all_interpolations_resolved_yields_literal(self):
+        url, url_type = _fold_template_literal(
+            "${BASE}/users", {"BASE": "/api/v1"},
+        )
+        assert url == "/api/v1/users"
+        assert url_type == "literal"
+
+    def test_unresolved_leading_prefix_is_stripped(self):
+        """A leading ${pathPrefix}/ is treated as host/base per Elm semantics."""
+        url, url_type = _fold_template_literal("${pathPrefix}/api/users", {})
+        assert url == "/api/users"
+        # Still "literal" because the remaining path has no unresolved slots.
+        assert url_type == "literal"
+
+    def test_middle_unresolved_slot_becomes_param(self):
+        """A middle ${id} slot becomes {id} so route-pattern matching works."""
+        url, url_type = _fold_template_literal("/api/users/${id}", {})
+        assert url == "/api/users/{id}"
+        assert url_type == "literal"
+
+    def test_trailing_non_path_slot_is_stripped_as_variable(self):
+        """A trailing ${queryString} slot is stripped; marks url_type=variable."""
+        url, url_type = _fold_template_literal(
+            "/api/items${queryString}", {},
+        )
+        # Prefix remains for route-matching via startswith (WI-sijoh).
+        assert url == "/api/items"
+        assert url_type == "variable"
+
+    def test_mixed_folded_const_and_param(self):
+        url, url_type = _fold_template_literal(
+            "${BASE}/users/${id}", {"BASE": "/api/v1"},
+        )
+        assert url == "/api/v1/users/{id}"
+        assert url_type == "literal"
+
+    def test_fully_unresolved_stays_variable(self):
+        """With no literal anchor, result is empty and url_type is variable."""
+        url, url_type = _fold_template_literal("${base}${path}", {})
+        # Truncation at first non-'/'-preceded placeholder leaves nothing.
+        assert url == ""
+        assert url_type == "variable"
+
+    def test_mantine_ui_case_folds_prefix_and_strips_leading_host(self):
+        """The motivating case from WI-sijoh — alertmanager mantine-ui api.ts.
+
+        After host-prefix strip and const fold, the URL becomes
+        /api/v1{path}{queryString}. Because {path} is preceded by a
+        non-'/' char ('1'), it is template continuation — the URL is
+        truncated there and url_type becomes 'variable'. The remaining
+        '/api/v1' is a usable route-matching prefix.
+        """
+        url, url_type = _fold_template_literal(
+            "${pathPrefix}/${API_PATH}${path}${queryString}",
+            {"API_PATH": "api/v1"},
+        )
+        assert url == "/api/v1"
+        assert url_type == "variable"
+
+
+class TestJavaScriptTemplateLiteralFetch:
+    """Tests for fetch(\\`...\\`) backtick template literal scanning (WI-sijoh)."""
+
+    def test_fetch_with_literal_template(self):
+        code = dedent('''
+            fetch(`/api/users`);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+        assert calls[0].url_type == "literal"
+
+    def test_fetch_with_const_interpolation(self):
+        code = dedent('''
+            const API_PATH = "api/v1";
+            fetch(`/${API_PATH}/alerts`);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "/api/v1/alerts"
+        assert calls[0].url_type == "literal"
+
+    def test_fetch_with_path_param(self):
+        code = dedent('''
+            fetch(`/api/users/${id}`);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "/api/users/{id}"
+        assert calls[0].url_type == "literal"
+
+    def test_fetch_mantine_ui_case(self):
+        """The motivating WI-sijoh case from alertmanager mantine-ui/src/api/api.ts."""
+        code = dedent('''
+            export const API_PATH = "api/v1";
+
+            const res = await fetch(
+                `${pathPrefix}/${API_PATH}${path}${queryString}`,
+                { cache: "no-store" }
+            );
+        ''')
+        calls = _scan_javascript_file(Path("api.ts"), code)
+        # pathPrefix host-stripped, API_PATH folded, {path} truncates because
+        # it continues inline with 'v1'. Prefix '/api/v1' is usable for
+        # startswith-style route matching; url_type='variable' flags it.
+        fetch_calls = [c for c in calls if c.url.startswith("/api/v1")]
+        assert len(fetch_calls) == 1
+        assert fetch_calls[0].url == "/api/v1"
+        assert fetch_calls[0].url_type == "variable"
+
+    def test_fetch_fully_variable_template_emits_variable(self):
+        """When nothing can be folded, emit url_type='variable' for the raw template."""
+        code = dedent('''
+            fetch(`${base}${path}`);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].url_type == "variable"
+
+    def test_axios_get_with_template(self):
+        code = dedent('''
+            const BASE = "/api/v1";
+            axios.get(`${BASE}/alerts`);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/v1/alerts"
+        assert calls[0].url_type == "literal"
+
+    def test_axios_post_with_template(self):
+        code = dedent('''
+            axios.post(`/api/items/${id}`, body);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/items/{id}"
+
+    def test_template_literal_does_not_double_match_as_fetch_variable(self):
+        """A single template fetch must not be detected both as template and variable."""
+        code = dedent('''
+            fetch(`/api/users`);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+
+
+class TestJsTemplateLiteralEndToEnd:
+    """Integration: template-literal fetch → Go route should produce routes_to edge."""
+
+    def test_mantine_ui_template_fetch_links_to_go_route(self, tmp_path: Path):
+        (tmp_path / "ui").mkdir()
+        (tmp_path / "ui" / "api.ts").write_text(dedent('''
+            export const API_PATH = "api/v1";
+            async function fetchAlerts(pathPrefix: string, path: string) {
+                return fetch(`${pathPrefix}/${API_PATH}${path}`);
+            }
+        ''').lstrip("\n"))
+
+        route = Symbol(
+            id="api/alerts.go::handleAlerts",
+            name="handleAlerts",
+            kind="route",
+            path=str(tmp_path / "api" / "alerts.go"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+            language="go",
+            meta={"route_path": "/api/v1/alerts", "http_method": "GET"},
+        )
+
+        result = link_http(tmp_path, [route])
+
+        ts_syms = [s for s in result.symbols if s.language == "javascript"]
+        assert len(ts_syms) == 1
+        assert any(
+            e.src == ts_syms[0].id
+            and e.dst == route.id
+            and e.edge_type == "http_calls"
+            for e in result.edges
+        ), "TS → Go route edge missing from link_http result"
+
+    def test_prefix_candidate_gate(self):
+        """_is_prefix_candidate requires >=2 non-empty path segments."""
+        from hypergumbo_core.linkers.http import _is_prefix_candidate
+
+        assert _is_prefix_candidate("/api/v1") is True
+        assert _is_prefix_candidate("/api/v1/users") is True
+        assert _is_prefix_candidate("/") is False
+        assert _is_prefix_candidate("/api") is False
+        assert _is_prefix_candidate("") is False
+
+    def test_variable_url_wildcard_route_prefix_match(self, tmp_path: Path):
+        """Variable-URL prefix match also walks the wildcard (ANY) route bucket."""
+        (tmp_path / "ui").mkdir()
+        (tmp_path / "ui" / "api.ts").write_text(dedent('''
+            export const API_PATH = "api/v1";
+            async function fetchAny(path: string) {
+                return fetch(`/${API_PATH}${path}`);
+            }
+        ''').lstrip("\n"))
+
+        # Route registered without an explicit method ("ANY"/wildcard bucket).
+        route = Symbol(
+            id="api/any.py::any_handler",
+            name="any_handler",
+            kind="route",
+            path=str(tmp_path / "api" / "any.py"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+            language="python",
+            meta={"route_path": "/api/v1/catchall"},
+        )
+
+        result = link_http(tmp_path, [route])
+
+        assert any(
+            e.dst == route.id and e.edge_type == "http_calls"
+            for e in result.edges
+        ), "Wildcard-method route should be reachable via variable-URL prefix match"
+
+    def test_variable_url_below_prefix_threshold_no_match(self, tmp_path: Path):
+        """A shallow prefix (/api) must NOT trigger prefix fallback — too broad."""
+        (tmp_path / "ui").mkdir()
+        (tmp_path / "ui" / "api.ts").write_text(dedent('''
+            async function fetchShallow(path: string) {
+                return fetch(`/api${path}`);
+            }
+        ''').lstrip("\n"))
+
+        route = Symbol(
+            id="api/foo.go::foo",
+            name="foo",
+            kind="route",
+            path=str(tmp_path / "api" / "foo.go"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+            language="go",
+            meta={"route_path": "/api/foo", "http_method": "GET"},
+        )
+
+        result = link_http(tmp_path, [route])
+
+        # Client symbol is still created, but no edge emitted.
+        assert not any(
+            e.edge_type == "http_calls" for e in result.edges
+        ), "Shallow '/api' prefix should not match any route"

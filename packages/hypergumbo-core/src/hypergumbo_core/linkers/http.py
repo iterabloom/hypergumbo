@@ -219,6 +219,53 @@ JS_JQUERY_SHORTHAND_PATTERN = re.compile(
     re.VERBOSE | re.IGNORECASE,
 )
 
+# ---------------------------------------------------------------------------
+# JS/TS template-literal fetch/axios (WI-sijoh)
+# ---------------------------------------------------------------------------
+#
+# TypeScript / modern JavaScript widely uses backtick template literals with
+# ${...} interpolation to build request URLs:
+#
+#     const API_PATH = "api/v1";
+#     fetch(`${pathPrefix}/${API_PATH}${path}${queryString}`);
+#
+# The regex below matches `fetch(`...`)` and `axios.METHOD(`...`)` where
+# the single backtick-delimited string contains the whole URL template.
+# Nested template literals (backticks inside `${...}`) are rare in real
+# client code — we intentionally do NOT recurse, and a file containing
+# one will either miss the outer template or capture a truncated URL;
+# either outcome is safe (no false-positive routes).
+#
+# The captured template is folded by _fold_template_literal() against
+# module-scope const assignments extracted by _extract_module_constants().
+
+# fetch(`TEMPLATE`) with default GET method.
+JS_FETCH_TEMPLATE_PATTERN = re.compile(
+    r"""fetch\s*\(\s*`([^`]*)`""",
+    re.VERBOSE,
+)
+
+# axios.METHOD(`TEMPLATE`, ...)
+JS_AXIOS_TEMPLATE_PATTERN = re.compile(
+    r"""axios\.(get|post|put|patch|delete|head|options)
+        \s*\(\s*`([^`]*)`""",
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Module-scope const/let/var assigned to a plain string literal.
+# Anchored at line start (MULTILINE) with no leading indentation, so
+# function-scope bindings are excluded — only top-level module bindings
+# are safe to substitute without tracking scope.
+JS_MODULE_CONST_PATTERN = re.compile(
+    r"""^(?:export\s+)?(?:const|let|var)\s+
+        ([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*
+        ["']([^"']+)["']\s*;?\s*$""",
+    re.VERBOSE | re.MULTILINE,
+)
+
+# Any ${...} interpolation slot inside a template literal.
+_TEMPLATE_SLOT = re.compile(r"\$\{([^}]+)\}")
+
 
 # ---------------------------------------------------------------------------
 # Elm HTTP client patterns (WI-tinip)
@@ -304,6 +351,93 @@ def _extract_url_from_match(match: re.Match, literal_group: int = 1, var_group: 
         return literal, "literal"
     variable = match.group(var_group)
     return variable, "variable"
+
+
+def _extract_module_constants(content: str) -> dict[str, str]:
+    """Extract module-scope string consts from a JS/TS source file (WI-sijoh).
+
+    Scans for top-level ``const NAME = "value"`` (and ``let``/``var``/``export``
+    variants) where the RHS is a single-line string literal. Function-scope
+    bindings are excluded by the MULTILINE + line-start anchor in
+    ``JS_MODULE_CONST_PATTERN``: any indentation means the binding lives
+    inside a block, and folding it at call sites would be unsound.
+
+    Numeric, object, array, and function-call RHS values are ignored — only
+    plain string literals can be safely folded into URL templates.
+    """
+    return {
+        m.group(1): m.group(2)
+        for m in JS_MODULE_CONST_PATTERN.finditer(content)
+    }
+
+
+def _fold_template_literal(
+    template: str, consts: dict[str, str]
+) -> tuple[str, str]:
+    """Fold ``${NAME}`` slots in a JS/TS template literal (WI-sijoh).
+
+    Strategy (mirrors Elm wrapper-module semantics for host-prefix idioms
+    and preserves path-parameter placeholders for ``_match_route_pattern``):
+
+    * ``${NAME}`` slots resolved via ``consts`` → literal substitution.
+    * Unresolved ``${NAME}`` slots → rewritten as ``{NAME}``.
+    * Leading ``{VAR}/`` is stripped as a host/base URL prefix (the TS
+      analogue of Elm's ``apiUrl ++ "/path"`` idiom).
+    * An unresolved ``{VAR}`` preceded by ``/`` is a path segment parameter
+      and is kept — ``_match_route_pattern`` converts ``:id``/``{id}``/``<id>``
+      style placeholders to ``[^/]+`` on the route side, which matches our
+      ``{VAR}`` on the client side.
+    * An unresolved ``{VAR}`` NOT preceded by ``/`` is arbitrary template
+      continuation (may span segments, may be a query-string tail). The
+      URL is truncated at that point and the remaining literal prefix is
+      used for route matching. Result is marked ``url_type="variable"``
+      so callers can opt into prefix-matching semantics.
+
+    Returns ``(folded_url, url_type)`` where ``url_type`` is ``"literal"``
+    when every slot resolved cleanly (no truncation) AND the URL has a
+    leading ``/`` anchor, else ``"variable"``.
+    """
+    def _sub(match: re.Match) -> str:
+        name = match.group(1).strip()
+        if name in consts:
+            return consts[name]
+        return "{" + name + "}"
+
+    folded = _TEMPLATE_SLOT.sub(_sub, template)
+
+    # Host-prefix strip: `{pathPrefix}/rest...` → `/rest...`.
+    host_prefix = re.match(r"^\{[^}]+\}(/.*)$", folded)
+    if host_prefix is not None:
+        folded = host_prefix.group(1)
+
+    # Find the first ``{VAR}`` that is NOT preceded by ``/``. Placeholders
+    # preceded by ``/`` (or at string start after host-prefix strip, which
+    # always leaves a leading ``/``) are treated as path-segment params and
+    # retained. Non-``/``-preceded placeholders indicate template
+    # continuation and truncate the URL there.
+    truncated = False
+    trunc_match = re.search(r"(?<!/)\{[^}]+\}", folded)
+    if trunc_match is not None:
+        folded = folded[: trunc_match.start()]
+        truncated = True
+
+    if truncated or not folded.startswith("/"):
+        url_type = "variable"
+    else:
+        url_type = "literal"
+    return folded, url_type
+
+
+def _is_prefix_candidate(call_path: str) -> bool:
+    """Return True when ``call_path`` is deep enough for prefix route matching.
+
+    Used by the variable-URL fallback in ``link_http`` (WI-sijoh). A prefix
+    of ``/`` or ``/api`` could match nearly every route in a medium-sized
+    API and would drown real signal in noise — require at least two non-
+    empty path segments (e.g. ``/api/v1``) before allowing prefix fallback.
+    """
+    segments = [seg for seg in call_path.split("/") if seg]
+    return len(segments) >= 2
 
 
 def _extract_path_from_url(url: str) -> str | None:
@@ -493,6 +627,46 @@ def _scan_python_file(file_path: Path, content: str) -> list[HttpClientCall]:
 def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]:
     """Scan a JavaScript/TypeScript file for HTTP client calls."""
     calls: list[HttpClientCall] = []
+
+    # Module-scope string consts used for template-literal folding (WI-sijoh).
+    # Extracted once per file; reused for every fetch/axios template below.
+    module_consts = _extract_module_constants(content)
+
+    # Template-literal fetch/axios calls (WI-sijoh). Processed alongside
+    # the quoted-URL patterns below; no de-dup is needed because the
+    # JS_FETCH_PATTERN / JS_AXIOS_PATTERN _URL_ARG alternation only
+    # matches ['"]...['"] or a bare identifier — never a backtick
+    # template, so the two scan passes are disjoint.
+    for match in JS_FETCH_TEMPLATE_PATTERN.finditer(content):
+        template = match.group(1)
+        url, url_type = _fold_template_literal(template, module_consts)
+        line_num = content[: match.start()].count("\n") + 1
+        calls.append(
+            HttpClientCall(
+                method="GET",
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type=url_type,
+            )
+        )
+
+    for match in JS_AXIOS_TEMPLATE_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        template = match.group(2)
+        url, url_type = _fold_template_literal(template, module_consts)
+        line_num = content[: match.start()].count("\n") + 1
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type=url_type,
+            )
+        )
 
     # Check for fetch with method option first (more specific, literal URLs only)
     fetch_method_matches = set()
@@ -1104,6 +1278,31 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                 if _match_route_pattern(call_path, route_path):
                     matched_route = route
                     break
+
+        # Prefix-match fallback for variable URLs (WI-sijoh). When a
+        # template-literal fetch/axios call truncated at an unresolved
+        # placeholder, the remaining literal prefix can still identify a
+        # route family: any route whose path STARTS WITH the prefix is a
+        # plausible target. First match wins — confidence is already
+        # reduced to 0.65 for url_type='variable' below.
+        #
+        # Requires the prefix to contain at least one non-root `/` segment
+        # (e.g., '/api/v1' qualifies; '/' or '/api' does not) so the
+        # matching stays meaningful.
+        if (
+            matched_route is None
+            and call.url_type == "variable"
+            and _is_prefix_candidate(call_path)
+        ):
+            for route_path, route in candidates:
+                if route_path.startswith(call_path):
+                    matched_route = route
+                    break
+            if matched_route is None:
+                for route_path, route in wildcard_candidates:
+                    if route_path.startswith(call_path):
+                        matched_route = route
+                        break
 
         if matched_route is not None:
             is_cross_language = client_symbol.language != matched_route.language
