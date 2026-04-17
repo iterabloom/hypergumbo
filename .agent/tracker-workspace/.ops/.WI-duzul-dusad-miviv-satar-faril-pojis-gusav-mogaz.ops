@@ -24,3 +24,11 @@
     pr_ref:  # 7473
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1407.md 'A plausible integration shape' §1-3: create a new optional package hypergumbo-lang-rust-analyzer that registers a higher-priority Rust analyzer via the existing analyzer registry pattern. When active, it replaces rust.py's output for .rs files; rust.py remains the no-toolchain fallback (tracked by the separate graceful-degrade item).\n\n**Runtime shape (per notebook):**\n- Shells out ONCE per workspace: cargo metadata + rust-analyzer scip.\n- No long-lived LSP process. This matches the local-first ethos better than driving an LSP server and avoids the persistent-process failure modes.\n- Walks the SCIP index using the translation shim (separate item), emitting Symbol/Edge objects.\n\n**Registration:** higher priority than rust.py in the analyzer registry, so rust.py is only invoked when the rust-analyzer backend is unavailable or failed.\n\n**Testing:** follow the optional-dependency testing playbook — real end-to-end tests when rust-analyzer and Rust toolchain are available in CI; one mock test for the unavailable path. No pytest.mark.skipif escape hatches.\n\n**Depends on:**\n- The SCIP→IR translation shim (separate item) for the bulk of the translation logic.\n- The SCIP-symbol → stable_id mapping decision (separate item) so cross-pass dedup with rust.py output is coherent.\n- The initial mini trial (separate item) answering basic feasibility questions.\n\nThis is the integration skeleton — the SCIP translation logic and stable_id mapping are tracked separately so they can be developed and tested independently."  # 7473
     fields: {}  # 7473
+- op: update  # fa13
+  at: '2026-04-17T06:26:42Z'  # fa13
+  by: human  # fa13
+  actor: jgstern  # fa13
+  clock: 2  # fa13
+  nonce: fa13  # fa13
+  set:  # fa13
+    priority: 2  # fa13

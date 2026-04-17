@@ -1,0 +1,21 @@
+- op: create  # 1fae
+  at: '2026-04-17T06:56:26Z'  # 1fae
+  by: agent  # 1fae
+  actor: jgstern_agent  # 1fae
+  clock: 1  # 1fae
+  nonce: 1fae  # 1fae
+  data:  # 1fae
+    kind: work_item  # 1fae
+    title: "REPLY-FIRST [[preface]] escalation + LLM precedence gate (Phase 2 of WI-ripuz)"  # 1fae
+    status: todo_soft  # 1fae
+    priority: 3  # 1fae
+    parent:  # 1fae
+    tags:  # 1fae
+    - agent_governance  # 1fae
+    - developer_experience  # 1fae
+    isbefore: []  # 1fae
+    duplicate_of: []  # 1fae
+    not_duplicate_of: []  # 1fae
+    pr_ref:  # 1fae
+    description: "Phase 2 refinement of WI-ripuz (Phase 1 shipped REPLY-FIRST CYCLE guidance branch + hook reason-text swap; see WI-ripuz discussion entry naming the PR).\n\nPhase 2 adds the [[...]]-preface escalation path described in WI-ripuz:\n\n1. **Preface detector** (anchored at char 0 of an unread human message, no whitespace inside the brackets, brackets must close). Single codepath regardless of whether the preface text is recognizable English — [[IMPORTANT]], [[do-right-fucking-now]], and [[Mclovin]] all trigger the same path.\n2. **LLM-mediated precedence gate**: when a preface fires but there are other unread items, call a small LLM to answer 'Does the preface tag imply this message takes precedence over the other N unreads?' Thread the answer back into the guidance file so the agent is steered toward the escalated item first.\n3. **Default when gate declines to elevate**: fall back to the equal-priority listing from Phase 1.\n4. **Tests**: acceptance of [[IMPORTANT]]/[[do-right-fucking-now]]/[[Mclovin]] at pos 0; rejection of [[has space]], leading-text [[X]], and [[ space-before-close]]; ambiguous preface still enters the alternate path and the LLM gate receives a well-formed prompt; fallback when gate declines.\n\nTouches governance files (hooks) plus application code (stop_hook.py). The LLM call needs to honour the network allowlist + ALLOWED_WEBSITES.md (OpenRouter is already used elsewhere in hooks)."  # 1fae
+    fields: {}  # 1fae

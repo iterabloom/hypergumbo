@@ -20,3 +20,11 @@
     pr_ref:  # 5d60
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1407.md 'Costs to flag honestly' §4: hypergumbo's stable_id / shape_id model (ADR-0014) is signature-based; SCIP symbols use Sourcegraph's scheme (e.g., 'rust-analyzer cargo crate_name version path/to/def'). Without a deterministic SCIP-symbol → stable_id mapping, a symbol analyzed by both rust.py and the rust-analyzer backend will get two different IDs, breaking cross-pass dedup and any cache/baseline comparison.\n\n**Task:**\n1. Read ADR-0014 to understand the current stable_id derivation for Rust symbols.\n2. Design a mapping function: SCIP symbol + source span → stable_id that produces the same stable_id rust.py would produce for the same source symbol. Where SCIP carries strictly more info than rust.py can recover (e.g., trait-resolved methods), the shared prefix must still match so dedup works; the SCIP-only suffix may extend the id.\n3. Implement as a helper in the hypergumbo-lang-rust-analyzer package (or in core if it needs to be shared with other SCIP-backed analyzers later — see the 'generalize SCIP shim' item).\n4. Write golden tests: take one .rs file, run it through both backends (rust.py and rust-analyzer), assert that shared symbols have matching stable_ids.\n\n**Open question for the mini trial:** does SCIP carry the source span byte offsets we need, or only line/column? Line/column is fine but must be converted correctly across newline conventions. Settle this during the investigation item.\n\nThis is a prerequisite for the package scaffold item — without it, enabling the rust-analyzer backend on a cached analysis double-counts every Rust symbol."  # 5d60
     fields: {}  # 5d60
+- op: update  # efb3
+  at: '2026-04-17T06:26:52Z'  # efb3
+  by: human  # efb3
+  actor: jgstern  # efb3
+  clock: 2  # efb3
+  nonce: efb3  # efb3
+  set:  # efb3
+    priority: 2  # efb3
