@@ -21,3 +21,11 @@
     pr_ref:  # 8b4f
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1407.md 'Next Actions': run rust-analyzer scip against one medium-sized Rust crate (e.g., ripgrep) to smoke-test the integration approach and answer the design-blocking questions before any translation code is written.\n\n**Scope** (explicitly a mini trial per the experiment-design playbook — smoke test + timing only, no conclusions drawn):\n1. Install rust-analyzer locally.\n2. Clone one candidate crate (ripgrep suggested — not too small, not too large, real macros, real trait impls).\n3. Run rust-analyzer scip, capture the SCIP file and timing.\n4. Inspect the SCIP file with a SCIP-aware tool or the protobuf schema directly.\n\n**Questions to answer** (all four are notebook Open Questions):\n1. Does SCIP already encode trait-dispatch concrete impls in the relationship set, or are these lost and needed separately?\n2. How are macro-expanded items represented — with original-source spans or synthetic spans? (Determines how linkers/wasm_bindgen.py and napi.py will join.)\n3. What is the smallest Rust workspace where SCIP indexing overshoots 'would have used tree-sitter' baseline by >10x? Need a heuristic for when the optional backend should auto-disable.\n4. Does SCIP carry byte-offset source spans or only line/column?\n\n**Deliverable:** lab notebook entry with findings, plus a go/no-go recommendation on proceeding with the full integration. If go, the answers feed directly into the SCIP translation shim and stable_id mapping items.\n\n**8-hour rule check:** a single crate run should complete in minutes. No risk of exceeding the 8-hour command cap.\n\nThis item is the gate for all downstream rust-analyzer work — without the answers, the translation shim design is speculative."  # 8b4f
     fields: {}  # 8b4f
+- op: update  # a48d
+  at: '2026-04-17T05:49:15Z'  # a48d
+  by: human  # a48d
+  actor: jgstern  # a48d
+  clock: 2  # a48d
+  nonce: a48d  # a48d
+  set:  # a48d
+    priority: 2  # a48d

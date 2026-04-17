@@ -1,0 +1,21 @@
+- op: create  # 16d9
+  at: '2026-04-17T05:39:29Z'  # 16d9
+  by: agent  # 16d9
+  actor: jgstern_agent  # 16d9
+  clock: 1  # 16d9
+  nonce: 16d9  # 16d9
+  data:  # 16d9
+    kind: work_item  # 16d9
+    title: "slice --entry: accept module:name shorthand (e.g. cli:main) for easier CLI use"  # 16d9
+    status: todo_soft  # 16d9
+    priority: 4  # 16d9
+    parent:  # 16d9
+    tags:  # 16d9
+    - developer_experience  # 16d9
+    - ergonomics  # 16d9
+    isbefore: []  # 16d9
+    duplicate_of: []  # 16d9
+    not_duplicate_of: []  # 16d9
+    pr_ref:  # 16d9
+    description: "Current slice --entry resolution accepts: (a) bare name (falls back to disambiguation if multiple), (b) full node ID (language:absolute-path:span:name:kind). A natural middle ground — module:name — doesn't work. The self-analysis-dogfooding-playbook uses 'cli:main' as an example, which a reader reasonably expects to match packages/.../cli.py symbols named main. Proposal: treat an entry token matching <ident>:<ident> as 'resolve any symbol named <right-ident> whose file path ends in or contains /<left-ident>.<ext>'. If exactly one match, use it; if ambiguous, fall through to the current disambiguation message. Pairs well with WI-hopug (repo-relative IDs) since both are about making entry selection ergonomic on non-trivial repos."  # 16d9
+    fields: {}  # 16d9
