@@ -34,3 +34,10 @@
   clock: 3  # 1e0d
   nonce: 1e0d  # 1e0d
   message: "Closed 2026-04-17 based on accumulating evidence from WI-zakub (default config, 14295 symbols, 0 relationships) + WI-ronot (procMacro.enable=true + procMacro.attributes.enable=true + cargo.buildScripts.enable=true, same 14295 symbols, still 0 relationships). Two configs × workspace with 7 crates × ripgrep's full workspace-member setup = strong signal that rust-analyzer 1.94's SCIP exporter simply does not populate SymbolInformation.relationships for the kinds of inputs hypergumbo will encounter. SCIP integration shim should proceed assuming descriptor-only parsing (already captured in WI-bajuz and WI-mafut designs). If a future rust-analyzer release starts populating relationships, the shim can opportunistically prefer them — but that's additive, not a prerequisite. Diminishing returns from further config sweeps here; unblock downstream work instead."  # 1e0d
+- op: discuss  # 5ffc
+  at: '2026-04-17T14:05:26Z'  # 5ffc
+  by: human  # 5ffc
+  actor: jgstern  # 5ffc
+  clock: 4  # 5ffc
+  nonce: 5ffc  # 5ffc
+  message: "what is the plain-language upshot? how useful is rust-analyzer to hypergumbo when we are trying to use hypergumbo to help us with a polyglot rust+typescript project?"  # 5ffc

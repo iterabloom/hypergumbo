@@ -34,3 +34,10 @@
   clock: 3  # 9581
   nonce: '9581'  # 9581
   message: "Investigated 2026-04-17 on ripgrep with --config-path pointing to procMacro.enable=true + procMacro.attributes.enable=true + cargo.buildScripts.enable=true. Result: SCIP symbol set is BYTE-IDENTICAL to default config — same doc count (98), same occurrences (74536), same symbol count (14295), same kind distribution. Proc-macros are LOADED (stderr shows 'Loading proc-macro libc built' etc, which default config doesn't show) but NOT SURFACED as SCIP symbols. Conclusion: procMacro.enable does not substitute for per-macro pattern code in hypergumbo's wasm_bindgen / napi / tauri_ipc linkers. Full finding + script + config saved to notebookjournal_04172026_0210.md §Follow-up Mini Trial. Caveat: only tested on ripgrep, which has modest proc-macro usage. Proc-macro-heavy crates (clap Parser, wasm_bindgen apps) might differ — noted in notebook as follow-up-if-needed, not filed as separate item until linker FP-volume data suggests it's worth the investigation."  # 9581
+- op: discuss  # bfbc
+  at: '2026-04-17T14:02:05Z'  # bfbc
+  by: human  # bfbc
+  actor: jgstern  # bfbc
+  clock: 4  # bfbc
+  nonce: bfbc  # bfbc
+  message: "please file as separate item at low priority and needs_human_review, that way we will remember to check whether it is worth investigation in the first place"  # bfbc
