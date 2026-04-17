@@ -28,3 +28,18 @@
   set: {}  # 6650
   add:  # 6650
     not_duplicate_of: [WI-tubuk-fabib-huvud-zarom-vagov-tugut-sipih-rutuk]  # 6650
+- op: update  # e1a2
+  at: '2026-04-17T03:42:25Z'  # e1a2
+  by: agent  # e1a2
+  actor: jgstern_agent  # e1a2
+  clock: 3  # e1a2
+  nonce: e1a2  # e1a2
+  set:  # e1a2
+    status: done  # e1a2
+- op: discuss  # bd57
+  at: '2026-04-17T03:42:25Z'  # bd57
+  by: agent  # bd57
+  actor: jgstern_agent  # bd57
+  clock: 4  # bd57
+  nonce: bd57  # bd57
+  message: "Audit complete. Report: /home/jgstern_agent/hypergumbo_lab_notebook/concept_tag_audit_04172026_0335.md\n\nOutcome: MATCH=6, SHAPE_MISMATCH=1, INERT_EMIT=0 (table-only; ~30 narrative INERT_EMIT concepts noted), DEAD_FILTER=0.\n\nSHAPE_MISMATCH finding: middleware_chain.py:81-82 uses list[str] membership against a list[dict] emitter, making the linker silently inert in production despite passing its 100%-coverage tests (fixture also used list[str], masking the bug). Filed:\n\n - INV-tuzub-sufuk-karim-mibuv-lolob-raval-ralag-higuk (invariant, violated, P2) — concept-tag shape uniformity; documents root cause + verified symptom\n - WI-vogoh-bisaj-nipoj-luzof-zabim-gamar-zijab-higad (todo_hard, P2) — fix middleware_chain filter + test fixture\n - WI-hopij-fotug-vihuv-rujar-komip-hutiz-vumid-gosom (todo_soft, P3) — shared has_concept/get_concept helper (structural fix preventing regression)\n - WI-dajul-vutij-vusoh-rilih-fomah-libab-zaluz-vopah (todo_soft, P4) — concept-vocabulary registry for producer/consumer visibility (original motivation)\n\nPhase 5 (live fixture verification) was deferred since the emitter/consumer shapes are verifiable from code alone; INV-tuzub and WI-vogoh together carry the verification forward when the fix is shipped."  # bd57

@@ -1,0 +1,21 @@
+- op: create  # f93a
+  at: '2026-04-17T03:41:57Z'  # f93a
+  by: agent  # f93a
+  actor: jgstern_agent  # f93a
+  clock: 1  # f93a
+  nonce: f93a  # f93a
+  data:  # f93a
+    kind: work_item  # f93a
+    title: "Create concept-vocabulary registry (docs/CONCEPTS.md or LINKERS.md section) for producer/consumer visibility"  # f93a
+    status: todo_soft  # f93a
+    priority: 4  # f93a
+    parent:  # f93a
+    tags:  # f93a
+    - developer_experience  # f93a
+    - framework_dispatch_linkers  # f93a
+    isbefore: []  # f93a
+    duplicate_of: []  # f93a
+    not_duplicate_of: []  # f93a
+    pr_ref:  # f93a
+    description: "Original motivation of the WI-kuvam audit (orthogonal to the SHAPE_MISMATCH defect itself): there is no single place to see which concept strings YAMLs emit and which linkers consume them. The audit surfaced ~30 INERT_EMIT concepts (YAMLs emit them but no linker consumes — e.g. fastapi's 'dependency'/'background_task'/'request'/'auth'/'security'/'error_handler'/'lifecycle'; django's 'controller'/'serializer'/'form'/'admin'/'event_handler'/'auth_backend'/'permission'/'filter'/'template_tag'/'template_filter'; express's 'auth_strategy'/'websocket_handler'/'websocket_emitter'/'websocket_namespace'/'http_client'; cli's 'option'/'argument'/'entrypoint'/'error'/'output'; celery's 'scheduled_task'/'event_handler'/'configuration').\n\nDeliverable: a concept vocabulary registry that enumerates, per concept string:\n  - Which YAML(s) emit it\n  - Which linker(s) / other consumers read it\n  - Expected shape of the dict emitted (which extra keys populate — 'path', 'method', etc.)\n  - Status: live (≥1 consumer) vs inert (0 consumers, candidate for removal or future linker)\n\nLocation options: docs/CONCEPTS.md (new file), or a section in existing docs/LINKERS.md. Either way, generation should ideally be scripted (grep over YAMLs and linker sources) so the registry stays fresh as new concepts are added.\n\nDeferred from WI-kuvam audit. Blocked by nothing; safe to do in parallel with WI-vogoh/WI-hopij."  # f93a
+    fields: {}  # f93a
