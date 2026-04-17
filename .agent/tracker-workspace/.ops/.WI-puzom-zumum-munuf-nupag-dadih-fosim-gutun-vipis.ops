@@ -19,3 +19,18 @@
     pr_ref:  # 8b35
     description: "Observed in session_retrospective_04172026_1012.md Finding 3: vpr-usage was the joint-top injected playbook (6 injections) despite the vPR queue never being used this session and the remote being available throughout.\n\nProposed improvement: extend the PLAYBOOKS registry schema in .agent/hooks/_shared/on_transcript_change.py to allow optional precondition hints (e.g. 'only relevant when .git/PR_QUEUE is non-empty OR remote-unavailable errors present'). The selector reads these as gating conditions and skips inapplicable playbooks before spending tokens.\n\nStart with vpr-usage; apply to any other playbook whose relevance is state-conditional. Touches .agent/hooks/** -> needs_human_review."  # 8b35
     fields: {}  # 8b35
+- op: update  # 44e6
+  at: '2026-04-17T17:10:06Z'  # 44e6
+  by: agent  # 44e6
+  actor: jgstern_agent  # 44e6
+  clock: 2  # 44e6
+  nonce: '44e6'  # 44e6
+  set:  # 44e6
+    status: wont_do  # 44e6
+- op: discuss  # 1588
+  at: '2026-04-17T17:10:06Z'  # 1588
+  by: agent  # 1588
+  actor: jgstern_agent  # 1588
+  clock: 3  # 1588
+  nonce: '1588'  # 1588
+  message: "Closing: same argument as WI-bajak. Adding hand-curated precondition hints to the registry tries to make the selector smarter about state it cannot a priori know, and fights the same selector/dedup architecture. The selector is keyword/context-matching; precondition gating belongs in the agent's own context, not in the registry schema. Vpr-usage false-positive injections are the cost of keeping the selector generic."  # 1588
