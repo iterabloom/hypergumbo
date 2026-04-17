@@ -156,8 +156,13 @@ _CHARS_PER_TOKEN = 4.4
 # SimHash fingerprint bit width
 _SIMHASH_BITS = 64
 
-# SimHash distance threshold for similarity warning (20% of bit width)
-_SIMHASH_THRESHOLD = 13
+# SimHash distance threshold for similarity warning.
+# Tightened from 13 bits (20% of bit width) to 8 bits after observing that
+# 13 fired 5+ false-positive warnings on unrelated items that share common
+# tracker vocabulary (statuses, verbs, shared-domain nouns). 8 matches the
+# stricter validation-pass threshold — validation.py imports this constant
+# so the two code paths stay in sync.
+_SIMHASH_THRESHOLD = 8
 
 # Discussion soft cap (entry count)
 _DISCUSSION_SOFT_CAP = 20

@@ -878,6 +878,19 @@ class TestSimHash:
         tokens = _tokenize("Hello World! Test-123")
         assert tokens == ["hello", "world", "test", "123"]
 
+    def test_simhash_threshold_is_unified_with_validation(self) -> None:
+        """store._SIMHASH_THRESHOLD must equal validation._SIMHASH_THRESHOLD.
+
+        Two code paths check SimHash similarity — create-time (store) and
+        validation-pass (validation). They must use the same threshold to
+        avoid accidental drift. Tighter than 13 (the old loose create-time
+        value) to reduce false-positive warnings on unrelated items that
+        share common tracker vocabulary.
+        """
+        from hypergumbo_tracker import validation as _validation_mod
+        assert _SIMHASH_THRESHOLD == _validation_mod._SIMHASH_THRESHOLD
+        assert _SIMHASH_THRESHOLD <= 8
+
     def test_item_text_for_simhash(self) -> None:
         data = {
             "title": "Test Title",

@@ -37,6 +37,7 @@ from hypergumbo_tracker.store import (
     _compute_simhash,
     _hamming_distance,
     _parse_ops_file,
+    _SIMHASH_THRESHOLD,
     compile_ops,
 )
 
@@ -49,9 +50,6 @@ _VALID_OP_TYPES = frozenset({
 
 # Required common fields on every op
 _REQUIRED_COMMON_FIELDS = ("op", "at", "by", "clock", "nonce")
-
-# Default SimHash threshold for similarity warnings
-_SIMHASH_THRESHOLD = 8
 
 # Pattern to extract inline nonce comment from a line: `  # <nonce>`
 _NONCE_COMMENT_RE = re.compile(r"  # ([0-9a-f]{4})$")

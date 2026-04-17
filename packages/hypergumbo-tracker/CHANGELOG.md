@@ -17,6 +17,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Fixed
 
+- **SimHash similarity-warning threshold unified at 8 bits** (WI-giroz): `store._SIMHASH_THRESHOLD` was 13 (create-time warning) while `validation._SIMHASH_THRESHOLD` was 8 (validation-pass check) — accidental drift between two code paths checking the same property. The looser create-time threshold fired 5+ false-positive warnings per new item against unrelated tracker items that shared common domain vocabulary (e.g. the words "tracker", "stop", "hook"). Unified by importing the constant from `store` into `validation`, and tightened store's value to 8 to match. Net effect: fewer spurious near-duplicate warnings when filing new items; identical-by-paraphrase items (19/20 shared tokens) still warn as they did before.
+
 - **`discuss` gate-message shows the working `--ack-thread` arg order** (WI-foril): the re-run hint printed when the gate fires now reads `tracker discuss <id> "<your reply>" --ack-thread` instead of the previous form `--ack-thread "<your reply>"`. Argparse's subparser parsing rejects the flag-before-positional form (an `nargs="?"` positional with a following optional flag won't accept the message after the flag — it's parsed as extra args). The fix is cosmetic but high-leverage: agents and humans alike were following the broken example shown by the gate itself. Also adds a regression check that the broken order really does still fail.
 
 ### Changed
