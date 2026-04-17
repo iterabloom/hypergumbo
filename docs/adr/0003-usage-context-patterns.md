@@ -2,7 +2,7 @@
 # ADR-0003 Extension: Usage Context Patterns
 
 ## Status
-Proposed
+Implemented — the `UsageContext` IR type is live at `packages/hypergumbo-core/src/hypergumbo_core/ir.py:538`, serialised via `schema.py`, produced by `analyze/base.py` + `analyze/all_analyzers.py`, surfaced in `cli.py` output, and consumed by `linkers/route_handler.py`. All five example frameworks listed in this document have YAML pattern files: `django.yaml` (call-based), `express.yaml` (call-based), `hapi.yaml` (data-driven), `nextjs.yaml` (file-based), and `sinatra.yaml` (block/DSL-based). The Clojure data-driven axis is covered by `ring-compojure.yaml`. 22 framework YAML files currently use usage-context patterns in one shape or another. The Django YAML's header comment ("ADR-0003 v1.0.x + v1.1.x … Usage-based patterns (v1.1.x): Match URL routing via `path()`/`re_path()` calls") tracks the phased rollout explicitly.
 
 ## Relationship to ADR-0003
 
