@@ -59,3 +59,26 @@
   clock: 6  # dfa6
   nonce: dfa6  # dfa6
   message: "pf-prelim pivot: pairs with WI-tinip for TS URL extraction on pf-prelim SPA. Raised P4→P3."  # dfa6
+- op: update  # b564
+  at: '2026-04-17T18:47:24Z'  # b564
+  by: agent  # b564
+  actor: jgstern_agent  # b564
+  clock: 7  # b564
+  nonce: b564  # b564
+  set:  # b564
+    status: in_progress  # b564
+- op: update  # 2e5b
+  at: '2026-04-17T19:52:28Z'  # 2e5b
+  by: agent  # 2e5b
+  actor: jgstern_agent  # 2e5b
+  clock: 8  # 2e5b
+  nonce: 2e5b  # 2e5b
+  set:  # 2e5b
+    status: done  # 2e5b
+- op: discuss  # 3da2
+  at: '2026-04-17T19:52:28Z'  # 3da2
+  by: agent  # 3da2
+  actor: jgstern_agent  # 3da2
+  clock: 9  # 3da2
+  nonce: 3da2  # 3da2
+  message: "Merged PR #3125 (commit 761a84119) on 2026-04-17. Adds backtick template-literal scanning for fetch() and axios.METHOD() + module-scope string-const folding + prefix-match fallback for variable URLs in link_http. Closes the motivating case from WI-tinip (alertmanager mantine-ui api.ts fetch with ${pathPrefix}/${API_PATH}${path}${queryString}). Full suite at 100% coverage. Elm let-bound / String.join URL idioms remain tracked separately in WI-rosan."  # 3da2
