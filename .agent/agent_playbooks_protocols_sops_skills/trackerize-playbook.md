@@ -54,7 +54,7 @@ Only create parent-child relationships when there is a compelling structural rea
 
 ### 7. Apply tags
 
-Use tags to make items filterable. Pick from well-known tags when they fit (`developer_experience`, `analysis_quality`, `cross_language_linkers`, `ci_infrastructure`, `bakeoff_infrastructure`, `language_additions`). Custom tags are fine when none of the well-known ones apply.
+Use tags to make items filterable. Pick from well-known tags when they fit (`developer_experience`, `analysis_quality`, `ci_infrastructure`, `bakeoff_infrastructure`, `language_additions`). For linker work, pick the subcategory-specific tag that matches the item's scope (per [ADR-0003-ext: Linker Subcategory Restoration](../../docs/adr/0003-linker-subcategory-restoration.md)): `protocol_linkers` (framework-agnostic — HTTP, SQL, pub-sub, events), `cross_language_linkers` (Bridge subcategory — FFI and language-pair boundaries, retained for continuity with pre-ADR-0003-ext items), `framework_dispatch_linkers` (Framework subcategory — DI, ORM, decorators, JSX composition, middleware), or `infrastructure_linkers` (graph-structural utilities — containment, inheritance, module resolution). Custom tags are fine when none of the well-known ones apply.
 
 ### 8. Check for duplicates
 
