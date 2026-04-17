@@ -25,13 +25,30 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import json
 import os
+import re
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
+from typing import Callable
 
 from hypergumbo_tracker.models import CompiledItem, TrackerConfig, Tier, load_config
 from hypergumbo_tracker.store import has_unread_human_messages, unread_human_messages
 from hypergumbo_tracker.trackerset import TrackerSet
+
+# [[preface]] detector (WI-mofaz Phase 2). Must be anchored at char 0 of an
+# unread human message, contain at least one non-bracket / non-whitespace char,
+# and close with ]]. Single codepath regardless of whether the tag text is
+# recognizable English — the LLM gate decides meaning, not this regex.
+_PREFACE_RE = re.compile(r"^\[\[([^\[\]\s]+)\]\]")
+
+_OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+_PRECEDENCE_GATE_MODEL = os.environ.get(
+    "TRACKER_PRECEDENCE_GATE_MODEL",
+    "mistralai/mistral-small-3.2-24b-instruct",
+)
 
 
 def count_todos(
@@ -340,6 +357,114 @@ def generate_guidance(
     return str(filepath.resolve())
 
 
+def _extract_preface(message: str) -> str | None:
+    """Return the tag text inside [[...]] at char 0, or None.
+
+    Valid prefaces (single codepath, regardless of tag semantics):
+      - Start at character 0 of the message (no leading text / whitespace)
+      - Contain at least one character between the brackets
+      - Contain no whitespace or additional brackets inside
+      - Close with ``]]``
+
+    Accepted: ``[[IMPORTANT]]``, ``[[do-right-fucking-now]]``, ``[[Mclovin]]``.
+    Rejected: ``[[has space]]``, ``leading text [[X]]``, ``[[ space-before-close]]``,
+    ``[[space-after-close ]]``, ``[[unclosed``, ``[single]``, ``[[]]``.
+
+    WI-mofaz Phase 2: the gate downstream decides whether the tag implies
+    precedence — this function only recognizes the *shape*.
+    """
+    m = _PREFACE_RE.match(message)
+    if not m:
+        return None
+    return m.group(1)
+
+
+def _call_openrouter(prompt: str) -> str:
+    """Minimal OpenRouter call for the precedence gate (WI-mofaz Phase 2).
+
+    Returns the model's text response, or empty string on any failure
+    (missing API key, network error, malformed JSON). Intentionally
+    fail-soft: the caller treats an empty response as "do not elevate".
+    The OpenRouter domain is already covered by ALLOWED_WEBSITES.md and
+    used by .agent/hooks/_shared/on_transcript_change.py.
+    """
+    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    if not api_key:
+        return ""
+
+    payload = json.dumps({
+        "model": _PRECEDENCE_GATE_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 16,
+    }).encode()
+
+    req = urllib.request.Request(  # noqa: S310 — https scheme only, constant URL
+        _OPENROUTER_URL,
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310
+            data = json.loads(resp.read())
+            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    except (urllib.error.URLError, json.JSONDecodeError, KeyError, IndexError, TimeoutError, OSError):
+        return ""
+
+
+def _precedence_gate(
+    preface: str,
+    item_id: str,
+    item_title: str,
+    other_ids: list[str],
+    other_titles: list[str],
+    *,
+    api_caller: Callable[[str], str] | None = None,
+) -> bool:
+    """Ask the LLM whether ``[[preface]]`` implies precedence.
+
+    The question is only meaningful when there are other unreads to take
+    precedence *over* — with zero others, the function returns False
+    without calling the LLM. Any non-YES response (including empty,
+    exception, unrecognized) returns False. The default is to NOT
+    elevate; elevation requires an explicit affirmative signal.
+
+    ``api_caller`` lets tests inject a fake without monkeypatching urllib.
+    """
+    if not other_ids:
+        return False
+
+    prompt_lines = [
+        f"A human has prefaced their message with the tag [[{preface}]].",
+        f"The message is on tracker item {item_id}: \"{item_title}\".",
+        "",
+        f"There are {len(other_ids)} other unread human message(s) on these items:",
+    ]
+    for oid, otitle in zip(other_ids, other_titles, strict=True):
+        prompt_lines.append(f"- {oid}: \"{otitle}\"")
+    prompt_lines.extend([
+        "",
+        f"Does the tag [[{preface}]] imply that this particular message takes "
+        "precedence over the other unreads (e.g. signaling urgency, priority, "
+        "or a directive to answer first)?",
+        "",
+        "Answer with a single word: YES or NO.",
+    ])
+    prompt = "\n".join(prompt_lines)
+
+    caller = api_caller if api_caller is not None else _call_openrouter
+    try:
+        response = caller(prompt)
+    except Exception:
+        return False
+
+    if not response:
+        return False
+    return response.strip().upper().startswith("YES")
+
+
 def _build_reply_first_guidance(
     *,
     timestamp: datetime.datetime,
@@ -347,17 +472,54 @@ def _build_reply_first_guidance(
     items_with_unread_blocking: set[str],
     unread_non_blocking: list[CompiledItem],
 ) -> str:
-    """Render the REPLY-FIRST CYCLE guidance document (WI-ripuz).
+    """Render the REPLY-FIRST CYCLE guidance document (WI-ripuz, WI-mofaz).
 
     Called from generate_guidance when any unread human messages exist.
     Deliberately omits the hard/violated/soft TODO listings and the
     normal "Guidance" paragraph — the whole point of this branch is to
     make reply debt the only visible assignment.
+
+    Phase 2 (WI-mofaz): items whose first unread human message begins with
+    a ``[[tag]]`` preface are run past an LLM precedence gate. When the
+    gate returns YES and other unreads exist, the item is lifted into a
+    top-of-document "## Escalated" section and removed from the regular
+    blocking / non-blocking listings. When the gate declines to elevate
+    (or the API key is unavailable, or the call fails), guidance falls
+    back to the Phase 1 equal-priority listing.
     """
     ts = timestamp.strftime('%Y-%m-%dT%H:%M:%SZ')
     blocked = [i for i in all_items if i.id in items_with_unread_blocking]
     blocked.sort(key=lambda i: (i.priority, i.id))
-    unread_total = len(blocked) + len(unread_non_blocking)
+    all_unread: list[CompiledItem] = blocked + list(unread_non_blocking)
+    unread_total = len(all_unread)
+
+    # Phase 2: preface detection + precedence gate. Every item in all_unread
+    # was selected because has_unread_human_messages returned True, so
+    # unread_human_messages is guaranteed non-empty here.
+    preface_tags: dict[str, str] = {}
+    for item in all_unread:
+        msgs = unread_human_messages(item)
+        tag = _extract_preface(msgs[0].message)
+        if tag is not None:
+            preface_tags[item.id] = tag
+
+    elevated: dict[str, str] = {}  # id -> tag (preserves preface_tags order)
+    for item_id, tag in preface_tags.items():
+        others = [i for i in all_unread if i.id != item_id]
+        this = next(i for i in all_unread if i.id == item_id)
+        if _precedence_gate(
+            tag,
+            item_id,
+            this.title,
+            [i.id for i in others],
+            [i.title for i in others],
+        ):
+            elevated[item_id] = tag
+
+    elevated_items = [i for i in all_unread if i.id in elevated]
+    elevated_items.sort(key=lambda i: (i.priority, i.id))
+    remaining_blocked = [i for i in blocked if i.id not in elevated]
+    remaining_non_blocking = [i for i in unread_non_blocking if i.id not in elevated]
 
     lines: list[str] = []
     lines.append(f"# REPLY-FIRST CYCLE — {ts}")
@@ -387,9 +549,26 @@ def _build_reply_first_guidance(
     )
     lines.append("")
 
-    if blocked:
+    if elevated_items:
+        lines.append("## Escalated (preface precedence gate → YES)")
+        for item in elevated_items:
+            msgs = unread_human_messages(item)
+            tag = elevated[item.id]
+            lines.append(
+                f"- [{item.id}] P{item.priority} [[{tag}]] {item.title} "
+                f"({len(msgs)} unread)"
+            )
+        lines.append("")
+        lines.append(
+            "Reply to the escalated item(s) above first — the human's "
+            "preface tag was judged to carry precedence over the other "
+            "unreads. Then continue with the listing below."
+        )
+        lines.append("")
+
+    if remaining_blocked:
         lines.append("## Blocking items with unread messages")
-        for item in blocked:
+        for item in remaining_blocked:
             msgs = unread_human_messages(item)
             lines.append(
                 f"- [{item.id}] P{item.priority} {item.title} "
@@ -397,9 +576,9 @@ def _build_reply_first_guidance(
             )
         lines.append("")
 
-    if unread_non_blocking:
+    if remaining_non_blocking:
         lines.append("## Non-blocking items with unread messages")
-        for item in unread_non_blocking:
+        for item in remaining_non_blocking:
             msgs = unread_human_messages(item)
             lines.append(
                 f"- [{item.id}] P{item.priority} {item.title} "
