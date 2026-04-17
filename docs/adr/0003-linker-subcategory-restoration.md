@@ -2,7 +2,7 @@
 # ADR-0003 Extension: Linker Subcategory Restoration
 
 Date: 2026-04-16
-Status: Proposed
+Status: Implemented — all seven rollout PRs merged 2026-04-16 to 2026-04-17 (this ADR PR #3076, `docs/LINKERS.md` rewrite PR #3077, `docs/hypergumbo-spec.md` in-place corrections PR #3078, ADR-0003/0010/0012/0015 corrections PR #3079, module-docstring sweep + README/ARCHITECTURE/CHANGELOG PR #3080, `generate-architecture` subcategory enforcement PR #3084, governance-file edits — `AGENTS.md` + three playbooks — PR #3089 via tracker item WI-hizab). All 45 linker modules declare their subcategory; the `generate-architecture` Uncategorized counter is 0 and will surface any future regression.
 
 ## Supplements
 

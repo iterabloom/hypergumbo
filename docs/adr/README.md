@@ -12,7 +12,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0003](0003-architectural-analysis-and-revision-plan.md) | Architectural Analysis and Revision Plan | Historical | 2026-01-07 |
 | [0003-ext](0003-call-patterns-extension.md) | Call-Based Framework Patterns | Superseded by 0003-usage-context-patterns | |
 | [0003-ext](0003-usage-context-patterns.md) | Usage Context Patterns | Proposed | |
-| [0003-ext](0003-linker-subcategory-restoration.md) | Linker Subcategory Restoration | Proposed | 2026-04-16 |
+| [0003-ext](0003-linker-subcategory-restoration.md) | Linker Subcategory Restoration | Implemented | 2026-04-16 |
 | [0004](0004-file-taxonomy.md) | File Taxonomy: Tier and Role Classification | Accepted | 2025-01-14 |
 | [0005](0005-sketch-budget-allocation.md) | Sketch Budget Allocation and Section Composition | Accepted | 2025-01-15 |
 | [0006](0006-variable-type-inference.md) | Variable Type Inference for Method Call Resolution | Accepted | 2025-01-21 |
