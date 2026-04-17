@@ -156,6 +156,8 @@ some-long-command > /tmp/cmd-output.log 2>&1
 
 **Why:** Re-running a 15-minute command because `| tail -30` missed the relevant lines is pure waste. Capturing to a file costs nothing and enables targeted searching after the fact.
 
+**Hazard specific to `auto-pr`:** when `auto-pr` detects the feature branch is behind base, it backs up `.agent/tracker-workspace/.ops` and `.agent/tracker/.ops`, rebases, then restores the backup. Tracker `discuss` / `add` / `update` operations performed *during* the auto-pr run are at risk of being overwritten by the restore step (observed 2026-04-17, tracked as WI-buhov). Recovery: lost edits may be auto-stashed under a fresh `WIP on dev:` entry — `git stash list`, reset `affected-tests.txt`, then `git stash pop`, then `./scripts/tracker sync`. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/output-capture-long-running-playbook.md`.)
+
 
 ## Pre-Work Checklist
 Before starting any new feature: verify no auto-pr is in flight (PR_PENDING gate), flush queued vPRs if remote is available, **determine the authoritative remote** (check `.git/CI_FAILOVER_ACTIVE` — use `selfh` if present, `origin` otherwise), sync dev from that remote, review the spec and changelog for current progress, then create a feature branch with the naming convention author/[feat|fix|docs|refactor]/description. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md`.)

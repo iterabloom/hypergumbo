@@ -199,6 +199,16 @@ PLAYBOOKS = [
      "direct pytest. Smart-test provides a compact ~20-line summary, saves full output to "
      ".ci/pytest-output.log, and runs only tests affected by changed files. Commit "
      ".ci/affected-tests.txt with every PR for CI smart test selection."),
+    ("output-capture-long-running-playbook",
+     ".agent/agent_playbooks_protocols_sops_skills/output-capture-long-running-playbook.md",
+     "NEVER pipe the output of long-running commands (auto-pr, merge-pr, pytest, bakeoff-*, "
+     "ci-debug, release-check) through | tail -N or | head -N. Redirect to a file "
+     "(command > /tmp/cmd.log 2>&1) and use the Read tool or Grep on the file. For commands "
+     "that take many minutes, run in background and point a Monitor at the file with an "
+     "alternation covering every terminal state, not just the happy path. Hazard: auto-pr's "
+     ".ops backup/restore cycle can overwrite tracker discuss/add/update operations made "
+     "during the run — avoid tracker writes while auto-pr is in flight. Recovery for lost "
+     ".ops edits: git stash list, then git stash pop (after resetting .ci/affected-tests.txt)."),
     ("pre-work-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md",
      "Checklist before starting any new feature: verify no auto-pr is in flight "
