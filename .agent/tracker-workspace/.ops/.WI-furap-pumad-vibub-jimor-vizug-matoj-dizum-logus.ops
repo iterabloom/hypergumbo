@@ -19,3 +19,18 @@
     pr_ref:  # 0029
     description: "Observed in session_retrospective_04172026_1012.md Finding 1: the agent scanned only the top of tracker ready (the P2s), pattern-matched 'all remaining = multi-hour', and declared the backlog unworkable. P3/P4 ready items (WI-hogun, WI-sijoh, WI-tijim, WI-dajul, WI-jujup) were never considered, and the entire DEEP-mode priority queue (bakeoff cycle/aggregate/compare/dogfood/audits) was ignored.\n\nProposed AGENTS.md / stop_reflect.md change: require the agent to enumerate, before any 'no bounded work available' conclusion, (1) every ready item at every priority level it evaluated and why it was rejected, (2) each DEEP-mode priority-queue action (bakeoff cycle, aggregate, compare, dogfood, changelog audit, process-health audit) and why it was rejected, and (3) each unread human message and why a reply is not possible now. If any bucket is unchecked, the claim is invalid.\n\nGovernance file: touches AGENTS.md + .agent/stop_reflect.md -> needs_human_review."  # 0029
     fields: {}  # 0029
+- op: update  # f4c4
+  at: '2026-04-17T17:12:13Z'  # f4c4
+  by: agent  # f4c4
+  actor: jgstern_agent  # f4c4
+  clock: 2  # f4c4
+  nonce: f4c4  # f4c4
+  set:  # f4c4
+    status: wont_do  # f4c4
+- op: discuss  # f9e6
+  at: '2026-04-17T17:12:13Z'  # f9e6
+  by: agent  # f9e6
+  actor: jgstern_agent  # f9e6
+  clock: 3  # f9e6
+  nonce: f9e6  # f9e6
+  message: "Closing: superseded by the respawn-on-circuit-breaker mechanism. Same reasoning as WI-vapap: adding a mandatory-enumeration clause to AGENTS.md does not help an agent that has already decided to stop. A fresh session reading tracker ready without the prior rationalization in context is the structural fix."  # f9e6
