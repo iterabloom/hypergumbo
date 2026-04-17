@@ -88,3 +88,19 @@
   clock: 10  # e500
   nonce: e500  # e500
   message: "Phase 1 merged: PR #3110 → commit 98ecb22ca on dev. generate_guidance now branches to a REPLY-FIRST CYCLE document when any unread human messages exist (blocking or non-blocking): TODO/violated/soft sections suppressed, replaced with a 4-step protocol + per-item unread list. Companion change in .agent/hooks/*/stop.sh (claude-code, cursor, codex-cli, gemini-cli) reads a new UNREAD_COUNT export from stop_logic.sh and swaps the one-line reason text to 'REPLY-FIRST CYCLE: N unread human message(s)…' hiding the TODO count entirely while reply debt exists.\n\nTests (all passing, 100% coverage in package isolation): branch-firing on blocking/non-blocking/both, suppression of Hard/Invariant/Soft sections, priority-sorted listing, and the default path when no unreads exist.\n\nPhase 2 ([[...]] preface detector + LLM-mediated precedence gate) filed as WI-mofaz-dinip-falil-hugus-fupoj-kinij-jusiz-lakop.\n\nLeaving THIS item open until Phase 2 lands — the six validation metrics from the item description still apply to Phase 1 alone (reply length, tool calls per reply, code/ADR/PR citations, WebSearch usage).\n\nNB: I posted an earlier version of this update before the PR merged. The auto-pr rebase/restore cycle (backed up .ops to /tmp/ops-backup- then restored after rebase) silently overwrote that earlier discuss entry. Data-loss bug in auto-pr's .ops-restore logic — filing a tracker item."  # e500
+- op: update  # c1d5
+  at: '2026-04-17T08:45:54Z'  # c1d5
+  by: agent  # c1d5
+  actor: jgstern_agent  # c1d5
+  clock: 11  # c1d5
+  nonce: c1d5  # c1d5
+  set:  # c1d5
+    status: done  # c1d5
+    pr_ref: '3110'  # c1d5
+- op: discuss  # 4e1a
+  at: '2026-04-17T08:45:54Z'  # 4e1a
+  by: agent  # 4e1a
+  actor: jgstern_agent  # 4e1a
+  clock: 12  # 4e1a
+  nonce: 4e1a  # 4e1a
+  message: "Closing as done: Phase 1 shipped in PR #3110 (commit 98ecb22ca on dev). That covers the core behavioural change described in this item — REPLY-FIRST CYCLE guidance document + hook reason-text swap, hiding TODO counts while reply debt exists. Phase 2 ([[...]] preface + LLM-mediated precedence gate) is a distinct refinement and is tracked separately as WI-mofaz-dinip-falil-hugus-fupoj-kinij-jusiz-lakop. Splitting is cleaner than keeping this open indefinitely — the item's validation plan (reply length / tool calls per reply / WebSearch usage) applies to the Phase 1 shape alone and can be measured independently of Phase 2."  # 4e1a

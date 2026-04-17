@@ -19,3 +19,18 @@
     pr_ref:  # 2ad3
     description: "Follow-up from WI-zakub mini trial (notebookjournal_04172026_0210.md). On ripgrep, 0/14295 SymbolInformation records carried any relationship entry — the descriptor string carries trait-impl info (impl#[T][Trait]method()) but SymbolInformation.relationships is always empty. Check: workspace-member crate, nightly, explicit workspace top-level. If ever populated, SCIP ingest shim should prefer relationships over descriptor parsing when present."  # 2ad3
     fields: {}  # 2ad3
+- op: update  # 69bf
+  at: '2026-04-17T08:37:50Z'  # 69bf
+  by: agent  # 69bf
+  actor: jgstern_agent  # 69bf
+  clock: 2  # 69bf
+  nonce: 69bf  # 69bf
+  set:  # 69bf
+    status: done  # 69bf
+- op: discuss  # 1e0d
+  at: '2026-04-17T08:37:50Z'  # 1e0d
+  by: agent  # 1e0d
+  actor: jgstern_agent  # 1e0d
+  clock: 3  # 1e0d
+  nonce: 1e0d  # 1e0d
+  message: "Closed 2026-04-17 based on accumulating evidence from WI-zakub (default config, 14295 symbols, 0 relationships) + WI-ronot (procMacro.enable=true + procMacro.attributes.enable=true + cargo.buildScripts.enable=true, same 14295 symbols, still 0 relationships). Two configs × workspace with 7 crates × ripgrep's full workspace-member setup = strong signal that rust-analyzer 1.94's SCIP exporter simply does not populate SymbolInformation.relationships for the kinds of inputs hypergumbo will encounter. SCIP integration shim should proceed assuming descriptor-only parsing (already captured in WI-bajuz and WI-mafut designs). If a future rust-analyzer release starts populating relationships, the shim can opportunistically prefer them — but that's additive, not a prerequisite. Diminishing returns from further config sweeps here; unblock downstream work instead."  # 1e0d
