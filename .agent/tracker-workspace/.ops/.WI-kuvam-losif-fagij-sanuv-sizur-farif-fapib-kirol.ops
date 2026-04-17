@@ -1,0 +1,30 @@
+- op: create  # fb4e
+  at: '2026-04-17T01:04:10Z'  # fb4e
+  by: agent  # fb4e
+  actor: jgstern_agent  # fb4e
+  clock: 1  # fb4e
+  nonce: fb4e  # fb4e
+  data:  # fb4e
+    kind: work_item  # fb4e
+    title: "Audit FRAMEWORK_PATTERNS concept-tag schema: verify shape consistency end-to-end"  # fb4e
+    status: todo_hard  # fb4e
+    priority: 3  # fb4e
+    parent:  # fb4e
+    tags:  # fb4e
+    - analysis_quality  # fb4e
+    - framework_dispatch_linkers  # fb4e
+    isbefore: []  # fb4e
+    duplicate_of: []  # fb4e
+    not_duplicate_of: []  # fb4e
+    pr_ref:  # fb4e
+    description: "Audit the contract between framework_patterns.py enrichment (consuming frameworks/*.yaml) and the Framework-subcategory linker filters in linkers/*.py. Goal is to verify whether the shape of symbol.meta['concepts'] is consistent across emitters and consumers, and to produce an auditable inventory of the concept vocabulary.\n\nMOTIVATION. Grep-level inspection (2026-04-16) showed linkers consuming symbol.meta['concepts'] in two superficially incompatible forms:\n\n  Linker snippets showing list-of-strings handling:\n    # middleware_chain.py\n    concepts = sym.meta.get('concepts', [])\n    if 'middleware' not in concepts: continue\n\n  Linker snippets showing list-of-dicts handling:\n    # orm.py\n    concepts = sym.meta.get('concepts', [])\n    for concept in concepts:\n        if isinstance(concept, dict) and concept.get('concept') == 'model': ...\n    # subprocess_cli.py\n    return any(c.get('concept') == 'command' for c in concepts)\n    # http.py _has_route_concept\n    return any(c.get('concept') == 'route' for c in concepts if isinstance(c, dict))\n\nAt filing time, whether this reflects a real inconsistency, a silently broken consumer, or a normalisation step I haven't inspected, is unknown. This audit resolves the question.\n\nAUDIT SCOPE (one deliverable: a lab-notebook report with structured findings):\n\n  1. Read packages/hypergumbo-core/src/hypergumbo_core/framework_patterns.py end-to-end. Identify the code path that writes symbol.meta['concepts']. Record the exact shape emitted (including any conditional branches).\n\n  2. Read a representative sample of framework YAMLs (include at minimum: one that emits 'route' — e.g. fastapi.yaml; one that emits 'model' — e.g. django.yaml; one that emits 'middleware' — e.g. express.yaml; one that emits 'command' — e.g. cli.yaml or a CLI-framework YAML; one that emits 'task' — e.g. celery.yaml). Record how each YAML declares its concept tags structurally.\n\n  3. For every file in packages/hypergumbo-core/src/hypergumbo_core/linkers/*.py, grep for symbol.meta.get('concepts') and the surrounding filter logic. Record (linker_file, concept_string_literal, filter_shape_expected). Expected shape is either 'list[str]' or 'list[dict with concept key]' or 'other' (record the other form explicitly).\n\n  4. Cross-reference: for each concept string literal in (3), check whether the emitter in (1)+(2) produces that concept, and in what shape. Record one of four outcomes:\n       MATCH        — emitter and consumer agree on shape\n       SHAPE_MISMATCH — emitter emits one shape, consumer expects another (this is the conjectured defect)\n       INERT_EMIT    — YAML emits a concept no linker consumes (silent no-op on the YAML side)\n       DEAD_FILTER   — linker filters for a concept no YAML emits (silent no-op on the linker side)\n\n  5. For any SHAPE_MISMATCH, verify with a live test: build a minimal fixture repo that triggers the affected framework, run hypergumbo, and observe whether the linker actually emits any edges. This is the symptom evidence that determines whether the conjectured defect is real.\n\nDELIVERABLE. ~/hypergumbo_lab_notebook/concept_tag_audit_<MMDDYYYY_HHMM>.md containing:\n  - The emitter-shape finding from step 1 (including code citation — snippet, not line number).\n  - The YAML-shape findings from step 2, with one subsection per sample.\n  - A table with columns (linker_file, concept_name, filter_shape, outcome) covering every concept-filter in every linker module.\n  - An explicit count of MATCH, SHAPE_MISMATCH, INERT_EMIT, DEAD_FILTER outcomes.\n  - A recommendation: zero SHAPE_MISMATCH means the concept-tag schema is de facto consistent (Problem 1 was a phantom); in that case close this item and file a separate todo_soft for the producer/consumer coupling visibility concern. Non-zero SHAPE_MISMATCH means file an invariant with status=violated citing this audit's findings as the verified symptom.\n\nFOLLOW-UP ITEMS (deferred to after this audit completes; do NOT file preemptively):\n  - If SHAPE_MISMATCH found: an invariant item for schema uniformity with the fix scoped by evidence.\n  - If INERT_EMIT or DEAD_FILTER found: one work_item per orphan cluster.\n  - Regardless of outcome: a todo_soft for a concept-vocabulary registry (docs/CONCEPTS.md or a LINKERS.md section) so the producer/consumer coupling is auditable without grep. This captures the visibility concern that motivated the audit but is orthogonal to whether Problem 1 is real.\n\nSupersedes INV-guhir-bovon-nobip-tukag-hisob-tihim-hohih-gaton (withdrawn as mis-filed: invariant status=violated without verified symptom; bundled audit + formalisation + documentation-registry concerns into one item).\n\nMethodology reuse: the ADR-0003-ext audit's registered-predictions + blind-classification + null-finding-search pattern applies cleanly here. Phase 1 estimated ~1-2 hours of subagent work; cheap and deterministic."  # fb4e
+    fields: {}  # fb4e
+- op: update  # 6650
+  at: '2026-04-17T01:05:01Z'  # 6650
+  by: agent  # 6650
+  actor: jgstern_agent  # 6650
+  clock: 2  # 6650
+  nonce: '6650'  # 6650
+  set: {}  # 6650
+  add:  # 6650
+    not_duplicate_of: [WI-tubuk-fabib-huvud-zarom-vagov-tugut-sipih-rutuk]  # 6650
