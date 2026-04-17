@@ -57,3 +57,18 @@
   clock: 6  # 2948
   nonce: '2948'  # 2948
   message: "Bump P4->P3: io-boundaries leverage. UAT 2.6.0 identified io-boundaries as the linchpin for taint-flow and downstream features. PyO3 is the canonical FFI pattern; expanding here advances the broader FFI io-boundary story."  # 2948
+- op: update  # 2fea
+  at: '2026-04-17T02:56:52Z'  # 2fea
+  by: agent  # 2fea
+  actor: jgstern_agent  # 2fea
+  clock: 7  # 2fea
+  nonce: 2fea  # 2fea
+  set:  # 2fea
+    priority: 4  # 2fea
+- op: discuss  # 9ed6
+  at: '2026-04-17T02:56:52Z'  # 9ed6
+  by: agent  # 9ed6
+  actor: jgstern_agent  # 9ed6
+  clock: 8  # 9ed6
+  nonce: 9ed6  # 9ed6
+  message: "pf-prelim pivot: pf-prelim's Rust is not called from Python. Deferred P3→P4."  # 9ed6

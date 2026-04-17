@@ -43,3 +43,18 @@
   clock: 4  # b4ef
   nonce: b4ef  # b4ef
   message: "Tag cleanup (2026-04-17): removed `cross_language_linkers` tag. Per the 2026-04-16 discussion clarification above and ADR-0003-ext, this is a **Framework-subcategory** linker (JVM-internal Kafka Streams topology dispatch). True cross-language edges along the Kafka record path would be a separate Bridge-style linker reusing SerDe fingerprints — not this item. Keeping `analysis_quality` and `kafka`."  # b4ef
+- op: update  # 6201
+  at: '2026-04-17T02:56:08Z'  # 6201
+  by: agent  # 6201
+  actor: jgstern_agent  # 6201
+  clock: 5  # 6201
+  nonce: '6201'  # 6201
+  set:  # 6201
+    priority: 4  # 6201
+- op: discuss  # fc27
+  at: '2026-04-17T02:56:08Z'  # fc27
+  by: agent  # fc27
+  actor: jgstern_agent  # fc27
+  clock: 6  # fc27
+  nonce: fc27  # fc27
+  message: "pf-prelim pivot: Java/Scala Kafka world, not in pf-prelim stack. Deferred P3→P4."  # fc27
