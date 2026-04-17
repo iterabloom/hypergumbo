@@ -41,3 +41,10 @@
   clock: 4  # bfbc
   nonce: bfbc  # bfbc
   message: "please file as separate item at low priority and needs_human_review, that way we will remember to check whether it is worth investigation in the first place"  # bfbc
+- op: discuss  # a494
+  at: '2026-04-17T18:28:12Z'  # a494
+  by: agent  # a494
+  actor: jgstern_agent  # a494
+  clock: 5  # a494
+  nonce: a494  # a494
+  message: "Filed as WI-mirus-pupas-hohak-lahar-hubid-zuruf-gogon-gufiz (P4, needs_human_review, tags: analysis_quality + rust_analyzer). The new item describes the gate question (is it worth re-testing on clap-Parser / wasm_bindgen / tauri crates before committing to per-macro linker code?), estimated cost (~1-2 hours), and methodology (same as WI-ronot). It will surface in the ready queue under needs_human_review so you can approve or decline when convenient."  # a494

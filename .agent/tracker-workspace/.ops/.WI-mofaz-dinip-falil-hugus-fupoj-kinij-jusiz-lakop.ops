@@ -34,3 +34,19 @@
   clock: 3  # 61b0
   nonce: 61b0  # 61b0
   message: "Phase 2 implementation submitted via auto-pr from branch jgstern-agent/feat/preface-precedence-gate. Adds _extract_preface (regex-based, anchored-at-char-0, no internal whitespace, must close with ]]), _call_openrouter (mistral-small-3.2 via OpenRouter, 16-token max, fail-soft on network/JSON/key errors), _precedence_gate (skips LLM when no other unreads; YES-prefixed case-insensitive response required to elevate; any exception → False), and integration into _build_reply_first_guidance (lifts elevated items into '## Escalated (preface precedence gate → YES)' section at top, removes them from the regular blocking/non-blocking listings). Tests cover all four acceptance criteria: preface accept/reject, gate YES/NO/empty/exception and prompt well-formedness, ambiguous prefaces still invoking the gate, fallback-when-gate-declines. 100% coverage in package isolation verified. Will close with PR reference once auto-pr merges."  # 61b0
+- op: update  # 49b6
+  at: '2026-04-17T18:21:47Z'  # 49b6
+  by: agent  # 49b6
+  actor: jgstern_agent  # 49b6
+  clock: 4  # 49b6
+  nonce: 49b6  # 49b6
+  set:  # 49b6
+    status: done  # 49b6
+    pr_ref: '3122'  # 49b6
+- op: discuss  # 4b40
+  at: '2026-04-17T18:21:47Z'  # 4b40
+  by: agent  # 4b40
+  actor: jgstern_agent  # 4b40
+  clock: 5  # 4b40
+  nonce: 4b40  # 4b40
+  message: "Closed as done: Phase 2 shipped in PR #3122 (merged to dev). All four acceptance criteria from the item description met: (1) [[preface]] detector anchored at char 0 with no-whitespace / must-close rules, single codepath regardless of tag semantics; (2) LLM-mediated precedence gate via OpenRouter that fires only when other unreads exist; (3) fallback to Phase 1 equal-priority listing when gate declines or fails; (4) tests for accept/reject, gate YES/NO/empty/exception, prompt well-formedness, ambiguous-preface still invokes gate, fallback-when-gate-declines. OpenRouter network access remains covered by existing ALLOWED_WEBSITES.md entry. No governance file changes were required — all logic lives in stop_hook.py."  # 4b40

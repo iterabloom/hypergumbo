@@ -1,0 +1,21 @@
+- op: create  # 81ab
+  at: '2026-04-17T18:26:53Z'  # 81ab
+  by: agent  # 81ab
+  actor: jgstern_agent  # 81ab
+  clock: 1  # 81ab
+  nonce: 81ab  # 81ab
+  data:  # 81ab
+    kind: work_item  # 81ab
+    title: "Re-test procMacro.enable=true on proc-macro-heavy Rust crates (clap Parser, wasm_bindgen apps)"  # 81ab
+    status: needs_human_review  # 81ab
+    priority: 4  # 81ab
+    parent:  # 81ab
+    tags:  # 81ab
+    - analysis_quality  # 81ab
+    - rust_analyzer  # 81ab
+    isbefore: []  # 81ab
+    duplicate_of: []  # 81ab
+    not_duplicate_of: []  # 81ab
+    pr_ref:  # 81ab
+    description: "Follow-up to WI-ronot (closed 2026-04-17). On ripgrep, enabling procMacro.enable + procMacro.attributes.enable + cargo.buildScripts.enable produced a BYTE-IDENTICAL SCIP symbol set — proc-macros are loaded but not surfaced as SCIP symbols. Caveat: ripgrep has modest proc-macro usage.\n\nGate question (needs human review before we spend time): is it worth re-testing this on proc-macro-heavy crates (a clap-Parser-based CLI, a wasm_bindgen-heavy app, a tauri app) before committing to keep per-macro pattern code in wasm_bindgen.py / napi.py / tauri_ipc.py linkers? If rust-analyzer's behavior turns out to depend on proc-macro density, the linker story simplifies materially on some corpora. If not, we've confirmed the ripgrep result generalises and can stop checking.\n\nCost of investigation: ~1-2 hours. Install rust-analyzer on 2-3 proc-macro-heavy crates, run with/without procMacro.enable, diff the symbol sets. Same methodology as WI-ronot.\n\nWhy low-priority-needs-review rather than todo_soft: the ripgrep result is already informative enough to proceed with the current linker design; the open question is whether we should additionally verify the generalisation before closing this line of inquiry."  # 81ab
+    fields: {}  # 81ab
