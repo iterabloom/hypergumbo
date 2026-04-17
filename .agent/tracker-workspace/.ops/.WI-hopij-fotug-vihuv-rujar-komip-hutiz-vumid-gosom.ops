@@ -1,0 +1,21 @@
+- op: create  # 4c9d
+  at: '2026-04-17T03:40:36Z'  # 4c9d
+  by: agent  # 4c9d
+  actor: jgstern_agent  # 4c9d
+  clock: 1  # 4c9d
+  nonce: 4c9d  # 4c9d
+  data:  # 4c9d
+    kind: work_item  # 4c9d
+    title: "Add shared has_concept(symbol, name) helper to prevent concept-tag shape drift"  # 4c9d
+    status: todo_soft  # 4c9d
+    priority: 3  # 4c9d
+    parent:  # 4c9d
+    tags:  # 4c9d
+    - framework_dispatch_linkers  # 4c9d
+    - analysis_quality  # 4c9d
+    isbefore: []  # 4c9d
+    duplicate_of: []  # 4c9d
+    not_duplicate_of: []  # 4c9d
+    pr_ref:  # 4c9d
+    description: "Per INV-tuzub-sufuk-... (concept-tag shape uniformity). Root-cause structural fix for the drift that allowed WI-vogoh's middleware_chain bug: there is no shared helper for the membership test 'does this symbol carry concept X?', so each linker reinvents it and at least one (middleware_chain) got it wrong.\n\nAdd a helper in a shared linker utility module (e.g. packages/hypergumbo-core/src/hypergumbo_core/linkers/_concept_utils.py or extend an existing _shared module if one exists):\n\n  def has_concept(symbol, name: str) -> bool:\n      concepts = (symbol.meta or {}).get('concepts', [])\n      return any(isinstance(c, dict) and c.get('concept') == name for c in concepts)\n\n  def get_concept(symbol, name: str) -> dict | None:\n      concepts = (symbol.meta or {}).get('concepts', [])\n      for c in concepts:\n          if isinstance(c, dict) and c.get('concept') == name:\n              return c\n      return None\n\nMigrate call sites (per audit Phase 3):\n  - middleware_chain.py:81-82 → has_concept(sym, 'middleware')\n  - orm.py:86-88 → get_concept(sym, 'model') + field extraction\n  - subprocess_cli.py:305-310 → has_concept(sym, 'command') (replaces _has_command_concept)\n  - http.py:1152-1153, 1170-1173 → has_concept + get_concept (replaces _has_route_concept / _get_route_info_from_concept)\n  - openapi.py:256-257, 270-273 → same as http.py\n\nTests: unit tests for the helpers, plus ensure existing linker tests still pass after migration. 100% coverage required.\n\nDeferred from WI-kuvam audit as scope-expansion structural fix."  # 4c9d
+    fields: {}  # 4c9d
