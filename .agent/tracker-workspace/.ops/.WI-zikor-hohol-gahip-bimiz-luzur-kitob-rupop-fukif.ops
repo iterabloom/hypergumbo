@@ -1,0 +1,21 @@
+- op: create  # 2ad3
+  at: '2026-04-17T06:21:13Z'  # 2ad3
+  by: agent  # 2ad3
+  actor: jgstern_agent  # 2ad3
+  clock: 1  # 2ad3
+  nonce: 2ad3  # 2ad3
+  data:  # 2ad3
+    kind: work_item  # 2ad3
+    title: "Check if SCIP Relationship field is ever populated in workspace configs"  # 2ad3
+    status: todo_soft  # 2ad3
+    priority: 3  # 2ad3
+    parent:  # 2ad3
+    tags:  # 2ad3
+    - analysis_quality  # 2ad3
+    - rust_analyzer  # 2ad3
+    isbefore: []  # 2ad3
+    duplicate_of: []  # 2ad3
+    not_duplicate_of: []  # 2ad3
+    pr_ref:  # 2ad3
+    description: "Follow-up from WI-zakub mini trial (notebookjournal_04172026_0210.md). On ripgrep, 0/14295 SymbolInformation records carried any relationship entry — the descriptor string carries trait-impl info (impl#[T][Trait]method()) but SymbolInformation.relationships is always empty. Check: workspace-member crate, nightly, explicit workspace top-level. If ever populated, SCIP ingest shim should prefer relationships over descriptor parsing when present."  # 2ad3
+    fields: {}  # 2ad3

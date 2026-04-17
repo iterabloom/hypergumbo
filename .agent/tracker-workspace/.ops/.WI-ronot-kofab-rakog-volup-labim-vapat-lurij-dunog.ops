@@ -1,0 +1,21 @@
+- op: create  # a12d
+  at: '2026-04-17T06:21:03Z'  # a12d
+  by: agent  # a12d
+  actor: jgstern_agent  # a12d
+  clock: 1  # a12d
+  nonce: a12d  # a12d
+  data:  # a12d
+    kind: work_item  # a12d
+    title: "Check if procMacro.enable=true surfaces macro-expanded items in SCIP"  # a12d
+    status: todo_soft  # a12d
+    priority: 3  # a12d
+    parent:  # a12d
+    tags:  # a12d
+    - analysis_quality  # a12d
+    - rust_analyzer  # a12d
+    isbefore: []  # a12d
+    duplicate_of: []  # a12d
+    not_duplicate_of: []  # a12d
+    pr_ref:  # a12d
+    description: "Follow-up from WI-zakub mini trial (notebookjournal_04172026_0210.md). With default rust-analyzer config, SCIP does NOT emit macro-expanded items as separate symbols — only the invocation occurrence at original source location. Check whether enabling procMacro.enable=true (via scip --config-path) changes this. If yes, the wasm_bindgen/napi/tauri_ipc linker story improves materially; if no, those linkers must keep per-macro pattern code."  # a12d
+    fields: {}  # a12d

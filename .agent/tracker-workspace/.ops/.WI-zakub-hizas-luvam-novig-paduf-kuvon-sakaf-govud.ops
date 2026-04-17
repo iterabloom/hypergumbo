@@ -29,3 +29,18 @@
   nonce: a48d  # a48d
   set:  # a48d
     priority: 2  # a48d
+- op: update  # 9cdb
+  at: '2026-04-17T06:19:38Z'  # 9cdb
+  by: agent  # 9cdb
+  actor: jgstern_agent  # 9cdb
+  clock: 3  # 9cdb
+  nonce: 9cdb  # 9cdb
+  set:  # 9cdb
+    status: done  # 9cdb
+- op: discuss  # 0de4
+  at: '2026-04-17T06:19:38Z'  # 0de4
+  by: agent  # 0de4
+  actor: jgstern_agent  # 0de4
+  clock: 4  # 0de4
+  nonce: 0de4  # 0de4
+  message: "Mini trial completed on ripgrep v15.1.0. Results in notebookjournal_04172026_0210.md. Go recommendation with two scope corrections: (1) trait-impl info lives in SCIP symbol descriptors (impl#[T][Trait]method()), not in the Relationship field which rust-analyzer leaves empty; (2) macro invocation spans are original-source but expansion-generated items do NOT surface as SCIP symbols, so proc-macro FFI linkers still need per-macro code. SCIP spans are line/col (UTF-8 col units), 22s on ripgrep 4.3MB/98 docs -> 7.3MB output. SCIP is 10x+ slower than tree-sitter at every realistic size; must be opt-in. Downstream items WI-mafut-hajah-gotuv-dutut-zagut-mital-tifor-tujuj and WI-bajuz-gurug-suzin-davon-sorap-nunid-dagib-suvoz unblocked."  # 0de4
