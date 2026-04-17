@@ -852,6 +852,41 @@ _find_job_from_log_probe() {
 #   Uses API_BASE and FORGEJO_TOKEN from environment.
 #   Returns: 0 = success, 1 = failure
 # ------------------------------------------------------------------
+# ------------------------------------------------------------------
+# _ops_union_restore_file — WI-buhov data-loss fix
+#
+# Arguments: backup_file target_file
+#
+# Semantics: tracker .ops files are append-only CRDT logs (see
+# .gitattributes: merge=union). When auto-pr rebases a feature branch
+# and must restore a pre-rebase backup, the target may have received
+# newer ops during the rebase (e.g. a tracker-sync commit pulled in
+# from dev, or a concurrent agent discuss call). Overwriting with the
+# backup loses those newer ops. Instead, this function appends every
+# line from the backup that isn't already present in the target — an
+# order-preserving line-level union. On fresh targets (non-existent),
+# it just copies. Exit 0 on success, non-zero on filesystem failure.
+# ------------------------------------------------------------------
+_ops_union_restore_file() {
+	local backup_file="$1"
+	local target_file="$2"
+	if [[ ! -f "$backup_file" ]]; then
+		return 0
+	fi
+	if [[ -f "$target_file" ]]; then
+		local tmp
+		tmp=$(mktemp) || return 1
+		if cat "$target_file" "$backup_file" | awk '!seen[$0]++' > "$tmp"; then
+			mv "$tmp" "$target_file"
+		else
+			rm -f "$tmp"
+			return 1
+		fi
+	else
+		cp "$backup_file" "$target_file"
+	fi
+}
+
 do_merge() {
 	local pr_num="$1" title="$2" desc="$3" orig_sha="$4"
 	local force_squash="${5:-false}"
@@ -1005,9 +1040,18 @@ do_merge() {
 			if git fetch origin "$base_branch" --quiet 2>/dev/null \
 			   && git rebase "origin/$base_branch" --quiet 2>/dev/null; then
 				# Restore backed-up .ops files so no pending operations are lost.
-				# Ops files are append-only, so restoring the pre-rebase copy
-				# (which has the latest appended ops) is safe — the rebased
-				# version from dev is a subset of what we backed up.
+				# WI-buhov: previously this step `cp`ed the backup over the
+				# working-tree file unconditionally, which overwrote any ops
+				# appended by concurrent tracker activity between the backup
+				# snapshot and the rebase (either agent-driven discuss/add/
+				# update calls mid-CI-poll or tracker-sync commits pulled in
+				# by the rebase itself). Ops files are line-level-append-only
+				# CRDT logs (merge=union in .gitattributes), so the correct
+				# restore is line-level union: keep the rebased working-tree
+				# content, then append any lines from the backup that aren't
+				# already present. `awk '!seen[$0]++'` is an order-preserving
+				# dedupe — rebased content keeps its ordering; backup-only
+				# lines tail after.
 				if [[ "$had_ops_backup" == true ]]; then
 					for ops_dir in .agent/tracker/.ops .agent/tracker-workspace/.ops; do
 						local backup_subdir="$ops_backup/$ops_dir"
@@ -1019,10 +1063,10 @@ do_merge() {
 							base=$(basename "$f")
 							# Strip .modified suffix for tracked-file backups
 							local target_name="${base%.modified}"
-							cp "$f" "$ops_dir/$target_name"
+							_ops_union_restore_file "$f" "$ops_dir/$target_name"
 						done
 					done
-					echo "   Restored backed-up .ops files from $ops_backup"
+					echo "   Restored backed-up .ops files from $ops_backup (union-merged)"
 				fi
 				rm -rf "$ops_backup" 2>/dev/null || true
 				echo "   Rebase succeeded — force-pushing..."
@@ -1047,7 +1091,13 @@ do_merge() {
 					echo "❌ Force-push failed after rebase"
 				fi
 			else
-				# Restore backed-up .ops files even on rebase failure
+				# Restore backed-up .ops files even on rebase failure.
+				# WI-buhov: same union-merge semantics as the success path —
+				# even though rebase failed, the working tree may contain
+				# ops appended by concurrent tracker activity that we must
+				# not overwrite. Rebase-failure backups keep the original
+				# basename (no .modified suffix is applied on this path),
+				# so we don't need to strip it.
 				if [[ "$had_ops_backup" == true ]]; then
 					for ops_dir in .agent/tracker/.ops .agent/tracker-workspace/.ops; do
 						local backup_subdir="$ops_backup/$ops_dir"
@@ -1055,10 +1105,10 @@ do_merge() {
 						mkdir -p "$ops_dir"
 						for f in "$backup_subdir"/*; do
 							[[ -f "$f" ]] || continue
-							cp "$f" "$ops_dir/$(basename "$f")"
+							_ops_union_restore_file "$f" "$ops_dir/$(basename "$f")"
 						done
 					done
-					echo "   Restored backed-up .ops files from $ops_backup"
+					echo "   Restored backed-up .ops files from $ops_backup (union-merged)"
 				fi
 				rm -rf "$ops_backup" 2>/dev/null || true
 				echo "❌ Local rebase failed (conflicts?)"
