@@ -173,21 +173,89 @@ except Exception:
     fi
   fi
 
-  # Record current hash AFTER the check — but throttle to prevent the
-  # circuit breaker from tripping during legitimate waits (e.g. background
-  # sub-agents producing bakeoff assessments).  Without this pause, 5 stop
-  # hook fires can accumulate in ~2.5 minutes, tripping the breaker while
-  # real work is still in flight.
+  # Record current hash AFTER the check.  Process-aware pause (WI-varid):
+  # if a watched long-running command is alive, poll inline until it
+  # finishes (emitting a dot per poll so the agent has a heartbeat); if
+  # nothing watched is running, return immediately.  The previous design
+  # blanket-slept 150s on every fire to keep 5 fast fires from tripping
+  # the circuit breaker during a long pytest, which (a) cost 150s on
+  # every legitimate stop and (b) generated repetitive guidance files
+  # mid-pytest.  The new design only pays the wait when there's a real
+  # process to wait on, and the breaker hash semantics below are
+  # unchanged.
   if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
-    PAUSE_SECS=150
-    echo "stop logic is forcing a pause for ${PAUSE_SECS} seconds..." >&2
-    while [[ "$PAUSE_SECS" -gt 0 ]]; do
-      sleep 10
-      PAUSE_SECS=$((PAUSE_SECS - 10))
-      if [[ "$PAUSE_SECS" -gt 0 ]]; then
-        echo "${PAUSE_SECS}..." >&2
+    # Defaults baked in; tracker config may override (and add patterns).
+    WATCHED_PATTERNS=()
+    WATCHED_POLL_SECS=3
+    WATCHED_MAX_WAIT_SECS=1800
+    if command -v python3 &>/dev/null; then
+      while IFS= read -r line; do
+        [[ -n "$line" ]] && WATCHED_PATTERNS+=("$line")
+      done < <(python3 -c "
+import yaml
+try:
+    with open('$REPO_ROOT/.agent/tracker/config.yaml') as f:
+        cfg = yaml.safe_load(f)
+    for p in cfg.get('stop_hook', {}).get('watched_process_patterns', []) or []:
+        print(p)
+except Exception:
+    pass
+" 2>/dev/null)
+      _CFG_WATCHED=$(python3 -c "
+import yaml
+try:
+    with open('$REPO_ROOT/.agent/tracker/config.yaml') as f:
+        cfg = yaml.safe_load(f)
+    sh = cfg.get('stop_hook', {})
+    print(sh.get('watched_poll_seconds', 3))
+    print(sh.get('watched_max_wait_seconds', 1800))
+except Exception:
+    print(3); print(1800)
+" 2>/dev/null)
+      if [[ -n "$_CFG_WATCHED" ]]; then
+        WATCHED_POLL_SECS=$(echo "$_CFG_WATCHED" | sed -n '1p')
+        WATCHED_MAX_WAIT_SECS=$(echo "$_CFG_WATCHED" | sed -n '2p')
       fi
-    done
+    fi
+    if [[ ${#WATCHED_PATTERNS[@]} -eq 0 ]]; then
+      WATCHED_PATTERNS=(
+        "pytest"
+        "python -m pytest"
+        "smart-test"
+        "bash ./scripts/auto-pr"
+        "bash ./scripts/merge-pr"
+      )
+    fi
+    WATCHED_REGEX=$(IFS='|'; echo "${WATCHED_PATTERNS[*]}")
+
+    # _watched_alive returns 0 (true) when at least one matching process
+    # is alive AFTER excluding shell-eval wrappers like `bash -c "..."`
+    # whose cmdline merely contains the pattern as data (e.g. an agent
+    # heredoc that happens to mention pytest).  Without this filter the
+    # hook would wait on its own caller's command line.
+    _watched_alive() {
+      pgrep -u "$USER" -af "$WATCHED_REGEX" 2>/dev/null \
+        | grep -vE '^[0-9]+ +(/[^ ]*/)?(bash|sh) +-c ' \
+        | grep -q .
+    }
+
+    if _watched_alive; then
+      echo "stop hook: waiting for watched process to finish (regex: $WATCHED_REGEX)" >&2
+      _WAIT_ELAPSED=0
+      while _watched_alive; do
+        sleep "$WATCHED_POLL_SECS"
+        _WAIT_ELAPSED=$((_WAIT_ELAPSED + WATCHED_POLL_SECS))
+        printf "." >&2
+        if [[ "$_WAIT_ELAPSED" -ge "$WATCHED_MAX_WAIT_SECS" ]]; then
+          printf "\n" >&2
+          echo "stop hook: max wait ${WATCHED_MAX_WAIT_SECS}s reached; proceeding." >&2
+          break
+        fi
+      done
+      printf "\n" >&2
+      echo "stop hook: watched process complete; resuming." >&2
+    fi
+
     echo "$CURRENT_HASH" >> "$HASH_FILE"
   fi
 fi
