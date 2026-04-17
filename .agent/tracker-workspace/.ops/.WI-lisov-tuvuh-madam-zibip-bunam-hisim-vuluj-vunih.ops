@@ -27,3 +27,12 @@
   clock: 2  # 40b6
   nonce: 40b6  # 40b6
   message: "Clarification on cross-languageness: the phrase 'cross-language via Kafka record SerDe boundary' in the original description overstated this item's scope. The linker itself operates entirely within Java/Scala source — Kafka Streams' topology builder registers ValueMapper/ValueTransformer/ProcessorSupplier impls at build time, and the runtime dispatches the callbacks (apply/transform/process/get/init) per record. The cross-language consequence (Kafka records flow to consumers in Python/Go/Node) is real but downstream of the linker; it's the message_queue.py / message_dispatch.py class of edge, not this one.\n\nCorrect framing: this is a within-JVM framework-dispatch linker for Kafka Streams topology registration. If we ever want true cross-language edges along the Kafka record path, that's a separate item for a Kafka-topic → consumer-class linker that could reuse SerDe fingerprints across languages."  # 40b6
+- op: update  # 5cc7
+  at: '2026-04-17T01:16:11Z'  # 5cc7
+  by: agent  # 5cc7
+  actor: jgstern_agent  # 5cc7
+  clock: 3  # 5cc7
+  nonce: 5cc7  # 5cc7
+  set: {}  # 5cc7
+  remove:  # 5cc7
+    tags: [cross_language_linkers]  # 5cc7

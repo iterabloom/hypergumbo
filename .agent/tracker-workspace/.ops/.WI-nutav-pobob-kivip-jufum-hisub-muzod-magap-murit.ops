@@ -27,3 +27,12 @@
   clock: 2  # d0f5
   nonce: d0f5  # d0f5
   message: "Clarification on cross-languageness: the phrase 'cross-language via cloud-SDK boundary' in the original description overstated this item's scope. The linker itself operates entirely within Python source — Airflow's scheduler dispatches Hook.get_conn / Sensor.poke / Trigger.run / Operator.execute on subclass instances registered in the DAG graph. The cross-language consequence (Hook.get_conn eventually invokes AWS boto3, google-cloud, azure-sdk clients) is a runtime behavior that crosses the Python/service boundary, not an edge this linker produces.\n\nCorrect framing: this is a within-Python framework-dispatch linker for Airflow's class-based plugin system. The cloud-SDK calls on the other side of Hook.get_conn are leaf IO boundaries, not linker targets."  # d0f5
+- op: update  # 3c45
+  at: '2026-04-17T01:16:11Z'  # 3c45
+  by: agent  # 3c45
+  actor: jgstern_agent  # 3c45
+  clock: 3  # 3c45
+  nonce: 3c45  # 3c45
+  set: {}  # 3c45
+  remove:  # 3c45
+    tags: [cross_language_linkers]  # 3c45

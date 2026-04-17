@@ -26,3 +26,12 @@
   clock: 2  # efa4
   nonce: efa4  # efa4
   message: "Clarification on cross-languageness: the phrase 'cross-language via OpenAPI/JSON boundary' in the original description overstated this item's scope. The linker itself operates entirely within Java/Kotlin/Scala source — it recovers dispatch edges that reflection/Jackson/Gson inject at runtime. The cross-language consequence (serialized JSON is parsed by downstream TS/Python/Ruby clients) is real but downstream of the linker; it's what existing openapi.py / http.py already connect.\n\nCorrect framing: this is a within-language framework-dispatch linker for Java serialization reflection. Cross-language benefit follows naturally when paired with the existing OpenAPI/REST linkers, but the edge this item adds is Java-internal."  # efa4
+- op: update  # fdbb
+  at: '2026-04-17T01:16:11Z'  # fdbb
+  by: agent  # fdbb
+  actor: jgstern_agent  # fdbb
+  clock: 3  # fdbb
+  nonce: fdbb  # fdbb
+  set: {}  # fdbb
+  remove:  # fdbb
+    tags: [cross_language_linkers]  # fdbb
