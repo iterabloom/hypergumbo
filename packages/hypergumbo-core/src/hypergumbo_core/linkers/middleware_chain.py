@@ -44,6 +44,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
+from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
@@ -78,13 +79,7 @@ def link_middleware_chain(ctx: LinkerContext) -> LinkerResult:
     # Collect middleware symbols grouped by file
     middleware_by_file: dict[str, list[Symbol]] = {}
     for sym in ctx.symbols:
-        if not sym.meta:
-            continue
-        concepts = sym.meta.get("concepts", [])
-        if not any(
-            isinstance(c, dict) and c.get("concept") == "middleware"
-            for c in concepts
-        ):
+        if not has_concept(sym, "middleware"):
             continue
         if sym.span is None:
             continue

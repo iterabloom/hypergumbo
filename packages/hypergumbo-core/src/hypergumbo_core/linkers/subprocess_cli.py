@@ -51,6 +51,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
 PASS_ID = make_pass_id("subprocess-linker")
@@ -300,14 +301,7 @@ def _find_python_files(root: Path) -> Iterator[Path]:
 
 def _has_command_concept(symbol: Symbol) -> bool:
     """Check if symbol has a command concept (CLI command)."""
-    if not symbol.meta:
-        return False
-    concepts = symbol.meta.get("concepts", [])
-    return any(
-        c.get("concept") == "command"
-        for c in concepts
-        if isinstance(c, dict)
-    )
+    return has_concept(symbol, "command")
 
 
 def _create_call_symbol(call: SubprocessCall, root: Path) -> Symbol:

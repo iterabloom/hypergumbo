@@ -94,6 +94,7 @@ from urllib.parse import urlparse
 from ..analyze.base import make_route_stable_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ._concept_utils import get_concept, has_concept
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
 PASS_ID = make_pass_id("http-linker")
@@ -1147,10 +1148,7 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
 
 def _has_route_concept(symbol: Symbol) -> bool:
     """Check if symbol has a route concept in meta.concepts."""
-    if not symbol.meta:
-        return False
-    concepts = symbol.meta.get("concepts", [])
-    return any(c.get("concept") == "route" for c in concepts if isinstance(c, dict))
+    return has_concept(symbol, "route")
 
 
 def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None]:
@@ -1163,14 +1161,13 @@ def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None
     Returns:
         Tuple of (route_path, http_method), or (None, None) if not found.
     """
+    # First, try concept metadata (from FRAMEWORK_PATTERNS enrichment)
+    route = get_concept(symbol, "route")
+    if route is not None:
+        return route.get("path"), route.get("method")
+
     if not symbol.meta:
         return None, None
-
-    # First, try concept metadata (from FRAMEWORK_PATTERNS enrichment)
-    concepts = symbol.meta.get("concepts", [])
-    for concept in concepts:
-        if isinstance(concept, dict) and concept.get("concept") == "route":
-            return concept.get("path"), concept.get("method")
 
     # Fallback: check direct metadata (from analyzer-created route symbols)
     # Route symbols from Ruby, PHP, Elixir, JS analyzers store info here
