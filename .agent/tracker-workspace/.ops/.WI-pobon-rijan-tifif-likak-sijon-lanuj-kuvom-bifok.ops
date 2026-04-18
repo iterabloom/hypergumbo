@@ -1,0 +1,22 @@
+- op: create  # 9cbe
+  at: '2026-04-18T06:27:08Z'  # 9cbe
+  by: agent  # 9cbe
+  actor: jgstern_agent  # 9cbe
+  clock: 1  # 9cbe
+  nonce: 9cbe  # 9cbe
+  data:  # 9cbe
+    kind: work_item  # 9cbe
+    title: "Intent/mode split: autonomous_intent.txt + loop-toggle --set-intent / --set-session-mode"  # 9cbe
+    status: todo_soft  # 9cbe
+    priority: 1  # 9cbe
+    parent: WI-razub-duluf-nobun-rulit-dapam-jipal-dafud-nahob  # 9cbe
+    tags:  # 9cbe
+    - retrospective  # 9cbe
+    - governance  # 9cbe
+    - hooks  # 9cbe
+    isbefore: []  # 9cbe
+    duplicate_of: []  # 9cbe
+    not_duplicate_of: []  # 9cbe
+    pr_ref:  # 9cbe
+    description: "Parent: WI-razub-duluf-nobun-rulit-dapam-jipal-dafud-nahob (respawn mechanism).\n\n## Scope\n\nSplit \"project intent\" from \"current-session mode\" so the agent-supervisor daemon has a stable signal it can rely on that the circuit breaker cannot touch.\n\n## Deliverables\n\n1. **`scripts/loop-toggle` gains two new flag forms**, while the existing bareword form (`./scripts/loop-toggle DEEP`) keeps its current behavior of updating BOTH files (preserves today's UX):\n   - `--set-intent MODE` — writes `autonomous_intent.txt` only. MODE ∈ {OFF, BROAD, DEEP}.\n   - `--set-session-mode MODE` — writes `AUTONOMOUS_MODE.txt` only. Same MODE set.\n\n2. **New file `autonomous_intent.txt`** at repo root, next to `AUTONOMOUS_MODE.txt`:\n   - Initial value: `OFF`.\n   - Must be in `.gitignore` (this file is per-workstation state, not project state).\n   - Same value domain as `AUTONOMOUS_MODE.txt`: `OFF | BROAD | DEEP`.\n   - Is the authoritative signal for the supervisor; NEVER written by the circuit-breaker path.\n\n3. **Circuit-breaker path in `.agent/hooks/_shared/stop_logic.sh`** (and any vendor stop hook that calls `loop-toggle off` on circuit-breaker trip) switches from:\n   ```\n   \"$REPO_ROOT/scripts/loop-toggle\" off\n   ```\n   to:\n   ```\n   \"$REPO_ROOT/scripts/loop-toggle\" --set-session-mode off\n   ```\n   Files to update: `.agent/hooks/claude-code/stop.sh`, `.agent/hooks/cursor/stop.sh`, `.agent/hooks/gemini-cli/after-agent.sh`, `.agent/hooks/codex-cli/notify.sh`.\n\n4. **`session_end_logic.sh`** likewise switches to `--set-session-mode off` (the session is ending; intent should stay as the human left it so the next respawn picks up where the human intended).\n\n5. **Tests.** Add tracker-package-independent shell / pytest tests that:\n   - `--set-intent BROAD` writes `BROAD` to `autonomous_intent.txt` and does NOT touch `AUTONOMOUS_MODE.txt`.\n   - `--set-session-mode OFF` writes `OFF` to `AUTONOMOUS_MODE.txt` and does NOT touch `autonomous_intent.txt`.\n   - The bareword form (`loop-toggle DEEP`) still writes both files.\n   - `loop-toggle status` surfaces both values distinctly.\n\n## Design source\n\nSee WI-razub consolidated design, \"Signal layer\" and \"Decision matrix\" sections.\n\n## Governance\n\nTouches `.agent/hooks/_shared/stop_logic.sh`, `.agent/hooks/*/stop.sh`, `.agent/hooks/_shared/session_end_logic.sh`, and `scripts/loop-toggle`. All under the governance umbrella. Pre-approved by human in WI-razub comment 2026-04-18T06:11:15Z."  # 9cbe
+    fields: {}  # 9cbe
