@@ -1,0 +1,666 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""scripts/agent-supervisor — hypergumbo tmux session supervisor (WI-razub).
+
+A long-running Python daemon that watches the reserved-prefix set of tmux
+sessions (``hypergumbo-session-*``) and replaces a stuck one with a fresh
+CLI when the human's project-level intent says autonomous work is desired
+but the current session isn't making progress.
+
+Key design points (from the consolidated WI-razub design):
+
+* **Signal layer**: the supervisor's load-bearing "is this session
+  working?" signal is the tmux pane-byte delta over a rolling 15-minute
+  window, NOT the heartbeat file (which is telemetry only, per WI-sipov).
+  Any attached tmux client blocks replacement (a human is watching).
+  The ``autonomous_intent.txt`` file (WI-pobon) is the project-level
+  intent — OFF means the supervisor does nothing.
+
+* **Reserved-prefix discipline**: the supervisor only inspects / touches
+  tmux sessions named ``hypergumbo-session-*``. A human running their
+  own unrelated tmux work is untouched.
+
+* **Single-instance via flock**: at most one supervisor per workstation
+  (per ``state_dir``); second invocation's ``fcntl.flock`` acquisition
+  fails and it exits.
+
+* **Replacement sequence** (WI-nusor): sends the vendor-specific exit
+  keystroke, polls ``kill -0 <cli_pid>`` for up to 30 seconds, and if
+  the CLI refuses to quit, hard-kills the tmux session and directly
+  invokes the ``kill-transcript-sync.sh`` + ``rotate-on-session-end.sh``
+  shared scripts (which are already idempotent / vendor-agnostic).
+
+* **Fresh-session spawn**: ``tmux new-session -d -s <new> -e
+  HYPERGUMBO_RESPAWN=1 <cli>``. The sibling respawn-aware session-start
+  hook (WI-sakod, not this item) branches on ``$HYPERGUMBO_RESPAWN`` to
+  auto-enable autonomous mode from ``autonomous_intent.txt`` and inject
+  the generic seed prompt.
+
+* **Rate limit**: a soft cap (default 8 spawns / rolling 24h). Over-cap
+  triggers a log entry and skips the spawn rather than aborting the
+  daemon — the throttle does not become a persistent failure mode.
+
+Vendor identity & keystroke table lives in ``VENDOR_TABLE`` below. WI-batob
+(docs) is the authoritative source; edit BOTH in the same PR. The
+placeholder keystrokes for Codex CLI / Cursor / Gemini CLI are marked
+``# FIXME WI-batob`` so the docs PR verifies them experimentally before
+the supervisor is rolled out in production.
+
+Subcommands:
+
+* ``agent-supervisor run``     — enter the poll loop. ``--interval N``
+                                 overrides the default 60s cadence.
+* ``agent-supervisor status``  — one-shot inventory of tmux sessions,
+                                 per-session pane-byte ages, heartbeat
+                                 ages, intent value.
+* ``agent-supervisor stop``    — touch the stop sentinel; a running
+                                 ``run`` loop exits on its next tick.
+
+State directory: ``$HOME/hypergumbo_lab_notebook/agent-supervisor/``
+(override with ``AGENT_SUPERVISOR_STATE_DIR``).
+
+File layout inside the state dir:
+
+* ``supervisor.lock`` — flock + pid-file for single-instance.
+* ``supervisor.stop-sentinel`` — presence ends the ``run`` loop.
+* ``<session>.meta.json`` — written on spawn: session_id, cli_pid,
+  vendor, tmux session name, project_dir, start_utc.
+* ``<session>.heartbeat`` — touched by per-turn hooks (WI-sipov); read
+  by ``status`` only.
+* ``respawn_log.log`` — append-only audit of every spawn / replace.
+* ``rate_limit.json`` — rolling 24h spawn timestamps.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Callable, Iterable, Optional
+
+
+# --- Constants ---
+
+RESERVED_PREFIX = "hypergumbo-session-"
+DEFAULT_POLL_INTERVAL_SEC = 60
+PANE_FROZEN_THRESHOLD_SEC = 15 * 60  # 15 minutes
+GRACEFUL_EXIT_TIMEOUT_SEC = 30
+RATE_LIMIT_MAX_PER_24H = 8
+DEFAULT_VENDOR = "claude-code"
+
+# Vendor identity & invocation table. The keystrokes are the graceful-exit
+# sequences sent via `tmux send-keys`. Claude Code is verified; others
+# are best-known values pending empirical verification by WI-batob.
+VENDOR_TABLE = {
+    "claude-code": {
+        "exit_keystroke": "/quit",
+        "cli_invocation": "claude",
+    },
+    "codex-cli": {
+        "exit_keystroke": "/exit",    # FIXME WI-batob: verify
+        "cli_invocation": "codex",
+    },
+    "cursor": {
+        "exit_keystroke": "/quit",    # FIXME WI-batob: verify
+        "cli_invocation": "cursor",
+    },
+    "gemini-cli": {
+        "exit_keystroke": "/quit",    # FIXME WI-batob: verify
+        "cli_invocation": "gemini",
+    },
+}
+
+
+# --- State directory ---
+
+def default_state_dir() -> Path:
+    env = os.environ.get("AGENT_SUPERVISOR_STATE_DIR")
+    if env:
+        return Path(env)
+    return Path.home() / "hypergumbo_lab_notebook" / "agent-supervisor"
+
+
+def default_repo_root() -> Path:
+    # The supervisor reads autonomous_intent.txt from the project root.
+    # Derived from this script's location: scripts/agent-supervisor ->
+    # repo root is the parent directory. If overridden via
+    # AGENT_SUPERVISOR_REPO_ROOT, respect that.
+    env = os.environ.get("AGENT_SUPERVISOR_REPO_ROOT")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parent.parent
+
+
+# --- tmux & process primitives (swappable for testing) ---
+
+
+def run_subprocess(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+    """Thin wrapper so tests can monkeypatch a single seam.
+
+    Returns a rc=127 result (POSIX convention for "command not found")
+    if the binary is missing, so callers' rc-based branches keep working
+    when tmux / a vendor CLI isn't installed — important for ``status``
+    on machines without tmux, and for gracefully degrading the poll
+    loop on a misconfigured workstation.
+    """
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=127, stdout="", stderr=f"command not found: {cmd[0]}",
+        )
+
+
+def list_tmux_sessions(runner: Callable = run_subprocess) -> list[str]:
+    result = runner(["tmux", "list-sessions", "-F", "#S"])
+    if result.returncode != 0:
+        return []
+    return [s.strip() for s in result.stdout.splitlines() if s.strip()]
+
+
+def tmux_clients_attached(session: str, runner: Callable = run_subprocess) -> bool:
+    result = runner(["tmux", "list-clients", "-t", session])
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def tmux_capture_pane_bytes(session: str, runner: Callable = run_subprocess) -> Optional[int]:
+    result = runner(["tmux", "capture-pane", "-t", session, "-p"])
+    if result.returncode != 0:
+        return None
+    return len(result.stdout)
+
+
+def pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except (OSError, ProcessLookupError):
+        return False
+    return True
+
+
+def tmux_send_exit(session: str, keystroke: str, runner: Callable = run_subprocess) -> None:
+    runner(["tmux", "send-keys", "-t", f"{session}:0", keystroke, "Enter"])
+
+
+def tmux_kill_session(session: str, runner: Callable = run_subprocess) -> None:
+    runner(["tmux", "kill-session", "-t", session])
+
+
+def tmux_spawn_session(session: str, cli: str, respawn: bool, runner: Callable = run_subprocess) -> None:
+    # The `-e KEY=VAL` flag injects env vars into the new session. We set
+    # HYPERGUMBO_RESPAWN=1 on respawn so the fresh CLI's session-start
+    # hook (WI-sakod) branches into auto-enable-autonomous mode.
+    cmd = ["tmux", "new-session", "-d", "-s", session]
+    if respawn:
+        cmd.extend(["-e", "HYPERGUMBO_RESPAWN=1"])
+    cmd.append(cli)
+    runner(cmd)
+
+
+def wait_for_pid_gone(
+    pid: int,
+    timeout_sec: float,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    now_fn: Callable[[], float] = time.monotonic,
+) -> bool:
+    """Return True if pid is gone within timeout, False otherwise.
+
+    Resolves ``pid_alive`` from the module namespace at CALL time (not
+    via a default-argument capture at definition time) so monkeypatching
+    ``asv.pid_alive`` in tests actually takes effect.
+    """
+    deadline = now_fn() + timeout_sec
+    while now_fn() < deadline:
+        if not pid_alive(pid):
+            return True
+        sleep_fn(0.5)
+    return not pid_alive(pid)
+
+
+# --- Decision matrix (pure function, easy to test) ---
+
+
+def decide_action(
+    intent: str,
+    has_session: bool,
+    clients_attached: bool,
+    cli_pid_alive: Optional[bool],
+    pane_frozen: bool,
+) -> str:
+    """Return one of: 'noop', 'spawn', 'replace'.
+
+    Args:
+        intent: 'OFF' | 'BROAD' | 'DEEP' (from autonomous_intent.txt).
+        has_session: whether a hypergumbo-session-* tmux session exists.
+        clients_attached: whether any human client is attached to the
+            session. Ignored when has_session is False.
+        cli_pid_alive: True if the CLI pid we recorded is still alive;
+            False if dead; None if unknown (meta.json missing). Ignored
+            when has_session is False.
+        pane_frozen: True when the session's pane-byte count has not
+            changed in at least PANE_FROZEN_THRESHOLD_SEC. Ignored when
+            has_session is False or cli is dead (then 'replace' wins).
+    """
+    if intent == "OFF":
+        return "noop"
+    if not has_session:
+        return "spawn"
+    if clients_attached:
+        return "noop"
+    if cli_pid_alive is False:
+        return "replace"
+    # CLI alive (or pid unknown); pane-delta decides.
+    if pane_frozen:
+        return "replace"
+    return "noop"
+
+
+# --- Supervisor class (stateful, one per running daemon) ---
+
+
+class SessionObservation:
+    """Per-session in-memory state carried across poll ticks."""
+
+    def __init__(self, pane_bytes: Optional[int], last_change_utc: float) -> None:
+        self.pane_bytes = pane_bytes
+        self.last_change_utc = last_change_utc
+
+
+class Supervisor:
+    def __init__(
+        self,
+        state_dir: Path,
+        repo_root: Path,
+        runner: Callable = run_subprocess,
+        now_fn: Callable[[], float] = time.time,
+        monotonic_fn: Callable[[], float] = time.monotonic,
+        sleep_fn: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self.state_dir = Path(state_dir)
+        self.repo_root = Path(repo_root)
+        self.runner = runner
+        self.now_fn = now_fn
+        self.monotonic_fn = monotonic_fn
+        self.sleep_fn = sleep_fn
+        self._lock_fh = None
+        self._pane_history: dict[str, SessionObservation] = {}
+
+    # --- Locking ---
+
+    def acquire_lock(self) -> None:
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = self.state_dir / "supervisor.lock"
+        self._lock_fh = open(lock_path, "w")
+        try:
+            fcntl.flock(self._lock_fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as e:
+            raise RuntimeError(
+                f"another supervisor is already running (pid in {lock_path})"
+            ) from e
+        self._lock_fh.write(f"{os.getpid()}\n")
+        self._lock_fh.flush()
+
+    def release_lock(self) -> None:
+        if self._lock_fh is not None:
+            fcntl.flock(self._lock_fh.fileno(), fcntl.LOCK_UN)
+            self._lock_fh.close()
+            self._lock_fh = None
+
+    # --- File helpers ---
+
+    def _intent_file(self) -> Path:
+        return self.repo_root / "autonomous_intent.txt"
+
+    def _stop_sentinel(self) -> Path:
+        return self.state_dir / "supervisor.stop-sentinel"
+
+    def _respawn_log(self) -> Path:
+        return self.state_dir / "respawn_log.log"
+
+    def _rate_limit_file(self) -> Path:
+        return self.state_dir / "rate_limit.json"
+
+    def _meta_file(self, session: str) -> Path:
+        return self.state_dir / f"{session}.meta.json"
+
+    # --- State readers ---
+
+    def read_intent(self) -> str:
+        f = self._intent_file()
+        if not f.exists():
+            return "OFF"
+        raw = f.read_text().strip().upper()
+        if raw in ("OFF", "BROAD", "DEEP"):
+            return raw
+        return "OFF"
+
+    def stop_requested(self) -> bool:
+        return self._stop_sentinel().exists()
+
+    def read_meta(self, session: str) -> Optional[dict]:
+        mf = self._meta_file(session)
+        if not mf.exists():
+            return None
+        try:
+            return json.loads(mf.read_text())
+        except json.JSONDecodeError:
+            return None
+
+    def owned_sessions(self) -> list[str]:
+        return [s for s in list_tmux_sessions(self.runner) if s.startswith(RESERVED_PREFIX)]
+
+    # --- State writers ---
+
+    def log_respawn(self, message: str) -> None:
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.now_fn()))
+        with open(self._respawn_log(), "a") as f:
+            f.write(f"{ts} {message}\n")
+
+    def record_spawn(self) -> None:
+        path = self._rate_limit_file()
+        data = {"spawns": []}
+        if path.exists():
+            try:
+                data = json.loads(path.read_text())
+            except json.JSONDecodeError:
+                data = {"spawns": []}
+        cutoff = self.now_fn() - 86400
+        spawns = [t for t in data.get("spawns", []) if t > cutoff]
+        spawns.append(self.now_fn())
+        data["spawns"] = spawns
+        path.write_text(json.dumps(data))
+
+    def check_rate_limit(self) -> tuple[bool, int]:
+        """Return (under_limit, current_count)."""
+        path = self._rate_limit_file()
+        if not path.exists():
+            return True, 0
+        try:
+            data = json.loads(path.read_text())
+        except json.JSONDecodeError:
+            return True, 0
+        cutoff = self.now_fn() - 86400
+        recent = [t for t in data.get("spawns", []) if t > cutoff]
+        return len(recent) < RATE_LIMIT_MAX_PER_24H, len(recent)
+
+    def write_meta(self, session: str, meta: dict) -> None:
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self._meta_file(session).write_text(json.dumps(meta, indent=2))
+
+    def clear_session_state(self, session: str) -> None:
+        mf = self._meta_file(session)
+        if mf.exists():
+            mf.unlink()
+        self._pane_history.pop(session, None)
+
+    # --- Pane-delta tracking ---
+
+    def observe_pane(self, session: str) -> bool:
+        """Sample the pane-byte count for ``session`` and return True if
+        the pane changed since the last observation (or this is the first
+        observation). Returns False only when we have a prior observation
+        AND the byte count is unchanged."""
+        current = tmux_capture_pane_bytes(session, self.runner)
+        now = self.now_fn()
+        prev = self._pane_history.get(session)
+        if prev is None:
+            # First observation — record and treat as "changed" so the
+            # decision matrix doesn't immediately claim the session is
+            # frozen on the supervisor's first poll.
+            self._pane_history[session] = SessionObservation(
+                pane_bytes=current, last_change_utc=now,
+            )
+            return True
+        if current is None:
+            # Couldn't sample this tick; keep prior observation.
+            return True
+        if current != prev.pane_bytes:
+            self._pane_history[session] = SessionObservation(
+                pane_bytes=current, last_change_utc=now,
+            )
+            return True
+        # Unchanged — leave last_change_utc as-is.
+        return False
+
+    def pane_frozen_for(self, session: str) -> float:
+        """Return seconds since the pane last changed, or 0 if unknown."""
+        prev = self._pane_history.get(session)
+        if prev is None:
+            return 0.0
+        return self.now_fn() - prev.last_change_utc
+
+    # --- Replacement sequence (WI-nusor) ---
+
+    def replace_session(self, session: str, meta: Optional[dict]) -> None:
+        """Gracefully end the session then spawn a fresh one. Meta may be
+        None if we never recorded it (treat as 'unknown vendor, use
+        default')."""
+        vendor = (meta or {}).get("vendor", DEFAULT_VENDOR)
+        vt = VENDOR_TABLE.get(vendor, VENDOR_TABLE[DEFAULT_VENDOR])
+        cli_pid = (meta or {}).get("cli_pid")
+        session_id = (meta or {}).get("session_id", session)
+
+        # Step 1: graceful exit keystroke.
+        tmux_send_exit(session, vt["exit_keystroke"], self.runner)
+
+        # Step 2: poll for CLI to exit (if we know the pid).
+        exited_cleanly = False
+        if cli_pid:
+            exited_cleanly = wait_for_pid_gone(
+                cli_pid,
+                GRACEFUL_EXIT_TIMEOUT_SEC,
+                sleep_fn=self.sleep_fn,
+                now_fn=self.monotonic_fn,
+            )
+
+        # Step 3: hard-kill fallback if graceful exit timed out.
+        if not exited_cleanly:
+            self.log_respawn(f"forced-kill fallback for session {session}")
+            tmux_kill_session(session, self.runner)
+            # Directly invoke the shared session-end cleanup scripts;
+            # they are already idempotent / vendor-agnostic.
+            self._invoke_shared_cleanup(session_id)
+
+        self.clear_session_state(session)
+        # Step 4: spawn fresh.
+        self.spawn_fresh(vendor=vendor)
+
+    def _invoke_shared_cleanup(self, session_id: str) -> None:
+        kill_script = self.repo_root / ".agent/hooks/_shared/kill-transcript-sync.sh"
+        rotate_script = self.repo_root / ".agent/hooks/_shared/rotate-on-session-end.sh"
+        for script in (kill_script, rotate_script):
+            if script.exists():
+                self.runner([str(script), str(self.repo_root), session_id])
+
+    def spawn_fresh(self, vendor: str = DEFAULT_VENDOR) -> Optional[str]:
+        """Spawn a new hypergumbo-session-<UTC> tmux session running the
+        vendor CLI with HYPERGUMBO_RESPAWN=1. Returns the new session
+        name on success, or None if rate-limited / vendor unknown."""
+        ok, count = self.check_rate_limit()
+        if not ok:
+            self.log_respawn(
+                f"rate-limit reached ({count}/{RATE_LIMIT_MAX_PER_24H} in 24h); skipping spawn"
+            )
+            return None
+        vt = VENDOR_TABLE.get(vendor)
+        if vt is None:
+            self.log_respawn(f"unknown vendor {vendor!r}; skipping spawn")
+            return None
+        name = f"{RESERVED_PREFIX}{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime(self.now_fn()))}"
+        tmux_spawn_session(name, vt["cli_invocation"], respawn=True, runner=self.runner)
+        self.record_spawn()
+        meta = {
+            "session_id": name,
+            "cli_pid": None,  # Filled in later by session-start hook if possible.
+            "vendor": vendor,
+            "project_dir": str(self.repo_root),
+            "tmux_session": name,
+            "start_utc": time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.now_fn())
+            ),
+        }
+        self.write_meta(name, meta)
+        self.log_respawn(f"spawned {name} (vendor={vendor})")
+        return name
+
+    # --- Poll loop ---
+
+    def poll_once(self) -> None:
+        """Run one tick of the decision matrix. Safe to call repeatedly."""
+        intent = self.read_intent()
+        if intent == "OFF":
+            return
+
+        owned = self.owned_sessions()
+        if not owned:
+            self.spawn_fresh()
+            return
+
+        for session in owned:
+            self._evaluate_session(session)
+
+    def _evaluate_session(self, session: str) -> None:
+        meta = self.read_meta(session)
+        attached = tmux_clients_attached(session, self.runner)
+
+        pid = (meta or {}).get("cli_pid")
+        alive: Optional[bool]
+        if pid is None:
+            alive = None  # Unknown; treat as alive so we don't churn.
+        else:
+            alive = pid_alive(pid)
+
+        # Sample pane; observe_pane also updates in-memory history.
+        self.observe_pane(session)
+        frozen = self.pane_frozen_for(session) >= PANE_FROZEN_THRESHOLD_SEC
+
+        action = decide_action(
+            intent=self.read_intent(),
+            has_session=True,
+            clients_attached=attached,
+            cli_pid_alive=alive if alive is not None else True,
+            pane_frozen=frozen,
+        )
+        if action == "replace":
+            self.replace_session(session, meta)
+
+    def run(self, interval_sec: int = DEFAULT_POLL_INTERVAL_SEC) -> None:
+        """Enter the poll loop. Checks the stop sentinel each tick and
+        exits cleanly when the sentinel appears."""
+        while True:
+            if self.stop_requested():
+                # Clean the sentinel so the next `run` invocation starts
+                # fresh (stop should be consumed, not sticky).
+                try:
+                    self._stop_sentinel().unlink()
+                except FileNotFoundError:
+                    pass
+                return
+            self.poll_once()
+            self.sleep_fn(interval_sec)
+
+    # --- Status report ---
+
+    def status_report(self) -> dict:
+        """One-shot structured report. Returns dict suitable for json.dumps."""
+        intent = self.read_intent()
+        ok, rate_count = self.check_rate_limit()
+        sessions_info = []
+        for session in self.owned_sessions():
+            meta = self.read_meta(session)
+            attached = tmux_clients_attached(session, self.runner)
+            pane_bytes = tmux_capture_pane_bytes(session, self.runner)
+            hb_file = self.state_dir / f"{session}.heartbeat"
+            hb_age = None
+            if hb_file.exists():
+                hb_age = self.now_fn() - hb_file.stat().st_mtime
+            sessions_info.append({
+                "session": session,
+                "meta": meta,
+                "clients_attached": attached,
+                "pane_bytes": pane_bytes,
+                "heartbeat_age_sec": hb_age,
+            })
+        return {
+            "intent": intent,
+            "rate_limit": {
+                "count_last_24h": rate_count,
+                "max_per_24h": RATE_LIMIT_MAX_PER_24H,
+                "under_limit": ok,
+            },
+            "sessions": sessions_info,
+            "stop_requested": self.stop_requested(),
+        }
+
+
+# --- Subcommand dispatch ---
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    sup = Supervisor(state_dir=default_state_dir(), repo_root=default_repo_root())
+    try:
+        sup.acquire_lock()
+    except RuntimeError as e:
+        print(f"agent-supervisor: {e}", file=sys.stderr)
+        return 1
+    try:
+        sup.run(interval_sec=args.interval)
+    finally:
+        sup.release_lock()
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    sup = Supervisor(state_dir=default_state_dir(), repo_root=default_repo_root())
+    report = sup.status_report()
+    print(json.dumps(report, indent=2))
+    return 0
+
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    state = default_state_dir()
+    state.mkdir(parents=True, exist_ok=True)
+    (state / "supervisor.stop-sentinel").touch()
+    print(f"stop sentinel written to {state}/supervisor.stop-sentinel")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="agent-supervisor",
+        description="hypergumbo tmux session supervisor (WI-razub).",
+    )
+    sub = parser.add_subparsers(dest="subcommand", required=True)
+
+    p_run = sub.add_parser("run", help="enter the poll loop")
+    p_run.add_argument(
+        "--interval", type=int, default=DEFAULT_POLL_INTERVAL_SEC,
+        help=f"seconds between poll ticks (default {DEFAULT_POLL_INTERVAL_SEC})",
+    )
+    p_run.set_defaults(func=cmd_run)
+
+    p_status = sub.add_parser("status", help="one-shot status report as JSON")
+    p_status.set_defaults(func=cmd_status)
+
+    p_stop = sub.add_parser(
+        "stop", help="touch the stop sentinel; running daemon exits on next tick",
+    )
+    p_stop.set_defaults(func=cmd_stop)
+
+    return parser
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
