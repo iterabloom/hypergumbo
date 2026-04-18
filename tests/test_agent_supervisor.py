@@ -574,16 +574,74 @@ class TestCLIDispatch:
         assert result.returncode == 0
         assert "run" in result.stdout and "status" in result.stdout
 
-    def test_stop_creates_sentinel(self, tmp_path: Path) -> None:
+    def test_stop_creates_sentinel_when_supervisor_live(self, tmp_path: Path) -> None:
+        state = tmp_path / "state"
+        state.mkdir()
+        # Plant a lock file whose pid is the test process itself — guaranteed
+        # alive for the duration of the assertion.
+        (state / "supervisor.lock").write_text(f"{os.getpid()}\n")
         env = os.environ.copy()
-        env["AGENT_SUPERVISOR_STATE_DIR"] = str(tmp_path / "state")
+        env["AGENT_SUPERVISOR_STATE_DIR"] = str(state)
         result = subprocess.run(
             [sys.executable, str(SCRIPT_PATH), "stop"],
             capture_output=True, text=True, check=False, env=env,
         )
         assert result.returncode == 0
-        sentinel = tmp_path / "state" / "supervisor.stop-sentinel"
+        sentinel = state / "supervisor.stop-sentinel"
         assert sentinel.exists()
+        assert "stop sentinel written" in result.stdout
+
+    def test_stop_is_noop_when_no_lock_file(self, tmp_path: Path) -> None:
+        """Running `stop` with no supervisor ever started must NOT arm the
+        stop sentinel — otherwise the next `run` invocation consumes it and
+        exits immediately, which is the failure mode this fix addresses."""
+        state = tmp_path / "state"
+        state.mkdir()
+        env = os.environ.copy()
+        env["AGENT_SUPERVISOR_STATE_DIR"] = str(state)
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_PATH), "stop"],
+            capture_output=True, text=True, check=False, env=env,
+        )
+        assert result.returncode == 0
+        assert not (state / "supervisor.stop-sentinel").exists()
+        assert "nothing to stop" in result.stdout
+
+    def test_stop_cleans_stale_lock_and_sentinel(self, tmp_path: Path) -> None:
+        """A lock file whose pid is dead is stale — delete it, delete any
+        leftover stop-sentinel too, and don't arm a fresh one."""
+        state = tmp_path / "state"
+        state.mkdir()
+        # PID 1 is always alive on Linux (init); we need a guaranteed-DEAD
+        # pid. 2**31 - 1 is above PID_MAX_LIMIT on every realistic system.
+        (state / "supervisor.lock").write_text(f"{2**31 - 1}\n")
+        (state / "supervisor.stop-sentinel").touch()
+        env = os.environ.copy()
+        env["AGENT_SUPERVISOR_STATE_DIR"] = str(state)
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_PATH), "stop"],
+            capture_output=True, text=True, check=False, env=env,
+        )
+        assert result.returncode == 0
+        assert not (state / "supervisor.lock").exists()
+        assert not (state / "supervisor.stop-sentinel").exists()
+        assert "nothing to stop" in result.stdout
+        assert "cleaned" in result.stdout
+
+    def test_stop_treats_malformed_lock_as_dead(self, tmp_path: Path) -> None:
+        state = tmp_path / "state"
+        state.mkdir()
+        (state / "supervisor.lock").write_text("not-a-pid\n")
+        env = os.environ.copy()
+        env["AGENT_SUPERVISOR_STATE_DIR"] = str(state)
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_PATH), "stop"],
+            capture_output=True, text=True, check=False, env=env,
+        )
+        assert result.returncode == 0
+        assert not (state / "supervisor.lock").exists()
+        assert not (state / "supervisor.stop-sentinel").exists()
+        assert "nothing to stop" in result.stdout
 
     def test_debugging_reset_rate_limit_zeroes_count(self, tmp_path: Path) -> None:
         state = tmp_path / "state"

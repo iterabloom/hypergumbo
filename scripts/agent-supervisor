@@ -865,11 +865,44 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _lock_pid_alive(lock_path: Path) -> bool:
+    """True only when ``lock_path`` contains a PID that is currently alive.
+
+    Missing file, unreadable file, malformed content, and dead-pid content
+    all return False. This is the "is a supervisor actually running?" check
+    that gates ``cmd_stop`` — without it, ``stop`` arms the stop sentinel
+    unconditionally, and a stray stop call ambushes the next ``run``
+    invocation (the run loop consumes the sentinel on its first tick and
+    exits immediately, leaving the operator confused about why their
+    supervisor keeps dying within seconds of launch).
+    """
+    if not lock_path.exists():
+        return False
+    try:
+        pid = int(lock_path.read_text().strip())
+    except (ValueError, OSError):
+        return False
+    return pid_alive(pid)
+
+
 def cmd_stop(args: argparse.Namespace) -> int:
     state = default_state_dir()
+    lock_path = state / "supervisor.lock"
+    sentinel_path = state / "supervisor.stop-sentinel"
+    if not _lock_pid_alive(lock_path):
+        cleaned = []
+        if lock_path.exists():
+            lock_path.unlink()
+            cleaned.append("stale lock")
+        if sentinel_path.exists():
+            sentinel_path.unlink()
+            cleaned.append("stale stop-sentinel")
+        suffix = f"; cleaned {', '.join(cleaned)}" if cleaned else ""
+        print(f"agent-supervisor: nothing to stop (no live supervisor){suffix}.")
+        return 0
     state.mkdir(parents=True, exist_ok=True)
-    (state / "supervisor.stop-sentinel").touch()
-    print(f"stop sentinel written to {state}/supervisor.stop-sentinel")
+    sentinel_path.touch()
+    print(f"stop sentinel written to {sentinel_path}")
     return 0
 
 
