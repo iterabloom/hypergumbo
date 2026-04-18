@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Generate docs/CONCEPTS.md — the concept-vocabulary registry (WI-dajul).
+
+Scans all framework YAML pattern files for `concept: <name>` strings
+emitted to symbols' meta.concepts list, and scans the hypergumbo-core
+source tree for concept-string consumers (`has_concept`, `get_concept`,
+and direct `concept == "<name>"` comparisons). Writes a markdown table
+to docs/CONCEPTS.md that maps every concept to (producers, consumers,
+status).
+
+Status values:
+  - live     — at least one producer AND at least one consumer
+  - inert    — producers exist but no consumer reads the concept
+  - ghost    — a consumer mentions the concept but no YAML emits it
+               (likely dead code or outdated reference)
+
+Run whenever YAMLs or linker sources change. The output file is checked
+in so changes to vocabulary are reviewable in PRs.
+"""
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+FRAMEWORKS_DIR = (
+    REPO_ROOT
+    / "packages"
+    / "hypergumbo-core"
+    / "src"
+    / "hypergumbo_core"
+    / "frameworks"
+)
+CORE_SRC_DIR = (
+    REPO_ROOT / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core"
+)
+DEFAULT_OUTPUT = REPO_ROOT / "docs" / "CONCEPTS.md"
+
+# Match `- concept: <name>` (optionally quoted) in framework YAMLs.
+_PRODUCER_RE = re.compile(r"^\s*-?\s*concept:\s*[\"']?([A-Za-z_][A-Za-z0-9_]*)[\"']?\s*(#.*)?$")
+
+# Match concept-consumer patterns in Python source:
+#   has_concept(x, "route") / get_concept(x, "route")
+#   concept == "route" / "route" == concept
+#   .get("concept") == "route"
+_CONSUMER_RES = [
+    re.compile(r"""has_concept\([^,]+,\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""),
+    re.compile(r"""get_concept\([^,]+,\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""),
+    re.compile(r"""\.get\(["']concept["']\)\s*==\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""),
+    re.compile(r"""\bconcept\s*==\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""),
+]
+
+
+def scan_producers(frameworks_dir: Path) -> dict[str, set[str]]:
+    """Return {concept_name -> set of YAML filenames that emit it}."""
+    producers: dict[str, set[str]] = defaultdict(set)
+    for yaml_path in sorted(frameworks_dir.glob("*.yaml")):
+        text = yaml_path.read_text(encoding="utf-8")
+        for line in text.splitlines():
+            match = _PRODUCER_RE.match(line)
+            if match:
+                producers[match.group(1)].add(yaml_path.stem)
+    return producers
+
+
+def scan_consumers(src_dir: Path) -> dict[str, set[str]]:
+    """Return {concept_name -> set of relative source paths that read it}."""
+    consumers: dict[str, set[str]] = defaultdict(set)
+    for py_path in sorted(src_dir.rglob("*.py")):
+        if py_path.name.startswith("_concept_utils"):
+            continue  # the utility itself doesn't "consume" a specific concept
+        rel = py_path.relative_to(src_dir).as_posix()
+        text = py_path.read_text(encoding="utf-8")
+        for regex in _CONSUMER_RES:
+            for match in regex.finditer(text):
+                consumers[match.group(1)].add(rel)
+    return consumers
+
+
+def classify(
+    producers: dict[str, set[str]], consumers: dict[str, set[str]]
+) -> list[tuple[str, set[str], set[str], str]]:
+    """Return sorted (concept, producers, consumers, status) tuples."""
+    all_names = sorted(set(producers) | set(consumers))
+    rows: list[tuple[str, set[str], set[str], str]] = []
+    for name in all_names:
+        p = producers.get(name, set())
+        c = consumers.get(name, set())
+        if p and c:
+            status = "live"
+        elif p:
+            status = "inert"
+        else:
+            status = "ghost"
+        rows.append((name, p, c, status))
+    return rows
+
+
+def format_md(rows: list[tuple[str, set[str], set[str], str]]) -> str:
+    """Render the registry as a markdown document."""
+    n_total = len(rows)
+    n_live = sum(1 for r in rows if r[3] == "live")
+    n_inert = sum(1 for r in rows if r[3] == "inert")
+    n_ghost = sum(1 for r in rows if r[3] == "ghost")
+
+    lines = [
+        "<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->",
+        "<!-- GENERATED: scripts/generate-concepts (WI-dajul) — do not edit by hand. -->",
+        "# Concept Vocabulary Registry",
+        "",
+        "This file enumerates every concept string that the framework-YAML "
+        "pattern layer emits into `symbol.meta.concepts` and pairs each one "
+        "with the downstream code that reads it.",
+        "",
+        "- **live** — at least one YAML producer AND at least one code consumer. "
+        "The concept carries signal end-to-end.",
+        "- **inert** — producers exist but no consumer reads the concept. "
+        "Candidates for either removing the producer pattern or writing a "
+        "Framework-subcategory linker that consumes it.",
+        "- **ghost** — a consumer mentions the concept by name but no YAML "
+        "emits it. Likely dead code or a leftover reference to a removed "
+        "pattern; investigate.",
+        "",
+        f"Total concepts: **{n_total}** "
+        f"(live: {n_live}, inert: {n_inert}, ghost: {n_ghost}).",
+        "",
+        "## Inventory",
+        "",
+        "| Concept | Status | Producers (YAMLs) | Consumers (source paths) |",
+        "| --- | --- | --- | --- |",
+    ]
+    for name, prods, cons, status in rows:
+        prod_str = ", ".join(sorted(prods)) if prods else "_(none)_"
+        cons_str = (
+            ", ".join(f"`{c}`" for c in sorted(cons)) if cons else "_(none)_"
+        )
+        lines.append(f"| `{name}` | {status} | {prod_str} | {cons_str} |")
+
+    lines.append("")
+    lines.append("## How to regenerate")
+    lines.append("")
+    lines.append("```bash")
+    lines.append("./scripts/generate-concepts")
+    lines.append("```")
+    lines.append("")
+    lines.append(
+        "The script is deterministic — given the same YAML and linker sources "
+        "it produces byte-identical output. CI can re-run it and diff the "
+        "result to catch drift."
+    )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def generate(output_path: Path) -> str:
+    producers = scan_producers(FRAMEWORKS_DIR)
+    consumers = scan_consumers(CORE_SRC_DIR)
+    rows = classify(producers, consumers)
+    md = format_md(rows)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(md, encoding="utf-8")
+    return md
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0] if __doc__ else "",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=DEFAULT_OUTPUT,
+        help=f"Output path (default: {DEFAULT_OUTPUT.relative_to(REPO_ROOT)}).",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Do not write; instead, compare generated content against the "
+             "current file and exit 1 if they differ (for CI drift detection).",
+    )
+    args = parser.parse_args(argv)
+
+    producers = scan_producers(FRAMEWORKS_DIR)
+    consumers = scan_consumers(CORE_SRC_DIR)
+    rows = classify(producers, consumers)
+    generated = format_md(rows)
+
+    if args.check:
+        if not args.out.exists():
+            print(f"ERROR: {args.out} does not exist; run without --check first.",
+                  file=sys.stderr)
+            return 1
+        current = args.out.read_text(encoding="utf-8")
+        if current != generated:
+            print(
+                f"ERROR: {args.out} is out of date. Re-run ./scripts/generate-concepts.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"OK: {args.out} is up to date.")
+        return 0
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(generated, encoding="utf-8")
+    print(f"Wrote {args.out} ({len(rows)} concepts).")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
