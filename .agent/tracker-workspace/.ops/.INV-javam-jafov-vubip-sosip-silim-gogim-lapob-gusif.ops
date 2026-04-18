@@ -59,3 +59,18 @@
   clock: 6  # f8f3
   nonce: f8f3  # f8f3
   message: "Taint-flow side of the invariant now lands too. cmd_verify_claims tracks unsupported_taint_languages (those with no sources AND no sinks in the taint catalog) and emits a stderr notice when taint claims are evaluated against them. JSON output schema unchanged for backward compat — signal is stderr-only so existing pipelines keep working. Still pending_validation until bakeoff confirms end-to-end behavior on unsupported-language repos."  # f8f3
+- op: update  # 76bb
+  at: '2026-04-18T22:25:15Z'  # 76bb
+  by: agent  # 76bb
+  actor: jgstern_agent  # 76bb
+  clock: 7  # 76bb
+  nonce: 76bb  # 76bb
+  set:  # 76bb
+    status: satisfied  # 76bb
+- op: discuss  # 4d76
+  at: '2026-04-18T22:25:15Z'  # 4d76
+  by: agent  # 4d76
+  actor: jgstern_agent  # 4d76
+  clock: 8  # 4d76
+  nonce: 4d76  # 4d76
+  message: "Validated end-to-end on a live Ruby-only repo (no io-boundary catalog, no taint catalog for ruby):\n\n**io-boundaries JSON:** `unsupported_languages: ['ruby']` present in output.\n\n**io-boundaries stderr:** \"Note: no I/O primitive catalog for language(s): ruby. Zero boundaries reported for these languages does NOT mean the code is I/O-free — it means hypergumbo cannot detect I/O for this language yet. (INV-javam)\"\n\n**verify-claims stderr (taint-flow claim TF-001 evaluated):** \"Note: no taint-flow catalog for language(s): ruby. Claims touching these languages are NOT actually verified — taint-flow has no sources/sinks to trace. Treat 'confirmed' verdicts on these languages as inconclusive. (INV-javam)\"\n\nAll three channels fire. Note: the deep-20260409-054615 bakeoff artifacts (iter-008) predate the INV-javam fix (iter timestamp 2026-04-10 vs fix commit 688fe9761 2026-04-15), so the converged bakeoff's JSON shows the old schema; direct manual validation on a fresh Ruby-only repo confirms the current code emits the signal correctly."  # 4d76
