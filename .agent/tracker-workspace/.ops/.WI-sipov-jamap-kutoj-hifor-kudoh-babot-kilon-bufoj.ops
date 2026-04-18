@@ -19,3 +19,18 @@
     pr_ref:  # 5a79
     description: "Parent: WI-razub-duluf-nobun-rulit-dapam-jipal-dafud-nahob.\n\n## Scope\n\nInstrument per-turn and long-running-command code paths to touch `~/hypergumbo_lab_notebook/agent-supervisor/<session>.heartbeat`. TELEMETRY ONLY — the supervisor's load-bearing signal is tmux pane-delta per WI-razub design. Heartbeats exist for debugging staleness and producing metrics.\n\n## Deliverables\n\n1. **Shared heartbeat helper.** A small shell helper (`.agent/hooks/_shared/touch_heartbeat.sh` or equivalent) that reads the current `session_id` from wherever the vendor already resolves it, computes the path `~/hypergumbo_lab_notebook/agent-supervisor/<session>.heartbeat`, creates parent directory if missing, and `touch`es the file. Must be safe to call even when no supervisor is running (no network, no blocking).\n\n2. **Per-vendor PostToolUse-equivalent hooks call the helper:**\n   - Claude Code: `.agent/hooks/claude-code/post-tool-use-transcript.sh`\n   - Codex CLI: `.agent/hooks/codex-cli/post-tool-use-transcript.sh`\n   - Cursor: `.agent/hooks/cursor/post-tool-use-transcript.sh`\n   - Gemini CLI: `.agent/hooks/gemini-cli/before-model-transcript.sh` (gemini has no post-tool-use; before-model is the closest per-turn signal)\n\n3. **Stop hook also calls the helper** (one line in `.agent/hooks/_shared/stop_logic.sh`) so that even when no tools run, the stop event itself registers as activity.\n\n4. **Long-running-command wrappers** periodically touch the heartbeat inside their main loop so long bakeoffs / auto-pr polling do NOT appear stale:\n   - `scripts/auto-pr` — every CI poll tick\n   - `scripts/bakeoff-broad` — every cohort / run-step\n   - `scripts/bakeoff-deep` — every cohort / run-step\n   - `scripts/smart-test` (the pytest wrapper) — every test-file completion (or at least once per minute)\n\n5. **Tests.**\n   - Unit test the helper for path computation, idempotence, and graceful failure when `$HOME` is unwritable.\n   - Integration test that a simulated per-turn hook invocation updates file mtime.\n\n## Design source\n\nSee WI-razub consolidated design, \"Signal layer\" (`<session>.heartbeat` bullet) and \"Hook changes\" section.\n\n## Governance\n\nTouches `.agent/hooks/**` and several approved scripts under `scripts/`. Pre-approved in WI-razub comment 2026-04-18T06:11:15Z."  # 5a79
     fields: {}  # 5a79
+- op: update  # 5f15
+  at: '2026-04-18T07:25:12Z'  # 5f15
+  by: agent  # 5f15
+  actor: jgstern_agent  # 5f15
+  clock: 2  # 5f15
+  nonce: 5f15  # 5f15
+  set:  # 5f15
+    status: done  # 5f15
+- op: discuss  # 6b50
+  at: '2026-04-18T07:25:12Z'  # 6b50
+  by: agent  # 6b50
+  actor: jgstern_agent  # 6b50
+  clock: 3  # 6b50
+  nonce: 6b50  # 6b50
+  message: "Landed in PR #3145 (merged). touch_heartbeat.sh helper + 4 per-turn hook wire-ups. Stop-hook integration and long-running wrappers deferred to a follow-up — those need session_id plumbing the supervisor daemon (WI-rofuv) will provide via an env var."  # 6b50

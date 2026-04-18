@@ -19,3 +19,18 @@
     pr_ref:  # e93c
     description: "Parent: WI-razub-duluf-nobun-rulit-dapam-jipal-dafud-nahob.\n\n## Scope\n\nPrevent zombie fields from reaccumulating in `stop_hook_state.json`. Evidence from 2026-04-18: migration PR #2926 copied five zombie fields (`last_pr`, `last_pr_num`, `last_pr_state`, `pending_hard_todos`, `pending_soft_todos`) into the new file; cleanup PR deleted the migration without writers; the additive jq merge pattern in `stop_logic.sh` preserved them indefinitely.\n\n## Deliverables\n\n1. **Maintained-field list.** Define (as a single source of truth — shell variable or python const referenced by both writer and doc) the complete set of keys that `stop_hook_state.json` MAY contain:\n   - `last_completed_utc`\n   - `guidance_file`\n   - `bakeoff_convergence`\n   - `bakeoff_session_path`\n   - `bakeoff_session_type`\n   - `current_branch`\n   (Extend this list deliberately when adding new fields; do NOT add via ad-hoc merges.)\n\n2. **Hardened jq merge in `stop_logic.sh`.** The current additive pattern at line ~406-418 looks like `. + {guidance_file: $gf} + ...`. Replace with a pattern that (a) starts from the existing object, (b) removes any key NOT in the maintained set via `del(.foo, .bar, ...)` or `with_entries(select(.key as $k | [list] | index($k)))`, (c) then merges in the updates. This makes the file self-cleaning so future rogue writers or forgotten migrations cannot leave residue.\n\n3. **Document the maintained-field list in `.agent/agent_playbooks_protocols_sops_skills/recover-state-playbook.md`.** One sentence explaining that writes outside this set are silently dropped, and any agent reading the file should treat unlisted fields as stale.\n\n4. **Tests.** Add a pytest test that:\n   - Seeds `stop_hook_state.json` with a known zombie key (e.g. `last_pr_num: 999`).\n   - Runs `stop_logic.sh` through the existing `scripts/stop-hook-preview` dry-run path.\n   - Asserts the zombie key is absent from the written file, while a maintained key (e.g. `guidance_file`) is present.\n\n## Not in scope\n\n- Renaming or reshaping the file schema.\n- Restoring any of the five zombie fields (they were already confirmed unread).\n\n## Design source\n\nSee WI-razub consolidated design, \"Evidence gathered 2026-04-18\" and \"Open items to decompose\" item 7.\n\n## Governance\n\nTouches `.agent/hooks/_shared/stop_logic.sh` and a playbook file. Pre-approved in WI-razub comment 2026-04-18T06:11:15Z."  # e93c
     fields: {}  # e93c
+- op: update  # 1cc2
+  at: '2026-04-18T07:10:14Z'  # 1cc2
+  by: agent  # 1cc2
+  actor: jgstern_agent  # 1cc2
+  clock: 2  # 1cc2
+  nonce: 1cc2  # 1cc2
+  set:  # 1cc2
+    status: done  # 1cc2
+- op: discuss  # 6813
+  at: '2026-04-18T07:10:14Z'  # 6813
+  by: agent  # 6813
+  actor: jgstern_agent  # 6813
+  clock: 3  # 6813
+  nonce: '6813'  # 6813
+  message: "Landed in PR #3144 (merged). stop_hook_state.json now self-cleans on every write: the jq merge starts from an explicit extraction of the 6 maintained keys (guidance_file, bakeoff_convergence, bakeoff_session_path, bakeoff_session_type, current_branch, last_completed_utc) via with_entries(select(.value != null)), so any unlisted key is dropped on the next write. Maintained-field table documented in recover-state playbook with writer + meaning per field. 16 new tests guard both the jq expression and the code/doc sync."  # 6813
