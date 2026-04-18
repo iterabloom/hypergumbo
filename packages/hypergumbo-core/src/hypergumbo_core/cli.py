@@ -910,6 +910,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     include_docs = getattr(args, "include_docs", False)
     show_progress = getattr(args, "progress", True)
     locale = getattr(args, "locale", None)
+    enable_handler_slices = not getattr(args, "no_handler_slices", False)
+    max_handler_slices = getattr(
+        args, "max_handler_slices", _DEFAULT_MAX_HANDLER_SLICES
+    )
 
     # Detect and filter locale documentation directories
     _setup_locale_filtering(repo_root, locale)
@@ -928,6 +932,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         frameworks=frameworks,
         include_docs=include_docs,
         progress=show_progress,
+        enable_handler_slices=enable_handler_slices,
+        max_handler_slices=max_handler_slices,
     )
 
     # Output summary (always at the end)
@@ -4681,6 +4687,24 @@ Cache location:
              "(e.g., --locale ja-jp). By default, translated documentation "
              "directories are excluded to avoid processing duplicate content.",
     )
+    p_run.add_argument(
+        "--no-handler-slices",
+        action="store_true",
+        dest="no_handler_slices",
+        help="Disable per-route-handler forward slices (WI-sihok). By default "
+             "`run` emits slice.handler.<METHOD>.<path>.json for each "
+             "detected handler, capped at --max-handler-slices. Use this "
+             "flag to skip the extra files entirely.",
+    )
+    p_run.add_argument(
+        "--max-handler-slices",
+        type=int,
+        default=_DEFAULT_MAX_HANDLER_SLICES,
+        metavar="N",
+        help=f"Maximum per-handler forward slices to emit (default: "
+             f"{_DEFAULT_MAX_HANDLER_SLICES}). Overflow handlers are listed in "
+             f"slice.handler.index.json with pointers to re-derive on demand.",
+    )
     p_run.set_defaults(func=cmd_run)
 
     # hypergumbo slice
@@ -5610,6 +5634,256 @@ def _compute_supply_chain_summary(
     return summary
 
 
+# ---------------------------------------------------------------------------
+# Handler slices (WI-sihok): per-route-handler forward slices emitted by `run`
+# ---------------------------------------------------------------------------
+
+# Default cap on per-handler forward slices written alongside the behavior
+# map. Matches the philosophy of the tiered sketches (hg.4k/16k/64k.json):
+# bounded output without requiring manual selection. Users with more
+# handlers can raise the cap via --max-handler-slices or consult
+# slice.handler.index.json for the overflow list.
+_DEFAULT_MAX_HANDLER_SLICES = 25
+
+# Forward-slice parameters for per-handler slices, matching the tuned
+# config used by the bakeoff's top-entry forward slices (see
+# scripts/bakeoff-deep around line 2060 and WI-sivun for the hub-threshold
+# choice).
+_HANDLER_SLICE_MAX_HOPS = 10
+_HANDLER_SLICE_MAX_FILES = 200
+_HANDLER_SLICE_HUB_THRESHOLD = 100
+
+
+def _is_route_symbol(symbol: Symbol) -> bool:
+    """Return True if the symbol represents a route/handler.
+
+    Uses the same detector as cmd_routes: symbols with kind='route' (produced
+    by analyzers that materialize routes directly, e.g. Go) OR symbols whose
+    meta.concepts list contains a concept='route' entry (produced by
+    framework-YAML concept enrichment, e.g. FastAPI @app.get).
+    """
+    if symbol.kind == "route":
+        return True
+    meta = symbol.meta or {}
+    for concept in meta.get("concepts", []) or []:
+        if isinstance(concept, dict) and concept.get("concept") == "route":
+            return True
+    return False
+
+
+def _extract_route_info(symbol: Symbol) -> dict | None:
+    """Pull (method, path) out of a route symbol's metadata.
+
+    Returns None when both lookup sites fail to yield a complete pair —
+    downstream code uses the return value to decide whether to emit a
+    route-qualified filename or a handler-name fallback. kind='route'
+    symbols prefer their authoritative meta.http_method/route_path; other
+    route symbols fall back to the first matching concept entry.
+    """
+    meta = symbol.meta or {}
+    if symbol.kind == "route":
+        method = meta.get("http_method")
+        path = meta.get("route_path")
+        if method and path:
+            return {"method": str(method), "path": str(path)}
+    for concept in meta.get("concepts", []) or []:
+        if isinstance(concept, dict) and concept.get("concept") == "route":
+            method = concept.get("method")
+            path = concept.get("path")
+            if method and path:
+                return {"method": str(method), "path": str(path)}
+    return None
+
+
+def _handler_slice_filename(symbol: Symbol, route_info: dict | None) -> str:
+    """Build the filename for a handler slice.
+
+    Preferred form is `slice.handler.<METHOD>.<path-sanitized>.json` when
+    route metadata is available — (method, path) is framework-agnostic and
+    globally unique in practice, which handler names are not. Falls back to
+    `slice.handler.<handler-name>.json` when metadata is incomplete.
+    """
+    if route_info:
+        method = _sanitize_filename_part(
+            str(route_info["method"]).upper(), max_len=10
+        )
+        path_part = _sanitize_filename_part(str(route_info["path"]))
+        return f"slice.handler.{method}.{path_part}.json"
+    name_part = _sanitize_filename_part(symbol.name or "unnamed")
+    return f"slice.handler.{name_part}.json"
+
+
+def _emit_handler_slices(
+    behavior_map: dict,
+    all_symbols: list[Symbol],
+    all_edges: list[Edge],
+    repo_root: Path,
+    out_dir: Path,
+    max_handler_slices: int = _DEFAULT_MAX_HANDLER_SLICES,
+    enabled: bool = True,
+) -> list[Path]:
+    """Emit one forward slice JSON per detected route handler (WI-sihok).
+
+    Writes up to `max_handler_slices` files named
+    `slice.handler.<METHOD>.<path>.json` to `out_dir`, plus a companion
+    `slice.handler.index.json` that lists *every* detected handler — the
+    emitted ones and any dropped by the cap — so LLM/agent consumers can
+    discover what is available and what to re-derive on demand. Returns the
+    list of written paths (handler slices + index file).
+
+    Detection matches cmd_routes (concept=route OR kind=route) and excludes
+    test-file handlers. Handlers are deduplicated by symbol id; when the
+    same id is registered under multiple routes, all registrations appear
+    in the emitted file's meta.routes list. Slice parameters mirror the
+    bakeoff's proven forward-slice tuning.
+
+    When `enabled=False`, returns an empty list without touching the
+    filesystem — the caller opts out via --no-handler-slices.
+    """
+    if not enabled:
+        return []
+
+    from .paths import is_test_file
+    from .slice import AmbiguousEntryError, SliceQuery, slice_graph
+
+    # Step 1: collect route symbols, excluding test-file handlers. Order is
+    # preserved from all_symbols, which run_behavior_map passes in already
+    # ranked by centrality — so first-seen is most prominent.
+    handlers: list[Symbol] = []
+    for sym in all_symbols:
+        if not _is_route_symbol(sym):
+            continue
+        if sym.path and is_test_file(sym.path):
+            continue
+        handlers.append(sym)
+
+    # Step 2: group by symbol id so shared handlers emit once with a merged
+    # routes list. Preserves the ranked insertion order.
+    id_to_routes: dict[str, list[dict]] = {}
+    id_order: list[str] = []
+    id_to_symbol: dict[str, Symbol] = {}
+    for h in handlers:
+        if h.id not in id_to_routes:
+            id_to_routes[h.id] = []
+            id_order.append(h.id)
+            id_to_symbol[h.id] = h
+        info = _extract_route_info(h)
+        if info and info not in id_to_routes[h.id]:
+            id_to_routes[h.id].append(info)
+
+    # Pre-compute out-degree for the index file (gives consumers a quick
+    # "how many callees does this handler have?" signal without re-scanning).
+    out_degree: dict[str, int] = {}
+    for e in all_edges:
+        out_degree[e.src] = out_degree.get(e.src, 0) + 1
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    written: list[Path] = []
+    index_entries: list[dict] = []
+
+    for rank, handler_id in enumerate(id_order):
+        handler = id_to_symbol[handler_id]
+        routes = id_to_routes[handler_id]
+        primary_route = routes[0] if routes else None
+
+        entry: dict = {
+            "id": handler_id,
+            "name": handler.name,
+            "path": handler.path,
+            "routes": routes,
+            "out_degree": out_degree.get(handler_id, 0),
+        }
+
+        if rank >= max_handler_slices:
+            entry["emitted"] = False
+            entry["reason"] = (
+                f"over cap ({max_handler_slices}); re-run with "
+                f"hypergumbo slice --entry {handler_id}"
+            )
+            index_entries.append(entry)
+            continue
+
+        query = SliceQuery(
+            entrypoint=handler_id,
+            max_hops=_HANDLER_SLICE_MAX_HOPS,
+            max_files=_HANDLER_SLICE_MAX_FILES,
+            min_confidence=0.0,
+            exclude_tests=True,
+            exclude_utility=False,
+            reverse=False,
+            max_tier=None,
+            language=None,
+            hub_threshold=_HANDLER_SLICE_HUB_THRESHOLD,
+            exclude_imports=True,
+            dataflow=False,
+        )
+        try:
+            result = slice_graph(all_symbols, all_edges, query)
+        except AmbiguousEntryError:  # pragma: no cover - defensive: id is an exact match
+            entry["emitted"] = False
+            entry["reason"] = "ambiguous entry id"
+            index_entries.append(entry)
+            continue
+
+        filename = _handler_slice_filename(handler, primary_route)
+        out_path = out_dir / filename
+
+        node_ids_set = set(result.node_ids)
+        edge_ids_set = set(result.edge_ids)
+        inline_nodes = [
+            n for n in behavior_map.get("nodes", []) if n.get("id") in node_ids_set
+        ]
+        inline_edges = [
+            e for e in behavior_map.get("edges", []) if e.get("id") in edge_ids_set
+        ]
+
+        feature_dict = result.to_dict()
+        feature_dict["nodes"] = inline_nodes
+        feature_dict["edges"] = inline_edges
+        feature_dict["meta"] = {
+            "entry_kind": "handler",
+            "routes": routes,
+            "slice_params": {
+                "max_hops": _HANDLER_SLICE_MAX_HOPS,
+                "max_files": _HANDLER_SLICE_MAX_FILES,
+                "hub_threshold": _HANDLER_SLICE_HUB_THRESHOLD,
+                "exclude_tests": True,
+                "exclude_imports": True,
+            },
+        }
+
+        output = {
+            "schema_version": behavior_map.get("schema_version", "0.1.0"),
+            "view": "slice",
+            "feature": feature_dict,
+        }
+        out_path.write_text(json.dumps(output, indent=2, sort_keys=True))
+
+        entry["emitted"] = True
+        entry["file"] = filename
+        entry["node_count"] = len(result.node_ids)
+        entry["edge_count"] = len(result.edge_ids)
+        index_entries.append(entry)
+        written.append(out_path)
+
+    index_path = out_dir / "slice.handler.index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "schema_version": behavior_map.get("schema_version", "0.1.0"),
+                "view": "handler_slice_index",
+                "max_handler_slices": max_handler_slices,
+                "handlers": index_entries,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    written.append(index_path)
+    return written
+
+
 def run_behavior_map(
     repo_root: Path,
     out_path: Path | None = None,
@@ -5625,6 +5899,8 @@ def run_behavior_map(
     include_docs: bool = False,
     include_sketch_precomputed: bool = True,
     progress: bool = True,
+    enable_handler_slices: bool = True,
+    max_handler_slices: int = _DEFAULT_MAX_HANDLER_SLICES,
 ) -> list[Path]:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -5996,6 +6272,21 @@ def run_behavior_map(
     entrypoints = detect_entrypoints(all_symbols, all_edges)
     behavior_map["entrypoints"] = [ep.to_dict() for ep in entrypoints]
     del entrypoints  # Free Entrypoint objects
+
+    # WI-sihok: emit per-handler forward slices alongside the main output so
+    # "what does this handler touch?" is answerable without a follow-up
+    # `hypergumbo slice --entry <handler>` invocation. Uses behavior_map's
+    # in-memory node/edge dicts (already ranked) for inlined slice payloads.
+    handler_slice_files = _emit_handler_slices(
+        behavior_map,
+        all_symbols,
+        all_edges,
+        repo_root,
+        out_path.parent,
+        max_handler_slices=max_handler_slices,
+        enabled=enable_handler_slices,
+    )
+    generated_files.extend(handler_slice_files)
 
     # Compute supply chain summary
     # Note: derived_paths would be tracked during file discovery in a full implementation

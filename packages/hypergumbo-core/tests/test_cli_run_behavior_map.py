@@ -109,9 +109,12 @@ def test_run_behavior_map_returns_generated_files(tmp_path: Path) -> None:
     # Create a simple Python file
     (tmp_path / "test.py").write_text("def hello(): pass\n")
 
-    # Run with budgets disabled (only main output)
+    # Run with budgets and handler slices disabled (only main output)
     out_path = tmp_path / "results.json"
-    generated = run_behavior_map(tmp_path, out_path, budgets="none", include_sketch_precomputed=False)
+    generated = run_behavior_map(
+        tmp_path, out_path, budgets="none",
+        include_sketch_precomputed=False, enable_handler_slices=False,
+    )
 
     assert len(generated) == 1
     assert generated[0] == out_path
@@ -125,9 +128,12 @@ def test_run_behavior_map_returns_budget_files(tmp_path: Path) -> None:
     # Create a simple Python file
     (tmp_path / "test.py").write_text("def hello(): pass\n")
 
-    # Run with custom budgets
+    # Run with custom budgets; disable handler slices to keep file count stable
     out_path = tmp_path / "results.json"
-    generated = run_behavior_map(tmp_path, out_path, budgets="4k,16k", include_sketch_precomputed=False)
+    generated = run_behavior_map(
+        tmp_path, out_path, budgets="4k,16k",
+        include_sketch_precomputed=False, enable_handler_slices=False,
+    )
 
     # Should have 3 files: 2 budget files + main output
     assert len(generated) == 3
@@ -158,6 +164,7 @@ def test_cli_run_prints_artifact_summary(tmp_path: Path) -> None:
             str(tmp_path),
             "--out", str(out_path),
             "--budgets", "none",
+            "--no-handler-slices",
         ],
         capture_output=True,
         text=True,
@@ -186,6 +193,7 @@ def test_cli_run_prints_budget_files_in_summary(tmp_path: Path) -> None:
             str(tmp_path),
             "--out", str(out_path),
             "--budgets", "4k,16k",
+            "--no-handler-slices",
         ],
         capture_output=True,
         text=True,
@@ -257,6 +265,7 @@ def test_run_behavior_map_with_extra_excludes(tmp_path: Path) -> None:
         budgets="none",
         extra_excludes=["custom_vendor"],
         include_sketch_precomputed=False,
+        enable_handler_slices=False,
     )
 
     assert len(generated) == 1
