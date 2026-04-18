@@ -19,3 +19,18 @@
     pr_ref:  # f93a
     description: "Original motivation of the WI-kuvam audit (orthogonal to the SHAPE_MISMATCH defect itself): there is no single place to see which concept strings YAMLs emit and which linkers consume them. The audit surfaced ~30 INERT_EMIT concepts (YAMLs emit them but no linker consumes — e.g. fastapi's 'dependency'/'background_task'/'request'/'auth'/'security'/'error_handler'/'lifecycle'; django's 'controller'/'serializer'/'form'/'admin'/'event_handler'/'auth_backend'/'permission'/'filter'/'template_tag'/'template_filter'; express's 'auth_strategy'/'websocket_handler'/'websocket_emitter'/'websocket_namespace'/'http_client'; cli's 'option'/'argument'/'entrypoint'/'error'/'output'; celery's 'scheduled_task'/'event_handler'/'configuration').\n\nDeliverable: a concept vocabulary registry that enumerates, per concept string:\n  - Which YAML(s) emit it\n  - Which linker(s) / other consumers read it\n  - Expected shape of the dict emitted (which extra keys populate — 'path', 'method', etc.)\n  - Status: live (≥1 consumer) vs inert (0 consumers, candidate for removal or future linker)\n\nLocation options: docs/CONCEPTS.md (new file), or a section in existing docs/LINKERS.md. Either way, generation should ideally be scripted (grep over YAMLs and linker sources) so the registry stays fresh as new concepts are added.\n\nDeferred from WI-kuvam audit. Blocked by nothing; safe to do in parallel with WI-vogoh/WI-hopij."  # f93a
     fields: {}  # f93a
+- op: update  # 9e2f
+  at: '2026-04-18T02:08:29Z'  # 9e2f
+  by: agent  # 9e2f
+  actor: jgstern_agent  # 9e2f
+  clock: 2  # 9e2f
+  nonce: 9e2f  # 9e2f
+  set:  # 9e2f
+    status: done  # 9e2f
+- op: discuss  # 924d
+  at: '2026-04-18T02:08:29Z'  # 924d
+  by: agent  # 924d
+  actor: jgstern_agent  # 924d
+  clock: 3  # 924d
+  nonce: 924d  # 924d
+  message: "Implemented scripts/generate-concepts + docs/CONCEPTS.md + tests/test_generate_concepts.py. Branch jgstern-agent/docs/concept-vocabulary commit d1cafd47a. Initial scan: 316 concepts, 6 live / 310 inert / 0 ghost. The large inert pool confirms the WI-kuvam audit's finding that many Framework-linker opportunities are visible in the YAML layer but unwired."  # 924d
