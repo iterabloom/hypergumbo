@@ -10,6 +10,19 @@ cat ~/hypergumbo_lab_notebook/guidance_log/agent_notes.json 2>/dev/null
 
 The two files together record: hook-maintained fields (current_branch, last_completed_utc, guidance_file, bakeoff_convergence, bakeoff_session_path, bakeoff_session_type) in stop_hook_state.json, and the agent-authored free-text notes field in agent_notes.json. Use both to orient yourself before starting new work.
 
+**Maintained-field list for `stop_hook_state.json`** (WI-joriv write discipline). These are the ONLY keys the stop hook will preserve on every write:
+
+| Field | Writer | Meaning |
+| --- | --- | --- |
+| `guidance_file` | stop_logic.sh Path 1 | Pointer to the most recent stop-hook guidance markdown file. |
+| `bakeoff_convergence` | stop_logic.sh | One-line `CONVERGED …` or `NEEDS_WORK …` summary computed from the latest bakeoff `state.json`. |
+| `bakeoff_session_path` | stop_logic.sh | Absolute path to the latest bakeoff session directory. |
+| `bakeoff_session_type` | stop_logic.sh | `broad` or `deep`. |
+| `current_branch` | stop_logic.sh | The git branch the hook saw when it fired. |
+| `last_completed_utc` | stop_logic.sh Path 3 | Timestamp set at the end of a full reflection (>= 30 min after the prior one). Used to gate the cooldown→reflection transition. |
+
+**Any key NOT in this list is silently dropped on the next write.** This is by design — it prevents zombie fields from forgotten migrations or ad-hoc writers (such as the five stale keys `last_pr`, `last_pr_num`, `last_pr_state`, `pending_hard_todos`, `pending_soft_todos` cleaned up on 2026-04-18). If you need to add a new field, edit both the `jq` extract form in `.agent/hooks/_shared/stop_logic.sh` AND this table in the same PR. Don't try to tack on an `. + {new_field: $v}` shortcut — the write-discipline filter will drop it on the very next hook fire.
+
 If the stop_hook_state.json contains a `guidance_file` field, read that file for the most recent stop hook guidance (TODO details, circuit breaker status).
 
 If stop_hook_state.json contains `bakeoff_session_path` and `bakeoff_session_type`, these identify the most recent bakeoff session. Use the session path to resume work on the correct session (e.g., `./scripts/bakeoff-broad status --workdir <path>` or `./scripts/bakeoff-deep status --workdir <path>`).

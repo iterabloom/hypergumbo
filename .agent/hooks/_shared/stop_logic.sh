@@ -403,6 +403,21 @@ if [[ "$TOTAL_TODOS" -gt 0 ]]; then
       if [[ -f "$STATE_FILE_FOR_GF" ]]; then
         _EXISTING=$(cat "$STATE_FILE_FOR_GF")
       fi
+      # WI-joriv write discipline: the additive merge below used to start
+      # from `.` (the full existing object), so any key a migration or a
+      # rogue writer dropped in the file survived every subsequent write
+      # indefinitely. Starting 2026-04-18, the merge begins from the
+      # EXTRACTED set of maintained keys — any unlisted key is silently
+      # dropped on the next write, making the file self-cleaning.
+      #
+      # Maintained field list (MUST match recover-state-playbook.md):
+      #   guidance_file, bakeoff_convergence, bakeoff_session_path,
+      #   bakeoff_session_type, current_branch, last_completed_utc
+      #
+      # To add a new field: list it in the extract form below AND the
+      # recover-state playbook. Do not reach for an `. + {new_field: $v}`
+      # shortcut — the drop policy will silently discard anything the
+      # extract form doesn't know about.
       if printf '%s' "$_EXISTING" | jq --arg gf "$GUIDANCE_FILE" \
             --arg bc "${BAKEOFF_CONVERGENCE_LINE:-}" \
             --arg bs "${_SESSION_DIR:-}" \
@@ -410,11 +425,14 @@ if [[ "$TOTAL_TODOS" -gt 0 ]]; then
             --arg now "$_NOW_UTC" \
             --arg elapsed "$_PHASE_A_ELAPSED_MIN" \
             --arg branch "$_CURRENT_BRANCH" \
-            '. + {guidance_file: $gf}
-               + (if $bc != "" then {bakeoff_convergence: $bc} else {} end)
-               + (if $bs != "" then {bakeoff_session_path: $bs, bakeoff_session_type: $bt} else {} end)
-               + (if $branch != "" then {current_branch: $branch} else {} end)
-               + (if ($elapsed | tonumber) >= 30 then {last_completed_utc: $now} else {} end)' \
+            '({guidance_file, bakeoff_convergence, bakeoff_session_path,
+               bakeoff_session_type, current_branch, last_completed_utc}
+              | with_entries(select(.value != null)))
+             + {guidance_file: $gf}
+             + (if $bc != "" then {bakeoff_convergence: $bc} else {} end)
+             + (if $bs != "" then {bakeoff_session_path: $bs, bakeoff_session_type: $bt} else {} end)
+             + (if $branch != "" then {current_branch: $branch} else {} end)
+             + (if ($elapsed | tonumber) >= 30 then {last_completed_utc: $now} else {} end)' \
             > "$TMP" 2>/dev/null; then
         mv "$TMP" "$STATE_FILE_FOR_GF"
       else
