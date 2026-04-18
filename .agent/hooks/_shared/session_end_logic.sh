@@ -27,6 +27,9 @@ fi
 # Remember what mode was active (lowercase for display)
 SESSION_END_MODE=$(echo "$_MODE" | tr '[:upper:]' '[:lower:]')
 
-# Disable autonomous mode
-"$REPO_ROOT/scripts/loop-toggle" off >/dev/null 2>&1
+# Disable autonomous mode for the current session only.
+# WI-razub intent/mode split: session-end reflects "this CLI is ending" —
+# the project-level intent in autonomous_intent.txt stays as the human set
+# it so the next supervisor-driven respawn can pick up the correct mode.
+"$REPO_ROOT/scripts/loop-toggle" --set-session-mode off >/dev/null 2>&1
 SESSION_END_ACTED=true
