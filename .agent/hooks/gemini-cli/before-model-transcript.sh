@@ -29,6 +29,10 @@ if [[ -z "$SESSION_ID" ]]; then
     exit 0
 fi
 
+# WI-sipov: touch per-session heartbeat for supervisor telemetry.
+source "$SCRIPT_DIR/../_shared/touch_heartbeat.sh"
+touch_heartbeat "$SESSION_ID"
+
 HOOK_OUTPUT=$("$POLL_SCRIPT" "$SESSION_ID" 2>/dev/null) || {
     # No new content — allow request to proceed unmodified
     echo '{"decision":"allow"}'

@@ -24,6 +24,10 @@ if [[ -z "$SESSION_ID" ]]; then
     exit 0
 fi
 
+# WI-sipov: touch per-session heartbeat for supervisor telemetry.
+source "$SCRIPT_DIR/../_shared/touch_heartbeat.sh"
+touch_heartbeat "$SESSION_ID"
+
 HOOK_OUTPUT=$("$POLL_SCRIPT" "$SESSION_ID" 2>/dev/null) || exit 0
 
 # No output from hook — nothing to inject
