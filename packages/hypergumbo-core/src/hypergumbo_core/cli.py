@@ -96,6 +96,7 @@ import hypergumbo_core.linkers.yjs_crdt as _yjs_crdt_linker  # noqa: F401
 import hypergumbo_core.linkers.annotation_convention as _annotation_convention_linker  # noqa: F401
 import hypergumbo_core.linkers.crypto_flow as _crypto_flow_linker  # noqa: F401
 import hypergumbo_core.linkers.message_dispatch as _message_dispatch_linker  # noqa: F401
+import hypergumbo_core.linkers.airflow_framework_dispatch as _airflow_framework_dispatch_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
 from .ir import Symbol, Edge, create_boundary_nodes, deduplicate_edges
 from .metrics import compute_metrics
