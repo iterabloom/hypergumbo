@@ -93,3 +93,18 @@
   nonce: 678b  # 678b
   set:  # 678b
     status: todo_soft  # 678b
+- op: update  # 7166
+  at: '2026-04-18T08:24:30Z'  # 7166
+  by: agent  # 7166
+  actor: jgstern_agent  # 7166
+  clock: 12  # 7166
+  nonce: '7166'  # 7166
+  set:  # 7166
+    status: done  # 7166
+- op: discuss  # 7ace
+  at: '2026-04-18T08:24:30Z'  # 7ace
+  by: agent  # 7ace
+  actor: jgstern_agent  # 7ace
+  clock: 13  # 7ace
+  nonce: 7ace  # 7ace
+  message: "All 7 sub-items landed and merged:\n\n- WI-pobon (PR #3143): Intent/mode split foundation\n- WI-joriv (PR #3144): stop_hook_state.json write discipline\n- WI-sipov (PR #3145): Per-session heartbeat helper + per-turn wiring\n- WI-rofuv + WI-nusor (PR #3148): agent-supervisor daemon + replacement sequence\n- WI-sakod (PR #3149): Respawn-aware session-start hook\n- WI-batob (PR #3153): Vendor Parity for Respawn AGENTS.md section\n\nDeferred follow-ups (not blocking WI-razub):\n- Stop-hook heartbeat + long-running-command wrapper heartbeats (noted in WI-sipov resolution) — wait on supervisor-exported session_id env var.\n- Empirical verification of Codex/Cursor/Gemini exit keystrokes (noted in WI-batob table with FIXME markers and verification procedure).\n\nSystem is ready: human runs 'loop-toggle DEEP' once + 'agent-supervisor run &' to enable the full respawn mechanism. Circuit-breaker trip now only flips AUTONOMOUS_MODE.txt, not autonomous_intent.txt, so the supervisor respawns a fresh CLI with HYPERGUMBO_RESPAWN=1, and the respawn-aware session-start hook auto-enables autonomous mode + injects the generic seed prompt."  # 7ace

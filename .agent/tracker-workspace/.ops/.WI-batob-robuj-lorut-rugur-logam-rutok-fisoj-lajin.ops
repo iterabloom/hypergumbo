@@ -20,3 +20,18 @@
     pr_ref:  # 8234
     description: "Parent: WI-razub-duluf-nobun-rulit-dapam-jipal-dafud-nahob.\n\n## Scope\n\nNew \"Vendor Parity for Respawn\" section in `AGENTS.md` documenting the per-vendor contract the supervisor relies on. This is the source of truth the code tables in the supervisor + replacement-sequence items reference.\n\n## Deliverables\n\n1. **New AGENTS.md section.** Adds a table (or one subsection per vendor) listing, for each of Claude Code, Codex CLI, Cursor, Gemini CLI:\n   - PostToolUse-equivalent hook filename (for heartbeat instrumentation).\n   - Session-start hook file path (for respawn-aware branching).\n   - Graceful-exit keystroke sequence (for replacement step 1).\n   - Non-interactive CLI invocation string for `tmux new-session ...` (for replacement step 5).\n   - Any vendor-specific quirks (e.g. Cursor's global-SQLite single-session-per-repo constraint per WI-rijoj).\n\n2. **Cross-references.** Link TO this section from:\n   - The supervisor daemon's docstring.\n   - The replacement-sequence module's docstring.\n   - The session-start hooks (one comment in each).\n\n3. **Ground-truth verification.** Before writing, verify each vendor's graceful-exit keystroke works: either from vendor documentation or by testing in a throwaway tmux session. This must not be best-guessed — wrong keystrokes turn graceful-exit into hard-kill 100% of the time.\n\n## Dependencies\n\n- The supervisor daemon and replacement-sequence items reference this doc; so ideally this lands WITH or JUST AFTER those items so references aren't dangling.\n- The respawn-aware session-start hook item references this doc too; same timing.\n\n## Design source\n\nSee WI-razub consolidated design, \"Vendor parity of the mechanism\" (open question 5) and \"Hook changes\" sections.\n\n## Governance\n\nTouches `AGENTS.md` — GOVERNANCE FILE. Pre-approved in WI-razub comment 2026-04-18T06:11:15Z (\"I approve any governance changes\")."  # 8234
     fields: {}  # 8234
+- op: update  # bd75
+  at: '2026-04-18T08:23:58Z'  # bd75
+  by: agent  # bd75
+  actor: jgstern_agent  # bd75
+  clock: 2  # bd75
+  nonce: bd75  # bd75
+  set:  # bd75
+    status: done  # bd75
+- op: discuss  # c7ee
+  at: '2026-04-18T08:23:58Z'  # c7ee
+  by: agent  # c7ee
+  actor: jgstern_agent  # c7ee
+  clock: 3  # c7ee
+  nonce: c7ee  # c7ee
+  message: "Landed in PR #3153 (merged). AGENTS.md Vendor Parity for Respawn section with per-vendor table (hook paths, exit keystroke, CLI invocation, quirks) + verification status (Claude Code verified; Codex/Cursor/Gemini marked unverified with documented verification procedure). Completes all 7 sub-items of WI-razub."  # c7ee
