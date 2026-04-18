@@ -208,6 +208,26 @@ class TestRateLimit:
         ok, count = sup.check_rate_limit()
         assert ok is True and count == 0
 
+    def test_reset_rate_limit_clears_count_and_logs(self, asv, state_dir, fake_repo) -> None:
+        sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo)
+        for _ in range(asv.RATE_LIMIT_MAX_PER_24H):
+            sup.record_spawn()
+        ok_before, count_before = sup.check_rate_limit()
+        assert ok_before is False and count_before == asv.RATE_LIMIT_MAX_PER_24H
+        sup.reset_rate_limit()
+        ok_after, count_after = sup.check_rate_limit()
+        assert ok_after is True and count_after == 0
+        assert not (state_dir / "rate_limit.json").exists()
+        log_text = (state_dir / "respawn_log.log").read_text()
+        assert "rate limit manually reset" in log_text
+
+    def test_reset_rate_limit_when_file_absent_is_noop(self, asv, state_dir, fake_repo) -> None:
+        sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo)
+        assert not (state_dir / "rate_limit.json").exists()
+        sup.reset_rate_limit()  # Must not raise.
+        ok, count = sup.check_rate_limit()
+        assert ok is True and count == 0
+
 
 # --- Respawn log ---
 
@@ -564,6 +584,38 @@ class TestCLIDispatch:
         assert result.returncode == 0
         sentinel = tmp_path / "state" / "supervisor.stop-sentinel"
         assert sentinel.exists()
+
+    def test_debugging_reset_rate_limit_zeroes_count(self, tmp_path: Path) -> None:
+        state = tmp_path / "state"
+        state.mkdir()
+        (state / "rate_limit.json").write_text(
+            json.dumps({"spawns": [time.time()] * 8})
+        )
+        env = os.environ.copy()
+        env["AGENT_SUPERVISOR_STATE_DIR"] = str(state)
+        env["AGENT_SUPERVISOR_REPO_ROOT"] = str(tmp_path / "repo")
+        (tmp_path / "repo").mkdir()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_PATH), "debugging-reset-rate-limit"],
+            capture_output=True, text=True, check=False, env=env,
+        )
+        assert result.returncode == 0
+        assert "rate limit cleared" in result.stdout
+        assert not (state / "rate_limit.json").exists()
+
+    def test_debugging_reset_rate_limit_noop_when_absent(self, tmp_path: Path) -> None:
+        state = tmp_path / "state"
+        state.mkdir()
+        env = os.environ.copy()
+        env["AGENT_SUPERVISOR_STATE_DIR"] = str(state)
+        env["AGENT_SUPERVISOR_REPO_ROOT"] = str(tmp_path / "repo")
+        (tmp_path / "repo").mkdir()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_PATH), "debugging-reset-rate-limit"],
+            capture_output=True, text=True, check=False, env=env,
+        )
+        assert result.returncode == 0
+        assert "rate limit cleared" in result.stdout
 
     def test_status_prints_json(self, tmp_path: Path) -> None:
         env = os.environ.copy()

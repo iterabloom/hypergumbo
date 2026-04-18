@@ -507,6 +507,18 @@ class Supervisor:
         data["spawns"] = spawns
         path.write_text(json.dumps(data))
 
+    def reset_rate_limit(self) -> None:
+        """Delete the rolling-24h spawn log so the next spawn starts from a
+        clean slate. Invoked by the ``debugging-reset-rate-limit`` subcommand
+        when an operator has exhausted the daily cap during troubleshooting
+        and wants to unstick the supervisor without waiting 24h. Idempotent:
+        no-op when the file is already absent. Always appends a respawn-log
+        entry so the intervention is auditable."""
+        path = self._rate_limit_file()
+        if path.exists():
+            path.unlink()
+        self.log_respawn("rate limit manually reset via debugging-reset-rate-limit")
+
     def check_rate_limit(self) -> tuple[bool, int]:
         """Return (under_limit, current_count)."""
         path = self._rate_limit_file()
@@ -878,6 +890,18 @@ def cmd_resume(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_debugging_reset_rate_limit(args: argparse.Namespace) -> int:
+    """Operator escape hatch: zero the rolling 24h spawn counter. Named with
+    the ``debugging-`` prefix so it's obvious in `--help` output that this
+    is not part of the normal supervisor lifecycle — it exists so that a
+    troubleshooting burn of the daily cap doesn't force the operator to
+    wait 24h or hand-edit ``rate_limit.json``."""
+    sup = Supervisor(state_dir=default_state_dir(), repo_root=default_repo_root())
+    sup.reset_rate_limit()
+    print(f"rate limit cleared at {sup._rate_limit_file()}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agent-supervisor",
@@ -905,6 +929,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="clear the WI-mujuk auto-pause sentinel so the supervisor starts spawning again",
     )
     p_resume.set_defaults(func=cmd_resume)
+
+    p_reset_rl = sub.add_parser(
+        "debugging-reset-rate-limit",
+        help="zero the rolling 24h spawn counter (operator escape hatch for troubleshooting)",
+    )
+    p_reset_rl.set_defaults(func=cmd_debugging_reset_rate_limit)
 
     return parser
 
