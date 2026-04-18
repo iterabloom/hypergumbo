@@ -14,6 +14,7 @@ The supervisor's authoritative signal is tmux pane-byte delta over a rolling 15-
 ## Prerequisites
 
 - `tmux` installed on the workstation.
+- Strongly recommended: use this agent supervisor inside a snapshotted VM. The agents are all spawned in YOLO mode, so there is NO SANDBOX other than what you provide on your own initiative. (We're talking about *development* of hypergumbo, not *use* of hypergumbo.)
 - One or more vendor CLIs installed and on `$PATH`: `claude`, `codex`, `cursor`, `gemini`.
 - `python3` (standard library only — no extra dependencies).
 - You have run `./scripts/dev-install` in this repo so the hooks and scripts are wired up.

@@ -149,19 +149,19 @@ DEFAULT_SEED_PROMPT = "begin"
 VENDOR_TABLE = {
     "claude-code": {
         "exit_keystroke": "/quit",
-        "cli_invocation": "claude",
+        "cli_invocation": "claude --dangerously-skip-permissions",
     },
     "codex-cli": {
         "exit_keystroke": "/exit",    # FIXME WI-batob: verify
-        "cli_invocation": "codex",
+        "cli_invocation": "codex --dangerously-bypass-approvals-and-sandbox",
     },
     "cursor": {
         "exit_keystroke": "/quit",    # FIXME WI-batob: verify
-        "cli_invocation": "cursor",
+        "cli_invocation": "cursor --force",
     },
     "gemini-cli": {
         "exit_keystroke": "/quit",    # FIXME WI-batob: verify
-        "cli_invocation": "gemini",
+        "cli_invocation": "gemini --approval-mode=yolo",
     },
 }
 
