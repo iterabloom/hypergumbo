@@ -1,0 +1,23 @@
+- op: create  # eae7
+  at: '2026-04-18T06:31:22Z'  # eae7
+  by: agent  # eae7
+  actor: jgstern_agent  # eae7
+  clock: 1  # eae7
+  nonce: eae7  # eae7
+  data:  # eae7
+    kind: work_item  # eae7
+    title: "Replacement sequence: graceful tmux exit, 30s poll, hard-kill fallback, spawn with HYPERGUMBO_RESPAWN=1"  # eae7
+    status: todo_soft  # eae7
+    priority: 1  # eae7
+    parent: WI-razub-duluf-nobun-rulit-dapam-jipal-dafud-nahob  # eae7
+    tags:  # eae7
+    - retrospective  # eae7
+    - governance  # eae7
+    - hooks  # eae7
+    isbefore:  # eae7
+    - WI-batob-robuj-lorut-rugur-logam-rutok-fisoj-lajin  # eae7
+    duplicate_of: []  # eae7
+    not_duplicate_of: []  # eae7
+    pr_ref:  # eae7
+    description: "Parent: WI-razub-duluf-nobun-rulit-dapam-jipal-dafud-nahob.\n\n## Scope\n\nImplement the REPLACE action that the supervisor decision matrix emits: gracefully end the current CLI, fall back to hard-kill + direct cleanup if the CLI does not exit within 30s, then spawn a fresh session with the respawn marker env var.\n\n## Deliverables\n\n1. **Replacement flow** (called by the supervisor from the sibling daemon item):\n   - Step 1: `tmux send-keys -t <session>:0 \"<vendor-exit-keystroke>\" Enter`.\n   - Step 2: Poll `kill -0 <CLI_PID>` until the process is gone, 30s timeout.\n   - Step 3 (clean-exit path): CLI exited cleanly; session-end hook fired; transcript-sync watcher was killed and transcripts rotated. tmux session auto-closes. Proceed to spawn.\n   - Step 4 (timeout path): hard kill.\n     a. `tmux kill-session -t <session>`.\n     b. Directly invoke `.agent/hooks/_shared/kill-transcript-sync.sh` and `.agent/hooks/_shared/rotate-on-session-end.sh` with the recorded `session_id` — recovers what `session-end.sh` would have done since those shared scripts are vendor-agnostic.\n     c. Append `forced-kill fallback for session <name>` to `respawn_log.log`.\n   - Step 5: Spawn `tmux new-session -d -s <new-name> -e HYPERGUMBO_RESPAWN=1 '<vendor-cli-invocation>'`.\n\n2. **Vendor keystroke / invocation table** (per WI-razub design; documentation lives in sibling \"vendor parity docs\" item, but the code needs a dict of them):\n   - Claude Code: keystroke = `/quit`, invocation = `claude` (or equivalent launch command).\n   - Codex CLI: keystroke TBD — populate from current knowledge, with a clear \"unknown\" marker if I don't have it; the docs item will firm this up.\n   - Cursor: keystroke TBD.\n   - Gemini CLI: keystroke TBD.\n\n3. **Shared-script idempotency audit.** Read `kill-transcript-sync.sh` and `rotate-on-session-end.sh` and confirm they do NOT error when the per-session files they manage are already absent. If they do, fix it (this is a real hazard — a clean-exit path followed by a direct call during timeout would double-invoke).\n\n4. **Tests.**\n   - Mock tmux / kill / subprocess invocations; verify the flow steps fire in order.\n   - Timeout path fires hard kill after 30s when CLI ignores the keystroke.\n   - Shared-script calls pass the right `session_id`.\n\n## Dependencies\n\n- Depends on the supervisor daemon item (this is the REPLACE action the daemon dispatches to).\n- The vendor parity docs item will finalize the keystroke table; this item can ship with best-known values and a clear \"FIXME\" list that the docs item closes.\n\n## Design source\n\nSee WI-razub consolidated design, \"Replacement sequence\" section.\n\n## Governance\n\nTouches `scripts/agent-supervisor` (new) and potentially `.agent/hooks/_shared/kill-transcript-sync.sh` + `rotate-on-session-end.sh` if the idempotency audit finds gaps. Pre-approved in WI-razub comment 2026-04-18T06:11:15Z."  # eae7
+    fields: {}  # eae7
