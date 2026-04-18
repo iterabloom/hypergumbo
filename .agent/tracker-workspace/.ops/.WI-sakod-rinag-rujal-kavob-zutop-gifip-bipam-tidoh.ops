@@ -21,3 +21,18 @@
     pr_ref:  # 262d
     description: "Parent: WI-razub-duluf-nobun-rulit-dapam-jipal-dafud-nahob.\n\n## Scope\n\nWhen the supervisor spawns a fresh CLI via `tmux new-session -e HYPERGUMBO_RESPAWN=1 ...`, the vendor's session-start hook must branch on `$HYPERGUMBO_RESPAWN` so the agent immediately enters productive work instead of prompting the human for mode.\n\n## Deliverables\n\n1. **Per-vendor session-start hook update** (`.agent/hooks/_shared/session_start_logic.sh` or each vendor's wrapper, whichever is most natural):\n   - If `$HYPERGUMBO_RESPAWN` is set:\n     - Read `autonomous_intent.txt` (created by sibling intent/mode split item).\n     - If intent ∈ {BROAD, DEEP}: call `./scripts/loop-toggle --set-session-mode <intent>` to enable autonomous mode for this session.\n     - Emit seed prompt for the agent: \"Please familiarize yourself with this repo. Once you have done so, please set autonomous mode to DEEP.\" (literal text per design — supervisor does not inject agent-specific scratch notes, keeping respawns starting from a clean slate.)\n   - If `$HYPERGUMBO_RESPAWN` is unset: existing behavior (prompt the human to confirm OFF / DEEP / BROAD).\n\n2. **Vendor coverage.** All four vendors with a session-start hook:\n   - Claude Code: `.agent/hooks/claude-code/session-start.sh`\n   - Codex CLI: `.agent/hooks/codex-cli/session-start.sh`\n   - Cursor: `.agent/hooks/cursor/session-start.sh`\n   - Gemini CLI: `.agent/hooks/gemini-cli/session-start.sh`\n\n3. **Mode-vs-intent precedence.** When `$HYPERGUMBO_RESPAWN=1` AND `autonomous_intent.txt` says OFF: honor OFF. The supervisor should not have spawned in that case, but the hook defends against misconfiguration by not force-enabling autonomous mode.\n\n4. **Tests.**\n   - Mock `$HYPERGUMBO_RESPAWN=1` with `autonomous_intent=DEEP`; assert session-mode gets set to DEEP and seed prompt is emitted.\n   - Unset env; assert existing human-prompt path is unchanged.\n   - `$HYPERGUMBO_RESPAWN=1` with intent=OFF; assert no autonomous-mode write and no seed prompt.\n\n## Dependencies\n\n- Depends on the intent/mode split item (needs `autonomous_intent.txt` + `--set-session-mode`).\n- Does NOT strictly depend on the supervisor daemon being implemented — this hook change is independent and can land first if we want it to.\n\n## Design source\n\nSee WI-razub consolidated design, \"Respawn-aware session-start hook\" (step 6 of replacement sequence).\n\n## Governance\n\nTouches `.agent/hooks/*/session-start.sh` and possibly `_shared/session_start_logic.sh`. Pre-approved in WI-razub comment 2026-04-18T06:11:15Z."  # 262d
     fields: {}  # 262d
+- op: update  # 25f1
+  at: '2026-04-18T08:02:22Z'  # 25f1
+  by: agent  # 25f1
+  actor: jgstern_agent  # 25f1
+  clock: 2  # 25f1
+  nonce: 25f1  # 25f1
+  set:  # 25f1
+    status: done  # 25f1
+- op: discuss  # b25a
+  at: '2026-04-18T08:02:22Z'  # b25a
+  by: agent  # b25a
+  actor: jgstern_agent  # b25a
+  clock: 3  # b25a
+  nonce: b25a  # b25a
+  message: "Landed in PR #3149 (merged). Respawn branch in shared session_start_logic.sh: HYPERGUMBO_RESPAWN=1 + intent != OFF → auto-enable via loop-toggle --set-session-mode + generic seed prompt. All four vendors pick it up automatically because each hook already sources the shared logic. 18 tests cover every fall-through path."  # b25a
