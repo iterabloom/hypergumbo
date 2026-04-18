@@ -96,6 +96,17 @@ class MockRunner:
         return subprocess.CompletedProcess(args=cmd, returncode=rc, stdout=out, stderr=err)
 
 
+# --- Autouse: disable the seed-bootstrap pane-ready wait in existing
+# tests. The seed-specific tests exercise the wait helper directly with
+# explicit arguments; everything else just needs spawn_fresh() to not
+# hang on a real-time capture-pane poll loop.
+
+
+@pytest.fixture(autouse=True)
+def _disable_pane_ready_wait(asv, monkeypatch) -> None:
+    monkeypatch.setattr(asv, "PANE_READY_MAX_WAIT_SEC", 0.0)
+
+
 # --- Decision matrix: pure function, parametrize the truth table ---
 
 
@@ -567,3 +578,212 @@ class TestCLIDispatch:
         data = json.loads(result.stdout)
         assert "intent" in data
         assert data["intent"] == "OFF"
+
+
+# --- Pane-readiness wait (vendor-agnostic seed bootstrap) ---
+
+
+class TestPaneReady:
+    """Exercise ``wait_for_pane_ready`` directly with explicit args so the
+    module-level ``PANE_READY_MAX_WAIT_SEC=0.0`` autouse monkeypatch
+    doesn't short-circuit the logic we're trying to test."""
+
+    def test_stable_content_above_min_bytes_returns_true(self, asv) -> None:
+        """Identical capture-pane output across consecutive polls, content
+        at or above the byte floor, returns True."""
+        content = "x" * 100
+        def runner(cmd):
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=content, stderr="")
+        ready = asv.wait_for_pane_ready(
+            "sess",
+            min_bytes=32,
+            quiet_samples=3,
+            max_wait_sec=5.0,
+            runner=runner,
+            sleep_fn=lambda s: None,
+            monotonic_fn=lambda: 0.0,  # Constant — deadline never reached while stable.
+        )
+        assert ready is True
+
+    def test_content_keeps_changing_times_out(self, asv) -> None:
+        """Pane content changes on every poll → stability never achieved →
+        returns False when the deadline passes."""
+        counter = [0]
+        def runner(cmd):
+            counter[0] += 1
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0,
+                stdout=f"output-{counter[0]}-" + "x" * 50,  # Always >= min_bytes, always different.
+                stderr="",
+            )
+        clock = [0.0]
+        def monotonic():
+            t = clock[0]
+            clock[0] += 1.0
+            return t
+        ready = asv.wait_for_pane_ready(
+            "sess",
+            min_bytes=32,
+            quiet_samples=3,
+            max_wait_sec=5.0,
+            runner=runner,
+            sleep_fn=lambda s: None,
+            monotonic_fn=monotonic,
+        )
+        assert ready is False
+
+    def test_below_min_bytes_never_ready(self, asv) -> None:
+        """Stable pane content that is below ``min_bytes`` is treated as
+        "banner still drawing" rather than "ready" — prevents mistaking
+        an empty pane sampled twice for a settled prompt."""
+        def runner(cmd):
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="hi", stderr="")
+        clock = [0.0]
+        def monotonic():
+            t = clock[0]
+            clock[0] += 1.0
+            return t
+        ready = asv.wait_for_pane_ready(
+            "sess",
+            min_bytes=32,
+            quiet_samples=3,
+            max_wait_sec=3.0,
+            runner=runner,
+            sleep_fn=lambda s: None,
+            monotonic_fn=monotonic,
+        )
+        assert ready is False
+
+    def test_capture_failure_treated_as_empty(self, asv) -> None:
+        """If ``tmux capture-pane`` returns non-zero, the content is
+        treated as empty string (length 0) — never satisfies min_bytes."""
+        def runner(cmd):
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=1, stdout="", stderr="session not found",
+            )
+        clock = [0.0]
+        def monotonic():
+            t = clock[0]
+            clock[0] += 1.0
+            return t
+        ready = asv.wait_for_pane_ready(
+            "sess",
+            min_bytes=1,  # Even a single byte would be enough, but we get 0.
+            quiet_samples=2,
+            max_wait_sec=3.0,
+            runner=runner,
+            sleep_fn=lambda s: None,
+            monotonic_fn=monotonic,
+        )
+        assert ready is False
+
+    def test_supervisor_wrapper_skips_when_disabled(self, asv, state_dir, fake_repo) -> None:
+        """``Supervisor._wait_for_pane_ready`` returns False immediately
+        when ``PANE_READY_MAX_WAIT_SEC`` is non-positive, without calling
+        ``tmux capture-pane``. This is the seam the autouse fixture uses
+        to keep existing tests fast."""
+        runner = MockRunner()
+        sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo, runner=runner)
+        # Autouse fixture has already set PANE_READY_MAX_WAIT_SEC = 0.0.
+        assert sup._wait_for_pane_ready("whatever") is False
+        assert not any(c[:2] == ["tmux", "capture-pane"] for c in runner.calls)
+
+    def test_supervisor_wrapper_delegates_when_enabled(
+        self, asv, state_dir, fake_repo, monkeypatch,
+    ) -> None:
+        """When the module constant is non-zero, the wrapper delegates to
+        ``wait_for_pane_ready`` using the supervisor's injected clocks
+        and runner."""
+        monkeypatch.setattr(asv, "PANE_READY_MAX_WAIT_SEC", 5.0)
+        content = "y" * 100
+        runner = MockRunner({
+            ("tmux", "capture-pane", "-t", "sess", "-p"): (0, content, ""),
+        })
+        sup = asv.Supervisor(
+            state_dir=state_dir, repo_root=fake_repo, runner=runner,
+            sleep_fn=lambda s: None,
+            monotonic_fn=lambda: 0.0,  # Constant → loop only exits via stability.
+        )
+        assert sup._wait_for_pane_ready("sess") is True
+        assert any(c[:2] == ["tmux", "capture-pane"] for c in runner.calls)
+
+
+# --- Seed-prompt bootstrap on spawn ---
+
+
+class TestSpawnSeedPrompt:
+    def test_spawn_fresh_sends_seed_after_new_session(self, asv, state_dir, fake_repo) -> None:
+        """Right after ``tmux new-session``, a ``tmux send-keys`` call
+        must deliver the default seed prompt to kick off the first
+        model turn."""
+        runner = MockRunner()
+        sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo, runner=runner)
+        name = sup.spawn_fresh(vendor="claude-code")
+        assert name is not None
+        new_idx = next(
+            i for i, c in enumerate(runner.calls) if c[:2] == ["tmux", "new-session"]
+        )
+        send_idx = next(
+            (i for i, c in enumerate(runner.calls) if c[:2] == ["tmux", "send-keys"]),
+            None,
+        )
+        assert send_idx is not None, f"no send-keys call after spawn; calls={runner.calls}"
+        assert send_idx > new_idx
+        seed_call = runner.calls[send_idx]
+        assert asv.DEFAULT_SEED_PROMPT in seed_call
+        # Target the fresh session specifically, not some other pane.
+        assert f"{name}:0" in seed_call
+
+    def test_seed_send_targets_fresh_session_only(self, asv, state_dir, fake_repo) -> None:
+        """Multiple spawns in sequence each seed their own pane, not the
+        prior one's — guards against a copy-paste bug that reuses the
+        same session name."""
+        runner = MockRunner()
+        sup = asv.Supervisor(
+            state_dir=state_dir, repo_root=fake_repo, runner=runner,
+            now_fn=lambda: 1700000000.0,
+        )
+        name_a = sup.spawn_fresh(vendor="claude-code")
+        # Force a different timestamp so the second spawn gets a distinct name.
+        sup.now_fn = lambda: 1700000001.0
+        name_b = sup.spawn_fresh(vendor="claude-code")
+        assert name_a is not None and name_b is not None and name_a != name_b
+        send_targets = [
+            c[c.index("-t") + 1]
+            for c in runner.calls
+            if c[:2] == ["tmux", "send-keys"] and "-t" in c
+        ]
+        assert f"{name_a}:0" in send_targets
+        assert f"{name_b}:0" in send_targets
+
+    def test_seed_logged_in_respawn_log(self, asv, state_dir, fake_repo) -> None:
+        runner = MockRunner()
+        sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo, runner=runner)
+        name = sup.spawn_fresh(vendor="claude-code")
+        log_text = (state_dir / "respawn_log.log").read_text()
+        assert f"seeded {name}" in log_text
+        assert asv.DEFAULT_SEED_PROMPT in log_text
+
+    def test_auto_paused_spawn_does_not_seed(self, asv, state_dir, fake_repo) -> None:
+        """When ``spawn_fresh`` is blocked by the auto-pause sentinel it
+        returns None without calling tmux; there must be no stray
+        send-keys either (otherwise we'd send keystrokes to a session
+        that was never created)."""
+        runner = MockRunner()
+        sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo, runner=runner)
+        sup.set_auto_paused("test")
+        assert sup.spawn_fresh() is None
+        assert not any(c[:2] == ["tmux", "send-keys"] for c in runner.calls)
+
+
+# --- tmux_send_line helper ---
+
+
+class TestTmuxSendLine:
+    def test_send_line_targets_pane_zero_with_enter(self, asv) -> None:
+        calls = []
+        def runner(cmd):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+        asv.tmux_send_line("my-session", "hello world", runner=runner)
+        assert calls == [["tmux", "send-keys", "-t", "my-session:0", "hello world", "Enter"]]

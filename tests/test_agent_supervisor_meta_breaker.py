@@ -85,6 +85,15 @@ def _pane_bytes(n: int) -> tuple[int, str, str]:
     return (0, "x" * n, "")
 
 
+@pytest.fixture(autouse=True)
+def _disable_pane_ready_wait(asv, monkeypatch) -> None:
+    """Disable the seed-bootstrap pane-ready wait so spawn_fresh doesn't
+    loop on a real-time capture-pane poll during these tests. The
+    seed-specific tests live in test_agent_supervisor.py and exercise
+    the wait helper directly with explicit arguments."""
+    monkeypatch.setattr(asv, "PANE_READY_MAX_WAIT_SEC", 0.0)
+
+
 # --- Chain-length tracking (scaffolding piece 1) ---
 
 

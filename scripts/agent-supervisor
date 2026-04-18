@@ -31,10 +31,17 @@ Key design points (from the consolidated WI-razub design):
   shared scripts (which are already idempotent / vendor-agnostic).
 
 * **Fresh-session spawn**: ``tmux new-session -d -s <new> -e
-  HYPERGUMBO_RESPAWN=1 <cli>``. The sibling respawn-aware session-start
-  hook (WI-sakod, not this item) branches on ``$HYPERGUMBO_RESPAWN`` to
-  auto-enable autonomous mode from ``autonomous_intent.txt`` and inject
-  the generic seed prompt.
+  HYPERGUMBO_RESPAWN=1 <cli>``, followed by a vendor-agnostic
+  pane-readiness wait (``wait_for_pane_ready``) and a seed keystroke
+  injected via ``tmux send-keys`` (WI-batob follow-up). The
+  ``SessionStart`` hook injects context but does NOT trigger the first
+  model turn — a freshly spawned CLI sits idle at its prompt waiting
+  for user input, so the supervisor provides that first turn
+  non-interactively. The sibling respawn-aware session-start hook
+  (WI-sakod) still branches on ``$HYPERGUMBO_RESPAWN`` to auto-enable
+  autonomous mode from ``autonomous_intent.txt``; the seed keystroke
+  just kicks off the first turn so the hook-provided context is acted
+  on.
 
 * **Rate limit**: a soft cap (default 8 spawns / rolling 24h). Over-cap
   triggers a log entry and skips the spawn rather than aborting the
@@ -108,6 +115,33 @@ DEFAULT_VENDOR = "claude-code"
 # until the operator runs `agent-supervisor resume`.
 NO_PROGRESS_PANE_BYTES = 512
 CONSECUTIVE_NO_PROGRESS_KILL_SWITCH = 5
+
+# Pane-readiness detection (vendor-agnostic seed-prompt bootstrap).
+#
+# A freshly spawned CLI draws its banner / prompt into the pane over some
+# variable time window. To inject the seed keystroke without racing the
+# banner we poll `tmux capture-pane` and wait for content to STABILIZE —
+# i.e. the pane bytes stop changing for a short quiet window, AND at
+# least a small byte-floor has accumulated (so an empty pane that
+# happened to be sampled twice in a row doesn't count as "ready").
+#
+# The stability signal doesn't require any a-priori knowledge of what
+# the banner looks like — whichever CLI is booting, the banner must
+# finish rendering before it accepts input, and "finished rendering"
+# IS the stability window. If the CLI keeps redrawing (e.g. an animated
+# spinner) past the max-wait deadline we send the seed keystroke anyway;
+# a CLI that's tolerating spinner animation will tolerate a keystroke.
+PANE_READY_MIN_BYTES = 32
+PANE_READY_QUIET_SAMPLES = 3
+PANE_READY_POLL_SEC = 0.25
+PANE_READY_MAX_WAIT_SEC = 15.0
+
+# Seed keystroke sent to a freshly spawned pane. The SessionStart hook
+# (WI-sakod) already injects the full "please familiarize yourself /
+# enable DEEP mode" context; the seed just needs to produce a first
+# user turn so the model starts responding. "begin" is generic enough
+# to work across all vendors in the table.
+DEFAULT_SEED_PROMPT = "begin"
 
 # Vendor identity & invocation table. The keystrokes are the graceful-exit
 # sequences sent via `tmux send-keys`. Claude Code is verified; others
@@ -201,6 +235,59 @@ def pid_alive(pid: int) -> bool:
 
 def tmux_send_exit(session: str, keystroke: str, runner: Callable = run_subprocess) -> None:
     runner(["tmux", "send-keys", "-t", f"{session}:0", keystroke, "Enter"])
+
+
+def tmux_send_line(session: str, text: str, runner: Callable = run_subprocess) -> None:
+    """Send a line of user input (text + Enter) to a tmux session's pane.
+
+    Semantically distinct from ``tmux_send_exit`` — same mechanics, but
+    used to kick off the first turn in a freshly spawned CLI rather than
+    to end a session. Kept separate so log / command traces make it
+    obvious which use is which.
+    """
+    runner(["tmux", "send-keys", "-t", f"{session}:0", text, "Enter"])
+
+
+def wait_for_pane_ready(
+    session: str,
+    *,
+    min_bytes: int = PANE_READY_MIN_BYTES,
+    quiet_samples: int = PANE_READY_QUIET_SAMPLES,
+    poll_interval_sec: float = PANE_READY_POLL_SEC,
+    max_wait_sec: float = PANE_READY_MAX_WAIT_SEC,
+    runner: Callable = run_subprocess,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    monotonic_fn: Callable[[], float] = time.monotonic,
+) -> bool:
+    """Poll ``tmux capture-pane`` until the pane content stabilizes.
+
+    Returns True when the captured content is identical across
+    ``quiet_samples`` consecutive polls AND at least ``min_bytes`` of
+    content has accumulated. Returns False if ``max_wait_sec`` elapses
+    first — the caller should still proceed with whatever action it was
+    going to take (sending a keystroke into an unsettled pane is
+    generally safe; waiting forever is not).
+
+    This function is intentionally vendor-agnostic: it has no knowledge
+    of what any particular CLI's banner or prompt looks like. Whichever
+    CLI is booting, its banner must finish rendering before it accepts
+    input, and "finished rendering" is what the stability window detects.
+    """
+    deadline = monotonic_fn() + max_wait_sec
+    prior_content: Optional[str] = None
+    consecutive_matches = 0
+    while monotonic_fn() < deadline:
+        result = runner(["tmux", "capture-pane", "-t", session, "-p"])
+        content = result.stdout if result.returncode == 0 else ""
+        if len(content) >= min_bytes and content == prior_content:
+            consecutive_matches += 1
+            if consecutive_matches >= quiet_samples:
+                return True
+        else:
+            consecutive_matches = 0
+        prior_content = content
+        sleep_fn(poll_interval_sec)
+    return False
 
 
 def tmux_kill_session(session: str, runner: Callable = run_subprocess) -> None:
@@ -443,6 +530,28 @@ class Supervisor:
             mf.unlink()
         self._pane_history.pop(session, None)
 
+    # --- Pane-readiness (seed-prompt bootstrap) ---
+
+    def _wait_for_pane_ready(self, session: str) -> bool:
+        """Instance wrapper around the module-level ``wait_for_pane_ready``.
+
+        Reads ``PANE_READY_MAX_WAIT_SEC`` at call time (not via a default
+        parameter captured at function-definition time) so tests can
+        monkeypatch the module constant to 0 and skip the wait. Returns
+        False immediately when the wait is disabled (max_wait_sec <= 0);
+        the caller proceeds to send the seed keystroke regardless.
+        """
+        max_wait = PANE_READY_MAX_WAIT_SEC
+        if max_wait <= 0:
+            return False
+        return wait_for_pane_ready(
+            session,
+            max_wait_sec=max_wait,
+            runner=self.runner,
+            sleep_fn=self.sleep_fn,
+            monotonic_fn=self.monotonic_fn,
+        )
+
     # --- Pane-delta tracking ---
 
     def observe_pane(self, session: str) -> bool:
@@ -591,6 +700,18 @@ class Supervisor:
         name = f"{RESERVED_PREFIX}{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime(self.now_fn()))}"
         tmux_spawn_session(name, vt["cli_invocation"], respawn=True, runner=self.runner)
         self.record_spawn()
+
+        # Seed bootstrap: the SessionStart hook injects context but does
+        # not trigger the first model turn, so a freshly spawned pane
+        # sits idle at its prompt. Wait for the banner to stabilize,
+        # then inject a generic seed keystroke to kick off the first
+        # turn non-interactively.
+        ready = self._wait_for_pane_ready(name)
+        tmux_send_line(name, DEFAULT_SEED_PROMPT, self.runner)
+        self.log_respawn(
+            f"seeded {name} with {DEFAULT_SEED_PROMPT!r} "
+            f"(pane_ready={ready})"
+        )
         meta = {
             "session_id": name,
             "cli_pid": None,  # Filled in later by session-start hook if possible.
