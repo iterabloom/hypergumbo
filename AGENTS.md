@@ -228,6 +228,21 @@ When CI fails but tests pass locally, use `ci-debug runs/status/analyze-deps`. F
 ## Testing Optional Dependencies
 For PyPI-available tree-sitter grammars: add to pyproject.toml, write real tests, no mocking. For build-from-source grammars (built via `scripts/build-source-grammars`): write real tests calling the analyzer directly, plus a mock test only for the unavailability code path. Never use `pytest.mark.skipif` as an escape hatch. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/optional-dependency-testing-playbook.md`.)
 
+## Vendor Parity for Respawn
+
+The `scripts/agent-supervisor` daemon (WI-razub / WI-rofuv) needs four pieces of information per vendor to gracefully end a stuck session and spawn a fresh one: (1) the per-turn hook path where the WI-sipov heartbeat is wired, (2) the session-start hook path where the WI-sakod respawn branch lives, (3) the graceful-exit keystroke sent via `tmux send-keys` before the 30-second hard-kill fallback, and (4) the non-interactive CLI invocation string passed to `tmux new-session`. This section is the authoritative table; the code in `scripts/agent-supervisor::VENDOR_TABLE` and the hook wire-ups must match.
+
+**Verification status.** The Claude Code values are verified in production. The Codex / Cursor / Gemini exit keystrokes are pending empirical verification — they're marked `# FIXME WI-batob` in `scripts/agent-supervisor`. Before rolling out the supervisor for a given vendor in practice, verify its exit keystroke in a throwaway tmux session: start the vendor CLI via `tmux new-session -d -s verify vendorcli`, run `tmux send-keys -t verify '<keystroke>' Enter`, then confirm the CLI process exits within 30s. Wrong keystroke turns graceful-exit into hard-kill 100% of the time, so this is a one-time ground-truth exercise that pays off for every subsequent respawn.
+
+| Vendor | PostToolUse-equivalent hook | Session-start hook | Graceful-exit keystroke | CLI invocation | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | `.agent/hooks/claude-code/post-tool-use-transcript.sh` | `.agent/hooks/claude-code/session-start.sh` | `/quit` *(verified)* | `claude` | — |
+| Codex CLI | `.agent/hooks/codex-cli/post-tool-use-transcript.sh` | `.agent/hooks/codex-cli/session-start.sh` | `/exit` *(unverified — FIXME WI-batob)* | `codex` | Notify hook (not Stop) cannot block; see `codex-cli/notify.sh` header comment. |
+| Cursor | `.agent/hooks/cursor/post-tool-use-transcript.sh` | `.agent/hooks/cursor/session-start.sh` | `/quit` *(unverified — FIXME WI-batob)* | `cursor` | Single-session-per-repo (global-SQLite quirk, WI-rijoj). Supervisor respawn of a second Cursor instance in the same repo is explicitly unsupported. |
+| Gemini CLI | `.agent/hooks/gemini-cli/before-model-transcript.sh` | `.agent/hooks/gemini-cli/session-start.sh` | `/quit` *(unverified — FIXME WI-batob)* | `gemini` | Gemini's before-model hook fires per LLM request, tighter than post-tool-use. Hook output MUST be JSON (plain text fails). |
+
+**Adding a new vendor.** Four changes in the same PR: (1) a row in the table above, (2) an entry in `VENDOR_TABLE` in `scripts/agent-supervisor`, (3) a per-turn hook that sources `touch_heartbeat.sh` and calls it after resolving SESSION_ID (pattern: every per-turn hook in `.agent/hooks/<vendor>/`), (4) a session-start hook that sources `session_start_logic.sh` so the WI-sakod respawn branch applies. The parity tests at `tests/test_touch_heartbeat.py::test_each_vendor_per_turn_hook_sources_heartbeat_helper` and `tests/test_session_start_respawn.py::test_vendor_hook_sources_shared_session_start_logic` will fire if you miss one of the hook wire-ups.
+
 ## Modifying This Document
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
