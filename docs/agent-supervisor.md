@@ -80,6 +80,34 @@ Prefer the narrow form if you want to temporarily disable autonomous mode on *ju
 
 The running daemon consumes the sentinel on its next poll tick (≤ 60 s) and exits cleanly. Your live CLIs keep running until you close them; the supervisor just stops respawning. Re-arm with another `agent-supervisor run &` whenever you come back.
 
+## Recovering from auto-pause (WI-mujuk meta-circuit-breaker)
+
+If the supervisor detects **5 consecutive no-progress failures on the same chain** — meaning it spawned a session, that session died without rendering anything useful, it spawned another, same result, and this happened five times in a row — it writes `supervisor.auto-paused` into its state dir and stops spawning entirely. Running `agent-supervisor status` will show `"auto_paused": true`.
+
+This is a load-bearing signal, not a rate limit: a persistent bug (broken playbook, corrupt state file, bad env var, session-start hook crashing) would otherwise burn through the 24h rate-limit budget every day forever, invisible from the outside. Auto-pause converts that silent loop into a loud "investigate me" state.
+
+Before clearing the pause, find out what went wrong:
+
+```bash
+./scripts/agent-supervisor status | jq '.sessions[] | {session, chain_length, consecutive_no_progress, pane_bytes}'
+tail -20 ~/hypergumbo_lab_notebook/agent-supervisor/respawn_log.log
+```
+
+The log's last few lines show the chain tail: which sessions died, whether each was classified no-progress (pane ≤ 512 bytes at kill) or progress, and the `AUTO-PAUSED: N consecutive no-progress failures...` entry. Common root causes:
+
+- Session-start hook crashing immediately → CLI dies before printing anything.
+- `HYPERGUMBO_RESPAWN=1` branch of `session_start_logic.sh` failing → `loop-toggle` call errors.
+- `autonomous_intent.txt` pointing at a mode whose bakeoff directory is missing.
+- Vendor CLI not installed / no longer on `$PATH`.
+
+Once you've fixed the underlying issue, resume:
+
+```bash
+./scripts/agent-supervisor resume
+```
+
+This removes the sentinel and the next poll tick will spawn a fresh chain (`chain_length=1`, `consecutive_no_progress=0`). The respawn log records the operator-driven resume so audits can tell it apart from a cold start.
+
 ## `status` output
 
 ```bash
@@ -90,19 +118,23 @@ Returns a JSON object with:
 
 - `intent` — current value of `autonomous_intent.txt`.
 - `rate_limit` — rolling 24h spawn count, the cap (default 8), and whether a spawn is currently allowed.
-- `sessions[]` — one entry per hypergumbo-prefixed tmux session, with `meta` (the stored session-id / CLI pid / vendor / start UTC), `clients_attached`, `pane_bytes` (raw scrollback size in bytes), and `heartbeat_age_sec` (seconds since the per-turn hooks last touched the heartbeat file).
+- `sessions[]` — one entry per hypergumbo-prefixed tmux session, with `meta` (the stored session-id / CLI pid / vendor / start UTC / `replaces` / `chain_length` / `consecutive_no_progress`), `clients_attached`, `pane_bytes` (raw scrollback size in bytes), `heartbeat_age_sec` (seconds since the per-turn hooks last touched the heartbeat file), plus top-level `chain_length`, `consecutive_no_progress`, and `replaces` fields lifted out of `meta` for convenience.
 - `stop_requested` — true if a stop sentinel is in flight.
+- `auto_paused` — true when the WI-mujuk kill switch has fired; clear with `agent-supervisor resume`.
+- `kill_switch_threshold` — the value of `CONSECUTIVE_NO_PROGRESS_KILL_SWITCH` (default 5) so tooling can compare against `consecutive_no_progress` without hardcoding the constant.
 
-Use `pane_bytes` + `heartbeat_age_sec` together to debug "is this session actually working?" — if pane bytes haven't grown but the heartbeat is fresh, the CLI is stuck in a tool that's not emitting output. If both are stale, the CLI itself is frozen.
+Use `pane_bytes` + `heartbeat_age_sec` together to debug "is this session actually working?" — if pane bytes haven't grown but the heartbeat is fresh, the CLI is stuck in a tool that's not emitting output. If both are stale, the CLI itself is frozen. And use `consecutive_no_progress` + `chain_length` to tell "this is a fresh chain trying to start" (small, near zero) apart from "this chain is in trouble and close to auto-pause" (approaching `kill_switch_threshold`).
 
 ## Edge cases
 
 - **Two supervisors for the same project.** The second `agent-supervisor run` invocation fails `fcntl.flock` acquisition on `supervisor.lock` and exits with "another supervisor is already running". This is the enforced single-instance invariant; don't work around it.
 - **You want to run a vendor CLI by hand.** Either launch it in a tmux session whose name does NOT start with `hypergumbo-session-` (the supervisor will ignore it entirely), or `loop-toggle OFF` first and it won't get touched.
 - **Rate-limited.** If the supervisor has spawned 8 sessions in the last 24 hours (default soft cap), the next spawn is skipped with a log entry in `respawn_log.log` instead of proceeding. Fix the underlying problem — pounding on the spawn button would indicate a deeper issue.
+- **Auto-paused (WI-mujuk).** After 5 consecutive no-progress failures on the same chain, the supervisor writes `supervisor.auto-paused` and stops spawning. See "Recovering from auto-pause" above.
 - **Supervisor crashes.** Nothing gets auto-spawned until you restart it with `agent-supervisor run &`. The daemon is not self-restarting by design.
 - **Tmux is not installed.** The `run_subprocess` seam returns rc=127 for every tmux call, so `status` works and reports zero sessions. The `run` loop no-ops each tick. Install tmux to unstick.
 - **CLI refuses graceful exit.** The supervisor polls `kill -0 <cli_pid>` for 30 seconds after sending the vendor exit keystroke. If the CLI is still alive, it falls back to `tmux kill-session` + direct invocation of `kill-transcript-sync.sh` / `rotate-on-session-end.sh` (the per-session cleanup scripts are already idempotent). An entry appears in `respawn_log.log` as `forced-kill fallback for session <name>`.
+- **Human attached during a chain close to auto-pause.** The attached-client check takes precedence over the kill switch — an attached session is never replaced, so its chain can't grow, so auto-pause can't fire on it. This is deliberate: a human watching is a human diagnosing. Detach to let the chain progress to its natural outcome.
 
 ## Troubleshooting
 
@@ -113,6 +145,7 @@ Use `pane_bytes` + `heartbeat_age_sec` together to debug "is this session actual
 | `respawn_log.log` shows repeated "rate-limit reached" | 8 spawns in 24h — usually indicates a loop somewhere upstream | Read the log tail + `agent_notes.json` for a pattern; don't just raise the cap |
 | Fresh CLI launches but doesn't enable autonomous mode | `autonomous_intent.txt` is OFF or missing | `loop-toggle --set-intent DEEP` (narrow-write, doesn't touch the current session) |
 | Fresh CLI launches but the session-start hook doesn't inject the seed prompt | Vendor's hook file missing or unwired | Verify `.agent/hooks/<vendor>/session-start.sh` exists and sources `_shared/session_start_logic.sh` |
+| `status` shows `auto_paused: true` | Kill switch fired after 5 consecutive no-progress failures | See "Recovering from auto-pause" above; investigate log tail, fix root cause, run `agent-supervisor resume` |
 
 ## State directory layout
 
@@ -120,9 +153,10 @@ Use `pane_bytes` + `heartbeat_age_sec` together to debug "is this session actual
 
 - `supervisor.lock` — flock + pid-file for single-instance enforcement.
 - `supervisor.stop-sentinel` — present when a stop is requested; consumed on the next tick.
-- `<session>.meta.json` — written on spawn: session_id, cli_pid, vendor, project_dir, tmux session name, start_utc.
+- `supervisor.auto-paused` — present when the WI-mujuk kill switch has fired; contents are a human-readable reason line; cleared by `agent-supervisor resume`.
+- `<session>.meta.json` — written on spawn: session_id, cli_pid, vendor, project_dir, tmux session name, start_utc, `replaces`, `chain_length`, `consecutive_no_progress`.
 - `<session>.heartbeat` — touched by the per-turn hooks (telemetry only; never a spawn/replace input).
-- `respawn_log.log` — append-only audit of every spawn / replace / rate-limit event.
+- `respawn_log.log` — append-only audit of every spawn / replace / rate-limit / auto-pause event.
 - `rate_limit.json` — rolling 24h spawn timestamps.
 
 ## What the supervisor does NOT do

@@ -93,6 +93,22 @@ GRACEFUL_EXIT_TIMEOUT_SEC = 30
 RATE_LIMIT_MAX_PER_24H = 8
 DEFAULT_VENDOR = "claude-code"
 
+# WI-mujuk meta-circuit-breaker thresholds.
+#
+# A replacement is a "no-progress failure" when the dying session's pane-byte
+# count (at kill time) is at or below NO_PROGRESS_PANE_BYTES. The tmux pane
+# starts empty at spawn, so the current byte count IS the spawn-to-kill
+# delta — a CLI that only printed its startup banner typically lands well
+# under 512 bytes; a CLI that did any real work (one tool use or one LLM
+# response) produces many KB of scrollback. Tune later if real-world data
+# suggests a different threshold.
+#
+# After CONSECUTIVE_NO_PROGRESS_KILL_SWITCH no-progress failures on the same
+# chain, the supervisor writes supervisor.auto-paused and stops spawning
+# until the operator runs `agent-supervisor resume`.
+NO_PROGRESS_PANE_BYTES = 512
+CONSECUTIVE_NO_PROGRESS_KILL_SWITCH = 5
+
 # Vendor identity & invocation table. The keystrokes are the graceful-exit
 # sequences sent via `tmux send-keys`. Claude Code is verified; others
 # are best-known values pending empirical verification by WI-batob.
@@ -319,6 +335,12 @@ class Supervisor:
     def _stop_sentinel(self) -> Path:
         return self.state_dir / "supervisor.stop-sentinel"
 
+    def _auto_pause_sentinel(self) -> Path:
+        """Path to the WI-mujuk kill-switch sentinel. When this file exists,
+        the supervisor refuses to spawn fresh sessions until the operator
+        runs ``agent-supervisor resume``."""
+        return self.state_dir / "supervisor.auto-paused"
+
     def _respawn_log(self) -> Path:
         return self.state_dir / "respawn_log.log"
 
@@ -341,6 +363,28 @@ class Supervisor:
 
     def stop_requested(self) -> bool:
         return self._stop_sentinel().exists()
+
+    def auto_paused(self) -> bool:
+        """True when the kill switch has fired and the supervisor is refusing
+        to spawn. Cleared by ``agent-supervisor resume`` (or by manually
+        removing ``supervisor.auto-paused``)."""
+        return self._auto_pause_sentinel().exists()
+
+    def set_auto_paused(self, reason: str) -> None:
+        """Write the auto-pause sentinel + a log entry. Called by the kill
+        switch when a chain has accumulated enough consecutive no-progress
+        failures."""
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.now_fn()))
+        self._auto_pause_sentinel().write_text(f"{ts} {reason}\n")
+        self.log_respawn(f"AUTO-PAUSED: {reason}")
+
+    def clear_auto_paused(self) -> None:
+        """Remove the auto-pause sentinel. Called by the ``resume``
+        subcommand."""
+        sentinel = self._auto_pause_sentinel()
+        if sentinel.exists():
+            sentinel.unlink()
 
     def read_meta(self, session: str) -> Optional[dict]:
         mf = self._meta_file(session)
@@ -438,13 +482,19 @@ class Supervisor:
     # --- Replacement sequence (WI-nusor) ---
 
     def replace_session(self, session: str, meta: Optional[dict]) -> None:
-        """Gracefully end the session then spawn a fresh one. Meta may be
-        None if we never recorded it (treat as 'unknown vendor, use
-        default')."""
+        """Gracefully end the session then spawn a fresh one (unless the
+        kill switch fires). Meta may be None if we never recorded it
+        (treat as 'unknown vendor, default chain state')."""
         vendor = (meta or {}).get("vendor", DEFAULT_VENDOR)
         vt = VENDOR_TABLE.get(vendor, VENDOR_TABLE[DEFAULT_VENDOR])
         cli_pid = (meta or {}).get("cli_pid")
         session_id = (meta or {}).get("session_id", session)
+
+        # WI-mujuk: classify the dying session BEFORE we kill it. Pane-bytes
+        # at kill time is the spawn-to-kill delta (tmux pane starts empty),
+        # so a CLI that produced no visible output is a no-progress failure.
+        pane_bytes_at_kill = tmux_capture_pane_bytes(session, self.runner) or 0
+        no_progress = pane_bytes_at_kill <= NO_PROGRESS_PANE_BYTES
 
         # Step 1: graceful exit keystroke.
         tmux_send_exit(session, vt["exit_keystroke"], self.runner)
@@ -467,9 +517,34 @@ class Supervisor:
             # they are already idempotent / vendor-agnostic.
             self._invoke_shared_cleanup(session_id)
 
+        # WI-mujuk: compute the chain state the replacement WOULD carry.
+        prior_chain_length = (meta or {}).get("chain_length", 1)
+        prior_consecutive = (meta or {}).get("consecutive_no_progress", 0)
+        if no_progress:
+            next_consecutive = prior_consecutive + 1
+        else:
+            next_consecutive = 0
+
         self.clear_session_state(session)
-        # Step 4: spawn fresh.
-        self.spawn_fresh(vendor=vendor)
+
+        # WI-mujuk kill switch: if the next session would be the Nth
+        # consecutive no-progress failure on this chain, refuse to spawn
+        # and auto-pause instead. The dying session is still killed (above)
+        # — we just stop the cycle here rather than starting a new one.
+        if next_consecutive >= CONSECUTIVE_NO_PROGRESS_KILL_SWITCH:
+            self.set_auto_paused(
+                f"{next_consecutive} consecutive no-progress failures on chain "
+                f"(chain_length={prior_chain_length + 1}); tail session={session}"
+            )
+            return
+
+        # Step 4: spawn fresh, carrying the chain state forward.
+        self.spawn_fresh(
+            vendor=vendor,
+            replaces=session,
+            chain_length=prior_chain_length + 1,
+            consecutive_no_progress=next_consecutive,
+        )
 
     def _invoke_shared_cleanup(self, session_id: str) -> None:
         kill_script = self.repo_root / ".agent/hooks/_shared/kill-transcript-sync.sh"
@@ -478,10 +553,31 @@ class Supervisor:
             if script.exists():
                 self.runner([str(script), str(self.repo_root), session_id])
 
-    def spawn_fresh(self, vendor: str = DEFAULT_VENDOR) -> Optional[str]:
+    def spawn_fresh(
+        self,
+        vendor: str = DEFAULT_VENDOR,
+        replaces: Optional[str] = None,
+        chain_length: int = 1,
+        consecutive_no_progress: int = 0,
+    ) -> Optional[str]:
         """Spawn a new hypergumbo-session-<UTC> tmux session running the
         vendor CLI with HYPERGUMBO_RESPAWN=1. Returns the new session
-        name on success, or None if rate-limited / vendor unknown."""
+        name on success, or None if rate-limited / vendor unknown /
+        auto-paused.
+
+        WI-mujuk chain parameters:
+          replaces — session-id of the session this one is replacing
+                     (None for a root spawn).
+          chain_length — 1 for a root spawn, N+1 for an Nth-level respawn.
+          consecutive_no_progress — count of consecutive no-progress
+                                    failures leading up to this session.
+                                    Reset to 0 by a progress replacement.
+        """
+        # WI-mujuk: auto-paused supervisor refuses all spawns until the
+        # operator runs `agent-supervisor resume`.
+        if self.auto_paused():
+            self.log_respawn("auto-paused; skipping spawn")
+            return None
         ok, count = self.check_rate_limit()
         if not ok:
             self.log_respawn(
@@ -504,9 +600,15 @@ class Supervisor:
             "start_utc": time.strftime(
                 "%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.now_fn())
             ),
+            "replaces": replaces,
+            "chain_length": chain_length,
+            "consecutive_no_progress": consecutive_no_progress,
         }
         self.write_meta(name, meta)
-        self.log_respawn(f"spawned {name} (vendor={vendor})")
+        self.log_respawn(
+            f"spawned {name} (vendor={vendor}, chain_length={chain_length}, "
+            f"consecutive_no_progress={consecutive_no_progress})"
+        )
         return name
 
     # --- Poll loop ---
@@ -580,12 +682,17 @@ class Supervisor:
             hb_age = None
             if hb_file.exists():
                 hb_age = self.now_fn() - hb_file.stat().st_mtime
+            # WI-mujuk: surface chain state from meta.json so the operator
+            # can see why the kill switch did or did not fire.
             sessions_info.append({
                 "session": session,
                 "meta": meta,
                 "clients_attached": attached,
                 "pane_bytes": pane_bytes,
                 "heartbeat_age_sec": hb_age,
+                "chain_length": (meta or {}).get("chain_length", 1),
+                "consecutive_no_progress": (meta or {}).get("consecutive_no_progress", 0),
+                "replaces": (meta or {}).get("replaces"),
             })
         return {
             "intent": intent,
@@ -596,6 +703,8 @@ class Supervisor:
             },
             "sessions": sessions_info,
             "stop_requested": self.stop_requested(),
+            "auto_paused": self.auto_paused(),
+            "kill_switch_threshold": CONSECUTIVE_NO_PROGRESS_KILL_SWITCH,
         }
 
 
@@ -631,6 +740,23 @@ def cmd_stop(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_resume(args: argparse.Namespace) -> int:
+    """Clear the WI-mujuk auto-pause sentinel so the supervisor starts
+    spawning again. Called by the operator after investigating and fixing
+    whatever caused the kill switch to fire."""
+    sup = Supervisor(state_dir=default_state_dir(), repo_root=default_repo_root())
+    if not sup.auto_paused():
+        print("agent-supervisor is not auto-paused; nothing to resume.")
+        return 0
+    sup.clear_auto_paused()
+    # Record the operator's intervention in the respawn log so a future
+    # audit can tell an operator-driven resume apart from a cold start.
+    sup.log_respawn("operator ran `agent-supervisor resume`; auto-pause cleared")
+    print(f"auto-pause cleared at {sup._auto_pause_sentinel()}")
+    print("next poll tick will spawn a fresh chain (chain_length=1).")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agent-supervisor",
@@ -652,6 +778,12 @@ def build_parser() -> argparse.ArgumentParser:
         "stop", help="touch the stop sentinel; running daemon exits on next tick",
     )
     p_stop.set_defaults(func=cmd_stop)
+
+    p_resume = sub.add_parser(
+        "resume",
+        help="clear the WI-mujuk auto-pause sentinel so the supervisor starts spawning again",
+    )
+    p_resume.set_defaults(func=cmd_resume)
 
     return parser
 
