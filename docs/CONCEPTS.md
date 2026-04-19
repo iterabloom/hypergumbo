@@ -8,7 +8,7 @@ This file enumerates every concept string that the framework-YAML pattern layer 
 - **inert** — producers exist but no consumer reads the concept. Candidates for either removing the producer pattern or writing a Framework-subcategory linker that consumes it.
 - **ghost** — a consumer mentions the concept by name but no YAML emits it. Likely dead code or a leftover reference to a removed pattern; investigate.
 
-Total concepts: **317** (live: 38, inert: 279, ghost: 0).
+Total concepts: **317** (live: 39, inert: 278, ghost: 0).
 
 ## Inventory
 
@@ -232,7 +232,7 @@ Total concepts: **317** (live: 38, inert: 279, ghost: 0).
 | `response` | inert | akka-http, cowboy, giraffe, openresty, pedestal, ring-compojure, roda, scotty, servant, slim | _(none)_ |
 | `response_type` | inert | aspnet | _(none)_ |
 | `rest_callback` | inert | cowboy | _(none)_ |
-| `route` | live | adonisjs, aiohttp, akka-http, aspnet, bottle, cakephp, codeigniter, controller_routes.py, django, express, fastapi, fastify, flask, flask-appbuilder, flask-restful, giraffe, go-web, grape, graphql, hapi, http4k, hummingbird, javalin, jax-rs, koa, ktor, laravel, litestar, lumen, masonite, micronaut, nestjs, nextjs, nuxt, openresty, padrino, phoenix, play, plug, plumber, pyramid, quart, rails, restify, ring-compojure, roda, rust-web, sanic, scalatra, scotty, servant, sinatra, slim, solid, spring-boot, stapler, tornado, vapor, vertx, yesod, yii, zio | `cli.py`, `entrypoints.py`, `framework_patterns.py`, `linkers/controller_routes.py`, `linkers/http.py`, `linkers/openapi.py` |
+| `route` | live | adonisjs, aiohttp, akka-http, aspnet, bottle, cakephp, codeigniter, controller_routes.py, django, express, fastapi, fastify, flask, flask-appbuilder, flask-restful, giraffe, go-web, grape, graphql, hapi, http4k, hummingbird, javalin, jax-rs, koa, ktor, laravel, litestar, lumen, masonite, micronaut, nestjs, nextjs, nuxt, openresty, padrino, phoenix, play, plug, plumber, pyramid, quart, rails, restify, ring-compojure, roda, router_routes.py, rust-web, sanic, scalatra, scotty, servant, sinatra, slim, solid, spring-boot, stapler, tornado, vapor, vertx, yesod, yii, zio | `cli.py`, `entrypoints.py`, `framework_patterns.py`, `linkers/controller_routes.py`, `linkers/http.py`, `linkers/openapi.py`, `linkers/router_routes.py` |
 | `route_config` | inert | remix, sveltekit | _(none)_ |
 | `route_definition` | inert | roda | _(none)_ |
 | `route_group` | inert | adonisjs, cakephp, codeigniter, giraffe, javalin, lumen, masonite, ring-compojure | _(none)_ |
@@ -242,7 +242,7 @@ Total concepts: **317** (live: 38, inert: 279, ghost: 0).
 | `route_registration` | inert | pyramid | _(none)_ |
 | `route_segment` | inert | roda | _(none)_ |
 | `route_terminal` | inert | roda | _(none)_ |
-| `router` | inert | cowboy, giraffe, http4k, http4s, laminas, nuxt, pedestal, phoenix, plumber, remix, ring-compojure, sveltekit, vertx, yesod | _(none)_ |
+| `router` | live | cowboy, giraffe, http4k, http4s, laminas, nuxt, pedestal, phoenix, plumber, remix, ring-compojure, router_routes.py, sveltekit, vertx, yesod | `linkers/router_routes.py` |
 | `runtime` | inert | tornado | _(none)_ |
 | `scheduled` | inert | micronaut | _(none)_ |
 | `scheduled_task` | live | celery, go-web, rails | `entrypoints.py` |
