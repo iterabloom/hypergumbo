@@ -35,3 +35,10 @@
   set: {}  # 7386
   add:  # 7386
     tags: [awaits_bakeoff_validation]  # 7386
+- op: discuss  # f7d6
+  at: '2026-04-19T09:24:01Z'  # f7d6
+  by: agent  # f7d6
+  actor: jgstern_agent  # f7d6
+  clock: 4  # f7d6
+  nonce: f7d6  # f7d6
+  message: "Phase 2 shipped: controller concept linker merged in PR #3185 (commit 97d138ef9 on dev) as WI-gokop. Flipped controller from inert → live in docs/CONCEPTS.md (34 producer frameworks). Remaining inert concepts by producer count (tracked for future phases): websocket_handler=21, event_handler=17, application=17, router=14, auth=14, form=12, task=10, response=10, component=10. Item stays open as umbrella."  # f7d6

@@ -1,0 +1,36 @@
+- op: create  # 7c39
+  at: '2026-04-19T08:02:05Z'  # 7c39
+  by: agent  # 7c39
+  actor: jgstern_agent  # 7c39
+  clock: 1  # 7c39
+  nonce: 7c39  # 7c39
+  data:  # 7c39
+    kind: work_item  # 7c39
+    title: "WI-gudob Phase 2: controller concept linker (route-group containment)"  # 7c39
+    status: todo_soft  # 7c39
+    priority: 3  # 7c39
+    parent: WI-gudob-tibov-nirod-nahop-banoj-tizof-zasif-dihih  # 7c39
+    tags:  # 7c39
+    - framework_dispatch_linkers  # 7c39
+    - awaits_bakeoff_validation  # 7c39
+    isbefore: []  # 7c39
+    duplicate_of: []  # 7c39
+    not_duplicate_of: []  # 7c39
+    pr_ref:  # 7c39
+    description: "Phase 2 of WI-gudob (umbrella: Priority inert-concept linkers). Phase 1 (error_handler → ERROR_HANDLER entrypoint) shipped in PR #3181 (commit d417436594). This item covers the second-highest producer-count inert concept.\n\n**Concept:** `controller` — 34 producer frameworks (aspnet, rails, laravel, symfony, django, spring-mvc, yii, cakephp, codeigniter, fuelphp, silverstripe, slim, lumen, adonisjs, ember, aurelia, loopback, hapi, koa, egg, meteor, phoenix, play, scalatra, lift, finatra, giraffe, suave, ktor, micronaut, quarkus, javalin, grails).\n\n**Dispatch semantics** (distinct from route_handler.py, which already resolves individual route handler methods to concrete functions):\n\n- A `controller` is a class/module that groups related route handlers under a shared route prefix and shared middleware.\n- The Framework-subcategory dispatch is: *controller class/module → containing route group → per-method route bindings*.\n- Output: `contains_routes` edges from controller symbol to each route_handler symbol that lives inside it, tagged with the shared prefix and shared middleware concepts.\n- This is additive to route_handler.py, not overlapping: route_handler resolves the per-method `VERB /prefix/path → method` binding; this linker adds the `controller ← contains_routes ← method` side so slicing \"all requests touching UsersController\" returns the method set and their concrete URLs.\n\n**Acceptance** (per INV-nimuj):\n\n1. Linker emits `contains_routes` edges on at least 3 bakeoff-cohort repositories across at least 2 frameworks.\n2. docs/CONCEPTS.md's `controller` entry flips from inert to live after running scripts/generate-concepts.\n3. Unit tests covering at least 3 framework YAMLs (suggested: rails, aspnet, django — distinct class-vs-module styles).\n4. 100% coverage in hypergumbo-core.\n5. Add a 'controller' concept-aware test in the bakeoff fixture for one of the enumerated repos, demonstrating the edges flow through slice queries.\n\n**Non-goals:**\n- Nested controllers (`ResourceController < ApplicationController`): if inheritance chains matter for route inheritance, file a follow-up item.\n- URL parameter concretization: covered separately by the HTTP linker; this item only handles the containment relationship, not the template-to-value fill.\n\n**Subcategory:** Framework (framework-specific dispatch — route-group registration in each framework's conventions). Tag: framework_dispatch_linkers.\n\n**Design reference:** route_handler.py already demonstrates the concept-to-edge pipeline for VERB-based route dispatch. Follow the same shape, substituting the `controller` concept and emitting `contains_routes` rather than `routes_to`.\n\n**Validation claim (for awaits_bakeoff_validation tag):** On a bakeoff cohort including at least one Rails/Django/ASP.NET/Spring-MVC repo, controller-class dead-code candidates that are currently flagged (because the class itself has no direct invocation — only its methods are routed) should drop meaningfully. Estimated volume pending empirical scan; numerical target to be set in the PR description."  # 7c39
+    fields: {}  # 7c39
+- op: update  # 687a
+  at: '2026-04-19T09:23:45Z'  # 687a
+  by: agent  # 687a
+  actor: jgstern_agent  # 687a
+  clock: 2  # 687a
+  nonce: 687a  # 687a
+  set:  # 687a
+    status: done  # 687a
+- op: discuss  # a7ae
+  at: '2026-04-19T09:23:45Z'  # a7ae
+  by: agent  # a7ae
+  actor: jgstern_agent  # a7ae
+  clock: 3  # a7ae
+  nonce: a7ae  # a7ae
+  message: "Shipped in PR #3185 (commit 97d138ef9). Linker emits contains_routes edges for decorator-based controller frameworks (NestJS/Spring/ASP.NET/Laravel/Symfony/Phoenix/Micronaut/Ktor/Grails/CakePHP). controller concept flipped inert → live in docs/CONCEPTS.md. 16 tests, 100% coverage, 100% per-package coverage. Tagged awaits_bakeoff_validation — numerical FP-reduction claim to be made against a bakeoff cohort containing at least one decorator-based controller framework. Rails and Django CBVs explicitly out of scope (different dispatch model handled by route_handler.py)."  # a7ae
