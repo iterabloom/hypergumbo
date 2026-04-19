@@ -229,6 +229,143 @@ class TestExtractConsumersFromText:
         assert expected <= names
 
 
+class TestExtractProgrammaticProducersFromText:
+    """Concepts emitted as Python dict literals must be detected as producers.
+
+    WI-tasab: py.py's main_guard detector (and future analyzers that construct
+    ``{"concept": "X"}`` inline) used to surface as ``ghost`` in docs/CONCEPTS.md
+    because scan_producers only looked at framework YAMLs. These tests pin the
+    new programmatic-producer scan.
+    """
+
+    def setup_method(self) -> None:
+        self.mod = _load_script_module()
+
+    def test_double_quoted_concept_literal(self) -> None:
+        names = self.mod.extract_programmatic_producers_from_text(
+            'meta = {"concepts": [{"concept": "main_guard", "framework": "python"}]}\n'
+        )
+        assert "main_guard" in names
+
+    def test_single_quoted_concept_literal(self) -> None:
+        names = self.mod.extract_programmatic_producers_from_text(
+            "meta = {'concepts': [{'concept': 'route'}]}\n"
+        )
+        assert "route" in names
+
+    def test_multiple_literal_concepts_in_same_file(self) -> None:
+        names = self.mod.extract_programmatic_producers_from_text(
+            '{"concept": "alpha"}\n'
+            '{"concept": "beta"}\n'
+        )
+        assert names == {"alpha", "beta"}
+
+    def test_variable_concept_value_not_matched(self) -> None:
+        """``{"concept": some_var}`` must NOT produce a spurious concept name.
+
+        Variable forms (like framework_patterns.py's reflection back out of
+        YAML-driven self.concept) are excluded on purpose — resolving the
+        variable would require running the analyzer, and the underlying YAML
+        already accounts for the concept.
+        """
+        names = self.mod.extract_programmatic_producers_from_text(
+            '{"concept": self.concept, "framework": fw}\n'
+            '{"concept": concept_type}\n'
+        )
+        assert names == set()
+
+    def test_only_string_literals_are_extracted(self) -> None:
+        """Numbers / bool / None following ``"concept":`` are ignored."""
+        names = self.mod.extract_programmatic_producers_from_text(
+            '{"concept": 42}\n'
+            '{"concept": None}\n'
+            '{"concept": True}\n'
+        )
+        assert names == set()
+
+    def test_empty_text_no_names(self) -> None:
+        assert self.mod.extract_programmatic_producers_from_text("") == set()
+
+
+class TestScanProducersIntegration:
+    """scan_producers must combine YAML + programmatic scans."""
+
+    def setup_method(self) -> None:
+        self.mod = _load_script_module()
+
+    def test_yaml_producer_alone(self, tmp_path: Path) -> None:
+        fw_dir = tmp_path / "frameworks"
+        fw_dir.mkdir()
+        (fw_dir / "myframework.yaml").write_text(
+            "linkers:\n  - concept: route\n", encoding="utf-8"
+        )
+        producers = self.mod.scan_producers(fw_dir)
+        assert "route" in producers
+        assert "myframework" in producers["route"]
+
+    def test_programmatic_producer_from_source_dir(
+        self, tmp_path: Path
+    ) -> None:
+        """A .py file emitting a literal concept dict is credited as a producer."""
+        fw_dir = tmp_path / "frameworks"
+        fw_dir.mkdir()
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "py_analyzer.py").write_text(
+            '# analyzer\n'
+            'def detect_main_guard():\n'
+            '    return {"concepts": [{"concept": "main_guard", "framework": "python"}]}\n',
+            encoding="utf-8",
+        )
+        producers = self.mod.scan_producers(fw_dir, [src_dir])
+        assert "main_guard" in producers
+        assert "py_analyzer.py" in producers["main_guard"]
+
+    def test_framework_patterns_py_skipped(self, tmp_path: Path) -> None:
+        """framework_patterns.py's ``self.concept`` reflection must not be
+        credited as a producer — its concept values come from YAML and are
+        already counted via the YAML scan. Crediting the file would falsely
+        promote every concept that ever flows through the pattern layer."""
+        fw_dir = tmp_path / "frameworks"
+        fw_dir.mkdir()
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "framework_patterns.py").write_text(
+            '# reflection of YAML values\n'
+            'def make_result():\n'
+            '    return {"concept": "shouldnotshow"}\n',
+            encoding="utf-8",
+        )
+        producers = self.mod.scan_producers(fw_dir, [src_dir])
+        assert "shouldnotshow" not in producers
+
+    def test_concept_utils_helper_skipped(self, tmp_path: Path) -> None:
+        """``_concept_utils.py`` and variants are not credited — the helper
+        discusses concepts abstractly but does not emit any real one."""
+        fw_dir = tmp_path / "frameworks"
+        fw_dir.mkdir()
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "_concept_utils.py").write_text(
+            '# utility\n'
+            'DEFAULT = {"concept": "also_spurious"}\n',
+            encoding="utf-8",
+        )
+        producers = self.mod.scan_producers(fw_dir, [src_dir])
+        assert "also_spurious" not in producers
+
+    def test_no_source_dirs_yields_yaml_only(self, tmp_path: Path) -> None:
+        """Omitting source_dirs preserves legacy YAML-only behavior."""
+        fw_dir = tmp_path / "frameworks"
+        fw_dir.mkdir()
+        (fw_dir / "only_yaml.yaml").write_text(
+            "linkers:\n  - concept: yaml_only\n", encoding="utf-8"
+        )
+        # Source dirs omitted — programmatic scan not run.
+        producers = self.mod.scan_producers(fw_dir)
+        assert "yaml_only" in producers
+
+
 class TestProducerRegex:
     """The producer regex is unchanged but lock in its behavior so a future
     change to the consumer regex cannot accidentally break producer parsing."""

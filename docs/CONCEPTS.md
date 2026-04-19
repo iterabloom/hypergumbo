@@ -8,7 +8,7 @@ This file enumerates every concept string that the framework-YAML pattern layer 
 - **inert** — producers exist but no consumer reads the concept. Candidates for either removing the producer pattern or writing a Framework-subcategory linker that consumes it.
 - **ghost** — a consumer mentions the concept by name but no YAML emits it. Likely dead code or a leftover reference to a removed pattern; investigate.
 
-Total concepts: **317** (live: 37, inert: 279, ghost: 1).
+Total concepts: **317** (live: 38, inert: 279, ghost: 0).
 
 ## Inventory
 
@@ -83,7 +83,7 @@ Total concepts: **317** (live: 37, inert: 279, ghost: 1).
 | `contract` | inert | http4k | _(none)_ |
 | `contract_route` | inert | http4k | _(none)_ |
 | `control_flow` | inert | scotty | _(none)_ |
-| `controller` | live | adonisjs, aiohttp, aspnet, cakephp, codeigniter, django, falcon, fuelphp, giraffe, grape, hanami, kafka-connect, ktor, laminas, laravel, litestar, lumen, masonite, micronaut, nestjs, padrino, phoenix, play, plug, pyramid, rails, slim, spring-boot, stapler, swiftui, symfony, tornado, vapor, yii | `entrypoints.py`, `linkers/controller_routes.py` |
+| `controller` | live | adonisjs, aiohttp, aspnet, cakephp, codeigniter, controller_routes.py, django, falcon, fuelphp, giraffe, grape, hanami, kafka-connect, ktor, laminas, laravel, litestar, lumen, masonite, micronaut, nestjs, padrino, phoenix, play, plug, pyramid, rails, slim, spring-boot, stapler, swiftui, symfony, tornado, vapor, yii | `entrypoints.py`, `linkers/controller_routes.py` |
 | `controller_by_name` | live | naming-conventions | `entrypoints.py` |
 | `cors` | inert | aspnet, scalatra | _(none)_ |
 | `crud_handler` | inert | javalin | _(none)_ |
@@ -167,7 +167,7 @@ Total concepts: **317** (live: 37, inert: 279, ghost: 1).
 | `mailable` | inert | adonisjs, masonite | _(none)_ |
 | `mailer` | inert | cakephp, fuelphp, hanami, laminas, laravel, padrino, rails | _(none)_ |
 | `main_function` | live | main-functions | `entrypoints.py` |
-| `main_guard` | ghost | _(none)_ | `entrypoints.py` |
+| `main_guard` | live | py.py | `entrypoints.py` |
 | `main_window` | inert | qt | _(none)_ |
 | `marshalling` | inert | http4k | _(none)_ |
 | `maven_dependency` | inert | config-conventions | _(none)_ |
@@ -179,7 +179,7 @@ Total concepts: **317** (live: 37, inert: 279, ghost: 1).
 | `menu` | inert | electron | _(none)_ |
 | `message_handler` | inert | micronaut | _(none)_ |
 | `metadata_generator` | inert | nextjs, nuxt, remix | _(none)_ |
-| `middleware` | live | adonisjs, aiohttp, akka-http, aspnet, bottle, cakephp, cli-go, codeigniter, django, express, falcon, fastapi, fastify, feathers, flask, flask-appbuilder, giraffe, go-web, grape, graphql, hanami, hapi, http4k, http4s, hummingbird, jakarta-cdi, javalin, koa, ktor, laminas, laravel, litestar, lumen, masonite, micronaut, nextjs, nuxt, openresty, padrino, pedestal, phoenix, play, plug, plumber, quart, restify, ring-compojure, rust-web, sanic, scalatra, scotty, servant, sinatra, slim, sveltekit, tornado, vapor, vertx, yii | `entrypoints.py`, `linkers/middleware_chain.py` |
+| `middleware` | live | adonisjs, aiohttp, akka-http, aspnet, bottle, cakephp, cli-go, codeigniter, django, express, falcon, fastapi, fastify, feathers, flask, flask-appbuilder, giraffe, go-web, grape, graphql, hanami, hapi, http4k, http4s, hummingbird, jakarta-cdi, javalin, koa, ktor, laminas, laravel, litestar, lumen, masonite, micronaut, middleware_chain.py, nextjs, nuxt, openresty, padrino, pedestal, phoenix, play, plug, plumber, quart, restify, ring-compojure, rust-web, sanic, scalatra, scotty, servant, sinatra, slim, sveltekit, tornado, vapor, vertx, yii | `entrypoints.py`, `linkers/middleware_chain.py` |
 | `migration` | inert | cakephp, codeigniter, fuelphp, vapor, yii | _(none)_ |
 | `model` | live | adonisjs, aspnet, cakephp, codeigniter, django, fastapi, flask, fuelphp, go-web, hanami, jakarta-cdi, laminas, laravel, litestar, lumen, masonite, padrino, phoenix, plug, pyramid, qt, quarkus, quart, rails, rust-web, spring-boot, sveltekit, vapor, yesod, yii | `datamodels.py`, `linkers/orm.py` |
 | `model_binding` | inert | adonisjs | _(none)_ |
@@ -232,7 +232,7 @@ Total concepts: **317** (live: 37, inert: 279, ghost: 1).
 | `response` | inert | akka-http, cowboy, giraffe, openresty, pedestal, ring-compojure, roda, scotty, servant, slim | _(none)_ |
 | `response_type` | inert | aspnet | _(none)_ |
 | `rest_callback` | inert | cowboy | _(none)_ |
-| `route` | live | adonisjs, aiohttp, akka-http, aspnet, bottle, cakephp, codeigniter, django, express, fastapi, fastify, flask, flask-appbuilder, flask-restful, giraffe, go-web, grape, graphql, hapi, http4k, hummingbird, javalin, jax-rs, koa, ktor, laravel, litestar, lumen, masonite, micronaut, nestjs, nextjs, nuxt, openresty, padrino, phoenix, play, plug, plumber, pyramid, quart, rails, restify, ring-compojure, roda, rust-web, sanic, scalatra, scotty, servant, sinatra, slim, solid, spring-boot, stapler, tornado, vapor, vertx, yesod, yii, zio | `cli.py`, `entrypoints.py`, `framework_patterns.py`, `linkers/controller_routes.py`, `linkers/http.py`, `linkers/openapi.py` |
+| `route` | live | adonisjs, aiohttp, akka-http, aspnet, bottle, cakephp, codeigniter, controller_routes.py, django, express, fastapi, fastify, flask, flask-appbuilder, flask-restful, giraffe, go-web, grape, graphql, hapi, http4k, hummingbird, javalin, jax-rs, koa, ktor, laravel, litestar, lumen, masonite, micronaut, nestjs, nextjs, nuxt, openresty, padrino, phoenix, play, plug, plumber, pyramid, quart, rails, restify, ring-compojure, roda, rust-web, sanic, scalatra, scotty, servant, sinatra, slim, solid, spring-boot, stapler, tornado, vapor, vertx, yesod, yii, zio | `cli.py`, `entrypoints.py`, `framework_patterns.py`, `linkers/controller_routes.py`, `linkers/http.py`, `linkers/openapi.py` |
 | `route_config` | inert | remix, sveltekit | _(none)_ |
 | `route_definition` | inert | roda | _(none)_ |
 | `route_group` | inert | adonisjs, cakephp, codeigniter, giraffe, javalin, lumen, masonite, ring-compojure | _(none)_ |

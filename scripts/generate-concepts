@@ -39,10 +39,32 @@ FRAMEWORKS_DIR = (
 CORE_SRC_DIR = (
     REPO_ROOT / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core"
 )
+# Analyzer source trees — some analyzers emit concepts programmatically rather
+# than via YAML (notably py.py's main_guard detector). Scanning these trees
+# with the programmatic-producer regex prevents false ghost classifications.
+ANALYZER_SRC_DIRS = [
+    CORE_SRC_DIR,
+    REPO_ROOT / "packages" / "hypergumbo-lang-common" / "src" / "hypergumbo_lang_common",
+    REPO_ROOT / "packages" / "hypergumbo-lang-mainstream" / "src" / "hypergumbo_lang_mainstream",
+    REPO_ROOT / "packages" / "hypergumbo-lang-extended1" / "src" / "hypergumbo_lang_extended1",
+]
 DEFAULT_OUTPUT = REPO_ROOT / "docs" / "CONCEPTS.md"
 
 # Match `- concept: <name>` (optionally quoted) in framework YAMLs.
 _PRODUCER_RE = re.compile(r"^\s*-?\s*concept:\s*[\"']?([A-Za-z_][A-Za-z0-9_]*)[\"']?\s*(#.*)?$")
+
+# Match programmatic concept emission in Python source:
+#   {"concept": "main_guard", ...}
+#   {'concept': 'route', 'path': ...}
+# A few analyzers (notably py.py's main_guard detector) emit concepts
+# directly from AST walkers rather than through the YAML pipeline. These
+# literals are just as real as YAML-declared producers — miss them and the
+# concept falsely surfaces as `ghost` (consumer exists but no producer).
+# Variable-expression forms (``{"concept": some_var, ...}``) are deliberately
+# not matched: we can't resolve ``some_var`` without running the analyzer.
+_PROGRAMMATIC_PRODUCER_RE = re.compile(
+    r"""["']concept["']\s*:\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""
+)
 
 # Match concept-consumer patterns in Python source:
 #   has_concept(x, "route") / get_concept(x, "route")
@@ -94,8 +116,30 @@ _TUPLE_STRING_RE = re.compile(
 )
 
 
-def scan_producers(frameworks_dir: Path) -> dict[str, set[str]]:
-    """Return {concept_name -> set of YAML filenames that emit it}."""
+def extract_programmatic_producers_from_text(text: str) -> set[str]:
+    """Return every concept name emitted as a literal in the given Python text.
+
+    Matches ``{"concept": "X"}`` and ``{'concept': 'X'}`` shapes. Variable-
+    expression forms like ``{"concept": concept_type}`` are intentionally not
+    matched — resolving the variable would require running the analyzer, and
+    they appear when a YAML-driven pattern is being reflected back out, so
+    the YAML scan already credits the concept.
+    """
+    return {m.group(1) for m in _PROGRAMMATIC_PRODUCER_RE.finditer(text)}
+
+
+def scan_producers(
+    frameworks_dir: Path, source_dirs: list[Path] | None = None
+) -> dict[str, set[str]]:
+    """Return {concept_name -> set of producer source names that emit it}.
+
+    Scans framework YAMLs (the primary emission pipeline) AND Python source
+    trees for programmatic emitters (analyzers that construct
+    ``{"concept": "X"}`` literals directly, bypassing the YAML pattern
+    layer). Combining the two scans prevents concepts emitted directly from
+    analyzers (like py.py's ``main_guard`` for ``if __name__ ==
+    "__main__":``) from showing as ``ghost`` in docs/CONCEPTS.md.
+    """
     producers: dict[str, set[str]] = defaultdict(set)
     for yaml_path in sorted(frameworks_dir.glob("*.yaml")):
         text = yaml_path.read_text(encoding="utf-8")
@@ -103,6 +147,19 @@ def scan_producers(frameworks_dir: Path) -> dict[str, set[str]]:
             match = _PRODUCER_RE.match(line)
             if match:
                 producers[match.group(1)].add(yaml_path.stem)
+    for src_dir in source_dirs or []:
+        for py_path in sorted(src_dir.rglob("*.py")):
+            if py_path.name.startswith("_concept_utils"):
+                continue
+            # framework_patterns.py's `{"concept": self.concept}` reflects
+            # YAML-driven values back out; crediting it would falsely
+            # promote every concept it might yield. Skip it.
+            if py_path.name == "framework_patterns.py":
+                continue
+            rel_label = py_path.name
+            text = py_path.read_text(encoding="utf-8")
+            for name in extract_programmatic_producers_from_text(text):
+                producers[name].add(rel_label)
     return producers
 
 
@@ -218,7 +275,7 @@ def format_md(rows: list[tuple[str, set[str], set[str], str]]) -> str:
 
 
 def generate(output_path: Path) -> str:
-    producers = scan_producers(FRAMEWORKS_DIR)
+    producers = scan_producers(FRAMEWORKS_DIR, ANALYZER_SRC_DIRS)
     consumers = scan_consumers(CORE_SRC_DIR)
     rows = classify(producers, consumers)
     md = format_md(rows)
@@ -245,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    producers = scan_producers(FRAMEWORKS_DIR)
+    producers = scan_producers(FRAMEWORKS_DIR, ANALYZER_SRC_DIRS)
     consumers = scan_consumers(CORE_SRC_DIR)
     rows = classify(producers, consumers)
     generated = format_md(rows)
