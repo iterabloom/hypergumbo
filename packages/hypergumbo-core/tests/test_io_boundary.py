@@ -1393,6 +1393,138 @@ class TestEntryPointTracing:
         assert "main_noio" not in fs_entry.entry_points
 
 
+class TestLeafCallerExpansion:
+    """Tests for WI-darad: expand collapsed sinks into per-leaf-caller roll-ups.
+
+    When many concrete functions share a helper that calls a primitive, the
+    collapsed entry_points roll-up loses the association between entry points
+    and the concrete caller path. leaf_callers / entry_points_per_leaf surface
+    that association without materializing full paths per chain.
+    """
+
+    def _make_edge(self, src: str, dst: str, edge_type: str = "calls"):
+        from dataclasses import dataclass
+        from typing import Optional, Dict, Any
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(src=src, dst=dst, edge_type=edge_type, meta=None)
+
+    def test_leaf_callers_surface_concrete_notifiers(self) -> None:
+        """Two concrete Notifier.Notify funcs share a 'request' helper that
+        calls http.NewRequest. leaf_callers must contain both Notifiers."""
+        catalog = load_catalog("go")
+        edges = [
+            self._make_edge(
+                src="go:/api.go:1:postAlertsHandler:function",
+                dst="go:/notify.go:1:slack_Notify:function",
+            ),
+            self._make_edge(
+                src="go:/api.go:1:postAlertsHandler:function",
+                dst="go:/notify.go:1:discord_Notify:function",
+            ),
+            self._make_edge(
+                src="go:/notify.go:1:slack_Notify:function",
+                dst="go:/notify.go:1:request:function",
+            ),
+            self._make_edge(
+                src="go:/notify.go:1:discord_Notify:function",
+                dst="go:/notify.go:1:request:function",
+            ),
+            self._make_edge(
+                src="go:/notify.go:1:request:function",
+                dst="go:net/http:0-0:NewRequest:unresolved",
+            ),
+        ]
+        entrypoint_ids = {"go:/api.go:1:postAlertsHandler:function"}
+        bmap = compute_boundary_map(
+            edges, {"go": catalog}, entrypoint_ids=entrypoint_ids
+        )
+        net_entry = bmap.entries.get("net_send")
+        assert net_entry is not None
+        assert "go:/notify.go:1:slack_Notify:function" in net_entry.leaf_callers
+        assert "go:/notify.go:1:discord_Notify:function" in net_entry.leaf_callers
+
+    def test_entry_points_per_leaf_distinguishes_reach(self) -> None:
+        """Two handlers reach the shared helper via disjoint Notifiers.
+        entry_points_per_leaf must keep the EP→leaf association."""
+        catalog = load_catalog("go")
+        edges = [
+            self._make_edge(
+                src="go:/api.go:1:postSlackHandler:function",
+                dst="go:/notify.go:1:slack_Notify:function",
+            ),
+            self._make_edge(
+                src="go:/api.go:1:postDiscordHandler:function",
+                dst="go:/notify.go:1:discord_Notify:function",
+            ),
+            self._make_edge(
+                src="go:/notify.go:1:slack_Notify:function",
+                dst="go:/notify.go:1:request:function",
+            ),
+            self._make_edge(
+                src="go:/notify.go:1:discord_Notify:function",
+                dst="go:/notify.go:1:request:function",
+            ),
+            self._make_edge(
+                src="go:/notify.go:1:request:function",
+                dst="go:net/http:0-0:NewRequest:unresolved",
+            ),
+        ]
+        entrypoint_ids = {
+            "go:/api.go:1:postSlackHandler:function",
+            "go:/api.go:1:postDiscordHandler:function",
+        }
+        bmap = compute_boundary_map(
+            edges, {"go": catalog}, entrypoint_ids=entrypoint_ids
+        )
+        net_entry = bmap.entries["net_send"]
+        per_leaf = net_entry.entry_points_per_leaf
+        slack_leaf = "go:/notify.go:1:slack_Notify:function"
+        discord_leaf = "go:/notify.go:1:discord_Notify:function"
+        assert per_leaf[slack_leaf] == [
+            "go:/api.go:1:postSlackHandler:function"
+        ]
+        assert per_leaf[discord_leaf] == [
+            "go:/api.go:1:postDiscordHandler:function"
+        ]
+
+    def test_leaf_caller_is_io_src_when_no_callers(self) -> None:
+        """When io_edge_src has no callers, it itself is the leaf."""
+        catalog = load_catalog("python")
+        edges = [
+            self._make_edge(
+                src="python:/a.py:1:f:function",
+                dst="python:/os.py:1:os.listdir:function",
+            ),
+        ]
+        bmap = compute_boundary_map(edges, {"python": catalog})
+        fs_entry = bmap.entries["fs_read"]
+        assert fs_entry.leaf_callers == ["python:/a.py:1:f:function"]
+
+    def test_leaf_rollups_in_to_dict(self) -> None:
+        """leaf_callers and entry_points_per_leaf appear in JSON output."""
+        catalog = load_catalog("python")
+        edges = [
+            self._make_edge(src="main", dst="helper"),
+            self._make_edge(src="helper", dst="python:os:0-0:listdir:function"),
+        ]
+        bmap = compute_boundary_map(
+            edges, {"python": catalog}, entrypoint_ids={"main"}
+        )
+        d = bmap.to_dict()
+        fs = d["boundaries"]["fs_read"]
+        assert "leaf_callers" in fs
+        assert "entry_points_per_leaf" in fs
+        assert "main" in fs["leaf_callers"]
+        assert fs["entry_points_per_leaf"]["main"] == ["main"]
+
+
 class TestHighRiskPrimitives:
     """Tests for the high-risk primitive classification."""
 

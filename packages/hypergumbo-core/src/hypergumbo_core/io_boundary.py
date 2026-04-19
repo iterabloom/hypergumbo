@@ -436,6 +436,8 @@ class BoundaryMapEntry:
     chains: list[IoChain] = field(default_factory=list)
     entry_points: list[str] = field(default_factory=list)
     primitives_used: list[str] = field(default_factory=list)
+    leaf_callers: list[str] = field(default_factory=list)
+    entry_points_per_leaf: dict[str, list[str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize to JSON-friendly dict.
@@ -443,6 +445,12 @@ class BoundaryMapEntry:
         Includes per-primitive counts, per-chain detail, and a
         high-risk flag indicating whether any chain uses a high-risk
         primitive (destructive fs, subprocess, outbound network).
+
+        Also emits the WI-darad leaf-caller roll-ups (leaf_callers +
+        entry_points_per_leaf) so taint-style reasoning can keep the
+        EP→concrete-caller→sink association even when many concrete
+        callers share a helper (the 'slack.Notify / discord.Notify /
+        pushover.Notify → request → http.NewRequest' case).
         """
         prim_counts: dict[str, int] = {}
         for chain in self.chains:
@@ -457,6 +465,8 @@ class BoundaryMapEntry:
             "has_high_risk": any(
                 is_high_risk(c.primitive) for c in self.chains
             ),
+            "leaf_callers": self.leaf_callers,
+            "entry_points_per_leaf": self.entry_points_per_leaf,
         }
 
 
@@ -482,57 +492,47 @@ class BoundaryMap:
         }
 
 
-def _trace_entry_points(
-    edges: list,
-    entrypoint_ids: set[str],
-) -> dict[str, set[str]]:
-    """Reverse-trace from IO-tagged edges back to entrypoints.
+_TRACEABLE_EDGE_TYPES = frozenset({
+    "calls", "instantiates", "dispatches_to", "references",
+    # FFI bridge edges
+    "native_bridge", "wasm_bridge", "wasm_load", "bridge_invokes",
+    "cgo_bridge", "ffi_bridge",
+    "ipc_calls", "ipc_event", "grpc_calls", "implements_rpc",
+})
 
-    Builds a reverse call graph (callee → callers) and performs BFS from
-    each IO edge's source symbol backward through the graph until reaching
-    entrypoint symbols.
 
-    Returns a mapping from IO edge source symbol ID to the set of
-    entrypoint IDs that can reach it.
+def _build_reverse_graph(edges: list) -> dict[str, set[str]]:
+    """Build reverse adjacency list (callee → callers) over traceable edge types.
+
+    Includes FFI bridge edges so upstream walks cross language boundaries
+    (e.g., Java native method → C JNI function → fopen).
     """
-    # Build reverse adjacency list: dst → set of src symbols.
-    # Include FFI bridge edges so entry-point traces cross language boundaries
-    # (e.g., Java native method → C JNI function → fopen).
-    _TRACEABLE_TYPES = frozenset({
-        "calls", "instantiates", "dispatches_to", "references",
-        # FFI bridge edges
-        "native_bridge", "wasm_bridge", "wasm_load", "bridge_invokes",
-        "cgo_bridge", "ffi_bridge",
-        "ipc_calls", "ipc_event", "grpc_calls", "implements_rpc",
-    })
     reverse_graph: dict[str, set[str]] = {}
     for edge in edges:
-        if edge.edge_type in _TRACEABLE_TYPES:
+        if edge.edge_type in _TRACEABLE_EDGE_TYPES:
             reverse_graph.setdefault(edge.dst, set()).add(edge.src)
+    return reverse_graph
 
-    # For each IO-tagged edge, BFS backward to find reachable entrypoints
-    io_sources: set[str] = set()
-    for edge in edges:
-        if edge.meta and edge.meta.get("io_boundary"):
-            io_sources.add(edge.src)
 
-    result: dict[str, set[str]] = {}
-    for io_src in io_sources:
-        reachable_eps: set[str] = set()
-        visited: set[str] = set()
-        queue = [io_src]
-        while queue:
-            current = queue.pop(0)
-            if current not in visited:
-                visited.add(current)
-                if current in entrypoint_ids:
-                    reachable_eps.add(current)
-                for caller in reverse_graph.get(current, ()):
-                    if caller not in visited:
-                        queue.append(caller)
-        result[io_src] = reachable_eps
-
-    return result
+def _reachable_entry_points(
+    seed: str,
+    reverse_graph: dict[str, set[str]],
+    entrypoint_ids: set[str],
+) -> set[str]:
+    """BFS backward from ``seed`` and return all entrypoints reachable."""
+    reachable_eps: set[str] = set()
+    visited: set[str] = set()
+    queue = [seed]
+    while queue:
+        current = queue.pop(0)
+        if current not in visited:
+            visited.add(current)
+            if current in entrypoint_ids:
+                reachable_eps.add(current)
+            for caller in reverse_graph.get(current, ()):
+                if caller not in visited:
+                    queue.append(caller)
+    return reachable_eps
 
 
 def compute_boundary_map(
@@ -560,10 +560,20 @@ def compute_boundary_map(
     """
     tagged_count = tag_io_boundaries(edges, catalogs)
 
+    # Reverse call graph — shared by EP tracing and leaf-caller expansion
+    reverse_graph = _build_reverse_graph(edges)
+
     # Reverse-trace from IO edges to entrypoints (Phase 1c)
     ep_map: dict[str, set[str]] = {}
     if entrypoint_ids:
-        ep_map = _trace_entry_points(edges, entrypoint_ids)
+        io_sources: set[str] = set()
+        for edge in edges:
+            if edge.meta and edge.meta.get("io_boundary"):
+                io_sources.add(edge.src)
+        for io_src in io_sources:
+            ep_map[io_src] = _reachable_entry_points(
+                io_src, reverse_graph, entrypoint_ids
+            )
 
     # Aggregate tagged edges by boundary type
     by_boundary: dict[str, list[IoChain]] = {}
@@ -585,20 +595,40 @@ def compute_boundary_map(
         )
         by_boundary.setdefault(boundary, []).append(chain)
 
-    # Build boundary map entries
+    # Build boundary map entries, including WI-darad leaf-caller roll-ups.
+    # A "leaf caller" of an io_edge_src is an immediate caller of that src
+    # in the reverse graph; when src has no callers, src itself is its own
+    # leaf (the primitive is invoked directly from that function).
     bmap = BoundaryMap(total_io_edges=tagged_count)
+    leaf_ep_cache: dict[str, set[str]] = {}
     for boundary, chains in by_boundary.items():
         entry_points_set: set[str] = set()
         primitives_set: set[str] = set()
+        leaf_set: set[str] = set()
+        per_leaf: dict[str, set[str]] = {}
         for chain in chains:
             primitives_set.add(chain.primitive)
             for ep in chain.entry_points:
                 entry_points_set.add(ep)
+            callers = reverse_graph.get(chain.io_edge_src, set())
+            leaves = callers if callers else {chain.io_edge_src}
+            for leaf in leaves:
+                leaf_set.add(leaf)
+                if entrypoint_ids:
+                    if leaf not in leaf_ep_cache:
+                        leaf_ep_cache[leaf] = _reachable_entry_points(
+                            leaf, reverse_graph, entrypoint_ids
+                        )
+                    per_leaf.setdefault(leaf, set()).update(leaf_ep_cache[leaf])
         bmap.entries[boundary] = BoundaryMapEntry(
             boundary=boundary,
             chains=chains,
             entry_points=sorted(entry_points_set),
             primitives_used=sorted(primitives_set),
+            leaf_callers=sorted(leaf_set),
+            entry_points_per_leaf={
+                leaf: sorted(eps) for leaf, eps in per_leaf.items()
+            },
         )
 
     return bmap
