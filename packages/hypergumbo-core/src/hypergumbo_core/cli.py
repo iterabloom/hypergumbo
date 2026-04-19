@@ -88,6 +88,7 @@ import hypergumbo_core.linkers.build_target as _build_target_linker  # noqa: F40
 import hypergumbo_core.linkers.decorator_dispatch as _decorator_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers.method_call_recovery as _method_call_recovery_linker  # noqa: F401
 import hypergumbo_core.linkers.middleware_chain as _middleware_chain_linker  # noqa: F401
+import hypergumbo_core.linkers.controller_routes as _controller_routes_linker  # noqa: F401
 import hypergumbo_core.linkers.react_component as _react_component_linker  # noqa: F401
 import hypergumbo_core.linkers.tauri_ipc as _tauri_ipc_linker  # noqa: F401
 import hypergumbo_core.linkers.solidity_abi as _solidity_abi_linker  # noqa: F401

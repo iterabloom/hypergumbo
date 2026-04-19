@@ -8,7 +8,7 @@ This file enumerates every concept string that the framework-YAML pattern layer 
 - **inert** — producers exist but no consumer reads the concept. Candidates for either removing the producer pattern or writing a Framework-subcategory linker that consumes it.
 - **ghost** — a consumer mentions the concept by name but no YAML emits it. Likely dead code or a leftover reference to a removed pattern; investigate.
 
-Total concepts: **316** (live: 6, inert: 310, ghost: 0).
+Total concepts: **316** (live: 7, inert: 309, ghost: 0).
 
 ## Inventory
 
@@ -83,7 +83,7 @@ Total concepts: **316** (live: 6, inert: 310, ghost: 0).
 | `contract` | inert | http4k | _(none)_ |
 | `contract_route` | inert | http4k | _(none)_ |
 | `control_flow` | inert | scotty | _(none)_ |
-| `controller` | inert | adonisjs, aiohttp, aspnet, cakephp, codeigniter, django, falcon, fuelphp, giraffe, grape, hanami, kafka-connect, ktor, laminas, laravel, litestar, lumen, masonite, micronaut, nestjs, padrino, phoenix, play, plug, pyramid, rails, slim, spring-boot, stapler, swiftui, symfony, tornado, vapor, yii | _(none)_ |
+| `controller` | live | adonisjs, aiohttp, aspnet, cakephp, codeigniter, django, falcon, fuelphp, giraffe, grape, hanami, kafka-connect, ktor, laminas, laravel, litestar, lumen, masonite, micronaut, nestjs, padrino, phoenix, play, plug, pyramid, rails, slim, spring-boot, stapler, swiftui, symfony, tornado, vapor, yii | `linkers/controller_routes.py` |
 | `controller_by_name` | inert | naming-conventions | _(none)_ |
 | `cors` | inert | aspnet, scalatra | _(none)_ |
 | `crud_handler` | inert | javalin | _(none)_ |
@@ -231,7 +231,7 @@ Total concepts: **316** (live: 6, inert: 310, ghost: 0).
 | `response` | inert | akka-http, cowboy, giraffe, openresty, pedestal, ring-compojure, roda, scotty, servant, slim | _(none)_ |
 | `response_type` | inert | aspnet | _(none)_ |
 | `rest_callback` | inert | cowboy | _(none)_ |
-| `route` | live | adonisjs, aiohttp, akka-http, aspnet, bottle, cakephp, codeigniter, django, express, fastapi, fastify, flask, flask-appbuilder, flask-restful, giraffe, go-web, grape, graphql, hapi, http4k, hummingbird, javalin, jax-rs, koa, ktor, laravel, litestar, lumen, masonite, micronaut, nestjs, nextjs, nuxt, openresty, padrino, phoenix, play, plug, plumber, pyramid, quart, rails, restify, ring-compojure, roda, rust-web, sanic, scalatra, scotty, servant, sinatra, slim, solid, spring-boot, stapler, tornado, vapor, vertx, yesod, yii, zio | `cli.py`, `framework_patterns.py`, `linkers/http.py`, `linkers/openapi.py` |
+| `route` | live | adonisjs, aiohttp, akka-http, aspnet, bottle, cakephp, codeigniter, django, express, fastapi, fastify, flask, flask-appbuilder, flask-restful, giraffe, go-web, grape, graphql, hapi, http4k, hummingbird, javalin, jax-rs, koa, ktor, laravel, litestar, lumen, masonite, micronaut, nestjs, nextjs, nuxt, openresty, padrino, phoenix, play, plug, plumber, pyramid, quart, rails, restify, ring-compojure, roda, rust-web, sanic, scalatra, scotty, servant, sinatra, slim, solid, spring-boot, stapler, tornado, vapor, vertx, yesod, yii, zio | `cli.py`, `framework_patterns.py`, `linkers/controller_routes.py`, `linkers/http.py`, `linkers/openapi.py` |
 | `route_config` | inert | remix, sveltekit | _(none)_ |
 | `route_definition` | inert | roda | _(none)_ |
 | `route_group` | inert | adonisjs, cakephp, codeigniter, giraffe, javalin, lumen, masonite, ring-compojure | _(none)_ |

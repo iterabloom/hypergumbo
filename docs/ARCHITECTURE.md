@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **228** Python modules (123 analyzers, 45 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 18, Infrastructure 6; 30 core, 4 CLI, 26 tracker)
-- **4127** symbols (functions, classes, methods)
-- **54528** edges by type:
-  - calls: 37608
-  - imports: 8292
-  - instantiates: 6090
+- **234** Python modules (124 analyzers, 50 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 23, Infrastructure 6; 30 core, 4 CLI, 26 tracker)
+- **4177** symbols (functions, classes, methods)
+- **55302** edges by type:
+  - calls: 38115
+  - imports: 8487
+  - instantiates: 6186
   - contains: 1198
-  - dispatches_to: 525
-  - decorated_by: 288
-  - other: 527
+  - dispatches_to: 530
+  - decorated_by: 293
+  - other: 493
 
 ## Package Architecture
 
@@ -36,7 +36,7 @@ depend on core but not on each other, and the tracker is fully independent.
                     /       |       \
                    v        v        v
   lang-mainstream   lang-common   lang-extended1
-  (41 analyzers)   (38 analyzers)   (41 analyzers)
+  (42 analyzers)   (38 analyzers)   (41 analyzers)
                    \       |       /
                     v      v      v
                    hypergumbo-core
@@ -50,8 +50,8 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 45 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-0003-ext), 105 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
-| **hypergumbo-lang-mainstream** | 41 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 50 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-0003-ext), 105 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-lang-mainstream** | 42 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
 | **hypergumbo** | Meta-package that installs core + all language packages |
@@ -84,7 +84,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 4127 Symbols + 54528 Edges + UsageContexts             │
+│  Output: 4177 Symbols + 55302 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -102,7 +102,7 @@ Source Files
 │  Tier 2 edge recovery (ADR-0003-ext — Protocol / Bridge /       │
 │  Framework / Infrastructure). Match via meta.concepts and       │
 │  symbol metadata across files and language boundaries.          │
-│  45 linkers: P11 / B10 / F18 / I6 (HTTP, JNI, gRPC, React, ...) │
+│  50 linkers: P11 / B10 / F23 / I6 (HTTP, JNI, gRPC, React, ...) │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -229,20 +229,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 4303.0 | ir.py |
-| `Span` | class | 3689.4 | ir.py |
-| `run_behavior_map` | function | 2461.0 | cli.py |
+| `Symbol` | class | 4425.6 | ir.py |
+| `Span` | class | 3777.5 | ir.py |
+| `run_behavior_map` | function | 2480.2 | cli.py |
 | `TrackerApp` | class | 1780.2 | tui.py |
 | `load_framework_patterns` | function | 1546.6 | framework_patterns.py |
-| `LinkerContext` | class | 1260.8 | registry.py |
+| `LinkerContext` | class | 1355.1 | registry.py |
 | `main` | function | 1242.8 | cli.py |
 | `clear_pattern_cache` | function | 1059.9 | framework_patterns.py |
 | `find_files` | function | 1013.9 | discovery.py |
 | `match_patterns` | function | 873.0 | framework_patterns.py |
 | `TreeSitterAnalyzer` | class | 859.1 | base.py |
 | `Store` | class | 778.5 | store.py |
-| `detect_entrypoints` | function | 630.0 | entrypoints.py |
-| `UsageContext.create` | method | 594.6 | ir.py |
+| `detect_entrypoints` | function | 641.3 | entrypoints.py |
+| `Edge` | class | 615.7 | ir.py |
 
 ## Pattern System
 
@@ -361,7 +361,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `dev-install` | Dev install for hypergumbo monorepo. |
 | `install-embeddings` | Install embedding dependencies for hypergumbo. |
 | `install-hooks` | (no description) |
-| `loop-toggle` | Toggle autonomous mode on/off with support for multiple modes |
+| `loop-toggle` | Toggle autonomous mode on/off with support for multiple modes. |
 | `stop-hook-preview` | stop-hook-preview — Dry-run stop hook simulator. |
 | `tracker` | Thin wrapper for hypergumbo-tracker CLI. |
 | `tracker-textconv` | Git textconv driver for hypergumbo-tracker .ops files. |
@@ -395,11 +395,13 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | Script | Description |
 |--------|-------------|
 | `agent-notes` | Agent-owned notes CLI for the split state-file design (INV-jofaf facet 2). |
+| `agent-supervisor` | scripts/agent-supervisor — hypergumbo tmux session supervisor (WI-razub). |
 | `audit-stale-timestamps` | Audit embedded timestamps in agent state files vs filesystem mtimes. |
 | `backfill-training-data-cohort-tags.py` | Backfill cohort metadata for v0 training corpus entries. |
 | `bakeoff-map` | bakeoff-map - Chronicle and map hypergumbo bakeoff artifacts. |
 | `dead-code-prospector-run.py` | Lightweight one-shot dead-code-maybe prospecting run. |
 | `finetune-transcript-model` | G-Vendi-guided data selection and finetuning for the local transcript model. |
+| `generate-concepts` | Generate docs/CONCEPTS.md — the concept-vocabulary registry (WI-dajul). |
 | `measure-playbook-overlap.py` | Measure read-then-injected playbook overlap (waste signal). |
 | `tracker-path-linter` | Scan tracker items for stale file-path references. |
 | `verify-tracker-pr` | Check if a tracker sync PR's ops data is already |
@@ -508,6 +510,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_mainstream.ruby`**: Ruby analysis pass using tree-sitter-ruby.
 - **`hypergumbo_lang_mainstream.rust`**: Rust analysis pass using tree-sitter-rust.
 - **`hypergumbo_lang_mainstream.rust_def_use`**: Rust def/use extractor for intraprocedural dataflow analysis (ADR-0...
+- **`hypergumbo_lang_mainstream.rust_scip`**: SCIP → rust.py stable_id mapping helper (WI-bajuz, ADR-0014 §3).
 - **`hypergumbo_lang_mainstream.scala`**: Scala analysis pass using tree-sitter-scala.
 - **`hypergumbo_lang_mainstream.sql`**: SQL schema analysis pass using tree-sitter-sql.
 - **`hypergumbo_lang_mainstream.swift`**: Swift analysis pass using tree-sitter-swift.
@@ -597,15 +600,18 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 ### Linkers
 
+- **`hypergumbo_core.linkers.airflow_framework_dispatch`**: Framework linker: Airflow class-based plugin framework dispatch (WI...
 - **`hypergumbo_core.linkers.annotation_convention`**: Protocol linker: annotation convention for developer-provided pub/s...
 - **`hypergumbo_core.linkers.build_target`**: Infrastructure linker: build target for connecting manifest entries...
 - **`hypergumbo_core.linkers.cgo`**: Bridge linker: Cgo for connecting Go C function calls to C/C++ impl...
 - **`hypergumbo_core.linkers.containment`**: Infrastructure linker: containment for creating `contains` edges be...
+- **`hypergumbo_core.linkers.controller_routes`**: Framework linker: controller → route methods containment.
 - **`hypergumbo_core.linkers.crypto_flow`**: Protocol linker: crypto-flow for detecting encryption/decryption bo...
 - **`hypergumbo_core.linkers.database_query`**: Protocol linker: database query for detecting SQL queries in applic...
 - **`hypergumbo_core.linkers.decorator_dispatch`**: Framework linker: decorator dispatch for registry-based dynamic cal...
 - **`hypergumbo_core.linkers.dependency`**: Infrastructure linker: dependency for connecting manifest dependenc...
 - **`hypergumbo_core.linkers.di_resolution`**: Framework linker: multi-language dependency injection resolution.
+- **`hypergumbo_core.linkers.django_orm_dispatch`**: Framework linker: Django ORM method dispatch (WI-nosug).
 - **`hypergumbo_core.linkers.event_sourcing`**: Protocol linker: event sourcing for detecting event publishers and ...
 - **`hypergumbo_core.linkers.go_cobra`**: Framework linker: Go spf13/cobra CLI command dispatch.
 - **`hypergumbo_core.linkers.go_memberlist`**: Framework linker: Go hashicorp/memberlist cluster delegate callback.
@@ -615,6 +621,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.http`**: Protocol linker: HTTP client-server for detecting cross-language AP...
 - **`hypergumbo_core.linkers.inheritance`**: Infrastructure linker: inheritance for creating extends/implements ...
 - **`hypergumbo_core.linkers.ipc`**: Protocol linker: IPC for detecting inter-process communication patt...
+- **`hypergumbo_core.linkers.jackson_dispatch`**: Framework linker: Jackson / JavaBean serialization dispatch (WI-gup...
 - **`hypergumbo_core.linkers.jni`**: Bridge linker: JNI for connecting Java native methods to C/C++/Rust...
 - **`hypergumbo_core.linkers.js_module`**: Infrastructure linker: JS/TS module resolution for cross-file impor...
 - **`hypergumbo_core.linkers.lua_ffi`**: Bridge linker: Lua FFI for connecting LuaJIT FFI calls to C functio...
@@ -631,6 +638,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.react_component`**: Framework linker: React component for detecting JSX composition edges.
 - **`hypergumbo_core.linkers.route_handler`**: Framework linker: route-handler for connecting routes to their hand...
 - **`hypergumbo_core.linkers.ruby_ffi`**: Bridge linker: Ruby FFI for connecting Ruby FFI gem calls and C ext...
+- **`hypergumbo_core.linkers.rust_trait_dispatch`**: Framework linker: Rust trait-impl method dispatch (WI-kivut).
 - **`hypergumbo_core.linkers.solidity_abi`**: Bridge linker: Solidity ABI bridge for connecting TS/JS contract ca...
 - **`hypergumbo_core.linkers.subprocess_cli`**: Protocol linker: subprocess-to-CLI for detecting cross-process CLI ...
 - **`hypergumbo_core.linkers.swift_objc`**: Bridge linker: Swift/Objective-C bridging.
@@ -683,7 +691,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: cd670574d27f
+  commit: d45f7be3eb39
   hypergumbo: 2.6.0
   python: 3.12.3
 -->
