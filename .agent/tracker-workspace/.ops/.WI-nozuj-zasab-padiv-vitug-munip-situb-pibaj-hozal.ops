@@ -26,3 +26,25 @@
   clock: 2  # 535a
   nonce: 535a  # 535a
   message: "I think we (at least partially) already addressed this in a different tracker item and it did involve making tightening the stop logic behavior. I think the concerns raised here might be obviated by the Moitor being event-driven in that it still can finish sooner than its pre-providided duration if the thing it's monitoring sends a recognizable message. We might be able to `wont_do` this; what do you think?"  # 535a
+- op: discuss  # 14b3
+  at: '2026-04-19T02:05:23Z'  # 14b3
+  by: agent  # 14b3
+  actor: jgstern_agent  # 14b3
+  clock: 3  # 14b3
+  nonce: 14b3  # 14b3
+  message: "Concur with wont_do. You are right that the original concern is largely obviated: (1) Monitor is already event-driven — once the filter's grep alternation matches a terminal line (merged/FAIL/Error/TIMEOUT/Recovery), the monitor fires immediately regardless of how much of the declared timeout_ms remains, so the over-margin failure mode (leaving merged PRs sitting unactioned) doesn't apply when the filter is well-formed. (2) The under-margin concern is partly addressed by output-capture-long-running-playbook (the 'Coverage — silence is not success' section) which is the live rule on monitor filter width. (3) The auto-pr-specific silence-on-Recovery gap that motivated this item was partially closed by the same playbook adding the Recovery: alternation to the recommended auto-pr monitor filter. What remains unaddressed: no playbook-level guidance on when to PREFER Monitor over the run_in_background completion notification, and no guidance on choosing timeout_ms vs ScheduleWakeup delaySeconds relative to expected wall-clock. These are real but minor — cost of current state is occasional 5-10 min idle rather than work lost. I'd rather re-file a narrower follow-up if a specific pain point recurs than keep this broad item live. Updating status to wont_do. (Note: reply was posted earlier tonight but lost by auto-pr's rebase-restore of .ops backups — WI-buhov hazard; re-posting verbatim.)"  # 14b3
+- op: update  # aeaf
+  at: '2026-04-19T02:05:47Z'  # aeaf
+  by: agent  # aeaf
+  actor: jgstern_agent  # aeaf
+  clock: 4  # aeaf
+  nonce: aeaf  # aeaf
+  set:  # aeaf
+    status: wont_do  # aeaf
+- op: discuss  # cdeb
+  at: '2026-04-19T02:05:47Z'  # cdeb
+  by: agent  # cdeb
+  actor: jgstern_agent  # cdeb
+  clock: 5  # cdeb
+  nonce: cdeb  # cdeb
+  message: "Re-closing. Re-post verifies Monitor is event-driven (fires on terminal-state grep match regardless of declared timeout); output-capture-long-running-playbook already covers filter-width and Recovery alternation. Remaining prefer-Monitor-vs-run_in_background guidance can be re-filed narrower if a specific pain point recurs."  # cdeb

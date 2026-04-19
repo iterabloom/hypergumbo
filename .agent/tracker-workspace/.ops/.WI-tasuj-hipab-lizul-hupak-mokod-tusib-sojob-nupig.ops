@@ -1,0 +1,21 @@
+- op: create  # 8bea
+  at: '2026-04-19T02:14:21Z'  # 8bea
+  by: agent  # 8bea
+  actor: jgstern_agent  # 8bea
+  clock: 1  # 8bea
+  nonce: 8bea  # 8bea
+  data:  # 8bea
+    kind: work_item  # 8bea
+    title: "auto-pr rebase-restore silently drops all hidden .ops files (WI-buhov regression)"  # 8bea
+    status: todo_hard  # 8bea
+    priority: 1  # 8bea
+    parent:  # 8bea
+    tags:  # 8bea
+    - ci_infrastructure  # 8bea
+    - agent_infrastructure  # 8bea
+    isbefore: []  # 8bea
+    duplicate_of: []  # 8bea
+    not_duplicate_of: []  # 8bea
+    pr_ref:  # 8bea
+    description: "Root cause of 2026-04-19 tracker-reply loss documented in hypergumbo_lab_notebook/tracker_ops_loss_04192026_0230.md.\n\nThe backup branch of do_merge's rebase-recovery path in scripts/lib/forgejo-api.sh (around lines 1007-1035) correctly globs for hidden ops files via two patterns (`\"$ops_dir\"/.*ops \"$ops_dir\"/*.ops`). The matching restore branches (lines ~1056-1068 success-path and ~1101-1112 failure-path) iterate with a single `\"$backup_subdir\"/*` glob, which in bash WITHOUT `shopt -s dotglob` does NOT match dotfiles. Every tracker ops file uses a .WI-…ops or .INV-…ops naming convention (leading dot), so the restore loop enumerates zero files on every invocation. The function _ops_union_restore_file that the WI-buhov fix added is never called, and every locally-appended op performed between the backup step and the rebase is silently dropped.\n\nSymptom: tracker discuss / update / add calls performed during an auto-pr run (i.e. after commit + before merge completes) disappear from the tracker after the rebase-restore 'Restored backed-up .ops files from …' log line. The log line always prints even when the loop matched nothing.\n\nFix: use `for f in \"$backup_subdir\"/.* \"$backup_subdir\"/*;` (mirroring the backup loop) in both restore branches. Add a regression test that seeds a hidden .WI-test-foo.ops.modified file with a line INJECTED_FROM_BACKUP, runs the restore path, and asserts the target file contains both the pre-existing line AND INJECTED_FROM_BACKUP. Verify the union-restore test suite is EXTENDED (not replaced) so the existing CRDT-union semantics coverage is preserved.\n\nSeverity: P1 data-loss hazard — hits every tracker reply posted between a feature commit and the eventual merge when a rebase is needed. The 2026-04-19 incident lost 3 replies plus a status update; recovery required re-posting from the conversation buffer."  # 8bea
+    fields: {}  # 8bea
