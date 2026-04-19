@@ -99,6 +99,7 @@ import hypergumbo_core.linkers.message_dispatch as _message_dispatch_linker  # n
 import hypergumbo_core.linkers.airflow_framework_dispatch as _airflow_framework_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers.jackson_dispatch as _jackson_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers.django_orm_dispatch as _django_orm_dispatch_linker  # noqa: F401
+import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
 from .ir import Symbol, Edge, UsageContext, create_boundary_nodes, deduplicate_edges
 from .metrics import compute_metrics
