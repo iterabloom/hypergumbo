@@ -118,7 +118,7 @@ This removes the sentinel and the next poll tick will spawn a fresh chain (`chai
 Returns a JSON object with:
 
 - `intent` — current value of `autonomous_intent.txt`.
-- `rate_limit` — rolling 24h spawn count, the cap (default 8), and whether a spawn is currently allowed.
+- `rate_limit` — rolling 24h spawn count, the cap (default 24), and whether a spawn is currently allowed.
 - `sessions[]` — one entry per hypergumbo-prefixed tmux session, with `meta` (the stored session-id / vendor / start UTC / `replaces` / `chain_length` / `consecutive_no_progress`), `clients_attached`, `pane_bytes` (raw scrollback size in bytes), `heartbeat_age_sec` (seconds since the per-turn hooks last touched the heartbeat file), plus top-level `chain_length`, `consecutive_no_progress`, and `replaces` fields lifted out of `meta` for convenience.
 - `stop_requested` — true if a stop sentinel is in flight.
 - `auto_paused` — true when the WI-mujuk kill switch has fired; clear with `agent-supervisor resume`.
@@ -143,7 +143,8 @@ Use `pane_bytes` + `heartbeat_age_sec` together to debug "is this session actual
 | --- | --- | --- |
 | `agent-supervisor run` fails with "another supervisor is already running" | flock still held by a supervisor PID | `agent-supervisor status` to confirm, then `ps -fp <pid>` on the PID in `supervisor.lock`; if that PID is dead, remove the lock file and retry |
 | Live session not getting replaced despite being stuck | You're attached to it, or the pane has scrolled within 15 min | Detach (`Ctrl-B D`); or wait out the 15-minute frozen window |
-| `respawn_log.log` shows repeated "rate-limit reached" | 8 spawns in 24h — usually indicates a loop somewhere upstream | Read the log tail + `agent_notes.json` for a pattern; don't just raise the cap |
+| `respawn_log.log` shows repeated "rate-limit reached" | 24 spawns in rolling 24h — usually indicates a loop somewhere upstream. If saturation persists for 20 consecutive poll ticks, the supervisor auto-shuts-down with an `auto-shutdown: N consecutive rate-limit hits` log line. | Read the log tail + `agent_notes.json` for a pattern; don't just raise the cap. If the auto-shutdown fired, restart with `agent-supervisor run &` once enough of the 24h window has rolled, or use `debugging-reset-rate-limit` to clear it immediately. |
+| `respawn_log.log` tail shows `stop sentinel consumed; exiting` or `auto-shutdown: …` | The supervisor exited cleanly (operator-driven `stop`, or rate-limit saturation kill). Not a crash. | Restart with `agent-supervisor run &` whenever you want the watchdog back. |
 | Fresh CLI launches but doesn't enable autonomous mode | `autonomous_intent.txt` is OFF or missing | `loop-toggle --set-intent DEEP` (narrow-write, doesn't touch the current session) |
 | Fresh CLI launches but the session-start hook doesn't inject the seed prompt | Vendor's hook file missing or unwired | Verify `.agent/hooks/<vendor>/session-start.sh` exists and sources `_shared/session_start_logic.sh` |
 | `status` shows `auto_paused: true` | Kill switch fired after 5 consecutive no-progress failures | See "Recovering from auto-pause" above; investigate log tail, fix root cause, run `agent-supervisor resume` |

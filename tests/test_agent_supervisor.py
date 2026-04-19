@@ -461,6 +461,86 @@ class TestStopSentinel:
         # Sentinel was consumed.
         assert not (state_dir / "supervisor.stop-sentinel").exists()
 
+    def test_stop_leaves_log_entry(self, asv, state_dir, fake_repo) -> None:
+        """A clean stop via sentinel must emit a log line so that
+        ``tail respawn_log.log`` distinguishes stop-sentinel shutdown from
+        a daemon crash. Regression test for the 2026-04-19 post-trial
+        investigation, where the lack of a stop log made the operator
+        misread a manual `stop` as a silent crash."""
+        sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo)
+        (state_dir / "supervisor.stop-sentinel").touch()
+        sup.run(interval_sec=999999)
+        log_text = (state_dir / "respawn_log.log").read_text()
+        assert "stop sentinel consumed; exiting" in log_text
+
+
+# --- Rate-limit saturation auto-shutdown (trial follow-up) ---
+
+
+class TestRateLimitSaturationKill:
+    """When ``spawn_fresh`` is rate-limited on RATE_LIMIT_SATURATION_KILL
+    consecutive poll ticks, the run loop must exit cleanly instead of
+    logging "rate-limit reached" indefinitely."""
+
+    def test_counter_increments_on_rate_limit_hit(
+        self, asv, state_dir, fake_repo,
+    ) -> None:
+        sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo)
+        for _ in range(asv.RATE_LIMIT_MAX_PER_24H):
+            sup.record_spawn()
+        assert sup._consecutive_rate_limit_hits == 0
+        sup.spawn_fresh(vendor="claude-code")
+        sup.spawn_fresh(vendor="claude-code")
+        sup.spawn_fresh(vendor="claude-code")
+        assert sup._consecutive_rate_limit_hits == 3
+
+    def test_counter_resets_on_successful_spawn(
+        self, asv, state_dir, fake_repo,
+    ) -> None:
+        runner = MockRunner()
+        sup = asv.Supervisor(
+            state_dir=state_dir, repo_root=fake_repo, runner=runner,
+            now_fn=lambda: 1700000000.0,
+        )
+        for _ in range(asv.RATE_LIMIT_MAX_PER_24H):
+            sup.record_spawn()
+        sup.spawn_fresh(vendor="claude-code")
+        sup.spawn_fresh(vendor="claude-code")
+        assert sup._consecutive_rate_limit_hits == 2
+        # Clear the rate-limit window; next spawn succeeds → counter resets.
+        (state_dir / "rate_limit.json").unlink()
+        name = sup.spawn_fresh(vendor="claude-code")
+        assert name is not None
+        assert sup._consecutive_rate_limit_hits == 0
+
+    def test_run_loop_auto_shutdowns_after_threshold(
+        self, asv, state_dir, fake_repo,
+    ) -> None:
+        """Run loop exits after RATE_LIMIT_SATURATION_KILL consecutive
+        rate-limited ticks and logs the auto-shutdown line. Bounds the
+        otherwise-indefinite "rate-limit reached" spam observed in the
+        2026-04-18→04-19 trial (145 identical log lines before manual
+        stop)."""
+        (fake_repo / "autonomous_intent.txt").write_text("DEEP\n")
+        # No sessions exist → poll_once will try to spawn each tick.
+        runner = MockRunner({
+            ("tmux", "list-sessions", "-F", "#S"): (1, "", "no server"),
+        })
+        sup = asv.Supervisor(
+            state_dir=state_dir, repo_root=fake_repo, runner=runner,
+            sleep_fn=lambda s: None,
+        )
+        for _ in range(asv.RATE_LIMIT_MAX_PER_24H):
+            sup.record_spawn()
+        sup.run(interval_sec=999999)
+        log_text = (state_dir / "respawn_log.log").read_text()
+        assert "auto-shutdown" in log_text
+        assert str(asv.RATE_LIMIT_SATURATION_KILL) in log_text
+        rate_lines = [
+            L for L in log_text.splitlines() if "rate-limit reached" in L
+        ]
+        assert len(rate_lines) == asv.RATE_LIMIT_SATURATION_KILL
+
 
 # --- Spawn fresh ---
 

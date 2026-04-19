@@ -101,7 +101,20 @@ RESERVED_PREFIX = "hypergumbo-session-"
 DEFAULT_POLL_INTERVAL_SEC = 60
 PANE_FROZEN_THRESHOLD_SEC = 15 * 60  # 15 minutes
 GRACEFUL_EXIT_TIMEOUT_SEC = 30
-RATE_LIMIT_MAX_PER_24H = 8
+RATE_LIMIT_MAX_PER_24H = 24
+
+# When rate-limit saturation persists for this many consecutive poll ticks
+# (default ~20 minutes at 60s/tick), the supervisor shuts itself down instead
+# of logging "rate-limit reached" every minute forever. Observed during the
+# 2026-04-18→04-19 trial: after 8/24h was hit, the daemon emitted 145
+# identical log lines before the operator stopped it manually. Raising the
+# cap and auto-shutting-down on sustained saturation together replace
+# indefinite spam with a bounded log footprint and a clean terminal state.
+# The operator can re-run ``agent-supervisor run &`` whenever they want
+# (the 24h rolling window will have aged out spawns by then, or they can
+# clear it explicitly with ``debugging-reset-rate-limit``).
+RATE_LIMIT_SATURATION_KILL = 20
+
 DEFAULT_VENDOR = "claude-code"
 
 # WI-mujuk meta-circuit-breaker thresholds.
@@ -415,6 +428,11 @@ class Supervisor:
         self.sleep_fn = sleep_fn
         self._lock_fh = None
         self._pane_history: dict[str, SessionObservation] = {}
+        # Consecutive poll ticks on which ``spawn_fresh`` was rate-limited.
+        # Reset to 0 the moment a spawn succeeds (``record_spawn`` call path).
+        # Read by ``run()`` after each tick to decide whether to
+        # auto-shutdown per RATE_LIMIT_SATURATION_KILL.
+        self._consecutive_rate_limit_hits = 0
 
     # --- Locking ---
 
@@ -727,6 +745,7 @@ class Supervisor:
             self.log_respawn(
                 f"rate-limit reached ({count}/{RATE_LIMIT_MAX_PER_24H} in 24h); skipping spawn"
             )
+            self._consecutive_rate_limit_hits += 1
             return None
         vt = VENDOR_TABLE.get(vendor)
         if vt is None:
@@ -735,6 +754,9 @@ class Supervisor:
         name = f"{RESERVED_PREFIX}{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime(self.now_fn()))}"
         tmux_spawn_session(name, vt["cli_invocation"], respawn=True, runner=self.runner)
         self.record_spawn()
+        # A successful spawn clears the saturation streak — the next
+        # rate-limited tick starts counting from 0 again.
+        self._consecutive_rate_limit_hits = 0
 
         # Seed bootstrap: the SessionStart hook injects context but does
         # not trigger the first model turn, so a freshly spawned pane
@@ -804,7 +826,8 @@ class Supervisor:
 
     def run(self, interval_sec: int = DEFAULT_POLL_INTERVAL_SEC) -> None:
         """Enter the poll loop. Checks the stop sentinel each tick and
-        exits cleanly when the sentinel appears."""
+        exits cleanly when the sentinel appears, or when rate-limit
+        saturation has persisted for RATE_LIMIT_SATURATION_KILL ticks."""
         while True:
             if self.stop_requested():
                 # Clean the sentinel so the next `run` invocation starts
@@ -813,8 +836,15 @@ class Supervisor:
                     self._stop_sentinel().unlink()
                 except FileNotFoundError:
                     pass
+                self.log_respawn("stop sentinel consumed; exiting")
                 return
             self.poll_once()
+            if self._consecutive_rate_limit_hits >= RATE_LIMIT_SATURATION_KILL:
+                self.log_respawn(
+                    f"auto-shutdown: {self._consecutive_rate_limit_hits} "
+                    f"consecutive rate-limit hits; exiting"
+                )
+                return
             self.sleep_fn(interval_sec)
 
     # --- Status report ---
