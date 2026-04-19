@@ -668,6 +668,56 @@ class TestSemanticEntryDetection:
         err_eps = [e for e in entrypoints if e.kind == EntrypointKind.ERROR_HANDLER]
         assert len(err_eps) == 1
 
+    def test_detect_form_concept(self) -> None:
+        """Symbol with form concept is detected as FORM entrypoint (WI-gudob Phase 4)."""
+        sym = make_symbol(
+            "LoginForm",
+            path="myapp/forms.py",
+            kind="class",
+            meta={
+                "concepts": [
+                    {"concept": "form", "framework": "django"}
+                ]
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        form_eps = [e for e in entrypoints if e.kind == EntrypointKind.FORM]
+        assert len(form_eps) == 1
+        assert form_eps[0].symbol_id == sym.id
+        assert form_eps[0].confidence >= 0.85
+        assert "Django" in form_eps[0].label or "form" in form_eps[0].label.lower()
+
+    def test_detect_form_concept_without_framework(self) -> None:
+        """form concept without a framework label still produces an entrypoint."""
+        sym = make_symbol(
+            "BareForm",
+            path="src/forms.py",
+            kind="class",
+            meta={"concepts": [{"concept": "form"}]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        form_eps = [e for e in entrypoints if e.kind == EntrypointKind.FORM]
+        assert len(form_eps) == 1
+        assert form_eps[0].label == "Form"
+
+    def test_form_dedupe_per_symbol(self) -> None:
+        """A symbol tagged form twice (e.g. matched by two framework
+        patterns) emits at most one FORM entrypoint."""
+        sym = make_symbol(
+            "MyForm",
+            path="src/forms.py",
+            kind="class",
+            meta={
+                "concepts": [
+                    {"concept": "form", "framework": "flask"},
+                    {"concept": "form", "framework": "django"},
+                ],
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        form_eps = [e for e in entrypoints if e.kind == EntrypointKind.FORM]
+        assert len(form_eps) == 1
+
     def test_detect_command_concept(self) -> None:
         """Symbol with command concept is detected as CLI command entrypoint."""
         sym = make_symbol(

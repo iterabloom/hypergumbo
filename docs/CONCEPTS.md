@@ -8,7 +8,7 @@ This file enumerates every concept string that the framework-YAML pattern layer 
 - **inert** — producers exist but no consumer reads the concept. Candidates for either removing the producer pattern or writing a Framework-subcategory linker that consumes it.
 - **ghost** — a consumer mentions the concept by name but no YAML emits it. Likely dead code or a leftover reference to a removed pattern; investigate.
 
-Total concepts: **317** (live: 39, inert: 278, ghost: 0).
+Total concepts: **317** (live: 40, inert: 277, ghost: 0).
 
 ## Inventory
 
@@ -123,7 +123,7 @@ Total concepts: **317** (live: 39, inert: 278, ghost: 0).
 | `filter` | inert | django, laminas, scalatra | _(none)_ |
 | `fixture` | inert | cakephp, yii | _(none)_ |
 | `flash` | inert | scalatra | _(none)_ |
-| `form` | inert | cakephp, django, flask, fuelphp, laminas, laravel, pyramid, rails, remix, sveltekit, symfony, yesod | _(none)_ |
+| `form` | live | cakephp, django, flask, fuelphp, laminas, laravel, pyramid, rails, remix, sveltekit, symfony, yesod | `entrypoints.py` |
 | `form_view` | inert | flask-appbuilder | _(none)_ |
 | `formatter` | inert | yii | _(none)_ |
 | `gpu_function` | inert | language-conventions | _(none)_ |

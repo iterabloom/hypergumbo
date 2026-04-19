@@ -193,6 +193,7 @@ class EntrypointKind(Enum):
     MIDDLEWARE_HANDLER = "middleware_handler"  # HTTP middleware handler
     EVENT_HANDLER = "event_handler"  # Event/message handler
     ERROR_HANDLER = "error_handler"  # HTTP / middleware exception handler
+    FORM = "form"  # Framework-reflected form class (is_valid/save/authorize)
     SCHEDULED_TASK = "scheduled_task"  # Cron/scheduled job
     # Library entry points (exported API)
     LIBRARY_EXPORT = "library_export"  # Exported function/class (library entry)
@@ -304,6 +305,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "middleware" -> MIDDLEWARE_HANDLER (HTTP middleware handler)
     - "event_handler" -> EVENT_HANDLER (event/message handler)
     - "error_handler" -> ERROR_HANDLER (HTTP / middleware exception handler)
+    - "form" -> FORM (framework-reflected form class)
     - "command" -> CLI_COMMAND (CLI command handler)
     - "liveview" -> CONTROLLER (Phoenix LiveView - real-time UI)
     - "graphql_resolver" -> GRAPHQL_SERVER (GraphQL resolver)
@@ -501,6 +503,39 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label=label,
                 ))
                 added_kinds.add(EntrypointKind.ERROR_HANDLER)
+
+            # Form concept -> FORM (WI-gudob Phase 4):
+            # Framework-reflected form classes (Django Form/ModelForm,
+            # Flask-WTF FlaskForm, Laminas Form/Fieldset, FuelPHP Fieldset,
+            # CakePHP Form, Laravel FormRequest, Symfony AbstractType, Yii
+            # Model-as-form, Pyramid Colander schemas, Rails Form, Remix /
+            # SvelteKit form-action modules). The framework instantiates the
+            # form class from request data and reflectively calls
+            # is_valid() / save() / authorize() / clean() / rules() — the
+            # class body therefore looks dead to the static call graph even
+            # when wired into a reachable route. Classifying the form class
+            # itself as an entrypoint restores its reachability at class
+            # level; internal method dispatch (form.clean_FIELD / form.save)
+            # is a separate concern deferred to a dispatch-registry follow-
+            # up because each framework names its reflective methods
+            # differently. 12 framework YAML patterns emit this concept per
+            # the WI-dajul concept registry audit (#4 inert by producer
+            # count after Phase-1 error_handler / Phase-2 controller /
+            # Phase-3 router).
+            elif concept_type == "form":
+                if EntrypointKind.FORM in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} form"
+                else:
+                    label = "Form"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.FORM,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.FORM)
 
             # Command concept -> CLI_COMMAND
             elif concept_type == "command":
