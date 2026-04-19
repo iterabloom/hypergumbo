@@ -20,3 +20,18 @@
     pr_ref:  # d78c
     description: "Follow-up to WI-darad human-approved directive (2026-04-19T07:22:38Z).\n\nThe 'awaits_bakeoff_validation' tag has been retroactively applied to 9 items shipped in the past ~2 weeks that carried quantitative bakeoff-FP-reduction claims (WI-darad, WI-gohad, WI-lojuf, WI-vubad, WI-gupah, WI-nutav, WI-nosug, WI-kivut, WI-gudob). Going forward, any PR description or tracker discussion that contains a quantitative bakeoff-improvement claim should receive the tag at merge time.\n\nThis item tracks the governance / tooling changes needed to institutionalize the tag (AGENTS.md is a governance file, so this requires human approval — hence needs_human_review).\n\n**Proposed AGENTS.md additions:**\n1. Under 'Required Checks' or a new 'Bakeoff Validation Discipline' section: state the rule that any merged PR whose discussion/description includes a quantitative bakeoff claim gets the tag. Enumerate the verb-set that triggers it ('should improve', 'expected FP reduction', 'N dead → alive', 'NN% reduction', 'below threshold X', 'newly-consumed concept').\n2. Under tracker conventions: note that 'tracker list --tag awaits_bakeoff_validation' is the authoritative running list of pending bakeoff validations, superseding the hand-maintained WI-sofom pattern that went stale after 2026-04-09.\n3. Under the bakeoff reflect pipeline: wire 'scripts/bakeoff-deep-reflect aggregate' to enumerate tag-bearing items whose claimed areas overlap the just-completed cohort, so the reflect prompt asks 'did metric X actually move?' per claim. On confirmed move: tag stripped, item resolved. On no-move: regression sub-item created.\n\n**Implementation touch points:**\n- AGENTS.md (governance file — human approval required)\n- scripts/bakeoff-deep-reflect (aggregate subcommand) — add a pass that cross-references the active cohort's diag outputs against open awaits_bakeoff_validation items.\n- Possibly a stop-hook nudge when awaits_bakeoff_validation items accumulate beyond a threshold and no bakeoff has run recently.\n\n**Out of scope for this item:**\n- The retroactive apply itself (already done).\n- Bakeoff cycle execution (orthogonal).\n\n**Acceptance:** AGENTS.md updated with the discipline rule; bakeoff-deep-reflect aggregate cross-references the tag and surfaces per-claim delta questions in the reflect prompt; one full cycle demonstrates the tag being added on a new PR and stripped after validation."  # d78c
     fields: {}  # d78c
+- op: discuss  # 077f
+  at: '2026-04-19T22:36:30Z'  # 077f
+  by: human  # 077f
+  actor: jgstern  # 077f
+  clock: 2  # 077f
+  nonce: 077f  # 077f
+  message: "approved for governance file modification as needed and auto-pr WITHOUT --gov.\nyou may want to use the Plan tool to assist you with this item."  # 077f
+- op: update  # 1a70
+  at: '2026-04-19T22:38:24Z'  # 1a70
+  by: human  # 1a70
+  actor: jgstern  # 1a70
+  clock: 3  # 1a70
+  nonce: 1a70  # 1a70
+  set:  # 1a70
+    status: todo_soft  # 1a70
