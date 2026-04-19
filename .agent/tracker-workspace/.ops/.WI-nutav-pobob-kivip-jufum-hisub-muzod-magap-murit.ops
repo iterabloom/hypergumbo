@@ -58,3 +58,18 @@
   clock: 6  # 6e51
   nonce: '6e51'  # 6e51
   message: "pf-prelim pivot: Python/Airflow-specific dispatch, not in pf-prelim stack. Deferred P2→P3."  # 6e51
+- op: update  # 7b86
+  at: '2026-04-18T22:57:27Z'  # 7b86
+  by: agent  # 7b86
+  actor: jgstern_agent  # 7b86
+  clock: 7  # 7b86
+  nonce: 7b86  # 7b86
+  set:  # 7b86
+    status: done  # 7b86
+- op: discuss  # 2685
+  at: '2026-04-18T22:57:27Z'  # 2685
+  by: agent  # 2685
+  actor: jgstern_agent  # 2685
+  clock: 8  # 2685
+  nonce: '2685'  # 2685
+  message: "Implemented in PR #3168 (commit 9d40e4688, fast-forward merged to dev). Framework-subcategory linker in hypergumbo_core.linkers.airflow_framework_dispatch. Emits dispatches_to edges from BaseOperator/BaseHook/BaseSensor/BaseTrigger/BaseSensorOperator subclasses to their framework-called lifecycle methods using meta.base_classes already emitted by the Python analyzer. 27 tests, 100% coverage on the new module. Per-base method map (execute/pre_execute/post_execute/execute_complete/on_kill for Operator; get_conn/test_connection for Hook; poke/execute/execute_complete/on_kill for Sensor; run/hook for Trigger) avoids emitting spurious cross-base edges. The acceptance bakeoff metric (dead-code-prospector python_airflow_framework + airflow_operator_hook combined below 1500) is a separate validation step — it will be visible the next time the prospecting pass runs against the 2026-04-11 corpus (tracked by WI-botol)."  # 2685
