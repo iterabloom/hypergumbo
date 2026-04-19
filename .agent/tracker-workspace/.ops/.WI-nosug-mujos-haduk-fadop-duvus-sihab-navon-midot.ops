@@ -19,3 +19,18 @@
     pr_ref:  # 0749
     description: "Per aggregate-v5 prospector signal (2026-04-11 run, 2441 candidates in python_orm_dispatch category): Django ORM method calls via QuerySet/Manager (e.g. MyModel.objects.filter(), MyModel.objects.get(), instance.save()) are not resolved to the Model class definitions that provide the fields/methods being accessed. This produces dead-code-maybe false positives where Model methods appear unused because the callers go through the QuerySet/Manager proxy.\n\nScope: audit existing packages/hypergumbo-lang-python/src/hypergumbo_lang_python/orm.py (which already handles some SQLAlchemy/ORM patterns per agent note 'likely fits inside existing orm.py'). Extend to capture Django's QuerySet/Manager -> Model method resolution. Emit uses edges from the call site to Model method definitions so dispatch is visible in the graph.\n\nSuccess criterion: re-run dead-code-prospector aggregate and verify python_orm_dispatch count drops meaningfully below 2441.\n\nSource: WI-tubot aggregate-v5 analysis, 2026-04-16T19:25:09Z discussion entry."  # 0749
     fields: {}  # 0749
+- op: update  # 08e8
+  at: '2026-04-19T03:19:12Z'  # 08e8
+  by: agent  # 08e8
+  actor: jgstern_agent  # 08e8
+  clock: 2  # 08e8
+  nonce: '08e8'  # 08e8
+  set:  # 08e8
+    status: done  # 08e8
+- op: discuss  # eb49
+  at: '2026-04-19T03:19:12Z'  # eb49
+  by: agent  # eb49
+  actor: jgstern_agent  # eb49
+  clock: 3  # eb49
+  nonce: eb49  # eb49
+  message: "Fixed in PR #3176 (commit a29d9b0db). New linker hypergumbo_core.linkers.django_orm_dispatch emits dispatches_to edges from Django Model/Manager/QuerySet/Admin/View/Form subclasses to their framework-called override methods. Per-base method maps cover the Model hierarchy, Manager/QuerySet, ModelAdmin, ModelForm/Form, View/TemplateView/ListView/DetailView/CreateView/UpdateView/DeleteView, and Migration. 39 new tests. Acceptance criterion (python_orm_dispatch drop from 2441) requires a dead-code-prospector re-run on the 2026-04-11 corpus to measure — not done yet; can re-open if follow-up validation shows the drop is insufficient."  # eb49

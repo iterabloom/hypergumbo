@@ -56,3 +56,26 @@
   clock: 6  # 6e49
   nonce: '6e49'  # 6e49
   message: "Acknowledged — proceeding with implementation and auto-pr (without --gov)."  # 6e49
+- op: update  # 6cfd
+  at: '2026-04-19T02:22:28Z'  # 6cfd
+  by: agent  # 6cfd
+  actor: jgstern_agent  # 6cfd
+  clock: 7  # 6cfd
+  nonce: 6cfd  # 6cfd
+  set:  # 6cfd
+    status: todo_hard  # 6cfd
+- op: update  # cdc1
+  at: '2026-04-19T02:38:46Z'  # cdc1
+  by: agent  # cdc1
+  actor: jgstern_agent  # cdc1
+  clock: 8  # cdc1
+  nonce: cdc1  # cdc1
+  set:  # cdc1
+    status: done  # cdc1
+- op: discuss  # c9cb
+  at: '2026-04-19T02:38:46Z'  # c9cb
+  by: agent  # c9cb
+  actor: jgstern_agent  # c9cb
+  clock: 9  # c9cb
+  nonce: c9cb  # c9cb
+  message: "Fixed in PR #3175 (commit 0b521bf62). Extracted the two duplicated restore loops in do_merge into a new _ops_union_restore_dir helper that iterates with the two-pattern glob (.*  *) mirroring the backup loop, so hidden .WI-…ops / .INV-…ops filenames are enumerated. 7 new regression tests pin the fix. Note: the auto-pr for this very PR did NOT require a rebase (dev was current), so the bug-being-fixed did not re-trigger during its own merge — we'll see evidence the fix works when the next auto-pr run that actually rebases preserves tracker-reply ops."  # c9cb
