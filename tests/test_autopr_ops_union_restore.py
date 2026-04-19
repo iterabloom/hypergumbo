@@ -191,3 +191,174 @@ def test_helper_is_sourceable_without_deps(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "OK" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# WI-tasuj: regression tests for _ops_union_restore_dir (the caller that
+# iterates the backup directory). Tracker ops filenames are dotfiles
+# (.WI-…ops, .INV-…ops), and the pre-WI-tasuj caller used a single `*`
+# glob that bash's default behaviour excludes dotfiles from — so every
+# tracker-ops restore was a silent no-op. These tests pin the fix by
+# asserting that hidden files in the backup subdir DO get restored into
+# the target ops dir.
+# ---------------------------------------------------------------------------
+
+
+def _run_restore_dir(
+    backup_subdir: Path, ops_dir: Path, strip_modified: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Invoke ``_ops_union_restore_dir`` via a sourced sub-shell."""
+    suffix_arg = "true" if strip_modified else "false"
+    return subprocess.run(
+        [
+            "bash",
+            "-c",
+            (
+                f"source '{FORGEJO_LIB}' >/dev/null 2>&1; "
+                f"_ops_union_restore_dir '{backup_subdir}' '{ops_dir}' {suffix_arg}"
+            ),
+        ],
+        env={"PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+
+def test_restore_dir_matches_hidden_files(tmp_path: Path) -> None:
+    """The critical WI-tasuj regression: dotfiles in the backup must be
+    enumerated and restored. Pre-fix, bash's default ``*`` glob skipped
+    them and every tracker-ops restore was silently empty."""
+    backup = tmp_path / "ops-backup" / ".agent" / "tracker-workspace" / ".ops"
+    backup.mkdir(parents=True)
+    (backup / ".WI-test-foo.ops").write_text(
+        "- op: create\n  clock: 1\n  nonce: aaaa\nINJECTED_FROM_BACKUP\n",
+    )
+
+    target = tmp_path / ".agent" / "tracker-workspace" / ".ops"
+    target.mkdir(parents=True)
+    (target / ".WI-test-foo.ops").write_text(
+        "- op: create\n  clock: 1\n  nonce: aaaa\nPRE_EXISTING\n",
+    )
+
+    result = _run_restore_dir(backup, target, strip_modified=False)
+    assert result.returncode == 0, result.stderr
+
+    restored = (target / ".WI-test-foo.ops").read_text()
+    assert "PRE_EXISTING" in restored, (
+        "pre-rebase target content was clobbered"
+    )
+    assert "INJECTED_FROM_BACKUP" in restored, (
+        "WI-tasuj regression: hidden backup file was not enumerated"
+    )
+
+
+def test_restore_dir_strips_modified_suffix(tmp_path: Path) -> None:
+    """Tracked-but-locally-modified ops files are backed up with a
+    ``.modified`` suffix; the restore must strip it to write to the
+    real target filename."""
+    backup = tmp_path / "backup"
+    backup.mkdir()
+    (backup / ".WI-test-foo.ops.modified").write_text(
+        "- op: create\n  clock: 1\n  nonce: aaaa\nINJECTED_FROM_BACKUP\n",
+    )
+
+    target = tmp_path / "ops"
+    target.mkdir()
+    (target / ".WI-test-foo.ops").write_text(
+        "- op: create\n  clock: 1\n  nonce: aaaa\nPRE_EXISTING\n",
+    )
+
+    result = _run_restore_dir(backup, target, strip_modified=True)
+    assert result.returncode == 0, result.stderr
+
+    # The .modified suffix was stripped — the union landed in the real
+    # ops filename, not a second file with the .modified extension.
+    assert (target / ".WI-test-foo.ops").exists()
+    assert not (target / ".WI-test-foo.ops.modified").exists()
+
+    restored = (target / ".WI-test-foo.ops").read_text()
+    assert "PRE_EXISTING" in restored
+    assert "INJECTED_FROM_BACKUP" in restored
+
+
+def test_restore_dir_hidden_and_visible_files(tmp_path: Path) -> None:
+    """Both hidden and non-hidden filenames in the backup survive. The
+    two-pattern glob must not skip either class."""
+    backup = tmp_path / "backup"
+    backup.mkdir()
+    (backup / ".WI-hidden.ops").write_text("HIDDEN_CONTENT\n")
+    (backup / "visible.ops").write_text("VISIBLE_CONTENT\n")
+
+    target = tmp_path / "ops"
+    target.mkdir()
+
+    result = _run_restore_dir(backup, target, strip_modified=False)
+    assert result.returncode == 0, result.stderr
+
+    assert (target / ".WI-hidden.ops").read_text() == "HIDDEN_CONTENT\n"
+    assert (target / "visible.ops").read_text() == "VISIBLE_CONTENT\n"
+
+
+def test_restore_dir_skips_dot_and_dotdot(tmp_path: Path) -> None:
+    """The ``.*`` pattern matches ``.`` and ``..`` — the guard
+    ``[[ -f "$f" ]] || continue`` must exclude them."""
+    backup = tmp_path / "backup"
+    backup.mkdir()
+    (backup / ".WI-foo.ops").write_text("OK\n")
+
+    target = tmp_path / "ops"
+    target.mkdir()
+
+    result = _run_restore_dir(backup, target, strip_modified=False)
+    assert result.returncode == 0, result.stderr
+    # `.` and `..` exist as directory entries. If the guard failed,
+    # _ops_union_restore_file would have attempted to `cat` a
+    # directory and errored out.
+    assert (target / ".WI-foo.ops").read_text() == "OK\n"
+
+
+def test_restore_dir_missing_backup_noop(tmp_path: Path) -> None:
+    """A non-existent backup subdir is a no-op: exit 0, target untouched."""
+    backup = tmp_path / "does-not-exist"
+    target = tmp_path / "ops"
+    target.mkdir()
+    (target / ".WI-foo.ops").write_text("EXISTING\n")
+
+    result = _run_restore_dir(backup, target, strip_modified=False)
+    assert result.returncode == 0, result.stderr
+    assert (target / ".WI-foo.ops").read_text() == "EXISTING\n"
+
+
+def test_restore_dir_creates_target_if_missing(tmp_path: Path) -> None:
+    """When the ops dir does not yet exist but the backup does, the
+    restore creates it (mirrors ``mkdir -p "$ops_dir"`` in the helper)."""
+    backup = tmp_path / "backup"
+    backup.mkdir()
+    (backup / ".WI-foo.ops").write_text("NEW\n")
+
+    target = tmp_path / "ops"
+    assert not target.exists()
+
+    result = _run_restore_dir(backup, target, strip_modified=False)
+    assert result.returncode == 0, result.stderr
+    assert (target / ".WI-foo.ops").read_text() == "NEW\n"
+
+
+def test_restore_dir_helper_is_exported(tmp_path: Path) -> None:
+    """Guard against the helper being renamed or removed without a
+    corresponding test update."""
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"source '{FORGEJO_LIB}' >/dev/null 2>&1; "
+            "declare -F _ops_union_restore_dir > /dev/null && echo OK",
+        ],
+        env={"PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout

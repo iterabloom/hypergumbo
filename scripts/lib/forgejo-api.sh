@@ -887,6 +887,45 @@ _ops_union_restore_file() {
 	fi
 }
 
+# ------------------------------------------------------------------
+# _ops_union_restore_dir — WI-tasuj dotfile-glob fix
+#
+# Arguments: backup_subdir ops_dir [strip_modified_suffix:true|false]
+#
+# Iterates every regular file in backup_subdir (INCLUDING dotfiles,
+# which bash's default `*` glob omits) and union-restores each into
+# ops_dir via _ops_union_restore_file. Tracker ops filenames begin
+# with `.` (.WI-…ops, .INV-…ops), so a single `*` glob silently
+# enumerates zero files — the root cause of WI-tasuj's 2026-04-19
+# loss of three tracker-reply ops. Mirroring the backup loop's two
+# patterns (.*  *) enumerates hidden and non-hidden files alike
+# without requiring `shopt -s dotglob`; the `[[ -f "$f" ]]` guard
+# filters out the `.` / `..` pseudo-entries that `.*` matches.
+#
+# When strip_modified_suffix is true, a ".modified" suffix on each
+# backup filename is dropped before composing the target path — the
+# caller's backup step uses this suffix to distinguish
+# tracked-but-locally-modified ops files from untracked ones.
+# ------------------------------------------------------------------
+_ops_union_restore_dir() {
+	local backup_subdir="$1"
+	local ops_dir="$2"
+	local strip_modified_suffix="${3:-false}"
+	[[ -d "$backup_subdir" ]] || return 0
+	mkdir -p "$ops_dir"
+	local f base target_name
+	for f in "$backup_subdir"/.* "$backup_subdir"/*; do
+		[[ -f "$f" ]] || continue
+		base=$(basename "$f")
+		if [[ "$strip_modified_suffix" == "true" ]]; then
+			target_name="${base%.modified}"
+		else
+			target_name="$base"
+		fi
+		_ops_union_restore_file "$f" "$ops_dir/$target_name"
+	done
+}
+
 do_merge() {
 	local pr_num="$1" title="$2" desc="$3" orig_sha="$4"
 	local force_squash="${5:-false}"
@@ -1054,17 +1093,7 @@ do_merge() {
 				# lines tail after.
 				if [[ "$had_ops_backup" == true ]]; then
 					for ops_dir in .agent/tracker/.ops .agent/tracker-workspace/.ops; do
-						local backup_subdir="$ops_backup/$ops_dir"
-						[[ -d "$backup_subdir" ]] || continue
-						mkdir -p "$ops_dir"
-						for f in "$backup_subdir"/*; do
-							[[ -f "$f" ]] || continue
-							local base
-							base=$(basename "$f")
-							# Strip .modified suffix for tracked-file backups
-							local target_name="${base%.modified}"
-							_ops_union_restore_file "$f" "$ops_dir/$target_name"
-						done
+						_ops_union_restore_dir "$ops_backup/$ops_dir" "$ops_dir" true
 					done
 					echo "   Restored backed-up .ops files from $ops_backup (union-merged)"
 				fi
@@ -1100,13 +1129,7 @@ do_merge() {
 				# so we don't need to strip it.
 				if [[ "$had_ops_backup" == true ]]; then
 					for ops_dir in .agent/tracker/.ops .agent/tracker-workspace/.ops; do
-						local backup_subdir="$ops_backup/$ops_dir"
-						[[ -d "$backup_subdir" ]] || continue
-						mkdir -p "$ops_dir"
-						for f in "$backup_subdir"/*; do
-							[[ -f "$f" ]] || continue
-							_ops_union_restore_file "$f" "$ops_dir/$(basename "$f")"
-						done
+						_ops_union_restore_dir "$ops_backup/$ops_dir" "$ops_dir" false
 					done
 					echo "   Restored backed-up .ops files from $ops_backup (union-merged)"
 				fi
