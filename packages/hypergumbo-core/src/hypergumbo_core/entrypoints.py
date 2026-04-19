@@ -192,6 +192,7 @@ class EntrypointKind(Enum):
     WEBSOCKET_HANDLER = "websocket_handler"  # WebSocket event handler
     MIDDLEWARE_HANDLER = "middleware_handler"  # HTTP middleware handler
     EVENT_HANDLER = "event_handler"  # Event/message handler
+    ERROR_HANDLER = "error_handler"  # HTTP / middleware exception handler
     SCHEDULED_TASK = "scheduled_task"  # Cron/scheduled job
     # Library entry points (exported API)
     LIBRARY_EXPORT = "library_export"  # Exported function/class (library entry)
@@ -302,6 +303,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "websocket_gateway" -> WEBSOCKET_HANDLER (NestJS WebSocket gateway)
     - "middleware" -> MIDDLEWARE_HANDLER (HTTP middleware handler)
     - "event_handler" -> EVENT_HANDLER (event/message handler)
+    - "error_handler" -> ERROR_HANDLER (HTTP / middleware exception handler)
     - "command" -> CLI_COMMAND (CLI command handler)
     - "liveview" -> CONTROLLER (Phoenix LiveView - real-time UI)
     - "graphql_resolver" -> GRAPHQL_SERVER (GraphQL resolver)
@@ -470,6 +472,35 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label=label,
                 ))
                 added_kinds.add(EntrypointKind.EVENT_HANDLER)
+
+            # Error handler concept -> ERROR_HANDLER (WI-gudob Phase 1):
+            # HTTP / middleware exception handlers are invoked by the framework
+            # when a route handler raises; the call graph never sees those
+            # invocations, so every decorator-registered error handler
+            # (@app.errorhandler, @app.exception_handler, app.use(errorMid),
+            # rescue_from, #[catch(…)], etc.) looks dead. 37 framework YAML
+            # patterns emit this concept (fastapi, express, django, aspnet,
+            # flask, actix, axum, gin, nestjs, rails, laravel, symfony,
+            # phoenix, akka-http, ktor, vapor, etc.) — per the WI-dajul
+            # concept registry audit it's the #1 inert concept by producer
+            # count. Classifying it as a framework-invoked entrypoint makes
+            # the bodies reachable from dead-code analysis uniformly across
+            # every framework that already emits the concept, without
+            # needing per-framework dispatch logic.
+            elif concept_type == "error_handler":
+                if EntrypointKind.ERROR_HANDLER in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} error handler"
+                else:
+                    label = "Error handler"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.ERROR_HANDLER,
+                    confidence=0.95,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.ERROR_HANDLER)
 
             # Command concept -> CLI_COMMAND
             elif concept_type == "command":

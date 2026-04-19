@@ -621,6 +621,53 @@ class TestSemanticEntryDetection:
         assert event_eps[0].symbol_id == sym.id
         assert event_eps[0].confidence >= 0.95
 
+    def test_detect_error_handler_concept(self) -> None:
+        """Symbol with error_handler concept is detected as error handler entrypoint (WI-gudob)."""
+        sym = make_symbol(
+            "handle_validation_error",
+            path="src/errors/handlers.py",
+            meta={
+                "concepts": [
+                    {"concept": "error_handler", "framework": "fastapi"}
+                ]
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        err_eps = [e for e in entrypoints if e.kind == EntrypointKind.ERROR_HANDLER]
+        assert len(err_eps) == 1
+        assert err_eps[0].symbol_id == sym.id
+        assert err_eps[0].confidence >= 0.95
+        assert "Fastapi" in err_eps[0].label or "error handler" in err_eps[0].label.lower()
+
+    def test_detect_error_handler_concept_without_framework(self) -> None:
+        """error_handler concept without a framework label still produces an entrypoint."""
+        sym = make_symbol(
+            "default_err",
+            path="src/app.py",
+            meta={"concepts": [{"concept": "error_handler"}]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        err_eps = [e for e in entrypoints if e.kind == EntrypointKind.ERROR_HANDLER]
+        assert len(err_eps) == 1
+        assert err_eps[0].label == "Error handler"
+
+    def test_error_handler_dedupe_per_symbol(self) -> None:
+        """A symbol tagged error_handler twice (e.g. matched by two
+        framework patterns) emits at most one ERROR_HANDLER entrypoint."""
+        sym = make_symbol(
+            "handler",
+            path="src/errors.py",
+            meta={
+                "concepts": [
+                    {"concept": "error_handler", "framework": "flask"},
+                    {"concept": "error_handler", "framework": "fastapi"},
+                ],
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        err_eps = [e for e in entrypoints if e.kind == EntrypointKind.ERROR_HANDLER]
+        assert len(err_eps) == 1
+
     def test_detect_command_concept(self) -> None:
         """Symbol with command concept is detected as CLI command entrypoint."""
         sym = make_symbol(
