@@ -21,3 +21,18 @@
     fields:  # ed22
       statement: "docs/CONCEPTS.md status column (live/inert/ghost) must accurately reflect whether a concept has at least one code consumer; every concept_type == \"X\" or concept_type in (\"X\", \"Y\") pattern in hypergumbo-core source must count as a consumer."  # ed22
       root_cause: "scripts/generate-concepts consumer-detection regex only matches bare-name concept == \"X\", not variable-name patterns like concept_type == \"X\", and never matches tuple-membership tests like concept_type in (\"X\", \"Y\"). The ~30 concepts consumed in entrypoints._detect_from_concepts via concept_type variable are all false-inert in docs/CONCEPTS.md."  # ed22
+- op: update  # 8ef8
+  at: '2026-04-19T10:29:04Z'  # 8ef8
+  by: agent  # 8ef8
+  actor: jgstern_agent  # 8ef8
+  clock: 2  # 8ef8
+  nonce: 8ef8  # 8ef8
+  set:  # 8ef8
+    status: pending_validation  # 8ef8
+- op: discuss  # 287c
+  at: '2026-04-19T10:29:04Z'  # 287c
+  by: agent  # 287c
+  actor: jgstern_agent  # 287c
+  clock: 3  # 287c
+  nonce: 287c  # 287c
+  message: "Fix shipped in PR #3189 (commit 5f6531c94 on dev). docs/CONCEPTS.md regenerated: 7 live / 309 inert → 37 live / 279 inert / 1 ghost (30 concepts flipped inert→live). 25 new tests cover every consumer shape. Status pending_validation until next bakeoff cycle validates nothing regressed elsewhere (prospector dead-code-maybe set should not grow as a side effect of the registry change — the change is accounting-only, so no semantic drift is expected)."  # 287c
