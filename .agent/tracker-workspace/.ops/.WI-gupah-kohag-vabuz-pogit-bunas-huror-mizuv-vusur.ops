@@ -57,3 +57,18 @@
   clock: 6  # 8937
   nonce: '8937'  # 8937
   message: "pf-prelim pivot: Java-only linker, pf-prelim has no Java. Deferred P2→P3."  # 8937
+- op: update  # e45d
+  at: '2026-04-19T02:20:01Z'  # e45d
+  by: agent  # e45d
+  actor: jgstern_agent  # e45d
+  clock: 7  # e45d
+  nonce: e45d  # e45d
+  set:  # e45d
+    status: done  # e45d
+- op: discuss  # 3b94
+  at: '2026-04-19T02:20:01Z'  # 3b94
+  by: agent  # 3b94
+  actor: jgstern_agent  # 3b94
+  clock: 8  # 3b94
+  nonce: 3b94  # 3b94
+  message: "Fixed in PR #3172 (commit 25b29077d). New linker hypergumbo_core.linkers.jackson_dispatch emits dispatches_to edges from Java/Kotlin/Scala classes the Jackson/JAX-B/Spring-binding runtime will reflect over to each of their bean-convention accessors (getX/setX/isX) and method-level-annotated handlers. Detection covers class-level Jackson/JAX-B/Spring annotations, ConfigurationProperties-family base classes, and any class with a method-level Jackson annotation (JsonProperty, JsonGetter, JsonSetter, JsonCreator, JsonValue, JsonAnyGetter, JsonAnySetter, JsonRawValue). 69 new tests. Acceptance criterion (60% reduction in java_bean_accessor dead-code-maybe candidates) requires a dead-code-prospector re-run on the 2026-04-11 corpus — not done yet; can re-open if follow-up validation shows the drop is insufficient."  # 3b94
