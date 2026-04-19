@@ -98,7 +98,7 @@ import hypergumbo_core.linkers.crypto_flow as _crypto_flow_linker  # noqa: F401
 import hypergumbo_core.linkers.message_dispatch as _message_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers.airflow_framework_dispatch as _airflow_framework_dispatch_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
-from .ir import Symbol, Edge, create_boundary_nodes, deduplicate_edges
+from .ir import Symbol, Edge, UsageContext, create_boundary_nodes, deduplicate_edges
 from .metrics import compute_metrics
 from .profile import detect_profile
 from .schema import new_behavior_map
@@ -5885,6 +5885,59 @@ def _emit_handler_slices(
     return written
 
 
+def _relativize_ir_paths(
+    repo_root: Path,
+    symbols: list[Symbol],
+    edges: list[Edge],
+    usage_contexts: list[UsageContext],
+) -> None:
+    """Rewrite absolute paths under ``repo_root`` to repo-relative in IR objects in place.
+
+    WI-hopug: the behavior map JSON output embeds each Symbol's absolute file
+    path in its ``id`` and Edge endpoints, which makes the output non-portable
+    across machines and branches that hold the same repo under different
+    checkout roots. Stripping the ``str(repo_root) + "/"`` prefix from every
+    id-bearing string collapses those IDs to repo-relative form so two runs
+    of the same commit on two machines produce byte-identical behavior maps
+    (modulo analyzer nondeterminism).
+
+    Paths that do not sit under ``repo_root`` — external-library symbols,
+    synthetic module hints like ``python:external:0-0:foo:unresolved``, and
+    the like — never match the prefix and are left untouched. The rewrite
+    runs after ``resolve_deferred_symbol_refs`` (which populates
+    ``UsageContext.symbol_ref`` with live Symbol IDs) so that every
+    absolute-path reference is normalized in a single coordinated pass,
+    before ranking, entrypoint detection, and handler-slice emission
+    consume the IR.
+
+    UsageContext.id is a sha256 hash over ``path:start_line:context_name:
+    position``. Because ``path`` is part of the hash preimage, the id is
+    itself machine-dependent when ``path`` is absolute. We recompute the id
+    from the relativized path so the hash is stable across machines.
+    """
+    prefix = str(repo_root) + "/"
+    for sym in symbols:
+        if prefix in sym.id:
+            sym.id = sym.id.replace(prefix, "")
+        if sym.path and prefix in sym.path:
+            sym.path = sym.path.replace(prefix, "")
+    for edge in edges:
+        if prefix in edge.src:
+            edge.src = edge.src.replace(prefix, "")
+        if prefix in edge.dst:
+            edge.dst = edge.dst.replace(prefix, "")
+    for uc in usage_contexts:
+        path_was_absolute = prefix in uc.path
+        if path_was_absolute:
+            uc.path = uc.path.replace(prefix, "")
+            from .ir import _compute_usage_context_id
+            uc.id = _compute_usage_context_id(
+                uc.path, uc.span.start_line, uc.context_name, uc.position,
+            )
+        if uc.symbol_ref and prefix in uc.symbol_ref:
+            uc.symbol_ref = uc.symbol_ref.replace(prefix, "")
+
+
 def run_behavior_map(
     repo_root: Path,
     out_path: Path | None = None,
@@ -6036,6 +6089,13 @@ def run_behavior_map(
             f"deferred refs (exact={resolution_stats.resolved_exact}, "
             f"suffix={resolution_stats.resolved_suffix})"
         )
+
+    # WI-hopug: strip the machine-specific absolute ``repo_root`` prefix from
+    # all Symbol IDs, Edge endpoints, and UsageContext fields now that the
+    # symbol table is fully resolved. Must run before ranking / entrypoints /
+    # handler-slice emission so every downstream consumer observes a single,
+    # portable set of identifiers.
+    _relativize_ir_paths(repo_root, all_symbols, all_edges, all_usage_contexts)
 
     # Refine framework list using import evidence (post-analysis validation).
     # Frameworks detected from manifests are cross-referenced against actual
