@@ -1521,24 +1521,37 @@ class Store:
 
     @staticmethod
     def _take_ownership_via_tmp(filepath: Path, mode: int) -> None:
-        """Atomic copy-via-/tmp to take ownership of an ops file.
+        """Atomic rename-via-sibling-tmpfile to take ownership of an ops file.
 
-        In a two-user setup, the other user may own the file with 0o644.
-        Copy to /tmp (always writable), delete original (only needs dir
-        write permission — ensured by setup's setgid+g+w), move copy back.
-        The new file is owned by the current user with the requested mode.
+        In a two-user setup, the other user may own the file with 0o644
+        and no group-write, which blocks direct append. Write a copy to a
+        temp file in the SAME directory as the target, then ``os.rename``
+        it over the target atomically. The new file is owned by the
+        current user with the requested mode.
 
-        Before unlinking, attempts to repair directory permissions if the
-        current user owns the directory.  If unlink still fails, raises a
-        clear PermissionError explaining the fix.
+        Same-directory temp + atomic rename is load-bearing, not
+        incidental. An earlier implementation used ``tempfile.mkstemp()``
+        (default dir=/tmp) followed by ``shutil.move`` + ``unlink``;
+        because ``/tmp`` is typically a separate tmpfs, ``shutil.move``
+        degraded to cross-filesystem copy+delete with a visible window
+        where the target dentry was absent or held umask-respecting
+        perms. Live-update readers (notably the TUI's inotify watcher)
+        raced that window and crashed with EACCES (observed 2026-04-19
+        on ``.INV-rikis-…ops`` during the agent-supervisor trial; ops
+        write from uid=1002 jgstern_agent raced against uid=1001
+        jgstern's TUI open). Keeping the temp in the target's own
+        directory forces ``os.rename`` to the single-syscall atomic
+        replace path — readers see either the old inode or the new
+        inode, never an intermediate state.
         """
-        import shutil
         import tempfile
 
         # Proactively repair directory permissions if we own the dir
         Store._ensure_dir_group_writable(filepath.parent)
 
-        fd, tmp_str = tempfile.mkstemp(suffix=".ops", prefix="htrac_")
+        fd, tmp_str = tempfile.mkstemp(
+            suffix=".ops", prefix=".htrac_", dir=str(filepath.parent),
+        )
         tmp = Path(tmp_str)
         closed = False
         try:
@@ -1548,7 +1561,7 @@ class Store:
             os.close(fd)
             closed = True
             try:
-                filepath.unlink()
+                os.rename(tmp, filepath)
             except PermissionError:
                 tmp.unlink(missing_ok=True)
                 raise PermissionError(
@@ -1560,7 +1573,6 @@ class Store:
                     f"permission repair, or manually run: "
                     f"chmod g+ws '{filepath.parent}'",
                 ) from None
-            shutil.move(str(tmp), str(filepath))
         except BaseException:
             if not closed:
                 os.close(fd)

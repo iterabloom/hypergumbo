@@ -9,7 +9,6 @@ Lamport clock computation.
 from __future__ import annotations
 
 import os
-import shutil
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -3397,6 +3396,40 @@ class TestTakeOwnershipFallback:
         # Verify we hit the fallback path (first call raised, retry succeeded)
         assert call_count == 2
 
+    def test_take_ownership_uses_same_directory_tmp(self, tmp_path: Path) -> None:
+        """The tempfile must be created in filepath.parent, not /tmp.
+
+        Load-bearing invariant: same-directory ensures os.rename is an
+        atomic single-syscall replace rather than a cross-filesystem
+        copy+delete (which exposes a readable-but-absent window that
+        live-update readers race with, crashing them with EACCES).
+        Regression test for the 2026-04-19 TUI crash on INV-rikis.
+        """
+        import stat
+        import tempfile as real_tempfile
+
+        ops_file = tmp_path / "test.ops"
+        ops_file.write_bytes(b"data\n")
+        target_mode = (
+            stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP
+            | stat.S_IWGRP | stat.S_IROTH
+        )
+
+        observed_dirs: list[str] = []
+        real_mkstemp = real_tempfile.mkstemp
+        def spying_mkstemp(*args: Any, **kwargs: Any) -> Any:
+            observed_dirs.append(str(kwargs.get("dir")))
+            return real_mkstemp(*args, **kwargs)
+
+        with patch("tempfile.mkstemp", side_effect=spying_mkstemp):
+            Store._take_ownership_via_tmp(ops_file, target_mode)
+
+        assert observed_dirs == [str(tmp_path)], (
+            f"mkstemp was called with dir={observed_dirs}, expected "
+            f"[{str(tmp_path)!r}]. /tmp-based tempfiles break the atomic "
+            f"rename invariant and re-expose the TUI reader race."
+        )
+
     def test_take_ownership_preserves_content(self, tmp_path: Path) -> None:
         """_take_ownership_via_tmp preserves file content and sets mode."""
         import stat
@@ -3430,18 +3463,22 @@ class TestTakeOwnershipFallback:
             | stat.S_IWGRP | stat.S_IROTH
         )
 
-        # Fail on shutil.move (after os.close + unlink) — closed=True path
-        with patch.object(shutil, "move", side_effect=OSError("disk full")):
+        # Fail on os.rename (after os.close) — closed=True path
+        real_rename = os.rename
+        def failing_rename(src: Any, dst: Any) -> None:
+            raise OSError("disk full")
+        with patch("os.rename", side_effect=failing_rename):
             with pytest.raises(OSError, match="disk full"):
                 Store._take_ownership_via_tmp(ops_file, target_mode)
 
-        # The tempfile in /tmp should be cleaned up
-        import glob
-        import time
-        leftover = glob.glob("/tmp/htrac_*.ops")
-        now = time.time()
-        recent = [f for f in leftover if now - os.path.getmtime(f) < 5]
-        assert len(recent) == 0, f"Tempfile not cleaned up: {recent}"
+        # The sibling tempfile must be cleaned up; the target's own
+        # directory is the only place mkstemp now puts tempfiles.
+        leftover = list(tmp_path.glob(".htrac_*.ops"))
+        assert leftover == [], f"Tempfile not cleaned up: {leftover}"
+        # Original file is still in place (atomic rename never happened)
+        assert ops_file.read_bytes() == b"data\n"
+        # Sanity: the real rename still works outside the patch
+        assert real_rename is os.rename
 
     def test_take_ownership_cleans_up_on_early_error(
         self, tmp_path: Path
@@ -3462,13 +3499,9 @@ class TestTakeOwnershipFallback:
             with pytest.raises(OSError, match="fchmod failed"):
                 Store._take_ownership_via_tmp(ops_file, target_mode)
 
-        # The tempfile in /tmp should be cleaned up
-        import glob
-        import time
-        leftover = glob.glob("/tmp/htrac_*.ops")
-        now = time.time()
-        recent = [f for f in leftover if now - os.path.getmtime(f) < 5]
-        assert len(recent) == 0, f"Tempfile not cleaned up: {recent}"
+        # The sibling tempfile must be cleaned up
+        leftover = list(tmp_path.glob(".htrac_*.ops"))
+        assert leftover == [], f"Tempfile not cleaned up: {leftover}"
 
 
 # ---------------------------------------------------------------------------
@@ -3582,7 +3615,7 @@ class TestTakeOwnershipDirRepair:
         assert dir_st.st_mode & stat.S_IWGRP
 
     def test_clear_error_when_dir_not_repairable(self, tmp_path: Path) -> None:
-        """When unlink fails and dir can't be repaired, error is actionable."""
+        """When rename fails and dir can't be repaired, error is actionable."""
         import stat
 
         ops_dir = tmp_path / ".ops"
@@ -3595,15 +3628,16 @@ class TestTakeOwnershipDirRepair:
             | stat.S_IWGRP | stat.S_IROTH
         )
 
-        # Simulate: unlink fails only for the ops file (not for tmp cleanup)
-        real_unlink = Path.unlink
+        # Simulate: os.rename fails only when replacing the target (not on
+        # any internal rename during mkstemp's setup).
+        real_rename = os.rename
 
-        def selective_unlink(self_path: Path, *args: Any, **kwargs: Any) -> None:
-            if self_path.name == "test.ops":
+        def selective_rename(src: Any, dst: Any) -> None:
+            if str(dst).endswith("test.ops"):
                 raise PermissionError(13, "Permission denied")
-            return real_unlink(self_path, *args, **kwargs)
+            return real_rename(src, dst)
 
         with patch("os.getuid", return_value=99999):
-            with patch.object(Path, "unlink", selective_unlink):
+            with patch("os.rename", side_effect=selective_rename):
                 with pytest.raises(PermissionError, match="group-write"):
                     Store._take_ownership_via_tmp(ops_file, target_mode)
