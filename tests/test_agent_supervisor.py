@@ -117,30 +117,106 @@ class TestDecisionMatrix:
 
     def test_off_intent_always_noop(self, decide) -> None:
         assert decide(intent="OFF", has_session=True, clients_attached=False,
-                      cli_pid_alive=True, pane_frozen=True) == "noop"
+                      cli_alive=True, pane_frozen=True) == "noop"
         assert decide(intent="OFF", has_session=False, clients_attached=False,
-                      cli_pid_alive=None, pane_frozen=False) == "noop"
+                      cli_alive=None, pane_frozen=False) == "noop"
 
     def test_no_session_spawns(self, decide) -> None:
         assert decide(intent="DEEP", has_session=False, clients_attached=False,
-                      cli_pid_alive=None, pane_frozen=False) == "spawn"
+                      cli_alive=None, pane_frozen=False) == "spawn"
 
     def test_clients_attached_is_noop(self, decide) -> None:
         """Human is watching — hands off."""
         assert decide(intent="BROAD", has_session=True, clients_attached=True,
-                      cli_pid_alive=True, pane_frozen=True) == "noop"
+                      cli_alive=True, pane_frozen=True) == "noop"
 
     def test_cli_dead_replaces(self, decide) -> None:
         assert decide(intent="DEEP", has_session=True, clients_attached=False,
-                      cli_pid_alive=False, pane_frozen=False) == "replace"
+                      cli_alive=False, pane_frozen=False) == "replace"
 
     def test_frozen_pane_replaces(self, decide) -> None:
         assert decide(intent="DEEP", has_session=True, clients_attached=False,
-                      cli_pid_alive=True, pane_frozen=True) == "replace"
+                      cli_alive=True, pane_frozen=True) == "replace"
 
     def test_working_session_noop(self, decide) -> None:
         assert decide(intent="BROAD", has_session=True, clients_attached=False,
-                      cli_pid_alive=True, pane_frozen=False) == "noop"
+                      cli_alive=True, pane_frozen=False) == "noop"
+
+
+# --- tmux_session_exists / wait_for_session_gone (CLI liveness proxy) ---
+
+
+class TestTmuxSessionExists:
+    def test_rc_zero_is_alive(self, asv) -> None:
+        runner = MockRunner({
+            ("tmux", "has-session", "-t", "sess"): (0, "", ""),
+        })
+        assert asv.tmux_session_exists("sess", runner) is True
+
+    def test_rc_nonzero_is_gone(self, asv) -> None:
+        runner = MockRunner({
+            ("tmux", "has-session", "-t", "sess"): (1, "", "no session"),
+        })
+        assert asv.tmux_session_exists("sess", runner) is False
+
+
+class TestWaitForSessionGone:
+    def test_returns_true_when_session_disappears(self, asv, monkeypatch) -> None:
+        """Session is alive on the first poll, gone on the second — helper
+        should return True before the deadline."""
+        results = iter([True, False, False])
+        monkeypatch.setattr(
+            asv, "tmux_session_exists",
+            lambda s, runner=None: next(results),
+        )
+        clock = [0.0]
+        def monotonic():
+            t = clock[0]
+            clock[0] += 0.5
+            return t
+        assert asv.wait_for_session_gone(
+            "sess",
+            timeout_sec=10.0,
+            runner=lambda cmd: None,
+            sleep_fn=lambda s: None,
+            now_fn=monotonic,
+        ) is True
+
+    def test_returns_false_on_timeout(self, asv, monkeypatch) -> None:
+        """Session alive on every poll, deadline reached → False."""
+        monkeypatch.setattr(
+            asv, "tmux_session_exists",
+            lambda s, runner=None: True,
+        )
+        clock = [0.0]
+        def monotonic():
+            t = clock[0]
+            clock[0] += 5.0
+            return t
+        assert asv.wait_for_session_gone(
+            "sess",
+            timeout_sec=3.0,
+            runner=lambda cmd: None,
+            sleep_fn=lambda s: None,
+            now_fn=monotonic,
+        ) is False
+
+    def test_resolves_helper_at_call_time(self, asv, monkeypatch) -> None:
+        """Monkeypatching ``tmux_session_exists`` must take effect even
+        though ``wait_for_session_gone`` was imported at module load."""
+        calls = []
+        def stub(s, runner=None):
+            calls.append(s)
+            return False
+        monkeypatch.setattr(asv, "tmux_session_exists", stub)
+        assert asv.wait_for_session_gone(
+            "sess",
+            timeout_sec=10.0,
+            runner=lambda cmd: None,
+            sleep_fn=lambda s: None,
+            now_fn=lambda: 0.0,
+        ) is True
+        assert calls == ["sess"]
 
 
 # --- Intent reading ---
@@ -249,7 +325,7 @@ class TestRespawnLog:
 class TestMetaFile:
     def test_write_then_read(self, asv, state_dir, fake_repo) -> None:
         sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo)
-        meta = {"session_id": "hypergumbo-session-foo", "cli_pid": 1234, "vendor": "claude-code"}
+        meta = {"session_id": "hypergumbo-session-foo", "vendor": "claude-code", "start_utc": "2026-01-01T00:00:00Z"}
         sup.write_meta("hypergumbo-session-foo", meta)
         assert sup.read_meta("hypergumbo-session-foo") == meta
 
@@ -437,14 +513,13 @@ class TestReplacementSequence:
         """CLI exits cleanly within timeout → no hard-kill, no shared
         cleanup invocations."""
         runner = MockRunner()
-        # Simulate pid going away immediately.
-        monkeypatch.setattr(asv, "pid_alive", lambda pid: False)
+        # Simulate tmux session disappearing immediately after /quit.
+        monkeypatch.setattr(asv, "tmux_session_exists", lambda s, runner=None: False)
         sup = asv.Supervisor(
             state_dir=state_dir, repo_root=fake_repo, runner=runner,
             sleep_fn=lambda s: None, monotonic_fn=lambda: 0.0,
         )
-        meta = {"session_id": "hypergumbo-session-old", "cli_pid": 9999,
-                "vendor": "claude-code"}
+        meta = {"session_id": "hypergumbo-session-old", "vendor": "claude-code"}
         sup.write_meta("hypergumbo-session-old", meta)
         sup.replace_session("hypergumbo-session-old", meta)
         # Must send exit keystroke.
@@ -455,10 +530,10 @@ class TestReplacementSequence:
         assert any(c[:2] == ["tmux", "new-session"] for c in runner.calls)
 
     def test_hard_kill_fallback(self, asv, state_dir, fake_repo, monkeypatch) -> None:
-        """CLI refuses to exit → hard-kill + shared cleanup scripts."""
+        """tmux session refuses to go away → hard-kill + shared cleanup scripts."""
         runner = MockRunner()
-        # Pid stays alive throughout.
-        monkeypatch.setattr(asv, "pid_alive", lambda pid: True)
+        # Session stays alive throughout.
+        monkeypatch.setattr(asv, "tmux_session_exists", lambda s, runner=None: True)
         # Monotonic clock advances past timeout on each call.
         clock = [0.0]
         def monotonic():
@@ -468,8 +543,7 @@ class TestReplacementSequence:
             state_dir=state_dir, repo_root=fake_repo, runner=runner,
             sleep_fn=lambda s: None, monotonic_fn=monotonic,
         )
-        meta = {"session_id": "hypergumbo-session-hung", "cli_pid": 9999,
-                "vendor": "claude-code"}
+        meta = {"session_id": "hypergumbo-session-hung", "vendor": "claude-code"}
         sup.write_meta("hypergumbo-session-hung", meta)
         sup.replace_session("hypergumbo-session-hung", meta)
         # Must hard-kill.
@@ -493,7 +567,7 @@ class TestReplacementSequence:
         """replace_session with no meta.vendor must not crash; uses the
         default vendor's exit keystroke."""
         runner = MockRunner()
-        monkeypatch.setattr(asv, "pid_alive", lambda pid: False)
+        monkeypatch.setattr(asv, "tmux_session_exists", lambda s, runner=None: False)
         sup = asv.Supervisor(
             state_dir=state_dir, repo_root=fake_repo, runner=runner,
             sleep_fn=lambda s: None, monotonic_fn=lambda: 0.0,
@@ -531,7 +605,7 @@ class TestPollLoop:
             ("tmux", "list-clients", "-t", "hypergumbo-session-x"): (0, "/dev/pts/0 x\n", ""),
         })
         sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo, runner=runner)
-        sup.write_meta("hypergumbo-session-x", {"cli_pid": 9999, "vendor": "claude-code"})
+        sup.write_meta("hypergumbo-session-x", {"vendor": "claude-code"})
         sup.poll_once()
         # No replacement activity.
         assert not any(c[:2] == ["tmux", "send-keys"] for c in runner.calls)
@@ -550,7 +624,7 @@ class TestStatusReport:
             ("tmux", "capture-pane", "-t", "hypergumbo-session-x", "-p"): (0, "xxx", ""),
         })
         sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo, runner=runner)
-        sup.write_meta("hypergumbo-session-x", {"cli_pid": 111, "vendor": "claude-code"})
+        sup.write_meta("hypergumbo-session-x", {"vendor": "claude-code"})
         report = sup.status_report()
         assert report["intent"] == "DEEP"
         assert report["rate_limit"]["max_per_24h"] == asv.RATE_LIMIT_MAX_PER_24H

@@ -117,14 +117,13 @@ class TestChainLength:
             ("tmux", "capture-pane", "-t", "hypergumbo-session-old", "-p"):
                 _pane_bytes(2048),  # progress replacement (> threshold)
         })
-        monkeypatch.setattr(asv, "pid_alive", lambda pid: False)
+        monkeypatch.setattr(asv, "tmux_session_exists", lambda s, runner=None: False)
         sup = asv.Supervisor(
             state_dir=state_dir, repo_root=fake_repo, runner=runner,
             sleep_fn=lambda s: None, monotonic_fn=lambda: 0.0,
         )
         old_meta = {
             "session_id": "hypergumbo-session-old",
-            "cli_pid": 9999,
             "vendor": "claude-code",
             "chain_length": 3,
             "consecutive_no_progress": 0,
@@ -156,14 +155,13 @@ class TestChainLength:
             ("tmux", "capture-pane", "-t", "hypergumbo-session-old", "-p"):
                 _pane_bytes(4096),  # progress replacement
         })
-        monkeypatch.setattr(asv, "pid_alive", lambda pid: False)
+        monkeypatch.setattr(asv, "tmux_session_exists", lambda s, runner=None: False)
         sup = asv.Supervisor(
             state_dir=state_dir, repo_root=fake_repo, runner=runner,
             sleep_fn=lambda s: None, monotonic_fn=lambda: 0.0,
         )
         old_meta = {
             "session_id": "hypergumbo-session-old",
-            "cli_pid": 9999,
             "vendor": "claude-code",
             "chain_length": 4,
             "consecutive_no_progress": 2,
@@ -182,14 +180,13 @@ class TestChainLength:
             ("tmux", "capture-pane", "-t", "hypergumbo-session-old", "-p"):
                 _pane_bytes(100),  # no-progress (< 512)
         })
-        monkeypatch.setattr(asv, "pid_alive", lambda pid: False)
+        monkeypatch.setattr(asv, "tmux_session_exists", lambda s, runner=None: False)
         sup = asv.Supervisor(
             state_dir=state_dir, repo_root=fake_repo, runner=runner,
             sleep_fn=lambda s: None, monotonic_fn=lambda: 0.0,
         )
         old_meta = {
             "session_id": "hypergumbo-session-old",
-            "cli_pid": 9999,
             "vendor": "claude-code",
             "chain_length": 2,
             "consecutive_no_progress": 1,
@@ -219,14 +216,13 @@ class TestNoProgressClassification:
             ("tmux", "capture-pane", "-t", "hypergumbo-session-x", "-p"):
                 _pane_bytes(pane_bytes),
         })
-        monkeypatch.setattr(asv, "pid_alive", lambda pid: False)
+        monkeypatch.setattr(asv, "tmux_session_exists", lambda s, runner=None: False)
         sup = asv.Supervisor(
             state_dir=state_dir, repo_root=fake_repo, runner=runner,
             sleep_fn=lambda s: None, monotonic_fn=lambda: 0.0,
         )
         meta = {
             "session_id": "hypergumbo-session-x",
-            "cli_pid": 9999,
             "vendor": "claude-code",
             "chain_length": 1,
             "consecutive_no_progress": 0,
@@ -248,14 +244,13 @@ class TestNoProgressClassification:
             ("tmux", "capture-pane", "-t", "hypergumbo-session-x", "-p"):
                 (1, "", "session not found"),
         })
-        monkeypatch.setattr(asv, "pid_alive", lambda pid: False)
+        monkeypatch.setattr(asv, "tmux_session_exists", lambda s, runner=None: False)
         sup = asv.Supervisor(
             state_dir=state_dir, repo_root=fake_repo, runner=runner,
             sleep_fn=lambda s: None, monotonic_fn=lambda: 0.0,
         )
         meta = {
             "session_id": "hypergumbo-session-x",
-            "cli_pid": 9999,
             "vendor": "claude-code",
             "chain_length": 1,
             "consecutive_no_progress": 0,
@@ -281,14 +276,13 @@ class TestKillSwitch:
         runner = MockRunner({
             ("tmux", "capture-pane", "-t", session, "-p"): _pane_bytes(pane_bytes),
         })
-        monkeypatch.setattr(asv, "pid_alive", lambda pid: False)
+        monkeypatch.setattr(asv, "tmux_session_exists", lambda s, runner=None: False)
         sup = asv.Supervisor(
             state_dir=state_dir, repo_root=fake_repo, runner=runner,
             sleep_fn=lambda s: None, monotonic_fn=lambda: 0.0,
         )
         meta = {
             "session_id": session,
-            "cli_pid": 9999,
             "vendor": "claude-code",
             "chain_length": prior_consecutive + 1,
             "consecutive_no_progress": prior_consecutive,
@@ -347,7 +341,7 @@ class TestKillSwitch:
         runner = MockRunner({
             ("tmux", "capture-pane", "-t", session, "-p"): _pane_bytes(100),
         })
-        monkeypatch.setattr(asv, "pid_alive", lambda pid: False)
+        monkeypatch.setattr(asv, "tmux_session_exists", lambda s, runner=None: False)
         # Fast-forward the clock by 24h between each replacement — this
         # should NOT affect the kill switch, which keys off the chain
         # counter, not wall-clock.
@@ -358,7 +352,7 @@ class TestKillSwitch:
             now_fn=lambda: clock[0],
         )
         meta = {
-            "session_id": session, "cli_pid": 9999, "vendor": "claude-code",
+            "session_id": session, "vendor": "claude-code",
             "chain_length": 5, "consecutive_no_progress": 4,
         }
         sup.write_meta(session, meta)
@@ -483,7 +477,7 @@ class TestStatusReport:
         })
         sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo, runner=runner)
         sup.write_meta("hypergumbo-session-x", {
-            "cli_pid": 111, "vendor": "claude-code",
+            "vendor": "claude-code",
             "chain_length": 4, "consecutive_no_progress": 3,
             "replaces": "hypergumbo-session-old",
         })
@@ -514,7 +508,7 @@ class TestAttachedClientPrecedence:
         })
         sup = asv.Supervisor(state_dir=state_dir, repo_root=fake_repo, runner=runner)
         sup.write_meta("hypergumbo-session-x", {
-            "cli_pid": 9999, "vendor": "claude-code",
+            "vendor": "claude-code",
             "chain_length": 5, "consecutive_no_progress": 4,
         })
         sup.poll_once()

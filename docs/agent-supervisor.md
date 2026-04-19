@@ -119,7 +119,7 @@ Returns a JSON object with:
 
 - `intent` — current value of `autonomous_intent.txt`.
 - `rate_limit` — rolling 24h spawn count, the cap (default 8), and whether a spawn is currently allowed.
-- `sessions[]` — one entry per hypergumbo-prefixed tmux session, with `meta` (the stored session-id / CLI pid / vendor / start UTC / `replaces` / `chain_length` / `consecutive_no_progress`), `clients_attached`, `pane_bytes` (raw scrollback size in bytes), `heartbeat_age_sec` (seconds since the per-turn hooks last touched the heartbeat file), plus top-level `chain_length`, `consecutive_no_progress`, and `replaces` fields lifted out of `meta` for convenience.
+- `sessions[]` — one entry per hypergumbo-prefixed tmux session, with `meta` (the stored session-id / vendor / start UTC / `replaces` / `chain_length` / `consecutive_no_progress`), `clients_attached`, `pane_bytes` (raw scrollback size in bytes), `heartbeat_age_sec` (seconds since the per-turn hooks last touched the heartbeat file), plus top-level `chain_length`, `consecutive_no_progress`, and `replaces` fields lifted out of `meta` for convenience.
 - `stop_requested` — true if a stop sentinel is in flight.
 - `auto_paused` — true when the WI-mujuk kill switch has fired; clear with `agent-supervisor resume`.
 - `kill_switch_threshold` — the value of `CONSECUTIVE_NO_PROGRESS_KILL_SWITCH` (default 5) so tooling can compare against `consecutive_no_progress` without hardcoding the constant.
@@ -134,7 +134,7 @@ Use `pane_bytes` + `heartbeat_age_sec` together to debug "is this session actual
 - **Auto-paused (WI-mujuk).** After 5 consecutive no-progress failures on the same chain, the supervisor writes `supervisor.auto-paused` and stops spawning. See "Recovering from auto-pause" above.
 - **Supervisor crashes.** Nothing gets auto-spawned until you restart it with `agent-supervisor run &`. The daemon is not self-restarting by design.
 - **Tmux is not installed.** The `run_subprocess` seam returns rc=127 for every tmux call, so `status` works and reports zero sessions. The `run` loop no-ops each tick. Install tmux to unstick.
-- **CLI refuses graceful exit.** The supervisor polls `kill -0 <cli_pid>` for 30 seconds after sending the vendor exit keystroke. If the CLI is still alive, it falls back to `tmux kill-session` + direct invocation of `kill-transcript-sync.sh` / `rotate-on-session-end.sh` (the per-session cleanup scripts are already idempotent). An entry appears in `respawn_log.log` as `forced-kill fallback for session <name>`.
+- **CLI refuses graceful exit.** The supervisor polls `tmux has-session -t <name>` for 30 seconds after sending the vendor exit keystroke. When the CLI exits, its shell exits and tmux auto-removes the single-pane session, which is the observable the supervisor waits for. If the session is still present after the timeout, the supervisor falls back to `tmux kill-session` + direct invocation of `kill-transcript-sync.sh` / `rotate-on-session-end.sh` (the per-session cleanup scripts are already idempotent). An entry appears in `respawn_log.log` as `forced-kill fallback for session <name>`. (The previous PID-based wait was vestigial: the session-start hook that was supposed to populate `cli_pid` in meta.json never ran in production, so the 30-second wait was always skipped and every replacement fell straight to the hard-kill path. The session-existence check fixes this without needing any hook cooperation.)
 - **Human attached during a chain close to auto-pause.** The attached-client check takes precedence over the kill switch — an attached session is never replaced, so its chain can't grow, so auto-pause can't fire on it. This is deliberate: a human watching is a human diagnosing. Detach to let the chain progress to its natural outcome.
 
 ## Troubleshooting
@@ -155,7 +155,7 @@ Use `pane_bytes` + `heartbeat_age_sec` together to debug "is this session actual
 - `supervisor.lock` — flock + pid-file for single-instance enforcement.
 - `supervisor.stop-sentinel` — present when a stop is requested; consumed on the next tick.
 - `supervisor.auto-paused` — present when the WI-mujuk kill switch has fired; contents are a human-readable reason line; cleared by `agent-supervisor resume`.
-- `<session>.meta.json` — written on spawn: session_id, cli_pid, vendor, project_dir, tmux session name, start_utc, `replaces`, `chain_length`, `consecutive_no_progress`.
+- `<session>.meta.json` — written on spawn: session_id, vendor, project_dir, tmux session name, start_utc, `replaces`, `chain_length`, `consecutive_no_progress`.
 - `<session>.heartbeat` — touched by the per-turn hooks (telemetry only; never a spawn/replace input).
 - `respawn_log.log` — append-only audit of every spawn / replace / rate-limit / auto-pause event.
 - `rate_limit.json` — rolling 24h spawn timestamps.

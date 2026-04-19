@@ -25,10 +25,14 @@ Key design points (from the consolidated WI-razub design):
   fails and it exits.
 
 * **Replacement sequence** (WI-nusor): sends the vendor-specific exit
-  keystroke, polls ``kill -0 <cli_pid>`` for up to 30 seconds, and if
-  the CLI refuses to quit, hard-kills the tmux session and directly
-  invokes the ``kill-transcript-sync.sh`` + ``rotate-on-session-end.sh``
-  shared scripts (which are already idempotent / vendor-agnostic).
+  keystroke, polls ``tmux has-session`` for up to 30 seconds (when the
+  CLI exits cleanly its shell exits and tmux auto-removes the session),
+  and if the session is still present after the timeout, hard-kills the
+  tmux session and directly invokes the ``kill-transcript-sync.sh`` +
+  ``rotate-on-session-end.sh`` shared scripts (which are already
+  idempotent / vendor-agnostic). Session-existence is the observable
+  the supervisor cares about — a CLI PID was not load-bearing and
+  cross-process PID tracking was unreliable in practice.
 
 * **Fresh-session spawn**: ``tmux new-session -d -s <new> -e
   HYPERGUMBO_RESPAWN=1 <cli>``, followed by a vendor-agnostic
@@ -70,8 +74,8 @@ File layout inside the state dir:
 
 * ``supervisor.lock`` — flock + pid-file for single-instance.
 * ``supervisor.stop-sentinel`` — presence ends the ``run`` loop.
-* ``<session>.meta.json`` — written on spawn: session_id, cli_pid,
-  vendor, tmux session name, project_dir, start_utc.
+* ``<session>.meta.json`` — written on spawn: session_id, vendor,
+  tmux session name, project_dir, start_utc.
 * ``<session>.heartbeat`` — touched by per-turn hooks (WI-sipov); read
   by ``status`` only.
 * ``respawn_log.log`` — append-only audit of every spawn / replace.
@@ -233,6 +237,22 @@ def pid_alive(pid: int) -> bool:
     return True
 
 
+def tmux_session_exists(session: str, runner: Callable = run_subprocess) -> bool:
+    """Return True iff tmux reports the named session as alive.
+
+    Used as the CLI-liveness proxy: when the CLI's process exits, its
+    wrapping shell exits, and tmux auto-removes a single-pane session
+    (``remain-on-exit`` is off by default). So ``has-session`` going
+    from rc=0 to rc=1 is the observable signal for "CLI finished exiting."
+    This replaces cross-process PID tracking, which was fragile (PIDs
+    recycle) and was never actually populated in production because the
+    session-start hook that was supposed to fill ``cli_pid`` in meta.json
+    never ran — leaving every graceful-exit wait skipped.
+    """
+    result = runner(["tmux", "has-session", "-t", session])
+    return result.returncode == 0
+
+
 def tmux_send_exit(session: str, keystroke: str, runner: Callable = run_subprocess) -> None:
     runner(["tmux", "send-keys", "-t", f"{session}:0", keystroke, "Enter"])
 
@@ -305,24 +325,25 @@ def tmux_spawn_session(session: str, cli: str, respawn: bool, runner: Callable =
     runner(cmd)
 
 
-def wait_for_pid_gone(
-    pid: int,
+def wait_for_session_gone(
+    session: str,
     timeout_sec: float,
+    runner: Callable = run_subprocess,
     sleep_fn: Callable[[float], None] = time.sleep,
     now_fn: Callable[[], float] = time.monotonic,
 ) -> bool:
-    """Return True if pid is gone within timeout, False otherwise.
+    """Return True if tmux session is gone within timeout, False otherwise.
 
-    Resolves ``pid_alive`` from the module namespace at CALL time (not
-    via a default-argument capture at definition time) so monkeypatching
-    ``asv.pid_alive`` in tests actually takes effect.
+    Resolves ``tmux_session_exists`` from the module namespace at CALL
+    time so monkeypatching ``asv.tmux_session_exists`` in tests actually
+    takes effect (same pattern the previous PID-based helper used).
     """
     deadline = now_fn() + timeout_sec
     while now_fn() < deadline:
-        if not pid_alive(pid):
+        if not tmux_session_exists(session, runner):
             return True
         sleep_fn(0.5)
-    return not pid_alive(pid)
+    return not tmux_session_exists(session, runner)
 
 
 # --- Decision matrix (pure function, easy to test) ---
@@ -332,7 +353,7 @@ def decide_action(
     intent: str,
     has_session: bool,
     clients_attached: bool,
-    cli_pid_alive: Optional[bool],
+    cli_alive: Optional[bool],
     pane_frozen: bool,
 ) -> str:
     """Return one of: 'noop', 'spawn', 'replace'.
@@ -342,9 +363,11 @@ def decide_action(
         has_session: whether a hypergumbo-session-* tmux session exists.
         clients_attached: whether any human client is attached to the
             session. Ignored when has_session is False.
-        cli_pid_alive: True if the CLI pid we recorded is still alive;
-            False if dead; None if unknown (meta.json missing). Ignored
-            when has_session is False.
+        cli_alive: True if tmux reports the session is still alive (a
+            proxy for "CLI process still running", since tmux removes a
+            single-pane session when its process exits); False if the
+            session has disappeared between enumeration and this check
+            (race); None if unknown. Ignored when has_session is False.
         pane_frozen: True when the session's pane-byte count has not
             changed in at least PANE_FROZEN_THRESHOLD_SEC. Ignored when
             has_session is False or cli is dead (then 'replace' wins).
@@ -355,9 +378,9 @@ def decide_action(
         return "spawn"
     if clients_attached:
         return "noop"
-    if cli_pid_alive is False:
+    if cli_alive is False:
         return "replace"
-    # CLI alive (or pid unknown); pane-delta decides.
+    # CLI alive (or unknown); pane-delta decides.
     if pane_frozen:
         return "replace"
     return "noop"
@@ -608,7 +631,6 @@ class Supervisor:
         (treat as 'unknown vendor, default chain state')."""
         vendor = (meta or {}).get("vendor", DEFAULT_VENDOR)
         vt = VENDOR_TABLE.get(vendor, VENDOR_TABLE[DEFAULT_VENDOR])
-        cli_pid = (meta or {}).get("cli_pid")
         session_id = (meta or {}).get("session_id", session)
 
         # WI-mujuk: classify the dying session BEFORE we kill it. Pane-bytes
@@ -620,15 +642,16 @@ class Supervisor:
         # Step 1: graceful exit keystroke.
         tmux_send_exit(session, vt["exit_keystroke"], self.runner)
 
-        # Step 2: poll for CLI to exit (if we know the pid).
-        exited_cleanly = False
-        if cli_pid:
-            exited_cleanly = wait_for_pid_gone(
-                cli_pid,
-                GRACEFUL_EXIT_TIMEOUT_SEC,
-                sleep_fn=self.sleep_fn,
-                now_fn=self.monotonic_fn,
-            )
+        # Step 2: poll for the tmux session to disappear — when the CLI
+        # exits, its shell exits, and tmux auto-removes the single-pane
+        # session. No PID tracking required.
+        exited_cleanly = wait_for_session_gone(
+            session,
+            GRACEFUL_EXIT_TIMEOUT_SEC,
+            runner=self.runner,
+            sleep_fn=self.sleep_fn,
+            now_fn=self.monotonic_fn,
+        )
 
         # Step 3: hard-kill fallback if graceful exit timed out.
         if not exited_cleanly:
@@ -726,7 +749,6 @@ class Supervisor:
         )
         meta = {
             "session_id": name,
-            "cli_pid": None,  # Filled in later by session-start hook if possible.
             "vendor": vendor,
             "project_dir": str(self.repo_root),
             "tmux_session": name,
@@ -764,12 +786,7 @@ class Supervisor:
         meta = self.read_meta(session)
         attached = tmux_clients_attached(session, self.runner)
 
-        pid = (meta or {}).get("cli_pid")
-        alive: Optional[bool]
-        if pid is None:
-            alive = None  # Unknown; treat as alive so we don't churn.
-        else:
-            alive = pid_alive(pid)
+        alive = tmux_session_exists(session, self.runner)
 
         # Sample pane; observe_pane also updates in-memory history.
         self.observe_pane(session)
@@ -779,7 +796,7 @@ class Supervisor:
             intent=self.read_intent(),
             has_session=True,
             clients_attached=attached,
-            cli_pid_alive=alive if alive is not None else True,
+            cli_alive=alive,
             pane_frozen=frozen,
         )
         if action == "replace":
