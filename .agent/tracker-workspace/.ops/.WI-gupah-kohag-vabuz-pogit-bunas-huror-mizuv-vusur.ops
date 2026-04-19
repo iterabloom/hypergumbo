@@ -72,3 +72,12 @@
   clock: 8  # 3b94
   nonce: 3b94  # 3b94
   message: "Fixed in PR #3172 (commit 25b29077d). New linker hypergumbo_core.linkers.jackson_dispatch emits dispatches_to edges from Java/Kotlin/Scala classes the Jackson/JAX-B/Spring-binding runtime will reflect over to each of their bean-convention accessors (getX/setX/isX) and method-level-annotated handlers. Detection covers class-level Jackson/JAX-B/Spring annotations, ConfigurationProperties-family base classes, and any class with a method-level Jackson annotation (JsonProperty, JsonGetter, JsonSetter, JsonCreator, JsonValue, JsonAnyGetter, JsonAnySetter, JsonRawValue). 69 new tests. Acceptance criterion (60% reduction in java_bean_accessor dead-code-maybe candidates) requires a dead-code-prospector re-run on the 2026-04-11 corpus — not done yet; can re-open if follow-up validation shows the drop is insufficient."  # 3b94
+- op: update  # 298f
+  at: '2026-04-19T07:52:03Z'  # 298f
+  by: agent  # 298f
+  actor: jgstern_agent  # 298f
+  clock: 9  # 298f
+  nonce: 298f  # 298f
+  set: {}  # 298f
+  add:  # 298f
+    tags: [awaits_bakeoff_validation]  # 298f
