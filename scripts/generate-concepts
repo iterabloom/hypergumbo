@@ -46,14 +46,52 @@ _PRODUCER_RE = re.compile(r"^\s*-?\s*concept:\s*[\"']?([A-Za-z_][A-Za-z0-9_]*)[\
 
 # Match concept-consumer patterns in Python source:
 #   has_concept(x, "route") / get_concept(x, "route")
-#   concept == "route" / "route" == concept
+#   concept == "route", concept != "route"  (bare name)
+#   concept_type == "route", concept_kind != "route"  (any identifier with
+#   "concept" in its name — matches entrypoints._detect_from_concepts's
+#   `concept_type == "X"` branches and similar code in linkers)
 #   .get("concept") == "route"
+#
+# INV-rikis: the variable-name and tuple-membership forms were missed by the
+# original three-regex set, causing ~30 concepts consumed in
+# entrypoints._detect_from_concepts to show as `inert` in docs/CONCEPTS.md
+# despite being live in production.
 _CONSUMER_RES = [
     re.compile(r"""has_concept\([^,]+,\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""),
     re.compile(r"""get_concept\([^,]+,\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""),
     re.compile(r"""\.get\(["']concept["']\)\s*==\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""),
-    re.compile(r"""\bconcept\s*==\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""),
+    # Equality / inequality against a "concept"-family variable. The variable
+    # name must contain the substring "concept" (bare name, `concept_type`,
+    # `current_concept`, `concept_kind`, etc.). Loose enough to capture the
+    # real patterns; strict enough to avoid matching unrelated `== "X"` in
+    # non-concept code.
+    re.compile(
+        r"""\b\w*concept\w*\s*[!=]=\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""
+    ),
+    # Mirror: `"X" == concept_var` (string literal on the left).
+    re.compile(
+        r"""["']([A-Za-z_][A-Za-z0-9_]*)["']\s*[!=]=\s*\b\w*concept\w*\b"""
+    ),
 ]
+
+# Tuple / set / list membership test:
+#   concept_type in ("X", "Y")
+#   concept_type in {"X", "Y"}
+#   concept_type in ["X", "Y"]
+#   concept_type not in ("X", "Y")
+#
+# The outer regex captures the membership-test container body so we can extract
+# every quoted identifier inside it in a second pass. A single regex can't
+# reliably match arbitrary-length tuples, so the two-step approach keeps the
+# extraction robust across common PEP-8 formatting (line-wrapped tuples,
+# trailing commas, comments).
+_MEMBERSHIP_RE = re.compile(
+    r"""\b\w*concept\w*\s+(?:not\s+)?in\s+[\(\{\[]([^)}\]]+)[\)\}\]]""",
+    re.DOTALL,
+)
+_TUPLE_STRING_RE = re.compile(
+    r"""["']([A-Za-z_][A-Za-z0-9_]*)["']"""
+)
 
 
 def scan_producers(frameworks_dir: Path) -> dict[str, set[str]]:
@@ -68,6 +106,29 @@ def scan_producers(frameworks_dir: Path) -> dict[str, set[str]]:
     return producers
 
 
+def extract_consumers_from_text(text: str) -> set[str]:
+    """Return every concept name consumed by the given Python source text.
+
+    Covers: has_concept / get_concept helper calls, ``.get("concept") ==``
+    string comparison, any ``*concept*`` variable ``==`` / ``!=``
+    comparison against a quoted identifier (both orderings), and
+    tuple/set/list membership tests (``concept_type in ("X", "Y")``).
+    INV-rikis invariant: every concept mentioned in one of these patterns
+    must surface as a consumer, otherwise CONCEPTS.md mis-classifies it as
+    ``inert``.
+    """
+    names: set[str] = set()
+    for regex in _CONSUMER_RES:
+        for match in regex.finditer(text):
+            names.add(match.group(1))
+    # Tuple/set/list membership bodies need a two-step extract:
+    # match the container body, then pull every quoted identifier out.
+    for body_match in _MEMBERSHIP_RE.finditer(text):
+        for tup_match in _TUPLE_STRING_RE.finditer(body_match.group(1)):
+            names.add(tup_match.group(1))
+    return names
+
+
 def scan_consumers(src_dir: Path) -> dict[str, set[str]]:
     """Return {concept_name -> set of relative source paths that read it}."""
     consumers: dict[str, set[str]] = defaultdict(set)
@@ -76,9 +137,8 @@ def scan_consumers(src_dir: Path) -> dict[str, set[str]]:
             continue  # the utility itself doesn't "consume" a specific concept
         rel = py_path.relative_to(src_dir).as_posix()
         text = py_path.read_text(encoding="utf-8")
-        for regex in _CONSUMER_RES:
-            for match in regex.finditer(text):
-                consumers[match.group(1)].add(rel)
+        for name in extract_consumers_from_text(text):
+            consumers[name].add(rel)
     return consumers
 
 
