@@ -34,3 +34,12 @@
   clock: 3  # 27e1
   nonce: '27e1'  # 27e1
   message: "Phase 1 fixed in PR #3177 (commit 917161736). New linker hypergumbo_core.linkers.rust_trait_dispatch consumes existing 'implements' edges (WI-tulid) and emits dispatches_to edges from each Rust trait symbol to every concrete method on the implementing struct. Phase 2 (static-dispatch parsing of generic bounds and dynamic-dispatch call-site resolution) deferred — requires call-site type info not currently exposed; SCIP-level data (WI-duzul territory) would provide it. 23 new tests. Acceptance criterion (rust_trait_impl + rust_instruction_descriptor drop from ~3004) needs a dead-code-prospector re-run to measure."  # 27e1
+- op: update  # 0d33
+  at: '2026-04-19T07:53:11Z'  # 0d33
+  by: agent  # 0d33
+  actor: jgstern_agent  # 0d33
+  clock: 4  # 0d33
+  nonce: 0d33  # 0d33
+  set: {}  # 0d33
+  add:  # 0d33
+    tags: [awaits_bakeoff_validation]  # 0d33

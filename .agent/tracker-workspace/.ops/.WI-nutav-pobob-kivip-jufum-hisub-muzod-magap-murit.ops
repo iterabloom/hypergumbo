@@ -73,3 +73,12 @@
   clock: 8  # 2685
   nonce: '2685'  # 2685
   message: "Implemented in PR #3168 (commit 9d40e4688, fast-forward merged to dev). Framework-subcategory linker in hypergumbo_core.linkers.airflow_framework_dispatch. Emits dispatches_to edges from BaseOperator/BaseHook/BaseSensor/BaseTrigger/BaseSensorOperator subclasses to their framework-called lifecycle methods using meta.base_classes already emitted by the Python analyzer. 27 tests, 100% coverage on the new module. Per-base method map (execute/pre_execute/post_execute/execute_complete/on_kill for Operator; get_conn/test_connection for Hook; poke/execute/execute_complete/on_kill for Sensor; run/hook for Trigger) avoids emitting spurious cross-base edges. The acceptance bakeoff metric (dead-code-prospector python_airflow_framework + airflow_operator_hook combined below 1500) is a separate validation step — it will be visible the next time the prospecting pass runs against the 2026-04-11 corpus (tracked by WI-botol)."  # 2685
+- op: update  # b0f3
+  at: '2026-04-19T07:53:11Z'  # b0f3
+  by: agent  # b0f3
+  actor: jgstern_agent  # b0f3
+  clock: 9  # b0f3
+  nonce: b0f3  # b0f3
+  set: {}  # b0f3
+  add:  # b0f3
+    tags: [awaits_bakeoff_validation]  # b0f3

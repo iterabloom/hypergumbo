@@ -26,3 +26,12 @@
   clock: 2  # 293b
   nonce: 293b  # 293b
   message: "Phase 1 (error_handler → ERROR_HANDLER entrypoint kind) merged in PR #3181 (commit d417436594 on dev). Remaining concepts by producer count (controller=34, websocket_handler=21, event_handler=17, application=17, router=14, auth=14, form=12, task=10, response=10) are deferred to later phases — keep item open as umbrella."  # 293b
+- op: update  # 7386
+  at: '2026-04-19T07:53:11Z'  # 7386
+  by: agent  # 7386
+  actor: jgstern_agent  # 7386
+  clock: 3  # 7386
+  nonce: '7386'  # 7386
+  set: {}  # 7386
+  add:  # 7386
+    tags: [awaits_bakeoff_validation]  # 7386

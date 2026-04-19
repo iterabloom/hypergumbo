@@ -34,3 +34,12 @@
   clock: 3  # eb49
   nonce: eb49  # eb49
   message: "Fixed in PR #3176 (commit a29d9b0db). New linker hypergumbo_core.linkers.django_orm_dispatch emits dispatches_to edges from Django Model/Manager/QuerySet/Admin/View/Form subclasses to their framework-called override methods. Per-base method maps cover the Model hierarchy, Manager/QuerySet, ModelAdmin, ModelForm/Form, View/TemplateView/ListView/DetailView/CreateView/UpdateView/DeleteView, and Migration. 39 new tests. Acceptance criterion (python_orm_dispatch drop from 2441) requires a dead-code-prospector re-run on the 2026-04-11 corpus to measure — not done yet; can re-open if follow-up validation shows the drop is insufficient."  # eb49
+- op: update  # b012
+  at: '2026-04-19T07:53:11Z'  # b012
+  by: agent  # b012
+  actor: jgstern_agent  # b012
+  clock: 4  # b012
+  nonce: b012  # b012
+  set: {}  # b012
+  add:  # b012
+    tags: [awaits_bakeoff_validation]  # b012
