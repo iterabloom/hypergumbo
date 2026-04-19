@@ -36,3 +36,18 @@
   clock: 3  # 287c
   nonce: 287c  # 287c
   message: "Fix shipped in PR #3189 (commit 5f6531c94 on dev). docs/CONCEPTS.md regenerated: 7 live / 309 inert → 37 live / 279 inert / 1 ghost (30 concepts flipped inert→live). 25 new tests cover every consumer shape. Status pending_validation until next bakeoff cycle validates nothing regressed elsewhere (prospector dead-code-maybe set should not grow as a side effect of the registry change — the change is accounting-only, so no semantic drift is expected)."  # 287c
+- op: update  # 45cd
+  at: '2026-04-19T14:16:12Z'  # 45cd
+  by: agent  # 45cd
+  actor: jgstern_agent  # 45cd
+  clock: 4  # 45cd
+  nonce: 45cd  # 45cd
+  set:  # 45cd
+    status: satisfied  # 45cd
+- op: discuss  # 5807
+  at: '2026-04-19T14:16:12Z'  # 5807
+  by: agent  # 5807
+  actor: jgstern_agent  # 5807
+  clock: 5  # 5807
+  nonce: '5807'  # 5807
+  message: "Fix shipped in PR #3189 (commit 5f6531c94) on 2026-04-19. Evidence the invariant holds: (1) scripts/generate-concepts now regenerates docs/CONCEPTS.md with 40 live concepts at HEAD, up from 7 at commit 7f40a14e before the fix — all 30+ previously-inert concepts consumed via concept_type == 'X' / concept_type in ('X', 'Y') patterns now flip live. (2) 25 new tests in tests/test_generate_concepts.py cover every consumer shape: equality, inequality, reverse-order, concept-variant variable names, tuple / set / list / not-in membership, multi-line tuple, unrelated-variable non-match, _concept_utils.py skip. (3) Follow-on PRs #3185 (controller), #3193 (router), #3194 (form) continued flipping concepts inert→live without the regex requiring further broadening — the consumer shapes they added are all already recognized. Bakeoff CONVERGED cohort=1 iter=8 (deep-20260409-054615) after all four PRs merged with no regressions."  # 5807
