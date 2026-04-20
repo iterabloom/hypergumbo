@@ -1,0 +1,21 @@
+- op: create  # 47b7
+  at: '2026-04-20T05:43:50Z'  # 47b7
+  by: agent  # 47b7
+  actor: jgstern_agent  # 47b7
+  clock: 1  # 47b7
+  nonce: 47b7  # 47b7
+  data:  # 47b7
+    kind: work_item  # 47b7
+    title: "CI: top-level tests/ directory never executes in full-suite.yml or ci.yml"  # 47b7
+    status: todo_soft  # 47b7
+    priority: 3  # 47b7
+    parent:  # 47b7
+    tags:  # 47b7
+    - ci_infrastructure  # 47b7
+    - analysis_quality  # 47b7
+    isbefore: []  # 47b7
+    duplicate_of: []  # 47b7
+    not_duplicate_of: []  # 47b7
+    pr_ref:  # 47b7
+    description: "Observation from WI-dolil slice 3 session (2026-04-20): tests at the repo-top-level `tests/` directory (e.g. `tests/test_awaits_bakeoff_nudge.py`, `tests/test_stop_hook_state_write_discipline.py`, `tests/test_normalize_interjections.py`, `tests/test_filter_transcript.py`, `tests/test_agent_supervisor*.py`, and ~a dozen more) do NOT run in CI at all. Concretely:\n\n- `.github/workflows/full-suite.yml` invokes `pytest packages/<name>/tests/` for each package (grep 'pytest packages' in the workflow file). The top-level `tests/` path is never passed to pytest.\n- `.github/workflows/ci.yml` uses the smart-test manifest which is driven by `packages/.*/src/.*\\.py` changed-file detection, so changes under `.agent/hooks/_shared/`, `scripts/`, YAML, etc. produce an empty manifest and the `Run tests with coverage` step skips pytest entirely.\n\n**Why it matters:** `scripts/agent-supervisor`, `.agent/hooks/_shared/*.py` (stop_logic, on_transcript_change, normalize_interjections, filter-transcript, awaits_bakeoff_nudge, …), `scripts/auto-pr`-adjacent helpers, and the tracker-sync glue all rely on tests that live in top-level `tests/` and never execute in CI. Regressions in agent infrastructure are therefore caught only locally (if the dev happens to run tests) or not at all.\n\n**Decision space:**\n1. Move each top-level test into the package it covers (for tests that import a package's code — e.g. nothing currently does for most of these) — changes nothing for the ones that exercise `.agent/**` and `scripts/**`.\n2. Add `tests/` as an explicit pytest path in `full-suite.yml` alongside each `packages/*/tests/` invocation, OR add a dedicated 'agent-infra' job there that runs just `pytest tests/`.\n3. Teach `scripts/smart-test` to recognise `.agent/hooks/_shared/*.py`, `scripts/*` and a curated `_SOURCE_PATHS` allowlist as 'source' so `ci.yml` picks up top-level tests when those files change.\n\nOption 2 is the smallest change that closes the full-suite gap; option 3 additionally closes the per-PR gap. Both can be done in the same PR.\n\n**Acceptance:** a diff that changes any file under `.agent/hooks/_shared/` causes the corresponding top-level test file to run in CI (either per-PR or in the next scheduled full-suite, ideally both), AND `full-suite.yml` runs the full `tests/` suite on its 4-hour cadence.\n\nSource: lab notebook notebookjournal_04202026_0142.md."  # 47b7
+    fields: {}  # 47b7
