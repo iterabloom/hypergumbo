@@ -504,8 +504,29 @@ fi
 AFFECTED_TESTS=$(grep -E 'packages/.*/tests/(test_|BRANCHES_test_).*\.py$' "$SLICE_OUTPUT" 2>/dev/null | \
     sed "s|^$REPO_ROOT/||" | sort -u || echo "")
 
-# Check if any Python source files changed
+# WI-jozan: fold top-level source → top-level test matches into AFFECTED_TESTS.
+# hypergumbo slice --files only reaches packages/*/src/** — it does not know
+# about .agent/hooks/_shared/*.py or scripts/*. Without this fold, a PR that
+# only touches top-level infrastructure would produce an empty manifest and
+# ci.yml would silently skip pytest. The helper's output is filename-matched
+# ("tests/test_<basename>.py"), so false negatives for sub-directory helpers
+# are acceptable (they still get full-suite coverage under WI-javan's
+# test-agent-infra job).
+TOP_LEVEL_MAP_HELPER="$REPO_ROOT/.agent/hooks/_shared/top_level_test_map.py"
+TOP_LEVEL_TESTS=""
+if [[ -f "$TOP_LEVEL_MAP_HELPER" ]] && command -v python3 &>/dev/null; then
+    TOP_LEVEL_TESTS=$(echo "$CHANGED_FILES" | python3 "$TOP_LEVEL_MAP_HELPER" "$REPO_ROOT" 2>/dev/null || echo "")
+fi
+if [[ -n "$TOP_LEVEL_TESTS" ]]; then
+    AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$TOP_LEVEL_TESTS" | sed '/^$/d' | sort -u)
+fi
+
+# Check if any Python source files changed. Top-level sources (.agent/hooks/_shared/*.py,
+# scripts/*) are included via a separate check so the "no source files" skip
+# path respects them: a PR that only touches scripts/foo with a matching
+# tests/test_foo.py should run that test, not skip pytest entirely.
 CHANGED_SOURCE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/src/.*\.py$' || echo "")
+CHANGED_TOP_LEVEL_SOURCES=$(echo "$CHANGED_FILES" | grep -E '^(\.agent/hooks/_shared/.*\.py|scripts/[^/]+)$' || echo "")
 
 if [[ -z "$AFFECTED_TESTS" ]]; then
     # No affected tests found. Check why:
