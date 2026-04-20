@@ -8,7 +8,7 @@ This file enumerates every concept string that the framework-YAML pattern layer 
 - **inert** — producers exist but no consumer reads the concept. Candidates for either removing the producer pattern or writing a Framework-subcategory linker that consumes it.
 - **ghost** — a consumer mentions the concept by name but no YAML emits it. Likely dead code or a leftover reference to a removed pattern; investigate.
 
-Total concepts: **317** (live: 40, inert: 277, ghost: 0).
+Total concepts: **317** (live: 41, inert: 276, ghost: 0).
 
 ## Inventory
 
@@ -251,7 +251,7 @@ Total concepts: **317** (live: 40, inert: 277, ghost: 0).
 | `security` | inert | fastapi, flask-appbuilder | _(none)_ |
 | `seeder` | inert | adonisjs, cakephp, codeigniter, laravel, symfony | _(none)_ |
 | `serialization_callback` | live | go-encoding-callbacks | `entrypoints.py` |
-| `serializer` | inert | django, flask, grape, laravel, litestar, plumber, pyramid, quart, rails | _(none)_ |
+| `serializer` | live | django, flask, grape, laravel, litestar, plumber, pyramid, quart, rails | `entrypoints.py` |
 | `serializer_field` | inert | flask-restful | _(none)_ |
 | `server` | inert | cowboy, http4k, http4s, pedestal, plumber, restify, servant, shiny, vertx | _(none)_ |
 | `service` | inert | codeigniter, feathers, guice, hanami, jakarta-cdi, micronaut, nestjs, spring-boot | _(none)_ |

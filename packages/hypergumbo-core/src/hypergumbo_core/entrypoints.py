@@ -194,6 +194,7 @@ class EntrypointKind(Enum):
     EVENT_HANDLER = "event_handler"  # Event/message handler
     ERROR_HANDLER = "error_handler"  # HTTP / middleware exception handler
     FORM = "form"  # Framework-reflected form class (is_valid/save/authorize)
+    SERIALIZER = "serializer"  # Framework-reflected serializer/DTO class (to_representation / dump / toArray)
     SCHEDULED_TASK = "scheduled_task"  # Cron/scheduled job
     # Library entry points (exported API)
     LIBRARY_EXPORT = "library_export"  # Exported function/class (library entry)
@@ -306,6 +307,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "event_handler" -> EVENT_HANDLER (event/message handler)
     - "error_handler" -> ERROR_HANDLER (HTTP / middleware exception handler)
     - "form" -> FORM (framework-reflected form class)
+    - "serializer" -> SERIALIZER (framework-reflected serializer/DTO class)
     - "command" -> CLI_COMMAND (CLI command handler)
     - "liveview" -> CONTROLLER (Phoenix LiveView - real-time UI)
     - "graphql_resolver" -> GRAPHQL_SERVER (GraphQL resolver)
@@ -536,6 +538,41 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label=label,
                 ))
                 added_kinds.add(EntrypointKind.FORM)
+
+            # Serializer concept -> SERIALIZER (WI-gudob Phase 5):
+            # Framework-reflected serializer / DTO classes (Django REST
+            # Framework Serializer / ModelSerializer, Marshmallow Schema and
+            # SQLAlchemySchema, Grape Entity, Laravel JsonResource /
+            # ResourceCollection, Litestar AbstractDTO / DTOData, ...).
+            # The framework instantiates the class from a model / payload
+            # and reflectively calls a serialize-like method
+            # (``to_representation``, ``dump``, ``to_internal_value``,
+            # ``toArray``, ``exposure``) — the class body therefore looks
+            # dead to the static call graph even when wired into a
+            # reachable route. Classifying the serializer class itself as
+            # an entrypoint restores its reachability at class level;
+            # per-method dispatch (``to_representation`` → field methods)
+            # is deferred to a per-framework dispatch-registry follow-up
+            # because each framework names its reflective methods
+            # differently. 9 framework YAML patterns emit this concept
+            # (django, flask, flask-restful, grape, laravel, litestar,
+            # hanami, django-ninja, pyramid per the WI-dajul concept
+            # registry audit) and the producers are uniformly class-level
+            # ``base_class`` matches, so the scope is clean.
+            elif concept_type == "serializer":
+                if EntrypointKind.SERIALIZER in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} serializer"
+                else:
+                    label = "Serializer"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.SERIALIZER,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.SERIALIZER)
 
             # Command concept -> CLI_COMMAND
             elif concept_type == "command":
