@@ -341,6 +341,125 @@ def test_cli_silent_when_recent_cycle(tmp_path: Path) -> None:
     assert result.stdout == ""
 
 
+# --- Additional branch coverage ---
+
+
+def test_load_nudge_config_top_level_not_dict(tmp_path: Path) -> None:
+    mod = _import_nudge()
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text("- just\n- a\n- list\n")
+    cfg = mod.load_nudge_config(cfg_path)
+    assert cfg["threshold"] == mod.DEFAULT_THRESHOLD
+
+
+def test_load_nudge_config_stop_hook_not_dict(tmp_path: Path) -> None:
+    mod = _import_nudge()
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text("stop_hook: 'a string, not a dict'\n")
+    cfg = mod.load_nudge_config(cfg_path)
+    assert cfg["threshold"] == mod.DEFAULT_THRESHOLD
+
+
+def test_load_nudge_config_empty_blocking_statuses_uses_defaults(tmp_path: Path) -> None:
+    mod = _import_nudge()
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text("stop_hook:\n  blocking_statuses: []\n")
+    cfg = mod.load_nudge_config(cfg_path)
+    assert set(cfg["blocking_statuses"]) == set(mod.DEFAULT_BLOCKING_STATUSES)
+
+
+def test_load_nudge_config_nudge_value_not_dict(tmp_path: Path) -> None:
+    mod = _import_nudge()
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(
+        "stop_hook:\n"
+        "  awaits_bakeoff_validation_nudge: 'not a dict'\n"
+    )
+    cfg = mod.load_nudge_config(cfg_path)
+    assert cfg["threshold"] == mod.DEFAULT_THRESHOLD
+
+
+def test_load_nudge_config_non_integer_threshold(tmp_path: Path) -> None:
+    mod = _import_nudge()
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(
+        "stop_hook:\n"
+        "  awaits_bakeoff_validation_nudge:\n"
+        "    threshold: not-a-number\n"
+        "    stale_cycle_hours: also-not-a-number\n"
+    )
+    cfg = mod.load_nudge_config(cfg_path)
+    # Bad values fall back to the default.
+    assert cfg["threshold"] == mod.DEFAULT_THRESHOLD
+    assert cfg["stale_cycle_hours"] == mod.DEFAULT_STALE_HOURS
+
+
+def test_count_tagged_items_subprocess_exception(tmp_path: Path, monkeypatch) -> None:
+    mod = _import_nudge()
+    fake = tmp_path / "fake-tracker"
+    fake.write_text("#!/bin/bash\nexit 0\n")
+    fake.chmod(0o755)
+
+    def raise_it(*a, **kw):
+        raise OSError("boom")
+
+    monkeypatch.setattr(mod.subprocess, "run", raise_it)
+    assert mod.count_tagged_items(fake, ["todo_soft"]) == 0
+
+
+def test_find_latest_deep_cycle_mtime_when_path_is_file(tmp_path: Path) -> None:
+    """If bakeoff_root points at a file, not a directory, return None."""
+    mod = _import_nudge()
+    f = tmp_path / "not-a-dir"
+    f.write_text("")
+    assert mod.find_latest_deep_cycle_mtime(f) is None
+
+
+def test_main_default_bakeoff_root_and_now(tmp_path: Path, monkeypatch) -> None:
+    """Exercise main() directly: no tracker cli, default bakeoff_root, default now."""
+    mod = _import_nudge()
+    # Layout repo_root with no scripts/tracker → count = 0 → empty output.
+    (tmp_path / ".agent" / "tracker").mkdir(parents=True)
+
+    import io
+    buf = io.StringIO()
+    monkeypatch.setattr(mod.sys, "stdout", buf)
+    rc = mod.main([str(tmp_path)])
+    assert rc == 0
+    assert buf.getvalue() == ""
+
+
+def test_main_emits_nudge_when_stale_and_threshold_met(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Exercise main() with explicit --now + --bakeoff-root so the nudge fires."""
+    mod = _import_nudge()
+    (tmp_path / ".agent" / "tracker").mkdir(parents=True)
+    (tmp_path / "scripts").mkdir()
+    tracker = tmp_path / "scripts" / "tracker"
+    payload = json.dumps([{"id": f"WI-{i}", "status": "todo_soft"} for i in range(6)])
+    tracker.write_text(f"#!/bin/bash\ncat <<'EOF'\n{payload}\nEOF\n")
+    tracker.chmod(0o755)
+
+    bakeoff_root = tmp_path / "bakeoff"
+    old_state = bakeoff_root / "deep-old" / "state.json"
+    old_state.parent.mkdir(parents=True)
+    old_state.write_text("{}")
+    import os
+    now = time.time()
+    old_ts = now - (200 * 3600)
+    os.utime(old_state, (old_ts, old_ts))
+
+    import io
+    buf = io.StringIO()
+    monkeypatch.setattr(mod.sys, "stdout", buf)
+    rc = mod.main(
+        [str(tmp_path), "--bakeoff-root", str(bakeoff_root), "--now", str(now)]
+    )
+    assert rc == 0
+    assert "AWAITS_BAKEOFF_VALIDATION BACKLOG" in buf.getvalue()
+
+
 # --- Integration guards ---
 
 

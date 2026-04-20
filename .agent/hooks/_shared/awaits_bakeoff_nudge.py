@@ -151,7 +151,7 @@ def find_latest_deep_cycle_mtime(bakeoff_root: Path) -> float | None:
             continue
         try:
             mtime = state.stat().st_mtime
-        except OSError:
+        except OSError:  # pragma: no cover - defensive: stat after exists() race
             continue
         if latest is None or mtime > latest:
             latest = mtime
