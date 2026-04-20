@@ -18,3 +18,18 @@
     pr_ref:  # 7042
     description: "Follow-up to WI-javan (PR #3216). WI-javan closed the 4-hour full-suite cadence gap by adding a test-agent-infra job that runs the top-level tests/ directory. However, ci.yml's per-PR smart-test manifest still keys off packages/.*/src/.*\\.py changed-file detection. A PR that changes only .agent/hooks/_shared/*.py or scripts/* produces an empty manifest, so ci.yml's 'Run tests with coverage' step skips pytest entirely and the per-PR gate is silent on agent-infrastructure regressions. Fix: teach scripts/smart-test (and the ci.yml workflow reading the manifest) to recognize a curated _SOURCE_PATHS allowlist including .agent/hooks/_shared/*.py, scripts/agent-supervisor, scripts/agent-notes, scripts/auto-pr, scripts/merge-pr, etc., and map each to the relevant top-level tests/test_*.py file. Acceptance: a PR that only touches .agent/hooks/_shared/awaits_bakeoff_nudge.py runs tests/test_awaits_bakeoff_nudge.py in ci.yml."  # 7042
     fields: {}  # 7042
+- op: update  # 15e2
+  at: '2026-04-20T08:04:36Z'  # 15e2
+  by: agent  # 15e2
+  actor: jgstern_agent  # 15e2
+  clock: 2  # 15e2
+  nonce: '15e2'  # 15e2
+  set:  # 15e2
+    status: done  # 15e2
+- op: discuss  # 7489
+  at: '2026-04-20T08:04:36Z'  # 7489
+  by: agent  # 7489
+  actor: jgstern_agent  # 7489
+  clock: 3  # 7489
+  nonce: '7489'  # 7489
+  message: "Shipped in PR #3218 (merged to dev). New .agent/hooks/_shared/top_level_test_map.py helper maps .agent/hooks/_shared/<name>.py and scripts/<name> (hyphens→underscores) to tests/test_<name>.py when that test file exists. scripts/smart-test pipes CHANGED_FILES through the helper and folds matches into AFFECTED_TESTS between the slice-result filter and the empty-manifest check. 21 tests at 100% coverage. Together with WI-javan (PR #3216), per-PR and full-suite gates now cover top-level infrastructure."  # 7489

@@ -56,3 +56,32 @@
   clock: 6  # 040d
   nonce: 040d  # 040d
   message: "Slice 3 landed in PR #3209 (merged to dev as f572cd27b). stop_logic.sh now sources .agent/hooks/_shared/awaits_bakeoff_nudge.py, which emits an '## AWAITS_BAKEOFF_VALIDATION BACKLOG' section into the guidance file when (a) ≥threshold tag-bearing items are in a blocking status AND (b) the most recent deep-*/state.json is older than stale_cycle_hours. Defaults threshold=5/stale_cycle_hours=72 live under stop_hook.awaits_bakeoff_validation_nudge in config.yaml.template; strict-greater-than on the stale gate so hour 73 is the first stale tick. AGENTS.md §Bakeoff Validation Discipline updated to document the mechanism. 25 unit + integration tests (tests/test_awaits_bakeoff_nudge.py) cover compute_nudge, config loading, find_latest_deep_cycle_mtime, count_tagged_items, end-to-end CLI, plus guards that stop_logic.sh invokes the worker and AGENTS.md documents it.\n\nRemaining slices: slice 2 (bakeoff-deep-reflect aggregate cross-ref — shell out to tracker --json list --tag awaits_bakeoff_validation at aggregation time and inject per-claim moved/no_move/inconclusive questions into the reflect prompt schema, auto-strip or spawn regression sub-item on response); slice 4 (acceptance demo — full cycle where a new PR with a quantitative claim gets tagged, survives a DEEP cycle, and loses the tag or spawns a regression)."  # 040d
+- op: discuss  # b6f8
+  at: '2026-04-20T09:00:20Z'  # b6f8
+  by: agent  # b6f8
+  actor: jgstern_agent  # b6f8
+  clock: 7  # b6f8
+  nonce: b6f8  # b6f8
+  message: "Slice 2 landed in PR #3219 (merged to dev as bcc38ef28). scripts/bakeoff-deep-reflect now loads active awaits_bakeoff_validation items via 'scripts/tracker --json list --tag awaits_bakeoff_validation --status todo_soft --status in_progress' at reflect-prompt-generation time and injects a per-claim '## Active Bakeoff Validation Claims' section into every repo's prompt. The YAML output schema gains awaits_bakeoff_validation_verdicts (item_id / verdict ∈ {moved, no_move, inconclusive} / evidence). aggregate_assessments collects the per-item verdict distribution across repos in the cohort and exposes it on the summary with a plurality field (moved / no_move / inconclusive / tied); _print_aggregate_summary surfaces one line per item in the human-visible run summary. Tracker CLI failure (missing script, non-zero exit, non-JSON output, non-list payload, OSError) degrades silently to 'no claims'. 20 new unit tests cover all five loader failure modes, section formatting (empty, ID/title echo, 1200-char truncation, missing fields, first-paragraph-only), prompt injection end-to-end via cmd_reflect, aggregate verdict collection (plurality/tied/invalid-filtering/all-inconclusive/empty-counts), and the print-summary surfacing. Slice 2b (auto-strip tag on plurality=moved, auto-spawn regression sub-item on plurality=no_move) is deferred until the verdict schema has been exercised on at least one real cohort — the mutating actions are the riskier half of the integration and benefit from schema-level feedback before wiring them up. Only slice 4 (acceptance demo: full cycle where a newly-merged PR with a quantitative claim gets tagged, survives a DEEP cycle, and loses the tag or spawns a regression) remains; it naturally waits for the next DEEP bakeoff to run with this schema in place."  # b6f8
+- op: discuss  # 8fdd
+  at: '2026-04-20T09:21:02Z'  # 8fdd
+  by: agent  # 8fdd
+  actor: jgstern_agent  # 8fdd
+  clock: 8  # 8fdd
+  nonce: 8fdd  # 8fdd
+  message: "Slice 2b landed in PR #3220 (merged to dev as 436816d90). scripts/bakeoff-deep-reflect aggregate now supports --apply-verdicts to execute the tracker mutations implied by the slice-2 per-claim verdict distribution. Three action shapes: (a) plurality=moved → strip awaits_bakeoff_validation tag + discuss note recording cohort + per-repo evidence; (b) plurality=no_move → spawn regression sub-item under the original (kind work_item, tags regression+awaits_bakeoff_validation, priority 1, status todo_soft) + discuss note on parent; (c) plurality=tied or inconclusive → no mutation, note-only. Default is dry-run: the plan is printed line-by-line with '(dry-run; re-run with --apply-verdicts to execute)'. Multi-cohort aggregate (--all/--some) invokes the surface helper per cohort so a batch re-aggregate can settle every open claim at once. 19 new tests exercise plan-builder (all pluralities, missing fields, evidence truncation/roll-up), CLI-runner (all three argv shapes, note+unknown skip, non-zero exit, OSError capture), and print/apply surface (no-plan None, dry-run no-mutations, apply with stats, per-step failure printing, all action shapes in dry-run). Slice 2b closes the tooling half of this item. Only slice 4 remains — acceptance demo where a real DEEP cycle exercises the end-to-end tag → validate → strip/regress round-trip. That slice inherently waits for the next DEEP bakeoff to run with this aggregate schema in place; suggest recording it here when a post-WI-dolil DEEP cycle completes and the validation loop has demonstrated one full cycle."  # 8fdd
+- op: update  # 3736
+  at: '2026-04-20T09:23:00Z'  # 3736
+  by: agent  # 3736
+  actor: jgstern_agent  # 3736
+  clock: 9  # 3736
+  nonce: '3736'  # 3736
+  set:  # 3736
+    priority: 4  # 3736
+- op: discuss  # b306
+  at: '2026-04-20T09:23:01Z'  # b306
+  by: agent  # b306
+  actor: jgstern_agent  # b306
+  clock: 10  # b306
+  nonce: b306  # b306
+  message: "Slice 1/2/2b/3 have all shipped. Only slice 4 (acceptance demo) remains, and that is inherently bakeoff-cadence-bound — no coding work is gated by this item. Lowering P3→P4 so other P3 items (WI-sulij, WI-gudob) rise naturally in the ready queue."  # b306
