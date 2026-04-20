@@ -26,6 +26,8 @@ dependencies = [
   "pygments~=2.20.0",
   # YAML parsing for framework patterns
   "pyyaml~=6.0.3",
+  # SCIP wire-format decoding (vendored scip_pb2.py imports google.protobuf)
+  "protobuf~=6.33",
 ]
 
 [project.optional-dependencies]
@@ -63,6 +65,8 @@ omit = [
     "*/sketch_embeddings.py",
     "*/_embedding_data.py",
     "*/__main__.py",
+    # Auto-generated protobuf binding; regenerate via scripts/build-scip-proto
+    "*/scip/_generated/scip_pb2.py",
 ]
 
 [tool.coverage.report]
