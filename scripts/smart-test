@@ -146,6 +146,7 @@ COV_PATHS=(
     "--cov=packages/hypergumbo-lang-mainstream/src"
     "--cov=packages/hypergumbo-lang-common/src"
     "--cov=packages/hypergumbo-lang-extended1/src"
+    "--cov=packages/hypergumbo-lang-rust-analyzer/src"
 )
 
 # Detect if embedding dependencies are available

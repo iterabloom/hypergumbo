@@ -305,7 +305,7 @@ jobs:
           if [ -d "packages/hypergumbo-core" ]; then
             # Install test deps directly - NEVER use meta-package (it pulls PyTorch/CUDA)
             pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev]"
           else
             pip install -e .[dev]
           fi
@@ -393,7 +393,7 @@ jobs:
           if [ -d "packages/hypergumbo-core" ]; then
             # Install test deps directly - NEVER use meta-package (it pulls PyTorch/CUDA)
             pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev,tui]"
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
           else
             pip install -e .[dev]
           fi
@@ -804,7 +804,7 @@ jobs:
           pip install --upgrade pip
           if [ -d "packages/hypergumbo-core" ]; then
             pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev,tui]"
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
           else
             pip install -e .[dev]
           fi
