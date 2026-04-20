@@ -78,3 +78,18 @@
   clock: 9  # edfa
   nonce: edfa  # edfa
   message: "Phase 2 Slices A/B/C merged to dev:\n\n- Slice A (commit 4d19f8beb merged as PR #3203): scripts/build-scip-proto + vendored scip_pb2.py at pinned SHA 9330cbd4. grpcio-tools' bundled protoc; protobuf~=6.33 added to hypergumbo-core; coverage configs omit the generated file. 4 smoke tests.\n- Slice B (commit c091a2746): hypergumbo_core.scip.index.scip_index_to_symbols — walks Documents, emits Symbols keyed to Definition Occurrences. 20 tests cover span conversion (3/4 ints, rejected lengths), kind mapping (TYPE/TERM/METHOD/local), language lower-casing, multi-document walk, malformed symbol skip, meta preservation.\n- Slice C (commit a0e33604f): hypergumbo_core.scip.edges.scip_index_to_edges — emits Edges from SymbolInformation.relationships (is_implementation/is_type_definition/is_reference/is_definition → implements/has_type/references/defined_by). Unresolved by default, optional resolve_symbol callable. Self-reference drop. 16 tests.\n\nWhat is intentionally deferred from WI-mafut and tracked in the new WI-kopav:\n- SCIP Occurrence-ref → call edges. Emitting a call edge from a non-Definition Occurrence requires resolving the enclosing symbol by span intersection, which SCIP does not encode directly. Separating it keeps WI-mafut narrow and reviewable.\n\nWI-mafut can be treated as largely complete for the 'SCIP wire-format ingest shim' charter; remaining callers (WI-duzul, WI-nokoh, WI-burud) can start against the Slice A/B/C surface. I'll leave this item at todo_soft and drop priority if WI-kopav becomes the natural next-step item. Happy to close if you'd rather track it cleanly."  # edfa
+- op: update  # 3596
+  at: '2026-04-20T03:41:02Z'  # 3596
+  by: agent  # 3596
+  actor: jgstern_agent  # 3596
+  clock: 10  # 3596
+  nonce: '3596'  # 3596
+  set:  # 3596
+    status: done  # 3596
+- op: discuss  # bc40
+  at: '2026-04-20T03:41:02Z'  # bc40
+  by: agent  # bc40
+  actor: jgstern_agent  # bc40
+  clock: 11  # bc40
+  nonce: bc40  # bc40
+  message: "Phase 2 Slices A/B/C/D all merged to dev (2026-04-20). Complete SCIP ingest surface: scripts/build-scip-proto + vendored scip_pb2.py (Slice A), hypergumbo_core.scip.index.scip_index_to_symbols (Slice B), hypergumbo_core.scip.edges.scip_index_to_edges (Slice C), hypergumbo_core.scip.calls.scip_index_to_call_edges (Slice D). 55 tests across the 4 slices, 100% coverage. Downstream callers (WI-duzul, WI-nokoh, WI-burud) can now depend on the surface. Marking done; if post-integration gaps surface when WI-duzul wires rust-analyzer through the shim, file as fresh items rather than reopen."  # bc40

@@ -19,3 +19,18 @@
     pr_ref:  # 1d57
     description: "Follow-up to WI-mafut Phase 2 Slices A/B/C. Those slices land the SCIP protobuf binding, the Index->Symbol walker, and the Relationship->Edge translator, but deliberately stop short of emitting call-graph edges from Occurrence-level refs (non-Definition Occurrence entries at call / read / write sites).\n\nEmitting a call edge from an Occurrence requires resolving the *enclosing* symbol that contains the occurrence span. SCIP does not encode this directly — the 'enclosing_range' field on Occurrence is rarely populated, and the enclosing SymbolInformation is identified only by symbol string on the parent SymbolInformation.enclosing_symbol. A correct resolver must:\n\n1. For each Document, index its Definition Occurrences by symbol string (done in scip.index already for span mapping).\n2. For each non-Definition Occurrence, find the smallest Definition occurrence whose span encloses it. That Definition's symbol is the caller.\n3. Emit Edge(src=caller, dst=occurrence.symbol, edge_type='calls' for ReadAccess/Definition-referenced-as-value, or variant types for WriteAccess / Import).\n4. Skip occurrences whose enclosing definition can't be found (top-level expressions, imports at module scope, etc.) to avoid noisy phantom edges.\n\nDesign notes:\n- New module: hypergumbo_core.scip.calls (peer of scip.index and scip.edges).\n- Input: parsed scip_pb2.Index + optional resolve_symbol callable (same contract as scip.edges).\n- Output: list[Edge] with edge_type='calls' and evidence_type='scip_occurrence_ref'.\n- Confidence 0.9 (explicit SCIP-indexer data, but span-enclosure is heuristic).\n- Test coverage: span-enclosure picks innermost definition, cross-file occurrences skip (can't resolve locally), WriteAccess/ReadAccess differentiation, top-level occurrences skip (no enclosing def), multi-enclosing same-span tie-break.\n\nThis item unblocks the 'complete SCIP ingest' story on the roadmap but is not a blocker for WI-duzul or WI-nokoh — both can start with Slice A-C output."  # 1d57
     fields: {}  # 1d57
+- op: update  # 9f9d
+  at: '2026-04-20T03:40:14Z'  # 9f9d
+  by: agent  # 9f9d
+  actor: jgstern_agent  # 9f9d
+  clock: 2  # 9f9d
+  nonce: 9f9d  # 9f9d
+  set:  # 9f9d
+    status: done  # 9f9d
+- op: discuss  # 312e
+  at: '2026-04-20T03:40:14Z'  # 312e
+  by: agent  # 312e
+  actor: jgstern_agent  # 312e
+  clock: 3  # 312e
+  nonce: 312e  # 312e
+  message: "Slice D landed in PR (merged to dev 2026-04-20). scip.calls module attributes non-Definition Occurrences to enclosing Definitions via span containment, emitting references edges with confidence 0.85. 15 tests at 100% coverage. Completes WI-mafut Phase 2 A/B/C/D."  # 312e
