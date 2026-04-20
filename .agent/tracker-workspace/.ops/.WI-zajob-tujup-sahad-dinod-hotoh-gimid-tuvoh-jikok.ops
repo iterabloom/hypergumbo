@@ -1,0 +1,35 @@
+- op: create  # 4189
+  at: '2026-04-20T06:56:13Z'  # 4189
+  by: agent  # 4189
+  actor: jgstern_agent  # 4189
+  clock: 1  # 4189
+  nonce: '4189'  # 4189
+  data:  # 4189
+    kind: work_item  # 4189
+    title: "fix: stop hook watched-process detector over-matches on pytest-pathed helpers"  # 4189
+    status: todo_hard  # 4189
+    priority: 0  # 4189
+    parent:  # 4189
+    tags:  # 4189
+    - workspace  # 4189
+    isbefore: []  # 4189
+    duplicate_of: []  # 4189
+    not_duplicate_of: []  # 4189
+    pr_ref:  # 4189
+    description: "Stop hook watched-process detection over-matches: pgrep -af \"pytest|...\" treats any cmdline containing \"pytest\" as a live watched process, including inotifywait helpers invoked with /tmp/pytest-.../ path args. The existing filter at stop_logic.sh:237-240 only strips bash -c/sh -c wrappers. Result: hook sleeps up to 30 min (WATCHED_MAX_WAIT_SECS=1800) waiting on leaked inotifywait processes (observed etime 1h+ from pytest-952), blocking the user's session until they hit Esc. Fix: anchor detection to argv[0] basename (after path strip) instead of substring match on full cmdline. WI-varid introduced the process-aware pause but did not scope the detection."  # 4189
+    fields: {}  # 4189
+- op: update  # b130
+  at: '2026-04-20T07:16:02Z'  # b130
+  by: agent  # b130
+  actor: jgstern_agent  # b130
+  clock: 2  # b130
+  nonce: b130  # b130
+  set:  # b130
+    status: done  # b130
+- op: discuss  # cd0a
+  at: '2026-04-20T07:16:02Z'  # cd0a
+  by: agent  # cd0a
+  actor: jgstern_agent  # cd0a
+  clock: 3  # cd0a
+  nonce: cd0a  # cd0a
+  message: "Fixed in PR #3213 (merged to dev). Root cause: pgrep -af substring-matched \"pytest|...\" against full cmdline, so inotifywait /tmp/pytest-.../foo was treated as live pytest. Fix: new .agent/hooks/_shared/watched_process.py matches argv[0]-anchored leading tokens (path-stripped, python-version-collapsed), with bash -c/sh -c still excluded. 30 tests cover the predicate, the pgrep-output parser, main(), and the subprocess CLI. stop_logic.sh now pipes pgrep through python3 watched_process.py. Verified: 4 leaked inotifywait helpers (etime 1h1m) killed; simulated reproducer confirms new filter returns exit=1 on inotifywait-with-/tmp/pytest-path cmdlines."  # cd0a
