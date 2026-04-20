@@ -4605,6 +4605,16 @@ For help on ALL commands:   hypergumbo --help --all"""
         action="store_true",
         help="Enable debug logging (shows ripgrep vs Python fallback decisions, etc.)",
     )
+    p.add_argument(
+        "--backend",
+        choices=["tree-sitter", "rust-analyzer"],
+        default=None,
+        help=(
+            "Select the Rust analysis backend. 'rust-analyzer' activates the "
+            "SCIP-backed analyzer (requires 'hypergumbo install-rust-analyzer'). "
+            "Default: tree-sitter (respects HYPERGUMBO_RUST_ANALYZER if set)."
+        ),
+    )
 
     sub = p.add_subparsers(dest="command")
 
@@ -6878,6 +6888,27 @@ def main(argv=None) -> int:
     if "--debug" in argv:
         debug_flag = True
         argv = [a for a in argv if a != "--debug"]
+
+    # WI-vozof: accept --backend in any position and translate it to the
+    # HYPERGUMBO_RUST_ANALYZER env var that the gate reads. The gate itself
+    # already knows how to honour either signal; this path is CLI-side sugar
+    # so `hypergumbo run . --backend rust-analyzer` works identically to
+    # `HYPERGUMBO_RUST_ANALYZER=1 hypergumbo run .`. Matches the --debug
+    # stripping pattern so the flag works in any position relative to the
+    # subcommand.
+    for idx in range(len(argv) - 1):
+        if argv[idx] == "--backend":
+            choice = argv[idx + 1]
+            if choice == "rust-analyzer":
+                os.environ["HYPERGUMBO_RUST_ANALYZER"] = "1"
+            argv = argv[:idx] + argv[idx + 2:]
+            break
+        if argv[idx].startswith("--backend="):
+            choice = argv[idx].split("=", 1)[1]
+            if choice == "rust-analyzer":
+                os.environ["HYPERGUMBO_RUST_ANALYZER"] = "1"
+            argv = argv[:idx] + argv[idx + 1:]
+            break
 
     # WI-balij (UAT UX-03): if the first positional doesn't name a known
     # subcommand AND clearly isn't a path (no path separators, no leading
