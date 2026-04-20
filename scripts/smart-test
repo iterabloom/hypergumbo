@@ -759,8 +759,17 @@ if [[ $TEST_EXIT -eq 0 ]] && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
     echo ""
     echo "Checking 100% coverage for changed source files..."
 
+    # Skip auto-generated files (e.g. scripts/build-scip-proto output under
+    # */scip/_generated/). --include bypasses coverage omit lists, so we
+    # have to filter here too.
+    COVERABLE_CHANGED_FILES=$(echo "$CHANGED_SOURCE_FILES" | grep -v '/_generated/' || echo "")
+    if [[ -z "$COVERABLE_CHANGED_FILES" ]]; then
+        echo "✅ No coverable changed source files (all are auto-generated)"
+        exit 0
+    fi
+
     # Build --include pattern for changed files
-    INCLUDE_PATTERN=$(echo "$CHANGED_SOURCE_FILES" | tr '\n' ',' | sed 's/,$//')
+    INCLUDE_PATTERN=$(echo "$COVERABLE_CHANGED_FILES" | tr '\n' ',' | sed 's/,$//')
 
     # Run coverage report for just the changed files
     if ! coverage report --include="$INCLUDE_PATTERN" --fail-under=100 2>/dev/null; then
