@@ -14,6 +14,7 @@ The CLI uses argparse with subcommands for different operations:
 - **catalog**: List available analysis passes
 - **build-grammars**: Build Lean/Wolfram tree-sitter grammars from source
 - **install-gitleaks**: Install gitleaks for secret scanning
+- **install-rust-analyzer**: Install rust-analyzer via rustup for the SCIP-backed Rust analyzer (WI-dotud)
 
 When no subcommand is given, sketch mode is assumed. This makes the
 common case (`hypergumbo .`) as simple as possible.
@@ -2266,6 +2267,37 @@ def cmd_install_gitleaks(args: argparse.Namespace) -> int:
 def cmd_uninstall_gitleaks(args: argparse.Namespace) -> int:
     """Uninstall gitleaks secret scanner."""
     success = uninstall_gitleaks(quiet=args.quiet)
+    return 0 if success else 1
+
+
+def cmd_install_rust_analyzer(args: argparse.Namespace) -> int:
+    """Install rust-analyzer (WI-dotud) or report availability via ``--check``."""
+    from .rust_analyzer_install import (
+        install_rust_analyzer,
+        is_rust_analyzer_available,
+    )
+
+    if args.check:
+        available = is_rust_analyzer_available()
+        symbol = "\u2713" if available else "\u2717"
+        print(
+            f"rust-analyzer: {symbol} "
+            f"{'installed' if available else 'not installed'}",
+        )
+        if not available:
+            print("\nRun 'hypergumbo install-rust-analyzer' to install.")
+            return 1
+        return 0
+
+    success = install_rust_analyzer(quiet=args.quiet)
+    return 0 if success else 1
+
+
+def cmd_uninstall_rust_analyzer(args: argparse.Namespace) -> int:
+    """Uninstall rust-analyzer via rustup (WI-dotud)."""
+    from .rust_analyzer_install import uninstall_rust_analyzer
+
+    success = uninstall_rust_analyzer(quiet=args.quiet)
     return 0 if success else 1
 
 
@@ -5087,6 +5119,35 @@ The output begins with passes suggested for your current directory."""
     )
     p_uninstall_gitleaks.set_defaults(func=cmd_uninstall_gitleaks)
 
+    # hypergumbo install-rust-analyzer
+    p_install_ra = sub.add_parser(
+        "install-rust-analyzer",
+        help="Install rust-analyzer (via rustup) for the SCIP-backed Rust analyzer",
+    )
+    p_install_ra.add_argument(
+        "--check",
+        action="store_true",
+        help="Check if rust-analyzer is installed without installing",
+    )
+    p_install_ra.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_install_ra.set_defaults(func=cmd_install_rust_analyzer)
+
+    # hypergumbo uninstall-rust-analyzer
+    p_uninstall_ra = sub.add_parser(
+        "uninstall-rust-analyzer",
+        help="Uninstall rust-analyzer (removes the rustup component if present)",
+    )
+    p_uninstall_ra.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_uninstall_ra.set_defaults(func=cmd_uninstall_rust_analyzer)
+
     # hypergumbo cache-status
     p_cache_status = sub.add_parser(
         "cache-status",
@@ -5547,7 +5608,8 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
     # Extras/installation commands (group_order=1) - ordered by suborder
     extras_cmds = ["add-extras", "remove-extras", "build-grammars",
                    "install-gitleaks", "uninstall-gitleaks",
-                   "install-embeddings", "uninstall-embeddings"]
+                   "install-embeddings", "uninstall-embeddings",
+                   "install-rust-analyzer", "uninstall-rust-analyzer"]
     for i, cmd in enumerate(extras_cmds):
         _set_subparser_group(sub, cmd, "extras", 1, suborder=i)
 
@@ -5556,7 +5618,8 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         "{sketch,run,slice,search,routes,explain,catalog,test-coverage,"
         "symbols,compact,io-boundaries,add-extras,remove-extras,"
         "build-grammars,install-gitleaks,uninstall-gitleaks,"
-        "install-embeddings,uninstall-embeddings}"
+        "install-embeddings,uninstall-embeddings,"
+        "install-rust-analyzer,uninstall-rust-analyzer}"
     )
 
     return p
@@ -6586,7 +6649,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
 
     # WI-balij (UAT UX-04): accept --debug in any position. Strip it here so
     # `hypergumbo sketch . --debug` and `hypergumbo --debug sketch .` both
