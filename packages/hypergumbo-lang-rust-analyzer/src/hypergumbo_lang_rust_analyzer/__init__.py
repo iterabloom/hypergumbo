@@ -29,7 +29,14 @@ from hypergumbo_lang_rust_analyzer.translate import (
 
 __version__ = "2.6.0"
 
+# Module paths for analyzer discovery via entry-points (ADR-0012 Step 1).
+# Importing the listed module triggers the @register_analyzer decorator.
+ANALYZER_MODULES = [
+    "hypergumbo_lang_rust_analyzer.analyzer",
+]
+
 __all__ = [
+    "ANALYZER_MODULES",
     "ENV_VAR_NAME",
     "RustAnalyzerError",
     "RustAnalyzerInvocationFailed",

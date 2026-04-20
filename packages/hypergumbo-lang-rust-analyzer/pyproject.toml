@@ -22,6 +22,9 @@ dependencies = [
   "hypergumbo-lang-mainstream==2.6.0",
 ]
 
+[project.entry-points."hypergumbo.analyzers"]
+rust_analyzer = "hypergumbo_lang_rust_analyzer:ANALYZER_MODULES"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/hypergumbo_lang_rust_analyzer"]
 
