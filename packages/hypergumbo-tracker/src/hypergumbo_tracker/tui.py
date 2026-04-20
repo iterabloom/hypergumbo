@@ -81,6 +81,8 @@ from textual.widgets.option_list import Option
 
 from rich.text import Text as RichText
 
+from hypergumbo_tracker.hotspot_markup import render_hotspots
+from hypergumbo_tracker.id_matching import build_item_id_pattern
 from hypergumbo_tracker.item_nav_render import build_nav_modal_content
 from hypergumbo_tracker.models import CompiledItem, FieldSchema, Tier
 from hypergumbo_tracker.nav_history import NavigationHistory
@@ -2284,6 +2286,15 @@ class TrackerApp(App):
         self._prefs_path = (
             tracker_set._tracker_root / "tracker-workspace" / "tui_preferences.json"
         )
+        # WI-sulij item-nav hotspots: compile once at construction so
+        # every _show_* render reuses the same pattern. Configs with no
+        # kinds cannot have IDs to match, so disable hotspots entirely.
+        try:
+            self._nav_id_pattern: re.Pattern[str] | None = (
+                build_item_id_pattern(tracker_set.config)
+            )
+        except ValueError:  # pragma: no cover — degenerate config
+            self._nav_id_pattern = None
 
     def compose(self) -> ComposeResult:
         """Build the widget tree.
@@ -2732,6 +2743,66 @@ class TrackerApp(App):
     # Detail display
     # ------------------------------------------------------------------
 
+    def _item_exists(self, item_id: str) -> bool:
+        """Return True if *item_id* resolves to a tracker item.
+
+        Used as the resolver for hotspot markup and the ``exists``
+        callable for :class:`ItemNavModal`. Treats any lookup failure
+        (not-found, ambiguous prefix) as absence so a dead hotspot
+        renders as plain text per WI-sulij constraint 2.
+        """
+        try:
+            self._tracker_set.get(item_id)
+        except (ItemNotFoundError, AmbiguousPrefixError):
+            return False
+        return True
+
+    def _apply_nav_hotspots(self, text: str) -> str:
+        """Wrap item-ID substrings in ``[@click=jump_to_item(...)]`` spans.
+
+        No-op when the ID pattern could not be compiled (config has no
+        kinds) so callers can use this unconditionally.
+        """
+        if self._nav_id_pattern is None:
+            return text  # pragma: no cover — degenerate config
+        return render_hotspots(
+            text, self._nav_id_pattern, resolver=self._item_exists,
+        )
+
+    def _nav_modal_content_for(self, item_id: str) -> tuple[str, str]:
+        """Return ``(detail_text, activity_text)`` for the item-nav modal.
+
+        Renders the same lines the Description and Activity panes show,
+        so clicking a hotspot gives the user a faithful in-modal view.
+        """
+        item = self._tracker_set.get(item_id)
+        fields_schema = self._get_fields_schema(item)
+        detail_lines = _format_detail_lines(
+            item, tier=self._layout_tier, fields_schema=fields_schema,
+            blockers_of=self._blockers_of,
+        )
+        activity_lines = _format_activity_lines(item)
+        return "\n".join(detail_lines), "\n".join(activity_lines)
+
+    def action_jump_to_item(self, item_id: str) -> None:
+        """Open :class:`ItemNavModal` for *item_id* (WI-sulij hotspot click).
+
+        Silently ignores clicks on IDs that no longer resolve — the
+        hotspot renderer only emits clickable spans for existing items,
+        so this guard is defensive against a concurrent delete.
+        """
+        if not self._item_exists(item_id):
+            return  # pragma: no cover — defensive race guard
+        assert self._nav_id_pattern is not None
+        self.push_screen(
+            ItemNavModal(
+                item_id,
+                exists=self._item_exists,
+                content_for=self._nav_modal_content_for,
+                id_pattern=self._nav_id_pattern,
+            )
+        )
+
     def _show_detail(self, item: CompiledItem) -> None:
         """Populate the compact detail view with item information."""
         fields_schema = self._get_fields_schema(item)
@@ -2744,7 +2815,7 @@ class TrackerApp(App):
             if drift:
                 lines[0] = "[bold yellow]*** FROZEN (DRIFTED) ***[/bold yellow]"
         content = self.query_one("#detail-content", Static)
-        content.update("\n".join(lines))
+        content.update(self._apply_nav_hotspots("\n".join(lines)))
 
         self._in_detail = True
         self._apply_layout()
@@ -2772,7 +2843,7 @@ class TrackerApp(App):
             content = self.query_one("#std-detail-content", Static)
         except NoMatches:  # pragma: no cover — race: compose not finished
             return
-        content.update("\n".join(lines))
+        content.update(self._apply_nav_hotspots("\n".join(lines)))
         self._update_chain_summary(item_id)
         if self._layout_tier == "wide":
             self._show_activity(item)
@@ -2795,7 +2866,7 @@ class TrackerApp(App):
             return
         lines = _format_activity_lines(item)
         content = self.query_one("#activity-content", Static)
-        content.update("\n".join(lines))
+        content.update(self._apply_nav_hotspots("\n".join(lines)))
 
     def _remove_ghost_rows(self) -> None:
         """Remove italic ghost rows from previous chain selection."""
