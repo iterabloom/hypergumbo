@@ -1,0 +1,21 @@
+- op: create  # c35d
+  at: '2026-04-20T17:27:15Z'  # c35d
+  by: agent  # c35d
+  actor: jgstern_agent  # c35d
+  clock: 1  # c35d
+  nonce: c35d  # c35d
+  data:  # c35d
+    kind: work_item  # c35d
+    title: "install-rust-analyzer subcommand (analog of install-gitleaks / install-embeddings)"  # c35d
+    status: todo_soft  # c35d
+    priority: 3  # c35d
+    parent:  # c35d
+    tags:  # c35d
+    - rust_analyzer  # c35d
+    - developer_experience  # c35d
+    isbefore: []  # c35d
+    duplicate_of: []  # c35d
+    not_duplicate_of: []  # c35d
+    pr_ref:  # c35d
+    description: "Add a 'hypergumbo install-rust-analyzer' subcommand (and matching 'hypergumbo uninstall-rust-analyzer') to the core CLI. Follows the existing pattern established by install-gitleaks (packages/hypergumbo-core/src/hypergumbo_core/gitleaks.py) and install-embeddings: a --check flag reports current availability, and the default action downloads/installs the binary to an XDG-friendly cache location.\n\nImplementation notes:\n- Install approach: 'rustup component add rust-analyzer' when rustup is present on PATH (the blessed install path upstream recommends); fall back to downloading the pre-built binary from rust-lang.github.io/rust-analyzer/ releases into the hypergumbo cache dir if rustup isn't available. Either way, the installed binary becomes discoverable via shutil.which (rustup adds it to the rustup proxy shims that are already on PATH in developer envs; the fallback download ends up in a dir we put on $PATH via the cli wrapper, mirroring the gitleaks pattern).\n- is_rust_analyzer_available() helper in the new module hypergumbo_core.rust_analyzer_install (or similar), used both by the --check flag and by WI-nohah's graceful-degrade fall-through logic.\n- Tests follow the optional-dependency-testing-playbook: real tests when rustup is present in CI (rustup is already installed for the Rust tree-sitter build), one mock test for the unavailable path.\n\nDoes NOT depend on WI-duzul landing — the installer can ship independently and WI-duzul Slice C will consume is_rust_analyzer_available() from this item. File this as a prerequisite for the install-extras umbrella so that item can enumerate the full set of optional-component installers."  # c35d
+    fields: {}  # c35d

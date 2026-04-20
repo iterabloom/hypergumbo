@@ -70,3 +70,19 @@
   clock: 8  # f02a
   nonce: f02a  # f02a
   message: "Validator concept (9 producers) semantics audit — DEFERRED from Phase 5 pickup:\n\nUnlike form (uniformly class-level across all 12 producers), validator has heterogeneous semantics:\n- adonisjs: base_class BaseValidator (class-level ✅)\n- hanami: base_class Hanami::Validations / Dry::Validation::Contract (class-level ✅)\n- laminas: interface-based (class-level ✅)\n- aspnet: annotation-based (Required, StringLength, Range, etc.) on MODEL FIELDS — these aren't dispatchable classes, they're field metadata\n- hapi: decorator-based (Joi.object / Joi.string calls) on SCHEMA DEFINITIONS — these aren't dispatchable either; they're data-shape declarations\n- masonite / rails: mixed — sometimes classes, sometimes validation method declarations\n- yii / symfony: class-level\n\nMapping validator → entrypoint would over-trigger: aspnet field annotations and hapi Joi schema declarations would become bogus entrypoints even though they're not called reflectively — they're consumed by the framework's validator runtime as data, not as handlers.\n\nRecommendation: split validator into per-producer analysis before unifying. Class-level producers (adonisjs, hanami, laminas, yii, symfony, masonite) could map to a new CLASS_VALIDATOR entrypoint kind at confidence 0.80; annotation-level (aspnet) and decorator-call-level (hapi) producers need separate linkers (annotation-validator → DUMMY_USE edge; decorator-call validator → already covered by decorator_dispatch). Not worth a single-PR simplification.\n\nCleaner Phase 5 candidates to consider instead:\n- server (9 producers, http4s / scotty / vertx / cowboy / http4k / servant / pedestal / plumber / shiny): likely all server-bootstrap entrypoints (MAIN_FUNCTION-style). Relatively uniform.\n- task (10, celery / airflow / luigi / rq / dramatiq / sidekiq / ...): already mapped via background_task concept in Phase 0; double-check why 'task' stays inert.\n- mailer (7, cakephp / fuelphp / hanami / laminas / laravel / padrino / rails): class-level, frameworks invoke deliver/send reflectively. Clean entrypoint candidate.\n\nStopping WI-gudob chain here for this session — 3 phases in one day (controller+router+form, 31 inert→live flips) is meaningful progress and diminishing returns kick in below 10 producers per concept."  # f02a
+- op: update  # 6d58
+  at: '2026-04-20T15:34:41Z'  # 6d58
+  by: agent  # 6d58
+  actor: jgstern_agent  # 6d58
+  clock: 9  # 6d58
+  nonce: 6d58  # 6d58
+  set: {}  # 6d58
+  add:  # 6d58
+    tags: [awaits_bakeoff_validation]  # 6d58
+- op: discuss  # cbce
+  at: '2026-04-20T15:34:41Z'  # cbce
+  by: agent  # cbce
+  actor: jgstern_agent  # cbce
+  clock: 10  # cbce
+  nonce: cbce  # cbce
+  message: "Phase 5 shipped: serializer concept → SERIALIZER entrypoint classification merged in PR #3232 (dev SHA aa7381714). Mirrors Phase 4 (form) — class-level reachability for framework-reflected serializer/DTO classes (DRF Serializer/ModelSerializer/HyperlinkedModelSerializer, Marshmallow Schema/SQLAlchemySchema/SQLAlchemyAutoSchema, Grape::Entity, Laravel JsonResource/ResourceCollection, Litestar AbstractDTO/DTOData, plus plumber/pyramid/quart/rails). Flipped serializer inert → live in docs/CONCEPTS.md (9 producer frameworks). 3 new tests (framework label, no-framework fallback, multi-framework dedup). Per-method dispatch (to_representation → field-specific methods) deferred to a per-framework dispatch-registry follow-up. Remaining top inerts by producer count: auth=14 (deferred non-uniform), response=10 (deferred likely-not-dispatchable), component=10 (needs per-framework method registry), validator=9 (deferred heterogeneous), server=9, service=8, route_group=8, request=8, handler=8, config=8. Tagging awaits_bakeoff_validation per the AGENTS.md discipline since the expected outcome is FP-reduction on serializer-heavy corpora (django + flask)."  # cbce
