@@ -28,3 +28,18 @@
   set: {}  # 0cfd
   add:  # 0cfd
     isbefore: [WI-huham-fahom-humul-gotuj-lutuh-sapin-vovun-hufin]  # 0cfd
+- op: update  # dc1d
+  at: '2026-04-20T18:40:10Z'  # dc1d
+  by: agent  # dc1d
+  actor: jgstern_agent  # dc1d
+  clock: 3  # dc1d
+  nonce: dc1d  # dc1d
+  set:  # dc1d
+    status: done  # dc1d
+- op: discuss  # e3fa
+  at: '2026-04-20T18:40:10Z'  # e3fa
+  by: agent  # e3fa
+  actor: jgstern_agent  # e3fa
+  clock: 4  # e3fa
+  nonce: e3fa  # e3fa
+  message: "Shipped in PR #3236 (merged to dev as d88c10e64). New hypergumbo_core.rust_analyzer_install module with is_rust_analyzer_available / install_rust_analyzer / uninstall_rust_analyzer, plus hypergumbo install-rust-analyzer + uninstall-rust-analyzer CLI subcommands (both registered in the 'extras' group; --check flag matches gitleaks/embeddings behaviour). Rustup-only first cut; static-binary-download fallback tracked as a follow-up in the module docstring. 24 tests, 100% per-package coverage. Unblocks WI-huham (install-extras umbrella) and feeds the is_rust_analyzer_available helper consumed by WI-duzul Slice C + WI-nohah graceful-degrade."  # e3fa

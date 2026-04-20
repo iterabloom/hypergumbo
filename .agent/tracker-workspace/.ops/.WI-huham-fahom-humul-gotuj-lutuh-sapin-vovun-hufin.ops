@@ -28,3 +28,18 @@
   set: {}  # 3651
   remove:  # 3651
     isbefore: [WI-dotud-pudit-bajid-dizas-jovop-luluh-voloj-fimog]  # 3651
+- op: update  # ae04
+  at: '2026-04-20T19:15:14Z'  # ae04
+  by: agent  # ae04
+  actor: jgstern_agent  # ae04
+  clock: 3  # ae04
+  nonce: ae04  # ae04
+  set:  # ae04
+    status: done  # ae04
+- op: discuss  # 9a49
+  at: '2026-04-20T19:15:14Z'  # 9a49
+  by: agent  # 9a49
+  actor: jgstern_agent  # 9a49
+  clock: 4  # 9a49
+  nonce: 9a49  # 9a49
+  message: "Shipped as PR (merged to dev as e64e0fbb6). install-extras runs gitleaks + embeddings + rust-analyzer installers in one call, skipping already-available components, best-effort on failures. --check prints the status table; --skip excludes components. uninstall-extras mirrors the install path. Component table lives in _extras_components() so adding a fourth optional dep is a one-line change. Thin _install_embeddings_impl / _uninstall_embeddings_impl adapters normalize embeddings to the (quiet=...) -> bool signature the umbrella expects. 19 tests, 100% coverage. Closes the WI-dotud → WI-huham dependency chain."  # 9a49
