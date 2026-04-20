@@ -336,6 +336,64 @@ ELM_HTTP_REQUEST_URL_FIRST_PATTERN = re.compile(
 )
 
 
+# ---------------------------------------------------------------------------
+# Elm let-bound ``String.join`` URL idiom (WI-rosan)
+# ---------------------------------------------------------------------------
+#
+# Alertmanager's ``Silences/Api.elm`` and ``Alerts/Api.elm`` construct URLs
+# via a ``let`` binding over ``String.join "/" [ apiUrl, ... ]`` and then
+# pass the bound identifier to ``Utils.Api.<method>``. Example::
+#
+#     getSilence apiUrl uuid =
+#         let
+#             url =
+#                 String.join "/" [ apiUrl, "silence", uuid ]
+#         in
+#         Utils.Api.send (Utils.Api.get url decoder)
+#
+# These calls are invisible to the Phase-1 regex scanner because the URL is
+# indirected through a variable. This two-pass fold captures them:
+#
+#   1. Match every ``let <name> = String.join "/" [ <parts> ]`` binding.
+#   2. Scan forward (bounded window) for a ``Utils.Api.<method> <name>``
+#      call that consumes the bound identifier. If found, fold the list
+#      items into a URL path.
+#
+# Parts are classified as literal string fragments (``"silence"`` or
+# ``"silence" ++ <expr>`` — literal portion wins, ``++`` tail is dropped as
+# a query/suffix continuation) or identifier references (``uuid``,
+# ``silence.id`` — rewritten to ``{name}`` placeholders so
+# ``_match_route_pattern`` can match them against Go route parameters).
+# The first list item is assumed to be the base-URL variable (``apiUrl``,
+# ``baseUrl``) and is dropped as the host prefix.
+
+ELM_LET_STRING_JOIN_PATTERN = re.compile(
+    r"""let\s+
+        (?P<name>[a-zA-Z_]\w*)
+        \s*=\s*
+        String\.join\s+"/"\s+
+        \[\s*(?P<parts>[^\[\]]*?)\s*\]
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+# Elm ``Utils.Api.<method> <name>`` or ``Utils.Api.<method> (<name> ...)``
+# call consuming a let-bound identifier. The ``<name>`` is interpolated via
+# ``re.escape`` at match time since it varies per binding.
+_ELM_URL_CALL_TEMPLATE = (
+    r"""Utils\.Api\.
+        (?P<method>get|post|put|patch|delete|head|options)
+        \s+\(?\s*
+        {name}\b
+    """
+)
+
+# Scan window (chars) for finding the consuming call after a let-binding.
+# Elm functions are typically short; 800 chars covers the largest realistic
+# ``let ... in <body>`` block in the Alertmanager UI corpus.
+_ELM_LET_CALL_WINDOW = 800
+
+
 def _extract_url_from_match(match: re.Match, literal_group: int = 1, var_group: int = 2) -> tuple[str, str]:
     """Extract URL and url_type from a regex match.
 
@@ -1077,6 +1135,88 @@ def _scan_java_file(file_path: Path, content: str) -> list[HttpClientCall]:
     return calls
 
 
+def _parse_string_join_parts(parts: str) -> list[tuple[str, bool]]:
+    """Parse the top-level comma-separated items inside ``String.join "/" [...]``.
+
+    Returns a list of ``(value, is_literal)`` tuples. Items beginning with a
+    ``"..."`` string literal are classified as literal (literal text is the
+    value; any trailing ``++ <expr>`` is dropped). Anything else is classified
+    as an identifier reference — the value is the last dotted component of
+    the identifier (``silence.id`` → ``id``), which becomes a ``{name}``
+    placeholder downstream. Unparseable items (empty or exotic) are skipped.
+    """
+    items: list[tuple[str, bool]] = []
+    for raw in parts.split(","):
+        segment = raw.strip()
+        if not segment:
+            continue
+        literal_match = re.match(r'^"([^"]*)"', segment)
+        if literal_match is not None:
+            items.append((literal_match.group(1), True))
+            continue
+        ident_match = re.match(r"^[a-zA-Z_]\w*(?:\.\w+)*", segment)
+        if ident_match is not None:
+            last_component = ident_match.group(0).rsplit(".", 1)[-1]
+            items.append((last_component, False))
+            continue
+    return items
+
+
+def _fold_elm_string_join(parts: str) -> str | None:
+    """Fold a ``String.join "/" [...]`` parts list into a URL path.
+
+    Strategy: drop the first list item (assumed base URL variable, e.g.
+    ``apiUrl``) as the host prefix. Join the remaining items with ``/``.
+    Literal items contribute their text; identifier references become
+    ``{name}`` placeholders so ``_match_route_pattern`` can match them
+    against Go route parameters.
+
+    Returns the URL (``"/silence/{uuid}"``, ``"/alerts"``) or ``None`` if
+    the list is empty or has no path segments after the base URL.
+    """
+    items = _parse_string_join_parts(parts)
+    if len(items) < 2:
+        return None
+    segments: list[str] = []
+    for value, is_literal in items[1:]:
+        segments.append(value if is_literal else "{" + value + "}")
+    return "/" + "/".join(segments)
+
+
+def _find_elm_let_bound_url_calls(
+    content: str,
+) -> list[tuple[str, str, int]]:
+    """Find Elm ``Utils.Api.<method>`` calls whose URL comes from a
+    ``let ... = String.join "/" [...]`` binding (WI-rosan).
+
+    Returns a list of ``(method, url, line)`` tuples for each consumed
+    let-binding. A let-binding whose identifier is never referenced by a
+    subsequent ``Utils.Api.<method>`` call within the scan window is
+    ignored — we don't invent calls that aren't in the source.
+    """
+    results: list[tuple[str, str, int]] = []
+    for let_match in ELM_LET_STRING_JOIN_PATTERN.finditer(content):
+        name = let_match.group("name")
+        parts = let_match.group("parts")
+        url = _fold_elm_string_join(parts)
+        if url is None:
+            continue
+        window_end = let_match.end() + _ELM_LET_CALL_WINDOW
+        tail = content[let_match.end():window_end]
+        call_pattern = re.compile(
+            _ELM_URL_CALL_TEMPLATE.format(name=re.escape(name)),
+            re.VERBOSE,
+        )
+        call_match = call_pattern.search(tail)
+        if call_match is None:
+            continue
+        method = call_match.group("method").upper()
+        abs_pos = let_match.end() + call_match.start()
+        line = content[:abs_pos].count("\n") + 1
+        results.append((method, url, line))
+    return results
+
+
 def _scan_elm_file(file_path: Path, content: str) -> list[HttpClientCall]:
     """Scan an Elm file for HTTP client calls.
 
@@ -1090,11 +1230,12 @@ def _scan_elm_file(file_path: Path, content: str) -> list[HttpClientCall]:
     3. ``Http.request { method = "POST", url = "...", ... }`` and its
        reverse-order variant, for cases where the HTTP method is
        spelled out as a string field.
-
-    URL-building idioms that involve ``let``-bound expressions or
-    ``String.join`` over a list (a smaller minority of calls in
-    practice) are not captured by the regex layer and are deferred to
-    a proper Elm analyzer.
+    4. ``let <name> = String.join "/" [ apiUrl, "path", ... ] in
+       Utils.Api.<method> <name>`` — the indirect let-bound form used
+       throughout Alertmanager's ``Silences/Api.elm`` and
+       ``Alerts/Api.elm`` (WI-rosan). Identifier references in the
+       list become ``{name}`` placeholders so the cross-language
+       route matcher can bind them to Go route parameters.
     """
     calls: list[HttpClientCall] = []
 
@@ -1147,6 +1288,18 @@ def _scan_elm_file(file_path: Path, content: str) -> list[HttpClientCall]:
         url = match.group(1)
         method = match.group(2).upper()
         line_num = content[: match.start()].count("\n") + 1
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="elm",
+                url_type="literal",
+            )
+        )
+
+    for method, url, line_num in _find_elm_let_bound_url_calls(content):
         calls.append(
             HttpClientCall(
                 method=method,

@@ -2056,6 +2056,224 @@ class TestScanElmFile:
         assert calls[0].line == 7
 
 
+class TestElmLetStringJoin:
+    """Tests for Elm ``let <var> = String.join "/" [...]`` idiom (WI-rosan).
+
+    Alertmanager's ``Silences/Api.elm`` and ``Alerts/Api.elm`` construct their
+    URLs via a let-bound ``String.join`` over a list of path segments. The
+    Phase-1 scanner only handled the direct ``apiUrl ++ "/path"`` form, so
+    these endpoints (``getSilence``, ``fetchAlerts``, ``fetchAlertGroups``,
+    etc.) were invisible to the cross-language HTTP linker.
+    """
+
+    def test_string_join_two_literal_segments(self) -> None:
+        """``String.join "/" [ apiUrl, "silences" ]`` + ``Utils.Api.get url``
+        folds to ``GET /silences``."""
+        code = dedent('''
+            create apiUrl silence =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silences" ]
+                in
+                Utils.Api.send (Utils.Api.post url body decoder)
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/silences"
+        assert calls[0].language == "elm"
+        assert calls[0].url_type == "literal"
+
+    def test_string_join_literal_plus_concat_tail(self) -> None:
+        """``String.join "/" [ apiUrl, "alerts" ++ queryStr ]`` keeps the
+        literal prefix and drops the ``++`` tail — ``GET /alerts``."""
+        code = dedent('''
+            fetchAlerts apiUrl filter =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "alerts" ++ generateAPIQueryString filter ]
+                in
+                Utils.Api.send (Utils.Api.get url decoder)
+        ''')
+        calls = _scan_elm_file(Path("Alerts/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/alerts"
+
+    def test_string_join_with_variable_path_segment(self) -> None:
+        """``String.join "/" [ apiUrl, "silence", uuid ]`` → ``GET /silence/{uuid}``.
+        Variable path segments are preserved as ``{name}`` placeholders so
+        ``_match_route_pattern`` can match them against Go route parameters."""
+        code = dedent('''
+            getSilence apiUrl uuid =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence", uuid ]
+                in
+                Utils.Api.send (Utils.Api.get url decoder)
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/silence/{uuid}"
+        assert calls[0].url_type == "literal"
+
+    def test_string_join_three_literal_segments(self) -> None:
+        """``String.join "/" [ apiUrl, "alerts", "groups" ++ q ]`` →
+        ``/alerts/groups``."""
+        code = dedent('''
+            fetchAlertGroups apiUrl filter =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "alerts", "groups" ++ generateAPIQueryString filter ]
+                in
+                Utils.Api.send (Utils.Api.get url decoder)
+        ''')
+        calls = _scan_elm_file(Path("Alerts/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/alerts/groups"
+
+    def test_string_join_dotted_variable(self) -> None:
+        """A dotted access (``silence.id``) becomes a ``{id}`` placeholder —
+        the last dotted component names the path parameter."""
+        code = dedent('''
+            destroy apiUrl silence =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence", silence.id ]
+                in
+                Utils.Api.send (Utils.Api.delete url decoder)
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+        assert calls[0].url == "/silence/{id}"
+
+    def test_string_join_delete_method(self) -> None:
+        """Method comes from the ``Utils.Api.<method>`` name (DELETE here)."""
+        code = dedent('''
+            destroy apiUrl uuid =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence", uuid ]
+                in
+                Utils.Api.delete url decoder
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+        assert calls[0].url == "/silence/{uuid}"
+
+    def test_string_join_not_followed_by_utils_api_call(self) -> None:
+        """A let-bound ``String.join`` that is NEVER consumed by a
+        ``Utils.Api.<method>`` call within the scan window is ignored —
+        don't invent a call that isn't there."""
+        code = dedent('''
+            helper apiUrl =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence" ]
+                in
+                url
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert calls == []
+
+    def test_string_join_different_var_name(self) -> None:
+        """The let-binding may use any name, not just ``url`` — the
+        subsequent call must reference the same identifier."""
+        code = dedent('''
+            fetch apiUrl =
+                let
+                    endpoint =
+                        String.join "/" [ apiUrl, "status" ]
+                in
+                Utils.Api.send (Utils.Api.get endpoint decoder)
+        ''')
+        calls = _scan_elm_file(Path("Status/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/status"
+
+    def test_string_join_multiple_functions(self) -> None:
+        """Two functions, each with their own let-bound String.join URL,
+        produce two calls."""
+        code = dedent('''
+            getSilence apiUrl uuid =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence", uuid ]
+                in
+                Utils.Api.send (Utils.Api.get url decoder)
+
+
+            destroy apiUrl uuid =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence", uuid ]
+                in
+                Utils.Api.send (Utils.Api.delete url decoder)
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        methods = sorted((c.method, c.url) for c in calls)
+        assert methods == [
+            ("DELETE", "/silence/{uuid}"),
+            ("GET", "/silence/{uuid}"),
+        ]
+
+    def test_string_join_line_number(self) -> None:
+        """The recorded line number points to the Utils.Api call, not the
+        let-binding."""
+        code = dedent('''
+            getSilence apiUrl uuid =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence", uuid ]
+                in
+                Utils.Api.send (Utils.Api.get url decoder)
+        ''').lstrip("\n")
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        # The "Utils.Api.send" line is line 6 (after let/url/String.join/in)
+        assert calls[0].line == 6
+
+    def test_parse_string_join_parts_skips_empty_segments(self) -> None:
+        """Empty parts (e.g. produced by an empty ``String.join "/" []``
+        or an adjacent-comma artefact) are dropped, not crashed on."""
+        from hypergumbo_core.linkers.http import _parse_string_join_parts
+        # An entirely empty parts string → no items (skips empty segment).
+        assert _parse_string_join_parts("") == []
+        # Trailing / adjacent commas produce empty segments that are skipped.
+        assert _parse_string_join_parts('"a", , "b"') == [
+            ("a", True),
+            ("b", True),
+        ]
+
+    def test_fold_elm_string_join_too_few_items(self) -> None:
+        """A ``String.join`` list with fewer than 2 items has no path
+        segments after the base URL — return ``None`` so the scanner
+        drops the binding."""
+        from hypergumbo_core.linkers.http import _fold_elm_string_join
+        assert _fold_elm_string_join("") is None
+        assert _fold_elm_string_join("apiUrl") is None
+
+    def test_scan_elm_file_skips_empty_string_join_list(self) -> None:
+        """A ``let url = String.join "/" []`` binding with an empty list
+        cannot produce a URL — the scanner drops it even if a subsequent
+        Utils.Api call references the identifier."""
+        code = dedent('''
+            weird apiUrl =
+                let
+                    url =
+                        String.join "/" []
+                in
+                Utils.Api.send (Utils.Api.get url decoder)
+        ''')
+        calls = _scan_elm_file(Path("Weird.elm"), code)
+        assert calls == []
+
+
 class TestElmFilesAreScanned:
     """Integration: _find_source_files should include .elm files so the
     scanner is reached by link_http."""
