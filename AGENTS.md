@@ -158,6 +158,28 @@ some-long-command > /tmp/cmd-output.log 2>&1
 
 **Hazard specific to `auto-pr`:** when `auto-pr` detects the feature branch is behind base, it backs up `.agent/tracker-workspace/.ops` and `.agent/tracker/.ops`, rebases, then restores the backup. Tracker `discuss` / `add` / `update` operations performed *during* the auto-pr run are at risk of being overwritten by the restore step (observed 2026-04-17, tracked as WI-buhov). Recovery: lost edits may be auto-stashed under a fresh `WIP on dev:` entry — `git stash list`, reset `affected-tests.txt`, then `git stash pop`, then `./scripts/tracker sync`. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/output-capture-long-running-playbook.md`.)
 
+### Bakeoff Validation Discipline
+Any PR whose description or tracker discussion contains a quantitative bakeoff-improvement claim must receive the `awaits_bakeoff_validation` tag on its tracker item at merge time. The tag stays until a later DEEP-mode bakeoff cycle reproduces the claimed metric movement; on confirmed movement the tag is stripped via a resolution discussion that links the cohort where it was validated, and on no-movement a regression sub-item is created so the discrepancy is not silently absorbed.
+
+**What counts as a quantitative bakeoff claim** (apply the tag when any of these verb-forms appears):
+- "should improve X by N%"
+- "expected FP reduction of N"
+- "N dead → alive" or "N alive → dead"
+- "NN% reduction" / "NN% improvement"
+- "below threshold X" (any numeric threshold)
+- "newly-consumed concept" (asserting a concept flips from inert → live)
+- raw candidate-count deltas attributed to the change
+
+**What does NOT count:** qualitative claims ("handles the case", "covers the pattern"), coverage / test-count deltas, performance micro-benchmarks unrelated to the bakeoff corpus.
+
+**The authoritative running list** supersedes the pre-WI-sofom hand-maintained pattern:
+```bash
+scripts/tracker list --tag awaits_bakeoff_validation
+```
+This is the single source of truth for pending bakeoff validations. Stop-hook guidance surfaces the tag when it accumulates beyond a threshold and no DEEP cycle has run recently (implementation tracked separately from this discipline).
+
+**Integration with `bakeoff-deep-reflect aggregate`:** at aggregation time the reflect pass cross-references active `awaits_bakeoff_validation` items against the cohort's diagnostic output, injecting a per-claim question into the reflect prompt (`moved` / `no_move` / `inconclusive`). On `moved` the tag is auto-stripped with evidence; on `no_move` a regression sub-item is created. The aggregation glue is implementation work (WI-dolil); the discipline rule is in force independently of that tooling.
+
 
 ## Pre-Work Checklist
 Before starting any new feature: verify no auto-pr is in flight (PR_PENDING gate), flush queued vPRs if remote is available, **determine the authoritative remote** (check `.git/CI_FAILOVER_ACTIVE` — use `selfh` if present, `origin` otherwise), sync dev from that remote, review the spec and changelog for current progress, then create a feature branch with the naming convention author/[feat|fix|docs|refactor]/description. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md`.)
