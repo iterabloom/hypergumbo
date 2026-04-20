@@ -2301,6 +2301,180 @@ def cmd_uninstall_rust_analyzer(args: argparse.Namespace) -> int:
     return 0 if success else 1
 
 
+# WI-huham: install-extras / uninstall-extras umbrella over the three
+# per-component installers (gitleaks, embeddings, rust-analyzer). Each
+# row is (component_name, is_available, install_fn, uninstall_fn). The
+# table is the single source of truth for the umbrella so adding a
+# fourth component later is a one-line change.
+def _extras_components() -> list[tuple[str, callable, callable, callable]]:
+    """Return the rows the install-extras umbrella iterates over.
+
+    Factored into a function so imports are lazy (``install_gitleaks``
+    touches urllib / tarfile modules that would otherwise load at
+    ``hypergumbo --help`` time just to print an unrelated subcommand
+    list).
+    """
+    from .gitleaks import install_gitleaks, uninstall_gitleaks
+    from .rust_analyzer_install import (
+        install_rust_analyzer,
+        is_rust_analyzer_available,
+        uninstall_rust_analyzer,
+    )
+
+    # _is_embeddings_available + install_embeddings + uninstall_embeddings
+    # are module-local helpers; reference them via module lookup so the
+    # table rows stay declarative.
+    import sys
+    cli_mod = sys.modules[__name__]
+
+    return [
+        (
+            "gitleaks",
+            is_gitleaks_available,
+            install_gitleaks,
+            uninstall_gitleaks,
+        ),
+        (
+            "embeddings",
+            cli_mod._is_embeddings_available,
+            cli_mod._install_embeddings_impl,
+            cli_mod._uninstall_embeddings_impl,
+        ),
+        (
+            "rust-analyzer",
+            is_rust_analyzer_available,
+            install_rust_analyzer,
+            uninstall_rust_analyzer,
+        ),
+    ]
+
+
+def _install_embeddings_impl(quiet: bool = False) -> bool:
+    """Thin adapter calling the embeddings installer like the others.
+
+    The embeddings installer is inline in cmd_install_embeddings; this
+    wrapper exposes the same (quiet=...) -> bool surface so the
+    extras table can treat all three components uniformly.
+    """
+    # The real install_embeddings function is defined in this file;
+    # this adapter is here so _extras_components can reference it via
+    # module lookup and keep the table declarative.
+    import subprocess  # nosec B404 — pip install
+    import sys
+
+    if not quiet:
+        print("Installing embedding dependencies...")
+    cmd = [sys.executable, "-m", "pip", "install",
+           "sentence-transformers", "onnxruntime"]
+    try:
+        result = subprocess.run(  # nosec B603  # noqa: S603
+            cmd, capture_output=True, timeout=600.0,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        print(f"Error installing embeddings: {exc}", file=sys.stderr)
+        return False
+    if result.returncode != 0:
+        stderr = result.stderr
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        print(
+            f"Error: pip install for embeddings exited "
+            f"{result.returncode}. {stderr.strip()}",
+            file=sys.stderr,
+        )
+        return False
+    if not quiet:
+        print("  Done!")
+    return True
+
+
+def _uninstall_embeddings_impl(quiet: bool = False) -> bool:
+    """Thin adapter for the extras table uninstall path."""
+    import subprocess  # nosec B404 — pip uninstall
+    import sys
+
+    if not quiet:
+        print("Removing embedding dependencies...")
+    cmd = [sys.executable, "-m", "pip", "uninstall", "-y",
+           "sentence-transformers", "onnxruntime"]
+    try:
+        result = subprocess.run(  # nosec B603  # noqa: S603
+            cmd, capture_output=True, timeout=300.0,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        print(f"Error uninstalling embeddings: {exc}", file=sys.stderr)
+        return False
+    if result.returncode != 0:  # pragma: no cover — pip rarely fails
+        return False
+    if not quiet:
+        print("  Done!")
+    return True
+
+
+def cmd_install_extras(args: argparse.Namespace) -> int:
+    """Install (or check) every optional component in one call (WI-huham).
+
+    ``--check`` prints a status table and exits 0 iff every component
+    is present; exit 1 otherwise so scripts can gate on it.
+
+    The default action runs each installer in sequence. A failure in
+    one installer does not abort the rest — the umbrella is best-
+    effort, and the final exit code reflects whether any component
+    failed.
+
+    ``--skip gitleaks,embeddings`` omits the named components from the
+    run (and from the status table).
+    """
+    skip = set()
+    if getattr(args, "skip", None):
+        skip = {s.strip() for s in args.skip.split(",") if s.strip()}
+
+    rows = [
+        row for row in _extras_components() if row[0] not in skip
+    ]
+
+    if getattr(args, "check", False):
+        all_present = True
+        for name, is_available, _install, _uninstall in rows:
+            available = is_available()
+            symbol = "\u2713" if available else "\u2717"
+            print(
+                f"{name}: {symbol} "
+                f"{'installed' if available else 'not installed'}",
+            )
+            if not available:
+                all_present = False
+        return 0 if all_present else 1
+
+    any_failed = False
+    for name, is_available, install, _uninstall in rows:
+        if is_available():
+            if not args.quiet:
+                print(f"{name}: already installed, skipping")
+            continue
+        if not install(quiet=args.quiet):
+            print(f"{name}: install failed", file=sys.stderr)
+            any_failed = True
+    return 1 if any_failed else 0
+
+
+def cmd_uninstall_extras(args: argparse.Namespace) -> int:
+    """Mirror of install-extras for removal (WI-huham)."""
+    skip = set()
+    if getattr(args, "skip", None):
+        skip = {s.strip() for s in args.skip.split(",") if s.strip()}
+
+    rows = [
+        row for row in _extras_components() if row[0] not in skip
+    ]
+
+    any_failed = False
+    for _name, _is_available, _install, uninstall in rows:
+        if not uninstall(quiet=args.quiet):
+            any_failed = True
+    return 1 if any_failed else 0
+
+
 def _get_cache_base() -> Path:
     """Get the hypergumbo cache base directory.
 
@@ -5148,6 +5322,50 @@ The output begins with passes suggested for your current directory."""
     )
     p_uninstall_ra.set_defaults(func=cmd_uninstall_rust_analyzer)
 
+    # hypergumbo install-extras (umbrella over gitleaks + embeddings + rust-analyzer)
+    p_install_extras = sub.add_parser(
+        "install-extras",
+        help="Install every optional component in one call (gitleaks, embeddings, rust-analyzer)",
+    )
+    p_install_extras.add_argument(
+        "--check",
+        action="store_true",
+        help="Print availability table and exit; exit 1 iff any component is missing",
+    )
+    p_install_extras.add_argument(
+        "--skip",
+        default=None,
+        metavar="COMPONENTS",
+        help=(
+            "Comma-separated list of components to skip "
+            "(gitleaks,embeddings,rust-analyzer)"
+        ),
+    )
+    p_install_extras.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_install_extras.set_defaults(func=cmd_install_extras)
+
+    # hypergumbo uninstall-extras
+    p_uninstall_extras = sub.add_parser(
+        "uninstall-extras",
+        help="Uninstall every optional component in one call",
+    )
+    p_uninstall_extras.add_argument(
+        "--skip",
+        default=None,
+        metavar="COMPONENTS",
+        help="Comma-separated list of components to skip",
+    )
+    p_uninstall_extras.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_uninstall_extras.set_defaults(func=cmd_uninstall_extras)
+
     # hypergumbo cache-status
     p_cache_status = sub.add_parser(
         "cache-status",
@@ -5609,7 +5827,8 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
     extras_cmds = ["add-extras", "remove-extras", "build-grammars",
                    "install-gitleaks", "uninstall-gitleaks",
                    "install-embeddings", "uninstall-embeddings",
-                   "install-rust-analyzer", "uninstall-rust-analyzer"]
+                   "install-rust-analyzer", "uninstall-rust-analyzer",
+                   "install-extras", "uninstall-extras"]
     for i, cmd in enumerate(extras_cmds):
         _set_subparser_group(sub, cmd, "extras", 1, suborder=i)
 
@@ -6649,7 +6868,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "install-extras", "uninstall-extras", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
 
     # WI-balij (UAT UX-04): accept --debug in any position. Strip it here so
     # `hypergumbo sketch . --debug` and `hypergumbo --debug sketch .` both
