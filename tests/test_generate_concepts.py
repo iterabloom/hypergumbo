@@ -140,7 +140,7 @@ def test_committed_file_is_up_to_date() -> None:
     mod = _load_module()
     committed = REPO_ROOT / "docs" / "CONCEPTS.md"
     # Regenerate to an in-memory string and compare
-    producers = mod.scan_producers(mod.FRAMEWORKS_DIR)
+    producers = mod.scan_producers(mod.FRAMEWORKS_DIR, mod.ANALYZER_SRC_DIRS)
     consumers = mod.scan_consumers(mod.CORE_SRC_DIR)
     rows = mod.classify(producers, consumers)
     expected = mod.format_md(rows)
