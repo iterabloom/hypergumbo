@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import pytest
 
-from hypergumbo_tracker.nav_history import NavigationHistory
+from hypergumbo_tracker.nav_history import (
+    NavigationHistory,
+    format_nav_indicator,
+)
 
 
 class TestEmpty:
@@ -159,3 +162,33 @@ class TestBrowserLikeTraversal:
         assert h.depth() == 3
         h.back()
         assert h.depth() == 3
+
+
+class TestFormatNavIndicator:
+    def test_empty_returns_empty_label(self):
+        h = NavigationHistory()
+        assert format_nav_indicator(h) == "(empty)"
+
+    def test_empty_custom_label(self):
+        h = NavigationHistory()
+        assert format_nav_indicator(h, empty_label="—") == "—"
+
+    def test_single_item(self):
+        h = NavigationHistory()
+        h.push("WI-a")
+        assert format_nav_indicator(h) == "[1/1] WI-a"
+
+    def test_mid_stack(self):
+        h = NavigationHistory()
+        for id_ in ("WI-a", "WI-b", "WI-c", "WI-d"):
+            h.push(id_)
+        h.back()
+        h.back()
+        # Cursor at WI-b, which is index 1 → display "[2/4]".
+        assert format_nav_indicator(h) == "[2/4] WI-b"
+
+    def test_tip_of_stack(self):
+        h = NavigationHistory()
+        for id_ in ("WI-a", "WI-b", "WI-c"):
+            h.push(id_)
+        assert format_nav_indicator(h) == "[3/3] WI-c"

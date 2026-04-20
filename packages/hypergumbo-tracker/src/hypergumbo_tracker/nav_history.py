@@ -109,3 +109,19 @@ class NavigationHistory:
     def position(self) -> int:
         """Cursor position, 0-indexed. ``-1`` when the history is empty."""
         return self._cursor
+
+
+def format_nav_indicator(
+    history: NavigationHistory, *, empty_label: str = "(empty)"
+) -> str:
+    """Return a short human-readable indicator like ``"[2/4] WI-foo"``.
+
+    Intended for the nav modal header. Shows the cursor position as
+    ``[N/M]`` (1-indexed) followed by the current item ID. Returns
+    *empty_label* when the history has no entries so the header never
+    renders an ambiguous blank string.
+    """
+    current = history.current()
+    if current is None:
+        return empty_label
+    return f"[{history.position() + 1}/{history.depth()}] {current}"
