@@ -8,6 +8,9 @@ plus the ``rust.py`` stable-id parity helper. Later slices add a live
 flag machinery.
 """
 
+from hypergumbo_lang_rust_analyzer.graceful_degrade import (
+    try_analyze_with_rust_analyzer,
+)
 from hypergumbo_lang_rust_analyzer.invoke import (
     RustAnalyzerError,
     RustAnalyzerInvocationFailed,
@@ -31,4 +34,5 @@ __all__ = [
     "reassign_rust_stable_ids",
     "run_rust_analyzer_scip",
     "translate_scip_to_hg",
+    "try_analyze_with_rust_analyzer",
 ]
