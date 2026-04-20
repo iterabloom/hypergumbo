@@ -691,10 +691,43 @@ jobs:
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
+  # Runs the top-level tests/ directory, which exercises agent infrastructure
+  # (.agent/hooks/_shared/**, scripts/**) that is not owned by any package and
+  # therefore was previously never executed in CI. See WI-javan. Coverage is
+  # intentionally not enforced here — those modules are out of the per-package
+  # --cov scopes, and the top-level tests verify behavior, not line coverage.
+  test-agent-infra:
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-xdist pyyaml
+      - name: Run top-level tests
+        run: |
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+          pytest tests/ -n "$WORKERS" --tb=short --no-cov
+
   # Aggregate results after all test jobs complete
   aggregate:
     needs: [changes, test-core, test-core-retry, test-mainstream, test-mainstream-retry,
-            test-common, test-extended, test-tracker, test-tracker-retry]
+            test-common, test-extended, test-tracker, test-tracker-retry, test-agent-infra]
     if: always()
     runs-on: self-hosted
     steps:
@@ -723,6 +756,7 @@ jobs:
           echo "  test-extended: ${{ needs.test-extended.result }} (coverage: ${{ needs.test-extended.outputs.coverage }}%)"
           echo "  test-tracker: ${{ needs.test-tracker.result }} (coverage: ${{ needs.test-tracker.outputs.coverage }}%)"
           echo "  test-tracker-retry: ${{ needs.test-tracker-retry.result }} (coverage: ${{ needs.test-tracker-retry.outputs.coverage }}%)"
+          echo "  test-agent-infra: ${{ needs.test-agent-infra.result }}"
 
           # Heavy jobs pass if primary OR retry succeeded
           core_ok=false
@@ -741,7 +775,8 @@ jobs:
              [[ "$mainstream_ok" == "true" ]] && \
              [[ "${{ needs.test-common.result }}" == "success" ]] && \
              [[ "${{ needs.test-extended.result }}" == "success" ]] && \
-             [[ "$tracker_ok" == "true" ]]; then
+             [[ "$tracker_ok" == "true" ]] && \
+             [[ "${{ needs.test-agent-infra.result }}" == "success" ]]; then
             echo "conclusion=success" >> "$GITHUB_OUTPUT"
             echo "✅ All test jobs passed"
           else
