@@ -1536,7 +1536,7 @@ For detailed designs, see [roadmap-details.md](future/roadmap-details.md) and [R
 | Additional linkers | Near-term | 🟩 Constant propagation for dynamic routes (Python). 🟩 Middleware chain linker (same-file chaining). 🟪 Proxy detection. |
 | Additional output views | Near-term | 🟪 `ir_export.json`, `context_bundle.json`, `sarif.json`, flow specs. |
 | Testing & CI enhancements | Near-term | 🟪 Longitudinal analysis, integration test markers. |
-| Multi-fidelity analysis | Medium-term | 🟪 Language server backends (tsserver, pyright, rust-analyzer, gopls, JDT). Mixed-fidelity graphs. |
+| Multi-fidelity analysis | Medium-term | 🟩 rust-analyzer SCIP backend shipped (opt-in via `HYPERGUMBO_RUST_ANALYZER=1` or `--backend rust-analyzer`); falls through to tree-sitter `rust.py` when unavailable. 🟪 tsserver, pyright, gopls, JDT backends. Mixed-fidelity graphs. |
 | Agent context router | Medium-term | 🟪 Query → slice → context bundle pipeline. Builds on existing slicing. |
 | Incremental analysis | Not on roadmap | 18+ month effort. Current mitigation: caching, partial re-analysis. |
 
