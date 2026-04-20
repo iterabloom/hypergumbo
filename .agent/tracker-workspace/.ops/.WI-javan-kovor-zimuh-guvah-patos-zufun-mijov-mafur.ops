@@ -26,3 +26,18 @@
   clock: 2  # 40d7
   nonce: 40d7  # 40d7
   message: "Blocked by WI-bukag: surfacing the 3 pre-existing test failures in top-level tests/ must happen before full-suite.yml can add a test-agent-infra job, otherwise full-suite goes red immediately. Draft implementation (jgstern-agent/feat/wi-javan-toplevel-tests-in-ci) was discarded in favor of filing WI-bukag first. Sequence: land WI-bukag (fix the 3 failures), then re-create a minimal WI-javan PR that only adds the CI job."  # 40d7
+- op: update  # e288
+  at: '2026-04-20T07:44:02Z'  # e288
+  by: agent  # e288
+  actor: jgstern_agent  # e288
+  clock: 3  # e288
+  nonce: e288  # e288
+  set:  # e288
+    status: done  # e288
+- op: discuss  # 1456
+  at: '2026-04-20T07:44:02Z'  # 1456
+  by: agent  # 1456
+  actor: jgstern_agent  # 1456
+  clock: 4  # 1456
+  nonce: '1456'  # 1456
+  message: "Shipped in PR #3216 (merged to dev). Added test-agent-infra job to full-suite.yml: self-hosted runner, Python 3.11, cgroup-aware pytest-xdist, runs pytest tests/ --no-cov --tb=short. Wired into aggregate job's needs list AND conclusion calculation so it's a hard gate. Guarded by changes.outputs.code == 'true'. WI-bukag (merged first in #3215) cleared the 3 pre-existing failures that would have made this job go red on merge. Follow-up still open: teach ci.yml smart-test to recognize .agent/hooks/_shared/ + scripts/ as source paths for per-PR gating (not this PR's scope)."  # 1456

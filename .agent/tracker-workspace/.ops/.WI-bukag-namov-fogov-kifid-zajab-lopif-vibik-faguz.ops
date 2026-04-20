@@ -28,3 +28,18 @@
   set: {}  # 12ed
   add:  # 12ed
     isbefore: [WI-javan-kovor-zimuh-guvah-patos-zufun-mijov-mafur]  # 12ed
+- op: update  # 5cdc
+  at: '2026-04-20T07:35:03Z'  # 5cdc
+  by: agent  # 5cdc
+  actor: jgstern_agent  # 5cdc
+  clock: 3  # 5cdc
+  nonce: 5cdc  # 5cdc
+  set:  # 5cdc
+    status: done  # 5cdc
+- op: discuss  # 6317
+  at: '2026-04-20T07:35:03Z'  # 6317
+  by: agent  # 6317
+  actor: jgstern_agent  # 6317
+  clock: 4  # 6317
+  nonce: '6317'  # 6317
+  message: "Fixed in PR #3215 (merged to dev). (1) scan_producers call in test_generate_concepts.py updated to pass ANALYZER_SRC_DIRS (matching the WI-tasab production signature). (2)/(3) pipeline_version assertions updated v1 → v2 (matching WI-nadud normalization pass); test_pipeline_version_is_v1 renamed test_pipeline_version_is_v2 for intent/assertion parity. All 941 top-level tests pass. WI-javan unblocked."  # 6317

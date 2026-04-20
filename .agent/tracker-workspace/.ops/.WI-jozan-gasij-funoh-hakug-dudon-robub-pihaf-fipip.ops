@@ -1,0 +1,20 @@
+- op: create  # 7042
+  at: '2026-04-20T07:46:23Z'  # 7042
+  by: agent  # 7042
+  actor: jgstern_agent  # 7042
+  clock: 1  # 7042
+  nonce: '7042'  # 7042
+  data:  # 7042
+    kind: work_item  # 7042
+    title: "Teach ci.yml smart-test to recognize .agent/hooks/_shared/ and scripts/ as source paths"  # 7042
+    status: todo_soft  # 7042
+    priority: 3  # 7042
+    parent:  # 7042
+    tags:  # 7042
+    - ci_infrastructure  # 7042
+    isbefore: []  # 7042
+    duplicate_of: []  # 7042
+    not_duplicate_of: []  # 7042
+    pr_ref:  # 7042
+    description: "Follow-up to WI-javan (PR #3216). WI-javan closed the 4-hour full-suite cadence gap by adding a test-agent-infra job that runs the top-level tests/ directory. However, ci.yml's per-PR smart-test manifest still keys off packages/.*/src/.*\\.py changed-file detection. A PR that changes only .agent/hooks/_shared/*.py or scripts/* produces an empty manifest, so ci.yml's 'Run tests with coverage' step skips pytest entirely and the per-PR gate is silent on agent-infrastructure regressions. Fix: teach scripts/smart-test (and the ci.yml workflow reading the manifest) to recognize a curated _SOURCE_PATHS allowlist including .agent/hooks/_shared/*.py, scripts/agent-supervisor, scripts/agent-notes, scripts/auto-pr, scripts/merge-pr, etc., and map each to the relevant top-level tests/test_*.py file. Acceptance: a PR that only touches .agent/hooks/_shared/awaits_bakeoff_nudge.py runs tests/test_awaits_bakeoff_nudge.py in ci.yml."  # 7042
+    fields: {}  # 7042
