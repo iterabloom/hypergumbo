@@ -227,16 +227,21 @@ except Exception:
       )
     fi
     WATCHED_REGEX=$(IFS='|'; echo "${WATCHED_PATTERNS[*]}")
+    _WATCHED_PROCESS_PY="$REPO_ROOT/.agent/hooks/_shared/watched_process.py"
 
-    # _watched_alive returns 0 (true) when at least one matching process
-    # is alive AFTER excluding shell-eval wrappers like `bash -c "..."`
-    # whose cmdline merely contains the pattern as data (e.g. an agent
-    # heredoc that happens to mention pytest).  Without this filter the
-    # hook would wait on its own caller's command line.
+    # _watched_alive returns 0 (true) when at least one process is actually
+    # running one of the watched commands.  The original implementation used
+    # ``pgrep -af $regex | grep -v`` which substring-matched the full
+    # cmdline, so ANY process whose argv contained the pattern text (e.g. an
+    # ``inotifywait`` helper with a ``/tmp/pytest-<id>/...`` path) was
+    # treated as a live pytest. WI-zajob replaces that with a leading-token
+    # match in ``watched_process.py`` that compares argv[0] (after path
+    # strip) to the first pattern token, so only real command invocations
+    # qualify. The ``pgrep`` prefilter is retained as a cheap initial scan;
+    # the Python filter then applies the strict rule.
     _watched_alive() {
       pgrep -u "$USER" -af "$WATCHED_REGEX" 2>/dev/null \
-        | grep -vE '^[0-9]+ +(/[^ ]*/)?(bash|sh) +-c ' \
-        | grep -q .
+        | python3 "$_WATCHED_PROCESS_PY" "${WATCHED_PATTERNS[@]}"
     }
 
     if _watched_alive; then
