@@ -110,6 +110,18 @@ stop_hook:
     - bash ./scripts/merge-pr
   watched_poll_seconds: 3
   watched_max_wait_seconds: 1800
+
+  # awaits_bakeoff_validation backlog nudge (WI-dolil slice 3).
+  # When items carrying the `awaits_bakeoff_validation` tag accumulate
+  # beyond `threshold` AND the most recent DEEP bakeoff cycle's
+  # `state.json` is older than `stale_cycle_hours`, the stop hook
+  # appends a short nudge section to the guidance file encouraging a
+  # DEEP cycle. If this block or its keys are omitted, the defaults
+  # (threshold=5, stale_cycle_hours=72) in awaits_bakeoff_nudge.py
+  # apply. The count uses the same `blocking_statuses` set above.
+  awaits_bakeoff_validation_nudge:
+    threshold: 5
+    stale_cycle_hours: 72
 well_known_tags:
   - developer_experience
   - bakeoff_infrastructure

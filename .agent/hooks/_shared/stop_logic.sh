@@ -354,6 +354,19 @@ except Exception:
   fi
 fi
 
+# --- awaits_bakeoff_validation backlog nudge (WI-dolil slice 3) ---
+# Advisory nudge: when tag-bearing items pile up AND no DEEP cycle has run
+# recently, append a short section to whatever guidance file we emit.
+# Output is empty if conditions aren't met; any failure is swallowed by
+# the helper script so this never blocks the stop hook.
+_NUDGE_SCRIPT="$REPO_ROOT/.agent/hooks/_shared/awaits_bakeoff_nudge.py"
+if [[ -x /usr/bin/env ]] && [[ -f "$_NUDGE_SCRIPT" ]] && command -v python3 &>/dev/null; then
+  _NUDGE_OUT=$(python3 "$_NUDGE_SCRIPT" "$REPO_ROOT" 2>/dev/null || true)
+  if [[ -n "$_NUDGE_OUT" ]]; then
+    BAKEOFF_SUFFIX+="$_NUDGE_OUT"
+  fi
+fi
+
 # --- Write guidance file (if any TODOs exist) ---
 GUIDANCE_FILE=""
 if [[ "$TOTAL_TODOS" -gt 0 ]]; then

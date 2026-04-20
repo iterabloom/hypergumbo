@@ -176,7 +176,7 @@ Any PR whose description or tracker discussion contains a quantitative bakeoff-i
 ```bash
 scripts/tracker list --tag awaits_bakeoff_validation
 ```
-This is the single source of truth for pending bakeoff validations. Stop-hook guidance surfaces the tag when it accumulates beyond a threshold and no DEEP cycle has run recently (implementation tracked separately from this discipline).
+This is the single source of truth for pending bakeoff validations. The stop hook surfaces the tag automatically: when the count of tag-bearing items in a blocking status reaches `threshold` AND the most recent DEEP bakeoff cycle's `state.json` is older than `stale_cycle_hours`, an `## AWAITS_BAKEOFF_VALIDATION BACKLOG` section is appended to the active guidance file pointing at `./scripts/bakeoff-deep cycle`. Both knobs live under `stop_hook.awaits_bakeoff_validation_nudge` in `.agent/tracker/config.yaml` (defaults: `threshold=5`, `stale_cycle_hours=72`). Worker: `.agent/hooks/_shared/awaits_bakeoff_nudge.py`.
 
 **Integration with `bakeoff-deep-reflect aggregate`:** at aggregation time the reflect pass cross-references active `awaits_bakeoff_validation` items against the cohort's diagnostic output, injecting a per-claim question into the reflect prompt (`moved` / `no_move` / `inconclusive`). On `moved` the tag is auto-stripped with evidence; on `no_move` a regression sub-item is created. The aggregation glue is implementation work (WI-dolil); the discipline rule is in force independently of that tooling.
 
