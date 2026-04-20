@@ -55,7 +55,7 @@ import os
 import re
 from functools import partial
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, Callable, ClassVar
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -81,7 +81,9 @@ from textual.widgets.option_list import Option
 
 from rich.text import Text as RichText
 
+from hypergumbo_tracker.item_nav_render import build_nav_modal_content
 from hypergumbo_tracker.models import CompiledItem, FieldSchema, Tier
+from hypergumbo_tracker.nav_history import NavigationHistory
 from hypergumbo_tracker.store import (
     AmbiguousPrefixError,
     DiscussionRateLimitError,
@@ -1464,6 +1466,152 @@ class LockScreen(ModalScreen[dict[str, list[str]] | None]):
             self.dismiss(None)
 
     def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class ItemNavModal(ModalScreen[None]):
+    """Browser-style navigation modal for cross-referencing tracker items.
+
+    WI-sulij: clicking an item-ID hotspot in a Description or Activity
+    pane opens this modal on the target item. Back / Forward step
+    through the visited IDs (semantics in
+    :class:`NavigationHistory`), a jump Input at the top accepts a
+    typed ID for arbitrary navigation, and the rendered Description
+    and Activity panes carry their own clickable hotspots via
+    :func:`build_nav_modal_content`. Close (button or Escape) discards
+    the history.
+
+    The modal is decoupled from ``TrackerSet`` — callers inject:
+
+    - ``exists(item_id) -> bool`` — cheap existence check used both to
+      decide whether a typed jump is valid and whether each ID match in
+      the content text becomes a clickable hotspot.
+    - ``content_for(item_id) -> (detail_text, activity_text)`` — called
+      only for IDs that already passed ``exists``; produces the raw
+      Rich markup for the two panes (typically
+      ``"\\n".join(_format_detail_lines(...))`` and the activity
+      equivalent).
+
+    Injecting these callables means the modal can be unit-tested with
+    a dict-backed fake without constructing real ``CompiledItem``
+    instances or mounting a full app.
+    """
+
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+        ("escape", "close", "Close"),
+    ]
+
+    DEFAULT_CSS = _modal_css("ItemNavModal")
+
+    def __init__(
+        self,
+        initial_item_id: str,
+        *,
+        exists: Callable[[str], bool],
+        content_for: Callable[[str], tuple[str, str]],
+        id_pattern: re.Pattern[str],
+        history: NavigationHistory | None = None,
+    ) -> None:
+        super().__init__()
+        self._initial = initial_item_id
+        self._exists = exists
+        self._content_for = content_for
+        self._pattern = id_pattern
+        self._history = history if history is not None else NavigationHistory()
+
+    def compose(self) -> ComposeResult:
+        # Push the initial ID up front so compose-time widget content
+        # reflects the first-render state without a deferred on_mount
+        # pass. Later navigation mutates the history in place and the
+        # _render() helper updates the same widgets.
+        self._history.push(self._initial)
+        content = self._build_content()
+        with Vertical(id="modal-dialog"):
+            yield Static(content.header, id="nav-header")
+            with Horizontal(id="nav-controls"):
+                yield Button(
+                    "\u25c0",
+                    id="nav-back",
+                    disabled=not self._history.can_go_back,
+                )
+                yield Button(
+                    "\u25b6",
+                    id="nav-forward",
+                    disabled=not self._history.can_go_forward,
+                )
+                yield Input(placeholder="Jump to ID...", id="nav-jump")
+                yield Button("Close", variant="primary", id="nav-close")
+            yield Static("", id="nav-error")
+            yield Static(content.detail, id="nav-detail")
+            yield Static(content.activity, id="nav-activity")
+
+    def _build_content(self):
+        current = self._history.current()
+        assert current is not None, "history always has the initial ID pushed"
+        detail_text, activity_text = self._content_for(current)
+        return build_nav_modal_content(
+            history=self._history,
+            detail_text=detail_text,
+            activity_text=activity_text,
+            pattern=self._pattern,
+            resolver=self._exists,
+        )
+
+    def _refresh_content(self) -> None:
+        content = self._build_content()
+        self.query_one("#nav-header", Static).update(content.header)
+        self.query_one("#nav-detail", Static).update(content.detail)
+        self.query_one("#nav-activity", Static).update(content.activity)
+        self.query_one("#nav-back", Button).disabled = (
+            not self._history.can_go_back
+        )
+        self.query_one("#nav-forward", Button).disabled = (
+            not self._history.can_go_forward
+        )
+
+    def _show_error(self, msg: str) -> None:
+        self.query_one("#nav-error", Static).update(msg)
+
+    def _clear_error(self) -> None:
+        self.query_one("#nav-error", Static).update("")
+
+    def _navigate_to(self, item_id: str) -> None:
+        """Shared push-and-render used by jump input and click actions."""
+        if not self._exists(item_id):
+            self._show_error(f"Item not found: {item_id}")
+            return
+        self._clear_error()
+        self._history.push(item_id)
+        self._refresh_content()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id
+        if bid == "nav-back":
+            self._history.back()
+            self._clear_error()
+            self._refresh_content()
+        elif bid == "nav-forward":
+            self._history.forward()
+            self._clear_error()
+            self._refresh_content()
+        elif bid == "nav-close":
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != "nav-jump":
+            return  # pragma: no cover — only one Input in this modal
+        value = event.value.strip()
+        if not value:
+            return
+        self._navigate_to(value)
+        if self._exists(value):
+            event.input.value = ""
+
+    def action_jump_to_item(self, item_id: str) -> None:
+        """Action handler for ``[@click=jump_to_item('ID')]`` hotspots."""
+        self._navigate_to(item_id)
+
+    def action_close(self) -> None:
         self.dismiss(None)
 
 
