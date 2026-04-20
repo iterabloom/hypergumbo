@@ -1249,3 +1249,248 @@ class TestAggregateWithIngest:
 
         assert result == 0
         mock_ingest.assert_not_called()
+
+
+class TestAwaitsBakeoffValidationLoading:
+    """Load active awaits_bakeoff_validation items via the tracker CLI."""
+
+    def test_load_returns_list_on_success(self, bakeoff_features_reflect):
+        fake = [{"id": "WI-abc", "title": "t", "description": "d", "tags": []}]
+        completed = mock.Mock(returncode=0, stdout=json.dumps(fake), stderr="")
+        with mock.patch.object(
+            bakeoff_features_reflect.subprocess, "run", return_value=completed
+        ):
+            items = bakeoff_features_reflect.load_awaits_bakeoff_validation_items()
+        assert items == fake
+
+    def test_load_returns_empty_on_nonzero_exit(self, bakeoff_features_reflect):
+        completed = mock.Mock(returncode=2, stdout="", stderr="boom")
+        with mock.patch.object(
+            bakeoff_features_reflect.subprocess, "run", return_value=completed
+        ):
+            items = bakeoff_features_reflect.load_awaits_bakeoff_validation_items()
+        assert items == []
+
+    def test_load_returns_empty_on_invalid_json(self, bakeoff_features_reflect):
+        completed = mock.Mock(returncode=0, stdout="not json", stderr="")
+        with mock.patch.object(
+            bakeoff_features_reflect.subprocess, "run", return_value=completed
+        ):
+            items = bakeoff_features_reflect.load_awaits_bakeoff_validation_items()
+        assert items == []
+
+    def test_load_returns_empty_on_non_list_payload(self, bakeoff_features_reflect):
+        completed = mock.Mock(
+            returncode=0, stdout=json.dumps({"not": "a list"}), stderr=""
+        )
+        with mock.patch.object(
+            bakeoff_features_reflect.subprocess, "run", return_value=completed
+        ):
+            items = bakeoff_features_reflect.load_awaits_bakeoff_validation_items()
+        assert items == []
+
+    def test_load_returns_empty_on_subprocess_error(self, bakeoff_features_reflect):
+        with mock.patch.object(
+            bakeoff_features_reflect.subprocess,
+            "run",
+            side_effect=OSError("no such binary"),
+        ):
+            items = bakeoff_features_reflect.load_awaits_bakeoff_validation_items()
+        assert items == []
+
+
+class TestValidationClaimsSection:
+    """Format the awaits_bakeoff_validation prompt section."""
+
+    def test_empty_items_yields_empty_section(self, bakeoff_features_reflect):
+        assert bakeoff_features_reflect.format_validation_claims_section([]) == ""
+
+    def test_section_lists_item_ids_and_titles(self, bakeoff_features_reflect):
+        items = [
+            {"id": "WI-alpha", "title": "Alpha claim", "description": "Short context."},
+            {"id": "WI-beta", "title": "Beta claim", "description": "Another."},
+        ]
+        section = bakeoff_features_reflect.format_validation_claims_section(items)
+        assert "Active Bakeoff Validation Claims" in section
+        assert "WI-alpha" in section
+        assert "Alpha claim" in section
+        assert "WI-beta" in section
+        assert "awaits_bakeoff_validation_verdicts" in section
+
+    def test_section_truncates_long_descriptions(self, bakeoff_features_reflect):
+        items = [{"id": "WI-x", "title": "x", "description": "A" * 1200}]
+        section = bakeoff_features_reflect.format_validation_claims_section(items)
+        assert "…" in section
+        assert "A" * 1200 not in section
+
+    def test_section_handles_missing_fields(self, bakeoff_features_reflect):
+        items = [{"id": "WI-bare"}]
+        section = bakeoff_features_reflect.format_validation_claims_section(items)
+        assert "WI-bare" in section
+
+    def test_section_uses_first_paragraph_only(self, bakeoff_features_reflect):
+        items = [
+            {
+                "id": "WI-multi",
+                "title": "T",
+                "description": "First paragraph.\n\nSecond paragraph with secret.",
+            }
+        ]
+        section = bakeoff_features_reflect.format_validation_claims_section(items)
+        assert "First paragraph." in section
+        assert "Second paragraph with secret." not in section
+
+
+class TestPromptInjectionOfClaims:
+    """Reflect prompt includes the validation section when claims are active."""
+
+    def test_prompt_omits_section_with_no_claims(
+        self, deep_session, bakeoff_features_reflect
+    ):
+        session_dir, _ = deep_session
+        args = mock.Mock(workdir=str(session_dir), iteration=None)
+        with mock.patch.object(
+            bakeoff_features_reflect,
+            "load_awaits_bakeoff_validation_items",
+            return_value=[],
+        ):
+            bakeoff_features_reflect.cmd_reflect(args)
+        prompt = (
+            session_dir / "reflect" / "cohort-002" / "iter-001" / "repo-a.prompt.md"
+        ).read_text()
+        # The heading only appears when claims are active; a conditional
+        # reference in the YAML output schema mentions the heading in quotes.
+        assert "## Active Bakeoff Validation Claims" not in prompt
+
+    def test_prompt_contains_section_with_claims(
+        self, deep_session, bakeoff_features_reflect
+    ):
+        session_dir, _ = deep_session
+        args = mock.Mock(workdir=str(session_dir), iteration=None)
+        claims = [
+            {"id": "WI-zeta", "title": "Z claim", "description": "Short desc."}
+        ]
+        with mock.patch.object(
+            bakeoff_features_reflect,
+            "load_awaits_bakeoff_validation_items",
+            return_value=claims,
+        ):
+            bakeoff_features_reflect.cmd_reflect(args)
+        prompt = (
+            session_dir / "reflect" / "cohort-002" / "iter-001" / "repo-a.prompt.md"
+        ).read_text()
+        assert "Active Bakeoff Validation Claims" in prompt
+        assert "WI-zeta" in prompt
+
+
+class TestValidationVerdictAggregation:
+    """Aggregate per-claim verdicts across repo assessments."""
+
+    def _a_with_verdicts(self, repo, verdicts):
+        a = _make_deep_assessment(repo)
+        a["awaits_bakeoff_validation_verdicts"] = verdicts
+        return a
+
+    def test_no_verdicts_no_field(self, bakeoff_features_reflect):
+        a = _make_deep_assessment("repo-a")
+        summary = bakeoff_features_reflect.aggregate_assessments([a])
+        assert "awaits_bakeoff_validation_verdicts" not in summary
+
+    def test_single_item_plurality_moved(self, bakeoff_features_reflect):
+        assessments = [
+            self._a_with_verdicts(
+                "repo-a",
+                [{"item_id": "WI-x", "verdict": "moved", "evidence": "see slice"}],
+            ),
+            self._a_with_verdicts(
+                "repo-b",
+                [{"item_id": "WI-x", "verdict": "moved", "evidence": "see io"}],
+            ),
+            self._a_with_verdicts(
+                "repo-c",
+                [{"item_id": "WI-x", "verdict": "no_move", "evidence": "nope"}],
+            ),
+        ]
+        summary = bakeoff_features_reflect.aggregate_assessments(assessments)
+        verdicts = summary["awaits_bakeoff_validation_verdicts"]
+        assert len(verdicts) == 1
+        row = verdicts[0]
+        assert row["item_id"] == "WI-x"
+        assert row["moved"] == 2
+        assert row["no_move"] == 1
+        assert row["plurality"] == "moved"
+        assert {ev["repo"] for ev in row["evidence"]} == {"repo-a", "repo-b", "repo-c"}
+
+    def test_tied_plurality(self, bakeoff_features_reflect):
+        assessments = [
+            self._a_with_verdicts(
+                "repo-a", [{"item_id": "WI-t", "verdict": "moved"}]
+            ),
+            self._a_with_verdicts(
+                "repo-b", [{"item_id": "WI-t", "verdict": "no_move"}]
+            ),
+        ]
+        summary = bakeoff_features_reflect.aggregate_assessments(assessments)
+        row = summary["awaits_bakeoff_validation_verdicts"][0]
+        assert row["plurality"] == "tied"
+
+    def test_invalid_verdicts_ignored(self, bakeoff_features_reflect):
+        assessments = [
+            self._a_with_verdicts(
+                "repo-a",
+                [
+                    {"item_id": "WI-y", "verdict": "bogus"},
+                    {"item_id": None, "verdict": "moved"},
+                    "not a dict",
+                    {"item_id": "WI-y", "verdict": "moved"},
+                ],
+            ),
+        ]
+        summary = bakeoff_features_reflect.aggregate_assessments(assessments)
+        row = summary["awaits_bakeoff_validation_verdicts"][0]
+        assert row["item_id"] == "WI-y"
+        assert row["moved"] == 1
+        assert row["no_move"] == 0
+
+    def test_all_inconclusive_reports_inconclusive_plurality(
+        self, bakeoff_features_reflect
+    ):
+        assessments = [
+            self._a_with_verdicts(
+                "repo-a", [{"item_id": "WI-q", "verdict": "inconclusive"}]
+            ),
+        ]
+        summary = bakeoff_features_reflect.aggregate_assessments(assessments)
+        row = summary["awaits_bakeoff_validation_verdicts"][0]
+        assert row["plurality"] == "inconclusive"
+
+    def test_verdict_plurality_helper_empty_counts(self, bakeoff_features_reflect):
+        result = bakeoff_features_reflect._verdict_plurality(
+            {"moved": 0, "no_move": 0, "inconclusive": 0}
+        )
+        assert result == "inconclusive"
+
+
+class TestAggregatePrintsValidationVerdicts:
+    """_print_aggregate_summary surfaces verdicts when present."""
+
+    def test_prints_verdict_lines(self, bakeoff_features_reflect, capsys):
+        summary = {
+            "total_repos": 1,
+            "verdicts": {"USEFUL": 1, "PARTIALLY_USEFUL": 0, "NOT_USEFUL": 0},
+            "awaits_bakeoff_validation_verdicts": [
+                {
+                    "item_id": "WI-a",
+                    "moved": 1,
+                    "no_move": 0,
+                    "inconclusive": 0,
+                    "plurality": "moved",
+                    "evidence": [],
+                }
+            ],
+        }
+        bakeoff_features_reflect._print_aggregate_summary(summary)
+        out = capsys.readouterr().out
+        assert "awaits_bakeoff_validation verdicts" in out
+        assert "WI-a" in out
+        assert "plurality=moved" in out

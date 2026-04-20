@@ -108,7 +108,7 @@ whether hypergumbo's analysis outputs would be useful to you for common developm
 ## Available Artifacts
 The following hypergumbo outputs are available for your assessment:
 {artifact_list}
-{prior_context_section}
+{prior_context_section}{validation_claims_section}
 ## Assessment Protocol
 
 Examine the artifacts and source code, then evaluate usefulness for these 3 tasks:
@@ -230,6 +230,18 @@ developer_assessment:
 
   questions:
     - "open question about hypergumbo behavior or output"
+
+  # Only include this field if the "Active Bakeoff Validation Claims" section
+  # appeared above. Answer one entry per listed item, keyed by item_id.
+  # verdict MUST be exactly one of: moved | no_move | inconclusive
+  #   moved        — this repo's artifacts clearly show the claimed metric movement
+  #   no_move      — this repo's artifacts clearly fail to show the claimed movement
+  #   inconclusive — this repo is not a fair test (wrong language, wrong construct,
+  #                  or the claim is not checkable from the artifacts available)
+  awaits_bakeoff_validation_verdicts:
+    - item_id: "WI-xxxx-..."
+      verdict: moved | no_move | inconclusive
+      evidence: "one-sentence pointer to the artifact or source file that justifies the verdict"
 ```
 
 Be specific and concrete. Reference actual files and functions from the repo.
@@ -490,20 +502,104 @@ def format_prior_context(prior_assessment: dict) -> str:
     )
 
 
+def load_awaits_bakeoff_validation_items(
+    tracker_script: str = "scripts/tracker",
+    repo_root: str = None,
+) -> list[dict]:
+    """Load active awaits_bakeoff_validation items via the tracker CLI.
+
+    "Active" means status is todo_soft or in_progress — items that have
+    shipped with a quantitative bakeoff claim but have not yet been
+    validated (or explicitly closed). Returns a list of item dicts with
+    at least id, title, description, status, tags; empty list on any
+    failure so the reflect pipeline degrades gracefully in environments
+    where the tracker is unavailable (e.g. a fresh clone without the
+    auto-sync infrastructure).
+    """
+    if repo_root is None:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cmd = [
+        os.path.join(repo_root, tracker_script),
+        "--json",
+        "list",
+        "--tag", "awaits_bakeoff_validation",
+        "--status", "todo_soft",
+        "--status", "in_progress",
+        "--limit", "200",
+    ]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=30, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0:
+        return []
+    try:
+        items = json.loads(result.stdout)
+    except (ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(items, list):
+        return []
+    return items
+
+
+def format_validation_claims_section(items: list[dict]) -> str:
+    """Format the awaits_bakeoff_validation items into a prompt section.
+
+    Returns an empty string when no items are active so the reflect
+    prompt stays unchanged in the steady-state case.
+    """
+    if not items:
+        return ""
+    lines = [
+        "",
+        "## Active Bakeoff Validation Claims",
+        "",
+        "The following tracker items shipped with quantitative bakeoff-improvement "
+        "claims that have not yet been validated. For each item, inspect the "
+        "artifacts above and decide whether this repo's output confirms, contradicts, "
+        "or is silent on the claim. Report one verdict per item in the "
+        "`awaits_bakeoff_validation_verdicts` field of your YAML output (see below).",
+        "",
+    ]
+    for item in items:
+        item_id = item.get("id", "UNKNOWN")
+        title = (item.get("title") or "").strip()
+        desc = (item.get("description") or "").strip()
+        first_para = desc.split("\n\n", 1)[0] if desc else ""
+        if len(first_para) > 600:
+            first_para = first_para[:600].rstrip() + "…"
+        lines.append(f"### {item_id}")
+        if title:
+            lines.append(f"**Title:** {title}")
+        if first_para:
+            lines.append("")
+            lines.append(f"**Claim / context:** {first_para}")
+        lines.append("")
+    return "\n".join(lines) + "\n"
+
+
 def generate_assessment_prompt(
     repo_name: str,
     repo_path: str,
     repo_out_dir: str,
     prior_assessment: dict = None,
+    validation_claims: list[dict] | None = None,
 ) -> str:
     """Generate the assessment prompt for a specific repo.
 
     If prior_assessment is provided, includes prior findings context
-    so the assessor can compute trajectory.
+    so the assessor can compute trajectory. If validation_claims is
+    provided, injects a section listing active awaits_bakeoff_validation
+    items and asks the assessor to adjudicate each one.
     """
     artifact_list = get_artifact_list(repo_out_dir)
     timestamp = datetime.datetime.now().isoformat()
     prior_context_section = format_prior_context(prior_assessment)
+    validation_claims_section = format_validation_claims_section(
+        validation_claims or []
+    )
 
     return ASSESSMENT_PROMPT_TEMPLATE.format(
         repo_name=repo_name,
@@ -511,6 +607,7 @@ def generate_assessment_prompt(
         artifact_list=artifact_list,
         timestamp=timestamp,
         prior_context_section=prior_context_section,
+        validation_claims_section=validation_claims_section,
     )
 
 
@@ -576,6 +673,7 @@ def aggregate_assessments(assessments: list) -> dict:
     all_noise = []
     all_ideas = []
     all_questions = []
+    validation_verdicts: dict[str, dict] = {}
 
     # Score collection
     overall_scores = []
@@ -603,6 +701,28 @@ def aggregate_assessments(assessments: list) -> dict:
 
         all_ideas.extend(a.get("improvement_ideas", []))
         all_questions.extend(a.get("questions", []))
+
+        # Collect per-claim verdicts from awaits_bakeoff_validation items.
+        # Each assessment reports 0..N verdicts keyed by item_id; we
+        # aggregate the verdict distribution across all repos in the cohort.
+        repo_label = a.get("repo", "unknown")
+        for v in a.get("awaits_bakeoff_validation_verdicts") or []:
+            if not isinstance(v, dict):
+                continue
+            item_id = v.get("item_id")
+            verdict = v.get("verdict")
+            if not item_id or verdict not in ("moved", "no_move", "inconclusive"):
+                continue
+            entry = validation_verdicts.setdefault(
+                item_id,
+                {"moved": 0, "no_move": 0, "inconclusive": 0, "evidence": []},
+            )
+            entry[verdict] += 1
+            evidence = v.get("evidence")
+            if evidence:
+                entry["evidence"].append(
+                    {"repo": repo_label, "verdict": verdict, "note": evidence}
+                )
 
         # Collect scores if present
         scores = a.get("task_scores")
@@ -671,7 +791,40 @@ def aggregate_assessments(assessments: list) -> dict:
                 stats_mod.median(overall_scores), 1
             )
 
+    if validation_verdicts:
+        summary["awaits_bakeoff_validation_verdicts"] = [
+            {
+                "item_id": item_id,
+                "moved": counts["moved"],
+                "no_move": counts["no_move"],
+                "inconclusive": counts["inconclusive"],
+                "plurality": _verdict_plurality(counts),
+                "evidence": counts["evidence"],
+            }
+            for item_id, counts in sorted(validation_verdicts.items())
+        ]
+
     return summary
+
+
+def _verdict_plurality(counts: dict) -> str:
+    """Return the plurality verdict (moved / no_move / inconclusive / tied).
+
+    "tied" when the top two categories have equal counts and the result
+    would otherwise be arbitrary — the aggregation caller must not
+    auto-strip a tag on a tie.
+    """
+    ranked = sorted(
+        ("moved", "no_move", "inconclusive"),
+        key=lambda k: counts.get(k, 0),
+        reverse=True,
+    )
+    top = ranked[0]
+    if counts.get(top, 0) == 0:
+        return "inconclusive"
+    if counts.get(ranked[1], 0) == counts.get(top, 0):
+        return "tied"
+    return top
 
 
 def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_FEATURES_WORKDIR") -> str:
@@ -723,6 +876,13 @@ def _reflect_one_cohort(
     )
     os.makedirs(prompts_dir, exist_ok=True)
 
+    validation_claims = load_awaits_bakeoff_validation_items()
+    if validation_claims:
+        print(
+            f"Injecting {len(validation_claims)} awaits_bakeoff_validation "
+            f"claim(s) into reflect prompts"
+        )
+
     count = 0
     for repo_name in repos:
         repo_path = os.path.join(pool_path, repo_name)
@@ -737,7 +897,9 @@ def _reflect_one_cohort(
             print(f"[{repo_name}] Found prior assessment (injecting context)")
 
         prompt = generate_assessment_prompt(
-            repo_name, repo_path, repo_out, prior_assessment=prior,
+            repo_name, repo_path, repo_out,
+            prior_assessment=prior,
+            validation_claims=validation_claims,
         )
 
         prompt_path = os.path.join(prompts_dir, f"{repo_name}.prompt.md")
@@ -944,6 +1106,16 @@ def _print_aggregate_summary(summary: dict, summary_path: str = "") -> None:
         print("Top improvement ideas:")
         for item in summary["improvement_ideas"][:5]:
             print(f"  - {item['idea']} (x{item['count']})")
+        print()
+
+    if summary.get("awaits_bakeoff_validation_verdicts"):
+        print("awaits_bakeoff_validation verdicts:")
+        for v in summary["awaits_bakeoff_validation_verdicts"]:
+            print(
+                f"  - {v['item_id']}: plurality={v['plurality']} "
+                f"(moved={v['moved']} no_move={v['no_move']} "
+                f"inconclusive={v['inconclusive']})"
+            )
         print()
 
     if summary_path:
