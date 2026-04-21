@@ -108,26 +108,32 @@ def test_empty_session_id_is_noop(tmp_path: Path) -> None:
 
 
 def test_unwritable_heartbeat_dir_is_silent(tmp_path: Path) -> None:
-    """When the heartbeat dir can't be created (e.g. parent is read-only),
-    the helper must return 0 and emit nothing to stderr — hooks must
-    never fail because of heartbeat bookkeeping."""
-    readonly_parent = tmp_path / "readonly"
-    readonly_parent.mkdir()
-    readonly_parent.chmod(0o555)  # No write.
-    hb_dir = readonly_parent / "agent-supervisor"
-    try:
-        result = _source_and_call(hb_dir, "sess-ro")
-        assert result.returncode == 0, (
-            f"helper must not error: stdout={result.stdout!r} "
-            f"stderr={result.stderr!r}"
-        )
-        # No stderr noise that would pollute the host hook's stderr.
-        assert result.stderr == "", (
-            f"helper must not emit stderr noise; got {result.stderr!r}"
-        )
-        assert not hb_dir.exists()
-    finally:
-        readonly_parent.chmod(0o755)  # Restore for cleanup.
+    """When the heartbeat dir can't be created, the helper must return 0
+    and emit nothing to stderr — hooks must never fail because of
+    heartbeat bookkeeping.
+
+    Uses an ENOTDIR precondition (parent is a regular file, not a
+    directory) rather than a chmod-based one, because CI runs as root
+    and root bypasses DAC write permissions — `chmod 0o555` on a
+    directory does NOT prevent root from writing to it, so the
+    permission-denied failure mode couldn't be reproduced in CI.
+    `mkdir -p <regular_file>/subdir` fails with ENOTDIR regardless of
+    uid, so the test exercises the intended swallow-the-error branch
+    on every runner.
+    """
+    parent_file = tmp_path / "not-a-dir"
+    parent_file.write_text("")  # Regular file, not a directory.
+    hb_dir = parent_file / "agent-supervisor"  # mkdir -p → ENOTDIR.
+    result = _source_and_call(hb_dir, "sess-notdir")
+    assert result.returncode == 0, (
+        f"helper must not error: stdout={result.stdout!r} "
+        f"stderr={result.stderr!r}"
+    )
+    # No stderr noise that would pollute the host hook's stderr.
+    assert result.stderr == "", (
+        f"helper must not emit stderr noise; got {result.stderr!r}"
+    )
+    assert not hb_dir.exists()
 
 
 def test_default_heartbeat_dir_when_env_unset(tmp_path: Path) -> None:

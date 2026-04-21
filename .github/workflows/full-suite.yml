@@ -702,6 +702,13 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
+        with:
+          # tests/test_backfill_training_data_cohort_tags.py::TestRealV0WindowBoundaries
+          # walks git log against .agent/hooks/_shared/on_transcript_change.py and
+          # asserts on specific historical SHAs from the v0 window (75596a4153d4,
+          # 704548fe1e90, 7310783e1b26, 9ac06cc88a00). A shallow clone (the v4
+          # default of depth=1) drops these from history and the tests fail.
+          fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -709,7 +716,9 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install pytest pytest-xdist pyyaml
+          # hypothesis is needed by tests/test_transcript_pipeline_properties.py;
+          # pin matches packages/hypergumbo-tracker/pyproject.toml.
+          pip install pytest pytest-xdist pyyaml 'hypothesis~=6.100'
       - name: Run top-level tests
         run: |
           if [ -f /sys/fs/cgroup/cpu.max ]; then
