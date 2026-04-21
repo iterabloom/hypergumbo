@@ -503,7 +503,7 @@ def test_partial_run_stage(bmap, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def _make_zip_with_session(path: Path, session_name: str, extras: list[str] = None) -> None:
+def _make_zip_with_session(path: Path, session_name: str, extras: list[str] | None = None) -> None:
     extras = extras or []
     with zipfile.ZipFile(path, "w") as zf:
         state = {

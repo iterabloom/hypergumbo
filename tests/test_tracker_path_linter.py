@@ -360,7 +360,7 @@ class TestBuildBasenameIndex:
             stdout = "scripts/foo.py\nscripts/bar.py\npackages/a/foo.py\n"
             returncode = 0
 
-        def _fake_run(*args, **kwargs):  # noqa: ANN001, ANN003
+        def _fake_run(*args, **kwargs):
             return _Result()
 
         monkeypatch.setattr(_sp, "run", _fake_run)
@@ -375,7 +375,7 @@ class TestBuildBasenameIndex:
         """CalledProcessError path returns an empty index."""
         import subprocess as _sp
 
-        def _fake_run(*args, **kwargs):  # noqa: ANN001, ANN003
+        def _fake_run(*args, **kwargs):
             raise _sp.CalledProcessError(1, args[0])
 
         monkeypatch.setattr(_sp, "run", _fake_run)

@@ -61,8 +61,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Tests can use assert, hardcoded values, subprocess, temp paths, side-effect imports
-"packages/*/tests/**/*.py" = ["S101", "S105", "S106", "S603", "S108", "E741", "F401", "F841", "RUF005"]
+# Tests can use assert, hardcoded values, subprocess, temp paths, side-effect imports,
+# and class-level constant fixtures (RUF012).
+"packages/*/tests/**/*.py" = ["S101", "S105", "S106", "S603", "S607", "S108", "E741", "F401", "F841", "RUF005", "RUF012"]
+"tests/**/*.py" = ["S101", "S105", "S106", "S603", "S607", "S108", "E741", "F401", "F841", "RUF005", "RUF012"]
 # Conditional imports for optional tree-sitter deps
 "packages/*/src/**/*.py" = ["E402"]
 
