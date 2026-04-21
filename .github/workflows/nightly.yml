@@ -134,6 +134,21 @@ jobs:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
     steps:
+      # Forgejo runner needs Node.js in the container to execute JS-based
+      # actions like `actions/download-artifact@v3`. python:*-bookworm
+      # images don't ship it. This MUST precede the download-artifact
+      # step — if Node isn't on PATH, download-artifact fails with
+      # `OCI runtime exec failed ... exec: "node": executable file not
+      # found` under `continue-on-error: true`, the pass-marker file is
+      # never written, and the skip-check then incorrectly reports
+      # "Primary job failed ... retrying" for every Python version.
+      # Observed 2026-04-21 on a nightly where the primary 3.10/3.11
+      # passed but their retry ran anyway. The primary test-matrix job
+      # solves this the same way (step "Install Node.js for JS-based
+      # actions" at the top).
+      - name: Install Node.js for JS-based actions
+        run: apt-get update && apt-get install -y nodejs
+
       - name: Download pass marker
         id: check-primary
         uses: actions/download-artifact@v3
@@ -152,10 +167,6 @@ jobs:
             echo "Primary job failed for Python ${{ matrix.python-version }} — retrying"
             echo "should_skip=false" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Install Node.js for JS-based actions
-        if: steps.skip-check.outputs.should_skip != 'true'
-        run: apt-get update && apt-get install -y nodejs
 
       - uses: actions/checkout@v4
         if: steps.skip-check.outputs.should_skip != 'true'

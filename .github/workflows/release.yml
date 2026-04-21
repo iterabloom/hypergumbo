@@ -415,6 +415,14 @@ jobs:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
     steps:
+      # Must run before `actions/download-artifact@v3` (a JS action) —
+      # see the identical note on the test-matrix-retry job in
+      # nightly.yml. Without this, download-artifact fails silently
+      # under continue-on-error, the pass marker never lands, and the
+      # skip-check incorrectly retries every Python version.
+      - name: Install Node.js for JS-based actions
+        run: apt-get update && apt-get install -y nodejs
+
       - name: Download pass marker
         id: check-primary
         uses: actions/download-artifact@v3
@@ -433,10 +441,6 @@ jobs:
             echo "Primary job failed for Python ${{ matrix.python-version }} — retrying"
             echo "should_skip=false" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Install Node.js for JS-based actions
-        if: steps.skip-check.outputs.should_skip != 'true'
-        run: apt-get update && apt-get install -y nodejs
 
       - uses: actions/checkout@v4
         if: steps.skip-check.outputs.should_skip != 'true'

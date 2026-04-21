@@ -1237,34 +1237,17 @@ class TestWriteCommands:
         # Anti-regression: must NOT show the broken order
         assert "--ack-thread \"<your reply>\"" not in out
 
-    def test_discuss_rejects_ack_thread_before_message(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture,
-        mock_agent_uid: None,
-    ) -> None:
-        """WI-foril: regression check that argparse really does reject the
-        broken order. If a future Python or argparse change ever made the
-        broken order work, this test would fail and we'd revisit the
-        gate-message text. Until then, the fix in the gate-message is the
-        right shape (steer users away from a still-broken pattern).
-        """
-        tracker_root = _setup_tracker(tmp_path)
-        ops_dir = tracker_root / "tracker-workspace" / ".ops"
-        _add_item_with_discussion(ops_dir, "WI-test", [
-            {"at": "2026-01-01T01:00:00Z", "by": "agent",
-             "actor": "test_agent", "message": "Initial note"},
-            {"at": "2026-01-02T01:00:00Z", "by": "human",
-             "actor": "jgstern", "message": "Please investigate this"},
-        ])
-        with pytest.raises(SystemExit) as exc:
-            main([
-                "--tracker-root", str(tracker_root),
-                "discuss", "WI-test",
-                "--ack-thread", "Reply text",
-            ])
-        # argparse exits 2 (SystemExit) on unrecognized arguments
-        assert exc.value.code == 2
-        err = capsys.readouterr().err
-        assert "unrecognized arguments" in err
+    # WI-foril: the sentinel test that asserted argparse rejects
+    # `--ack-thread "<msg>"` (flag-before-positional) was removed when
+    # Python 3.12's argparse refactor made the backtracking over
+    # `nargs="?"` positionals more aggressive and the "broken" order
+    # started parsing as `ack_thread=True, message="<msg>"`. Its own
+    # docstring anticipated this: "If a future Python or argparse
+    # change ever made the broken order work, this test would fail and
+    # we'd revisit the gate-message text." The gate-message
+    # (tests/test_cli.py::test_discuss_gate_message_shows_working_arg_order)
+    # still recommends the universally-working order (`"<msg>"` then
+    # `--ack-thread`), so no text change is needed.
 
     def test_discuss_no_warning_when_last_is_agent(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
