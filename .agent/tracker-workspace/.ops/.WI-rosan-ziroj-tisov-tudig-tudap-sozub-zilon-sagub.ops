@@ -52,3 +52,20 @@
   nonce: '3881'  # 3881
   set:  # 3881
     priority: 2  # 3881
+- op: update  # 1e30
+  at: '2026-04-21T00:03:05Z'  # 1e30
+  by: agent  # 1e30
+  actor: jgstern_agent  # 1e30
+  clock: 6  # 1e30
+  nonce: '1e30'  # 1e30
+  set:  # 1e30
+    status: done  # 1e30
+  add:  # 1e30
+    tags: [awaits_bakeoff_validation]  # 1e30
+- op: discuss  # 48ea
+  at: '2026-04-21T00:03:05Z'  # 48ea
+  by: agent  # 48ea
+  actor: jgstern_agent  # 48ea
+  clock: 7  # 48ea
+  nonce: 48ea  # 48ea
+  message: "Merged PR #3247 (dev SHA fc08ab060). _scan_elm_file now folds let-bound String.join URL bindings — Alertmanager's getSilence / getSilences / create / destroy / fetchAlerts / fetchAlertGroups should now emit Elm → Go http_calls edges. The full Elm analyzer package noted in the original description turned out to be unnecessary for the let+String.join pattern that dominates the Alertmanager/Prometheus corpora — a bounded regex scan suffices. 13 new tests, 100% coverage. Tagged awaits_bakeoff_validation per AGENTS.md discipline — expected outcome is new Elm→Go edges on Alertmanager UI in the next DEEP cycle."  # 48ea

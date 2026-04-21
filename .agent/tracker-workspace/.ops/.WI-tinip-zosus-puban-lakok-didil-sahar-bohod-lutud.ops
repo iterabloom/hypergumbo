@@ -98,3 +98,18 @@
   clock: 12  # f922
   nonce: f922  # f922
   message: "pf-prelim pivot: TS fetch('/api/...') → backend route is exactly pf-prelim's SPA↔relay pattern. Raised P4→P2 for dogfooding value."  # f922
+- op: update  # fb2d
+  at: '2026-04-21T00:03:36Z'  # fb2d
+  by: agent  # fb2d
+  actor: jgstern_agent  # fb2d
+  clock: 13  # fb2d
+  nonce: fb2d  # fb2d
+  set:  # fb2d
+    status: done  # fb2d
+- op: discuss  # 685c
+  at: '2026-04-21T00:03:36Z'  # 685c
+  by: agent  # 685c
+  actor: jgstern_agent  # 685c
+  clock: 14  # 685c
+  nonce: 685c  # 685c
+  message: "Closing umbrella. Both leaves shipped: WI-sijoh (JS/TS backtick template + module-const folding, PR #3125, dev SHA 761a84119) and WI-rosan (Elm let-bound String.join URL folding, PR #3247, dev SHA fc08ab060). Both carry awaits_bakeoff_validation for the DEEP cohort re-check — the Alertmanager UAT DQ-09 verdict flips to closed when the next cohort shows the Elm→Go and TS→Go http_calls edges materialising on the titular examples (api/v2/alerts from ui/mantine-ui/src/api/api.ts and fetchAlerts from ui/app/src/Alerts/Api.elm)."  # 685c
