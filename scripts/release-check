@@ -65,6 +65,7 @@ PACKAGES=(
     "packages/hypergumbo-lang-mainstream"
     "packages/hypergumbo-lang-common"
     "packages/hypergumbo-lang-extended1"
+    "packages/hypergumbo-lang-rust-analyzer"
     "packages/hypergumbo"
 )
 
@@ -313,6 +314,7 @@ INSTALL_ORDER=(
     "packages/hypergumbo-lang-mainstream"
     "packages/hypergumbo-lang-common"
     "packages/hypergumbo-lang-extended1"
+    "packages/hypergumbo-lang-rust-analyzer"
     "packages/hypergumbo"
 )
 for pkg in "${INSTALL_ORDER[@]}"; do

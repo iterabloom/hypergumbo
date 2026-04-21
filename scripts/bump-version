@@ -60,6 +60,7 @@ PYPROJECT_FILES=(
     "packages/hypergumbo-lang-mainstream/pyproject.toml"
     "packages/hypergumbo-lang-common/pyproject.toml"
     "packages/hypergumbo-lang-extended1/pyproject.toml"
+    "packages/hypergumbo-lang-rust-analyzer/pyproject.toml"
     "packages/hypergumbo/pyproject.toml"
 )
 
@@ -70,6 +71,7 @@ INIT_FILES=(
     "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/__init__.py"
     "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/__init__.py"
     "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/__init__.py"
+    "packages/hypergumbo-lang-rust-analyzer/src/hypergumbo_lang_rust_analyzer/__init__.py"
 )
 
 # Extract current version from core package (source of truth)
@@ -142,6 +144,7 @@ for pyproject in "${PYPROJECT_FILES[@]}"; do
         sed -i "s/hypergumbo-lang-mainstream==[0-9]*\.[0-9]*\.[0-9]*/hypergumbo-lang-mainstream==$NEW_VERSION/g" "$pyproject"
         sed -i "s/hypergumbo-lang-common==[0-9]*\.[0-9]*\.[0-9]*/hypergumbo-lang-common==$NEW_VERSION/g" "$pyproject"
         sed -i "s/hypergumbo-lang-extended1==[0-9]*\.[0-9]*\.[0-9]*/hypergumbo-lang-extended1==$NEW_VERSION/g" "$pyproject"
+        sed -i "s/hypergumbo-lang-rust-analyzer==[0-9]*\.[0-9]*\.[0-9]*/hypergumbo-lang-rust-analyzer==$NEW_VERSION/g" "$pyproject"
 
         echo "  Updated: $pyproject"
     fi

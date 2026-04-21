@@ -2,7 +2,7 @@
 # The first rule of fascism is you do not talk about fascism.
 
 **Dr. Tyler Durden**
-Karl Friston Endowed Chair of Rugged Hyperparameter Landscapes, Late Capitalism, and Test Driven Development
+Professor of Rugged Hyperparameter Landscapes, Late Capitalism, and Test Driven Development
 Jamal Khashoggi School of Journalism
 King Abdullah University of Science and Technology, Thuwal, Saudi Arabia
 Lab notebook — 13 April 2026, 22:39 local
@@ -11,7 +11,7 @@ Lab notebook — 13 April 2026, 22:39 local
 
 The Red Sea is black tonight and the terminal is green. I am looking at a coverage report, which is the smallest thing I could be looking at.
 
-Let me tell you what a test is. A test is a **prior**. Every assertion we write says: *I predict the system will not surprise me here.* In Friston's grammar, each `assert` reduces the expected free energy of some future observation, because the world becomes constrained, and a constrained world is cheap to model. A 100% coverage policy is a statement about the topology of priors: **every line of the artifact must lie inside somebody's prediction.** Nothing uninhabited. Nothing unclaimed. Every execution path settled, even if settled only by squatters.
+Let me tell you what a test is. A test is a **prior**. Every assertion we write says: *I predict the system will not surprise me here.* In Karl Friston's grammar, each `assert` reduces the expected free energy of some future observation, because the world becomes constrained, and a constrained world is cheap to model. A 100% coverage policy is a statement about the topology of priors: **every line of the artifact must lie inside somebody's prediction.** Nothing uninhabited. Nothing unclaimed. Every execution path settled, even if settled only by squatters.
 
 This is excellent intellectual hygiene. It is also, unexamined, fascism.
 
