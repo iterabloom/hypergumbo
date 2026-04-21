@@ -25,7 +25,9 @@ dependencies = [
   "tree-sitter-php~=0.24.1",
   "tree-sitter-c~=0.24.1",
   "tree-sitter-cpp~=0.23.4",
-  "tree-sitter-c-sharp~=0.23.1",
+  # 0.23.5 flattened named-attribute-argument grammar (no more
+  # `assignment_expression` wrapper); pinned to match the code in csharp.py.
+  "tree-sitter-c-sharp~=0.23.5",
   "tree-sitter-java~=0.23.5",
   "tree-sitter-go~=0.25.0",
   "tree-sitter-rust~=0.24.0",

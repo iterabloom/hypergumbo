@@ -3,12 +3,18 @@
 # the optional sentence-transformers or onnxruntime/tokenizers dependencies.
 
 [run]
-# Omit embedding modules - they require sentence-transformers or onnxruntime
+# Omit embedding modules - they require sentence-transformers or onnxruntime.
+# The scip_pb2.py omit has to be repeated here because passing
+# `--cov-config=.coveragerc.no-embeddings` makes coverage.py read ONLY this
+# file — the `[tool.coverage.run] omit` list in pyproject.toml is ignored when
+# this config is active (nightly.yml does so when sentence-transformers is
+# unavailable, which is always the case in the Python-matrix containers).
 omit =
     */sketch_embeddings.py
     */_embedding_data.py
     */__main__.py
     */embeddings.py
+    */scip/_generated/scip_pb2.py
 
 [report]
 # Exclude lines containing these patterns (embedding-related conditionals)
