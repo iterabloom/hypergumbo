@@ -49,6 +49,7 @@ jobs:
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
+                        -e packages/hypergumbo-lang-rust-analyzer \
                         -e "packages/hypergumbo-tracker[dev,tui]" \
                         -e packages/hypergumbo \
                         jsonschema
@@ -72,7 +73,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           if [ -d "packages/hypergumbo-core" ]; then
-            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-tracker/src"
+            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-lang-rust-analyzer/src --cov=packages/hypergumbo-tracker/src"
             TEST_PATHS="packages/*/tests/"
           else
             COV_PATHS="--cov=src"
@@ -168,6 +169,7 @@ jobs:
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
+                        -e packages/hypergumbo-lang-rust-analyzer \
                         -e "packages/hypergumbo-tracker[dev,tui]" \
                         -e packages/hypergumbo \
                         jsonschema
@@ -194,7 +196,7 @@ jobs:
         if: steps.skip-check.outputs.should_skip != 'true'
         run: |
           if [ -d "packages/hypergumbo-core" ]; then
-            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-tracker/src"
+            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-lang-rust-analyzer/src --cov=packages/hypergumbo-tracker/src"
             TEST_PATHS="packages/*/tests/"
           else
             COV_PATHS="--cov=src"
@@ -245,6 +247,7 @@ jobs:
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
+                        -e packages/hypergumbo-lang-rust-analyzer \
                         -e packages/hypergumbo
           else
             pip install -e .[dev]
