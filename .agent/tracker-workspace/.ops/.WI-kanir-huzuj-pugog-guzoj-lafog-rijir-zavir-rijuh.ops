@@ -1,0 +1,20 @@
+- op: create  # 424f
+  at: '2026-04-22T18:13:13Z'  # 424f
+  by: agent  # 424f
+  actor: jgstern_agent  # 424f
+  clock: 1  # 424f
+  nonce: 424f  # 424f
+  data:  # 424f
+    kind: work_item  # 424f
+    title: "io_primitives javascript.yaml: move localStorage/sessionStorage/indexedDB/caches reads out of fs_read into new browser_storage_read category (WI-lokuv read-side asymmetry)"  # 424f
+    status: todo_soft  # 424f
+    priority: 4  # 424f
+    parent:  # 424f
+    tags:  # 424f
+    - analysis_quality  # 424f
+    isbefore: []  # 424f
+    duplicate_of: []  # 424f
+    not_duplicate_of: []  # 424f
+    pr_ref:  # 424f
+    description: "Filed 2026-04-22 as the read-side counterpart to the WI-lokuv Q3 split.\n\nCurrent state\n-------------\nWI-lokuv (commit 51e1d232f) correctly split browser-local writes out of fs_write into a new browser_storage_write category. The matching read-side move was deferred and remained under fs_read. Specifically, packages/hypergumbo-core/src/hypergumbo_core/io_primitives/javascript.yaml still classifies these under fs_read:\n\n- module: localStorage\n  methods: [getItem, key, length]\n- module: sessionStorage\n  methods: [getItem, key, length]\n- module: indexedDB\n  functions: [open, databases]\n- module: caches\n  functions: [open, match, has, keys]\n  # Service Worker CacheStorage\n\nProblem\n-------\nBrowser storage lives in browser per-origin storage, reachable via XSS, not the host filesystem. Classifying these reads as fs_read produces misleading 'filesystem read' chains in hypergumbo io-boundaries output on browser-side JS/TS code — the same objection that motivated splitting the write side in WI-lokuv Q3 option 3.\n\nFix scope\n---------\n1. Add 'browser_storage_read' to boundary_types in packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py (line ~248, next to the existing browser_storage_write).\n2. In io_primitives/javascript.yaml, move the four modules above out of fs_read into a new browser_storage_read: section.\n3. Update the WI-banaf-era comment block above fs_read to reflect the correct semantic classification.\n4. Optional auto-import decision: do NOT add browser_storage_read to AUTO_SOURCE_LABEL_MAP in taint.py. Rationale (matches fs_read): the sensitivity of browser storage reads depends on what's stored (a tutorial app's active-tab flag vs. a password manager's encrypted vault); project-local catalogs can add taint_sources entries for their specific threat model. Adding a default label would be paranoid by WI-lokuv's Reading A, but for reads that paranoia overwhelms signal. Keep the read-side quiet by default, matching how fs_read is treated.\n\nOut of scope for this item\n--------------------------\ndocument.cookie is currently under env_read in javascript.yaml and is arguably also mis-categorized — cookies live in browser per-origin storage, not the process environment. But document.cookie is a getter/setter property with identical read and write syntax, so moving it cleanly would require additional design: is it one primitive or two? Does browser_storage_write cover cookie sets? Does browser_storage_read cover cookie gets? Defer to a separate item when it comes up in practice.\n\nVerification\n------------\n- Add a tree-sitter-js parser test fixture that calls localStorage.getItem and caches.open; assert that io-boundaries classifies them under browser_storage_read, not fs_read.\n- Update any tests that currently assert JS fs_read counts — they will shrink by a predictable amount once the moved entries stop appearing there.\n- Regenerate any snapshot fixtures that count per-category chain totals on browser-side JS repos (none known in this repo today, but worth a grep before committing).\n\nReferences\n----------\n- WI-lokuv (commit 51e1d232f): the write-side counterpart split.\n- spec §19 enumerates browser_storage as a trust zone but does not yet mention a read-side category; update the spec paragraph once this lands."  # 424f
+    fields: {}  # 424f
