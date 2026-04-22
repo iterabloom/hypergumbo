@@ -10,6 +10,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+#### Analysis quality (WI-hizik)
+
+- **Drift-guard test between `io_primitives/` write-side categories and `taint_sinks/` trust-zone catalogs.** ADR-0017 deliberately splits the two catalogs (taint_sinks is designed for project-local YAML extension) but nothing prevented first-party drift: a new entry added to `io_primitives/python.yaml#fs_write` would be seen by `io-boundaries` and silently missed by `verify-claims` until someone also remembered to update `taint_sinks/host_filesystem.yaml`. `test_taint_sink_drift.py` now pins the current alignment across 10 (category, language) pairs — `fs_write` and `net_send` for python, rust, go, java, and typescript (via the io_primitives/javascript → taint_sinks/typescript alias). Current drift (419 entries) is grandfathered in a new `_taint_sink_drift_baseline.yaml`; any future growth beyond the baseline fails the test with a concrete fix-hint. Direction: io_primitives ⊆ taint_sinks — reverse-direction guarding is a separate follow-up.
+
 ### Fixed
 
 #### Analysis quality (WI-guhok)
