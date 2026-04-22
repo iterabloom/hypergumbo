@@ -621,6 +621,153 @@ class TestSemanticEntryDetection:
         assert event_eps[0].symbol_id == sym.id
         assert event_eps[0].confidence >= 0.95
 
+    def test_detect_error_handler_concept(self) -> None:
+        """Symbol with error_handler concept is detected as error handler entrypoint (WI-gudob)."""
+        sym = make_symbol(
+            "handle_validation_error",
+            path="src/errors/handlers.py",
+            meta={
+                "concepts": [
+                    {"concept": "error_handler", "framework": "fastapi"}
+                ]
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        err_eps = [e for e in entrypoints if e.kind == EntrypointKind.ERROR_HANDLER]
+        assert len(err_eps) == 1
+        assert err_eps[0].symbol_id == sym.id
+        assert err_eps[0].confidence >= 0.95
+        assert "Fastapi" in err_eps[0].label or "error handler" in err_eps[0].label.lower()
+
+    def test_detect_error_handler_concept_without_framework(self) -> None:
+        """error_handler concept without a framework label still produces an entrypoint."""
+        sym = make_symbol(
+            "default_err",
+            path="src/app.py",
+            meta={"concepts": [{"concept": "error_handler"}]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        err_eps = [e for e in entrypoints if e.kind == EntrypointKind.ERROR_HANDLER]
+        assert len(err_eps) == 1
+        assert err_eps[0].label == "Error handler"
+
+    def test_error_handler_dedupe_per_symbol(self) -> None:
+        """A symbol tagged error_handler twice (e.g. matched by two
+        framework patterns) emits at most one ERROR_HANDLER entrypoint."""
+        sym = make_symbol(
+            "handler",
+            path="src/errors.py",
+            meta={
+                "concepts": [
+                    {"concept": "error_handler", "framework": "flask"},
+                    {"concept": "error_handler", "framework": "fastapi"},
+                ],
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        err_eps = [e for e in entrypoints if e.kind == EntrypointKind.ERROR_HANDLER]
+        assert len(err_eps) == 1
+
+    def test_detect_form_concept(self) -> None:
+        """Symbol with form concept is detected as FORM entrypoint (WI-gudob Phase 4)."""
+        sym = make_symbol(
+            "LoginForm",
+            path="myapp/forms.py",
+            kind="class",
+            meta={
+                "concepts": [
+                    {"concept": "form", "framework": "django"}
+                ]
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        form_eps = [e for e in entrypoints if e.kind == EntrypointKind.FORM]
+        assert len(form_eps) == 1
+        assert form_eps[0].symbol_id == sym.id
+        assert form_eps[0].confidence >= 0.85
+        assert "Django" in form_eps[0].label or "form" in form_eps[0].label.lower()
+
+    def test_detect_form_concept_without_framework(self) -> None:
+        """form concept without a framework label still produces an entrypoint."""
+        sym = make_symbol(
+            "BareForm",
+            path="src/forms.py",
+            kind="class",
+            meta={"concepts": [{"concept": "form"}]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        form_eps = [e for e in entrypoints if e.kind == EntrypointKind.FORM]
+        assert len(form_eps) == 1
+        assert form_eps[0].label == "Form"
+
+    def test_form_dedupe_per_symbol(self) -> None:
+        """A symbol tagged form twice (e.g. matched by two framework
+        patterns) emits at most one FORM entrypoint."""
+        sym = make_symbol(
+            "MyForm",
+            path="src/forms.py",
+            kind="class",
+            meta={
+                "concepts": [
+                    {"concept": "form", "framework": "flask"},
+                    {"concept": "form", "framework": "django"},
+                ],
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        form_eps = [e for e in entrypoints if e.kind == EntrypointKind.FORM]
+        assert len(form_eps) == 1
+
+    def test_detect_serializer_concept(self) -> None:
+        """Symbol with serializer concept is detected as SERIALIZER entrypoint (WI-gudob Phase 5)."""
+        sym = make_symbol(
+            "UserSerializer",
+            path="myapp/serializers.py",
+            kind="class",
+            meta={
+                "concepts": [
+                    {"concept": "serializer", "framework": "django"}
+                ]
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ser_eps = [e for e in entrypoints if e.kind == EntrypointKind.SERIALIZER]
+        assert len(ser_eps) == 1
+        assert ser_eps[0].symbol_id == sym.id
+        assert ser_eps[0].confidence >= 0.85
+        assert "Django" in ser_eps[0].label or "serializer" in ser_eps[0].label.lower()
+
+    def test_detect_serializer_concept_without_framework(self) -> None:
+        """serializer concept without a framework label still produces an entrypoint."""
+        sym = make_symbol(
+            "BareDTO",
+            path="src/dtos.py",
+            kind="class",
+            meta={"concepts": [{"concept": "serializer"}]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ser_eps = [e for e in entrypoints if e.kind == EntrypointKind.SERIALIZER]
+        assert len(ser_eps) == 1
+        assert ser_eps[0].label == "Serializer"
+
+    def test_serializer_dedupe_per_symbol(self) -> None:
+        """A symbol tagged serializer twice (matched by two framework patterns)
+        emits at most one SERIALIZER entrypoint."""
+        sym = make_symbol(
+            "PolySchema",
+            path="src/schemas.py",
+            kind="class",
+            meta={
+                "concepts": [
+                    {"concept": "serializer", "framework": "flask"},
+                    {"concept": "serializer", "framework": "grape"},
+                ],
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ser_eps = [e for e in entrypoints if e.kind == EntrypointKind.SERIALIZER]
+        assert len(ser_eps) == 1
+
     def test_detect_command_concept(self) -> None:
         """Symbol with command concept is detected as CLI command entrypoint."""
         sym = make_symbol(

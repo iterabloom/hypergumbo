@@ -7200,6 +7200,122 @@ class TestRequireSections:
         if "## Key Symbols" not in sketch_without:
             assert "## Key Symbols" in sketch_with
 
+    def test_require_section_survives_base_overflow(self, tmp_path: Path) -> None:
+        """Required sections render even when max_tokens <= base_tokens.
+
+        Per WI-nakam (UAT 2026-04-13 BUG-05): the previous early-return
+        at ``max_tokens <= base_tokens`` truncated the base sketch and
+        skipped all extended sections regardless of --require-section,
+        which is the exact case the flag exists to handle. This test
+        forces the early-return scenario (large README -> large base
+        sketch) and asserts Key Symbols still appears when required.
+        """
+        # Large README + config files produce a large base section that
+        # exceeds the 500-token budget. Without the fix, Key Symbols is
+        # dropped; with the fix it appears because it's required.
+        big_readme = "# Test project\n\n" + ("Lorem ipsum dolor sit amet. " * 200)
+        (tmp_path / "README.md").write_text(big_readme)
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "x"\nversion = "0.1.0"\n'
+        )
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.py").write_text(
+            "def entrypoint():\n"
+            "    '''The main entrypoint.'''\n"
+            "    return 42\n"
+        )
+
+        # Budget 100 is well below any plausible base-sketch size, so the
+        # early-return at ``max_tokens <= base_tokens`` fires deterministically.
+        sketch_without = generate_sketch(tmp_path, max_tokens=100)
+        sketch_with = generate_sketch(
+            tmp_path, max_tokens=100,
+            require_sections=["Key Symbols"],
+        )
+
+        assert "## Key Symbols" not in sketch_without, (
+            "Test precondition: at budget 100 the base sketch overflows "
+            "and Key Symbols is naturally dropped."
+        )
+        assert "## Key Symbols" in sketch_with, (
+            "--require-section must force the section even when the "
+            "base sketch alone exceeds the budget."
+        )
+
+    def test_require_section_forces_gated_section(self, tmp_path: Path) -> None:
+        """Required gated sections (Entry Points, etc.) bypass the `_section_ok`
+        threshold and render unconditionally (WI-nakam).
+
+        Covers the ``name in _required → True`` branch in ``_section_ok``,
+        which only gated sections (Entry Points, Data Models, Source Files,
+        Additional Files, *Content) actually call.
+        """
+        big_readme = "# Test\n\n" + ("Lorem ipsum dolor sit amet. " * 200)
+        (tmp_path / "README.md").write_text(big_readme)
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "x"\nversion = "0.1.0"\n'
+        )
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.py").write_text(
+            "def cli_main():\n"
+            "    '''Entry point.'''\n"
+            "    return 0\n"
+        )
+
+        # Source Files is a content-driven gated section that always renders
+        # when source_files exist (no entrypoint detection required).
+        sketch_with = generate_sketch(
+            tmp_path, max_tokens=100,
+            require_sections=["Source Files"],
+        )
+        sketch_without = generate_sketch(tmp_path, max_tokens=100)
+        assert "## Source Files" not in sketch_without, (
+            "Test precondition: at budget 100 the gated Source Files "
+            "section is naturally dropped."
+        )
+        assert "## Source Files" in sketch_with
+
+    def test_markdown_content_headings_do_not_bleed(self, tmp_path: Path) -> None:
+        """Markdown content rendered in Additional Files Content must not
+        produce H1/H2 headings that compete with hypergumbo's structural
+        sections (WI-bilul / UAT BUG-06).
+
+        The README has '## Installation', '## Usage', etc. After fix, the
+        sketch must NOT contain any '## Installation' style line at the
+        structural-H2 level — markdown content headings should be demoted
+        so they are clearly subordinate to the tool's own H2 sections.
+        """
+        (tmp_path / "README.md").write_text(
+            "# My Project\n\nA sample.\n\n"
+            "## Installation\n\nRun `pip install foo`.\n\n"
+            "## Usage\n\nUse `foo` as follows.\n\n"
+            "## Contributing\n\nPlease contribute.\n\n"
+            "## License\n\nMIT.\n"
+        )
+        (tmp_path / "main.py").write_text("def hello():\n    return 'hi'\n")
+
+        # `with_source=True` is the CLI default — the bleed only manifests
+        # when README is rendered as Additional Files Content.
+        sketch = generate_sketch(tmp_path, max_tokens=8000, with_source=True)
+
+        # Bleeding headings would appear as standalone '## Installation' etc.
+        # at the start of a line. After the demote fix they should appear at
+        # ## level 4+ (e.g. '#### Installation').
+        sketch_lines = set(sketch.split("\n"))
+        for bleed_heading in (
+            "## Installation",
+            "## Usage",
+            "## Contributing",
+            "## License",
+        ):
+            assert bleed_heading not in sketch_lines, (
+                f"Markdown content heading {bleed_heading!r} bled into "
+                "the sketch's structural-H2 namespace; it should be "
+                "demoted to a deeper level when rendered as content."
+            )
+
     def test_require_section_empty_list(self, tmp_path: Path) -> None:
         """Empty require_sections list is a no-op."""
         (tmp_path / "main.py").write_text("x = 1\n")
@@ -8112,3 +8228,159 @@ class TestConfigFilesNoLockFiles:
                 f"already provides dependency information."
             )
 
+
+
+# WI-fumap: fallback warning when --config-extraction=embedding/hybrid
+# is requested but sentence-transformers is not installed.
+
+class TestConfigExtractionFallbackWarning:
+    """Embedding/hybrid modes must visibly degrade to heuristic when the
+    embedding stack is unavailable, instead of silently producing
+    heuristic-mode output (UAT 2026-04-13 DQ-07).
+    """
+
+    def _reset_warning_flag(self) -> None:
+        import hypergumbo_core.sketch as sk
+        sk._embedding_fallback_warned = False
+
+    def test_embedding_mode_warns_when_unavailable(
+        self, tmp_path, monkeypatch, capsys,
+    ) -> None:
+        from hypergumbo_core.sketch import (
+            _extract_config_info, ConfigExtractionMode,
+        )
+        import hypergumbo_core.sketch as sk
+        self._reset_warning_flag()
+        monkeypatch.setattr(sk, "_embedding_extraction_available", lambda: False)
+        (tmp_path / "package.json").write_text('{"name": "demo"}\n')
+
+        _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+        _, err = capsys.readouterr()
+        assert "embedding" in err
+        assert "sentence-transformers" in err
+        assert "WI-fumap" in err
+
+    def test_hybrid_mode_warns_when_unavailable(
+        self, tmp_path, monkeypatch, capsys,
+    ) -> None:
+        from hypergumbo_core.sketch import (
+            _extract_config_info, ConfigExtractionMode,
+        )
+        import hypergumbo_core.sketch as sk
+        self._reset_warning_flag()
+        monkeypatch.setattr(sk, "_embedding_extraction_available", lambda: False)
+        (tmp_path / "package.json").write_text('{"name": "demo"}\n')
+
+        _extract_config_info(tmp_path, mode=ConfigExtractionMode.HYBRID)
+        _, err = capsys.readouterr()
+        assert "hybrid" in err
+        assert "sentence-transformers" in err
+
+    def test_heuristic_mode_does_not_warn(
+        self, tmp_path, monkeypatch, capsys,
+    ) -> None:
+        from hypergumbo_core.sketch import (
+            _extract_config_info, ConfigExtractionMode,
+        )
+        import hypergumbo_core.sketch as sk
+        self._reset_warning_flag()
+        monkeypatch.setattr(sk, "_embedding_extraction_available", lambda: False)
+        (tmp_path / "package.json").write_text('{"name": "demo"}\n')
+
+        _extract_config_info(tmp_path, mode=ConfigExtractionMode.HEURISTIC)
+        _, err = capsys.readouterr()
+        assert "WI-fumap" not in err
+
+    def test_warning_fires_only_once_per_process(
+        self, tmp_path, monkeypatch, capsys,
+    ) -> None:
+        from hypergumbo_core.sketch import (
+            _extract_config_info, ConfigExtractionMode,
+        )
+        import hypergumbo_core.sketch as sk
+        self._reset_warning_flag()
+        monkeypatch.setattr(sk, "_embedding_extraction_available", lambda: False)
+        (tmp_path / "package.json").write_text('{"name": "demo"}\n')
+
+        _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+        _extract_config_info(tmp_path, mode=ConfigExtractionMode.HYBRID)
+        _, err = capsys.readouterr()
+        # Only one warning line should fire across both calls
+        assert err.count("WI-fumap") == 1
+
+    def test_no_warning_when_embedding_available(
+        self, tmp_path, monkeypatch, capsys,
+    ) -> None:
+        from hypergumbo_core.sketch import (
+            _extract_config_info, ConfigExtractionMode,
+        )
+        import hypergumbo_core.sketch as sk
+        self._reset_warning_flag()
+        # Pretend embedding stack IS available — no warning, even in
+        # embedding mode.  We don't actually invoke the real embedding
+        # path here; the dispatcher's pre-check is what matters.
+        monkeypatch.setattr(sk, "_embedding_extraction_available", lambda: True)
+        # Stub the embedding extractor so the test doesn't require the
+        # real model.
+        monkeypatch.setattr(
+            sk, "_extract_config_embedding",
+            lambda *a, **kw: ["dummy: line"],
+        )
+        (tmp_path / "package.json").write_text('{"name": "demo"}\n')
+
+        _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+        _, err = capsys.readouterr()
+        assert "WI-fumap" not in err
+
+    def test_embedding_extraction_available_smoke(self) -> None:
+        """The helper itself returns a bool without raising."""
+        from hypergumbo_core.sketch import _embedding_extraction_available
+        result = _embedding_extraction_available()
+        assert isinstance(result, bool)
+
+    def test_embedding_extraction_available_true_branch(
+        self, monkeypatch,
+    ) -> None:
+        """When the import helper returns True the dispatcher reports
+        embeddings as available — exercises the success branch even
+        in CI where sentence-transformers may not be installed."""
+        import hypergumbo_core.sketch as sk
+        monkeypatch.setattr(sk, "_try_import_embedding_stack", lambda: True)
+        assert sk._embedding_extraction_available() is True
+
+    def test_embedding_extraction_available_false_branch(
+        self, monkeypatch,
+    ) -> None:
+        """And the False branch — exercises the import-failure path even
+        on dev machines where the stack IS installed."""
+        import hypergumbo_core.sketch as sk
+        monkeypatch.setattr(sk, "_try_import_embedding_stack", lambda: False)
+        assert sk._embedding_extraction_available() is False
+
+    def test_try_import_embedding_stack_succeeds_when_modules_present(
+        self, monkeypatch,
+    ) -> None:
+        """Force both required imports to resolve via ``sys.modules``
+        injection so the True branch is covered regardless of whether
+        the embedding stack is actually installed in the test
+        environment."""
+        import sys
+        import types
+        stub = types.ModuleType("hypergumbo_core.sketch_embeddings")
+        stub._load_embedding_model = lambda: None
+        monkeypatch.setitem(
+            sys.modules, "hypergumbo_core.sketch_embeddings", stub,
+        )
+        if "numpy" not in sys.modules:  # pragma: no cover - defensive
+            monkeypatch.setitem(
+                sys.modules, "numpy", types.ModuleType("numpy"),
+            )
+        from hypergumbo_core.sketch import _try_import_embedding_stack
+        assert _try_import_embedding_stack() is True
+
+    # The False-branch (ImportError path) is marked `# pragma: no cover -
+    # exercised only when embedding stack absent` in sketch.py and is
+    # naturally covered by CI environments without sentence-transformers
+    # installed. We do not try to mock-force it here because Python's
+    # import machinery short-circuits on cached sys.modules entries
+    # making the simulation brittle.

@@ -1240,8 +1240,56 @@ do_pr() {
 	local poll_result=0
 	local hung_retries=0
 	local hung_backoff=120  # Start at 2 minutes
+	local timeout_retries=0
 
 	poll_ci "$HEAD_SHA" || poll_result=$?
+
+	# WI-dotod: Exit 2 (timeout) soft-retry. On 2026-04-14 WI-banaf lost
+	# ~3h because a timed-out poll has no built-in recovery — it jumps
+	# straight to Scenario B. A fresh auto-pr invocation 3h later merged
+	# in 8 min, confirming the stuck state was tied to the PR, not the
+	# infrastructure. We try ONE re-poll with a short timeout, then ONE
+	# close+repush, before escalating to Scenario B. If the cascade
+	# produces Exit 3, the hung-retry loop below picks it up.
+	if [[ $poll_result -eq 2 && $timeout_retries -lt 1 ]]; then
+		timeout_retries=1
+		echo ""
+		echo "⏰ Timeout soft-retry: re-polling once with 300s timeout before Scenario B..."
+		local _saved_ci_timeout="${CI_TIMEOUT_SECONDS:-}"
+		export CI_TIMEOUT_SECONDS=300
+		poll_result=0
+		poll_ci "$HEAD_SHA" || poll_result=$?
+		if [[ -n "$_saved_ci_timeout" ]]; then
+			export CI_TIMEOUT_SECONDS="$_saved_ci_timeout"
+		else
+			unset CI_TIMEOUT_SECONDS
+		fi
+
+		if [[ $poll_result -eq 2 ]]; then
+			echo ""
+			echo "🔄 Timeout recovery: closing PR #$PR_NUM and re-pushing to trigger fresh CI..."
+			api_patch "$API_BASE/pulls/$PR_NUM" '{"state": "closed"}' >/dev/null 2>&1 || true
+			sleep 60
+			echo "📤 Re-pushing..."
+			if ! git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o "topic=$BRANCH" 2>/dev/null; then
+				git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" 2>/dev/null || {
+					echo "❌ Re-push failed"
+					exit 1
+				}
+			fi
+			if find_open_pr "branch" "$BRANCH"; then
+				PR_NUM="$FOUND_PR_NUM"
+			elif find_open_pr "sha" "$HEAD_SHA"; then
+				PR_NUM="$FOUND_PR_NUM"
+			else
+				echo "❌ Could not find new PR after re-push"
+				exit 1
+			fi
+			echo "✅ New PR #$PR_NUM"
+			poll_result=0
+			poll_ci "$HEAD_SHA" || poll_result=$?
+		fi
+	fi
 
 	# Hung-run retry loop: if no CI jobs started (exit 3), close PR,
 	# wait with exponential backoff, and repush to trigger a fresh run.

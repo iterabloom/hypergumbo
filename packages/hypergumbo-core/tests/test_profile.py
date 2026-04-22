@@ -1000,6 +1000,76 @@ libraryDependencies += "org.http4s" %% "http4s-dsl" % "0.23.0"
     assert "http4s" in data["profile"]["frameworks"]
 
 
+def test_detects_scala_http4s_from_project_dependencies(tmp_path: Path) -> None:
+    """Should detect http4s when the dependency string lives in the
+    standard SBT ``project/Dependencies.scala`` file rather than in the
+    top-level ``build.sbt`` itself.
+
+    Real-world SBT projects (docspell is the canonical example) put all
+    library coordinates in ``project/Dependencies.scala`` and only
+    reference scala variables in ``build.sbt``
+    (e.g. ``Dependencies.http4sClient``). Before WI-piban the detector
+    only scanned ``build.sbt`` and missed these cases.
+    """
+    # Production code imports http4s — required so framework-validation
+    # (which moves non-imported candidates to dev_frameworks) keeps http4s
+    # in the confirmed ``frameworks`` list.
+    (tmp_path / "Main.scala").write_text(
+        'import org.http4s._\nimport org.http4s.dsl.Http4sDsl\n'
+        'object Main extends App\n'
+    )
+    (tmp_path / "build.sbt").write_text(
+        'name := "myapp"\nversion := "1.0"\n'
+        'libraryDependencies ++= Dependencies.http4sClient\n'
+    )
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "Dependencies.scala").write_text(
+        'import sbt._\nobject Dependencies {\n'
+        '  val http4sClient = Seq(\n'
+        '    "org.http4s" %% "http4s-ember-client" % "0.23.0",\n'
+        '    "org.http4s" %% "http4s-dsl" % "0.23.0",\n'
+        '  )\n'
+        '}\n'
+    )
+    (project_dir / "build.properties").write_text("sbt.version=1.9.0\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "http4s" in data["profile"]["frameworks"]
+
+
+def test_detects_scala_play_from_project_plugins(tmp_path: Path) -> None:
+    """Play projects declare the sbt-play plugin in ``project/plugins.sbt``
+    and the user's app code lives alongside a ``build.sbt`` that may not
+    itself reference ``com.typesafe.play`` directly.
+    """
+    # Production import so framework-validation keeps Play confirmed
+    # rather than demoting it to dev_frameworks.
+    (tmp_path / "Main.scala").write_text(
+        'import play.api._\nobject Main extends App\n'
+    )
+    (tmp_path / "build.sbt").write_text(
+        'name := "play-app"\nversion := "1.0"\nenablePlugins(PlayScala)\n'
+    )
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "plugins.sbt").write_text(
+        'addSbtPlugin("com.typesafe.play" %% "sbt-plugin" % "2.9.0")\n'
+    )
+    (project_dir / "build.properties").write_text("sbt.version=1.9.0\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "play" in (
+        data["profile"]["frameworks"] + data["profile"].get("dev_frameworks", [])
+    )
+
+
 # Ruby framework detection tests
 
 
@@ -1586,6 +1656,53 @@ def test_find_manifest_files_helper(tmp_path: Path) -> None:
     assert "services/api/pyproject.toml" in paths
 
 
+def test_find_manifest_skips_test_fixtures(tmp_path: Path) -> None:
+    """WI-sudug: manifest files inside test-fixture dirs are skipped.
+
+    Prevents false-positive framework detection from test fixtures. E.g.,
+    detekt is a Kotlin tool with no React; its test fixtures contain
+    package.json files referencing react for testing purposes.
+    """
+    from hypergumbo_core.profile import _find_manifest_files
+
+    # Real manifest at root
+    (tmp_path / "package.json").write_text('{"dependencies": {"vue": "3.0"}}')
+
+    # Test fixture manifest in various conventional locations
+    (tmp_path / "testdata" / "fixture1").mkdir(parents=True)
+    (tmp_path / "testdata" / "fixture1" / "package.json").write_text(
+        '{"dependencies": {"react": "18.0"}}'
+    )
+    (tmp_path / "src" / "test" / "resources" / "bad").mkdir(parents=True)
+    (tmp_path / "src" / "test" / "resources" / "bad" / "package.json").write_text(
+        '{"dependencies": {"react": "18.0"}}'
+    )
+
+    found = _find_manifest_files(tmp_path, "package.json")
+    paths = [str(p.relative_to(tmp_path)) for p in found]
+
+    # Root package.json included
+    assert "package.json" in paths
+    # Test-fixture package.json files excluded
+    assert not any("testdata" in p for p in paths)
+    assert not any("test/resources" in p for p in paths)
+
+
+def test_detect_js_frameworks_ignores_test_fixture_react(tmp_path: Path) -> None:
+    """WI-sudug: React in a test-fixture package.json does not trigger detection."""
+    from hypergumbo_core.profile import _detect_js_frameworks
+
+    # Kotlin tool like detekt: no JS deps at root
+    # But test fixtures have package.json with react
+    (tmp_path / "testdata" / "fixture").mkdir(parents=True)
+    (tmp_path / "testdata" / "fixture" / "package.json").write_text(
+        '{"dependencies": {"react": "18.0"}}'
+    )
+
+    frameworks = _detect_js_frameworks(tmp_path)
+    assert "react" not in frameworks
+
+
 def test_detects_flutter_in_subdirectory(tmp_path: Path) -> None:
     """Should detect Flutter from pubspec.yaml in a subdirectory."""
     # Simulate monorepo with Flutter app in subdirectory
@@ -1659,6 +1776,66 @@ dependencies:
 
     data = json.loads(out_path.read_text())
     assert "servant" in data["profile"]["frameworks"]
+
+
+def test_detects_haskell_yesod_framework_from_cabal(tmp_path: Path) -> None:
+    """WI-vabiv: detect Yesod from *.cabal dependency.
+
+    Yesod (UAT BUG-16 / haskellers) is the Rails-inspired Haskell web
+    framework; detection wires it up like Servant / Scotty so the new
+    yesod.yaml patterns are loaded when a repo declares the dependency.
+    """
+    (tmp_path / "Main.hs").write_text("main = putStrLn \"Hello\"\n")
+    (tmp_path / "myapp.cabal").write_text("""name: myapp
+version: 0.1.0.0
+build-depends:
+    base >=4.7 && <5,
+    yesod,
+    yesod-core,
+    yesod-auth
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "yesod" in data["profile"]["frameworks"]
+
+
+def test_detects_haskell_yesod_from_package_yaml(tmp_path: Path) -> None:
+    """WI-vabiv: detect Yesod from package.yaml (hpack)."""
+    (tmp_path / "Main.hs").write_text("main = putStrLn \"Hello\"\n")
+    (tmp_path / "package.yaml").write_text("""name: myapp
+dependencies:
+  - base >= 4.7 && < 5
+  - yesod
+  - yesod-persistent
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "yesod" in data["profile"]["frameworks"]
+
+
+def test_yesod_framework_yaml_loads(tmp_path: Path) -> None:
+    """WI-vabiv: yesod.yaml loads via load_framework_patterns and declares
+    the expected concepts (application, router, route, auth, model, etc.).
+    Guards against typos or schema drift in the new file.
+    """
+    from hypergumbo_core.framework_patterns import load_framework_patterns
+
+    pattern_def = load_framework_patterns("yesod")
+    assert pattern_def is not None, "yesod.yaml must load"
+    assert pattern_def.id == "yesod"
+    assert pattern_def.language == "haskell"
+
+    concepts = {p.concept for p in pattern_def.patterns}
+    for required in ("application", "router", "route", "auth", "model"):
+        assert required in concepts, (
+            f"yesod pattern set missing concept: {required}"
+        )
 
 
 # Clojure framework detection tests

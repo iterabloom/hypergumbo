@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Python FFI linker for connecting Python ctypes/cffi calls to C/C++ implementations
+"""Bridge linker: Python FFI for connecting Python ctypes/cffi calls to C/C++ implementations
 and PyO3 Rust functions to their Python callers.
 
 This linker creates ffi_bridge edges between Python code that calls native functions

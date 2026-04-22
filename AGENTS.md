@@ -43,7 +43,7 @@ Use **BROAD** mode (the default) when coverage gaps remain — missing linker ed
 - **Always 100% coverage:** No exceptions. Mark defensive code paths with `# pragma: no cover`.
 - **Maintain the tracker:** When you discover a violated invariant, create a tracker item (`scripts/tracker add --kind invariant ...`). When you fix a root cause (not a workaround), update the item status. For invariants: use `satisfied` (with positive evidence the invariant holds), `pending_validation` (fix deployed but not yet validated by bakeoff), or `violated` (still broken). Do NOT use `holding` (deprecated) — it is ambiguous and will be rejected by the tracker.
 
-- **Trackerize:** When the user says "trackerize", decompose the plan under discussion into individual self-contained tracker items. Check existing items to avoid duplicates and inform priority. Use `before` for real dependencies (not just preferred ordering), and tags for filterability. Use parents only when there's a compelling structural reason. Prefer flat lists over hierarchies. If what the user is talking about is ambiguous, ask. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/trackerize-playbook.md`.)
+- **Trackerize:** When the user says "trackerize", decompose the plan under discussion into individual self-contained tracker items. Check existing items to avoid duplicates and inform priority. Use `isbefore` for real dependencies (not just preferred ordering), and tags for filterability. Use parents only when there's a compelling structural reason. Prefer flat lists over hierarchies. If what the user is talking about is ambiguous, ask. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/trackerize-playbook.md`.)
 
 - **Periodically and frequently test on real repos:** Use the lab journal/notebook (`$HOME/hypergumbo_lab_notebook/notebookjournal_<MMDDYYYY_HHMM>.md`) to record your observations and ideas as you experiment with various hypergumbo settings on various real-world projects. If you notice obvious bugs during experimentation, you don't necessarily need to stop right away to fix the bug. Just be sure to note it prominently in your lab notebookjournal. When you feel you have done enough experiments, review and analyze the entire notebookjournal file, and use your analysis to plan your next actions. Think about how to make hypergumbo more useful both to agentic LLMs such as yourself and human software developers.
 
@@ -122,6 +122,7 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
 - **Linting:** Ensure code adheres to PEP 8.
 - **Module Docstrings:** Each `.py` file should have a substantive module docstring explaining *how it works* and *why*, not just *what* it exports. Capture implementation rationale that would otherwise be lost.
 - **Structural Fix and Scope Expansion Protocol:** When fixing bugs, assume structural: name the violated invariant, check for analogues across languages/constructs/pipeline stages, distinguish root-cause fixes from workarounds. Create tracker items immediately. When in doubt, use `todo_hard` — the circuit breaker prevents death spirals. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/structural-fix-scope-expansion-protocol.md`.)
+- **Linker subcategory vocabulary and prioritization:** Linkers are Tier 2 edge-recovery passes across four subcategories — Protocol (framework-agnostic), Bridge (language-pair FFI), Framework (framework-specific dispatch), Infrastructure (graph-structural utilities) — per [ADR-0003-ext](docs/adr/0003-linker-subcategory-restoration.md). Every new linker module's top-level docstring must open with `"""<Subcategory> linker: <one-line purpose>.`, and new tracker items for linker work pick their subcategory-specific tag (see the `trackerize` playbook §7). The `generate-architecture` script enforces the convention automatically by reporting any module that doesn't declare a subcategory as "Uncategorized" in the architecture doc. Roadmap prioritization follows INV-nimuj: rank by expected false-positive-reduction volume on the current prospector corpus, not by novelty of language pair — within-language Framework-subcategory gaps empirically dominate cross-language gaps in dead-code FP volume.
 - **Signing & Identity:**
   1. Check `git config user.name` and `git config user.email` **before** creating any commit.
   2. If they are blank, **STOP**. You are **strictly forbidden** from generating, inferring, or guessing an identity. You must ask the user to run:
@@ -154,6 +155,30 @@ some-long-command > /tmp/cmd-output.log 2>&1
 **Safety valve:** If output volume is a concern (e.g., infinite loops), use `head -100000` (100K lines, ~5-10MB) as an upper bound — not `tail -30`.
 
 **Why:** Re-running a 15-minute command because `| tail -30` missed the relevant lines is pure waste. Capturing to a file costs nothing and enables targeted searching after the fact.
+
+**Hazard specific to `auto-pr`:** when `auto-pr` detects the feature branch is behind base, it backs up `.agent/tracker-workspace/.ops` and `.agent/tracker/.ops`, rebases, then restores the backup. Tracker `discuss` / `add` / `update` operations performed *during* the auto-pr run are at risk of being overwritten by the restore step (observed 2026-04-17, tracked as WI-buhov). Recovery: lost edits may be auto-stashed under a fresh `WIP on dev:` entry — `git stash list`, reset `affected-tests.txt`, then `git stash pop`, then `./scripts/tracker sync`. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/output-capture-long-running-playbook.md`.)
+
+### Bakeoff Validation Discipline
+Any PR whose description or tracker discussion contains a quantitative bakeoff-improvement claim must receive the `awaits_bakeoff_validation` tag on its tracker item at merge time. The tag stays until a later DEEP-mode bakeoff cycle reproduces the claimed metric movement; on confirmed movement the tag is stripped via a resolution discussion that links the cohort where it was validated, and on no-movement a regression sub-item is created so the discrepancy is not silently absorbed.
+
+**What counts as a quantitative bakeoff claim** (apply the tag when any of these verb-forms appears):
+- "should improve X by N%"
+- "expected FP reduction of N"
+- "N dead → alive" or "N alive → dead"
+- "NN% reduction" / "NN% improvement"
+- "below threshold X" (any numeric threshold)
+- "newly-consumed concept" (asserting a concept flips from inert → live)
+- raw candidate-count deltas attributed to the change
+
+**What does NOT count:** qualitative claims ("handles the case", "covers the pattern"), coverage / test-count deltas, performance micro-benchmarks unrelated to the bakeoff corpus.
+
+**The authoritative running list** supersedes the pre-WI-sofom hand-maintained pattern:
+```bash
+scripts/tracker list --tag awaits_bakeoff_validation
+```
+This is the single source of truth for pending bakeoff validations. The stop hook surfaces the tag automatically: when the count of tag-bearing items in a blocking status reaches `threshold` AND the most recent DEEP bakeoff cycle's `state.json` is older than `stale_cycle_hours`, an `## AWAITS_BAKEOFF_VALIDATION BACKLOG` section is appended to the active guidance file pointing at `./scripts/bakeoff-deep cycle`. Both knobs live under `stop_hook.awaits_bakeoff_validation_nudge` in `.agent/tracker/config.yaml` (defaults: `threshold=5`, `stale_cycle_hours=72`). Worker: `.agent/hooks/_shared/awaits_bakeoff_nudge.py`.
+
+**Integration with `bakeoff-deep-reflect aggregate`:** at aggregation time the reflect pass cross-references active `awaits_bakeoff_validation` items against the cohort's diagnostic output, injecting a per-claim question into the reflect prompt (`moved` / `no_move` / `inconclusive`). On `moved` the tag is auto-stripped with evidence; on `no_move` a regression sub-item is created. The aggregation glue is implementation work (WI-dolil); the discipline rule is in force independently of that tooling.
 
 
 ## Pre-Work Checklist
@@ -224,6 +249,21 @@ When CI fails but tests pass locally, use `ci-debug runs/status/analyze-deps`. F
 
 ## Testing Optional Dependencies
 For PyPI-available tree-sitter grammars: add to pyproject.toml, write real tests, no mocking. For build-from-source grammars (built via `scripts/build-source-grammars`): write real tests calling the analyzer directly, plus a mock test only for the unavailability code path. Never use `pytest.mark.skipif` as an escape hatch. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/optional-dependency-testing-playbook.md`.)
+
+## Vendor Parity for Respawn
+
+The `scripts/agent-supervisor` daemon (WI-razub / WI-rofuv) needs four pieces of information per vendor to gracefully end a stuck session and spawn a fresh one: (1) the per-turn hook path where the WI-sipov heartbeat is wired, (2) the session-start hook path where the WI-sakod respawn branch lives, (3) the graceful-exit keystroke sent via `tmux send-keys` before the 30-second hard-kill fallback, and (4) the non-interactive CLI invocation string passed to `tmux new-session`. This section is the authoritative table; the code in `scripts/agent-supervisor::VENDOR_TABLE` and the hook wire-ups must match.
+
+**Verification status.** The Claude Code values are verified in production. The Codex / Cursor / Gemini exit keystrokes are pending empirical verification — they're marked `# FIXME WI-batob` in `scripts/agent-supervisor`. Before rolling out the supervisor for a given vendor in practice, verify its exit keystroke in a throwaway tmux session: start the vendor CLI via `tmux new-session -d -s verify vendorcli`, run `tmux send-keys -t verify '<keystroke>' Enter`, then confirm the CLI process exits within 30s. Wrong keystroke turns graceful-exit into hard-kill 100% of the time, so this is a one-time ground-truth exercise that pays off for every subsequent respawn.
+
+| Vendor | PostToolUse-equivalent hook | Session-start hook | Graceful-exit keystroke | CLI invocation | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | `.agent/hooks/claude-code/post-tool-use-transcript.sh` | `.agent/hooks/claude-code/session-start.sh` | `/quit` *(verified)* | `claude` | — |
+| Codex CLI | `.agent/hooks/codex-cli/post-tool-use-transcript.sh` | `.agent/hooks/codex-cli/session-start.sh` | `/exit` *(unverified — FIXME WI-batob)* | `codex` | Notify hook (not Stop) cannot block; see `codex-cli/notify.sh` header comment. |
+| Cursor | `.agent/hooks/cursor/post-tool-use-transcript.sh` | `.agent/hooks/cursor/session-start.sh` | `/quit` *(unverified — FIXME WI-batob)* | `cursor` | Single-session-per-repo (global-SQLite quirk, WI-rijoj). Supervisor respawn of a second Cursor instance in the same repo is explicitly unsupported. |
+| Gemini CLI | `.agent/hooks/gemini-cli/before-model-transcript.sh` | `.agent/hooks/gemini-cli/session-start.sh` | `/quit` *(unverified — FIXME WI-batob)* | `gemini` | Gemini's before-model hook fires per LLM request, tighter than post-tool-use. Hook output MUST be JSON (plain text fails). |
+
+**Adding a new vendor.** Four changes in the same PR: (1) a row in the table above, (2) an entry in `VENDOR_TABLE` in `scripts/agent-supervisor`, (3) a per-turn hook that sources `touch_heartbeat.sh` and calls it after resolving SESSION_ID (pattern: every per-turn hook in `.agent/hooks/<vendor>/`), (4) a session-start hook that sources `session_start_logic.sh` so the WI-sakod respawn branch applies. The parity tests at `tests/test_touch_heartbeat.py::test_each_vendor_per_turn_hook_sources_heartbeat_helper` and `tests/test_session_start_respawn.py::test_vendor_hook_sources_shared_session_start_logic` will fire if you miss one of the hook wire-ups.
 
 ## Modifying This Document
 - Propose changes via PR with rationale.

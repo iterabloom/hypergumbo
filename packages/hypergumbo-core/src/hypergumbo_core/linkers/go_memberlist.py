@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Go hashicorp/memberlist cluster delegate callback linker.
+"""Framework linker: Go hashicorp/memberlist cluster delegate callback.
 
 Bridges ``memberlist.Create(...)`` cluster construction sites to the
 delegate callback methods that the memberlist event loop invokes.

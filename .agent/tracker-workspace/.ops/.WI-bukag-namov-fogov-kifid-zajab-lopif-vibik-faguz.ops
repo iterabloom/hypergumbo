@@ -1,0 +1,45 @@
+- op: create  # f2c3
+  at: '2026-04-20T05:50:24Z'  # f2c3
+  by: agent  # f2c3
+  actor: jgstern_agent  # f2c3
+  clock: 1  # f2c3
+  nonce: f2c3  # f2c3
+  data:  # f2c3
+    kind: work_item  # f2c3
+    title: "Fix 3 pre-existing failures in top-level tests/ (hidden by WI-javan CI gap)"  # f2c3
+    status: todo_soft  # f2c3
+    priority: 3  # f2c3
+    parent:  # f2c3
+    tags:  # f2c3
+    - ci_infrastructure  # f2c3
+    - analysis_quality  # f2c3
+    isbefore: []  # f2c3
+    duplicate_of: []  # f2c3
+    not_duplicate_of: []  # f2c3
+    pr_ref:  # f2c3
+    description: "Surfaced by WI-javan (2026-04-20): running 'pytest tests/ --no-cov' on dev (46a839f75) yields 3 failures that CI never caught because neither full-suite.yml nor ci.yml run the top-level tests/ directory. All three are real drift, not flakes:\n\n1. tests/test_generate_concepts.py::test_committed_file_is_up_to_date\n   - docs/CONCEPTS.md is stale vs the generator. Fix: run scripts/generate-concepts to regenerate and commit the output. Likely drift from a recent framework YAML or consumer change that didn't update the committed artifact.\n\n2. tests/test_training_log_parse_misses.py::TestLogTrainingExampleCohortMetadata::test_pipeline_version_is_v1\n   - Asserts entry['pipeline_version'] == 'v1', but the actual value is 'v2'. Pipeline version was bumped in .agent/hooks/_shared/on_transcript_change.py (v1 → v2) without updating this test. Fix: update the assertion to 'v2' and audit whether downstream consumers of the training log need to keep consuming v1 during a migration window (probably not — a version bump usually means consumers already moved).\n\n3. tests/test_training_log_parse_misses.py::TestLogTrainingExampleCohortMetadata::test_extra_still_works_alongside_cohort\n   - Fails at tests/test_training_log_parse_misses.py:509; same TestLogTrainingExampleCohortMetadata class as #2, likely a shared schema-drift root cause with the pipeline_version bump.\n\nAll three are blockers for landing WI-javan's full-suite.yml change — if we add a test-agent-infra job right now, full-suite goes red immediately. Fix these, then land WI-javan (or invert: land WI-javan with these tests xfailed and clear the xfails here)."  # f2c3
+    fields: {}  # f2c3
+- op: update  # 12ed
+  at: '2026-04-20T05:52:31Z'  # 12ed
+  by: agent  # 12ed
+  actor: jgstern_agent  # 12ed
+  clock: 2  # 12ed
+  nonce: 12ed  # 12ed
+  set: {}  # 12ed
+  add:  # 12ed
+    isbefore: [WI-javan-kovor-zimuh-guvah-patos-zufun-mijov-mafur]  # 12ed
+- op: update  # 5cdc
+  at: '2026-04-20T07:35:03Z'  # 5cdc
+  by: agent  # 5cdc
+  actor: jgstern_agent  # 5cdc
+  clock: 3  # 5cdc
+  nonce: 5cdc  # 5cdc
+  set:  # 5cdc
+    status: done  # 5cdc
+- op: discuss  # 6317
+  at: '2026-04-20T07:35:03Z'  # 6317
+  by: agent  # 6317
+  actor: jgstern_agent  # 6317
+  clock: 4  # 6317
+  nonce: '6317'  # 6317
+  message: "Fixed in PR #3215 (merged to dev). (1) scan_producers call in test_generate_concepts.py updated to pass ANALYZER_SRC_DIRS (matching the WI-tasab production signature). (2)/(3) pipeline_version assertions updated v1 → v2 (matching WI-nadud normalization pass); test_pipeline_version_is_v1 renamed test_pipeline_version_is_v2 for intent/assertion parity. All 941 top-level tests pass. WI-javan unblocked."  # 6317

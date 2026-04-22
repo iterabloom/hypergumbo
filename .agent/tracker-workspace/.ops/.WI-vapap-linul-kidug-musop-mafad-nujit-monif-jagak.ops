@@ -1,0 +1,36 @@
+- op: create  # 01ee
+  at: '2026-04-17T14:30:49Z'  # 01ee
+  by: agent  # 01ee
+  actor: jgstern_agent  # 01ee
+  clock: 1  # 01ee
+  nonce: 01ee  # 01ee
+  data:  # 01ee
+    kind: work_item  # 01ee
+    title: "AGENTS.md: prohibit 'session wrap' while tracker ready backlog is non-empty"  # 01ee
+    status: needs_human_review  # 01ee
+    priority: 2  # 01ee
+    parent:  # 01ee
+    tags:  # 01ee
+    - retrospective  # 01ee
+    - governance  # 01ee
+    isbefore: []  # 01ee
+    duplicate_of: []  # 01ee
+    not_duplicate_of: []  # 01ee
+    pr_ref:  # 01ee
+    description: "Observed in session_retrospective_04172026_1012.md Finding 1: in a DEEP-mode session, the agent self-declared a 'session wrap' at 2h 36min while 24 items were ready and 2 human messages unread, then sat idle for ~28min spinning for the circuit breaker. The stop hook correctly refused to let it stop (37->33 TODOs); the agent farmed the circuit breaker instead of picking up work.\n\nProposed AGENTS.md change (under 'Premature Stopping Prevention'): add an explicit anti-pattern clause forbidding a 'session wrap' or 'good stopping point' declaration while scripts/tracker ready is non-empty. When top items feel too large, required alternatives are (a) start with TDD's first failing test, (b) pick a smaller P3/P4 ready item, (c) reply to any unread human messages, (d) run a DEEP-mode priority-queue action (bakeoff, aggregate, dogfood, audit). Sitting idle to farm the circuit-breaker is explicitly not an allowed exit.\n\nGovernance file: touches AGENTS.md -> needs_human_review per the approval workflow."  # 01ee
+    fields: {}  # 01ee
+- op: update  # aba7
+  at: '2026-04-17T17:11:49Z'  # aba7
+  by: agent  # aba7
+  actor: jgstern_agent  # aba7
+  clock: 2  # aba7
+  nonce: aba7  # aba7
+  set:  # aba7
+    status: wont_do  # aba7
+- op: discuss  # 0ed2
+  at: '2026-04-17T17:11:49Z'  # 0ed2
+  by: agent  # 0ed2
+  actor: jgstern_agent  # 0ed2
+  clock: 3  # 0ed2
+  nonce: 0ed2  # 0ed2
+  message: "Closing: superseded by the respawn-on-circuit-breaker mechanism (new tracker item). Restating the prohibition louder in AGENTS.md would not have changed last session's behavior — the agent already had the rules and ignored them. Replacing a stagnating context with a fresh detached tmux session for the same vendor is a structural fix, not a governance one."  # 0ed2

@@ -1,0 +1,22 @@
+- op: create  # 60dd
+  at: '2026-04-16T19:21:00Z'  # 60dd
+  by: agent  # 60dd
+  actor: jgstern_agent  # 60dd
+  clock: 1  # 60dd
+  nonce: 60dd  # 60dd
+  data:  # 60dd
+    kind: invariant  # 60dd
+    title: "INV: linker roadmap prioritizes dead-code-FP volume, not novelty of language pair"  # 60dd
+    status: needs_human_review  # 60dd
+    priority: 4  # 60dd
+    parent:  # 60dd
+    tags:  # 60dd
+    - analysis_quality  # 60dd
+    isbefore: []  # 60dd
+    duplicate_of: []  # 60dd
+    not_duplicate_of: []  # 60dd
+    pr_ref:  # 60dd
+    description: "Filed as observation from WI-tubot aggregate-v5 analysis. Not actionable on its own; it's a calibration for the linker-prioritization process going forward. Related instance items filed simultaneously:\n  - WI-gupah: Jackson/JavaBean serialization linker (7614 candidates)\n  - WI-nutav: Airflow framework-dispatch linker (4511 candidates)\n  - WI-lisov: Kafka Streams topology-builder linker (2386 candidates)\n\nThese dwarf the cross-language items still in flight (WI-tinip Elm→Go umbrella ~3200 via prospector cross_language_api + handler_or_dto, WI-ropoz gRPC↔TS, WI-rosan Elm let-bound, WI-sijoh JS template literals).\n\nThe invariant is held when: the linker roadmap's next-N items, when ranked by expected-FP-reduction on the current prospector corpus, are chosen in rank order (with documented deviations for strategic reasons)."  # 60dd
+    fields:  # 60dd
+      statement: "When choosing which linker to build next, priority is set by how many dead-code false positives closing the linker gap would eliminate on a representative polyglot corpus — not by how novel or exotic the language pair is. Cross-language pairs should be evaluated on the same volume axis as within-language framework-dispatch linkers."  # 60dd
+      root_cause: "Hypergumbo's linker roadmap historically leaned toward novel cross-language pairings (Elm→Go, TS→Rust, Lua FFI, etc.). The WI-tubot 2026-04-11 prospector run revealed that the dominant dead-code-FP signal is language-internal framework dispatch, not cross-language misses: Java bean/reflection (8.3%), Python Airflow framework (4.9%), Kafka Streams topology (2.6%), Django ORM internals (2.6%), Rust trait impls (2.3%) each exceed every cross-language category in the corpus. Treating 'novelty of language pair' as a proxy for 'value of closing the gap' led us to underinvest in the highest-volume within-language dispatch linkers relative to lower-volume cross-language ones."  # 60dd

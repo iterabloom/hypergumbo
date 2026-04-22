@@ -675,15 +675,18 @@ def create_boundary_nodes(
         tier = 3
         reason = "unresolved external reference"
 
-        # Consult dependency manifest for Go boundary nodes
-        if dependency_manifest is not None and language == "go" and len(parts) >= 3:
+        # Consult dependency manifest for Go/Java/Kotlin boundary nodes
+        if dependency_manifest is not None and language in ("go", "java", "kotlin") and len(parts) >= 3:
             # Extract the import/module path from the ID.
-            # Go import IDs: "go:{import_path}:0-0:{name}:{kind}"
+            # Format: "{lang}:{import_path}:0-0:{name}:{kind}"
             import_path = parts[1]
             manifest_tier = dependency_manifest.classify_import(import_path)
             tier = manifest_tier.value
             if tier == 2:
-                reason = "direct dependency (go.mod)"
+                reason = (
+                    "direct dependency (go.mod)" if language == "go"
+                    else "direct dependency (build manifest)"
+                )
 
         sym = Symbol(
             id=dangling_id,

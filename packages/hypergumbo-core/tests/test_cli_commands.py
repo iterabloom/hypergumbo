@@ -2378,6 +2378,108 @@ def test_cmd_sketch_nonexistent_path(capsys) -> None:
     assert "does not exist" in err
 
 
+def test_cmd_sketch_single_file_input_exits_cleanly(tmp_path: Path, capsys) -> None:
+    """Pointing sketch at a file (not a directory) exits cleanly with a hint.
+
+    Per WI-zujum (UAT 2026-04-13 BUG-04): the prior behaviour printed a
+    helpful hint, then proceeded into ``generate_sketch`` and crashed with
+    ``NotADirectoryError`` from ``Path.iterdir()``. The hint must terminate
+    the command so users see the suggestion, not a traceback.
+    """
+    sample = tmp_path / "thing.tla"
+    sample.write_text("---- MODULE Thing ----\n==== ")
+
+    args = FakeArgs()
+    args.path = str(sample)
+    args.tokens = None
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+
+    result = cmd_sketch(args)
+
+    assert result == 1
+    _, err = capsys.readouterr()
+    assert "directory" in err.lower()
+    assert "thing.tla" in err  # mention what they pointed at
+    # Must not crash with traceback
+    assert "Traceback" not in err
+
+
+def test_cmd_run_nonexistent_path_exits_cleanly(capsys) -> None:
+    """``hypergumbo run /does/not/exist`` exits with a clean error, not a crash."""
+    args = FakeArgs()
+    args.path = "/nonexistent/path/that/does/not/exist"
+    args.out = None
+
+    result = cmd_run(args)
+
+    assert result == 1
+    _, err = capsys.readouterr()
+    assert "does not exist" in err
+
+
+def test_cmd_run_single_file_input_exits_cleanly(tmp_path: Path, capsys) -> None:
+    """``hypergumbo run /path/to/file`` should exit cleanly, not crash."""
+    sample = tmp_path / "thing.tla"
+    sample.write_text("---- MODULE Thing ----\n==== ")
+
+    args = FakeArgs()
+    args.path = str(sample)
+    args.out = None
+
+    result = cmd_run(args)
+
+    assert result == 1
+    _, err = capsys.readouterr()
+    assert "directory" in err.lower()
+    assert "Traceback" not in err
+
+
+def test_positive_token_budget_accepts_positive_int() -> None:
+    """The validator returns the int unchanged for valid positive values."""
+    from hypergumbo_core.cli import _positive_token_budget
+    assert _positive_token_budget("8000") == 8000
+    assert _positive_token_budget("1") == 1
+
+
+def test_positive_token_budget_rejects_zero() -> None:
+    """`-t 0` is rejected (WI-pokor / UAT BUG-02)."""
+    import argparse
+    from hypergumbo_core.cli import _positive_token_budget
+    with pytest.raises(argparse.ArgumentTypeError, match="token budget"):
+        _positive_token_budget("0")
+
+
+def test_positive_token_budget_rejects_negative() -> None:
+    """`-t -1` / `-t -100` are rejected (WI-pokor / UAT BUG-03)."""
+    import argparse
+    from hypergumbo_core.cli import _positive_token_budget
+    with pytest.raises(argparse.ArgumentTypeError, match="token budget"):
+        _positive_token_budget("-1")
+    with pytest.raises(argparse.ArgumentTypeError, match="token budget"):
+        _positive_token_budget("-100")
+
+
+def test_positive_token_budget_rejects_non_int() -> None:
+    """Non-integer values produce a clear error."""
+    import argparse
+    from hypergumbo_core.cli import _positive_token_budget
+    with pytest.raises(argparse.ArgumentTypeError, match="token budget"):
+        _positive_token_budget("abc")
+    with pytest.raises(argparse.ArgumentTypeError, match="token budget"):
+        _positive_token_budget("1.5")
+
+
+def test_sketch_parser_rejects_zero_tokens() -> None:
+    """argparse uses the validator on the sketch -t flag (integration)."""
+    from hypergumbo_core.cli import build_parser
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["sketch", ".", "-t", "0"])
+
+
 def test_cmd_sketch_warns_about_git_root(tmp_path: Path, capsys) -> None:
     """Test cmd_sketch warns when analyzing a subdirectory of a git repo."""
     # Create a git repo structure
@@ -3922,3 +4024,277 @@ def test_cmd_slice_auto_entry_prefers_main_over_route(
         "main() should be preferred over route handlers: "
         "main functions are canonical application roots"
     )
+
+
+# ============================================================================
+# WI-balij: subcommand parser cleanup tests
+# ============================================================================
+
+
+def test_invalid_subcommand_reports_error_with_exit_code_2(capsys) -> None:
+    """`hypergumbo foobar` exits 2 with a 'not a valid subcommand' message
+    instead of silently inserting `sketch` and reporting 'path does not exist'.
+    """
+    result = main(["foobar"])
+    assert result == 2
+    _, err = capsys.readouterr()
+    assert "'foobar' is not a valid subcommand" in err
+    assert "hypergumbo --help" in err
+
+
+def test_invalid_subcommand_suggests_close_match(capsys) -> None:
+    """A typo close to a real subcommand surfaces a Did-you-mean line."""
+    result = main(["scetch"])
+    assert result == 2
+    _, err = capsys.readouterr()
+    assert "Did you mean" in err
+    assert "sketch" in err
+
+
+def test_invalid_subcommand_no_suggestion_for_far_strings(capsys) -> None:
+    """A string with no close match still errors cleanly (no Did-you-mean)."""
+    result = main(["xyz"])
+    assert result == 2
+    _, err = capsys.readouterr()
+    assert "'xyz' is not a valid subcommand" in err
+    assert "Did you mean" not in err
+
+
+def test_path_argument_still_routes_to_default_sketch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real path (e.g. `hypergumbo .`) still routes to the default sketch
+    subcommand — it must NOT trip the new typo-detection branch.
+    """
+    captured: dict = {}
+
+    def _fake_sketch(args) -> int:
+        captured["path"] = args.path
+        return 0
+
+    monkeypatch.setattr("hypergumbo_core.cli.cmd_sketch", _fake_sketch)
+    result = main([str(tmp_path)])
+    assert result == 0
+    assert captured["path"] == str(tmp_path)
+
+
+def test_relative_path_routes_to_default_sketch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo ./subdir` is a path-like prefix and must NOT trigger
+    typo-detection — the leading `.` is the gate.
+    """
+    sub = tmp_path / "subdir"
+    sub.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    captured: dict = {}
+
+    def _fake_sketch(args) -> int:
+        captured["path"] = args.path
+        return 0
+
+    monkeypatch.setattr("hypergumbo_core.cli.cmd_sketch", _fake_sketch)
+    result = main(["./subdir"])
+    assert result == 0
+    assert captured["path"] == "./subdir"
+
+
+def test_debug_flag_accepted_after_subcommand(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo sketch <path> --debug` no longer fails with
+    'unrecognized arguments: --debug' — the flag works in any position.
+    """
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_sketch", lambda args: 0,
+    )
+    result = main(["sketch", str(tmp_path), "--debug"])
+    assert result == 0
+
+
+def test_debug_flag_accepted_before_subcommand(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The original `hypergumbo --debug sketch <path>` form still works
+    (regression guard for the WI-balij fix).
+    """
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_sketch", lambda args: 0,
+    )
+    result = main(["--debug", "sketch", str(tmp_path)])
+    assert result == 0
+
+
+def test_debug_flag_triggers_logging_basicconfig(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--debug invokes logging.basicConfig with DEBUG level (regression
+    guard that the strip-and-set flow keeps the side-effect)."""
+    captured: dict = {}
+
+    def _fake_basicconfig(**kwargs) -> None:
+        captured.update(kwargs)
+
+    import logging
+    monkeypatch.setattr(logging, "basicConfig", _fake_basicconfig)
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_sketch", lambda args: 0,
+    )
+
+    main(["sketch", str(tmp_path), "--debug"])
+
+    assert captured.get("level") == logging.DEBUG
+
+
+def test_no_debug_flag_does_not_call_basicconfig(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without --debug, logging.basicConfig is NOT called — confirms
+    the flag's strip path is not over-eager."""
+    called = {"count": 0}
+
+    def _fake_basicconfig(**kwargs) -> None:
+        called["count"] += 1
+
+    import logging
+    monkeypatch.setattr(logging, "basicConfig", _fake_basicconfig)
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_sketch", lambda args: 0,
+    )
+
+    main(["sketch", str(tmp_path)])
+
+    assert called["count"] == 0
+
+
+# ============================================================================
+# WI-munuv: unified path argument across subcommands
+# ============================================================================
+
+
+def test_routes_accepts_positional_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo routes /path` works (previously --path-only)."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_routes",
+        lambda args: captured.update({"path": args.path}) or 0,
+    )
+    result = main(["routes", str(tmp_path)])
+    assert result == 0
+    assert captured["path"] == str(tmp_path)
+
+
+def test_routes_accepts_path_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo routes --path /path` still works (regression guard)."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_routes",
+        lambda args: captured.update({"path": args.path}) or 0,
+    )
+    result = main(["routes", "--path", str(tmp_path)])
+    assert result == 0
+    assert captured["path"] == str(tmp_path)
+
+
+def test_sketch_accepts_path_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo sketch --path /path` works (previously positional-only)."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_sketch",
+        lambda args: captured.update({"path": args.path}) or 0,
+    )
+    result = main(["sketch", "--path", str(tmp_path)])
+    assert result == 0
+    assert captured["path"] == str(tmp_path)
+
+
+def test_sketch_accepts_positional_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo sketch /path` still works (regression guard)."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_sketch",
+        lambda args: captured.update({"path": args.path}) or 0,
+    )
+    result = main(["sketch", str(tmp_path)])
+    assert result == 0
+    assert captured["path"] == str(tmp_path)
+
+
+def test_search_accepts_positional_path_after_pattern(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo search foo /repo` works alongside `--path`.
+
+    Required positional `pattern` comes first; optional `path` follows.
+    """
+    captured: dict = {}
+    def _fake(args):
+        captured.update({"path": args.path, "pattern": args.pattern})
+        return 0
+    monkeypatch.setattr("hypergumbo_core.cli.cmd_search", _fake)
+    result = main(["search", "foo", str(tmp_path)])
+    assert result == 0
+    assert captured["pattern"] == "foo"
+    assert captured["path"] == str(tmp_path)
+
+
+def test_explain_accepts_positional_path_after_symbol(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo explain SymName /repo` mirrors the search shape."""
+    captured: dict = {}
+    def _fake(args):
+        captured.update({"path": args.path, "symbol": args.symbol})
+        return 0
+    monkeypatch.setattr("hypergumbo_core.cli.cmd_explain", _fake)
+    result = main(["explain", "MySymbol", str(tmp_path)])
+    assert result == 0
+    assert captured["symbol"] == "MySymbol"
+    assert captured["path"] == str(tmp_path)
+
+
+def test_default_path_is_cwd_when_neither_form_given(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both forms unset → args.path defaults to '.'."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_routes",
+        lambda args: captured.update({"path": args.path}) or 0,
+    )
+    result = main(["routes"])
+    assert result == 0
+    assert captured["path"] == "."
+
+
+def test_both_forms_explicit_is_user_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture,
+) -> None:
+    """Setting both positional and --path is ambiguous — exit 2."""
+    result = main(["routes", str(tmp_path), "--path", str(tmp_path)])
+    assert result == 2
+    _, err = capsys.readouterr()
+    assert "either positional <path> OR --path" in err
+
+
+def test_io_boundaries_accepts_positional_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`hypergumbo io-boundaries /path` works (previously --path-only)."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.cmd_io_boundaries",
+        lambda args: captured.update({"path": args.path}) or 0,
+    )
+    result = main(["io-boundaries", str(tmp_path)])
+    assert result == 0
+    assert captured["path"] == str(tmp_path)

@@ -1,0 +1,44 @@
+- op: create  # 4f64
+  at: '2026-04-14T06:05:29Z'  # 4f64
+  by: agent  # 4f64
+  actor: jgstern_agent  # 4f64
+  clock: 1  # 4f64
+  nonce: 4f64  # 4f64
+  data:  # 4f64
+    kind: work_item  # 4f64
+    title: "Framework-registered code flagged dead; expand annotation exclusion"  # 4f64
+    status: todo_soft  # 4f64
+    priority: 3  # 4f64
+    parent:  # 4f64
+    tags:  # 4f64
+    - uat_2026_04_13  # 4f64
+    - dead_code_prospector  # 4f64
+    - analysis_quality  # 4f64
+    isbefore: []  # 4f64
+    duplicate_of: []  # 4f64
+    not_duplicate_of: []  # 4f64
+    pr_ref:  # 4f64
+    description: "UAT 2026-04-13 DQ-06: 0 of 15 verified dead-code candidates were truly dead across openzeppelin, spring-petclinic, shellcheck. Causes: Spring `@ModelAttribute`, `@Bean`, `@InitBinder`; Solidity `using...for`; Haskell exports + Template Haskell. The `--exclude-annotated` flag helps for Java (61.9% -> 38.1% on spring-petclinic) but doesn't catch all patterns. Expand annotation list per language; document known per-language blind spots. Partly subsumed by U18/U19/U20 for Haskell+Solidity."  # 4f64
+    fields: {}  # 4f64
+- op: discuss  # 8af1
+  at: '2026-04-15T20:58:44Z'  # 8af1
+  by: agent  # 8af1
+  actor: jgstern_agent  # 8af1
+  clock: 2  # 8af1
+  nonce: 8af1  # 8af1
+  message: "Investigation note: the dead-code-maybe exclusion logic at cli.py:4099-4102 is generic — ANY symbol with non-empty meta.decorators OR meta.annotations OR meta.concepts is excluded under --exclude-annotated. The Java analyzer extracts method-level annotations (java.py:740, _extract_annotations) into meta.decorators correctly. So the residual false positives are NOT from missing exclusion-list entries — they are from cases where:\n\n(1) Spring framework registration is class-level not method-level: `@Controller` on the class doesn't put any annotation on individual handler methods → methods report no annotations → they slip past --exclude-annotated. Fix would propagate enclosing-class annotations to method symbols, or add a separate filter that checks the method's containing class's annotations.\n\n(2) Annotations that appear on parameters (`@ModelAttribute`) — Spring uses these to inject values, but the analyzer extracts annotations from the modifiers node only, not parameter annotations. Spring sees the method as registered; we don't.\n\n(3) `@Bean` factory methods: actually method-level so SHOULD be caught. Worth verifying on spring-petclinic that meta.decorators is populated for these.\n\nSpring is the worst offender; Solidity (using-X-for) and Haskell exports already have separate trackers (WI-jovur, WI-buvun). \n\nRecommend two-step fix: (a) class-level annotation propagation to contained methods (~50 lines in containment linker), (b) extract parameter annotations onto method symbols (analyzer change, larger). Not picking up in current session — this is a focused 1-2 hour task on its own and I want to leave the dev branch at a clean stopping point after 5 merged PRs."  # 8af1
+- op: update  # da54
+  at: '2026-04-16T06:16:24Z'  # da54
+  by: agent  # da54
+  actor: jgstern_agent  # da54
+  clock: 3  # da54
+  nonce: da54  # da54
+  set:  # da54
+    status: done  # da54
+- op: discuss  # 2bb0
+  at: '2026-04-16T06:16:25Z'  # 2bb0
+  by: agent  # 2bb0
+  actor: jgstern_agent  # 2bb0
+  clock: 4  # 2bb0
+  nonce: 2bb0  # 2bb0
+  message: "Re-confirming: Fixed in PR #3052 (commit 7dd99c84c). Local ops file lost prior status update during auto-sync round-trip. Class-level annotations now propagate to contained methods for --exclude-annotated via method_to_class index built from contains edges."  # 2bb0

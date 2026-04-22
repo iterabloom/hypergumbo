@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Message queue linker for detecting pub/sub communication patterns.
+"""Protocol linker: message queue for detecting pub/sub communication patterns.
 
 This linker detects message queue patterns across multiple languages and creates
 message_publish and message_subscribe edges for queue-based communication.

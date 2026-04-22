@@ -67,7 +67,7 @@ def _item_to_dict(item: Any) -> dict[str, Any]:
         "priority": item.priority,
         "parent": item.parent,
         "tags": item.tags,
-        "before": item.before,
+        "isbefore": item.isbefore,
         "pr_ref": item.pr_ref,
         "description": item.description,
         "fields": item.fields,

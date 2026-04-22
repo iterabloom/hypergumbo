@@ -778,6 +778,7 @@ def _extract_edges_from_file(
     run: AnalysisRun,
     resolver: NameResolver | None = None,
     method_resolver: ListNameResolver | None = None,
+    extension_index: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -788,6 +789,8 @@ def _extract_edges_from_file(
     """
     if resolver is None:
         resolver = NameResolver(global_symbols)
+    if extension_index is None:
+        extension_index = {}
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -999,6 +1002,50 @@ def _extract_edges_from_file(
                                 ))
                                 edge_added = True
                                 resolved_nav_sym = lookup_result.symbol
+
+                        # Case 3b (WI-visaz): ``receiver.extFn()`` where
+                        # ``extFn`` is a Kotlin extension function whose
+                        # receiver_type matches the receiver's declared
+                        # type. WI-fuhav detects the definition side and
+                        # records ``meta.extension_receiver``; the
+                        # extension_index keyed by that receiver type lets
+                        # us emit the call edge here. Class methods win
+                        # over extensions in Kotlin's resolution semantics,
+                        # so only probe when Case 3 did not already add an
+                        # edge. Generic receivers (``List<Int>``) match on
+                        # the base name via the same split-on-``<`` rule
+                        # that Pass 1 uses when building the index.
+                        if (
+                            not edge_added
+                            and receiver_name in var_types
+                            and extension_index
+                        ):
+                            type_class_name = var_types[receiver_name]
+                            receiver_base = (
+                                type_class_name.split("<")[0]
+                                if "<" in type_class_name
+                                else type_class_name
+                            )
+                            for ext_sym in extension_index.get(receiver_base, ()):
+                                ext_short = (
+                                    ext_sym.name.split(".")[-1]
+                                    if "." in ext_sym.name
+                                    else ext_sym.name
+                                )
+                                if ext_short == method_name:
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=ext_sym.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        confidence=0.80,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        evidence_type="ast_call_extension",
+                                    ))
+                                    edge_added = True
+                                    resolved_nav_sym = ext_sym
+                                    break
 
                         # Return type tracking for navigation calls
                         if resolved_nav_sym and resolved_nav_sym.kind in ("function", "method"):
@@ -1492,6 +1539,32 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
         # Pass 2: Extract edges
         resolver = NameResolver(global_symbols)
         method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
+
+        # WI-visaz: index extension functions by receiver type so pass 2
+        # can emit ``calls`` edges from ``receiver.extFn()`` to the
+        # extension definition. WI-fuhav tagged the receiver in
+        # meta["extension_receiver"] during pass 1 — here we harvest
+        # those tags into a name-based lookup. Generic receivers
+        # (``List<Int>``, ``Set<T>``) collapse to their base name so
+        # ``nums: List<Int>`` matches ``fun List<Int>.sumSafe()``.
+        # The dict-by-id comprehension dedupes — global_symbols stores
+        # each sym under both its short and full name, so ``.values()``
+        # yields duplicates for any symbol whose name contains a dot.
+        ext_syms_by_id: dict[str, Symbol] = {
+            sym.id: sym
+            for sym in global_symbols.values()
+            if (sym.meta or {}).get("extension_receiver")
+        }
+        extension_index: dict[str, list[Symbol]] = {}
+        for sym in ext_syms_by_id.values():
+            receiver_type = sym.meta["extension_receiver"]
+            receiver_base = (
+                receiver_type.split("<")[0]
+                if "<" in receiver_type
+                else receiver_type
+            )
+            extension_index.setdefault(receiver_base, []).append(sym)
+
         all_symbols: list[Symbol] = []
         all_edges: list[Edge] = []
 
@@ -1501,6 +1574,7 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
             edges = _extract_edges_from_file(
                 kt_file, parser, analysis.symbol_by_name, global_symbols,
                 analysis.imports, run, resolver, method_resolver=method_resolver,
+                extension_index=extension_index,
             )
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             try:
@@ -1544,10 +1618,15 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
         annotation_edges = _extract_annotation_edges(all_symbols, global_symbols, run)
         all_edges.extend(annotation_edges)
 
+        # Parse Gradle/Maven deps for tier classification of boundary nodes (WI-duhom)
+        from hypergumbo_lang_mainstream.jvm_deps import parse_jvm_dependencies
+        jvm_manifest = parse_jvm_dependencies(repo_root)
+
         return AnalysisResult(
             symbols=all_symbols,
             edges=all_edges,
             run=run,
+            dependency_manifest=jvm_manifest if jvm_manifest.entries else None,
         )
 
 

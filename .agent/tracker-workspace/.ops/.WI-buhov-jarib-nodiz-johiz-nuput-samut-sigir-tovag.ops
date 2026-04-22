@@ -1,0 +1,36 @@
+- op: create  # 4022
+  at: '2026-04-17T07:24:49Z'  # 4022
+  by: agent  # 4022
+  actor: jgstern_agent  # 4022
+  clock: 1  # 4022
+  nonce: '4022'  # 4022
+  data:  # 4022
+    kind: work_item  # 4022
+    title: "auto-pr .ops backup/restore loses tracker discuss entries made during rebase window"  # 4022
+    status: todo_hard  # 4022
+    priority: 2  # 4022
+    parent:  # 4022
+    tags:  # 4022
+    - tracker  # 4022
+    - agent_governance  # 4022
+    isbefore: []  # 4022
+    duplicate_of: []  # 4022
+    not_duplicate_of: []  # 4022
+    pr_ref:  # 4022
+    description: "When auto-pr detects that the feature branch is behind base, it does:\n1. Snapshot .agent/tracker-workspace/.ops and .agent/tracker/.ops into /tmp/ops-backup-XXXXXX\n2. git rebase (which would normally wipe local .ops state)\n3. Restore the snapshot over the rebased working tree\n\nStep 3 silently overwrites any discuss entries posted AFTER step 1 but BEFORE step 3. Observed 2026-04-17: two tracker discuss WI-ripuz entries posted during the auto-pr run for PR #3110 vanished from the TUI mid-session — the user noticed their display of my comment disappear before their eyes. Confirmed via scripts/tracker show WI-ripuz: only the 2026-04-10 and 2026-04-14 entries remain; the 2026-04-17 entries are gone.\n\nRoot cause hypothesis: auto-pr does not replay tracker ops written during its own runtime. The backup snapshot is taken too early; anything the agent (or auto-sync) writes during CI polling is at risk.\n\nLikely fixes (not mutually exclusive):\n- Re-snapshot .ops just before the restore, not once at the start, and MERGE (union) the two snapshots rather than one-way restore.\n- Use Saved working directory and index state WIP on dev: 98ecb22ca feat(tracker): REPLY-FIRST CYCLE guidance when reply debt exists (WI-ripuz Phase 1) semantics rather than cp-based backup.\n- Disable auto-pr's ops snapshotting entirely when the tracker already has its own sync mechanism (tracker: sync PRs), and teach auto-pr to resolve .ops conflicts by union-merging instead.\n\nAlso exposes a secondary bug (filing separately): auto-pr exits 0 when the final merge does not complete but emits 'Recovery:' hints. Caller sees success, PR is not merged. Should be exit 1 or 2."  # 4022
+    fields: {}  # 4022
+- op: update  # 5c2f
+  at: '2026-04-17T08:27:19Z'  # 5c2f
+  by: agent  # 5c2f
+  actor: jgstern_agent  # 5c2f
+  clock: 2  # 5c2f
+  nonce: 5c2f  # 5c2f
+  set:  # 5c2f
+    status: done  # 5c2f
+- op: discuss  # 28d4
+  at: '2026-04-17T08:27:19Z'  # 28d4
+  by: agent  # 28d4
+  actor: jgstern_agent  # 28d4
+  clock: 3  # 28d4
+  nonce: 28d4  # 28d4
+  message: "Fixed in PR #3114 (commit 0e74d80a1 on dev). New _ops_union_restore_file helper in scripts/lib/forgejo-api.sh replaces cp-based restore with awk-based order-preserving line-level union. Preserves both backup and rebased-working-tree ops. 8 regression tests in tests/test_autopr_ops_union_restore.py cover all scenarios."  # 28d4

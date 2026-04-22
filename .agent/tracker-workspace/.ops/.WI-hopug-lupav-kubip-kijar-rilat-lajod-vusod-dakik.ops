@@ -1,0 +1,73 @@
+- op: create  # fd1a
+  at: '2026-04-14T06:05:34Z'  # fd1a
+  by: agent  # fd1a
+  actor: jgstern_agent  # fd1a
+  clock: 1  # fd1a
+  nonce: fd1a  # fd1a
+  data:  # fd1a
+    kind: work_item  # fd1a
+    title: "Use repo-relative paths in JSON node IDs"  # fd1a
+    status: todo_soft  # fd1a
+    priority: 3  # fd1a
+    parent:  # fd1a
+    tags:  # fd1a
+    - uat_2026_04_13  # fd1a
+    - ergonomics  # fd1a
+    - developer_experience  # fd1a
+    isbefore: []  # fd1a
+    duplicate_of: []  # fd1a
+    not_duplicate_of: []  # fd1a
+    pr_ref:  # fd1a
+    description: "UAT 2026-04-13 UX-06: JSON behavior map node IDs contain absolute paths (`go:/home/user/repos/...`), making output non-portable across machines. The `path` field correctly uses repo-relative paths and stable_id/shape_id are also available, but the primary ID is absolute. Switch primary ID to repo-relative; this is a schema-compat-affecting change — coordinate with Appendix C of docs/hypergumbo-spec.md."  # fd1a
+    fields: {}  # fd1a
+- op: update  # 93d9
+  at: '2026-04-17T02:54:05Z'  # 93d9
+  by: agent  # 93d9
+  actor: jgstern_agent  # 93d9
+  clock: 2  # 93d9
+  nonce: 93d9  # 93d9
+  set:  # 93d9
+    priority: 2  # 93d9
+- op: discuss  # 5479
+  at: '2026-04-17T02:54:05Z'  # 5479
+  by: agent  # 5479
+  actor: jgstern_agent  # 5479
+  clock: 3  # 5479
+  nonce: '5479'  # 5479
+  message: "pf-prelim pivot: small fix, big dogfooding value when running hypergumbo on pf-prelim from multiple machines/branches. Raised P3→P2."  # 5479
+- op: discuss  # 4cee
+  at: '2026-04-17T09:24:53Z'  # 4cee
+  by: agent  # 4cee
+  actor: jgstern_agent  # 4cee
+  clock: 4  # 4cee
+  nonce: 4cee  # 4cee
+  message: "Investigation 2026-04-17: scoping the refactor size before starting.\n\nThe path-to-ID construction is distributed across all language analyzers, not centralized. Each analyzer (py.py, go.py, rust.py, java.py, etc.) has its own '_make_symbol_id' helper that inlines 'str(file_path)' directly into an f-string. Examples:\n- packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py:1840 → id=_make_symbol_id(str(py_file), 1, end_line, ...)\n- Similar pattern in analyze/base.py:293 for 'make_node_id' (but that helper has 0 callers — dead code signal for follow-up).\n- Linkers construct their own IDs too: view_template.py:246, crypto_flow.py:279-280, message_dispatch.py:254-255, js_module.py:216, openapi.py:315.\n\nImplications for WI-hopug:\n1. ~35 analyzer files plus 6+ linker files need to accept a repo_root argument and relativize paths before formatting IDs.\n2. Every test fixture that hard-codes a path-in-id string will need updating.\n3. Alternative: post-process at the JSON emit boundary (cli.py's run_behavior_map). Single site, but must rewrite node IDs AND every edge src/dst string reference consistently. Brittle — any subcommand reading the behavior map (slice, explain, routes, io-boundaries, etc.) must all observe the rewrite.\n4. ID stability across runs from different machines is the real goal. Post-processing preserves that per-output-file; refactor preserves it everywhere internally.\n\nRecommendation: refactor at the analyzer layer, not post-process. Introduce a RepoRoot argument threaded through analyzer.analyze(repo_root=...) and have '_make_symbol_id' in each analyzer compute 'str(path.relative_to(repo_root))'. Covers all downstream consumers without per-subcommand rewrite code.\n\nEstimate: 4-8 hours including test-fixture updates. Deferring to a dedicated session rather than jamming into an end-of-session slot."  # 4cee
+- op: update  # afed
+  at: '2026-04-19T00:28:48Z'  # afed
+  by: agent  # afed
+  actor: jgstern_agent  # afed
+  clock: 5  # afed
+  nonce: afed  # afed
+  set:  # afed
+    status: done  # afed
+- op: discuss  # cd5e
+  at: '2026-04-19T00:28:48Z'  # cd5e
+  by: agent  # cd5e
+  actor: jgstern_agent  # cd5e
+  clock: 6  # cd5e
+  nonce: cd5e  # cd5e
+  message: "Fixed in PR #3170. run_behavior_map now strips str(repo_root)+/ prefix from Symbol ids/paths, Edge src/dst, and UsageContext fields via _relativize_ir_paths helper after deferred-ref resolution. Single-site change; analyzers unchanged. 7 new unit tests."  # cd5e
+- op: discuss  # 874b
+  at: '2026-04-19T00:32:06Z'  # 874b
+  by: human  # 874b
+  actor: jgstern  # 874b
+  clock: 7  # 874b
+  nonce: 874b  # 874b
+  message: "please give a plain-language recap of the approach you took to implement this. are the effects/improvements comprehensive for all hypergumbo-supported languages?"  # 874b
+- op: discuss  # 827a
+  at: '2026-04-19T02:04:39Z'  # 827a
+  by: agent  # 827a
+  actor: jgstern_agent  # 827a
+  clock: 8  # 827a
+  nonce: 827a  # 827a
+  message: "Plain-language recap: rather than change how ~35 language analyzers build their IDs, I added a single normalization pass in run_behavior_map that runs once after analysis completes. The pass walks every Symbol, Edge, and UsageContext and strips the absolute repo-root-plus-slash prefix from every id, path, src, and dst. So python:/home/me/repo/src/main.py:1-10:foo:function becomes python:src/main.py:1-10:foo:function. All repo-root knowledge lives in cli.py where repo_root is already a resolved Path, so no analyzer needs a new parameter. Subtlety: UsageContext.id is a sha256 that includes the path in its preimage, so the helper recomputes the id from the relativized path too — otherwise two machines would produce different usage-context ids for the same code. Comprehensiveness across all hypergumbo-supported languages: YES, and that's why I picked post-analysis over per-analyzer. The rewrite is language-agnostic string processing on whatever IDs the analyzers emit (python, go, rust, java, kotlin, svelte, wgsl, mermaid, etc.) — any future analyzer emitting {lang}:{absolute_path}:... gets relativized for free. Tests pin two non-trivial edge cases: (1) paths outside repo_root (external-library symbols) are deliberately left alone; (2) synthetic non-path IDs like python:external:0-0:foo:unresolved survive unchanged because the prefix never appears in them. Limitation: rewrite affects only the final behavior-map JSON and its readers. In-process IR objects carry absolute paths up to the relativization point; after the helper runs, ranking, entrypoint detection, handler-slice emission, and JSON write all see the relative form. Linker-internal data structures built earlier are absolute-path-based but never persist across runs. (Note: this reply was posted earlier tonight but lost by auto-pr's rebase-restore of .ops backups — WI-buhov hazard; re-posting verbatim.)"  # 827a

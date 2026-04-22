@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""HTTP client-server linker for detecting cross-language API calls.
+"""Protocol linker: HTTP client-server for detecting cross-language API calls.
 
 This linker detects HTTP client calls (fetch, axios, AngularJS $http, jQuery $.ajax,
 requests, OpenAPI clients, RestClient, HTTParty, Faraday, Net::HTTP, RestTemplate,
@@ -94,6 +94,7 @@ from urllib.parse import urlparse
 from ..analyze.base import make_route_stable_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ._concept_utils import get_concept, has_concept
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
 PASS_ID = make_pass_id("http-linker")
@@ -218,6 +219,180 @@ JS_JQUERY_SHORTHAND_PATTERN = re.compile(
     re.VERBOSE | re.IGNORECASE,
 )
 
+# ---------------------------------------------------------------------------
+# JS/TS template-literal fetch/axios (WI-sijoh)
+# ---------------------------------------------------------------------------
+#
+# TypeScript / modern JavaScript widely uses backtick template literals with
+# ${...} interpolation to build request URLs:
+#
+#     const API_PATH = "api/v1";
+#     fetch(`${pathPrefix}/${API_PATH}${path}${queryString}`);
+#
+# The regex below matches `fetch(`...`)` and `axios.METHOD(`...`)` where
+# the single backtick-delimited string contains the whole URL template.
+# Nested template literals (backticks inside `${...}`) are rare in real
+# client code — we intentionally do NOT recurse, and a file containing
+# one will either miss the outer template or capture a truncated URL;
+# either outcome is safe (no false-positive routes).
+#
+# The captured template is folded by _fold_template_literal() against
+# module-scope const assignments extracted by _extract_module_constants().
+
+# fetch(`TEMPLATE`) with default GET method.
+JS_FETCH_TEMPLATE_PATTERN = re.compile(
+    r"""fetch\s*\(\s*`([^`]*)`""",
+    re.VERBOSE,
+)
+
+# axios.METHOD(`TEMPLATE`, ...)
+JS_AXIOS_TEMPLATE_PATTERN = re.compile(
+    r"""axios\.(get|post|put|patch|delete|head|options)
+        \s*\(\s*`([^`]*)`""",
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Module-scope const/let/var assigned to a plain string literal.
+# Anchored at line start (MULTILINE) with no leading indentation, so
+# function-scope bindings are excluded — only top-level module bindings
+# are safe to substitute without tracking scope.
+JS_MODULE_CONST_PATTERN = re.compile(
+    r"""^(?:export\s+)?(?:const|let|var)\s+
+        ([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*
+        ["']([^"']+)["']\s*;?\s*$""",
+    re.VERBOSE | re.MULTILINE,
+)
+
+# Any ${...} interpolation slot inside a template literal.
+_TEMPLATE_SLOT = re.compile(r"\$\{([^}]+)\}")
+
+
+# ---------------------------------------------------------------------------
+# Elm HTTP client patterns (WI-tinip)
+# ---------------------------------------------------------------------------
+#
+# Elm's HTTP idioms vary by library, but the dominant pattern in the
+# Alertmanager UI (and most Elm 0.19+ apps) is to thread an `apiUrl`
+# parameter through a wrapper module (`Utils.Api`) that exposes
+# `get`/`post`/`put`/`delete` functions. The URL is built with `++`
+# string concatenation:
+#
+#     Utils.Api.get (apiUrl ++ "/receivers") decoder
+#     Utils.Api.post (apiUrl ++ "/silences") body decoder
+#
+# We also catch the stdlib `Http.get { url = "...", ... }` form and
+# its `Http.request { method = "POST", url = "...", ... }` cousin.
+#
+# Captured in group 1 is the literal path portion (including the
+# leading slash). The concatenated `apiUrl` prefix is treated as a
+# host/base, so the path that remains is what we match against the Go
+# route table (e.g. `/api/v2/alerts`). url_type is always "literal"
+# because the string after `++` is a literal.
+#
+# Note: the function-definition forms with `let`-bound URLs (e.g.
+# `fetchAlerts` in Alerts/Api.elm uses `String.join "/"` over a list)
+# are harder to resolve without a proper Elm analyzer and are deferred
+# to a follow-up. The majority of routes (`fetchReceivers`,
+# `fetchSilences`, `fetchStatus`, etc. in the Alertmanager corpus) use
+# the direct `apiUrl ++ "/path"` form and are captured here.
+ELM_UTILS_API_PATTERN = re.compile(
+    r"""Utils\.Api\.(get|post|put|patch|delete|head|options)
+        \s*\(\s*
+        [a-zA-Z_][a-zA-Z0-9_]*     # base-url variable (apiUrl, baseUrl, etc.)
+        \s*\+\+\s*
+        "([^"]+)"                   # literal path segment
+    """,
+    re.VERBOSE,
+)
+
+# Http.get { url = "..." } / Http.post { url = "..." } — core-library form
+# Captures method from the call name, URL from the record field.
+ELM_HTTP_RECORD_PATTERN = re.compile(
+    r"""Http\.(get|post|put|patch|delete|head|options)
+        \s*\{\s*[^}]*?
+        url\s*=\s*"([^"]+)"
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+# Http.request { method = "GET", url = "...", ... } — explicit-method form
+ELM_HTTP_REQUEST_METHOD_PATTERN = re.compile(
+    r"""Http\.request
+        \s*\{\s*[^}]*?
+        method\s*=\s*"(\w+)"[^}]*?
+        url\s*=\s*"([^"]+)"
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+# Http.request { url = "...", method = "GET", ... } — url before method
+ELM_HTTP_REQUEST_URL_FIRST_PATTERN = re.compile(
+    r"""Http\.request
+        \s*\{\s*[^}]*?
+        url\s*=\s*"([^"]+)"[^}]*?
+        method\s*=\s*"(\w+)"
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+
+# ---------------------------------------------------------------------------
+# Elm let-bound ``String.join`` URL idiom (WI-rosan)
+# ---------------------------------------------------------------------------
+#
+# Alertmanager's ``Silences/Api.elm`` and ``Alerts/Api.elm`` construct URLs
+# via a ``let`` binding over ``String.join "/" [ apiUrl, ... ]`` and then
+# pass the bound identifier to ``Utils.Api.<method>``. Example::
+#
+#     getSilence apiUrl uuid =
+#         let
+#             url =
+#                 String.join "/" [ apiUrl, "silence", uuid ]
+#         in
+#         Utils.Api.send (Utils.Api.get url decoder)
+#
+# These calls are invisible to the Phase-1 regex scanner because the URL is
+# indirected through a variable. This two-pass fold captures them:
+#
+#   1. Match every ``let <name> = String.join "/" [ <parts> ]`` binding.
+#   2. Scan forward (bounded window) for a ``Utils.Api.<method> <name>``
+#      call that consumes the bound identifier. If found, fold the list
+#      items into a URL path.
+#
+# Parts are classified as literal string fragments (``"silence"`` or
+# ``"silence" ++ <expr>`` — literal portion wins, ``++`` tail is dropped as
+# a query/suffix continuation) or identifier references (``uuid``,
+# ``silence.id`` — rewritten to ``{name}`` placeholders so
+# ``_match_route_pattern`` can match them against Go route parameters).
+# The first list item is assumed to be the base-URL variable (``apiUrl``,
+# ``baseUrl``) and is dropped as the host prefix.
+
+ELM_LET_STRING_JOIN_PATTERN = re.compile(
+    r"""let\s+
+        (?P<name>[a-zA-Z_]\w*)
+        \s*=\s*
+        String\.join\s+"/"\s+
+        \[\s*(?P<parts>[^\[\]]*?)\s*\]
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+# Elm ``Utils.Api.<method> <name>`` or ``Utils.Api.<method> (<name> ...)``
+# call consuming a let-bound identifier. The ``<name>`` is interpolated via
+# ``re.escape`` at match time since it varies per binding.
+_ELM_URL_CALL_TEMPLATE = (
+    r"""Utils\.Api\.
+        (?P<method>get|post|put|patch|delete|head|options)
+        \s+\(?\s*
+        {name}\b
+    """
+)
+
+# Scan window (chars) for finding the consuming call after a let-binding.
+# Elm functions are typically short; 800 chars covers the largest realistic
+# ``let ... in <body>`` block in the Alertmanager UI corpus.
+_ELM_LET_CALL_WINDOW = 800
+
 
 def _extract_url_from_match(match: re.Match, literal_group: int = 1, var_group: int = 2) -> tuple[str, str]:
     """Extract URL and url_type from a regex match.
@@ -234,6 +409,93 @@ def _extract_url_from_match(match: re.Match, literal_group: int = 1, var_group: 
         return literal, "literal"
     variable = match.group(var_group)
     return variable, "variable"
+
+
+def _extract_module_constants(content: str) -> dict[str, str]:
+    """Extract module-scope string consts from a JS/TS source file (WI-sijoh).
+
+    Scans for top-level ``const NAME = "value"`` (and ``let``/``var``/``export``
+    variants) where the RHS is a single-line string literal. Function-scope
+    bindings are excluded by the MULTILINE + line-start anchor in
+    ``JS_MODULE_CONST_PATTERN``: any indentation means the binding lives
+    inside a block, and folding it at call sites would be unsound.
+
+    Numeric, object, array, and function-call RHS values are ignored — only
+    plain string literals can be safely folded into URL templates.
+    """
+    return {
+        m.group(1): m.group(2)
+        for m in JS_MODULE_CONST_PATTERN.finditer(content)
+    }
+
+
+def _fold_template_literal(
+    template: str, consts: dict[str, str]
+) -> tuple[str, str]:
+    """Fold ``${NAME}`` slots in a JS/TS template literal (WI-sijoh).
+
+    Strategy (mirrors Elm wrapper-module semantics for host-prefix idioms
+    and preserves path-parameter placeholders for ``_match_route_pattern``):
+
+    * ``${NAME}`` slots resolved via ``consts`` → literal substitution.
+    * Unresolved ``${NAME}`` slots → rewritten as ``{NAME}``.
+    * Leading ``{VAR}/`` is stripped as a host/base URL prefix (the TS
+      analogue of Elm's ``apiUrl ++ "/path"`` idiom).
+    * An unresolved ``{VAR}`` preceded by ``/`` is a path segment parameter
+      and is kept — ``_match_route_pattern`` converts ``:id``/``{id}``/``<id>``
+      style placeholders to ``[^/]+`` on the route side, which matches our
+      ``{VAR}`` on the client side.
+    * An unresolved ``{VAR}`` NOT preceded by ``/`` is arbitrary template
+      continuation (may span segments, may be a query-string tail). The
+      URL is truncated at that point and the remaining literal prefix is
+      used for route matching. Result is marked ``url_type="variable"``
+      so callers can opt into prefix-matching semantics.
+
+    Returns ``(folded_url, url_type)`` where ``url_type`` is ``"literal"``
+    when every slot resolved cleanly (no truncation) AND the URL has a
+    leading ``/`` anchor, else ``"variable"``.
+    """
+    def _sub(match: re.Match) -> str:
+        name = match.group(1).strip()
+        if name in consts:
+            return consts[name]
+        return "{" + name + "}"
+
+    folded = _TEMPLATE_SLOT.sub(_sub, template)
+
+    # Host-prefix strip: `{pathPrefix}/rest...` → `/rest...`.
+    host_prefix = re.match(r"^\{[^}]+\}(/.*)$", folded)
+    if host_prefix is not None:
+        folded = host_prefix.group(1)
+
+    # Find the first ``{VAR}`` that is NOT preceded by ``/``. Placeholders
+    # preceded by ``/`` (or at string start after host-prefix strip, which
+    # always leaves a leading ``/``) are treated as path-segment params and
+    # retained. Non-``/``-preceded placeholders indicate template
+    # continuation and truncate the URL there.
+    truncated = False
+    trunc_match = re.search(r"(?<!/)\{[^}]+\}", folded)
+    if trunc_match is not None:
+        folded = folded[: trunc_match.start()]
+        truncated = True
+
+    if truncated or not folded.startswith("/"):
+        url_type = "variable"
+    else:
+        url_type = "literal"
+    return folded, url_type
+
+
+def _is_prefix_candidate(call_path: str) -> bool:
+    """Return True when ``call_path`` is deep enough for prefix route matching.
+
+    Used by the variable-URL fallback in ``link_http`` (WI-sijoh). A prefix
+    of ``/`` or ``/api`` could match nearly every route in a medium-sized
+    API and would drown real signal in noise — require at least two non-
+    empty path segments (e.g. ``/api/v1``) before allowing prefix fallback.
+    """
+    segments = [seg for seg in call_path.split("/") if seg]
+    return len(segments) >= 2
 
 
 def _extract_path_from_url(url: str) -> str | None:
@@ -388,7 +650,7 @@ def _find_source_files(root: Path) -> Iterator[Path]:
     """
     patterns = [
         "**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx",
-        "**/*.go", "**/*.rb", "**/*.java",
+        "**/*.go", "**/*.rb", "**/*.java", "**/*.elm",
     ]
     for path in find_files(root, patterns):
         if path.stem.endswith(".min"):
@@ -423,6 +685,46 @@ def _scan_python_file(file_path: Path, content: str) -> list[HttpClientCall]:
 def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]:
     """Scan a JavaScript/TypeScript file for HTTP client calls."""
     calls: list[HttpClientCall] = []
+
+    # Module-scope string consts used for template-literal folding (WI-sijoh).
+    # Extracted once per file; reused for every fetch/axios template below.
+    module_consts = _extract_module_constants(content)
+
+    # Template-literal fetch/axios calls (WI-sijoh). Processed alongside
+    # the quoted-URL patterns below; no de-dup is needed because the
+    # JS_FETCH_PATTERN / JS_AXIOS_PATTERN _URL_ARG alternation only
+    # matches ['"]...['"] or a bare identifier — never a backtick
+    # template, so the two scan passes are disjoint.
+    for match in JS_FETCH_TEMPLATE_PATTERN.finditer(content):
+        template = match.group(1)
+        url, url_type = _fold_template_literal(template, module_consts)
+        line_num = content[: match.start()].count("\n") + 1
+        calls.append(
+            HttpClientCall(
+                method="GET",
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type=url_type,
+            )
+        )
+
+    for match in JS_AXIOS_TEMPLATE_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        template = match.group(2)
+        url, url_type = _fold_template_literal(template, module_consts)
+        line_num = content[: match.start()].count("\n") + 1
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type=url_type,
+            )
+        )
 
     # Check for fetch with method option first (more specific, literal URLs only)
     fetch_method_matches = set()
@@ -833,6 +1135,185 @@ def _scan_java_file(file_path: Path, content: str) -> list[HttpClientCall]:
     return calls
 
 
+def _parse_string_join_parts(parts: str) -> list[tuple[str, bool]]:
+    """Parse the top-level comma-separated items inside ``String.join "/" [...]``.
+
+    Returns a list of ``(value, is_literal)`` tuples. Items beginning with a
+    ``"..."`` string literal are classified as literal (literal text is the
+    value; any trailing ``++ <expr>`` is dropped). Anything else is classified
+    as an identifier reference — the value is the last dotted component of
+    the identifier (``silence.id`` → ``id``), which becomes a ``{name}``
+    placeholder downstream. Unparseable items (empty or exotic) are skipped.
+    """
+    items: list[tuple[str, bool]] = []
+    for raw in parts.split(","):
+        segment = raw.strip()
+        if not segment:
+            continue
+        literal_match = re.match(r'^"([^"]*)"', segment)
+        if literal_match is not None:
+            items.append((literal_match.group(1), True))
+            continue
+        ident_match = re.match(r"^[a-zA-Z_]\w*(?:\.\w+)*", segment)
+        if ident_match is not None:
+            last_component = ident_match.group(0).rsplit(".", 1)[-1]
+            items.append((last_component, False))
+            continue
+    return items
+
+
+def _fold_elm_string_join(parts: str) -> str | None:
+    """Fold a ``String.join "/" [...]`` parts list into a URL path.
+
+    Strategy: drop the first list item (assumed base URL variable, e.g.
+    ``apiUrl``) as the host prefix. Join the remaining items with ``/``.
+    Literal items contribute their text; identifier references become
+    ``{name}`` placeholders so ``_match_route_pattern`` can match them
+    against Go route parameters.
+
+    Returns the URL (``"/silence/{uuid}"``, ``"/alerts"``) or ``None`` if
+    the list is empty or has no path segments after the base URL.
+    """
+    items = _parse_string_join_parts(parts)
+    if len(items) < 2:
+        return None
+    segments: list[str] = []
+    for value, is_literal in items[1:]:
+        segments.append(value if is_literal else "{" + value + "}")
+    return "/" + "/".join(segments)
+
+
+def _find_elm_let_bound_url_calls(
+    content: str,
+) -> list[tuple[str, str, int]]:
+    """Find Elm ``Utils.Api.<method>`` calls whose URL comes from a
+    ``let ... = String.join "/" [...]`` binding (WI-rosan).
+
+    Returns a list of ``(method, url, line)`` tuples for each consumed
+    let-binding. A let-binding whose identifier is never referenced by a
+    subsequent ``Utils.Api.<method>`` call within the scan window is
+    ignored — we don't invent calls that aren't in the source.
+    """
+    results: list[tuple[str, str, int]] = []
+    for let_match in ELM_LET_STRING_JOIN_PATTERN.finditer(content):
+        name = let_match.group("name")
+        parts = let_match.group("parts")
+        url = _fold_elm_string_join(parts)
+        if url is None:
+            continue
+        window_end = let_match.end() + _ELM_LET_CALL_WINDOW
+        tail = content[let_match.end():window_end]
+        call_pattern = re.compile(
+            _ELM_URL_CALL_TEMPLATE.format(name=re.escape(name)),
+            re.VERBOSE,
+        )
+        call_match = call_pattern.search(tail)
+        if call_match is None:
+            continue
+        method = call_match.group("method").upper()
+        abs_pos = let_match.end() + call_match.start()
+        line = content[:abs_pos].count("\n") + 1
+        results.append((method, url, line))
+    return results
+
+
+def _scan_elm_file(file_path: Path, content: str) -> list[HttpClientCall]:
+    """Scan an Elm file for HTTP client calls.
+
+    Detects three idioms (WI-tinip):
+
+    1. ``Utils.Api.get (apiUrl ++ "/path") ...`` — the Alertmanager-style
+       wrapper-module pattern where a base-URL parameter is concatenated
+       with a literal path.
+    2. ``Http.get { url = "...", expect = ... }`` and the other
+       method-named record forms from the ``elm/http`` core library.
+    3. ``Http.request { method = "POST", url = "...", ... }`` and its
+       reverse-order variant, for cases where the HTTP method is
+       spelled out as a string field.
+    4. ``let <name> = String.join "/" [ apiUrl, "path", ... ] in
+       Utils.Api.<method> <name>`` — the indirect let-bound form used
+       throughout Alertmanager's ``Silences/Api.elm`` and
+       ``Alerts/Api.elm`` (WI-rosan). Identifier references in the
+       list become ``{name}`` placeholders so the cross-language
+       route matcher can bind them to Go route parameters.
+    """
+    calls: list[HttpClientCall] = []
+
+    for match in ELM_UTILS_API_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="elm",
+                url_type="literal",
+            )
+        )
+
+    for match in ELM_HTTP_RECORD_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="elm",
+                url_type="literal",
+            )
+        )
+
+    for match in ELM_HTTP_REQUEST_METHOD_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="elm",
+                url_type="literal",
+            )
+        )
+
+    for match in ELM_HTTP_REQUEST_URL_FIRST_PATTERN.finditer(content):
+        url = match.group(1)
+        method = match.group(2).upper()
+        line_num = content[: match.start()].count("\n") + 1
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="elm",
+                url_type="literal",
+            )
+        )
+
+    for method, url, line_num in _find_elm_let_bound_url_calls(content):
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="elm",
+                url_type="literal",
+            )
+        )
+
+    return calls
+
+
 def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
     """Create a symbol for an HTTP client call."""
     rel_path = Path(call.file_path).relative_to(root) if root else Path(call.file_path)
@@ -894,6 +1375,8 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                 calls = _scan_ruby_file(file_path, content)
             elif file_path.suffix == ".java":
                 calls = _scan_java_file(file_path, content)
+            elif file_path.suffix == ".elm":
+                calls = _scan_elm_file(file_path, content)
             else:
                 calls = _scan_javascript_file(file_path, content)
 
@@ -949,6 +1432,31 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                     matched_route = route
                     break
 
+        # Prefix-match fallback for variable URLs (WI-sijoh). When a
+        # template-literal fetch/axios call truncated at an unresolved
+        # placeholder, the remaining literal prefix can still identify a
+        # route family: any route whose path STARTS WITH the prefix is a
+        # plausible target. First match wins — confidence is already
+        # reduced to 0.65 for url_type='variable' below.
+        #
+        # Requires the prefix to contain at least one non-root `/` segment
+        # (e.g., '/api/v1' qualifies; '/' or '/api' does not) so the
+        # matching stays meaningful.
+        if (
+            matched_route is None
+            and call.url_type == "variable"
+            and _is_prefix_candidate(call_path)
+        ):
+            for route_path, route in candidates:
+                if route_path.startswith(call_path):
+                    matched_route = route
+                    break
+            if matched_route is None:
+                for route_path, route in wildcard_candidates:
+                    if route_path.startswith(call_path):
+                        matched_route = route
+                        break
+
         if matched_route is not None:
             is_cross_language = client_symbol.language != matched_route.language
             is_variable_url = call.url_type == "variable"
@@ -992,10 +1500,7 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
 
 def _has_route_concept(symbol: Symbol) -> bool:
     """Check if symbol has a route concept in meta.concepts."""
-    if not symbol.meta:
-        return False
-    concepts = symbol.meta.get("concepts", [])
-    return any(c.get("concept") == "route" for c in concepts if isinstance(c, dict))
+    return has_concept(symbol, "route")
 
 
 def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None]:
@@ -1008,14 +1513,13 @@ def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None
     Returns:
         Tuple of (route_path, http_method), or (None, None) if not found.
     """
+    # First, try concept metadata (from FRAMEWORK_PATTERNS enrichment)
+    route = get_concept(symbol, "route")
+    if route is not None:
+        return route.get("path"), route.get("method")
+
     if not symbol.meta:
         return None, None
-
-    # First, try concept metadata (from FRAMEWORK_PATTERNS enrichment)
-    concepts = symbol.meta.get("concepts", [])
-    for concept in concepts:
-        if isinstance(concept, dict) and concept.get("concept") == "route":
-            return concept.get("path"), concept.get("method")
 
     # Fallback: check direct metadata (from analyzer-created route symbols)
     # Route symbols from Ruby, PHP, Elixir, JS analyzers store info here

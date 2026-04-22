@@ -311,11 +311,117 @@ class TestLoadCatalog:
         assert match is not None
         assert match.boundary == "net_send"
 
-    def test_kotlin_alias_loads_java_catalog(self) -> None:
-        """Kotlin uses the Java IO catalog via alias."""
+    def test_java_catalog_covers_jdbc_and_jpa(self) -> None:
+        """WI-sakan: JDBC, JPA, Hibernate, Spring Data covered under db_read / db_write."""
+        catalog = load_catalog("java")
+        qnames = {p.qualified_name: p for p in catalog.primitives}
+
+        # JDBC read path
+        assert qnames["java.sql.Statement.executeQuery"].boundary == "db_read"
+        assert qnames["java.sql.PreparedStatement.executeQuery"].boundary == "db_read"
+        assert qnames["java.sql.ResultSet.next"].boundary == "db_read"
+        # JDBC write path
+        assert qnames["java.sql.Statement.executeUpdate"].boundary == "db_write"
+        assert qnames["java.sql.PreparedStatement.executeUpdate"].boundary == "db_write"
+        # Transaction control
+        assert qnames["java.sql.Connection.commit"].boundary == "db_write"
+        # JPA (both javax and jakarta namespaces)
+        assert qnames["javax.persistence.EntityManager.find"].boundary == "db_read"
+        assert qnames["jakarta.persistence.EntityManager.persist"].boundary == "db_write"
+        # Spring Data / JdbcTemplate
+        assert qnames["org.springframework.jdbc.core.JdbcTemplate.query"].boundary == "db_read"
+        assert qnames["org.springframework.jdbc.core.JdbcTemplate.update"].boundary == "db_write"
+        assert qnames["org.springframework.data.repository.CrudRepository.findById"].boundary == "db_read"
+        assert qnames["org.springframework.data.repository.CrudRepository.save"].boundary == "db_write"
+        # Hibernate Session
+        assert qnames["org.hibernate.Session.get"].boundary == "db_read"
+        assert qnames["org.hibernate.Session.save"].boundary == "db_write"
+
+    def test_java_catalog_covers_logging_facades(self) -> None:
+        """WI-sakan: SLF4J, Log4j, java.util.logging, Logback covered under logging."""
+        catalog = load_catalog("java")
+        qnames = {p.qualified_name: p for p in catalog.primitives}
+
+        assert qnames["org.slf4j.Logger.info"].boundary == "logging"
+        assert qnames["org.slf4j.Logger.error"].boundary == "logging"
+        assert qnames["org.apache.logging.log4j.Logger.info"].boundary == "logging"
+        assert qnames["org.apache.log4j.Logger.info"].boundary == "logging"
+        assert qnames["java.util.logging.Logger.info"].boundary == "logging"
+        assert qnames["ch.qos.logback.classic.Logger.info"].boundary == "logging"
+
+    def test_java_catalog_covers_http_clients(self) -> None:
+        """WI-sakan: Apache HttpClient 4.x/5.x, WebClient, Unirest, Retrofit."""
+        catalog = load_catalog("java")
+        qnames = {p.qualified_name: p for p in catalog.primitives}
+
+        assert qnames["org.apache.http.client.HttpClient.execute"].boundary == "net_send"
+        assert qnames["org.apache.hc.client5.http.classic.HttpClient.execute"].boundary == "net_send"
+        assert qnames["org.springframework.web.reactive.function.client.WebClient.get"].boundary == "net_send"
+        assert qnames["kong.unirest.Unirest.post"].boundary == "net_send"
+        assert qnames["retrofit2.Call.execute"].boundary == "net_send"
+
+    def test_java_catalog_covers_commons_io(self) -> None:
+        """WI-sakan: Apache Commons IO file helpers covered under fs_read / fs_write."""
+        catalog = load_catalog("java")
+        qnames = {p.qualified_name: p for p in catalog.primitives}
+
+        assert qnames["org.apache.commons.io.FileUtils.readFileToString"].boundary == "fs_read"
+        assert qnames["org.apache.commons.io.FileUtils.writeStringToFile"].boundary == "fs_write"
+        assert qnames["org.apache.commons.io.IOUtils.toString"].boundary == "fs_read"
+
+    def test_kotlin_loads_own_catalog_with_java_parent(self) -> None:
+        """WI-rujos: Kotlin has its own catalog merged with Java parent.
+
+        Kotlin idiom favors extension functions on java.io.File (readText,
+        writeText, forEachLine) and top-level println/print that have no
+        Java analog. Plus ktor, kotlin-logging, Android Log, Exposed ORM.
+        The Java parent fills in the raw java.io/java.net/JDBC entries so
+        code using the underlying Java APIs directly is still matched.
+        """
         catalog = load_catalog("kotlin")
-        assert len(catalog.primitives) > 0
+        assert catalog.language == "kotlin"
+        # Java parent is merged in
         assert catalog.lookup("java.io.FileInputStream.read") is not None
+        # Kotlin-specific extensions are present
+        assert catalog.lookup("java.io.File.readText") is not None
+        assert catalog.lookup("java.io.File.writeText") is not None
+        # kotlin.io top-level println — what detekt et al. actually use
+        assert catalog.lookup("kotlin.io.ConsoleKt.println") is not None
+        # ktor client
+        assert catalog.lookup("io.ktor.client.HttpClient.get") is not None
+        # Android Log (very common in Kotlin Android codebases)
+        assert catalog.lookup("android.util.Log.d") is not None
+
+    def test_kotlin_catalog_covers_all_expected_boundaries(self) -> None:
+        """Kotlin catalog emits every boundary kind the UAT flagged missing.
+
+        UAT BUG-09d noted that detekt produced exactly one boundary
+        (net_send). With the catalog expansion, Kotlin-specific primitives
+        cover fs_read, fs_write, net_send, net_recv, logging, db_read,
+        and db_write — matching the breadth of the Java parent.
+        """
+        catalog = load_catalog("kotlin")
+        boundaries = {p.boundary for p in catalog.primitives}
+        for expected in (
+            "fs_read", "fs_write", "net_send", "net_recv",
+            "logging", "db_read", "db_write",
+        ):
+            assert expected in boundaries, (
+                f"Kotlin catalog missing boundary kind: {expected}"
+            )
+
+    def test_kotlin_is_not_a_plain_alias_anymore(self) -> None:
+        """Regression guard: kotlin was previously in _CATALOG_ALIASES, which
+        made it load java.yaml verbatim. The move to _CATALOG_PARENTS is what
+        enables Kotlin-specific entries. If kotlin ever reappears in the
+        alias map by mistake, its own catalog would be ignored and this
+        test's assertion on `catalog.language == "kotlin"` would regress.
+        """
+        from hypergumbo_core.io_boundary import (
+            _CATALOG_ALIASES, _CATALOG_PARENTS,
+        )
+        assert "kotlin" not in _CATALOG_ALIASES
+        assert _CATALOG_PARENTS.get("kotlin") == "java"
 
     def test_scala_loads_own_catalog_with_java_parent(self) -> None:
         """Scala has its own catalog merged with Java parent."""
@@ -333,6 +439,42 @@ class TestLoadCatalog:
         assert catalog.language == "brainfuck"
         assert len(catalog.primitives) == 0
 
+    def test_unsupported_language_flagged_is_supported_false(self) -> None:
+        """INV-javam: a language with no catalog/alias/parent returns
+        is_supported=False so callers can distinguish "found zero I/O"
+        from "language unsupported".
+        """
+        catalog = load_catalog("brainfuck")
+        assert catalog.is_supported is False
+
+    def test_supported_language_is_supported_true(self) -> None:
+        """INV-javam: a language with a catalog returns is_supported=True."""
+        assert load_catalog("python").is_supported is True
+        assert load_catalog("java").is_supported is True
+
+    def test_alias_language_is_supported(self) -> None:
+        """INV-javam: an aliased language (typescript → javascript) is
+        considered supported because the alias catalog loads.
+        """
+        assert load_catalog("typescript").is_supported is True
+        assert load_catalog("cpp").is_supported is True
+
+    def test_parent_language_is_supported(self) -> None:
+        """INV-javam: a language with a parent catalog (scala → java,
+        kotlin → java, elixir → erlang) is considered supported.
+        """
+        assert load_catalog("scala").is_supported is True
+        assert load_catalog("kotlin").is_supported is True
+        assert load_catalog("elixir").is_supported is True
+
+    def test_is_language_supported_helper(self) -> None:
+        """INV-javam: module-level helper mirrors the catalog flag for
+        callers that don't want to materialize the full catalog.
+        """
+        from hypergumbo_core.io_boundary import is_language_supported
+        assert is_language_supported("python") is True
+        assert is_language_supported("brainfuck") is False
+
     def test_cpp_alias_loads_c_catalog(self) -> None:
         """C++ has no dedicated catalog but falls back to C via alias."""
         catalog = load_catalog("cpp")
@@ -348,6 +490,50 @@ class TestLoadCatalog:
         boundaries = {p.boundary for p in catalog.primitives}
         assert "fs_read" in boundaries
         assert "net_send" in boundaries
+
+    def test_elixir_loads_own_catalog_with_erlang_parent(self) -> None:
+        """WI-vibur: Elixir has its own catalog merged with Erlang parent.
+
+        Elixir idiom uses its own modules (File, Logger, Ecto.Repo,
+        Phoenix.Router, HTTPoison/Tesla/Req/Finch/Mint) but atom-access
+        into Erlang is common (`:gen_tcp.send`, `:ets.lookup`). Erlang
+        parent covers those atom paths; the Elixir catalog adds the
+        idiomatic surface that UAT found missing on plausible (Phoenix/
+        Ecto). BUG-09b: io-boundaries returned 0 boundaries before this.
+        """
+        catalog = load_catalog("elixir")
+        assert catalog.language == "elixir"
+        # Erlang parent merged in — atom-access still matched
+        assert catalog.lookup("file.read_file") is not None
+        # Elixir-specific primitives
+        assert catalog.lookup("File.read") is not None
+        assert catalog.lookup("File.write") is not None
+        assert catalog.lookup("Ecto.Repo.all") is not None
+        assert catalog.lookup("Ecto.Repo.insert") is not None
+        assert catalog.lookup("HTTPoison.get") is not None
+        assert catalog.lookup("Tesla.get") is not None
+        assert catalog.lookup("Req.get") is not None
+        assert catalog.lookup("Phoenix.Router.get") is not None
+        assert catalog.lookup("Logger.info") is not None
+        assert catalog.lookup("System.cmd") is not None
+
+    def test_elixir_catalog_covers_all_expected_boundaries(self) -> None:
+        """Elixir catalog emits every boundary kind Phoenix/Ecto apps need.
+
+        UAT BUG-09b observed 0 boundaries on plausible. After this PR,
+        at minimum fs_read, fs_write, net_send, net_recv, logging,
+        db_read, db_write, subprocess, env_read, and ipc_send are all
+        covered.
+        """
+        catalog = load_catalog("elixir")
+        boundaries = {p.boundary for p in catalog.primitives}
+        for expected in (
+            "fs_read", "fs_write", "net_send", "net_recv", "logging",
+            "db_read", "db_write", "subprocess", "env_read", "ipc_send",
+        ):
+            assert expected in boundaries, (
+                f"Elixir catalog missing boundary kind: {expected}"
+            )
 
     def test_erlang_catalog_loads(self) -> None:
         """Erlang I/O catalog covers OTP stdlib, networking, ETS/Mnesia, and process primitives."""
@@ -1207,6 +1393,138 @@ class TestEntryPointTracing:
         assert "main_noio" not in fs_entry.entry_points
 
 
+class TestLeafCallerExpansion:
+    """Tests for WI-darad: expand collapsed sinks into per-leaf-caller roll-ups.
+
+    When many concrete functions share a helper that calls a primitive, the
+    collapsed entry_points roll-up loses the association between entry points
+    and the concrete caller path. leaf_callers / entry_points_per_leaf surface
+    that association without materializing full paths per chain.
+    """
+
+    def _make_edge(self, src: str, dst: str, edge_type: str = "calls"):
+        from dataclasses import dataclass
+        from typing import Optional, Dict, Any
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(src=src, dst=dst, edge_type=edge_type, meta=None)
+
+    def test_leaf_callers_surface_concrete_notifiers(self) -> None:
+        """Two concrete Notifier.Notify funcs share a 'request' helper that
+        calls http.NewRequest. leaf_callers must contain both Notifiers."""
+        catalog = load_catalog("go")
+        edges = [
+            self._make_edge(
+                src="go:/api.go:1:postAlertsHandler:function",
+                dst="go:/notify.go:1:slack_Notify:function",
+            ),
+            self._make_edge(
+                src="go:/api.go:1:postAlertsHandler:function",
+                dst="go:/notify.go:1:discord_Notify:function",
+            ),
+            self._make_edge(
+                src="go:/notify.go:1:slack_Notify:function",
+                dst="go:/notify.go:1:request:function",
+            ),
+            self._make_edge(
+                src="go:/notify.go:1:discord_Notify:function",
+                dst="go:/notify.go:1:request:function",
+            ),
+            self._make_edge(
+                src="go:/notify.go:1:request:function",
+                dst="go:net/http:0-0:NewRequest:unresolved",
+            ),
+        ]
+        entrypoint_ids = {"go:/api.go:1:postAlertsHandler:function"}
+        bmap = compute_boundary_map(
+            edges, {"go": catalog}, entrypoint_ids=entrypoint_ids
+        )
+        net_entry = bmap.entries.get("net_send")
+        assert net_entry is not None
+        assert "go:/notify.go:1:slack_Notify:function" in net_entry.leaf_callers
+        assert "go:/notify.go:1:discord_Notify:function" in net_entry.leaf_callers
+
+    def test_entry_points_per_leaf_distinguishes_reach(self) -> None:
+        """Two handlers reach the shared helper via disjoint Notifiers.
+        entry_points_per_leaf must keep the EP→leaf association."""
+        catalog = load_catalog("go")
+        edges = [
+            self._make_edge(
+                src="go:/api.go:1:postSlackHandler:function",
+                dst="go:/notify.go:1:slack_Notify:function",
+            ),
+            self._make_edge(
+                src="go:/api.go:1:postDiscordHandler:function",
+                dst="go:/notify.go:1:discord_Notify:function",
+            ),
+            self._make_edge(
+                src="go:/notify.go:1:slack_Notify:function",
+                dst="go:/notify.go:1:request:function",
+            ),
+            self._make_edge(
+                src="go:/notify.go:1:discord_Notify:function",
+                dst="go:/notify.go:1:request:function",
+            ),
+            self._make_edge(
+                src="go:/notify.go:1:request:function",
+                dst="go:net/http:0-0:NewRequest:unresolved",
+            ),
+        ]
+        entrypoint_ids = {
+            "go:/api.go:1:postSlackHandler:function",
+            "go:/api.go:1:postDiscordHandler:function",
+        }
+        bmap = compute_boundary_map(
+            edges, {"go": catalog}, entrypoint_ids=entrypoint_ids
+        )
+        net_entry = bmap.entries["net_send"]
+        per_leaf = net_entry.entry_points_per_leaf
+        slack_leaf = "go:/notify.go:1:slack_Notify:function"
+        discord_leaf = "go:/notify.go:1:discord_Notify:function"
+        assert per_leaf[slack_leaf] == [
+            "go:/api.go:1:postSlackHandler:function"
+        ]
+        assert per_leaf[discord_leaf] == [
+            "go:/api.go:1:postDiscordHandler:function"
+        ]
+
+    def test_leaf_caller_is_io_src_when_no_callers(self) -> None:
+        """When io_edge_src has no callers, it itself is the leaf."""
+        catalog = load_catalog("python")
+        edges = [
+            self._make_edge(
+                src="python:/a.py:1:f:function",
+                dst="python:/os.py:1:os.listdir:function",
+            ),
+        ]
+        bmap = compute_boundary_map(edges, {"python": catalog})
+        fs_entry = bmap.entries["fs_read"]
+        assert fs_entry.leaf_callers == ["python:/a.py:1:f:function"]
+
+    def test_leaf_rollups_in_to_dict(self) -> None:
+        """leaf_callers and entry_points_per_leaf appear in JSON output."""
+        catalog = load_catalog("python")
+        edges = [
+            self._make_edge(src="main", dst="helper"),
+            self._make_edge(src="helper", dst="python:os:0-0:listdir:function"),
+        ]
+        bmap = compute_boundary_map(
+            edges, {"python": catalog}, entrypoint_ids={"main"}
+        )
+        d = bmap.to_dict()
+        fs = d["boundaries"]["fs_read"]
+        assert "leaf_callers" in fs
+        assert "entry_points_per_leaf" in fs
+        assert "main" in fs["leaf_callers"]
+        assert fs["entry_points_per_leaf"]["main"] == ["main"]
+
+
 class TestHighRiskPrimitives:
     """Tests for the high-risk primitive classification."""
 
@@ -1544,6 +1862,53 @@ class TestAmbiguousNameFiltering:
         )
         count = tag_io_boundaries([edge], {"go": catalog})
         assert count == 1, "Go external matching should still work for distinctive names"
+
+    # --- Java ambiguous names (WI-gonav) ---
+
+    def test_java_size_not_matched_as_files_size(self) -> None:
+        """Java's ``List.size()`` / ``Map.size()`` / ``Collection.size()`` must
+        NOT be classified as ``java.nio.file.Files.size`` (fs_read) just
+        because the bare method name happens to collide.
+
+        UAT 2026-04-13 BUG-10: at Vet.java:66,
+        ``getSpecialtiesInternal().size()`` was reported as ``Files.size``.
+        """
+        catalog = load_catalog("java")
+        edge = self._make_edge(
+            src="java:Vet.java:66:getSpecialtiesInternal:method",
+            dst="java:external:0-0:size:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"java": catalog})
+        assert count == 0, (
+            "Generic 'size' should not match Files.size without module context"
+        )
+
+    def test_java_length_not_matched_without_module(self) -> None:
+        """Java's ``String.length()`` / ``array.length`` must NOT match
+        ``java.io.File.length`` (fs_read) on short-name alone."""
+        catalog = load_catalog("java")
+        edge = self._make_edge(
+            src="java:User.java:42:getName:method",
+            dst="java:external:0-0:length:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"java": catalog})
+        assert count == 0, (
+            "Generic 'length' should not match File.length without module context"
+        )
+
+    def test_java_resolved_files_size_still_matches(self) -> None:
+        """When module context confirms ``java.nio.file.Files``, a resolved
+        ``size`` call STILL matches as fs_read (the ambiguous filter only
+        rejects unresolved-external short-name matches)."""
+        catalog = load_catalog("java")
+        edge = self._make_edge(
+            src="java:FileUtil.java:10:fileSize:method",
+            dst="java:java.nio.file.Files:0-0:size:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"java": catalog})
+        assert count == 1, (
+            "Resolved Files.size should still match as fs_read"
+        )
 
     # --- Go ambiguous names ---
 

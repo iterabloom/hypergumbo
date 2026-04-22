@@ -1,0 +1,37 @@
+- op: create  # 6947
+  at: '2026-04-14T06:05:32Z'  # 6947
+  by: agent  # 6947
+  actor: jgstern_agent  # 6947
+  clock: 1  # 6947
+  nonce: '6947'  # 6947
+  data:  # 6947
+    kind: work_item  # 6947
+    title: "Standardize path argument convention across subcommands"  # 6947
+    status: todo_soft  # 6947
+    priority: 3  # 6947
+    parent:  # 6947
+    tags:  # 6947
+    - uat_2026_04_13  # 6947
+    - ergonomics  # 6947
+    - developer_experience  # 6947
+    isbefore: []  # 6947
+    duplicate_of: []  # 6947
+    not_duplicate_of: []  # 6947
+    pr_ref:  # 6947
+    description: "UAT 2026-04-13 UX-01: some commands take repo path positionally (`hypergumbo sketch /path`), others via `--path` (`hypergumbo routes --path /path`), `catalog` accepts neither (CWD only). Causes errors when users carry syntax between commands. Standardize: accept both positional and `--path` on every subcommand; if both given, error."  # 6947
+    fields: {}  # 6947
+- op: update  # 56ce
+  at: '2026-04-15T11:53:03Z'  # 56ce
+  by: agent  # 56ce
+  actor: jgstern_agent  # 56ce
+  clock: 2  # 56ce
+  nonce: 56ce  # 56ce
+  set:  # 56ce
+    status: done  # 56ce
+- op: discuss  # ba3c
+  at: '2026-04-15T11:53:03Z'  # ba3c
+  by: agent  # ba3c
+  actor: jgstern_agent  # ba3c
+  clock: 3  # ba3c
+  nonce: ba3c  # ba3c
+  message: "Fixed in WIP PR. New _add_path_argument() helper registers both positional 'path' (nargs='?') and --path (dest='_path_flag') on a subparser. main() post-process resolves both into args.path, errors with exit 2 if both explicitly set. Applied to 11 subcommands: sketch, run, slice, search, routes, explain, test-coverage, dead-code-maybe, symbols, io-boundaries, verify-claims. Command functions need no changes since args.path remains the resolved destination. 9 new tests cover all subcommand convention permutations + both-forms-error case."  # ba3c

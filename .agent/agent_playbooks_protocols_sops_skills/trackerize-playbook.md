@@ -44,17 +44,17 @@ Priority is 0–4 (0 = highest). Assign based on:
 - How existing tracker items are prioritized (from the `list`/`ready` output in step 1).
 - Dependencies — items that block many others are typically higher priority.
 
-### 5. Set sequencing with `before`
+### 5. Set sequencing with `isbefore`
 
-Use `--before ITEM_ID` when one item must be completed before another can start. This is for real dependencies, not just preferred ordering — don't over-constrain. A linear chain of 8 items where each blocks the next is usually wrong; most plans have 2–3 dependency edges, not N-1.
+Use `--isbefore ITEM_ID` when one item must be completed before another can start. This is for real dependencies, not just preferred ordering — don't over-constrain. A linear chain of 8 items where each blocks the next is usually wrong; most plans have 2–3 dependency edges, not N-1.
 
 ### 6. Use parents sparingly
 
-Only create parent-child relationships when there is a compelling structural reason (e.g., a multi-phase migration where phases are distinct but conceptually grouped). Flat lists with `before` edges are typically clearer than nested hierarchies.
+Only create parent-child relationships when there is a compelling structural reason (e.g., a multi-phase migration where phases are distinct but conceptually grouped). Flat lists with `isbefore` edges are typically clearer than nested hierarchies.
 
 ### 7. Apply tags
 
-Use tags to make items filterable. Pick from well-known tags when they fit (`developer_experience`, `analysis_quality`, `cross_language_linkers`, `ci_infrastructure`, `bakeoff_infrastructure`, `language_additions`). Custom tags are fine when none of the well-known ones apply.
+Use tags to make items filterable. Pick from well-known tags when they fit (`developer_experience`, `analysis_quality`, `ci_infrastructure`, `bakeoff_infrastructure`, `language_additions`). For linker work, pick the subcategory-specific tag that matches the item's scope (per [ADR-0003-ext: Linker Subcategory Restoration](../../docs/adr/0003-linker-subcategory-restoration.md)): `protocol_linkers` (framework-agnostic — HTTP, SQL, pub-sub, events), `cross_language_linkers` (Bridge subcategory — FFI and language-pair boundaries, retained for continuity with pre-ADR-0003-ext items), `framework_dispatch_linkers` (Framework subcategory — DI, ORM, decorators, JSX composition, middleware), or `infrastructure_linkers` (graph-structural utilities — containment, inheritance, module resolution). Custom tags are fine when none of the well-known ones apply.
 
 ### 8. Check for duplicates
 
@@ -73,10 +73,10 @@ scripts/tracker add \
   --status todo_hard \
   --tag some_tag \
   --description "Full context needed to execute this item. Per docs/plan.md §3." \
-  --before WI-other-item-id
+  --isbefore WI-other-item-id
 ```
 
-Create items in dependency order (blockers first) so that `--before` references are valid.
+Create items in dependency order (blockers first) so that `--isbefore` references are valid.
 
 ### 10. Summarize
 
@@ -85,7 +85,7 @@ After creating all items, show the user a summary: item IDs, titles, priorities,
 ## Anti-patterns
 
 - **One giant item** — defeats the purpose. If an item has "and" in the title, it's probably two items.
-- **Over-sequencing** — a fully-linear chain of `before` edges means nothing can be parallelized. Most real plans have some items that are independent.
+- **Over-sequencing** — a fully-linear chain of `isbefore` edges means nothing can be parallelized. Most real plans have some items that are independent.
 - **Copying the plan verbatim** — item descriptions should be self-contained, not "see plan step 3". Include enough context that the item stands alone.
 - **Skipping the duplicate check** — creating items that already exist clutters the tracker and confuses priority.
 - **Defaulting everything to the same priority** — if all items are priority 2, the priority field carries no information. Differentiate.

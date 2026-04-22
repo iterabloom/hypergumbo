@@ -1,0 +1,77 @@
+- op: create  # 0731
+  at: '2026-04-16T19:20:16Z'  # 0731
+  by: agent  # 0731
+  actor: jgstern_agent  # 0731
+  clock: 1  # 0731
+  nonce: '0731'  # 0731
+  data:  # 0731
+    kind: work_item  # 0731
+    title: "Kafka Streams topology-builder linker: DSL calls → processor/transformer/supplier impls"  # 0731
+    status: todo_soft  # 0731
+    priority: 3  # 0731
+    parent:  # 0731
+    tags:  # 0731
+    - cross_language_linkers  # 0731
+    - analysis_quality  # 0731
+    - kafka  # 0731
+    isbefore: []  # 0731
+    duplicate_of: []  # 0731
+    not_duplicate_of: []  # 0731
+    pr_ref:  # 0731
+    description: "WI-tubot aggregate-v5 analysis (2026-04-16): kafka_streams_internal = 2386 candidates (2.6% of the pool). Top samples: KStream.process, KStream.filter, KStream.map, WorkerManager.Worker.spec, Utils.require.\n\nCurrent state: no linker covers Kafka Streams topology dispatch. The DSL (StreamsBuilder.stream().filter().map().through().to()) registers processors/transformers/suppliers at build time; the static call graph sees the registrations but not the per-record callbacks the framework invokes at runtime (ValueMapper.apply, ValueTransformer.transform, ProcessorSupplier.get, etc.).\n\nScope: a kafka_streams_dispatch.py linker (or an extension of message_dispatch.py) that:\n1. Recognises ValueMapper / ValueTransformer / ProcessorSupplier / KeyValueMapper / Predicate / ForeachAction / TransformerSupplier / Aggregator / Reducer / Initializer / Merger base types from org.apache.kafka.streams.kstream\n2. For each concrete impl, marks the framework-called methods (apply, transform, process, get, init, close) as reachable from the enclosing topology-builder call-site via framework_dispatches_to edges\n3. Does the same for the .streams-scala wrapper types used by Scala consumers\n\nCross-language relevance: Kafka topologies cross language boundaries via Kafka records. SerDe classes (Serializer.serialize / Deserializer.deserialize) are also dispatched this way and could share machinery.\n\nAcceptance: re-run of dead-code-prospector shows kafka_streams_internal drops below 800 (67% reduction)."  # 0731
+    fields: {}  # 0731
+- op: discuss  # 40b6
+  at: '2026-04-16T19:36:54Z'  # 40b6
+  by: agent  # 40b6
+  actor: jgstern_agent  # 40b6
+  clock: 2  # 40b6
+  nonce: 40b6  # 40b6
+  message: "Clarification on cross-languageness: the phrase 'cross-language via Kafka record SerDe boundary' in the original description overstated this item's scope. The linker itself operates entirely within Java/Scala source — Kafka Streams' topology builder registers ValueMapper/ValueTransformer/ProcessorSupplier impls at build time, and the runtime dispatches the callbacks (apply/transform/process/get/init) per record. The cross-language consequence (Kafka records flow to consumers in Python/Go/Node) is real but downstream of the linker; it's the message_queue.py / message_dispatch.py class of edge, not this one.\n\nCorrect framing: this is a within-JVM framework-dispatch linker for Kafka Streams topology registration. If we ever want true cross-language edges along the Kafka record path, that's a separate item for a Kafka-topic → consumer-class linker that could reuse SerDe fingerprints across languages."  # 40b6
+- op: update  # 5cc7
+  at: '2026-04-17T01:16:11Z'  # 5cc7
+  by: agent  # 5cc7
+  actor: jgstern_agent  # 5cc7
+  clock: 3  # 5cc7
+  nonce: 5cc7  # 5cc7
+  set: {}  # 5cc7
+  remove:  # 5cc7
+    tags: [cross_language_linkers]  # 5cc7
+- op: discuss  # b4ef
+  at: '2026-04-17T01:17:40Z'  # b4ef
+  by: agent  # b4ef
+  actor: jgstern_agent  # b4ef
+  clock: 4  # b4ef
+  nonce: b4ef  # b4ef
+  message: "Tag cleanup (2026-04-17): removed `cross_language_linkers` tag. Per the 2026-04-16 discussion clarification above and ADR-0003-ext, this is a **Framework-subcategory** linker (JVM-internal Kafka Streams topology dispatch). True cross-language edges along the Kafka record path would be a separate Bridge-style linker reusing SerDe fingerprints — not this item. Keeping `analysis_quality` and `kafka`."  # b4ef
+- op: update  # 6201
+  at: '2026-04-17T02:56:08Z'  # 6201
+  by: agent  # 6201
+  actor: jgstern_agent  # 6201
+  clock: 5  # 6201
+  nonce: '6201'  # 6201
+  set:  # 6201
+    priority: 4  # 6201
+- op: discuss  # fc27
+  at: '2026-04-17T02:56:08Z'  # fc27
+  by: agent  # fc27
+  actor: jgstern_agent  # fc27
+  clock: 6  # fc27
+  nonce: fc27  # fc27
+  message: "pf-prelim pivot: Java/Scala Kafka world, not in pf-prelim stack. Deferred P3→P4."  # fc27
+- op: update  # 07c6
+  at: '2026-04-20T14:53:13Z'  # 07c6
+  by: agent  # 07c6
+  actor: jgstern_agent  # 07c6
+  clock: 7  # 07c6
+  nonce: 07c6  # 07c6
+  set:  # 07c6
+    status: done  # 07c6
+  add:  # 07c6
+    tags: [awaits_bakeoff_validation]  # 07c6
+- op: discuss  # 883d
+  at: '2026-04-20T14:53:13Z'  # 883d
+  by: agent  # 883d
+  actor: jgstern_agent  # 883d
+  clock: 8  # 883d
+  nonce: 883d  # 883d
+  message: "Phase 1 landed in PR #3230 (merged to dev as 7f1bc6a27). New Framework-subcategory linker kafka_streams_dispatch.py emits dispatches_to edges from concrete Java/Kotlin/Scala impls of 17 Kafka Streams callback interfaces (ValueMapper/ValueMapperWithKey/KeyValueMapper/Predicate/ForeachAction/Aggregator/Reducer/Initializer/Merger/ValueTransformer[WithKey]/Transformer/Processor and all four *Supplier factory forms) to the framework-called methods (apply/transform/process/get/init/close/test) with confidence 0.90, evidence 'kafka_streams_dispatch', priority 21 (same tier as jackson-dispatch). Fully-qualified names normalize to short form so scala.kstream wrapper namespace is covered by the same table. Lifecycle methods (init/close) emitted alongside per-record methods. De-duped by (class_id, method_id, edge_type). 37 tests cover all helpers, integration paths, language variants (Java/Kotlin/Scala), and edge cases. 100% coverage. Bakeoff claim to validate: kafka_streams_internal drops from 2386 toward 800 (67% reduction) per WI-tubot aggregate-v5. Call-site → impl edges (WI-lisov Phase 2) deferred to a follow-up if the bakeoff cohort still shows collapse after Phase 1; class → method is sufficient to lift the callback methods out of dead-code candidates per the WI acceptance criterion. Tagging awaits_bakeoff_validation per AGENTS.md §Bakeoff Validation Discipline (PR contains a quantitative FP-reduction claim)."  # 883d

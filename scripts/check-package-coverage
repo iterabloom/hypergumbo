@@ -28,6 +28,7 @@ declare -A PACKAGES=(
     ["mainstream"]="packages/hypergumbo-lang-mainstream/tests packages/hypergumbo-lang-mainstream/src"
     ["common"]="packages/hypergumbo-lang-common/tests packages/hypergumbo-lang-common/src"
     ["extended"]="packages/hypergumbo-lang-extended1/tests packages/hypergumbo-lang-extended1/src"
+    ["rust-analyzer"]="packages/hypergumbo-lang-rust-analyzer/tests packages/hypergumbo-lang-rust-analyzer/src"
     ["tracker"]="packages/hypergumbo-tracker/tests packages/hypergumbo-tracker/src"
 )
 

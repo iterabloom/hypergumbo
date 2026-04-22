@@ -1,0 +1,20 @@
+- op: create  # 8a43
+  at: '2026-04-16T13:25:40Z'  # 8a43
+  by: agent  # 8a43
+  actor: jgstern_agent  # 8a43
+  clock: 1  # 8a43
+  nonce: 8a43  # 8a43
+  data:  # 8a43
+    kind: work_item  # 8a43
+    title: "Dead-code-prospector OOM/crash on 3 largest repos (trino, envoy, vscode)"  # 8a43
+    status: todo_soft  # 8a43
+    priority: 4  # 8a43
+    parent:  # 8a43
+    tags:  # 8a43
+    - dead_code_prospector  # 8a43
+    isbefore: []  # 8a43
+    duplicate_of: []  # 8a43
+    not_duplicate_of: []  # 8a43
+    pr_ref:  # 8a43
+    description: "WI-tubot full-corpus run (2026-04-11) failed on 3 repos: trino (209 MB), envoy (181 MB), vscode (161 MB) — all above the 95 MB kafka threshold that succeeded. Per WI-tubot discussion (2026-04-10T22:01:00Z), kafka alone was 10+ min; these 3 are each 1.7×-2.2× larger. Most likely OOM in the behavior-map generation phase. Investigation: re-run each with memory profiling (/usr/bin/time -v hypergumbo run <repo>) to capture peak RSS, identify which stage spikes (analyzer, linker, ranking, sketch). If confirmed OOM, either (a) add streaming/batching to the offending stage, (b) expose a --max-files limit that's honoured through the full pipeline, or (c) document a size ceiling in CHANGELOG. Artifact for follow-up: ~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-11-full/."  # 8a43
+    fields: {}  # 8a43

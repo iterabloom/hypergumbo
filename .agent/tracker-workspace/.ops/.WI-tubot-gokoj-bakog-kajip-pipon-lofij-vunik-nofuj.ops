@@ -79,3 +79,89 @@
   clock: 9  # f403
   nonce: f403  # f403
   message: "this is cleared for launch"  # f403
+- op: discuss  # 6a4a
+  at: '2026-04-14T07:04:27Z'  # 6a4a
+  by: agent  # 6a4a
+  actor: jgstern_agent  # 6a4a
+  clock: 10  # 6a4a
+  nonce: 6a4a  # 6a4a
+  message: "Launch executed 2026-04-11. Artifact: ~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-11-full/\n\nResults summary (11 repos analyzed, 92218 total candidates):\n- 3 repos failed: trino, envoy, vscode (need investigation — likely OOM or analyzer crash on the largest repos)\n- 4 repos skipped as monoglot (not polyglot enough for cross-language linker analysis): buildkit (go), containerd (go), cowboy (erlang), vapor (swift+c)\n- Top categorized gaps:\n    3187  cross_language_api\n    1631  handler_or_dto\n     514  swagger_generated\n     100  memberlist_callbacks\n      25  goroutine_lifecycle\n      20  yaml_json_marshal  (down from 146 in smoke-test, post-WI-pimig Phase 1)\n       7  pipeline_stage_dispatch\n       3  cobra_cli_dispatch\n- 86731 (94%) uncategorized — categorizer is the bottleneck for actionable signal, not the linker gaps themselves.\n\nThe biggest finding is that the categorizer needs work before the prospector output is actionable for prioritizing linker investment — 94% bucket-uncategorized means the rank-by-frequency signal is noisy. Will file follow-up tracker items for: (a) categorizer improvement (the actual blocker for using this output), (b) investigation of the 3 failed repos (trino/envoy/vscode), and (c) consideration of WI-botol (full 200-repo run) deferral status given the categorizer issue."  # 6a4a
+- op: discuss  # 6b5b
+  at: '2026-04-16T13:26:08Z'  # 6b5b
+  by: agent  # 6b5b
+  actor: jgstern_agent  # 6b5b
+  clock: 11  # 6b5b
+  nonce: 6b5b  # 6b5b
+  message: "Prospector run analysis (aggregate.json, 2026-04-11): 11 repos analyzed, 92218 candidates. Category breakdown (sorted desc): uncategorized=86731 (94%), cross_language_api=3187, handler_or_dto=1631, swagger_generated=514, memberlist_callbacks=100, goroutine_lifecycle=25, yaml_json_marshal=20, pipeline_stage_dispatch=7, cobra_cli_dispatch=3. Signals: (1) cross_language_api=3187 confirms WI-tinip (HTTP linker) as the highest-leverage next investment; (2) 94% uncategorized rate blocks signal extraction beyond the recognized 6% — filed WI-vupin to improve the categorization ruleset; (3) 3 repos failed (trino/envoy/vscode, 161–209 MB, largest in cohort) — filed WI-hagip to profile and fix the memory/time regression on large repos. Status field locked; leaving as-is. Deliverable (artifact + analysis) delivered."  # 6b5b
+- op: discuss  # 1cfc
+  at: '2026-04-16T16:15:13Z'  # 1cfc
+  by: agent  # 1cfc
+  actor: jgstern_agent  # 1cfc
+  clock: 12  # 1cfc
+  nonce: 1cfc  # 1cfc
+  message: "Why this item is still open (clarification from 2026-04-16): the artifact at ~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-11-full/ exists, but artifact-on-disk is NOT sufficient for completion. The real goal is actionable signal for prioritizing linker investment, and today 94% of the 92218 candidates are bucket-uncategorized — rank-by-frequency is noisy at that rate. Concrete bar for done: re-run the prospector after WI-vupin lands an improved categorizer and achieve <50% uncategorized. WI-vupin is marked isbefore WI-tubot to enforce the dependency structurally. The status field is locked to prevent superficial closure on proxy evidence (JSON file present ≠ signal useful). Do NOT mark done until (1) WI-vupin ships, (2) a re-run meets the <50% threshold, (3) the aggregate signal is reviewed for whether it actually steers linker work."  # 1cfc
+- op: discuss  # d6ff
+  at: '2026-04-16T16:23:29Z'  # d6ff
+  by: human  # d6ff
+  actor: jgstern  # d6ff
+  clock: 13  # d6ff
+  nonce: d6ff  # d6ff
+  message: "And also, if the re-run fails to meet the <50% threshold, then assess whether additional work on WI-vupin (even if already closed) has a reasonable chance of getting closer to that threshold. If so, reopen WI-vupin, do more work on it, and re-run again."  # d6ff
+- op: discuss  # 7120
+  at: '2026-04-16T16:27:38Z'  # 7120
+  by: agent  # 7120
+  actor: jgstern_agent  # 7120
+  clock: 14  # 7120
+  nonce: '7120'  # 7120
+  message: "Acknowledged. Noted the iterate-if-threshold-missed loop: (1) land initial WI-vupin categorizer improvement, (2) re-run prospector, (3) if <50% uncategorized threshold not met, assess whether more categorizer work has reasonable chance of closing the gap, (4) if yes, reopen WI-vupin (even if closed) and iterate, (5) re-run again. Treating this as a convergence loop, not a one-shot. Will record per-iteration deltas in WI-vupin discussion so the reasonable-chance assessment is evidence-backed rather than gut-feel."  # 7120
+- op: discuss  # 1c32
+  at: '2026-04-16T17:18:56Z'  # 1c32
+  by: agent  # 1c32
+  actor: jgstern_agent  # 1c32
+  clock: 15  # 1c32
+  nonce: 1c32  # 1c32
+  message: "WI-vupin landed (PR #3068, dev SHA 3bf1658ff317). Re-aggregating the existing 2026-04-11 per-repo JSONs (11 repos, 92218 candidates) with the new v5 categorizer yields 43.4% uncategorized — passes the <50% success criterion. Artifact: ~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-11-full/aggregate-v5.json. Note: this is a re-categorization of the same raw data, not a fresh prospecting pass (the prospector is deterministic per-corpus, so rerunning would only reconfirm the same candidate set; the categorizer is the post-processor that was the actual blocker). Top signal after re-categorization: cross_language_api (1113, 1.2%) and python_airflow_framework (already visible in v4) remain the high-leverage linker opportunities. Ready for human review re: whether this re-aggregation evidence suffices or whether you want me to trigger a full 3-5 hour fresh prospecting pass for belt-and-suspenders confirmation."  # 1c32
+- op: discuss  # e6e7
+  at: '2026-04-16T18:36:33Z'  # e6e7
+  by: human  # e6e7
+  actor: jgstern  # e6e7
+  clock: 16  # e6e7
+  nonce: e6e7  # e6e7
+  message: "ok, so we have what seems to be a useful artifact at `~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-11-full/aggregate-v5.json`. Good. What do these results imply about new cross language linker infrastructure that ought to be built? Are these implications specific enough to trackerize?"  # e6e7
+- op: unlock  # f505
+  at: '2026-04-16T18:36:55Z'  # f505
+  by: human  # f505
+  actor: jgstern  # f505
+  clock: 17  # f505
+  nonce: f505  # f505
+  unlock:  # f505
+  - status  # f505
+- op: discuss  # fbb3
+  at: '2026-04-16T19:25:09Z'  # fbb3
+  by: agent  # fbb3
+  actor: jgstern_agent  # fbb3
+  clock: 18  # fbb3
+  nonce: fbb3  # fbb3
+  message: "The aggregate-v5 data has one headline implication and three concrete linker items.\n\nHEADLINE (surprising): cross-language linker gaps are NOT the dominant dead-code FP driver on this corpus. Of the 92,218 candidates, language-INTERNAL framework-dispatch categories dominate:\n  java_bean_accessor            7614 (8.3%)\n  python_airflow_framework      3148 (3.4%)  [+ 1363 airflow_operator_hook = 4511]\n  kafka_streams_internal        2386 (2.6%)\n  python_orm_dispatch           2441 (2.6%)\n  rust_trait_impl               2128 (2.3%)  [+ 876 rust_instruction_descriptor = 3004]\n\nThe deliberately cross-language bucket (cross_language_api) is only 1113 (1.2%), and its top samples are framework DSL methods mis-classified rather than genuine cross-language calls. Cross-language linkers already in flight (WI-tinip umbrella, WI-ropoz gRPC/TS, WI-rosan, WI-sijoh) collectively target roughly one order of magnitude less volume than any single top framework-dispatch category.\n\nThis doesn't mean stop cross-language work -- UAT still surfaces real cross-language misses. It means 'novelty of language pair' was a poor proxy for 'value of closing the gap.' Filed INV-nimuj (needs_human_review, P4) to recalibrate the roadmap heuristic.\n\nTHREE CONCRETE LINKER ITEMS (specific enough, filed):\n  WI-gupah P2 -- Jackson/JavaBean serialization linker: @JsonProperty + getX/setX accessors to serialization call-sites. 7614 candidates. Cross-language via OpenAPI/JSON boundary.\n  WI-nutav P2 -- Airflow framework-dispatch linker: class-based Hook/Sensor/Trigger/Operator. 4511 candidates. Cross-language via cloud-SDK boundary.\n  WI-lisov P3 -- Kafka Streams topology-builder linker: DSL to processor/transformer/supplier impls. 2386 candidates. Cross-language via Kafka record SerDe boundary.\n\nNot filing separate items yet for Django ORM method dispatch (2441, likely fits inside existing orm.py) and Rust trait impl dispatch (3004, needs audit of inheritance.py first). Can add those if you want but wanted the top three surfaced first.\n\nWI-tubot itself: the aggregate-v5 artifact plus the three filed linker items plus INV-nimuj constitute the 'actionable signal' the WI-tubot bar was set against. Happy to close once you confirm; otherwise leave as durable reference."  # fbb3
+- op: discuss  # 5d87
+  at: '2026-04-17T02:13:31Z'  # 5d87
+  by: human  # 5d87
+  actor: jgstern  # 5d87
+  clock: 19  # 5d87
+  nonce: 5d87  # 5d87
+  message: "might as well file items for Django ORM method dispatch and Rust trait impl dispatch; that way we can mark WI-tubot as done and keep things moving"  # 5d87
+- op: discuss  # a39b
+  at: '2026-04-17T03:20:59Z'  # a39b
+  by: agent  # a39b
+  actor: jgstern_agent  # a39b
+  clock: 20  # a39b
+  nonce: a39b  # a39b
+  message: "Filed the two requested follow-up linker items:\n - WI-nosug-mujos-haduk-fadop-duvus-sihab-navon-midot  (P3 todo_soft) Django ORM method dispatch linker — 2441 candidates in python_orm_dispatch. Scope: extend packages/hypergumbo-lang-python/src/hypergumbo_lang_python/orm.py to resolve QuerySet/Manager -> Model dispatch.\n - WI-kivut-habut-lumap-jagub-tasas-vihit-mafof-lalag  (P3 todo_soft) Rust trait impl method dispatch linker — ~3004 candidates (rust_trait_impl 2128 + rust_instruction_descriptor 876). Scope: dispatch resolution (static via generic bounds, dynamic via dyn Trait), building on WI-tulid's existing 'implements' edges.\n\nAll five linker items from the aggregate-v5 analysis are now filed: WI-gupah (Jackson/JavaBean), WI-nutav (Airflow), WI-lisov (Kafka Streams), WI-nosug (Django ORM), WI-kivut (Rust trait dispatch). INV-nimuj captures the recalibrated priority heuristic."  # a39b
+- op: update  # e093
+  at: '2026-04-17T04:35:06Z'  # e093
+  by: human  # e093
+  actor: jgstern  # e093
+  clock: 21  # e093
+  nonce: e093  # e093
+  set:  # e093
+    status: done  # e093

@@ -1,0 +1,22 @@
+- op: create  # 7ef0
+  at: '2026-04-19T23:26:31Z'  # 7ef0
+  by: agent  # 7ef0
+  actor: jgstern_agent  # 7ef0
+  clock: 1  # 7ef0
+  nonce: 7ef0  # 7ef0
+  data:  # 7ef0
+    kind: work_item  # 7ef0
+    title: "Reframe playbook injection so the agent recognizes pre-injected content (strip SPDX, add natural title + path in divider, rename wrapper, add framing hint)"  # 7ef0
+    status: needs_human_review  # 7ef0
+    priority: 4  # 7ef0
+    parent:  # 7ef0
+    tags:  # 7ef0
+    - agent_infrastructure  # 7ef0
+    - injection_pipeline  # 7ef0
+    - developer_experience  # 7ef0
+    isbefore: []  # 7ef0
+    duplicate_of: []  # 7ef0
+    not_duplicate_of: []  # 7ef0
+    pr_ref:  # 7ef0
+    description: "Per conversation 2026-04-19: the overlap sweep across 48 sessions (scripts/measure-playbook-overlap.py, WI-fusak) found 11 Read tool calls on playbook files, 5 of which happened after the pipeline already injected the same playbook. Eyeballing the 5 cases showed 2 false positives (Read-before-Edit, Read-as-part-of-audit-sweep) and 3 genuine re-fetches where the agent verbalized \"let me read the playbook\" within a few turns of receiving it.\n\nRoot-cause hypothesis: the injected block doesn't look like a reference document to the LLM:\n  - No natural-language title up front — the first substantive line is an SPDX HTML comment on 12 of 21 playbooks.\n  - No repo-relative path, so the agent cannot grep recent context for the path it would otherwise Read.\n  - Bare-ID divider (`--- <id> ---`) doesn't match how the agent speaks about these files. Sampling the 5 Read sites across bakeoff-deep-priorities and agentic-session-retrospective: zero of 5 used the literal ID; agent referred to them as \"the priorities playbook\", \"where that rule lives\", or just responded silently to a user prompt containing the natural title.\n  - Wrapper header calls them \"playbook(s)\" even though 9 of 21 are protocols/guides/workflows/SOPs.\n\nScope (all in the output block near the end of `.agent/hooks/_shared/on_transcript_change.py`):\n\n1. Strip a leading `<!-- SPDX-License-Identifier: ... -->` comment and its trailing blank line from injected content. Conditional — apply only when line 1 matches. 12 of 21 playbooks have it; the other 9 are unaffected.\n\n2. Replace the `--- <id> ---` divider with:\n     `--- <natural title> — <repo-relative path> ---`\n   where `<natural title>` is parsed from the first non-comment H2/H3 heading of the file (e.g. \"Agentic Session Retrospective Playbook\", \"DEEP Mode Priority Queue:\"). Fall back to `<id>` if no heading is found. Path is `.agent/agent_playbooks_protocols_sops_skills/<id>.md`. The natural title serves topic-phrase matching; the path serves grep/Read-intent matching. Both surfaces are needed.\n\n3. Change the wrapper header from\n     `[Transcript Analysis — N relevant playbook(s)]`\n   to a neutral noun — e.g. `N relevant document(s)` or `N relevant reference(s)`.\n\n4. Add a one-line framing hint on the line after the divider:\n     `If the task below matches, consult this instead of re-reading the file.`\n\nDeliberately NOT included (considered and rejected in conversation):\n  - A \"Selected because: <distilled goal>\" line. The goal string comes from Mistral Small 3.2 (distill model); injecting weak-model reasoning into the main agent's context is a quality risk. OpenRouter reasoning tokens for the selector aren't trivially accessible either.\n\nGovernance: `.agent/hooks/_shared/on_transcript_change.py` is under `.agent/**` and requires human approval per AGENTS.md. No self-merge. Use auto-pr and wait for human review.\n\nTests: update assertions in `tests/test_transcript_pipeline_properties.py` that pin the old format. Add tests that (a) SPDX comment is stripped when present, (b) playbooks without SPDX are unaffected, (c) natural-language title appears in the divider and precedes the content, (d) path appears in the divider, (e) framing hint is present.\n\nCaveats on the motivating data:\n  - N=11 reads total is tiny; conclusions about re-fetch patterns are directional, not significant.\n  - This fix addresses waste (double-loading), not outcomes. The question \"is playbook injection improving outcomes?\" (the original ADR-0018 question) remains open and likely requires precision sampling of injection events rather than more overlap analysis."  # 7ef0
+    fields: {}  # 7ef0

@@ -1,0 +1,1029 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""scripts/agent-supervisor — hypergumbo tmux session supervisor (WI-razub).
+
+A long-running Python daemon that watches the reserved-prefix set of tmux
+sessions (``hypergumbo-session-*``) and replaces a stuck one with a fresh
+CLI when the human's project-level intent says autonomous work is desired
+but the current session isn't making progress.
+
+Key design points (from the consolidated WI-razub design):
+
+* **Signal layer**: the supervisor's load-bearing "is this session
+  working?" signal is the tmux pane-byte delta over a rolling 15-minute
+  window, NOT the heartbeat file (which is telemetry only, per WI-sipov).
+  Any attached tmux client blocks replacement (a human is watching).
+  The ``autonomous_intent.txt`` file (WI-pobon) is the project-level
+  intent — OFF means the supervisor does nothing.
+
+* **Reserved-prefix discipline**: the supervisor only inspects / touches
+  tmux sessions named ``hypergumbo-session-*``. A human running their
+  own unrelated tmux work is untouched.
+
+* **Single-instance via flock**: at most one supervisor per workstation
+  (per ``state_dir``); second invocation's ``fcntl.flock`` acquisition
+  fails and it exits.
+
+* **Replacement sequence** (WI-nusor): sends the vendor-specific exit
+  keystroke, polls ``tmux has-session`` for up to 30 seconds (when the
+  CLI exits cleanly its shell exits and tmux auto-removes the session),
+  and if the session is still present after the timeout, hard-kills the
+  tmux session and directly invokes the ``kill-transcript-sync.sh`` +
+  ``rotate-on-session-end.sh`` shared scripts (which are already
+  idempotent / vendor-agnostic). Session-existence is the observable
+  the supervisor cares about — a CLI PID was not load-bearing and
+  cross-process PID tracking was unreliable in practice.
+
+* **Fresh-session spawn**: ``tmux new-session -d -s <new> -e
+  HYPERGUMBO_RESPAWN=1 <cli>``, followed by a vendor-agnostic
+  pane-readiness wait (``wait_for_pane_ready``) and a seed keystroke
+  injected via ``tmux send-keys`` (WI-batob follow-up). The
+  ``SessionStart`` hook injects context but does NOT trigger the first
+  model turn — a freshly spawned CLI sits idle at its prompt waiting
+  for user input, so the supervisor provides that first turn
+  non-interactively. The sibling respawn-aware session-start hook
+  (WI-sakod) still branches on ``$HYPERGUMBO_RESPAWN`` to auto-enable
+  autonomous mode from ``autonomous_intent.txt``; the seed keystroke
+  just kicks off the first turn so the hook-provided context is acted
+  on.
+
+* **Rate limit**: a soft cap (default 8 spawns / rolling 24h). Over-cap
+  triggers a log entry and skips the spawn rather than aborting the
+  daemon — the throttle does not become a persistent failure mode.
+
+Vendor identity & keystroke table lives in ``VENDOR_TABLE`` below. WI-batob
+(docs) is the authoritative source; edit BOTH in the same PR. The
+placeholder keystrokes for Codex CLI / Cursor / Gemini CLI are marked
+``# FIXME WI-batob`` so the docs PR verifies them experimentally before
+the supervisor is rolled out in production.
+
+Subcommands:
+
+* ``agent-supervisor run``     — enter the poll loop. ``--interval N``
+                                 overrides the default 60s cadence.
+* ``agent-supervisor status``  — one-shot inventory of tmux sessions,
+                                 per-session pane-byte ages, heartbeat
+                                 ages, intent value.
+* ``agent-supervisor stop``    — touch the stop sentinel; a running
+                                 ``run`` loop exits on its next tick.
+
+State directory: ``$HOME/hypergumbo_lab_notebook/agent-supervisor/``
+(override with ``AGENT_SUPERVISOR_STATE_DIR``).
+
+File layout inside the state dir:
+
+* ``supervisor.lock`` — flock + pid-file for single-instance.
+* ``supervisor.stop-sentinel`` — presence ends the ``run`` loop.
+* ``<session>.meta.json`` — written on spawn: session_id, vendor,
+  tmux session name, project_dir, start_utc.
+* ``<session>.heartbeat`` — touched by per-turn hooks (WI-sipov); read
+  by ``status`` only.
+* ``respawn_log.log`` — append-only audit of every spawn / replace.
+* ``rate_limit.json`` — rolling 24h spawn timestamps.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Callable, Iterable, Optional
+
+
+# --- Constants ---
+
+RESERVED_PREFIX = "hypergumbo-session-"
+DEFAULT_POLL_INTERVAL_SEC = 60
+PANE_FROZEN_THRESHOLD_SEC = 15 * 60  # 15 minutes
+GRACEFUL_EXIT_TIMEOUT_SEC = 30
+RATE_LIMIT_MAX_PER_24H = 24
+
+# When rate-limit saturation persists for this many consecutive poll ticks
+# (default ~20 minutes at 60s/tick), the supervisor shuts itself down instead
+# of logging "rate-limit reached" every minute forever. Observed during the
+# 2026-04-18→04-19 trial: after 8/24h was hit, the daemon emitted 145
+# identical log lines before the operator stopped it manually. Raising the
+# cap and auto-shutting-down on sustained saturation together replace
+# indefinite spam with a bounded log footprint and a clean terminal state.
+# The operator can re-run ``agent-supervisor run &`` whenever they want
+# (the 24h rolling window will have aged out spawns by then, or they can
+# clear it explicitly with ``debugging-reset-rate-limit``).
+RATE_LIMIT_SATURATION_KILL = 20
+
+DEFAULT_VENDOR = "claude-code"
+
+# WI-mujuk meta-circuit-breaker thresholds.
+#
+# A replacement is a "no-progress failure" when the dying session's pane-byte
+# count (at kill time) is at or below NO_PROGRESS_PANE_BYTES. The tmux pane
+# starts empty at spawn, so the current byte count IS the spawn-to-kill
+# delta — a CLI that only printed its startup banner typically lands well
+# under 512 bytes; a CLI that did any real work (one tool use or one LLM
+# response) produces many KB of scrollback. Tune later if real-world data
+# suggests a different threshold.
+#
+# After CONSECUTIVE_NO_PROGRESS_KILL_SWITCH no-progress failures on the same
+# chain, the supervisor writes supervisor.auto-paused and stops spawning
+# until the operator runs `agent-supervisor resume`.
+NO_PROGRESS_PANE_BYTES = 512
+CONSECUTIVE_NO_PROGRESS_KILL_SWITCH = 5
+
+# Pane-readiness detection (vendor-agnostic seed-prompt bootstrap).
+#
+# A freshly spawned CLI draws its banner / prompt into the pane over some
+# variable time window. To inject the seed keystroke without racing the
+# banner we poll `tmux capture-pane` and wait for content to STABILIZE —
+# i.e. the pane bytes stop changing for a short quiet window, AND at
+# least a small byte-floor has accumulated (so an empty pane that
+# happened to be sampled twice in a row doesn't count as "ready").
+#
+# The stability signal doesn't require any a-priori knowledge of what
+# the banner looks like — whichever CLI is booting, the banner must
+# finish rendering before it accepts input, and "finished rendering"
+# IS the stability window. If the CLI keeps redrawing (e.g. an animated
+# spinner) past the max-wait deadline we send the seed keystroke anyway;
+# a CLI that's tolerating spinner animation will tolerate a keystroke.
+PANE_READY_MIN_BYTES = 32
+PANE_READY_QUIET_SAMPLES = 3
+PANE_READY_POLL_SEC = 0.25
+PANE_READY_MAX_WAIT_SEC = 15.0
+
+# Seed keystroke sent to a freshly spawned pane. The SessionStart hook
+# (WI-sakod) already injects the full "please familiarize yourself /
+# enable DEEP mode" context; the seed just needs to produce a first
+# user turn so the model starts responding. "begin" is generic enough
+# to work across all vendors in the table.
+DEFAULT_SEED_PROMPT = "begin"
+
+# Vendor identity & invocation table. The keystrokes are the graceful-exit
+# sequences sent via `tmux send-keys`. Claude Code is verified; others
+# are best-known values pending empirical verification by WI-batob.
+VENDOR_TABLE = {
+    "claude-code": {
+        "exit_keystroke": "/quit",
+        "cli_invocation": "claude --dangerously-skip-permissions",
+    },
+    "codex-cli": {
+        "exit_keystroke": "/exit",    # FIXME WI-batob: verify
+        "cli_invocation": "codex --dangerously-bypass-approvals-and-sandbox",
+    },
+    "cursor": {
+        "exit_keystroke": "/quit",    # FIXME WI-batob: verify
+        "cli_invocation": "cursor --force",
+    },
+    "gemini-cli": {
+        "exit_keystroke": "/quit",    # FIXME WI-batob: verify
+        "cli_invocation": "gemini --approval-mode=yolo",
+    },
+}
+
+
+# --- State directory ---
+
+def default_state_dir() -> Path:
+    env = os.environ.get("AGENT_SUPERVISOR_STATE_DIR")
+    if env:
+        return Path(env)
+    return Path.home() / "hypergumbo_lab_notebook" / "agent-supervisor"
+
+
+def default_repo_root() -> Path:
+    # The supervisor reads autonomous_intent.txt from the project root.
+    # Derived from this script's location: scripts/agent-supervisor ->
+    # repo root is the parent directory. If overridden via
+    # AGENT_SUPERVISOR_REPO_ROOT, respect that.
+    env = os.environ.get("AGENT_SUPERVISOR_REPO_ROOT")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parent.parent
+
+
+# --- tmux & process primitives (swappable for testing) ---
+
+
+def run_subprocess(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+    """Thin wrapper so tests can monkeypatch a single seam.
+
+    Returns a rc=127 result (POSIX convention for "command not found")
+    if the binary is missing, so callers' rc-based branches keep working
+    when tmux / a vendor CLI isn't installed — important for ``status``
+    on machines without tmux, and for gracefully degrading the poll
+    loop on a misconfigured workstation.
+    """
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=127, stdout="", stderr=f"command not found: {cmd[0]}",
+        )
+
+
+def list_tmux_sessions(runner: Callable = run_subprocess) -> list[str]:
+    result = runner(["tmux", "list-sessions", "-F", "#S"])
+    if result.returncode != 0:
+        return []
+    return [s.strip() for s in result.stdout.splitlines() if s.strip()]
+
+
+def tmux_clients_attached(session: str, runner: Callable = run_subprocess) -> bool:
+    result = runner(["tmux", "list-clients", "-t", session])
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def tmux_capture_pane_bytes(session: str, runner: Callable = run_subprocess) -> Optional[int]:
+    result = runner(["tmux", "capture-pane", "-t", session, "-p"])
+    if result.returncode != 0:
+        return None
+    return len(result.stdout)
+
+
+def pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except (OSError, ProcessLookupError):
+        return False
+    return True
+
+
+def tmux_session_exists(session: str, runner: Callable = run_subprocess) -> bool:
+    """Return True iff tmux reports the named session as alive.
+
+    Used as the CLI-liveness proxy: when the CLI's process exits, its
+    wrapping shell exits, and tmux auto-removes a single-pane session
+    (``remain-on-exit`` is off by default). So ``has-session`` going
+    from rc=0 to rc=1 is the observable signal for "CLI finished exiting."
+    This replaces cross-process PID tracking, which was fragile (PIDs
+    recycle) and was never actually populated in production because the
+    session-start hook that was supposed to fill ``cli_pid`` in meta.json
+    never ran — leaving every graceful-exit wait skipped.
+    """
+    result = runner(["tmux", "has-session", "-t", session])
+    return result.returncode == 0
+
+
+def tmux_send_exit(session: str, keystroke: str, runner: Callable = run_subprocess) -> None:
+    runner(["tmux", "send-keys", "-t", f"{session}:0", keystroke, "Enter"])
+
+
+def tmux_send_line(session: str, text: str, runner: Callable = run_subprocess) -> None:
+    """Send a line of user input (text + Enter) to a tmux session's pane.
+
+    Semantically distinct from ``tmux_send_exit`` — same mechanics, but
+    used to kick off the first turn in a freshly spawned CLI rather than
+    to end a session. Kept separate so log / command traces make it
+    obvious which use is which.
+    """
+    runner(["tmux", "send-keys", "-t", f"{session}:0", text, "Enter"])
+
+
+def wait_for_pane_ready(
+    session: str,
+    *,
+    min_bytes: int = PANE_READY_MIN_BYTES,
+    quiet_samples: int = PANE_READY_QUIET_SAMPLES,
+    poll_interval_sec: float = PANE_READY_POLL_SEC,
+    max_wait_sec: float = PANE_READY_MAX_WAIT_SEC,
+    runner: Callable = run_subprocess,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    monotonic_fn: Callable[[], float] = time.monotonic,
+) -> bool:
+    """Poll ``tmux capture-pane`` until the pane content stabilizes.
+
+    Returns True when the captured content is identical across
+    ``quiet_samples`` consecutive polls AND at least ``min_bytes`` of
+    content has accumulated. Returns False if ``max_wait_sec`` elapses
+    first — the caller should still proceed with whatever action it was
+    going to take (sending a keystroke into an unsettled pane is
+    generally safe; waiting forever is not).
+
+    This function is intentionally vendor-agnostic: it has no knowledge
+    of what any particular CLI's banner or prompt looks like. Whichever
+    CLI is booting, its banner must finish rendering before it accepts
+    input, and "finished rendering" is what the stability window detects.
+    """
+    deadline = monotonic_fn() + max_wait_sec
+    prior_content: Optional[str] = None
+    consecutive_matches = 0
+    while monotonic_fn() < deadline:
+        result = runner(["tmux", "capture-pane", "-t", session, "-p"])
+        content = result.stdout if result.returncode == 0 else ""
+        if len(content) >= min_bytes and content == prior_content:
+            consecutive_matches += 1
+            if consecutive_matches >= quiet_samples:
+                return True
+        else:
+            consecutive_matches = 0
+        prior_content = content
+        sleep_fn(poll_interval_sec)
+    return False
+
+
+def tmux_kill_session(session: str, runner: Callable = run_subprocess) -> None:
+    runner(["tmux", "kill-session", "-t", session])
+
+
+def tmux_spawn_session(session: str, cli: str, respawn: bool, runner: Callable = run_subprocess) -> None:
+    # The `-e KEY=VAL` flag injects env vars into the new session. We set
+    # HYPERGUMBO_RESPAWN=1 on respawn so the fresh CLI's session-start
+    # hook (WI-sakod) branches into auto-enable-autonomous mode.
+    cmd = ["tmux", "new-session", "-d", "-s", session]
+    if respawn:
+        cmd.extend(["-e", "HYPERGUMBO_RESPAWN=1"])
+    cmd.append(cli)
+    runner(cmd)
+
+
+def wait_for_session_gone(
+    session: str,
+    timeout_sec: float,
+    runner: Callable = run_subprocess,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    now_fn: Callable[[], float] = time.monotonic,
+) -> bool:
+    """Return True if tmux session is gone within timeout, False otherwise.
+
+    Resolves ``tmux_session_exists`` from the module namespace at CALL
+    time so monkeypatching ``asv.tmux_session_exists`` in tests actually
+    takes effect (same pattern the previous PID-based helper used).
+    """
+    deadline = now_fn() + timeout_sec
+    while now_fn() < deadline:
+        if not tmux_session_exists(session, runner):
+            return True
+        sleep_fn(0.5)
+    return not tmux_session_exists(session, runner)
+
+
+# --- Decision matrix (pure function, easy to test) ---
+
+
+def decide_action(
+    intent: str,
+    has_session: bool,
+    clients_attached: bool,
+    cli_alive: Optional[bool],
+    pane_frozen: bool,
+) -> str:
+    """Return one of: 'noop', 'spawn', 'replace'.
+
+    Args:
+        intent: 'OFF' | 'BROAD' | 'DEEP' (from autonomous_intent.txt).
+        has_session: whether a hypergumbo-session-* tmux session exists.
+        clients_attached: whether any human client is attached to the
+            session. Ignored when has_session is False.
+        cli_alive: True if tmux reports the session is still alive (a
+            proxy for "CLI process still running", since tmux removes a
+            single-pane session when its process exits); False if the
+            session has disappeared between enumeration and this check
+            (race); None if unknown. Ignored when has_session is False.
+        pane_frozen: True when the session's pane-byte count has not
+            changed in at least PANE_FROZEN_THRESHOLD_SEC. Ignored when
+            has_session is False or cli is dead (then 'replace' wins).
+    """
+    if intent == "OFF":
+        return "noop"
+    if not has_session:
+        return "spawn"
+    if clients_attached:
+        return "noop"
+    if cli_alive is False:
+        return "replace"
+    # CLI alive (or unknown); pane-delta decides.
+    if pane_frozen:
+        return "replace"
+    return "noop"
+
+
+# --- Supervisor class (stateful, one per running daemon) ---
+
+
+class SessionObservation:
+    """Per-session in-memory state carried across poll ticks."""
+
+    def __init__(self, pane_bytes: Optional[int], last_change_utc: float) -> None:
+        self.pane_bytes = pane_bytes
+        self.last_change_utc = last_change_utc
+
+
+class Supervisor:
+    def __init__(
+        self,
+        state_dir: Path,
+        repo_root: Path,
+        runner: Callable = run_subprocess,
+        now_fn: Callable[[], float] = time.time,
+        monotonic_fn: Callable[[], float] = time.monotonic,
+        sleep_fn: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self.state_dir = Path(state_dir)
+        self.repo_root = Path(repo_root)
+        self.runner = runner
+        self.now_fn = now_fn
+        self.monotonic_fn = monotonic_fn
+        self.sleep_fn = sleep_fn
+        self._lock_fh = None
+        self._pane_history: dict[str, SessionObservation] = {}
+        # Consecutive poll ticks on which ``spawn_fresh`` was rate-limited.
+        # Reset to 0 the moment a spawn succeeds (``record_spawn`` call path).
+        # Read by ``run()`` after each tick to decide whether to
+        # auto-shutdown per RATE_LIMIT_SATURATION_KILL.
+        self._consecutive_rate_limit_hits = 0
+
+    # --- Locking ---
+
+    def acquire_lock(self) -> None:
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = self.state_dir / "supervisor.lock"
+        self._lock_fh = open(lock_path, "w")
+        try:
+            fcntl.flock(self._lock_fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as e:
+            raise RuntimeError(
+                f"another supervisor is already running (pid in {lock_path})"
+            ) from e
+        self._lock_fh.write(f"{os.getpid()}\n")
+        self._lock_fh.flush()
+
+    def release_lock(self) -> None:
+        if self._lock_fh is not None:
+            fcntl.flock(self._lock_fh.fileno(), fcntl.LOCK_UN)
+            self._lock_fh.close()
+            self._lock_fh = None
+
+    # --- File helpers ---
+
+    def _intent_file(self) -> Path:
+        return self.repo_root / "autonomous_intent.txt"
+
+    def _stop_sentinel(self) -> Path:
+        return self.state_dir / "supervisor.stop-sentinel"
+
+    def _auto_pause_sentinel(self) -> Path:
+        """Path to the WI-mujuk kill-switch sentinel. When this file exists,
+        the supervisor refuses to spawn fresh sessions until the operator
+        runs ``agent-supervisor resume``."""
+        return self.state_dir / "supervisor.auto-paused"
+
+    def _respawn_log(self) -> Path:
+        return self.state_dir / "respawn_log.log"
+
+    def _rate_limit_file(self) -> Path:
+        return self.state_dir / "rate_limit.json"
+
+    def _meta_file(self, session: str) -> Path:
+        return self.state_dir / f"{session}.meta.json"
+
+    # --- State readers ---
+
+    def read_intent(self) -> str:
+        f = self._intent_file()
+        if not f.exists():
+            return "OFF"
+        raw = f.read_text().strip().upper()
+        if raw in ("OFF", "BROAD", "DEEP"):
+            return raw
+        return "OFF"
+
+    def stop_requested(self) -> bool:
+        return self._stop_sentinel().exists()
+
+    def auto_paused(self) -> bool:
+        """True when the kill switch has fired and the supervisor is refusing
+        to spawn. Cleared by ``agent-supervisor resume`` (or by manually
+        removing ``supervisor.auto-paused``)."""
+        return self._auto_pause_sentinel().exists()
+
+    def set_auto_paused(self, reason: str) -> None:
+        """Write the auto-pause sentinel + a log entry. Called by the kill
+        switch when a chain has accumulated enough consecutive no-progress
+        failures."""
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.now_fn()))
+        self._auto_pause_sentinel().write_text(f"{ts} {reason}\n")
+        self.log_respawn(f"AUTO-PAUSED: {reason}")
+
+    def clear_auto_paused(self) -> None:
+        """Remove the auto-pause sentinel. Called by the ``resume``
+        subcommand."""
+        sentinel = self._auto_pause_sentinel()
+        if sentinel.exists():
+            sentinel.unlink()
+
+    def read_meta(self, session: str) -> Optional[dict]:
+        mf = self._meta_file(session)
+        if not mf.exists():
+            return None
+        try:
+            return json.loads(mf.read_text())
+        except json.JSONDecodeError:
+            return None
+
+    def owned_sessions(self) -> list[str]:
+        return [s for s in list_tmux_sessions(self.runner) if s.startswith(RESERVED_PREFIX)]
+
+    # --- State writers ---
+
+    def log_respawn(self, message: str) -> None:
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.now_fn()))
+        with open(self._respawn_log(), "a") as f:
+            f.write(f"{ts} {message}\n")
+
+    def record_spawn(self) -> None:
+        path = self._rate_limit_file()
+        data = {"spawns": []}
+        if path.exists():
+            try:
+                data = json.loads(path.read_text())
+            except json.JSONDecodeError:
+                data = {"spawns": []}
+        cutoff = self.now_fn() - 86400
+        spawns = [t for t in data.get("spawns", []) if t > cutoff]
+        spawns.append(self.now_fn())
+        data["spawns"] = spawns
+        path.write_text(json.dumps(data))
+
+    def reset_rate_limit(self) -> None:
+        """Delete the rolling-24h spawn log so the next spawn starts from a
+        clean slate. Invoked by the ``debugging-reset-rate-limit`` subcommand
+        when an operator has exhausted the daily cap during troubleshooting
+        and wants to unstick the supervisor without waiting 24h. Idempotent:
+        no-op when the file is already absent. Always appends a respawn-log
+        entry so the intervention is auditable."""
+        path = self._rate_limit_file()
+        if path.exists():
+            path.unlink()
+        self.log_respawn("rate limit manually reset via debugging-reset-rate-limit")
+
+    def check_rate_limit(self) -> tuple[bool, int]:
+        """Return (under_limit, current_count)."""
+        path = self._rate_limit_file()
+        if not path.exists():
+            return True, 0
+        try:
+            data = json.loads(path.read_text())
+        except json.JSONDecodeError:
+            return True, 0
+        cutoff = self.now_fn() - 86400
+        recent = [t for t in data.get("spawns", []) if t > cutoff]
+        return len(recent) < RATE_LIMIT_MAX_PER_24H, len(recent)
+
+    def write_meta(self, session: str, meta: dict) -> None:
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self._meta_file(session).write_text(json.dumps(meta, indent=2))
+
+    def clear_session_state(self, session: str) -> None:
+        mf = self._meta_file(session)
+        if mf.exists():
+            mf.unlink()
+        self._pane_history.pop(session, None)
+
+    # --- Pane-readiness (seed-prompt bootstrap) ---
+
+    def _wait_for_pane_ready(self, session: str) -> bool:
+        """Instance wrapper around the module-level ``wait_for_pane_ready``.
+
+        Reads ``PANE_READY_MAX_WAIT_SEC`` at call time (not via a default
+        parameter captured at function-definition time) so tests can
+        monkeypatch the module constant to 0 and skip the wait. Returns
+        False immediately when the wait is disabled (max_wait_sec <= 0);
+        the caller proceeds to send the seed keystroke regardless.
+        """
+        max_wait = PANE_READY_MAX_WAIT_SEC
+        if max_wait <= 0:
+            return False
+        return wait_for_pane_ready(
+            session,
+            max_wait_sec=max_wait,
+            runner=self.runner,
+            sleep_fn=self.sleep_fn,
+            monotonic_fn=self.monotonic_fn,
+        )
+
+    # --- Pane-delta tracking ---
+
+    def observe_pane(self, session: str) -> bool:
+        """Sample the pane-byte count for ``session`` and return True if
+        the pane changed since the last observation (or this is the first
+        observation). Returns False only when we have a prior observation
+        AND the byte count is unchanged."""
+        current = tmux_capture_pane_bytes(session, self.runner)
+        now = self.now_fn()
+        prev = self._pane_history.get(session)
+        if prev is None:
+            # First observation — record and treat as "changed" so the
+            # decision matrix doesn't immediately claim the session is
+            # frozen on the supervisor's first poll.
+            self._pane_history[session] = SessionObservation(
+                pane_bytes=current, last_change_utc=now,
+            )
+            return True
+        if current is None:
+            # Couldn't sample this tick; keep prior observation.
+            return True
+        if current != prev.pane_bytes:
+            self._pane_history[session] = SessionObservation(
+                pane_bytes=current, last_change_utc=now,
+            )
+            return True
+        # Unchanged — leave last_change_utc as-is.
+        return False
+
+    def pane_frozen_for(self, session: str) -> float:
+        """Return seconds since the pane last changed, or 0 if unknown."""
+        prev = self._pane_history.get(session)
+        if prev is None:
+            return 0.0
+        return self.now_fn() - prev.last_change_utc
+
+    # --- Replacement sequence (WI-nusor) ---
+
+    def replace_session(self, session: str, meta: Optional[dict]) -> None:
+        """Gracefully end the session then spawn a fresh one (unless the
+        kill switch fires). Meta may be None if we never recorded it
+        (treat as 'unknown vendor, default chain state')."""
+        vendor = (meta or {}).get("vendor", DEFAULT_VENDOR)
+        vt = VENDOR_TABLE.get(vendor, VENDOR_TABLE[DEFAULT_VENDOR])
+        session_id = (meta or {}).get("session_id", session)
+
+        # WI-mujuk: classify the dying session BEFORE we kill it. Pane-bytes
+        # at kill time is the spawn-to-kill delta (tmux pane starts empty),
+        # so a CLI that produced no visible output is a no-progress failure.
+        pane_bytes_at_kill = tmux_capture_pane_bytes(session, self.runner) or 0
+        no_progress = pane_bytes_at_kill <= NO_PROGRESS_PANE_BYTES
+
+        # Step 1: graceful exit keystroke.
+        tmux_send_exit(session, vt["exit_keystroke"], self.runner)
+
+        # Step 2: poll for the tmux session to disappear — when the CLI
+        # exits, its shell exits, and tmux auto-removes the single-pane
+        # session. No PID tracking required.
+        exited_cleanly = wait_for_session_gone(
+            session,
+            GRACEFUL_EXIT_TIMEOUT_SEC,
+            runner=self.runner,
+            sleep_fn=self.sleep_fn,
+            now_fn=self.monotonic_fn,
+        )
+
+        # Step 3: hard-kill fallback if graceful exit timed out.
+        if not exited_cleanly:
+            self.log_respawn(f"forced-kill fallback for session {session}")
+            tmux_kill_session(session, self.runner)
+            # Directly invoke the shared session-end cleanup scripts;
+            # they are already idempotent / vendor-agnostic.
+            self._invoke_shared_cleanup(session_id)
+
+        # WI-mujuk: compute the chain state the replacement WOULD carry.
+        prior_chain_length = (meta or {}).get("chain_length", 1)
+        prior_consecutive = (meta or {}).get("consecutive_no_progress", 0)
+        if no_progress:
+            next_consecutive = prior_consecutive + 1
+        else:
+            next_consecutive = 0
+
+        self.clear_session_state(session)
+
+        # WI-mujuk kill switch: if the next session would be the Nth
+        # consecutive no-progress failure on this chain, refuse to spawn
+        # and auto-pause instead. The dying session is still killed (above)
+        # — we just stop the cycle here rather than starting a new one.
+        if next_consecutive >= CONSECUTIVE_NO_PROGRESS_KILL_SWITCH:
+            self.set_auto_paused(
+                f"{next_consecutive} consecutive no-progress failures on chain "
+                f"(chain_length={prior_chain_length + 1}); tail session={session}"
+            )
+            return
+
+        # Step 4: spawn fresh, carrying the chain state forward.
+        self.spawn_fresh(
+            vendor=vendor,
+            replaces=session,
+            chain_length=prior_chain_length + 1,
+            consecutive_no_progress=next_consecutive,
+        )
+
+    def _invoke_shared_cleanup(self, session_id: str) -> None:
+        kill_script = self.repo_root / ".agent/hooks/_shared/kill-transcript-sync.sh"
+        rotate_script = self.repo_root / ".agent/hooks/_shared/rotate-on-session-end.sh"
+        for script in (kill_script, rotate_script):
+            if script.exists():
+                self.runner([str(script), str(self.repo_root), session_id])
+
+    def spawn_fresh(
+        self,
+        vendor: str = DEFAULT_VENDOR,
+        replaces: Optional[str] = None,
+        chain_length: int = 1,
+        consecutive_no_progress: int = 0,
+    ) -> Optional[str]:
+        """Spawn a new hypergumbo-session-<UTC> tmux session running the
+        vendor CLI with HYPERGUMBO_RESPAWN=1. Returns the new session
+        name on success, or None if rate-limited / vendor unknown /
+        auto-paused.
+
+        WI-mujuk chain parameters:
+          replaces — session-id of the session this one is replacing
+                     (None for a root spawn).
+          chain_length — 1 for a root spawn, N+1 for an Nth-level respawn.
+          consecutive_no_progress — count of consecutive no-progress
+                                    failures leading up to this session.
+                                    Reset to 0 by a progress replacement.
+        """
+        # WI-mujuk: auto-paused supervisor refuses all spawns until the
+        # operator runs `agent-supervisor resume`.
+        if self.auto_paused():
+            self.log_respawn("auto-paused; skipping spawn")
+            return None
+        ok, count = self.check_rate_limit()
+        if not ok:
+            self.log_respawn(
+                f"rate-limit reached ({count}/{RATE_LIMIT_MAX_PER_24H} in 24h); skipping spawn"
+            )
+            self._consecutive_rate_limit_hits += 1
+            return None
+        vt = VENDOR_TABLE.get(vendor)
+        if vt is None:
+            self.log_respawn(f"unknown vendor {vendor!r}; skipping spawn")
+            return None
+        name = f"{RESERVED_PREFIX}{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime(self.now_fn()))}"
+        tmux_spawn_session(name, vt["cli_invocation"], respawn=True, runner=self.runner)
+        self.record_spawn()
+        # A successful spawn clears the saturation streak — the next
+        # rate-limited tick starts counting from 0 again.
+        self._consecutive_rate_limit_hits = 0
+
+        # Seed bootstrap: the SessionStart hook injects context but does
+        # not trigger the first model turn, so a freshly spawned pane
+        # sits idle at its prompt. Wait for the banner to stabilize,
+        # then inject a generic seed keystroke to kick off the first
+        # turn non-interactively.
+        ready = self._wait_for_pane_ready(name)
+        tmux_send_line(name, DEFAULT_SEED_PROMPT, self.runner)
+        self.log_respawn(
+            f"seeded {name} with {DEFAULT_SEED_PROMPT!r} "
+            f"(pane_ready={ready})"
+        )
+        meta = {
+            "session_id": name,
+            "vendor": vendor,
+            "project_dir": str(self.repo_root),
+            "tmux_session": name,
+            "start_utc": time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.now_fn())
+            ),
+            "replaces": replaces,
+            "chain_length": chain_length,
+            "consecutive_no_progress": consecutive_no_progress,
+        }
+        self.write_meta(name, meta)
+        self.log_respawn(
+            f"spawned {name} (vendor={vendor}, chain_length={chain_length}, "
+            f"consecutive_no_progress={consecutive_no_progress})"
+        )
+        return name
+
+    # --- Poll loop ---
+
+    def poll_once(self) -> None:
+        """Run one tick of the decision matrix. Safe to call repeatedly."""
+        intent = self.read_intent()
+        if intent == "OFF":
+            return
+
+        owned = self.owned_sessions()
+        if not owned:
+            self.spawn_fresh()
+            return
+
+        for session in owned:
+            self._evaluate_session(session)
+
+    def _evaluate_session(self, session: str) -> None:
+        meta = self.read_meta(session)
+        attached = tmux_clients_attached(session, self.runner)
+
+        alive = tmux_session_exists(session, self.runner)
+
+        # Sample pane; observe_pane also updates in-memory history.
+        self.observe_pane(session)
+        frozen = self.pane_frozen_for(session) >= PANE_FROZEN_THRESHOLD_SEC
+
+        action = decide_action(
+            intent=self.read_intent(),
+            has_session=True,
+            clients_attached=attached,
+            cli_alive=alive,
+            pane_frozen=frozen,
+        )
+        if action == "replace":
+            self.replace_session(session, meta)
+
+    def run(self, interval_sec: int = DEFAULT_POLL_INTERVAL_SEC) -> None:
+        """Enter the poll loop. Checks the stop sentinel each tick and
+        exits cleanly when the sentinel appears, or when rate-limit
+        saturation has persisted for RATE_LIMIT_SATURATION_KILL ticks."""
+        while True:
+            if self.stop_requested():
+                # Clean the sentinel so the next `run` invocation starts
+                # fresh (stop should be consumed, not sticky).
+                try:
+                    self._stop_sentinel().unlink()
+                except FileNotFoundError:
+                    pass
+                self.log_respawn("stop sentinel consumed; exiting")
+                return
+            self.poll_once()
+            if self._consecutive_rate_limit_hits >= RATE_LIMIT_SATURATION_KILL:
+                self.log_respawn(
+                    f"auto-shutdown: {self._consecutive_rate_limit_hits} "
+                    f"consecutive rate-limit hits; exiting"
+                )
+                return
+            self.sleep_fn(interval_sec)
+
+    # --- Status report ---
+
+    def status_report(self) -> dict:
+        """One-shot structured report. Returns dict suitable for json.dumps."""
+        intent = self.read_intent()
+        ok, rate_count = self.check_rate_limit()
+        sessions_info = []
+        for session in self.owned_sessions():
+            meta = self.read_meta(session)
+            attached = tmux_clients_attached(session, self.runner)
+            pane_bytes = tmux_capture_pane_bytes(session, self.runner)
+            hb_file = self.state_dir / f"{session}.heartbeat"
+            hb_age = None
+            if hb_file.exists():
+                hb_age = self.now_fn() - hb_file.stat().st_mtime
+            # WI-mujuk: surface chain state from meta.json so the operator
+            # can see why the kill switch did or did not fire.
+            sessions_info.append({
+                "session": session,
+                "meta": meta,
+                "clients_attached": attached,
+                "pane_bytes": pane_bytes,
+                "heartbeat_age_sec": hb_age,
+                "chain_length": (meta or {}).get("chain_length", 1),
+                "consecutive_no_progress": (meta or {}).get("consecutive_no_progress", 0),
+                "replaces": (meta or {}).get("replaces"),
+            })
+        return {
+            "intent": intent,
+            "rate_limit": {
+                "count_last_24h": rate_count,
+                "max_per_24h": RATE_LIMIT_MAX_PER_24H,
+                "under_limit": ok,
+            },
+            "sessions": sessions_info,
+            "stop_requested": self.stop_requested(),
+            "auto_paused": self.auto_paused(),
+            "kill_switch_threshold": CONSECUTIVE_NO_PROGRESS_KILL_SWITCH,
+        }
+
+
+# --- Subcommand dispatch ---
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    sup = Supervisor(state_dir=default_state_dir(), repo_root=default_repo_root())
+    try:
+        sup.acquire_lock()
+    except RuntimeError as e:
+        print(f"agent-supervisor: {e}", file=sys.stderr)
+        return 1
+    try:
+        sup.run(interval_sec=args.interval)
+    finally:
+        sup.release_lock()
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    sup = Supervisor(state_dir=default_state_dir(), repo_root=default_repo_root())
+    report = sup.status_report()
+    print(json.dumps(report, indent=2))
+    return 0
+
+
+def _lock_pid_alive(lock_path: Path) -> bool:
+    """True only when ``lock_path`` contains a PID that is currently alive.
+
+    Missing file, unreadable file, malformed content, and dead-pid content
+    all return False. This is the "is a supervisor actually running?" check
+    that gates ``cmd_stop`` — without it, ``stop`` arms the stop sentinel
+    unconditionally, and a stray stop call ambushes the next ``run``
+    invocation (the run loop consumes the sentinel on its first tick and
+    exits immediately, leaving the operator confused about why their
+    supervisor keeps dying within seconds of launch).
+    """
+    if not lock_path.exists():
+        return False
+    try:
+        pid = int(lock_path.read_text().strip())
+    except (ValueError, OSError):
+        return False
+    return pid_alive(pid)
+
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    state = default_state_dir()
+    lock_path = state / "supervisor.lock"
+    sentinel_path = state / "supervisor.stop-sentinel"
+    if not _lock_pid_alive(lock_path):
+        cleaned = []
+        if lock_path.exists():
+            lock_path.unlink()
+            cleaned.append("stale lock")
+        if sentinel_path.exists():
+            sentinel_path.unlink()
+            cleaned.append("stale stop-sentinel")
+        suffix = f"; cleaned {', '.join(cleaned)}" if cleaned else ""
+        print(f"agent-supervisor: nothing to stop (no live supervisor){suffix}.")
+        return 0
+    state.mkdir(parents=True, exist_ok=True)
+    sentinel_path.touch()
+    print(f"stop sentinel written to {sentinel_path}")
+    return 0
+
+
+def cmd_resume(args: argparse.Namespace) -> int:
+    """Clear the WI-mujuk auto-pause sentinel so the supervisor starts
+    spawning again. Called by the operator after investigating and fixing
+    whatever caused the kill switch to fire."""
+    sup = Supervisor(state_dir=default_state_dir(), repo_root=default_repo_root())
+    if not sup.auto_paused():
+        print("agent-supervisor is not auto-paused; nothing to resume.")
+        return 0
+    sup.clear_auto_paused()
+    # Record the operator's intervention in the respawn log so a future
+    # audit can tell an operator-driven resume apart from a cold start.
+    sup.log_respawn("operator ran `agent-supervisor resume`; auto-pause cleared")
+    print(f"auto-pause cleared at {sup._auto_pause_sentinel()}")
+    print("next poll tick will spawn a fresh chain (chain_length=1).")
+    return 0
+
+
+def cmd_debugging_reset_rate_limit(args: argparse.Namespace) -> int:
+    """Operator escape hatch: zero the rolling 24h spawn counter. Named with
+    the ``debugging-`` prefix so it's obvious in `--help` output that this
+    is not part of the normal supervisor lifecycle — it exists so that a
+    troubleshooting burn of the daily cap doesn't force the operator to
+    wait 24h or hand-edit ``rate_limit.json``."""
+    sup = Supervisor(state_dir=default_state_dir(), repo_root=default_repo_root())
+    sup.reset_rate_limit()
+    print(f"rate limit cleared at {sup._rate_limit_file()}")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="agent-supervisor",
+        description="hypergumbo tmux session supervisor (WI-razub).",
+    )
+    sub = parser.add_subparsers(dest="subcommand", required=True)
+
+    p_run = sub.add_parser("run", help="enter the poll loop")
+    p_run.add_argument(
+        "--interval", type=int, default=DEFAULT_POLL_INTERVAL_SEC,
+        help=f"seconds between poll ticks (default {DEFAULT_POLL_INTERVAL_SEC})",
+    )
+    p_run.set_defaults(func=cmd_run)
+
+    p_status = sub.add_parser("status", help="one-shot status report as JSON")
+    p_status.set_defaults(func=cmd_status)
+
+    p_stop = sub.add_parser(
+        "stop", help="touch the stop sentinel; running daemon exits on next tick",
+    )
+    p_stop.set_defaults(func=cmd_stop)
+
+    p_resume = sub.add_parser(
+        "resume",
+        help="clear the WI-mujuk auto-pause sentinel so the supervisor starts spawning again",
+    )
+    p_resume.set_defaults(func=cmd_resume)
+
+    p_reset_rl = sub.add_parser(
+        "debugging-reset-rate-limit",
+        help="zero the rolling 24h spawn counter (operator escape hatch for troubleshooting)",
+    )
+    p_reset_rl.set_defaults(func=cmd_debugging_reset_rate_limit)
+
+    return parser
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

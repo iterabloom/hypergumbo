@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Message dispatch linker for typed wire protocol message patterns.
+"""Protocol linker: message dispatch for typed wire protocol message patterns.
 
 Detects custom wire protocol dispatch patterns where message types flow
 between sender and handler code. Creates ``message_dispatch`` edges

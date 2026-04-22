@@ -1,0 +1,50 @@
+- op: create  # 7cde
+  at: '2026-04-18T00:22:32Z'  # 7cde
+  by: agent  # 7cde
+  actor: jgstern_agent  # 7cde
+  clock: 1  # 7cde
+  nonce: 7cde  # 7cde
+  data:  # 7cde
+    kind: work_item  # 7cde
+    title: "Tracker TUI: clickable item IDs in Description/Activity panes open a navigable modal"  # 7cde
+    status: todo_soft  # 7cde
+    priority: 3  # 7cde
+    parent:  # 7cde
+    tags:  # 7cde
+    - developer_experience  # 7cde
+    - tracker_tui  # 7cde
+    isbefore: []  # 7cde
+    duplicate_of: []  # 7cde
+    not_duplicate_of: []  # 7cde
+    pr_ref:  # 7cde
+    description: "Tracker TUI feature: in the Description and Activity panes, detect substrings that look like item IDs and make them clickable. Clicking opens a modal that occludes 80-90% of the left (list) pane and displays the target item's full details (Title, ID, Status, Priority, Description, Activity — everything the right-side Description + Activity panes normally show). The modal has four controls: (1) a text entry at the top to jump to an arbitrary item by ID, (2) Back, (3) Forward, (4) Close.\n\nKey design constraints\n\n1. ID pattern is config-driven, NOT hardcoded. Prefixes come from TrackerConfig.kinds (a dict of kind_name → KindConfig.prefix). Today those are WI/INV/META, but custom kinds with custom prefixes are supported and the feature must handle any configured prefix. Construct the regex at TUI startup (or on config reload) as: `(?:<prefix1>|<prefix2>|…)-(?:[bcdfghjklmnpqrstvz][aeiou][bcdfghjklmnpqrstvz][aeiou][bcdfghjklmnpqrstvz])(?:-[bcdfghjklmnpqrstvz][aeiou][bcdfghjklmnpqrstvz][aeiou][bcdfghjklmnpqrstvz])+` — a proquint block followed by one-or-more hyphen-separated proquint blocks, to match current 8-syllable IDs and any historical variants. See store.py docstring at line ~373 for the ID format.\n\n2. Detection is lazy / best-effort. Scan only the currently-visible lines in each pane; don't scan the whole item set eagerly. Cache matches per (item_id, pane, scroll_position) if needed. Display each match as a clickable hotspot (underlined or highlighted per the TUI's existing link style). A match that doesn't resolve to an existing item renders as normal text (not a dead hotspot).\n\n3. Modal layout: covers 80-90% of the left list pane's width × height, preserving the right panes' visibility for context. Stack order: modal on top of list pane; right panes remain interactive for the ITEM BEHIND the modal (the originating context), not for the item displayed in the modal.\n\n4. Modal content mirrors the right-side panes: show Title header + ID + Status + Priority + tier + created/updated; Description (rendered same as the main Description pane); Activity (rendered same as the main Activity pane, including unread markers and authorship). Item IDs within the modal's Description/Activity content should also be clickable, pushing a new entry onto the navigation stack.\n\n5. Navigation stack semantics: Back / Forward behave like a browser history. Closing the modal discards the stack. Entering a new ID in the text entry appends to the stack (truncating any Forward history — also browser-like). Invalid ID typed in the entry field shows an inline error, does not push to stack.\n\n6. Close button dismisses the modal and returns focus to whatever had it before the modal opened (the originating Description or Activity pane, typically).\n\n7. Mouse click is the primary activation, but also expose a keyboard path: Tab through visible hotspots + Enter to activate (accessibility and SSH-over-mouseless sessions).\n\nOut-of-scope (file follow-up items if we want them)\n\n- Real-time re-scan when an item's content changes via a discuss op landing during modal open.\n- Syntax highlighting within the modal's Description for code blocks.\n- A \"pin\" feature that keeps the modal open across navigation. (MVP is single-modal with history stack.)\n\nImplementation location\n\n- Tracker TUI lives in packages/hypergumbo-tracker/src/hypergumbo_tracker/tui.py. Likely uses Textual widgets (check current imports). Any new modal probably needs a ModalScreen subclass plus a widget for the input-with-history row.\n\nWhy now\n\nUser requested on 2026-04-17 to improve tracker navigation ergonomics. Current workflow requires copy-pasting an ID into a separate shell to run `tracker show` — moderate friction compounded across every cross-reference a human follows."  # 7cde
+    fields: {}  # 7cde
+- op: discuss  # c82e
+  at: '2026-04-20T09:46:43Z'  # c82e
+  by: agent  # c82e
+  actor: jgstern_agent  # c82e
+  clock: 2  # c82e
+  nonce: c82e  # c82e
+  message: "Slice A landed in PR #3222 (merged to dev as 8a98d6907). New pure-Python module hypergumbo_tracker.id_matching exports build_item_id_pattern(config) and find_item_ids(text, pattern, skip_ranges=()). Pattern is <prefix>-<proquint>(-<proquint>)+ where each proquint is CVCVC (consonants bcdfghjklmnpqrstvz, vowels aeiou). Prefixes come from TrackerConfig.kinds (sorted, re.escape-ed, alternation-joined) so custom kinds ship without code changes. Minimum of 2 syllables prevents collision with English word fragments. Word-boundary handling: (?<![A-Za-z0-9]) and (?![A-Za-z0-9]) so hyphen-adjacent forms like 'see-WI-lusab-baril-now' extract cleanly while 'aWI-lusab-baril' and 'WI-lusab-barilX' are rejected. Raises ValueError when config has no kinds. find_item_ids returns ItemIdMatch(item_id, start, end) namedtuples with Python-slice-semantic offsets and drops matches whose span intersects any caller-supplied skip range (for regions already-linked or rendered differently). 20 tests in packages/hypergumbo-tracker/tests/test_id_matching.py cover prefix enumeration (default kinds, unconfigured prefix, custom prefix, empty-kinds raises, regex-metacharacter escaping), CVCVC rules (one-syllable reject, two-syllable minimum, eight-syllable full ID, non-proquint reject), word boundaries (leading alphanum reject, trailing alphanum reject, hyphen-adjacency allowed), and scan semantics (document order, empty input, namedtuple shape, skip-range interior/partial/non-overlap, pre-compiled-pattern pass-through). 100% coverage verified via check-package-coverage tracker. No TUI wiring yet — slice B (Textual ModalScreen subclass + TrackerNavHistory widget + hotspot mount in Description/Activity panes) is the natural next slice. This slice delivers the foundation in a standalone, covered package module so the modal can consume it without reinventing the regex."  # c82e
+- op: discuss  # c8e5
+  at: '2026-04-20T10:01:41Z'  # c8e5
+  by: agent  # c8e5
+  actor: jgstern_agent  # c8e5
+  clock: 3  # c8e5
+  nonce: c8e5  # c8e5
+  message: "Slice B landed (merged to dev as a93288d1c). New pure-Python hypergumbo_tracker.nav_history.NavigationHistory dataclass providing browser-style back/forward semantics for the forthcoming item-nav modal. API: current() → str|None; push(item_id) truncates forward history on mid-stack jumps (browser behaviour), treats cursor-current ID push as no-op (double-click), raises ValueError on empty; back()/forward() return new current(), no-ops at boundaries; can_go_back/can_go_forward bool properties for button-disabled state; depth()/position() for inspection/telemetry. Not persistent per design constraint 5. No Textual imports — pure data structure so slice C can mount it without coupling history logic to the event loop. 19 tests cover empty-state (current=None, cannot traverse, empty-push raises), push (first, second advance, same-ID no-op, truncation-after-back, return value), back/forward (single-step, boundary no-ops, can_go_* boundaries), browser-like traversal (A→B→C→back→back→forward round-trip, truncation drops forward chain, depth independent of cursor). 100% coverage via check-package-coverage tracker. Slice C (the Textual ModalScreen subclass mounting id_matching + nav_history with Description/Activity hotspot rendering, input-to-jump field, Back/Forward/Close buttons) is the remaining work."  # c8e5
+- op: update  # 2408
+  at: '2026-04-20T14:10:48Z'  # 2408
+  by: agent  # 2408
+  actor: jgstern_agent  # 2408
+  clock: 4  # 2408
+  nonce: '2408'  # 2408
+  set:  # 2408
+    status: done  # 2408
+- op: discuss  # ecd7
+  at: '2026-04-20T14:10:48Z'  # ecd7
+  by: agent  # ecd7
+  actor: jgstern_agent  # ecd7
+  clock: 5  # ecd7
+  nonce: ecd7  # ecd7
+  message: "Slice D landed in PR #3229 (merged to dev as ede081e2f). TrackerApp now compiles the item-ID pattern once at __init__ via build_item_id_pattern(tracker_set.config), exposes _item_exists as the resolver (ItemNotFoundError/AmbiguousPrefixError → absent, so dead/ambiguous IDs render as plain text), and pre-processes each pane's markup through _apply_nav_hotspots before Static.update(). The three _show_* methods (_show_detail, _show_std_detail, _show_activity) now wrap rendered text so item IDs become [@click=jump_to_item(...)] hotspots. action_jump_to_item pushes ItemNavModal (delivered in slice C3) with exists/content_for/id_pattern injection; _nav_modal_content_for reuses _format_detail_lines + _format_activity_lines so in-modal content matches the originating context (design constraint 4). Defensive no-op when the clicked ID no longer resolves (race with delete). 10 new tests in test_tui_item_nav_integration.py cover the resolver (known / unknown / ambiguous prefix), the hotspot wrap (resolvable wrapped, unresolvable left plain, empty no-op), the content-for pair, and Pilot end-to-end checks (cross-ref rendering, modal push on action, unknown-ID no-op). 5 snapshot SVGs regenerated to reflect the item-own-ID underline now shown in detail view. 100% coverage verified via check-package-coverage tracker. All WI-sulij design constraints satisfied: (1) config-driven prefixes via build_item_id_pattern, (2) no dead hotspots, (4) modal mirrors right-side panes via shared formatting helpers, (5) non-persistent history scoped to the modal via slice C3's NavigationHistory."  # ecd7

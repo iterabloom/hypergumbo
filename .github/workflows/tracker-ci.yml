@@ -13,6 +13,16 @@ on:
       - '.agent/tracker/.ops/**'
       - '.agent/tracker-workspace/.ops/**'
 
+# Cancel any in-flight run on the same ref when a new push/PR-update arrives.
+# Matches ci.yml's convention. Without this, the tracker auto-sync retry path
+# stacks concurrent runs on a single sync PR when the runner is busy: observed
+# 2026-04-21 on PR #3250 — three stacked runs on head SHA 586d52e, one hung
+# for ~2h waiting behind a saturated runner because the prior runs were never
+# cancelled before re-push.
+concurrency:
+  group: tracker-ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   tracker-ci:
     runs-on: self-hosted

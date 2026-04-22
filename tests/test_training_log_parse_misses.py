@@ -446,9 +446,9 @@ class TestLogTrainingExampleCohortMetadata:
             hook_mod.TRAINING_LOG = orig_log
         return json.loads(log_path.read_text().strip())
 
-    def test_pipeline_version_is_v1(self, hook_mod, tmp_path: Path) -> None:
+    def test_pipeline_version_is_v2(self, hook_mod, tmp_path: Path) -> None:
         entry = self._write_and_read(hook_mod, tmp_path)
-        assert entry["pipeline_version"] == "v1"
+        assert entry["pipeline_version"] == "v2"
 
     def test_infra_sha_present(self, hook_mod, tmp_path: Path) -> None:
         entry = self._write_and_read(hook_mod, tmp_path)
@@ -506,7 +506,7 @@ class TestLogTrainingExampleCohortMetadata:
         )
         assert entry["event_id"] == "test-uuid"
         assert entry["main_llm"] == "opus"
-        assert entry["pipeline_version"] == "v1"
+        assert entry["pipeline_version"] == "v2"
 
     def test_backward_compat_model_field_preserved(
         self, hook_mod, tmp_path: Path,

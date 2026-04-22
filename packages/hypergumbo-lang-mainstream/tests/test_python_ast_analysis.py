@@ -1829,6 +1829,92 @@ def test_django_path_with_local_cbv_as_view(tmp_path: Path) -> None:
     assert routes[0].get("meta", {}).get("view_name") == "TemplateView"
 
 
+def test_django_re_path_cbv_method_introspection(tmp_path: Path) -> None:
+    """re_path(CBV.as_view()) emits one route per HTTP method on the view class.
+
+    WI-lojoh: the route extractor previously labeled every CBV route as GET
+    regardless of declared methods. After introspection, a class with .post()
+    should produce a POST route, .delete() a DELETE route, etc.
+    """
+    (tmp_path / "urls.py").write_text(
+        "from django.urls import re_path\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    re_path(r'^initialize/$', views.InitializeView.as_view()),\n"
+        "    re_path(r'^update/(?P<pk>\\d+)/$', views.UpdateView.as_view()),\n"
+        "    re_path(r'^revoke/(?P<pk>\\d+)/$', views.RevokeKeyView.as_view()),\n"
+        "    re_path(r'^get/$', views.GetView.as_view()),\n"
+        "]\n"
+    )
+    (tmp_path / "views.py").write_text(
+        "from django.views import View\n"
+        "from django.http import JsonResponse\n"
+        "\n"
+        "class InitializeView(View):\n"
+        "    def post(self, request, *a, **k):\n"
+        "        return JsonResponse({})\n"
+        "\n"
+        "class UpdateView(View):\n"
+        "    def patch(self, request, *a, **k):\n"
+        "        return JsonResponse({})\n"
+        "    def put(self, request, *a, **k):\n"
+        "        return JsonResponse({})\n"
+        "\n"
+        "class RevokeKeyView(View):\n"
+        "    def delete(self, request, *a, **k):\n"
+        "        return JsonResponse({})\n"
+        "\n"
+        "class GetView(View):\n"
+        "    def get(self, request, *a, **k):\n"
+        "        return JsonResponse({})\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+
+    by_view: dict[str, set[str]] = {}
+    for r in routes:
+        meta = r.get("meta") or {}
+        vn = meta.get("view_name")
+        method = (meta.get("http_method") or "").upper()
+        if vn:
+            by_view.setdefault(vn, set()).add(method)
+
+    assert by_view.get("InitializeView") == {"POST"}, by_view
+    assert by_view.get("UpdateView") == {"PATCH", "PUT"}, by_view
+    assert by_view.get("RevokeKeyView") == {"DELETE"}, by_view
+    assert by_view.get("GetView") == {"GET"}, by_view
+
+
+def test_django_cbv_unresolved_view_class_keeps_any_method(tmp_path: Path) -> None:
+    """When the CBV class lives outside the analyzed repo (e.g. django.contrib.auth),
+    we cannot enumerate methods. The route should be emitted with method=ANY rather
+    than a fabricated GET (WI-lojoh: no weasel defaults).
+    """
+    (tmp_path / "urls.py").write_text(
+        "from django.urls import path\n"
+        "from django.contrib.auth import views as auth_views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path('login/', auth_views.LoginView.as_view()),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1
+    meta = routes[0].get("meta") or {}
+    assert meta.get("view_name") == "LoginView"
+    assert (meta.get("http_method") or "").upper() == "ANY"
+
+
 # NOTE: Router prefix combination tests were removed.
 # Router prefix functionality is now handled by FRAMEWORK_PATTERNS phase.
 # See test_framework_patterns.py for pattern matching tests.

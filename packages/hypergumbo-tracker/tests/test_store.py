@@ -9,7 +9,6 @@ Lamport clock computation.
 from __future__ import annotations
 
 import os
-import shutil
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -400,19 +399,60 @@ class TestCompile:
                 "clock": 1, "nonce": "n1",
                 "data": {"kind": "invariant", "title": "t", "status": "todo_hard",
                          "priority": 2, "description": "",
-                         "before": ["INV-aaa"], "fields": {}},
+                         "isbefore": ["INV-aaa"], "fields": {}},
             },
             {
                 "op": "update", "at": "T2", "by": "agent", "actor": "a",
                 "clock": 2, "nonce": "n2",
                 "set": {},
-                "add": {"before": ["INV-bbb"]},
-                "remove": {"before": ["INV-aaa"]},
+                "add": {"isbefore": ["INV-bbb"]},
+                "remove": {"isbefore": ["INV-aaa"]},
             },
         ]
         item = compile_ops(ops, "INV-test")
-        assert "INV-aaa" not in item.before
-        assert "INV-bbb" in item.before
+        assert "INV-aaa" not in item.isbefore
+        assert "INV-bbb" in item.isbefore
+
+    def test_legacy_before_field_backward_compat(self) -> None:
+        """Old ops files using 'before' key compile into 'isbefore' field."""
+        ops = [
+            {
+                "op": "create", "at": "T1", "by": "agent", "actor": "a",
+                "clock": 1, "nonce": "n1",
+                "data": {"kind": "invariant", "title": "t", "status": "todo_hard",
+                         "priority": 2, "description": "",
+                         "before": ["INV-legacy"], "fields": {}},
+            },
+            {
+                "op": "update", "at": "T2", "by": "agent", "actor": "a",
+                "clock": 2, "nonce": "n2",
+                "set": {},
+                "add": {"before": ["INV-added"]},
+                "remove": {"before": ["INV-legacy"]},
+            },
+        ]
+        item = compile_ops(ops, "INV-test")
+        assert "INV-legacy" not in item.isbefore
+        assert "INV-added" in item.isbefore
+
+    def test_legacy_before_field_set_op_backward_compat(self) -> None:
+        """Old ops using 'before' in set dict compile into 'isbefore' field."""
+        ops = [
+            {
+                "op": "create", "at": "T1", "by": "agent", "actor": "a",
+                "clock": 1, "nonce": "n1",
+                "data": {"kind": "invariant", "title": "t", "status": "todo_hard",
+                         "priority": 2, "description": "",
+                         "before": ["INV-old"], "fields": {}},
+            },
+            {
+                "op": "update", "at": "T2", "by": "agent", "actor": "a",
+                "clock": 2, "nonce": "n2",
+                "set": {"before": ["INV-replaced"]},
+            },
+        ]
+        item = compile_ops(ops, "INV-test")
+        assert item.isbefore == ["INV-replaced"]
 
     def test_add_does_not_duplicate(self) -> None:
         ops = [
@@ -547,7 +587,7 @@ class TestStoreAdd:
             status="violated",
             priority=1,
             tags=["analysis_quality"],
-            before=["INV-other"],
+            isbefore=["INV-other"],
             description="Full description",
             fields={"statement": "test stmt", "root_cause": "test cause"},
             pr_ref="PR-42",
@@ -556,7 +596,7 @@ class TestStoreAdd:
         assert item.status == "violated"
         assert item.priority == 1
         assert "analysis_quality" in item.tags
-        assert "INV-other" in item.before
+        assert "INV-other" in item.isbefore
         assert item.description == "Full description"
         assert item.fields["statement"] == "test stmt"
         assert item.pr_ref == "PR-42"
@@ -837,6 +877,19 @@ class TestSimHash:
         tokens = _tokenize("Hello World! Test-123")
         assert tokens == ["hello", "world", "test", "123"]
 
+    def test_simhash_threshold_is_unified_with_validation(self) -> None:
+        """store._SIMHASH_THRESHOLD must equal validation._SIMHASH_THRESHOLD.
+
+        Two code paths check SimHash similarity — create-time (store) and
+        validation-pass (validation). They must use the same threshold to
+        avoid accidental drift. Tighter than 13 (the old loose create-time
+        value) to reduce false-positive warnings on unrelated items that
+        share common tracker vocabulary.
+        """
+        from hypergumbo_tracker import validation as _validation_mod
+        assert _SIMHASH_THRESHOLD == _validation_mod._SIMHASH_THRESHOLD
+        assert _SIMHASH_THRESHOLD <= 8
+
     def test_item_text_for_simhash(self) -> None:
         data = {
             "title": "Test Title",
@@ -1029,15 +1082,15 @@ class TestReadyAndList:
         blocker_id = store.add(kind="work_item", title="Blocker", status="todo_hard")
         blocked_id = store.add(kind="work_item", title="Blocked", status="todo_hard")
 
-        # blocker.before = [blocked_id] means "finish Blocker before Blocked"
+        # blocker.isbefore = [blocked_id] means "finish Blocker before Blocked"
         # So Blocked is blocked by Blocker
-        store.update(blocker_id, add_fields={"before": [blocked_id]})
+        store.update(blocker_id, add_fields={"isbefore": [blocked_id]})
 
         ready = store.ready()
         ready_ids = {r.id for r in ready}
         # Blocker is ready (nothing blocks it)
         assert blocker_id in ready_ids
-        # Blocked is NOT ready (Blocker has before=[Blocked] and is unresolved)
+        # Blocked is NOT ready (Blocker has isbefore=[Blocked] and is unresolved)
         assert blocked_id not in ready_ids
 
     def test_ready_excludes_duplicates(self, ops_dir: Path, mock_agent_uid: None) -> None:
@@ -1096,7 +1149,7 @@ class TestBeforeCycles:
     def test_no_cycles(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
         id1 = store.add(kind="invariant", fields=_INV_FIELDS, title="A")
-        store.add(kind="invariant", fields=_INV_FIELDS, title="B", before=[id1])
+        store.add(kind="invariant", fields=_INV_FIELDS, title="B", isbefore=[id1])
         cycles = store.check_before_cycles()
         assert cycles == []
 
@@ -1230,10 +1283,10 @@ class TestFindGitDir:
 # ---------------------------------------------------------------------------
 
 
-class TestReadyBeforeSemantics:
-    """Test that ready() correctly implements before semantics.
+class TestReadyIsbeforeSemantics:
+    """Test that ready() correctly implements isbefore semantics.
 
-    X.before = [Y] means "X blocks Y — finish X before starting Y."
+    X.isbefore = [Y] means "X blocks Y — finish X before starting Y."
     So Y is blocked until X is resolved.
     """
 
@@ -1242,15 +1295,15 @@ class TestReadyBeforeSemantics:
         blocker_id = store.add(kind="work_item", title="Blocker", status="todo_hard")
         blocked_id = store.add(kind="work_item", title="Blocked", status="todo_hard")
 
-        # blocker.before = [blocked_id] → blocker blocks blocked_id
-        store.update(blocker_id, add_fields={"before": [blocked_id]})
+        # blocker.isbefore = [blocked_id] → blocker blocks blocked_id
+        store.update(blocker_id, add_fields={"isbefore": [blocked_id]})
 
         ready = store.ready()
         ready_ids = {r.id for r in ready}
 
-        # Blocker is ready (nothing in any item's before field targets blocker)
+        # Blocker is ready (nothing in any item's isbefore field targets blocker)
         assert blocker_id in ready_ids
-        # Blocked is NOT ready (blocker.before contains blocked_id and blocker is unresolved)
+        # Blocked is NOT ready (blocker.isbefore contains blocked_id and blocker is unresolved)
         assert blocked_id not in ready_ids
 
     def test_resolved_blocker_unblocks(self, ops_dir: Path, mock_agent_uid: None) -> None:
@@ -1258,7 +1311,7 @@ class TestReadyBeforeSemantics:
         blocker_id = store.add(kind="work_item", title="Blocker", status="todo_hard")
         blocked_id = store.add(kind="work_item", title="Blocked", status="todo_hard")
 
-        store.update(blocker_id, add_fields={"before": [blocked_id]})
+        store.update(blocker_id, add_fields={"isbefore": [blocked_id]})
         # Resolve the blocker
         store.update(blocker_id, set_fields={"status": "done"})
 
@@ -2479,10 +2532,10 @@ class TestBeforeCycleDetection:
         id_a = store.add(kind="invariant", fields=_INV_FIELDS, title="A")
         id_b = store.add(kind="invariant", fields=_INV_FIELDS, title="B")
 
-        # A.before = [B] means A blocks B
-        store.update(id_a, add_fields={"before": [id_b]})
-        # B.before = [A] means B blocks A → cycle
-        store.update(id_b, add_fields={"before": [id_a]})
+        # A.isbefore = [B] means A blocks B
+        store.update(id_a, add_fields={"isbefore": [id_b]})
+        # B.isbefore = [A] means B blocks A → cycle
+        store.update(id_b, add_fields={"isbefore": [id_a]})
 
         cycles = store.check_before_cycles()
         assert len(cycles) > 0
@@ -3270,8 +3323,8 @@ class TestHumanOnlyStatuses:
         # Create blocker and blocked items
         blocker_id = store.add(kind="work_item", title="Blocker item for test")
         blocked_id = store.add(kind="work_item", title="Blocked item for test")
-        # X.before = [Y] means "X blocks Y" (finish X before Y).
-        store.update(blocker_id, add_fields={"before": [blocked_id]})
+        # X.isbefore = [Y] means "X blocks Y" (finish X before Y).
+        store.update(blocker_id, add_fields={"isbefore": [blocked_id]})
         # blocked_id should not be ready because blocker is unresolved
         ready_ids = {i.id for i in store.ready()}
         assert blocked_id not in ready_ids
@@ -3343,6 +3396,40 @@ class TestTakeOwnershipFallback:
         # Verify we hit the fallback path (first call raised, retry succeeded)
         assert call_count == 2
 
+    def test_take_ownership_uses_same_directory_tmp(self, tmp_path: Path) -> None:
+        """The tempfile must be created in filepath.parent, not /tmp.
+
+        Load-bearing invariant: same-directory ensures os.rename is an
+        atomic single-syscall replace rather than a cross-filesystem
+        copy+delete (which exposes a readable-but-absent window that
+        live-update readers race with, crashing them with EACCES).
+        Regression test for the 2026-04-19 TUI crash on INV-rikis.
+        """
+        import stat
+        import tempfile as real_tempfile
+
+        ops_file = tmp_path / "test.ops"
+        ops_file.write_bytes(b"data\n")
+        target_mode = (
+            stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP
+            | stat.S_IWGRP | stat.S_IROTH
+        )
+
+        observed_dirs: list[str] = []
+        real_mkstemp = real_tempfile.mkstemp
+        def spying_mkstemp(*args: Any, **kwargs: Any) -> Any:
+            observed_dirs.append(str(kwargs.get("dir")))
+            return real_mkstemp(*args, **kwargs)
+
+        with patch("tempfile.mkstemp", side_effect=spying_mkstemp):
+            Store._take_ownership_via_tmp(ops_file, target_mode)
+
+        assert observed_dirs == [str(tmp_path)], (
+            f"mkstemp was called with dir={observed_dirs}, expected "
+            f"[{str(tmp_path)!r}]. /tmp-based tempfiles break the atomic "
+            f"rename invariant and re-expose the TUI reader race."
+        )
+
     def test_take_ownership_preserves_content(self, tmp_path: Path) -> None:
         """_take_ownership_via_tmp preserves file content and sets mode."""
         import stat
@@ -3376,18 +3463,22 @@ class TestTakeOwnershipFallback:
             | stat.S_IWGRP | stat.S_IROTH
         )
 
-        # Fail on shutil.move (after os.close + unlink) — closed=True path
-        with patch.object(shutil, "move", side_effect=OSError("disk full")):
+        # Fail on os.rename (after os.close) — closed=True path
+        real_rename = os.rename
+        def failing_rename(src: Any, dst: Any) -> None:
+            raise OSError("disk full")
+        with patch("os.rename", side_effect=failing_rename):
             with pytest.raises(OSError, match="disk full"):
                 Store._take_ownership_via_tmp(ops_file, target_mode)
 
-        # The tempfile in /tmp should be cleaned up
-        import glob
-        import time
-        leftover = glob.glob("/tmp/htrac_*.ops")
-        now = time.time()
-        recent = [f for f in leftover if now - os.path.getmtime(f) < 5]
-        assert len(recent) == 0, f"Tempfile not cleaned up: {recent}"
+        # The sibling tempfile must be cleaned up; the target's own
+        # directory is the only place mkstemp now puts tempfiles.
+        leftover = list(tmp_path.glob(".htrac_*.ops"))
+        assert leftover == [], f"Tempfile not cleaned up: {leftover}"
+        # Original file is still in place (atomic rename never happened)
+        assert ops_file.read_bytes() == b"data\n"
+        # Sanity: the real rename still works outside the patch
+        assert real_rename is os.rename
 
     def test_take_ownership_cleans_up_on_early_error(
         self, tmp_path: Path
@@ -3408,13 +3499,9 @@ class TestTakeOwnershipFallback:
             with pytest.raises(OSError, match="fchmod failed"):
                 Store._take_ownership_via_tmp(ops_file, target_mode)
 
-        # The tempfile in /tmp should be cleaned up
-        import glob
-        import time
-        leftover = glob.glob("/tmp/htrac_*.ops")
-        now = time.time()
-        recent = [f for f in leftover if now - os.path.getmtime(f) < 5]
-        assert len(recent) == 0, f"Tempfile not cleaned up: {recent}"
+        # The sibling tempfile must be cleaned up
+        leftover = list(tmp_path.glob(".htrac_*.ops"))
+        assert leftover == [], f"Tempfile not cleaned up: {leftover}"
 
 
 # ---------------------------------------------------------------------------
@@ -3528,7 +3615,7 @@ class TestTakeOwnershipDirRepair:
         assert dir_st.st_mode & stat.S_IWGRP
 
     def test_clear_error_when_dir_not_repairable(self, tmp_path: Path) -> None:
-        """When unlink fails and dir can't be repaired, error is actionable."""
+        """When rename fails and dir can't be repaired, error is actionable."""
         import stat
 
         ops_dir = tmp_path / ".ops"
@@ -3541,15 +3628,16 @@ class TestTakeOwnershipDirRepair:
             | stat.S_IWGRP | stat.S_IROTH
         )
 
-        # Simulate: unlink fails only for the ops file (not for tmp cleanup)
-        real_unlink = Path.unlink
+        # Simulate: os.rename fails only when replacing the target (not on
+        # any internal rename during mkstemp's setup).
+        real_rename = os.rename
 
-        def selective_unlink(self_path: Path, *args: Any, **kwargs: Any) -> None:
-            if self_path.name == "test.ops":
+        def selective_rename(src: Any, dst: Any) -> None:
+            if str(dst).endswith("test.ops"):
                 raise PermissionError(13, "Permission denied")
-            return real_unlink(self_path, *args, **kwargs)
+            return real_rename(src, dst)
 
         with patch("os.getuid", return_value=99999):
-            with patch.object(Path, "unlink", selective_unlink):
+            with patch("os.rename", side_effect=selective_rename):
                 with pytest.raises(PermissionError, match="group-write"):
                     Store._take_ownership_via_tmp(ops_file, target_mode)

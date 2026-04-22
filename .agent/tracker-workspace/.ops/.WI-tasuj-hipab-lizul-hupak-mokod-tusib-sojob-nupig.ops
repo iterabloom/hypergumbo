@@ -1,0 +1,81 @@
+- op: create  # 8bea
+  at: '2026-04-19T02:14:21Z'  # 8bea
+  by: agent  # 8bea
+  actor: jgstern_agent  # 8bea
+  clock: 1  # 8bea
+  nonce: 8bea  # 8bea
+  data:  # 8bea
+    kind: work_item  # 8bea
+    title: "auto-pr rebase-restore silently drops all hidden .ops files (WI-buhov regression)"  # 8bea
+    status: todo_hard  # 8bea
+    priority: 1  # 8bea
+    parent:  # 8bea
+    tags:  # 8bea
+    - ci_infrastructure  # 8bea
+    - agent_infrastructure  # 8bea
+    isbefore: []  # 8bea
+    duplicate_of: []  # 8bea
+    not_duplicate_of: []  # 8bea
+    pr_ref:  # 8bea
+    description: "Root cause of 2026-04-19 tracker-reply loss documented in hypergumbo_lab_notebook/tracker_ops_loss_04192026_0230.md.\n\nThe backup branch of do_merge's rebase-recovery path in scripts/lib/forgejo-api.sh (around lines 1007-1035) correctly globs for hidden ops files via two patterns (`\"$ops_dir\"/.*ops \"$ops_dir\"/*.ops`). The matching restore branches (lines ~1056-1068 success-path and ~1101-1112 failure-path) iterate with a single `\"$backup_subdir\"/*` glob, which in bash WITHOUT `shopt -s dotglob` does NOT match dotfiles. Every tracker ops file uses a .WI-…ops or .INV-…ops naming convention (leading dot), so the restore loop enumerates zero files on every invocation. The function _ops_union_restore_file that the WI-buhov fix added is never called, and every locally-appended op performed between the backup step and the rebase is silently dropped.\n\nSymptom: tracker discuss / update / add calls performed during an auto-pr run (i.e. after commit + before merge completes) disappear from the tracker after the rebase-restore 'Restored backed-up .ops files from …' log line. The log line always prints even when the loop matched nothing.\n\nFix: use `for f in \"$backup_subdir\"/.* \"$backup_subdir\"/*;` (mirroring the backup loop) in both restore branches. Add a regression test that seeds a hidden .WI-test-foo.ops.modified file with a line INJECTED_FROM_BACKUP, runs the restore path, and asserts the target file contains both the pre-existing line AND INJECTED_FROM_BACKUP. Verify the union-restore test suite is EXTENDED (not replaced) so the existing CRDT-union semantics coverage is preserved.\n\nSeverity: P1 data-loss hazard — hits every tracker reply posted between a feature commit and the eventual merge when a rebase is needed. The 2026-04-19 incident lost 3 replies plus a status update; recovery required re-posting from the conversation buffer."  # 8bea
+    fields: {}  # 8bea
+- op: update  # ff24
+  at: '2026-04-19T02:17:46Z'  # ff24
+  by: agent  # ff24
+  actor: jgstern_agent  # ff24
+  clock: 2  # ff24
+  nonce: ff24  # ff24
+  set:  # ff24
+    status: needs_human_review  # ff24
+- op: discuss  # 9139
+  at: '2026-04-19T02:17:46Z'  # 9139
+  by: agent  # 9139
+  actor: jgstern_agent  # 9139
+  clock: 3  # 9139
+  nonce: '9139'  # 9139
+  message: "Touches scripts/lib/forgejo-api.sh which is a governance file per AGENTS.md. Per the approval workflow protocol, setting needs_human_review and requesting explicit human approval before implementing via auto-pr.\n\nProposed fix (concrete, ready to apply once approved):\n\nscripts/lib/forgejo-api.sh lines ~1060 and ~1106 — change the restore loops to mirror the backup loop's glob pattern:\n\n    # Before (broken — misses hidden files):\n    for f in \"$backup_subdir\"/*; do\n        [[ -f \"$f\" ]] || continue\n        ...\n    done\n\n    # After (matches dotfiles AND regular files):\n    for f in \"$backup_subdir\"/.* \"$backup_subdir\"/*; do\n        [[ -f \"$f\" ]] || continue\n        ...\n    done\n\nThe [[ -f \"$f\" ]] guard is already present and handles the . / .. entries that .* matches. This mirrors the backup loop at line 1024 (`for f in \"$ops_dir\"/.*ops \"$ops_dir\"/*.ops; do`) and requires no shopt dotglob dance.\n\nRegression test plan: add a bash-level test (likely tests/test_auto_pr_rebase_recovery.sh or similar, following existing auto-pr test patterns) that (1) seeds a backup dir with .WI-test-foo.ops.modified containing line INJECTED_FROM_BACKUP, (2) seeds the target with a pre-rebase dotfile containing PRE_EXISTING, (3) calls the patched restore code, (4) asserts the target file contains both lines. Without the fix the test fails (backup-only line missing); with the fix both appear.\n\nRoot cause evidence: hypergumbo_lab_notebook/tracker_ops_loss_04192026_0230.md documents the full timeline and repro of the bash default-glob vs dotglob behavior that caused my 2026-04-19 01:02/01:04/00:47 tracker replies to vanish during auto-pr's rebase-recovery step on the Jackson linker branch."  # 9139
+- op: discuss  # e6df
+  at: '2026-04-19T02:19:32Z'  # e6df
+  by: human  # e6df
+  actor: jgstern  # e6df
+  clock: 4  # e6df
+  nonce: e6df  # e6df
+  message: "I approve. use auto-pr WITHOUT --gov please"  # e6df
+- op: update  # f2e9
+  at: '2026-04-19T02:20:23Z'  # f2e9
+  by: human  # f2e9
+  actor: jgstern  # f2e9
+  clock: 5  # f2e9
+  nonce: f2e9  # f2e9
+  set:  # f2e9
+    status: todo_hard  # f2e9
+- op: discuss  # 6e49
+  at: '2026-04-19T02:21:35Z'  # 6e49
+  by: agent  # 6e49
+  actor: jgstern_agent  # 6e49
+  clock: 6  # 6e49
+  nonce: '6e49'  # 6e49
+  message: "Acknowledged — proceeding with implementation and auto-pr (without --gov)."  # 6e49
+- op: update  # 6cfd
+  at: '2026-04-19T02:22:28Z'  # 6cfd
+  by: agent  # 6cfd
+  actor: jgstern_agent  # 6cfd
+  clock: 7  # 6cfd
+  nonce: 6cfd  # 6cfd
+  set:  # 6cfd
+    status: todo_hard  # 6cfd
+- op: update  # cdc1
+  at: '2026-04-19T02:38:46Z'  # cdc1
+  by: agent  # cdc1
+  actor: jgstern_agent  # cdc1
+  clock: 8  # cdc1
+  nonce: cdc1  # cdc1
+  set:  # cdc1
+    status: done  # cdc1
+- op: discuss  # c9cb
+  at: '2026-04-19T02:38:46Z'  # c9cb
+  by: agent  # c9cb
+  actor: jgstern_agent  # c9cb
+  clock: 9  # c9cb
+  nonce: c9cb  # c9cb
+  message: "Fixed in PR #3175 (commit 0b521bf62). Extracted the two duplicated restore loops in do_merge into a new _ops_union_restore_dir helper that iterates with the two-pattern glob (.*  *) mirroring the backup loop, so hidden .WI-…ops / .INV-…ops filenames are enumerated. 7 new regression tests pin the fix. Note: the auto-pr for this very PR did NOT require a rebase (dev was current), so the bug-being-fixed did not re-trigger during its own merge — we'll see evidence the fix works when the next auto-pr run that actually rebases preserves tracker-reply ops."  # c9cb

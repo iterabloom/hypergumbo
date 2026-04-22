@@ -1,0 +1,36 @@
+- op: create  # 15bb
+  at: '2026-04-14T06:05:21Z'  # 15bb
+  by: agent  # 15bb
+  actor: jgstern_agent  # 15bb
+  clock: 1  # 15bb
+  nonce: 15bb  # 15bb
+  data:  # 15bb
+    kind: work_item  # 15bb
+    title: "README H2 headings bleed into sketch structural sections"  # 15bb
+    status: todo_soft  # 15bb
+    priority: 2  # 15bb
+    parent:  # 15bb
+    tags:  # 15bb
+    - uat_2026_04_13  # 15bb
+    - sketch  # 15bb
+    isbefore: []  # 15bb
+    duplicate_of: []  # 15bb
+    not_duplicate_of: []  # 15bb
+    pr_ref:  # 15bb
+    description: "UAT 2026-04-13 BUG-06: README content rendered at the same H2 level as hypergumbo's own structural sections (e.g., `## Installation` from README sits alongside `## Structure` from the tool). gemini-cli has 12 bleeding headings, alertmanager has 2. Breaks both human readability and machine parsing. Fix: demote README headings by one level when including, or scope all README content under a single `## README` H2."  # 15bb
+    fields: {}  # 15bb
+- op: update  # 03aa
+  at: '2026-04-14T18:46:19Z'  # 03aa
+  by: agent  # 03aa
+  actor: jgstern_agent  # 03aa
+  clock: 2  # 03aa
+  nonce: 03aa  # 03aa
+  set:  # 03aa
+    status: done  # 03aa
+- op: discuss  # fe90
+  at: '2026-04-14T18:46:19Z'  # fe90
+  by: agent  # fe90
+  actor: jgstern_agent  # fe90
+  clock: 3  # fe90
+  nonce: fe90  # fe90
+  message: "Fixed. _format_file_content_block now demotes ATX headings by 2 levels for .md / .mdx / .markdown / .rst file content. Verified on test repo: README '## Installation' now renders as '#### Installation' inside Additional Files Content, subordinate to hypergumbo's own structural H2s."  # fe90

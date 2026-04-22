@@ -1,0 +1,37 @@
+- op: create  # f89a
+  at: '2026-04-14T06:05:32Z'  # f89a
+  by: agent  # f89a
+  actor: jgstern_agent  # f89a
+  clock: 1  # f89a
+  nonce: f89a  # f89a
+  data:  # f89a
+    kind: work_item  # f89a
+    title: "Suppress embedding model loading noise (199 progress bars on stderr)"  # f89a
+    status: todo_soft  # f89a
+    priority: 3  # f89a
+    parent:  # f89a
+    tags:  # f89a
+    - uat_2026_04_13  # f89a
+    - ergonomics  # f89a
+    - developer_experience  # f89a
+    isbefore: []  # f89a
+    duplicate_of: []  # f89a
+    not_duplicate_of: []  # f89a
+    pr_ref:  # f89a
+    description: "UAT 2026-04-13 UX-02: first analysis per session dumps 199 weight-loading progress bars + HuggingFace authentication warning to stderr. Not suppressed by `--no-progress`. Pollutes piped output. Fix: route loading progress through the same channel as `--no-progress`, or hide behind `--verbose`."  # f89a
+    fields: {}  # f89a
+- op: update  # 0d02
+  at: '2026-04-15T08:35:38Z'  # 0d02
+  by: agent  # 0d02
+  actor: jgstern_agent  # 0d02
+  clock: 2  # 0d02
+  nonce: 0d02  # 0d02
+  set:  # 0d02
+    status: done  # 0d02
+- op: discuss  # af89
+  at: '2026-04-15T08:35:38Z'  # af89
+  by: agent  # af89
+  actor: jgstern_agent  # af89
+  clock: 3  # af89
+  nonce: af89  # af89
+  message: "Fixed in WIP PR. Added _hf_noise.suppress_hf_noise() that runs at sketch_embeddings import, setting HF_HUB_DISABLE_PROGRESS_BARS, TRANSFORMERS_VERBOSITY, HF_HUB_DISABLE_SYMLINKS_WARNING, TRANSFORMERS_NO_ADVISORY_WARNINGS via setdefault. Extracted to a separate module so the suppression is coverage-tested (sketch_embeddings.py is intentionally omitted from coverage because its loaders need heavy ML deps). 7 unit tests, 100% coverage on new module."  # af89

@@ -1,0 +1,83 @@
+- op: create  # 8728
+  at: '2026-04-17T00:03:14Z'  # 8728
+  by: agent  # 8728
+  actor: jgstern_agent  # 8728
+  clock: 1  # 8728
+  nonce: '8728'  # 8728
+  data:  # 8728
+    kind: work_item  # 8728
+    title: "Governance-file edits for ADR-0003-ext (AGENTS.md, bakeoff playbooks, trackerize tags)"  # 8728
+    status: needs_human_review  # 8728
+    priority: 2  # 8728
+    parent:  # 8728
+    tags:  # 8728
+    - governance  # 8728
+    - cross_language_linkers  # 8728
+    - analysis_quality  # 8728
+    isbefore: []  # 8728
+    duplicate_of: []  # 8728
+    not_duplicate_of: []  # 8728
+    pr_ref:  # 8728
+    description: "PR 6 of the ADR-0003-ext (Linker Subcategory Restoration) rollout. Non-governance PRs 1-5 already merged: the new ADR, docs/LINKERS.md rewrite, docs/hypergumbo-spec.md and four ADR in-place corrections, and the 45-file module-docstring sweep with README/ARCHITECTURE/CHANGELOG updates.\n\nThis item is the one remaining PR and it touches governance files per AGENTS.md:\n\nPROPOSED EDITS:\n\n1. .agent/agent_playbooks_protocols_sops_skills/bakeoff-broad-priorities.md\n   - Line 5 priority #3: rewrite \"Linkers: polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine\" as:\n     \"Linkers: post-call-graph-time edge recovery in four subcategories (Protocol / Bridge / Framework / Infrastructure — see ADR-0003-ext). Prioritize by expected FP-reduction volume per the prospector corpus (INV-nimuj), not by novelty of language pair.\"\n   - Line 6 priority #4 \"Frameworks\": reframe to note the interplay with Framework-subcategory linkers.\n\n2. .agent/agent_playbooks_protocols_sops_skills/bakeoff-deep-priorities.md\n   - Line 10 priority #7: same rewrite as BROAD above.\n\n3. .agent/agent_playbooks_protocols_sops_skills/trackerize-playbook.md\n   - Line 57 well-known tags list: add 'protocol_linkers', 'framework_dispatch_linkers', 'infrastructure_linkers' alongside the existing 'cross_language_linkers' (preserved for backwards continuity).\n\n4. AGENTS.md\n   - Add a short paragraph under \"Required Checks\" citing ADR-0003-ext as the authoritative linker subcategory definition and INV-nimuj as the prioritization heuristic.\n   - No change to BROAD/DEEP priority description lines (line 31, 34, 64, 67) — they already correctly mention 'linker' and 'framework' as paired concepts; once ADR-0003-ext is in effect the reader understands Framework linkers are a subcategory.\n\nRATIONALE:\nThe ADR-0003 §2.4 linker subcategory taxonomy (Protocol / Bridge / Framework, extended by ADR-0003-ext with Infrastructure) has been inert in working diction since 2026-01-07. The BROAD/DEEP playbooks' current phrasing treats 'linker' and 'framework' as parallel priorities, reinforcing the split that led to under-investing in within-language framework-dispatch linkers (see INV-nimuj and the WI-tubot 2026-04-11 prospector data). This edit aligns the playbook with the restored taxonomy.\n\nAwaiting approval before opening the PR. No code changes until this tracker item moves out of needs_human_review."  # 8728
+    fields: {}  # 8728
+- op: update  # 1571
+  at: '2026-04-17T01:16:12Z'  # 1571
+  by: agent  # 1571
+  actor: jgstern_agent  # 1571
+  clock: 2  # 1571
+  nonce: '1571'  # 1571
+  set: {}  # 1571
+  remove:  # 1571
+    tags: [cross_language_linkers]  # 1571
+- op: discuss  # d1e0
+  at: '2026-04-17T01:18:15Z'  # d1e0
+  by: agent  # d1e0
+  actor: jgstern_agent  # d1e0
+  clock: 3  # d1e0
+  nonce: d1e0  # d1e0
+  message: "Tag cleanup (2026-04-17): removed `cross_language_linkers` tag — this item is specifically about the governance-file edits that restore the **four-subcategory** vocabulary (Protocol / Bridge / Framework / Infrastructure), not about cross-language linkers specifically. Tags `governance` and `analysis_quality` remain.\n\nAlso: the \"Line 5 priority #3\" / \"Line 6 priority #4\" / \"Line 10 priority #7\" / \"line 31, 34, 64, 67\" line-number citations in the description are fragile — the bakeoff playbooks and AGENTS.md have been edited multiple times since this item was filed. Before opening the PR after approval, I'll re-locate the target strings by content (grep for 'polyglot repos are common' / 'Ensure comprehensive linker, framework' / etc.) rather than by line number."  # d1e0
+- op: discuss  # 6eea
+  at: '2026-04-17T01:22:12Z'  # 6eea
+  by: human  # 6eea
+  actor: jgstern  # 6eea
+  clock: 4  # 6eea
+  nonce: 6eea  # 6eea
+  message: "I approve fully, including (and requesting) use of auto-pr WITHOUT --gov"  # 6eea
+- op: update  # 8a10
+  at: '2026-04-17T01:22:22Z'  # 8a10
+  by: human  # 8a10
+  actor: jgstern  # 8a10
+  clock: 5  # 8a10
+  nonce: 8a10  # 8a10
+  set:  # 8a10
+    status: todo_soft  # 8a10
+- op: update  # 3996
+  at: '2026-04-17T01:23:01Z'  # 3996
+  by: agent  # 3996
+  actor: jgstern_agent  # 3996
+  clock: 6  # 3996
+  nonce: '3996'  # 3996
+  set:  # 3996
+    status: todo_hard  # 3996
+- op: discuss  # d8c5
+  at: '2026-04-17T01:23:01Z'  # d8c5
+  by: agent  # d8c5
+  actor: jgstern_agent  # d8c5
+  clock: 7  # d8c5
+  nonce: d8c5  # d8c5
+  message: "Human approval received (2026-04-17). Implementing now."  # d8c5
+- op: update  # 9012
+  at: '2026-04-17T01:33:51Z'  # 9012
+  by: agent  # 9012
+  actor: jgstern_agent  # 9012
+  clock: 8  # 9012
+  nonce: '9012'  # 9012
+  set:  # 9012
+    status: done  # 9012
+- op: discuss  # 80ab
+  at: '2026-04-17T01:33:51Z'  # 80ab
+  by: agent  # 80ab
+  actor: jgstern_agent  # 80ab
+  clock: 9  # 80ab
+  nonce: 80ab  # 80ab
+  message: "Merged as PR #3089. All four governance-file edits landed on dev: bakeoff-broad-priorities.md #3 and #4 rewritten with subcategory vocabulary and INV-nimuj citation; bakeoff-deep-priorities.md #7 rewritten; trackerize-playbook.md §7 split the linker tag into four subcategory-specific tags (protocol_linkers, cross_language_linkers retained for Bridge+continuity, framework_dispatch_linkers, infrastructure_linkers); AGENTS.md Required Checks gained a bullet citing ADR-0003-ext, the docstring convention, the generate-architecture Uncategorized drift signal, and INV-nimuj as the prioritization heuristic. This closes the ADR-0003-ext rollout — the subcategory vocabulary is now in active circulation in every governance file agents read daily."  # 80ab

@@ -56,20 +56,33 @@ from hypergumbo_tracker.validation import ValidationResult, validate_all
 
 
 def _config_chmod_fallback(path: Path, mode: int) -> None:
-    """Copy-delete-rename fallback when chmod fails (cross-user).
+    """Copy-then-atomic-rename fallback when chmod fails (cross-user).
 
     When the current user doesn't own config.yaml (e.g. human user vs agent
-    user), path.chmod() raises PermissionError. This fallback copies the file
-    to a tempfile in /tmp (always writable), deletes the original (allowed by
-    directory write permission), moves the tmp back, and chmods it.
+    user), path.chmod() raises PermissionError. This fallback writes a copy
+    to a tempfile in the SAME directory as the target, then ``os.rename``s it
+    over the target atomically, and chmods the new file (now owned by the
+    current user).
+
+    Same-directory tempfile + atomic rename is load-bearing, not incidental.
+    The earlier version used ``tempfile.mkstemp()`` (default dir=/tmp) plus
+    ``unlink`` + ``shutil.move``; because ``/tmp`` is typically a separate
+    tmpfs, ``shutil.move`` degraded to cross-filesystem ``copy2 + unlink``
+    and exposed a window where the target dentry was briefly absent or held
+    umask-respecting (not 0o644/0o444) mode before ``copystat`` normalised
+    it. Readers of ``config.yaml`` during ``config_lock`` / ``config_unlock``
+    flips could race that window. This mirrors the fix applied to
+    ``store.py::_take_ownership_via_tmp`` for the same class of bug
+    (2026-04-19 TUI crash on ``.INV-rikis-…ops``).
     """
-    fd, tmp_str = tempfile.mkstemp(suffix=".yaml", prefix="htrac_config_")
+    fd, tmp_str = tempfile.mkstemp(
+        suffix=".yaml", prefix=".htrac_config_", dir=str(path.parent),
+    )
     tmp = Path(tmp_str)
     try:
         os.close(fd)
         shutil.copy2(path, tmp)
-        path.unlink()
-        shutil.move(str(tmp), str(path))
+        os.rename(tmp, path)
         path.chmod(mode)
     except BaseException:
         tmp.unlink(missing_ok=True)

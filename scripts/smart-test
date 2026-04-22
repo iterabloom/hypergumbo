@@ -146,6 +146,7 @@ COV_PATHS=(
     "--cov=packages/hypergumbo-lang-mainstream/src"
     "--cov=packages/hypergumbo-lang-common/src"
     "--cov=packages/hypergumbo-lang-extended1/src"
+    "--cov=packages/hypergumbo-lang-rust-analyzer/src"
 )
 
 # Detect if embedding dependencies are available
@@ -504,8 +505,29 @@ fi
 AFFECTED_TESTS=$(grep -E 'packages/.*/tests/(test_|BRANCHES_test_).*\.py$' "$SLICE_OUTPUT" 2>/dev/null | \
     sed "s|^$REPO_ROOT/||" | sort -u || echo "")
 
-# Check if any Python source files changed
+# WI-jozan: fold top-level source → top-level test matches into AFFECTED_TESTS.
+# hypergumbo slice --files only reaches packages/*/src/** — it does not know
+# about .agent/hooks/_shared/*.py or scripts/*. Without this fold, a PR that
+# only touches top-level infrastructure would produce an empty manifest and
+# ci.yml would silently skip pytest. The helper's output is filename-matched
+# ("tests/test_<basename>.py"), so false negatives for sub-directory helpers
+# are acceptable (they still get full-suite coverage under WI-javan's
+# test-agent-infra job).
+TOP_LEVEL_MAP_HELPER="$REPO_ROOT/.agent/hooks/_shared/top_level_test_map.py"
+TOP_LEVEL_TESTS=""
+if [[ -f "$TOP_LEVEL_MAP_HELPER" ]] && command -v python3 &>/dev/null; then
+    TOP_LEVEL_TESTS=$(echo "$CHANGED_FILES" | python3 "$TOP_LEVEL_MAP_HELPER" "$REPO_ROOT" 2>/dev/null || echo "")
+fi
+if [[ -n "$TOP_LEVEL_TESTS" ]]; then
+    AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$TOP_LEVEL_TESTS" | sed '/^$/d' | sort -u)
+fi
+
+# Check if any Python source files changed. Top-level sources (.agent/hooks/_shared/*.py,
+# scripts/*) are included via a separate check so the "no source files" skip
+# path respects them: a PR that only touches scripts/foo with a matching
+# tests/test_foo.py should run that test, not skip pytest entirely.
 CHANGED_SOURCE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/src/.*\.py$' || echo "")
+CHANGED_TOP_LEVEL_SOURCES=$(echo "$CHANGED_FILES" | grep -E '^(\.agent/hooks/_shared/.*\.py|scripts/[^/]+)$' || echo "")
 
 if [[ -z "$AFFECTED_TESTS" ]]; then
     # No affected tests found. Check why:
@@ -575,8 +597,24 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
             AFFECTED_PACKAGES=$(echo "$CHANGED_SOURCE_FILES" | sed -n 's|^packages/\([^/]*\)/.*|\1|p' | sort -u)
             SELECTED_TESTS=""
             for pkg in $AFFECTED_PACKAGES; do
-                # Grab the first (alphabetically) test file in the package
-                first_test=$(find "packages/$pkg/tests" -name 'test_*.py' -type f 2>/dev/null | sort | head -1)
+                # Grab the first (alphabetically) test file in the package.
+                # NOTE: `find … | sort | head -1` under `set -o pipefail`
+                # (line 32) exits this script with code 141 (SIGPIPE): `head
+                # -1` closes stdin after the first line, `sort` receives
+                # SIGPIPE on its remaining output, and pipefail propagates
+                # that failure to the enclosing `$(…)` — killing the whole
+                # smart-test invocation before the manifest is written. That
+                # trips every time this VERSION_ONLY branch runs (the only
+                # call site where `find` produces a non-trivial number of
+                # matches before `head` cuts in), which is every release
+                # commit, which is why prepare-release kept reporting
+                # "Manifest generation skipped (no stable hypergumbo?)" from
+                # auto-pr's elif-fallthrough at scripts/auto-pr:1000.
+                # readarray avoids the pipe-to-head entirely: the
+                # process-substitution feeds into readarray without any
+                # outer pipeline that pipefail can kill.
+                readarray -t _tests < <(find "packages/$pkg/tests" -name 'test_*.py' -type f 2>/dev/null | sort)
+                first_test="${_tests[0]:-}"
                 if [[ -n "$first_test" ]]; then
                     SELECTED_TESTS="${SELECTED_TESTS}${first_test}"$'\n'
                 fi
@@ -759,8 +797,17 @@ if [[ $TEST_EXIT -eq 0 ]] && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
     echo ""
     echo "Checking 100% coverage for changed source files..."
 
+    # Skip auto-generated files (e.g. scripts/build-scip-proto output under
+    # */scip/_generated/). --include bypasses coverage omit lists, so we
+    # have to filter here too.
+    COVERABLE_CHANGED_FILES=$(echo "$CHANGED_SOURCE_FILES" | grep -v '/_generated/' || echo "")
+    if [[ -z "$COVERABLE_CHANGED_FILES" ]]; then
+        echo "✅ No coverable changed source files (all are auto-generated)"
+        exit 0
+    fi
+
     # Build --include pattern for changed files
-    INCLUDE_PATTERN=$(echo "$CHANGED_SOURCE_FILES" | tr '\n' ',' | sed 's/,$//')
+    INCLUDE_PATTERN=$(echo "$COVERABLE_CHANGED_FILES" | tr '\n' ',' | sed 's/,$//')
 
     # Run coverage report for just the changed files
     if ! coverage report --include="$INCLUDE_PATTERN" --fail-under=100 2>/dev/null; then

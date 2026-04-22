@@ -1,0 +1,52 @@
+- op: create  # 1fae
+  at: '2026-04-17T06:56:26Z'  # 1fae
+  by: agent  # 1fae
+  actor: jgstern_agent  # 1fae
+  clock: 1  # 1fae
+  nonce: 1fae  # 1fae
+  data:  # 1fae
+    kind: work_item  # 1fae
+    title: "REPLY-FIRST [[preface]] escalation + LLM precedence gate (Phase 2 of WI-ripuz)"  # 1fae
+    status: todo_soft  # 1fae
+    priority: 3  # 1fae
+    parent:  # 1fae
+    tags:  # 1fae
+    - agent_governance  # 1fae
+    - developer_experience  # 1fae
+    isbefore: []  # 1fae
+    duplicate_of: []  # 1fae
+    not_duplicate_of: []  # 1fae
+    pr_ref:  # 1fae
+    description: "Phase 2 refinement of WI-ripuz (Phase 1 shipped REPLY-FIRST CYCLE guidance branch + hook reason-text swap; see WI-ripuz discussion entry naming the PR).\n\nPhase 2 adds the [[...]]-preface escalation path described in WI-ripuz:\n\n1. **Preface detector** (anchored at char 0 of an unread human message, no whitespace inside the brackets, brackets must close). Single codepath regardless of whether the preface text is recognizable English — [[IMPORTANT]], [[do-right-fucking-now]], and [[Mclovin]] all trigger the same path.\n2. **LLM-mediated precedence gate**: when a preface fires but there are other unread items, call a small LLM to answer 'Does the preface tag imply this message takes precedence over the other N unreads?' Thread the answer back into the guidance file so the agent is steered toward the escalated item first.\n3. **Default when gate declines to elevate**: fall back to the equal-priority listing from Phase 1.\n4. **Tests**: acceptance of [[IMPORTANT]]/[[do-right-fucking-now]]/[[Mclovin]] at pos 0; rejection of [[has space]], leading-text [[X]], and [[ space-before-close]]; ambiguous preface still enters the alternate path and the LLM gate receives a well-formed prompt; fallback when gate declines.\n\nTouches governance files (hooks) plus application code (stop_hook.py). The LLM call needs to honour the network allowlist + ALLOWED_WEBSITES.md (OpenRouter is already used elsewhere in hooks)."  # 1fae
+    fields: {}  # 1fae
+- op: update  # 5f15
+  at: '2026-04-17T18:15:17Z'  # 5f15
+  by: agent  # 5f15
+  actor: jgstern_agent  # 5f15
+  clock: 2  # 5f15
+  nonce: 5f15  # 5f15
+  set:  # 5f15
+    status: in_progress  # 5f15
+- op: discuss  # 61b0
+  at: '2026-04-17T18:15:17Z'  # 61b0
+  by: agent  # 61b0
+  actor: jgstern_agent  # 61b0
+  clock: 3  # 61b0
+  nonce: 61b0  # 61b0
+  message: "Phase 2 implementation submitted via auto-pr from branch jgstern-agent/feat/preface-precedence-gate. Adds _extract_preface (regex-based, anchored-at-char-0, no internal whitespace, must close with ]]), _call_openrouter (mistral-small-3.2 via OpenRouter, 16-token max, fail-soft on network/JSON/key errors), _precedence_gate (skips LLM when no other unreads; YES-prefixed case-insensitive response required to elevate; any exception → False), and integration into _build_reply_first_guidance (lifts elevated items into '## Escalated (preface precedence gate → YES)' section at top, removes them from the regular blocking/non-blocking listings). Tests cover all four acceptance criteria: preface accept/reject, gate YES/NO/empty/exception and prompt well-formedness, ambiguous prefaces still invoking the gate, fallback-when-gate-declines. 100% coverage in package isolation verified. Will close with PR reference once auto-pr merges."  # 61b0
+- op: update  # 49b6
+  at: '2026-04-17T18:21:47Z'  # 49b6
+  by: agent  # 49b6
+  actor: jgstern_agent  # 49b6
+  clock: 4  # 49b6
+  nonce: 49b6  # 49b6
+  set:  # 49b6
+    status: done  # 49b6
+    pr_ref: '3122'  # 49b6
+- op: discuss  # 4b40
+  at: '2026-04-17T18:21:47Z'  # 4b40
+  by: agent  # 4b40
+  actor: jgstern_agent  # 4b40
+  clock: 5  # 4b40
+  nonce: 4b40  # 4b40
+  message: "Closed as done: Phase 2 shipped in PR #3122 (merged to dev). All four acceptance criteria from the item description met: (1) [[preface]] detector anchored at char 0 with no-whitespace / must-close rules, single codepath regardless of tag semantics; (2) LLM-mediated precedence gate via OpenRouter that fires only when other unreads exist; (3) fallback to Phase 1 equal-priority listing when gate declines or fails; (4) tests for accept/reject, gate YES/NO/empty/exception, prompt well-formedness, ambiguous-preface still invokes gate, fallback-when-gate-declines. OpenRouter network access remains covered by existing ALLOWED_WEBSITES.md entry. No governance file changes were required — all logic lives in stop_hook.py."  # 4b40

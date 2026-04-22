@@ -1,0 +1,83 @@
+- op: create  # 2427
+  at: '2026-04-16T19:17:38Z'  # 2427
+  by: agent  # 2427
+  actor: jgstern_agent  # 2427
+  clock: 1  # 2427
+  nonce: '2427'  # 2427
+  data:  # 2427
+    kind: work_item  # 2427
+    title: "Jackson/JavaBean serialization linker: link @JsonProperty + getX/setX accessors to their JSON serialization call-sites"  # 2427
+    status: todo_soft  # 2427
+    priority: 2  # 2427
+    parent:  # 2427
+    tags:  # 2427
+    - cross_language_linkers  # 2427
+    - analysis_quality  # 2427
+    isbefore: []  # 2427
+    duplicate_of: []  # 2427
+    not_duplicate_of: []  # 2427
+    pr_ref:  # 2427
+    description: "WI-tubot aggregate-v5 analysis (2026-04-16): java_bean_accessor is the #1 category after uncategorized — 7614 candidates (8.3% of the 92218-candidate pool). Top samples (FetchSession.isEmpty, ReplicaManager.getLog, MyUserHandler.getUser, etc.) are bean-convention accessors dispatched via Jackson/Gson/JavaBeans reflection: ObjectMapper.writeValueAsString(obj) calls the getters reflectively at serialization time, so static call-graph analysis sees them as dead.\n\nScope: create or extend a linker (possibly within annotation_convention.py, or a new jackson_dispatch.py) that:\n1. Recognises JavaBean getter/setter patterns (getX/setX, isX, Kotlin data-class accessors, Scala case-class accessors)\n2. Links them to ObjectMapper-style serialization call-sites in the same repo via 'dispatches_to' / 'serializes_via' edges\n3. For types annotated with @JsonProperty / @XmlElement / @Field / Spring @ConfigurationProperties / Jackson @JsonCreator, emits the annotation as positive evidence\n\nCross-language relevance: these Java bean fields become JSON keys that TS/JS/Python clients consume. Together with existing openapi.py linker, this closes the serialization boundary gap.\n\nAcceptance: a re-run of dead-code-prospector on the 2026-04-11 corpus shows java_bean_accessor drops below 3000 (60% reduction) without false-negative regressions.\n\nParent: INV-miloj-tagum-garuk-jataf-lupas-ligis-gazaz-pimon is a closely related umbrella (URL extraction folding), but this item is for serialization dispatch — a sibling invariant space. Not parenting under INV-miloj because they're adjacent, not nested."  # 2427
+    fields: {}  # 2427
+- op: discuss  # efa4
+  at: '2026-04-16T19:36:00Z'  # efa4
+  by: agent  # efa4
+  actor: jgstern_agent  # efa4
+  clock: 2  # efa4
+  nonce: efa4  # efa4
+  message: "Clarification on cross-languageness: the phrase 'cross-language via OpenAPI/JSON boundary' in the original description overstated this item's scope. The linker itself operates entirely within Java/Kotlin/Scala source — it recovers dispatch edges that reflection/Jackson/Gson inject at runtime. The cross-language consequence (serialized JSON is parsed by downstream TS/Python/Ruby clients) is real but downstream of the linker; it's what existing openapi.py / http.py already connect.\n\nCorrect framing: this is a within-language framework-dispatch linker for Java serialization reflection. Cross-language benefit follows naturally when paired with the existing OpenAPI/REST linkers, but the edge this item adds is Java-internal."  # efa4
+- op: update  # fdbb
+  at: '2026-04-17T01:16:11Z'  # fdbb
+  by: agent  # fdbb
+  actor: jgstern_agent  # fdbb
+  clock: 3  # fdbb
+  nonce: fdbb  # fdbb
+  set: {}  # fdbb
+  remove:  # fdbb
+    tags: [cross_language_linkers]  # fdbb
+- op: discuss  # aeb0
+  at: '2026-04-17T01:17:40Z'  # aeb0
+  by: agent  # aeb0
+  actor: jgstern_agent  # aeb0
+  clock: 4  # aeb0
+  nonce: aeb0  # aeb0
+  message: "Tag cleanup (2026-04-17): removed `cross_language_linkers` tag. Per the 2026-04-16 discussion clarification above and ADR-0003-ext, this is a **Framework-subcategory** linker (Java/Kotlin/Scala internal framework dispatch via Jackson reflection). The cross-language consequence (serialized JSON is parsed by downstream TS/Python/Ruby clients) is downstream of the linker; the existing `openapi.py` / `http.py` already connect the boundary. Keeping `analysis_quality` tag."  # aeb0
+- op: update  # 6447
+  at: '2026-04-17T02:54:16Z'  # 6447
+  by: agent  # 6447
+  actor: jgstern_agent  # 6447
+  clock: 5  # 6447
+  nonce: '6447'  # 6447
+  set:  # 6447
+    priority: 3  # 6447
+- op: discuss  # 8937
+  at: '2026-04-17T02:54:16Z'  # 8937
+  by: agent  # 8937
+  actor: jgstern_agent  # 8937
+  clock: 6  # 8937
+  nonce: '8937'  # 8937
+  message: "pf-prelim pivot: Java-only linker, pf-prelim has no Java. Deferred P2→P3."  # 8937
+- op: update  # e45d
+  at: '2026-04-19T02:20:01Z'  # e45d
+  by: agent  # e45d
+  actor: jgstern_agent  # e45d
+  clock: 7  # e45d
+  nonce: e45d  # e45d
+  set:  # e45d
+    status: done  # e45d
+- op: discuss  # 3b94
+  at: '2026-04-19T02:20:01Z'  # 3b94
+  by: agent  # 3b94
+  actor: jgstern_agent  # 3b94
+  clock: 8  # 3b94
+  nonce: 3b94  # 3b94
+  message: "Fixed in PR #3172 (commit 25b29077d). New linker hypergumbo_core.linkers.jackson_dispatch emits dispatches_to edges from Java/Kotlin/Scala classes the Jackson/JAX-B/Spring-binding runtime will reflect over to each of their bean-convention accessors (getX/setX/isX) and method-level-annotated handlers. Detection covers class-level Jackson/JAX-B/Spring annotations, ConfigurationProperties-family base classes, and any class with a method-level Jackson annotation (JsonProperty, JsonGetter, JsonSetter, JsonCreator, JsonValue, JsonAnyGetter, JsonAnySetter, JsonRawValue). 69 new tests. Acceptance criterion (60% reduction in java_bean_accessor dead-code-maybe candidates) requires a dead-code-prospector re-run on the 2026-04-11 corpus — not done yet; can re-open if follow-up validation shows the drop is insufficient."  # 3b94
+- op: update  # 298f
+  at: '2026-04-19T07:52:03Z'  # 298f
+  by: agent  # 298f
+  actor: jgstern_agent  # 298f
+  clock: 9  # 298f
+  nonce: 298f  # 298f
+  set: {}  # 298f
+  add:  # 298f
+    tags: [awaits_bakeoff_validation]  # 298f

@@ -1,0 +1,50 @@
+- op: create  # f93a
+  at: '2026-04-17T03:41:57Z'  # f93a
+  by: agent  # f93a
+  actor: jgstern_agent  # f93a
+  clock: 1  # f93a
+  nonce: f93a  # f93a
+  data:  # f93a
+    kind: work_item  # f93a
+    title: "Create concept-vocabulary registry (docs/CONCEPTS.md or LINKERS.md section) for producer/consumer visibility"  # f93a
+    status: todo_soft  # f93a
+    priority: 4  # f93a
+    parent:  # f93a
+    tags:  # f93a
+    - developer_experience  # f93a
+    - framework_dispatch_linkers  # f93a
+    isbefore: []  # f93a
+    duplicate_of: []  # f93a
+    not_duplicate_of: []  # f93a
+    pr_ref:  # f93a
+    description: "Original motivation of the WI-kuvam audit (orthogonal to the SHAPE_MISMATCH defect itself): there is no single place to see which concept strings YAMLs emit and which linkers consume them. The audit surfaced ~30 INERT_EMIT concepts (YAMLs emit them but no linker consumes — e.g. fastapi's 'dependency'/'background_task'/'request'/'auth'/'security'/'error_handler'/'lifecycle'; django's 'controller'/'serializer'/'form'/'admin'/'event_handler'/'auth_backend'/'permission'/'filter'/'template_tag'/'template_filter'; express's 'auth_strategy'/'websocket_handler'/'websocket_emitter'/'websocket_namespace'/'http_client'; cli's 'option'/'argument'/'entrypoint'/'error'/'output'; celery's 'scheduled_task'/'event_handler'/'configuration').\n\nDeliverable: a concept vocabulary registry that enumerates, per concept string:\n  - Which YAML(s) emit it\n  - Which linker(s) / other consumers read it\n  - Expected shape of the dict emitted (which extra keys populate — 'path', 'method', etc.)\n  - Status: live (≥1 consumer) vs inert (0 consumers, candidate for removal or future linker)\n\nLocation options: docs/CONCEPTS.md (new file), or a section in existing docs/LINKERS.md. Either way, generation should ideally be scripted (grep over YAMLs and linker sources) so the registry stays fresh as new concepts are added.\n\nDeferred from WI-kuvam audit. Blocked by nothing; safe to do in parallel with WI-vogoh/WI-hopij."  # f93a
+    fields: {}  # f93a
+- op: update  # 9e2f
+  at: '2026-04-18T02:08:29Z'  # 9e2f
+  by: agent  # 9e2f
+  actor: jgstern_agent  # 9e2f
+  clock: 2  # 9e2f
+  nonce: 9e2f  # 9e2f
+  set:  # 9e2f
+    status: done  # 9e2f
+- op: discuss  # 924d
+  at: '2026-04-18T02:08:29Z'  # 924d
+  by: agent  # 924d
+  actor: jgstern_agent  # 924d
+  clock: 3  # 924d
+  nonce: 924d  # 924d
+  message: "Implemented scripts/generate-concepts + docs/CONCEPTS.md + tests/test_generate_concepts.py. Branch jgstern-agent/docs/concept-vocabulary commit d1cafd47a. Initial scan: 316 concepts, 6 live / 310 inert / 0 ghost. The large inert pool confirms the WI-kuvam audit's finding that many Framework-linker opportunities are visible in the YAML layer but unwired."  # 924d
+- op: discuss  # 9863
+  at: '2026-04-18T22:09:52Z'  # 9863
+  by: human  # 9863
+  actor: jgstern  # 9863
+  clock: 4  # 9863
+  nonce: '9863'  # 9863
+  message: "so have we done anything about the large inert pool (or do we plan to)?"  # 9863
+- op: discuss  # ce45
+  at: '2026-04-18T22:14:06Z'  # ce45
+  by: agent  # ce45
+  actor: jgstern_agent  # ce45
+  clock: 5  # ce45
+  nonce: ce45  # ce45
+  message: "Status on the inert pool:\n\n**Plan exists**, no implementation yet. **WI-gudob** (P3 todo_soft, created 2026-04-18T02:21Z — 19 min after this registry landed) is the umbrella tracker item for tackling it. Per INV-nimuj, it prioritizes by producer count, which is a direct proxy for false-positive-reduction volume. Top candidates from the current scan:\n\n| Concept | Producers | Candidate linker shape |\n| --- | --- | --- |\n| error_handler | 37 | Protocol — HTTP error-response registration |\n| controller | 34 | Framework — route-group containment |\n| websocket_handler | 21 | Protocol — ws dispatch |\n| event_handler | 17 | Protocol — may overlap with message_dispatch.py |\n| application | 17 | Infrastructure — app-root containment |\n\n**Why no code yet:** WI-gudob is P3; the P2 rust-analyzer SCIP backend chain (WI-bajuz → WI-mafut → WI-duzul) has been consuming the attention budget. WI-bajuz just closed (commit ccf60c39f); WI-mafut is next in P2. No linker PR has landed for any inert concept since this registry was created — the pool is still 310/316, unchanged from the first scan.\n\n**Open question for you:** should WI-gudob be bumped to P2, putting it ahead of the rust-analyzer package scaffold? The trade-off:\n- Bumping it means 1 Protocol linker on the next PR (error_handler or controller → ~30+ frameworks' dispatch edges recovered)\n- Leaving it P3 means the SCIP backend lands first, which unblocks WI-duzul + WI-nokoh (rust-analyzer-package scaffold + descriptor decoder) — a bigger but longer-payoff move\n\nNo status change pending until you weigh in."  # ce45

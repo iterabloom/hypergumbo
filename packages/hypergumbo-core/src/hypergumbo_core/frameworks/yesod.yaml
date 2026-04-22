@@ -1,0 +1,142 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Yesod framework patterns (ADR-0003)
+#
+# Yesod is a Rails-inspired web framework for Haskell. Route registration
+# happens in a Template Haskell quasi-quoter (`parseRoutes`) that hypergumbo
+# can't fully evaluate, so detection falls back to the stable conventions
+# Yesod enforces on handler naming and typeclass membership:
+#
+# - Every route handler is named `<method><Resource>R` with the method
+#   lowercase and the resource capitalized, and has kind=function.
+#   Examples: getHomeR, postUserR, getUserR, deleteUserR, putBookR.
+# - Yesod applications implement the `Yesod` typeclass; subsites
+#   implement `YesodSubsite`.
+# - Route types derive `RenderRoute` / `ParseRoute`.
+# - Convention: quasi-quoter declarations via `mkYesod` or `mkYesodData`.
+#
+# UAT-2026-04-13 BUG-16 flagged the gap on haskellers. WI-vabiv.
+
+id: yesod
+language: haskell
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # mkYesod "App" [parseRoutes| ... |] — declares the route table.
+  # We can't parse the inside of the quasi-quoter without TH evaluation,
+  # but detecting the mkYesod call itself identifies the app root.
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^mkYesod$"
+
+  # mkYesodData for declaring route data type separately
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^mkYesodData$"
+
+  # mkYesodSubData / mkYesodSubDispatch — subsite boundaries
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^(mkYesodSubData|mkYesodSubDispatch)$"
+
+  # parseRoutes quasi-quoter call (some projects use it directly)
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^parseRoutes$"
+
+  # Warp runner — what actually serves the app (common Yesod pattern:
+  # `warpEnv . toWaiAppPlain`, `warp 3000 app`).
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^(warp|warpEnv|warpDebug|warpTLS|toWaiApp|toWaiAppPlain)$"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+
+  # Yesod typeclass instance — marks the app root type
+  - concept: application
+    base_class: "^Yesod$"
+
+  # YesodSubsite / YesodSubDispatch — subsite class memberships
+  - concept: application
+    base_class: "^(YesodSubsite|YesodSubDispatch)$"
+
+  # RenderRoute / ParseRoute — route-type typeclass membership
+  - concept: router
+    base_class: "^(RenderRoute|ParseRoute)$"
+
+  # YesodPersist / YesodAuth / YesodBreadcrumbs — standard mixin typeclasses
+  # covering the common Yesod extension surface
+  - concept: database
+    base_class: "^YesodPersist$"
+
+  - concept: auth
+    base_class: "^YesodAuth$"
+
+  # Handler naming convention — function-kind symbols whose names match
+  # the <method><Resource>R pattern. These ARE the Yesod routes: the
+  # framework's TH-generated dispatcher calls them by name, so the
+  # handler function IS the route entry.
+  #
+  # Notes on HTTP method: Yesod encodes the method in the prefix
+  # (getHomeR → GET /home). The current route materializer applies
+  # the get-prefix convention for GET and do-prefix for POST; other
+  # methods (post/put/delete/patch/head/options) attach the concept
+  # but don't yet materialize a route symbol with an HTTP method.
+  # That's a materializer expansion for a later item — these patterns
+  # still enrich symbols with concept=route so downstream analysis
+  # recognizes them as web-handler entry points.
+  - concept: route
+    symbol_name: "^getR$|^get[A-Z][A-Za-z0-9_']*R$"
+    symbol_kind: "^function$"
+
+  - concept: route
+    symbol_name: "^postR$|^post[A-Z][A-Za-z0-9_']*R$"
+    symbol_kind: "^function$"
+
+  - concept: route
+    symbol_name: "^putR$|^put[A-Z][A-Za-z0-9_']*R$"
+    symbol_kind: "^function$"
+
+  - concept: route
+    symbol_name: "^deleteR$|^delete[A-Z][A-Za-z0-9_']*R$"
+    symbol_kind: "^function$"
+
+  - concept: route
+    symbol_name: "^patchR$|^patch[A-Z][A-Za-z0-9_']*R$"
+    symbol_kind: "^function$"
+
+  - concept: route
+    symbol_name: "^headR$|^head[A-Z][A-Za-z0-9_']*R$"
+    symbol_kind: "^function$"
+
+  - concept: route
+    symbol_name: "^optionsR$|^options[A-Z][A-Za-z0-9_']*R$"
+    symbol_kind: "^function$"
+
+  # Handler type signatures (some projects declare explicit Handler types)
+  - concept: route
+    base_class: "^Handler$"
+
+  # Widgets — Yesod-style reusable UI fragments
+  - concept: component
+    base_class: "^Widget$"
+
+  # Form declarations — YForm / MForm / AForm
+  - concept: form
+    base_class: "^(YForm|MForm|AForm)$"
+
+  # Persistent (database) typeclass — common pairing with Yesod
+  - concept: model
+    base_class: "^PersistEntity$"
+
+  # HandlerFor / HandlerM — Yesod monad type aliases.  Not all projects
+  # use these as base classes, but matching catches the ones that do.
+  - concept: route
+    base_class: "^(HandlerFor|HandlerT|HandlerM)$"
+
+linkers:
+  - http

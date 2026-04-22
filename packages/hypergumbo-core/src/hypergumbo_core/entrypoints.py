@@ -192,6 +192,9 @@ class EntrypointKind(Enum):
     WEBSOCKET_HANDLER = "websocket_handler"  # WebSocket event handler
     MIDDLEWARE_HANDLER = "middleware_handler"  # HTTP middleware handler
     EVENT_HANDLER = "event_handler"  # Event/message handler
+    ERROR_HANDLER = "error_handler"  # HTTP / middleware exception handler
+    FORM = "form"  # Framework-reflected form class (is_valid/save/authorize)
+    SERIALIZER = "serializer"  # Framework-reflected serializer/DTO class (to_representation / dump / toArray)
     SCHEDULED_TASK = "scheduled_task"  # Cron/scheduled job
     # Library entry points (exported API)
     LIBRARY_EXPORT = "library_export"  # Exported function/class (library entry)
@@ -302,6 +305,9 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "websocket_gateway" -> WEBSOCKET_HANDLER (NestJS WebSocket gateway)
     - "middleware" -> MIDDLEWARE_HANDLER (HTTP middleware handler)
     - "event_handler" -> EVENT_HANDLER (event/message handler)
+    - "error_handler" -> ERROR_HANDLER (HTTP / middleware exception handler)
+    - "form" -> FORM (framework-reflected form class)
+    - "serializer" -> SERIALIZER (framework-reflected serializer/DTO class)
     - "command" -> CLI_COMMAND (CLI command handler)
     - "liveview" -> CONTROLLER (Phoenix LiveView - real-time UI)
     - "graphql_resolver" -> GRAPHQL_SERVER (GraphQL resolver)
@@ -470,6 +476,103 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label=label,
                 ))
                 added_kinds.add(EntrypointKind.EVENT_HANDLER)
+
+            # Error handler concept -> ERROR_HANDLER (WI-gudob Phase 1):
+            # HTTP / middleware exception handlers are invoked by the framework
+            # when a route handler raises; the call graph never sees those
+            # invocations, so every decorator-registered error handler
+            # (@app.errorhandler, @app.exception_handler, app.use(errorMid),
+            # rescue_from, #[catch(…)], etc.) looks dead. 37 framework YAML
+            # patterns emit this concept (fastapi, express, django, aspnet,
+            # flask, actix, axum, gin, nestjs, rails, laravel, symfony,
+            # phoenix, akka-http, ktor, vapor, etc.) — per the WI-dajul
+            # concept registry audit it's the #1 inert concept by producer
+            # count. Classifying it as a framework-invoked entrypoint makes
+            # the bodies reachable from dead-code analysis uniformly across
+            # every framework that already emits the concept, without
+            # needing per-framework dispatch logic.
+            elif concept_type == "error_handler":
+                if EntrypointKind.ERROR_HANDLER in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} error handler"
+                else:
+                    label = "Error handler"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.ERROR_HANDLER,
+                    confidence=0.95,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.ERROR_HANDLER)
+
+            # Form concept -> FORM (WI-gudob Phase 4):
+            # Framework-reflected form classes (Django Form/ModelForm,
+            # Flask-WTF FlaskForm, Laminas Form/Fieldset, FuelPHP Fieldset,
+            # CakePHP Form, Laravel FormRequest, Symfony AbstractType, Yii
+            # Model-as-form, Pyramid Colander schemas, Rails Form, Remix /
+            # SvelteKit form-action modules). The framework instantiates the
+            # form class from request data and reflectively calls
+            # is_valid() / save() / authorize() / clean() / rules() — the
+            # class body therefore looks dead to the static call graph even
+            # when wired into a reachable route. Classifying the form class
+            # itself as an entrypoint restores its reachability at class
+            # level; internal method dispatch (form.clean_FIELD / form.save)
+            # is a separate concern deferred to a dispatch-registry follow-
+            # up because each framework names its reflective methods
+            # differently. 12 framework YAML patterns emit this concept per
+            # the WI-dajul concept registry audit (#4 inert by producer
+            # count after Phase-1 error_handler / Phase-2 controller /
+            # Phase-3 router).
+            elif concept_type == "form":
+                if EntrypointKind.FORM in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} form"
+                else:
+                    label = "Form"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.FORM,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.FORM)
+
+            # Serializer concept -> SERIALIZER (WI-gudob Phase 5):
+            # Framework-reflected serializer / DTO classes (Django REST
+            # Framework Serializer / ModelSerializer, Marshmallow Schema and
+            # SQLAlchemySchema, Grape Entity, Laravel JsonResource /
+            # ResourceCollection, Litestar AbstractDTO / DTOData, ...).
+            # The framework instantiates the class from a model / payload
+            # and reflectively calls a serialize-like method
+            # (``to_representation``, ``dump``, ``to_internal_value``,
+            # ``toArray``, ``exposure``) — the class body therefore looks
+            # dead to the static call graph even when wired into a
+            # reachable route. Classifying the serializer class itself as
+            # an entrypoint restores its reachability at class level;
+            # per-method dispatch (``to_representation`` → field methods)
+            # is deferred to a per-framework dispatch-registry follow-up
+            # because each framework names its reflective methods
+            # differently. 9 framework YAML patterns emit this concept
+            # (django, flask, flask-restful, grape, laravel, litestar,
+            # hanami, django-ninja, pyramid per the WI-dajul concept
+            # registry audit) and the producers are uniformly class-level
+            # ``base_class`` matches, so the scope is clean.
+            elif concept_type == "serializer":
+                if EntrypointKind.SERIALIZER in added_kinds:
+                    continue
+                if framework:
+                    label = f"{framework.title()} serializer"
+                else:
+                    label = "Serializer"
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.SERIALIZER,
+                    confidence=0.90,
+                    label=label,
+                ))
+                added_kinds.add(EntrypointKind.SERIALIZER)
 
             # Command concept -> CLI_COMMAND
             elif concept_type == "command":

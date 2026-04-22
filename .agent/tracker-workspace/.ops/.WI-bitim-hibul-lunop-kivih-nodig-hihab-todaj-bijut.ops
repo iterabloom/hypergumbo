@@ -1,0 +1,35 @@
+- op: create  # ce27
+  at: '2026-04-17T05:37:52Z'  # ce27
+  by: agent  # ce27
+  actor: jgstern_agent  # ce27
+  clock: 1  # ce27
+  nonce: ce27  # ce27
+  data:  # ce27
+    kind: work_item  # ce27
+    title: "Update self-analysis-dogfooding-playbook.md: slice --entry examples use stale 'cli:main' shorthand"  # ce27
+    status: todo_soft  # ce27
+    priority: 4  # ce27
+    parent:  # ce27
+    tags:  # ce27
+    - developer_experience  # ce27
+    isbefore: []  # ce27
+    duplicate_of: []  # ce27
+    not_duplicate_of: []  # ce27
+    pr_ref:  # ce27
+    description: "Per dogfooding run 2026-04-17T05:37Z (notebookjournal_04172026_0434.md §'Self-analysis slice/explain findings'): playbook instructs 'hypergumbo slice --entry cli:main' but current CLI errors 'No symbol found matching cli:main'. Two fixes possible: (a) update playbook examples to use --entry main (which works with disambiguation) or full node IDs; (b) implement the cli:main / module:name shorthand in slice entry resolution (separate item WI-pending). This item is just the playbook-update half."  # ce27
+    fields: {}  # ce27
+- op: update  # 6df6
+  at: '2026-04-17T05:58:17Z'  # 6df6
+  by: agent  # 6df6
+  actor: jgstern_agent  # 6df6
+  clock: 2  # 6df6
+  nonce: 6df6  # 6df6
+  set:  # 6df6
+    status: done  # 6df6
+- op: discuss  # c2d9
+  at: '2026-04-17T05:58:17Z'  # c2d9
+  by: agent  # c2d9
+  actor: jgstern_agent  # c2d9
+  clock: 3  # c2d9
+  nonce: c2d9  # c2d9
+  message: "Fixed in commit d26d05bf9 on dev. Playbook §'Slice validation' now lists the five supported entry forms per slice.py docstring, and the examples use tested working forms: --entry hypergumbo_core/cli.py (path-suffix, 531 nodes / 858 edges on dev @ 3c9bcc7c9) and --entry link_middleware_chain (exact name, 10 nodes / 9 edges). Also added an explicit note that no module:name shorthand exists, linking to WI-hogun for the feature request."  # c2d9

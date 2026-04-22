@@ -92,6 +92,7 @@ jobs:
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
+                        -e packages/hypergumbo-lang-rust-analyzer \
                         -e packages/hypergumbo-tracker
           else
             pip install -e .[dev]
@@ -328,6 +329,7 @@ jobs:
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
+                        -e packages/hypergumbo-lang-rust-analyzer \
                         -e "packages/hypergumbo-tracker[dev,tui]" \
                         -e packages/hypergumbo
           else
@@ -350,7 +352,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           if [ -d "packages/hypergumbo-core" ]; then
-            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-tracker/src"
+            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-lang-rust-analyzer/src --cov=packages/hypergumbo-tracker/src"
             TEST_PATHS="packages/*/tests/"
           else
             COV_PATHS="--cov=src"
@@ -413,6 +415,14 @@ jobs:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
     steps:
+      # Must run before `actions/download-artifact@v3` (a JS action) —
+      # see the identical note on the test-matrix-retry job in
+      # nightly.yml. Without this, download-artifact fails silently
+      # under continue-on-error, the pass marker never lands, and the
+      # skip-check incorrectly retries every Python version.
+      - name: Install Node.js for JS-based actions
+        run: apt-get update && apt-get install -y nodejs
+
       - name: Download pass marker
         id: check-primary
         uses: actions/download-artifact@v3
@@ -432,10 +442,6 @@ jobs:
             echo "should_skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Install Node.js for JS-based actions
-        if: steps.skip-check.outputs.should_skip != 'true'
-        run: apt-get update && apt-get install -y nodejs
-
       - uses: actions/checkout@v4
         if: steps.skip-check.outputs.should_skip != 'true'
 
@@ -449,6 +455,7 @@ jobs:
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
+                        -e packages/hypergumbo-lang-rust-analyzer \
                         -e "packages/hypergumbo-tracker[dev,tui]" \
                         -e packages/hypergumbo
           else
@@ -474,7 +481,7 @@ jobs:
         if: steps.skip-check.outputs.should_skip != 'true'
         run: |
           if [ -d "packages/hypergumbo-core" ]; then
-            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-tracker/src"
+            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-lang-rust-analyzer/src --cov=packages/hypergumbo-tracker/src"
             TEST_PATHS="packages/*/tests/"
           else
             COV_PATHS="--cov=src"
@@ -526,6 +533,7 @@ jobs:
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
+                        -e packages/hypergumbo-lang-rust-analyzer \
                         -e packages/hypergumbo
           else
             pip install -e .[dev]

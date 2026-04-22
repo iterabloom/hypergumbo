@@ -1,0 +1,35 @@
+- op: create  # cfd9
+  at: '2026-04-16T05:18:30Z'  # cfd9
+  by: agent  # cfd9
+  actor: jgstern_agent  # cfd9
+  clock: 1  # cfd9
+  nonce: cfd9  # cfd9
+  data:  # cfd9
+    kind: work_item  # cfd9
+    title: "Apply is_test_file skip to parse_jvm_dependencies (WI-duhom scope expansion)"  # cfd9
+    status: todo_soft  # cfd9
+    priority: 4  # cfd9
+    parent:  # cfd9
+    tags:  # cfd9
+    - analysis_quality  # cfd9
+    isbefore: []  # cfd9
+    duplicate_of: []  # cfd9
+    not_duplicate_of: []  # cfd9
+    pr_ref:  # cfd9
+    description: "WI-sudug taught us that test-fixture directories can contain build manifests that don't represent the project's real dependencies (detekt test fixtures had package.json with react). WI-duhom's parse_gradle_dependencies and parse_maven_dependencies in jvm_deps.py scan root + immediate subdirectories for build.gradle/build.gradle.kts/pom.xml. If a JVM project has testFixtures/build.gradle or similar at the first directory level, spurious dependencies could be promoted to tier 2 (INTERNAL_DEP) incorrectly.\n\nFix: mirror profile._find_manifest_files — use paths.is_test_file to skip manifest files inside test-fixture directories during the subdirectory scan. Only a few lines in jvm_deps.py._parse_gradle_file and ._parse_pom_file dispatch paths.\n\nLow priority because: (a) jvm_deps only scans depth-1, reducing exposure; (b) JVM test fixtures typically live at src/test/resources/ (depth-3, not scanned); (c) no bakeoff evidence yet that real Kotlin/Java projects are affected."  # cfd9
+    fields: {}  # cfd9
+- op: update  # aa33
+  at: '2026-04-16T06:11:36Z'  # aa33
+  by: agent  # aa33
+  actor: jgstern_agent  # aa33
+  clock: 2  # aa33
+  nonce: aa33  # aa33
+  set:  # aa33
+    status: done  # aa33
+- op: discuss  # 40ee
+  at: '2026-04-16T06:11:37Z'  # 40ee
+  by: agent  # 40ee
+  actor: jgstern_agent  # 40ee
+  clock: 3  # 40ee
+  nonce: 40ee  # 40ee
+  message: "Fixed in PR #3056 (commit 186b4950d). parse_jvm_dependencies (both Gradle and Maven) now skips test-fixture subdirectories via paths.is_test_file. Also added 'testfixtures' to is_test_file's test_dirs set. 3 new tests."  # 40ee

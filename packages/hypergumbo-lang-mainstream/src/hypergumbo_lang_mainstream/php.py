@@ -73,6 +73,25 @@ LARAVEL_HTTP_METHODS = {
     "options": "OPTIONS",
 }
 
+# Laravel resource-route action set. Order matters for stable output.
+# (http_method, path_suffix, action_name)
+LARAVEL_RESOURCE_ACTIONS: tuple[tuple[str, str, str], ...] = (
+    ("GET", "", "index"),
+    ("GET", "/create", "create"),
+    ("POST", "", "store"),
+    ("GET", "/{id}", "show"),
+    ("GET", "/{id}/edit", "edit"),
+    ("PUT", "/{id}", "update"),
+    ("DELETE", "/{id}", "destroy"),
+)
+
+# `Route::apiResource()` excludes the two HTML-form routes: `create` and
+# `edit`. Treating `apiResource` identically to `resource` produces phantom
+# GET /create and GET /{id}/edit endpoints that don't exist (WI-jorim).
+LARAVEL_API_RESOURCE_EXCLUDED_ACTIONS: frozenset[str] = frozenset(
+    {"create", "edit"}
+)
+
 
 def find_php_files(repo_root: Path) -> Iterator[Path]:
     """Yield all PHP files in the repository."""
@@ -350,6 +369,113 @@ def _extract_controller_action(
     return None
 
 
+def _laravel_resource_actions_for(
+    http_method: str,
+    call_node: "tree_sitter.Node",
+    source: bytes,
+) -> set[str]:
+    """Compute the set of REST actions a `Route::resource(...)` call emits.
+
+    Inputs:
+        http_method:  ``"RESOURCE"`` (full 7-action set) or ``"API_RESOURCE"``
+                      (5 actions — drops `create` and `edit`, the HTML-form
+                      routes that don't make sense for an API).
+        call_node:    the ``scoped_call_expression`` for the ``Route::xxx``
+                      call. Used to detect chained ``->except([...])`` /
+                      ``->only([...])`` modifiers, walking up through
+                      ``member_call_expression`` parents.
+        source:       file source bytes, for ``node_text``.
+
+    Behavior:
+        Start with the 7-action default, drop ``{create, edit}`` for
+        API_RESOURCE, then apply ``except`` (drop) and ``only`` (intersect)
+        modifiers walking up the parent chain. Multiple modifiers compose
+        in source-order — the first ``only`` restricts the set, subsequent
+        ``except``/``only`` further refine.
+
+    Why walk parents: Laravel resource registration commonly chains
+    ``Route::apiResource('posts', PostController::class)->except(['destroy'])``
+    where the ``->except`` lives in a ``member_call_expression`` whose
+    ``object`` is the ``scoped_call_expression`` we're processing.
+    """
+    base_actions: set[str] = {action for _, _, action in LARAVEL_RESOURCE_ACTIONS}
+    if http_method == "API_RESOURCE":
+        base_actions -= LARAVEL_API_RESOURCE_EXCLUDED_ACTIONS
+
+    # Walk up through member_call_expression parents collecting modifiers.
+    # PHP tree-sitter chains `expr->method(args)` as
+    #   member_call_expression { object: <expr>, name: method, arguments: ... }
+    # so a chain like A()->b()->c() nests as:
+    #   member_call_expression(name=c, object=
+    #     member_call_expression(name=b, object=A()))
+    cursor = call_node.parent
+    while cursor is not None and cursor.type == "member_call_expression":
+        name_node = cursor.child_by_field_name("name")
+        if name_node is None:  # pragma: no cover - defensive
+            break
+        modifier_name = node_text(name_node, source)
+        if modifier_name in ("except", "only"):
+            actions = _laravel_collect_string_args(cursor, source)
+            if modifier_name == "except":
+                base_actions -= actions
+            else:  # only
+                base_actions &= actions
+        cursor = cursor.parent
+
+    return base_actions
+
+
+def _laravel_collect_string_args(
+    member_call: "tree_sitter.Node",
+    source: bytes,
+) -> set[str]:
+    """Collect string-literal action names from a ``->except(...)`` / ``->only(...)`` call.
+
+    Accepts both forms Laravel allows:
+        ->except('create', 'edit')                 # variadic strings
+        ->except(['create', 'edit'])               # array literal
+
+    Non-string arguments (variables, function calls) are silently skipped —
+    we can't statically resolve them and a partial parse is more useful
+    than refusing to apply any restriction.
+    """
+    args_node = member_call.child_by_field_name("arguments")
+    if args_node is None:  # pragma: no cover - defensive
+        return set()
+
+    actions: set[str] = set()
+    for child in args_node.children:
+        if child.type != "argument":
+            continue
+        for arg_child in child.children:
+            actions.update(_laravel_extract_strings(arg_child, source))
+    return actions
+
+
+def _laravel_extract_strings(
+    node: "tree_sitter.Node", source: bytes,
+) -> set[str]:
+    """Extract every string-literal value reachable in a Laravel modifier arg.
+
+    Handles single-quoted ``string`` nodes (`'foo'`), double-quoted
+    ``encapsed_string`` nodes (`"foo"`), and ``array_creation_expression``
+    nodes containing either form. Recursive over array elements so nested
+    arrays — uncommon but legal — also yield their leaves.
+    """
+    out: set[str] = set()
+    if node.type in ("string", "encapsed_string"):
+        for sc in node.children:
+            if sc.type == "string_content":
+                out.add(node_text(sc, source))
+        return out
+    if node.type == "array_creation_expression":
+        for elem in node.children:
+            if elem.type == "array_element_initializer":
+                for ec in elem.children:
+                    out |= _laravel_extract_strings(ec, source)
+    return out
+
+
 def _extract_laravel_routes(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -391,8 +517,12 @@ def _extract_laravel_routes(
         # HTTP method routes
         if method_name in LARAVEL_HTTP_METHODS:
             http_method = LARAVEL_HTTP_METHODS[method_name]
-        elif method_name in ("resource", "apiresource"):
+        elif method_name == "resource":
             http_method = "RESOURCE"
+        elif method_name == "apiresource":
+            # WI-jorim: differentiate from `resource` so route expansion
+            # below can drop the HTML-form `create` and `edit` actions.
+            http_method = "API_RESOURCE"
         elif method_name == "match":
             http_method = "MATCH"
         elif method_name == "any":
@@ -456,9 +586,10 @@ def _extract_laravel_routes(
         contexts.append(ctx)
 
         # Create route Symbol(s) - enables route-handler linking
-        if http_method == "RESOURCE":
-            # Laravel resource creates 7 RESTful routes
-            # Extract controller from second arg for resource routes
+        if http_method in ("RESOURCE", "API_RESOURCE"):
+            # Laravel resource() creates 7 RESTful routes; apiResource()
+            # creates 5 (excludes the HTML-form `create` + `edit`).
+            # `.except()` / `.only()` modifiers further restrict the set.
             controller = None
             if args_node:
                 arg_index = 0
@@ -477,14 +608,14 @@ def _extract_laravel_routes(
                     arg_index += 1
 
             if controller:
+                # Determine which actions to emit (WI-jorim).
+                allowed_actions = _laravel_resource_actions_for(
+                    http_method, node, source,
+                )
                 restful_routes = [
-                    ("GET", normalized_path, "index"),
-                    ("GET", f"{normalized_path}/create", "create"),
-                    ("POST", normalized_path, "store"),
-                    ("GET", f"{normalized_path}/{{id}}", "show"),
-                    ("GET", f"{normalized_path}/{{id}}/edit", "edit"),
-                    ("PUT", f"{normalized_path}/{{id}}", "update"),
-                    ("DELETE", f"{normalized_path}/{{id}}", "destroy"),
+                    (m, f"{normalized_path}{suffix}", action)
+                    for (m, suffix, action) in LARAVEL_RESOURCE_ACTIONS
+                    if action in allowed_actions
                 ]
                 for http_meth, route_pth, action in restful_routes:
                     route_name = f"{http_meth} {route_pth}"

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""ORM query linker for detecting ORM model references in application code.
+"""Framework linker: ORM query for detecting ORM model references in application code.
 
 Detects ORM query patterns in Python source files and creates model_reference
 edges from the enclosing function to the Model symbol. This increases the
@@ -44,6 +44,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
+from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, register_linker
 
 PASS_ID = make_pass_id("orm-linker")
@@ -81,16 +82,12 @@ def _build_model_lookup(symbols: list[Symbol]) -> dict[str, Symbol]:
     """
     lookup: dict[str, Symbol] = {}
     for sym in symbols:
-        if sym.meta is None:
+        if not has_concept(sym, "model"):
             continue
-        concepts = sym.meta.get("concepts", [])
-        for concept in concepts:
-            if isinstance(concept, dict) and concept.get("concept") == "model":
-                # Use short name (last component after any dots)
-                short_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
-                if short_name not in lookup:
-                    lookup[short_name] = sym
-                break
+        # Use short name (last component after any dots)
+        short_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
+        if short_name not in lookup:
+            lookup[short_name] = sym
     return lookup
 
 

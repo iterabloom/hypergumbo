@@ -1,0 +1,38 @@
+- op: create  # 5528
+  at: '2026-04-14T06:05:21Z'  # 5528
+  by: agent  # 5528
+  actor: jgstern_agent  # 5528
+  clock: 1  # 5528
+  nonce: '5528'  # 5528
+  data:  # 5528
+    kind: work_item  # 5528
+    title: "`--require-section` flag is a no-op"  # 5528
+    status: todo_hard  # 5528
+    priority: 2  # 5528
+    parent:  # 5528
+    tags:  # 5528
+    - uat_2026_04_13  # 5528
+    - sketch  # 5528
+    - ergonomics  # 5528
+    isbefore: []  # 5528
+    duplicate_of: []  # 5528
+    not_duplicate_of: []  # 5528
+    pr_ref:  # 5528
+    description: "UAT 2026-04-13 BUG-05: `--require-section` is documented to force inclusion of a named section under budget pressure. UAT tested below natural inclusion threshold and with bogus section names: zero observable effect either way. Either non-functional or silently ignored. Either fix the implementation or remove the flag from the CLI surface and docs."  # 5528
+    fields: {}  # 5528
+- op: update  # 32d5
+  at: '2026-04-14T16:18:09Z'  # 32d5
+  by: agent  # 32d5
+  actor: jgstern_agent  # 32d5
+  clock: 2  # 32d5
+  nonce: 32d5  # 32d5
+  set:  # 32d5
+    status: done  # 32d5
+    pr_ref: '3010'  # 32d5
+- op: discuss  # c117
+  at: '2026-04-14T16:18:09Z'  # c117
+  by: agent  # c117
+  actor: jgstern_agent  # c117
+  clock: 3  # c117
+  nonce: c117  # c117
+  message: "Fixed in PR #3010. Root cause was that the flag was gated by 4 independent budget checks that all needed bypassing for the documented force-inclusion-under-budget semantics: (1) the early-return at max_tokens <= base_tokens, (2) the analysis pass gated on remaining_tokens > 50, (3) _section_ok's 0-threshold still failing at remaining<=0, (4) the final truncate_to_tokens chopping back to budget. All 4 now bypass when require_sections is non-empty — the overflow is accepted as the flag's cost. Verified on alertmanager: at -t 500 --require-section 'Key Symbols' 'Entry Points' now adds both sections; previously identical to no-flag."  # c117

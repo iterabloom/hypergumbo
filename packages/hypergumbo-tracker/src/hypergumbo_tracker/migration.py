@@ -598,7 +598,7 @@ def build_create_op(
         "priority": item.priority,
         "parent": None,
         "tags": item.tags,
-        "before": [],
+        "isbefore": [],
         "duplicate_of": [],
         "not_duplicate_of": [],
         "pr_ref": item.pr_ref,

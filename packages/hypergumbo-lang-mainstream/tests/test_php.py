@@ -907,7 +907,12 @@ Route::resource('photos', PhotoController::class);
         assert resource_ctx.metadata.get("route_path") == "/photos"
 
     def test_extracts_apiresource_route_usage_context(self, tmp_path: Path) -> None:
-        """Extracts UsageContext for Route::apiResource() calls."""
+        """Extracts UsageContext for Route::apiResource() with API_RESOURCE method.
+
+        WI-jorim: apiResource produces 5 routes (no /create, no /{id}/edit
+        HTML-form routes). Marking it API_RESOURCE here lets the route-
+        expansion logic distinguish it from the 7-action `resource` form.
+        """
         from hypergumbo_lang_mainstream.php import analyze_php
 
         routes_file = tmp_path / "web.php"
@@ -921,7 +926,7 @@ Route::apiResource('posts', PostController::class);
             (c for c in result.usage_contexts if c.context_name == "apiresource"), None
         )
         assert api_ctx is not None
-        assert api_ctx.metadata.get("http_method") == "RESOURCE"
+        assert api_ctx.metadata.get("http_method") == "API_RESOURCE"
 
     def test_extracts_any_route_usage_context(self, tmp_path: Path) -> None:
         """Extracts UsageContext for Route::any() calls."""
@@ -1086,6 +1091,172 @@ Route::resource('photos', PhotoController::class);
         assert "PhotoController@edit" in routes_by_action
         assert "PhotoController@update" in routes_by_action
         assert "PhotoController@destroy" in routes_by_action
+
+
+class TestLaravelApiResourceAndModifiers:
+    """WI-jorim: apiResource excludes HTML-form routes; .except()/.only() filter actions.
+
+    The historical bug: apiResource() was treated identically to resource(),
+    producing phantom GET /create and GET /{id}/edit endpoints. On koel, this
+    contributed 40 phantom routes (~19% of 207 total). .except() / .only()
+    modifiers were also silently ignored, so calls like
+        Route::resource('users', UserController::class)->except(['create'])
+    still emitted the create route.
+
+    Each test below reproduces a specific shape from real Laravel apps.
+    """
+
+    def test_apiresource_emits_five_routes_no_create_no_edit(
+        self, tmp_path: Path,
+    ) -> None:
+        """`Route::apiResource` produces 5 routes, dropping create + edit."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "api.php").write_text("""<?php
+Route::apiResource('posts', PostController::class);
+?>""")
+
+        result = analyze_php(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        assert len(route_symbols) == 5
+        actions = {s.meta["controller_action"] for s in route_symbols}
+        assert actions == {
+            "PostController@index",
+            "PostController@store",
+            "PostController@show",
+            "PostController@update",
+            "PostController@destroy",
+        }
+        # Defensive: the dropped two MUST NOT appear
+        assert "PostController@create" not in actions
+        assert "PostController@edit" not in actions
+
+    def test_resource_with_except_drops_listed_actions(self, tmp_path: Path) -> None:
+        """`->except(['create'])` removes one action from the 7-route default."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "web.php").write_text("""<?php
+Route::resource('users', UserController::class)->except(['create']);
+?>""")
+
+        result = analyze_php(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        actions = {s.meta["controller_action"] for s in route_symbols}
+        assert "UserController@create" not in actions
+        # Other 6 still present
+        assert len(route_symbols) == 6
+        assert "UserController@index" in actions
+        assert "UserController@edit" in actions
+
+    def test_resource_with_except_variadic_strings(self, tmp_path: Path) -> None:
+        """`->except('create', 'edit')` accepts variadic strings, not just an array."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "web.php").write_text("""<?php
+Route::resource('books', BookController::class)->except('create', 'edit');
+?>""")
+
+        result = analyze_php(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        actions = {s.meta["controller_action"] for s in route_symbols}
+        assert len(route_symbols) == 5
+        assert "BookController@create" not in actions
+        assert "BookController@edit" not in actions
+
+    def test_resource_with_only_intersects(self, tmp_path: Path) -> None:
+        """`->only(['index', 'show'])` restricts to exactly those actions."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "web.php").write_text("""<?php
+Route::resource('reports', ReportController::class)->only(['index', 'show']);
+?>""")
+
+        result = analyze_php(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        actions = {s.meta["controller_action"] for s in route_symbols}
+        assert actions == {
+            "ReportController@index",
+            "ReportController@show",
+        }
+
+    def test_apiresource_with_except_composes(self, tmp_path: Path) -> None:
+        """API resource (5 actions) further restricted by ->except — 4 routes."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "api.php").write_text("""<?php
+Route::apiResource('comments', CommentController::class)->except(['destroy']);
+?>""")
+
+        result = analyze_php(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        actions = {s.meta["controller_action"] for s in route_symbols}
+        assert actions == {
+            "CommentController@index",
+            "CommentController@store",
+            "CommentController@show",
+            "CommentController@update",
+        }
+
+    def test_resource_only_then_except_composes_in_order(
+        self, tmp_path: Path,
+    ) -> None:
+        """`only` first, then `except` — the second further refines."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "web.php").write_text("""<?php
+Route::resource('logs', LogController::class)->only(['index', 'show', 'destroy'])->except(['destroy']);
+?>""")
+
+        result = analyze_php(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        actions = {s.meta["controller_action"] for s in route_symbols}
+        assert actions == {
+            "LogController@index",
+            "LogController@show",
+        }
+
+    def test_resource_with_unparseable_args_falls_back_to_default(
+        self, tmp_path: Path,
+    ) -> None:
+        """`->except($actions)` with a variable arg can't be statically resolved.
+
+        The except call yields no static strings, so no actions are removed
+        and the full 7-route set is emitted. This is preferable to refusing
+        to emit anything; partial information is more useful than none.
+        """
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "web.php").write_text("""<?php
+$excluded = ['create'];
+Route::resource('items', ItemController::class)->except($excluded);
+?>""")
+
+        result = analyze_php(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        # Variable arg → no static string actions → no removal
+        assert len(route_symbols) == 7
+
+    def test_resource_with_unrelated_modifier_does_not_filter(
+        self, tmp_path: Path,
+    ) -> None:
+        """Chained modifiers like `->name(...)` are not except/only — must NOT filter."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "web.php").write_text("""<?php
+Route::resource('tags', TagController::class)->name('tags');
+?>""")
+
+        result = analyze_php(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        assert len(route_symbols) == 7
 
 
 class TestPhpInheritanceEdges:

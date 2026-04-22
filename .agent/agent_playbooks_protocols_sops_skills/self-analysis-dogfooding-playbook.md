@@ -109,20 +109,29 @@ If any of these categories are missing, the Python IO catalog or call-graph trac
 
 ### Slice validation
 
-Pick a known entry point and verify the slice captures its actual dependencies:
+Pick a known entry point and verify the slice captures its actual dependencies. `--entry` supports these forms (in precedence order; see `slice.py` docstring):
+
+1. Exact node ID (most specific): `python:/abs/path/to/file.py:span:name:kind`
+2. Exact file path
+3. Path suffix match — `hypergumbo_core/cli.py` matches the absolute path ending with it
+4. Exact symbol name
+5. Partial name match (contains)
+
+There is **no `module:name` shorthand**. If the form is ambiguous (e.g. `main` matches multiple symbols in different files) the error lists each candidate's full node ID so you can copy one.
 
 ```bash
-# Slice from the main CLI entry point
-hypergumbo slice --entry cli:main
+# Slice the CLI via path-suffix match (tested 2026-04-17)
+hypergumbo slice --entry hypergumbo_core/cli.py
+# → 531 nodes / 858 edges on hypergumbo dev @ 3c9bcc7c9
 
-# Slice from a specific analyzer
-hypergumbo slice --entry py:analyze
+# Slice from a single named symbol
+hypergumbo slice --entry link_middleware_chain
 
 # Reverse slice: what calls Symbol?
 hypergumbo slice --entry Symbol --reverse
 ```
 
-**Check:** Does the forward slice from `cli:main` include `sketch.py`, `slice.py`, `ir.py`, and the analyzer modules? If major dependencies are missing, the call graph has gaps.
+**Check:** Does the forward slice from `hypergumbo_core/cli.py` include `sketch.py`, `slice.py`, `ir.py`, and the analyzer modules? If major dependencies are missing, the call graph has gaps.
 
 ### Explain validation
 
@@ -130,7 +139,7 @@ hypergumbo slice --entry Symbol --reverse
 # Who calls Symbol? (should be many analyzers)
 hypergumbo explain Symbol
 
-# What does cli.main call? (should be run/sketch/slice commands)
+# What does main call? (main is ambiguous, prompts for disambiguation)
 hypergumbo explain main --with-source -x
 ```
 

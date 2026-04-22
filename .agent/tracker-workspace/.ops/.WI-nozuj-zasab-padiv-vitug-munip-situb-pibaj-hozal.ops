@@ -1,0 +1,50 @@
+- op: create  # 8da3
+  at: '2026-04-15T18:54:31Z'  # 8da3
+  by: agent  # 8da3
+  actor: jgstern_agent  # 8da3
+  clock: 1  # 8da3
+  nonce: 8da3  # 8da3
+  data:  # 8da3
+    kind: work_item  # 8da3
+    title: "Better agentic guidance: Monitor + long-running tools (vendor-agnostic)"  # 8da3
+    status: needs_human_review  # 8da3
+    priority: 3  # 8da3
+    parent:  # 8da3
+    tags:  # 8da3
+    - developer_experience  # 8da3
+    - agent_infrastructure  # 8da3
+    isbefore: []  # 8da3
+    duplicate_of: []  # 8da3
+    not_duplicate_of: []  # 8da3
+    pr_ref:  # 8da3
+    description: "Today's session surfaced a recurring pattern: agent watches an auto-pr (or pytest, bakeoff, etc.) via the Monitor harness tool with timeout_ms=2400000, the Monitor times out before the underlying work completes, and the agent then either (a) over-margins a ScheduleWakeup ('20 min') and leaves merged PRs sitting unactioned for ~10 min or (b) under-margins and never re-arms, missing the completion entirely. The actual work is unaffected by Monitor timeout because auto-pr was started via a separate Bash run_in_background (which DOES emit its own completion notification), but the agent's mental model conflates the two channels. \\n\\nGoal: codify guidance — playbook or hook — that helps any agent (Claude Code today, OpenAI/Cursor/etc. tomorrow) reason correctly about: (1) when Monitor is appropriate vs. just relying on the background-task completion notification; (2) how to size Monitor timeouts relative to expected wall-clock; (3) when to re-arm vs. switch to one-shot status checks; (4) how to set ScheduleWakeup intervals tight enough to act on completion without over-polling. The guidance must be vendor-agnostic — describe the *pattern* (foreground watcher streams events; background command emits one completion event) rather than the specific Monitor/run_in_background tool names.\\n\\nPlausible deliverables: a new playbook .agent/agent_playbooks_protocols_sops_skills/long-running-task-monitoring.md, a hook summary registration, an essentialization in AGENTS.md. Possibly tighten auto-pr's own behavior (e.g., emit progress lines that are easier to grep) so Monitor filters don't go silent for long stretches.\\n\\nNeeds human review before implementation: governance files (.agent/hooks, AGENTS.md, scripts/auto-pr) are touched.\\n\\nOriginating discussion: 2026-04-15 session, after the agent set ScheduleWakeup for 1200s when smart-test finished in ~570s, leaving the user waiting ~10 min unnecessarily; user asked 'what happens if your Monitor tool wakes up and the thing still isn't done?' and 'eg what if you set it for 10 minutes but it needs 11 minutes' to surface the gap."  # 8da3
+    fields: {}  # 8da3
+- op: discuss  # 535a
+  at: '2026-04-19T00:37:56Z'  # 535a
+  by: human  # 535a
+  actor: jgstern  # 535a
+  clock: 2  # 535a
+  nonce: 535a  # 535a
+  message: "I think we (at least partially) already addressed this in a different tracker item and it did involve making tightening the stop logic behavior. I think the concerns raised here might be obviated by the Moitor being event-driven in that it still can finish sooner than its pre-providided duration if the thing it's monitoring sends a recognizable message. We might be able to `wont_do` this; what do you think?"  # 535a
+- op: discuss  # 14b3
+  at: '2026-04-19T02:05:23Z'  # 14b3
+  by: agent  # 14b3
+  actor: jgstern_agent  # 14b3
+  clock: 3  # 14b3
+  nonce: 14b3  # 14b3
+  message: "Concur with wont_do. You are right that the original concern is largely obviated: (1) Monitor is already event-driven — once the filter's grep alternation matches a terminal line (merged/FAIL/Error/TIMEOUT/Recovery), the monitor fires immediately regardless of how much of the declared timeout_ms remains, so the over-margin failure mode (leaving merged PRs sitting unactioned) doesn't apply when the filter is well-formed. (2) The under-margin concern is partly addressed by output-capture-long-running-playbook (the 'Coverage — silence is not success' section) which is the live rule on monitor filter width. (3) The auto-pr-specific silence-on-Recovery gap that motivated this item was partially closed by the same playbook adding the Recovery: alternation to the recommended auto-pr monitor filter. What remains unaddressed: no playbook-level guidance on when to PREFER Monitor over the run_in_background completion notification, and no guidance on choosing timeout_ms vs ScheduleWakeup delaySeconds relative to expected wall-clock. These are real but minor — cost of current state is occasional 5-10 min idle rather than work lost. I'd rather re-file a narrower follow-up if a specific pain point recurs than keep this broad item live. Updating status to wont_do. (Note: reply was posted earlier tonight but lost by auto-pr's rebase-restore of .ops backups — WI-buhov hazard; re-posting verbatim.)"  # 14b3
+- op: update  # aeaf
+  at: '2026-04-19T02:05:47Z'  # aeaf
+  by: agent  # aeaf
+  actor: jgstern_agent  # aeaf
+  clock: 4  # aeaf
+  nonce: aeaf  # aeaf
+  set:  # aeaf
+    status: wont_do  # aeaf
+- op: discuss  # cdeb
+  at: '2026-04-19T02:05:47Z'  # cdeb
+  by: agent  # cdeb
+  actor: jgstern_agent  # cdeb
+  clock: 5  # cdeb
+  nonce: cdeb  # cdeb
+  message: "Re-closing. Re-post verifies Monitor is event-driven (fires on terminal-state grep match regardless of declared timeout); output-capture-long-running-playbook already covers filter-width and Recovery alternation. Remaining prefer-Monitor-vs-run_in_background guidance can be re-filed narrower if a specific pain point recurs."  # cdeb

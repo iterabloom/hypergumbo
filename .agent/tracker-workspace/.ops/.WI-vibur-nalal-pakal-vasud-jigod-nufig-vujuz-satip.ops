@@ -1,0 +1,37 @@
+- op: create  # 7d32
+  at: '2026-04-14T06:05:25Z'  # 7d32
+  by: agent  # 7d32
+  actor: jgstern_agent  # 7d32
+  clock: 1  # 7d32
+  nonce: 7d32  # 7d32
+  data:  # 7d32
+    kind: work_item  # 7d32
+    title: "io-boundaries: Elixir I/O primitive catalog"  # 7d32
+    status: todo_soft  # 7d32
+    priority: 2  # 7d32
+    parent:  # 7d32
+    tags:  # 7d32
+    - uat_2026_04_13  # 7d32
+    - io-boundary  # 7d32
+    - language_additions  # 7d32
+    isbefore: []  # 7d32
+    duplicate_of: []  # 7d32
+    not_duplicate_of: []  # 7d32
+    pr_ref:  # 7d32
+    description: "UAT 2026-04-13 BUG-09b: io-boundaries returns 0 boundaries on plausible (Phoenix/Ecto). Add Elixir primitives: `File.*`, `HTTPoison`, `Tesla`, `Req`, `Ecto.Repo.*` (db_read/db_write), `:gen_tcp`, `Logger`, `System.cmd`. Phoenix routing is already detected — io-boundaries should match scope."  # 7d32
+    fields: {}  # 7d32
+- op: update  # c18b
+  at: '2026-04-15T12:48:09Z'  # c18b
+  by: agent  # c18b
+  actor: jgstern_agent  # c18b
+  clock: 2  # c18b
+  nonce: c18b  # c18b
+  set:  # c18b
+    status: done  # c18b
+- op: discuss  # f336
+  at: '2026-04-15T12:48:09Z'  # f336
+  by: agent  # f336
+  actor: jgstern_agent  # f336
+  clock: 3  # f336
+  nonce: f336  # f336
+  message: "Fixed in WIP PR. New io_primitives/elixir.yaml covering File/IO/System/Logger stdlib, HTTPoison/Tesla/Req/Finch/Mint clients, Phoenix Router+Controller+Channel+Endpoint, Plug.Conn, Ecto.Repo/Multi + Postgrex/MyXQL/Redix, GenServer/Process/Oban/Task. elixir→erlang added to _CATALOG_PARENTS so atom-access paths (:gen_tcp, :file, :ets) still matched. 2 tests verify Erlang-parent merge + boundary-kind breadth (fs_read, fs_write, net_send, net_recv, logging, db_read, db_write, subprocess, env_read, ipc_send)."  # f336

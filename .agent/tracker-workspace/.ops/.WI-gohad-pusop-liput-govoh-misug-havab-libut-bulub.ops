@@ -44,3 +44,12 @@
   clock: 4  # e606
   nonce: e606  # e606
   message: "Validation bakeoff complete (2026-04-11, PARTIAL PASS). Alertmanager doesn't actually use cobra (it uses alecthomas/kingpin), so the original alertmanager validation target is moot — the 'cobra_cli_dispatch' category in the WI-juhov triage was a categorizer misclassification. Validated instead on buildah (79MB, uses spf13/cobra with 5 named RunE handlers: tagCmd, renameCmd, umountCmd, unshareCmd, dumpBoltCmd). Result: only 1/5 handlers (umountCmd) received a go-cobra-linker-v1 dispatches_to edge and was removed from the dead list; the other 4 (tagCmd, renameCmd, unshareCmd, dumpBoltCmd) remained in the dead-code candidate list. Root cause: umountCmd is defined inside an init() function (`func init() { cobra.Command{RunE: umountCmd} }`) while the other 4 use the more common `var tagCommand = &cobra.Command{RunE: tagCmd}` package-level var pattern — the linker's regex anchor only fires for in-function literals. Additionally the 1 edge that was emitted had the wrong src (Builder.Mount in buildah/mount.go instead of init in cmd/buildah/umount.go), pointing to an enclosing-function-lookup bug that picked the nearest function across files. Filed follow-up: WI-lihih-putuz-rilur-nazir-pakus-fasih-farat-tubij (todo_soft, P3) to fix both gaps. WI-gohad is technically shipped and works for inline cobra.Command literals, but effective coverage on real cobra-heavy repos is very limited until the follow-up lands."  # e606
+- op: update  # 8ae5
+  at: '2026-04-19T07:52:02Z'  # 8ae5
+  by: agent  # 8ae5
+  actor: jgstern_agent  # 8ae5
+  clock: 5  # 8ae5
+  nonce: 8ae5  # 8ae5
+  set: {}  # 8ae5
+  add:  # 8ae5
+    tags: [awaits_bakeoff_validation]  # 8ae5

@@ -29,6 +29,7 @@ slice.*.json
 **/.cursor/state/
 **/*-session/
 AUTONOMOUS_MODE.txt
+autonomous_intent.txt
 .agent/LOOP
 .agent/disabled.LOOP
 .agent/invariant-ledger.md

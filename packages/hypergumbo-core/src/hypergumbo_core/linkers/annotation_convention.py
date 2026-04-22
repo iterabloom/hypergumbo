@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Annotation convention linker for developer-provided pub/sub and dispatch hints.
+"""Protocol linker: annotation convention for developer-provided pub/sub and dispatch hints.
 
 Scans source files for ``@hg:`` comment directives and creates edges for
 pub/sub relationships, route declarations, and dispatch patterns that

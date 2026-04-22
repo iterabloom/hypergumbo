@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WebSocket linker for detecting WebSocket communication patterns.
+"""Protocol linker: WebSocket for detecting WebSocket communication patterns.
 
 This linker detects WebSocket patterns in JavaScript/TypeScript and Python code
 and creates message_send and message_receive edges for WebSocket-based communication.

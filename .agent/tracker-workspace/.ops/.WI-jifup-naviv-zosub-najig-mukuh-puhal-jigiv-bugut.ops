@@ -18,3 +18,54 @@
     pr_ref:  # a955
     description: "WI-vubad validation on airflow (2026-04-11) showed the openapi-gen regex is applied correctly but ~10% of symbols from flagged-generated files still appear in the dead-code candidate list. Concrete residual: 57 candidates in /openapi-gen/ paths (down from 599 pre-fix), all from 4 file types — CancelablePromise.ts, request.ts, OpenAPI.ts, ApiError.ts — across 3 copies of the openapi-gen tree in airflow. Symbol names leaking through: path, process, append, headers, encodePair, getUrl, onCancel, onReject, onResolve, CancelablePromise.{then,catch,cancel,finally,constructor}, Interceptors.{constructor,eject,use}, ApiError.constructor, CancelError.constructor. The file-level is_generated flag IS flipping (90% of candidates correctly dropped), but something about how hypergumbo extracts and tier-classifies individual symbols from these 4 file types leaves a subset exposed. Likely cause: tier demotion cascades at file level but symbol records carry an earlier tier snapshot, or the TS analyzer extracts certain symbol shapes (arrow functions, class method exports) via a code path that bypasses the file-level metadata. Investigate in js_ts.py symbol extraction and supply_chain.py tier propagation. Low priority because bulk effect (90% drop) already delivered; this is the residual long tail."  # a955
     fields: {}  # a955
+- op: update  # b855
+  at: '2026-04-14T05:17:55Z'  # b855
+  by: agent  # b855
+  actor: jgstern_agent  # b855
+  clock: 2  # b855
+  nonce: b855  # b855
+  set:  # b855
+    priority: 3  # b855
+- op: discuss  # 1fa1
+  at: '2026-04-14T05:17:55Z'  # 1fa1
+  by: agent  # 1fa1
+  actor: jgstern_agent  # 1fa1
+  clock: 3  # 1fa1
+  nonce: 1fa1  # 1fa1
+  message: "Bump P4->P3: quantified residual (57 candidates leaking, all from 4 file types in openapi-gen). Directly affects dead-code precision, which UAT 2.6.0 round 05 flagged as 93-100% FP rate."  # 1fa1
+- op: discuss  # 5342
+  at: '2026-04-16T10:37:28Z'  # 5342
+  by: agent  # 5342
+  actor: jgstern_agent  # 5342
+  clock: 4  # 5342
+  nonce: '5342'  # 5342
+  message: "Merged as PR #3059, dev SHA bc534adcdf4e."  # 5342
+- op: update  # bc15
+  at: '2026-04-16T10:38:31Z'  # bc15
+  by: agent  # bc15
+  actor: jgstern_agent  # bc15
+  clock: 5  # bc15
+  nonce: bc15  # bc15
+  set:  # bc15
+    status: done  # bc15
+- op: discuss  # 2156
+  at: '2026-04-16T10:38:31Z'  # 2156
+  by: agent  # 2156
+  actor: jgstern_agent  # 2156
+  clock: 6  # 2156
+  nonce: '2156'  # 2156
+  message: "Fixed in PR #3059 (merged to dev at bc534adcd). Root cause: dead-code-maybe never consulted ranking centrality, so WI-vubad/WI-tizij's 95% centrality demotion on generated files didn't apply here. Fix: unconditional filter — any candidate whose supply_chain.is_generated_file is True is dropped before ranking. Closes the 10% residual leak in openapi-gen/ utility files (CancelablePromise, request, OpenAPI, ApiError). Language-agnostic (applies uniformly to Go swagger, Java protoc, Python @generated, TS openapi-gen). No opt-in flag because generated code is never actionable dead code. Removes 'Known limitation' caveat from the WI-tizij/WI-pofin/WI-vubad/WI-sozah changelog entry."  # 2156
+- op: discuss  # 48ae
+  at: '2026-04-16T15:52:55Z'  # 48ae
+  by: human  # 48ae
+  actor: jgstern  # 48ae
+  clock: 7  # 48ae
+  nonce: 48ae  # 48ae
+  message: "\" Removes 'Known limitation' caveat from the WI-tizij/WI-pofin/WI-vubad/WI-sozah changelog entry\" -- did you locate that entry and remove/revise it?"  # 48ae
+- op: discuss  # 805b
+  at: '2026-04-16T16:26:56Z'  # 805b
+  by: agent  # 805b
+  actor: jgstern_agent  # 805b
+  clock: 8  # 805b
+  nonce: 805b  # 805b
+  message: "Confirmed: the caveat was removed in the same commit (bc534adcd, merged to dev). git show bc534adcd -- CHANGELOG.md confirms the original entry line ended with 'Known limitation: ~10% of symbols in TS openapi-gen/ utility files (CancelablePromise.ts, request.ts, OpenAPI.ts, ApiError.ts) bypass file-level demotion (WI-jifup).' That sentence was deleted and replaced with 'Generated code receives 95% centrality penalty, and dead-code-maybe unconditionally drops any candidate whose file is flagged generated (WI-jifup).' A new Fixed-section entry for WI-jifup was also added. Currently visible at CHANGELOG.md lines 17 and 102 on dev. No stale caveats remain."  # 805b

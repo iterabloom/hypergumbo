@@ -1,0 +1,45 @@
+- op: create  # 7896
+  at: '2026-04-20T17:28:46Z'  # 7896
+  by: agent  # 7896
+  actor: jgstern_agent  # 7896
+  clock: 1  # 7896
+  nonce: '7896'  # 7896
+  data:  # 7896
+    kind: work_item  # 7896
+    title: "install-extras umbrella subcommand (installs gitleaks + embeddings + rust-analyzer in one call)"  # 7896
+    status: todo_soft  # 7896
+    priority: 3  # 7896
+    parent:  # 7896
+    tags:  # 7896
+    - developer_experience  # 7896
+    isbefore:  # 7896
+    - WI-dotud-pudit-bajid-dizas-jovop-luluh-voloj-fimog  # 7896
+    duplicate_of: []  # 7896
+    not_duplicate_of: []  # 7896
+    pr_ref:  # 7896
+    description: "Add a 'hypergumbo install-extras' subcommand that installs every optional dependency the core tool can leverage: gitleaks (existing installer), embeddings (existing installer), rust-analyzer (installer tracked by WI-dotud). --check prints a status table (component / installed / action) analogous to what install-gitleaks --check already does but for the full set.\n\nRationale: the 'happy path' onboarding is currently N separate 'hypergumbo install-X' invocations that nobody runs in order. An install-extras umbrella makes the opt-in story discoverable and lets us mention a single command in the README / CONTRIBUTING docs.\n\nSubcommand behaviour:\n- 'hypergumbo install-extras' → run each installer in sequence, print a summary table at the end (installed / already-present / failed). Non-zero exit if any installer fails; still runs the rest.\n- 'hypergumbo install-extras --check' → status table only, no install. Exit 0 iff all components are present; exit 1 otherwise (so scripts can gate on it).\n- 'hypergumbo install-extras --only gitleaks,rust-analyzer' → subset install (also --skip with the same set for the inverse).\n- Include a matching 'uninstall-extras' that mirrors the existing uninstall-gitleaks / uninstall-embeddings subcommands.\n\nBlocked by WI-dotud (install-rust-analyzer): the umbrella enumerates install-rust-analyzer, so the individual command must exist first. Independent of WI-duzul's analyzer scaffold work — install-extras is pure orchestration over the individual installers."  # 7896
+    fields: {}  # 7896
+- op: update  # 3651
+  at: '2026-04-20T17:29:28Z'  # 3651
+  by: agent  # 3651
+  actor: jgstern_agent  # 3651
+  clock: 2  # 3651
+  nonce: '3651'  # 3651
+  set: {}  # 3651
+  remove:  # 3651
+    isbefore: [WI-dotud-pudit-bajid-dizas-jovop-luluh-voloj-fimog]  # 3651
+- op: update  # ae04
+  at: '2026-04-20T19:15:14Z'  # ae04
+  by: agent  # ae04
+  actor: jgstern_agent  # ae04
+  clock: 3  # ae04
+  nonce: ae04  # ae04
+  set:  # ae04
+    status: done  # ae04
+- op: discuss  # 9a49
+  at: '2026-04-20T19:15:14Z'  # 9a49
+  by: agent  # 9a49
+  actor: jgstern_agent  # 9a49
+  clock: 4  # 9a49
+  nonce: 9a49  # 9a49
+  message: "Shipped as PR (merged to dev as e64e0fbb6). install-extras runs gitleaks + embeddings + rust-analyzer installers in one call, skipping already-available components, best-effort on failures. --check prints the status table; --skip excludes components. uninstall-extras mirrors the install path. Component table lives in _extras_components() so adding a fourth optional dep is a one-line change. Thin _install_embeddings_impl / _uninstall_embeddings_impl adapters normalize embeddings to the (quiet=...) -> bool signature the umbrella expects. 19 tests, 100% coverage. Closes the WI-dotud → WI-huham dependency chain."  # 9a49

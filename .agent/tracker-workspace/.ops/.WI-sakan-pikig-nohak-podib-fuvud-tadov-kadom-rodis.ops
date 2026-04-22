@@ -1,0 +1,37 @@
+- op: create  # d55c
+  at: '2026-04-14T06:05:25Z'  # d55c
+  by: agent  # d55c
+  actor: jgstern_agent  # d55c
+  clock: 1  # d55c
+  nonce: d55c  # d55c
+  data:  # d55c
+    kind: work_item  # d55c
+    title: "io-boundaries: Java I/O primitive catalog (real coverage)"  # d55c
+    status: todo_soft  # d55c
+    priority: 2  # d55c
+    parent:  # d55c
+    tags:  # d55c
+    - uat_2026_04_13  # d55c
+    - io-boundary  # d55c
+    - language_additions  # d55c
+    isbefore: []  # d55c
+    duplicate_of: []  # d55c
+    not_duplicate_of: []  # d55c
+    pr_ref:  # d55c
+    description: "UAT 2026-04-13 BUG-09c: spring-petclinic reports 1 io-boundary, and it is a false positive (`List.size()` — see U16/BUG-10). Real coverage needs `java.io.*`, `java.nio.file.Files`, `java.net.URL/HttpURLConnection`, `java.net.http.HttpClient`, `java.sql.*` (db), JDBC, `Runtime.exec`, `ProcessBuilder`, SLF4J/Logback (logging). Must be type-aware to avoid the BUG-10 misclassification class."  # d55c
+    fields: {}  # d55c
+- op: update  # d653
+  at: '2026-04-14T19:15:16Z'  # d653
+  by: agent  # d653
+  actor: jgstern_agent  # d653
+  clock: 2  # d653
+  nonce: d653  # d653
+  set:  # d653
+    status: done  # d653
+- op: discuss  # f7cc
+  at: '2026-04-14T19:15:16Z'  # f7cc
+  by: agent  # f7cc
+  actor: jgstern_agent  # f7cc
+  clock: 3  # f7cc
+  nonce: f7cc  # f7cc
+  message: "Fixed. Java catalog grew from ~136 primitives to 312 via expansion: new db_read/db_write boundaries (JDBC, JPA javax+jakarta, Spring JdbcTemplate+CrudRepository+JpaRepository, Hibernate Session), new logging boundary (SLF4J, Log4j 1.x/2.x, Logback, java.util.logging), net_send additions (Apache HttpClient 4.x+5.x, Spring WebClient, Unirest, Retrofit), fs_read/fs_write additions (Apache Commons IO FileUtils+IOUtils). Kotlin inherits via alias. Did NOT address BUG-10 (List.size vs Files.size — lives in module-hint matching logic, separately tracked as WI-gonav)."  # f7cc

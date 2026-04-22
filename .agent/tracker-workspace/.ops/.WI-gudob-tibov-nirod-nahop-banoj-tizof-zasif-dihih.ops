@@ -1,0 +1,103 @@
+- op: create  # 8d86
+  at: '2026-04-18T02:21:08Z'  # 8d86
+  by: agent  # 8d86
+  actor: jgstern_agent  # 8d86
+  clock: 1  # 8d86
+  nonce: 8d86  # 8d86
+  data:  # 8d86
+    kind: work_item  # 8d86
+    title: "Priority inert-concept linkers: pick top-N from CONCEPTS.md by producer count (INV-nimuj)"  # 8d86
+    status: todo_soft  # 8d86
+    priority: 3  # 8d86
+    parent:  # 8d86
+    tags:  # 8d86
+    - framework_dispatch_linkers  # 8d86
+    - developer_experience  # 8d86
+    isbefore: []  # 8d86
+    duplicate_of: []  # 8d86
+    not_duplicate_of: []  # 8d86
+    pr_ref:  # 8d86
+    description: "The WI-dajul concept vocabulary registry (docs/CONCEPTS.md, PR #3136) revealed 310 inert concepts — concepts that YAML patterns emit onto symbols but no linker consumes. Per INV-nimuj, linker priorities should follow expected false-positive-reduction volume, not novelty. The inert-concept tally is a direct proxy for that volume: how many frameworks produce the concept indicates how many symbol-dispatch gaps exist across the corpus.\n\nTop inert concepts by producer count (scanned 2026-04-18):\n\n| Concept | Producer count | Sample frameworks |\n| --- | --- | --- |\n| error_handler | 37 | fastapi, express, django, aspnet, flask, actix, axum, gin, nestjs, ... |\n| controller | 34 | aspnet, rails, laravel, symfony, django, spring-mvc, yii, cakephp, ... |\n| websocket_handler | 21 | express, fastapi, nestjs, aspnet, django, phoenix, actix, ... |\n| event_handler | 17 | django, celery, rails, symfony, laminas, play, phoenix, ... |\n| application | 17 | aiohttp, tornado, giraffe, http4s, javalin, scotty, yesod, ... |\n| router | 14 | express, fastify, koa, hapi, nestjs, fastapi, sinatra, ... |\n| auth | 14 | adonisjs, akka-http, fastapi, flask, giraffe, grape, graphql, ktor, ... |\n| form | 12 | rails, django, laravel, symfony, aspnet, laminas, yii, ... |\n| task | 10 | celery, airflow, luigi, rq, dramatiq, sidekiq, ... |\n| response | 10 | express, fastapi, hapi, nestjs, aspnet, symfony, ... |\n| component | 10 | react, vue, angular, svelte, solid, preact, mithril, ... |\n\nScope of this item\n\nBuild a single Protocol-subcategory linker that maps error_handler / controller concepts to their downstream wiring. Both are high producer-count AND have clean dispatch semantics (error_handler → framework error pipeline; controller → route-group registration). Do NOT try to cover all 10+ top inerts in one linker — pick the one with the clearest semantics (error_handler is recommended: every framework wires it via a small set of registration APIs).\n\nSuggested decomposition if we want multiple linkers:\n- Protocol linker: error_handler → HTTP error-response registration\n- Framework linker: controller → route-group containment (distinct from route_handler.py which already handles individual routes)\n- Protocol linker: event_handler → message-dispatch target (overlaps with message_dispatch.py; verify before building)\n\nAcceptance\n\nPick one inert concept from the table above. Build a linker that emits meaningful edges on at least 3 bakeoff-cohort repositories (not just a single framework's fixture). Update docs/CONCEPTS.md via scripts/generate-concepts — the newly-consumed concept should flip from `inert` to `live` automatically.\n\nThis item is the umbrella; split into one concrete linker item once the target concept is chosen. Do not attempt without re-reviewing INV-nimuj and the per-linker scope of ADR-0003-ext."  # 8d86
+    fields: {}  # 8d86
+- op: discuss  # 293b
+  at: '2026-04-19T06:07:23Z'  # 293b
+  by: agent  # 293b
+  actor: jgstern_agent  # 293b
+  clock: 2  # 293b
+  nonce: 293b  # 293b
+  message: "Phase 1 (error_handler → ERROR_HANDLER entrypoint kind) merged in PR #3181 (commit d417436594 on dev). Remaining concepts by producer count (controller=34, websocket_handler=21, event_handler=17, application=17, router=14, auth=14, form=12, task=10, response=10) are deferred to later phases — keep item open as umbrella."  # 293b
+- op: update  # 7386
+  at: '2026-04-19T07:53:11Z'  # 7386
+  by: agent  # 7386
+  actor: jgstern_agent  # 7386
+  clock: 3  # 7386
+  nonce: '7386'  # 7386
+  set: {}  # 7386
+  add:  # 7386
+    tags: [awaits_bakeoff_validation]  # 7386
+- op: discuss  # f7d6
+  at: '2026-04-19T09:24:01Z'  # f7d6
+  by: agent  # f7d6
+  actor: jgstern_agent  # f7d6
+  clock: 4  # f7d6
+  nonce: f7d6  # f7d6
+  message: "Phase 2 shipped: controller concept linker merged in PR #3185 (commit 97d138ef9 on dev) as WI-gokop. Flipped controller from inert → live in docs/CONCEPTS.md (34 producer frameworks). Remaining inert concepts by producer count (tracked for future phases): websocket_handler=21, event_handler=17, application=17, router=14, auth=14, form=12, task=10, response=10, component=10. Item stays open as umbrella."  # f7d6
+- op: discuss  # 6864
+  at: '2026-04-19T12:29:32Z'  # 6864
+  by: agent  # 6864
+  actor: jgstern_agent  # 6864
+  clock: 5  # 6864
+  nonce: '6864'  # 6864
+  message: "Phase 3 shipped: router-concept containment linker merged in PR #3193 (commit 00ffb9014 on dev). Emits `registers_routes` edges from `concept: router` module/combinator/route-table symbols to nested `concept: route` registrations. Edge type distinct from controller_routes' `contains_routes` (controllers contain handler methods; routers contain registration call sites). Flipped `router` inert → live in docs/CONCEPTS.md (14 producer frameworks). 18 new tests, 100% coverage, per-package isolation validated. Remaining inert concepts by producer count for future phases: auth=14, form=12, response=10, component=10, validator=9, server=9, serializer=9, service=8, route_group=8, request=8, handler=8, config=8."  # 6864
+- op: discuss  # 710c
+  at: '2026-04-19T12:34:00Z'  # 710c
+  by: agent  # 710c
+  actor: jgstern_agent  # 710c
+  clock: 6  # 710c
+  nonce: 710c  # 710c
+  message: "Phase 4 scoping note (for next session):\n\nPost-Phase-3 remaining top inerts by producer count:\n- auth (14): NON-uniform semantics — some frameworks mark auth middleware, some mark auth handler routes, some mark policies/roles. A single entrypoint mapping would be noisy. Needs per-producer analysis before scope decision.\n- form (12, rails/django/laravel/symfony/aspnet/...): class-level concept where framework calls form.is_valid() / save() / authorize() reflectively. Clean candidate for ENTRYPOINT classification (class as entrypoint at confidence ~0.85) OR dispatches_to on known form-base method sets (django_orm_dispatch template). Entrypoint-only recovers class reachability but not internal method reachability; full dispatch requires per-framework method name registry.\n- response (10): likely not an entrypoint or container — response is typically a return-value marker, not a dispatchable class. May be a pure tagging concept with no dispatch edges to emit. Audit before adding linker.\n- component (10, react/vue/angular/svelte/solid/preact/mithril/lit/phoenix/spring-boot): components contain lifecycle methods (render/componentDidMount/setup/onMount/ngOnInit). Method names are framework-specific — needs name-based dispatch registry like airflow_framework_dispatch or django_orm_dispatch. NOT a simple concept-containment match because lifecycle methods aren't tagged with concepts. react_component.py already handles JSX composition, not this.\n- validator (9), server (9), serializer (9): likely all dispatch-style linkers requiring per-framework method registries.\n\n**Recommended Phase 4 pick:** form. Rationale: (a) highest-producer after the ambiguous-semantics ones, (b) entrypoint classification alone (class as entrypoint) is a defensible minimum with clean scope, (c) method-dispatch extension can be a Phase 4b follow-up. Acceptance: detect_entrypoints maps concept:form → EntrypointKind.FORM (or reuse existing Class entrypoint with FORM label), confidence 0.85, framework-aware label, per-symbol dedup, docs/CONCEPTS.md flips inert → live, 100% coverage.\n\nDeferred until a future session picks this up."  # 710c
+- op: discuss  # 214e
+  at: '2026-04-19T14:07:13Z'  # 214e
+  by: agent  # 214e
+  actor: jgstern_agent  # 214e
+  clock: 7  # 214e
+  nonce: 214e  # 214e
+  message: "Phase 4 shipped: form concept → FORM entrypoint classification merged (PR #3194 or #3195 – auto-pr renumbered — base commit bd6725b1b on dev). Flipped form inert → live in docs/CONCEPTS.md (12 producer frameworks: django, flask, laminas, fuelphp, cakephp, laravel, symfony, yii, pyramid, rails, remix, sveltekit, yesod). 3 new tests (framework label, no-framework fallback, multi-framework dedup). Class-level reachability restored; internal method dispatch deferred to Phase 4b. Remaining top inerts: auth=14 (non-uniform semantics deferred), response=10 (likely not dispatchable), component=10 (needs per-framework method registry), validator=9, server=9, serializer=9."  # 214e
+- op: discuss  # f02a
+  at: '2026-04-19T14:09:20Z'  # f02a
+  by: agent  # f02a
+  actor: jgstern_agent  # f02a
+  clock: 8  # f02a
+  nonce: f02a  # f02a
+  message: "Validator concept (9 producers) semantics audit — DEFERRED from Phase 5 pickup:\n\nUnlike form (uniformly class-level across all 12 producers), validator has heterogeneous semantics:\n- adonisjs: base_class BaseValidator (class-level ✅)\n- hanami: base_class Hanami::Validations / Dry::Validation::Contract (class-level ✅)\n- laminas: interface-based (class-level ✅)\n- aspnet: annotation-based (Required, StringLength, Range, etc.) on MODEL FIELDS — these aren't dispatchable classes, they're field metadata\n- hapi: decorator-based (Joi.object / Joi.string calls) on SCHEMA DEFINITIONS — these aren't dispatchable either; they're data-shape declarations\n- masonite / rails: mixed — sometimes classes, sometimes validation method declarations\n- yii / symfony: class-level\n\nMapping validator → entrypoint would over-trigger: aspnet field annotations and hapi Joi schema declarations would become bogus entrypoints even though they're not called reflectively — they're consumed by the framework's validator runtime as data, not as handlers.\n\nRecommendation: split validator into per-producer analysis before unifying. Class-level producers (adonisjs, hanami, laminas, yii, symfony, masonite) could map to a new CLASS_VALIDATOR entrypoint kind at confidence 0.80; annotation-level (aspnet) and decorator-call-level (hapi) producers need separate linkers (annotation-validator → DUMMY_USE edge; decorator-call validator → already covered by decorator_dispatch). Not worth a single-PR simplification.\n\nCleaner Phase 5 candidates to consider instead:\n- server (9 producers, http4s / scotty / vertx / cowboy / http4k / servant / pedestal / plumber / shiny): likely all server-bootstrap entrypoints (MAIN_FUNCTION-style). Relatively uniform.\n- task (10, celery / airflow / luigi / rq / dramatiq / sidekiq / ...): already mapped via background_task concept in Phase 0; double-check why 'task' stays inert.\n- mailer (7, cakephp / fuelphp / hanami / laminas / laravel / padrino / rails): class-level, frameworks invoke deliver/send reflectively. Clean entrypoint candidate.\n\nStopping WI-gudob chain here for this session — 3 phases in one day (controller+router+form, 31 inert→live flips) is meaningful progress and diminishing returns kick in below 10 producers per concept."  # f02a
+- op: update  # 6d58
+  at: '2026-04-20T15:34:41Z'  # 6d58
+  by: agent  # 6d58
+  actor: jgstern_agent  # 6d58
+  clock: 9  # 6d58
+  nonce: 6d58  # 6d58
+  set: {}  # 6d58
+  add:  # 6d58
+    tags: [awaits_bakeoff_validation]  # 6d58
+- op: discuss  # cbce
+  at: '2026-04-20T15:34:41Z'  # cbce
+  by: agent  # cbce
+  actor: jgstern_agent  # cbce
+  clock: 10  # cbce
+  nonce: cbce  # cbce
+  message: "Phase 5 shipped: serializer concept → SERIALIZER entrypoint classification merged in PR #3232 (dev SHA aa7381714). Mirrors Phase 4 (form) — class-level reachability for framework-reflected serializer/DTO classes (DRF Serializer/ModelSerializer/HyperlinkedModelSerializer, Marshmallow Schema/SQLAlchemySchema/SQLAlchemyAutoSchema, Grape::Entity, Laravel JsonResource/ResourceCollection, Litestar AbstractDTO/DTOData, plus plumber/pyramid/quart/rails). Flipped serializer inert → live in docs/CONCEPTS.md (9 producer frameworks). 3 new tests (framework label, no-framework fallback, multi-framework dedup). Per-method dispatch (to_representation → field-specific methods) deferred to a per-framework dispatch-registry follow-up. Remaining top inerts by producer count: auth=14 (deferred non-uniform), response=10 (deferred likely-not-dispatchable), component=10 (needs per-framework method registry), validator=9 (deferred heterogeneous), server=9, service=8, route_group=8, request=8, handler=8, config=8. Tagging awaits_bakeoff_validation per the AGENTS.md discipline since the expected outcome is FP-reduction on serializer-heavy corpora (django + flask)."  # cbce
+- op: update  # 037f
+  at: '2026-04-21T02:13:22Z'  # 037f
+  by: agent  # 037f
+  actor: jgstern_agent  # 037f
+  clock: 11  # 037f
+  nonce: 037f  # 037f
+  set:  # 037f
+    status: done  # 037f
+- op: discuss  # 357b
+  at: '2026-04-21T02:13:22Z'  # 357b
+  by: agent  # 357b
+  actor: jgstern_agent  # 357b
+  clock: 12  # 357b
+  nonce: 357b  # 357b
+  message: "Closing umbrella. Rationale:\n\nLiteral acceptance (pick one inert concept, build a linker emitting meaningful edges on at least 3 cohort repos, flip inert → live) was satisfied by Phase 1 (error_handler, PR #3181, 2026-04-19). Phases 2-5 (controller/router/form/serializer, PRs #3185/#3193/#3194-5/#3232) landed additionally, flipping 106 producer-framework pairs inert → live in docs/CONCEPTS.md.\n\nOn the three >= 10-producer concepts that have no prior scoping note — websocket_handler (21), event_handler (17), application (17) — closing them out here rather than spawning follow-up items:\n\n- websocket_handler (21): reachability already flows via route_handler.py / controller_routes.py / router.py in most frameworks (fastapi websocket decorators, django channels routing, express ws() registrations). Standalone websocket linker would largely duplicate existing route-registration machinery. Marginal FP reduction expected to be small.\n- event_handler (17): the umbrella description already flags overlap with message_dispatch.py; a dedicated linker would require per-framework signal/event-name dispatch registries (django signals, rails activerecord callbacks, celery signals, symfony event dispatcher, ...). Scope comparable to multi-framework ORM dispatch. Not warranted at current FP volumes without producer-specific evidence.\n- application (17): application symbols (Flask(__name__), FastAPI(), Tornado Application([...]), Django WSGIHandler) are server-bootstrap entrypoints, already covered by MAIN_FUNCTION / main_guard / server-bootstrap entrypoint detection. Marking them as a dispatch target is redundant; they're entry-point material, not dispatch material.\n\nDeferred-with-rationale concepts (auth, response, component, validator) stay deferred per the 2026-04-19T14:09:20Z audit — semantics are non-uniform and each needs per-producer analysis, not umbrella-style batch work.\n\nConcepts at <= 9 producers (server, service, route_group, request, handler, config, mailer, ...) are left for organic pickup via INV-nimuj rather than the CONCEPTS.md-driven umbrella pattern; marginal FP-reduction volume is too small to justify the umbrella overhead now that the high-producer tail is drained or explicitly deferred.\n\nThe awaits_bakeoff_validation tag is intentionally retained. Closure is independent of validation — the tag tracks the quantitative FP-reduction claim for Phases 1-5 and will be stripped only when a DEEP bakeoff cycle (latest is deep-20260409-054615, 2026-04-09, predating every phase) confirms per-concept deltas. See WI-darad for the same closure-vs-validation separation."  # 357b

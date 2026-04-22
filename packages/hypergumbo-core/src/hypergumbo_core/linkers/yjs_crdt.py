@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Yjs/CRDT reactive linker for detecting pub/sub patterns in Yjs-based codebases.
+"""Framework linker: Yjs/CRDT reactive for detecting pub/sub patterns in Yjs-based codebases.
 
 Detects data-mediated coupling through Yjs shared types (Y.Map, Y.Array, Y.Text,
 Y.Doc) and Awareness (ephemeral state). Creates ``crdt_publishes`` edges between

@@ -76,18 +76,27 @@ The entrypoint spec is matched flexibly:
 1. Exact node ID match (most specific)
 2. Exact file path match (all symbols in that file)
 3. Path suffix match (relative paths match absolute paths ending with same suffix)
-4. Exact symbol name match
-5. Partial name match (contains)
+4. ``module:name`` shorthand — two identifier tokens separated by a colon
+   (e.g. ``cli:main``) resolve to any symbol whose name equals the right
+   side and whose file stem equals the left side. Works across any
+   extension (``.py``, ``.go``, ``.ts``, ``.rb``, etc.).
+5. Exact symbol name match
+6. Partial name match (contains)
 
 This lets users say `--entry login` and find `user_login`, `login_handler`, etc.
 Path suffix matching enables `--entry src/main.go` to match `/home/user/repo/src/main.go`.
+``module:name`` is the fastest way to disambiguate when a short name like
+`main` exists in many files — e.g. `cli:main` picks the CLI entry point
+directly.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import Dict, List, Set
 
 from .ir import Symbol, Edge
@@ -296,8 +305,9 @@ def find_entry_nodes(
     1. Exact match on node ID
     2. Exact match on file path
     3. Path suffix match (relative path matches absolute path ending with suffix)
-    4. Exact match on symbol name
-    5. Partial match (contains) on symbol name
+    4. ``module:name`` shorthand — file stem + symbol name (WI-hogun)
+    5. Exact match on symbol name
+    6. Partial match (contains) on symbol name
 
     Args:
         nodes: All available nodes.
@@ -332,6 +342,21 @@ def find_entry_nodes(
         if suffix_matches:
             return suffix_matches
 
+    # Try module:name shorthand (WI-hogun). Pattern: <ident>:<ident> —
+    # resolve to any symbol whose name equals the right side AND whose
+    # file's basename (sans extension) equals the left side. Lets callers
+    # say `cli:main` instead of hunting for `packages/hg/src/hg/cli.py`.
+    # Identifier parts only — a slash on either side falls through.
+    shorthand = _MODULE_NAME_SHORTHAND.match(entry_spec)
+    if shorthand is not None:
+        module, name = shorthand.group(1), shorthand.group(2)
+        module_name_matches = [
+            n for n in nodes
+            if n.name == name and _file_basename_matches(n.path, module)
+        ]
+        if module_name_matches:
+            return module_name_matches
+
     # Try exact name match
     exact_name_matches = [n for n in nodes if n.name == entry_spec]
     if exact_name_matches:
@@ -340,6 +365,23 @@ def find_entry_nodes(
     # Try partial name match (contains)
     partial_matches = [n for n in nodes if entry_spec in n.name]
     return partial_matches
+
+
+_MODULE_NAME_SHORTHAND = re.compile(
+    r"^([a-zA-Z_][a-zA-Z0-9_]*):([a-zA-Z_][a-zA-Z0-9_]*)$"
+)
+
+
+def _file_basename_matches(path: str, module: str) -> bool:
+    """True when `path`'s file stem (basename sans extension) equals `module`.
+
+    Used by the ``module:name`` entry-spec shorthand (WI-hogun). Works on
+    both absolute and relative paths and handles any extension so
+    ``cli:main`` resolves across ``cli.py``, ``cli.go``, ``cli.ts``, etc.
+    """
+    if not path:
+        return False
+    return PurePosixPath(path).stem == module
 
 
 def slice_graph(

@@ -1,0 +1,44 @@
+- op: create  # f0be
+  at: '2026-04-14T06:05:27Z'  # f0be
+  by: agent  # f0be
+  actor: jgstern_agent  # f0be
+  clock: 1  # f0be
+  nonce: f0be  # f0be
+  data:  # f0be
+    kind: work_item  # f0be
+    title: "Haskell Template Haskell test discovery (`$forAllProperties`)"  # f0be
+    status: todo_soft  # f0be
+    priority: 3  # f0be
+    parent:  # f0be
+    tags:  # f0be
+    - uat_2026_04_13  # f0be
+    - test-coverage  # f0be
+    - language_additions  # f0be
+    isbefore: []  # f0be
+    duplicate_of: []  # f0be
+    not_duplicate_of: []  # f0be
+    pr_ref:  # f0be
+    description: "UAT 2026-04-13 BUG-11: shellcheck uses Template Haskell `$forAllProperties` to discover and run 2,214 `prop_*` test functions. Tool reports 0% coverage, making test-coverage unusable for Haskell projects with property-based testing. Per UAT: 'P2 for prioritization, P0 if Haskell is a priority'. Fix: heuristic recognition of `prop_*` functions in Haskell test files OR explicit Template Haskell expansion (the structural fix)."  # f0be
+    fields: {}  # f0be
+- op: discuss  # bf28
+  at: '2026-04-16T12:24:22Z'  # bf28
+  by: agent  # bf28
+  actor: jgstern_agent  # bf28
+  clock: 2  # bf28
+  nonce: bf28  # bf28
+  message: "Merged as PR #3063, dev SHA ac39a71e91fe."  # bf28
+- op: update  # 199a
+  at: '2026-04-16T12:35:57Z'  # 199a
+  by: agent  # 199a
+  actor: jgstern_agent  # 199a
+  clock: 3  # 199a
+  nonce: 199a  # 199a
+  set:  # 199a
+    status: done  # 199a
+- op: discuss  # f3ba
+  at: '2026-04-16T12:35:57Z'  # f3ba
+  by: agent  # f3ba
+  actor: jgstern_agent  # f3ba
+  clock: 4  # f3ba
+  nonce: f3ba  # f3ba
+  message: "Fixed in PR #3063 (merged to dev at ac39a71e9). cmd_test_coverage now recognises any function/method whose meta.concepts contains a concept starting with 'test' as a test, in addition to the existing _is_test_path heuristic. Same rule excludes them from coverage targets. Closes shellcheck UAT BUG-11: Template Haskell $forAllProperties discovers 2214 prop_* properties in src/ ShellCheck — the framework YAML pattern (test-frameworks.yaml:298-302) already tagged them, but cmd_test_coverage consulted paths only. Generalises to every language whose framework YAML emits test_* concepts (test_function, test_suite, test_lifecycle, test_fixture). Two regression tests: concept-tagged test counted as test (non-test path), and concept-tagged test excluded from coverage targets."  # f3ba

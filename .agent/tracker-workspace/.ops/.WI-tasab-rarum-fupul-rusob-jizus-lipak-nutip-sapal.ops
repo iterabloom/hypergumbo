@@ -1,0 +1,36 @@
+- op: create  # 70f6
+  at: '2026-04-19T10:33:13Z'  # 70f6
+  by: agent  # 70f6
+  actor: jgstern_agent  # 70f6
+  clock: 1  # 70f6
+  nonce: 70f6  # 70f6
+  data:  # 70f6
+    kind: work_item  # 70f6
+    title: "generate-concepts: also scan Python source for programmatic concept emitters"  # 70f6
+    status: todo_soft  # 70f6
+    priority: 4  # 70f6
+    parent:  # 70f6
+    tags:  # 70f6
+    - developer_experience  # 70f6
+    - analysis_quality  # 70f6
+    isbefore: []  # 70f6
+    duplicate_of: []  # 70f6
+    not_duplicate_of: []  # 70f6
+    pr_ref:  # 70f6
+    description: "Follow-up to INV-rikis (PR #3189). docs/CONCEPTS.md now flags 1 ghost: `main_guard`. Investigation:\n\n- entrypoints.py:639 consumes `main_guard` via `concept_type == \"main_guard\"`.\n- packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py:1837 **programmatically emits** `main_guard` when its AST walker detects the `if __name__ == \"__main__\":` idiom: `module_meta = {\"concepts\": [{\"concept\": \"main_guard\", \"framework\": \"python\"}]}`.\n\n`scripts/generate-concepts`'s `scan_producers` only scans framework YAMLs — it never looks at Python source for literal `{\"concept\": \"X\"}` emissions. So `main_guard` (and any other programmatically-emitted concept added later) will always surface as `ghost` even though it has a real producer in production.\n\n**Scope:** add a second producer scan over hypergumbo-core / hypergumbo-lang-* source trees. Match patterns like `{\"concept\": \"X\"`, `('concept', 'X')`, and any other dict-literal form used in the code. The result: `main_guard` flips ghost → live with py.py as the producer.\n\n**Out of scope:** more exotic emitter forms (dynamic concept strings built at runtime). If a concept name is assembled from variables, the scanner will miss it — that's acceptable until we have evidence of such emitters existing.\n\n**Acceptance:**\n- docs/CONCEPTS.md's ghost count drops from 1 to 0.\n- `main_guard` row lists `py.py` or similar as producer.\n- Add tests similar to tests/test_generate_concepts.py::TestExtractConsumersFromText but for scan_producers. Cover: dict-literal emission with string key, with string concept value, nested in larger dicts, and negative cases (dynamic concept names via f-strings are NOT caught, document that explicitly).\n\n**Why P4:** the blind spot affects one concept today and the mis-classification is benign (ghost is noisier than inert but both mean \"needs attention\"). INV-rikis tackled the much larger ~30-concept blind spot; this cleanup can wait."  # 70f6
+    fields: {}  # 70f6
+- op: update  # 3241
+  at: '2026-04-19T11:02:06Z'  # 3241
+  by: agent  # 3241
+  actor: jgstern_agent  # 3241
+  clock: 2  # 3241
+  nonce: '3241'  # 3241
+  set:  # 3241
+    status: done  # 3241
+- op: discuss  # 7c4f
+  at: '2026-04-19T11:02:06Z'  # 7c4f
+  by: agent  # 7c4f
+  actor: jgstern_agent  # 7c4f
+  clock: 3  # 7c4f
+  nonce: 7c4f  # 7c4f
+  message: "Shipped in PR #3190 (commit db1c379cb on dev). scan_producers now accepts a list of analyzer source trees and scans each for programmatic {\"concept\": \"X\"} emitters. main_guard flipped ghost → live (producer: py.py). docs/CONCEPTS.md: 38 live / 279 inert / 0 ghost. 11 new tests added to test_generate_concepts.py (36 tests total in that file now)."  # 7c4f

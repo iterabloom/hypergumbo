@@ -99,6 +99,20 @@ if [[ -x "$REPO_ROOT/scripts/tracker" ]] && [[ -d "$REPO_ROOT/.agent/tracker" ]]
 fi
 TOTAL_TODOS=$((TOTAL_HARD + TOTAL_SOFT))
 
+# --- Reply debt (WI-ripuz) ---
+# Count unread human messages across all items (blocking + non-blocking).
+# When UNREAD_COUNT > 0, the guidance file switches to REPLY-FIRST CYCLE
+# shape (in generate_guidance) AND the vendor hook's one-line reason text
+# switches to REPLY-FIRST wording — the TODO count is intentionally hidden
+# to force the agent off forward-march and onto reply debt.
+UNREAD_COUNT=0
+if [[ -x "$REPO_ROOT/scripts/tracker" ]] && [[ -d "$REPO_ROOT/.agent/tracker" ]]; then
+  if command -v jq &>/dev/null; then
+    UNREAD_COUNT=$("$REPO_ROOT/scripts/tracker" --json check-messages 2>/dev/null | jq 'length' 2>/dev/null || echo 0)
+    [[ -z "$UNREAD_COUNT" ]] && UNREAD_COUNT=0
+  fi
+fi
+
 # --- Circuit breaker (file-change-based no-progress detection) ---
 # Hashes file modification times in sentinel directories to detect whether
 # real work product changed between stop events.  This measures whether the
@@ -159,21 +173,94 @@ except Exception:
     fi
   fi
 
-  # Record current hash AFTER the check — but throttle to prevent the
-  # circuit breaker from tripping during legitimate waits (e.g. background
-  # sub-agents producing bakeoff assessments).  Without this pause, 5 stop
-  # hook fires can accumulate in ~2.5 minutes, tripping the breaker while
-  # real work is still in flight.
+  # Record current hash AFTER the check.  Process-aware pause (WI-varid):
+  # if a watched long-running command is alive, poll inline until it
+  # finishes (emitting a dot per poll so the agent has a heartbeat); if
+  # nothing watched is running, return immediately.  The previous design
+  # blanket-slept 150s on every fire to keep 5 fast fires from tripping
+  # the circuit breaker during a long pytest, which (a) cost 150s on
+  # every legitimate stop and (b) generated repetitive guidance files
+  # mid-pytest.  The new design only pays the wait when there's a real
+  # process to wait on, and the breaker hash semantics below are
+  # unchanged.
   if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
-    PAUSE_SECS=150
-    echo "stop logic is forcing a pause for ${PAUSE_SECS} seconds..." >&2
-    while [[ "$PAUSE_SECS" -gt 0 ]]; do
-      sleep 10
-      PAUSE_SECS=$((PAUSE_SECS - 10))
-      if [[ "$PAUSE_SECS" -gt 0 ]]; then
-        echo "${PAUSE_SECS}..." >&2
+    # Defaults baked in; tracker config may override (and add patterns).
+    WATCHED_PATTERNS=()
+    WATCHED_POLL_SECS=3
+    WATCHED_MAX_WAIT_SECS=1800
+    if command -v python3 &>/dev/null; then
+      while IFS= read -r line; do
+        [[ -n "$line" ]] && WATCHED_PATTERNS+=("$line")
+      done < <(python3 -c "
+import yaml
+try:
+    with open('$REPO_ROOT/.agent/tracker/config.yaml') as f:
+        cfg = yaml.safe_load(f)
+    for p in cfg.get('stop_hook', {}).get('watched_process_patterns', []) or []:
+        print(p)
+except Exception:
+    pass
+" 2>/dev/null)
+      _CFG_WATCHED=$(python3 -c "
+import yaml
+try:
+    with open('$REPO_ROOT/.agent/tracker/config.yaml') as f:
+        cfg = yaml.safe_load(f)
+    sh = cfg.get('stop_hook', {})
+    print(sh.get('watched_poll_seconds', 3))
+    print(sh.get('watched_max_wait_seconds', 1800))
+except Exception:
+    print(3); print(1800)
+" 2>/dev/null)
+      if [[ -n "$_CFG_WATCHED" ]]; then
+        WATCHED_POLL_SECS=$(echo "$_CFG_WATCHED" | sed -n '1p')
+        WATCHED_MAX_WAIT_SECS=$(echo "$_CFG_WATCHED" | sed -n '2p')
       fi
-    done
+    fi
+    if [[ ${#WATCHED_PATTERNS[@]} -eq 0 ]]; then
+      WATCHED_PATTERNS=(
+        "pytest"
+        "python -m pytest"
+        "smart-test"
+        "bash ./scripts/auto-pr"
+        "bash ./scripts/merge-pr"
+      )
+    fi
+    WATCHED_REGEX=$(IFS='|'; echo "${WATCHED_PATTERNS[*]}")
+    _WATCHED_PROCESS_PY="$REPO_ROOT/.agent/hooks/_shared/watched_process.py"
+
+    # _watched_alive returns 0 (true) when at least one process is actually
+    # running one of the watched commands.  The original implementation used
+    # ``pgrep -af $regex | grep -v`` which substring-matched the full
+    # cmdline, so ANY process whose argv contained the pattern text (e.g. an
+    # ``inotifywait`` helper with a ``/tmp/pytest-<id>/...`` path) was
+    # treated as a live pytest. WI-zajob replaces that with a leading-token
+    # match in ``watched_process.py`` that compares argv[0] (after path
+    # strip) to the first pattern token, so only real command invocations
+    # qualify. The ``pgrep`` prefilter is retained as a cheap initial scan;
+    # the Python filter then applies the strict rule.
+    _watched_alive() {
+      pgrep -u "$USER" -af "$WATCHED_REGEX" 2>/dev/null \
+        | python3 "$_WATCHED_PROCESS_PY" "${WATCHED_PATTERNS[@]}"
+    }
+
+    if _watched_alive; then
+      echo "stop hook: waiting for watched process to finish (regex: $WATCHED_REGEX)" >&2
+      _WAIT_ELAPSED=0
+      while _watched_alive; do
+        sleep "$WATCHED_POLL_SECS"
+        _WAIT_ELAPSED=$((_WAIT_ELAPSED + WATCHED_POLL_SECS))
+        printf "." >&2
+        if [[ "$_WAIT_ELAPSED" -ge "$WATCHED_MAX_WAIT_SECS" ]]; then
+          printf "\n" >&2
+          echo "stop hook: max wait ${WATCHED_MAX_WAIT_SECS}s reached; proceeding." >&2
+          break
+        fi
+      done
+      printf "\n" >&2
+      echo "stop hook: watched process complete; resuming." >&2
+    fi
+
     echo "$CURRENT_HASH" >> "$HASH_FILE"
   fi
 fi
@@ -272,6 +359,19 @@ except Exception:
   fi
 fi
 
+# --- awaits_bakeoff_validation backlog nudge (WI-dolil slice 3) ---
+# Advisory nudge: when tag-bearing items pile up AND no DEEP cycle has run
+# recently, append a short section to whatever guidance file we emit.
+# Output is empty if conditions aren't met; any failure is swallowed by
+# the helper script so this never blocks the stop hook.
+_NUDGE_SCRIPT="$REPO_ROOT/.agent/hooks/_shared/awaits_bakeoff_nudge.py"
+if [[ -x /usr/bin/env ]] && [[ -f "$_NUDGE_SCRIPT" ]] && command -v python3 &>/dev/null; then
+  _NUDGE_OUT=$(python3 "$_NUDGE_SCRIPT" "$REPO_ROOT" 2>/dev/null || true)
+  if [[ -n "$_NUDGE_OUT" ]]; then
+    BAKEOFF_SUFFIX+="$_NUDGE_OUT"
+  fi
+fi
+
 # --- Write guidance file (if any TODOs exist) ---
 GUIDANCE_FILE=""
 if [[ "$TOTAL_TODOS" -gt 0 ]]; then
@@ -321,6 +421,21 @@ if [[ "$TOTAL_TODOS" -gt 0 ]]; then
       if [[ -f "$STATE_FILE_FOR_GF" ]]; then
         _EXISTING=$(cat "$STATE_FILE_FOR_GF")
       fi
+      # WI-joriv write discipline: the additive merge below used to start
+      # from `.` (the full existing object), so any key a migration or a
+      # rogue writer dropped in the file survived every subsequent write
+      # indefinitely. Starting 2026-04-18, the merge begins from the
+      # EXTRACTED set of maintained keys — any unlisted key is silently
+      # dropped on the next write, making the file self-cleaning.
+      #
+      # Maintained field list (MUST match recover-state-playbook.md):
+      #   guidance_file, bakeoff_convergence, bakeoff_session_path,
+      #   bakeoff_session_type, current_branch, last_completed_utc
+      #
+      # To add a new field: list it in the extract form below AND the
+      # recover-state playbook. Do not reach for an `. + {new_field: $v}`
+      # shortcut — the drop policy will silently discard anything the
+      # extract form doesn't know about.
       if printf '%s' "$_EXISTING" | jq --arg gf "$GUIDANCE_FILE" \
             --arg bc "${BAKEOFF_CONVERGENCE_LINE:-}" \
             --arg bs "${_SESSION_DIR:-}" \
@@ -328,11 +443,14 @@ if [[ "$TOTAL_TODOS" -gt 0 ]]; then
             --arg now "$_NOW_UTC" \
             --arg elapsed "$_PHASE_A_ELAPSED_MIN" \
             --arg branch "$_CURRENT_BRANCH" \
-            '. + {guidance_file: $gf}
-               + (if $bc != "" then {bakeoff_convergence: $bc} else {} end)
-               + (if $bs != "" then {bakeoff_session_path: $bs, bakeoff_session_type: $bt} else {} end)
-               + (if $branch != "" then {current_branch: $branch} else {} end)
-               + (if ($elapsed | tonumber) >= 30 then {last_completed_utc: $now} else {} end)' \
+            '({guidance_file, bakeoff_convergence, bakeoff_session_path,
+               bakeoff_session_type, current_branch, last_completed_utc}
+              | with_entries(select(.value != null)))
+             + {guidance_file: $gf}
+             + (if $bc != "" then {bakeoff_convergence: $bc} else {} end)
+             + (if $bs != "" then {bakeoff_session_path: $bs, bakeoff_session_type: $bt} else {} end)
+             + (if $branch != "" then {current_branch: $branch} else {} end)
+             + (if ($elapsed | tonumber) >= 30 then {last_completed_utc: $now} else {} end)' \
             > "$TMP" 2>/dev/null; then
         mv "$TMP" "$STATE_FILE_FOR_GF"
       else

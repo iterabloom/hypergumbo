@@ -40,3 +40,12 @@
   clock: 4  # f24d
   nonce: f24d  # f24d
   message: "Validation bakeoff complete (2026-04-11, PASS with minor residual). Pre-fix baseline (run-2026-04-11-full, airflow.json written 09:54 UTC, before PR for this fix) showed 599 TypeScript dead-code candidates under /openapi-gen/ paths across 3 openapi-gen trees: airflow-core/src/airflow/ui/openapi-gen, airflow-core/src/airflow/api_fastapi/auth/managers/simple/ui/openapi-gen, providers/edge3/src/airflow/providers/edge3/plugins/www/openapi-gen. Post-fix run on current dev HEAD (/tmp/validation/airflow): 57 candidates remain in /openapi-gen/ paths — a 542 eliminated / 90% drop. Airflow total dead-code dropped from 13577 (70.4%) to 10630 (55.1%), a 2947 candidate reduction driven primarily by this fix plus related cascading reachability. Residual 57 are all from four file types (CancelablePromise.ts, request.ts, OpenAPI.ts, ApiError.ts) with specific symbol names (CancelablePromise.then/catch/cancel/finally, Interceptors.use/eject, path, process, encodePair, getUrl, onCancel, onReject, onResolve, *.constructor) — file-level is_generated IS flipping correctly but the symbol records appear to carry a stale tier, or the TS analyzer's method-extraction path bypasses file-level metadata. Filed follow-up: WI-jifup-naviv-zosub-najig-mukuh-puhal-jigiv-bugut (todo_soft, P4) for the residual investigation. WI-vubad validated — the bulk effect (90% drop, 542 false positives eliminated) meets and exceeds the item's 200+ candidate goal. Fix works as designed."  # f24d
+- op: update  # e020
+  at: '2026-04-19T07:52:03Z'  # e020
+  by: agent  # e020
+  actor: jgstern_agent  # e020
+  clock: 5  # e020
+  nonce: e020  # e020
+  set: {}  # e020
+  add:  # e020
+    tags: [awaits_bakeoff_validation]  # e020

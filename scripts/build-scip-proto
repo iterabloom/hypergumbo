@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Regenerate packages/hypergumbo-core/src/hypergumbo_core/scip/_generated/scip_pb2.py
+# from a pinned Sourcegraph scip.proto revision.
+#
+# Why a build script instead of a PyPI package:
+#   There is no published Python binding for the SCIP wire format (probed
+#   PyPI 2026-04-19: scip/scip-python/sourcegraph-scip/scip-pb/scip-protobuf/
+#   scip-index/scip-pb2 all 404 or unrelated). WI-mafut Phase 2 discussion
+#   chose path B — vendor a pinned scip.proto + check in a pre-generated
+#   scip_pb2.py so end users pay no install-time toolchain cost.
+#
+# Why protoc via grpc_tools rather than system protoc:
+#   grpcio-tools is already a transitive dep of our Python environment; it
+#   ships a bundled protoc and is usable on any platform pip installs on.
+#   Avoids an apt/brew prerequisite for contributors.
+#
+# This script is developer-run, NOT CI-run. The generated file is checked
+# into the repo. Run this only when bumping SCIP_COMMIT to a newer
+# sourcegraph/scip revision; review the diff carefully because a
+# scip_pb2.py bump can change the shim's parsed types silently.
+set -euo pipefail
+
+# Pinned Sourcegraph scip.proto revision. Bump deliberately; every bump is
+# a public ABI change for the SCIP shim.
+SCIP_COMMIT="9330cbd49aeb85aee026842770a61ad28e5c4093"  # 2026-04-14
+SCIP_PROTO_URL="https://raw.githubusercontent.com/sourcegraph/scip/${SCIP_COMMIT}/scip.proto"
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+GENERATED_DIR="${REPO_ROOT}/packages/hypergumbo-core/src/hypergumbo_core/scip/_generated"
+BUILD_DIR="${BUILD_DIR:-/tmp/scip-proto-build}"
+
+mkdir -p "$BUILD_DIR" "$GENERATED_DIR"
+
+echo "Fetching scip.proto @ ${SCIP_COMMIT:0:12} ..."
+curl -sSLf -o "${BUILD_DIR}/scip.proto" "$SCIP_PROTO_URL"
+
+echo "Running protoc via grpc_tools ..."
+python -m grpc_tools.protoc \
+    --proto_path="${BUILD_DIR}" \
+    --python_out="${BUILD_DIR}" \
+    "${BUILD_DIR}/scip.proto"
+
+echo "Installing scip_pb2.py into ${GENERATED_DIR#${REPO_ROOT}/} ..."
+cp "${BUILD_DIR}/scip_pb2.py" "${GENERATED_DIR}/scip_pb2.py"
+
+echo "$SCIP_COMMIT" > "${GENERATED_DIR}/SOURCE_COMMIT.txt"
+
+# Ensure the package stays importable.
+if [ ! -f "${GENERATED_DIR}/__init__.py" ]; then
+    cat > "${GENERATED_DIR}/__init__.py" <<'PY'
+"""Auto-generated scip_pb2 module, vendored from sourcegraph/scip.
+
+See scripts/build-scip-proto and SOURCE_COMMIT.txt for the pinned revision.
+Do not hand-edit scip_pb2.py; regenerate it via scripts/build-scip-proto.
+"""
+PY
+fi
+
+echo ""
+echo "=== SCIP proto regenerated ==="
+echo "  source:   ${SCIP_PROTO_URL}"
+echo "  commit:   ${SCIP_COMMIT}"
+echo "  output:   ${GENERATED_DIR}/scip_pb2.py"
+echo "  recorded: ${GENERATED_DIR}/SOURCE_COMMIT.txt"

@@ -1,0 +1,36 @@
+- op: create  # 94ec
+  at: '2026-04-20T21:20:00Z'  # 94ec
+  by: agent  # 94ec
+  actor: jgstern_agent  # 94ec
+  clock: 1  # 94ec
+  nonce: 94ec  # 94ec
+  data:  # 94ec
+    kind: work_item  # 94ec
+    title: "--backend CLI flag for selecting rust-analyzer backend"  # 94ec
+    status: todo_soft  # 94ec
+    priority: 4  # 94ec
+    parent:  # 94ec
+    tags:  # 94ec
+    - rust_analyzer  # 94ec
+    - developer_experience  # 94ec
+    isbefore: []  # 94ec
+    duplicate_of: []  # 94ec
+    not_duplicate_of: []  # 94ec
+    pr_ref:  # 94ec
+    description: "Add a '--backend rust-analyzer' / '--backend tree-sitter' CLI flag to relevant hypergumbo commands (run, slice, sketch at minimum) that feeds into hypergumbo_lang_rust_analyzer.gate.should_use_rust_analyzer_backend. Today the backend activates only via the HYPERGUMBO_RUST_ANALYZER environment variable; the gate already accepts a backend_flag kwarg, so the work is purely argparse plumbing.\n\nApproach:\n1. Add '--backend' argument to the common argparse parser (_build_parser or equivalent). Default None means 'use env var or tree-sitter'.\n2. Set HYPERGUMBO_RUST_ANALYZER=1 in os.environ when args.backend == 'rust-analyzer' (one-line side effect at CLI entry). OR thread the flag through to the analyzer registry so the analyzer layer can call should_use_rust_analyzer_backend(backend_flag=args.backend) directly.\n3. Tests: argparse accepts 'rust-analyzer' / 'tree-sitter' / None (default) / rejects other values; end-to-end test that --backend rust-analyzer triggers the backend (assert on a mock that try_analyze_with_rust_analyzer is called).\n\nBlocked by nothing — WI-duzul Slice C-final (merged 544d86983) delivered analyze_rust_with_scip which already consumes the gate; this item wires the CLI flag into that gate."  # 94ec
+    fields: {}  # 94ec
+- op: update  # 858e
+  at: '2026-04-20T21:49:58Z'  # 858e
+  by: agent  # 858e
+  actor: jgstern_agent  # 858e
+  clock: 2  # 858e
+  nonce: 858e  # 858e
+  set:  # 858e
+    status: done  # 858e
+- op: discuss  # 3f3a
+  at: '2026-04-20T21:49:58Z'  # 3f3a
+  by: agent  # 3f3a
+  actor: jgstern_agent  # 3f3a
+  clock: 3  # 3f3a
+  nonce: 3f3a  # 3f3a
+  message: "Shipped (merged to dev as fd00f96c8). Root-parser --backend flag with two choices (tree-sitter default, rust-analyzer) + argv-strip pattern matching --debug so the flag works in any position relative to the subcommand. --backend rust-analyzer sets HYPERGUMBO_RUST_ANALYZER=1 in the env; --backend tree-sitter leaves env untouched. --backend=VALUE equals-form supported. Invalid choices rejected by argparse. 11 tests, 100% coverage. Closes the rust-analyzer backend UX: opt-in via env var OR --backend flag, install via install-rust-analyzer or install-extras, registered analyzer handles dispatch with graceful-degrade to rust.py on any failure."  # 3f3a

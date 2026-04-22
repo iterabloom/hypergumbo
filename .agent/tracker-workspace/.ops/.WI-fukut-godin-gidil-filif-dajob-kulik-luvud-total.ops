@@ -20,3 +20,20 @@
     pr_ref:  # 2d09
     description: "Phase 5 (follow-on) of the ADR-0006 Return-Type Registry Pre-Pass. Optional cross-linker integration that consumes the registry built in Phases 1-4.\n\nDELIVERABLES:\n(1) type_hierarchy.py fallback for ambiguous receiver types: when the registry has multiple candidate methods for a given short name, use type_hierarchy's receiver→class index to disambiguate.\n\n(2) dataflow.py refinement for chained method-call access_mode: when a chained call like 'cache.Get(k).Set(v)' has known receiver types (Cache.Get returns *Entry, Entry.Set is a write), populate dest_access_mode for the second call's receiver edge. This is Phase 5's contribution to the WI-hukoh forward-dataflow option (2)/(3) decision.\n\n(3) Cross-reference WI-hukoh in the PR description.\n\nOPTIONAL: only after Phases 1-4 are validated against deep-bakeoff metrics. Skip if the registry signal turns out to be too noisy or too thin to support cross-linker consumption.\n\nPREREQUISITE: Phase 4 (created above)."  # 2d09
     fields: {}  # 2d09
+- op: update  # e7dd
+  at: '2026-04-14T04:50:24Z'  # e7dd
+  by: agent  # e7dd
+  actor: jgstern_agent  # e7dd
+  clock: 2  # e7dd
+  nonce: e7dd  # e7dd
+  set:  # e7dd
+    parent: INV-dihos-razov-momat-runoh-mohov-zumop-mivar-nijog  # e7dd
+  remove:  # e7dd
+    isbefore: [WI-hudam-bakim-birul-riban-vajis-siliz-tirug-valid]  # e7dd
+- op: discuss  # cc98
+  at: '2026-04-14T04:50:24Z'  # cc98
+  by: agent  # cc98
+  actor: jgstern_agent  # cc98
+  clock: 3  # cc98
+  nonce: cc98  # cc98
+  message: "Fix #1: remove inverted Phase 5→Phase 4 isbefore. Fix #2: add parent=INV-dihos for consistency with Phases 2/3/4."  # cc98

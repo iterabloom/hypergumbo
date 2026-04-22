@@ -1,0 +1,53 @@
+- op: create  # b071
+  at: '2026-04-18T06:29:53Z'  # b071
+  by: agent  # b071
+  actor: jgstern_agent  # b071
+  clock: 1  # b071
+  nonce: b071  # b071
+  data:  # b071
+    kind: work_item  # b071
+    title: "Agent-supervisor daemon: Python run/status/stop, decision matrix, flock, reserved prefix, rate limit"  # b071
+    status: todo_soft  # b071
+    priority: 1  # b071
+    parent: WI-razub-duluf-nobun-rulit-dapam-jipal-dafud-nahob  # b071
+    tags:  # b071
+    - retrospective  # b071
+    - governance  # b071
+    - hooks  # b071
+    isbefore:  # b071
+    - WI-batob-robuj-lorut-rugur-logam-rutok-fisoj-lajin  # b071
+    duplicate_of: []  # b071
+    not_duplicate_of: []  # b071
+    pr_ref:  # b071
+    description: "Parent: WI-razub-duluf-nobun-rulit-dapam-jipal-dafud-nahob.\n\n## Scope\n\nBuild the `scripts/agent-supervisor` Python daemon. This item covers the scaffolding, the decision matrix, and the run/status/stop subcommands. Kill/spawn mechanics are in the sibling replacement-sequence item.\n\n## Deliverables\n\n1. **`scripts/agent-supervisor` Python script** with three subcommands:\n   - `run` — enters the poll loop. Default cadence 60s, flag `--interval <seconds>`.\n   - `status` — one-shot print of current state (session inventory, pane-byte ages, heartbeat ages, `autonomous_intent` value).\n   - `stop` — touches a sentinel file; the running loop checks each iteration and exits cleanly.\n\n2. **State directory** at `~/hypergumbo_lab_notebook/agent-supervisor/`:\n   - `supervisor.lock` — pid-file + flock. At most one supervisor per project.\n   - `supervisor.stop-sentinel` — presence means `run` loop should exit.\n   - `<session>.meta.json` — written once on spawn: session_id, CLI PID, vendor, project_dir, tmux session name, start UTC.\n   - `<session>.heartbeat` — created/updated by the heartbeat instrumentation item; READ by `status` but NOT by `run`'s decision path.\n   - `respawn_log.log` — append-only audit log of every spawn / replace decision.\n   - `rate_limit.json` — rolling counter for soft rate limit (default 8 spawns/day).\n\n3. **Decision matrix per poll tick** (per WI-razub design):\n\n   | autonomous_intent | clients attached | PID alive | pane changed last 15m | Action |\n   | --- | --- | --- | --- | --- |\n   | OFF | — | — | — | do nothing |\n   | non-OFF | yes | — | — | do nothing (human present) |\n   | non-OFF | no | yes | yes | do nothing (working) |\n   | non-OFF | no | yes | no | REPLACE |\n   | non-OFF | no | no | — | REPLACE |\n   | non-OFF (no session for slot) | — | — | — | SPAWN fresh |\n\n   The replacement mechanics themselves are handled by the sibling item; this item just emits the decision and calls into that module.\n\n4. **Reserved tmux session prefix.** The supervisor ONLY inspects / touches tmux sessions whose name matches `hypergumbo-session-*`. Any other tmux session is ignored so humans running their own work are untouched.\n\n5. **Pane-delta signal.** Uses `tmux capture-pane -t <session> -p | wc -c` on each poll, compares to last tick's byte count, records in per-session in-memory state with a rolling 15-minute window. This is the load-bearing \"is it working?\" signal.\n\n6. **Rate limiting.** Soft cap (default 8 spawns/rolling-24h); on breach, log COOLDOWN and skip the spawn — do NOT abort the daemon.\n\n7. **Tests.**\n   - Unit tests: decision matrix (parametrize over the 6 rows).\n   - flock: second process fails to acquire lock.\n   - Reserved prefix: sessions outside the prefix are not inspected.\n   - Stop sentinel triggers clean exit within one poll tick.\n\n## Dependencies\n\n- Depends on `autonomous_intent.txt` existing (sibling item for intent/mode split).\n- Heartbeat helper does NOT need to exist for this item to work; `status` gracefully reports \"no heartbeat\" when the file is absent.\n- The replacement mechanics live in a sibling item — this item's decision path calls a stub/interface that the sibling fills in.\n\n## Design source\n\nSee WI-razub consolidated design, \"The supervisor script\" and \"Decision matrix\" sections.\n\n## Governance\n\nAdds `scripts/agent-supervisor` (new script). Pre-approved in WI-razub comment 2026-04-18T06:11:15Z."  # b071
+    fields: {}  # b071
+- op: update  # dbe6
+  at: '2026-04-18T19:25:26Z'  # dbe6
+  by: agent  # dbe6
+  actor: jgstern_agent  # dbe6
+  clock: 2  # dbe6
+  nonce: dbe6  # dbe6
+  set:  # dbe6
+    status: done  # dbe6
+- op: discuss  # ed6f
+  at: '2026-04-18T19:25:26Z'  # ed6f
+  by: agent  # ed6f
+  actor: jgstern_agent  # ed6f
+  clock: 3  # ed6f
+  nonce: ed6f  # ed6f
+  message: "Implemented in commit c01512b82 (feat(supervisor): agent-supervisor daemon + replacement sequence). Covers: run/status/stop subcommands, decision matrix (6-row truth table), flock-based single-instance, reserved tmux prefix (hypergumbo-session-*), pane-delta signal, rate limit (8/24h default), respawn_log.log, state dir at ~/hypergumbo_lab_notebook/agent-supervisor/. 47 unit tests cover the full decision matrix, intent normalization, flock rejection, stop-sentinel, reserved-prefix discipline, pane-delta tracking, CLI dispatch. See CHANGELOG [Unreleased]."  # ed6f
+- op: update  # 03c2
+  at: '2026-04-18T07:50:42Z'  # 03c2
+  by: agent  # 03c2
+  actor: jgstern_agent  # 03c2
+  clock: 2  # 03c2
+  nonce: 03c2  # 03c2
+  set:  # 03c2
+    status: done  # 03c2
+- op: discuss  # 020a
+  at: '2026-04-18T07:50:42Z'  # 020a
+  by: agent  # 020a
+  actor: jgstern_agent  # 020a
+  clock: 3  # 020a
+  nonce: 020a  # 020a
+  message: "Landed in PR #3148 together with WI-nusor (supervisor scaffolding + replacement sequence delivered as a single PR since they tightly couple). run/status/stop subcommands, decision matrix, flock, reserved prefix, rate limit, 47 tests covering every branch."  # 020a

@@ -21,3 +21,75 @@
     pr_ref:  # 02cf
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1407.md 'Concrete wins' §6 and 'A plausible integration shape': build a pure translation shim that walks a Sourcegraph SCIP index and emits hypergumbo Symbol/Edge objects.\n\n**Input:** a SCIP index file produced by rust-analyzer scip (or, eventually, any SCIP emitter).\n**Output:** a list of Symbol and Edge objects ready for the analyzer registry, with provenance indicating SCIP as the source.\n\n**SCIP concepts to map:**\n- Document → file path and language detection\n- SymbolInformation → Symbol (name, kind, signature, optional documentation)\n- Occurrence → call/reference/definition sites (source spans)\n- Relationships (implementation_of, type_definition_of, defined_by) → Edge kinds (implements, has_type, defined_in)\n\n**Design target:** the shim must be language-agnostic enough that the same code can later consume scip-typescript / scip-java / scip-python / scip-clang output (see the 'generalize SCIP shim' item). Rust-specific quirks should live in the rust-analyzer package, not in the shim.\n\n**Testing:** start with recorded SCIP fixtures (small Rust crates) so tests don't require running rust-analyzer. Add end-to-end tests in the package that DO run rust-analyzer when available.\n\n**Open questions from the notebook that the shim's design must answer:**\n- How is trait-dispatch represented in SCIP relationships, if at all? (may or may not need a Rust-specific post-processing step)\n- Are macro-expanded items in SCIP tagged with the original source span, or a synthetic one? (affects how cross-language linkers join on source locations)\n\nBlocked on the mini trial answering these questions before coding begins."  # 02cf
     fields: {}  # 02cf
+- op: update  # b159
+  at: '2026-04-17T06:27:05Z'  # b159
+  by: human  # b159
+  actor: jgstern  # b159
+  clock: 2  # b159
+  nonce: b159  # b159
+  set:  # b159
+    priority: 2  # b159
+- op: discuss  # 8bc4
+  at: '2026-04-18T00:24:57Z'  # 8bc4
+  by: human  # 8bc4
+  actor: jgstern  # 8bc4
+  clock: 3  # 8bc4
+  nonce: 8bc4  # 8bc4
+  message: "Please review WI-zakub and its discussion to make sure the lessons there are incorporated here."  # 8bc4
+- op: discuss  # 5ae9
+  at: '2026-04-18T01:39:21Z'  # 5ae9
+  by: agent  # 5ae9
+  actor: jgstern_agent  # 5ae9
+  clock: 4  # 5ae9
+  nonce: 5ae9  # 5ae9
+  message: "Incorporating WI-zakub lessons into this item's scope:\n\n1. Both open questions in the original description are now answered — no pre-coding investigation needed:\n   - \"How is trait-dispatch represented in SCIP relationships?\" — It is NOT. rust-analyzer leaves the SCIP Relationship field empty (WI-zakub §1). Trait-resolved method references are encoded inside the symbol descriptor string itself (e.g., \"rust-analyzer cargo crate version impl#[T][Trait]method()\"). The shim must parse the descriptor syntax to recover implementation_of / defined_by relationships; a Rust-specific post-processing step IS required at the shim's output layer, even though the shim body stays language-agnostic. Proposed split: shim emits Symbol/Edge objects with the raw SCIP symbol string in a provenance field; an optional \"descriptor decoder\" (rust_analyzer-package-local) walks the provenance and adds `implements` / `defined_in` Edges for trait method dispatches.\n   - \"Are macro-expanded items in SCIP tagged with original or synthetic spans?\" — Expansion-generated items are ABSENT from the SCIP index entirely (WI-zakub §2); only the macro-invocation site appears, with original-source spans. The shim therefore emits no synthetic symbols for #[tokio::main], #[wasm_bindgen], #[napi], #[pyo3] expansions. Existing proc-macro FFI linkers (wasm_bindgen.py, napi.py, pyo3) retain sole authority over those constructs; document this carve-out in the shim's module docstring so the downstream question \"why doesn't SCIP see my #[napi] function?\" has an in-tree answer.\n\n2. Span semantics — SCIP Occurrence.range is line/col in UTF-8 column units (WI-zakub §3). Map directly to hypergumbo's Span dataclass (also line/col); no byte-offset conversion needed. Add a validation test that a SCIP-originated Symbol's span round-trips through hypergumbo's Span.from_dict / to_dict unchanged.\n\n3. Test fixture scale — WI-zakub's ripgrep trial produced a 7.3MB SCIP file from a 4.3MB crate. That's usable as an end-to-end integration test target but too large for routine unit tests. Recorded fixtures should be small single-file crates (~10KB SCIP) for the shim's unit tests; ripgrep-scale belongs in a marker-gated integration test run less frequently.\n\n4. Opt-in gating — the shim itself has no runtime cost when unused, but the package must not import rust-analyzer at module-load time. Any invocation of the rust-analyzer binary stays behind WI-nohah's optional-dep pattern: graceful degrade, explicit --enable-rust-analyzer flag, clear warning on invocation about the 10x+ wall-time cost relative to rust.py.\n\n5. Warning on empty Relationship field — the shim should log a one-time info message when a SCIP index has zero non-empty Relationship entries (currently true for all rust-analyzer output). Otherwise a user debugging \"why are no `implements` edges appearing from SCIP?\" will have no hint that rust-analyzer populates the info elsewhere. The message should point to the Rust-specific descriptor-decoder post-processor.\n\nNo change to the item's status — these are scope clarifications that unblock implementation, not scope additions. Ready to move from todo_soft to active work whenever the upstream package scaffold (WI-duzul) lands."  # 5ae9
+- op: discuss  # 2212
+  at: '2026-04-19T15:42:41Z'  # 2212
+  by: agent  # 2212
+  actor: jgstern_agent  # 2212
+  clock: 5  # 2212
+  nonce: '2212'  # 2212
+  message: "Phase 1 shipped: SCIP symbol-string descriptor parser merged in commit 12846b608 on dev (PR auto-merged). New module hypergumbo_core.scip.descriptor exposes parse_scip_symbol → frozen ScipSymbol dataclass with 8-kind DescriptorKind enum (NAMESPACE/TYPE/TERM/META/METHOD/MACRO/TYPE_PARAMETER/PARAMETER). Covers the WI-zakub trait-dispatch descriptor shape (impl#[T][Trait]method().) which is where rust-analyzer encodes trait resolution instead of SCIP Relationship. No protobuf dependency introduced — parser operates on wire strings directly. 30 tests, 100% coverage, per-package isolation PASSED.\n\nRemaining WI-mafut scope (deferred to Phase 2+, all still in this item):\n- Walk scip.proto Index.documents and emit hypergumbo Symbol objects (Document.language → Symbol.language; Document.relative_path → Symbol.path; Occurrence range → Symbol.span; SymbolInformation.symbol via parse_scip_symbol for name/kind)\n- Emit Edge objects from Occurrences (def/ref roles → call-graph edges)\n- Emit Edge objects from SymbolInformation.relationships (implements / has_type) and log one-time info warning when Relationships set is empty index-wide (rust-analyzer always empty per WI-zakub §1)\n- Add the scip-proto optional dependency gate (pyproject.toml extras_require) — coordinate with WI-duzul which will be the first caller\n\nLeaving status todo_soft; Phase 2 picks up from here."  # 2212
+- op: discuss  # 47ff
+  at: '2026-04-19T15:54:45Z'  # 47ff
+  by: agent  # 47ff
+  actor: jgstern_agent  # 47ff
+  clock: 6  # 47ff
+  nonce: 47ff  # 47ff
+  message: "Phase 2 dependency research (blocker-de-risking for next session):\n\nProbed PyPI for a ready-made SCIP protobuf Python binding — none exists. Checked scip (occupied by an unrelated Scalable Cytometry Image Processing project), scip-python, sourcegraph-scip, scip-pb, scip-protobuf, scip-index, scip-pb2 — all 404 except the cytometry squatter. So Phase 2 cannot just 'add scip-proto to optional-deps' — there is no such package.\n\nThree viable paths for Phase 2:\n  A) Vendor Sourcegraph's scip.proto file and run 'protoc --python_out' at install time. Adds protobuf-compiler build-time dep. Rejected-ish: fragile install story.\n  B) Vendor pre-generated scip_pb2.py (one file, ~30KB) into packages/hypergumbo-core/src/hypergumbo_core/scip/_generated/. Keep it checked in; regenerate via a scripts/build-scip-proto when scip.proto version bumps. Simple and self-contained. Preferred.\n  C) Hand-roll minimal protobuf parsing for just the Document/SymbolInformation/Occurrence/Relationship messages we consume. Skinny (SCIP schema is small) but duplicates work that protoc already does correctly. Use only if (B) proves unworkable.\n\nRecommendation for Phase 2: option B. scip.proto lives at github.com/sourcegraph/scip/blob/main/scip.proto (pinned to a specific commit in the vendoring script). The 'protobuf' runtime is already an indirect dep of several things hypergumbo-core already ships (google.protobuf importable today per this session's python -c check). No new install-time toolchain needed.\n\nRecording this now so the next session doesn't re-do the PyPI probe."  # 47ff
+- op: discuss  # 7745
+  at: '2026-04-19T22:24:38Z'  # 7745
+  by: human  # 7745
+  actor: jgstern  # 7745
+  clock: 7  # 7745
+  nonce: '7745'  # 7745
+  message: "agreed; path B seems like the best"  # 7745
+- op: discuss  # b4dc
+  at: '2026-04-20T01:14:49Z'  # b4dc
+  by: agent  # b4dc
+  actor: jgstern_agent  # b4dc
+  clock: 8  # b4dc
+  nonce: b4dc  # b4dc
+  message: "Acknowledged path B — vendoring a pinned scip.proto + pre-generated scip_pb2.py under packages/hypergumbo-core/src/hypergumbo_core/scip/_generated/.\n\nPhase 2 plan now concrete:\n\n1. Add scripts/build-scip-proto: curls scip.proto from github.com/sourcegraph/scip at a pinned commit SHA (record SHA in a constant at the top of the script + in _generated/SOURCE_COMMIT.txt), runs protoc --python_out against the downloaded file, emits _generated/scip_pb2.py. Script is developer-run (not CI-run); the generated file is checked in. Allowlist check: github.com / raw.githubusercontent.com for the curl.\n\n2. _generated/ layout: __init__.py (empty), scip_pb2.py (generated), SOURCE_COMMIT.txt (pinned SHA for reproducibility). No hand edits to scip_pb2.py; regenerate via the build script when the SHA bumps.\n\n3. hypergumbo_core.scip.index (new module): walks scip_pb2.Index.documents, emits hypergumbo Symbol objects. Uses Phase 1 parse_scip_symbol for the descriptor field. Maps Document.language → Symbol.language, Document.relative_path → Symbol.path, Occurrence.range → Span(line, col) (UTF-8 col units per WI-zakub §3 — direct assignment, no conversion).\n\n4. hypergumbo_core.scip.edges (new module): emits Edge objects. Two sources: Occurrence def/ref roles → call-graph edges; SymbolInformation.relationships → implements / has_type / defined_in edges. One-time INFO log when every SymbolInformation.relationships is empty (rust-analyzer case per WI-zakub §1) pointing to the descriptor decoder.\n\n5. Runtime protobuf dep: 'protobuf' is already importable in the hypergumbo-core env (verified Phase 2 research turn). No new install-time toolchain. If a fresh install surfaces a missing protobuf, add it to pyproject.toml extras_require under a 'scip' extra; keep _generated/scip_pb2.py's import at module level so the error surfaces at import, not runtime.\n\n6. Tests: unit tests use recorded SCIP fixtures (~10KB single-file crates, checked in). Integration test gated by a marker for ripgrep-scale fixtures. 100% coverage on the shim; # pragma: no cover on defensive branches per AGENTS.md.\n\nStatus stays todo_soft; will start Phase 2 once the current reply-first cycle clears. No scope change."  # b4dc
+- op: discuss  # edfa
+  at: '2026-04-20T03:25:56Z'  # edfa
+  by: agent  # edfa
+  actor: jgstern_agent  # edfa
+  clock: 9  # edfa
+  nonce: edfa  # edfa
+  message: "Phase 2 Slices A/B/C merged to dev:\n\n- Slice A (commit 4d19f8beb merged as PR #3203): scripts/build-scip-proto + vendored scip_pb2.py at pinned SHA 9330cbd4. grpcio-tools' bundled protoc; protobuf~=6.33 added to hypergumbo-core; coverage configs omit the generated file. 4 smoke tests.\n- Slice B (commit c091a2746): hypergumbo_core.scip.index.scip_index_to_symbols — walks Documents, emits Symbols keyed to Definition Occurrences. 20 tests cover span conversion (3/4 ints, rejected lengths), kind mapping (TYPE/TERM/METHOD/local), language lower-casing, multi-document walk, malformed symbol skip, meta preservation.\n- Slice C (commit a0e33604f): hypergumbo_core.scip.edges.scip_index_to_edges — emits Edges from SymbolInformation.relationships (is_implementation/is_type_definition/is_reference/is_definition → implements/has_type/references/defined_by). Unresolved by default, optional resolve_symbol callable. Self-reference drop. 16 tests.\n\nWhat is intentionally deferred from WI-mafut and tracked in the new WI-kopav:\n- SCIP Occurrence-ref → call edges. Emitting a call edge from a non-Definition Occurrence requires resolving the enclosing symbol by span intersection, which SCIP does not encode directly. Separating it keeps WI-mafut narrow and reviewable.\n\nWI-mafut can be treated as largely complete for the 'SCIP wire-format ingest shim' charter; remaining callers (WI-duzul, WI-nokoh, WI-burud) can start against the Slice A/B/C surface. I'll leave this item at todo_soft and drop priority if WI-kopav becomes the natural next-step item. Happy to close if you'd rather track it cleanly."  # edfa
+- op: update  # 3596
+  at: '2026-04-20T03:41:02Z'  # 3596
+  by: agent  # 3596
+  actor: jgstern_agent  # 3596
+  clock: 10  # 3596
+  nonce: '3596'  # 3596
+  set:  # 3596
+    status: done  # 3596
+- op: discuss  # bc40
+  at: '2026-04-20T03:41:02Z'  # bc40
+  by: agent  # bc40
+  actor: jgstern_agent  # bc40
+  clock: 11  # bc40
+  nonce: bc40  # bc40
+  message: "Phase 2 Slices A/B/C/D all merged to dev (2026-04-20). Complete SCIP ingest surface: scripts/build-scip-proto + vendored scip_pb2.py (Slice A), hypergumbo_core.scip.index.scip_index_to_symbols (Slice B), hypergumbo_core.scip.edges.scip_index_to_edges (Slice C), hypergumbo_core.scip.calls.scip_index_to_call_edges (Slice D). 55 tests across the 4 slices, 100% coverage. Downstream callers (WI-duzul, WI-nokoh, WI-burud) can now depend on the surface. Marking done; if post-integration gaps surface when WI-duzul wires rust-analyzer through the shim, file as fresh items rather than reopen."  # bc40

@@ -304,7 +304,7 @@ class TestUpsert:
             priority=1,
             parent="INV-parent",
             tags=["tag1", "tag2"],
-            before=["INV-before"],
+            isbefore=["INV-before"],
             duplicate_of=["INV-dup"],
             not_duplicate_of=["INV-nodup"],
             pr_ref="PR-42",
@@ -334,7 +334,7 @@ class TestUpsert:
         assert r.priority == 1
         assert r.parent == "INV-parent"
         assert r.tags == ["tag1", "tag2"]
-        assert r.before == ["INV-before"]
+        assert r.isbefore == ["INV-before"]
         assert r.duplicate_of == ["INV-dup"]
         assert r.not_duplicate_of == ["INV-nodup"]
         assert r.pr_ref == "PR-42"
@@ -625,7 +625,7 @@ class TestSerializationRoundTrip:
             id="INV-empty",
             kind="work_item", title="Empty Lists",
             status="todo_hard",
-            tags=[], before=[], duplicate_of=[], not_duplicate_of=[],
+            tags=[], isbefore=[], duplicate_of=[], not_duplicate_of=[],
             fields={}, locked_fields=set(), discussion=[],
             created_at="2026-01-01T00:00:00Z",
             updated_at="2026-01-01T00:00:00Z",
@@ -635,7 +635,7 @@ class TestSerializationRoundTrip:
         assert len(result) == 1
         r = result[0]
         assert r.tags == []
-        assert r.before == []
+        assert r.isbefore == []
         assert r.fields == {}
         assert r.locked_fields == set()
         assert r.discussion == []

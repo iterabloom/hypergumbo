@@ -1249,3 +1249,548 @@ class TestAggregateWithIngest:
 
         assert result == 0
         mock_ingest.assert_not_called()
+
+
+class TestAwaitsBakeoffValidationLoading:
+    """Load active awaits_bakeoff_validation items via the tracker CLI."""
+
+    def test_load_returns_list_on_success(self, bakeoff_features_reflect):
+        fake = [{"id": "WI-abc", "title": "t", "description": "d", "tags": []}]
+        completed = mock.Mock(returncode=0, stdout=json.dumps(fake), stderr="")
+        with mock.patch.object(
+            bakeoff_features_reflect.subprocess, "run", return_value=completed
+        ):
+            items = bakeoff_features_reflect.load_awaits_bakeoff_validation_items()
+        assert items == fake
+
+    def test_load_returns_empty_on_nonzero_exit(self, bakeoff_features_reflect):
+        completed = mock.Mock(returncode=2, stdout="", stderr="boom")
+        with mock.patch.object(
+            bakeoff_features_reflect.subprocess, "run", return_value=completed
+        ):
+            items = bakeoff_features_reflect.load_awaits_bakeoff_validation_items()
+        assert items == []
+
+    def test_load_returns_empty_on_invalid_json(self, bakeoff_features_reflect):
+        completed = mock.Mock(returncode=0, stdout="not json", stderr="")
+        with mock.patch.object(
+            bakeoff_features_reflect.subprocess, "run", return_value=completed
+        ):
+            items = bakeoff_features_reflect.load_awaits_bakeoff_validation_items()
+        assert items == []
+
+    def test_load_returns_empty_on_non_list_payload(self, bakeoff_features_reflect):
+        completed = mock.Mock(
+            returncode=0, stdout=json.dumps({"not": "a list"}), stderr=""
+        )
+        with mock.patch.object(
+            bakeoff_features_reflect.subprocess, "run", return_value=completed
+        ):
+            items = bakeoff_features_reflect.load_awaits_bakeoff_validation_items()
+        assert items == []
+
+    def test_load_returns_empty_on_subprocess_error(self, bakeoff_features_reflect):
+        with mock.patch.object(
+            bakeoff_features_reflect.subprocess,
+            "run",
+            side_effect=OSError("no such binary"),
+        ):
+            items = bakeoff_features_reflect.load_awaits_bakeoff_validation_items()
+        assert items == []
+
+
+class TestValidationClaimsSection:
+    """Format the awaits_bakeoff_validation prompt section."""
+
+    def test_empty_items_yields_empty_section(self, bakeoff_features_reflect):
+        assert bakeoff_features_reflect.format_validation_claims_section([]) == ""
+
+    def test_section_lists_item_ids_and_titles(self, bakeoff_features_reflect):
+        items = [
+            {"id": "WI-alpha", "title": "Alpha claim", "description": "Short context."},
+            {"id": "WI-beta", "title": "Beta claim", "description": "Another."},
+        ]
+        section = bakeoff_features_reflect.format_validation_claims_section(items)
+        assert "Active Bakeoff Validation Claims" in section
+        assert "WI-alpha" in section
+        assert "Alpha claim" in section
+        assert "WI-beta" in section
+        assert "awaits_bakeoff_validation_verdicts" in section
+
+    def test_section_truncates_long_descriptions(self, bakeoff_features_reflect):
+        items = [{"id": "WI-x", "title": "x", "description": "A" * 1200}]
+        section = bakeoff_features_reflect.format_validation_claims_section(items)
+        assert "…" in section
+        assert "A" * 1200 not in section
+
+    def test_section_handles_missing_fields(self, bakeoff_features_reflect):
+        items = [{"id": "WI-bare"}]
+        section = bakeoff_features_reflect.format_validation_claims_section(items)
+        assert "WI-bare" in section
+
+    def test_section_uses_first_paragraph_only(self, bakeoff_features_reflect):
+        items = [
+            {
+                "id": "WI-multi",
+                "title": "T",
+                "description": "First paragraph.\n\nSecond paragraph with secret.",
+            }
+        ]
+        section = bakeoff_features_reflect.format_validation_claims_section(items)
+        assert "First paragraph." in section
+        assert "Second paragraph with secret." not in section
+
+
+class TestPromptInjectionOfClaims:
+    """Reflect prompt includes the validation section when claims are active."""
+
+    def test_prompt_omits_section_with_no_claims(
+        self, deep_session, bakeoff_features_reflect
+    ):
+        session_dir, _ = deep_session
+        args = mock.Mock(workdir=str(session_dir), iteration=None)
+        with mock.patch.object(
+            bakeoff_features_reflect,
+            "load_awaits_bakeoff_validation_items",
+            return_value=[],
+        ):
+            bakeoff_features_reflect.cmd_reflect(args)
+        prompt = (
+            session_dir / "reflect" / "cohort-002" / "iter-001" / "repo-a.prompt.md"
+        ).read_text()
+        # The heading only appears when claims are active; a conditional
+        # reference in the YAML output schema mentions the heading in quotes.
+        assert "## Active Bakeoff Validation Claims" not in prompt
+
+    def test_prompt_contains_section_with_claims(
+        self, deep_session, bakeoff_features_reflect
+    ):
+        session_dir, _ = deep_session
+        args = mock.Mock(workdir=str(session_dir), iteration=None)
+        claims = [
+            {"id": "WI-zeta", "title": "Z claim", "description": "Short desc."}
+        ]
+        with mock.patch.object(
+            bakeoff_features_reflect,
+            "load_awaits_bakeoff_validation_items",
+            return_value=claims,
+        ):
+            bakeoff_features_reflect.cmd_reflect(args)
+        prompt = (
+            session_dir / "reflect" / "cohort-002" / "iter-001" / "repo-a.prompt.md"
+        ).read_text()
+        assert "Active Bakeoff Validation Claims" in prompt
+        assert "WI-zeta" in prompt
+
+
+class TestValidationVerdictAggregation:
+    """Aggregate per-claim verdicts across repo assessments."""
+
+    def _a_with_verdicts(self, repo, verdicts):
+        a = _make_deep_assessment(repo)
+        a["awaits_bakeoff_validation_verdicts"] = verdicts
+        return a
+
+    def test_no_verdicts_no_field(self, bakeoff_features_reflect):
+        a = _make_deep_assessment("repo-a")
+        summary = bakeoff_features_reflect.aggregate_assessments([a])
+        assert "awaits_bakeoff_validation_verdicts" not in summary
+
+    def test_single_item_plurality_moved(self, bakeoff_features_reflect):
+        assessments = [
+            self._a_with_verdicts(
+                "repo-a",
+                [{"item_id": "WI-x", "verdict": "moved", "evidence": "see slice"}],
+            ),
+            self._a_with_verdicts(
+                "repo-b",
+                [{"item_id": "WI-x", "verdict": "moved", "evidence": "see io"}],
+            ),
+            self._a_with_verdicts(
+                "repo-c",
+                [{"item_id": "WI-x", "verdict": "no_move", "evidence": "nope"}],
+            ),
+        ]
+        summary = bakeoff_features_reflect.aggregate_assessments(assessments)
+        verdicts = summary["awaits_bakeoff_validation_verdicts"]
+        assert len(verdicts) == 1
+        row = verdicts[0]
+        assert row["item_id"] == "WI-x"
+        assert row["moved"] == 2
+        assert row["no_move"] == 1
+        assert row["plurality"] == "moved"
+        assert {ev["repo"] for ev in row["evidence"]} == {"repo-a", "repo-b", "repo-c"}
+
+    def test_tied_plurality(self, bakeoff_features_reflect):
+        assessments = [
+            self._a_with_verdicts(
+                "repo-a", [{"item_id": "WI-t", "verdict": "moved"}]
+            ),
+            self._a_with_verdicts(
+                "repo-b", [{"item_id": "WI-t", "verdict": "no_move"}]
+            ),
+        ]
+        summary = bakeoff_features_reflect.aggregate_assessments(assessments)
+        row = summary["awaits_bakeoff_validation_verdicts"][0]
+        assert row["plurality"] == "tied"
+
+    def test_invalid_verdicts_ignored(self, bakeoff_features_reflect):
+        assessments = [
+            self._a_with_verdicts(
+                "repo-a",
+                [
+                    {"item_id": "WI-y", "verdict": "bogus"},
+                    {"item_id": None, "verdict": "moved"},
+                    "not a dict",
+                    {"item_id": "WI-y", "verdict": "moved"},
+                ],
+            ),
+        ]
+        summary = bakeoff_features_reflect.aggregate_assessments(assessments)
+        row = summary["awaits_bakeoff_validation_verdicts"][0]
+        assert row["item_id"] == "WI-y"
+        assert row["moved"] == 1
+        assert row["no_move"] == 0
+
+    def test_all_inconclusive_reports_inconclusive_plurality(
+        self, bakeoff_features_reflect
+    ):
+        assessments = [
+            self._a_with_verdicts(
+                "repo-a", [{"item_id": "WI-q", "verdict": "inconclusive"}]
+            ),
+        ]
+        summary = bakeoff_features_reflect.aggregate_assessments(assessments)
+        row = summary["awaits_bakeoff_validation_verdicts"][0]
+        assert row["plurality"] == "inconclusive"
+
+    def test_verdict_plurality_helper_empty_counts(self, bakeoff_features_reflect):
+        result = bakeoff_features_reflect._verdict_plurality(
+            {"moved": 0, "no_move": 0, "inconclusive": 0}
+        )
+        assert result == "inconclusive"
+
+
+class TestAggregatePrintsValidationVerdicts:
+    """_print_aggregate_summary surfaces verdicts when present."""
+
+    def test_prints_verdict_lines(self, bakeoff_features_reflect, capsys):
+        summary = {
+            "total_repos": 1,
+            "verdicts": {"USEFUL": 1, "PARTIALLY_USEFUL": 0, "NOT_USEFUL": 0},
+            "awaits_bakeoff_validation_verdicts": [
+                {
+                    "item_id": "WI-a",
+                    "moved": 1,
+                    "no_move": 0,
+                    "inconclusive": 0,
+                    "plurality": "moved",
+                    "evidence": [],
+                }
+            ],
+        }
+        bakeoff_features_reflect._print_aggregate_summary(summary)
+        out = capsys.readouterr().out
+        assert "awaits_bakeoff_validation verdicts" in out
+        assert "WI-a" in out
+        assert "plurality=moved" in out
+
+
+class TestValidationMutationPlan:
+    """build_validation_mutation_plan emits the right actions per plurality."""
+
+    def _summary(self, *verdicts):
+        return {"awaits_bakeoff_validation_verdicts": list(verdicts)}
+
+    def test_empty_summary_returns_empty_plan(self, bakeoff_features_reflect):
+        plan = bakeoff_features_reflect.build_validation_mutation_plan({})
+        assert plan == []
+
+    def test_moved_emits_remove_tag_plus_discuss(self, bakeoff_features_reflect):
+        summary = self._summary(
+            {
+                "item_id": "WI-m",
+                "moved": 3,
+                "no_move": 0,
+                "inconclusive": 0,
+                "plurality": "moved",
+                "evidence": [
+                    {"repo": "r1", "verdict": "moved", "note": "slice flipped"},
+                ],
+            }
+        )
+        plan = bakeoff_features_reflect.build_validation_mutation_plan(
+            summary, cohort_label="cohort-001/iter-001"
+        )
+        actions = [s["action"] for s in plan]
+        assert actions == ["remove_tag", "discuss"]
+        assert plan[0]["item_id"] == "WI-m"
+        assert plan[0]["tag"] == "awaits_bakeoff_validation"
+        assert "MOVED" in plan[1]["message"]
+        assert "cohort-001/iter-001" in plan[1]["message"]
+
+    def test_no_move_spawns_regression_plus_discuss(self, bakeoff_features_reflect):
+        summary = self._summary(
+            {
+                "item_id": "WI-n",
+                "moved": 0,
+                "no_move": 3,
+                "inconclusive": 0,
+                "plurality": "no_move",
+                "evidence": [
+                    {"repo": "r1", "verdict": "no_move", "note": "unchanged"},
+                ],
+            }
+        )
+        plan = bakeoff_features_reflect.build_validation_mutation_plan(summary)
+        actions = [s["action"] for s in plan]
+        assert actions == ["spawn_regression", "discuss"]
+        assert plan[0]["parent_id"] == "WI-n"
+        assert "regression" in plan[0]["tags"]
+        assert "awaits_bakeoff_validation" in plan[0]["tags"]
+        assert "NO_MOVE" in plan[1]["message"]
+
+    def test_tied_emits_only_note(self, bakeoff_features_reflect):
+        summary = self._summary(
+            {
+                "item_id": "WI-t",
+                "moved": 1,
+                "no_move": 1,
+                "inconclusive": 0,
+                "plurality": "tied",
+            }
+        )
+        plan = bakeoff_features_reflect.build_validation_mutation_plan(summary)
+        assert len(plan) == 1
+        assert plan[0]["action"] == "note"
+        assert "tied" in plan[0]["message"]
+
+    def test_inconclusive_emits_only_note(self, bakeoff_features_reflect):
+        summary = self._summary(
+            {
+                "item_id": "WI-q",
+                "moved": 0,
+                "no_move": 0,
+                "inconclusive": 2,
+                "plurality": "inconclusive",
+            }
+        )
+        plan = bakeoff_features_reflect.build_validation_mutation_plan(summary)
+        assert len(plan) == 1
+        assert plan[0]["action"] == "note"
+
+    def test_missing_fields_are_skipped(self, bakeoff_features_reflect):
+        summary = self._summary(
+            {"item_id": None, "plurality": "moved"},
+            {"item_id": "WI-x", "plurality": None},
+        )
+        plan = bakeoff_features_reflect.build_validation_mutation_plan(summary)
+        assert plan == []
+
+    def test_summarize_evidence_handles_long_notes(self, bakeoff_features_reflect):
+        evidence = [{"repo": "r1", "verdict": "moved", "note": "x" * 200}]
+        out = bakeoff_features_reflect._summarize_evidence(evidence)
+        assert "…" in out
+        assert "x" * 200 not in out
+
+    def test_summarize_evidence_empty(self, bakeoff_features_reflect):
+        out = bakeoff_features_reflect._summarize_evidence([])
+        assert "no per-repo evidence" in out
+
+    def test_summarize_evidence_more_than_max(self, bakeoff_features_reflect):
+        evidence = [
+            {"repo": f"r{i}", "verdict": "moved", "note": ""} for i in range(5)
+        ]
+        out = bakeoff_features_reflect._summarize_evidence(evidence, max_items=2)
+        assert "+3 more" in out
+
+
+class TestApplyMutationPlan:
+    """apply_mutation_plan shells out to tracker CLI and tallies results."""
+
+    def _ok(self):
+        return mock.Mock(returncode=0, stdout="", stderr="")
+
+    def _fail(self, err="boom"):
+        return mock.Mock(returncode=1, stdout="", stderr=err)
+
+    def test_applies_remove_tag(self, bakeoff_features_reflect):
+        calls = []
+        def runner(argv):
+            calls.append(argv)
+            return self._ok()
+        plan = [{"action": "remove_tag", "item_id": "WI-a", "tag": "t"}]
+        stats = bakeoff_features_reflect.apply_mutation_plan(plan, runner=runner)
+        assert stats["applied"] == 1
+        assert stats["failed"] == 0
+        assert "update" in calls[0] and "--remove-tag" in calls[0]
+
+    def test_applies_discuss(self, bakeoff_features_reflect):
+        calls = []
+        def runner(argv):
+            calls.append(argv)
+            return self._ok()
+        plan = [{"action": "discuss", "item_id": "WI-b", "message": "hi"}]
+        stats = bakeoff_features_reflect.apply_mutation_plan(plan, runner=runner)
+        assert stats["applied"] == 1
+        assert "discuss" in calls[0]
+        assert "hi" in calls[0]
+
+    def test_applies_spawn_regression(self, bakeoff_features_reflect):
+        calls = []
+        def runner(argv):
+            calls.append(argv)
+            return self._ok()
+        plan = [{
+            "action": "spawn_regression",
+            "parent_id": "WI-p",
+            "title": "Regression: p",
+            "description": "desc",
+            "tags": ["regression", "awaits_bakeoff_validation"],
+        }]
+        stats = bakeoff_features_reflect.apply_mutation_plan(plan, runner=runner)
+        assert stats["applied"] == 1
+        argv = calls[0]
+        assert "add" in argv
+        assert "--parent" in argv and "WI-p" in argv
+        assert argv.count("--tag") == 2
+
+    def test_note_is_skipped(self, bakeoff_features_reflect):
+        calls = []
+        def runner(argv):
+            calls.append(argv)
+            return self._ok()
+        plan = [{"action": "note", "item_id": "WI-n", "message": "x"}]
+        stats = bakeoff_features_reflect.apply_mutation_plan(plan, runner=runner)
+        assert stats["skipped"] == 1
+        assert calls == []
+
+    def test_unknown_action_is_skipped(self, bakeoff_features_reflect):
+        plan = [{"action": "time_travel"}]
+        stats = bakeoff_features_reflect.apply_mutation_plan(
+            plan, runner=lambda argv: self._ok()
+        )
+        assert stats["skipped"] == 1
+        assert stats["results"][0].get("reason") == "unknown action"
+
+    def test_non_zero_exit_counts_as_failed(self, bakeoff_features_reflect):
+        plan = [{"action": "remove_tag", "item_id": "WI-f", "tag": "t"}]
+        stats = bakeoff_features_reflect.apply_mutation_plan(
+            plan, runner=lambda argv: self._fail("nope")
+        )
+        assert stats["failed"] == 1
+        assert "nope" in stats["results"][0]["error"]
+
+    def test_runner_exception_counts_as_failed(self, bakeoff_features_reflect):
+        def runner(argv):
+            raise OSError("no binary")
+        plan = [{"action": "discuss", "item_id": "WI-f", "message": "x"}]
+        stats = bakeoff_features_reflect.apply_mutation_plan(plan, runner=runner)
+        assert stats["failed"] == 1
+        assert "no binary" in stats["results"][0]["error"]
+
+
+class TestSurfaceValidationMutations:
+    """_surface_validation_mutations prints plan and optionally applies it."""
+
+    def _summary_moved(self):
+        return {
+            "awaits_bakeoff_validation_verdicts": [
+                {
+                    "item_id": "WI-m",
+                    "moved": 2,
+                    "no_move": 0,
+                    "inconclusive": 0,
+                    "plurality": "moved",
+                    "evidence": [],
+                }
+            ]
+        }
+
+    def test_returns_none_when_no_plan(self, bakeoff_features_reflect, capsys):
+        result = bakeoff_features_reflect._surface_validation_mutations(
+            {}, cohort_label="c-001", apply=False
+        )
+        assert result is None
+
+    def test_dry_run_prints_plan_without_applying(
+        self, bakeoff_features_reflect, capsys
+    ):
+        result = bakeoff_features_reflect._surface_validation_mutations(
+            self._summary_moved(), cohort_label="c-001/i-001", apply=False
+        )
+        out = capsys.readouterr().out
+        assert result is None
+        assert "mutation plan" in out
+        assert "dry-run" in out
+        assert "remove_tag" in out
+        assert "WI-m" in out
+
+    def test_apply_runs_plan_and_reports_stats(
+        self, bakeoff_features_reflect, capsys
+    ):
+        with mock.patch.object(
+            bakeoff_features_reflect,
+            "apply_mutation_plan",
+            return_value={
+                "applied": 2, "failed": 0, "skipped": 0, "results": [],
+            },
+        ) as mocked:
+            stats = bakeoff_features_reflect._surface_validation_mutations(
+                self._summary_moved(), cohort_label="c-001", apply=True
+            )
+        out = capsys.readouterr().out
+        assert mocked.call_count == 1
+        assert stats["applied"] == 2
+        assert "Applying plan" in out
+        assert "Plan applied" in out
+
+    def test_apply_prints_failure_lines(self, bakeoff_features_reflect, capsys):
+        failing_results = [
+            {"step": {"action": "remove_tag", "item_id": "WI-m"}, "error": "x"},
+        ]
+        with mock.patch.object(
+            bakeoff_features_reflect,
+            "apply_mutation_plan",
+            return_value={
+                "applied": 0, "failed": 1, "skipped": 0,
+                "results": failing_results,
+            },
+        ):
+            bakeoff_features_reflect._surface_validation_mutations(
+                self._summary_moved(), cohort_label="c-001", apply=True
+            )
+        out = capsys.readouterr().out
+        assert "! remove_tag" in out
+        assert "WI-m" in out
+
+    def test_dry_run_prints_all_action_shapes(
+        self, bakeoff_features_reflect, capsys
+    ):
+        summary = {
+            "awaits_bakeoff_validation_verdicts": [
+                {
+                    "item_id": "WI-m",
+                    "moved": 1, "no_move": 0, "inconclusive": 0,
+                    "plurality": "moved", "evidence": [],
+                },
+                {
+                    "item_id": "WI-n",
+                    "moved": 0, "no_move": 1, "inconclusive": 0,
+                    "plurality": "no_move", "evidence": [],
+                },
+                {
+                    "item_id": "WI-t",
+                    "moved": 1, "no_move": 1, "inconclusive": 0,
+                    "plurality": "tied", "evidence": [],
+                },
+            ]
+        }
+        bakeoff_features_reflect._surface_validation_mutations(
+            summary, cohort_label="c", apply=False
+        )
+        out = capsys.readouterr().out
+        assert "remove_tag" in out
+        assert "spawn_regression" in out
+        assert "note" in out
+        assert "discuss" in out

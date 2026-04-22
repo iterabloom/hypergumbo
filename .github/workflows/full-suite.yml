@@ -577,6 +577,74 @@ jobs:
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
+  # Small package (~25 tests, 5 files); no retry variant — matches the
+  # test-common / test-extended pattern rather than the test-core /
+  # test-mainstream / test-tracker "heavy, retry-eligible" pattern.
+  test-rust-analyzer:
+    needs: [changes, prep]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: self-hosted
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e packages/hypergumbo-lang-rust-analyzer \
+                      -e "packages/hypergumbo-tracker[dev]"
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+      - name: Run tests
+        id: tests
+        run: |
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          pytest packages/hypergumbo-lang-rust-analyzer/tests/ -n "$WORKERS" --tb=short \
+            --cov=packages/hypergumbo-lang-rust-analyzer/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+
   test-tracker:
     needs: [changes, prep]
     if: needs.changes.outputs.code == 'true'
@@ -691,10 +759,53 @@ jobs:
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
+  # Runs the top-level tests/ directory, which exercises agent infrastructure
+  # (.agent/hooks/_shared/**, scripts/**) that is not owned by any package and
+  # therefore was previously never executed in CI. See WI-javan. Coverage is
+  # intentionally not enforced here — those modules are out of the per-package
+  # --cov scopes, and the top-level tests verify behavior, not line coverage.
+  test-agent-infra:
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # tests/test_backfill_training_data_cohort_tags.py::TestRealV0WindowBoundaries
+          # walks git log against .agent/hooks/_shared/on_transcript_change.py and
+          # asserts on specific historical SHAs from the v0 window (75596a4153d4,
+          # 704548fe1e90, 7310783e1b26, 9ac06cc88a00). A shallow clone (the v4
+          # default of depth=1) drops these from history and the tests fail.
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          # hypothesis is needed by tests/test_transcript_pipeline_properties.py;
+          # pin matches packages/hypergumbo-tracker/pyproject.toml.
+          pip install pytest pytest-xdist pyyaml 'hypothesis~=6.100'
+      - name: Run top-level tests
+        run: |
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+          pytest tests/ -n "$WORKERS" --tb=short --no-cov
+
   # Aggregate results after all test jobs complete
   aggregate:
     needs: [changes, test-core, test-core-retry, test-mainstream, test-mainstream-retry,
-            test-common, test-extended, test-tracker, test-tracker-retry]
+            test-common, test-extended, test-rust-analyzer, test-tracker, test-tracker-retry,
+            test-agent-infra]
     if: always()
     runs-on: self-hosted
     steps:
@@ -721,8 +832,10 @@ jobs:
           echo "  test-mainstream-retry: ${{ needs.test-mainstream-retry.result }} (coverage: ${{ needs.test-mainstream-retry.outputs.coverage }}%)"
           echo "  test-common: ${{ needs.test-common.result }} (coverage: ${{ needs.test-common.outputs.coverage }}%)"
           echo "  test-extended: ${{ needs.test-extended.result }} (coverage: ${{ needs.test-extended.outputs.coverage }}%)"
+          echo "  test-rust-analyzer: ${{ needs.test-rust-analyzer.result }} (coverage: ${{ needs.test-rust-analyzer.outputs.coverage }}%)"
           echo "  test-tracker: ${{ needs.test-tracker.result }} (coverage: ${{ needs.test-tracker.outputs.coverage }}%)"
           echo "  test-tracker-retry: ${{ needs.test-tracker-retry.result }} (coverage: ${{ needs.test-tracker-retry.outputs.coverage }}%)"
+          echo "  test-agent-infra: ${{ needs.test-agent-infra.result }}"
 
           # Heavy jobs pass if primary OR retry succeeded
           core_ok=false
@@ -741,7 +854,9 @@ jobs:
              [[ "$mainstream_ok" == "true" ]] && \
              [[ "${{ needs.test-common.result }}" == "success" ]] && \
              [[ "${{ needs.test-extended.result }}" == "success" ]] && \
-             [[ "$tracker_ok" == "true" ]]; then
+             [[ "${{ needs.test-rust-analyzer.result }}" == "success" ]] && \
+             [[ "$tracker_ok" == "true" ]] && \
+             [[ "${{ needs.test-agent-infra.result }}" == "success" ]]; then
             echo "conclusion=success" >> "$GITHUB_OUTPUT"
             echo "✅ All test jobs passed"
           else
@@ -764,6 +879,7 @@ jobs:
 
           COV_COMMON="${{ needs.test-common.outputs.coverage }}"
           COV_EXTENDED="${{ needs.test-extended.outputs.coverage }}"
+          COV_RUST_ANALYZER="${{ needs.test-rust-analyzer.outputs.coverage }}"
           COV_TRACKER="${{ needs.test-tracker.outputs.coverage }}"
           if [[ -z "$COV_TRACKER" || "$COV_TRACKER" == "0" ]] && \
              [[ "${{ needs.test-tracker-retry.result }}" == "success" ]]; then
@@ -775,10 +891,11 @@ jobs:
           COV_MAINSTREAM="${COV_MAINSTREAM:-0}"
           COV_COMMON="${COV_COMMON:-0}"
           COV_EXTENDED="${COV_EXTENDED:-0}"
+          COV_RUST_ANALYZER="${COV_RUST_ANALYZER:-0}"
           COV_TRACKER="${COV_TRACKER:-0}"
 
           # Calculate average (integer math)
-          AVG=$(( (COV_CORE + COV_MAINSTREAM + COV_COMMON + COV_EXTENDED + COV_TRACKER) / 5 ))
+          AVG=$(( (COV_CORE + COV_MAINSTREAM + COV_COMMON + COV_EXTENDED + COV_RUST_ANALYZER + COV_TRACKER) / 6 ))
           echo "coverage=$AVG" >> "$GITHUB_OUTPUT"
           echo "Average coverage: $AVG%"
 
@@ -800,6 +917,7 @@ jobs:
               \"mainstream-retry\": \"${{ needs.test-mainstream-retry.result }}\",
               \"common\": \"${{ needs.test-common.result }}\",
               \"extended\": \"${{ needs.test-extended.result }}\",
+              \"rust-analyzer\": \"${{ needs.test-rust-analyzer.result }}\",
               \"tracker\": \"${{ needs.test-tracker.result }}\",
               \"tracker-retry\": \"${{ needs.test-tracker-retry.result }}\"
             }
@@ -825,6 +943,7 @@ jobs:
 
           COV_COMMON="${{ needs.test-common.outputs.coverage }}"
           COV_EXTENDED="${{ needs.test-extended.outputs.coverage }}"
+          COV_RUST_ANALYZER="${{ needs.test-rust-analyzer.outputs.coverage }}"
           COV_TRACKER="${{ needs.test-tracker.outputs.coverage }}"
           if [ -z "$COV_TRACKER" ] || [ "$COV_TRACKER" = "0" ]; then
             RETRY_COV="${{ needs.test-tracker-retry.outputs.coverage }}"
@@ -846,12 +965,12 @@ jobs:
           ALL_100="false"
           if [ "$COV_CORE" = "100" ] && [ "$COV_MAINSTREAM" = "100" ] && \
              [ "$COV_COMMON" = "100" ] && [ "$COV_EXTENDED" = "100" ] && \
-             [ "$COV_TRACKER" = "100" ]; then
+             [ "$COV_RUST_ANALYZER" = "100" ] && [ "$COV_TRACKER" = "100" ]; then
             ALL_100="true"
             echo "All packages at 100% coverage - updating last-green-sha marker"
             echo "${{ github.sha }}" > /tmp/last-green-sha.txt
           else
-            echo "Not all packages at 100%: core=$COV_CORE, mainstream=$COV_MAINSTREAM, common=$COV_COMMON, extended=$COV_EXTENDED, tracker=$COV_TRACKER"
+            echo "Not all packages at 100%: core=$COV_CORE, mainstream=$COV_MAINSTREAM, common=$COV_COMMON, extended=$COV_EXTENDED, rust-analyzer=$COV_RUST_ANALYZER, tracker=$COV_TRACKER"
           fi
 
           git config user.name "CI Bot"

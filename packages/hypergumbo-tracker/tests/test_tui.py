@@ -3791,10 +3791,10 @@ class TestEditBeforeKeybinding:
                 mock_update.assert_called_once()
                 call_kwargs = mock_update.call_args
                 assert call_kwargs[1]["add_fields"] == {
-                    "before": ["ID-1", "ID-2"],
+                    "isbefore": ["ID-1", "ID-2"],
                 }
 
-    async def test_remove_before_links(
+    async def test_remove_isbefore_links(
         self, tracker_set: TrackerSet,
     ) -> None:
         from hypergumbo_tracker.tui import TrackerApp
@@ -3817,7 +3817,7 @@ class TestEditBeforeKeybinding:
                 mock_update.assert_called_once()
                 call_kwargs = mock_update.call_args
                 assert call_kwargs[1]["remove_fields"] == {
-                    "before": ["OLD-ID"],
+                    "isbefore": ["OLD-ID"],
                 }
 
     async def test_before_cancel(self, tracker_set: TrackerSet) -> None:
@@ -4158,7 +4158,7 @@ class TestOnEditBeforeCallbackBranches:
                 await pilot.pause()
                 mock.assert_called_once_with(
                     item.id,
-                    add_fields={"before": ["X"]},
+                    add_fields={"isbefore": ["X"]},
                     remove_fields=None,
                 )
 
@@ -4183,7 +4183,7 @@ class TestOnEditBeforeCallbackBranches:
                 mock.assert_called_once_with(
                     item.id,
                     add_fields=None,
-                    remove_fields={"before": ["Y"]},
+                    remove_fields={"isbefore": ["Y"]},
                 )
 
     async def test_none_result_noop(self, tmp_path: Path) -> None:
@@ -6216,8 +6216,8 @@ def _make_tracker_set_with_deps(tmp_path: Path) -> TrackerSet:
 
     Creates items A, B, C forming a chain where A must finish before B, and
     B must finish before C (temporal order: A → B → C). Under the CLI
-    semantic that ``X.before = [Y]`` means "X blocks Y" (X runs first), this
-    translates to ``A.before = [B]`` and ``B.before = [C]``.
+    semantic that ``X.isbefore = [Y]`` means "X blocks Y" (X runs first), this
+    translates to ``A.isbefore = [B]`` and ``B.isbefore = [C]``.
     """
     from helpers import make_test_config_dict
 
@@ -6245,8 +6245,8 @@ def _make_tracker_set_with_deps(tmp_path: Path) -> TrackerSet:
                   status="todo_soft", priority=3)
 
     # A blocks B, B blocks C (foundation first, integration last)
-    ts.update(id_a, add_fields={"before": [id_b]})
-    ts.update(id_b, add_fields={"before": [id_c]})
+    ts.update(id_a, add_fields={"isbefore": [id_b]})
+    ts.update(id_b, add_fields={"isbefore": [id_c]})
 
     return ts
 
@@ -6280,12 +6280,12 @@ class TestBuildDepIndex:
         assert deps == {}
 
     def test_single_dependency(self) -> None:
-        """A blocks B (A.before=[B]): blockers_of[B]=[A], dependents_of[A]=[B]."""
+        """A blocks B (A.isbefore=[B]): blockers_of[B]=[A], dependents_of[A]=[B]."""
 
         items = [
             CompiledItem(id="WI-aaaaa", kind="work_item",
                          title="A", status="todo_hard",
-                         before=["WI-bbbbb"]),
+                         isbefore=["WI-bbbbb"]),
             CompiledItem(id="WI-bbbbb", kind="work_item",
                          title="B", status="todo_hard"),
         ]
@@ -6299,7 +6299,7 @@ class TestBuildDepIndex:
         items = [
             CompiledItem(id="WI-aaaaa", kind="work_item",
                          title="A", status="todo_hard",
-                         before=["WI-nonexistent"]),
+                         isbefore=["WI-nonexistent"]),
         ]
         blockers, deps = _build_dep_index(items)
         assert blockers == {}
@@ -6311,10 +6311,10 @@ class TestBuildDepIndex:
         items = [
             CompiledItem(id="WI-aaaaa", kind="work_item",
                          title="A", status="todo_hard",
-                         before=["WI-bbbbb"]),
+                         isbefore=["WI-bbbbb"]),
             CompiledItem(id="WI-bbbbb", kind="work_item",
                          title="B", status="todo_hard",
-                         before=["WI-ccccc"]),
+                         isbefore=["WI-ccccc"]),
             CompiledItem(id="WI-ccccc", kind="work_item",
                          title="C", status="todo_hard"),
         ]
@@ -6334,10 +6334,10 @@ class TestBuildDepIndex:
         items = [
             CompiledItem(id="WI-aaaaa", kind="work_item",
                          title="A", status="todo_hard",
-                         before=["WI-ccccc"]),
+                         isbefore=["WI-ccccc"]),
             CompiledItem(id="WI-bbbbb", kind="work_item",
                          title="B", status="todo_hard",
-                         before=["WI-ccccc"]),
+                         isbefore=["WI-ccccc"]),
             CompiledItem(id="WI-ccccc", kind="work_item",
                          title="C", status="todo_hard"),
         ]
@@ -6544,33 +6544,33 @@ class TestFormatDepPills:
 class TestFormatDetailLinesDeps:
     """Test that detail panel shows Blocks and Blocked by lines.
 
-    Under the CLI semantic ``X.before = [Y]`` means "X blocks Y" — so
-    ``item.before`` is rendered as the ``Blocks:`` line, and
+    Under the CLI semantic ``X.isbefore = [Y]`` means "X blocks Y" — so
+    ``item.isbefore`` is rendered as the ``Blocks:`` line, and
     ``blockers_of[item.id]`` (reverse lookup) is rendered as the
     ``Blocked by:`` line.
     """
 
-    def test_before_links_shown(self) -> None:
-        """Item with before-links shows 'Blocks' line (item blocks those IDs)."""
+    def test_isbefore_links_shown(self) -> None:
+        """Item with isbefore-links shows 'Blocks' line (item blocks those IDs)."""
         item = CompiledItem(
             id="WI-aaaaa", kind="work_item",
             title="Foundation", status="todo_hard",
             tier=Tier.WORKSPACE,
-            before=["WI-bbbbb"],
+            isbefore=["WI-bbbbb"],
         )
         lines = _format_detail_lines(item)
         text = _strip_markup("\n".join(lines))
         assert "Blocks:" in text
         assert "WI-bbbbb" in text
 
-    def test_before_locked_shown(self) -> None:
-        """Locked before field shows [locked] indicator on Blocks line."""
+    def test_isbefore_locked_shown(self) -> None:
+        """Locked isbefore field shows [locked] indicator on Blocks line."""
         item = CompiledItem(
             id="WI-aaaaa", kind="work_item",
             title="Foundation", status="todo_hard",
             tier=Tier.WORKSPACE,
-            before=["WI-bbbbb"],
-            locked_fields={"before"},
+            isbefore=["WI-bbbbb"],
+            locked_fields={"isbefore"},
         )
         lines = _format_detail_lines(item)
         text = _strip_markup("\n".join(lines))
@@ -6665,7 +6665,7 @@ class TestDepsColumnInTable:
         app = TrackerApp(tracker_set=ts)
         async with app.run_test(size=(100, 30)) as pilot:
             await _wait_for_std_table(pilot, app)
-            # Items: A (no before), B (before=[A]), C (before=[B])
+            # Items: A (no isbefore), B (isbefore=[A]), C (isbefore=[B])
             items = app._items
             ids = [i.id for i in items]
             # B should be in blockers_of
@@ -7063,8 +7063,8 @@ class TestChainHighlighting:
 def _make_tracker_set_with_done_dep(tmp_path: Path) -> TrackerSet:
     """Create a TrackerSet where A (todo_hard) blocks B (done).
 
-    Under the CLI semantic ``X.before = [Y]`` means "X blocks Y", so A's
-    before-list contains B. When "done" status is hidden, B disappears from
+    Under the CLI semantic ``X.isbefore = [Y]`` means "X blocks Y", so A's
+    isbefore-list contains B. When "done" status is hidden, B disappears from
     the table; selecting A should surface B as a ghost row.
     """
     from helpers import make_test_config_dict
@@ -7090,8 +7090,8 @@ def _make_tracker_set_with_done_dep(tmp_path: Path) -> TrackerSet:
     id_b = ts.add(kind="work_item", title="Done dependent",
                   status="done", priority=2)
 
-    # A blocks B (A.before = [B])
-    ts.update(id_a, add_fields={"before": [id_b]})
+    # A blocks B (A.isbefore = [B])
+    ts.update(id_a, add_fields={"isbefore": [id_b]})
 
     return ts
 
@@ -9338,7 +9338,7 @@ class TestFrozenUnreadCombination:
                           status="done", priority=1)
             id_b = ts.add(kind="work_item", title="Depends on ghost",
                           status="todo_hard", priority=2)
-            ts.update(id_b, add_fields={"before": [id_a]})
+            ts.update(id_b, add_fields={"isbefore": [id_a]})
             # Add discussion to A so it's unread
             ts.discuss(id_a, "Agent progress update")
 
@@ -9393,7 +9393,7 @@ class TestFrozenUnreadCombination:
                       status="done", priority=1)
         id_b = ts.add(kind="work_item", title="Depends on frozen",
                       status="todo_hard", priority=2)
-        ts.update(id_b, add_fields={"before": [id_a]})
+        ts.update(id_b, add_fields={"isbefore": [id_a]})
         # Freeze A (requires human authority mock)
         from unittest.mock import patch as _patch
         from hypergumbo_tracker import store as store_mod

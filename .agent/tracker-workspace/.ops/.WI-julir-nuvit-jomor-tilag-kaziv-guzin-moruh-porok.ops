@@ -1,0 +1,38 @@
+- op: create  # 659d
+  at: '2026-04-14T06:05:22Z'  # 659d
+  by: agent  # 659d
+  actor: jgstern_agent  # 659d
+  clock: 1  # 659d
+  nonce: 659d  # 659d
+  data:  # 659d
+    kind: work_item  # 659d
+    title: "Cache secret-scan results across warm sketch runs"  # 659d
+    status: todo_hard  # 659d
+    priority: 1  # 659d
+    parent:  # 659d
+    tags:  # 659d
+    - uat_2026_04_13  # 659d
+    - performance  # 659d
+    - sketch  # 659d
+    isbefore: []  # 659d
+    duplicate_of: []  # 659d
+    not_duplicate_of: []  # 659d
+    pr_ref:  # 659d
+    description: "UAT 2026-04-13 BUG-20: secret scanning (gitleaks-based) adds ~8s to every warm sketch invocation regardless of whether source files have changed. UAT isolated this with `--no-secret-scan` differential: 15.8s baseline -> 7.5s without scan on alertmanager; 11.8s -> 3.6s on raft.tla (2 files). This is the dominant cost on small/medium repos and the sole cause of the '10-second floor'. Cache scan results keyed on file hashes — invalidate only when source files change."  # 659d
+    fields: {}  # 659d
+- op: update  # 91f8
+  at: '2026-04-14T09:20:08Z'  # 91f8
+  by: agent  # 91f8
+  actor: jgstern_agent  # 91f8
+  clock: 2  # 91f8
+  nonce: 91f8  # 91f8
+  set:  # 91f8
+    status: done  # 91f8
+    pr_ref: '3006'  # 91f8
+- op: discuss  # 1518
+  at: '2026-04-14T09:20:08Z'  # 1518
+  by: agent  # 1518
+  actor: jgstern_agent  # 1518
+  clock: 3  # 1518
+  nonce: '1518'  # 1518
+  message: "Fixed in PR #3006. Added scan_content_cached(content, cache_dir, max_entries=8) which keys gitleaks output by sha256 of the sketch content and stores findings in <cache_dir>/secret_scan_cache.json. The cache_dir is the per-state results directory (_get_results_cache_dir), so source-file changes rotate the directory and invalidate the cache automatically without separate logic. cmd_sketch wired to call the cached version. Verified on alertmanager: warm sketch ~7s vs prior ~16s, matching the --no-secret-scan baseline. All 8577 tests pass at 100% coverage."  # 1518

@@ -42,3 +42,33 @@
   clock: 4  # 84fa
   nonce: 84fa  # 84fa
   message: "Further investigation from bakeoff deep-20260403 pyo3-file assessment:\n\nThe pyo3-file assessment confirmed: io_boundary_quality=1/5, zero IO tags for an IO-centric library. The pyffi linker Phase 2 (_find_pyo3_symbols) works correctly when annotations are present — the issue is upstream in the Rust analyzer.\n\nRoot cause: The Rust analyzer (rust.py) extracts annotations from #[attr] decorators, but the matching is based on tree-sitter AST node types. For PyO3, the proc macros (#[pyfunction], #[pymethods]) are outer attributes on fn/impl items. The tree-sitter Rust grammar may not expose these as distinct annotation nodes for all function patterns.\n\nFix approach: Debug the Rust analyzer's attribute extraction on a real PyO3 crate (pyo3-file) to identify which AST patterns produce annotations and which don't. The fix is likely a tree-sitter query pattern adjustment, not architectural."  # 84fa
+- op: update  # d781
+  at: '2026-04-14T05:18:13Z'  # d781
+  by: agent  # d781
+  actor: jgstern_agent  # d781
+  clock: 5  # d781
+  nonce: d781  # d781
+  set:  # d781
+    priority: 3  # d781
+- op: discuss  # 2948
+  at: '2026-04-14T05:18:13Z'  # 2948
+  by: agent  # 2948
+  actor: jgstern_agent  # 2948
+  clock: 6  # 2948
+  nonce: '2948'  # 2948
+  message: "Bump P4->P3: io-boundaries leverage. UAT 2.6.0 identified io-boundaries as the linchpin for taint-flow and downstream features. PyO3 is the canonical FFI pattern; expanding here advances the broader FFI io-boundary story."  # 2948
+- op: update  # 2fea
+  at: '2026-04-17T02:56:52Z'  # 2fea
+  by: agent  # 2fea
+  actor: jgstern_agent  # 2fea
+  clock: 7  # 2fea
+  nonce: 2fea  # 2fea
+  set:  # 2fea
+    priority: 4  # 2fea
+- op: discuss  # 9ed6
+  at: '2026-04-17T02:56:52Z'  # 9ed6
+  by: agent  # 9ed6
+  actor: jgstern_agent  # 9ed6
+  clock: 8  # 9ed6
+  nonce: 9ed6  # 9ed6
+  message: "pf-prelim pivot: pf-prelim's Rust is not called from Python. Deferred P3→P4."  # 9ed6

@@ -20,3 +20,26 @@
     pr_ref:  # 0238
     description: "**Per `~/hypergumbo_lab_notebook/bf4oxh91w_investigation_threads_04072026_1702.md` Thread 8 §\"Proposed fixes\" rank #3:** when the stop hook fires, if an active background task launched by the current session exists, the guidance text should explicitly say:\n\n> You have an active background task `<id>` running command `<cmd>`. Do not start anything that could conflict with it. Wait for the notification or check liveness with `TaskList` — do not infer task state from stdout files.\n\n**Why:** root cause analysis of the bf4oxh91w incident (see companion invariant item) identified stop-hook anxiety as the primary causal factor: 54 seconds between stop-hook fire (L253, 19:31:25) and the destructive duplicate-launch (L263, 19:32:19), under \"TODOs are blocking\" pressure. The companion smart-test flock fix makes the *specific* failure mode (duplicate `smart-test`) structurally impossible, but does NOT address the more general failure mode where the agent takes premature action on any other long-running command under stop-hook pressure.\n\n**Implementation surface:** stop hook guidance generation in `.agent/hooks/`. Would need to:\n1. Detect active background tasks for the current session — likely via the harness's `TaskList` mechanism, or by reading task output directories under `/tmp/claude-<uid>/.../tasks/`.\n2. Inject task-aware text into the stop guidance file (which is what the hook returns to the harness for the next prompt).\n3. Suppress or soften the \"TODOs blocking\" framing while a long-running background task is in flight, since the agent's correct response is \"wait\" not \"drive forward.\"\n\n**STATUS: needs_human_review per AGENTS.md governance file list. `.agent/hooks/` is governance.**\n\n**Approval workflow:** this item stays in `needs_human_review` until the human approves the design. After approval, an implementation item touching `.agent/hooks/` can be created and submitted as a PR with explicit authorization.\n\n**Pairs with:**\n- The smart-test flock fix (immediate structural fix for the most common case)\n- The companion invariant item documenting the violation\n- AGENTS.md/playbook additions about TaskList habituation (also governance)\n\n**Open question worth flagging during human review:** how does the hook know which background tasks belong to the *current* session vs others? The harness's task ID space may not be session-scoped. If not, the detection has to fall back to \"any background task on the system from this user\" which has false positives. Worth resolving before implementation."  # 0238
     fields: {}  # 0238
+- op: discuss  # 5e9a
+  at: '2026-04-14T20:06:47Z'  # 5e9a
+  by: human  # 5e9a
+  actor: jgstern  # 5e9a
+  clock: 2  # 5e9a
+  nonce: 5e9a  # 5e9a
+  message: "This seems a little gnarly and obscure, partly because the highlighted failure mode doesnt seem to be super common and partly because it seems difficult to make vendor-agnostic."  # 5e9a
+- op: update  # 53d4
+  at: '2026-04-14T20:07:04Z'  # 53d4
+  by: human  # 53d4
+  actor: jgstern  # 53d4
+  clock: 3  # 53d4
+  nonce: 53d4  # 53d4
+  set: {}  # 53d4
+  add:  # 53d4
+    tags: [someday]  # 53d4
+- op: discuss  # 7d92
+  at: '2026-04-15T07:48:31Z'  # 7d92
+  by: agent  # 7d92
+  actor: jgstern_agent  # 7d92
+  clock: 4  # 7d92
+  nonce: 7d92  # 7d92
+  message: "Agree. Two reasons to close as wont_do:\n\n1. The specific failure mode (bf4oxh91w duplicate smart-test launch) is now structurally prevented by the smart-test flock fix. The remaining failure mode is a hypothetical — premature action on any other long-running background command — and we don't have evidence it's recurring.\n2. Vendor-agnostic detection is the harder problem. The harness's TaskList is Claude Code-specific; falling back to \"any background process for this user\" introduces false positives (noise from cron, other agents, background tracker auto-sync) and the guidance becomes unreliable. An unreliable warning is worse than no warning — the agent learns to ignore it.\n\nIf the failure mode recurs in a different shape, we can revisit with concrete evidence and a clearer specification. For now: closing as wont_do unless you object."  # 7d92

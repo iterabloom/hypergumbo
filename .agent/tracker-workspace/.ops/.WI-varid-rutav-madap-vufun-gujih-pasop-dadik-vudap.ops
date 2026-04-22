@@ -1,0 +1,60 @@
+- op: create  # d7e0
+  at: '2026-04-17T21:22:10Z'  # d7e0
+  by: agent  # d7e0
+  actor: jgstern_agent  # d7e0
+  clock: 1  # d7e0
+  nonce: d7e0  # d7e0
+  data:  # d7e0
+    kind: work_item  # d7e0
+    title: "Replace 150s blanket stop-hook pause with process-aware inline poll-and-wait"  # d7e0
+    status: needs_human_review  # d7e0
+    priority: 2  # d7e0
+    parent:  # d7e0
+    tags:  # d7e0
+    - developer_experience  # d7e0
+    - ci_infrastructure  # d7e0
+    isbefore: []  # d7e0
+    duplicate_of: []  # d7e0
+    not_duplicate_of: []  # d7e0
+    pr_ref:  # d7e0
+    description: "Current behavior: .agent/hooks/_shared/stop_logic.sh:182-192 forces a 150s sleep on every stop hook fire (when there are TODOs and the file-change hash has just been computed). The intent is to prevent the circuit breaker from tripping while the agent is legitimately waiting for a long-running command (pytest, auto-pr, etc.) to finish.\n\nProblems with current behavior:\n1. The 150s pause runs even when nothing is in flight — the agent legitimately stopping with no background work pays the same delay tax as a busy session.\n2. Each fire generates a fresh stop_guidance_<TIMESTAMP>.md file. Over a 12min pytest, that's 4-5 near-identical guidance files in guidance_log/.\n3. Hacky semantics — the 150s is calibrated against the 5-fire breaker threshold, getting uncomfortably close to a false trip on long-running pytests (e.g., 13min runs we observed 2026-04-17).\n\nProposed redesign (after discussion with human 2026-04-17):\n- Detect whether any 'watched' long-running process is currently alive when the hook fires. Match by command-line substring against a configured list (default: pytest / python -m pytest / smart-test / bash ./scripts/auto-pr / bash ./scripts/merge-pr). Use word-boundary regex via 'pgrep -af' to avoid spurious matches on, e.g., 'grep pytest'.\n- If at least one watched process is alive: enter a poll-and-sleep loop, sleeping ~3s between polls and emitting a single '.' character to stderr per poll so the agent gets a visible heartbeat. Loop exits when the process is no longer detected. Hard cap (e.g. 30 min) as safety valve. After the loop returns, the rest of the hook proceeds normally (including the existing hash write at line 191).\n- If no watched process is alive: skip the pause entirely; let the hook return immediately. The circuit breaker (5 consecutive identical sentinel hashes → trip) still protects against runaway loops; we don't need the 150s tax to enforce it.\n\nHash-write semantics intentionally unchanged from current behavior — the new design only replaces the blanket pause; HASH_FILE writes, breaker check, and guidance file generation are untouched.\n\nExcluded from watched list (deliberately — agent should be doing pipeline-overlap work, not idly waiting):\n- bash ./scripts/bakeoff-broad\n- bash ./scripts/bakeoff-deep\n- bash ./scripts/ci-debug (usually interactive / sub-second)\n- bash ./scripts/release-check (usually <1min)\n\nConfig surface: add to .agent/tracker/config.yaml under stop_hook:\n  watched_process_patterns: [list as above]\n  watched_poll_seconds: 3\n  watched_max_wait_seconds: 1800\n\nDefaults baked into stop_logic.sh so config is purely override.\n\nGovernance gate: this changes .agent/hooks/_shared/stop_logic.sh — a governance file. Per AGENTS.md, requires explicit human approval in this thread before implementation. Approval received in conversation 2026-04-17 covering: design shape, watched list (incl. exclusion of bakeoff/ci-debug/release-check), addition of 'smart-test' shim, hash-write semantics unchanged."  # d7e0
+    fields: {}  # d7e0
+- op: update  # fd1c
+  at: '2026-04-17T21:27:53Z'  # fd1c
+  by: human  # fd1c
+  actor: jgstern  # fd1c
+  clock: 2  # fd1c
+  nonce: fd1c  # fd1c
+  set:  # fd1c
+    status: todo_soft  # fd1c
+- op: update  # eef3
+  at: '2026-04-17T21:30:46Z'  # eef3
+  by: agent  # eef3
+  actor: jgstern_agent  # eef3
+  clock: 3  # eef3
+  nonce: eef3  # eef3
+  set:  # eef3
+    status: in_progress  # eef3
+- op: discuss  # e6ae
+  at: '2026-04-17T21:30:46Z'  # e6ae
+  by: agent  # e6ae
+  actor: jgstern_agent  # e6ae
+  clock: 4  # e6ae
+  nonce: e6ae  # e6ae
+  message: "Approval received from human in conversation 2026-04-17. Implementing on branch jgstern-agent/feat/stop-hook-process-aware-pause."  # e6ae
+- op: update  # 09b9
+  at: '2026-04-17T22:04:12Z'  # 09b9
+  by: agent  # 09b9
+  actor: jgstern_agent  # 09b9
+  clock: 5  # 09b9
+  nonce: 09b9  # 09b9
+  set:  # 09b9
+    status: done  # 09b9
+    pr_ref: '3129'  # 09b9
+- op: discuss  # 1d85
+  at: '2026-04-17T22:04:13Z'  # 1d85
+  by: agent  # 1d85
+  actor: jgstern_agent  # 1d85
+  clock: 6  # 1d85
+  nonce: 1d85  # 1d85
+  message: "Merged via PR #3129 (commit b0caac324) on 2026-04-17 by human review per governance flow. Stop hook now polls for watched processes (pytest / python -m pytest / smart-test / bash ./scripts/auto-pr / bash ./scripts/merge-pr) and waits inline with dot-stream heartbeat instead of the prior 150s blanket sleep. Returns immediately when nothing watched is alive. Hash-write semantics unchanged. Bakeoffs and ci-debug deliberately excluded from watched list to preserve pipeline-overlap workflow."  # 1d85

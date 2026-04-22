@@ -677,7 +677,7 @@ class TestCompressedReadIntegration:
         )
 
     def test_pick_reverse_slice_seeds_warns_on_suspicious_hub(
-        self, tmp_path: Path, capsys: "Any",
+        self, tmp_path: Path, capsys,
     ) -> None:
         """WI-gapom: defensive warning when a picked seed has prod_in_degree > 1000.
 
@@ -740,7 +740,7 @@ class TestCompressedReadIntegration:
         )
 
     def test_pick_reverse_slice_seeds_no_warning_for_normal_hub(
-        self, tmp_path: Path, capsys: "Any",
+        self, tmp_path: Path, capsys,
     ) -> None:
         """WI-gapom: no spurious warning for ordinary domain hubs.
 

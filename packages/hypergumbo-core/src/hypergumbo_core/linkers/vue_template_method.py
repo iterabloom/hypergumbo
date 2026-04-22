@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Vue template-method linker for connecting event handlers to script methods.
+"""Framework linker: Vue template-method for connecting event handlers to script methods.
 
 Vue Single-File Components have template sections that reference methods
 defined in the script section. For example, ``@click="handleDelete"`` in

@@ -1,0 +1,36 @@
+- op: create  # 6e90
+  at: '2026-04-19T09:29:17Z'  # 6e90
+  by: agent  # 6e90
+  actor: jgstern_agent  # 6e90
+  clock: 1  # 6e90
+  nonce: '6e90'  # 6e90
+  data:  # 6e90
+    kind: work_item  # 6e90
+    title: "WI-gudob Phase 3: websocket_handler entrypoint classification"  # 6e90
+    status: todo_soft  # 6e90
+    priority: 3  # 6e90
+    parent: WI-gudob-tibov-nirod-nahop-banoj-tizof-zasif-dihih  # 6e90
+    tags:  # 6e90
+    - framework_dispatch_linkers  # 6e90
+    - websocket  # 6e90
+    isbefore: []  # 6e90
+    duplicate_of: []  # 6e90
+    not_duplicate_of: []  # 6e90
+    pr_ref:  # 6e90
+    description: "Phase 3 of WI-gudob (umbrella: priority inert-concept linkers). Phase 1 (error_handler → ERROR_HANDLER entrypoint) shipped in PR #3181. Phase 2 (controller → route-methods containment) shipped in PR #3185 as WI-gokop.\n\n**Concept:** `websocket_handler` — 21 producer frameworks (aiohttp, akka-http, cowboy, express, fastify, falcon, phoenix, plug, django, fastapi, tornado, nestjs, ktor, vapor, vertx, actix, axum, ...).\n\n**Proposed semantic — follow Phase 1 error_handler precedent:** map the `websocket_handler` concept to a new `EntrypointKind.WEBSOCKET_HANDLER` in hypergumbo_core.entrypoints.detect_entrypoints. WebSocket handlers are invoked reflectively by the framework's runtime upon a WebSocket upgrade handshake; static call-graph analysis treats them as dead, inflating the prospector's dead-code-maybe set. Marking them as entrypoints (confidence 0.90) with per-symbol dedup restores reachability.\n\n**Framework-aware label** per Phase 1: `\"Aiohttp websocket handler\"`, `\"Fastapi websocket handler\"`, generic `\"WebSocket handler\"` when no framework hint is in the concept dict.\n\n**Why entrypoint rather than containment/dispatch:** websocket_handler is marked on a variety of symbol kinds — class (aiohttp WebSocketResponse), method (falcon on_websocket), callback function (express socket.on handler argument, fastify app.websocket handler). Uniform containment/dispatch semantics don't fit; entrypoint classification does.\n\n**Out of scope:** connecting handlers to their URL paths or event names — that is websocket.py's job (already emits message_send/message_receive/websocket_endpoint edges). This item is purely entrypoint classification.\n\n**Acceptance:**\n1. detect_entrypoints maps `concept: websocket_handler` to EntrypointKind.WEBSOCKET_HANDLER with confidence 0.90.\n2. Framework-aware labelling (framework key present → \"Framework websocket handler\"; absent → \"WebSocket handler\").\n3. Multi-framework dedup (same handler matched by two framework patterns → at most one entrypoint).\n4. docs/CONCEPTS.md flips websocket_handler from inert → live after regenerating.\n5. 100% coverage in hypergumbo-core.\n6. Numerical FP-reduction claim validated on a bakeoff cohort containing at least one websocket-heavy repo (prometheus-alerts, phoenix chat apps, socket.io examples).\n\n**Design reference:** The error_handler path in PR #3181 is the exact template. Copy the shape, substitute EntrypointKind name + concept string + label text.\n\nTag `awaits_bakeoff_validation` should be added at merge time."  # 6e90
+    fields: {}  # 6e90
+- op: update  # 0ab6
+  at: '2026-04-19T09:34:20Z'  # 0ab6
+  by: agent  # 0ab6
+  actor: jgstern_agent  # 0ab6
+  clock: 2  # 0ab6
+  nonce: 0ab6  # 0ab6
+  set:  # 0ab6
+    status: wont_do  # 0ab6
+- op: discuss  # a104
+  at: '2026-04-19T09:34:20Z'  # a104
+  by: agent  # a104
+  actor: jgstern_agent  # a104
+  clock: 3  # a104
+  nonce: a104  # a104
+  message: "Resolved without code change: websocket_handler IS already mapped to WEBSOCKET_HANDLER entrypoint at packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py:425-439 (since ADR-0003 v0.9.x). The `inert` status on docs/CONCEPTS.md was a false positive caused by generate-concepts' regex not detecting the `concept_type == \"X\"` and `concept_type in (\"X\", \"Y\")` consumer patterns. Filing a separate invariant item (INV-*) for the generate-concepts undercount bug — concepts including error_handler, websocket_handler, event_handler, middleware, command, liveview, graphql_resolver, and many more are already consumed via those patterns but show as inert. Fix will be an upgraded regex in scripts/generate-concepts, which will flip ~15-20 concepts inert → live in one PR."  # a104

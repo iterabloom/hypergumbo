@@ -15,6 +15,41 @@
 SESSION_START_MESSAGE=""
 SESSION_START_NEEDS_PROMPT=false
 
+# Case 0: respawn from the agent-supervisor daemon (WI-sakod / WI-razub).
+# When HYPERGUMBO_RESPAWN=1, the supervisor just spawned this CLI because
+# the prior session was stuck or dead. Instead of pausing to ask the human
+# for a mode (the prior session was doing just that, and stagnated), we:
+#   (a) auto-enable autonomous mode for THIS session per autonomous_intent.txt
+#       (the project-level intent, split out in WI-pobon), and
+#   (b) emit the generic seed prompt so the agent begins work immediately.
+# Intent=OFF defends against misconfiguration: if the supervisor spawned
+# us but the human flipped intent OFF in between, we fall through to the
+# normal OFF prompt rather than forcing autonomous mode on.
+if [[ "${HYPERGUMBO_RESPAWN:-}" == "1" ]]; then
+    _INTENT_FILE="$REPO_ROOT/autonomous_intent.txt"
+    _INTENT="OFF"
+    if [[ -f "$_INTENT_FILE" ]]; then
+        _INTENT_RAW=$(head -1 "$_INTENT_FILE" 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+        case "$_INTENT_RAW" in
+            OFF|FALSE)    _INTENT="OFF" ;;
+            BROAD|TRUE)   _INTENT="BROAD" ;;
+            DEEP)         _INTENT="DEEP" ;;
+            *)            _INTENT="OFF" ;;
+        esac
+    fi
+    if [[ "$_INTENT" != "OFF" ]]; then
+        # Auto-enable autonomous mode for THIS session. Narrow write (does
+        # NOT touch autonomous_intent.txt, which the supervisor owns).
+        "$REPO_ROOT/scripts/loop-toggle" --set-session-mode "$_INTENT" >/dev/null 2>&1 || true
+        SESSION_START_NEEDS_PROMPT=true
+        SESSION_START_MESSAGE="Please familiarize yourself with this repo. Once you have done so, please set autonomous mode to DEEP."
+        return 0 2>/dev/null || true
+    fi
+    # Intent=OFF while supervisor-spawned: fall through to the normal
+    # OFF-mode human-prompt path below. The supervisor shouldn't have
+    # spawned in that case, but this preserves graceful degradation.
+fi
+
 # Read current mode
 _RAW_MODE=$(head -1 "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null || true)
 _MODE=$(echo "$_RAW_MODE" | sed 's/ *pid=[0-9]*//' | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')

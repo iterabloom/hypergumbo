@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""View template linker for connecting controller actions to rendered templates.
+"""Framework linker: view template for connecting controller actions to rendered templates.
 
 Rails controllers render view templates by convention: ``UsersController#show``
 renders ``app/views/users/show.html.erb``. Without explicit ``render`` calls,

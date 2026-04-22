@@ -65,6 +65,7 @@ PACKAGES=(
     "packages/hypergumbo-lang-mainstream"
     "packages/hypergumbo-lang-common"
     "packages/hypergumbo-lang-extended1"
+    "packages/hypergumbo-lang-rust-analyzer"
     "packages/hypergumbo"
 )
 
@@ -88,14 +89,24 @@ else
     warn "On branch '$CURRENT_BRANCH' (expected 'dev' or 'main')"
 fi
 
-# Check if up to date with remote
+# Check if up to date with remote.
+# NOTE on --verify: `git rev-parse <ref>` without --verify echoes the input
+# ref to stdout AND returns non-zero when the ref can't be resolved, so the
+# naive form `$(git rev-parse "origin/$CURRENT_BRANCH" 2>/dev/null || echo "none")`
+# produces the multi-line string "origin/<branch>\nnone" on a brand-new
+# branch (e.g., fresh `release/vX.Y.Z` during `prepare-release`). That
+# string satisfies neither `== "none"` nor `git merge-base --is-ancestor`,
+# so the check falls through to the generic `fail` branch and blocks the
+# release gate on a false positive. `--verify "<ref>^{commit}"` makes
+# rev-parse emit nothing and exit non-zero on an unknown ref, so the
+# fallback branch is the only thing the command substitution captures.
 git fetch origin --quiet
 LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse "origin/$CURRENT_BRANCH" 2>/dev/null || echo "none")
+REMOTE=$(git rev-parse --verify "origin/$CURRENT_BRANCH^{commit}" 2>/dev/null || echo "none")
 if [[ "$LOCAL" == "$REMOTE" ]]; then
     pass "Branch up to date with origin"
 elif [[ "$REMOTE" == "none" ]]; then
-    warn "No remote tracking branch"
+    warn "No remote tracking branch (expected for a fresh feature or release branch)"
 elif git merge-base --is-ancestor "$REMOTE" "$LOCAL" 2>/dev/null; then
     warn "Branch is ahead of origin (unpushed commits — expected during prepare-release)"
 else
@@ -249,12 +260,40 @@ fi
 section "5. Test Suite"
 # ─────────────────────────────────────────────────────────────
 
-# Run tests with coverage
-echo "  Running pytest with coverage..."
-if pytest --full --cov-fail-under=100 --quiet 2>/dev/null; then
+# Run tests with coverage — call pytest directly, matching the way the
+# three sibling authoritative full-suite runners (`full-suite.yml`,
+# `nightly.yml`, `release.yml`) already invoke pytest. release-check is
+# architecturally parallel to those workflows: it is a gate, not part of
+# the dev feedback loop, and therefore does not route through the
+# smart-test pytest wrapper. That wrapper (a) is designed to select only
+# affected tests and (b) writes a targeted manifest as a side effect — both
+# appropriate for the dev loop, neither appropriate for a release gate.
+#
+# Coverage paths are sourced from scripts/lib/cov-paths.sh so that adding
+# a new released package updates this gate in a single edit.
+#
+# Previously this block read:
+#   pytest --full --cov-fail-under=100 --quiet 2>/dev/null
+# That routed through smart-test; silenced stderr (violating the norm
+# codified by commit 72b7f1fd5 for smart-test's own slice stderr capture);
+# and surfaced "Tests failed or coverage < 100%" with a stale
+# `.ci/pytest-output.log` as the only artifact when things went wrong.
+# The new form captures full output to a dedicated log that the failure
+# message names, so the next agent or human does not have to re-run a
+# 15-minute suite to learn which line is uncovered.
+# shellcheck source=lib/cov-paths.sh
+source "$(dirname "$0")/lib/cov-paths.sh"
+RELEASE_CHECK_PYTEST_LOG=".ci/release-check-pytest.log"
+echo "  Running pytest with coverage (full suite)..."
+echo "    log: $RELEASE_CHECK_PYTEST_LOG"
+if python -m pytest packages/*/tests/ \
+        "${COV_PATHS_ALL[@]}" \
+        -n auto \
+        --cov-fail-under=100 \
+        >"$RELEASE_CHECK_PYTEST_LOG" 2>&1; then
     pass "All tests passed with 100% coverage"
 else
-    fail "Tests failed or coverage < 100%"
+    fail "Tests failed or coverage < 100% (see $RELEASE_CHECK_PYTEST_LOG)"
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -313,6 +352,7 @@ INSTALL_ORDER=(
     "packages/hypergumbo-lang-mainstream"
     "packages/hypergumbo-lang-common"
     "packages/hypergumbo-lang-extended1"
+    "packages/hypergumbo-lang-rust-analyzer"
     "packages/hypergumbo"
 )
 for pkg in "${INSTALL_ORDER[@]}"; do

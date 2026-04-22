@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""JS/TS module resolution linker for cross-file import edges.
+"""Infrastructure linker: JS/TS module resolution for cross-file import edges.
 
 The JS/TS analyzer creates `imports` edges with synthetic dst IDs like
 'javascript:./utils:0-0:module:module' where the import path is embedded

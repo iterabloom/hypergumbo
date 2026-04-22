@@ -1,0 +1,79 @@
+- op: create  # 9190
+  at: '2026-04-14T06:05:29Z'  # 9190
+  by: agent  # 9190
+  actor: jgstern_agent  # 9190
+  clock: 1  # 9190
+  nonce: '9190'  # 9190
+  data:  # 9190
+    kind: work_item  # 9190
+    title: "Forward slice dead-ends at class boundaries (Kotlin/Java)"  # 9190
+    status: todo_hard  # 9190
+    priority: 2  # 9190
+    parent:  # 9190
+    tags:  # 9190
+    - uat_2026_04_13  # 9190
+    - slice  # 9190
+    - analysis_quality  # 9190
+    isbefore: []  # 9190
+    duplicate_of: []  # 9190
+    not_duplicate_of: []  # 9190
+    pr_ref:  # 9190
+    description: "UAT 2026-04-13 BUG-14: `main()` calling `CliRunner().run(args)` resolves to the `CliRunner` class node rather than the `run` method. Forward slice does not traverse `contains` edges reached via a call, yielding 2 nodes (main + CliRunner class) instead of 19 nodes from slicing CliRunner directly. Fix: when call resolution lands on a class node, follow its `contains` edges to constructors/methods. Related to but distinct from WI-visaz (Kotlin extension call dispatch); see discussion note added there."  # 9190
+    fields: {}  # 9190
+- op: discuss  # 3a2e
+  at: '2026-04-15T07:54:17Z'  # 3a2e
+  by: agent  # 3a2e
+  actor: jgstern_agent  # 3a2e
+  clock: 2  # 3a2e
+  nonce: 3a2e  # 3a2e
+  message: "Investigated. The proposed fix (\"when call resolution lands on a class node, follow `contains` to constructors/methods\") collides head-on with `test_forward_slice_class_reaches_method_then_no_sibling_explosion` (test_slice.py:2295), which asserts the OPPOSITE: when a controller calls both `svc_create` and `service_class`, slice should reach `svc_create` but NOT `svc_delete`/`svc_list`. That test encodes an intentional design choice (slice.py:580–591) to prevent fan-out via shared ancestors.\n\nTwo possible reconciliations:\n\n**A. Precise heuristic (preserve both invariants).** Fan out from class node N reached via call from S only when S has NO other outgoing call edge to any method contained in N. Logic: \"S's intent toward N is unresolved → enumerate methods. S's intent is specific (resolved method on N already linked) → no fan-out.\" This satisfies both:\n- Existing test (2295): controller → svc_create AND controller → service_class. Controller has a resolved-method edge to a child of service_class, so no fan-out.\n- WI-gigoz: main → CliRunner only, no method edge from main to any CliRunner.* child. Fan out → reach run, init, etc.\n\nImplementation: at enqueue time for a class `next_node` reached from `current_id` via a call-like edge, check whether any other outgoing edge from `current_id` lands on a contains-child of `next_node`. If not, also enqueue the contains-children. ~30 lines in slice.py with a new test class; keeps existing tests green.\n\n**B. Structural fix at call resolution (true root cause).** The bug is upstream: `CliRunner().run(args)` should resolve `.run` to `CliRunner.run` and emit a calls edge to the method, not (only) to the class. Slice would then naturally include `run` via the direct edge. This is the \"Always structural\" path and would also fix every other place where chained `Class().method()` falls back to the class. Cost: per-language analyzer work in Java/Kotlin (and probably Python, JS, etc.). Substantially larger surface; needs a tracker item per language.\n\nRecommendation: do A first (gives users the slice they want now, doesn't regress the existing intent test) and open a sibling item for B as a structural follow-up. Path A's heuristic is also forward-compatible — once B lands and call resolution improves, A's \"fan out only when no resolved method\" rule naturally stops firing, so A doesn't accumulate as cruft.\n\nHolding implementation pending direction. If you'd rather skip A and go straight for B, I'll create the per-language structural-call-resolution items and pick one to start on."  # 3a2e
+- op: discuss  # 0ad6
+  at: '2026-04-15T07:59:00Z'  # 0ad6
+  by: human  # 0ad6
+  actor: jgstern  # 0ad6
+  clock: 3  # 0ad6
+  nonce: 0ad6  # 0ad6
+  message: "so you want to edit each language analyzer under B? there's no clever short way to do B?"  # 0ad6
+- op: discuss  # a7af
+  at: '2026-04-15T08:47:06Z'  # a7af
+  by: agent  # a7af
+  actor: jgstern_agent  # a7af
+  clock: 4  # a7af
+  nonce: a7af  # a7af
+  message: "Good question — yes, there is a clever short way. I had it framed wrong in my previous post; thanks for pushing.\n\n**The clever short way (Path B′):** ONE post-analysis pass that rewrites `calls→Class` edges to `calls→Class.method` when sibling evidence exists. Per-language analyzer edits are NOT required.\n\nMechanism:\n1. The analyzers we already have emit *some* signal about chained method calls. Two relevant signals already in the graph:\n   - The `calls→Class` edge (from constructor invocation `Class()`).\n   - The `unresolved_external_call` (or `unresolved-call`) edges that WI-banaf and WI-vurop just landed for JS/TS, plus the equivalents elsewhere — these carry the bare method name in their metadata (e.g., `name=run`).\n2. Post-pass logic at link/enrichment time, applied uniformly across all languages:\n   - For each node N with an outgoing `calls→Class` edge AND an outgoing `unresolved-call(name=foo)` edge,\n   - If `Class` has a contained child symbol named `foo` (via `contains` edges), rewrite `unresolved-call(foo)` to `calls→Class.foo`. Keep the `calls→Class` (constructor) edge.\n3. The slice naturally then includes `Class.foo` via the new direct edge — no fan-out heuristic needed in slice.py, no design tension with `test_forward_slice_class_reaches_method_then_no_sibling_explosion`.\n\nCoverage: works for any language whose analyzer emits both signals. JS/TS already does (post-banaf/vurop). Java, Kotlin, and Python emit similar partial-resolution edges via the existing `unresolved_external_call` / `unresolved-call` family (and we already match against catalogs in io-boundaries using these). I should grep the analyzers to enumerate which already emit the bare-name signal vs. which need a small additional emit; that's at worst a one-line addition per analyzer rather than a per-language type-inference effort.\n\nEdge cases worth naming up front:\n- **Method shadowing**: `Class.foo` exists but is overridden by an instance method on the runtime type (e.g., the actual instance is a subclass). Acceptable false positive — over-attribute to the parent's method, slice still gets useful nodes.\n- **Multiple matches**: `Class().run(...)` where two unresolved-call hints exist in the same caller. Disambiguate by line proximity (caller-line of the `Class()` instantiation should be close to the bare `run` call).\n- **Builder chains**: `new Foo().bar().baz()` — only the first method on the literal class is recoverable this way; `.baz()` requires knowing `bar()`'s return type. That's the hard typed-call-resolution problem; this post-pass intentionally doesn't try to solve it. Builders are a separate item, not WI-gigoz.\n\nRecommendation: do Path B′. Implementation surface is one new file (e.g. `linkers/method_call_recovery.py`), one wire-in spot, plus a regression test using the WI-gigoz CliRunner shape. Ballpark ~150 lines of code + tests, ~half a day. Substantially smaller than per-analyzer typed call resolution and naturally fixes WI-gigoz without touching slice.py at all.\n\nIf you greenlight, I'll pick this up next — happy to scope a tracker item with the per-analyzer signal audit as the first step."  # a7af
+- op: discuss  # f7d1
+  at: '2026-04-15T15:26:10Z'  # f7d1
+  by: human  # f7d1
+  actor: jgstern  # f7d1
+  clock: 5  # f7d1
+  nonce: f7d1  # f7d1
+  message: "cool! let's go with The clever short way (Path B′)"  # f7d1
+- op: update  # e39d
+  at: '2026-04-15T16:47:25Z'  # e39d
+  by: agent  # e39d
+  actor: jgstern_agent  # e39d
+  clock: 6  # e39d
+  nonce: e39d  # e39d
+  set:  # e39d
+    status: done  # e39d
+- op: discuss  # 392a
+  at: '2026-04-15T16:47:25Z'  # 392a
+  by: agent  # 392a
+  actor: jgstern_agent  # 392a
+  clock: 7  # 392a
+  nonce: 392a  # 392a
+  message: "Implemented Path B' via PR aabf1d945 (method-call-recovery linker, priority 35). New linker rewrites calls→Class + unresolved-call(name) pairs to calls→Class.method when Class has a contains child of that name. Forward slice now traverses chained Class().method() without breaking test_forward_slice_class_reaches_method_then_no_sibling_explosion. 17 new tests, 100% coverage."  # 392a
+- op: discuss  # 3bf8
+  at: '2026-04-15T16:48:03Z'  # 3bf8
+  by: agent  # 3bf8
+  actor: jgstern_agent  # 3bf8
+  clock: 8  # 3bf8
+  nonce: 3bf8  # 3bf8
+  message: "ack-thread follow-up: WI-gigoz done via PR aabf1d945. Thread acknowledged."  # 3bf8
+- op: discuss  # f91f
+  at: '2026-04-15T16:49:12Z'  # f91f
+  by: agent  # f91f
+  actor: jgstern_agent  # f91f
+  clock: 9  # f91f
+  nonce: f91f  # f91f
+  message: "Implemented Path B' in PR aabf1d945 / commit aabf1d945 on dev. The method-call-recovery linker (priority 35) handles exactly the CliRunner().run(args) case: it scans for callers that have both a calls→Class hint and a sibling unresolved-call edge carrying the bare method name, then emits a direct calls→Class.method edge when Class contains a matching method. Line proximity tiebreaker handles the multi-class-candidate case. 17 new tests, 100% coverage on the new module. Test suite clean (1999 passed). The slice invariant test (test_forward_slice_class_reaches_method_then_no_sibling_explosion) still passes — Path B' avoids it by working at the IR edge level rather than changing slice fan-out rules. Marking done."  # f91f

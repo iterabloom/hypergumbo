@@ -29,3 +29,19 @@
   nonce: '9851'  # 9851
   set:  # 9851
     priority: 4  # 9851
+- op: update  # 03e1
+  at: '2026-04-14T04:51:41Z'  # 03e1
+  by: agent  # 03e1
+  actor: jgstern_agent  # 03e1
+  clock: 3  # 03e1
+  nonce: '03e1'  # 03e1
+  set: {}  # 03e1
+  remove:  # 03e1
+    isbefore: [WI-juhov-pisup-gumit-filan-puhon-kavof-govad-dikuf]  # 03e1
+- op: discuss  # e57c
+  at: '2026-04-14T04:51:41Z'  # e57c
+  by: agent  # e57c
+  actor: jgstern_agent  # e57c
+  clock: 4  # e57c
+  nonce: e57c  # e57c
+  message: "Remove stale isbefore: WI-juhov was already completed using partial data (alertmanager only), so this dependency is moot. The 200-repo prospecting run (this item) no longer blocks juhov."  # e57c

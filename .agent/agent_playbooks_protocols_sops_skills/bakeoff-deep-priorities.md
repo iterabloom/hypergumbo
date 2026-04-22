@@ -7,7 +7,7 @@ When in DEEP mode, focus on feature quality rather than coverage breadth:
 4. **Reverse slice:** Does it correctly identify callers?
 5. **Supply chain tiers:** Is tier classification accurate for monorepos?
 6. **Centrality ranking:** Do top-ranked symbols match developer intuition?
-7. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+7. **Linkers:** post-call-graph-time edge recovery across four subcategories (Protocol / Bridge / Framework / Infrastructure — see [ADR-0003-ext: Linker Subcategory Restoration](../../docs/adr/0003-linker-subcategory-restoration.md) and [docs/LINKERS.md](../../docs/LINKERS.md) for the 45-linker catalogue). Prioritise by expected false-positive-reduction volume on the current prospector corpus (INV-nimuj), not by novelty of language pair.
 
 **Pipeline overlap guidance:** Same as BROAD mode — reflect agents only read artifacts, so you can overlap reflect with the next cohort's `run`. See BROAD mode guidance above for sequential vs overlapped workflows.
 

@@ -19,3 +19,18 @@
     pr_ref:  # 475b
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1407.md 'Costs to flag honestly' §1 and §3: rust-analyzer is tens of MB of native binary and requires a working Rust toolchain plus resolvable dependencies. It must be **optional**, and the hypergumbo-lang-rust-analyzer backend must degrade gracefully to the tree-sitter rust.py analyzer in three failure modes:\n\n1. rust-analyzer not on PATH (nothing installed)\n2. cargo metadata fails (e.g., private deps unresolvable, weird target triple)\n3. rust-analyzer scip returns non-zero or produces an invalid SCIP file\n\n**Installation path:** add to hypergumbo add-extras (if that is the canonical extras-install surface) with a well-documented opt-in. Alternatively, follow the same PATH-detection pattern grammars already use — pick whichever is already established for large optional native deps.\n\n**Testing:** per the optional-dependency testing playbook — one mock test for the 'unavailable' code path; the real tests run end-to-end when rust-analyzer is installed in CI.\n\n**Observable behavior:** when rust-analyzer is unavailable, the Rust analysis still runs (via rust.py), but the behavior map should carry a provenance marker indicating which backend was used so downstream tools can trust-weight accordingly.\n\nBlocked on the hypergumbo-lang-rust-analyzer package scaffold."  # 475b
     fields: {}  # 475b
+- op: update  # 0c52
+  at: '2026-04-20T19:44:43Z'  # 0c52
+  by: agent  # 0c52
+  actor: jgstern_agent  # 0c52
+  clock: 2  # 0c52
+  nonce: 0c52  # 0c52
+  set:  # 0c52
+    status: done  # 0c52
+- op: discuss  # 4b28
+  at: '2026-04-20T19:44:43Z'  # 4b28
+  by: agent  # 4b28
+  actor: jgstern_agent  # 4b28
+  clock: 3  # 4b28
+  nonce: 4b28  # 4b28
+  message: "Shipped as PR (merged to dev as 4ebcf0f79). New hypergumbo_lang_rust_analyzer.graceful_degrade.try_analyze_with_rust_analyzer packages the 'use rust-analyzer vs fall through to rust.py' decision as a single-expression call: returns (symbols, edges) on the happy path and None on any of the three WI-nohah fall-through conditions (RustAnalyzerNotInstalled / RustAnalyzerInvocationFailed / RustAnalyzerNoOutput from invoke, or DecodeError from translate). Fall-through log messages deduplicate per (exception_type, workspace) so repeated calls on one workspace log once but distinct workspaces each get their own emission. invoke/translate/log are all injectable. 9 tests, 100% coverage. Unblocks WI-duzul Slice C — the analyzer-registry wrapper calls this helper per workspace and None drives the fall-through to rust.py. Provenance-marker concern from the description is explicitly scoped to Slice C (analyzer-registry wrapper will set symbol.origin='scip' or 'tree-sitter-rust' accordingly); this item delivers the decision primitive."  # 4b28

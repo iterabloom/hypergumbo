@@ -28,3 +28,36 @@
   nonce: b010  # b010
   set:  # b010
     parent: INV-dihos-razov-momat-runoh-mohov-zumop-mivar-nijog  # b010
+- op: update  # 33be
+  at: '2026-04-14T04:49:26Z'  # 33be
+  by: agent  # 33be
+  actor: jgstern_agent  # 33be
+  clock: 3  # 33be
+  nonce: 33be  # 33be
+  set: {}  # 33be
+  add:  # 33be
+    isbefore: [WI-hudam-bakim-birul-riban-vajis-siliz-tirug-valid]  # 33be
+  remove:  # 33be
+    isbefore: [WI-jujup-vosag-ganov-suvir-hijof-zolim-vukov-juhan]  # 33be
+- op: discuss  # c492
+  at: '2026-04-14T04:49:27Z'  # c492
+  by: agent  # c492
+  actor: jgstern_agent  # c492
+  clock: 4  # c492
+  nonce: c492  # c492
+  message: "Fix inverted INV-dihos phase chain: Phase 3 (this) should block Phase 4 (hudam), not Phase 2 (jujup)."  # c492
+- op: update  # 390a
+  at: '2026-04-14T05:16:18Z'  # 390a
+  by: agent  # 390a
+  actor: jgstern_agent  # 390a
+  clock: 5  # 390a
+  nonce: 390a  # 390a
+  set:  # 390a
+    priority: 4  # 390a
+- op: discuss  # 2f6c
+  at: '2026-04-14T05:16:18Z'  # 2f6c
+  by: agent  # 2f6c
+  actor: jgstern_agent  # 2f6c
+  clock: 6  # 2f6c
+  nonce: 2f6c  # 2f6c
+  message: "Demote P3->P4: parent INV-dihos already satisfied by Phase 1; Phases 2-5 are extensions, not requirements. Resolves priority inversion with Phase 2 (jujup, P4) which isbefore this item."  # 2f6c

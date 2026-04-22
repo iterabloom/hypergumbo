@@ -1,0 +1,58 @@
+- op: create  # b9cd
+  at: '2026-04-14T06:05:23Z'  # b9cd
+  by: agent  # b9cd
+  actor: jgstern_agent  # b9cd
+  clock: 1  # b9cd
+  nonce: b9cd  # b9cd
+  data:  # b9cd
+    kind: work_item  # b9cd
+    title: "Django `re_path()` routes default to GET regardless of view methods"  # b9cd
+    status: todo_hard  # b9cd
+    priority: 2  # b9cd
+    parent:  # b9cd
+    tags:  # b9cd
+    - uat_2026_04_13  # b9cd
+    - routes  # b9cd
+    - framework_detection  # b9cd
+    isbefore: []  # b9cd
+    duplicate_of: []  # b9cd
+    not_duplicate_of: []  # b9cd
+    pr_ref:  # b9cd
+    description: "UAT 2026-04-13 BUG-08: all `re_path()` routes labeled `[GET]` regardless of view class HTTP method definitions. UAT verified on pretix: `InitializeView`, `UpdateView`, `RollKeyView`, `RevokeKeyView` are POST-only but reported GET. The Django route extractor does not inspect view class method definitions (`def post(self, request):`). Fix: resolve view class symbol and read its declared HTTP method handlers."  # b9cd
+    fields: {}  # b9cd
+- op: discuss  # cee9
+  at: '2026-04-14T17:25:43Z'  # cee9
+  by: agent  # cee9
+  actor: jgstern_agent  # cee9
+  clock: 2  # cee9
+  nonce: cee9  # cee9
+  message: "Scoped investigation: reproduced on a minimal Django repo (urls.py uses re_path → views.py classes with post/patch/get methods). All 3 routes render as [GET] regardless of the class's declared methods.\n\nImplementation plan (deferred for a focused follow-up session):\n1. Extend frameworks/django.yaml to mark re_path / path / url patterns targeting *.as_view() as class-based. Capture the view class name in a new metadata slot (e.g., metadata.view_class).\n2. Post-analysis enrichment (probably in enrichment pass or _dedup_routes in cli.py): for each route with meta.view_class set, look up the class symbol, enumerate its method children with names in {get, post, put, patch, delete, head, options, trace}, and emit a route variant per method.\n3. If no methods match (class inherits from generic views like DetailView/ListView), fall back to framework-specific defaults (DetailView=GET, CreateView=GET+POST, etc.).\n4. Update routes command dedup to key on (method, path, view_class) so multiple methods for the same path don't collide.\n\nScope: spans django.yaml (1-2 new extract rules), enrichment stage (new class-method introspection pass), and cli.py routes rendering (dedup key change). Estimate: ~4-6 hours focused work.\n\nNOT currently blocked; leaving as todo_hard. The UAT observation is correct and the fix is tractable, it just needs a session focused on framework-pattern-method-inference as its main thread."  # cee9
+- op: discuss  # d094
+  at: '2026-04-14T19:12:22Z'  # d094
+  by: human  # d094
+  actor: jgstern  # d094
+  clock: 3  # d094
+  nonce: d094  # d094
+  message: "are you suggesting that this issue may have other analogous issues for other parts of hypergumbo? or that in the course of resolving this issue we might discover such analogs?"  # d094
+- op: discuss  # c862
+  at: '2026-04-15T07:48:19Z'  # c862
+  by: agent  # c862
+  actor: jgstern_agent  # c862
+  clock: 4  # c862
+  nonce: c862  # c862
+  message: "Both — and the more interesting answer is the second.\n\nNaming the structural pattern: \"framework route extractor matches a registration pattern but stops at the registration site, never resolving the target symbol to extract derived metadata (HTTP method, content negotiation, decorators, etc.).\" The Django re_path → CBV chain is one instance.\n\nProbable analogues already visible in the backlog:\n- WI-jorim (Laravel `apiResource`): same pattern. The framework macro expands to N routes whose methods are determined by the controller's action methods; we currently emit phantom routes without inspecting the controller class. `.except()` ignored is the same root cause — registration-site metadata isn't being followed to the target.\n- WI-tizad (Django dual-reporting 2× inflation): adjacent — also involves not resolving back to the canonical view.\n\nProbable analogues we'd surface during the fix:\n- Flask `add_url_rule(view_func=MyView.as_view(...))` and `MethodView` subclasses (mirror image of Django CBV; same need to enumerate `get`/`post`/etc. method children).\n- Spring `@RequestMapping` without an explicit `method=` defaults to all HTTP methods; we'd need to check whether we're emitting GET-only or all-methods.\n- FastAPI `APIRouter.include_router` chains with prefix/dependencies inherited at registration time.\n- Generic class-based views (DetailView=GET, CreateView=GET+POST, UpdateView=GET+POST, DeleteView=GET+POST) — covered by step 3 in the plan, but the \"framework defaults table\" is itself a reusable artifact.\n- Beyond routes: the same \"match registration, don't resolve target\" pattern likely shows up in event/message handlers (Celery `@task`, Kafka consumers, message_handler decorators), where the registration site has the topic/queue but the handler body has the I/O profile.\n\nSo the fix has two layers:\n1. The Django-specific implementation in django.yaml + enrichment.\n2. A reusable \"method-handler introspection\" pass that takes (route metadata, view class symbol, method name set) → expanded routes. WI-jorim should be designed to consume the same primitive.\n\nConcrete next step: when WI-lojoh implementation lands, factor the class-method enumeration as a shared utility in the enrichment module, not inside django-specific code, and cite WI-jorim in the docstring as the second known consumer."  # c862
+- op: update  # 9c82
+  at: '2026-04-16T00:26:04Z'  # 9c82
+  by: agent  # 9c82
+  actor: jgstern_agent  # 9c82
+  clock: 5  # 9c82
+  nonce: 9c82  # 9c82
+  set:  # 9c82
+    status: done  # 9c82
+- op: discuss  # 1e66
+  at: '2026-04-16T00:26:04Z'  # 1e66
+  by: agent  # 1e66
+  actor: jgstern_agent  # 1e66
+  clock: 6  # 1e66
+  nonce: '1e66'  # 1e66
+  message: "Fixed in commit 9d7349e20 (PR #3048). py.py marks CBV registrations with is_class_based_view=True and emits http_method=ANY; new framework_patterns.expand_class_based_view_routes post-pass walks the global symbol list, builds ClassName -> declared HTTP methods index from Cls.<method> symbols, and replaces each ANY route with one variant per declared method. Cross-file unresolved CBVs stay as ANY (honest unknown beats false GET). Verified on 4-class re_path repro: GET/POST/DELETE/PATCH+PUT all correctly emitted."  # 1e66

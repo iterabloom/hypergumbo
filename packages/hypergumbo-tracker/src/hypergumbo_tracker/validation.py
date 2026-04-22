@@ -13,7 +13,7 @@ Validation tiers:
 - **Field schema validation:** Required fields missing, type mismatches,
   integer range violations, unknown fields (with edit-distance suggestions).
 - **Cross-file validation:** Duplicate IDs across tiers, dangling parent
-  references, ID prefix/kind mismatches, cycles in before links.
+  references, ID prefix/kind mismatches, cycles in isbefore links.
 - **Config comparison:** Kinds in config but not in template (and vice versa).
 - **Lock violation detection:** Agent updates touching locked fields.
 - **SimHash duplicate warnings:** Near-duplicate pairs not in not_duplicate_of.
@@ -37,6 +37,7 @@ from hypergumbo_tracker.store import (
     _compute_simhash,
     _hamming_distance,
     _parse_ops_file,
+    _SIMHASH_THRESHOLD,
     compile_ops,
 )
 
@@ -49,9 +50,6 @@ _VALID_OP_TYPES = frozenset({
 
 # Required common fields on every op
 _REQUIRED_COMMON_FIELDS = ("op", "at", "by", "clock", "nonce")
-
-# Default SimHash threshold for similarity warnings
-_SIMHASH_THRESHOLD = 8
 
 # Pattern to extract inline nonce comment from a line: `  # <nonce>`
 _NONCE_COMMENT_RE = re.compile(r"  # ([0-9a-f]{4})$")
@@ -546,7 +544,7 @@ def validate_all(
     - Duplicate IDs across tiers
     - Dangling parent references
     - ID prefix doesn't match kind
-    - Cycles in before links
+    - Cycles in isbefore links
     - Config vs template comparison (if both exist)
     - SimHash near-duplicate warnings (if check_similar=True)
     - Embedding near-duplicate warnings (if check_deep_similar=True)
@@ -673,14 +671,14 @@ def _check_id_prefix_mismatch(
 def _check_before_cycles(
     all_items: dict[str, tuple[str, Any]], result: ValidationResult
 ) -> None:
-    """Check for cycles in before links."""
+    """Check for cycles in isbefore links."""
     from collections import defaultdict
 
-    # Build adjacency: if X has before: [Y], then X blocks Y
+    # Build adjacency: if X has isbefore: [Y], then X blocks Y
     # Graph: X → Y (edge means X must complete before Y)
     blocked_by: dict[str, list[str]] = defaultdict(list)
     for item_id, (_, item) in all_items.items():
-        for target_id in item.before:
+        for target_id in item.isbefore:
             blocked_by[target_id].append(item_id)
 
     # DFS cycle detection
@@ -706,7 +704,7 @@ def _check_before_cycles(
 
     for cycle in cycles:
         result.errors.append(
-            f"cycle in before links: {' -> '.join(cycle)}"
+            f"cycle in isbefore links: {' -> '.join(cycle)}"
         )
 
 

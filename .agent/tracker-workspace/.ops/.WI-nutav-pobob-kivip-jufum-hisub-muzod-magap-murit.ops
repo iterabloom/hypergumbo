@@ -1,0 +1,84 @@
+- op: create  # fdb4
+  at: '2026-04-16T19:18:20Z'  # fdb4
+  by: agent  # fdb4
+  actor: jgstern_agent  # fdb4
+  clock: 1  # fdb4
+  nonce: fdb4  # fdb4
+  data:  # fdb4
+    kind: work_item  # fdb4
+    title: "Airflow framework-dispatch linker: Hook.get_conn / Sensor.poke / Trigger.run / Operator.execute"  # fdb4
+    status: todo_soft  # fdb4
+    priority: 2  # fdb4
+    parent:  # fdb4
+    tags:  # fdb4
+    - cross_language_linkers  # fdb4
+    - analysis_quality  # fdb4
+    - airflow  # fdb4
+    isbefore: []  # fdb4
+    duplicate_of: []  # fdb4
+    not_duplicate_of: []  # fdb4
+    pr_ref:  # fdb4
+    description: "WI-tubot aggregate-v5 analysis (2026-04-16): python_airflow_framework + airflow_operator_hook combined = 4511 candidates (4.9% of the pool). Top samples: GCSHook.copy, AirflowConfigParser.read, SsmRunCommandTrigger.hook, AthenaTrigger.hook, GlueCrawlerCompleteTrigger.hook.\n\nCurrent state: decorator_dispatch.py handles @dag / @task decorator-registered tasks but not the class-based framework-dispatch shape where Airflow internals invoke Hook.get_conn(), Sensor.poke(), Trigger.run(), Operator.execute() at runtime from the scheduler/executor — a dispatch the static call graph never sees.\n\nScope: a new linker (airflow_framework_dispatch.py) that:\n1. Detects classes inheriting from BaseHook / BaseSensor / BaseTrigger / BaseOperator\n2. Treats the framework-called methods (execute, execute_complete, poke, on_kill, pre_execute, post_execute, run, hook, get_conn, test_connection) as reachable from an Airflow-framework-entry pseudo-source\n3. Emits framework_dispatches_to edges from the pseudo-source to each override\n\nCross-language relevance: Hook.get_conn dispatches to cloud-SDK clients (AWS boto3, Google google-cloud, Azure azure-sdk) — the targets are in external packages, but the dispatching methods themselves become visible to dead-code analysis.\n\nAcceptance: re-run of dead-code-prospector on the 2026-04-11 corpus shows combined python_airflow_framework + airflow_operator_hook below 1500 (67% reduction)."  # fdb4
+    fields: {}  # fdb4
+- op: discuss  # d0f5
+  at: '2026-04-16T19:36:35Z'  # d0f5
+  by: agent  # d0f5
+  actor: jgstern_agent  # d0f5
+  clock: 2  # d0f5
+  nonce: d0f5  # d0f5
+  message: "Clarification on cross-languageness: the phrase 'cross-language via cloud-SDK boundary' in the original description overstated this item's scope. The linker itself operates entirely within Python source — Airflow's scheduler dispatches Hook.get_conn / Sensor.poke / Trigger.run / Operator.execute on subclass instances registered in the DAG graph. The cross-language consequence (Hook.get_conn eventually invokes AWS boto3, google-cloud, azure-sdk clients) is a runtime behavior that crosses the Python/service boundary, not an edge this linker produces.\n\nCorrect framing: this is a within-Python framework-dispatch linker for Airflow's class-based plugin system. The cloud-SDK calls on the other side of Hook.get_conn are leaf IO boundaries, not linker targets."  # d0f5
+- op: update  # 3c45
+  at: '2026-04-17T01:16:11Z'  # 3c45
+  by: agent  # 3c45
+  actor: jgstern_agent  # 3c45
+  clock: 3  # 3c45
+  nonce: 3c45  # 3c45
+  set: {}  # 3c45
+  remove:  # 3c45
+    tags: [cross_language_linkers]  # 3c45
+- op: discuss  # cd29
+  at: '2026-04-17T01:17:40Z'  # cd29
+  by: agent  # cd29
+  actor: jgstern_agent  # cd29
+  clock: 4  # cd29
+  nonce: cd29  # cd29
+  message: "Tag cleanup (2026-04-17): removed `cross_language_linkers` tag. Per the 2026-04-16 discussion clarification above and ADR-0003-ext, this is a **Framework-subcategory** linker (Python-internal Airflow framework dispatch). The cross-language consequence (Hook.get_conn invokes cloud SDKs) is a leaf IO boundary, not a linker edge. Keeping `analysis_quality` and `airflow`."  # cd29
+- op: update  # 3781
+  at: '2026-04-17T02:54:29Z'  # 3781
+  by: agent  # 3781
+  actor: jgstern_agent  # 3781
+  clock: 5  # 3781
+  nonce: '3781'  # 3781
+  set:  # 3781
+    priority: 3  # 3781
+- op: discuss  # 6e51
+  at: '2026-04-17T02:54:29Z'  # 6e51
+  by: agent  # 6e51
+  actor: jgstern_agent  # 6e51
+  clock: 6  # 6e51
+  nonce: '6e51'  # 6e51
+  message: "pf-prelim pivot: Python/Airflow-specific dispatch, not in pf-prelim stack. Deferred P2→P3."  # 6e51
+- op: update  # 7b86
+  at: '2026-04-18T22:57:27Z'  # 7b86
+  by: agent  # 7b86
+  actor: jgstern_agent  # 7b86
+  clock: 7  # 7b86
+  nonce: 7b86  # 7b86
+  set:  # 7b86
+    status: done  # 7b86
+- op: discuss  # 2685
+  at: '2026-04-18T22:57:27Z'  # 2685
+  by: agent  # 2685
+  actor: jgstern_agent  # 2685
+  clock: 8  # 2685
+  nonce: '2685'  # 2685
+  message: "Implemented in PR #3168 (commit 9d40e4688, fast-forward merged to dev). Framework-subcategory linker in hypergumbo_core.linkers.airflow_framework_dispatch. Emits dispatches_to edges from BaseOperator/BaseHook/BaseSensor/BaseTrigger/BaseSensorOperator subclasses to their framework-called lifecycle methods using meta.base_classes already emitted by the Python analyzer. 27 tests, 100% coverage on the new module. Per-base method map (execute/pre_execute/post_execute/execute_complete/on_kill for Operator; get_conn/test_connection for Hook; poke/execute/execute_complete/on_kill for Sensor; run/hook for Trigger) avoids emitting spurious cross-base edges. The acceptance bakeoff metric (dead-code-prospector python_airflow_framework + airflow_operator_hook combined below 1500) is a separate validation step — it will be visible the next time the prospecting pass runs against the 2026-04-11 corpus (tracked by WI-botol)."  # 2685
+- op: update  # b0f3
+  at: '2026-04-19T07:53:11Z'  # b0f3
+  by: agent  # b0f3
+  actor: jgstern_agent  # b0f3
+  clock: 9  # b0f3
+  nonce: b0f3  # b0f3
+  set: {}  # b0f3
+  add:  # b0f3
+    tags: [awaits_bakeoff_validation]  # b0f3

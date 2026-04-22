@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Generate docs/CONCEPTS.md — the concept-vocabulary registry (WI-dajul).
+
+Scans all framework YAML pattern files for `concept: <name>` strings
+emitted to symbols' meta.concepts list, and scans the hypergumbo-core
+source tree for concept-string consumers (`has_concept`, `get_concept`,
+and direct `concept == "<name>"` comparisons). Writes a markdown table
+to docs/CONCEPTS.md that maps every concept to (producers, consumers,
+status).
+
+Status values:
+  - live     — at least one producer AND at least one consumer
+  - inert    — producers exist but no consumer reads the concept
+  - ghost    — a consumer mentions the concept but no YAML emits it
+               (likely dead code or outdated reference)
+
+Run whenever YAMLs or linker sources change. The output file is checked
+in so changes to vocabulary are reviewable in PRs.
+"""
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+FRAMEWORKS_DIR = (
+    REPO_ROOT
+    / "packages"
+    / "hypergumbo-core"
+    / "src"
+    / "hypergumbo_core"
+    / "frameworks"
+)
+CORE_SRC_DIR = (
+    REPO_ROOT / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core"
+)
+# Analyzer source trees — some analyzers emit concepts programmatically rather
+# than via YAML (notably py.py's main_guard detector). Scanning these trees
+# with the programmatic-producer regex prevents false ghost classifications.
+ANALYZER_SRC_DIRS = [
+    CORE_SRC_DIR,
+    REPO_ROOT / "packages" / "hypergumbo-lang-common" / "src" / "hypergumbo_lang_common",
+    REPO_ROOT / "packages" / "hypergumbo-lang-mainstream" / "src" / "hypergumbo_lang_mainstream",
+    REPO_ROOT / "packages" / "hypergumbo-lang-extended1" / "src" / "hypergumbo_lang_extended1",
+]
+DEFAULT_OUTPUT = REPO_ROOT / "docs" / "CONCEPTS.md"
+
+# Match `- concept: <name>` (optionally quoted) in framework YAMLs.
+_PRODUCER_RE = re.compile(r"^\s*-?\s*concept:\s*[\"']?([A-Za-z_][A-Za-z0-9_]*)[\"']?\s*(#.*)?$")
+
+# Match programmatic concept emission in Python source:
+#   {"concept": "main_guard", ...}
+#   {'concept': 'route', 'path': ...}
+# A few analyzers (notably py.py's main_guard detector) emit concepts
+# directly from AST walkers rather than through the YAML pipeline. These
+# literals are just as real as YAML-declared producers — miss them and the
+# concept falsely surfaces as `ghost` (consumer exists but no producer).
+# Variable-expression forms (``{"concept": some_var, ...}``) are deliberately
+# not matched: we can't resolve ``some_var`` without running the analyzer.
+_PROGRAMMATIC_PRODUCER_RE = re.compile(
+    r"""["']concept["']\s*:\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""
+)
+
+# Match concept-consumer patterns in Python source:
+#   has_concept(x, "route") / get_concept(x, "route")
+#   concept == "route", concept != "route"  (bare name)
+#   concept_type == "route", concept_kind != "route"  (any identifier with
+#   "concept" in its name — matches entrypoints._detect_from_concepts's
+#   `concept_type == "X"` branches and similar code in linkers)
+#   .get("concept") == "route"
+#
+# INV-rikis: the variable-name and tuple-membership forms were missed by the
+# original three-regex set, causing ~30 concepts consumed in
+# entrypoints._detect_from_concepts to show as `inert` in docs/CONCEPTS.md
+# despite being live in production.
+_CONSUMER_RES = [
+    re.compile(r"""has_concept\([^,]+,\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""),
+    re.compile(r"""get_concept\([^,]+,\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""),
+    re.compile(r"""\.get\(["']concept["']\)\s*==\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""),
+    # Equality / inequality against a "concept"-family variable. The variable
+    # name must contain the substring "concept" (bare name, `concept_type`,
+    # `current_concept`, `concept_kind`, etc.). Loose enough to capture the
+    # real patterns; strict enough to avoid matching unrelated `== "X"` in
+    # non-concept code.
+    re.compile(
+        r"""\b\w*concept\w*\s*[!=]=\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""
+    ),
+    # Mirror: `"X" == concept_var` (string literal on the left).
+    re.compile(
+        r"""["']([A-Za-z_][A-Za-z0-9_]*)["']\s*[!=]=\s*\b\w*concept\w*\b"""
+    ),
+]
+
+# Tuple / set / list membership test:
+#   concept_type in ("X", "Y")
+#   concept_type in {"X", "Y"}
+#   concept_type in ["X", "Y"]
+#   concept_type not in ("X", "Y")
+#
+# The outer regex captures the membership-test container body so we can extract
+# every quoted identifier inside it in a second pass. A single regex can't
+# reliably match arbitrary-length tuples, so the two-step approach keeps the
+# extraction robust across common PEP-8 formatting (line-wrapped tuples,
+# trailing commas, comments).
+_MEMBERSHIP_RE = re.compile(
+    r"""\b\w*concept\w*\s+(?:not\s+)?in\s+[\(\{\[]([^)}\]]+)[\)\}\]]""",
+    re.DOTALL,
+)
+_TUPLE_STRING_RE = re.compile(
+    r"""["']([A-Za-z_][A-Za-z0-9_]*)["']"""
+)
+
+
+def extract_programmatic_producers_from_text(text: str) -> set[str]:
+    """Return every concept name emitted as a literal in the given Python text.
+
+    Matches ``{"concept": "X"}`` and ``{'concept': 'X'}`` shapes. Variable-
+    expression forms like ``{"concept": concept_type}`` are intentionally not
+    matched — resolving the variable would require running the analyzer, and
+    they appear when a YAML-driven pattern is being reflected back out, so
+    the YAML scan already credits the concept.
+    """
+    return {m.group(1) for m in _PROGRAMMATIC_PRODUCER_RE.finditer(text)}
+
+
+def scan_producers(
+    frameworks_dir: Path, source_dirs: list[Path] | None = None
+) -> dict[str, set[str]]:
+    """Return {concept_name -> set of producer source names that emit it}.
+
+    Scans framework YAMLs (the primary emission pipeline) AND Python source
+    trees for programmatic emitters (analyzers that construct
+    ``{"concept": "X"}`` literals directly, bypassing the YAML pattern
+    layer). Combining the two scans prevents concepts emitted directly from
+    analyzers (like py.py's ``main_guard`` for ``if __name__ ==
+    "__main__":``) from showing as ``ghost`` in docs/CONCEPTS.md.
+    """
+    producers: dict[str, set[str]] = defaultdict(set)
+    for yaml_path in sorted(frameworks_dir.glob("*.yaml")):
+        text = yaml_path.read_text(encoding="utf-8")
+        for line in text.splitlines():
+            match = _PRODUCER_RE.match(line)
+            if match:
+                producers[match.group(1)].add(yaml_path.stem)
+    for src_dir in source_dirs or []:
+        for py_path in sorted(src_dir.rglob("*.py")):
+            if py_path.name.startswith("_concept_utils"):
+                continue
+            # framework_patterns.py's `{"concept": self.concept}` reflects
+            # YAML-driven values back out; crediting it would falsely
+            # promote every concept it might yield. Skip it.
+            if py_path.name == "framework_patterns.py":
+                continue
+            rel_label = py_path.name
+            text = py_path.read_text(encoding="utf-8")
+            for name in extract_programmatic_producers_from_text(text):
+                producers[name].add(rel_label)
+    return producers
+
+
+def extract_consumers_from_text(text: str) -> set[str]:
+    """Return every concept name consumed by the given Python source text.
+
+    Covers: has_concept / get_concept helper calls, ``.get("concept") ==``
+    string comparison, any ``*concept*`` variable ``==`` / ``!=``
+    comparison against a quoted identifier (both orderings), and
+    tuple/set/list membership tests (``concept_type in ("X", "Y")``).
+    INV-rikis invariant: every concept mentioned in one of these patterns
+    must surface as a consumer, otherwise CONCEPTS.md mis-classifies it as
+    ``inert``.
+    """
+    names: set[str] = set()
+    for regex in _CONSUMER_RES:
+        for match in regex.finditer(text):
+            names.add(match.group(1))
+    # Tuple/set/list membership bodies need a two-step extract:
+    # match the container body, then pull every quoted identifier out.
+    for body_match in _MEMBERSHIP_RE.finditer(text):
+        for tup_match in _TUPLE_STRING_RE.finditer(body_match.group(1)):
+            names.add(tup_match.group(1))
+    return names
+
+
+def scan_consumers(src_dir: Path) -> dict[str, set[str]]:
+    """Return {concept_name -> set of relative source paths that read it}."""
+    consumers: dict[str, set[str]] = defaultdict(set)
+    for py_path in sorted(src_dir.rglob("*.py")):
+        if py_path.name.startswith("_concept_utils"):
+            continue  # the utility itself doesn't "consume" a specific concept
+        rel = py_path.relative_to(src_dir).as_posix()
+        text = py_path.read_text(encoding="utf-8")
+        for name in extract_consumers_from_text(text):
+            consumers[name].add(rel)
+    return consumers
+
+
+def classify(
+    producers: dict[str, set[str]], consumers: dict[str, set[str]]
+) -> list[tuple[str, set[str], set[str], str]]:
+    """Return sorted (concept, producers, consumers, status) tuples."""
+    all_names = sorted(set(producers) | set(consumers))
+    rows: list[tuple[str, set[str], set[str], str]] = []
+    for name in all_names:
+        p = producers.get(name, set())
+        c = consumers.get(name, set())
+        if p and c:
+            status = "live"
+        elif p:
+            status = "inert"
+        else:
+            status = "ghost"
+        rows.append((name, p, c, status))
+    return rows
+
+
+def format_md(rows: list[tuple[str, set[str], set[str], str]]) -> str:
+    """Render the registry as a markdown document."""
+    n_total = len(rows)
+    n_live = sum(1 for r in rows if r[3] == "live")
+    n_inert = sum(1 for r in rows if r[3] == "inert")
+    n_ghost = sum(1 for r in rows if r[3] == "ghost")
+
+    lines = [
+        "<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->",
+        "<!-- GENERATED: scripts/generate-concepts (WI-dajul) — do not edit by hand. -->",
+        "# Concept Vocabulary Registry",
+        "",
+        "This file enumerates every concept string that the framework-YAML "
+        "pattern layer emits into `symbol.meta.concepts` and pairs each one "
+        "with the downstream code that reads it.",
+        "",
+        "- **live** — at least one YAML producer AND at least one code consumer. "
+        "The concept carries signal end-to-end.",
+        "- **inert** — producers exist but no consumer reads the concept. "
+        "Candidates for either removing the producer pattern or writing a "
+        "Framework-subcategory linker that consumes it.",
+        "- **ghost** — a consumer mentions the concept by name but no YAML "
+        "emits it. Likely dead code or a leftover reference to a removed "
+        "pattern; investigate.",
+        "",
+        f"Total concepts: **{n_total}** "
+        f"(live: {n_live}, inert: {n_inert}, ghost: {n_ghost}).",
+        "",
+        "## Inventory",
+        "",
+        "| Concept | Status | Producers (YAMLs) | Consumers (source paths) |",
+        "| --- | --- | --- | --- |",
+    ]
+    for name, prods, cons, status in rows:
+        prod_str = ", ".join(sorted(prods)) if prods else "_(none)_"
+        cons_str = (
+            ", ".join(f"`{c}`" for c in sorted(cons)) if cons else "_(none)_"
+        )
+        lines.append(f"| `{name}` | {status} | {prod_str} | {cons_str} |")
+
+    lines.append("")
+    lines.append("## How to regenerate")
+    lines.append("")
+    lines.append("```bash")
+    lines.append("./scripts/generate-concepts")
+    lines.append("```")
+    lines.append("")
+    lines.append(
+        "The script is deterministic — given the same YAML and linker sources "
+        "it produces byte-identical output. CI can re-run it and diff the "
+        "result to catch drift."
+    )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def generate(output_path: Path) -> str:
+    producers = scan_producers(FRAMEWORKS_DIR, ANALYZER_SRC_DIRS)
+    consumers = scan_consumers(CORE_SRC_DIR)
+    rows = classify(producers, consumers)
+    md = format_md(rows)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(md, encoding="utf-8")
+    return md
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0] if __doc__ else "",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=DEFAULT_OUTPUT,
+        help=f"Output path (default: {DEFAULT_OUTPUT.relative_to(REPO_ROOT)}).",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Do not write; instead, compare generated content against the "
+             "current file and exit 1 if they differ (for CI drift detection).",
+    )
+    args = parser.parse_args(argv)
+
+    producers = scan_producers(FRAMEWORKS_DIR, ANALYZER_SRC_DIRS)
+    consumers = scan_consumers(CORE_SRC_DIR)
+    rows = classify(producers, consumers)
+    generated = format_md(rows)
+
+    if args.check:
+        if not args.out.exists():
+            print(f"ERROR: {args.out} does not exist; run without --check first.",
+                  file=sys.stderr)
+            return 1
+        current = args.out.read_text(encoding="utf-8")
+        if current != generated:
+            print(
+                f"ERROR: {args.out} is out of date. Re-run ./scripts/generate-concepts.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"OK: {args.out} is up to date.")
+        return 0
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(generated, encoding="utf-8")
+    print(f"Wrote {args.out} ({len(rows)} concepts).")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,308 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0016: I/O primitive catalog for Elixir
+#
+# Elixir runs on the BEAM and can call Erlang modules directly (via atom
+# syntax — `:gen_tcp.send(...)`). This catalog is MERGED with erlang.yaml
+# (via _CATALOG_PARENTS) so Erlang stdlib (`file`, `gen_tcp`, `ets`,
+# `logger`, etc.) is covered for the atom-access path.
+#
+# Elixir idiom uses its own wrappers over Erlang: `File` for filesystem,
+# `IO` for console/streams, `System` for process/env, `Logger` for logs,
+# `Ecto` for databases, Phoenix for web server, and a galaxy of HTTP
+# clients (HTTPoison, Tesla, Req, Finch, Mint). UAT-2026-04-13 BUG-09b
+# reported 0 boundaries on plausible (Phoenix/Ecto) — this catalog fixes
+# that scope gap.
+#
+# Naming convention: Elixir calls render as `Module.function` — the
+# dotted form matches the `module.name` lookup the io_boundary engine
+# uses for `kind="function"` entries.
+language: elixir
+
+# ---------------------------------------------------------------------------
+# Ambiguous short names — function names that collide across Elixir
+# ecosystem semantics when module_hint is unresolved.
+# ---------------------------------------------------------------------------
+ambiguous_names:
+  # Elixir stdlib verbs with I/O analogs
+  - read          # File.read vs any read/1
+  - write         # File.write vs any write/2
+  - open          # File.open vs :gen_tcp.open, any open/1
+  - close         # File.close, :gen_tcp.close, any close/1
+  - send          # Process.send, GenServer.cast-style vs :gen_tcp.send
+  - recv          # :gen_tcp.recv vs any recv/2
+  - connect       # DB connect, Mint.connect, Socket.connect
+  - listen        # :gen_tcp.listen vs any listen/2
+  - accept        # :gen_tcp.accept vs any accept/1
+  - call          # GenServer.call vs any call/2
+  - cast          # GenServer.cast vs any cast/2
+  - reply         # GenServer.reply vs any reply/2
+  - start         # Supervisor.start, Task.start, any start/1
+  - start_link    # universal — spawns linked process
+  - stop          # GenServer.stop, Supervisor.stop
+  - stream        # Stream, File.stream!, IO.stream, DB stream
+  - stream!       # File.stream!, IO.stream!
+  - get           # Keyword.get, Map.get, Agent.get, any get/2
+  - put           # Map.put, Agent.put, Keyword.put, any put/3
+  - delete        # Map.delete, File.delete, Ecto.Repo.delete
+  - update        # Map.update, Ecto.Repo.update
+  - insert        # Ecto.Repo.insert, :ets.insert, any insert/2
+  - lookup        # :ets.lookup vs Keyword.lookup
+  - all           # Enum.all?, Ecto.Repo.all, any all/1
+  - one           # Ecto.Repo.one
+  - exists?       # File.exists?, Ecto.Repo.exists? (has ?)
+  - exit          # Process.exit, Kernel.exit, any exit/1
+  - spawn         # Kernel.spawn vs any spawn/1
+  - register      # Process.register vs any register/2
+  - monitor       # Process.monitor vs any monitor/2
+  - run           # Ecto.Migrator.run, Task.run, generic run
+  - exec          # generic exec verb
+  - request       # Tesla.request, Req.request, generic
+  - fetch         # Tesla.get, Req.get aliases, Map.fetch
+  # Log levels (every logger in the ecosystem uses these)
+  - debug
+  - info
+  - warn
+  - warning
+  - error
+  # Elixir pipe/enum/flow verbs
+  - map
+  - filter
+  - flat_map
+  - reduce
+  - each
+  - count
+  - take
+  - take_while
+  - drop
+  - drop_while
+  - new
+
+# ---------------------------------------------------------------------------
+# Filesystem read — Elixir File and IO modules
+# ---------------------------------------------------------------------------
+fs_read:
+  - module: File
+    functions:
+      - read
+      - read!
+      - open
+      - open!
+      - stream!
+      - ls
+      - ls!
+      - stat
+      - stat!
+      - lstat
+      - lstat!
+      - exists?
+      - dir?
+      - regular?
+      - read_link
+      - read_link!
+    notes: "Elixir stdlib filesystem reads"
+  - module: Path
+    functions: [wildcard]
+    notes: "glob expansion — reads directory contents"
+  - module: IO
+    functions:
+      - read
+      - binread
+      - getn
+      - gets
+      - inspect
+    notes: "Elixir IO module reads (stdin, devices, opened files)"
+
+# ---------------------------------------------------------------------------
+# Filesystem write — Elixir File module
+# ---------------------------------------------------------------------------
+fs_write:
+  - module: File
+    functions:
+      - write
+      - write!
+      - touch
+      - touch!
+      - cp
+      - cp!
+      - cp_r
+      - cp_r!
+      - mkdir
+      - mkdir!
+      - mkdir_p
+      - mkdir_p!
+      - rm
+      - rm!
+      - rm_rf
+      - rm_rf!
+      - rmdir
+      - rmdir!
+      - rename
+      - rename!
+      - ln
+      - ln!
+      - ln_s
+      - ln_s!
+      - chmod
+      - chmod!
+      - chown
+      - chown!
+    notes: "Elixir stdlib filesystem writes"
+  - module: IO
+    functions: [write, binwrite, puts]
+    notes: "IO writes to devices / opened files / stdout"
+
+# ---------------------------------------------------------------------------
+# Net send — HTTP clients and TCP
+# ---------------------------------------------------------------------------
+net_send:
+  - module: HTTPoison
+    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, request, request!]
+    notes: "HTTPoison (hackney-based client, very common in Elixir)"
+  - module: HTTPoison.Base
+    functions: [request, request!]
+  - module: Tesla
+    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, options, request, request!]
+    notes: "Tesla (middleware-based HTTP client)"
+  - module: Req
+    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, request, request!, new]
+    notes: "Req (modern Elixir HTTP client, Phoenix team's preferred)"
+  - module: Finch
+    functions: [build, request, stream]
+    notes: "Finch (low-level, pooled HTTP client)"
+  - module: Mint.HTTP
+    functions: [connect, request, stream]
+    notes: "Mint (connection-level HTTP/1+2 client)"
+  - module: Mint.HTTP1
+    functions: [connect, request, stream]
+  - module: Mint.HTTP2
+    functions: [connect, request, stream]
+  - module: :httpc
+    functions: [request]
+    notes: "Erlang stdlib HTTP client (called via atom from Elixir)"
+
+# ---------------------------------------------------------------------------
+# Net recv — Phoenix and Plug (web server request handling)
+# ---------------------------------------------------------------------------
+net_recv:
+  - module: Phoenix.Router
+    functions: [get, post, put, patch, delete, head, options, match, resources, scope]
+    notes: "Phoenix.Router DSL — declares receiving HTTP routes"
+  - module: Phoenix.Controller
+    functions: [render, json, text, html, put_status, redirect, send_resp, send_download]
+    notes: "Phoenix controller response helpers (read request + write response)"
+  - module: Plug.Conn
+    functions:
+      - send_resp
+      - send_file
+      - send_chunked
+      - chunk
+      - put_resp_header
+      - put_resp_content_type
+      - put_resp_cookie
+      - read_body
+      - fetch_query_params
+      - fetch_cookies
+      - resp
+      - halt
+    notes: "Plug: read request / write response"
+  - module: Phoenix.Channel
+    functions: [push, broadcast, broadcast!, broadcast_from, broadcast_from!, reply]
+    notes: "Phoenix WebSocket channels — receive and publish events"
+  - module: Phoenix.Endpoint
+    functions: [broadcast, broadcast!, broadcast_from, broadcast_from!]
+    notes: "Phoenix endpoint-level PubSub broadcast"
+
+# ---------------------------------------------------------------------------
+# Subprocess — System.cmd, System.shell, Port.open
+# ---------------------------------------------------------------------------
+subprocess:
+  - module: System
+    functions: [cmd, shell, halt]
+    notes: "Elixir System.cmd launches external processes"
+  - module: Port
+    functions: [open, command]
+    notes: "Erlang-style external ports (used for subprocess IPC)"
+
+# ---------------------------------------------------------------------------
+# Env read — Elixir System / Application
+# ---------------------------------------------------------------------------
+env_read:
+  - module: System
+    functions: [get_env, fetch_env, fetch_env!, get_pid, argv, tmp_dir, tmp_dir!, user_home, user_home!, cwd, cwd!]
+    notes: "Elixir System env + process info reads"
+  - module: Application
+    functions: [get_env, fetch_env, fetch_env!, get_all_env, get_application]
+    notes: "Application config reads (compile-time + runtime)"
+
+# ---------------------------------------------------------------------------
+# Logging — Elixir Logger + Phoenix/plug-specific log helpers
+# ---------------------------------------------------------------------------
+logging:
+  - module: Logger
+    functions: [debug, info, warn, warning, error, notice, critical, alert, emergency, log, metadata, configure]
+    notes: "Elixir stdlib Logger — unified logging API"
+  - module: IO
+    functions: [puts, warn, write]
+    notes: "IO-based ad-hoc logging (puts to :stdio)"
+
+# ---------------------------------------------------------------------------
+# Database — Ecto + direct driver modules
+# ---------------------------------------------------------------------------
+db_read:
+  - module: Ecto.Repo
+    functions: [all, one, one!, get, get!, get_by, get_by!, "exists?", aggregate, stream, preload]
+    notes: "Ecto.Repo read operations"
+  - module: Ecto.Query
+    functions: [from, where, select, join, group_by, order_by, limit, offset, distinct]
+    notes: "Ecto query construction — part of the read path"
+  - module: Postgrex
+    functions: [query, query!, prepare, prepare_execute]
+    notes: "Postgrex (PostgreSQL driver for Ecto)"
+  - module: MyXQL
+    functions: [query, query!, prepare]
+    notes: "MyXQL (MySQL driver for Ecto)"
+  - module: Redix
+    functions: [command, command!, pipeline, pipeline!]
+    notes: "Redix (Redis client)"
+
+db_write:
+  - module: Ecto.Repo
+    functions:
+      - insert
+      - insert!
+      - insert_or_update
+      - insert_or_update!
+      - insert_all
+      - update
+      - update!
+      - update_all
+      - delete
+      - delete!
+      - delete_all
+      - transaction
+      - rollback
+    notes: "Ecto.Repo write operations"
+  - module: Ecto.Multi
+    functions: [insert, update, delete, insert_all, update_all, delete_all, run]
+    notes: "Ecto.Multi — composed transactional writes"
+  - module: Postgrex
+    functions: [transaction]
+  - module: MyXQL
+    functions: [transaction]
+
+# ---------------------------------------------------------------------------
+# IPC — GenServer, Process, GenStage, Oban (job queues)
+# ---------------------------------------------------------------------------
+ipc_send:
+  - module: GenServer
+    functions: [call, cast, abcast, multi_call]
+    notes: "GenServer message passing"
+  - module: Process
+    functions: [send, send_after]
+    notes: "Raw process messaging"
+  - module: Oban
+    functions: [insert, insert!, insert_all]
+    notes: "Oban job queue — enqueue background jobs"
+  - module: Task
+    functions: [async, async_stream, start, start_link, Supervisor.start_child]
+    notes: "Task spawns — async execution boundary"

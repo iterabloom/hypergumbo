@@ -215,8 +215,8 @@ class TrackerSet:
     def ready(self) -> list[CompiledItem]:
         """Unblocked items across all tiers.
 
-        Cross-tier before references are resolved: if item X in canonical
-        has before: [Y] and Y is in workspace, Y is still blocked.
+        Cross-tier isbefore references are resolved: if item X in canonical
+        has isbefore: [Y] and Y is in workspace, Y is still blocked.
         Passes per-tier cache for cache-accelerated reads.
         Updates the positional alias stash.
         """
@@ -243,7 +243,7 @@ class TrackerSet:
         blocked_ids: set[str] = set()
         for item in all_items:
             if item.id not in resolved_ids:
-                for target_id in item.before:
+                for target_id in item.isbefore:
                     blocked_ids.add(target_id)
 
         blocking_set = set(self._config.blocking_statuses)

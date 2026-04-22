@@ -82,15 +82,25 @@ class DependencyManifest:
         if not import_path:
             return Tier.EXTERNAL_DEP
 
-        # Go stdlib detection: first path segment has no dots
-        first_segment = import_path.split("/")[0]
-        if "." not in first_segment:
-            return Tier.EXTERNAL_DEP
+        # Go stdlib detection: first path segment has no dots AND path
+        # contains a slash (Go convention). Single-segment dotless paths
+        # like "junit" or "javax" are valid Java/Kotlin groupIds that
+        # should fall through to prefix matching.
+        if "/" in import_path:
+            first_segment = import_path.split("/")[0]
+            if "." not in first_segment:
+                return Tier.EXTERNAL_DEP
 
-        # Longest-prefix match against manifest entries
+        # Longest-prefix match against manifest entries.
+        # Supports both slash-separated (Go: github.com/foo/bar) and
+        # dot-separated (Java/Kotlin: com.fasterxml.jackson.core) paths.
         best_match = ""
         for module_path in self.entries:
-            if import_path == module_path or import_path.startswith(module_path + "/"):
+            if (
+                import_path == module_path
+                or import_path.startswith(module_path + "/")
+                or import_path.startswith(module_path + ".")
+            ):
                 if len(module_path) > len(best_match):
                     best_match = module_path
 

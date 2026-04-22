@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""OpenAPI/Swagger linker for detecting API schema to handler connections.
+"""Framework linker: OpenAPI/Swagger for detecting API schema to handler connections.
 
 This linker parses OpenAPI specification files and links operations to
 route handlers in the application code.
@@ -53,6 +53,7 @@ from typing import Any, Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ._concept_utils import get_concept, has_concept
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -251,10 +252,7 @@ def _paths_match(openapi_path: str, route_path: str) -> bool:
 
 def _has_route_concept(symbol: Symbol) -> bool:
     """Check if symbol has a route concept in meta.concepts."""
-    if not symbol.meta:  # pragma: no cover
-        return False
-    concepts = symbol.meta.get("concepts", [])
-    return any(c.get("concept") == "route" for c in concepts if isinstance(c, dict))
+    return has_concept(symbol, "route")
 
 
 def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None]:
@@ -264,14 +262,10 @@ def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None
         Tuple of (route_path, http_method) from the first route concept,
         or (None, None) if no route concept exists.
     """
-    if not symbol.meta:
+    route = get_concept(symbol, "route")
+    if route is None:
         return None, None
-
-    concepts = symbol.meta.get("concepts", [])
-    for concept in concepts:
-        if isinstance(concept, dict) and concept.get("concept") == "route":
-            return concept.get("path"), concept.get("method")
-    return None, None
+    return route.get("path"), route.get("method")
 
 
 def _get_route_symbols(ctx: LinkerContext) -> list[Symbol]:

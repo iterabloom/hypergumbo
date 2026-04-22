@@ -221,11 +221,11 @@ class TestReady:
     def test_cross_tier_before_blocks(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        """Item in canonical with before:[Y] blocks Y in workspace."""
+        """Item in canonical with isbefore:[Y] blocks Y in workspace."""
         id_y = tracker_set.add("work_item", "Target Y", tier=Tier.WORKSPACE)
-        # Item X has before: [id_y] — meaning X blocks Y
+        # Item X has isbefore: [id_y] — meaning X blocks Y
         id_x = tracker_set.add("invariant", "Blocker X", fields=_INV_FIELDS, tier=Tier.CANONICAL,
-                               before=[id_y], not_duplicate_of=[id_y])
+                               isbefore=[id_y], not_duplicate_of=[id_y])
         ready = tracker_set.ready()
         ready_ids = {i.id for i in ready}
         assert id_x in ready_ids  # X is ready (not blocked)
@@ -237,7 +237,7 @@ class TestReady:
         """Once blocker is resolved, target becomes ready."""
         id_y = tracker_set.add("work_item", "Target", tier=Tier.WORKSPACE)
         id_x = tracker_set.add("work_item", "Blocker", tier=Tier.CANONICAL,
-                               before=[id_y], not_duplicate_of=[id_y])
+                               isbefore=[id_y], not_duplicate_of=[id_y])
         # Resolve the blocker
         tracker_set.update(id_x, set_fields={"status": "done"})
         ready = tracker_set.ready()

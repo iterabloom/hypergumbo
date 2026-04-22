@@ -266,6 +266,274 @@ function main() {
         # main calls helper
         assert any("helper" in e.dst for e in call_edges)
 
+    def test_unresolved_call_to_named_import_emits_edge(self, tmp_path: Path) -> None:
+        """Bare-name calls to named imports emit unresolved call edges (WI-banaf).
+
+        Without these edges io-boundaries cannot match Node/browser I/O
+        primitives in TypeScript projects (UAT 2026-04-13 BUG-09a). The
+        destination ID encodes the import path as the module hint so the
+        catalog lookup can disambiguate (``fs`` vs ``crypto`` etc.).
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+import { existsSync, readFileSync } from 'node:fs';
+
+export function loadConfig(path: string) {
+  if (!existsSync(path)) return null;
+  return readFileSync(path, 'utf8');
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        ]
+        callees = {e.dst for e in unresolved}
+        assert any("existsSync" in c for c in callees), callees
+        assert any("readFileSync" in c for c in callees), callees
+        # Module hint encoded in dst (second colon-separated segment).
+        for c in callees:
+            if "existsSync" in c or "readFileSync" in c:
+                # typescript:<module>:0-0:<name>:unresolved
+                segs = c.split(":")
+                # 'node:fs' contains a colon, so we expect either 'fs' or 'node'.
+                # The module hint normalisation strips the 'node:' prefix.
+                module = segs[1]
+                assert module in ("fs", "node"), c
+
+    def test_resolved_call_does_not_emit_unresolved_edge(self, tmp_path: Path) -> None:
+        """When a callee resolves intra-repo we do NOT also emit an unresolved edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function helper() { return 1; }
+function main() { helper(); }
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        ]
+        assert all("helper" not in e.dst for e in unresolved)
+
+    def test_unresolved_call_to_namespace_import_member(self, tmp_path: Path) -> None:
+        """`import * as fs from 'node:fs'; fs.readFileSync()` emits unresolved edge.
+
+        Per WI-vurop: the namespace-import member-call path also needs the
+        unresolved fallback so io-boundaries can match Node fs / HTTP /
+        subprocess calls invoked through namespace aliases.
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+import * as fs from 'node:fs';
+
+export function loadConfig(path: string) {
+  return fs.readFileSync(path, 'utf8');
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        ]
+        callees = {e.dst for e in unresolved}
+        assert any("readFileSync" in c for c in callees), callees
+        for c in callees:
+            if "readFileSync" in c:
+                segs = c.split(":")
+                # typescript:<module>:0-0:<name>:unresolved
+                assert segs[1] == "fs", c
+
+    def test_unresolved_call_to_default_import_member(self, tmp_path: Path) -> None:
+        """`import axios from 'axios'; axios.get(url)` emits unresolved edge.
+
+        Default imports are stored in the same ``namespace_imports`` map as
+        ``import * as`` aliases, so the fallback covers both.
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+import axios from 'axios';
+
+export async function fetchUser(id: string) {
+  return await axios.get(`/users/${id}`);
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        ]
+        callees = {e.dst for e in unresolved}
+        assert any("axios" in c and ":get:unresolved" in c for c in callees), callees
+        for c in callees:
+            if ":get:unresolved" in c:
+                segs = c.split(":")
+                assert segs[1] == "axios", c
+
+    def test_unresolved_skips_unimported_names(self, tmp_path: Path) -> None:
+        """Calls to unknown bare names without an import do not produce noise.
+
+        Only names that appear in the file's named-import map become
+        unresolved edges. This bounds the noise to legitimate import sites
+        and keeps the catalog match precise.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function main() {
+  somethingNobodyImported();
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        ]
+        assert all("somethingNobodyImported" not in e.dst for e in unresolved)
+
+    def test_unresolved_call_to_global_object_methods(self, tmp_path: Path) -> None:
+        """`console.log()` + `localStorage.setItem()` with no imports emit edges.
+
+        WI-pinop: bare global object.method() patterns where no import or
+        local binding shadows the object. Needed so the io-boundaries layer
+        can tag browser projects that never import anything for console or
+        storage.
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+export function run(x: string) {
+  console.log(x);
+  localStorage.setItem("k", "v");
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        unresolved = [
+            e for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        ]
+        callees = {e.dst for e in unresolved}
+        assert any(":console:" in c and ":log:unresolved" in c for c in callees), callees
+        assert any(
+            ":localStorage:" in c and ":setItem:unresolved" in c for c in callees
+        ), callees
+
+    def test_unresolved_global_shadowed_by_named_import(
+        self, tmp_path: Path,
+    ) -> None:
+        """Named-import shadowing suppresses the WI-pinop global edge.
+
+        If a file does ``import { console } from './my-console'``, the
+        ``console.log(...)`` calls should be treated as calls into the
+        imported module (via the existing WI-banaf/WI-vurop paths), not as
+        a browser-global.
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+import { console } from './my-console';
+
+export function run(x: string) {
+  console.log(x);
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        # No WI-pinop edge: any console.log unresolved edge that uses the
+        # global ``console`` as module hint would be wrong here. The import
+        # path './my-console' (or a resolved intra-repo symbol) is correct.
+        for c in callees:
+            if ":log:unresolved" in c:
+                segs = c.split(":")
+                assert segs[1] != "console", c
+
+    def test_unresolved_global_shadowed_by_typed_parameter(
+        self, tmp_path: Path,
+    ) -> None:
+        """A typed parameter named ``console`` shadows the global.
+
+        If a user writes ``function f(console: Logger) { console.log(x); }``,
+        the parameter's type annotation lands in ``var_types`` and Case 3
+        should take precedence. The WI-pinop fallback must not fire, even if
+        the intra-repo resolve fails.
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+export function run(console: Logger, x: string) {
+  console.log(x);
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        for c in callees:
+            if ":log:unresolved" in c:
+                segs = c.split(":")
+                assert segs[1] != "console", c
+
+    def test_unresolved_global_shadowed_by_namespace_import(
+        self, tmp_path: Path,
+    ) -> None:
+        """Namespace-import shadowing also suppresses the WI-pinop path.
+
+        ``import * as console from './my-console'; console.log()`` must
+        resolve through Case 2 (namespace import) rather than the WI-pinop
+        global fallback, so the module hint points at the user module.
+        """
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+import * as console from './my-console';
+
+export function run(x: string) {
+  console.log(x);
+}
+"""
+        (tmp_path / "app.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        for c in callees:
+            if ":log:unresolved" in c:
+                # Module hint should be the user path, not the 'console' global.
+                segs = c.split(":")
+                assert segs[1] != "console", c
+
     def test_typescript_with_types(self, tmp_path: Path) -> None:
         """Handles TypeScript files with type annotations."""
         pytest.importorskip("tree_sitter_typescript")

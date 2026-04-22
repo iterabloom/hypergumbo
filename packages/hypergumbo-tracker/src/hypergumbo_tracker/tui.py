@@ -55,7 +55,7 @@ import os
 import re
 from functools import partial
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, Callable, ClassVar
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -81,7 +81,11 @@ from textual.widgets.option_list import Option
 
 from rich.text import Text as RichText
 
+from hypergumbo_tracker.hotspot_markup import render_hotspots
+from hypergumbo_tracker.id_matching import build_item_id_pattern
+from hypergumbo_tracker.item_nav_render import build_nav_modal_content
 from hypergumbo_tracker.models import CompiledItem, FieldSchema, Tier
+from hypergumbo_tracker.nav_history import NavigationHistory
 from hypergumbo_tracker.store import (
     AmbiguousPrefixError,
     DiscussionRateLimitError,
@@ -603,19 +607,19 @@ def _apply_custom_order(
 def _build_dep_index(
     items: list[CompiledItem],
 ) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
-    """Build blockers/dependents maps from item before-links.
+    """Build blockers/dependents maps from item isbefore-links.
 
-    Semantics: ``X.before = [Y]`` means **X blocks Y** (X must finish before
+    Semantics: ``X.isbefore = [Y]`` means **X blocks Y** (X must finish before
     Y can start). This matches the CLI's interpretation — see
     ``_describe_changes`` in ``cli.py`` which logs ``"{id} now blocks
-    {label}"`` when anything is added to ``new.before``, and the
+    {label}"`` when anything is added to ``new.isbefore``, and the
     ``--add-blocked-by`` help text which describes the inverse relationship.
 
     Returns ``(blockers_of, dependents_of)`` where:
     - ``blockers_of[id]`` = list of IDs that *block* this item
-      (i.e. items whose ``before`` field contains this ID)
+      (i.e. items whose ``isbefore`` field contains this ID)
     - ``dependents_of[id]`` = list of IDs that this item *blocks*
-      (i.e. this item's own ``before`` field, filtered to valid IDs)
+      (i.e. this item's own ``isbefore`` field, filtered to valid IDs)
 
     Dangling references (IDs not present in *items*) are silently dropped.
     """
@@ -623,10 +627,10 @@ def _build_dep_index(
     blockers_of: dict[str, list[str]] = {}
     dependents_of: dict[str, list[str]] = {}
     for item in items:
-        valid_before = [b for b in item.before if b in valid_ids]
-        if valid_before:
-            dependents_of[item.id] = valid_before
-            for b in valid_before:
+        valid_isbefore = [b for b in item.isbefore if b in valid_ids]
+        if valid_isbefore:
+            dependents_of[item.id] = valid_isbefore
+            for b in valid_isbefore:
                 blockers_of.setdefault(b, []).append(item.id)
     return blockers_of, dependents_of
 
@@ -774,9 +778,9 @@ def _format_detail_lines(
     if item.parent:
         lines.append(f"{_label('Parent:')} {item.parent}")
 
-    if item.before:
-        lock_b = " [locked]" if "before" in item.locked_fields else ""
-        lines.append(f"{_label(f'Blocks{lock_b}:')} {', '.join(item.before)}")
+    if item.isbefore:
+        lock_b = " [locked]" if "isbefore" in item.locked_fields else ""
+        lines.append(f"{_label(f'Blocks{lock_b}:')} {', '.join(item.isbefore)}")
     if blockers_of and item.id in blockers_of:
         lines.append(f"{_label('Blocked by:')} {', '.join(blockers_of[item.id])}")
 
@@ -1300,9 +1304,9 @@ class ParentScreen(ModalScreen[str | None]):
 
 
 class BeforeScreen(ModalScreen[dict[str, list[str]] | None]):
-    """Modal for editing before (dependency) links.
+    """Modal for editing isbefore (dependency) links.
 
-    Shows current before links and provides inputs for IDs to add and
+    Shows current isbefore links and provides inputs for IDs to add and
     IDs to remove. Returns ``{"add": [...], "remove": [...]}`` or None.
     """
 
@@ -1312,20 +1316,20 @@ class BeforeScreen(ModalScreen[dict[str, list[str]] | None]):
 
     DEFAULT_CSS = _modal_css("BeforeScreen")
 
-    def __init__(self, item_id: str, current_before: list[str]) -> None:
+    def __init__(self, item_id: str, current_isbefore: list[str]) -> None:
         super().__init__()
         self._item_id = item_id
-        self._current_before = current_before
+        self._current_isbefore = current_isbefore
 
     def compose(self) -> ComposeResult:
-        before_str = (
-            ", ".join(self._current_before)
-            if self._current_before
+        isbefore_str = (
+            ", ".join(self._current_isbefore)
+            if self._current_isbefore
             else "(none)"
         )
         with Vertical(id="modal-dialog"):
-            yield Static("Edit Before Links", id="modal-title")
-            yield Static(f"Current: {before_str}")
+            yield Static("Edit Isbefore Links", id="modal-title")
+            yield Static(f"Current: {isbefore_str}")
             yield Static("Add IDs (comma-separated):")
             yield Input(placeholder="IDs to add", id="add-input")
             yield Static("Remove IDs (comma-separated):")
@@ -1464,6 +1468,152 @@ class LockScreen(ModalScreen[dict[str, list[str]] | None]):
             self.dismiss(None)
 
     def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class ItemNavModal(ModalScreen[None]):
+    """Browser-style navigation modal for cross-referencing tracker items.
+
+    WI-sulij: clicking an item-ID hotspot in a Description or Activity
+    pane opens this modal on the target item. Back / Forward step
+    through the visited IDs (semantics in
+    :class:`NavigationHistory`), a jump Input at the top accepts a
+    typed ID for arbitrary navigation, and the rendered Description
+    and Activity panes carry their own clickable hotspots via
+    :func:`build_nav_modal_content`. Close (button or Escape) discards
+    the history.
+
+    The modal is decoupled from ``TrackerSet`` — callers inject:
+
+    - ``exists(item_id) -> bool`` — cheap existence check used both to
+      decide whether a typed jump is valid and whether each ID match in
+      the content text becomes a clickable hotspot.
+    - ``content_for(item_id) -> (detail_text, activity_text)`` — called
+      only for IDs that already passed ``exists``; produces the raw
+      Rich markup for the two panes (typically
+      ``"\\n".join(_format_detail_lines(...))`` and the activity
+      equivalent).
+
+    Injecting these callables means the modal can be unit-tested with
+    a dict-backed fake without constructing real ``CompiledItem``
+    instances or mounting a full app.
+    """
+
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+        ("escape", "close", "Close"),
+    ]
+
+    DEFAULT_CSS = _modal_css("ItemNavModal")
+
+    def __init__(
+        self,
+        initial_item_id: str,
+        *,
+        exists: Callable[[str], bool],
+        content_for: Callable[[str], tuple[str, str]],
+        id_pattern: re.Pattern[str],
+        history: NavigationHistory | None = None,
+    ) -> None:
+        super().__init__()
+        self._initial = initial_item_id
+        self._exists = exists
+        self._content_for = content_for
+        self._pattern = id_pattern
+        self._history = history if history is not None else NavigationHistory()
+
+    def compose(self) -> ComposeResult:
+        # Push the initial ID up front so compose-time widget content
+        # reflects the first-render state without a deferred on_mount
+        # pass. Later navigation mutates the history in place and the
+        # _render() helper updates the same widgets.
+        self._history.push(self._initial)
+        content = self._build_content()
+        with Vertical(id="modal-dialog"):
+            yield Static(content.header, id="nav-header")
+            with Horizontal(id="nav-controls"):
+                yield Button(
+                    "\u25c0",
+                    id="nav-back",
+                    disabled=not self._history.can_go_back,
+                )
+                yield Button(
+                    "\u25b6",
+                    id="nav-forward",
+                    disabled=not self._history.can_go_forward,
+                )
+                yield Input(placeholder="Jump to ID...", id="nav-jump")
+                yield Button("Close", variant="primary", id="nav-close")
+            yield Static("", id="nav-error")
+            yield Static(content.detail, id="nav-detail")
+            yield Static(content.activity, id="nav-activity")
+
+    def _build_content(self):
+        current = self._history.current()
+        assert current is not None, "history always has the initial ID pushed"
+        detail_text, activity_text = self._content_for(current)
+        return build_nav_modal_content(
+            history=self._history,
+            detail_text=detail_text,
+            activity_text=activity_text,
+            pattern=self._pattern,
+            resolver=self._exists,
+        )
+
+    def _refresh_content(self) -> None:
+        content = self._build_content()
+        self.query_one("#nav-header", Static).update(content.header)
+        self.query_one("#nav-detail", Static).update(content.detail)
+        self.query_one("#nav-activity", Static).update(content.activity)
+        self.query_one("#nav-back", Button).disabled = (
+            not self._history.can_go_back
+        )
+        self.query_one("#nav-forward", Button).disabled = (
+            not self._history.can_go_forward
+        )
+
+    def _show_error(self, msg: str) -> None:
+        self.query_one("#nav-error", Static).update(msg)
+
+    def _clear_error(self) -> None:
+        self.query_one("#nav-error", Static).update("")
+
+    def _navigate_to(self, item_id: str) -> None:
+        """Shared push-and-render used by jump input and click actions."""
+        if not self._exists(item_id):
+            self._show_error(f"Item not found: {item_id}")
+            return
+        self._clear_error()
+        self._history.push(item_id)
+        self._refresh_content()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id
+        if bid == "nav-back":
+            self._history.back()
+            self._clear_error()
+            self._refresh_content()
+        elif bid == "nav-forward":
+            self._history.forward()
+            self._clear_error()
+            self._refresh_content()
+        elif bid == "nav-close":
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != "nav-jump":
+            return  # pragma: no cover — only one Input in this modal
+        value = event.value.strip()
+        if not value:
+            return
+        self._navigate_to(value)
+        if self._exists(value):
+            event.input.value = ""
+
+    def action_jump_to_item(self, item_id: str) -> None:
+        """Action handler for ``[@click=jump_to_item('ID')]`` hotspots."""
+        self._navigate_to(item_id)
+
+    def action_close(self) -> None:
         self.dismiss(None)
 
 
@@ -2136,6 +2286,15 @@ class TrackerApp(App):
         self._prefs_path = (
             tracker_set._tracker_root / "tracker-workspace" / "tui_preferences.json"
         )
+        # WI-sulij item-nav hotspots: compile once at construction so
+        # every _show_* render reuses the same pattern. Configs with no
+        # kinds cannot have IDs to match, so disable hotspots entirely.
+        try:
+            self._nav_id_pattern: re.Pattern[str] | None = (
+                build_item_id_pattern(tracker_set.config)
+            )
+        except ValueError:  # pragma: no cover — degenerate config
+            self._nav_id_pattern = None
 
     def compose(self) -> ComposeResult:
         """Build the widget tree.
@@ -2584,6 +2743,66 @@ class TrackerApp(App):
     # Detail display
     # ------------------------------------------------------------------
 
+    def _item_exists(self, item_id: str) -> bool:
+        """Return True if *item_id* resolves to a tracker item.
+
+        Used as the resolver for hotspot markup and the ``exists``
+        callable for :class:`ItemNavModal`. Treats any lookup failure
+        (not-found, ambiguous prefix) as absence so a dead hotspot
+        renders as plain text per WI-sulij constraint 2.
+        """
+        try:
+            self._tracker_set.get(item_id)
+        except (ItemNotFoundError, AmbiguousPrefixError):
+            return False
+        return True
+
+    def _apply_nav_hotspots(self, text: str) -> str:
+        """Wrap item-ID substrings in ``[@click=jump_to_item(...)]`` spans.
+
+        No-op when the ID pattern could not be compiled (config has no
+        kinds) so callers can use this unconditionally.
+        """
+        if self._nav_id_pattern is None:
+            return text  # pragma: no cover — degenerate config
+        return render_hotspots(
+            text, self._nav_id_pattern, resolver=self._item_exists,
+        )
+
+    def _nav_modal_content_for(self, item_id: str) -> tuple[str, str]:
+        """Return ``(detail_text, activity_text)`` for the item-nav modal.
+
+        Renders the same lines the Description and Activity panes show,
+        so clicking a hotspot gives the user a faithful in-modal view.
+        """
+        item = self._tracker_set.get(item_id)
+        fields_schema = self._get_fields_schema(item)
+        detail_lines = _format_detail_lines(
+            item, tier=self._layout_tier, fields_schema=fields_schema,
+            blockers_of=self._blockers_of,
+        )
+        activity_lines = _format_activity_lines(item)
+        return "\n".join(detail_lines), "\n".join(activity_lines)
+
+    def action_jump_to_item(self, item_id: str) -> None:
+        """Open :class:`ItemNavModal` for *item_id* (WI-sulij hotspot click).
+
+        Silently ignores clicks on IDs that no longer resolve — the
+        hotspot renderer only emits clickable spans for existing items,
+        so this guard is defensive against a concurrent delete.
+        """
+        if not self._item_exists(item_id):
+            return  # pragma: no cover — defensive race guard
+        assert self._nav_id_pattern is not None
+        self.push_screen(
+            ItemNavModal(
+                item_id,
+                exists=self._item_exists,
+                content_for=self._nav_modal_content_for,
+                id_pattern=self._nav_id_pattern,
+            )
+        )
+
     def _show_detail(self, item: CompiledItem) -> None:
         """Populate the compact detail view with item information."""
         fields_schema = self._get_fields_schema(item)
@@ -2596,7 +2815,7 @@ class TrackerApp(App):
             if drift:
                 lines[0] = "[bold yellow]*** FROZEN (DRIFTED) ***[/bold yellow]"
         content = self.query_one("#detail-content", Static)
-        content.update("\n".join(lines))
+        content.update(self._apply_nav_hotspots("\n".join(lines)))
 
         self._in_detail = True
         self._apply_layout()
@@ -2624,7 +2843,7 @@ class TrackerApp(App):
             content = self.query_one("#std-detail-content", Static)
         except NoMatches:  # pragma: no cover — race: compose not finished
             return
-        content.update("\n".join(lines))
+        content.update(self._apply_nav_hotspots("\n".join(lines)))
         self._update_chain_summary(item_id)
         if self._layout_tier == "wide":
             self._show_activity(item)
@@ -2647,7 +2866,7 @@ class TrackerApp(App):
             return
         lines = _format_activity_lines(item)
         content = self.query_one("#activity-content", Static)
-        content.update("\n".join(lines))
+        content.update(self._apply_nav_hotspots("\n".join(lines)))
 
     def _remove_ghost_rows(self) -> None:
         """Remove italic ghost rows from previous chain selection."""
@@ -3977,20 +4196,20 @@ class TrackerApp(App):
             self.notify(str(e), severity="error")
 
     def action_edit_before(self) -> None:
-        """Open the before-links modal for the selected item."""
+        """Open the isbefore-links modal for the selected item."""
         item = self._get_selected_item()
         if not item:
             self.notify("No item selected", severity="warning")
             return
         self.push_screen(
-            BeforeScreen(item.id, list(item.before)),
+            BeforeScreen(item.id, list(item.isbefore)),
             callback=partial(self._on_edit_before, item.id),
         )
 
     def _on_edit_before(
         self, item_id: str, result: dict[str, list[str]] | None,
     ) -> None:
-        """Handle before-links modal result with prefix resolution."""
+        """Handle isbefore-links modal result with prefix resolution."""
         if result is None:
             return
         add_ids = result.get("add", [])
@@ -4001,16 +4220,16 @@ class TrackerApp(App):
             resolved_remove: list[str] | None,
         ) -> None:
             try:
-                a_fields = {"before": resolved_add} if resolved_add else None
+                a_fields = {"isbefore": resolved_add} if resolved_add else None
                 r_fields = (
-                    {"before": resolved_remove} if resolved_remove else None
+                    {"isbefore": resolved_remove} if resolved_remove else None
                 )
                 self._tracker_set.update(
                     item_id,
                     add_fields=a_fields,
                     remove_fields=r_fields,
                 )
-                self.notify(f"Before links updated for {item_id}")
+                self.notify(f"Isbefore links updated for {item_id}")
                 self._reload_after_write(item_id)
             except (
                 ItemNotFoundError, LockedFieldError, AmbiguousPrefixError,

@@ -167,3 +167,10 @@
   clock: 21  # 16ef
   nonce: 16ef  # 16ef
   message: "Yes — WI-vadin-vafah-ripih-turag-vifoh-sakul-gijuz-nakuh tracks the Phase 2 inline chained call resolution. Title: 'Go: resolve inline chained method calls via return-type registry'. Status: todo_soft, P3, parent: INV-dihos. It covers the mechanism described above: when the receiver is a call_expression, extract the inner callee method name, look it up in the registry, and use the return type to qualify the outer method."  # 16ef
+- op: discuss  # b209
+  at: '2026-04-14T06:08:11Z'  # b209
+  by: agent  # b209
+  actor: jgstern_agent  # b209
+  clock: 22  # b209
+  nonce: b209  # b209
+  message: "UAT 2026-04-13 measured impact of the original violation: 15% Go call-graph false-positive rate on alertmanager, all from method-name collisions (.Get(), .Set(), .EndsAt). Phase 1's Go fix already shipped; Phases 2-5 (WI-jujup, WI-titor, WI-hudam, WI-fukut) extend the registry to other languages and don't change Go behavior. The invariant remains satisfied for Go; UAT confirms no regression on the original observed pattern. Full UAT report at /tmp/uat-report.md."  # b209

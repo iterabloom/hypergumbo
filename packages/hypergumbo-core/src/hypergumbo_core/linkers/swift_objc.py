@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Swift/Objective-C bridging linker.
+"""Bridge linker: Swift/Objective-C bridging.
 
 This linker detects interoperability patterns between Swift and Objective-C:
 - @objc annotations exposing Swift code to Objective-C

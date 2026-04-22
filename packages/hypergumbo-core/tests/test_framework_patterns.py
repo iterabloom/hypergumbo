@@ -17,6 +17,7 @@ from hypergumbo_core.framework_patterns import (
     UsagePatternSpec,
     clear_pattern_cache,
     enrich_symbols,
+    expand_class_based_view_routes,
     extract_usage_value,
     get_frameworks_dir,
     load_framework_patterns,
@@ -18475,6 +18476,244 @@ class TestMaterializeRouteSymbols:
         )
         routes = materialize_route_symbols([sym])
         assert len(routes) == 0
+
+    def test_skip_when_analyzer_already_emitted_route(self):
+        """WI-tizad: dedupe against analyzer-emitted kind=route symbols."""
+        existing_route = Symbol(
+            id="python:urls.py:1-1:GET /users/:route",
+            name="GET /users/", kind="route", language="python",
+            path="urls.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            meta={"route_path": "/users/", "http_method": "GET"},
+        )
+        handler = Symbol(
+            id="python:views.py:10-20:UsersView.get:method",
+            name="UsersView.get", kind="method", language="python",
+            path="views.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/users/"}]},
+        )
+        routes = materialize_route_symbols([existing_route, handler])
+        # Materializer must NOT produce a second GET /users/ symbol
+        assert len(routes) == 0
+
+    def test_materializer_still_emits_when_no_analyzer_route(self):
+        """Materializer still fires when no analyzer route covers (method, path)."""
+        handler = Symbol(
+            id="java:Api.java:10-20:Api.handle:method",
+            name="Api.handle", kind="method", language="java",
+            path="Api.java",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "method": "POST", "path": "/api"}]},
+        )
+        routes = materialize_route_symbols([handler])
+        assert len(routes) == 1
+        assert routes[0].meta["http_method"] == "POST"
+
+    def test_materializer_still_fires_when_analyzer_route_is_ANY(self):
+        """ANY routes (CBV pending expansion) do not suppress materializer."""
+        any_route = Symbol(
+            id="python:urls.py:1-1:ANY /foo/:route",
+            name="ANY /foo/", kind="route", language="python",
+            path="urls.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            meta={"route_path": "/foo/", "http_method": "ANY",
+                  "is_class_based_view": True},
+        )
+        handler = Symbol(
+            id="python:views.py:10-20:FooView.get:method",
+            name="FooView.get", kind="method", language="python",
+            path="views.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/foo/"}]},
+        )
+        routes = materialize_route_symbols([any_route, handler])
+        # ANY route doesn't block the specific GET materialization
+        assert len(routes) == 1
+        assert routes[0].meta["http_method"] == "GET"
+
+
+class TestExpandClassBasedViewRoutes:
+    """Tests for expand_class_based_view_routes (WI-lojoh)."""
+
+    def _make_route(
+        self,
+        view_name: str,
+        path: str = "/items/",
+        sym_id: str | None = None,
+    ) -> Symbol:
+        rid = sym_id or f"python:urls.py:5-5:{path}:route"
+        return Symbol(
+            id=rid,
+            name=f"django:{view_name}",
+            kind="route",
+            language="python",
+            path="urls.py",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
+            meta={
+                "route_path": path,
+                "http_method": "ANY",
+                "view_name": view_name,
+                "is_class_based_view": True,
+            },
+        )
+
+    def _make_method(self, cls: str, method: str) -> Symbol:
+        return Symbol(
+            id=f"python:views.py:1-2:{cls}.{method}:method",
+            name=f"{cls}.{method}",
+            kind="method",
+            language="python",
+            path="views.py",
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        )
+
+    def test_expands_to_one_route_per_method(self) -> None:
+        """View class with .post and .delete -> two routes (POST, DELETE)."""
+        route = self._make_route("RevokeKeyView", "/revoke/")
+        m_post = self._make_method("RevokeKeyView", "post")
+        m_delete = self._make_method("RevokeKeyView", "delete")
+
+        new_routes, removed = expand_class_based_view_routes(
+            [route, m_post, m_delete]
+        )
+
+        assert len(new_routes) == 2
+        methods = {(r.meta or {}).get("http_method") for r in new_routes}
+        assert methods == {"POST", "DELETE"}
+        for r in new_routes:
+            assert (r.meta or {}).get("route_path") == "/revoke/"
+            assert (r.meta or {}).get("view_name") == "RevokeKeyView"
+            assert (r.meta or {}).get("expanded_from") == route.id
+        assert removed == {route.id}
+
+    def test_unresolved_view_class_keeps_original(self) -> None:
+        """No matching method symbols -> original ANY route stays in place."""
+        route = self._make_route("LoginView", "/login/")
+        new_routes, removed = expand_class_based_view_routes([route])
+        assert new_routes == []
+        assert removed == set()
+
+    def test_non_cbv_route_untouched(self) -> None:
+        """Routes without is_class_based_view flag are not expanded."""
+        fbv = Symbol(
+            id="python:urls.py:5-5:/users/:route",
+            name="django:user_list", kind="route", language="python",
+            path="urls.py",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
+            meta={
+                "route_path": "/users/",
+                "http_method": "GET",
+                "view_name": "user_list",
+            },
+        )
+        m = self._make_method("user_list", "get")
+        new_routes, removed = expand_class_based_view_routes([fbv, m])
+        assert new_routes == []
+        assert removed == set()
+
+    def test_explicit_method_route_untouched(self) -> None:
+        """CBV-flagged route with non-ANY method is left alone (already expanded)."""
+        sym = Symbol(
+            id="python:urls.py:5-5:/x/:GET:route",
+            name="django:X.get", kind="route", language="python",
+            path="urls.py",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
+            meta={
+                "route_path": "/x/", "http_method": "GET",
+                "view_name": "X", "is_class_based_view": True,
+            },
+        )
+        m = self._make_method("X", "get")
+        new_routes, removed = expand_class_based_view_routes([sym, m])
+        assert new_routes == []
+        assert removed == set()
+
+    def test_missing_view_name_is_ignored(self) -> None:
+        """CBV ANY route without view_name cannot be expanded."""
+        sym = Symbol(
+            id="python:urls.py:5-5:/x/:route",
+            name="django:unknown", kind="route", language="python",
+            path="urls.py",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
+            meta={
+                "route_path": "/x/", "http_method": "ANY",
+                "view_name": None, "is_class_based_view": True,
+            },
+        )
+        new_routes, removed = expand_class_based_view_routes([sym])
+        assert new_routes == []
+        assert removed == set()
+
+    def test_only_http_methods_count(self) -> None:
+        """Class methods like ``__init__`` or ``save`` are not HTTP methods."""
+        route = self._make_route("MyView", "/x/")
+        m_post = self._make_method("MyView", "post")
+        m_init = self._make_method("MyView", "__init__")
+        m_save = self._make_method("MyView", "save_user")
+
+        new_routes, removed = expand_class_based_view_routes(
+            [route, m_post, m_init, m_save]
+        )
+        assert len(new_routes) == 1
+        assert (new_routes[0].meta or {}).get("http_method") == "POST"
+        assert removed == {route.id}
+
+    def test_route_without_meta_skipped(self) -> None:
+        """Routes with meta=None do not crash the pass."""
+        sym = Symbol(
+            id="python:urls.py:5-5:no-meta:route",
+            name="x", kind="route", language="python",
+            path="urls.py",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
+        )
+        new_routes, removed = expand_class_based_view_routes([sym])
+        assert new_routes == []
+        assert removed == set()
+
+    def test_method_with_no_dot_in_name_skipped(self) -> None:
+        """Module-level functions named ``get`` are not class methods."""
+        route = self._make_route("Cls", "/x/")
+        bare = Symbol(
+            id="python:helpers.py:1-2:get:method",
+            name="get", kind="method", language="python",
+            path="helpers.py",
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        )
+        new_routes, removed = expand_class_based_view_routes([route, bare])
+        # No matching class methods found for "Cls" -> route stays as ANY
+        assert new_routes == []
+        assert removed == set()
+
+    def test_method_kind_only(self) -> None:
+        """Symbols with kind != 'method' are not considered methods."""
+        route = self._make_route("Cls", "/x/")
+        not_method = Symbol(
+            id="python:views.py:1-2:Cls.get:function",
+            name="Cls.get", kind="function", language="python",
+            path="views.py",
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        )
+        new_routes, removed = expand_class_based_view_routes([route, not_method])
+        assert new_routes == []
+        assert removed == set()
+
+    def test_default_route_path_when_missing(self) -> None:
+        """If meta.route_path is empty/None, expanded routes default to '/'."""
+        route = Symbol(
+            id="python:urls.py:5-5::route",
+            name="django:Cls", kind="route", language="python",
+            path="urls.py",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
+            meta={
+                "route_path": "", "http_method": "ANY",
+                "view_name": "Cls", "is_class_based_view": True,
+            },
+        )
+        m = self._make_method("Cls", "get")
+        new_routes, removed = expand_class_based_view_routes([route, m])
+        assert len(new_routes) == 1
+        assert (new_routes[0].meta or {}).get("route_path") == "/"
 
 
 class TestLeanLibraryExportPatterns:

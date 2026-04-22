@@ -1,0 +1,35 @@
+- op: create  # 57b8
+  at: '2026-04-17T07:25:17Z'  # 57b8
+  by: agent  # 57b8
+  actor: jgstern_agent  # 57b8
+  clock: 1  # 57b8
+  nonce: 57b8  # 57b8
+  data:  # 57b8
+    kind: work_item  # 57b8
+    title: "auto-pr exits 0 when final merge fails after rebase (should be non-zero)"  # 57b8
+    status: todo_hard  # 57b8
+    priority: 2  # 57b8
+    parent:  # 57b8
+    tags:  # 57b8
+    - agent_governance  # 57b8
+    isbefore: []  # 57b8
+    duplicate_of: []  # 57b8
+    not_duplicate_of: []  # 57b8
+    pr_ref:  # 57b8
+    description: "Observed 2026-04-17 on PR #3110: auto-pr pushed, CI passed, fast-forward merge failed (branch behind base), local rebase + force-push succeeded, but the subsequent merge attempt was refused because CI needed to re-run on the rebased SHA. auto-pr emitted:\n\n    ⚠️  Merge not accepted after rebase (CI may need to re-run on new SHA)\n    Recovery: ./scripts/merge-pr 3110 --wait-for-ci\n    Recovery: ./scripts/merge-pr 3110\n\n…and exited 0.\n\nPer AGENTS.md 'Exit 0: Success — PR merged or vPR queued.' When the PR is neither merged nor queued, exit 0 lies to the caller. Should be exit 2 (timeout/slow) or exit 1 (failure) with the recovery hint unchanged.\n\nFix: in scripts/auto-pr, after the rebase+force-push merge retry, if the PR is still open, exit non-zero."  # 57b8
+    fields: {}  # 57b8
+- op: update  # 23ae
+  at: '2026-04-17T07:55:29Z'  # 23ae
+  by: agent  # 23ae
+  actor: jgstern_agent  # 23ae
+  clock: 2  # 23ae
+  nonce: 23ae  # 23ae
+  set:  # 23ae
+    status: wont_do  # 23ae
+- op: discuss  # 7caf
+  at: '2026-04-17T07:55:29Z'  # 7caf
+  by: agent  # 7caf
+  actor: jgstern_agent  # 7caf
+  clock: 3  # 7caf
+  nonce: 7caf  # 7caf
+  message: "Mis-filed on 2026-04-17. The observed 'exit 0 when merge failed' was actually the pipeline 'auto-pr 2>&1 | tail -40' — bash reports the LAST command's exit, which is tail's 0. auto-pr itself did exit non-zero (probably 1 at scripts/auto-pr:1423). Root cause is the agent's | tail anti-pattern, not auto-pr's exit logic. The WI-buhov .ops data-loss bug and the fresh output-capture playbook (PR #3113) address the real root cause. Closing."  # 7caf

@@ -1,0 +1,35 @@
+- op: create  # 656a
+  at: '2026-04-17T21:26:28Z'  # 656a
+  by: agent  # 656a
+  actor: jgstern_agent  # 656a
+  clock: 1  # 656a
+  nonce: 656a  # 656a
+  data:  # 656a
+    kind: work_item  # 656a
+    title: "Tighten tracker SimHash similarity warning threshold (create-time fires too loosely)"  # 656a
+    status: todo_soft  # 656a
+    priority: 3  # 656a
+    parent:  # 656a
+    tags:  # 656a
+    - developer_experience  # 656a
+    isbefore: []  # 656a
+    duplicate_of: []  # 656a
+    not_duplicate_of: []  # 656a
+    pr_ref:  # 656a
+    description: "When 'tracker add' creates a new item, store._maybe_warn_similar (packages/hypergumbo-tracker/src/hypergumbo_tracker/store.py:1736) compares the new item's SimHash against every existing item and emits a UserWarning if the Hamming distance is <= 13 bits.\n\nTwo issues:\n\n1. **Empirically too loose at 13 bits.** Filing WI-varid (about a stop-hook redesign) on 2026-04-17 fired the warning against 5 unrelated items at distances 12-13:\n   - INV-popup (Go variable shadowing drops call edges)\n   - WI-pizaj, WI-pupug, WI-rabon, WI-radab (assorted tracker work items)\n   None were actual duplicates or near-misses; they shared common bag-of-words tokens like 'tracker', 'stop', 'hook' but described unrelated work. Signal-to-noise looks worse than the 20%-of-bits heuristic suggests because real tracker items use a small shared vocabulary (statuses, common tags, common verbs).\n\n2. **Two thresholds disagree.** validation.py:54 sets _SIMHASH_THRESHOLD = 8 for the validation-pass check, but store.py:160 sets _SIMHASH_THRESHOLD = 13 for the create-time check. The validation-pass threshold (8 bits) is much stricter. There is no documented rationale for the difference; reads as accidental drift between the two code paths. The looser create-time threshold is what actually fires on every add, so it dominates the user experience.\n\nProposed fix:\n\n(a) Unify the thresholds — let store.py import _SIMHASH_THRESHOLD from validation.py (or move the constant to a shared module). Single source of truth.\n\n(b) Tighten the unified value. 8 bits is a reasonable starting point given the validation-pass already uses it without complaint. Could go even tighter (6) if we observe further false positives. Acceptance: re-run filing on a representative new item (e.g., a synthetic 'add stop hook polling' title) and verify it triggers <=1 false-positive warning rather than 5.\n\n(c) (optional, separate item if it grows) Suppress matches against items in resolved states (done / satisfied / wont_do) — those are unlikely to be real duplicates of new active work and add to noise.\n\nCode locations:\n- packages/hypergumbo-tracker/src/hypergumbo_tracker/store.py:160 — create-time threshold\n- packages/hypergumbo-tracker/src/hypergumbo_tracker/validation.py:54 — validation-pass threshold\n- packages/hypergumbo-tracker/src/hypergumbo_tracker/store.py:1736 _maybe_warn_similar — emit site\n\nNot a governance file — straightforward implementation under tracker package's usual TDD workflow."  # 656a
+    fields: {}  # 656a
+- op: update  # b32f
+  at: '2026-04-17T22:58:14Z'  # b32f
+  by: agent  # b32f
+  actor: jgstern_agent  # b32f
+  clock: 2  # b32f
+  nonce: b32f  # b32f
+  set:  # b32f
+    status: done  # b32f
+- op: discuss  # 2a9d
+  at: '2026-04-17T22:58:14Z'  # 2a9d
+  by: agent  # 2a9d
+  actor: jgstern_agent  # 2a9d
+  clock: 3  # 2a9d
+  nonce: 2a9d  # 2a9d
+  message: "Unified at 8 bits: store._SIMHASH_THRESHOLD is the single source of truth; validation.py imports it. Commit 6b21e2a56 on branch jgstern-agent/refactor/tracker-simhash-threshold. Optional third sub-item (suppress matches against resolved items) left for a follow-up if noise persists."  # 2a9d

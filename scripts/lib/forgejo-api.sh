@@ -283,6 +283,30 @@ sys.exit(1)
 # ------------------------------------------------------------------
 poll_ci() {
 	local head_sha="$1"
+
+	# WI-dotod test seam: when AUTOPR_TEST_POLL_EXITS is set, return exit
+	# codes from a colon-separated sequence (e.g. "2:0" yields 2 on the
+	# first call and 0 on the second). The position is tracked in
+	# ${AUTOPR_TEST_POLL_EXITS}.pos. Mirrors AUTO_PR_SIMULATE_OUTAGE
+	# pattern — exists only to let the Exit 2 retry loop be tested
+	# without a live Forgejo instance.
+	if [[ -n "${AUTOPR_TEST_POLL_EXITS:-}" ]]; then
+		local _pos_file="${AUTOPR_TEST_POLL_EXITS_POS:-/tmp/autopr_test_poll_pos}"
+		local _pos
+		_pos=$(cat "$_pos_file" 2>/dev/null || echo 0)
+		local -a _exits
+		IFS=':' read -ra _exits <<< "$AUTOPR_TEST_POLL_EXITS"
+		local _code
+		if [[ $_pos -ge ${#_exits[@]} ]]; then
+			_code=0
+		else
+			_code="${_exits[$_pos]}"
+		fi
+		echo $((_pos + 1)) > "$_pos_file"
+		echo "[test-seam] poll_ci call #$((_pos + 1)) returning $_code"
+		return "$_code"
+	fi
+
 	local timeout="${CI_TIMEOUT_SECONDS:-2400}"
 	local stale_pending_threshold="${CI_STALE_PENDING_SECONDS:-300}"  # 5 min default
 	local start_time elapsed
@@ -828,6 +852,80 @@ _find_job_from_log_probe() {
 #   Uses API_BASE and FORGEJO_TOKEN from environment.
 #   Returns: 0 = success, 1 = failure
 # ------------------------------------------------------------------
+# ------------------------------------------------------------------
+# _ops_union_restore_file — WI-buhov data-loss fix
+#
+# Arguments: backup_file target_file
+#
+# Semantics: tracker .ops files are append-only CRDT logs (see
+# .gitattributes: merge=union). When auto-pr rebases a feature branch
+# and must restore a pre-rebase backup, the target may have received
+# newer ops during the rebase (e.g. a tracker-sync commit pulled in
+# from dev, or a concurrent agent discuss call). Overwriting with the
+# backup loses those newer ops. Instead, this function appends every
+# line from the backup that isn't already present in the target — an
+# order-preserving line-level union. On fresh targets (non-existent),
+# it just copies. Exit 0 on success, non-zero on filesystem failure.
+# ------------------------------------------------------------------
+_ops_union_restore_file() {
+	local backup_file="$1"
+	local target_file="$2"
+	if [[ ! -f "$backup_file" ]]; then
+		return 0
+	fi
+	if [[ -f "$target_file" ]]; then
+		local tmp
+		tmp=$(mktemp) || return 1
+		if cat "$target_file" "$backup_file" | awk '!seen[$0]++' > "$tmp"; then
+			mv "$tmp" "$target_file"
+		else
+			rm -f "$tmp"
+			return 1
+		fi
+	else
+		cp "$backup_file" "$target_file"
+	fi
+}
+
+# ------------------------------------------------------------------
+# _ops_union_restore_dir — WI-tasuj dotfile-glob fix
+#
+# Arguments: backup_subdir ops_dir [strip_modified_suffix:true|false]
+#
+# Iterates every regular file in backup_subdir (INCLUDING dotfiles,
+# which bash's default `*` glob omits) and union-restores each into
+# ops_dir via _ops_union_restore_file. Tracker ops filenames begin
+# with `.` (.WI-…ops, .INV-…ops), so a single `*` glob silently
+# enumerates zero files — the root cause of WI-tasuj's 2026-04-19
+# loss of three tracker-reply ops. Mirroring the backup loop's two
+# patterns (.*  *) enumerates hidden and non-hidden files alike
+# without requiring `shopt -s dotglob`; the `[[ -f "$f" ]]` guard
+# filters out the `.` / `..` pseudo-entries that `.*` matches.
+#
+# When strip_modified_suffix is true, a ".modified" suffix on each
+# backup filename is dropped before composing the target path — the
+# caller's backup step uses this suffix to distinguish
+# tracked-but-locally-modified ops files from untracked ones.
+# ------------------------------------------------------------------
+_ops_union_restore_dir() {
+	local backup_subdir="$1"
+	local ops_dir="$2"
+	local strip_modified_suffix="${3:-false}"
+	[[ -d "$backup_subdir" ]] || return 0
+	mkdir -p "$ops_dir"
+	local f base target_name
+	for f in "$backup_subdir"/.* "$backup_subdir"/*; do
+		[[ -f "$f" ]] || continue
+		base=$(basename "$f")
+		if [[ "$strip_modified_suffix" == "true" ]]; then
+			target_name="${base%.modified}"
+		else
+			target_name="$base"
+		fi
+		_ops_union_restore_file "$f" "$ops_dir/$target_name"
+	done
+}
+
 do_merge() {
 	local pr_num="$1" title="$2" desc="$3" orig_sha="$4"
 	local force_squash="${5:-false}"
@@ -981,24 +1079,23 @@ do_merge() {
 			if git fetch origin "$base_branch" --quiet 2>/dev/null \
 			   && git rebase "origin/$base_branch" --quiet 2>/dev/null; then
 				# Restore backed-up .ops files so no pending operations are lost.
-				# Ops files are append-only, so restoring the pre-rebase copy
-				# (which has the latest appended ops) is safe — the rebased
-				# version from dev is a subset of what we backed up.
+				# WI-buhov: previously this step `cp`ed the backup over the
+				# working-tree file unconditionally, which overwrote any ops
+				# appended by concurrent tracker activity between the backup
+				# snapshot and the rebase (either agent-driven discuss/add/
+				# update calls mid-CI-poll or tracker-sync commits pulled in
+				# by the rebase itself). Ops files are line-level-append-only
+				# CRDT logs (merge=union in .gitattributes), so the correct
+				# restore is line-level union: keep the rebased working-tree
+				# content, then append any lines from the backup that aren't
+				# already present. `awk '!seen[$0]++'` is an order-preserving
+				# dedupe — rebased content keeps its ordering; backup-only
+				# lines tail after.
 				if [[ "$had_ops_backup" == true ]]; then
 					for ops_dir in .agent/tracker/.ops .agent/tracker-workspace/.ops; do
-						local backup_subdir="$ops_backup/$ops_dir"
-						[[ -d "$backup_subdir" ]] || continue
-						mkdir -p "$ops_dir"
-						for f in "$backup_subdir"/*; do
-							[[ -f "$f" ]] || continue
-							local base
-							base=$(basename "$f")
-							# Strip .modified suffix for tracked-file backups
-							local target_name="${base%.modified}"
-							cp "$f" "$ops_dir/$target_name"
-						done
+						_ops_union_restore_dir "$ops_backup/$ops_dir" "$ops_dir" true
 					done
-					echo "   Restored backed-up .ops files from $ops_backup"
+					echo "   Restored backed-up .ops files from $ops_backup (union-merged)"
 				fi
 				rm -rf "$ops_backup" 2>/dev/null || true
 				echo "   Rebase succeeded — force-pushing..."
@@ -1023,18 +1120,18 @@ do_merge() {
 					echo "❌ Force-push failed after rebase"
 				fi
 			else
-				# Restore backed-up .ops files even on rebase failure
+				# Restore backed-up .ops files even on rebase failure.
+				# WI-buhov: same union-merge semantics as the success path —
+				# even though rebase failed, the working tree may contain
+				# ops appended by concurrent tracker activity that we must
+				# not overwrite. Rebase-failure backups keep the original
+				# basename (no .modified suffix is applied on this path),
+				# so we don't need to strip it.
 				if [[ "$had_ops_backup" == true ]]; then
 					for ops_dir in .agent/tracker/.ops .agent/tracker-workspace/.ops; do
-						local backup_subdir="$ops_backup/$ops_dir"
-						[[ -d "$backup_subdir" ]] || continue
-						mkdir -p "$ops_dir"
-						for f in "$backup_subdir"/*; do
-							[[ -f "$f" ]] || continue
-							cp "$f" "$ops_dir/$(basename "$f")"
-						done
+						_ops_union_restore_dir "$ops_backup/$ops_dir" "$ops_dir" false
 					done
-					echo "   Restored backed-up .ops files from $ops_backup"
+					echo "   Restored backed-up .ops files from $ops_backup (union-merged)"
 				fi
 				rm -rf "$ops_backup" 2>/dev/null || true
 				echo "❌ Local rebase failed (conflicts?)"

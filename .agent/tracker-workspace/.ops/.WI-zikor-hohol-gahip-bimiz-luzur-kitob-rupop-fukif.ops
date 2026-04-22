@@ -1,0 +1,50 @@
+- op: create  # 2ad3
+  at: '2026-04-17T06:21:13Z'  # 2ad3
+  by: agent  # 2ad3
+  actor: jgstern_agent  # 2ad3
+  clock: 1  # 2ad3
+  nonce: 2ad3  # 2ad3
+  data:  # 2ad3
+    kind: work_item  # 2ad3
+    title: "Check if SCIP Relationship field is ever populated in workspace configs"  # 2ad3
+    status: todo_soft  # 2ad3
+    priority: 3  # 2ad3
+    parent:  # 2ad3
+    tags:  # 2ad3
+    - analysis_quality  # 2ad3
+    - rust_analyzer  # 2ad3
+    isbefore: []  # 2ad3
+    duplicate_of: []  # 2ad3
+    not_duplicate_of: []  # 2ad3
+    pr_ref:  # 2ad3
+    description: "Follow-up from WI-zakub mini trial (notebookjournal_04172026_0210.md). On ripgrep, 0/14295 SymbolInformation records carried any relationship entry — the descriptor string carries trait-impl info (impl#[T][Trait]method()) but SymbolInformation.relationships is always empty. Check: workspace-member crate, nightly, explicit workspace top-level. If ever populated, SCIP ingest shim should prefer relationships over descriptor parsing when present."  # 2ad3
+    fields: {}  # 2ad3
+- op: update  # 69bf
+  at: '2026-04-17T08:37:50Z'  # 69bf
+  by: agent  # 69bf
+  actor: jgstern_agent  # 69bf
+  clock: 2  # 69bf
+  nonce: 69bf  # 69bf
+  set:  # 69bf
+    status: done  # 69bf
+- op: discuss  # 1e0d
+  at: '2026-04-17T08:37:50Z'  # 1e0d
+  by: agent  # 1e0d
+  actor: jgstern_agent  # 1e0d
+  clock: 3  # 1e0d
+  nonce: 1e0d  # 1e0d
+  message: "Closed 2026-04-17 based on accumulating evidence from WI-zakub (default config, 14295 symbols, 0 relationships) + WI-ronot (procMacro.enable=true + procMacro.attributes.enable=true + cargo.buildScripts.enable=true, same 14295 symbols, still 0 relationships). Two configs × workspace with 7 crates × ripgrep's full workspace-member setup = strong signal that rust-analyzer 1.94's SCIP exporter simply does not populate SymbolInformation.relationships for the kinds of inputs hypergumbo will encounter. SCIP integration shim should proceed assuming descriptor-only parsing (already captured in WI-bajuz and WI-mafut designs). If a future rust-analyzer release starts populating relationships, the shim can opportunistically prefer them — but that's additive, not a prerequisite. Diminishing returns from further config sweeps here; unblock downstream work instead."  # 1e0d
+- op: discuss  # 5ffc
+  at: '2026-04-17T14:05:26Z'  # 5ffc
+  by: human  # 5ffc
+  actor: jgstern  # 5ffc
+  clock: 4  # 5ffc
+  nonce: 5ffc  # 5ffc
+  message: "what is the plain-language upshot? how useful is rust-analyzer to hypergumbo when we are trying to use hypergumbo to help us with a polyglot rust+typescript project?"  # 5ffc
+- op: discuss  # 06b3
+  at: '2026-04-17T18:29:23Z'  # 06b3
+  by: agent  # 06b3
+  actor: jgstern_agent  # 06b3
+  clock: 5  # 06b3
+  nonce: 06b3  # 06b3
+  message: "Plain-language upshot for a polyglot Rust+TypeScript project:\n\nWhere rust-analyzer/SCIP helps hypergumbo meaningfully:\n- High-confidence symbol definitions and occurrences on the Rust side (14295 symbols / 74536 occurrences on ripgrep, with per-symbol kind info). Better than tree-sitter when you need trait-dispatch disambiguation within Rust.\n- Trait-impl information IS present — just encoded in the descriptor string (impl#[T][Trait]method()), not the Relationship field. Our shim can parse it.\n\nWhere it does NOT help (and this is the painful part for Rust+TS):\n- The bridge between Rust and TS — the entire reason you'd use a Rust+TS polyglot — runs through proc-macros (wasm_bindgen, napi, tauri_ipc, tsify). rust-analyzer loads those macros but does NOT surface the expanded items as SCIP symbols. So the FFI edges, which are the interesting cross-language edges, must still be recovered by hypergumbo's per-macro pattern code in the Bridge-subcategory linkers.\n- No Relationships field (0/14295 records) across every workspace config we tested — so we cannot lean on SCIP-native trait-impl edges.\n- 10x+ slower than tree-sitter at every realistic size (22s on ripgrep's 4.3MB). Must stay opt-in.\n\nNet useful-ness verdict: rust-analyzer is a medium-value upgrade for the Rust half of a polyglot repo (crisper within-Rust call graph, confident trait dispatch). It is a near-zero-value upgrade for the Rust↔TS boundary, which is the bit developers actually reach for hypergumbo to illuminate. So: worth wiring up as an optional backend for users who care about Rust internals, but the linker roadmap (wasm_bindgen / napi / tauri_ipc Bridge linkers) remains the dominant lever for polyglot quality. Don't let SCIP integration displace linker work on the priority queue."  # 06b3

@@ -1,0 +1,50 @@
+- op: create  # a12d
+  at: '2026-04-17T06:21:03Z'  # a12d
+  by: agent  # a12d
+  actor: jgstern_agent  # a12d
+  clock: 1  # a12d
+  nonce: a12d  # a12d
+  data:  # a12d
+    kind: work_item  # a12d
+    title: "Check if procMacro.enable=true surfaces macro-expanded items in SCIP"  # a12d
+    status: todo_soft  # a12d
+    priority: 3  # a12d
+    parent:  # a12d
+    tags:  # a12d
+    - analysis_quality  # a12d
+    - rust_analyzer  # a12d
+    isbefore: []  # a12d
+    duplicate_of: []  # a12d
+    not_duplicate_of: []  # a12d
+    pr_ref:  # a12d
+    description: "Follow-up from WI-zakub mini trial (notebookjournal_04172026_0210.md). With default rust-analyzer config, SCIP does NOT emit macro-expanded items as separate symbols — only the invocation occurrence at original source location. Check whether enabling procMacro.enable=true (via scip --config-path) changes this. If yes, the wasm_bindgen/napi/tauri_ipc linker story improves materially; if no, those linkers must keep per-macro pattern code."  # a12d
+    fields: {}  # a12d
+- op: update  # eb05
+  at: '2026-04-17T08:36:05Z'  # eb05
+  by: agent  # eb05
+  actor: jgstern_agent  # eb05
+  clock: 2  # eb05
+  nonce: eb05  # eb05
+  set:  # eb05
+    status: done  # eb05
+- op: discuss  # 9581
+  at: '2026-04-17T08:36:05Z'  # 9581
+  by: agent  # 9581
+  actor: jgstern_agent  # 9581
+  clock: 3  # 9581
+  nonce: '9581'  # 9581
+  message: "Investigated 2026-04-17 on ripgrep with --config-path pointing to procMacro.enable=true + procMacro.attributes.enable=true + cargo.buildScripts.enable=true. Result: SCIP symbol set is BYTE-IDENTICAL to default config — same doc count (98), same occurrences (74536), same symbol count (14295), same kind distribution. Proc-macros are LOADED (stderr shows 'Loading proc-macro libc built' etc, which default config doesn't show) but NOT SURFACED as SCIP symbols. Conclusion: procMacro.enable does not substitute for per-macro pattern code in hypergumbo's wasm_bindgen / napi / tauri_ipc linkers. Full finding + script + config saved to notebookjournal_04172026_0210.md §Follow-up Mini Trial. Caveat: only tested on ripgrep, which has modest proc-macro usage. Proc-macro-heavy crates (clap Parser, wasm_bindgen apps) might differ — noted in notebook as follow-up-if-needed, not filed as separate item until linker FP-volume data suggests it's worth the investigation."  # 9581
+- op: discuss  # bfbc
+  at: '2026-04-17T14:02:05Z'  # bfbc
+  by: human  # bfbc
+  actor: jgstern  # bfbc
+  clock: 4  # bfbc
+  nonce: bfbc  # bfbc
+  message: "please file as separate item at low priority and needs_human_review, that way we will remember to check whether it is worth investigation in the first place"  # bfbc
+- op: discuss  # a494
+  at: '2026-04-17T18:28:12Z'  # a494
+  by: agent  # a494
+  actor: jgstern_agent  # a494
+  clock: 5  # a494
+  nonce: a494  # a494
+  message: "Filed as WI-mirus-pupas-hohak-lahar-hubid-zuruf-gogon-gufiz (P4, needs_human_review, tags: analysis_quality + rust_analyzer). The new item describes the gate question (is it worth re-testing on clap-Parser / wasm_bindgen / tauri crates before committing to per-macro linker code?), estimated cost (~1-2 hours), and methodology (same as WI-ronot). It will surface in the ready queue under needs_human_review so you can approve or decline when convenient."  # a494

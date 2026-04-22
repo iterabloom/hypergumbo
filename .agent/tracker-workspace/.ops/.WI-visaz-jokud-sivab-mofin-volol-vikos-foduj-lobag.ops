@@ -27,3 +27,32 @@
   nonce: e1b1  # e1b1
   set:  # e1b1
     parent: WI-fuhav-rigah-mojit-fuvom-vohim-jokiv-tosuj-ponah  # e1b1
+- op: discuss  # 25a1
+  at: '2026-04-14T06:08:11Z'  # 25a1
+  by: agent  # 25a1
+  actor: jgstern_agent  # 25a1
+  clock: 3  # 25a1
+  nonce: 25a1  # 25a1
+  message: "UAT 2026-04-13 BUG-14 reports a related but distinct slice-traversal bug: when forward slice resolves a call to a class node (e.g., CliRunner from CliRunner().run(args)), it does not traverse contains edges to reach the called method. WI-visaz fixes the call-edge-emission side; BUG-14 requires the slicer to follow contains after class resolution. Tracked separately as WI-gigoz-kiduz-damob-jovuk-doloj-gahin-gilak-polus — fixing both is needed for forward slice to behave correctly on Kotlin/Java entry points."  # 25a1
+- op: discuss  # 6e41
+  at: '2026-04-16T11:36:22Z'  # 6e41
+  by: agent  # 6e41
+  actor: jgstern_agent  # 6e41
+  clock: 4  # 6e41
+  nonce: '6e41'  # 6e41
+  message: "Merged as PR #3061, dev SHA cc5a805a866a."  # 6e41
+- op: update  # c9f2
+  at: '2026-04-16T11:37:02Z'  # c9f2
+  by: agent  # c9f2
+  actor: jgstern_agent  # c9f2
+  clock: 5  # c9f2
+  nonce: c9f2  # c9f2
+  set:  # c9f2
+    status: done  # c9f2
+- op: discuss  # 7cf2
+  at: '2026-04-16T11:37:02Z'  # 7cf2
+  by: agent  # 7cf2
+  actor: jgstern_agent  # 7cf2
+  clock: 6  # 7cf2
+  nonce: 7cf2  # 7cf2
+  message: "Fixed in PR #3061 (merged to dev at cc5a805a8). Completes the deferred half of WI-fuhav. Pass 1 tagging (meta.extension_receiver) was already in place; Pass 2 now builds an extension_index keyed by receiver-base-name and probes it in a new Case 3b after Case 3 of the method-call extractor. Class methods win over extensions (preserved via the 'not edge_added' guard). Generic receivers collapse at both index-build and lookup time via split-on-'<'. Cross-file resolution works because the index is built from global_symbols. Evidence type: ast_call_extension, confidence 0.80. 2 regression tests added covering cross-file dispatch and generic receiver. 100% coverage, all 87 kotlin tests pass, no regressions in the 2728-test affected set."  # 7cf2

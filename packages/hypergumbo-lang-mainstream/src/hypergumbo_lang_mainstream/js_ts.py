@@ -308,6 +308,30 @@ def _get_parser_for_file(file_path: Path) -> Optional["tree_sitter.Parser"]:
         return parser
 
 
+def _normalize_import_module_hint(module: str) -> str:
+    """Normalise an import path to a module hint usable in symbol IDs.
+
+    Symbol IDs are colon-delimited (``lang:module:span:name:kind``) so a
+    raw ``node:fs`` import path would corrupt the parse downstream.  We
+    strip the ``node:`` prefix (Node 16+ canonical form for built-ins)
+    and the relative-path leaders (``./``, ``../``) so the module hint
+    becomes the bare module name expected by the I/O catalog
+    (``fs``, ``child_process``, ``axios``).
+
+    Examples:
+        node:fs           -> fs
+        node:child_process -> child_process
+        ./utils           -> utils
+        ../helpers/git    -> helpers/git
+        @scope/pkg        -> @scope/pkg (unchanged)
+    """
+    if module.startswith("node:"):
+        return module[5:]
+    while module.startswith("./") or module.startswith("../"):
+        module = module[2:] if module.startswith("./") else module[3:]
+    return module
+
+
 def _extract_namespace_imports(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -562,6 +586,25 @@ JS_BUILTIN_NAMES: set[str] = {
     "setTimeout", "setInterval", "clearTimeout", "clearInterval",
     "console", "require",
 }
+
+# Browser/runtime globals that may be called as ``obj.method()`` without an
+# explicit import. Mirrors the module names used in
+# ``hypergumbo-core/src/hypergumbo_core/io_primitives/javascript.yaml`` so
+# the io-boundaries layer can tag the resulting unresolved-call edges.
+# Only includes names actually used in the bare-global ``Object.method()``
+# pattern — constructor-style globals (WebSocket, XMLHttpRequest,
+# EventSource, BroadcastChannel) are typically ``new``'d first and reach
+# io-boundaries through the instance path, not this fallback.
+# See WI-pinop / WI-banaf / WI-vurop (UAT 2026-04-13 BUG-09a).
+JS_KNOWN_GLOBALS: frozenset[str] = frozenset({
+    "console",        # logging (console.log/info/warn/error/debug/trace)
+    "localStorage",   # fs_read/fs_write (getItem, setItem, removeItem, clear)
+    "sessionStorage", # fs_read/fs_write (same methods)
+    "document",       # env_read (cookie, location, referrer attributes; DOM methods)
+    "navigator",      # net_send / env_read (sendBeacon, userAgent, geolocation)
+    "window",         # net_send / env_read (fetch, location, navigator, screen)
+    "Deno",           # Deno runtime (readFile, writeFile, connect, listen, ...)
+})
 
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
 # Note: Express-style route detection uses function calls (app.get, router.post) rather
@@ -3670,7 +3713,32 @@ def _extract_edges(
                                 confidence=edge_confidence,
                             )
                             edges.append(edge)
+                        elif (named_imports or {}).get(func_name):
+                            # WI-banaf: when a named-imported function is
+                            # called but doesn't resolve to an intra-repo
+                            # symbol (the common case for Node/browser
+                            # built-ins like ``existsSync`` from ``node:fs``),
+                            # emit an unresolved-call edge with the import
+                            # path as the module hint. The io-boundaries
+                            # layer matches the callee name against the
+                            # JavaScript catalog and tags the edge.
+                            module_hint = _normalize_import_module_hint(
+                                named_imports[func_name]
+                            )
+                            dst_id = f"{lang}:{module_hint}:0-0:{func_name}:unresolved"
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=dst_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_call_unresolved_import",
+                                confidence=0.70,
+                            )
+                            edges.append(edge)
 
+                        if callee is not None:
                             # Return type inference: if function has a return
                             # type annotation, track the variable's type
                             if callee.kind in ("function", "method"):
@@ -3789,6 +3857,26 @@ def _extract_edges(
                                     )
                                     edges.append(edge)
                                     edge_added = True
+                            if not edge_added:
+                                # WI-vurop: fall back to an unresolved-call
+                                # edge so io-boundaries can match the catalog
+                                # against Node built-ins and third-party HTTP
+                                # clients imported via ``import * as fs`` or
+                                # ``import axios from 'axios'``.
+                                module_hint = _normalize_import_module_hint(import_path)
+                                dst_id = f"{lang}:{module_hint}:0-0:{method_name}:unresolved"
+                                edge = Edge.create(
+                                    src=current_function.id,
+                                    dst=dst_id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1 + line_offset,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_method_unresolved_namespace",
+                                    confidence=0.70,
+                                )
+                                edges.append(edge)
+                                edge_added = True
 
                         # Case 3: variable.method() via type inference
                         elif obj_name and obj_name in var_types:
@@ -3818,6 +3906,41 @@ def _extract_edges(
                                 )
                                 edges.append(edge)
                                 edge_added = True
+
+                        # Case 3b (WI-pinop): bare global ``Object.method()`` not
+                        # shadowed by an import or a locally-typed variable.
+                        # Common in browser projects that never import console,
+                        # localStorage, navigator, window, document, or Deno.
+                        # Emits an unresolved-call edge with the global name as
+                        # module hint so the io-boundaries layer can match the
+                        # catalog (javascript.yaml uses the same module names).
+                        #
+                        # Shadowing checks: a named/namespace import or a
+                        # typed-parameter/var binding with the same name must
+                        # route through the existing cases, never this global
+                        # fallback. (Namespace shadowing is guaranteed by the
+                        # Case 2 elif — if obj_name is in namespace_imports the
+                        # WI-vurop fallback already set edge_added.)
+                        if (
+                            not edge_added
+                            and obj_name
+                            and obj_name in JS_KNOWN_GLOBALS
+                            and obj_name not in (named_imports or {})
+                            and obj_name not in var_types
+                        ):
+                            dst_id = f"{lang}:{obj_name}:0-0:{method_name}:unresolved"
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=dst_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_method_unresolved_global",
+                                confidence=0.65,
+                            )
+                            edges.append(edge)
+                            edge_added = True
 
                         # Case 4: Fallback - method name match with low confidence.
                         # Emit only one edge to the best candidate (not all

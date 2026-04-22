@@ -1,0 +1,52 @@
+- op: create  # b115
+  at: '2026-04-14T10:01:24Z'  # b115
+  by: agent  # b115
+  actor: jgstern_agent  # b115
+  clock: 1  # b115
+  nonce: b115  # b115
+  data:  # b115
+    kind: work_item  # b115
+    title: "JS/TS analyzer: emit unresolved-call edges for member calls on namespace imports"  # b115
+    status: todo_hard  # b115
+    priority: 2  # b115
+    parent:  # b115
+    tags:  # b115
+    - uat_2026_04_13  # b115
+    - io-boundary  # b115
+    - js_ts_analyzer  # b115
+    - analyzer_call_edges  # b115
+    isbefore: []  # b115
+    duplicate_of: []  # b115
+    not_duplicate_of: []  # b115
+    pr_ref:  # b115
+    description: "WI-banaf addressed bare-name imported calls (e.g. existsSync() from 'node:fs') by emitting unresolved-call edges in js_ts.py. The same treatment is needed for the OTHER imported-call shapes that are common in TS/JS:\n\n1. Member calls on namespace imports: import * as fs from 'fs'; fs.readFileSync()\n   - existing handler at js_ts.py:3767 (ast_call_namespace) already resolves intra-repo\n   - need: emit unresolved edge with module hint = namespace import path when no callee resolves\n\n2. Member calls on default imports: import axios from 'axios'; axios.get()\n   - default-import alias should be tracked similarly to namespace alias\n   - emit unresolved edge with module hint = the import path\n\n3. Member calls on named imports: import { fs } from 'something'; fs.readFile()\n   - covered by namespace-import case if the alias matches an import root\n\n4. Bare global identifiers without an explicit import: console.log(), localStorage.getItem(), WebSocket.send()\n   - some of these are tracked in named_imports if the project does import it; many TS/JS use them as globals\n   - need: emit unresolved edge for known global object.method patterns (catalog-driven; consume the existing catalog's modules: localStorage, sessionStorage, navigator, document, window, console, WebSocket, etc.)\n\nEVIDENCE: Verified on apollo-server (TS) post-bare-name fix: total_io_edges = 7 (logging+net_recv via console.log/http.createServer). create-next-app went from 0 -> 27 boundaries (fs_read/fs_write/subprocess populated). The remaining gap is entirely in the namespace and default-import cases — both common in browser-heavy projects (workadventure/vscode-style).\n\nREGRESSION TEST: After this lands, apollo-server should show 30+ boundaries (including fs/net from member calls), and a Node project that does 'import * as fs from \"fs\"; fs.readFileSync()' must produce a fs_read chain.\n\nDEPENDENCIES: WI-banaf (the catalog and bare-name fix) — done."  # b115
+    fields: {}  # b115
+- op: update  # 8a04
+  at: '2026-04-14T17:20:40Z'  # 8a04
+  by: agent  # 8a04
+  actor: jgstern_agent  # 8a04
+  clock: 2  # 8a04
+  nonce: 8a04  # 8a04
+  set:  # 8a04
+    status: done  # 8a04
+- op: discuss  # 3922
+  at: '2026-04-14T17:20:40Z'  # 3922
+  by: agent  # 3922
+  actor: jgstern_agent  # 3922
+  clock: 3  # 3922
+  nonce: '3922'  # 3922
+  message: "Fixed. Extends WI-banaf: namespace-alias member calls (import * as fs / import axios) now emit unresolved-call edges with the normalised import path as module hint. Verified: apollo-server io-boundaries 7 -> 14 (+7, env_read picks up 6 via os.* namespace calls); create-next-app 27 -> 35. Remaining gap: 'known globals without imports' (console.log in browser code, localStorage, etc.) — left for a follow-up item if/when UAT identifies it as material."  # 3922
+- op: discuss  # 972a
+  at: '2026-04-14T19:04:02Z'  # 972a
+  by: human  # 972a
+  actor: jgstern  # 972a
+  clock: 4  # 972a
+  nonce: 972a  # 972a
+  message: "please ensure there is a priority 4 tracker item for the remaining gap"  # 972a
+- op: discuss  # 3604
+  at: '2026-04-15T07:48:31Z'  # 3604
+  by: agent  # 3604
+  actor: jgstern_agent  # 3604
+  clock: 5  # 3604
+  nonce: '3604'  # 3604
+  message: "(Apologies — previous \"tiny\" entry was a debugging artifact from working around an argparse arg-ordering bug; intended reply follows.)\n\nDone. Created WI-pinop-jakok-zukof-vurod-bufug-fonuh-bupif-pajaj (P4, todo_soft, tags: uat_2026_04_13, io-boundary, js_ts_analyzer, analyzer_call_edges) for the known-globals-without-import gap (console, localStorage, sessionStorage, navigator, document, window, WebSocket). Catalog-driven approach, with a regression test that asserts a no-import file producing logging + storage_write boundaries."  # 3604

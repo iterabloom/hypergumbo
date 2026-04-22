@@ -27,7 +27,7 @@ Status: living document.
 | 4 | [Supported stacks](#4-supported-stacks) |
 | 5 | [Architecture](#5-architecture) |
 | 6 | [Internal representation](#6-internal-representation) |
-| 7 | [Cross-language linkers](#7-cross-language-linkers) |
+| 7 | [Linkers](#7-linkers) |
 | 8 | [Entrypoint detection](#8-entrypoint-detection) |
 | 9 | [Behavior map JSON](#9-behavior-map-json) |
 | 10 | [Sketch output](#10-sketch-output) |
@@ -211,7 +211,7 @@ Each analyzer returns an `AnalysisResult` containing symbols, edges, and usage c
 After all analyzers run, the orchestrator (`run_behavior_map`) collects the unified symbol graph and runs post-processing:
 1. Deferred symbol reference resolution (cross-file call targets)
 2. Framework pattern enrichment (YAML-driven concept metadata)
-3. Cross-language linkers (registered via `@register_linker` decorator, receiving `LinkerContext` with the full symbol graph; see [LINKERS.md](LINKERS.md) for the full list)
+3. Linkers (registered via `@register_linker` decorator, receiving `LinkerContext` with the full symbol graph; see [LINKERS.md](LINKERS.md) for the full list, grouped by subcategory — Protocol, Bridge, Framework, Infrastructure — per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md))
 4. Entrypoint detection
 
 Linkers use a decorator-based registry (`linkers/registry.py`) and receive the accumulated analysis state:
@@ -234,7 +234,7 @@ class AnalysisPass(Protocol):
 ```
 This would allow a type-resolution pass to slot in between Tier 1 and Tier 2, reading AST-produced symbols and upgrading their edge confidences. Tier 1 analyzers would receive an empty IR (they remain independent); Tier 2 refiners would receive the accumulated graph. The orchestrator becomes generic — just iterating passes in priority order. See [ADR-0012](adr/0012-pass-unification-and-multi-fidelity.md) for the design rationale and migration path.
 
-For the full catalog of language analyzers, cross-language linkers, and framework pattern files, see [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md), and [FRAMEWORKS.md](FRAMEWORKS.md).
+For the full catalog of language analyzers, linkers, and framework pattern files, see [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md), and [FRAMEWORKS.md](FRAMEWORKS.md).
 
 ## 6) Internal representation
 
@@ -364,9 +364,9 @@ Public outputs are **compiled views** from this IR — the IR defines the canoni
 
 **Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking existing views.
 
-## 7) Cross-language linkers
+## 7) Linkers
 
-Hypergumbo provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis. This section specifies three linkers in detail (JNI, IPC, HTTP client-server); for the full catalog of 20+ cross-language linkers, see [LINKERS.md](LINKERS.md).
+Hypergumbo provides **best-effort edge recovery** for patterns that language analyzers cannot see statically. These are AST-based heuristics with string literal matching and metadata comparison, not type-resolved or dataflow analysis. Linkers fall into four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md): Protocol (framework-agnostic pattern matching), Bridge (language-pair-specific FFI conventions), Framework (framework-specific dispatch), and Infrastructure (graph-structural utilities). This section specifies three linkers in detail — JNI (Bridge), IPC (Protocol), HTTP client-server (Protocol); for the full catalog of 45 linkers grouped by subcategory, see [LINKERS.md](LINKERS.md).
 
 ### JNI Boundary Detection (Java ↔ C)
 
@@ -484,7 +484,7 @@ The C analyzer detects JNI export patterns (`JNIEXPORT`, `JNICALL`, `Java_*` nam
 
 ### limits.cross_language — tracking unresolved links
 
-🟪 Cross-language linkers log unresolved patterns for debugging (not yet implemented — `limits` dataclass has no `cross_language`, `unresolved_jni`, or `unresolved_ipc` fields):
+🟪 Linkers log unresolved patterns for debugging (not yet implemented — `limits` dataclass has no `cross_language`, `unresolved_jni`, or `unresolved_ipc` fields):
 
 ```json
 {
@@ -940,7 +940,7 @@ Entry sources (HTTP routes, CLI mains, IPC handlers, etc.) are detected by the p
 
 ### Dataflow slicing (ADR-0015)
 
-🟩 `--dataflow` flag restricts BFS to data-dependency chains. Forward slices follow write/mutate edges; reverse slices follow read edges. Edges without `access_mode` metadata are still followed (graceful degradation). Access modes (`read`, `write`, `mutate`, `delete`) are stamped automatically by Tier 1 (YAML-driven AST classification for 104 tree-sitter analyzers + Python `ast` module) and explicitly by Tier 2 (10 cross-language linkers). YAML patterns shipped for 20 languages (Python, JavaScript, TypeScript, Rust, Go, Java, Kotlin, C, C++, C#, Dart, Elixir, Erlang, Haskell, Lua, Perl, PHP, Ruby, Scala, Swift).
+🟩 `--dataflow` flag restricts BFS to data-dependency chains. Forward slices follow write/mutate edges; reverse slices follow read edges. Edges without `access_mode` metadata are still followed (graceful degradation). Access modes (`read`, `write`, `mutate`, `delete`) are stamped automatically by Tier 1 (YAML-driven AST classification for 104 tree-sitter analyzers + Python `ast` module) and explicitly by Tier 2 (10 linkers). YAML patterns shipped for 20 languages (Python, JavaScript, TypeScript, Rust, Go, Java, Kotlin, C, C++, C#, Dart, Elixir, Erlang, Haskell, Lua, Perl, PHP, Ruby, Scala, Swift).
 
 ### Slice identity and reproducibility
 
@@ -1000,7 +1000,7 @@ Hypergumbo assigns confidence scores (0.0–1.0) in three independent categories
 | Category | What it scores | Scoring basis | Score range | Defined in |
 |----------|---------------|---------------|-------------|------------|
 | **Analyzer edge confidence** | Intra-language relationships (calls, imports) | `(language, evidence_type)` matrix + contextual adjustments | 0.30–0.95 | [Below](#edge-confidence-analyzer-evidence) |
-| **Linker edge confidence** | Cross-language relationships (JNI, IPC, HTTP) | Match quality (literal vs. dynamic, naming convention vs. annotation) | 0.40–0.95 | [Below](#edge-confidence-cross-language-linkers), details in [§7](#7-cross-language-linkers) |
+| **Linker edge confidence** | Linker-recovered relationships across all four subcategories — Bridge/Protocol examples include JNI, IPC, HTTP | Match quality (literal vs. dynamic, naming convention vs. annotation) | 0.40–0.95 | [Below](#edge-confidence-linker-edges), details in [§7](#7-linkers) |
 | **Entrypoint confidence** | Whether a symbol is an entry point | Detection method (manifest, decorator, convention, naming) | 0.70–0.99 | [Below](#entrypoint-confidence-tiers), details in [§8](#8-entrypoint-detection) |
 
 All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v1`) identifies the scoring algorithm version. Consumers MUST default unknown `evidence_type` values to 0.30 (see [Appendix C](#appendix-c-schema-compatibility-contract)).
@@ -1055,9 +1055,9 @@ def calculate_evidence_confidence(
 
 **Note**: Base scores are heuristic baselines (to be validated against benchmark suite). New evidence types can be added in minor versions.
 
-### Edge confidence: cross-language linkers
+### Edge confidence: linker edges
 
-Cross-language linkers (Tier 2 passes) produce their own confidence scores based on match quality. These scores are independent of the analyzer evidence matrix above. See [§7 Cross-language linkers](#7-cross-language-linkers) for detection rules and limitations.
+Linkers (Tier 2 passes — all four subcategories) produce their own confidence scores based on match quality. These scores are independent of the analyzer evidence matrix above. See [§7 Linkers](#7-linkers) for detection rules and limitations.
 
 | Linker | Match type | Confidence |
 |--------|-----------|------------|
@@ -1280,7 +1280,7 @@ This ensures first-party symbols appear first even when third-party utilities ha
 
 **What supply chain classification does NOT do:**
 
-1. **Resolve transitive dependencies**: Classification is based on file location, not the full dependency graph. A file in `node_modules/a/` that imports from `node_modules/b/` doesn't affect tier assignment. 🟩 **Exception:** Go boundary nodes (unresolved external references) are classified using `go.mod` data: direct dependencies get tier 2, indirect dependencies and stdlib get tier 3. The language-agnostic `DependencyManifest` infrastructure supports future extension to npm, Cargo, and pip manifests.
+1. **Resolve transitive dependencies**: Classification is based on file location, not the full dependency graph. A file in `node_modules/a/` that imports from `node_modules/b/` doesn't affect tier assignment. 🟩 **Exception:** Boundary nodes (unresolved external references) are classified using dependency manifest data when available: direct dependencies get tier 2, indirect/unknown get tier 3. Supported manifests: Go (`go.mod` — direct vs indirect), Java/Kotlin (`build.gradle`, `build.gradle.kts`, `pom.xml` — groupId-based prefix matching against import paths). The language-agnostic `DependencyManifest` infrastructure supports future extension to npm, Cargo, and pip manifests.
 
 2. **Detect vendored copies**: If you copy `lodash.js` into `src/utils/lodash.js`, it's classified as tier 1 (first-party).
 
@@ -1536,7 +1536,7 @@ For detailed designs, see [roadmap-details.md](future/roadmap-details.md) and [R
 | Additional linkers | Near-term | 🟩 Constant propagation for dynamic routes (Python). 🟩 Middleware chain linker (same-file chaining). 🟪 Proxy detection. |
 | Additional output views | Near-term | 🟪 `ir_export.json`, `context_bundle.json`, `sarif.json`, flow specs. |
 | Testing & CI enhancements | Near-term | 🟪 Longitudinal analysis, integration test markers. |
-| Multi-fidelity analysis | Medium-term | 🟪 Language server backends (tsserver, pyright, rust-analyzer, gopls, JDT). Mixed-fidelity graphs. |
+| Multi-fidelity analysis | Medium-term | 🟩 rust-analyzer SCIP backend shipped (opt-in via `HYPERGUMBO_RUST_ANALYZER=1` or `--backend rust-analyzer`); falls through to tree-sitter `rust.py` when unavailable. 🟪 tsserver, pyright, gopls, JDT backends. Mixed-fidelity graphs. |
 | Agent context router | Medium-term | 🟪 Query → slice → context bundle pipeline. Builds on existing slicing. |
 | Incremental analysis | Not on roadmap | 18+ month effort. Current mitigation: caching, partial re-analysis. |
 

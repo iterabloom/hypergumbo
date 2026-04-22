@@ -1,10 +1,21 @@
 #!/bin/bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Toggle autonomous mode on/off with support for multiple modes
+# Toggle autonomous mode on/off with support for multiple modes.
 #
-# This script manages:
-#   1. AUTONOMOUS_MODE.txt: OFF | BROAD | DEEP (backward compatible: TRUE=BROAD)
-#   2. .agent/LOOP sentinel: .agent/LOOP <-> .agent/disabled.LOOP
+# This script manages TWO files with overlapping purpose:
+#
+#   1. AUTONOMOUS_MODE.txt — CURRENT SESSION'S mode, consumed by stop hook.
+#      Rewritten by the circuit-breaker trip path (to OFF) and by
+#      --set-session-mode.
+#   2. autonomous_intent.txt — PROJECT INTENT, per-workstation signal for
+#      the agent-supervisor daemon (WI-razub). The human's desired mode
+#      for this project; never written by the circuit breaker. Values:
+#      OFF | BROAD | DEEP.
+#   3. .agent/LOOP sentinel: .agent/LOOP <-> .agent/disabled.LOOP
+#
+# The bareword form (loop-toggle DEEP) writes BOTH files — the existing UX
+# where a human decision updates both the current session AND the project
+# intent. Use the --set-intent / --set-session-mode flags to touch only one.
 #
 # Modes:
 #   OFF   - Autonomous mode disabled, agent can stop freely
@@ -12,18 +23,21 @@
 #   DEEP  - Feature bakeoff: usefulness testing, larger repos, LLM assessment
 #
 # Usage:
-#   ./scripts/loop-toggle           # Toggle current state (off -> broad -> deep -> off)
-#   ./scripts/loop-toggle off       # Disable autonomous mode
-#   ./scripts/loop-toggle broad     # Enable broad bakeoff (parse correctness)
-#   ./scripts/loop-toggle deep      # Enable deep/feature bakeoff (usefulness)
-#   ./scripts/loop-toggle on        # Alias for 'broad' (backward compatible)
-#   ./scripts/loop-toggle status    # Show current state
+#   ./scripts/loop-toggle                          # Toggle (off -> broad -> deep -> off)
+#   ./scripts/loop-toggle off                      # Disable — writes both files
+#   ./scripts/loop-toggle broad                    # Enable broad — writes both files
+#   ./scripts/loop-toggle deep                     # Enable deep — writes both files
+#   ./scripts/loop-toggle on                       # Alias for 'broad' (backward compat)
+#   ./scripts/loop-toggle status                   # Show current state
+#   ./scripts/loop-toggle --set-intent MODE        # Write autonomous_intent.txt only
+#   ./scripts/loop-toggle --set-session-mode MODE  # Write AUTONOMOUS_MODE.txt only
 
 set -euo pipefail
 
 # Find repo root
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MODE_FILE="$REPO_ROOT/AUTONOMOUS_MODE.txt"
+INTENT_FILE="$REPO_ROOT/autonomous_intent.txt"
 LOOP_FILE="$REPO_ROOT/.agent/LOOP"
 DISABLED_LOOP="$REPO_ROOT/.agent/disabled.LOOP"
 
@@ -78,6 +92,52 @@ get_current_pid() {
     else
         echo ""
     fi
+}
+
+get_current_intent() {
+    # Returns the value of autonomous_intent.txt, normalized to OFF/BROAD/DEEP.
+    # Missing file or unrecognized content defaults to OFF (safe — supervisor
+    # does nothing in OFF).
+    if [[ ! -f "$INTENT_FILE" ]]; then
+        echo "OFF"
+        return
+    fi
+    local content
+    content=$(head -1 "$INTENT_FILE" 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+    case "$content" in
+        OFF|FALSE) echo "OFF" ;;
+        BROAD|TRUE) echo "BROAD" ;;
+        DEEP) echo "DEEP" ;;
+        *) echo "OFF" ;;
+    esac
+}
+
+# Uppercase a mode token; validate it's one of OFF/BROAD/DEEP. Exits 1 if not.
+validate_mode() {
+    local raw="${1:-}"
+    if [[ -z "$raw" ]]; then
+        echo "Missing mode argument. Expected one of: OFF, BROAD, DEEP." >&2
+        exit 1
+    fi
+    local upper
+    upper=$(echo "$raw" | tr '[:lower:]' '[:upper:]')
+    case "$upper" in
+        OFF|BROAD|DEEP)
+            echo "$upper"
+            ;;
+        *)
+            echo "Unknown mode: $raw. Must be one of: OFF, BROAD, DEEP." >&2
+            exit 1
+            ;;
+    esac
+}
+
+# Write autonomous_intent.txt only. Does NOT touch AUTONOMOUS_MODE.txt, the
+# LOOP sentinel, or the circuit breaker. Called by --set-intent and as part
+# of the bareword dual-write path.
+write_intent() {
+    local mode="$1"  # already validated OFF/BROAD/DEEP
+    echo "$mode" > "$INTENT_FILE"
 }
 
 # Known agent CLI process patterns for pgrep discovery.
@@ -156,6 +216,8 @@ get_loop_state() {
 show_status() {
     local mode
     mode=$(get_current_mode)
+    local intent
+    intent=$(get_current_intent)
     local stored_pid
     stored_pid=$(get_current_pid)
     local loop_state
@@ -183,6 +245,18 @@ show_status() {
             echo "  Bakeoff: scripts/bakeoff-deep"
             ;;
     esac
+
+    echo ""
+    case "$intent" in
+        OFF)   echo -e "Intent: ${RED}OFF${NC}   (autonomous_intent.txt)" ;;
+        BROAD) echo -e "Intent: ${GREEN}BROAD${NC} (autonomous_intent.txt)" ;;
+        DEEP)  echo -e "Intent: ${CYAN}DEEP${NC}  (autonomous_intent.txt)" ;;
+    esac
+    if [[ "$intent" != "$mode" ]]; then
+        echo -e "  ${YELLOW}Intent and current session mode differ.${NC}"
+        echo "  Intent is the project-level signal the agent-supervisor consults."
+        echo "  Session mode is the current CLI's runtime mode."
+    fi
 
     echo ""
     if [[ -n "$stored_pid" ]]; then
@@ -264,16 +338,18 @@ disable_loop_sentinel() {
     fi
 }
 
-set_mode_off() {
+# --- Session-mode-only writers ---
+# These write AUTONOMOUS_MODE.txt + manage the LOOP sentinel + reset the
+# circuit breaker (for BROAD/DEEP). They do NOT touch autonomous_intent.txt.
+# Called directly by --set-session-mode, and indirectly by set_mode_* via
+# the bareword dual-write path.
+
+write_session_mode_off() {
     echo "OFF" > "$MODE_FILE"
     disable_loop_sentinel
-
-    echo -e "${GREEN}✓${NC} Autonomous mode ${RED}DISABLED${NC}"
-    echo "  - AUTONOMOUS_MODE.txt set to OFF"
-    echo "  - .agent/LOOP sentinel disabled"
 }
 
-set_mode_broad() {
+write_session_mode_broad() {
     local agent_pid
     agent_pid=$(find_agent_pid)
     if [[ -n "$agent_pid" ]]; then
@@ -283,11 +359,48 @@ set_mode_broad() {
     fi
     enable_loop_sentinel
     reset_circuit_breaker
+    # Emit the PID to stdout via a global so set_mode_broad can print it.
+    _LAST_BOUND_PID="$agent_pid"
+}
+
+write_session_mode_deep() {
+    local agent_pid
+    agent_pid=$(find_agent_pid)
+    if [[ -n "$agent_pid" ]]; then
+        echo "DEEP pid=$agent_pid" > "$MODE_FILE"
+    else
+        echo "DEEP" > "$MODE_FILE"
+    fi
+    enable_loop_sentinel
+    reset_circuit_breaker
+    _LAST_BOUND_PID="$agent_pid"
+}
+
+# --- Dual-write (bareword) mode setters ---
+# These call the session-mode writer AND update autonomous_intent.txt, then
+# print user-facing status. Use these for interactive / human-driven mode
+# changes, where "the human just expressed intent" and the current session
+# should also reflect that intent.
+
+set_mode_off() {
+    write_session_mode_off
+    write_intent "OFF"
+
+    echo -e "${GREEN}✓${NC} Autonomous mode ${RED}DISABLED${NC}"
+    echo "  - AUTONOMOUS_MODE.txt set to OFF"
+    echo "  - autonomous_intent.txt set to OFF"
+    echo "  - .agent/LOOP sentinel disabled"
+}
+
+set_mode_broad() {
+    write_session_mode_broad
+    write_intent "BROAD"
 
     echo -e "${GREEN}✓${NC} Autonomous mode set to ${GREEN}BROAD${NC}"
     echo "  - AUTONOMOUS_MODE.txt set to BROAD"
-    if [[ -n "$agent_pid" ]]; then
-        echo "  - Bound to agent PID $agent_pid"
+    echo "  - autonomous_intent.txt set to BROAD"
+    if [[ -n "${_LAST_BOUND_PID:-}" ]]; then
+        echo "  - Bound to agent PID $_LAST_BOUND_PID"
     else
         echo "  - No agent found; will bind to next agent started"
     fi
@@ -298,20 +411,14 @@ set_mode_broad() {
 }
 
 set_mode_deep() {
-    local agent_pid
-    agent_pid=$(find_agent_pid)
-    if [[ -n "$agent_pid" ]]; then
-        echo "DEEP pid=$agent_pid" > "$MODE_FILE"
-    else
-        echo "DEEP" > "$MODE_FILE"
-    fi
-    enable_loop_sentinel
-    reset_circuit_breaker
+    write_session_mode_deep
+    write_intent "DEEP"
 
     echo -e "${GREEN}✓${NC} Autonomous mode set to ${CYAN}DEEP${NC}"
     echo "  - AUTONOMOUS_MODE.txt set to DEEP"
-    if [[ -n "$agent_pid" ]]; then
-        echo "  - Bound to agent PID $agent_pid"
+    echo "  - autonomous_intent.txt set to DEEP"
+    if [[ -n "${_LAST_BOUND_PID:-}" ]]; then
+        echo "  - Bound to agent PID $_LAST_BOUND_PID"
     else
         echo "  - No agent found; will bind to next agent started"
     fi
@@ -320,6 +427,43 @@ set_mode_deep() {
     echo "Focus: Feature usefulness, slice quality, developer perspective"
     echo "Use: ./scripts/bakeoff-deep for feature testing"
     echo "     ./scripts/bakeoff-deep-reflect for LLM assessment"
+}
+
+# --- Flag-form: --set-intent ---
+# Writes autonomous_intent.txt only. Does NOT touch AUTONOMOUS_MODE.txt, the
+# LOOP sentinel, or the circuit breaker. The supervisor consults this file
+# to decide whether to respawn; the circuit breaker must not touch it.
+set_intent_only() {
+    local mode="$1"  # already validated OFF/BROAD/DEEP
+    write_intent "$mode"
+    echo -e "${GREEN}✓${NC} autonomous_intent.txt set to ${CYAN}$mode${NC}"
+    echo "  (AUTONOMOUS_MODE.txt and .agent/LOOP unchanged)"
+}
+
+# --- Flag-form: --set-session-mode ---
+# Writes AUTONOMOUS_MODE.txt + manages LOOP sentinel + resets circuit breaker
+# (for BROAD/DEEP). Does NOT touch autonomous_intent.txt. Called by the
+# circuit-breaker trip path so a stuck session can reset itself without
+# flipping the project-level intent OFF.
+set_session_mode_only() {
+    local mode="$1"  # already validated OFF/BROAD/DEEP
+    case "$mode" in
+        OFF)
+            write_session_mode_off
+            echo -e "${GREEN}✓${NC} AUTONOMOUS_MODE.txt set to ${RED}OFF${NC}"
+            echo "  (autonomous_intent.txt unchanged)"
+            ;;
+        BROAD)
+            write_session_mode_broad
+            echo -e "${GREEN}✓${NC} AUTONOMOUS_MODE.txt set to ${GREEN}BROAD${NC}"
+            echo "  (autonomous_intent.txt unchanged)"
+            ;;
+        DEEP)
+            write_session_mode_deep
+            echo -e "${GREEN}✓${NC} AUTONOMOUS_MODE.txt set to ${CYAN}DEEP${NC}"
+            echo "  (autonomous_intent.txt unchanged)"
+            ;;
+    esac
 }
 
 toggle_mode() {
@@ -347,9 +491,23 @@ toggle_mode() {
 # the script is internally lowercase. The case arms below all use
 # lowercase patterns; this normalization makes them effectively
 # case-insensitive.
+#
+# The two flag forms --set-intent and --set-session-mode take a second
+# positional argument (the mode). See the top-of-file docstring for the
+# rationale behind the intent-vs-session-mode split.
 raw_arg="${1:-toggle}"
 arg="${raw_arg,,}"
 case "$arg" in
+    --set-intent)
+        shift
+        validated=$(validate_mode "${1:-}")
+        set_intent_only "$validated"
+        ;;
+    --set-session-mode)
+        shift
+        validated=$(validate_mode "${1:-}")
+        set_session_mode_only "$validated"
+        ;;
     off|disable)
         set_mode_off
         ;;
@@ -379,7 +537,7 @@ case "$arg" in
         echo "  BROAD - Parse correctness bakeoff (fast iteration)"
         echo "  DEEP  - Feature usefulness bakeoff (larger repos, LLM assessment)"
         echo ""
-        echo "Commands:"
+        echo "Commands (dual-write — touches BOTH files):"
         echo "  off, disable  Disable autonomous mode"
         echo "  broad         Enable BROAD mode (parse correctness)"
         echo "  deep          Enable DEEP mode (feature usefulness)"
@@ -387,6 +545,16 @@ case "$arg" in
         echo "  status, s     Show current state"
         echo "  toggle, t     Cycle: off -> broad -> deep -> off (default)"
         echo "  help, -h      Show this help"
+        echo ""
+        echo "Flag forms (narrow writes — touch ONE file):"
+        echo "  --set-intent MODE         Write autonomous_intent.txt only."
+        echo "                            Project-level signal consumed by"
+        echo "                            scripts/agent-supervisor (WI-razub)."
+        echo "  --set-session-mode MODE   Write AUTONOMOUS_MODE.txt only."
+        echo "                            Called by the circuit-breaker trip"
+        echo "                            path so a stuck session can reset"
+        echo "                            itself without flipping project intent."
+        echo "                            MODE must be OFF, BROAD, or DEEP."
         echo ""
         echo "When autonomous mode is active:"
         echo "  - AGENTS.md priority queue guides work"

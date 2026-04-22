@@ -58,6 +58,20 @@ fs_read:
     notes: "Deno runtime file read operations"
   - module: Deno
     methods: [readFile, readTextFile, readDir, stat, lstat]
+  # Browser persistent storage (WI-banaf): treated as fs_read because they
+  # are persistent reads from a host-managed store.
+  - module: localStorage
+    methods: [getItem, key, length]
+    notes: "Browser localStorage read"
+  - module: sessionStorage
+    methods: [getItem, key, length]
+    notes: "Browser sessionStorage read"
+  - module: indexedDB
+    functions: [open, databases]
+    notes: "Browser IndexedDB read"
+  - module: caches
+    functions: [open, match, has, keys]
+    notes: "Browser CacheStorage read (Service Workers)"
 
 fs_write:
   - module: fs
@@ -70,6 +84,13 @@ fs_write:
   - module: Deno
     functions: [writeFile, writeTextFile, mkdir, remove, rename, chmod, chown, truncate, create]
     notes: "Deno runtime file write operations"
+  # Browser persistent storage writes (WI-banaf)
+  - module: localStorage
+    methods: [setItem, removeItem, clear]
+    notes: "Browser localStorage write"
+  - module: sessionStorage
+    methods: [setItem, removeItem, clear]
+    notes: "Browser sessionStorage write"
 
 net_send:
   - module: http
@@ -99,6 +120,32 @@ net_send:
   - module: Deno
     functions: [connect, connectTls]
     notes: "Deno runtime network client operations"
+  # Browser network sinks (WI-banaf)
+  - module: WebSocket
+    methods: [send]
+    notes: "Browser WebSocket client send"
+  - module: window
+    functions: [fetch]
+    notes: "Browser window.fetch (same as global fetch)"
+  - module: navigator
+    methods: [sendBeacon]
+    notes: "Browser navigator.sendBeacon for analytics/telemetry"
+  - module: XMLHttpRequest
+    methods: [send, open, setRequestHeader]
+    notes: "Browser XHR"
+  # Common browser HTTP client libraries (resolved via named imports)
+  - module: ky
+    functions: [get, post, put, delete, patch, head, create]
+    notes: "ky HTTP client (browser/Deno)"
+  - module: superagent
+    functions: [get, post, put, delete, patch, head]
+    notes: "superagent HTTP client"
+  - module: got
+    functions: [get, post, put, delete, patch, head, request]
+    notes: "got HTTP client (Node)"
+  - module: undici
+    functions: [request, fetch, stream]
+    notes: "undici HTTP client (Node)"
 
 net_recv:
   - module: http
@@ -125,6 +172,16 @@ net_recv:
   - module: koa.Application
     methods: [listen]
     notes: "Koa server listen"
+  # Browser network sources (WI-banaf)
+  - module: EventSource
+    methods: [addEventListener, onmessage, onerror]
+    notes: "Browser Server-Sent Events client"
+  - module: WebSocket
+    methods: [addEventListener, onmessage, onopen, onclose, onerror]
+    notes: "Browser WebSocket client receive"
+  - module: BroadcastChannel
+    methods: [postMessage, addEventListener]
+    notes: "Browser cross-tab messaging"
 
 subprocess:
   - module: child_process
@@ -135,6 +192,16 @@ env_read:
     attributes: [env, argv, platform, arch, version, cwd]
   - module: os
     functions: [hostname, platform, arch, release, type, cpus, totalmem, freemem, homedir, tmpdir, userInfo]
+  # Browser environment introspection (WI-banaf)
+  - module: navigator
+    attributes: [userAgent, language, languages, platform, geolocation, cookieEnabled, onLine]
+    notes: "Browser environment / capability detection"
+  - module: window
+    attributes: [location, navigator, screen, document]
+    notes: "Browser window globals"
+  - module: document
+    attributes: [cookie, location, referrer]
+    notes: "Browser document globals (cookie/referrer leak fingerprintable data)"
 
 ipc_send:
   - module: process
@@ -149,3 +216,9 @@ ipc_recv:
   - module: process
     methods: [on]
     notes: "process.on('message', ...) for IPC from parent"
+
+logging:
+  # Browser + Node share console.* (WI-banaf)
+  - module: console
+    methods: [log, info, warn, error, debug, trace, dir, table, group, groupEnd, time, timeEnd]
+    notes: "Universal console logging (browser + Node)"

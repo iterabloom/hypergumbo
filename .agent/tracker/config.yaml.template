@@ -90,6 +90,38 @@ stop_hook:
     - docs/
     - scripts/
     - ~/hypergumbo_lab_notebook/
+
+  # Process-aware pause (WI-varid).  When the stop hook fires and a
+  # "watched" long-running command is alive, the hook polls inline until
+  # that process finishes (emitting a dot per poll to stderr) instead of
+  # the previous unconditional 150s blanket pause.  Watched commands are
+  # those where the agent is genuinely blocked (waiting for pass/fail or
+  # for a CI poll); intentionally excluded are bakeoffs and ci-debug,
+  # where the agent is meant to be doing pipeline-overlap work in
+  # parallel rather than idly waiting.
+  #
+  # If this list is omitted or empty, the bash defaults baked into
+  # stop_logic.sh apply (same five entries below).
+  watched_process_patterns:
+    - pytest
+    - python -m pytest
+    - smart-test
+    - bash ./scripts/auto-pr
+    - bash ./scripts/merge-pr
+  watched_poll_seconds: 3
+  watched_max_wait_seconds: 1800
+
+  # awaits_bakeoff_validation backlog nudge (WI-dolil slice 3).
+  # When items carrying the `awaits_bakeoff_validation` tag accumulate
+  # beyond `threshold` AND the most recent DEEP bakeoff cycle's
+  # `state.json` is older than `stale_cycle_hours`, the stop hook
+  # appends a short nudge section to the guidance file encouraging a
+  # DEEP cycle. If this block or its keys are omitted, the defaults
+  # (threshold=5, stale_cycle_hours=72) in awaits_bakeoff_nudge.py
+  # apply. The count uses the same `blocking_statuses` set above.
+  awaits_bakeoff_validation_nudge:
+    threshold: 5
+    stale_cycle_hours: 72
 well_known_tags:
   - developer_experience
   - bakeoff_infrastructure

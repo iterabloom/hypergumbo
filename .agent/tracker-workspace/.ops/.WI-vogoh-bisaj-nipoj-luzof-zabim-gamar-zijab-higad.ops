@@ -1,0 +1,37 @@
+- op: create  # 53f5
+  at: '2026-04-17T03:40:02Z'  # 53f5
+  by: agent  # 53f5
+  actor: jgstern_agent  # 53f5
+  clock: 1  # 53f5
+  nonce: 53f5  # 53f5
+  data:  # 53f5
+    kind: work_item  # 53f5
+    title: "Fix middleware_chain.py SHAPE_MISMATCH: filter concepts as list[dict], not list[str]"  # 53f5
+    status: todo_hard  # 53f5
+    priority: 2  # 53f5
+    parent:  # 53f5
+    tags:  # 53f5
+    - framework_dispatch_linkers  # 53f5
+    - analysis_quality  # 53f5
+    isbefore: []  # 53f5
+    duplicate_of: []  # 53f5
+    not_duplicate_of: []  # 53f5
+    pr_ref:  # 53f5
+    description: "Per INV-tuzub-sufuk-... (concept-tag shape uniformity, violated) and audit report /home/jgstern_agent/hypergumbo_lab_notebook/concept_tag_audit_04172026_0335.md:\n\nmiddleware_chain.py:81-82 filters concepts with a list[str] membership test ('middleware' not in concepts) while framework_patterns.py emits list[dict]. The filter is therefore always True for the continue branch in production, making the linker silently inert (zero middleware-chain edges emitted on real repos, despite tests passing).\n\nFix (mirrors subprocess_cli.py::_has_command_concept pattern):\n\n  - Change middleware_chain.py:81-82 from\n      concepts = sym.meta.get('concepts', [])\n      if 'middleware' not in concepts: continue\n    to\n      concepts = sym.meta.get('concepts', [])\n      if not any(isinstance(c, dict) and c.get('concept') == 'middleware' for c in concepts): continue\n\n  - Update tests/test_middleware_chain_linker.py _sym helper (lines 25-31) and all fixtures (line 171 etc.) to use the production emitter shape: concepts=[{'concept': 'middleware'}] instead of ['middleware'].\n\n  - Add an integration smoke test that uses framework_patterns.py's actual emitter path (a symbol matched against express/fastapi middleware YAML pattern) and verifies the linker emits the expected chain edges.\n\nAcceptance: (1) linker tests still pass with new fixture shape, (2) integration test demonstrates the linker works against the real emitter, (3) bakeoff on a repo that uses express middleware shows non-zero middleware_chain edges."  # 53f5
+    fields: {}  # 53f5
+- op: update  # 1c40
+  at: '2026-04-17T04:26:32Z'  # 1c40
+  by: agent  # 1c40
+  actor: jgstern_agent  # 1c40
+  clock: 2  # 1c40
+  nonce: 1c40  # 1c40
+  set:  # 1c40
+    status: done  # 1c40
+    pr_ref: '3101'  # 1c40
+- op: discuss  # daba
+  at: '2026-04-17T04:26:32Z'  # daba
+  by: agent  # daba
+  actor: jgstern_agent  # daba
+  clock: 3  # daba
+  nonce: daba  # daba
+  message: "Fixed in PR #3101 (codeberg). Changed middleware_chain.py filter to 'any(isinstance(c, dict) and c.get(\"concept\") == \"middleware\" for c in concepts)'. Updated test _sym helper to wrap concept names into list[dict] shape, added regression tests for both production-shape (MUST match) and bare-string-shape (MUST NOT match). All 4365 tests pass with coverage maintained."  # daba

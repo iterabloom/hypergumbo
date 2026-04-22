@@ -3659,3 +3659,91 @@ class TestCrossLinkerIntegration:
         )
         # File limit should be hit
         assert "file_limit" in result.limits_hit
+
+
+class TestModuleNameShorthand:
+    """Tests for module:name entry shorthand (WI-hogun)."""
+
+    def test_shorthand_resolves_unique_match(self) -> None:
+        """'cli:main' resolves to main in cli.{ext}."""
+        cli_main = make_symbol("main", path="packages/hg/src/hg/cli.py")
+        other_main = make_symbol("main", path="packages/hg/src/hg/runner.py")
+        nodes = [cli_main, other_main]
+
+        matches = find_entry_nodes(nodes, "cli:main")
+
+        assert len(matches) == 1
+        assert matches[0].id == cli_main.id
+
+    def test_shorthand_matches_file_basename_ignoring_dirs(self) -> None:
+        """The left side matches file basename, not path components."""
+        deep_main = make_symbol("main", path="a/b/c/cli.py")
+        other = make_symbol("main", path="src/cli-helpers.py")
+        nodes = [deep_main, other]
+
+        matches = find_entry_nodes(nodes, "cli:main")
+
+        assert len(matches) == 1
+        assert matches[0].id == deep_main.id
+
+    def test_shorthand_matches_any_extension(self) -> None:
+        """cli:main works for cli.go, cli.ts, cli.rb — not just .py."""
+        py = make_symbol("main", path="src/cli.py", language="python")
+        go = make_symbol("main", path="src/cli.go", language="go")
+        nodes = [py, go]
+
+        matches = find_entry_nodes(nodes, "cli:main")
+        assert {m.id for m in matches} == {py.id, go.id}
+
+    def test_shorthand_falls_through_when_no_match(self) -> None:
+        """If module:name yields no match, fall through to name-partial match."""
+        login_a = make_symbol("login", path="src/auth.py")
+        login_b = make_symbol("login_helper", path="src/auth.py")
+        nodes = [login_a, login_b]
+
+        # 'other:login' — no file named 'other.*', no module-scoped match.
+        # Current behavior falls through to partial-name match (slice.py §5).
+        matches = find_entry_nodes(nodes, "other:login")
+        # Both names contain 'other:login' substring? No — fall to partial on
+        # the whole spec, which doesn't match either. Result: empty.
+        assert matches == []
+
+    def test_shorthand_language_filter_still_applies(self) -> None:
+        """--language filter takes effect before the shorthand match."""
+        py = make_symbol("main", path="src/cli.py", language="python")
+        go = make_symbol("main", path="src/cli.go", language="go")
+        nodes = [py, go]
+
+        matches = find_entry_nodes(nodes, "cli:main", language="python")
+        assert len(matches) == 1
+        assert matches[0].language == "python"
+
+    def test_not_shorthand_when_left_has_slash(self) -> None:
+        """'src/cli:main' is NOT a shorthand — it has a slash in the left."""
+        sym = make_symbol("main", path="src/cli.py")
+        nodes = [sym]
+        # Since the left side has a slash, treat as path-ish. Current logic:
+        # falls through to exact-name match on 'src/cli:main' (no match), then
+        # partial on 'src/cli:main' (no match).
+        matches = find_entry_nodes(nodes, "src/cli:main")
+        assert matches == []
+
+    def test_not_shorthand_when_node_id_already_matches(self) -> None:
+        """A full node ID (which contains multiple colons) bypasses the shorthand."""
+        sym = make_symbol("main", path="src/cli.py")
+        nodes = [sym]
+        # Full node ID: language:path:span:name:kind — many colons, not a
+        # two-token shorthand. Must still resolve via exact-ID (step 1).
+        matches = find_entry_nodes(nodes, sym.id)
+        assert matches == [sym]
+
+    def test_shorthand_skips_symbols_with_empty_path(self) -> None:
+        """A symbol with no path cannot match a module:name shorthand."""
+        no_path = make_symbol("main", path="")
+        real = make_symbol("main", path="src/cli.py")
+        nodes = [no_path, real]
+
+        matches = find_entry_nodes(nodes, "cli:main")
+        # Only the real one matches; the pathless symbol is filtered out.
+        assert len(matches) == 1
+        assert matches[0].id == real.id

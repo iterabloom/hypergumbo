@@ -1,0 +1,76 @@
+- op: create  # 331c
+  at: '2026-04-14T06:06:18Z'  # 331c
+  by: agent  # 331c
+  actor: jgstern_agent  # 331c
+  clock: 1  # 331c
+  nonce: 331c  # 331c
+  data:  # 331c
+    kind: invariant  # 331c
+    title: "io-boundaries / taint-flow must distinguish \"no I/O\" from \"language unsupported\""  # 331c
+    status: violated  # 331c
+    priority: 2  # 331c
+    parent:  # 331c
+    tags:  # 331c
+    - uat_2026_04_13  # 331c
+    - io-boundary  # 331c
+    - taint-flow  # 331c
+    isbefore: []  # 331c
+    duplicate_of: []  # 331c
+    not_duplicate_of: []  # 331c
+    pr_ref:  # 331c
+    description: "UAT 2026-04-13 DQ-03+DQ-04: combined invariant for the silent-failure class. When io-boundaries returns nothing for an unsupported language, output is identical to a clean codebase. Worse, taint-flow trivially passes on every assertion in those languages, giving false security confidence. The fix has two parts: (1) io-boundaries emits \"language X unsupported for io-boundaries\" when no catalog exists; (2) taint-flow refuses to assert success (or annotates with `unsupported_language` qualifier) when io-boundaries signals the unsupported condition. Independent of language coverage expansion (U12-U15 / BUG-09a-d)."  # 331c
+    fields:  # 331c
+      statement: "When a language has no I/O primitive catalog, io-boundaries and taint-flow MUST emit an explicit \"language unsupported\" signal. io-boundaries must not silently return zero boundaries (indistinguishable from a clean codebase), and taint-flow must not assert confirmed/success status on unsupported languages (which creates false security confidence)."  # 331c
+      root_cause: "The io-boundary extractor and taint-flow checker both treat \"no primitives matched\" as equivalent to \"no I/O in this code\", with no distinction made for languages that have no primitive catalog at all. taint-flow further depends on io-boundaries for sink identification, so it trivially passes (\"0 evidence -> claim confirmed\") on every claim in unsupported languages. UAT 2026-04-13 demonstrated this on TypeScript, Elixir, Java, Kotlin, Nim, and Solidity."  # 331c
+- op: discuss  # be8b
+  at: '2026-04-14T06:10:32Z'  # be8b
+  by: agent  # be8b
+  actor: jgstern_agent  # be8b
+  clock: 2  # be8b
+  nonce: be8b  # be8b
+  message: "Cross-reference: the per-language io-boundaries coverage items (WI-banaf TypeScript, WI-vibur Elixir, WI-sakan Java, WI-rujos Kotlin) mitigate this invariant's scope organically. However, the invariant should hold independently — even after coverage expands, there will always be some language for which no catalog exists (per ADR context, hypergumbo supports 100+ languages via tree-sitter but only a subset get io-boundary catalogs). The explicit-unsupported-warning fix is therefore orthogonal and should ship regardless of coverage progress."  # be8b
+- op: update  # 09f1
+  at: '2026-04-15T13:43:20Z'  # 09f1
+  by: agent  # 09f1
+  actor: jgstern_agent  # 09f1
+  clock: 3  # 09f1
+  nonce: 09f1  # 09f1
+  set:  # 09f1
+    status: pending_validation  # 09f1
+- op: discuss  # ed9a
+  at: '2026-04-15T13:43:20Z'  # ed9a
+  by: agent  # ed9a
+  actor: jgstern_agent  # ed9a
+  clock: 4  # ed9a
+  nonce: ed9a  # ed9a
+  message: "Fixed in WIP PR. IoBoundaryCatalog gains is_supported:bool field (False when no YAML/alias/parent resolves). New io_boundary.is_language_supported(lang) helper. cmd_io_boundaries tracks unsupported_languages, prints a stderr notice referencing INV-javam, and adds unsupported_languages: [] to the JSON output (stable schema). Taint-flow leg of the fix is deferred to a follow-up — the current PR delivers the io-boundaries signal that taint-flow will consume. Holding at pending_validation until a bakeoff confirms the notice fires on TypeScript/Nim/Solidity/Elixir-only repos and doesn't on fully-supported ones."  # ed9a
+- op: update  # 1d8c
+  at: '2026-04-15T14:10:58Z'  # 1d8c
+  by: agent  # 1d8c
+  actor: jgstern_agent  # 1d8c
+  clock: 5  # 1d8c
+  nonce: 1d8c  # 1d8c
+  set:  # 1d8c
+    status: pending_validation  # 1d8c
+- op: discuss  # f8f3
+  at: '2026-04-15T14:10:58Z'  # f8f3
+  by: agent  # f8f3
+  actor: jgstern_agent  # f8f3
+  clock: 6  # f8f3
+  nonce: f8f3  # f8f3
+  message: "Taint-flow side of the invariant now lands too. cmd_verify_claims tracks unsupported_taint_languages (those with no sources AND no sinks in the taint catalog) and emits a stderr notice when taint claims are evaluated against them. JSON output schema unchanged for backward compat — signal is stderr-only so existing pipelines keep working. Still pending_validation until bakeoff confirms end-to-end behavior on unsupported-language repos."  # f8f3
+- op: update  # 76bb
+  at: '2026-04-18T22:25:15Z'  # 76bb
+  by: agent  # 76bb
+  actor: jgstern_agent  # 76bb
+  clock: 7  # 76bb
+  nonce: 76bb  # 76bb
+  set:  # 76bb
+    status: satisfied  # 76bb
+- op: discuss  # 4d76
+  at: '2026-04-18T22:25:15Z'  # 4d76
+  by: agent  # 4d76
+  actor: jgstern_agent  # 4d76
+  clock: 8  # 4d76
+  nonce: 4d76  # 4d76
+  message: "Validated end-to-end on a live Ruby-only repo (no io-boundary catalog, no taint catalog for ruby):\n\n**io-boundaries JSON:** `unsupported_languages: ['ruby']` present in output.\n\n**io-boundaries stderr:** \"Note: no I/O primitive catalog for language(s): ruby. Zero boundaries reported for these languages does NOT mean the code is I/O-free — it means hypergumbo cannot detect I/O for this language yet. (INV-javam)\"\n\n**verify-claims stderr (taint-flow claim TF-001 evaluated):** \"Note: no taint-flow catalog for language(s): ruby. Claims touching these languages are NOT actually verified — taint-flow has no sources/sinks to trace. Treat 'confirmed' verdicts on these languages as inconclusive. (INV-javam)\"\n\nAll three channels fire. Note: the deep-20260409-054615 bakeoff artifacts (iter-008) predate the INV-javam fix (iter timestamp 2026-04-10 vs fix commit 688fe9761 2026-04-15), so the converged bakeoff's JSON shows the old schema; direct manual validation on a fresh Ruby-only repo confirms the current code emits the signal correctly."  # 4d76

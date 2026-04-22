@@ -1,0 +1,37 @@
+- op: create  # 735d
+  at: '2026-04-14T06:05:23Z'  # 735d
+  by: agent  # 735d
+  actor: jgstern_agent  # 735d
+  clock: 1  # 735d
+  nonce: 735d  # 735d
+  data:  # 735d
+    kind: work_item  # 735d
+    title: "Django dual-reporting inflates route counts ~2x"  # 735d
+    status: todo_soft  # 735d
+    priority: 3  # 735d
+    parent:  # 735d
+    tags:  # 735d
+    - uat_2026_04_13  # 735d
+    - routes  # 735d
+    - framework_detection  # 735d
+    isbefore: []  # 735d
+    duplicate_of: []  # 735d
+    not_duplicate_of: []  # 735d
+    pr_ref:  # 735d
+    description: "UAT 2026-04-13 DQ-01: the same route appears twice in pretix output — once from urls.py URL configuration and once from the view class definition (985 vs ~500 unique patterns). Either suppress one source or emit a single canonical route per (url, view) pair."  # 735d
+    fields: {}  # 735d
+- op: update  # bd06
+  at: '2026-04-16T04:23:53Z'  # bd06
+  by: agent  # bd06
+  actor: jgstern_agent  # bd06
+  clock: 2  # bd06
+  nonce: bd06  # bd06
+  set:  # bd06
+    status: done  # bd06
+- op: discuss  # 6be9
+  at: '2026-04-16T04:23:53Z'  # 6be9
+  by: agent  # 6be9
+  actor: jgstern_agent  # 6be9
+  clock: 3  # 6be9
+  nonce: 6be9  # 6be9
+  message: "Fixed in PR #3053 (commit d0382caee). materialize_route_symbols now pre-populates its seen_routes dedupe set with (method, path) pairs from any existing kind='route' symbol in the input, preventing Django's urls.py analyzer route and the view class's concept=route enrichment from producing two symbols for the same route. ANY-method routes (CBV pending WI-lojoh expansion) are intentionally excluded so the materializer can still emit specific-method variants for CBV handler methods. 3 new tests."  # 6be9

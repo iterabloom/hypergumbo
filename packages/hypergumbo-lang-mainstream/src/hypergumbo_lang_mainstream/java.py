@@ -2033,8 +2033,13 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
+    # Parse Gradle/Maven deps for tier classification of boundary nodes (WI-duhom)
+    from hypergumbo_lang_mainstream.jvm_deps import parse_jvm_dependencies
+    jvm_manifest = parse_jvm_dependencies(repo_root)
+
     return JavaAnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,
+        dependency_manifest=jvm_manifest if jvm_manifest.entries else None,
     )

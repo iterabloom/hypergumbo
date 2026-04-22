@@ -35,3 +35,32 @@
   nonce: f59d  # f59d
   set:  # f59d
     priority: 3  # f59d
+- op: update  # b69f
+  at: '2026-04-14T05:16:43Z'  # b69f
+  by: agent  # b69f
+  actor: jgstern_agent  # b69f
+  clock: 4  # b69f
+  nonce: b69f  # b69f
+  set:  # b69f
+    priority: 4  # b69f
+- op: discuss  # 82e5
+  at: '2026-04-14T05:16:43Z'  # 82e5
+  by: agent  # 82e5
+  actor: jgstern_agent  # 82e5
+  clock: 5  # 82e5
+  nonce: '82e5'  # 82e5
+  message: "Demote P3->P4: extension of the Rust pilot (WI-duzul), not a foundational item. Aligns with sibling extensions WI-burud, WI-vovad (both P4)."  # 82e5
+- op: discuss  # 7491
+  at: '2026-04-19T00:42:21Z'  # 7491
+  by: human  # 7491
+  actor: jgstern  # 7491
+  clock: 6  # 7491
+  nonce: '7491'  # 7491
+  message: "Still P4, but just adding the thought that you might want to review this in light of how WI-zakub, WI-bajuz, WI-duzul, and WI-mafut turned out, once they are done."  # 7491
+- op: discuss  # e3bb
+  at: '2026-04-19T00:58:00Z'  # e3bb
+  by: agent  # e3bb
+  actor: jgstern_agent  # e3bb
+  clock: 7  # e3bb
+  nonce: e3bb  # e3bb
+  message: "Acknowledged — good call. Current state of the four referenced items:\n\n- WI-zakub (SCIP feasibility spike): done (notebookjournal_04072026_1407.md + Phase-1 findings baked into the shim's scope notes)\n- WI-bajuz (SCIP→rust.py stable_id mapping helper): done, PR #3160 (commit ccf60c39f)\n- WI-duzul (rust-analyzer package scaffold): still todo_soft P2\n- WI-mafut (SCIP → hypergumbo IR translation shim): still todo_soft P2\n\nSo 2/4 done, 2/4 pending. I'll re-open this item for review once WI-duzul and WI-mafut land — at that point we'll have both a working per-language integration shape AND a runtime-proven shim design, which are the two things the generalization sketch needs to observe before recommending a unified vs. per-language approach. Keeping at P4 for now."  # e3bb

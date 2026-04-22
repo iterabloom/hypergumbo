@@ -1,6 +1,13 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Hypergumbo Architectural Analysis — January 7, 2026 (updated 21:30)
 
+**Status:** Accepted — the architectural analysis and taxonomy in this document remain the current contract (§1 Language/Dialect/Framework distinction, §2 analyzer-vs-linker principle with §2.4 subcategory vocabulary, §2.6 FRAMEWORK_PATTERNS phase, §3 framework-afforded concept taxonomy, §6 semantic entry detection). The §5 Migration Path (v0.7.x / v0.8.x / v0.9.x phases) is complete and retained for historical context. The design-target portions flagged 🟪 in `docs/hypergumbo-spec.md` (notably the unified `AnalysisPass(Protocol)`) are addressed by later ADRs.
+
+**Supplemented by:**
+- [ADR-0003-ext: Linker Subcategory Restoration](0003-linker-subcategory-restoration.md) — the §2.4 Protocol / Bridge / Framework subcategory vocabulary defined here is restored as the authoritative classification, extended with a fourth subcategory (Infrastructure), and made actively maintained across the linker catalogue, the spec, and the bakeoff playbooks.
+- [ADR-0010: Modular Packages and Smart Testing](0010-modular-packages-and-smart-testing.md) — implements the package decomposition implied by §1's taxonomy (`hypergumbo-core`, `hypergumbo-lang-*` packages).
+- [ADR-0012: Pass Unification and Multi-Fidelity](0012-pass-unification-and-multi-fidelity.md) — describes the two-tier execution model (analyzers → linkers) that this document establishes, and carries forward the multi-fidelity design target.
+
 ## Summary
 
 Hypergumbo's architecture grew organically, resulting in some incoherent abstractions and disconnected data flows. This document establishes a principled taxonomy and identifies concrete architectural improvements.
@@ -503,7 +510,7 @@ Some frameworks span multiple languages:
 | JNI          | Java + C/C++                    | FFI bridge         |
 | React Native | JavaScript + Swift/Kotlin       | Platform bridge    |
 | Electron     | JavaScript + Node.js            | IPC                |
-This is why linkers exist—they're the cross-language counterpart to analyzers.
+This is why linkers exist—they're the cross-language counterpart to analyzers. (This framing privileges the Bridge and cross-language Framework use cases. The ADR's own §2.4 enumerates Protocol Linkers as framework-agnostic, within-language-capable patterns; for the restored subcategory vocabulary — Protocol / Bridge / Framework / Infrastructure — and the current catalogue, see [ADR-0003-ext: Linker Subcategory Restoration](0003-linker-subcategory-restoration.md).)
 
 ---
 
@@ -758,7 +765,7 @@ Version detection from manifests is complex and probably not worth it unless pat
 
 ### 6.5 Resolved Questions
 1. **Where is the boundary between analyzer and linker?**
-   - **Resolved:** Analyzers capture syntax-visible data (symbols, edges, metadata). FRAMEWORK_PATTERNS enriches symbols with concept metadata. Linkers create cross-boundary edges.
+   - **Resolved:** Analyzers capture syntax-visible data (symbols, edges, metadata). FRAMEWORK_PATTERNS enriches symbols with concept metadata. Linkers create edges across either language boundaries (Bridge, some Framework) or dispatch boundaries (Protocol, some Framework), and populate graph-structural relationships (Infrastructure). See [ADR-0003-ext §2](0003-linker-subcategory-restoration.md) for subcategory definitions.
    - Framework concept detection is NEITHER in analyzers NOR in linkers—it's in FRAMEWORK_PATTERNS.
 2. **Should there be a "framework pack" that bundles analyzer config + linkers?**
    - **Resolved:** In the new architecture, a "framework" IS essentially a pack: it specifies which pattern YAML to use, which linkers to activate, and which entry kinds result.

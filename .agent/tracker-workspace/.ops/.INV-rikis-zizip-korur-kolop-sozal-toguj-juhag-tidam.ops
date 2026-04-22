@@ -1,0 +1,53 @@
+- op: create  # ed22
+  at: '2026-04-19T09:35:14Z'  # ed22
+  by: agent  # ed22
+  actor: jgstern_agent  # ed22
+  clock: 1  # ed22
+  nonce: ed22  # ed22
+  data:  # ed22
+    kind: invariant  # ed22
+    title: "generate-concepts must detect variable-name concept comparison and tuple-membership patterns"  # ed22
+    status: violated  # ed22
+    priority: 3  # ed22
+    parent:  # ed22
+    tags:  # ed22
+    - developer_experience  # ed22
+    - analysis_quality  # ed22
+    isbefore: []  # ed22
+    duplicate_of: []  # ed22
+    not_duplicate_of: []  # ed22
+    pr_ref:  # ed22
+    description: "Discovered 2026-04-19 during WI-noraf investigation: websocket_handler is mapped to WEBSOCKET_HANDLER at entrypoints.py:425-439 (since ADR-0003 v0.9.x) but shows inert in docs/CONCEPTS.md. Root cause is regex coverage, not missing code.\n\n**Known false-inert concepts** from packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py grep:\nerror_handler, websocket_handler, websocket_gateway, event_handler, middleware, command, liveview, graphql_resolver, graphql_schema, lifecycle_hook, main_function, main_guard, library_export, serialization_callback, controller_by_name, handler_by_name, broker_lifecycle_by_name, service_by_name, command_by_name, entrypoint, app_bootstrap, ipc_handler, application, npm_bin, cargo_binary, pyproject_script.\n\n**Proposed fix:**\n1. Broaden == regex to match any identifier containing 'concept': \\\\b\\\\w*concept\\\\w*\\\\s*==\\\\s*[\"'](\\\\w+)[\"']\n2. Add regex for tuple-membership: concept-var in (...) then scan tuple body for quoted identifiers.\n3. Mirror for != (exclusion patterns).\n4. Regenerate docs/CONCEPTS.md — expect a large inert→live flip.\n\n**Acceptance:**\n- error_handler, websocket_handler, controller, middleware, event_handler all show 'live' after regeneration.\n- No false ghost classifications introduced.\n- Unit tests added for the regex additions (script has none today)."  # ed22
+    fields:  # ed22
+      statement: "docs/CONCEPTS.md status column (live/inert/ghost) must accurately reflect whether a concept has at least one code consumer; every concept_type == \"X\" or concept_type in (\"X\", \"Y\") pattern in hypergumbo-core source must count as a consumer."  # ed22
+      root_cause: "scripts/generate-concepts consumer-detection regex only matches bare-name concept == \"X\", not variable-name patterns like concept_type == \"X\", and never matches tuple-membership tests like concept_type in (\"X\", \"Y\"). The ~30 concepts consumed in entrypoints._detect_from_concepts via concept_type variable are all false-inert in docs/CONCEPTS.md."  # ed22
+- op: update  # 8ef8
+  at: '2026-04-19T10:29:04Z'  # 8ef8
+  by: agent  # 8ef8
+  actor: jgstern_agent  # 8ef8
+  clock: 2  # 8ef8
+  nonce: 8ef8  # 8ef8
+  set:  # 8ef8
+    status: pending_validation  # 8ef8
+- op: discuss  # 287c
+  at: '2026-04-19T10:29:04Z'  # 287c
+  by: agent  # 287c
+  actor: jgstern_agent  # 287c
+  clock: 3  # 287c
+  nonce: 287c  # 287c
+  message: "Fix shipped in PR #3189 (commit 5f6531c94 on dev). docs/CONCEPTS.md regenerated: 7 live / 309 inert → 37 live / 279 inert / 1 ghost (30 concepts flipped inert→live). 25 new tests cover every consumer shape. Status pending_validation until next bakeoff cycle validates nothing regressed elsewhere (prospector dead-code-maybe set should not grow as a side effect of the registry change — the change is accounting-only, so no semantic drift is expected)."  # 287c
+- op: update  # 45cd
+  at: '2026-04-19T14:16:12Z'  # 45cd
+  by: agent  # 45cd
+  actor: jgstern_agent  # 45cd
+  clock: 4  # 45cd
+  nonce: 45cd  # 45cd
+  set:  # 45cd
+    status: satisfied  # 45cd
+- op: discuss  # 5807
+  at: '2026-04-19T14:16:12Z'  # 5807
+  by: agent  # 5807
+  actor: jgstern_agent  # 5807
+  clock: 5  # 5807
+  nonce: '5807'  # 5807
+  message: "Fix shipped in PR #3189 (commit 5f6531c94) on 2026-04-19. Evidence the invariant holds: (1) scripts/generate-concepts now regenerates docs/CONCEPTS.md with 40 live concepts at HEAD, up from 7 at commit 7f40a14e before the fix — all 30+ previously-inert concepts consumed via concept_type == 'X' / concept_type in ('X', 'Y') patterns now flip live. (2) 25 new tests in tests/test_generate_concepts.py cover every consumer shape: equality, inequality, reverse-order, concept-variant variable names, tuple / set / list / not-in membership, multi-line tuple, unrelated-variable non-match, _concept_utils.py skip. (3) Follow-on PRs #3185 (controller), #3193 (router), #3194 (form) continued flipping concepts inert→live without the regex requiring further broadening — the consumer shapes they added are all already recognized. Bakeoff CONVERGED cohort=1 iter=8 (deep-20260409-054615) after all four PRs merged with no regressions."  # 5807

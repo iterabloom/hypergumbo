@@ -1,0 +1,37 @@
+- op: create  # 39e2
+  at: '2026-04-14T06:05:24Z'  # 39e2
+  by: agent  # 39e2
+  actor: jgstern_agent  # 39e2
+  clock: 1  # 39e2
+  nonce: '39e2'  # 39e2
+  data:  # 39e2
+    kind: work_item  # 39e2
+    title: "`routes` includes test-file routes by default"  # 39e2
+    status: todo_soft  # 39e2
+    priority: 4  # 39e2
+    parent:  # 39e2
+    tags:  # 39e2
+    - uat_2026_04_13  # 39e2
+    - routes  # 39e2
+    - ergonomics  # 39e2
+    isbefore: []  # 39e2
+    duplicate_of: []  # 39e2
+    not_duplicate_of: []  # 39e2
+    pr_ref:  # 39e2
+    description: "UAT 2026-04-13 DQ-02: plausible has 38 (14.3%) of reported routes from test files. The `-x` flag suppresses correctly, but default behavior includes them. Consider making `-x` the default for `routes`, with `--include-tests` opt-in. Low-impact UX change."  # 39e2
+    fields: {}  # 39e2
+- op: update  # ed46
+  at: '2026-04-15T10:47:28Z'  # ed46
+  by: agent  # ed46
+  actor: jgstern_agent  # ed46
+  clock: 2  # ed46
+  nonce: ed46  # ed46
+  set:  # ed46
+    status: done  # ed46
+- op: discuss  # 3de4
+  at: '2026-04-15T10:47:28Z'  # 3de4
+  by: agent  # 3de4
+  actor: jgstern_agent  # 3de4
+  clock: 3  # 3de4
+  nonce: 3de4  # 3de4
+  message: "Fixed in WIP PR. Routes subcommand now excludes test-file routes by default. New --include-tests flag opts back in. Legacy -x/--exclude-tests preserved as no-op alias for backward compat. cmd_routes reads args.include_tests instead of args.exclude_tests; default exclusion when neither attribute is set. 3 tests cover new default, --include-tests opt-in, and legacy --exclude-tests still works."  # 3de4

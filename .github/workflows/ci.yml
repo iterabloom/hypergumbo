@@ -266,10 +266,25 @@ jobs:
           pip install pip-audit
           # CVE-2026-25645: requests 2.32.5 — fix in 2.33.0
           pip install "requests~=2.33.0"
+          # CVE-2026-4539: pygments AdlLexer ReDoS — fix in 2.20.0.
+          # The self-hosted runner's baseline Python can ship an older
+          # pygments. Mirror our pyproject.toml pin here so the audit scans
+          # the same version our packages install at runtime.
+          pip install "pygments~=2.20.0"
       - name: Run pip-audit (dependency vulnerabilities)
         run: |
-          # CVE-2026-4539: pygments 2.19.2 — no upstream fix available yet (latest version)
-          pip-audit --skip-editable --ignore-vuln CVE-2026-4539
+          # CVE-2025-71176: pytest /tmp/pytest-of-{user} TOCTOU on UNIX.
+          # Fix is pytest 9.0.3, but we are pinned below 9.0.0 transitively by
+          # syrupy 4.8.0 (hard-pinned by pytest-textual-snapshot 1.1.0).
+          # Impact assessment: local attack boundary only, reachable solely in
+          # CI/dev environments — pytest is a dev-only dep, never installed on
+          # end-user systems running hypergumbo. Our self-hosted runners are
+          # single-tenant, so practical exploitability is ~0.
+          # Exit plan: upstream PR to relax the syrupy pin is tracked at
+          # https://github.com/Textualize/pytest-textual-snapshot/pull/24
+          # When that merges and a new pytest-textual-snapshot release ships,
+          # bump pytest to 9.0.3+ and drop this ignore.
+          pip-audit --skip-editable --ignore-vuln CVE-2025-71176
 
   verify-generated:
     needs: [changes, stop-the-line]
@@ -290,7 +305,7 @@ jobs:
           if [ -d "packages/hypergumbo-core" ]; then
             # Install test deps directly - NEVER use meta-package (it pulls PyTorch/CUDA)
             pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev]"
           else
             pip install -e .[dev]
           fi
@@ -378,7 +393,7 @@ jobs:
           if [ -d "packages/hypergumbo-core" ]; then
             # Install test deps directly - NEVER use meta-package (it pulls PyTorch/CUDA)
             pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev,tui]"
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
           else
             pip install -e .[dev]
           fi
@@ -420,8 +435,19 @@ jobs:
             BASE="${{ github.event.pull_request.base.sha }}"
             HEAD="${{ github.event.pull_request.head.sha }}"
 
+            # Release PRs (dev → main) contain cumulative changes already
+            # validated per-commit on dev.  The targeted-manifest model
+            # cannot cover a full-release diff, so skip pytest here;
+            # full-suite.yml validates after merge.
+            PR_HEAD_REF="${{ github.head_ref }}"
+            if [[ "$PR_HEAD_REF" == release/* ]]; then
+              echo "✅ Release branch ($PR_HEAD_REF) — skipping pytest (validated per-commit on dev)"
+              echo "skip_tests=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
             echo "=== Changed files (BASE=$BASE HEAD=$HEAD) ==="
-            git diff --name-only "$BASE" "$HEAD" | head -20
+            git diff --name-only "$BASE" "$HEAD" | head -20 || true
 
             # Check if core infrastructure changed (requires full suite regardless)
             CORE_CHANGED=false
@@ -448,7 +474,7 @@ jobs:
 
             echo "=== Validating committed manifest ==="
             # Show header only (not the test list, which is long and confusing when truncated)
-            grep "^#" "$MANIFEST" | head -10
+            grep "^#" "$MANIFEST" | head -10 || true
             TEST_COUNT=$(grep -c "^packages/" "$MANIFEST" || echo 0)
             echo "# (manifest lists $TEST_COUNT test files)"
 
@@ -629,8 +655,14 @@ jobs:
             COV_PATHS=""
           fi
 
-          # Filter out embedding files from coverage check (they require sentence-transformers)
-          # These are excluded by .coveragerc.no-embeddings but we also skip the explicit check
+          # Filter out files that are intentionally excluded from the 100%-coverage
+          # contract:
+          #   - embedding modules (require sentence-transformers, absent in CI)
+          #   - anything under a /_generated/ directory (protoc / protobuf output,
+          #     regenerated by scripts/build-scip-proto and similar helpers)
+          # These are also covered by .coveragerc / .coveragerc.no-embeddings omit
+          # lists, but the --include filter below bypasses omit, so we must skip
+          # them explicitly here too.
           EMBEDDING_FILES="sketch_embeddings.py _embedding_data.py"
           COVERABLE_SOURCE_FILES=""
           for f in $CHANGED_SOURCE_FILES; do
@@ -642,6 +674,10 @@ jobs:
                 break
               fi
             done
+            if echo "$f" | grep -qE "/_generated/"; then
+              IS_EMBEDDING=true
+              echo "  (skipping auto-generated file from coverage check: $f)"
+            fi
             if [ "$IS_EMBEDDING" = "false" ]; then
               COVERABLE_SOURCE_FILES="$COVERABLE_SOURCE_FILES $f"
             fi
@@ -768,7 +804,7 @@ jobs:
           pip install --upgrade pip
           if [ -d "packages/hypergumbo-core" ]; then
             pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev,tui]"
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
           else
             pip install -e .[dev]
           fi
@@ -801,13 +837,21 @@ jobs:
             BASE="${{ github.event.pull_request.base.sha }}"
             HEAD="${{ github.event.pull_request.head.sha }}"
 
+            # Release PRs skip pytest (same logic as primary job)
+            PR_HEAD_REF="${{ github.head_ref }}"
+            if [[ "$PR_HEAD_REF" == release/* ]]; then
+              echo "✅ Release branch ($PR_HEAD_REF) — skipping pytest"
+              echo "skip_tests=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
             if [ ! -f "$MANIFEST" ]; then
               echo "❌ No manifest committed"
               exit 1
             fi
 
             echo "=== Validating committed manifest (retry) ==="
-            grep "^#" "$MANIFEST" | head -10
+            grep "^#" "$MANIFEST" | head -10 || true
             TEST_COUNT=$(grep -c "^packages/" "$MANIFEST" || echo 0)
             echo "# (manifest lists $TEST_COUNT test files)"
 
@@ -878,6 +922,7 @@ jobs:
             COV_PATHS=""
           fi
 
+          # Retry path — same skip policy as pytest job above.
           EMBEDDING_FILES="sketch_embeddings.py _embedding_data.py"
           COVERABLE_SOURCE_FILES=""
           for f in $CHANGED_SOURCE_FILES; do
@@ -888,6 +933,9 @@ jobs:
                 break
               fi
             done
+            if echo "$f" | grep -qE "/_generated/"; then
+              IS_EMBEDDING=true
+            fi
             if [ "$IS_EMBEDDING" = "false" ]; then
               COVERABLE_SOURCE_FILES="$COVERABLE_SOURCE_FILES $f"
             fi

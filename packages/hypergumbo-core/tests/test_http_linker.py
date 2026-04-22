@@ -8,9 +8,12 @@ from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.linkers.http import (
     HttpClientCall,
     _create_client_symbol,
+    _extract_module_constants,
     _extract_path_from_url,
     _find_source_files,
+    _fold_template_literal,
     _match_route_pattern,
+    _scan_elm_file,
     _scan_go_file,
     _scan_java_file,
     _scan_javascript_file,
@@ -1882,3 +1885,759 @@ class TestCreateClientSymbolStableId:
         sym_path = _create_client_symbol(call_path, tmp_path)
         # Both should resolve to the same stable_id since paths match
         assert sym_full.stable_id == sym_path.stable_id
+
+
+# ---------------------------------------------------------------------------
+# Tests: Elm HTTP scanner (WI-tinip)
+# ---------------------------------------------------------------------------
+
+
+class TestScanElmFile:
+    """Tests for Elm HTTP client call detection."""
+
+    def test_utils_api_get(self) -> None:
+        """``Utils.Api.get (apiUrl ++ "/receivers") ...`` → GET /receivers."""
+        code = dedent('''
+            module Alerts.Api exposing (fetchReceivers)
+
+            fetchReceivers apiUrl =
+                Utils.Api.send
+                    (Utils.Api.get
+                        (apiUrl ++ "/receivers")
+                        decoder
+                    )
+        ''')
+        calls = _scan_elm_file(Path("Alerts/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/receivers"
+        assert calls[0].language == "elm"
+        assert calls[0].url_type == "literal"
+
+    def test_utils_api_post(self) -> None:
+        """``Utils.Api.post (apiUrl ++ "/silences") body ...`` → POST /silences."""
+        code = dedent('''
+            createSilence apiUrl body =
+                Utils.Api.post (apiUrl ++ "/silences") body
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/silences"
+
+    def test_utils_api_delete(self) -> None:
+        """``Utils.Api.delete`` is supported."""
+        code = dedent('''
+            deleteSilence apiUrl id =
+                Utils.Api.delete (apiUrl ++ "/silence/abc-123")
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+        assert calls[0].url == "/silence/abc-123"
+
+    def test_http_get_record_form(self) -> None:
+        """``Http.get { url = "..." }`` from the core library."""
+        code = dedent('''
+            getStatus =
+                Http.get
+                    { url = "/api/status"
+                    , expect = Http.expectJson GotStatus decoder
+                    }
+        ''')
+        calls = _scan_elm_file(Path("Status.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/status"
+
+    def test_http_post_record_form(self) -> None:
+        """``Http.post { url = "..." }`` POST variant."""
+        code = dedent('''
+            submitForm body =
+                Http.post
+                    { url = "/api/v1/submit"
+                    , body = Http.jsonBody body
+                    , expect = Http.expectJson Submitted decoder
+                    }
+        ''')
+        calls = _scan_elm_file(Path("Form.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/v1/submit"
+
+    def test_http_request_method_first(self) -> None:
+        """``Http.request { method = "PUT", url = "...", ... }`` explicit method."""
+        code = dedent('''
+            updateUser id data =
+                Http.request
+                    { method = "PUT"
+                    , headers = []
+                    , url = "/api/users/1"
+                    , body = Http.jsonBody data
+                    , expect = Http.expectJson Updated decoder
+                    , timeout = Nothing
+                    , tracker = Nothing
+                    }
+        ''')
+        calls = _scan_elm_file(Path("Users.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PUT"
+        assert calls[0].url == "/api/users/1"
+
+    def test_http_request_url_first(self) -> None:
+        """``Http.request { url = "...", method = "DELETE", ... }`` — url before method."""
+        code = dedent('''
+            removeUser id =
+                Http.request
+                    { url = "/api/users/1"
+                    , method = "DELETE"
+                    , headers = []
+                    , body = Http.emptyBody
+                    , expect = Http.expectWhatever Removed
+                    , timeout = Nothing
+                    , tracker = Nothing
+                    }
+        ''')
+        calls = _scan_elm_file(Path("Users.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+        assert calls[0].url == "/api/users/1"
+
+    def test_multiple_calls_in_module(self) -> None:
+        """A single Elm module can define many endpoint functions."""
+        code = dedent('''
+            module Alerts.Api exposing (fetchAlerts, fetchReceivers)
+
+            fetchAlerts apiUrl =
+                Utils.Api.get (apiUrl ++ "/alerts") decoder
+
+            fetchReceivers apiUrl =
+                Utils.Api.get (apiUrl ++ "/receivers") decoder
+
+            postAlert apiUrl body =
+                Utils.Api.post (apiUrl ++ "/alerts") body
+        ''')
+        calls = _scan_elm_file(Path("Api.elm"), code)
+        assert len(calls) == 3
+        methods = sorted((c.method, c.url) for c in calls)
+        assert methods == [
+            ("GET", "/alerts"),
+            ("GET", "/receivers"),
+            ("POST", "/alerts"),
+        ]
+
+    def test_no_http_calls_returns_empty(self) -> None:
+        """An Elm module with no HTTP calls returns no calls."""
+        code = dedent('''
+            module Types exposing (Foo, bar)
+
+            type Foo = Bar | Baz
+
+            bar : Int -> Int
+            bar x = x + 1
+        ''')
+        calls = _scan_elm_file(Path("Types.elm"), code)
+        assert calls == []
+
+    def test_line_numbers_recorded(self) -> None:
+        """Each detected call records its line number correctly."""
+        code = dedent('''
+            module Api exposing (..)
+
+
+
+
+            fetchA apiUrl =
+                Utils.Api.get (apiUrl ++ "/a") decoder
+        ''').lstrip("\n")
+        calls = _scan_elm_file(Path("Api.elm"), code)
+        assert len(calls) == 1
+        # The Utils.Api.get line is line 7 (1-indexed) after the blank lines
+        assert calls[0].line == 7
+
+
+class TestElmLetStringJoin:
+    """Tests for Elm ``let <var> = String.join "/" [...]`` idiom (WI-rosan).
+
+    Alertmanager's ``Silences/Api.elm`` and ``Alerts/Api.elm`` construct their
+    URLs via a let-bound ``String.join`` over a list of path segments. The
+    Phase-1 scanner only handled the direct ``apiUrl ++ "/path"`` form, so
+    these endpoints (``getSilence``, ``fetchAlerts``, ``fetchAlertGroups``,
+    etc.) were invisible to the cross-language HTTP linker.
+    """
+
+    def test_string_join_two_literal_segments(self) -> None:
+        """``String.join "/" [ apiUrl, "silences" ]`` + ``Utils.Api.get url``
+        folds to ``GET /silences``."""
+        code = dedent('''
+            create apiUrl silence =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silences" ]
+                in
+                Utils.Api.send (Utils.Api.post url body decoder)
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/silences"
+        assert calls[0].language == "elm"
+        assert calls[0].url_type == "literal"
+
+    def test_string_join_literal_plus_concat_tail(self) -> None:
+        """``String.join "/" [ apiUrl, "alerts" ++ queryStr ]`` keeps the
+        literal prefix and drops the ``++`` tail — ``GET /alerts``."""
+        code = dedent('''
+            fetchAlerts apiUrl filter =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "alerts" ++ generateAPIQueryString filter ]
+                in
+                Utils.Api.send (Utils.Api.get url decoder)
+        ''')
+        calls = _scan_elm_file(Path("Alerts/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/alerts"
+
+    def test_string_join_with_variable_path_segment(self) -> None:
+        """``String.join "/" [ apiUrl, "silence", uuid ]`` → ``GET /silence/{uuid}``.
+        Variable path segments are preserved as ``{name}`` placeholders so
+        ``_match_route_pattern`` can match them against Go route parameters."""
+        code = dedent('''
+            getSilence apiUrl uuid =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence", uuid ]
+                in
+                Utils.Api.send (Utils.Api.get url decoder)
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/silence/{uuid}"
+        assert calls[0].url_type == "literal"
+
+    def test_string_join_three_literal_segments(self) -> None:
+        """``String.join "/" [ apiUrl, "alerts", "groups" ++ q ]`` →
+        ``/alerts/groups``."""
+        code = dedent('''
+            fetchAlertGroups apiUrl filter =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "alerts", "groups" ++ generateAPIQueryString filter ]
+                in
+                Utils.Api.send (Utils.Api.get url decoder)
+        ''')
+        calls = _scan_elm_file(Path("Alerts/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/alerts/groups"
+
+    def test_string_join_dotted_variable(self) -> None:
+        """A dotted access (``silence.id``) becomes a ``{id}`` placeholder —
+        the last dotted component names the path parameter."""
+        code = dedent('''
+            destroy apiUrl silence =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence", silence.id ]
+                in
+                Utils.Api.send (Utils.Api.delete url decoder)
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+        assert calls[0].url == "/silence/{id}"
+
+    def test_string_join_delete_method(self) -> None:
+        """Method comes from the ``Utils.Api.<method>`` name (DELETE here)."""
+        code = dedent('''
+            destroy apiUrl uuid =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence", uuid ]
+                in
+                Utils.Api.delete url decoder
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+        assert calls[0].url == "/silence/{uuid}"
+
+    def test_string_join_not_followed_by_utils_api_call(self) -> None:
+        """A let-bound ``String.join`` that is NEVER consumed by a
+        ``Utils.Api.<method>`` call within the scan window is ignored —
+        don't invent a call that isn't there."""
+        code = dedent('''
+            helper apiUrl =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence" ]
+                in
+                url
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert calls == []
+
+    def test_string_join_different_var_name(self) -> None:
+        """The let-binding may use any name, not just ``url`` — the
+        subsequent call must reference the same identifier."""
+        code = dedent('''
+            fetch apiUrl =
+                let
+                    endpoint =
+                        String.join "/" [ apiUrl, "status" ]
+                in
+                Utils.Api.send (Utils.Api.get endpoint decoder)
+        ''')
+        calls = _scan_elm_file(Path("Status/Api.elm"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/status"
+
+    def test_string_join_multiple_functions(self) -> None:
+        """Two functions, each with their own let-bound String.join URL,
+        produce two calls."""
+        code = dedent('''
+            getSilence apiUrl uuid =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence", uuid ]
+                in
+                Utils.Api.send (Utils.Api.get url decoder)
+
+
+            destroy apiUrl uuid =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence", uuid ]
+                in
+                Utils.Api.send (Utils.Api.delete url decoder)
+        ''')
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        methods = sorted((c.method, c.url) for c in calls)
+        assert methods == [
+            ("DELETE", "/silence/{uuid}"),
+            ("GET", "/silence/{uuid}"),
+        ]
+
+    def test_string_join_line_number(self) -> None:
+        """The recorded line number points to the Utils.Api call, not the
+        let-binding."""
+        code = dedent('''
+            getSilence apiUrl uuid =
+                let
+                    url =
+                        String.join "/" [ apiUrl, "silence", uuid ]
+                in
+                Utils.Api.send (Utils.Api.get url decoder)
+        ''').lstrip("\n")
+        calls = _scan_elm_file(Path("Silences/Api.elm"), code)
+        assert len(calls) == 1
+        # The "Utils.Api.send" line is line 6 (after let/url/String.join/in)
+        assert calls[0].line == 6
+
+    def test_parse_string_join_parts_skips_empty_segments(self) -> None:
+        """Empty parts (e.g. produced by an empty ``String.join "/" []``
+        or an adjacent-comma artefact) are dropped, not crashed on."""
+        from hypergumbo_core.linkers.http import _parse_string_join_parts
+        # An entirely empty parts string → no items (skips empty segment).
+        assert _parse_string_join_parts("") == []
+        # Trailing / adjacent commas produce empty segments that are skipped.
+        assert _parse_string_join_parts('"a", , "b"') == [
+            ("a", True),
+            ("b", True),
+        ]
+
+    def test_fold_elm_string_join_too_few_items(self) -> None:
+        """A ``String.join`` list with fewer than 2 items has no path
+        segments after the base URL — return ``None`` so the scanner
+        drops the binding."""
+        from hypergumbo_core.linkers.http import _fold_elm_string_join
+        assert _fold_elm_string_join("") is None
+        assert _fold_elm_string_join("apiUrl") is None
+
+    def test_scan_elm_file_skips_empty_string_join_list(self) -> None:
+        """A ``let url = String.join "/" []`` binding with an empty list
+        cannot produce a URL — the scanner drops it even if a subsequent
+        Utils.Api call references the identifier."""
+        code = dedent('''
+            weird apiUrl =
+                let
+                    url =
+                        String.join "/" []
+                in
+                Utils.Api.send (Utils.Api.get url decoder)
+        ''')
+        calls = _scan_elm_file(Path("Weird.elm"), code)
+        assert calls == []
+
+
+class TestElmFilesAreScanned:
+    """Integration: _find_source_files should include .elm files so the
+    scanner is reached by link_http."""
+
+    def test_elm_file_listed(self, tmp_path: Path) -> None:
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "Alerts.elm").write_text(
+            "module Alerts exposing (fetch)\n"
+            "fetch apiUrl = Utils.Api.get (apiUrl ++ \"/alerts\")"
+        )
+        files = list(_find_source_files(tmp_path))
+        assert any(f.suffix == ".elm" for f in files), (
+            f"Expected .elm file in discovery set; got {[str(f) for f in files]}"
+        )
+
+    def test_link_http_routes_elm_to_go(self, tmp_path: Path) -> None:
+        """End-to-end: an Elm client calling /api/alerts should be linked
+        to a Go route symbol declared with that same path.
+        """
+        (tmp_path / "ui").mkdir()
+        (tmp_path / "ui" / "Alerts.elm").write_text(dedent('''
+            module Alerts exposing (..)
+
+            fetchAlerts apiUrl =
+                Utils.Api.get (apiUrl ++ "/api/v2/alerts") decoder
+        ''').lstrip("\n"))
+
+        # Mock a Go route symbol with route info in meta
+        # (format mirrors what Go/Ruby/PHP analyzers emit — see
+        # _get_route_info_from_concept).
+        route = Symbol(
+            id="api/alerts.go::handleAlerts",
+            name="handleAlerts",
+            kind="route",
+            path=str(tmp_path / "api" / "alerts.go"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+            language="go",
+            meta={
+                "route_path": "/api/v2/alerts",
+                "http_method": "GET",
+            },
+        )
+
+        result = link_http(tmp_path, [route])
+
+        # Elm symbol should have been created
+        elm_syms = [s for s in result.symbols if s.language == "elm"]
+        assert len(elm_syms) == 1
+        # And a cross-language edge should exist
+        assert any(
+            e.src == elm_syms[0].id and e.dst == route.id
+            and e.edge_type == "http_calls"
+            for e in result.edges
+        ), "Elm → Go route edge missing from link_http result"
+
+
+class TestExtractModuleConstants:
+    """Tests for JS/TS module-scope const assignment extraction (WI-sijoh)."""
+
+    def test_extracts_const_with_double_quotes(self):
+        code = dedent('''
+            const API_PATH = "api/v1";
+        ''')
+        assert _extract_module_constants(code) == {"API_PATH": "api/v1"}
+
+    def test_extracts_const_with_single_quotes(self):
+        code = dedent('''
+            const API_URL = '/api';
+        ''')
+        assert _extract_module_constants(code) == {"API_URL": "/api"}
+
+    def test_extracts_exported_const(self):
+        code = dedent('''
+            export const BASE = "/v2";
+        ''')
+        assert _extract_module_constants(code) == {"BASE": "/v2"}
+
+    def test_extracts_let_and_var(self):
+        code = dedent('''
+            let FOO = "/foo";
+            var BAR = "/bar";
+        ''')
+        assert _extract_module_constants(code) == {"FOO": "/foo", "BAR": "/bar"}
+
+    def test_extracts_multiple_consts(self):
+        code = dedent('''
+            const A = "/a";
+            const B = "/b";
+            export const C = "/c";
+        ''')
+        assert _extract_module_constants(code) == {"A": "/a", "B": "/b", "C": "/c"}
+
+    def test_skips_non_string_consts(self):
+        """Numeric / object / array consts are not URL candidates."""
+        code = dedent('''
+            const COUNT = 42;
+            const CONFIG = { url: "/api" };
+            const TAGS = ["a", "b"];
+        ''')
+        # COUNT is skipped (numeric), CONFIG/TAGS skipped (not plain strings).
+        assert _extract_module_constants(code) == {}
+
+    def test_skips_function_scope_const(self):
+        """Only module-scope (top-level) consts should be folded."""
+        code = dedent('''
+            function makeUrl() {
+                const LOCAL = "/local";
+                return LOCAL;
+            }
+        ''')
+        # Indented const inside a function is not a module-level binding.
+        assert _extract_module_constants(code) == {}
+
+
+class TestFoldTemplateLiteral:
+    """Tests for template-literal folding (WI-sijoh)."""
+
+    def test_no_interpolation_yields_literal(self):
+        url, url_type = _fold_template_literal("/api/users", {})
+        assert url == "/api/users"
+        assert url_type == "literal"
+
+    def test_all_interpolations_resolved_yields_literal(self):
+        url, url_type = _fold_template_literal(
+            "${BASE}/users", {"BASE": "/api/v1"},
+        )
+        assert url == "/api/v1/users"
+        assert url_type == "literal"
+
+    def test_unresolved_leading_prefix_is_stripped(self):
+        """A leading ${pathPrefix}/ is treated as host/base per Elm semantics."""
+        url, url_type = _fold_template_literal("${pathPrefix}/api/users", {})
+        assert url == "/api/users"
+        # Still "literal" because the remaining path has no unresolved slots.
+        assert url_type == "literal"
+
+    def test_middle_unresolved_slot_becomes_param(self):
+        """A middle ${id} slot becomes {id} so route-pattern matching works."""
+        url, url_type = _fold_template_literal("/api/users/${id}", {})
+        assert url == "/api/users/{id}"
+        assert url_type == "literal"
+
+    def test_trailing_non_path_slot_is_stripped_as_variable(self):
+        """A trailing ${queryString} slot is stripped; marks url_type=variable."""
+        url, url_type = _fold_template_literal(
+            "/api/items${queryString}", {},
+        )
+        # Prefix remains for route-matching via startswith (WI-sijoh).
+        assert url == "/api/items"
+        assert url_type == "variable"
+
+    def test_mixed_folded_const_and_param(self):
+        url, url_type = _fold_template_literal(
+            "${BASE}/users/${id}", {"BASE": "/api/v1"},
+        )
+        assert url == "/api/v1/users/{id}"
+        assert url_type == "literal"
+
+    def test_fully_unresolved_stays_variable(self):
+        """With no literal anchor, result is empty and url_type is variable."""
+        url, url_type = _fold_template_literal("${base}${path}", {})
+        # Truncation at first non-'/'-preceded placeholder leaves nothing.
+        assert url == ""
+        assert url_type == "variable"
+
+    def test_mantine_ui_case_folds_prefix_and_strips_leading_host(self):
+        """The motivating case from WI-sijoh — alertmanager mantine-ui api.ts.
+
+        After host-prefix strip and const fold, the URL becomes
+        /api/v1{path}{queryString}. Because {path} is preceded by a
+        non-'/' char ('1'), it is template continuation — the URL is
+        truncated there and url_type becomes 'variable'. The remaining
+        '/api/v1' is a usable route-matching prefix.
+        """
+        url, url_type = _fold_template_literal(
+            "${pathPrefix}/${API_PATH}${path}${queryString}",
+            {"API_PATH": "api/v1"},
+        )
+        assert url == "/api/v1"
+        assert url_type == "variable"
+
+
+class TestJavaScriptTemplateLiteralFetch:
+    """Tests for fetch(\\`...\\`) backtick template literal scanning (WI-sijoh)."""
+
+    def test_fetch_with_literal_template(self):
+        code = dedent('''
+            fetch(`/api/users`);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+        assert calls[0].url_type == "literal"
+
+    def test_fetch_with_const_interpolation(self):
+        code = dedent('''
+            const API_PATH = "api/v1";
+            fetch(`/${API_PATH}/alerts`);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "/api/v1/alerts"
+        assert calls[0].url_type == "literal"
+
+    def test_fetch_with_path_param(self):
+        code = dedent('''
+            fetch(`/api/users/${id}`);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "/api/users/{id}"
+        assert calls[0].url_type == "literal"
+
+    def test_fetch_mantine_ui_case(self):
+        """The motivating WI-sijoh case from alertmanager mantine-ui/src/api/api.ts."""
+        code = dedent('''
+            export const API_PATH = "api/v1";
+
+            const res = await fetch(
+                `${pathPrefix}/${API_PATH}${path}${queryString}`,
+                { cache: "no-store" }
+            );
+        ''')
+        calls = _scan_javascript_file(Path("api.ts"), code)
+        # pathPrefix host-stripped, API_PATH folded, {path} truncates because
+        # it continues inline with 'v1'. Prefix '/api/v1' is usable for
+        # startswith-style route matching; url_type='variable' flags it.
+        fetch_calls = [c for c in calls if c.url.startswith("/api/v1")]
+        assert len(fetch_calls) == 1
+        assert fetch_calls[0].url == "/api/v1"
+        assert fetch_calls[0].url_type == "variable"
+
+    def test_fetch_fully_variable_template_emits_variable(self):
+        """When nothing can be folded, emit url_type='variable' for the raw template."""
+        code = dedent('''
+            fetch(`${base}${path}`);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].url_type == "variable"
+
+    def test_axios_get_with_template(self):
+        code = dedent('''
+            const BASE = "/api/v1";
+            axios.get(`${BASE}/alerts`);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/v1/alerts"
+        assert calls[0].url_type == "literal"
+
+    def test_axios_post_with_template(self):
+        code = dedent('''
+            axios.post(`/api/items/${id}`, body);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/items/{id}"
+
+    def test_template_literal_does_not_double_match_as_fetch_variable(self):
+        """A single template fetch must not be detected both as template and variable."""
+        code = dedent('''
+            fetch(`/api/users`);
+        ''')
+        calls = _scan_javascript_file(Path("test.ts"), code)
+        assert len(calls) == 1
+
+
+class TestJsTemplateLiteralEndToEnd:
+    """Integration: template-literal fetch → Go route should produce routes_to edge."""
+
+    def test_mantine_ui_template_fetch_links_to_go_route(self, tmp_path: Path):
+        (tmp_path / "ui").mkdir()
+        (tmp_path / "ui" / "api.ts").write_text(dedent('''
+            export const API_PATH = "api/v1";
+            async function fetchAlerts(pathPrefix: string, path: string) {
+                return fetch(`${pathPrefix}/${API_PATH}${path}`);
+            }
+        ''').lstrip("\n"))
+
+        route = Symbol(
+            id="api/alerts.go::handleAlerts",
+            name="handleAlerts",
+            kind="route",
+            path=str(tmp_path / "api" / "alerts.go"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+            language="go",
+            meta={"route_path": "/api/v1/alerts", "http_method": "GET"},
+        )
+
+        result = link_http(tmp_path, [route])
+
+        ts_syms = [s for s in result.symbols if s.language == "javascript"]
+        assert len(ts_syms) == 1
+        assert any(
+            e.src == ts_syms[0].id
+            and e.dst == route.id
+            and e.edge_type == "http_calls"
+            for e in result.edges
+        ), "TS → Go route edge missing from link_http result"
+
+    def test_prefix_candidate_gate(self):
+        """_is_prefix_candidate requires >=2 non-empty path segments."""
+        from hypergumbo_core.linkers.http import _is_prefix_candidate
+
+        assert _is_prefix_candidate("/api/v1") is True
+        assert _is_prefix_candidate("/api/v1/users") is True
+        assert _is_prefix_candidate("/") is False
+        assert _is_prefix_candidate("/api") is False
+        assert _is_prefix_candidate("") is False
+
+    def test_variable_url_wildcard_route_prefix_match(self, tmp_path: Path):
+        """Variable-URL prefix match also walks the wildcard (ANY) route bucket."""
+        (tmp_path / "ui").mkdir()
+        (tmp_path / "ui" / "api.ts").write_text(dedent('''
+            export const API_PATH = "api/v1";
+            async function fetchAny(path: string) {
+                return fetch(`/${API_PATH}${path}`);
+            }
+        ''').lstrip("\n"))
+
+        # Route registered without an explicit method ("ANY"/wildcard bucket).
+        route = Symbol(
+            id="api/any.py::any_handler",
+            name="any_handler",
+            kind="route",
+            path=str(tmp_path / "api" / "any.py"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+            language="python",
+            meta={"route_path": "/api/v1/catchall"},
+        )
+
+        result = link_http(tmp_path, [route])
+
+        assert any(
+            e.dst == route.id and e.edge_type == "http_calls"
+            for e in result.edges
+        ), "Wildcard-method route should be reachable via variable-URL prefix match"
+
+    def test_variable_url_below_prefix_threshold_no_match(self, tmp_path: Path):
+        """A shallow prefix (/api) must NOT trigger prefix fallback — too broad."""
+        (tmp_path / "ui").mkdir()
+        (tmp_path / "ui" / "api.ts").write_text(dedent('''
+            async function fetchShallow(path: string) {
+                return fetch(`/api${path}`);
+            }
+        ''').lstrip("\n"))
+
+        route = Symbol(
+            id="api/foo.go::foo",
+            name="foo",
+            kind="route",
+            path=str(tmp_path / "api" / "foo.go"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+            language="go",
+            meta={"route_path": "/api/foo", "http_method": "GET"},
+        )
+
+        result = link_http(tmp_path, [route])
+
+        # Client symbol is still created, but no edge emitted.
+        assert not any(
+            e.edge_type == "http_calls" for e in result.edges
+        ), "Shallow '/api' prefix should not match any route"

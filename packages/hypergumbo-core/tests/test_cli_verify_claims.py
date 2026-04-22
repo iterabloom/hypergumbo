@@ -363,3 +363,149 @@ def test_verify_claims_taint_no_sources(tmp_path: Path, capsys) -> None:
 
     rc = cmd_verify_claims(args)
     assert rc == 0
+
+
+# ============================================================================
+# INV-javam: taint-flow surfaces languages it can't verify
+# ============================================================================
+
+
+def test_verify_claims_notice_for_unsupported_taint_language(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-javam: when a repo has taint-flow claims but the language has
+    no sources/sinks in the taint catalog, stderr carries an explicit
+    notice. Otherwise 'confirmed' is misleading — the language wasn't
+    actually analyzed.
+    """
+    # Brainfuck has no taint catalog entries whatsoever; a claim against
+    # a repo in that language will trivially 'confirm' without the notice.
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "brainfuck:m.bf:1:main:function", "name": "main",
+             "kind": "function", "language": "brainfuck", "path": "m.bf",
+             "span": {"start_line": 1, "end_line": 5}},
+        ],
+        edges=[],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    claims = {
+        "claims": [
+            {
+                "id": "TF-001",
+                "text": "No secrets to disk",
+                "constraint": {
+                    "taint_flow": {
+                        "source_taint": "secret",
+                        "prohibited_sink_zone": "host_fs",
+                    },
+                },
+            },
+        ],
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    rc = cmd_verify_claims(args)
+    # Verdict is still "confirmed" (no taint findings) but the notice
+    # must be present so humans don't misread the verdict as a pass.
+    assert rc == 0
+    _, err = capsys.readouterr()
+    assert "brainfuck" in err
+    assert "no taint-flow catalog" in err
+    assert "NOT actually verified" in err
+    assert "INV-javam" in err
+
+
+def test_verify_claims_no_notice_when_no_taint_claims(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-javam anti-regression: the taint-flow notice only fires when
+    taint claims are actually evaluated. Pure boundary claims on an
+    unsupported language shouldn't trigger it.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "brainfuck:m.bf:1:main:function", "name": "main",
+             "kind": "function", "language": "brainfuck", "path": "m.bf",
+             "span": {"start_line": 1, "end_line": 5}},
+        ],
+        edges=[],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    claims = {
+        "claims": [
+            {"id": "SC-001", "text": "No net",
+             "constraint": {"boundary": "net_send", "must_not_exist": True}},
+        ]
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    rc = cmd_verify_claims(args)
+    assert rc == 0
+    _, err = capsys.readouterr()
+    assert "no taint-flow catalog" not in err
+
+
+def test_verify_claims_no_notice_when_taint_language_supported(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-javam anti-regression: don't fire the notice when every
+    detected language has taint-catalog coverage (no false alarm
+    on fully-supported codebases).
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:a.py:1:f:function", "name": "f",
+             "kind": "function", "language": "python", "path": "a.py",
+             "span": {"start_line": 1, "end_line": 5}},
+        ],
+        edges=[],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    claims = {
+        "claims": [
+            {
+                "id": "TF-001",
+                "text": "No plaintext to disk",
+                "constraint": {
+                    "taint_flow": {
+                        "source_taint": "plaintext",
+                        "prohibited_sink_zone": "host_fs",
+                    },
+                },
+            },
+        ],
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    rc = cmd_verify_claims(args)
+    assert rc == 0
+    _, err = capsys.readouterr()
+    assert "no taint-flow catalog" not in err

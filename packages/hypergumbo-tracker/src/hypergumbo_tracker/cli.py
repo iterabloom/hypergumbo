@@ -167,7 +167,7 @@ def _format_item_full(item: CompiledItem) -> str:
     lines.append(f"  status: {item.status}  priority: P{item.priority}  "
                  f"tags: [{', '.join(item.tags)}]")
     lines.append(f"  parent: {item.parent or 'null'}  "
-                 f"before: [{', '.join(item.before)}]  "
+                 f"isbefore: [{', '.join(item.isbefore)}]  "
                  f"pr_ref: {item.pr_ref or 'null'}")
     if item.fields:
         for k, v in item.fields.items():
@@ -207,7 +207,7 @@ def _item_to_dict(item: CompiledItem) -> dict[str, Any]:
         "priority": item.priority,
         "parent": item.parent,
         "tags": item.tags,
-        "before": item.before,
+        "isbefore": item.isbefore,
         "duplicate_of": item.duplicate_of,
         "not_duplicate_of": item.not_duplicate_of,
         "pr_ref": item.pr_ref,
@@ -364,7 +364,7 @@ def _cmd_log(args: argparse.Namespace, ts: TrackerSet) -> int:
 def _resolve_ref(ts: TrackerSet, raw: str, field_name: str) -> str:
     """Resolve a short ID prefix to its full proquint ID.
 
-    Used for --parent, --before, --add-duplicate-of, etc. to ensure
+    Used for --parent, --isbefore, --add-duplicate-of, etc. to ensure
     that references stored in ops files are always full IDs, not
     short prefixes that would fail cross-file validation.
     """
@@ -430,8 +430,8 @@ def _cmd_add(args: argparse.Namespace, ts: TrackerSet) -> int:
         kwargs["parent"] = _resolve_ref(ts, args.parent, "--parent")
     if args.tag:
         kwargs["tags"] = args.tag
-    if args.before:
-        kwargs["before"] = [_resolve_ref(ts, b, "--before") for b in args.before]
+    if args.isbefore:
+        kwargs["isbefore"] = [_resolve_ref(ts, b, "--isbefore") for b in args.isbefore]
     desc = _resolve_description(args)
     if desc is _DESC_ERROR:
         return EXIT_USER_ERROR
@@ -526,18 +526,18 @@ def _describe_changes(
     if removed_tags:
         changes.append(f"tags: -{', -'.join(sorted(removed_tags))}")
 
-    # Before links (blocking relationships)
-    old_before = set(old.before)
-    new_before = set(new.before)
-    for bid in new_before - old_before:
+    # Isbefore links (blocking relationships)
+    old_isbefore = set(old.isbefore)
+    new_isbefore = set(new.isbefore)
+    for bid in new_isbefore - old_isbefore:
         label = _item_label(ts, bid)
         changes.append(
-            f"before: {_short_id(new.id)} now blocks {label}"
+            f"isbefore: {_short_id(new.id)} now blocks {label}"
         )
-    for bid in old_before - new_before:
+    for bid in old_isbefore - new_isbefore:
         label = _item_label(ts, bid)
         changes.append(
-            f"before: {_short_id(new.id)} no longer blocks {label}"
+            f"isbefore: {_short_id(new.id)} no longer blocks {label}"
         )
 
     # Duplicate-of links
@@ -608,13 +608,13 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
         add_fields["tags"] = args.add_tag
     if args.remove_tag:
         remove_fields["tags"] = args.remove_tag
-    if args.add_before:
-        add_fields["before"] = [
-            _resolve_ref(ts, b, "--add-before") for b in args.add_before
+    if args.add_isbefore:
+        add_fields["isbefore"] = [
+            _resolve_ref(ts, b, "--add-isbefore") for b in args.add_isbefore
         ]
-    if args.remove_before:
-        remove_fields["before"] = [
-            _resolve_ref(ts, b, "--remove-before") for b in args.remove_before
+    if args.remove_isbefore:
+        remove_fields["isbefore"] = [
+            _resolve_ref(ts, b, "--remove-isbefore") for b in args.remove_isbefore
         ]
     if args.add_duplicate_of:
         add_fields["duplicate_of"] = [
@@ -690,7 +690,7 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
     new_item = ts.get(args.item_id)
     changes = _describe_changes(old_item, new_item, ts)
 
-    # Handle --add-blocked-by / --remove-blocked-by (inverse before links)
+    # Handle --add-blocked-by / --remove-blocked-by (inverse isbefore links)
     # These modify OTHER items, not the primary target.
     blocked_by_changes: list[str] = []
     target_full_id, _, _ = ts._resolve_id(args.item_id)
@@ -700,7 +700,7 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
             blocker_id = _resolve_ref(ts, ref, "--add-blocked-by")
             ts.update(
                 blocker_id,
-                add_fields={"before": [target_full_id]},
+                add_fields={"isbefore": [target_full_id]},
             )
             blocked_by_changes.append(
                 f"blocked-by: {_item_label(ts, blocker_id)} now blocks "
@@ -712,7 +712,7 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
             blocker_id = _resolve_ref(ts, ref, "--remove-blocked-by")
             ts.update(
                 blocker_id,
-                remove_fields={"before": [target_full_id]},
+                remove_fields={"isbefore": [target_full_id]},
             )
             blocked_by_changes.append(
                 f"blocked-by: {_item_label(ts, blocker_id)} no longer blocks "
@@ -775,10 +775,13 @@ def _warn_unread_human_messages(item_id: str, ts: TrackerSet) -> bool:
             prefix = "(summary) " if entry.is_summary else ""
             print(f"  [{entry.at}] {entry.actor} ({entry.by}): {prefix}{entry.message}")
     print()
+    # WI-foril: argparse with `nargs="?"` positional + optional flag
+    # rejects `--ack-thread "<msg>"` (flag before positional). Show the
+    # working order: message first, then `--ack-thread`.
     print(
         "To proceed, re-run with --ack-thread to confirm you have "
         "read the thread:\n"
-        f"  tracker discuss {item_id} --ack-thread \"<your reply>\""
+        f"  tracker discuss {item_id} \"<your reply>\" --ack-thread"
     )
     return True
     print()
@@ -842,8 +845,8 @@ def _cmd_discuss(args: argparse.Namespace, ts: TrackerSet) -> int:
 def _cmd_deps(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'deps' subcommand — show dependency graph for an item.
 
-    Shows: parent, children, items this blocks (before), and items that
-    block this (items with this item in their before list).
+    Shows: parent, children, items this blocks (isbefore), and items that
+    block this (items with this item in their isbefore list).
     """
     item = ts.get(args.item_id)
     full_id = item.id
@@ -851,19 +854,19 @@ def _cmd_deps(args: argparse.Namespace, ts: TrackerSet) -> int:
     # Find children (items whose parent == this item)
     children = ts.children(full_id)
 
-    # Find items this blocks (this item's before list)
+    # Find items this blocks (this item's isbefore list)
     blocks: list[CompiledItem] = []
-    for bid in item.before:
+    for bid in item.isbefore:
         try:
             blocks.append(ts.get(bid))
         except ItemNotFoundError:  # pragma: no cover — dangling reference
             pass
 
-    # Find items that block this (other items with this item in their before)
+    # Find items that block this (other items with this item in their isbefore)
     blocked_by: list[CompiledItem] = []
     all_items = ts.list_items()
     for other in all_items:
-        if full_id in other.before and other.id != full_id:
+        if full_id in other.isbefore and other.id != full_id:
             blocked_by.append(other)
 
     if args.json:
@@ -1684,7 +1687,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("--priority", type=int, help="Priority 0-4")
     p_add.add_argument("--parent", help="Parent item ID")
     p_add.add_argument("--tag", action="append", help="Tag (repeatable)")
-    p_add.add_argument("--before", action="append", help="Before ID (repeatable)")
+    p_add.add_argument("--isbefore", action="append", help="Isbefore ID (repeatable)")
     p_add.add_argument("--description", help="Description text")
     p_add.add_argument(
         "--description-file", dest="description_file", metavar="FILE",
@@ -1718,8 +1721,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_update.add_argument("--add-tag", action="append", help="Add tag")
     p_update.add_argument("--remove-tag", action="append", help="Remove tag")
-    p_update.add_argument("--add-before", action="append", help="Add before link")
-    p_update.add_argument("--remove-before", action="append", help="Remove before link")
+    p_update.add_argument("--add-isbefore", action="append", help="Add isbefore link")
+    p_update.add_argument("--remove-isbefore", action="append", help="Remove isbefore link")
     p_update.add_argument("--add-duplicate-of", action="append",
                           help="Add duplicate-of link")
     p_update.add_argument("--remove-duplicate-of", action="append",
@@ -1729,10 +1732,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--remove-not-duplicate-of", action="append",
                           help="Remove not-duplicate-of link")
     p_update.add_argument("--add-blocked-by", action="append",
-                          help="Inverse of --add-before: sets before link on the OTHER item "
+                          help="Inverse of --add-isbefore: sets isbefore link on the OTHER item "
                                "pointing to this item (repeatable)")
     p_update.add_argument("--remove-blocked-by", action="append",
-                          help="Inverse of --remove-before: removes before link from the "
+                          help="Inverse of --remove-isbefore: removes isbefore link from the "
                                "OTHER item pointing to this item (repeatable)")
     p_update.add_argument("--field", action="append",
                            help="Field key=value (REPLACES entire fields dict — use --add-field for partial)")
@@ -2571,7 +2574,7 @@ def textconv_main(argv: list[str] | None = None) -> None:
     Output format:
     <ID>  <title>
       status: <status>  priority: P<N>  tags: [tag1, tag2]
-      parent: <parent-ID or null>  before: [ID, ...]  pr_ref: <ref or null>
+      parent: <parent-ID or null>  isbefore: [ID, ...]  pr_ref: <ref or null>
       fields.<key>: <value>
       discussion: <N> entries
       locked: [field1, field2]
@@ -2609,7 +2612,7 @@ def textconv_main(argv: list[str] | None = None) -> None:
     lines.append(f"  status: {item.status}  priority: P{item.priority}  "
                  f"tags: [{', '.join(item.tags)}]")
     lines.append(f"  parent: {item.parent or 'null'}  "
-                 f"before: [{', '.join(item.before)}]  "
+                 f"isbefore: [{', '.join(item.isbefore)}]  "
                  f"pr_ref: {item.pr_ref or 'null'}")
     for k, v in item.fields.items():
         lines.append(f"  fields.{k}: {v}")

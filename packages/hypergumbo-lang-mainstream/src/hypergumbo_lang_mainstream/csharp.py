@@ -103,14 +103,17 @@ def _extract_annotations(
 
                         for arg in arg_list.children:
                             if arg.type == "attribute_argument":
-                                # Check if it's a named argument via assignment_expression
-                                assign_expr = find_child_by_type(
-                                    arg, "assignment_expression"
-                                )
-                                if assign_expr:
+                                # Named argument detection. In tree-sitter-c-sharp
+                                # 0.23.5 (the pinned version), `Name = "Get"` is
+                                # a flat sequence of `identifier`, `=`, <value>
+                                # children directly under `attribute_argument` —
+                                # the older `assignment_expression` wrapper was
+                                # dropped. Detect by presence of the `=` token
+                                # as a direct child.
+                                if find_child_by_type(arg, "=") is not None:
                                     # Named argument: name = value
                                     name_node = find_child_by_type(
-                                        assign_expr, "identifier"
+                                        arg, "identifier"
                                     )
                                     arg_name = (
                                         node_text(name_node, source)
@@ -118,10 +121,10 @@ def _extract_annotations(
                                         else ""
                                     )
 
-                                    # Value is the string_literal after =
-                                    for assign_child in assign_expr.children:
-                                        if assign_child.type == "string_literal":
-                                            value = node_text(assign_child, source)
+                                    # Value is the first string_literal after =
+                                    for arg_child in arg.children:
+                                        if arg_child.type == "string_literal":
+                                            value = node_text(arg_child, source)
                                             if value.startswith('"') and value.endswith(
                                                 '"'
                                             ):

@@ -1,0 +1,36 @@
+- op: create  # c196
+  at: '2026-04-17T14:32:25Z'  # c196
+  by: agent  # c196
+  actor: jgstern_agent  # c196
+  clock: 1  # c196
+  nonce: c196  # c196
+  data:  # c196
+    kind: work_item  # c196
+    title: "Stop hook: hard-block stopping on unread-human-messages > 0 in DEEP/BROAD mode"  # c196
+    status: needs_human_review  # c196
+    priority: 2  # c196
+    parent:  # c196
+    tags:  # c196
+    - retrospective  # c196
+    - governance  # c196
+    isbefore: []  # c196
+    duplicate_of: []  # c196
+    not_duplicate_of: []  # c196
+    pr_ref:  # c196
+    description: "Observed in session_retrospective_04172026_1012.md Finding 1: the agent had 2 unread human messages (WI-ronot, WI-zikor) outstanding at its self-declared 'wrap', and its REPLY-FIRST CYCLE guidance (authored and merged in that same session, PR #3110) did not cause it to reply. REPLY-FIRST currently changes the stop-hook reason text and surfaces reply debt in guidance, but does not actually block stopping.\n\nProposed change: in scripts/tracker count-todos (or the stop hook that consumes it), treat unread human message count as an additional blocking condition in DEEP and BROAD modes. Zero unread messages becomes a precondition for stop, on equal footing with the TODO count. OFF mode is exempt.\n\nTouches .agent/hooks/** and scripts/tracker -> needs_human_review per governance rule."  # c196
+    fields: {}  # c196
+- op: update  # a3da
+  at: '2026-04-17T17:12:13Z'  # a3da
+  by: agent  # a3da
+  actor: jgstern_agent  # a3da
+  clock: 2  # a3da
+  nonce: a3da  # a3da
+  set:  # a3da
+    status: wont_do  # a3da
+- op: discuss  # 2896
+  at: '2026-04-17T17:12:13Z'  # 2896
+  by: agent  # 2896
+  actor: jgstern_agent  # 2896
+  clock: 3  # 2896
+  nonce: '2896'  # 2896
+  message: "Closing: superseded by the respawn-on-circuit-breaker mechanism. A fresh session will naturally surface unread human messages via tracker ready / check-messages during its startup, so the stop-block is redundant once respawn is in place."  # 2896

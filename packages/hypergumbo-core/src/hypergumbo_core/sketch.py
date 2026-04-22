@@ -2062,6 +2062,68 @@ def _extract_config_hybrid(
     return combined
 
 
+# WI-fumap: track whether we've already warned about an embedding-mode
+# fallback within the current Python process. Without this, a single
+# command run would emit the warning twice (once for the dispatcher's
+# pre-check, once if `_extract_config_embedding` itself falls back).
+# The whole module is process-scoped, so a module-level flag is
+# sufficient — no thread-safety needed for our serial CLI usage.
+_embedding_fallback_warned: bool = False
+
+
+def _try_import_embedding_stack() -> bool:
+    """Attempt the sentence-transformers + numpy imports.
+
+    Factored out from `_embedding_extraction_available` so coverage
+    tests can monkeypatch this single helper to flip the answer
+    deterministically without depending on whether the embedding
+    stack is installed in the current environment.
+
+    Returns True if both imports succeed, False on ImportError.
+    """
+    try:
+        from .sketch_embeddings import _load_embedding_model  # noqa: F401
+        import numpy  # noqa: F401
+    except ImportError:  # pragma: no cover - exercised only when embedding stack absent
+        return False
+    return True
+
+
+def _embedding_extraction_available() -> bool:
+    """Return whether sentence-transformers can be imported.
+
+    Used by the config-extraction dispatcher to decide whether
+    EMBEDDING / HYBRID modes can actually run, or whether they would
+    silently fall back to HEURISTIC.
+    """
+    return _try_import_embedding_stack()
+
+
+def _warn_embedding_fallback_once(requested_mode: "ConfigExtractionMode") -> None:
+    """Emit a one-shot stderr notice when the requested config-extraction
+    mode requires sentence-transformers but the package is unavailable.
+
+    UAT 2026-04-13 DQ-07 / WI-fumap: ``--config-extraction embedding``
+    and ``--config-extraction hybrid`` would silently degrade to
+    heuristic on machines without sentence-transformers, producing
+    output identical to ``--config-extraction heuristic`` and giving
+    users no signal that the requested mode never ran. This warning
+    closes the ergonomics gap.
+    """
+    global _embedding_fallback_warned
+    if _embedding_fallback_warned:
+        return
+    import sys as _sys
+    print(
+        f"hypergumbo: --config-extraction={requested_mode.value} requested but "
+        "sentence-transformers is not installed; falling back to heuristic mode. "
+        "Output will be identical to --config-extraction=heuristic. "
+        "Install with: pip install hypergumbo-core[embeddings] (WI-fumap)",
+        file=_sys.stderr,
+    )
+    _embedding_fallback_warned = True
+
+
 def _extract_config_info(
     repo_root: Path,
     max_chars: int = 1500,
@@ -2094,7 +2156,15 @@ def _extract_config_info(
         Extracted config metadata as a formatted string, or empty string
         if no config files found.
     """
-    # Select extraction strategy based on mode
+    # Select extraction strategy based on mode.  WI-fumap: when the
+    # requested mode requires sentence-transformers but the package
+    # isn't available, warn (once) and degrade to heuristic explicitly
+    # rather than silently producing identical output.
+    if mode in (ConfigExtractionMode.EMBEDDING, ConfigExtractionMode.HYBRID):
+        if not _embedding_extraction_available():
+            _warn_embedding_fallback_once(mode)
+            mode = ConfigExtractionMode.HEURISTIC
+
     if mode == ConfigExtractionMode.EMBEDDING:
         max_lines = max(10, max_chars // 50)
         lines = _extract_config_embedding(
@@ -2223,6 +2293,39 @@ def _format_config_section(config_info: str, exclude_tests: bool = False) -> str
     return "\n".join(lines)
 
 
+_MARKDOWN_HEADING_BLEED_EXTS = frozenset({".md", ".mdx", ".markdown", ".rst"})
+
+
+def _demote_markdown_headings(content: str, levels: int = 2) -> str:
+    """Demote ATX-style markdown headings in *content* by *levels* levels.
+
+    WI-bilul (UAT BUG-06): markdown content embedded as Additional Files
+    Content reads as having H1/H2 headings that compete with hypergumbo's
+    own structural sections (``## Overview``, ``## Structure``, ...). A
+    consumer treating the sketch as a structured document sees the
+    README's ``## Installation`` as a sibling of those sections.
+
+    Demoting any ATX heading by 2 levels guarantees the embedded content
+    cannot reach the structural-H2 namespace: ``# X`` becomes ``### X``
+    and ``## X`` becomes ``#### X``. Markdown caps headings at level 6;
+    we do not over-demote past that. Setext underlines (``===`` / ``---``)
+    are not handled — they are uncommon in modern markdown and would
+    require multi-line lookahead.
+    """
+    out_lines: list[str] = []
+    for line in content.split("\n"):
+        # Only ATX headings (no leading whitespace, then 1-6 `#` then space).
+        i = 0
+        n = len(line)
+        while i < n and line[i] == "#":
+            i += 1
+        if 0 < i <= 6 and i < n and line[i] == " ":
+            new_level = min(i + levels, 6)
+            line = "#" * new_level + line[i:]
+        out_lines.append(line)
+    return "\n".join(out_lines)
+
+
 def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     """Format file content with visible START/END markers.
 
@@ -2237,6 +2340,15 @@ def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     Returns:
         List of lines including START marker, code block, and END marker.
     """
+    # WI-bilul: demote ATX headings inside markdown-like content so the
+    # embedded ``## Section`` lines don't read as structural sections of
+    # the sketch itself. Code-fenced markdown content is technically
+    # neutralised for CommonMark renderers, but plain-text and LLM
+    # consumers still parse the content lines as headings.
+    rel_lower = rel_path.lower()
+    if any(rel_lower.endswith(ext) for ext in _MARKDOWN_HEADING_BLEED_EXTS):
+        content = _demote_markdown_headings(content)
+
     # Build visually distinctive markers
     # Pad to ~60 chars total for visual balance
     start_marker = f"------------------- START of {rel_path} "
@@ -2497,6 +2609,27 @@ def _format_language_stats(
     return f"{lang_line} · {total_files} files · ~{total_loc:,} LOC{ignore_marker}"  # pragma: no cover
 
 
+def _normalize_name_excludes(excludes: list[str]) -> list[str]:
+    """Strip path-anchored patterns and normalise the rest to bare names.
+
+    Per WI-zirik: the structure-tree code matches patterns against a
+    single name part using fnmatch, which silently ignores any pattern
+    containing '/'. Normalising 'ui/', 'ui/**', '**/ui/**' all to 'ui'
+    makes the user-facing exclude flag work consistently with the
+    discovery layer. Truly path-anchored patterns (e.g. 'cmd/server.go')
+    are dropped here; they are still honoured by the file-discovery
+    pipeline that produces ``important_files``.
+    """
+    from .discovery import _normalize_exclude_pattern
+
+    out: list[str] = []
+    for raw in excludes:
+        norm = _normalize_exclude_pattern(raw)
+        if norm and "/" not in norm:
+            out.append(norm)
+    return out
+
+
 def _count_root_items(repo_root: Path, excludes: list[str]) -> int:
     """Count all non-excluded items (files and directories) at root level.
 
@@ -2512,9 +2645,10 @@ def _count_root_items(repo_root: Path, excludes: list[str]) -> int:
     """
     from fnmatch import fnmatch
 
+    name_excludes = _normalize_name_excludes(excludes)
     count = 0
     for item in repo_root.iterdir():
-        if any(fnmatch(item.name, pat) for pat in excludes):
+        if any(fnmatch(item.name, pat) for pat in name_excludes):
             continue
         count += 1
     return count
@@ -2541,6 +2675,11 @@ def _format_structure_tree_fallback(
     """
     from fnmatch import fnmatch
 
+    # WI-zirik: normalise 'ui/', 'ui/**', '**/ui/**', '**/ui' all to 'ui'
+    # so per-name fnmatch matches them. Path-anchored patterns are dropped
+    # here; they're enforced by the file-discovery layer.
+    name_excludes = _normalize_name_excludes(excludes)
+
     lines = [_section_header("Structure", exclude_tests), "", "```"]
     lines.append(f"{repo_root.name}/")
 
@@ -2549,7 +2688,7 @@ def _format_structure_tree_fallback(
     for d in repo_root.iterdir():
         if not d.is_dir():
             continue
-        excluded = any(fnmatch(d.name, pattern) for pattern in excludes)
+        excluded = any(fnmatch(d.name, pattern) for pattern in name_excludes)
         if not excluded:
             dirs.append(d.name)
 
@@ -2567,7 +2706,7 @@ def _format_structure_tree_fallback(
     for f in repo_root.iterdir():
         if not f.is_file():
             continue
-        if any(fnmatch(f.name, pattern) for pattern in excludes):
+        if any(fnmatch(f.name, pattern) for pattern in name_excludes):
             continue
         # Include source files and additional file candidates (CONFIG/DOCUMENTATION)
         if is_source_file(f.name) or is_additional_file_candidate(f):
@@ -2590,7 +2729,7 @@ def _format_structure_tree_fallback(
         try:
             for item in dir_path.iterdir():
                 # Skip excluded items
-                if any(fnmatch(item.name, p) for p in excludes):
+                if any(fnmatch(item.name, p) for p in name_excludes):
                     continue
                 # When excluding tests, skip test files but keep config/doc files
                 if exclude_tests:
@@ -2694,6 +2833,10 @@ def _format_structure_tree(
     if extra_excludes:
         excludes.extend(extra_excludes)
 
+    # WI-zirik: normalise patterns once for the per-name fnmatch checks
+    # below so 'ui/', 'ui/**', '**/ui/**', '**/ui' all behave as 'ui'.
+    name_excludes = _normalize_name_excludes(excludes)
+
     # If no important files, show top-level directories in tree format
     # (Don't fall back to deprecated bullet-list format)
     if not important_files:
@@ -2738,7 +2881,7 @@ def _format_structure_tree(
         count = 0
         try:
             for item in path.iterdir():
-                if any(fnmatch(item.name, pat) for pat in excludes):
+                if any(fnmatch(item.name, pat) for pat in name_excludes):
                     continue
                 count += 1
         except OSError:  # pragma: no cover
@@ -5657,10 +5800,14 @@ def generate_sketch(
     def _section_ok(name: str, remaining: int, threshold: int = 50) -> bool:
         """Check whether a section should be rendered.
 
-        If the section is in ``require_sections``, the threshold is 0.
+        Sections listed in ``require_sections`` render unconditionally:
+        the whole purpose of the flag (WI-nakam) is to force inclusion
+        even when the budget is exhausted. Non-required sections keep
+        the original ``remaining > threshold`` gate.
         """
-        effective_threshold = 0 if name in _required else threshold
-        return remaining > effective_threshold
+        if name in _required:
+            return True
+        return remaining > threshold
 
     # Initialize progress reporter
     prog = SketchProgress()
@@ -5829,15 +5976,22 @@ def generate_sketch(
             shell_integration_count = len(shell_tests)
 
     # Note: max_tokens is always set (defaults to 8000 in CLI)
-    # If budget is very small, return truncated base sketch
-    if max_tokens <= base_tokens:
+    # If budget is very small, return truncated base sketch — UNLESS the
+    # caller passed ``require_sections``, in which case the whole point
+    # of the flag is to force those sections even when the budget is
+    # exhausted by the base. See WI-nakam.
+    if max_tokens <= base_tokens and not _required:
         # Set token_budget before early return so Representativeness Table shows correct value
         if stats_out is not None:
             stats_out.token_budget = max_tokens
         prog.finish()
         return truncate_to_tokens(base_sketch, max_tokens)
 
-    # We have room to expand - calculate remaining budget
+    # We have room to expand - calculate remaining budget. When
+    # ``require_sections`` kept us past the early-return but the base
+    # already consumed the budget, ``remaining_tokens`` goes negative;
+    # ``_section_ok`` still returns True for required sections, and
+    # non-required sections naturally fail their ``> threshold`` check.
     remaining_tokens = max_tokens - base_tokens
 
     # source_files already collected early (at start of function) for accurate LOC counts
@@ -5852,11 +6006,19 @@ def generate_sketch(
     tokens_per_symbol = 35
 
     # Run static analysis early to enable density-based source file ordering
-    # (needed before the source files section)
+    # (needed before the source files section). WI-nakam: when the caller
+    # passed ``require_sections``, run analysis regardless of remaining
+    # budget so any required symbol-based section (Entry Points, Key
+    # Symbols, Data Models) has data to render.
+    _has_required_analysis_section = bool(_required & {
+        "Entry Points", "Data Models", "Key Symbols", "Source Files",
+        "Additional Files", "Source Files Content",
+        "Additional Files Content",
+    })
     using_cached_analysis = (
         cached_results is not None
         and "nodes" in cached_results
-        and remaining_tokens > 50
+        and (remaining_tokens > 50 or _has_required_analysis_section)
     )
     prog.start_phase("analysis", cached=using_cached_analysis)
     symbols: list[Symbol] = []
@@ -5868,7 +6030,7 @@ def generate_sketch(
     def analysis_progress_with_budget(current: int, total: int, lang: str) -> None:  # pragma: no cover
         prog.update_item_progress(f"Analyzing {lang}", current, total)
 
-    if remaining_tokens > 50:  # Run analysis if we have any room to expand
+    if remaining_tokens > 50 or _has_required_analysis_section:  # WI-nakam: force analysis when a required section depends on it
         if using_cached_analysis:
             # Use cached symbols and edges from behavior map
             _log("Using cached analysis results...")
@@ -6380,9 +6542,16 @@ def generate_sketch(
     # Combine all sections
     full_sketch = "\n\n".join(sections)
 
-    # Final truncation to ensure we don't exceed budget
+    # Final truncation to ensure we don't exceed budget. WI-nakam: when
+    # the caller passed ``require_sections``, honouring the flag's
+    # documented "force inclusion under budget pressure" semantics means
+    # the output is allowed to exceed max_tokens — otherwise the final
+    # truncate would chop off the very sections we were asked to keep.
     prog.finish()
-    result = truncate_to_tokens(full_sketch, max_tokens)
+    if _required:
+        result = full_sketch
+    else:
+        result = truncate_to_tokens(full_sketch, max_tokens)
 
     # Ensure output ends with a newline (standard for text files)
     if not result.endswith("\n"):

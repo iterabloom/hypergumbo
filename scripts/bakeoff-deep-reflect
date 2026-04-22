@@ -108,7 +108,7 @@ whether hypergumbo's analysis outputs would be useful to you for common developm
 ## Available Artifacts
 The following hypergumbo outputs are available for your assessment:
 {artifact_list}
-{prior_context_section}
+{prior_context_section}{validation_claims_section}
 ## Assessment Protocol
 
 Examine the artifacts and source code, then evaluate usefulness for these 3 tasks:
@@ -230,6 +230,18 @@ developer_assessment:
 
   questions:
     - "open question about hypergumbo behavior or output"
+
+  # Only include this field if the "Active Bakeoff Validation Claims" section
+  # appeared above. Answer one entry per listed item, keyed by item_id.
+  # verdict MUST be exactly one of: moved | no_move | inconclusive
+  #   moved        — this repo's artifacts clearly show the claimed metric movement
+  #   no_move      — this repo's artifacts clearly fail to show the claimed movement
+  #   inconclusive — this repo is not a fair test (wrong language, wrong construct,
+  #                  or the claim is not checkable from the artifacts available)
+  awaits_bakeoff_validation_verdicts:
+    - item_id: "WI-xxxx-..."
+      verdict: moved | no_move | inconclusive
+      evidence: "one-sentence pointer to the artifact or source file that justifies the verdict"
 ```
 
 Be specific and concrete. Reference actual files and functions from the repo.
@@ -490,20 +502,104 @@ def format_prior_context(prior_assessment: dict) -> str:
     )
 
 
+def load_awaits_bakeoff_validation_items(
+    tracker_script: str = "scripts/tracker",
+    repo_root: str = None,
+) -> list[dict]:
+    """Load active awaits_bakeoff_validation items via the tracker CLI.
+
+    "Active" means status is todo_soft or in_progress — items that have
+    shipped with a quantitative bakeoff claim but have not yet been
+    validated (or explicitly closed). Returns a list of item dicts with
+    at least id, title, description, status, tags; empty list on any
+    failure so the reflect pipeline degrades gracefully in environments
+    where the tracker is unavailable (e.g. a fresh clone without the
+    auto-sync infrastructure).
+    """
+    if repo_root is None:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cmd = [
+        os.path.join(repo_root, tracker_script),
+        "--json",
+        "list",
+        "--tag", "awaits_bakeoff_validation",
+        "--status", "todo_soft",
+        "--status", "in_progress",
+        "--limit", "200",
+    ]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=30, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0:
+        return []
+    try:
+        items = json.loads(result.stdout)
+    except (ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(items, list):
+        return []
+    return items
+
+
+def format_validation_claims_section(items: list[dict]) -> str:
+    """Format the awaits_bakeoff_validation items into a prompt section.
+
+    Returns an empty string when no items are active so the reflect
+    prompt stays unchanged in the steady-state case.
+    """
+    if not items:
+        return ""
+    lines = [
+        "",
+        "## Active Bakeoff Validation Claims",
+        "",
+        "The following tracker items shipped with quantitative bakeoff-improvement "
+        "claims that have not yet been validated. For each item, inspect the "
+        "artifacts above and decide whether this repo's output confirms, contradicts, "
+        "or is silent on the claim. Report one verdict per item in the "
+        "`awaits_bakeoff_validation_verdicts` field of your YAML output (see below).",
+        "",
+    ]
+    for item in items:
+        item_id = item.get("id", "UNKNOWN")
+        title = (item.get("title") or "").strip()
+        desc = (item.get("description") or "").strip()
+        first_para = desc.split("\n\n", 1)[0] if desc else ""
+        if len(first_para) > 600:
+            first_para = first_para[:600].rstrip() + "…"
+        lines.append(f"### {item_id}")
+        if title:
+            lines.append(f"**Title:** {title}")
+        if first_para:
+            lines.append("")
+            lines.append(f"**Claim / context:** {first_para}")
+        lines.append("")
+    return "\n".join(lines) + "\n"
+
+
 def generate_assessment_prompt(
     repo_name: str,
     repo_path: str,
     repo_out_dir: str,
     prior_assessment: dict = None,
+    validation_claims: list[dict] | None = None,
 ) -> str:
     """Generate the assessment prompt for a specific repo.
 
     If prior_assessment is provided, includes prior findings context
-    so the assessor can compute trajectory.
+    so the assessor can compute trajectory. If validation_claims is
+    provided, injects a section listing active awaits_bakeoff_validation
+    items and asks the assessor to adjudicate each one.
     """
     artifact_list = get_artifact_list(repo_out_dir)
     timestamp = datetime.datetime.now().isoformat()
     prior_context_section = format_prior_context(prior_assessment)
+    validation_claims_section = format_validation_claims_section(
+        validation_claims or []
+    )
 
     return ASSESSMENT_PROMPT_TEMPLATE.format(
         repo_name=repo_name,
@@ -511,6 +607,7 @@ def generate_assessment_prompt(
         artifact_list=artifact_list,
         timestamp=timestamp,
         prior_context_section=prior_context_section,
+        validation_claims_section=validation_claims_section,
     )
 
 
@@ -576,6 +673,7 @@ def aggregate_assessments(assessments: list) -> dict:
     all_noise = []
     all_ideas = []
     all_questions = []
+    validation_verdicts: dict[str, dict] = {}
 
     # Score collection
     overall_scores = []
@@ -603,6 +701,28 @@ def aggregate_assessments(assessments: list) -> dict:
 
         all_ideas.extend(a.get("improvement_ideas", []))
         all_questions.extend(a.get("questions", []))
+
+        # Collect per-claim verdicts from awaits_bakeoff_validation items.
+        # Each assessment reports 0..N verdicts keyed by item_id; we
+        # aggregate the verdict distribution across all repos in the cohort.
+        repo_label = a.get("repo", "unknown")
+        for v in a.get("awaits_bakeoff_validation_verdicts") or []:
+            if not isinstance(v, dict):
+                continue
+            item_id = v.get("item_id")
+            verdict = v.get("verdict")
+            if not item_id or verdict not in ("moved", "no_move", "inconclusive"):
+                continue
+            entry = validation_verdicts.setdefault(
+                item_id,
+                {"moved": 0, "no_move": 0, "inconclusive": 0, "evidence": []},
+            )
+            entry[verdict] += 1
+            evidence = v.get("evidence")
+            if evidence:
+                entry["evidence"].append(
+                    {"repo": repo_label, "verdict": verdict, "note": evidence}
+                )
 
         # Collect scores if present
         scores = a.get("task_scores")
@@ -671,7 +791,40 @@ def aggregate_assessments(assessments: list) -> dict:
                 stats_mod.median(overall_scores), 1
             )
 
+    if validation_verdicts:
+        summary["awaits_bakeoff_validation_verdicts"] = [
+            {
+                "item_id": item_id,
+                "moved": counts["moved"],
+                "no_move": counts["no_move"],
+                "inconclusive": counts["inconclusive"],
+                "plurality": _verdict_plurality(counts),
+                "evidence": counts["evidence"],
+            }
+            for item_id, counts in sorted(validation_verdicts.items())
+        ]
+
     return summary
+
+
+def _verdict_plurality(counts: dict) -> str:
+    """Return the plurality verdict (moved / no_move / inconclusive / tied).
+
+    "tied" when the top two categories have equal counts and the result
+    would otherwise be arbitrary — the aggregation caller must not
+    auto-strip a tag on a tie.
+    """
+    ranked = sorted(
+        ("moved", "no_move", "inconclusive"),
+        key=lambda k: counts.get(k, 0),
+        reverse=True,
+    )
+    top = ranked[0]
+    if counts.get(top, 0) == 0:
+        return "inconclusive"
+    if counts.get(ranked[1], 0) == counts.get(top, 0):
+        return "tied"
+    return top
 
 
 def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_FEATURES_WORKDIR") -> str:
@@ -723,6 +876,13 @@ def _reflect_one_cohort(
     )
     os.makedirs(prompts_dir, exist_ok=True)
 
+    validation_claims = load_awaits_bakeoff_validation_items()
+    if validation_claims:
+        print(
+            f"Injecting {len(validation_claims)} awaits_bakeoff_validation "
+            f"claim(s) into reflect prompts"
+        )
+
     count = 0
     for repo_name in repos:
         repo_path = os.path.join(pool_path, repo_name)
@@ -737,7 +897,9 @@ def _reflect_one_cohort(
             print(f"[{repo_name}] Found prior assessment (injecting context)")
 
         prompt = generate_assessment_prompt(
-            repo_name, repo_path, repo_out, prior_assessment=prior,
+            repo_name, repo_path, repo_out,
+            prior_assessment=prior,
+            validation_claims=validation_claims,
         )
 
         prompt_path = os.path.join(prompts_dir, f"{repo_name}.prompt.md")
@@ -946,8 +1108,248 @@ def _print_aggregate_summary(summary: dict, summary_path: str = "") -> None:
             print(f"  - {item['idea']} (x{item['count']})")
         print()
 
+    if summary.get("awaits_bakeoff_validation_verdicts"):
+        print("awaits_bakeoff_validation verdicts:")
+        for v in summary["awaits_bakeoff_validation_verdicts"]:
+            print(
+                f"  - {v['item_id']}: plurality={v['plurality']} "
+                f"(moved={v['moved']} no_move={v['no_move']} "
+                f"inconclusive={v['inconclusive']})"
+            )
+        print()
+
     if summary_path:
         print(f"Full summary: {summary_path}")
+
+
+def _surface_validation_mutations(
+    summary: dict, cohort_label: str, apply: bool
+) -> dict | None:
+    """Print and optionally apply the tracker mutations implied by *summary*.
+
+    When ``apply`` is False (default), only prints the plan so humans can
+    review it before re-running with --apply-verdicts. When True, executes
+    the plan via the tracker CLI and prints the per-step outcome.
+
+    Returns the ``apply_mutation_plan`` stats dict when apply=True, else None.
+    """
+    plan = build_validation_mutation_plan(summary, cohort_label=cohort_label)
+    if not plan:
+        return None
+    print("awaits_bakeoff_validation mutation plan:")
+    for step in plan:
+        action = step.get("action", "?")
+        target = step.get("item_id") or step.get("parent_id") or "?"
+        if action == "remove_tag":
+            print(f"  - remove_tag {step['tag']} from {target}")
+        elif action == "discuss":
+            msg = step["message"]
+            if len(msg) > 100:
+                msg = msg[:100].rstrip() + "…"
+            print(f"  - discuss {target}: {msg}")
+        elif action == "spawn_regression":
+            print(f"  - spawn_regression under {target}: {step['title']}")
+        elif action == "note":
+            print(f"  - note {target}: {step['message']}")
+        else:
+            print(f"  - {action} {target}")
+    if not apply:
+        print("(dry-run; re-run with --apply-verdicts to execute)")
+        return None
+    print("Applying plan...")
+    stats = apply_mutation_plan(plan)
+    print(
+        f"Plan applied: {stats['applied']} ok, "
+        f"{stats['failed']} failed, {stats['skipped']} skipped"
+    )
+    for r in stats["results"]:
+        if r.get("error"):
+            step = r["step"]
+            print(
+                f"  ! {step.get('action', '?')} "
+                f"{step.get('item_id') or step.get('parent_id') or '?'}: "
+                f"{r['error']}"
+            )
+    return stats
+
+
+def build_validation_mutation_plan(
+    summary: dict, cohort_label: str = ""
+) -> list[dict]:
+    """Plan the tracker mutations implied by a summary's per-claim verdicts.
+
+    For each item whose plurality is:
+      * ``moved``   — strip the ``awaits_bakeoff_validation`` tag + append a
+                      discuss note recording the validation.
+      * ``no_move`` — spawn a regression sub-item under the original (kind
+                      ``work_item``, tags ``regression`` +
+                      ``awaits_bakeoff_validation``, priority 1, status
+                      ``todo_soft``) + append a discuss note on the original.
+      * ``tied`` / ``inconclusive`` — no mutation; one ``note`` entry so the
+                      summary still surfaces that the cohort didn't settle it.
+
+    The plan is a list of dicts with ``action`` in {``remove_tag``,
+    ``discuss``, ``spawn_regression``, ``note``}. Callers can dry-run the
+    plan by inspecting it, or execute it via :func:`apply_mutation_plan`.
+    """
+    plan: list[dict] = []
+    verdicts = summary.get("awaits_bakeoff_validation_verdicts") or []
+    for v in verdicts:
+        item_id = v.get("item_id")
+        plurality = v.get("plurality")
+        if not item_id or not plurality:
+            continue
+        ev_summary = _summarize_evidence(v.get("evidence") or [])
+        if plurality == "moved":
+            plan.append({
+                "action": "remove_tag",
+                "item_id": item_id,
+                "tag": "awaits_bakeoff_validation",
+            })
+            plan.append({
+                "action": "discuss",
+                "item_id": item_id,
+                "message": (
+                    f"Bakeoff validation: MOVED (cohort {cohort_label or '?'}). "
+                    f"Plurality verdict across repos: moved={v['moved']} "
+                    f"no_move={v['no_move']} inconclusive={v['inconclusive']}. "
+                    f"Evidence: {ev_summary} — awaits_bakeoff_validation tag "
+                    f"stripped automatically by bakeoff-deep-reflect aggregate."
+                ),
+            })
+        elif plurality == "no_move":
+            plan.append({
+                "action": "spawn_regression",
+                "parent_id": item_id,
+                "title": f"Regression: {item_id} did not move in bakeoff {cohort_label or '?'}",
+                "description": (
+                    f"Parent item {item_id} carries an unvalidated bakeoff claim. "
+                    f"Cohort {cohort_label or '?'} produced plurality verdict "
+                    f"no_move (moved={v['moved']} no_move={v['no_move']} "
+                    f"inconclusive={v['inconclusive']}). Evidence: {ev_summary}.\n\n"
+                    f"Investigate why the claimed metric did not move: either "
+                    f"the fix did not land as expected, the claim was overstated, "
+                    f"or the cohort is an unfair test (in which case the parent "
+                    f"verdict should be re-run against a different cohort and "
+                    f"this regression item closed as wont_do with that rationale)."
+                ),
+                "tags": ["regression", "awaits_bakeoff_validation"],
+            })
+            plan.append({
+                "action": "discuss",
+                "item_id": item_id,
+                "message": (
+                    f"Bakeoff validation: NO_MOVE (cohort {cohort_label or '?'}). "
+                    f"Plurality verdict across repos: moved={v['moved']} "
+                    f"no_move={v['no_move']} inconclusive={v['inconclusive']}. "
+                    f"Regression sub-item spawned automatically by "
+                    f"bakeoff-deep-reflect aggregate."
+                ),
+            })
+        else:
+            plan.append({
+                "action": "note",
+                "item_id": item_id,
+                "message": (
+                    f"plurality={plurality}; no mutation applied "
+                    f"(moved={v['moved']} no_move={v['no_move']} "
+                    f"inconclusive={v['inconclusive']})"
+                ),
+            })
+    return plan
+
+
+def _summarize_evidence(evidence: list[dict], max_items: int = 3) -> str:
+    """Collapse a list of per-repo evidence entries into a short string."""
+    if not evidence:
+        return "(no per-repo evidence attached)"
+    parts = []
+    for ev in evidence[:max_items]:
+        repo = ev.get("repo", "?")
+        verdict = ev.get("verdict", "?")
+        note = (ev.get("note") or "").strip().replace("\n", " ")
+        if len(note) > 120:
+            note = note[:120].rstrip() + "…"
+        parts.append(f"{repo}={verdict}: {note}" if note else f"{repo}={verdict}")
+    more = len(evidence) - max_items
+    tail = f"; +{more} more" if more > 0 else ""
+    return "; ".join(parts) + tail
+
+
+def apply_mutation_plan(
+    plan: list[dict],
+    tracker_script: str = "scripts/tracker",
+    repo_root: str = None,
+    runner=None,
+) -> dict:
+    """Execute each mutation in *plan* via the tracker CLI.
+
+    Returns a dict with counters for ``applied`` / ``failed`` / ``skipped``
+    and a per-step ``results`` list. The *runner* hook exists for tests;
+    it receives the argv list and returns a CompletedProcess-compatible
+    object. In production callers, *runner* defaults to
+    :func:`subprocess.run` with capture + text enabled.
+    """
+    if repo_root is None:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    tracker_path = os.path.join(repo_root, tracker_script)
+
+    def _default_runner(argv):
+        return subprocess.run(
+            argv, capture_output=True, text=True, timeout=60, check=False,
+        )
+
+    runner = runner or _default_runner
+    stats = {"applied": 0, "failed": 0, "skipped": 0, "results": []}
+
+    for step in plan:
+        action = step.get("action")
+        argv: list[str] | None = None
+        if action == "remove_tag":
+            argv = [tracker_path, "update", step["item_id"],
+                    "--remove-tag", step["tag"]]
+        elif action == "discuss":
+            argv = [tracker_path, "discuss", step["item_id"], step["message"]]
+        elif action == "spawn_regression":
+            argv = [
+                tracker_path, "add",
+                "--kind", "work_item",
+                "--title", step["title"],
+                "--parent", step["parent_id"],
+                "--priority", "1",
+                "--status", "todo_soft",
+                "--description", step["description"],
+            ]
+            for tag in step.get("tags", []):
+                argv.extend(["--tag", tag])
+        elif action == "note":
+            stats["skipped"] += 1
+            stats["results"].append({"step": step, "skipped": True})
+            continue
+        else:
+            stats["skipped"] += 1
+            stats["results"].append({
+                "step": step, "skipped": True, "reason": "unknown action",
+            })
+            continue
+
+        try:
+            result = runner(argv)
+        except (OSError, subprocess.SubprocessError) as exc:
+            stats["failed"] += 1
+            stats["results"].append({"step": step, "error": str(exc)})
+            continue
+        if getattr(result, "returncode", 1) == 0:
+            stats["applied"] += 1
+            stats["results"].append({"step": step, "ok": True})
+        else:
+            stats["failed"] += 1
+            stats["results"].append({
+                "step": step,
+                "error": (getattr(result, "stderr", "") or "").strip()
+                         or f"exit {getattr(result, 'returncode', '?')}",
+            })
+    return stats
 
 
 def cmd_aggregate(args):
@@ -1007,6 +1409,11 @@ def cmd_aggregate(args):
                     "summary.yaml",
                 )
                 _print_aggregate_summary(summary, summary_path)
+                _surface_validation_mutations(
+                    summary,
+                    cohort_label=f"cohort-{cohort_num:03d}/iter-{iteration:03d}",
+                    apply=getattr(args, "apply_verdicts", False),
+                )
             else:
                 print("  No assessments found (skipped)")
 
@@ -1071,6 +1478,13 @@ def cmd_aggregate(args):
         "summary.yaml",
     )
     _print_aggregate_summary(summary, summary_path)
+
+    # awaits_bakeoff_validation verdict application (dry-run by default).
+    _surface_validation_mutations(
+        summary,
+        cohort_label=f"cohort-{cohort_number:03d}/iter-{iteration:03d}",
+        apply=getattr(args, "apply_verdicts", False),
+    )
 
     # Optional: ingest improvement ideas into tracker
     if getattr(args, "ingest", False):
@@ -1498,6 +1912,12 @@ def main():
                              help="Aggregate all cohorts (default: latest only)")
     p_aggregate.add_argument("--some", type=int, metavar="N",
                              help="Aggregate latest N cohorts (like --all but capped)")
+    p_aggregate.add_argument(
+        "--apply-verdicts", action="store_true",
+        help="Apply awaits_bakeoff_validation verdicts: strip the tag on "
+             "plurality=moved, spawn a regression sub-item on "
+             "plurality=no_move. Default: dry-run — print the plan only.",
+    )
 
     # check (aggregation resilience)
     p_check = subparsers.add_parser(

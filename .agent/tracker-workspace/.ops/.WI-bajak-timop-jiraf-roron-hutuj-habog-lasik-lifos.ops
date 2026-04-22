@@ -1,0 +1,36 @@
+- op: create  # 991c
+  at: '2026-04-17T14:34:50Z'  # 991c
+  by: agent  # 991c
+  actor: jgstern_agent  # 991c
+  clock: 1  # 991c
+  nonce: 991c  # 991c
+  data:  # 991c
+    kind: work_item  # 991c
+    title: "Playbook selector: pass dedup window into selector prompt to kill oscillator loop"  # 991c
+    status: needs_human_review  # 991c
+    priority: 3  # 991c
+    parent:  # 991c
+    tags:  # 991c
+    - retrospective  # 991c
+    - hooks  # 991c
+    isbefore: []  # 991c
+    duplicate_of: []  # 991c
+    not_duplicate_of: []  # 991c
+    pr_ref:  # 991c
+    description: "Observed in session_retrospective_04172026_1012.md Finding 2, and in prior retros 04-09 and 04-14 (3rd consecutive). Selector LLM picks permanently-relevant playbooks (output-capture 47 selections, smart-test 45, recover-state 38, tracker-reply 35, trackerize 35) that are then dedup-filtered before reaching the agent. This session: 244 polls, 466 selections, 72 injections, 394 dedup-skipped = 84.5% waste rate.\n\nProposed improvement: pass the current dedup window (the list of playbook IDs already in the recent context) into the selector prompt as an explicit 'do not re-pick these' precondition. The selector can then spend tokens on genuinely novel candidates instead of re-nominating oscillators. Alternative: demote permanently-relevant playbooks to 'pin once per session' status.\n\nTouches .agent/hooks/_shared/on_transcript_change.py -> needs_human_review per governance rule."  # 991c
+    fields: {}  # 991c
+- op: update  # b4ac
+  at: '2026-04-17T17:08:35Z'  # b4ac
+  by: agent  # b4ac
+  actor: jgstern_agent  # b4ac
+  clock: 2  # b4ac
+  nonce: b4ac  # b4ac
+  set:  # b4ac
+    status: wont_do  # b4ac
+- op: discuss  # 90bc
+  at: '2026-04-17T17:08:35Z'  # 90bc
+  by: agent  # 90bc
+  actor: jgstern_agent  # 90bc
+  clock: 3  # 90bc
+  nonce: 90bc  # 90bc
+  message: "Closing: misread the selector/dedup architecture. The selector is designed to cast wide (including permanently-relevant playbooks); dedup is designed to narrow (since the agent already has them in context). Novel picks break through precisely because they are novel. Pre-filtering 'skip these permanent picks' from the selector prompt would either require hand-curating which playbooks are 'permanent' (brittle), or would suppress exactly the novelty signal we want to preserve. The high dedup rate (~85%) is a selectivity signal, not waste. No infra change warranted."  # 90bc

@@ -14,6 +14,7 @@ The CLI uses argparse with subcommands for different operations:
 - **catalog**: List available analysis passes
 - **build-grammars**: Build Lean/Wolfram tree-sitter grammars from source
 - **install-gitleaks**: Install gitleaks for secret scanning
+- **install-rust-analyzer**: Install rust-analyzer via rustup for the SCIP-backed Rust analyzer (WI-dotud)
 
 When no subcommand is given, sketch mode is assumed. This makes the
 common case (`hypergumbo .`) as simple as possible.
@@ -86,7 +87,10 @@ import hypergumbo_core.linkers.view_template as _view_template_linker  # noqa: F
 import hypergumbo_core.linkers.vue_template_method as _vue_template_method_linker  # noqa: F401
 import hypergumbo_core.linkers.build_target as _build_target_linker  # noqa: F401
 import hypergumbo_core.linkers.decorator_dispatch as _decorator_dispatch_linker  # noqa: F401
+import hypergumbo_core.linkers.method_call_recovery as _method_call_recovery_linker  # noqa: F401
 import hypergumbo_core.linkers.middleware_chain as _middleware_chain_linker  # noqa: F401
+import hypergumbo_core.linkers.controller_routes as _controller_routes_linker  # noqa: F401
+import hypergumbo_core.linkers.router_routes as _router_routes_linker  # noqa: F401
 import hypergumbo_core.linkers.react_component as _react_component_linker  # noqa: F401
 import hypergumbo_core.linkers.tauri_ipc as _tauri_ipc_linker  # noqa: F401
 import hypergumbo_core.linkers.solidity_abi as _solidity_abi_linker  # noqa: F401
@@ -95,8 +99,13 @@ import hypergumbo_core.linkers.yjs_crdt as _yjs_crdt_linker  # noqa: F401
 import hypergumbo_core.linkers.annotation_convention as _annotation_convention_linker  # noqa: F401
 import hypergumbo_core.linkers.crypto_flow as _crypto_flow_linker  # noqa: F401
 import hypergumbo_core.linkers.message_dispatch as _message_dispatch_linker  # noqa: F401
+import hypergumbo_core.linkers.airflow_framework_dispatch as _airflow_framework_dispatch_linker  # noqa: F401
+import hypergumbo_core.linkers.jackson_dispatch as _jackson_dispatch_linker  # noqa: F401
+import hypergumbo_core.linkers.kafka_streams_dispatch as _kafka_streams_dispatch_linker  # noqa: F401
+import hypergumbo_core.linkers.django_orm_dispatch as _django_orm_dispatch_linker  # noqa: F401
+import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
-from .ir import Symbol, Edge, create_boundary_nodes, deduplicate_edges
+from .ir import Symbol, Edge, UsageContext, create_boundary_nodes, deduplicate_edges
 from .metrics import compute_metrics
 from .profile import detect_profile
 from .schema import new_behavior_map
@@ -122,7 +131,7 @@ from .gitleaks import (
     is_gitleaks_available,
     install_gitleaks,
     uninstall_gitleaks,
-    scan_content,
+    scan_content_cached,
     format_secret_warning,
     get_install_nag,
 )
@@ -573,6 +582,20 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         print(f"Error: path does not exist: {repo_root}", file=sys.stderr)
         return 1
 
+    # WI-zujum: a single-file argument crashes downstream in
+    # _format_structure_tree_fallback (Path.iterdir() raises
+    # NotADirectoryError). Reject early with a hint pointing at the
+    # likely intent — analyse the parent directory.
+    if not repo_root.is_dir():
+        parent = repo_root.parent
+        print(
+            f"Error: {repo_root} is a file, not a directory.\n"
+            f"hypergumbo analyses repositories. Try its parent directory:\n"
+            f"  hypergumbo {parent}",
+            file=sys.stderr,
+        )
+        return 1
+
     # Warn if analyzing a subdirectory of a git repo
     git_root = _find_git_root(repo_root)
     if git_root is not None and git_root.resolve() != repo_root.resolve():
@@ -706,11 +729,15 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         require_sections=getattr(args, "require_sections", None) or None,
     )
 
-    # Secret scanning (opt-out with --no-secret-scan)
+    # Secret scanning (opt-out with --no-secret-scan).
+    # WI-julir: use scan_content_cached so warm sketch runs reuse a prior
+    # gitleaks result keyed on the sketch content hash. The per-state
+    # cache_dir already lives under the per-repo-state directory, so any
+    # source-file change rotates the directory and invalidates the cache.
     no_secret_scan = getattr(args, "no_secret_scan", False)
     if not no_secret_scan:
         if is_gitleaks_available():
-            findings = scan_content(sketch)
+            findings = scan_content_cached(sketch, cache_dir)
             if findings:
                 print(format_secret_warning(findings), file=sys.stderr)
             else:
@@ -862,6 +889,22 @@ def cmd_sketch(args: argparse.Namespace) -> int:
 def cmd_run(args: argparse.Namespace) -> int:
     # The positional argument for `run` is called `path` in the parser below.
     repo_root = Path(args.path).resolve()
+
+    # WI-zujum: same single-file guard as cmd_sketch — analysing a single
+    # file is not a supported mode and crashes deeper in the pipeline.
+    if not repo_root.exists():
+        print(f"Error: path does not exist: {repo_root}", file=sys.stderr)
+        return 1
+    if not repo_root.is_dir():
+        parent = repo_root.parent
+        print(
+            f"Error: {repo_root} is a file, not a directory.\n"
+            f"hypergumbo analyses repositories. Try its parent directory:\n"
+            f"  hypergumbo run {parent}",
+            file=sys.stderr,
+        )
+        return 1
+
     out_path = Path(args.out) if args.out else None
     max_tier = getattr(args, "max_tier", None)
     max_files = getattr(args, "max_files", None)
@@ -875,6 +918,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     include_docs = getattr(args, "include_docs", False)
     show_progress = getattr(args, "progress", True)
     locale = getattr(args, "locale", None)
+    enable_handler_slices = not getattr(args, "no_handler_slices", False)
+    max_handler_slices = getattr(
+        args, "max_handler_slices", _DEFAULT_MAX_HANDLER_SLICES
+    )
 
     # Detect and filter locale documentation directories
     _setup_locale_filtering(repo_root, locale)
@@ -893,6 +940,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         frameworks=frameworks,
         include_docs=include_docs,
         progress=show_progress,
+        enable_handler_slices=enable_handler_slices,
+        max_handler_slices=max_handler_slices,
     )
 
     # Output summary (always at the end)
@@ -1546,7 +1595,10 @@ def cmd_routes(args: argparse.Namespace) -> int:
 
     # Find route handlers - symbols with route concepts in meta.concepts
     # OR symbols with kind="route" (Go analyzer creates route symbols directly).
-    exclude_tests = getattr(args, "exclude_tests", False)
+    # WI-godos: tests excluded by default; --include-tests opts in.
+    # The legacy --exclude-tests flag is preserved as a no-op alias for
+    # backward compatibility with existing scripts.
+    exclude_tests = not getattr(args, "include_tests", False)
     routes: list[dict] = []
     for node in nodes:
         is_route = False
@@ -2216,6 +2268,211 @@ def cmd_uninstall_gitleaks(args: argparse.Namespace) -> int:
     """Uninstall gitleaks secret scanner."""
     success = uninstall_gitleaks(quiet=args.quiet)
     return 0 if success else 1
+
+
+def cmd_install_rust_analyzer(args: argparse.Namespace) -> int:
+    """Install rust-analyzer (WI-dotud) or report availability via ``--check``."""
+    from .rust_analyzer_install import (
+        install_rust_analyzer,
+        is_rust_analyzer_available,
+    )
+
+    if args.check:
+        available = is_rust_analyzer_available()
+        symbol = "\u2713" if available else "\u2717"
+        print(
+            f"rust-analyzer: {symbol} "
+            f"{'installed' if available else 'not installed'}",
+        )
+        if not available:
+            print("\nRun 'hypergumbo install-rust-analyzer' to install.")
+            return 1
+        return 0
+
+    success = install_rust_analyzer(quiet=args.quiet)
+    return 0 if success else 1
+
+
+def cmd_uninstall_rust_analyzer(args: argparse.Namespace) -> int:
+    """Uninstall rust-analyzer via rustup (WI-dotud)."""
+    from .rust_analyzer_install import uninstall_rust_analyzer
+
+    success = uninstall_rust_analyzer(quiet=args.quiet)
+    return 0 if success else 1
+
+
+# WI-huham: install-extras / uninstall-extras umbrella over the three
+# per-component installers (gitleaks, embeddings, rust-analyzer). Each
+# row is (component_name, is_available, install_fn, uninstall_fn). The
+# table is the single source of truth for the umbrella so adding a
+# fourth component later is a one-line change.
+def _extras_components() -> list[tuple[str, callable, callable, callable]]:
+    """Return the rows the install-extras umbrella iterates over.
+
+    Factored into a function so imports are lazy (``install_gitleaks``
+    touches urllib / tarfile modules that would otherwise load at
+    ``hypergumbo --help`` time just to print an unrelated subcommand
+    list).
+    """
+    from .gitleaks import install_gitleaks, uninstall_gitleaks
+    from .rust_analyzer_install import (
+        install_rust_analyzer,
+        is_rust_analyzer_available,
+        uninstall_rust_analyzer,
+    )
+
+    # _is_embeddings_available + install_embeddings + uninstall_embeddings
+    # are module-local helpers; reference them via module lookup so the
+    # table rows stay declarative.
+    import sys
+    cli_mod = sys.modules[__name__]
+
+    return [
+        (
+            "gitleaks",
+            is_gitleaks_available,
+            install_gitleaks,
+            uninstall_gitleaks,
+        ),
+        (
+            "embeddings",
+            cli_mod._is_embeddings_available,
+            cli_mod._install_embeddings_impl,
+            cli_mod._uninstall_embeddings_impl,
+        ),
+        (
+            "rust-analyzer",
+            is_rust_analyzer_available,
+            install_rust_analyzer,
+            uninstall_rust_analyzer,
+        ),
+    ]
+
+
+def _install_embeddings_impl(quiet: bool = False) -> bool:
+    """Thin adapter calling the embeddings installer like the others.
+
+    The embeddings installer is inline in cmd_install_embeddings; this
+    wrapper exposes the same (quiet=...) -> bool surface so the
+    extras table can treat all three components uniformly.
+    """
+    # The real install_embeddings function is defined in this file;
+    # this adapter is here so _extras_components can reference it via
+    # module lookup and keep the table declarative.
+    import subprocess  # nosec B404 — pip install
+    import sys
+
+    if not quiet:
+        print("Installing embedding dependencies...")
+    cmd = [sys.executable, "-m", "pip", "install",
+           "sentence-transformers", "onnxruntime"]
+    try:
+        result = subprocess.run(  # nosec B603  # noqa: S603
+            cmd, capture_output=True, timeout=600.0,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        print(f"Error installing embeddings: {exc}", file=sys.stderr)
+        return False
+    if result.returncode != 0:
+        stderr = result.stderr
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        print(
+            f"Error: pip install for embeddings exited "
+            f"{result.returncode}. {stderr.strip()}",
+            file=sys.stderr,
+        )
+        return False
+    if not quiet:
+        print("  Done!")
+    return True
+
+
+def _uninstall_embeddings_impl(quiet: bool = False) -> bool:
+    """Thin adapter for the extras table uninstall path."""
+    import subprocess  # nosec B404 — pip uninstall
+    import sys
+
+    if not quiet:
+        print("Removing embedding dependencies...")
+    cmd = [sys.executable, "-m", "pip", "uninstall", "-y",
+           "sentence-transformers", "onnxruntime"]
+    try:
+        result = subprocess.run(  # nosec B603  # noqa: S603
+            cmd, capture_output=True, timeout=300.0,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        print(f"Error uninstalling embeddings: {exc}", file=sys.stderr)
+        return False
+    if result.returncode != 0:  # pragma: no cover — pip rarely fails
+        return False
+    if not quiet:
+        print("  Done!")
+    return True
+
+
+def cmd_install_extras(args: argparse.Namespace) -> int:
+    """Install (or check) every optional component in one call (WI-huham).
+
+    ``--check`` prints a status table and exits 0 iff every component
+    is present; exit 1 otherwise so scripts can gate on it.
+
+    The default action runs each installer in sequence. A failure in
+    one installer does not abort the rest — the umbrella is best-
+    effort, and the final exit code reflects whether any component
+    failed.
+
+    ``--skip gitleaks,embeddings`` omits the named components from the
+    run (and from the status table).
+    """
+    skip = set()
+    if getattr(args, "skip", None):
+        skip = {s.strip() for s in args.skip.split(",") if s.strip()}
+
+    rows = [
+        row for row in _extras_components() if row[0] not in skip
+    ]
+
+    if getattr(args, "check", False):
+        all_present = True
+        for name, is_available, _install, _uninstall in rows:
+            available = is_available()
+            symbol = "\u2713" if available else "\u2717"
+            print(
+                f"{name}: {symbol} "
+                f"{'installed' if available else 'not installed'}",
+            )
+            if not available:
+                all_present = False
+        return 0 if all_present else 1
+
+    any_failed = False
+    for name, is_available, install, _uninstall in rows:
+        if is_available():
+            if not args.quiet:
+                print(f"{name}: already installed, skipping")
+            continue
+        if not install(quiet=args.quiet):
+            print(f"{name}: install failed", file=sys.stderr)
+            any_failed = True
+    return 1 if any_failed else 0
+
+
+def cmd_uninstall_extras(args: argparse.Namespace) -> int:
+    """Mirror of install-extras for removal (WI-huham)."""
+    skip = set()
+    if getattr(args, "skip", None):
+        skip = {s.strip() for s in args.skip.split(",") if s.strip()}
+
+    rows = [
+        row for row in _extras_components() if row[0] not in skip
+    ]
+
+    any_failed = False
+    for _name, _is_available, _install, uninstall in rows:
+        if not uninstall(quiet=args.quiet):
+            any_failed = True
+    return 1 if any_failed else 0
 
 
 def _get_cache_base() -> Path:
@@ -2888,9 +3145,17 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             languages.add(lang)
 
     # Load catalogs for detected languages
+    # INV-javam: track unsupported languages (no catalog) separately from
+    # supported-but-zero-matches languages. The former must be surfaced
+    # to callers so "zero I/O detected" isn't silently indistinguishable
+    # from "language has no catalog at all".
     catalogs = {}
-    for lang in languages:
+    unsupported_languages: list[str] = []
+    for lang in sorted(languages):
         catalog = load_catalog(lang)
+        if not catalog.is_supported:
+            unsupported_languages.append(lang)
+            continue
         if catalog.primitives:
             catalogs[lang] = catalog
             # Also key by the catalog's base language so edge-prefix lookups
@@ -2965,13 +3230,42 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             }
         else:
             output = bmap.to_dict()
+        # INV-javam: expose unsupported-language signal to programmatic
+        # consumers. Empty list when every detected language has a catalog.
+        output["unsupported_languages"] = unsupported_languages
         print(json.dumps(output, indent=2, sort_keys=True))
     elif getattr(args, "by_file", False):
         _print_io_boundaries_by_file(filtered_entries, nodes_by_id, repo_root)
+        _print_unsupported_languages_notice(unsupported_languages)
     else:
         _print_io_boundaries_by_type(filtered_entries, nodes_by_id, bmap, repo_root)
+        _print_unsupported_languages_notice(unsupported_languages)
 
     return 0
+
+
+def _print_unsupported_languages_notice(
+    unsupported_languages: list[str],
+) -> None:
+    """INV-javam: emit an explicit notice when the repo contains languages
+    with no I/O primitive catalog.
+
+    Without this, the human-readable output for an unsupported language
+    is indistinguishable from a genuinely I/O-free codebase — and
+    downstream taint-flow trivially passes every claim on those
+    languages (false security confidence). The notice runs to stderr so
+    piping the boundary report to a file / grep / jq is unaffected.
+    """
+    if not unsupported_languages:
+        return
+    langs = ", ".join(unsupported_languages)
+    print(
+        f"\nNote: no I/O primitive catalog for language(s): {langs}. "
+        "Zero boundaries reported for these languages does NOT mean "
+        "the code is I/O-free — it means hypergumbo cannot detect I/O "
+        "for this language yet. (INV-javam)",
+        file=sys.stderr,
+    )
 
 
 def _format_io_caller(
@@ -3196,6 +3490,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # Run taint-flow analysis if any claims have taint_flow constraints
     taint_findings = None
+    # INV-javam: track languages with no taint coverage so callers can
+    # distinguish "no taint-flow violations" from "language not analyzed".
+    # Without this, taint-flow trivially passes every claim on unsupported
+    # languages and the verify-claims output lies by omission.
+    unsupported_taint_languages: list[str] = []
     has_taint_claims = any(c.constraint_taint_flow is not None for c in claims)
     if has_taint_claims:
         from .taint import load_builtin_taint_catalog, propagate_taint_structural
@@ -3208,7 +3507,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         all_sources = []
         all_sinks = []
         all_sanitizers = []
-        for lang in languages:
+        for lang in sorted(languages):
+            src_count = len(taint_catalog.sources_for_language(lang))
+            snk_count = len(taint_catalog.sinks_for_language(lang))
+            if src_count == 0 and snk_count == 0:
+                # Neither sources nor sinks for this language — taint-flow
+                # cannot meaningfully analyze it. Surface the gap.
+                unsupported_taint_languages.append(lang)
             all_sources.extend(taint_catalog.sources_for_language(lang))
             all_sinks.extend(taint_catalog.sinks_for_language(lang))
             all_sanitizers.extend(taint_catalog.sanitizers_for_language(lang))
@@ -3223,6 +3528,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # Output
     if getattr(args, "json_output", False):
+        # Preserve the legacy flat-list schema for programmatic consumers;
+        # INV-javam's unsupported_taint_languages signal goes to stderr to
+        # avoid breaking existing pipelines that parse verify-claims JSON.
         print(json.dumps([v.to_dict() for v in verdicts], indent=2))
     else:
         violated = 0
@@ -3239,6 +3547,19 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             print(f"{violated}/{len(verdicts)} claim(s) VIOLATED")
         else:
             print(f"All {len(verdicts)} claim(s) CONFIRMED")
+
+    # INV-javam: warn to stderr when taint claims were evaluated against a
+    # repo whose languages have no taint catalog coverage. Even a "all
+    # confirmed" verdict is misleading when the language wasn't analyzed.
+    if has_taint_claims and unsupported_taint_languages:
+        langs = ", ".join(unsupported_taint_languages)
+        print(
+            f"\nNote: no taint-flow catalog for language(s): {langs}. "
+            "Claims touching these languages are NOT actually verified — "
+            "taint-flow has no sources/sinks to trace. Treat 'confirmed' "
+            "verdicts on these languages as inconclusive. (INV-javam)",
+            file=sys.stderr,
+        )
 
     has_violations = any(v.verdict == "violated" for v in verdicts)
     return 1 if has_violations else 0
@@ -3317,6 +3638,97 @@ def cmd_config(args: argparse.Namespace) -> int:
     return 0
 
 
+# WI-hular: per-language test-coverage blind spots.
+#
+# `hypergumbo test-coverage` is a static analysis. Across UAT 2026-04-13
+# (4 languages) it had 100% precision but ~20% recall — i.e., 80% of
+# actually-tested functions were correctly recognised, and ~20% of
+# tested functions were incorrectly reported as untested. The dispatch
+# patterns below are the documented per-language sources of that
+# recall gap. Surfacing them in --help, the human output footer, and
+# the JSON ``caveats`` field gives users a concrete reason to discount
+# raw "untested" counts before acting on them.
+_TEST_COVERAGE_PER_LANGUAGE_CAVEATS: dict[str, str] = {
+    "java": (
+        "Java: Spring MockMvc / Spring test runners and JUnit @ParameterizedTest "
+        "providers dispatch through reflection and look like indirection from a "
+        "static slice. Controllers exercised only via MockMvc may be reported "
+        "untested."
+    ),
+    "kotlin": (
+        "Kotlin: PSI visitor patterns (Detekt / Compiler plugin tests) drive "
+        "production code via visitor-pattern reflection that is not visible to "
+        "the static call graph. Visitor leaves may be reported untested."
+    ),
+    "go": (
+        "Go: tests that drive code via YAML/JSON reflection (config-driven "
+        "table tests, encoding/json round-trip) call deserialization handlers "
+        "without a direct call edge. Reflective handlers may be reported "
+        "untested."
+    ),
+    "scala": (
+        "Scala: ScalaTest / Specs2 macro-expanded suites and Cats Effect "
+        "test runners produce dispatch the static analyzer cannot see. "
+        "Effects under IO/Resource may be reported untested."
+    ),
+    "ruby": (
+        "Ruby: RSpec ``described_class`` and Rails fixtures dispatch via "
+        "metaprogramming the static analyzer cannot see. Methods called only "
+        "through stubbed-class indirection may be reported untested."
+    ),
+    "python": (
+        "Python: pytest fixtures injected by name, ``parametrize`` / "
+        "``mark.parametrize`` argument expansion, and patch.object decorators "
+        "produce indirect dispatch the static analyzer may not trace. "
+        "Fixture-only entry points may be reported untested."
+    ),
+    "javascript": (
+        "JavaScript/Jest: ``describe.each`` / ``it.each``, dynamic "
+        "``require``, and ESM tree-shaken re-exports break the static call "
+        "graph. Indirect imports may be reported untested."
+    ),
+    "typescript": (
+        "TypeScript/Jest: ``describe.each`` / ``it.each``, dynamic "
+        "``require``, and ESM tree-shaken re-exports break the static call "
+        "graph. Indirect imports may be reported untested."
+    ),
+    "csharp": (
+        "C#: xUnit ``[Theory]`` / ``[MemberData]`` providers and Moq/NSubstitute "
+        "proxy dispatch are reflection-based and invisible to the static call "
+        "graph. Methods exercised only through mocks may be reported untested."
+    ),
+}
+
+_TEST_COVERAGE_RECALL_DISCLAIMER = (
+    "test-coverage uses static analysis only and does not execute code. "
+    "Empirical false-negative rate ~20% across measured languages "
+    "(UAT 2026-04-13, 4 languages, n=hundreds): the tool has high "
+    "precision (when it says a function is tested, it is) but limited "
+    "recall (some genuinely-tested functions appear in 'Cold Spots' "
+    "because the tests reach them via dispatch the static call graph "
+    "cannot see). Treat 'untested' as 'unreached by static call graph', "
+    "not 'definitely untested'."
+)
+
+
+def _test_coverage_caveats(detected_languages: set[str]) -> dict[str, object]:
+    """Return the recall disclaimer and per-language caveats applicable
+    to the given detected languages.
+
+    Languages without a documented blind spot are silently skipped so
+    output stays focused (no empty caveat lines).
+    """
+    per_language: dict[str, str] = {}
+    for lang in sorted(detected_languages):
+        caveat = _TEST_COVERAGE_PER_LANGUAGE_CAVEATS.get(lang)
+        if caveat:
+            per_language[lang] = caveat
+    return {
+        "recall_disclaimer": _TEST_COVERAGE_RECALL_DISCLAIMER,
+        "per_language": per_language,
+    }
+
+
 def cmd_test_coverage(args: argparse.Namespace) -> int:
     """Estimate test coverage by analyzing which functions are called by tests.
 
@@ -3344,21 +3756,48 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     # Build lookup tables
     nodes_by_id = {n["id"]: n for n in nodes}
 
-    # Identify test symbols (functions/methods in test files)
+    # WI-dulav: a symbol counts as a test when EITHER its path matches
+    # a known test-path heuristic OR the framework-pattern enrichment
+    # layer tagged it with a ``test_*`` concept. The second clause
+    # catches the Template-Haskell / QuickCheck pattern where ``prop_*``
+    # functions live in the same module as the production code they
+    # test and get discovered at compile time via ``$forAllProperties``
+    # (shellcheck: 2214 ``prop_*`` functions in ``src/`` got 0% coverage
+    # before this). Framework concepts recognised as test: anything with
+    # ``concept`` starting with ``test`` — covers ``test_function``,
+    # ``test_suite``, ``test_lifecycle``, ``test_fixture``, and
+    # language-specific variants emitted by the per-framework YAMLs.
+    def _has_test_concept(node: dict) -> bool:
+        meta = node.get("meta") or {}
+        for c in meta.get("concepts", ()) or ():
+            name = c.get("concept") if isinstance(c, dict) else None
+            if isinstance(name, str) and name.startswith("test"):
+                return True
+        return False
+
+    # Identify test symbols (functions/methods in test files OR
+    # framework-tagged as tests).
     test_symbols: set[str] = set()
     for node in nodes:
         path = node.get("path", "")
         kind = node.get("kind", "")
-        if _is_test_path(path) and kind in ("function", "method"):
+        if kind not in ("function", "method"):
+            continue
+        if _is_test_path(path) or _has_test_concept(node):
             test_symbols.add(node["id"])
 
-    # Identify non-test callable symbols (coverage targets)
+    # Identify non-test callable symbols (coverage targets).
+    # Tests (by path OR by concept) are never targets — a function
+    # cannot simultaneously be the test and the thing-under-test.
     target_symbols: dict[str, dict] = {}
     for node in nodes:
         path = node.get("path", "")
         kind = node.get("kind", "")
-        if not _is_test_path(path) and kind in ("function", "method"):
-            target_symbols[node["id"]] = node
+        if kind not in ("function", "method"):
+            continue
+        if _is_test_path(path) or _has_test_concept(node):
+            continue
+        target_symbols[node["id"]] = node
 
     if not target_symbols:
         print("No functions found to analyze.", file=sys.stderr)
@@ -3424,12 +3863,22 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     coverage_percent = (tested_functions / total_functions * 100) if total_functions > 0 else 0.0
     total_tests = len(test_symbols)
 
+    # WI-hular: collect detected languages so caveats only fire for the
+    # languages actually present in the analyzed repo.
+    detected_languages: set[str] = set()
+    for node in nodes:
+        lang = node.get("language")
+        if lang:
+            detected_languages.add(lang)
+    caveats = _test_coverage_caveats(detected_languages)
+
     # Output
     if args.format == "json":
         # JSON output
         output = {
             "schema_version": "0.1.0",
             "view": "test-coverage",
+            "caveats": caveats,
             "summary": {
                 "total_functions": total_functions,
                 "tested_functions": tested_functions,
@@ -3514,6 +3963,18 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         # Show if results were truncated
         if top_n and (len(test_dense) > top_n or len(cold_spots) > top_n):
             print(f"\n(Showing top {top_n}. Use --top to see more.)")
+
+        # WI-hular: emit the recall disclaimer + per-language blind spots
+        # as a footer so users see them every time, not just on --help.
+        print("\nCaveats (test-coverage is static analysis only)")
+        print("-" * 47)
+        print(_TEST_COVERAGE_RECALL_DISCLAIMER)
+        per_lang = caveats["per_language"]
+        if per_lang:
+            print()
+            print("Known per-language blind spots in the analyzed repo:")
+            for _lang, msg in per_lang.items():
+                print(f"  - {msg}")
 
     # Output summary (to stderr for JSON mode to avoid breaking JSON parsing)
     summary_file = sys.stderr if args.format == "json" else None
@@ -3876,16 +4337,57 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     dead_candidates = []
     exclude_annotated = getattr(args, "exclude_annotated", False)
     exclude_exports = getattr(args, "exclude_exports", False)
+
+    # WI-rumij: propagate class-level annotations to contained methods.
+    # Spring frameworks typically annotate the controller class (@Controller,
+    # @RestController, @Service) without re-annotating each handler method,
+    # so methods report no annotations and slip past --exclude-annotated.
+    # Build a class-meta-index keyed by class symbol ID, then for each
+    # method, also check its containing class's meta when the method's own
+    # meta is empty.
+    class_meta_by_id: dict[str, dict] = {}
+    for node in nodes:
+        if node.get("kind") in ("class", "interface", "struct", "trait", "enum"):
+            class_meta_by_id[node["id"]] = node.get("meta") or {}
+    method_to_class: dict[str, str] = {}
+    for edge in edges:
+        if edge.get("type") == "contains":
+            src = edge.get("src", "")
+            dst = edge.get("dst", "")
+            if src in class_meta_by_id and dst:
+                method_to_class[dst] = src
+
+    def _has_annotation_signal(meta: dict) -> bool:
+        return bool(meta.get("decorators") or meta.get("annotations")
+                    or meta.get("concepts"))
+
     for sym_id, node in production_symbols.items():
         if sym_id not in reachable:
+            # WI-jifup: symbols in generated files are never actionable
+            # dead-code targets — you regenerate them, not delete them
+            # manually. Unconditional drop (no opt-in flag) because there
+            # is no use case in which the user wants "dead generated
+            # code" surfaced. Closes the residual leak in openapi-gen
+            # utility files (CancelablePromise.ts, request.ts, OpenAPI.ts,
+            # ApiError.ts) that bypassed the ranking-side centrality
+            # penalty (WI-tizij / WI-vubad) because dead-code-maybe does
+            # not use centrality at all.
+            sc = node.get("supply_chain") or {}
+            if sc.get("is_generated_file"):
+                continue
             # --exclude-annotated: skip candidates with decorators,
             # annotations, or framework concepts (these are likely
             # framework-registered callbacks, not linker gaps).
             if exclude_annotated:
                 meta = node.get("meta") or {}
-                if (meta.get("decorators") or meta.get("annotations")
-                        or meta.get("concepts")):
+                if _has_annotation_signal(meta):
                     continue
+                # WI-rumij: check containing class's annotations too
+                parent_class_id = method_to_class.get(sym_id)
+                if parent_class_id is not None:
+                    parent_meta = class_meta_by_id.get(parent_class_id, {})
+                    if _has_annotation_signal(parent_meta):
+                        continue
             # WI-zafab filter 3: skip candidates that are part of the
             # repo's public API (Symbol.is_exported=True). Exported
             # symbols are reachable by external callers outside the
@@ -4000,6 +4502,57 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     return 0
 
 
+def _positive_token_budget(raw: str) -> int:
+    """argparse type for --tokens: require a positive integer.
+
+    WI-pokor (UAT BUG-02+03): ``-t 0`` was silently treated as "no budget"
+    and produced the default 8000-token sketch; negative values produced
+    a header-only output with exit code 0. Both are configuration errors
+    and should fail fast with a clear message.
+    """
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(
+            f"token budget must be a positive integer, got {raw!r}"
+        ) from exc
+    if value <= 0:
+        raise argparse.ArgumentTypeError(
+            f"token budget must be a positive integer, got {value}"
+        )
+    return value
+
+
+def _add_path_argument(parser: argparse.ArgumentParser) -> None:
+    """Standard repo-path argument shared by all subcommands (WI-munuv).
+
+    Each subcommand accepts both forms interchangeably:
+
+        hypergumbo <cmd> /path/to/repo       # positional
+        hypergumbo <cmd> --path /path/...    # flag
+
+    Both default to ``None`` here; the post-process in ``main()``
+    resolves to ``"."`` when neither is set, and reports an error
+    when both are set explicitly. Keeping the destination split
+    (``path`` for positional, ``_path_flag`` for the option) is the
+    only way to register both — argparse rejects two adds with the
+    same dest. The post-process reunifies them so cmd functions can
+    keep reading ``args.path`` unchanged.
+    """
+    parser.add_argument(
+        "path",
+        nargs="?",
+        default=None,
+        help="Path to repo root (default: current directory)",
+    )
+    parser.add_argument(
+        "--path",
+        dest="_path_flag",
+        default=None,
+        help="Path to repo root (alternative to positional argument)",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Main parser with comprehensive help
     main_description = """\
@@ -4052,6 +4605,16 @@ For help on ALL commands:   hypergumbo --help --all"""
         action="store_true",
         help="Enable debug logging (shows ripgrep vs Python fallback decisions, etc.)",
     )
+    p.add_argument(
+        "--backend",
+        choices=["tree-sitter", "rust-analyzer"],
+        default=None,
+        help=(
+            "Select the Rust analysis backend. 'rust-analyzer' activates the "
+            "SCIP-backed analyzer (requires 'hypergumbo install-rust-analyzer'). "
+            "Default: tree-sitter (respects HYPERGUMBO_RUST_ANALYZER if set)."
+        ),
+    )
 
     sub = p.add_subparsers(dest="command")
 
@@ -4085,12 +4648,7 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         epilog=sketch_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_sketch.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        help="Path to repo (default: current directory)",
-    )
+    _add_path_argument(p_sketch)
     p_sketch.add_argument(
         "--input",
         type=str,
@@ -4100,9 +4658,9 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
     )
     p_sketch.add_argument(
         "-t", "--tokens",
-        type=int,
+        type=_positive_token_budget,
         default=None,
-        help="Limit output to approximately N tokens",
+        help="Limit output to approximately N tokens (must be a positive integer)",
     )
     p_sketch.add_argument(
         "-x", "--exclude-tests",
@@ -4239,12 +4797,7 @@ Cache location:
         epilog=run_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_run.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_run)
     p_run.add_argument(
         "--out",
         default=None,
@@ -4357,6 +4910,24 @@ Cache location:
              "(e.g., --locale ja-jp). By default, translated documentation "
              "directories are excluded to avoid processing duplicate content.",
     )
+    p_run.add_argument(
+        "--no-handler-slices",
+        action="store_true",
+        dest="no_handler_slices",
+        help="Disable per-route-handler forward slices (WI-sihok). By default "
+             "`run` emits slice.handler.<METHOD>.<path>.json for each "
+             "detected handler, capped at --max-handler-slices. Use this "
+             "flag to skip the extra files entirely.",
+    )
+    p_run.add_argument(
+        "--max-handler-slices",
+        type=int,
+        default=_DEFAULT_MAX_HANDLER_SLICES,
+        metavar="N",
+        help=f"Maximum per-handler forward slices to emit (default: "
+             f"{_DEFAULT_MAX_HANDLER_SLICES}). Overflow handlers are listed in "
+             f"slice.handler.index.json with pointers to re-derive on demand.",
+    )
     p_run.set_defaults(func=cmd_run)
 
     # hypergumbo slice
@@ -4390,17 +4961,13 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         epilog=slice_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_slice.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_slice)
     p_slice.add_argument(
         "--entry",
         default="auto",
-        help="Entrypoint to slice from: symbol name, file path, node ID, or 'auto' "
-             "to detect automatically (default: auto)",
+        help="Entrypoint to slice from: symbol name, file path, node ID, "
+             "'module:name' shorthand (e.g. cli:main), or 'auto' to detect "
+             "automatically (default: auto)",
     )
     p_slice.add_argument(
         "--list-entries",
@@ -4547,11 +5114,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         "pattern",
         help="Pattern to search for (case-insensitive substring match)",
     )
-    p_search.add_argument(
-        "--path",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_search)
     p_search.add_argument(
         "--input",
         default=None,
@@ -4591,11 +5154,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         epilog=routes_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_routes.add_argument(
-        "--path",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_routes)
     p_routes.add_argument(
         "--input",
         default=None,
@@ -4606,12 +5165,22 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         default=None,
         help="Filter by language (e.g., python, javascript)",
     )
+    # WI-godos: routes excludes test-file routes by default (UAT DQ-02
+    # found 14% of plausible's reported routes were from tests). Use
+    # --include-tests to opt back in. The `-x` / `--exclude-tests` flag
+    # is kept as a no-op alias so existing scripts don't break.
+    p_routes.add_argument(
+        "--include-tests",
+        action="store_true",
+        dest="include_tests",
+        help="Include routes from test files (default: excluded)",
+    )
     p_routes.add_argument(
         "-x",
         "--exclude-tests",
         action="store_true",
         dest="exclude_tests",
-        help="Exclude routes from test files",
+        help="(deprecated; excluded by default) Exclude routes from test files",
     )
     p_routes.set_defaults(func=cmd_routes)
 
@@ -4636,11 +5205,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         "symbol",
         help="Symbol name to explain (case-insensitive)",
     )
-    p_explain.add_argument(
-        "--path",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_explain)
     p_explain.add_argument(
         "--input",
         default=None,
@@ -4669,10 +5234,10 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_explain.add_argument(
         "-t",
         "--tokens",
-        type=int,
+        type=_positive_token_budget,
         default=None,
         dest="tokens",
-        help="Token budget for source code (omits low-priority sources when exceeded)",
+        help="Token budget for source code (must be a positive integer; omits low-priority sources when exceeded)",
     )
     p_explain.set_defaults(func=cmd_explain)
 
@@ -4737,6 +5302,79 @@ The output begins with passes suggested for your current directory."""
         help="Suppress output",
     )
     p_uninstall_gitleaks.set_defaults(func=cmd_uninstall_gitleaks)
+
+    # hypergumbo install-rust-analyzer
+    p_install_ra = sub.add_parser(
+        "install-rust-analyzer",
+        help="Install rust-analyzer (via rustup) for the SCIP-backed Rust analyzer",
+    )
+    p_install_ra.add_argument(
+        "--check",
+        action="store_true",
+        help="Check if rust-analyzer is installed without installing",
+    )
+    p_install_ra.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_install_ra.set_defaults(func=cmd_install_rust_analyzer)
+
+    # hypergumbo uninstall-rust-analyzer
+    p_uninstall_ra = sub.add_parser(
+        "uninstall-rust-analyzer",
+        help="Uninstall rust-analyzer (removes the rustup component if present)",
+    )
+    p_uninstall_ra.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_uninstall_ra.set_defaults(func=cmd_uninstall_rust_analyzer)
+
+    # hypergumbo install-extras (umbrella over gitleaks + embeddings + rust-analyzer)
+    p_install_extras = sub.add_parser(
+        "install-extras",
+        help="Install every optional component in one call (gitleaks, embeddings, rust-analyzer)",
+    )
+    p_install_extras.add_argument(
+        "--check",
+        action="store_true",
+        help="Print availability table and exit; exit 1 iff any component is missing",
+    )
+    p_install_extras.add_argument(
+        "--skip",
+        default=None,
+        metavar="COMPONENTS",
+        help=(
+            "Comma-separated list of components to skip "
+            "(gitleaks,embeddings,rust-analyzer)"
+        ),
+    )
+    p_install_extras.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_install_extras.set_defaults(func=cmd_install_extras)
+
+    # hypergumbo uninstall-extras
+    p_uninstall_extras = sub.add_parser(
+        "uninstall-extras",
+        help="Uninstall every optional component in one call",
+    )
+    p_uninstall_extras.add_argument(
+        "--skip",
+        default=None,
+        metavar="COMPONENTS",
+        help="Comma-separated list of components to skip",
+    )
+    p_uninstall_extras.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_uninstall_extras.set_defaults(func=cmd_uninstall_extras)
 
     # hypergumbo cache-status
     p_cache_status = sub.add_parser(
@@ -4854,6 +5492,15 @@ Analyzes the call graph to estimate which functions are tested.
 Does NOT execute code - uses static analysis only.
 Language agnostic - works with any language hypergumbo supports.
 
+Recall caveat (WI-hular): empirical false-negative rate ~20% across
+4 languages measured in UAT 2026-04-13. The tool has high precision
+but limited recall: tests that reach production code via reflection,
+dispatch macros, or visitor patterns produce 'untested' false alarms.
+Known per-language blind spots are listed in every text-format run as
+a footer, and in JSON output under the 'caveats' field. Treat
+'untested' as 'unreached by static call graph', not 'definitely
+untested', before taking action on the cold-spot list.
+
 Auto-discovers cached results from 'hypergumbo run', or specify --input."""
 
     p_test_cov = sub.add_parser(
@@ -4862,12 +5509,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         epilog=test_coverage_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_test_cov.add_argument(
-        "path",
-        nargs="?",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_test_cov)
     p_test_cov.add_argument(
         "--input",
         default=None,
@@ -4905,10 +5547,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         help="Find potentially dead code unreachable from entrypoints",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_dead_code.add_argument(
-        "path", nargs="?", default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_dead_code)
     p_dead_code.add_argument(
         "--input", default=None,
         help="Input behavior map file (default: auto-detect cached results)",
@@ -4963,11 +5602,7 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         epilog=symbols_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_symbols.add_argument(
-        "--path",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_symbols)
     p_symbols.add_argument(
         "--input",
         default=None,
@@ -5093,11 +5728,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         epilog=io_boundaries_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_io.add_argument(
-        "--path",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_io)
     p_io.add_argument(
         "--input",
         default=None,
@@ -5180,11 +5811,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         metavar="FILE",
         help="YAML file with security claims to verify",
     )
-    p_vc.add_argument(
-        "--path",
-        default=".",
-        help="Path to repo root (default: current directory)",
-    )
+    _add_path_argument(p_vc)
     p_vc.add_argument(
         "--input",
         default=None,
@@ -5209,7 +5836,9 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
     # Extras/installation commands (group_order=1) - ordered by suborder
     extras_cmds = ["add-extras", "remove-extras", "build-grammars",
                    "install-gitleaks", "uninstall-gitleaks",
-                   "install-embeddings", "uninstall-embeddings"]
+                   "install-embeddings", "uninstall-embeddings",
+                   "install-rust-analyzer", "uninstall-rust-analyzer",
+                   "install-extras", "uninstall-extras"]
     for i, cmd in enumerate(extras_cmds):
         _set_subparser_group(sub, cmd, "extras", 1, suborder=i)
 
@@ -5218,7 +5847,8 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         "{sketch,run,slice,search,routes,explain,catalog,test-coverage,"
         "symbols,compact,io-boundaries,add-extras,remove-extras,"
         "build-grammars,install-gitleaks,uninstall-gitleaks,"
-        "install-embeddings,uninstall-embeddings}"
+        "install-embeddings,uninstall-embeddings,"
+        "install-rust-analyzer,uninstall-rust-analyzer}"
     )
 
     return p
@@ -5303,6 +5933,309 @@ def _compute_supply_chain_summary(
     return summary
 
 
+# ---------------------------------------------------------------------------
+# Handler slices (WI-sihok): per-route-handler forward slices emitted by `run`
+# ---------------------------------------------------------------------------
+
+# Default cap on per-handler forward slices written alongside the behavior
+# map. Matches the philosophy of the tiered sketches (hg.4k/16k/64k.json):
+# bounded output without requiring manual selection. Users with more
+# handlers can raise the cap via --max-handler-slices or consult
+# slice.handler.index.json for the overflow list.
+_DEFAULT_MAX_HANDLER_SLICES = 25
+
+# Forward-slice parameters for per-handler slices, matching the tuned
+# config used by the bakeoff's top-entry forward slices (see
+# scripts/bakeoff-deep around line 2060 and WI-sivun for the hub-threshold
+# choice).
+_HANDLER_SLICE_MAX_HOPS = 10
+_HANDLER_SLICE_MAX_FILES = 200
+_HANDLER_SLICE_HUB_THRESHOLD = 100
+
+
+def _is_route_symbol(symbol: Symbol) -> bool:
+    """Return True if the symbol represents a route/handler.
+
+    Uses the same detector as cmd_routes: symbols with kind='route' (produced
+    by analyzers that materialize routes directly, e.g. Go) OR symbols whose
+    meta.concepts list contains a concept='route' entry (produced by
+    framework-YAML concept enrichment, e.g. FastAPI @app.get).
+    """
+    if symbol.kind == "route":
+        return True
+    meta = symbol.meta or {}
+    for concept in meta.get("concepts", []) or []:
+        if isinstance(concept, dict) and concept.get("concept") == "route":
+            return True
+    return False
+
+
+def _extract_route_info(symbol: Symbol) -> dict | None:
+    """Pull (method, path) out of a route symbol's metadata.
+
+    Returns None when both lookup sites fail to yield a complete pair —
+    downstream code uses the return value to decide whether to emit a
+    route-qualified filename or a handler-name fallback. kind='route'
+    symbols prefer their authoritative meta.http_method/route_path; other
+    route symbols fall back to the first matching concept entry.
+    """
+    meta = symbol.meta or {}
+    if symbol.kind == "route":
+        method = meta.get("http_method")
+        path = meta.get("route_path")
+        if method and path:
+            return {"method": str(method), "path": str(path)}
+    for concept in meta.get("concepts", []) or []:
+        if isinstance(concept, dict) and concept.get("concept") == "route":
+            method = concept.get("method")
+            path = concept.get("path")
+            if method and path:
+                return {"method": str(method), "path": str(path)}
+    return None
+
+
+def _handler_slice_filename(symbol: Symbol, route_info: dict | None) -> str:
+    """Build the filename for a handler slice.
+
+    Preferred form is `slice.handler.<METHOD>.<path-sanitized>.json` when
+    route metadata is available — (method, path) is framework-agnostic and
+    globally unique in practice, which handler names are not. Falls back to
+    `slice.handler.<handler-name>.json` when metadata is incomplete.
+    """
+    if route_info:
+        method = _sanitize_filename_part(
+            str(route_info["method"]).upper(), max_len=10
+        )
+        path_part = _sanitize_filename_part(str(route_info["path"]))
+        return f"slice.handler.{method}.{path_part}.json"
+    name_part = _sanitize_filename_part(symbol.name or "unnamed")
+    return f"slice.handler.{name_part}.json"
+
+
+def _emit_handler_slices(
+    behavior_map: dict,
+    all_symbols: list[Symbol],
+    all_edges: list[Edge],
+    repo_root: Path,
+    out_dir: Path,
+    max_handler_slices: int = _DEFAULT_MAX_HANDLER_SLICES,
+    enabled: bool = True,
+) -> list[Path]:
+    """Emit one forward slice JSON per detected route handler (WI-sihok).
+
+    Writes up to `max_handler_slices` files named
+    `slice.handler.<METHOD>.<path>.json` to `out_dir`, plus a companion
+    `slice.handler.index.json` that lists *every* detected handler — the
+    emitted ones and any dropped by the cap — so LLM/agent consumers can
+    discover what is available and what to re-derive on demand. Returns the
+    list of written paths (handler slices + index file).
+
+    Detection matches cmd_routes (concept=route OR kind=route) and excludes
+    test-file handlers. Handlers are deduplicated by symbol id; when the
+    same id is registered under multiple routes, all registrations appear
+    in the emitted file's meta.routes list. Slice parameters mirror the
+    bakeoff's proven forward-slice tuning.
+
+    When `enabled=False`, returns an empty list without touching the
+    filesystem — the caller opts out via --no-handler-slices.
+    """
+    if not enabled:
+        return []
+
+    from .paths import is_test_file
+    from .slice import AmbiguousEntryError, SliceQuery, slice_graph
+
+    # Step 1: collect route symbols, excluding test-file handlers. Order is
+    # preserved from all_symbols, which run_behavior_map passes in already
+    # ranked by centrality — so first-seen is most prominent.
+    handlers: list[Symbol] = []
+    for sym in all_symbols:
+        if not _is_route_symbol(sym):
+            continue
+        if sym.path and is_test_file(sym.path):
+            continue
+        handlers.append(sym)
+
+    # Step 2: group by symbol id so shared handlers emit once with a merged
+    # routes list. Preserves the ranked insertion order.
+    id_to_routes: dict[str, list[dict]] = {}
+    id_order: list[str] = []
+    id_to_symbol: dict[str, Symbol] = {}
+    for h in handlers:
+        if h.id not in id_to_routes:
+            id_to_routes[h.id] = []
+            id_order.append(h.id)
+            id_to_symbol[h.id] = h
+        info = _extract_route_info(h)
+        if info and info not in id_to_routes[h.id]:
+            id_to_routes[h.id].append(info)
+
+    # Pre-compute out-degree for the index file (gives consumers a quick
+    # "how many callees does this handler have?" signal without re-scanning).
+    out_degree: dict[str, int] = {}
+    for e in all_edges:
+        out_degree[e.src] = out_degree.get(e.src, 0) + 1
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    written: list[Path] = []
+    index_entries: list[dict] = []
+
+    for rank, handler_id in enumerate(id_order):
+        handler = id_to_symbol[handler_id]
+        routes = id_to_routes[handler_id]
+        primary_route = routes[0] if routes else None
+
+        entry: dict = {
+            "id": handler_id,
+            "name": handler.name,
+            "path": handler.path,
+            "routes": routes,
+            "out_degree": out_degree.get(handler_id, 0),
+        }
+
+        if rank >= max_handler_slices:
+            entry["emitted"] = False
+            entry["reason"] = (
+                f"over cap ({max_handler_slices}); re-run with "
+                f"hypergumbo slice --entry {handler_id}"
+            )
+            index_entries.append(entry)
+            continue
+
+        query = SliceQuery(
+            entrypoint=handler_id,
+            max_hops=_HANDLER_SLICE_MAX_HOPS,
+            max_files=_HANDLER_SLICE_MAX_FILES,
+            min_confidence=0.0,
+            exclude_tests=True,
+            exclude_utility=False,
+            reverse=False,
+            max_tier=None,
+            language=None,
+            hub_threshold=_HANDLER_SLICE_HUB_THRESHOLD,
+            exclude_imports=True,
+            dataflow=False,
+        )
+        try:
+            result = slice_graph(all_symbols, all_edges, query)
+        except AmbiguousEntryError:  # pragma: no cover - defensive: id is an exact match
+            entry["emitted"] = False
+            entry["reason"] = "ambiguous entry id"
+            index_entries.append(entry)
+            continue
+
+        filename = _handler_slice_filename(handler, primary_route)
+        out_path = out_dir / filename
+
+        node_ids_set = set(result.node_ids)
+        edge_ids_set = set(result.edge_ids)
+        inline_nodes = [
+            n for n in behavior_map.get("nodes", []) if n.get("id") in node_ids_set
+        ]
+        inline_edges = [
+            e for e in behavior_map.get("edges", []) if e.get("id") in edge_ids_set
+        ]
+
+        feature_dict = result.to_dict()
+        feature_dict["nodes"] = inline_nodes
+        feature_dict["edges"] = inline_edges
+        feature_dict["meta"] = {
+            "entry_kind": "handler",
+            "routes": routes,
+            "slice_params": {
+                "max_hops": _HANDLER_SLICE_MAX_HOPS,
+                "max_files": _HANDLER_SLICE_MAX_FILES,
+                "hub_threshold": _HANDLER_SLICE_HUB_THRESHOLD,
+                "exclude_tests": True,
+                "exclude_imports": True,
+            },
+        }
+
+        output = {
+            "schema_version": behavior_map.get("schema_version", "0.1.0"),
+            "view": "slice",
+            "feature": feature_dict,
+        }
+        out_path.write_text(json.dumps(output, indent=2, sort_keys=True))
+
+        entry["emitted"] = True
+        entry["file"] = filename
+        entry["node_count"] = len(result.node_ids)
+        entry["edge_count"] = len(result.edge_ids)
+        index_entries.append(entry)
+        written.append(out_path)
+
+    index_path = out_dir / "slice.handler.index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "schema_version": behavior_map.get("schema_version", "0.1.0"),
+                "view": "handler_slice_index",
+                "max_handler_slices": max_handler_slices,
+                "handlers": index_entries,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    written.append(index_path)
+    return written
+
+
+def _relativize_ir_paths(
+    repo_root: Path,
+    symbols: list[Symbol],
+    edges: list[Edge],
+    usage_contexts: list[UsageContext],
+) -> None:
+    """Rewrite absolute paths under ``repo_root`` to repo-relative in IR objects in place.
+
+    WI-hopug: the behavior map JSON output embeds each Symbol's absolute file
+    path in its ``id`` and Edge endpoints, which makes the output non-portable
+    across machines and branches that hold the same repo under different
+    checkout roots. Stripping the ``str(repo_root) + "/"`` prefix from every
+    id-bearing string collapses those IDs to repo-relative form so two runs
+    of the same commit on two machines produce byte-identical behavior maps
+    (modulo analyzer nondeterminism).
+
+    Paths that do not sit under ``repo_root`` — external-library symbols,
+    synthetic module hints like ``python:external:0-0:foo:unresolved``, and
+    the like — never match the prefix and are left untouched. The rewrite
+    runs after ``resolve_deferred_symbol_refs`` (which populates
+    ``UsageContext.symbol_ref`` with live Symbol IDs) so that every
+    absolute-path reference is normalized in a single coordinated pass,
+    before ranking, entrypoint detection, and handler-slice emission
+    consume the IR.
+
+    UsageContext.id is a sha256 hash over ``path:start_line:context_name:
+    position``. Because ``path`` is part of the hash preimage, the id is
+    itself machine-dependent when ``path`` is absolute. We recompute the id
+    from the relativized path so the hash is stable across machines.
+    """
+    prefix = str(repo_root) + "/"
+    for sym in symbols:
+        if prefix in sym.id:
+            sym.id = sym.id.replace(prefix, "")
+        if sym.path and prefix in sym.path:
+            sym.path = sym.path.replace(prefix, "")
+    for edge in edges:
+        if prefix in edge.src:
+            edge.src = edge.src.replace(prefix, "")
+        if prefix in edge.dst:
+            edge.dst = edge.dst.replace(prefix, "")
+    for uc in usage_contexts:
+        path_was_absolute = prefix in uc.path
+        if path_was_absolute:
+            uc.path = uc.path.replace(prefix, "")
+            from .ir import _compute_usage_context_id
+            uc.id = _compute_usage_context_id(
+                uc.path, uc.span.start_line, uc.context_name, uc.position,
+            )
+        if uc.symbol_ref and prefix in uc.symbol_ref:
+            uc.symbol_ref = uc.symbol_ref.replace(prefix, "")
+
+
 def run_behavior_map(
     repo_root: Path,
     out_path: Path | None = None,
@@ -5318,6 +6251,8 @@ def run_behavior_map(
     include_docs: bool = False,
     include_sketch_precomputed: bool = True,
     progress: bool = True,
+    enable_handler_slices: bool = True,
+    max_handler_slices: int = _DEFAULT_MAX_HANDLER_SLICES,
 ) -> list[Path]:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -5453,6 +6388,13 @@ def run_behavior_map(
             f"suffix={resolution_stats.resolved_suffix})"
         )
 
+    # WI-hopug: strip the machine-specific absolute ``repo_root`` prefix from
+    # all Symbol IDs, Edge endpoints, and UsageContext fields now that the
+    # symbol table is fully resolved. Must run before ranking / entrypoints /
+    # handler-slice emission so every downstream consumer observes a single,
+    # portable set of identifiers.
+    _relativize_ir_paths(repo_root, all_symbols, all_edges, all_usage_contexts)
+
     # Refine framework list using import evidence (post-analysis validation).
     # Frameworks detected from manifests are cross-referenced against actual
     # import edges to distinguish production frameworks from dev/test-only ones.
@@ -5474,10 +6416,23 @@ def run_behavior_map(
     # methods with concept=route but don't create kind="route" IR nodes.
     # This step creates those nodes so the route_handler linker can produce
     # routes_to edges.
-    from .framework_patterns import materialize_route_symbols
+    from .framework_patterns import (
+        expand_class_based_view_routes,
+        materialize_route_symbols,
+    )
     materialized_routes = materialize_route_symbols(all_symbols)
     if materialized_routes:
         all_symbols.extend(materialized_routes)
+
+    # WI-lojoh: expand Django CBV routes (single ANY route per as_view()
+    # registration) into one route per declared HTTP method on the view
+    # class. Runs after materialize_route_symbols so any newly minted route
+    # symbols can also be expanded.
+    cbv_expanded, cbv_removed_ids = expand_class_based_view_routes(all_symbols)
+    if cbv_removed_ids:
+        all_symbols = [s for s in all_symbols if s.id not in cbv_removed_ids]
+    if cbv_expanded:
+        all_symbols.extend(cbv_expanded)
 
     # Run cross-language linkers
     show_progress("Running linkers", 55)
@@ -5676,6 +6631,21 @@ def run_behavior_map(
     entrypoints = detect_entrypoints(all_symbols, all_edges)
     behavior_map["entrypoints"] = [ep.to_dict() for ep in entrypoints]
     del entrypoints  # Free Entrypoint objects
+
+    # WI-sihok: emit per-handler forward slices alongside the main output so
+    # "what does this handler touch?" is answerable without a follow-up
+    # `hypergumbo slice --entry <handler>` invocation. Uses behavior_map's
+    # in-memory node/edge dicts (already ranked) for inlined slice payloads.
+    handler_slice_files = _emit_handler_slices(
+        behavior_map,
+        all_symbols,
+        all_edges,
+        repo_root,
+        out_path.parent,
+        max_handler_slices=max_handler_slices,
+        enabled=enable_handler_slices,
+    )
+    generated_files.extend(handler_slice_files)
 
     # Compute supply chain summary
     # Note: derived_paths would be tracked during file discovery in a full implementation
@@ -5908,7 +6878,71 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "install-extras", "uninstall-extras", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
+
+    # WI-balij (UAT UX-04): accept --debug in any position. Strip it here so
+    # `hypergumbo sketch . --debug` and `hypergumbo --debug sketch .` both
+    # work — argparse otherwise rejects --debug after the subcommand because
+    # it's only registered on the root parser.
+    debug_flag = False
+    if "--debug" in argv:
+        debug_flag = True
+        argv = [a for a in argv if a != "--debug"]
+
+    # WI-vozof: accept --backend in any position and translate it to the
+    # HYPERGUMBO_RUST_ANALYZER env var that the gate reads. The gate itself
+    # already knows how to honour either signal; this path is CLI-side sugar
+    # so `hypergumbo run . --backend rust-analyzer` works identically to
+    # `HYPERGUMBO_RUST_ANALYZER=1 hypergumbo run .`. Matches the --debug
+    # stripping pattern so the flag works in any position relative to the
+    # subcommand.
+    for idx in range(len(argv) - 1):
+        if argv[idx] == "--backend":
+            choice = argv[idx + 1]
+            if choice == "rust-analyzer":
+                os.environ["HYPERGUMBO_RUST_ANALYZER"] = "1"
+            argv = argv[:idx] + argv[idx + 2:]
+            break
+        if argv[idx].startswith("--backend="):
+            choice = argv[idx].split("=", 1)[1]
+            if choice == "rust-analyzer":
+                os.environ["HYPERGUMBO_RUST_ANALYZER"] = "1"
+            argv = argv[:idx] + argv[idx + 1:]
+            break
+
+    # WI-balij (UAT UX-03): if the first positional doesn't name a known
+    # subcommand AND clearly isn't a path (no path separators, no leading
+    # dot/tilde, doesn't exist on disk), the user probably mistyped a
+    # subcommand. Surface that with a Did-you-mean suggestion instead of
+    # silently inserting "sketch" and reporting "path does not exist".
+    if argv and argv[0] not in subcommands and not argv[0].startswith("-"):
+        candidate = argv[0]
+        looks_like_subcommand_attempt = (
+            "/" not in candidate
+            and "\\" not in candidate
+            and not candidate.startswith(".")
+            and not candidate.startswith("~")
+            and not Path(candidate).exists()
+        )
+        if looks_like_subcommand_attempt:
+            import difflib
+            close = difflib.get_close_matches(
+                candidate, sorted(subcommands), n=3, cutoff=0.5,
+            )
+            print(
+                f"hypergumbo: error: '{candidate}' is not a valid subcommand.",
+                file=sys.stderr,
+            )
+            if close:
+                print(
+                    f"  Did you mean: {', '.join(close)}?",
+                    file=sys.stderr,
+                )
+            print(
+                "  Run 'hypergumbo --help' to see the full list.",
+                file=sys.stderr,
+            )
+            return 2
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):
@@ -5916,8 +6950,27 @@ def main(argv=None) -> int:
 
     args = parser.parse_args(argv)
 
-    # Configure logging if --debug is set
-    if getattr(args, "debug", False):
+    # WI-munuv: unify the positional `path` and the `--path` flag.
+    # Subcommands that called _add_path_argument accept both forms;
+    # this collapses them into a single args.path so cmd functions
+    # don't need to know which form was used. Setting both is a user
+    # error (ambiguous intent).
+    if hasattr(args, "_path_flag"):
+        pos = getattr(args, "path", None)
+        flag = args._path_flag
+        if pos is not None and flag is not None:
+            print(
+                "hypergumbo: error: provide either positional <path> "
+                "OR --path, not both",
+                file=sys.stderr,
+            )
+            return 2
+        args.path = pos if pos is not None else (
+            flag if flag is not None else "."
+        )
+
+    # Configure logging if --debug is set (in any position)
+    if debug_flag or getattr(args, "debug", False):
         logging.basicConfig(
             level=logging.DEBUG,
             format="[%(name)s] %(levelname)s: %(message)s",

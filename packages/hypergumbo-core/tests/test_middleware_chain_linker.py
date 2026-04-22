@@ -25,10 +25,14 @@ def _sym(
     concepts: list[str] | None = None,
     span: tuple[int, int] = (1, 10),
 ) -> Symbol:
-    """Helper to create a Symbol with optional concepts."""
+    """Helper to create a Symbol. ``concepts`` is a list of concept names;
+    they are wrapped into the production ``list[dict]`` shape emitted by
+    ``framework_patterns.py`` (each entry ``{"concept": name}``). This keeps
+    fixture syntax terse while exercising the real emitter/consumer
+    contract (see INV-tuzub)."""
     meta = {}
     if concepts:
-        meta["concepts"] = concepts
+        meta["concepts"] = [{"concept": c} for c in concepts]
     sid = f"{lang}:{path}:{span[0]}-{span[1]}:{name}:{kind}"
     return Symbol(
         id=sid,
@@ -168,7 +172,7 @@ class TestMiddlewareChainLinker:
             language="python",
             path="app/middleware.py",
             span=None,
-            meta={"concepts": ["middleware"]},
+            meta={"concepts": [{"concept": "middleware"}]},
         )
 
         ctx = LinkerContext(
@@ -224,6 +228,77 @@ class TestMiddlewareChainLinker:
         )
         result = link_middleware_chain(ctx)
         assert result.edges[0].confidence == 0.70
+
+    def test_production_shape_list_of_dicts(self) -> None:
+        """Regression: concepts must be matched as list[dict] (production shape).
+
+        framework_patterns.py emits concepts as
+        ``[{"concept": "middleware", ...}]`` — a list of dicts, not a list of
+        strings. The linker must treat the dict's ``"concept"`` key as the tag
+        name, otherwise it silently produces zero edges on real repos (see
+        INV-tuzub: concept-tag shape uniformity).
+        """
+        mw1 = Symbol(
+            id="python:app/mw.py:5-15:auth:function",
+            name="auth",
+            kind="function",
+            language="python",
+            path="app/mw.py",
+            span=Span(5, 15, 0, 0),
+            meta={"concepts": [{"concept": "middleware", "framework": "express"}]},
+        )
+        mw2 = Symbol(
+            id="python:app/mw.py:20-30:logging:function",
+            name="logging",
+            kind="function",
+            language="python",
+            path="app/mw.py",
+            span=Span(20, 30, 0, 0),
+            meta={"concepts": [{"concept": "middleware", "framework": "express"}]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/repo"),
+            symbols=[mw1, mw2],
+        )
+        result = link_middleware_chain(ctx)
+        assert len(result.edges) == 1
+        assert result.edges[0].src == mw1.id
+        assert result.edges[0].dst == mw2.id
+
+    def test_bare_string_concept_not_matched(self) -> None:
+        """Regression: bare-string concept shape (legacy/wrong) must NOT match.
+
+        The linker used to accept ``concepts=["middleware"]`` (bare strings).
+        That shape never appears in production (see INV-tuzub). Accepting it
+        would mask future divergence between emitter and consumer. Symbols
+        with bare-string concepts are skipped.
+        """
+        mw1 = Symbol(
+            id="python:app/mw.py:5-15:a:function",
+            name="a",
+            kind="function",
+            language="python",
+            path="app/mw.py",
+            span=Span(5, 15, 0, 0),
+            meta={"concepts": ["middleware"]},
+        )
+        mw2 = Symbol(
+            id="python:app/mw.py:20-30:b:function",
+            name="b",
+            kind="function",
+            language="python",
+            path="app/mw.py",
+            span=Span(20, 30, 0, 0),
+            meta={"concepts": ["middleware"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/repo"),
+            symbols=[mw1, mw2],
+        )
+        result = link_middleware_chain(ctx)
+        assert len(result.edges) == 0
 
     def test_multiple_files_independent_chains(self) -> None:
         """Each file gets its own independent middleware chain."""

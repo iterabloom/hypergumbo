@@ -1,0 +1,84 @@
+- op: create  # 9fb5
+  at: '2026-04-16T18:50:53Z'  # 9fb5
+  by: agent  # 9fb5
+  actor: jgstern_agent  # 9fb5
+  clock: 1  # 9fb5
+  nonce: 9fb5  # 9fb5
+  data:  # 9fb5
+    kind: work_item  # 9fb5
+    title: "HTTP linker: fold JS/TS template-literal fetch URLs with module-constant interpolation"  # 9fb5
+    status: todo_soft  # 9fb5
+    priority: 3  # 9fb5
+    parent:  # 9fb5
+    tags:  # 9fb5
+    - cross_language_linkers  # 9fb5
+    - typescript  # 9fb5
+    isbefore: []  # 9fb5
+    duplicate_of: []  # 9fb5
+    not_duplicate_of: []  # 9fb5
+    pr_ref:  # 9fb5
+    description: "The cross-language HTTP linker's JavaScript/TypeScript scanner currently matches only bare string literals (`fetch(\"/api/foo\")`) and identifier references (`fetch(API_URL)`). It does NOT capture backtick template literals with variable interpolation.\n\nConcrete failing case from WI-tinip's title:\n```ts\n// prometheus/web/ui/mantine-ui/src/api/api.ts\nexport const API_PATH = \"api/v1\";\n\nconst res = await fetch(\n    `${pathPrefix}/${API_PATH}${path}${queryString}`,\n    { cache: \"no-store\", ... }\n);\n```\n\nSolving this requires (1) recognising the backtick template-literal form in the regex or, better, via a tree-sitter pass, and (2) folding module-scope `const` assignments so `${API_PATH}` resolves to `\"api/v1\"` at analysis time. Call-site path arguments (`${path}`) can stay variable — emit with url_type='variable' and matched to route patterns by the literal prefix.\n\nScope: JS/TS only. Elm's equivalent (let-bound + String.join) is tracked separately in WI-rosan. Together with WI-rosan, this closes the two concrete test cases named in WI-tinip's title.\n\nPrior art: `method_call_recovery` linker already has machinery for resolving identifier→source via `contains` edges; similar constant-propagation could slot in here."  # 9fb5
+    fields: {}  # 9fb5
+- op: update  # cf3f
+  at: '2026-04-16T18:53:14Z'  # cf3f
+  by: agent  # cf3f
+  actor: jgstern_agent  # cf3f
+  clock: 2  # cf3f
+  nonce: cf3f  # cf3f
+  set: {}  # cf3f
+  add:  # cf3f
+    isbefore: [WI-tinip-zosus-puban-lakok-didil-sahar-bohod-lutud]  # cf3f
+- op: update  # 8b72
+  at: '2026-04-16T18:57:21Z'  # 8b72
+  by: human  # 8b72
+  actor: jgstern  # 8b72
+  clock: 3  # 8b72
+  nonce: 8b72  # 8b72
+  set:  # 8b72
+    priority: 4  # 8b72
+- op: update  # 4840
+  at: '2026-04-16T19:11:52Z'  # 4840
+  by: agent  # 4840
+  actor: jgstern_agent  # 4840
+  clock: 4  # 4840
+  nonce: '4840'  # 4840
+  set:  # 4840
+    parent: INV-miloj-tagum-garuk-jataf-lupas-ligis-gazaz-pimon  # 4840
+- op: update  # 2e1a
+  at: '2026-04-17T02:50:51Z'  # 2e1a
+  by: agent  # 2e1a
+  actor: jgstern_agent  # 2e1a
+  clock: 5  # 2e1a
+  nonce: 2e1a  # 2e1a
+  set:  # 2e1a
+    priority: 3  # 2e1a
+- op: discuss  # dfa6
+  at: '2026-04-17T02:50:52Z'  # dfa6
+  by: agent  # dfa6
+  actor: jgstern_agent  # dfa6
+  clock: 6  # dfa6
+  nonce: dfa6  # dfa6
+  message: "pf-prelim pivot: pairs with WI-tinip for TS URL extraction on pf-prelim SPA. Raised P4→P3."  # dfa6
+- op: update  # b564
+  at: '2026-04-17T18:47:24Z'  # b564
+  by: agent  # b564
+  actor: jgstern_agent  # b564
+  clock: 7  # b564
+  nonce: b564  # b564
+  set:  # b564
+    status: in_progress  # b564
+- op: update  # 2e5b
+  at: '2026-04-17T19:52:28Z'  # 2e5b
+  by: agent  # 2e5b
+  actor: jgstern_agent  # 2e5b
+  clock: 8  # 2e5b
+  nonce: 2e5b  # 2e5b
+  set:  # 2e5b
+    status: done  # 2e5b
+- op: discuss  # 3da2
+  at: '2026-04-17T19:52:28Z'  # 3da2
+  by: agent  # 3da2
+  actor: jgstern_agent  # 3da2
+  clock: 9  # 3da2
+  nonce: 3da2  # 3da2
+  message: "Merged PR #3125 (commit 761a84119) on 2026-04-17. Adds backtick template-literal scanning for fetch() and axios.METHOD() + module-scope string-const folding + prefix-match fallback for variable URLs in link_http. Closes the motivating case from WI-tinip (alertmanager mantine-ui api.ts fetch with ${pathPrefix}/${API_PATH}${path}${queryString}). Full suite at 100% coverage. Elm let-bound / String.join URL idioms remain tracked separately in WI-rosan."  # 3da2

@@ -116,7 +116,7 @@ _COMMON_FIELD_ORDER = ["op", "at", "by", "actor", "clock", "nonce"]
 
 _CREATE_DATA_FIELD_ORDER = [
     "kind", "title", "status", "priority", "parent", "tags",
-    "before", "duplicate_of", "not_duplicate_of", "pr_ref",
+    "isbefore", "duplicate_of", "not_duplicate_of", "pr_ref",
     "description", "fields",
 ]
 
@@ -126,14 +126,14 @@ _DOUBLE_QUOTED_FIELDS = frozenset({
 })
 
 # Set-valued fields on items (accumulated via add/remove, not LWW)
-_SET_VALUED_FIELDS = frozenset({"tags", "before", "duplicate_of", "not_duplicate_of"})
+_SET_VALUED_FIELDS = frozenset({"tags", "isbefore", "duplicate_of", "not_duplicate_of"})
 
 # Fields that can be locked or updated. Derived from CompiledItem attributes
 # that are settable via update/discuss/lock ops. Excludes system-managed
 # fields (id, kind, created_at, updated_at, tier, cross_tier_conflict, simhash).
 _LOCKABLE_FIELDS = frozenset({
     "title", "status", "priority", "parent",
-    "tags", "before", "duplicate_of", "not_duplicate_of",
+    "tags", "isbefore", "duplicate_of", "not_duplicate_of",
     "pr_ref", "description",
     "fields", "discussion",
 })
@@ -142,7 +142,7 @@ _LOCKABLE_FIELDS = frozenset({
 # discussion is lockable but not updatable (modified via discuss(), not update()).
 _UPDATABLE_FIELDS = frozenset({
     "title", "status", "priority", "parent",
-    "tags", "before", "duplicate_of", "not_duplicate_of",
+    "tags", "isbefore", "duplicate_of", "not_duplicate_of",
     "pr_ref", "description",
     "fields",
 })
@@ -156,8 +156,13 @@ _CHARS_PER_TOKEN = 4.4
 # SimHash fingerprint bit width
 _SIMHASH_BITS = 64
 
-# SimHash distance threshold for similarity warning (20% of bit width)
-_SIMHASH_THRESHOLD = 13
+# SimHash distance threshold for similarity warning.
+# Tightened from 13 bits (20% of bit width) to 8 bits after observing that
+# 13 fired 5+ false-positive warnings on unrelated items that share common
+# tracker vocabulary (statuses, verbs, shared-domain nouns). 8 matches the
+# stricter validation-pass threshold — validation.py imports this constant
+# so the two code paths stay in sync.
+_SIMHASH_THRESHOLD = 8
 
 # Discussion soft cap (entry count)
 _DISCUSSION_SOFT_CAP = 20
@@ -530,7 +535,7 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
         priority=data.get("priority", 2),
         parent=data.get("parent"),
         tags=list(data.get("tags", [])),
-        before=list(data.get("before", [])),
+        isbefore=list(data.get("isbefore", data.get("before", []))),
         duplicate_of=list(data.get("duplicate_of", [])),
         not_duplicate_of=list(data.get("not_duplicate_of", [])),
         pr_ref=data.get("pr_ref"),
@@ -557,6 +562,9 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
             # LWW for scalar fields in `set`
             set_dict = op_dict.get("set", {})
             for key, value in set_dict.items():
+                # Backward compat: old ops used "before", new field is "isbefore"
+                if key == "before":
+                    key = "isbefore"
                 if key == "fields" and isinstance(value, dict):
                     # Per-key LWW for fields dict.
                     # None values delete the key (WI-lorip --remove-field).
@@ -574,6 +582,9 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
             # Accumulate add ops (set-valued fields)
             add_dict = op_dict.get("add", {})
             for key, values in add_dict.items():
+                # Backward compat: old ops used "before", new field is "isbefore"
+                if key == "before":
+                    key = "isbefore"
                 if key in _SET_VALUED_FIELDS and hasattr(item, key):
                     current = getattr(item, key)
                     for v in values:
@@ -583,6 +594,9 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
             # Accumulate remove ops (set-valued fields)
             remove_dict = op_dict.get("remove", {})
             for key, values in remove_dict.items():
+                # Backward compat: old ops used "before", new field is "isbefore"
+                if key == "before":
+                    key = "isbefore"
                 if key in _SET_VALUED_FIELDS and hasattr(item, key):
                     current = getattr(item, key)
                     for v in values:
@@ -611,11 +625,15 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
 
         elif op_type == "lock":
             for field_name in op_dict.get("lock", []):
-                item.locked_fields.add(field_name.lower())
+                # Backward compat: old ops used "before", new field is "isbefore"
+                fn = "isbefore" if field_name.lower() == "before" else field_name.lower()
+                item.locked_fields.add(fn)
 
         elif op_type == "unlock":
             for field_name in op_dict.get("unlock", []):
-                item.locked_fields.discard(field_name.lower())
+                # Backward compat: old ops used "before", new field is "isbefore"
+                fn = "isbefore" if field_name.lower() == "before" else field_name.lower()
+                item.locked_fields.discard(fn)
 
         # promote, demote, stealth, unstealth, reconcile: audit-only, no state change
 
@@ -894,7 +912,7 @@ class Store:
         priority: int = 2,
         parent: str | None = None,
         tags: list[str] | None = None,
-        before: list[str] | None = None,
+        isbefore: list[str] | None = None,
         description: str = "",
         fields: dict[str, Any] | None = None,
         duplicate_of: list[str] | None = None,
@@ -979,7 +997,7 @@ class Store:
             "priority": priority,
             "parent": parent,
             "tags": tags or [],
-            "before": before or [],
+            "isbefore": isbefore or [],
             "duplicate_of": duplicate_of or [],
             "not_duplicate_of": not_duplicate_of or [],
             "pr_ref": pr_ref,
@@ -1503,24 +1521,37 @@ class Store:
 
     @staticmethod
     def _take_ownership_via_tmp(filepath: Path, mode: int) -> None:
-        """Atomic copy-via-/tmp to take ownership of an ops file.
+        """Atomic rename-via-sibling-tmpfile to take ownership of an ops file.
 
-        In a two-user setup, the other user may own the file with 0o644.
-        Copy to /tmp (always writable), delete original (only needs dir
-        write permission — ensured by setup's setgid+g+w), move copy back.
-        The new file is owned by the current user with the requested mode.
+        In a two-user setup, the other user may own the file with 0o644
+        and no group-write, which blocks direct append. Write a copy to a
+        temp file in the SAME directory as the target, then ``os.rename``
+        it over the target atomically. The new file is owned by the
+        current user with the requested mode.
 
-        Before unlinking, attempts to repair directory permissions if the
-        current user owns the directory.  If unlink still fails, raises a
-        clear PermissionError explaining the fix.
+        Same-directory temp + atomic rename is load-bearing, not
+        incidental. An earlier implementation used ``tempfile.mkstemp()``
+        (default dir=/tmp) followed by ``shutil.move`` + ``unlink``;
+        because ``/tmp`` is typically a separate tmpfs, ``shutil.move``
+        degraded to cross-filesystem copy+delete with a visible window
+        where the target dentry was absent or held umask-respecting
+        perms. Live-update readers (notably the TUI's inotify watcher)
+        raced that window and crashed with EACCES (observed 2026-04-19
+        on ``.INV-rikis-…ops`` during the agent-supervisor trial; ops
+        write from uid=1002 jgstern_agent raced against uid=1001
+        jgstern's TUI open). Keeping the temp in the target's own
+        directory forces ``os.rename`` to the single-syscall atomic
+        replace path — readers see either the old inode or the new
+        inode, never an intermediate state.
         """
-        import shutil
         import tempfile
 
         # Proactively repair directory permissions if we own the dir
         Store._ensure_dir_group_writable(filepath.parent)
 
-        fd, tmp_str = tempfile.mkstemp(suffix=".ops", prefix="htrac_")
+        fd, tmp_str = tempfile.mkstemp(
+            suffix=".ops", prefix=".htrac_", dir=str(filepath.parent),
+        )
         tmp = Path(tmp_str)
         closed = False
         try:
@@ -1530,7 +1561,7 @@ class Store:
             os.close(fd)
             closed = True
             try:
-                filepath.unlink()
+                os.rename(tmp, filepath)
             except PermissionError:
                 tmp.unlink(missing_ok=True)
                 raise PermissionError(
@@ -1542,7 +1573,6 @@ class Store:
                     f"permission repair, or manually run: "
                     f"chmod g+ws '{filepath.parent}'",
                 ) from None
-            shutil.move(str(tmp), str(filepath))
         except BaseException:
             if not closed:
                 os.close(fd)
@@ -1892,12 +1922,12 @@ class Store:
 
         An item is ready if:
         - Its status is in blocking_statuses
-        - No unresolved item X has X.before containing this item's ID
+        - No unresolved item X has X.isbefore containing this item's ID
           (i.e., no unresolved predecessors block it)
         - It has no non-empty duplicate_of
         - It has no cross_tier_conflict
 
-        Before semantics: X.before = [Y] means "X blocks Y — finish X before Y."
+        Isbefore semantics: X.isbefore = [Y] means "X blocks Y — finish X before Y."
         So Y is not ready until X is resolved.
 
         Sorted by (priority, created_at).
@@ -1913,12 +1943,12 @@ class Store:
             if item.status in self._config.resolved_statuses:
                 resolved_ids.add(item.id)
 
-        # Build blocked set: for each item X with before: [Y, Z, ...],
+        # Build blocked set: for each item X with isbefore: [Y, Z, ...],
         # Y and Z are blocked if X is not resolved.
         blocked_ids: set[str] = set()
         for item in all_items:
             if item.id not in resolved_ids:
-                for target_id in item.before:
+                for target_id in item.isbefore:
                     blocked_ids.add(target_id)
 
         blocking_set = set(self._config.blocking_statuses)
@@ -2040,23 +2070,23 @@ class Store:
         return items
 
     # -----------------------------------------------------------------------
-    # before-cycle detection
+    # isbefore-cycle detection
     # -----------------------------------------------------------------------
 
     def check_before_cycles(self) -> list[list[str]]:
-        """Detect cycles in before links across all items.
+        """Detect cycles in isbefore links across all items.
 
         Returns a list of cycles found, where each cycle is a list of item IDs.
         """
         all_items = self._compile_all()
 
-        # Build adjacency: item → items it blocks (via before)
-        # If X has before: [Y], then X blocks Y (Y must wait for X)
+        # Build adjacency: item → items it blocks (via isbefore)
+        # If X has isbefore: [Y], then X blocks Y (Y must wait for X)
         # adjacency: X → [Y] means "X must be done before Y"
         blocked_by: dict[str, list[str]] = defaultdict(list)
         for item in all_items:
-            for before_id in item.before:
-                blocked_by[before_id].append(item.id)
+            for isbefore_id in item.isbefore:
+                blocked_by[isbefore_id].append(item.id)
 
         # DFS cycle detection
         WHITE, GRAY, BLACK = 0, 1, 2

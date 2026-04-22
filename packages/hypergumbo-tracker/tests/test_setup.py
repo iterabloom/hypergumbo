@@ -1081,25 +1081,63 @@ class TestConfigLockUnlock:
         assert f.read_text() == "data"
 
     def test_fallback_cleans_tmp_on_error(self, tmp_path: Path) -> None:
-        """If the fallback itself fails, the tempfile is cleaned up."""
+        """If the fallback itself fails, the sibling tempfile is cleaned up."""
         f = tmp_path / "config.yaml"
         f.write_text("data")
         f.chmod(0o644)
-        original_chmod = Path.chmod
-        call_count = 0
 
         def chmod_always_fail(self_path: Path, mode: int) -> None:
-            nonlocal call_count
-            call_count += 1
             raise OSError("always fail")
 
         with patch.object(Path, "chmod", chmod_always_fail):
             with pytest.raises(OSError, match="always fail"):
                 config_lock(f)
-        # Original file should still be gone (unlink happened before chmod),
-        # but the tempfile in /tmp should have been cleaned up.
-        # Since unlink also calls Path methods, verify no stale .yaml.tmp in /tmp.
-        # The important thing is the exception propagated and didn't hang.
+        # No stale sibling tempfile left behind in the target's parent dir.
+        leftover = list(tmp_path.glob(".htrac_config_*.yaml"))
+        assert leftover == [], f"Tempfile not cleaned up: {leftover}"
+
+    def test_fallback_uses_same_directory_tmp(self, tmp_path: Path) -> None:
+        """The fallback must create its tempfile in path.parent, not /tmp.
+
+        Load-bearing invariant: same-directory ensures os.rename is a
+        single-syscall atomic replace rather than a cross-filesystem
+        copy+delete (which exposes a window where readers of config.yaml
+        hit EACCES/ENOENT). Mirrors the analogous invariant enforced by
+        `TestTakeOwnershipFallback::test_take_ownership_uses_same_directory_tmp`
+        in tests/test_store.py. Regression test for the class of bug
+        first observed on `.INV-rikis-…ops` (2026-04-19 TUI crash).
+        """
+        import tempfile as real_tempfile
+
+        f = tmp_path / "config.yaml"
+        f.write_text("data")
+        f.chmod(0o644)
+
+        observed_dirs: list[Any] = []
+        real_mkstemp = real_tempfile.mkstemp
+        def spying_mkstemp(*args: Any, **kwargs: Any) -> Any:
+            observed_dirs.append(kwargs.get("dir"))
+            return real_mkstemp(*args, **kwargs)
+
+        # Force the fallback path by making the initial chmod fail once.
+        call_count = 0
+        original_chmod = Path.chmod
+        def chmod_once(self_path: Path, mode: int) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise OSError("cross-user chmod")
+            original_chmod(self_path, mode)
+
+        with patch.object(Path, "chmod", chmod_once):
+            with patch("tempfile.mkstemp", side_effect=spying_mkstemp):
+                config_lock(f)
+
+        assert observed_dirs == [str(tmp_path)], (
+            f"mkstemp was called with dir={observed_dirs}, expected "
+            f"[{str(tmp_path)!r}]. /tmp-based tempfiles break the atomic "
+            f"rename invariant and re-expose the config.yaml reader race."
+        )
 
     def test_unlock_fallback_on_oserror(self, tmp_path: Path) -> None:
         f = tmp_path / "config.yaml"
