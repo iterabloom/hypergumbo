@@ -929,6 +929,52 @@ class TestTagIoBoundaries:
         count = tag_io_boundaries([edge], {"python": catalog})
         assert count == 0
 
+    def test_tags_module_attr_ref_to_attribute_primitive(self) -> None:
+        """WI-guhok: attribute-style primitives (os.environ) are matched from
+        module_attr_ref edges.  Without this, the ``attributes:`` entries in
+        io_primitives YAML catalogs were dead metadata — the loader parsed
+        them but tag_io_boundaries never saw any edge that would reach them.
+        """
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/cfg.py:10-12:reader:function",
+            dst="python:os:0-0:os.environ:attribute",
+            edge_type="module_attr_ref",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta is not None
+        assert edge.meta["io_boundary"] == "env_read"
+        assert edge.meta["io_primitive"] == "os.environ"
+
+    def test_tags_module_attr_ref_to_sys_argv(self) -> None:
+        """WI-guhok: sys.argv attribute primitive is matched via module_attr_ref."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/cli.py:5-6:parse:function",
+            dst="python:sys:0-0:sys.argv:attribute",
+            edge_type="module_attr_ref",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "env_read"
+        assert edge.meta["io_primitive"] == "sys.argv"
+
+    def test_module_attr_ref_on_non_attribute_primitive_no_false_tag(self) -> None:
+        """A module_attr_ref edge to a name that isn't in the catalog is skipped.
+
+        Guards against false positives where adding module_attr_ref to the
+        tagging pipeline could inadvertently match arbitrary attribute reads.
+        """
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/a.py:1-2:f:function",
+            dst="python:myapp:0-0:myapp.settings:attribute",
+            edge_type="module_attr_ref",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 0
+        assert edge.meta is None
 
     def test_ffi_edge_types_traced(self) -> None:
         """FFI edge types (wasm_bridge, ipc_calls, etc.) are included in boundary tagging."""

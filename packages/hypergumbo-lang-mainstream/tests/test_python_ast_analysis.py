@@ -230,6 +230,107 @@ def test_run_detects_module_import_edges(tmp_path: Path) -> None:
     assert "os" in import_edge["dst"]
 
 
+def test_run_detects_module_attr_ref_edges_for_env_read(tmp_path: Path) -> None:
+    """WI-guhok: attribute-style reads of imported modules emit module_attr_ref edges.
+
+    Before this fix, ``os.environ[\"HOME\"]`` and ``sys.argv`` produced no edges
+    — the io_primitives YAML catalog declared them under ``attributes:`` but
+    the analyzer never emitted anything for the read, so ``io-boundaries``
+    silently under-reported env_read chains. This test pins the emission of
+    the new ``module_attr_ref`` edge type for both subscript and bare-attribute
+    forms.
+    """
+    py_file = tmp_path / "cfg.py"
+    py_file.write_text(
+        "import os\n"
+        "import sys\n"
+        "\n"
+        "def read_home() -> str:\n"
+        "    return os.environ[\"HOME\"]\n"
+        "\n"
+        "def read_arg() -> str:\n"
+        "    return sys.argv[1]\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False,
+    )
+    data = json.loads(out_path.read_text())
+
+    attr_edges = [e for e in data["edges"] if e["type"] == "module_attr_ref"]
+    primitives = sorted(e["dst"].split(":")[3] for e in attr_edges)
+    assert "os.environ" in primitives, (
+        f"Expected os.environ module_attr_ref edge; got primitives {primitives}"
+    )
+    assert "sys.argv" in primitives, (
+        f"Expected sys.argv module_attr_ref edge; got primitives {primitives}"
+    )
+
+    # Each edge's src should be the function that performs the attribute read.
+    env_edges = [e for e in attr_edges if "os.environ" in e["dst"]]
+    assert any("read_home" in e["src"] for e in env_edges)
+    argv_edges = [e for e in attr_edges if "sys.argv" in e["dst"]]
+    assert any("read_arg" in e["src"] for e in argv_edges)
+
+
+def test_run_module_attr_ref_skips_chained_attribute_with_non_name_base(
+    tmp_path: Path,
+) -> None:
+    """Chained attributes like ``os.path.sep`` only emit an edge for the
+    innermost ``Name`` base. The outer ``Attribute`` whose ``.value`` is
+    itself an ``Attribute`` is walked past without emission (otherwise
+    the target would be an awkward ``os.path.sep`` where ``os.path`` is
+    not a module at all but a submodule reference).
+    """
+    py_file = tmp_path / "chain.py"
+    py_file.write_text(
+        "import os\n"
+        "\n"
+        "def sep() -> str:\n"
+        "    return os.path.sep\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False,
+    )
+    data = json.loads(out_path.read_text())
+
+    attr_edges = [e for e in data["edges"] if e["type"] == "module_attr_ref"]
+    primitives = sorted(e["dst"].split(":")[3] for e in attr_edges)
+    # Only ``os.path`` (inner Attribute over Name("os")). The outer Attribute
+    # matches the ``sub.value is not Name`` branch and continues.
+    assert primitives == ["os.path"]
+
+
+def test_run_skips_module_attr_ref_when_expression_is_a_direct_call(
+    tmp_path: Path,
+) -> None:
+    """When ``imported_module.name(...)`` is a direct call, the existing call
+    pipeline already emits a ``calls`` edge — we don't also emit a redundant
+    ``module_attr_ref`` edge for the same ``imported_module.name`` access.
+    """
+    py_file = tmp_path / "app.py"
+    py_file.write_text(
+        "import os\n"
+        "\n"
+        "def reader() -> str:\n"
+        "    return os.getenv(\"X\", \"\")\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False,
+    )
+    data = json.loads(out_path.read_text())
+
+    attr_edges = [e for e in data["edges"] if e["type"] == "module_attr_ref"]
+    assert attr_edges == [], (
+        f"Expected no module_attr_ref edges for direct module call; got {attr_edges}"
+    )
+    # The existing calls-pipeline still does its job.
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+    assert any("getenv" in e["dst"] for e in call_edges)
+
+
 def test_run_detects_submodule_import_calls(tmp_path: Path) -> None:
     """Running analysis should detect calls through submodule imports.
 

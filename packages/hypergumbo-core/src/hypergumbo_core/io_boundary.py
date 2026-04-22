@@ -494,6 +494,10 @@ class BoundaryMap:
 
 _TRACEABLE_EDGE_TYPES = frozenset({
     "calls", "instantiates", "dispatches_to", "references",
+    # WI-guhok: attribute reads of imported modules (e.g. os.environ, sys.argv)
+    # — lets IO-primitive ``attributes:`` YAML entries become reachable from
+    # the taint-style backward BFS that computes entry-point chains.
+    "module_attr_ref",
     # FFI bridge edges
     "native_bridge", "wasm_bridge", "wasm_load", "bridge_invokes",
     "cgo_bridge", "ffi_bridge",
@@ -754,6 +758,11 @@ def tag_io_boundaries(
     *,
     call_types: frozenset[str] = frozenset({
         "calls", "imports",
+        # WI-guhok: attribute-style IO primitives (os.environ, sys.argv, ...)
+        # reach the boundary pipeline through module_attr_ref edges emitted by
+        # the Python analyzer (and, per WI-gapam, eventually the tree-sitter
+        # base class for JS/Java/Go/C/Rust).
+        "module_attr_ref",
         # FFI edges — trace I/O boundaries across language boundaries
         "wasm_bridge", "wasm_load", "bridge_invokes",
         "cgo_bridge", "ffi_bridge",

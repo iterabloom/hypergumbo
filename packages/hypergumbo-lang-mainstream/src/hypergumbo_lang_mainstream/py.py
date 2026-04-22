@@ -30,6 +30,10 @@ Detected Patterns
 - Function calls: helper(), module.func()
 - Method calls: self.method(), obj.method(), self.field.method()
 - Class instantiation: ClassName()
+- Module attribute reads: os.environ, sys.argv, sys.path — bare
+  (non-called) ``imported_module.attribute`` accesses. Emits
+  ``module_attr_ref`` edges so IO-primitive catalog ``attributes:``
+  entries become reachable by ``io-boundaries`` (WI-guhok).
 - Imports: from X import Y, import X
 - Django URL patterns: path(), re_path(), url() calls in urls.py
 - Flask URL rules: app.add_url_rule() calls
@@ -2263,6 +2267,52 @@ def _extract_edges(
                 evidence_type="function_reference",
             ))
 
+    def _emit_module_attr_refs(
+        block_nodes: list[ast.AST],
+        caller_symbol: Symbol,
+    ) -> None:
+        """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
+
+        Targets patterns like ``os.environ[...]``, ``sys.argv``, ``sys.path``:
+        an imported module name followed by an attribute access that is NOT
+        itself the callable of a function call (those are handled by the
+        calls pipeline and matched against the YAML ``functions:``/``methods:``
+        entries).  This emission pairs with ``attributes:`` entries in the
+        io_primitives YAML catalog, which were previously dead metadata —
+        without an edge to match, ``io-boundaries`` silently under-reported
+        env_read / ipc_send chains (WI-guhok).
+        """
+        # Pre-collect Attribute-node ids that are the direct callee of a Call
+        # so we can skip them below — `os.getenv("X")` already produces a
+        # `calls` edge and doesn't need a redundant `module_attr_ref`.
+        call_func_attr_ids: set[int] = set()
+        for root in block_nodes:
+            for sub in ast.walk(root):
+                if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute):
+                    call_func_attr_ids.add(id(sub.func))
+
+        for root in block_nodes:
+            for sub in ast.walk(root):
+                if not isinstance(sub, ast.Attribute):
+                    continue
+                if id(sub) in call_func_attr_ids:
+                    continue
+                if not isinstance(sub.value, ast.Name):
+                    continue
+                local_name = sub.value.id
+                if local_name not in module_imports:
+                    continue
+                real_module = module_imports[local_name]
+                qname = f"{real_module}.{sub.attr}"
+                edges.append(Edge.create(
+                    src=caller_symbol.id,
+                    dst=f"python:{real_module}:0-0:{qname}:attribute",
+                    edge_type="module_attr_ref",
+                    line=sub.lineno,
+                    confidence=0.85,
+                    evidence_type="module_attribute_reference",
+                ))
+
     # Helper to extract edges from a code block (function body, module level, etc.)
     def process_code_block(
         block_nodes: list[ast.AST],
@@ -2622,6 +2672,7 @@ def _extract_edges(
                         for fname, fsym in class_field_types[class_name].items():
                             if fname not in param_types:
                                 param_types[fname] = fsym
+                _emit_module_attr_refs(node.body, caller_symbol)
                 process_code_block(node.body, caller_symbol, param_types)
 
         # Process class decorators
@@ -2638,6 +2689,7 @@ def _extract_edges(
             node for node in tree.body
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
         ]
+        _emit_module_attr_refs(module_level_nodes, module_symbol)
         process_code_block(module_level_nodes, module_symbol)
 
     return edges
