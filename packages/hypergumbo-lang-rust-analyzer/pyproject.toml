@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hypergumbo-lang-rust-analyzer"
-version = "2.6.0"
+version = "2.7.0"
 description = "SCIP-backed Rust analyzer for hypergumbo (rust-analyzer integration)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,8 +18,8 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
 ]
 dependencies = [
-  "hypergumbo-core==2.6.0",
-  "hypergumbo-lang-mainstream==2.6.0",
+  "hypergumbo-core==2.7.0",
+  "hypergumbo-lang-mainstream==2.7.0",
 ]
 
 [project.entry-points."hypergumbo.analyzers"]

@@ -7,6 +7,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-21
+
 ### Added
 
 - **TUI integration of the item-nav modal:** Description and Activity panes detect embedded item IDs and render them as `[@click=jump_to_item(...)]` hotspots; clicking pushes `ItemNavModal` onto the screen stack. `TrackerApp` compiles the ID pattern at construction via `build_item_id_pattern(tracker_set.config)`, uses `_item_exists` as resolver (treats `ItemNotFoundError` / `AmbiguousPrefixError` as absent so dead/ambiguous IDs render as plain text), and wires `_apply_nav_hotspots` into `_show_detail`, `_show_std_detail`, `_show_activity`. Defensive against stale IDs from items deleted between render and click.
