@@ -4556,3 +4556,110 @@ public class App {
             if e.evidence_type == "unresolved_external_call" and "helper" in e.dst
         ]
         assert len(unresolved_helper) == 0
+
+
+# WI-lozug PR 3: wire emit_module_attribute_refs into _analyze_java_impl so
+# that attribute reads on java.lang.System (and imported classes) produce
+# ``module_attr_ref`` edges that io_boundary can tag against the
+# ``attributes:`` entries in ``io_primitives/java.yaml``.
+class TestJavaModuleAttrRefs:
+    """Tests for ``module_attr_ref`` emission in Java (WI-lozug PR 3)."""
+
+    def test_emits_module_attr_ref_for_system_out_assignment(
+        self, tmp_path: Path,
+    ) -> None:
+        """``PrintStream ps = System.out;`` emits module_attr_ref for
+        System.out.  System is an implicit java.lang import, so the
+        helper injects it into the imports map on every Java file."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text("""import java.io.PrintStream;
+
+public class App {
+    public void run() {
+        PrintStream ps = System.out;
+        ps.println("hi");
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert any(
+            e.dst.endswith(":System.out:attribute") for e in attr_edges
+        ), (
+            f"Expected System.out to emit module_attr_ref; got: "
+            f"{[e.dst for e in attr_edges]}"
+        )
+        sys_edge = next(
+            e for e in attr_edges if e.dst.endswith(":System.out:attribute")
+        )
+        assert sys_edge.confidence == 0.85
+        assert sys_edge.evidence_type == "module_attribute_reference"
+
+    def test_emits_system_out_as_method_invocation_receiver(
+        self, tmp_path: Path,
+    ) -> None:
+        """``System.out.println("hi");`` — System.out is the receiver
+        of a method_invocation, and must STILL emit module_attr_ref.
+        This is a deliberate deviation from the Go/JS double-count
+        rule: io_boundary tags callee names against the primitives
+        catalog, and ``println`` is not in the catalog.  If we skipped
+        the receiver, the ``attributes: [out]`` entry would never
+        match on the dominant usage pattern (every Java program that
+        prints to stdout)."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text("""public class App {
+    public static void main(String[] args) {
+        System.out.println("hi");
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert any(
+            e.dst.endswith(":System.out:attribute") for e in attr_edges
+        ), (
+            f"System.out as method receiver must still emit "
+            f"module_attr_ref; got: {[e.dst for e in attr_edges]}"
+        )
+
+    def test_skips_local_variable_field_access(
+        self, tmp_path: Path,
+    ) -> None:
+        """``cfg.name`` where ``cfg`` is a local variable (not an
+        imported class) must NOT emit module_attr_ref — the base is
+        not in the imports map."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text("""public class App {
+    static class Cfg {
+        public String name = "bar";
+    }
+
+    public void run() {
+        Cfg cfg = new Cfg();
+        String x = cfg.name;
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert not any(
+            ":cfg.name:attribute" in e.dst for e in attr_edges
+        ), (
+            f"cfg.name is a local field access, not an imported "
+            f"class attribute; got: {[e.dst for e in attr_edges]}"
+        )

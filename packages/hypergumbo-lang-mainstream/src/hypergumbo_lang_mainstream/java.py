@@ -75,8 +75,10 @@ from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    emit_module_attribute_refs,
     populate_docstrings_from_tree,
     iter_tree,
+    make_file_id,
     make_symbol_id as _base_make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
@@ -2018,6 +2020,50 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             method_resolver=method_resolver,
             class_parents=global_class_parents,
             class_fields=global_class_fields,
+        )
+        # WI-lozug: emit module_attr_ref edges for field_access nodes
+        # whose base resolves to an imported class or to ``System``
+        # (an implicit java.lang import).  Pairs with the
+        # ``attributes:`` entries in io_primitives/java.yaml
+        # (System.out, System.err under ipc_send; System.in under
+        # ipc_recv).
+        #
+        # Deliberate deviation from Go/JS: the callee-skip logic is
+        # disabled by passing node kinds that do not occur in Java.
+        # The io_boundary pipeline tags callee names against the
+        # primitives catalog, and ``println`` / ``print`` are not in
+        # the catalog.  If ``System.out`` were skipped when it is the
+        # receiver of a method_invocation (the dominant usage
+        # pattern), the ``attributes: [out]`` entry would never match.
+        # A ``calls`` edge for ``println`` and a ``module_attr_ref``
+        # edge for ``System.out`` target different catalog lookups,
+        # so no double-count occurs downstream.
+        java_imports = {
+            **(pf.imports or {}),
+            "System": "System",
+        }
+        file_caller = Symbol(
+            id=make_file_id("java", str(pf.path)),
+            name=pf.path.name,
+            kind="module",
+            language="java",
+            path=str(pf.path),
+            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        )
+        emit_module_attribute_refs(
+            pf.tree.root_node,
+            pf.source,
+            java_imports,
+            file_caller,
+            "java",
+            edges,
+            node_kinds=("field_access",),
+            object_field_names=("object",),
+            property_field_names=("field",),
+            call_node_kinds=("__never_match_java__",),
+            call_function_field_names=("__unused__",),
         )
         # ADR-0015 Tier 1: annotate edges with dataflow access modes
         _java_df = _get_dataflow_config("java")
