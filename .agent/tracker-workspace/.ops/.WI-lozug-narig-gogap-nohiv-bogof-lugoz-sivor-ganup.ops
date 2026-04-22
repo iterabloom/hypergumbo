@@ -1,0 +1,20 @@
+- op: create  # 1701
+  at: '2026-04-22T20:33:12Z'  # 1701
+  by: agent  # 1701
+  actor: jgstern_agent  # 1701
+  clock: 1  # 1701
+  nonce: '1701'  # 1701
+  data:  # 1701
+    kind: work_item  # 1701
+    title: "Per-language wire-up of emit_module_attribute_refs into TreeSitterAnalyzer subclasses (JS/TS, Java, Go, Rust, C)"  # 1701
+    status: todo_soft  # 1701
+    priority: 3  # 1701
+    parent:  # 1701
+    tags:  # 1701
+    - analysis_quality  # 1701
+    isbefore: []  # 1701
+    duplicate_of: []  # 1701
+    not_duplicate_of: []  # 1701
+    pr_ref:  # 1701
+    description: "Follow-up to WI-gapam. The generic helper emit_module_attribute_refs landed in packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py — it walks a tree-sitter tree, finds attribute-access nodes whose base resolves to an imported/global module, skips nodes that are the callee of a call, and emits module_attr_ref edges with confidence 0.85.\n\nRemaining per-language integration (each one an independent PR):\n\n- JavaScript/TypeScript (js_ts.py): node_kinds=('member_expression',), object_field_names=('object',), property_field_names=('property',), imports map includes Node.js globals (process, window, navigator, document) plus CommonJS/ES imports. YAML entries in javascript.yaml: process.env, process.argv, process.platform, process.arch, process.version, process.cwd, navigator.*, window.*, document.*, process.stdout, process.stderr, process.stdin.\n- Java (java.py): node_kinds=('field_access',), object_field_names=('object',), property_field_names=('field',). YAML entries in java.yaml: System.out, System.err, System.in (ipc_send/ipc_recv).\n- Go (go.py): node_kinds=('selector_expression',), object_field_names=('operand',), property_field_names=('field',). YAML entries in go.yaml: os.Stdout, os.Stderr (ipc_send), os.Stdin (ipc_recv).\n- Rust (rust.py): node_kinds=('field_expression',), object_field_names=('value',), property_field_names=('field',). YAML entries in rust.yaml: std::env::consts (module-path attribute access).\n- C (c.py): node_kinds=('field_expression',), object_field_names=('argument',), property_field_names=('field',). YAML entries in c.yaml: stdout, stderr (ipc_send), stdin (ipc_recv).\n\nFor each language, the wire-up is:\n1. Call emit_module_attribute_refs from the analyzer's edge-extraction pass, passing the imports map the analyzer already computes (module aliases, namespace imports, etc.) and the caller Symbol.\n2. Add a fixture under tests/fixtures/ exercising at least one attribute primitive from the language's YAML.\n3. Assert tag_io_boundaries produces a chain with the right primitive name.\n4. Re-run hypergumbo on a representative repo for that language and confirm env_read / ipc_send chain_count increases meaningfully.\n\nCaveat: the JS/TS analyzer (js_ts.py) overrides analyze() entirely and does not use the TreeSitterAnalyzer template methods — the hook needs to slot into _analyze_javascript_impl alongside the existing call-extraction pass, not into extract_edges_from_file.\n\nCan be split per language if one big PR is awkward. Note: the generic helper's public surface is the module-level function emit_module_attribute_refs; the WI-gapam description's sketch of a TreeSitterAnalyzer._emit_module_attribute_refs method was not implemented because the js_ts.py analyzer (by far the biggest consumer) overrides analyze() entirely and wouldn't benefit from a base-class method. The module-level function is usable from both template-method subclasses and override-analyze subclasses."  # 1701
+    fields: {}  # 1701

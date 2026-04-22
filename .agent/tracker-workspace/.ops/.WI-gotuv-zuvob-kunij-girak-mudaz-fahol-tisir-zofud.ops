@@ -1,0 +1,20 @@
+- op: create  # 8724
+  at: '2026-04-22T23:31:33Z'  # 8724
+  by: agent  # 8724
+  actor: jgstern_agent  # 8724
+  clock: 1  # 8724
+  nonce: '8724'  # 8724
+  data:  # 8724
+    kind: work_item  # 8724
+    title: "C identifier-reference matching for stdio globals (stdout/stderr/stdin)"  # 8724
+    status: todo_soft  # 8724
+    priority: 3  # 8724
+    parent:  # 8724
+    tags:  # 8724
+    - analysis_quality  # 8724
+    isbefore: []  # 8724
+    duplicate_of: []  # 8724
+    not_duplicate_of: []  # 8724
+    pr_ref:  # 8724
+    description: "Follow-up to WI-lozug (skipped-C decision, see /home/jgstern_agent/.claude/plans/zany-tumbling-plum.md §Decisions). In C, stdout/stderr/stdin are bare extern FILE* identifiers (declared in <stdio.h>) — they are used as 'fprintf(stdout, ...)' not 'stdio.stdout'. The WI-gapam emit_module_attribute_refs helper cannot match these because it requires a member-expression with an imports-map base. c.yaml line 85/92 currently declares 'attributes: [stdout, stderr]' / 'attributes: [stdin]' under module: stdio, but no C code produces edges that match these entries. Work needed: (a) decide whether to add an 'identifier-reference' matching mode to io_boundary so bare-identifier uses of stdio globals tag as ipc_send/ipc_recv, OR (b) reshape c.yaml so the stdio primitives use a different YAML key (e.g. 'global_symbols:' or convert to 'functions:' that get matched via calls where they are used as arguments). Option (a) is more invasive but correct; option (b) is a localized workaround. Pairs with the existing 'functions: [write]' under stdlib module (line 87-88) which IS matched via calls edges for write(STDOUT_FILENO, ...). A suitable C repo for real-repo validation once this lands: nginx or tmux (both use fprintf(stderr, ...) heavily)."  # 8724
+    fields: {}  # 8724
