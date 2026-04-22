@@ -36,3 +36,18 @@
   clock: 3  # 6f1b
   nonce: 6f1b  # 6f1b
   message: "Landed in PR #3148 together with WI-rofuv. Replacement sequence: tmux send-keys with vendor exit keystroke, 30s kill -0 poll, hard-kill fallback that invokes kill-transcript-sync.sh + rotate-on-session-end.sh, then tmux new-session with HYPERGUMBO_RESPAWN=1. Vendor keystrokes for Codex/Cursor/Gemini marked FIXME WI-batob pending empirical verification by the docs PR."  # 6f1b
+- op: update  # 3b15
+  at: '2026-04-18T19:26:40Z'  # 3b15
+  by: agent  # 3b15
+  actor: jgstern_agent  # 3b15
+  clock: 2  # 3b15
+  nonce: 3b15  # 3b15
+  set:  # 3b15
+    status: done  # 3b15
+- op: discuss  # ccd0
+  at: '2026-04-18T19:26:40Z'  # ccd0
+  by: agent  # ccd0
+  actor: jgstern_agent  # ccd0
+  clock: 3  # ccd0
+  nonce: ccd0  # ccd0
+  message: "Implemented in commit c01512b82 (same commit as WI-rofuv, sibling deliverables). Replacement sequence: vendor-specific graceful exit keystroke via tmux send-keys, 30s poll of kill -0 <cli_pid>, hard-kill tmux session + direct invocation of kill-transcript-sync.sh + rotate-on-session-end.sh on timeout. Fresh spawn via tmux new-session -d -s <new> -e HYPERGUMBO_RESPAWN=1 <cli>. Tests cover graceful-exit path, hard-kill fallback, unknown-vendor default, and HYPERGUMBO_RESPAWN=1 env injection. See CHANGELOG [Unreleased]."  # ccd0

@@ -36,3 +36,18 @@
   clock: 3  # b25a
   nonce: b25a  # b25a
   message: "Landed in PR #3149 (merged). Respawn branch in shared session_start_logic.sh: HYPERGUMBO_RESPAWN=1 + intent != OFF → auto-enable via loop-toggle --set-session-mode + generic seed prompt. All four vendors pick it up automatically because each hook already sources the shared logic. 18 tests cover every fall-through path."  # b25a
+- op: update  # 11de
+  at: '2026-04-18T19:27:17Z'  # 11de
+  by: agent  # 11de
+  actor: jgstern_agent  # 11de
+  clock: 2  # 11de
+  nonce: 11de  # 11de
+  set:  # 11de
+    status: done  # 11de
+- op: discuss  # d0ee
+  at: '2026-04-18T19:27:17Z'  # d0ee
+  by: agent  # d0ee
+  actor: jgstern_agent  # d0ee
+  clock: 3  # d0ee
+  nonce: d0ee  # d0ee
+  message: "Implemented in commit cf1d13717 (feat(hooks): respawn-aware session-start hook). Shared .agent/hooks/_shared/session_start_logic.sh branches on HYPERGUMBO_RESPAWN=1, reads autonomous_intent.txt, uses loop-toggle --set-session-mode to auto-enable DEEP/BROAD, emits generic seed prompt. All four vendor hooks (Claude/Codex/Cursor/Gemini) source the shared logic. Defensive fall-through for intent=OFF/garbage/missing; rejects env values other than exactly '1'. Never writes autonomous_intent.txt. 18 tests cover all branches. See CHANGELOG [Unreleased]."  # d0ee
