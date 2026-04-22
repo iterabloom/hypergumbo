@@ -1,0 +1,20 @@
+- op: create  # 8a08
+  at: '2026-04-22T23:33:22Z'  # 8a08
+  by: agent  # 8a08
+  actor: jgstern_agent  # 8a08
+  clock: 1  # 8a08
+  nonce: 8a08  # 8a08
+  data:  # 8a08
+    kind: work_item  # 8a08
+    title: "Cross-language scoped-path mode for emit_module_attribute_refs (Rust tree-sitter, C++, Groovy, Kotlin)"  # 8a08
+    status: todo_soft  # 8a08
+    priority: 3  # 8a08
+    parent:  # 8a08
+    tags:  # 8a08
+    - analysis_quality  # 8a08
+    isbefore: []  # 8a08
+    duplicate_of: []  # 8a08
+    not_duplicate_of: []  # 8a08
+    pr_ref:  # 8a08
+    description: "Follow-up to WI-lozug PR 4 (see /home/jgstern_agent/.claude/plans/zany-tumbling-plum.md §A). emit_module_attribute_refs in analyze/base.py currently walks attribute-access nodes (e.g. member_expression, field_access, selector_expression) using an object-and-property child pair. Some language grammars use a left-recursive scoped-path structure instead: Rust 'std::env::consts::OS' is tree-sitter-rust's scoped_identifier with path+name children (not field_expression); C++ 'std::cout' / 'std::cerr' / 'std::cin' use qualified_identifier; Groovy and Kotlin use scoped_identifier for package-qualified references. The helper's current model cannot match these. Needed: extend emit_module_attribute_refs with an optional kwarg (e.g. use_scoped_path=True) that switches the traversal from object_field_names to a left-recursive walk of the path field, yielding the leftmost identifier as the base and the full dotted name as the attribute. Then wire up: (1) Rust tree-sitter path in rust.py (matches 'std::env: [consts]' under env_read in rust.yaml — currently inert on the tree-sitter path; rust-analyzer path is separate and already functional), (2) C++ in cpp.py (requires cpp.yaml additions for std::cout/cerr/cin under ipc_send/ipc_recv if not already there), (3) Groovy and Kotlin if YAML coverage merits. Unit tests follow WI-gapam's TestEmitModuleAttributeRefs pattern. Real-repo validation on ripgrep / bat for Rust, any C++ CLI for C++."  # 8a08
+    fields: {}  # 8a08
