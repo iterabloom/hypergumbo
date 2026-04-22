@@ -100,12 +100,15 @@ If these don't appear in the top 30, centrality ranking may have a bug.
 ### IO boundaries check
 
 Expected IO boundaries for hypergumbo itself:
-- **fs_read**: File reads in `discovery.py`, `paths.py`, all analyzers reading source files
-- **fs_write**: JSON output in `cli.py`, cache writes
-- **subprocess**: `build_grammars.py`, gitleaks integration
-- **net_send**: Tracker sync (HTTP to Forgejo API), OpenRouter calls in hooks
+- **fs_read**: File reads in `discovery.py`, `paths.py`, all analyzers reading source files.
+- **fs_write**: JSON output in `cli.py`, cache writes.
+- **env_read**: `os.environ` / `os.getenv` / `sys.argv` reads — concentrated in `sketch_embeddings.py` and `cli.py`. Chains include attribute-kind primitives reached via `module_attr_ref` edges.
+- **subprocess**: `build_grammars.py`, gitleaks integration, tracker sync helpers.
+- **net_send**: Tracker sync (HTTP to Forgejo API), HuggingFace Hub download when the `embeddings` extra is installed.
 
 If any of these categories are missing, the Python IO catalog or call-graph tracing has a gap.
+
+The same chains feed `verify-claims`: every fs_write/net_send/subprocess primitive becomes a taint sink at `trust_level=untrusted` in zone `host_fs` / `network` / `host_fs` respectively, and every env_read primitive becomes a taint source at label `host_secret`. So a missing category here implies a missing taint-flow coverage too.
 
 ### Slice validation
 

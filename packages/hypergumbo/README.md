@@ -120,7 +120,7 @@ hypergumbo . -t 8000   # detailed with many symbols
 hypergumbo [path]              # Markdown sketch (default)
 hypergumbo run [path]          # Full JSON behavior map
 hypergumbo slice --entry X     # Subgraph from entry point
-hypergumbo io-boundaries       # Find all I/O (filesystem, network, subprocess, env)
+hypergumbo io-boundaries       # Find all I/O (filesystem, network, subprocess, env, IPC, browser storage)
 hypergumbo verify-claims ...   # Verify security claims against analysis
 hypergumbo routes [path]       # List HTTP routes
 hypergumbo search <query>      # Search symbols
@@ -152,8 +152,8 @@ See `hypergumbo --help` for all options.
 - **Language analyzers**: Python, JS/TS, Java, Rust, Go, C/C++, and [many more](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md)
 - **Linkers**: Tier 2 edge-recovery passes across four subcategories — Protocol (HTTP, WebSocket, message queues, SQL), Bridge (JNI, wasm_bindgen, Tauri IPC, language-pair FFI), Framework (gRPC, GraphQL, React components, DI resolution, ORM), Infrastructure (containment, inheritance, module imports). [Full catalogue](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md).
 - **Framework patterns**: FastAPI, Django, Rails, Spring Boot, Phoenix, Express, and [many more](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/FRAMEWORKS.md)
-- **I/O boundary detection**: Maps every call chain that reaches the filesystem, network, subprocesses, or environment — across FFI boundaries
-- **Taint-flow analysis**: Traces data from sensitive sources (crypto keys, plaintext) to sinks (filesystem, network), with sanitizer awareness
+- **I/O boundary detection**: Maps every call chain that reaches the filesystem, network, subprocess, environment, IPC, or browser-local storage — across FFI boundaries
+- **Taint-flow analysis**: Traces data from sensitive sources (environment variables, received network input, crypto outputs, key material) to sinks in six trust zones (`host_fs`, `network`, `host_env`, `ipc`, `browser_storage`, `relay`), with sanitizer awareness
 - **Supply chain tiers**: Classifies code as first-party, internal, external, or derived for dependency-aware analysis
 
 ## How It Works

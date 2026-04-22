@@ -3094,9 +3094,13 @@ def cmd_compact(args: argparse.Namespace) -> int:
 def cmd_io_boundaries(args: argparse.Namespace) -> int:
     """Display I/O boundary map for a repository (ADR-0016).
 
-    Identifies call edges that reach I/O primitives (filesystem, network,
-    subprocess, environment) and groups them by boundary type. Loads a
-    cached behavior map or auto-runs analysis if needed.
+    Identifies call edges that reach I/O primitives and groups them by
+    boundary type: ``fs_read``, ``fs_write``, ``net_send``, ``net_recv``,
+    ``subprocess``, ``env_read``, ``env_write``, ``ipc_send``, ``ipc_recv``,
+    ``browser_storage_write``, ``db_read``, ``db_write``, ``process_send``,
+    ``logging``. Attribute-style primitives (``os.environ``, ``sys.argv``)
+    are included via ``module_attr_ref`` edges. Loads a cached behavior
+    map or auto-runs analysis if needed.
     """
     repo_root = Path(args.path).resolve()
 
@@ -3414,6 +3418,16 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     taint-flow analysis if needed, and checks each claim. Returns exit
     code 1 if any claim is violated. Supports boundary constraints
     (ADR-0016) and taint-flow constraints (ADR-0017).
+
+    Trust zones checked: ``host_fs``, ``network``, ``host_env``, ``ipc``,
+    ``browser_storage``, ``relay``. Built-in taint labels: ``host_secret``,
+    ``untrusted_input``, ``plaintext``, ``key_material``, ``ciphertext``,
+    ``derived_key``. The source and sink catalogs are derived automatically
+    from ``io_primitives/*.yaml`` (every write-side primitive is a sink at
+    ``trust_level=untrusted``; ``env_read``, ``net_recv``, and ``ipc_recv``
+    primitives are sources). YAML files under ``taint_sources/``,
+    ``taint_sinks/``, ``taint_sanitizers/`` contribute cryptographic labels
+    and sanitizer transforms that the auto-layer cannot express.
     """
     repo_root = Path(args.path).resolve()
     claims_path = Path(args.claims)
