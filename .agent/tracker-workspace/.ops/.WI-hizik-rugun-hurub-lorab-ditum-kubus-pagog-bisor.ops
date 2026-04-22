@@ -1,0 +1,20 @@
+- op: create  # 7a67
+  at: '2026-04-22T05:32:42Z'  # 7a67
+  by: agent  # 7a67
+  actor: jgstern_agent  # 7a67
+  clock: 1  # 7a67
+  nonce: 7a67  # 7a67
+  data:  # 7a67
+    kind: work_item  # 7a67
+    title: "Drift-guard test: built-in taint sinks must stay aligned with io_primitives write/send categories"  # 7a67
+    status: todo_soft  # 7a67
+    priority: 3  # 7a67
+    parent:  # 7a67
+    tags:  # 7a67
+    - analysis_quality  # 7a67
+    isbefore: []  # 7a67
+    duplicate_of: []  # 7a67
+    not_duplicate_of: []  # 7a67
+    pr_ref:  # 7a67
+    description: "Filed during self-analysis dogfooding 2026-04-21 after investigating the ADR-0017 rationale for catalog separation.\n\nContext: ADR-0017 §344-348 documents the intentional split between io_primitives/*.yaml and taint_sources|sinks|sanitizers/*.yaml. The stated reasons — project-local extensibility (§2, §65, §95), different semantic axes (taint_label / zone / trust_level), and the flat-label-with-explicit-sanitizers design (§857) — justify the separation for user-contributed catalogs. What they do NOT justify is the duplication between first-party built-in catalogs.\n\nConcretely, these two files list the same Python functions:\n- packages/hypergumbo-core/src/hypergumbo_core/io_primitives/python.yaml §fs_write\n  (open, pathlib.Path.write_text, pathlib.Path.write_bytes, shutil.copy, os.write, ...)\n- packages/hypergumbo-core/src/hypergumbo_core/taint_sinks/host_filesystem.yaml §sinks.python\n  (builtins.open, pathlib.Path.write_text/write_bytes/open, shutil.copy/copy2/copyfile/move, os.write)\n\nAnd these two:\n- io_primitives/python.yaml §net_send  (socket.send/sendall/sendto, requests.post/put/patch, urllib.request.urlopen, http.client.HTTPConnection.request/send)\n- taint_sinks/network_send.yaml §sinks.python  (same, basically)\n\nWhen a new fs-write or net-send primitive gets added to io_primitives/python.yaml, nothing prevents it being forgotten in taint_sinks/*.yaml. Drift failure mode: hypergumbo io-boundaries correctly reports the write as a boundary, but hypergumbo verify-claims silently fails to treat it as a potential sink for tainted data. The failure is invisible — the taint analyzer just produces a clean report. This applies to every language that has both an io_primitives file and a corresponding taint sink entry (currently: python, javascript/typescript, rust, go, java).\n\nProposed fix — a ~20-line test in packages/hypergumbo-core/tests/ that asserts:\n\n  For each (language, category) in {\n    (python, fs_write) vs (python, host_filesystem),\n    (python, net_send) vs (python, network_send),\n    ...same for js, rust, go, java...\n  }:\n    every function/method listed under io_primitives[language][category] must appear under taint_sinks[category_sink_name][sinks][language], OR appear in an explicit exemption list with a rationale.\n\nAn exemption list is important — there are plausible cases where something is an IO boundary but deliberately not a taint sink (e.g. logging to a debug-only stream) or vice versa. The exemption list forces that reasoning to be written down.\n\nDoes NOT address attribute-style primitives (see companion item filed at the same time) — those aren't in taint_sinks at all yet.\n\nValidation: once the test exists, intentionally add a bogus primitive to io_primitives/python.yaml#fs_write and confirm the test catches it missing from taint_sinks/host_filesystem.yaml."  # 7a67
+    fields: {}  # 7a67

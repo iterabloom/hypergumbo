@@ -1,0 +1,20 @@
+- op: create  # 5485
+  at: '2026-04-22T03:52:26Z'  # 5485
+  by: agent  # 5485
+  actor: jgstern_agent  # 5485
+  clock: 1  # 5485
+  nonce: '5485'  # 5485
+  data:  # 5485
+    kind: work_item  # 5485
+    title: "self-analysis-dogfooding playbook: sanity-check snippet reads n['lang'] but field is n['language']"  # 5485
+    status: todo_soft  # 5485
+    priority: 4  # 5485
+    parent:  # 5485
+    tags:  # 5485
+    - developer_experience  # 5485
+    isbefore: []  # 5485
+    duplicate_of: []  # 5485
+    not_duplicate_of: []  # 5485
+    pr_ref:  # 5485
+    description: "Discovered during 2026-04-21 self-analysis dogfooding.\n\nThe playbook at .agent/agent_playbooks_protocols_sops_skills/self-analysis-dogfooding-playbook.md §'Behavior map sanity checks' includes this Python snippet:\n\n  edge_types = Counter(e.get('type', 'MISSING') for e in edges)\n\nand later suggests inspecting nodes similarly. The top comment on that block says '(field is type, NOT kind — kind is a node field)' which is correct for edges. But a follow-on invocation (as the agent ran it during dogfooding) naturally uses n.get('lang', 'MISSING') on nodes — and the actual field name on node objects is 'language', not 'lang'. Running n.get('lang', ...) reports 'all nodes MISSING language', a false alarm that burns attention.\n\nFix: update the snippet in the playbook to use 'language'. While editing, add an explicit Counter-on-nodes example (e.g., node_langs = Counter(n.get('language', 'MISSING') for n in nodes)) so the next reader doesn't have to reconstruct it from the edge example. Also confirm the real node schema (at least 'id', 'kind', 'name', 'path', 'language', 'span', 'supply_chain', 'origin', 'stable_id', 'shape_id') in the playbook so future inspection scripts have a reference."  # 5485
+    fields: {}  # 5485
