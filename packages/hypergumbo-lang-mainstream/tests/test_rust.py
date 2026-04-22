@@ -4691,3 +4691,57 @@ fn main() { helper(); }
             if e.evidence_type == "unresolved_external_call" and "helper" in e.dst
         ]
         assert len(unresolved_helper) == 0
+
+
+# WI-lozug PR 4: Rust tree-sitter path deferral stub.
+#
+# The WI-gapam ``emit_module_attribute_refs`` helper's current model
+# walks attribute-access nodes with an ``object`` + ``property`` child
+# pair.  ``std::env::consts::OS`` parses as tree-sitter-rust's
+# ``scoped_identifier`` (a left-recursive path of ``path`` + ``name``
+# pairs), which the helper cannot match without an extension.  Rather
+# than single-language-tune the helper for Rust only, the extension is
+# tracked as a cross-language follow-up (WI-vipur-…, covers Rust
+# tree-sitter + C++ ``qualified_identifier`` + Groovy / Kotlin
+# scoped_identifier uses).  PR 4 of WI-lozug keeps Rust's tree-sitter
+# path intentionally inert and installs this regression-guard so that
+# when the scoped-path extension does land the flip from zero to
+# positive emission is observable.
+#
+# Note: the ``rust-analyzer`` optional backend
+# (``hypergumbo-lang-rust-analyzer``) has its own semantic resolver
+# that is untouched by this PR.  Users who have rust-analyzer
+# installed continue to get full Rust semantics via that path.
+class TestRustModuleAttrRefsDeferred:
+    """Regression guard: the Rust tree-sitter analyzer does NOT emit
+    ``module_attr_ref`` edges for ``std::env::consts::OS`` today
+    (WI-lozug PR 4 stub).  Flip to a positive-emission test when
+    WI-vipur (cross-language scoped-path extension) lands."""
+
+    def test_tree_sitter_rust_emits_zero_module_attr_ref_for_scoped_path(
+        self, tmp_path: Path,
+    ) -> None:
+        """Baseline assertion: no module_attr_ref edges from the
+        tree-sitter Rust analyzer for ``std::env::consts::OS``
+        today."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text("""pub fn os_name() -> &'static str {
+    std::env::consts::OS
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert attr_edges == [], (
+            f"WI-lozug PR 4 stub: Rust tree-sitter path is expected "
+            f"to emit ZERO module_attr_ref edges until WI-vipur "
+            f"(cross-language scoped-path extension) lands; got: "
+            f"{[e.dst for e in attr_edges]}. If this fails, either "
+            f"the scoped-path extension landed (in which case flip "
+            f"this test to assert positive emission) or something "
+            f"unexpected added Rust emission (investigate)."
+        )
