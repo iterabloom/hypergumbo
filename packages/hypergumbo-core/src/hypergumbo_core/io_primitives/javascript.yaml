@@ -58,21 +58,6 @@ fs_read:
     notes: "Deno runtime file read operations"
   - module: Deno
     methods: [readFile, readTextFile, readDir, stat, lstat]
-  # Browser persistent storage (WI-banaf): treated as fs_read because they
-  # are persistent reads from a host-managed store.
-  - module: localStorage
-    methods: [getItem, key, length]
-    notes: "Browser localStorage read"
-  - module: sessionStorage
-    methods: [getItem, key, length]
-    notes: "Browser sessionStorage read"
-  - module: indexedDB
-    functions: [open, databases]
-    notes: "Browser IndexedDB read"
-  - module: caches
-    functions: [open, match, has, keys]
-    notes: "Browser CacheStorage read (Service Workers)"
-
 fs_write:
   - module: fs
     functions: [writeFileSync, writeFile, mkdirSync, mkdir, unlinkSync, unlink, rmdirSync, rmdir, renameSync, rename, copyFileSync, copyFile, chmodSync, chmod, chownSync, chown, appendFileSync, appendFile]
@@ -87,10 +72,11 @@ fs_write:
 
 # Browser persistent storage is NOT host-filesystem — it lives in the browser's
 # own per-origin storage area and is primarily reachable via XSS rather than
-# local-user filesystem access. Separating it from fs_write lets the boundary
-# map report accurately and lets taint-flow analysis treat it as its own trust
-# zone (``browser_storage``) instead of conflating it with host-disk writes.
-# (Originally mis-categorized as fs_write in WI-banaf; moved here per WI-lokuv.)
+# local-user filesystem access. Separating it from fs_write / fs_read lets the
+# boundary map report accurately and lets taint-flow analysis treat it as its
+# own trust zone (``browser_storage``) instead of conflating it with host-disk
+# I/O. (Originally mis-categorized as fs_write / fs_read in WI-banaf; writes
+# moved per WI-lokuv, reads moved per WI-kanir-huzuj.)
 browser_storage_write:
   - module: localStorage
     methods: [setItem, removeItem, clear]
@@ -98,6 +84,20 @@ browser_storage_write:
   - module: sessionStorage
     methods: [setItem, removeItem, clear]
     notes: "Browser sessionStorage write"
+
+browser_storage_read:
+  - module: localStorage
+    methods: [getItem, key, length]
+    notes: "Browser localStorage read"
+  - module: sessionStorage
+    methods: [getItem, key, length]
+    notes: "Browser sessionStorage read"
+  - module: indexedDB
+    functions: [open, databases]
+    notes: "Browser IndexedDB read"
+  - module: caches
+    functions: [open, match, has, keys]
+    notes: "Browser CacheStorage read (Service Workers)"
 
 net_send:
   - module: http

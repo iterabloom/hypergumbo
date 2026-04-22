@@ -1249,6 +1249,27 @@ class TestAutoImportFromIoPrimitives:
         assert "builtins.open" not in qnames
         assert "pathlib.Path.read_text" not in qnames
 
+    def test_auto_import_browser_storage_read_not_auto_sourced(self) -> None:
+        """WI-kanir-huzuj: browser_storage_read mirrors fs_read — the
+        sensitivity of a browser-storage read depends on what is stored,
+        so the auto-derivation stays quiet and project-local catalogs can
+        opt in entries relevant to the threat model.  Confirm that
+        localStorage.getItem is classified under browser_storage_read in
+        the IO catalog yet is NOT present in the auto-derived source set.
+        """
+        from hypergumbo_core.taint import (
+            AUTO_SOURCE_LABEL_MAP,
+            load_builtin_taint_catalog,
+        )
+        assert "browser_storage_read" not in AUTO_SOURCE_LABEL_MAP
+        catalog = load_builtin_taint_catalog()
+        js_sources = catalog.sources_for_language("javascript")
+        qnames = {s.qualified_name for s in js_sources}
+        assert "localStorage.getItem" not in qnames
+        assert "sessionStorage.getItem" not in qnames
+        assert "indexedDB.open" not in qnames
+        assert "caches.match" not in qnames
+
     def test_user_yaml_override_wins_on_same_module_name_kind(
         self, tmp_path: Path,
     ) -> None:

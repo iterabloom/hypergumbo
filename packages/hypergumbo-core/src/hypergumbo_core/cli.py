@@ -3097,10 +3097,10 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     Identifies call edges that reach I/O primitives and groups them by
     boundary type: ``fs_read``, ``fs_write``, ``net_send``, ``net_recv``,
     ``subprocess``, ``env_read``, ``env_write``, ``ipc_send``, ``ipc_recv``,
-    ``browser_storage_write``, ``db_read``, ``db_write``, ``process_send``,
-    ``logging``. Attribute-style primitives (``os.environ``, ``sys.argv``)
-    are included via ``module_attr_ref`` edges. Loads a cached behavior
-    map or auto-runs analysis if needed.
+    ``browser_storage_write``, ``browser_storage_read``, ``db_read``,
+    ``db_write``, ``process_send``, ``logging``. Attribute-style primitives
+    (``os.environ``, ``sys.argv``) are included via ``module_attr_ref``
+    edges. Loads a cached behavior map or auto-runs analysis if needed.
     """
     repo_root = Path(args.path).resolve()
 

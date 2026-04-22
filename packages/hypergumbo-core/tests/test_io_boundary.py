@@ -147,6 +147,31 @@ class TestLoadCatalog:
         expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
         assert expected.issubset(boundaries)
 
+    def test_javascript_browser_storage_reads_not_fs_read(self) -> None:
+        """WI-kanir-huzuj: localStorage/sessionStorage/indexedDB/caches reads
+        live under browser_storage_read, not fs_read. Browser storage is
+        reachable via XSS, not host-filesystem access, so conflating it
+        with fs_read produced misleading "filesystem read" chains.
+        """
+        catalog = load_catalog("javascript")
+        assert catalog.lookup("localStorage.getItem").boundary == (
+            "browser_storage_read"
+        )
+        assert catalog.lookup("sessionStorage.getItem").boundary == (
+            "browser_storage_read"
+        )
+        assert catalog.lookup("indexedDB.open").boundary == (
+            "browser_storage_read"
+        )
+        assert catalog.lookup("caches.match").boundary == (
+            "browser_storage_read"
+        )
+        by_boundary: dict[str, set[str]] = {}
+        for p in catalog.primitives:
+            by_boundary.setdefault(p.boundary, set()).add(p.qualified_name)
+        assert "localStorage.getItem" not in by_boundary.get("fs_read", set())
+        assert "indexedDB.open" not in by_boundary.get("fs_read", set())
+
     def test_load_go_catalog(self) -> None:
         catalog = load_catalog("go")
         assert catalog.language == "go"
