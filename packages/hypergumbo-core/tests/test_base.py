@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    emit_module_attribute_refs,
     extract_doc_comment,
     find_child_by_field,
     find_child_by_type,
@@ -37,7 +38,7 @@ from hypergumbo_core.analyze.base import (
     strip_fqn_prefix,
     visibility_from_modifiers,
 )
-from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol
 
 if TYPE_CHECKING:
     pass
@@ -796,6 +797,302 @@ class TestIsGrammarAvailable:
             result = is_grammar_available("tree_sitter_go")
 
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# WI-gapam: emit_module_attribute_refs — cross-language helper for
+# tree-sitter analyzers that produces module_attr_ref edges for attribute
+# reads on imported/global modules (matches ``attributes:`` entries in
+# io_primitives/*.yaml).
+# ---------------------------------------------------------------------------
+
+
+def _parse_javascript(source: str):
+    """Parse JavaScript source with tree-sitter-javascript and return the root node."""
+    import tree_sitter
+    import tree_sitter_javascript
+    lang = tree_sitter.Language(tree_sitter_javascript.language())
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(source.encode("utf-8"))
+    return tree.root_node
+
+
+def _fake_caller(symbol_id: str = "javascript:app.js:1-5:handler:function") -> Symbol:
+    """Construct a minimal Symbol to serve as the caller for edge emission."""
+    return Symbol(
+        id=symbol_id,
+        name="handler",
+        kind="function",
+        language="javascript",
+        path="app.js",
+        span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+    )
+
+
+class TestEmitModuleAttributeRefs:
+    """Tests for the cross-language ``emit_module_attribute_refs`` helper (WI-gapam)."""
+
+    def test_basic_member_expression_emits_edge(self) -> None:
+        """``process.env`` in JavaScript emits a module_attr_ref edge with
+        the expected (src, dst, type) triple. ``process`` is a global in
+        Node.js so the ``imports`` map treats it as already-qualified.
+        """
+        root = _parse_javascript("const p = process.env;\n")
+        caller = _fake_caller()
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            b"const p = process.env;\n",
+            {"process": "process"},
+            caller,
+            "javascript",
+            edges,
+            node_kinds=("member_expression",),
+            object_field_names=("object",),
+            property_field_names=("property",),
+        )
+        assert len(edges) == 1
+        assert edges[0].edge_type == "module_attr_ref"
+        assert edges[0].src == caller.id
+        assert edges[0].dst == "javascript:process:0-0:process.env:attribute"
+        assert edges[0].confidence == 0.85
+
+    def test_skips_callee_of_call(self) -> None:
+        """``process.exit(0)`` already produces a ``calls`` edge via the
+        calls pipeline; the helper must NOT emit a redundant
+        ``module_attr_ref`` for the callee ``process.exit``.
+        """
+        root = _parse_javascript("process.exit(0);\n")
+        caller = _fake_caller()
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            b"process.exit(0);\n",
+            {"process": "process"},
+            caller,
+            "javascript",
+            edges,
+            node_kinds=("member_expression",),
+            object_field_names=("object",),
+            property_field_names=("property",),
+        )
+        assert edges == []
+
+    def test_skips_unknown_base(self) -> None:
+        """Attribute reads whose base is not in the imports map are
+        skipped — the helper is conservative and only emits edges for
+        recognised module names.
+        """
+        root = _parse_javascript("const x = foo.bar;\n")
+        caller = _fake_caller()
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            b"const x = foo.bar;\n",
+            {"process": "process"},
+            caller,
+            "javascript",
+            edges,
+            node_kinds=("member_expression",),
+            object_field_names=("object",),
+            property_field_names=("property",),
+        )
+        assert edges == []
+
+    def test_nested_attribute_read_inner_still_emitted(self) -> None:
+        """For ``process.env.PATH``, the inner ``process.env`` is itself a
+        ``member_expression`` (the object of the outer access) — the
+        helper emits edges for BOTH the inner and outer matches.  The
+        outer ``.PATH`` has a ``member_expression`` as base rather than
+        a plain identifier, so only the inner match resolves against
+        the imports map.  The test documents the current-behaviour
+        contract: one edge emitted, for ``process.env``.  (Downstream
+        would-be ``module_attr_ref`` edges for the outer attribute
+        require the caller to expand imports to cover intermediate
+        chains, which is explicitly out of scope for the generic helper.)
+        """
+        root = _parse_javascript("const p = process.env.PATH;\n")
+        caller = _fake_caller()
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            b"const p = process.env.PATH;\n",
+            {"process": "process"},
+            caller,
+            "javascript",
+            edges,
+            node_kinds=("member_expression",),
+            object_field_names=("object",),
+            property_field_names=("property",),
+        )
+        # Exactly one edge: process.env (the outer .PATH's base is a
+        # member_expression, not an identifier, so it does not match).
+        dsts = [e.dst for e in edges]
+        assert "javascript:process:0-0:process.env:attribute" in dsts
+        assert len(edges) == 1
+
+    def test_multiple_distinct_modules_all_emitted(self) -> None:
+        """One pass emits edges for each imported-base match in the tree."""
+        source = "const a = process.env;\nconst b = window.location;\n"
+        root = _parse_javascript(source)
+        caller = _fake_caller()
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            source.encode("utf-8"),
+            {"process": "process", "window": "window"},
+            caller,
+            "javascript",
+            edges,
+            node_kinds=("member_expression",),
+            object_field_names=("object",),
+            property_field_names=("property",),
+        )
+        dsts = {e.dst for e in edges}
+        assert "javascript:process:0-0:process.env:attribute" in dsts
+        assert "javascript:window:0-0:window.location:attribute" in dsts
+
+    def test_alias_maps_to_real_module_name(self) -> None:
+        """The imports map can rename a local alias to the real module
+        name (the Python WI-guhok pattern: ``import os as o`` →
+        imports={"o": "os"} → edge dst uses ``os.environ`` not
+        ``o.environ``).
+        """
+        root = _parse_javascript("const x = p.env;\n")
+        caller = _fake_caller()
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            b"const x = p.env;\n",
+            {"p": "process"},
+            caller,
+            "javascript",
+            edges,
+            node_kinds=("member_expression",),
+            object_field_names=("object",),
+            property_field_names=("property",),
+        )
+        assert len(edges) == 1
+        assert edges[0].dst == "javascript:process:0-0:process.env:attribute"
+
+    def test_empty_imports_map_emits_nothing(self) -> None:
+        """Degenerate case: no known modules → no edges, even if the
+        source contains plenty of member expressions.
+        """
+        root = _parse_javascript("const p = process.env;\n")
+        caller = _fake_caller()
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            b"const p = process.env;\n",
+            {},
+            caller,
+            "javascript",
+            edges,
+            node_kinds=("member_expression",),
+            object_field_names=("object",),
+            property_field_names=("property",),
+        )
+        assert edges == []
+
+    def test_unknown_node_kind_emits_nothing(self) -> None:
+        """When ``node_kinds`` does not include any type present in the
+        tree, the helper is a no-op.  Covers the guard-against-wrong-config
+        path for languages whose attribute-access node has an unfamiliar
+        name.
+        """
+        root = _parse_javascript("const p = process.env;\n")
+        caller = _fake_caller()
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            b"const p = process.env;\n",
+            {"process": "process"},
+            caller,
+            "javascript",
+            edges,
+            node_kinds=("never_matches_this",),
+            object_field_names=("object",),
+            property_field_names=("property",),
+        )
+        assert edges == []
+
+    def test_field_name_fallback_order(self) -> None:
+        """``object_field_names`` / ``property_field_names`` are tried in
+        order; if the first is absent, the helper falls back to the
+        second.  Simulated here by passing a bogus first name and the
+        real name second — the edge still emits.
+        """
+        root = _parse_javascript("const p = process.env;\n")
+        caller = _fake_caller()
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            b"const p = process.env;\n",
+            {"process": "process"},
+            caller,
+            "javascript",
+            edges,
+            node_kinds=("member_expression",),
+            object_field_names=("does_not_exist", "object"),
+            property_field_names=("also_does_not_exist", "property"),
+        )
+        assert len(edges) == 1
+
+    def test_missing_field_names_skip_node(self) -> None:
+        """If NONE of the configured field names resolves for a matching
+        node, the helper quietly skips it — it does not raise.
+        """
+        root = _parse_javascript("const p = process.env;\n")
+        caller = _fake_caller()
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            b"const p = process.env;\n",
+            {"process": "process"},
+            caller,
+            "javascript",
+            edges,
+            node_kinds=("member_expression",),
+            object_field_names=("does_not_exist",),
+            property_field_names=("also_does_not_exist",),
+        )
+        assert edges == []
+
+    def test_call_kind_without_function_field_skipped(self) -> None:
+        """A ``call_node_kinds`` entry whose node has neither of the
+        configured ``call_function_field_names`` is ignored by the
+        callee-detection pre-pass (covered via a custom config that
+        names a real node type but a field name it doesn't carry).
+        Functionally: process.exit(0) is NOT treated as a callee and
+        the attribute access is emitted as a module_attr_ref.  This
+        exercises the defensive ``if callee is None: continue`` branch.
+        """
+        root = _parse_javascript("process.exit(0);\n")
+        caller = _fake_caller()
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            b"process.exit(0);\n",
+            {"process": "process"},
+            caller,
+            "javascript",
+            edges,
+            node_kinds=("member_expression",),
+            object_field_names=("object",),
+            property_field_names=("property",),
+            # Neither "nonexistent_field" nor "also_nonexistent" exists
+            # on a call_expression, so the callee resolution returns None
+            # and the call is ignored.
+            call_node_kinds=("call_expression",),
+            call_function_field_names=(
+                "nonexistent_field", "also_nonexistent",
+            ),
+        )
+        # Fallback: without callee-detection, process.exit is treated
+        # as a plain attribute read and emitted.
+        assert len(edges) == 1
+        assert edges[0].dst == "javascript:process:0-0:process.exit:attribute"
 
 
 class TestAnalysisResult:

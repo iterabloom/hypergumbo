@@ -1079,6 +1079,121 @@ def iter_tree_with_context(
 # ---------------------------------------------------------------------------
 
 
+def emit_module_attribute_refs(
+    root: "tree_sitter.Node",
+    source: bytes,
+    imports: dict[str, str],
+    caller_symbol: Symbol,
+    lang: str,
+    edges_out: list[Edge],
+    *,
+    node_kinds: tuple[str, ...],
+    object_field_names: tuple[str, ...],
+    property_field_names: tuple[str, ...],
+    call_node_kinds: tuple[str, ...] = ("call_expression", "call",),
+    call_function_field_names: tuple[str, ...] = ("function", "callee",),
+) -> None:
+    """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
+
+    This is the tree-sitter counterpart of the per-language helper that
+    ships inside ``py.py`` (see WI-guhok).  It targets bare attribute
+    accesses like ``process.env.PATH`` (JS), ``System.out`` (Java), or
+    ``os.Stdout`` (Go) — an imported-or-global module name followed by
+    one or more attribute accesses whose leftmost access is NOT itself
+    the callee of a function call.  Callee attribute accesses such as
+    ``os.getenv("X")`` or ``System.out.println("x")`` already produce
+    ``calls`` edges and would be double-counted if emitted here.
+
+    The emission pairs with ``attributes:`` entries in
+    ``io_primitives/*.yaml`` (WI-guhok for Python; this helper extends
+    the same mechanism to all tree-sitter-based analyzers — WI-gapam).
+    Without an edge to match, ``io-boundaries`` silently under-reports
+    ``env_read`` / ``ipc_send`` / ``ipc_recv`` chains on any attribute
+    primitive.
+
+    Args:
+        root: The tree-sitter node to walk.  Pass the file root for
+            module-level reads, or a function body for per-function
+            emission.
+        source: Raw source bytes used for ``node_text``.
+        imports: Map of local-alias name to the fully-qualified module
+            name (e.g. ``{"process": "process"}`` in JS,
+            ``{"os": "os"}`` in Go).  Base names that are not in this
+            map are skipped.
+        caller_symbol: The symbol containing the attribute read (used
+            as the edge ``src``).
+        lang: Language tag for the synthetic edge destination
+            (e.g. ``"javascript"`` / ``"java"`` / ``"go"``) — matches
+            the ``language`` field of module-attribute sink IDs.
+        edges_out: The edge list to append to — mutated in place.
+        node_kinds: Tree-sitter node types that represent
+            attribute-access nodes in this language.  Tuple because
+            some languages use more than one (e.g. JS ``member_expression``
+            handles both ``a.b`` and ``a["b"]`` via an ``index_expression``
+            sibling that the caller may also want to include).
+        object_field_names: Child-field names to try for the base
+            (receiver) of the attribute access, in order.  Some grammars
+            expose ``object``, others ``value`` or ``operand``.
+        property_field_names: Child-field names to try for the attribute
+            name.
+        call_node_kinds: Tree-sitter node types that represent function
+            calls; the helper excludes attribute-access nodes that are
+            the callee of such a call so ``calls`` edges are not
+            duplicated.
+        call_function_field_names: Child-field names to try for the
+            callee of a call node.
+    """
+    # tree-sitter's Python bindings return a fresh wrapper object on each
+    # accessor call, so `id()` is unstable across two walks of the same
+    # tree.  The underlying node carries a stable integer ``.id`` — use
+    # that as the key for the callee-detection set.
+    callee_attr_ids: set[int] = set()
+    for node in iter_tree(root):
+        if node.type not in call_node_kinds:
+            continue
+        callee = None
+        for fname in call_function_field_names:
+            callee = node.child_by_field_name(fname)
+            if callee is not None:
+                break
+        if callee is None:
+            continue
+        if callee.type in node_kinds:
+            callee_attr_ids.add(callee.id)
+
+    for node in iter_tree(root):
+        if node.type not in node_kinds:
+            continue
+        if node.id in callee_attr_ids:
+            continue
+        base = None
+        for fname in object_field_names:
+            base = node.child_by_field_name(fname)
+            if base is not None:
+                break
+        prop = None
+        for fname in property_field_names:
+            prop = node.child_by_field_name(fname)
+            if prop is not None:
+                break
+        if base is None or prop is None:
+            continue
+        base_text = node_text(base, source)
+        if base_text not in imports:
+            continue
+        real_module = imports[base_text]
+        attr_name = node_text(prop, source)
+        qname = f"{real_module}.{attr_name}"
+        edges_out.append(Edge.create(
+            src=caller_symbol.id,
+            dst=f"{lang}:{real_module}:0-0:{qname}:attribute",
+            edge_type="module_attr_ref",
+            line=node.start_point[0] + 1,
+            confidence=0.85,
+            evidence_type="module_attribute_reference",
+        ))
+
+
 def make_file_finder(patterns: list[str]) -> Callable[[Path], Iterator[Path]]:  # pragma: no cover
     """Create a file finder function for specific patterns.
 
