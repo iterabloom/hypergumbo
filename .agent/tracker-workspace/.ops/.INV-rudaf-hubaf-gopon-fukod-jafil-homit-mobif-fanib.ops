@@ -1,0 +1,22 @@
+- op: create  # 9c57
+  at: '2026-04-22T02:29:28Z'  # 9c57
+  by: agent  # 9c57
+  actor: jgstern_agent  # 9c57
+  clock: 1  # 9c57
+  nonce: 9c57  # 9c57
+  data:  # 9c57
+    kind: invariant  # 9c57
+    title: "ci.yml and release.yml security-audit invocations should stay in sync"  # 9c57
+    status: satisfied  # 9c57
+    priority: 3  # 9c57
+    parent:  # 9c57
+    tags:  # 9c57
+    - ci_infrastructure  # 9c57
+    isbefore: []  # 9c57
+    duplicate_of: []  # 9c57
+    not_duplicate_of: []  # 9c57
+    pr_ref:  # 9c57
+    description: "Fixed for CVE-2025-71176 specifically by copying ci.yml:276-287 verbatim into release.yml:102-115 (the --ignore-vuln flag plus the full rationale comment referencing https://github.com/Textualize/pytest-textual-snapshot/pull/24 as the exit plan). Surfaced when release.yml's security-audit on the v2.7.0 tag failed with 'Found 1 known vulnerability: pytest 9.0.2 CVE-2025-71176' after the release PR had already merged.\n\nFuture-proofing suggestion (not implemented; would reopen this item): extract shared audit flags into a reusable workflow or shared env var so ci.yml and release.yml reference one source of truth (same pattern as scripts/lib/cov-paths.sh landed in PR #3267). When the pytest-textual-snapshot upstream fix ships (Textualize/pytest-textual-snapshot#24) and the --ignore-vuln flag can be dropped, the drop must happen in both workflows in one PR. If the extraction has not happened by then, status flips back to pending_validation."  # 9c57
+    fields:  # 9c57
+      statement: "For any shared audit tool (pip-audit, bandit, gitleaks, secret scanners) that runs in both ci.yml and release.yml, the flag set — particularly --ignore-vuln / --ignore-id / skip-list flags — must match between the two workflows, except where the workflow-specific purpose justifies divergence (e.g., release.yml's pip-licenses check is unique; ci.yml's faster test subset is unique). Violating this means a release fails on a known CVE that CI has already accepted."  # 9c57
+      root_cause: "ci.yml and release.yml duplicate their audit invocations inline, so a flag added to one (e.g., CVE-2025-71176 ignore added to ci.yml:287) does not propagate to the other (release.yml:103). No mechanical enforcement, no shared source of truth. Drift detected only when a release actually attempts to publish."  # 9c57

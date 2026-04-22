@@ -1,0 +1,20 @@
+- op: create  # 829a
+  at: '2026-04-22T03:51:01Z'  # 829a
+  by: agent  # 829a
+  actor: jgstern_agent  # 829a
+  clock: 1  # 829a
+  nonce: 829a  # 829a
+  data:  # 829a
+    kind: work_item  # 829a
+    title: "io-boundaries: attribute-style IO primitives not counted in primitive_counts (env_read misses os.environ, sys.argv, etc.)"  # 829a
+    status: todo_hard  # 829a
+    priority: 2  # 829a
+    parent:  # 829a
+    tags:  # 829a
+    - analysis_quality  # 829a
+    isbefore: []  # 829a
+    duplicate_of: []  # 829a
+    not_duplicate_of: []  # 829a
+    pr_ref:  # 829a
+    description: "Discovered during 2026-04-21 self-analysis dogfooding (lab notebook entry notebookjournal_04222026_0348.md).\n\n`hypergumbo io-boundaries --json` on the hypergumbo repo itself reports env_read primitive_counts:\n  [('platform.machine', 1), ('platform.python_version', 1), ('platform.system', 1)]\nand chain_count: 3 — despite 39 actual os.environ/os.getenv call sites in packages/hypergumbo-core/src/ and packages/hypergumbo-tracker/src/ (counted by grep).\n\nThe io_primitives catalog at packages/hypergumbo-core/src/hypergumbo_core/io_primitives/python.yaml:173-185 intentionally declares both `functions:` and `attributes:` entries for env_read:\n\n  env_read:\n    - module: os\n      attributes: [environ]\n      functions: [getenv, get_exec_path]\n    - module: sys\n      attributes: [argv, executable, path, platform, version]\n\nbut the rule-evaluator that builds primitive_counts only appears to match the `functions:` entries. platform.system() shows up (function call). os.environ[...] and sys.argv don't (attribute access → subscript).\n\nHypothesis: whatever walk aggregates primitive_counts iterates only `functions:` keys in each YAML rule and ignores `attributes:`. This is structural — same failure would apply to any future attribute-style primitive. env_read is currently the only category that uses `attributes:` so env_read is where the bug is most visible.\n\nRepro:\n  cd /home/jgstern_agent/hypergumbo\n  hypergumbo io-boundaries --json > /tmp/io.json\n  python3 -c \"import json; d=json.load(open('/tmp/io.json')); print(d['boundaries']['env_read']['primitive_counts'])\"\n  grep -rE 'os\\.environ|os\\.getenv' packages/*/src/ | wc -l   # 39\n\nFix approach:\n  1. Find the primitive-match code (likely somewhere under hypergumbo_core/ dataflow/io_boundary modules that ingests io_primitives/*.yaml).\n  2. When matching a YAML rule, iterate both `functions:` and `attributes:` (and any subscript sub-forms if the IR distinguishes them).\n  3. Add a test fixture with os.environ['X'] access and sys.argv read, assert both appear in primitive_counts.\n  4. Before fixing: run a quick language-inventory grep over all io_primitives/*.yaml to see whether other languages declare attribute-style primitives that would benefit; the Python rule is likely not unique."  # 829a
+    fields: {}  # 829a
