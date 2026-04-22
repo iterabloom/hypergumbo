@@ -509,3 +509,201 @@ def test_verify_claims_no_notice_when_taint_language_supported(
     assert rc == 0
     _, err = capsys.readouterr()
     assert "no taint-flow catalog" not in err
+
+
+# ---------------------------------------------------------------------------
+# WI-votan: --taint-sources / --taint-sinks / --taint-sanitizers CLI flags +
+# extra_catalogs: claims-file key
+# ---------------------------------------------------------------------------
+
+
+def test_verify_claims_cli_taint_sources_flag_wires_user_source(
+    tmp_path: Path, capsys,
+) -> None:
+    """An ``--taint-sources`` path that declares a new taint label on an
+    existing module function makes a constraint on that label verifiable
+    end-to-end through cmd_verify_claims.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:app.py:1-10:handler:function", "name": "handler",
+             "kind": "function", "language": "python", "path": "app.py",
+             "span": {"start_line": 1, "end_line": 10}},
+        ],
+        edges=[
+            # handler reads from myapp.config.get_secret (the user-declared
+            # source) and writes to pathlib.Path.write_text (auto-derived
+            # sink in zone=host_fs).
+            {"src": "python:app.py:1-10:handler:function",
+             "dst": "python:external:0-0:myapp.config.get_secret:unresolved",
+             "type": "calls", "confidence": 0.9},
+            {"src": "python:app.py:1-10:handler:function",
+             "dst": "python:external:0-0:pathlib.Path.write_text:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    # User source YAML: label a project-specific secret-fetcher as
+    # carrying the new ``project_secret`` taint label.
+    user_src = tmp_path / "project_sources.yaml"
+    user_src.write_text(
+        'description: "Project secrets"\n'
+        "taint_label: project_secret\n"
+        "sources:\n"
+        "  python:\n"
+        "    - module: myapp.config\n"
+        "      functions: [get_secret]\n"
+        "      return_tainted: true\n"
+    )
+
+    claims = {
+        "claims": [
+            {
+                "id": "TF-VOTAN-1",
+                "text": "Project secrets must not reach host_fs",
+                "constraint": {
+                    "taint_flow": {
+                        "source_taint": "project_secret",
+                        "prohibited_sink_zone": "host_fs",
+                    },
+                },
+            },
+        ],
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = True
+    args.taint_sources = [str(user_src)]
+
+    rc = cmd_verify_claims(args)
+    assert rc == 1  # violation detected via user-declared source
+    out, err = capsys.readouterr()
+    data = json.loads(out)
+    assert data[0]["verdict"] == "violated"
+    # Visibility: summary line to stderr names the counts so the user
+    # knows the override took effect.
+    assert "Loaded project-local taint catalog" in err
+    assert "1 source path(s)" in err
+
+
+def test_verify_claims_extra_catalogs_claims_file_key(
+    tmp_path: Path, capsys,
+) -> None:
+    """The claims YAML may declare extra catalog paths under a top-level
+    ``extra_catalogs:`` key; paths resolve relative to the claims file.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:app.py:1-10:handler:function", "name": "handler",
+             "kind": "function", "language": "python", "path": "app.py",
+             "span": {"start_line": 1, "end_line": 10}},
+        ],
+        edges=[
+            {"src": "python:app.py:1-10:handler:function",
+             "dst": "python:external:0-0:myapp.config.get_secret:unresolved",
+             "type": "calls", "confidence": 0.9},
+            {"src": "python:app.py:1-10:handler:function",
+             "dst": "python:external:0-0:pathlib.Path.write_text:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    user_src = tmp_path / "project_sources.yaml"
+    user_src.write_text(
+        'description: "Project secrets"\n'
+        "taint_label: project_secret\n"
+        "sources:\n"
+        "  python:\n"
+        "    - module: myapp.config\n"
+        "      functions: [get_secret]\n"
+        "      return_tainted: true\n"
+    )
+
+    claims_dir = tmp_path / "security"
+    claims_dir.mkdir()
+    claims_file = claims_dir / "claims.yaml"
+    claims_file.write_text(
+        "extra_catalogs:\n"
+        "  sources: [../project_sources.yaml]\n"
+        "claims:\n"
+        "  - id: TF-VOTAN-2\n"
+        "    text: project_secret must not reach host_fs\n"
+        "    constraint:\n"
+        "      taint_flow:\n"
+        "        source_taint: project_secret\n"
+        "        prohibited_sink_zone: host_fs\n"
+    )
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = True
+
+    rc = cmd_verify_claims(args)
+    assert rc == 1
+    out, err = capsys.readouterr()
+    data = json.loads(out)
+    assert data[0]["verdict"] == "violated"
+    assert "Loaded project-local taint catalog" in err
+
+
+def test_verify_claims_bad_taint_source_path_errors(
+    tmp_path: Path, capsys,
+) -> None:
+    """A typo in ``--taint-sources`` is caught at load time and returns
+    exit 1 with a clear error — a silent fallthrough to built-in
+    defaults would be worse than failing loudly.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:app.py:1-10:handler:function", "name": "handler",
+             "kind": "function", "language": "python", "path": "app.py",
+             "span": {"start_line": 1, "end_line": 10}},
+        ],
+        edges=[
+            {"src": "python:app.py:1-10:handler:function",
+             "dst": "python:external:0-0:Fernet.decrypt:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    claims = {
+        "claims": [
+            {
+                "id": "TF-VOTAN-3",
+                "text": "plaintext must not reach host_fs",
+                "constraint": {
+                    "taint_flow": {
+                        "source_taint": "plaintext",
+                        "prohibited_sink_zone": "host_fs",
+                    },
+                },
+            },
+        ],
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+    args.taint_sources = [str(tmp_path / "nonexistent_sources.yaml")]
+
+    rc = cmd_verify_claims(args)
+    assert rc == 1
+    _, err = capsys.readouterr()
+    assert "Taint catalog path not found" in err

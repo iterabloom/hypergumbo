@@ -1390,3 +1390,200 @@ class TestAutoImportFromIoPrimitives:
         assert "host_secret" in labels, (
             f"Expected host_secret label in findings; got labels={labels}"
         )
+
+
+# ---------------------------------------------------------------------------
+# WI-votan: project-local catalog extension API
+# ---------------------------------------------------------------------------
+
+
+class TestLoadFullTaintCatalog:
+    """WI-votan: ``load_full_taint_catalog`` stacks three layers
+    (auto-derived io_primitives, built-in YAML, user-supplied YAML) and
+    lets a user override auto or built-in entries by (module, name, kind).
+    """
+
+    def test_no_extras_returns_builtin_catalog(self) -> None:
+        """With no extra paths the helper returns the same catalog as
+        :func:`load_builtin_taint_catalog` — it is a strict superset of
+        that API, not a replacement.
+        """
+        from hypergumbo_core.taint import (
+            load_builtin_taint_catalog,
+            load_full_taint_catalog,
+        )
+        builtin = load_builtin_taint_catalog()
+        full = load_full_taint_catalog()
+        builtin_qnames = {
+            s.qualified_name
+            for s in builtin.sources_for_language("python")
+        }
+        full_qnames = {
+            s.qualified_name
+            for s in full.sources_for_language("python")
+        }
+        assert builtin_qnames == full_qnames
+
+    def test_user_source_overrides_auto_derived_on_module_name_kind(
+        self, tmp_path: Path,
+    ) -> None:
+        """A user taint source YAML whose (module, name, kind) matches
+        an auto-derived entry replaces it — the replacement carries the
+        user's ``taint_label`` instead of the auto-derived default
+        ``host_secret``.
+        """
+        from hypergumbo_core.taint import load_full_taint_catalog
+        user_src = tmp_path / "custom_env.yaml"
+        user_src.write_text(dedent("""\
+            description: "Override: env reads on this repo are safe config"
+            taint_label: safe_config
+            sources:
+              python:
+                - module: os
+                  methods: [getenv]
+                  return_tainted: true
+        """))
+        catalog = load_full_taint_catalog(
+            extra_source_paths=[user_src],
+        )
+        py_sources = catalog.sources_for_language("python")
+        # Exactly one source for (os, getenv, method) — and it carries
+        # the user label.
+        matches = [
+            s for s in py_sources
+            if s.module == "os"
+            and s.name == "getenv"
+            and s.kind == "method"
+        ]
+        assert len(matches) == 1, (
+            "User override should replace, not append: "
+            f"got {len(matches)} entries for os.getenv"
+        )
+        assert matches[0].taint_label == "safe_config"
+
+    def test_user_sink_changes_trust_level(self, tmp_path: Path) -> None:
+        """User sink entry overrides the auto-derived
+        ``trust_level=untrusted`` / ``zone=host_fs`` defaults — this is
+        the escape hatch WI-votan calls out for projects where a
+        write-primitive is safe in context.
+        """
+        from hypergumbo_core.taint import load_full_taint_catalog
+        user_sink = tmp_path / "trusted_writer.yaml"
+        user_sink.write_text(dedent("""\
+            description: "Override: pathlib.Path.write_text is trusted here"
+            zone: safe_zone
+            trust_level: trusted
+            sinks:
+              python:
+                - module: pathlib.Path
+                  methods: [write_text]
+        """))
+        catalog = load_full_taint_catalog(
+            extra_sink_paths=[user_sink],
+        )
+        py_sinks = catalog.sinks_for_language("python")
+        matches = [
+            s for s in py_sinks
+            if s.module == "pathlib.Path"
+            and s.name == "write_text"
+            and s.kind == "method"
+        ]
+        assert len(matches) == 1
+        assert matches[0].trust_level == "trusted"
+        assert matches[0].zone == "safe_zone"
+
+    def test_user_sink_introduces_new_trust_zone(
+        self, tmp_path: Path,
+    ) -> None:
+        """A user sink can introduce a trust zone that is not in the
+        built-in set (``host_fs``, ``network``, ``host_env``, ``ipc``,
+        ``browser_storage``, ``relay``) — e.g. a ``crdt_relay`` zone
+        for a PlazaFlow-style application.  The sink merges in and
+        ``sinks_for_language`` returns it alongside built-ins.
+        """
+        from hypergumbo_core.taint import load_full_taint_catalog
+        user_sink = tmp_path / "crdt_relay.yaml"
+        user_sink.write_text(dedent("""\
+            description: "Project-specific CRDT relay sink"
+            zone: crdt_relay
+            trust_level: untrusted
+            sinks:
+              python:
+                - module: myapp.relay
+                  functions: [publish]
+        """))
+        catalog = load_full_taint_catalog(
+            extra_sink_paths=[user_sink],
+        )
+        zones = {s.zone for s in catalog.sinks_for_language("python")}
+        assert "crdt_relay" in zones
+
+    def test_user_sanitizer_concatenates(self, tmp_path: Path) -> None:
+        """Sanitizers do not have a (module, name, kind) key — user
+        sanitizers concatenate onto the built-in list (this is what the
+        docstring promises).
+        """
+        from hypergumbo_core.taint import load_full_taint_catalog
+        user_san = tmp_path / "my_redaction.yaml"
+        user_san.write_text(dedent("""\
+            description: "Project-specific redaction as a sanitizer"
+            transforms:
+              - input_taint: host_secret
+                output_taint: redacted
+                functions:
+                  python:
+                    - myapp.redact.scrub
+        """))
+        catalog = load_full_taint_catalog(
+            extra_sanitizer_paths=[user_san],
+        )
+        sans = catalog.sanitizers_for_language("python")
+        qnames = {s.qualified_name for s in sans}
+        assert "myapp.redact.scrub" in qnames
+
+    def test_extra_path_that_is_a_directory_globs_yaml(
+        self, tmp_path: Path,
+    ) -> None:
+        """An extra path that points at a directory is globbed for
+        ``*.yaml`` so a repo can drop multiple catalog files in one
+        folder and reference the folder once on the command line.
+        """
+        from hypergumbo_core.taint import load_full_taint_catalog
+        dir_path = tmp_path / "sinks"
+        dir_path.mkdir()
+        a = dir_path / "a.yaml"
+        a.write_text(dedent("""\
+            description: "a"
+            zone: zone_a
+            trust_level: trusted
+            sinks:
+              python:
+                - module: pkg_a
+                  functions: [fn_a]
+        """))
+        b = dir_path / "b.yaml"
+        b.write_text(dedent("""\
+            description: "b"
+            zone: zone_b
+            trust_level: trusted
+            sinks:
+              python:
+                - module: pkg_b
+                  functions: [fn_b]
+        """))
+        catalog = load_full_taint_catalog(extra_sink_paths=[dir_path])
+        qnames = {s.qualified_name for s in catalog.sinks_for_language("python")}
+        assert "pkg_a.fn_a" in qnames
+        assert "pkg_b.fn_b" in qnames
+
+    def test_missing_path_raises_file_not_found(
+        self, tmp_path: Path,
+    ) -> None:
+        """A typo in a CLI flag or claims-file entry raises at load
+        time instead of silently falling through to built-in defaults.
+        """
+        from hypergumbo_core.taint import load_full_taint_catalog
+        with pytest.raises(FileNotFoundError):
+            load_full_taint_catalog(
+                extra_source_paths=[tmp_path / "does_not_exist.yaml"],
+            )

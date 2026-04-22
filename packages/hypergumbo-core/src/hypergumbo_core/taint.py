@@ -575,6 +575,88 @@ _TAINT_SANITIZERS_DIR = Path(__file__).parent / "taint_sanitizers"
 _IO_PRIMITIVES_DIR = Path(__file__).parent / "io_primitives"
 
 
+def _resolve_catalog_paths(paths: list[Path]) -> list[Path]:
+    """Resolve project-local taint-catalog path arguments to a file list.
+
+    Each input path is either a single YAML file (``*.yaml``/``*.yml``) or a
+    directory — directories are globbed for ``*.yaml`` (sorted for
+    deterministic merge order).  Raises :class:`FileNotFoundError` on any
+    missing path so a typo in a CLI flag or claims-file entry does not
+    silently fall through to the built-in defaults.
+    """
+    resolved: list[Path] = []
+    for p in paths:
+        if not p.exists():
+            raise FileNotFoundError(f"Taint catalog path not found: {p}")
+        if p.is_dir():
+            resolved.extend(sorted(p.glob("*.yaml")))
+        else:
+            resolved.append(p)
+    return resolved
+
+
+def load_full_taint_catalog(
+    extra_source_paths: list[Path] | None = None,
+    extra_sink_paths: list[Path] | None = None,
+    extra_sanitizer_paths: list[Path] | None = None,
+) -> TaintCatalog:
+    """Load built-in taint catalogs and merge in user-supplied YAML files.
+
+    The three argument lists (``extra_source_paths``, ``extra_sink_paths``,
+    ``extra_sanitizer_paths``) accept YAML files or directories of YAMLs —
+    resolved via :func:`_resolve_catalog_paths`.  Each layer stacks on top
+    of the one below it:
+
+    1. Auto-derived taint entries from ``io_primitives/*.yaml`` (paranoid
+       default: every write-side primitive is a sink, every read-side
+       sensitive primitive is a source).
+    2. Built-in YAML under ``taint_sources/`` / ``taint_sinks/`` /
+       ``taint_sanitizers/`` alongside this module.
+    3. User ``extra_*_paths`` passed by this call.
+
+    Override semantics for sources and sinks: an entry in a higher layer
+    whose ``(module, name, kind)`` triple matches an entry in a lower
+    layer replaces it.  This is the same rule :func:`_merge_with_user_override`
+    already applies between layers 1 and 2 — it now also applies between
+    layer 2 and layer 3.  Sanitizers do not have a ``(module, name, kind)``
+    key (they key on ``qualified_name``) so user sanitizers concatenate
+    onto the built-in list.
+
+    The helper is the single entry point for end-users running
+    ``verify-claims`` on a repo other than hypergumbo's own: the CLI
+    flags ``--taint-sources`` / ``--taint-sinks`` / ``--taint-sanitizers``
+    and the ``extra_catalogs:`` key in the claims-file YAML both flow
+    through here (WI-votan).
+    """
+    extra_source_paths = _resolve_catalog_paths(extra_source_paths or [])
+    extra_sink_paths = _resolve_catalog_paths(extra_sink_paths or [])
+    extra_sanitizer_paths = _resolve_catalog_paths(
+        extra_sanitizer_paths or [],
+    )
+
+    catalog = load_builtin_taint_catalog()
+
+    if not (
+        extra_source_paths or extra_sink_paths or extra_sanitizer_paths
+    ):
+        return catalog
+
+    extra_catalog = load_taint_catalog(
+        extra_source_paths, extra_sink_paths, extra_sanitizer_paths,
+    )
+
+    catalog._sources = _merge_with_user_override(
+        catalog._sources, extra_catalog._sources,
+    )
+    catalog._sinks = _merge_with_user_override(
+        catalog._sinks, extra_catalog._sinks,
+    )
+    for lang, sans in extra_catalog._sanitizers.items():
+        catalog._sanitizers.setdefault(lang, []).extend(sans)
+    catalog._rebuild_indices()
+    return catalog
+
+
 def load_builtin_taint_catalog() -> TaintCatalog:
     """Load built-in taint catalogs shipped with hypergumbo.
 

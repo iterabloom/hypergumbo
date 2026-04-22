@@ -15,6 +15,7 @@ from hypergumbo_core.verify_claims import (
     ClaimVerdict,
     TaintFlowConstraint,
     load_claims,
+    load_extra_catalog_paths,
     verify_claim,
     verify_claims,
     verify_taint_claim,
@@ -103,6 +104,73 @@ class TestLoadClaims:
         path.write_text(yaml.dump(claims_yaml))
         claims = load_claims(path)
         assert claims[0].constraint_max_chains == 5
+
+
+class TestLoadExtraCatalogPaths:
+    """WI-votan: claims YAML may declare project-local taint catalogs
+    under a top-level ``extra_catalogs:`` key.  Relative paths resolve
+    against the claims-file directory so a repo can keep its extras
+    beside the claims document.
+    """
+
+    def test_no_extra_catalogs_returns_empty(self, tmp_path: Path) -> None:
+        path = tmp_path / "claims.yaml"
+        path.write_text("claims: []\n")
+        sources, sinks, sanitizers = load_extra_catalog_paths(path)
+        assert sources == []
+        assert sinks == []
+        assert sanitizers == []
+
+    def test_relative_paths_resolve_against_claims_directory(
+        self, tmp_path: Path,
+    ) -> None:
+        claims_dir = tmp_path / "security"
+        claims_dir.mkdir()
+        path = claims_dir / "claims.yaml"
+        path.write_text(
+            "claims: []\n"
+            "extra_catalogs:\n"
+            "  sources: [taint/project_sources.yaml]\n"
+            "  sinks: [taint/sinks_dir]\n"
+            "  sanitizers: [/abs/sanitizers.yaml]\n"
+        )
+        sources, sinks, sanitizers = load_extra_catalog_paths(path)
+        assert sources == [claims_dir / "taint/project_sources.yaml"]
+        assert sinks == [claims_dir / "taint/sinks_dir"]
+        # Absolute paths are preserved as-is.
+        assert sanitizers == [Path("/abs/sanitizers.yaml")]
+
+    def test_non_list_entries_are_ignored(self, tmp_path: Path) -> None:
+        """A malformed ``extra_catalogs`` entry (dict instead of list)
+        parses into an empty list rather than raising — the CLI layer
+        decides whether to fail hard; parsing is lenient.
+        """
+        path = tmp_path / "claims.yaml"
+        path.write_text(
+            "claims: []\n"
+            "extra_catalogs:\n"
+            "  sources: {not: a list}\n"
+            "  sinks: null\n"
+        )
+        sources, sinks, sanitizers = load_extra_catalog_paths(path)
+        assert sources == []
+        assert sinks == []
+        assert sanitizers == []
+
+    def test_non_string_entries_are_skipped(self, tmp_path: Path) -> None:
+        """Items that are not strings inside a path list are dropped
+        (e.g. a user accidentally writing ``[42, 'sinks.yaml']``).
+        """
+        path = tmp_path / "claims.yaml"
+        path.write_text(
+            "claims: []\n"
+            "extra_catalogs:\n"
+            "  sources:\n"
+            "    - 42\n"
+            "    - project_sources.yaml\n"
+        )
+        sources, _sinks, _san = load_extra_catalog_paths(path)
+        assert sources == [tmp_path / "project_sources.yaml"]
 
 
 class TestVerifyClaim:

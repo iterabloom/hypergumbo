@@ -3428,6 +3428,18 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     primitives are sources). YAML files under ``taint_sources/``,
     ``taint_sinks/``, ``taint_sanitizers/`` contribute cryptographic labels
     and sanitizer transforms that the auto-layer cannot express.
+
+    Project-local catalogs (WI-votan): the ``--taint-sources``,
+    ``--taint-sinks``, and ``--taint-sanitizers`` flags each accept a YAML
+    file or a directory of YAMLs and are repeatable; the claims YAML may
+    carry the same paths under a top-level ``extra_catalogs:`` key with
+    ``sources``/``sinks``/``sanitizers`` sub-lists (paths resolve relative
+    to the claims-file directory).  User entries whose
+    ``(module, name, kind)`` triple matches an auto-derived or built-in
+    source/sink replace it; user sanitizers concatenate.  This is the
+    supported extension point for declaring project-specific trust zones,
+    raising ``trust_level`` on a sink that is safe in context, or adding
+    a domain-specific taint source label.
     """
     repo_root = Path(args.path).resolve()
     claims_path = Path(args.claims)
@@ -3511,11 +3523,51 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     unsupported_taint_languages: list[str] = []
     has_taint_claims = any(c.constraint_taint_flow is not None for c in claims)
     if has_taint_claims:
-        from .taint import load_builtin_taint_catalog, propagate_taint_structural
-        taint_catalog = load_builtin_taint_catalog()
+        from .taint import load_full_taint_catalog, propagate_taint_structural
+        from .verify_claims import load_extra_catalog_paths
 
-        # Also load project-local taint catalogs if specified in claims file
-        # (future: --taint-sources, --taint-sinks, --taint-sanitizers args)
+        # Assemble project-local taint catalog paths from CLI flags and the
+        # ``extra_catalogs:`` key in the claims YAML (WI-votan).  CLI paths
+        # come first so users invoking on the command line keep control
+        # even when a claims file declares its own defaults; merge
+        # semantics are order-independent because (module, name, kind)
+        # conflicts between two user entries would be a bug regardless.
+        cli_sources = [Path(p) for p in (getattr(args, "taint_sources", None) or [])]
+        cli_sinks = [Path(p) for p in (getattr(args, "taint_sinks", None) or [])]
+        cli_sanitizers = [
+            Path(p) for p in (getattr(args, "taint_sanitizers", None) or [])
+        ]
+        claims_sources, claims_sinks, claims_sanitizers = (
+            load_extra_catalog_paths(claims_path)
+        )
+        extra_source_paths = cli_sources + claims_sources
+        extra_sink_paths = cli_sinks + claims_sinks
+        extra_sanitizer_paths = cli_sanitizers + claims_sanitizers
+
+        try:
+            taint_catalog = load_full_taint_catalog(
+                extra_source_paths=extra_source_paths,
+                extra_sink_paths=extra_sink_paths,
+                extra_sanitizer_paths=extra_sanitizer_paths,
+            )
+        except FileNotFoundError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+
+        if (
+            extra_source_paths
+            or extra_sink_paths
+            or extra_sanitizer_paths
+        ):
+            print(
+                "Loaded project-local taint catalog: "
+                f"{len(extra_source_paths)} source path(s), "
+                f"{len(extra_sink_paths)} sink path(s), "
+                f"{len(extra_sanitizer_paths)} sanitizer path(s). "
+                "User entries override auto-derived defaults on "
+                "(module, name, kind) match.",
+                file=sys.stderr,
+            )
 
         # Collect all sources, sinks, sanitizers across languages
         all_sources = []
@@ -5836,6 +5888,39 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         action="store_true",
         dest="json_output",
         help="Output as JSON",
+    )
+    p_vc.add_argument(
+        "--taint-sources",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Project-local taint source YAML file or directory. "
+            "Repeatable. Entries whose (module, name, kind) matches an "
+            "auto-derived or built-in source are overridden. (WI-votan)"
+        ),
+    )
+    p_vc.add_argument(
+        "--taint-sinks",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Project-local taint sink YAML file or directory. "
+            "Repeatable. Entries whose (module, name, kind) matches an "
+            "auto-derived or built-in sink are overridden. (WI-votan)"
+        ),
+    )
+    p_vc.add_argument(
+        "--taint-sanitizers",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Project-local taint sanitizer YAML file or directory. "
+            "Repeatable. User sanitizers concatenate onto the built-in "
+            "list. (WI-votan)"
+        ),
     )
     p_vc.set_defaults(func=cmd_verify_claims)
 

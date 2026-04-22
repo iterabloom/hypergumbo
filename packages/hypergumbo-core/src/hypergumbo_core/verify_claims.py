@@ -127,6 +127,57 @@ class ClaimVerdict:
 # ---------------------------------------------------------------------------
 
 
+def load_extra_catalog_paths(
+    path: Path,
+) -> tuple[list[Path], list[Path], list[Path]]:
+    """Read ``extra_catalogs:`` from a claims YAML and return its path lists.
+
+    The claims file may declare project-local taint catalog files under a
+    top-level ``extra_catalogs`` key (WI-votan)::
+
+        extra_catalogs:
+          sources:
+            - taint/project_sources.yaml
+            - taint/extra_sources_dir
+          sinks:
+            - taint/project_sinks.yaml
+          sanitizers: []
+
+    Each entry is a YAML file or a directory of YAML files.  Relative
+    paths resolve against the claims-file directory so a repo can keep
+    its extra catalogs beside the claims document.
+
+    Returns ``(sources, sinks, sanitizers)`` — each a list of ``Path``
+    values that callers can concatenate onto CLI-supplied paths and hand
+    to :func:`hypergumbo_core.taint.load_full_taint_catalog`.
+    """
+    content = path.read_text(encoding="utf-8")
+    data = yaml.safe_load(content) or {}
+    extras = data.get("extra_catalogs") or {}
+    base_dir = path.parent
+
+    def _resolve_rel(raw: object) -> list[Path]:
+        if not raw:
+            return []
+        if not isinstance(raw, list):
+            return []
+        out: list[Path] = []
+        for entry in raw:
+            if not isinstance(entry, str):
+                continue
+            pp = Path(entry)
+            if not pp.is_absolute():
+                pp = base_dir / pp
+            out.append(pp)
+        return out
+
+    return (
+        _resolve_rel(extras.get("sources")),
+        _resolve_rel(extras.get("sinks")),
+        _resolve_rel(extras.get("sanitizers")),
+    )
+
+
 def load_claims(path: Path) -> list[Claim]:
     """Load security claims from a YAML file.
 

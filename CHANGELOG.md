@@ -10,6 +10,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+#### Analysis quality (WI-votan)
+
+- **`verify-claims` now accepts project-local taint catalogs.** Three new repeatable flags — `--taint-sources PATH`, `--taint-sinks PATH`, `--taint-sanitizers PATH` — each accept either a single YAML file or a directory of YAML files (globbed as `*.yaml` in sorted order). The claims YAML can carry the same paths under a top-level `extra_catalogs: {sources, sinks, sanitizers}` key; relative paths resolve against the claims-file directory. User source/sink entries whose `(module, name, kind)` triple matches an auto-derived or built-in entry replace it; user sanitizers concatenate. A one-line summary prints to stderr when any extra catalog paths were loaded so users know the override took effect. This is the supported way to raise `trust_level` on a sink that is safe in context, declare a sanitizer, add a project-specific taint label, or introduce a new trust zone beyond `host_fs` / `network` / `host_env` / `ipc` / `browser_storage` / `relay`. Prior to this PR, end users running `verify-claims` on their own repo got paranoid defaults with no escape hatch — `load_builtin_taint_catalog()` only scanned the installed package's `io_primitives/` directory inside `site-packages`. Public helper: `hypergumbo_core.taint.load_full_taint_catalog(extra_source_paths, extra_sink_paths, extra_sanitizer_paths)`.
+
 ### Changed
 
 #### Analysis quality (WI-lokuv)
