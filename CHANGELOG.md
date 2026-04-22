@@ -10,6 +10,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+
+#### CI / build system
+
+- **`release.yml` security-audit: `pip-audit` CVE-ignore brought in line with `ci.yml`**: the pre-publish vulnerability scan ran `pip-audit --skip-editable` without the `--ignore-vuln CVE-2025-71176` flag that `ci.yml` already uses, so every release attempt failed the security gate on the known pytest 9.0.2 TOCTOU advisory. Same rationale (dev-only transitive pin from `syrupy 4.8.0` via `pytest-textual-snapshot 1.1.0`, local attack boundary only, single-tenant self-hosted runner) and same exit plan (drop the ignore in both workflows when `Textualize/pytest-textual-snapshot#24` ships). Surfaced when the initial `v2.7.0` tag's `release.yml` run was rejected by the audit step after the release PR had already merged.
+
 ## [2.7.0] - 2026-04-21
 
 ### Added
