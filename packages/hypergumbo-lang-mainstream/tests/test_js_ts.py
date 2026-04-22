@@ -8479,3 +8479,132 @@ class TestJsTsShapeId:
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
         assert cls.shape_id.startswith("sha256:")
+
+
+# WI-lozug PR 2: wire emit_module_attribute_refs into _analyze_javascript_impl
+# so that attribute reads on imported/global modules (e.g. ``process.env``)
+# produce ``module_attr_ref`` edges that io_boundary can tag against the
+# ``attributes:`` entries in ``io_primitives/javascript.yaml``.
+class TestJsTsModuleAttrRefs:
+    """Tests for ``module_attr_ref`` emission in JS/TS (WI-lozug PR 2)."""
+
+    def test_emits_module_attr_ref_for_process_env(
+        self, tmp_path: Path,
+    ) -> None:
+        """``process.env.PATH`` emits a module_attr_ref edge for the
+        inner ``process.env`` — the outer ``process.env.PATH`` must NOT
+        emit, because its base (``process.env``) is not in the imports
+        map.  Regression-guard for the nested-attribute case."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.js").write_text("""const p = process.env.PATH;
+console.log(p);
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        # Inner process.env must emit.
+        assert any(
+            e.dst.endswith(":process.env:attribute") for e in attr_edges
+        ), (
+            f"Expected process.env to emit module_attr_ref; got: "
+            f"{[e.dst for e in attr_edges]}"
+        )
+        env_edge = next(
+            e for e in attr_edges if e.dst.endswith(":process.env:attribute")
+        )
+        assert env_edge.confidence == 0.85
+        assert env_edge.evidence_type == "module_attribute_reference"
+        # Outer process.env.PATH must NOT emit — the base process.env is
+        # not in the imports map, so the helper's gate filters it out.
+        assert not any(
+            e.dst.endswith(":PATH:attribute") for e in attr_edges
+        ), (
+            f"process.env.PATH must not emit module_attr_ref; got: "
+            f"{[e.dst for e in attr_edges]}"
+        )
+
+    def test_emits_for_process_env_in_delete_expression(
+        self, tmp_path: Path,
+    ) -> None:
+        """``delete process.env.PATH;`` — the ``process.env``
+        member_expression is not a callee, so it still emits."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.js").write_text("""delete process.env.PATH;
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert any(
+            e.dst.endswith(":process.env:attribute") for e in attr_edges
+        ), (
+            f"Expected process.env to emit module_attr_ref inside "
+            f"delete expression; got: {[e.dst for e in attr_edges]}"
+        )
+
+    def test_skips_process_argv_when_slice_is_callee(
+        self, tmp_path: Path,
+    ) -> None:
+        """``process.argv.slice(2)`` — ``process.argv`` is an argument
+        receiver (not a callee) and must emit; ``.slice`` is the
+        callee of a call_expression and must NOT emit."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.js").write_text("""const args = process.argv.slice(2);
+console.log(args);
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert any(
+            e.dst.endswith(":process.argv:attribute") for e in attr_edges
+        ), (
+            f"Expected process.argv to emit module_attr_ref; got: "
+            f"{[e.dst for e in attr_edges]}"
+        )
+        # .slice must NOT emit (callee of call_expression).
+        assert not any(
+            ":argv.slice:attribute" in e.dst for e in attr_edges
+        ), (
+            f"process.argv.slice should be skipped (callee); got: "
+            f"{[e.dst for e in attr_edges]}"
+        )
+
+    def test_no_emission_for_named_import_bare_identifier(
+        self, tmp_path: Path,
+    ) -> None:
+        """``import { env } from "process"; console.log(env);`` — the
+        bare identifier ``env`` has no member_expression, so no
+        ``module_attr_ref`` is emitted for it.  Guards against a false
+        positive where named imports accidentally fire the helper."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.js").write_text("""import { env } from "process";
+console.log(env);
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        # No edge should be emitted for the bare ``env`` identifier —
+        # the helper only fires on member_expression nodes.
+        assert not any(
+            ":env:attribute" in e.dst
+            and not e.dst.endswith(":process.env:attribute")
+            for e in attr_edges
+        ), (
+            f"Bare named-import identifier must not emit "
+            f"module_attr_ref; got: {[e.dst for e in attr_edges]}"
+        )

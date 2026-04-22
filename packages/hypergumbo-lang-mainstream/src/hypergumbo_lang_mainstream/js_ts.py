@@ -64,6 +64,7 @@ from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    emit_module_attribute_refs,
     populate_docstrings_from_tree,
     find_child_by_field,
     iter_tree,
@@ -4616,6 +4617,42 @@ def _analyze_javascript_impl(
             pf.named_imports or {},
             symbols_by_name,
             module_symbol=file_mod_sym,
+        )
+        # WI-lozug: emit module_attr_ref edges for attribute reads on
+        # imported modules and well-known JS/Node globals (``process``,
+        # ``window``, ``document``, ``navigator``).  Pairs with the
+        # ``attributes:`` entries in io_primitives/javascript.yaml —
+        # without this emission, env_read / ipc_send / ipc_recv chains
+        # that target ``process.env`` / ``process.stdout`` / etc. were
+        # silently inert.  The src is a file-level module pseudo-symbol
+        # (``file_mod_sym`` when registered by Pass 1, or a synthetic
+        # file-id symbol otherwise) — Python-side per-function granularity
+        # is not plumbed through the io_boundary pipeline's attribute
+        # matching, so the file-level caller matches the Go PR 1
+        # convention and is sufficient for the tagging pipeline.
+        combined_imports = {
+            **(pf.namespace_imports or {}),
+            **(pf.named_imports or {}),
+            "process": "process",
+            "window": "window",
+            "document": "document",
+            "navigator": "navigator",
+        }
+        # file_mod_sym is registered by Pass 1 for every file in
+        # parsed_files (see line 2827), so it is non-None here.  A
+        # defensive ``is not None`` check is omitted intentionally.
+        emit_module_attribute_refs(
+            pf.tree.root_node,
+            pf.source,
+            combined_imports,
+            file_mod_sym,
+            pf.lang,
+            edges,
+            node_kinds=("member_expression",),
+            object_field_names=("object",),
+            property_field_names=("property",),
+            call_node_kinds=("call_expression",),
+            call_function_field_names=("function",),
         )
         # ADR-0015 Tier 1: automatic dataflow annotation from AST context
         if _df_config is not None:
