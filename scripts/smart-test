@@ -597,8 +597,24 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
             AFFECTED_PACKAGES=$(echo "$CHANGED_SOURCE_FILES" | sed -n 's|^packages/\([^/]*\)/.*|\1|p' | sort -u)
             SELECTED_TESTS=""
             for pkg in $AFFECTED_PACKAGES; do
-                # Grab the first (alphabetically) test file in the package
-                first_test=$(find "packages/$pkg/tests" -name 'test_*.py' -type f 2>/dev/null | sort | head -1)
+                # Grab the first (alphabetically) test file in the package.
+                # NOTE: `find … | sort | head -1` under `set -o pipefail`
+                # (line 32) exits this script with code 141 (SIGPIPE): `head
+                # -1` closes stdin after the first line, `sort` receives
+                # SIGPIPE on its remaining output, and pipefail propagates
+                # that failure to the enclosing `$(…)` — killing the whole
+                # smart-test invocation before the manifest is written. That
+                # trips every time this VERSION_ONLY branch runs (the only
+                # call site where `find` produces a non-trivial number of
+                # matches before `head` cuts in), which is every release
+                # commit, which is why prepare-release kept reporting
+                # "Manifest generation skipped (no stable hypergumbo?)" from
+                # auto-pr's elif-fallthrough at scripts/auto-pr:1000.
+                # readarray avoids the pipe-to-head entirely: the
+                # process-substitution feeds into readarray without any
+                # outer pipeline that pipefail can kill.
+                readarray -t _tests < <(find "packages/$pkg/tests" -name 'test_*.py' -type f 2>/dev/null | sort)
+                first_test="${_tests[0]:-}"
                 if [[ -n "$first_test" ]]; then
                     SELECTED_TESTS="${SELECTED_TESTS}${first_test}"$'\n'
                 fi

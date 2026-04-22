@@ -141,9 +141,15 @@ if [[ "$CURRENT_BRANCH" != "dev" ]]; then
 fi
 echo -e "${GREEN}✓${NC} On dev branch"
 
-# Flush pending tracker ops so they don't dirty the tree
+# Flush pending tracker ops so they don't dirty the tree.
+# NOTE: `find … | head -1` under `set -o pipefail` (line 30) exits this
+# script with 141 (SIGPIPE) — `head -1` closes stdin after one match,
+# `find` receives SIGPIPE on its remaining output, pipefail propagates.
+# Same class of bug that lived at scripts/smart-test:601. We only need
+# "did find match anything at all?", so use find's `-print -quit` to
+# stop after the first match — no pipe, no SIGPIPE possible.
 if [[ -x "$SCRIPT_DIR/tracker" ]] && [[ -d ".agent/tracker-workspace/.ops" ]]; then
-    PENDING=$(find .agent/tracker-workspace/.ops -name '*.ops' -newer .agent/tracker-workspace/.ops 2>/dev/null | head -1)
+    PENDING=$(find .agent/tracker-workspace/.ops -name '*.ops' -newer .agent/tracker-workspace/.ops -print -quit 2>/dev/null || true)
     if [[ -n "$PENDING" ]] || [[ -n "$(git status --porcelain -- '.agent/tracker-workspace/.ops/')" ]]; then
         echo "  Flushing pending tracker ops..."
         if ! $DRY_RUN; then
