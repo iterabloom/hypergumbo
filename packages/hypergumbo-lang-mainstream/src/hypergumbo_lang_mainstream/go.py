@@ -82,6 +82,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    emit_module_attribute_refs,
     populate_docstrings_from_tree,
     find_child_by_field,
     find_child_by_type,
@@ -2588,6 +2589,47 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                 ))
+
+    # WI-lozug: emit module_attr_ref edges for attribute reads on imported
+    # Go packages (e.g. ``os.Stdout``, ``os.Stderr``).  These pair with the
+    # ``attributes:`` entries in io_primitives/go.yaml — without them, the
+    # ipc_send / ipc_recv / env_read chains for attribute primitives were
+    # silently inert.  The src is a file-level pseudo-symbol (matching the
+    # convention used for ``imports`` edges earlier in this function),
+    # because Go does not carry a per-function caller through to the
+    # io_boundary pipeline's attribute matching — the dst encodes the
+    # primitive identity, which is what io_boundary tags against.  Skip
+    # blank/dot imports (``_`` and ``.``) because they don't introduce a
+    # namespaced alias.
+    attr_imports = {
+        alias: path
+        for alias, path in import_aliases.items()
+        if alias not in ("_", ".")
+    }
+    if attr_imports:
+        file_pseudo_symbol = Symbol(
+            id=file_id,
+            name=file_path.name,
+            kind="module",
+            language="go",
+            path=str(file_path),
+            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        )
+        emit_module_attribute_refs(
+            tree.root_node,
+            source,
+            attr_imports,
+            file_pseudo_symbol,
+            "go",
+            edges,
+            node_kinds=("selector_expression",),
+            object_field_names=("operand",),
+            property_field_names=("field",),
+            call_node_kinds=("call_expression",),
+            call_function_field_names=("function",),
+        )
 
     return edges
 

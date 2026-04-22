@@ -7661,3 +7661,143 @@ func TaggedFunc() {}
         assert "build_constraint" in func_sym.meta, (
             f"TaggedFunc should have build_constraint in meta, got: {func_sym.meta}"
         )
+
+
+# WI-lozug PR 1: wire emit_module_attribute_refs into _analyze_go_impl so
+# that attribute reads on imported packages (e.g. ``os.Stdout``) produce
+# ``module_attr_ref`` edges that io_boundary can tag against the
+# ``attributes:`` entries in ``io_primitives/go.yaml``.
+class TestGoModuleAttrRefs:
+    """Tests for ``module_attr_ref`` emission in Go (WI-lozug PR 1)."""
+
+    def test_emits_module_attr_ref_for_os_stdout_argument(
+        self, tmp_path: Path,
+    ) -> None:
+        """``fmt.Fprintln(os.Stdout, "hi")`` emits module_attr_ref for
+        ``os.Stdout`` — it is an argument, not a callee."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import (
+    "fmt"
+    "os"
+)
+
+func main() {
+    fmt.Fprintln(os.Stdout, "hi")
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert any(
+            e.dst.endswith(":os.Stdout:attribute") for e in attr_edges
+        ), (
+            f"Expected a module_attr_ref edge to os.Stdout; got: "
+            f"{[e.dst for e in attr_edges]}"
+        )
+        stdout_edge = next(
+            e for e in attr_edges if e.dst.endswith(":os.Stdout:attribute")
+        )
+        assert stdout_edge.confidence == 0.85
+        assert stdout_edge.evidence_type == "module_attribute_reference"
+
+    def test_skips_callee_of_call(self, tmp_path: Path) -> None:
+        """``os.Getenv("X")`` does not produce a module_attr_ref — the
+        selector_expression ``os.Getenv`` is the callee, so the
+        calls-pipeline already covers it."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "os"
+
+func main() {
+    _ = os.Getenv("PATH")
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert not any(
+            e.dst.endswith(":os.Getenv:attribute") for e in attr_edges
+        ), (
+            f"os.Getenv is a callee and must NOT emit module_attr_ref; "
+            f"got: {[e.dst for e in attr_edges]}"
+        )
+
+    def test_skips_unknown_base(self, tmp_path: Path) -> None:
+        """A selector_expression whose base is a local struct variable
+        (not an imported package) must not emit module_attr_ref — the
+        base is not in the import_aliases map."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type cfg struct {
+    Name string
+}
+
+func main() {
+    foo := cfg{Name: "bar"}
+    _ = foo.Name
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        # No edge whose dst encodes a module attribute keyed on a local var.
+        assert not any(
+            ":foo.Name:attribute" in e.dst for e in attr_edges
+        ), (
+            f"foo.Name is a local struct field, not an imported package "
+            f"attribute; got: {[e.dst for e in attr_edges]}"
+        )
+
+    def test_emits_for_os_stderr_in_var_initializer(
+        self, tmp_path: Path,
+    ) -> None:
+        """A top-level ``var w = os.Stderr`` emits module_attr_ref.
+        Covers the module-level (non-function) emission path."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "os"
+
+var w = os.Stderr
+
+func main() {
+    _ = w
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert any(
+            e.dst.endswith(":os.Stderr:attribute") for e in attr_edges
+        ), (
+            f"Expected a module_attr_ref edge to os.Stderr from the "
+            f"top-level var initializer; got: {[e.dst for e in attr_edges]}"
+        )
