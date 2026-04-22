@@ -1,0 +1,20 @@
+- op: create  # f152
+  at: '2026-04-21T23:55:09Z'  # f152
+  by: agent  # f152
+  actor: jgstern_agent  # f152
+  clock: 1  # f152
+  nonce: f152  # f152
+  data:  # f152
+    kind: work_item  # f152
+    title: "Harden remaining git rev-parse call-sites against unverified-ref stdout contamination"  # f152
+    status: todo_soft  # f152
+    priority: 3  # f152
+    parent:  # f152
+    tags:  # f152
+    - ci_infrastructure  # f152
+    isbefore: []  # f152
+    duplicate_of: []  # f152
+    not_duplicate_of: []  # f152
+    pr_ref:  # f152
+    description: "scripts/release-check:95 was fixed in PR aa6d1c607's follow-up (release-check-remote-detection branch) by switching from 'git rev-parse <ref>' to 'git rev-parse --verify <ref>^{commit}'. The underlying invariant ('git rev-parse without --verify echoes the input ref to stdout AND returns non-zero when the ref is unresolvable, contaminating any command-substitution capture') applies to five other sites that use the same pattern but don't currently bite because their ref (origin/dev or origin/$BASE_BRANCH) is effectively always resolvable. They should be hardened for consistency so a future contributor doesn't reintroduce the pattern elsewhere by copy-paste. Sites: scripts/auto-pr:1135, scripts/auto-pr:1380, scripts/lib/forgejo-api.sh:1197, scripts/ci-failover:147, scripts/ci-failover:383, scripts/ci-failover:691, scripts/ci-failover:864. Each should become 'git rev-parse --verify <ref>^{commit} 2>/dev/null || <fallback>'. Keep the PR small and copy release-check's header comment explaining the rationale."  # f152
+    fields: {}  # f152
