@@ -46,21 +46,25 @@ import yaml
 
 @dataclass(frozen=True)
 class TaintSource:
-    """A function whose return value carries a taint label.
+    """A function/method/attribute whose return-or-read value carries a taint label.
 
     Attributes:
-        taint_label: The taint category (e.g. "plaintext", "key_material").
-        module: The module or class path (e.g. "cryptography.fernet").
-        name: The function/method name (e.g. "Fernet.decrypt").
-        kind: Either "function" or "method".
-        return_tainted: Whether the return value is tainted.
+        taint_label: The taint category (e.g. "plaintext", "key_material",
+            "host_secret", "untrusted_input").
+        module: The module or class path (e.g. "cryptography.fernet", "os").
+        name: The function/method/attribute name (e.g. "Fernet.decrypt", "environ").
+        kind: One of "function", "method", or "attribute".  ``"attribute"``
+            covers bare reads like ``os.environ`` or ``sys.argv``; pairs with
+            ``module_attr_ref`` edges emitted by the language analyzer
+            (WI-guhok for Python; WI-gapam follow-up for tree-sitter langs).
+        return_tainted: Whether the return (or read) value is tainted.
         argument_tainted: Indices of arguments that become tainted (optional).
     """
 
     taint_label: str
     module: str
     name: str
-    kind: str  # "function" or "method"
+    kind: str  # "function", "method", or "attribute"
     return_tainted: bool = True
     argument_tainted: tuple[int, ...] = ()
 
@@ -72,21 +76,22 @@ class TaintSource:
 
 @dataclass(frozen=True)
 class TaintSink:
-    """A function that should not receive tainted data.
+    """A function/method/attribute that should not receive tainted data.
 
     Attributes:
-        zone: The trust zone (e.g. "host_fs", "relay").
+        zone: The trust zone (e.g. "host_fs", "network", "host_env", "ipc",
+            "browser_storage", "relay").
         trust_level: The trust level (e.g. "untrusted", "semi-trusted").
         module: The module or class path.
-        name: The function/method name.
-        kind: Either "function" or "method".
+        name: The function/method/attribute name.
+        kind: One of "function", "method", or "attribute".
     """
 
     zone: str
     trust_level: str
     module: str
     name: str
-    kind: str  # "function" or "method"
+    kind: str  # "function", "method", or "attribute"
 
     @property
     def qualified_name(self) -> str:
@@ -449,24 +454,165 @@ def load_taint_catalog(
 
 
 # ---------------------------------------------------------------------------
+# Auto-import from io_primitives (WI-lokuv)
+# ---------------------------------------------------------------------------
+#
+# ADR-0017 deliberately separates io_primitives (syscall-level IO boundary
+# classification) from taint_sinks/sources (trust-zone classification).  The
+# rationale holds for project-local extension — every project has its own
+# trust-zone structure — but the shipped *first-party* catalogs should not
+# drift: every io_primitives write-side primitive is, by construction, a
+# candidate sink for tainted data; every io_primitives read-side primitive
+# for a sensitive category is a candidate source.
+#
+# The mapping below encodes that default.  Auto-import is paranoid by
+# design ("reading A" in the WI-lokuv discussion): each auto-derived sink
+# is trust_level=untrusted and matches ANY taint label; each auto-derived
+# source carries the label indicated below.  Users narrow the default by
+# contributing overrides in taint_sources/ or taint_sinks/ that match by
+# (module, name, kind) — the user entry wins, the auto entry is dropped.
+#
+# `fs_read` is intentionally absent from the source map: reading a file
+# does not by itself make its contents sensitive; the label is project-
+# specific (a config file vs. a credential vault vs. user-uploaded JSON).
+# Projects that want every fs_read tainted can declare their own source
+# catalog entries.
+AUTO_SINK_ZONE_MAP: dict[str, tuple[str, str]] = {
+    # io_primitives boundary -> (taint zone, trust_level)
+    "fs_write": ("host_fs", "untrusted"),
+    "subprocess": ("host_fs", "untrusted"),
+    "net_send": ("network", "untrusted"),
+    "env_write": ("host_env", "untrusted"),
+    "ipc_send": ("ipc", "untrusted"),
+    "browser_storage_write": ("browser_storage", "untrusted"),
+}
+
+AUTO_SOURCE_LABEL_MAP: dict[str, str] = {
+    # io_primitives boundary -> taint_label for auto-derived source
+    "env_read": "host_secret",
+    "net_recv": "untrusted_input",
+    "ipc_recv": "untrusted_input",
+}
+
+
+def _derive_auto_imports_from_io_primitives(
+    io_catalog_dir: Path,
+) -> tuple[dict[str, list[TaintSource]], dict[str, list[TaintSink]]]:
+    """Scan io_primitives/*.yaml and derive default taint sources + sinks.
+
+    Returns ``(sources_by_lang, sinks_by_lang)``.  Each IoPrimitive whose
+    ``boundary`` matches :data:`AUTO_SOURCE_LABEL_MAP` yields a TaintSource;
+    each IoPrimitive whose ``boundary`` matches :data:`AUTO_SINK_ZONE_MAP`
+    yields a TaintSink.  Language is taken from each YAML's ``language:``
+    field.  Primitives declared under YAML ``attributes:`` produce
+    ``kind="attribute"`` records — these pair with ``module_attr_ref``
+    edges emitted by language analyzers (see WI-guhok, WI-gapam).
+    """
+    from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+    sources_by_lang: dict[str, list[TaintSource]] = defaultdict(list)
+    sinks_by_lang: dict[str, list[TaintSink]] = defaultdict(list)
+
+    if not io_catalog_dir.is_dir():
+        return dict(sources_by_lang), dict(sinks_by_lang)
+
+    for yaml_path in sorted(io_catalog_dir.glob("*.yaml")):
+        catalog = IoBoundaryCatalog.from_yaml(yaml_path)
+        lang = catalog.language
+        for prim in catalog.primitives:
+            if prim.boundary in AUTO_SOURCE_LABEL_MAP:
+                sources_by_lang[lang].append(TaintSource(
+                    taint_label=AUTO_SOURCE_LABEL_MAP[prim.boundary],
+                    module=prim.module,
+                    name=prim.name,
+                    kind=prim.kind,
+                ))
+            if prim.boundary in AUTO_SINK_ZONE_MAP:
+                zone, trust = AUTO_SINK_ZONE_MAP[prim.boundary]
+                sinks_by_lang[lang].append(TaintSink(
+                    zone=zone,
+                    trust_level=trust,
+                    module=prim.module,
+                    name=prim.name,
+                    kind=prim.kind,
+                ))
+
+    return dict(sources_by_lang), dict(sinks_by_lang)
+
+
+def _merge_with_user_override(
+    auto_by_lang: dict[str, list],
+    user_by_lang: dict[str, list],
+) -> dict[str, list]:
+    """Merge auto-derived entries with user entries; user entries win on
+    (module, name, kind) match.
+
+    The result preserves every user entry and adds auto entries whose
+    (module, name, kind) triple is not already declared by the user.
+    Works for both TaintSource and TaintSink (both expose those fields).
+    """
+    merged: dict[str, list] = {}
+    all_langs = set(auto_by_lang) | set(user_by_lang)
+    for lang in all_langs:
+        user_list = user_by_lang.get(lang, [])
+        user_keys = {(e.module, e.name, e.kind) for e in user_list}
+        auto_list = auto_by_lang.get(lang, [])
+        filtered_auto = [
+            e for e in auto_list
+            if (e.module, e.name, e.kind) not in user_keys
+        ]
+        merged[lang] = filtered_auto + list(user_list)
+    return merged
+
+
+# ---------------------------------------------------------------------------
 # Built-in catalog discovery
 # ---------------------------------------------------------------------------
 
 _TAINT_SOURCES_DIR = Path(__file__).parent / "taint_sources"
 _TAINT_SINKS_DIR = Path(__file__).parent / "taint_sinks"
 _TAINT_SANITIZERS_DIR = Path(__file__).parent / "taint_sanitizers"
+_IO_PRIMITIVES_DIR = Path(__file__).parent / "io_primitives"
 
 
 def load_builtin_taint_catalog() -> TaintCatalog:
     """Load built-in taint catalogs shipped with hypergumbo.
 
-    Scans ``taint_sources/``, ``taint_sinks/``, and ``taint_sanitizers/``
-    directories for YAML files and loads them all.
+    Two contributions merge into one catalog:
+
+    1. YAML-declared entries in ``taint_sources/``, ``taint_sinks/``, and
+       ``taint_sanitizers/``.  These cover project-agnostic domains the
+       core team maintains explicitly (crypto decryption labels, key
+       material generation, ...) and provide the project-local extension
+       point described in ADR-0017.
+    2. Auto-derived entries from ``io_primitives/*.yaml`` (WI-lokuv).
+       Every write-side IO primitive becomes a TaintSink at
+       trust_level=untrusted with a zone determined by its boundary
+       category; every read-side sensitive-category primitive becomes a
+       TaintSource with a default taint_label.  User YAML entries that
+       match (module, name, kind) override the auto-derived defaults.
+
+    The merge makes io_primitives the single source of truth for primitive
+    enumeration: adding a primitive there propagates into taint analysis
+    automatically, which replaces the manual drift-guard previously shipped
+    under WI-hizik.
     """
     source_paths = sorted(_TAINT_SOURCES_DIR.glob("*.yaml")) if _TAINT_SOURCES_DIR.exists() else []
     sink_paths = sorted(_TAINT_SINKS_DIR.glob("*.yaml")) if _TAINT_SINKS_DIR.exists() else []
     sanitizer_paths = sorted(_TAINT_SANITIZERS_DIR.glob("*.yaml")) if _TAINT_SANITIZERS_DIR.exists() else []
-    return load_taint_catalog(source_paths, sink_paths, sanitizer_paths)
+    user_catalog = load_taint_catalog(source_paths, sink_paths, sanitizer_paths)
+
+    auto_sources, auto_sinks = _derive_auto_imports_from_io_primitives(
+        _IO_PRIMITIVES_DIR,
+    )
+    user_catalog._sources = _merge_with_user_override(
+        auto_sources, user_catalog._sources,
+    )
+    user_catalog._sinks = _merge_with_user_override(
+        auto_sinks, user_catalog._sinks,
+    )
+    user_catalog._rebuild_indices()
+    return user_catalog
 
 
 # ---------------------------------------------------------------------------
@@ -507,6 +653,13 @@ def _extract_callee_name(symbol_id: str) -> str:
 # Includes direct calls and cross-language linker bridge edges (ADR-0017 §5).
 TAINT_CALL_EDGE_TYPES = frozenset({
     "calls", "unresolved_external_call",
+    # WI-lokuv: attribute-read edges for IO primitives declared under
+    # ``attributes:`` in io_primitives YAML (os.environ, sys.argv, ...).
+    # Emitted by the Python analyzer per WI-guhok; extending to the
+    # tree-sitter analyzer base class is tracked as WI-gapam.  Without
+    # this edge type, auto-imported TaintSource records for attribute
+    # kind primitives would never match in structural propagation.
+    "module_attr_ref",
     # Cross-language linker bridge edges
     "ffi_bridge", "wasm_bridge", "wasm_load", "napi_bridge",
     "bridge_invokes", "ipc_calls", "ipc_event",

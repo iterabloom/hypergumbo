@@ -84,7 +84,14 @@ fs_write:
   - module: Deno
     functions: [writeFile, writeTextFile, mkdir, remove, rename, chmod, chown, truncate, create]
     notes: "Deno runtime file write operations"
-  # Browser persistent storage writes (WI-banaf)
+
+# Browser persistent storage is NOT host-filesystem — it lives in the browser's
+# own per-origin storage area and is primarily reachable via XSS rather than
+# local-user filesystem access. Separating it from fs_write lets the boundary
+# map report accurately and lets taint-flow analysis treat it as its own trust
+# zone (``browser_storage``) instead of conflating it with host-disk writes.
+# (Originally mis-categorized as fs_write in WI-banaf; moved here per WI-lokuv.)
+browser_storage_write:
   - module: localStorage
     methods: [setItem, removeItem, clear]
     notes: "Browser localStorage write"

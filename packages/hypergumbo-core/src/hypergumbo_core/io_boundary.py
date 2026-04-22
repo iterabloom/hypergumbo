@@ -250,6 +250,10 @@ class IoBoundaryCatalog:
             "ipc_recv", "ipc_send", "env_read", "env_write",
             "subprocess", "db_read", "db_write",
             "process_send", "logging",
+            # WI-lokuv: browser-local storage is structurally distinct from
+            # host filesystem — reachable via XSS, not via local-user FS access.
+            # Paired with the ``browser_storage`` trust zone in taint.py.
+            "browser_storage_write",
         ]
 
         for boundary in boundary_types:

@@ -1162,3 +1162,210 @@ class TestCrossLanguageTaint:
         )]
         findings = propagate_taint_ddg(ddg, call_edges, sources, sinks, [])
         assert len(findings) == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests — WI-lokuv auto-import from io_primitives
+# ---------------------------------------------------------------------------
+
+
+class TestAutoImportFromIoPrimitives:
+    """Auto-import derives TaintSource/TaintSink records from io_primitives.
+
+    Replaces the manual drift-guard baseline (WI-hizik) with a structural
+    guarantee: io_primitives is the single source of truth for primitive
+    enumeration; taint_sources/taint_sinks are derived from it under a
+    default zone/label mapping, with user YAML entries overriding by
+    (module, name, kind).
+    """
+
+    def test_auto_import_produces_env_read_sources_for_python(self) -> None:
+        """os.environ (attribute) and os.getenv (function) both surface as
+        host_secret sources in the built-in catalog.
+        """
+        from hypergumbo_core.taint import load_builtin_taint_catalog
+        catalog = load_builtin_taint_catalog()
+        py_sources = catalog.sources_for_language("python")
+        by_qname = {s.qualified_name: s for s in py_sources}
+        assert "os.environ" in by_qname, (
+            "Expected os.environ auto-imported as a TaintSource "
+            "(attribute-kind, label=host_secret)"
+        )
+        assert by_qname["os.environ"].taint_label == "host_secret"
+        assert by_qname["os.environ"].kind == "attribute"
+        assert "os.getenv" in by_qname
+        assert by_qname["os.getenv"].taint_label == "host_secret"
+        assert by_qname["os.getenv"].kind == "function"
+
+    def test_auto_import_produces_fs_write_sinks_for_python(self) -> None:
+        """Python fs_write primitives (os.rmdir, pathlib.Path.write_text)
+        auto-import as host_fs sinks at trust_level=untrusted.
+        """
+        from hypergumbo_core.taint import load_builtin_taint_catalog
+        catalog = load_builtin_taint_catalog()
+        py_sinks = catalog.sinks_for_language("python")
+        by_qname = {s.qualified_name: s for s in py_sinks}
+        assert "os.rmdir" in by_qname
+        assert by_qname["os.rmdir"].zone == "host_fs"
+        assert by_qname["os.rmdir"].trust_level == "untrusted"
+        assert "pathlib.Path.write_text" in by_qname
+        assert by_qname["pathlib.Path.write_text"].zone == "host_fs"
+
+    def test_auto_import_produces_net_send_sinks(self) -> None:
+        """Network send primitives auto-import at zone=network."""
+        from hypergumbo_core.taint import load_builtin_taint_catalog
+        catalog = load_builtin_taint_catalog()
+        py_sinks = catalog.sinks_for_language("python")
+        by_qname = {s.qualified_name: s for s in py_sinks}
+        # requests.post lives in io_primitives/python.yaml#net_send.
+        assert "requests.post" in by_qname
+        assert by_qname["requests.post"].zone == "network"
+
+    def test_auto_import_browser_storage_write_maps_to_browser_storage_zone(
+        self,
+    ) -> None:
+        """WI-lokuv: localStorage.setItem is a browser_storage sink,
+        not a host_fs sink, because the browser_storage_write category
+        in io_primitives/javascript.yaml maps to zone=browser_storage.
+        """
+        from hypergumbo_core.taint import load_builtin_taint_catalog
+        catalog = load_builtin_taint_catalog()
+        js_sinks = catalog.sinks_for_language("javascript")
+        by_qname = {s.qualified_name: s for s in js_sinks}
+        assert "localStorage.setItem" in by_qname
+        assert by_qname["localStorage.setItem"].zone == "browser_storage"
+        assert "sessionStorage.setItem" in by_qname
+        assert by_qname["sessionStorage.setItem"].zone == "browser_storage"
+
+    def test_auto_import_fs_read_not_auto_sourced(self) -> None:
+        """fs_read is intentionally absent from the source map — reading
+        a file does not by itself make its contents sensitive.  Confirm
+        that open/read are NOT in the auto-derived source set.
+        """
+        from hypergumbo_core.taint import load_builtin_taint_catalog
+        catalog = load_builtin_taint_catalog()
+        py_sources = catalog.sources_for_language("python")
+        qnames = {s.qualified_name for s in py_sources}
+        assert "builtins.open" not in qnames
+        assert "pathlib.Path.read_text" not in qnames
+
+    def test_user_yaml_override_wins_on_same_module_name_kind(
+        self, tmp_path: Path,
+    ) -> None:
+        """User catalog entries matching (module, name, kind) replace
+        the auto-derived default.  Verified by constructing a custom
+        sink YAML that sets trust_level=trusted for pathlib.Path.write_text
+        and confirming the override survives the merge.
+        """
+        from hypergumbo_core.taint import (
+            _derive_auto_imports_from_io_primitives,
+            _merge_with_user_override,
+        )
+        # Grab just the auto-derived sinks for python using the real
+        # io_primitives dir, then construct a "user" sink that overrides.
+        io_dir = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "hypergumbo_core" / "io_primitives"
+        )
+        _auto_sources, auto_sinks_by_lang = (
+            _derive_auto_imports_from_io_primitives(io_dir)
+        )
+        user_sinks_by_lang = {
+            "python": [TaintSink(
+                zone="host_fs",
+                trust_level="trusted",  # the override differs here
+                module="pathlib.Path",
+                name="write_text",
+                kind="method",
+            )],
+        }
+        merged = _merge_with_user_override(
+            auto_sinks_by_lang, user_sinks_by_lang,
+        )
+        by_qname = {s.qualified_name: s for s in merged["python"]}
+        assert by_qname["pathlib.Path.write_text"].trust_level == "trusted", (
+            "User override should have replaced the auto-derived default"
+        )
+        # And only ONE entry survives for that triple — no duplication.
+        matching = [
+            s for s in merged["python"]
+            if s.qualified_name == "pathlib.Path.write_text"
+            and s.kind == "method"
+        ]
+        assert len(matching) == 1
+
+    def test_derive_auto_imports_from_missing_directory_returns_empty(
+        self, tmp_path: Path,
+    ) -> None:
+        """If the io_primitives directory does not exist (e.g. alternate
+        install layouts), auto-import returns empty dicts instead of
+        erroring — callers can still use the YAML-only catalog.
+        """
+        from hypergumbo_core.taint import _derive_auto_imports_from_io_primitives
+        missing = tmp_path / "nowhere"
+        sources, sinks = _derive_auto_imports_from_io_primitives(missing)
+        assert sources == {}
+        assert sinks == {}
+
+    def test_module_attr_ref_in_taint_call_edge_types(self) -> None:
+        """module_attr_ref must be a traceable edge type — otherwise
+        auto-imported attribute-kind sources (os.environ, sys.argv) are
+        unreachable in structural propagation.
+        """
+        assert "module_attr_ref" in TAINT_CALL_EDGE_TYPES
+
+    def test_end_to_end_env_read_to_fs_write_taint_flow(self) -> None:
+        """End-to-end: an os.environ read flowing to a pathlib.Path.write_text
+        call via a module_attr_ref + calls edge chain should produce a
+        TaintFlowFinding once auto-import populates both the source and sink.
+
+        This is the audit flow that motivated WI-lokuv in the first place:
+        reading a host secret and writing it to the filesystem (where it
+        persists into ``~/.cache/hypergumbo/``, gets rsynced, ends up in
+        log files, etc).  Prior to auto-import, the shipped catalog lacked
+        host_env sources entirely, so verify-claims was silent on this
+        pattern.
+        """
+        from hypergumbo_core.taint import load_builtin_taint_catalog
+        catalog = load_builtin_taint_catalog()
+        sources = catalog.sources_for_language("python")
+        sinks = catalog.sinks_for_language("python")
+        sanitizers = catalog.sanitizers_for_language("python")
+
+        # Use local function names that don't collide with any
+        # catalog-known primitive (e.g. "writer" would false-match
+        # csv.writer's short name).
+        edges = [
+            # env_reader reads os.environ (the new WI-guhok edge)
+            {
+                "src": "python:/app/cfg.py:10-15:env_reader:function",
+                "dst": "python:os:0-0:os.environ:attribute",
+                "type": "module_attr_ref",
+            },
+            # env_reader forwards the value to cfg_persister
+            {
+                "src": "python:/app/cfg.py:10-15:env_reader:function",
+                "dst": "python:/app/cfg.py:20-25:cfg_persister:function",
+                "type": "calls",
+            },
+            # cfg_persister writes to the host FS via pathlib.Path.write_text
+            {
+                "src": "python:/app/cfg.py:20-25:cfg_persister:function",
+                "dst": "python:external:0-0:pathlib.Path.write_text:unresolved",
+                "type": "calls",
+            },
+        ]
+        findings = propagate_taint_structural(
+            edges, sources, sinks, sanitizers,
+        )
+        # sink_primitive is the short (un-qualified) name of the matched sink.
+        sink_primitives = {f.sink_primitive for f in findings}
+        assert "write_text" in sink_primitives, (
+            f"Expected a finding for os.environ → pathlib.Path.write_text; "
+            f"got sink_primitives={sink_primitives}"
+        )
+        # At least one finding should carry the host_secret label.
+        labels = {f.taint_label for f in findings}
+        assert "host_secret" in labels, (
+            f"Expected host_secret label in findings; got labels={labels}"
+        )
