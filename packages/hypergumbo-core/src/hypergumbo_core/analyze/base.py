@@ -1092,6 +1092,7 @@ def emit_module_attribute_refs(
     property_field_names: tuple[str, ...],
     call_node_kinds: tuple[str, ...] = ("call_expression", "call",),
     call_function_field_names: tuple[str, ...] = ("function", "callee",),
+    scoped_path: bool = False,
 ) -> None:
     """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
 
@@ -1142,6 +1143,19 @@ def emit_module_attribute_refs(
             duplicated.
         call_function_field_names: Child-field names to try for the
             callee of a call node.
+        scoped_path: When True, switches the helper to a left-recursive
+            path-walk model used by languages whose scoped access is
+            not a binary ``object`` / ``property`` pair.  Rust's
+            ``scoped_identifier`` and C++'s ``qualified_identifier``
+            parse ``std::env::consts::OS`` as a nested chain of
+            ``path`` + ``name`` children — the helper walks left via
+            the path field to find the leftmost identifier, checks it
+            against the imports map, and emits edges using
+            dot-normalized module paths (``::`` replaced with ``.``)
+            so the resulting edge ID survives downstream ``:``-split
+            parsing.  Catalog matching still works because
+            ``IoBoundaryCatalog`` registers both ``::`` and ``.``
+            forms in its qualified-name index.
     """
     # tree-sitter's Python bindings return a fresh wrapper object on each
     # accessor call, so `id()` is unstable across two walks of the same
@@ -1179,10 +1193,39 @@ def emit_module_attribute_refs(
         if base is None or prop is None:
             continue
         base_text = node_text(base, source)
-        if base_text not in imports:
-            continue
-        real_module = imports[base_text]
         attr_name = node_text(prop, source)
+        if scoped_path:
+            # Left-recursive walk: the base may itself be a scoped_identifier
+            # (``std::env`` inside ``std::env::consts``).  Walk left via the
+            # first object_field_name until we bottom out at a terminal
+            # identifier — that's the alias we check against imports.
+            leftmost = base
+            while leftmost.type in node_kinds:
+                inner = None
+                for fname in object_field_names:
+                    inner = leftmost.child_by_field_name(fname)
+                    if inner is not None:
+                        break
+                if inner is None:  # pragma: no cover
+                    # Grammar variation guard: a node whose type is in
+                    # node_kinds but whose ``object_field_names`` resolve
+                    # to nothing is malformed — the outer node check would
+                    # have failed too.  Break to avoid an infinite loop.
+                    break
+                leftmost = inner
+            leftmost_text = node_text(leftmost, source)
+            if leftmost_text not in imports:
+                continue
+            # Replace the leftmost alias with its real module, then
+            # dot-normalize ``::`` to ``.`` so the resulting edge ID
+            # survives ``:``-split parsing in io_boundary.
+            real_leftmost = imports[leftmost_text]
+            real_module_raw = real_leftmost + base_text[len(leftmost_text):]
+            real_module = real_module_raw.replace("::", ".")
+        else:
+            if base_text not in imports:
+                continue
+            real_module = imports[base_text]
         qname = f"{real_module}.{attr_name}"
         edges_out.append(Edge.create(
             src=caller_symbol.id,

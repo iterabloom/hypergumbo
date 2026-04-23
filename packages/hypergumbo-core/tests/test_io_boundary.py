@@ -744,6 +744,31 @@ class TestMatchEdgeToPrimitive:
         assert len(results) == 1
         assert results[0].boundary == "fs_read"
 
+    def test_dot_normalized_qualified_name_alias(self) -> None:
+        """WI-vipur: ``IoBoundaryCatalog`` registers a dot-normalized
+        form of every qualified name whose module contains ``::``,
+        so edges emitted in scoped-path mode (``::`` replaced with
+        ``.`` to avoid colliding with the ``:``-delimited edge ID
+        format) still hit the qualified lookup index.
+        """
+        catalog = load_catalog("rust")
+        # rust.yaml declares ``module: std::env, attributes: [consts]``
+        # → qualified_name ``std::env.consts``.  The scoped-path edge
+        # emitter normalizes this to ``std.env.consts`` in its dst,
+        # so the lookup must find the primitive under that form too.
+        assert catalog.lookup("std::env.consts") is not None
+        assert catalog.lookup("std.env.consts") is not None
+        assert catalog.lookup("std::env.consts") is catalog.lookup(
+            "std.env.consts"
+        )
+        # A module name without ``::`` is not re-registered as itself,
+        # so ``os.Stdout`` (Go) continues to have exactly one entry.
+        go_catalog = load_catalog("go")
+        # Go's module names don't contain ``::`` so the dot-form alias
+        # is a no-op for Go entries.
+        stdout = go_catalog.lookup("os.Stdout")
+        assert stdout is not None
+
     def test_catalog_ignores_malformed_yaml_entries(self, tmp_path: Path) -> None:
         """Non-list boundary values and non-dict entries are skipped."""
         yaml_content = """\

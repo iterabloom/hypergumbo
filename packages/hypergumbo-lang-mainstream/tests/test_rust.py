@@ -4693,37 +4693,35 @@ fn main() { helper(); }
         assert len(unresolved_helper) == 0
 
 
-# WI-lozug PR 4: Rust tree-sitter path deferral stub.
+# WI-vipur: Rust tree-sitter scoped-path attribute emission.
 #
-# The WI-gapam ``emit_module_attribute_refs`` helper's current model
-# walks attribute-access nodes with an ``object`` + ``property`` child
-# pair.  ``std::env::consts::OS`` parses as tree-sitter-rust's
-# ``scoped_identifier`` (a left-recursive path of ``path`` + ``name``
-# pairs), which the helper cannot match without an extension.  Rather
-# than single-language-tune the helper for Rust only, the extension is
-# tracked as a cross-language follow-up (WI-vipur-…, covers Rust
-# tree-sitter + C++ ``qualified_identifier`` + Groovy / Kotlin
-# scoped_identifier uses).  PR 4 of WI-lozug keeps Rust's tree-sitter
-# path intentionally inert and installs this regression-guard so that
-# when the scoped-path extension does land the flip from zero to
-# positive emission is observable.
+# The WI-gapam ``emit_module_attribute_refs`` helper was extended with
+# a ``scoped_path=True`` mode (left-recursive walk over ``path`` + ``name``
+# children) so it can match Rust's ``scoped_identifier`` nodes.
+# ``std::env::consts::OS`` parses as a nested chain of
+# ``scoped_identifier`` nodes; walking left finds the ``std`` alias
+# (injected as an implicit import because Rust stdlib is in scope
+# without a ``use``), and the middle-level match ``std::env::consts``
+# emits a ``module_attr_ref`` edge that io_boundary tags as ``env_read``
+# against rust.yaml's ``module: std::env, attributes: [consts]``.
 #
 # Note: the ``rust-analyzer`` optional backend
 # (``hypergumbo-lang-rust-analyzer``) has its own semantic resolver
-# that is untouched by this PR.  Users who have rust-analyzer
+# that is untouched by this change.  Users who have rust-analyzer
 # installed continue to get full Rust semantics via that path.
-class TestRustModuleAttrRefsDeferred:
-    """Regression guard: the Rust tree-sitter analyzer does NOT emit
-    ``module_attr_ref`` edges for ``std::env::consts::OS`` today
-    (WI-lozug PR 4 stub).  Flip to a positive-emission test when
-    WI-vipur (cross-language scoped-path extension) lands."""
+class TestRustModuleAttrRefsScoped:
+    """WI-vipur: verify the tree-sitter Rust analyzer emits
+    ``module_attr_ref`` edges for scoped-path attribute reads and
+    that io_boundary tags them against rust.yaml."""
 
-    def test_tree_sitter_rust_emits_zero_module_attr_ref_for_scoped_path(
+    def test_scoped_path_emits_module_attr_ref(
         self, tmp_path: Path,
     ) -> None:
-        """Baseline assertion: no module_attr_ref edges from the
-        tree-sitter Rust analyzer for ``std::env::consts::OS``
-        today."""
+        """``std::env::consts::OS`` emits a ``module_attr_ref`` edge
+        for the ``std::env::consts`` middle level, tagged as env_read
+        by io_boundary against ``rust.yaml``'s
+        ``module: std::env, attributes: [consts]`` entry."""
+        from hypergumbo_core.io_boundary import load_catalog, tag_io_boundaries
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
         (tmp_path / "lib.rs").write_text("""pub fn os_name() -> &'static str {
@@ -4736,12 +4734,102 @@ class TestRustModuleAttrRefsDeferred:
         attr_edges = [
             e for e in result.edges if e.edge_type == "module_attr_ref"
         ]
-        assert attr_edges == [], (
-            f"WI-lozug PR 4 stub: Rust tree-sitter path is expected "
-            f"to emit ZERO module_attr_ref edges until WI-vipur "
-            f"(cross-language scoped-path extension) lands; got: "
-            f"{[e.dst for e in attr_edges]}. If this fails, either "
-            f"the scoped-path extension landed (in which case flip "
-            f"this test to assert positive emission) or something "
-            f"unexpected added Rust emission (investigate)."
+        # The middle-level scoped_identifier ``std::env::consts`` emits
+        # an edge with dst ``rust:std.env:0-0:std.env.consts:attribute``.
+        # Outer / inner levels also emit but their dsts carry different
+        # qnames ("std.env.consts.OS" and "std.env" respectively).
+        MIDDLE_DST = "rust:std.env:0-0:std.env.consts:attribute"
+        middles = [e for e in attr_edges if e.dst == MIDDLE_DST]
+        assert middles, (
+            f"expected a module_attr_ref edge with dst {MIDDLE_DST!r}; "
+            f"got dsts: {[e.dst for e in attr_edges]}"
+        )
+        middle = middles[0]
+        assert middle.confidence == 0.85
+        assert middle.evidence_type == "module_attribute_reference"
+
+        # Now tag and confirm io_boundary recognises the middle edge
+        # as env_read against rust.yaml's std::env.consts entry.
+        catalogs = {"rust": load_catalog("rust")}
+        tagged = tag_io_boundaries(result.edges, catalogs)
+        assert tagged > 0
+        assert middle.meta is not None
+        assert middle.meta.get("io_boundary") == "env_read"
+        assert middle.meta.get("io_primitive") == "std::env.consts"
+
+    def test_use_aliased_scoped_path_emits(
+        self, tmp_path: Path,
+    ) -> None:
+        """``use std::env;`` then ``env::consts::OS`` — the alias
+        ``env`` maps to ``std::env`` and the helper rewrites the
+        leftmost segment so the emitted edge still carries
+        ``std.env.consts`` for io_boundary matching."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text("""use std::env;
+
+pub fn os_name() -> &'static str {
+    env::consts::OS
+}
+""")
+
+        result = analyze_rust(tmp_path)
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        dsts = [e.dst for e in attr_edges]
+        assert any("std.env.consts" in d for d in dsts), (
+            f"expected alias-rewritten dst containing 'std.env.consts'; "
+            f"got: {dsts}"
+        )
+
+    def test_scoped_call_callee_is_skipped(
+        self, tmp_path: Path,
+    ) -> None:
+        """``std::env::var("HOME")`` — the outer ``std::env::var``
+        scoped_identifier is the callee of a call_expression, so the
+        helper must skip it to avoid double-counting with the
+        ``calls`` pipeline.  Inner scoped_identifiers (``std::env``,
+        ``std``) may still emit but none match the catalog's
+        attributes list, so they're "lit but not matched"."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text("""pub fn home() -> Option<String> {
+    std::env::var("HOME").ok()
+}
+""")
+
+        result = analyze_rust(tmp_path)
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        dsts = [e.dst for e in attr_edges]
+        # The callee ``std::env::var`` must NOT appear as a
+        # module_attr_ref (dot-normalized ``std.env.var``).
+        assert not any("std.env.var" in d for d in dsts), (
+            f"callee ``std::env::var`` should be skipped to avoid "
+            f"double-count with the calls pipeline; got: {dsts}"
+        )
+
+    def test_unknown_leftmost_is_skipped(
+        self, tmp_path: Path,
+    ) -> None:
+        """A scoped path whose leftmost identifier is not in the
+        imports map (e.g. ``local::helper::fn_``) must not emit
+        any ``module_attr_ref`` edge — the helper is conservative
+        and only emits for recognised module names."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text("""pub fn f() -> i32 {
+    mymod::inner::VALUE
+}
+""")
+
+        result = analyze_rust(tmp_path)
+        attr_edges = [
+            e for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        dsts = [e.dst for e in attr_edges]
+        assert not any("mymod" in d for d in dsts), (
+            f"unknown leftmost ``mymod`` should be skipped; got: {dsts}"
         )

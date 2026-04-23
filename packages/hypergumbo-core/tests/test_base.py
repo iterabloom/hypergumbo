@@ -1095,6 +1095,144 @@ class TestEmitModuleAttributeRefs:
         assert edges[0].dst == "javascript:process:0-0:process.exit:attribute"
 
 
+def _parse_rust(source: str):
+    """Parse Rust source with tree-sitter-rust and return the root node."""
+    import tree_sitter
+    import tree_sitter_rust
+    lang = tree_sitter.Language(tree_sitter_rust.language())
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(source.encode("utf-8"))
+    return tree.root_node
+
+
+class TestEmitModuleAttributeRefsScopedPath:
+    """WI-vipur: tests for ``scoped_path=True`` mode — the left-recursive
+    walk over ``scoped_identifier`` / ``qualified_identifier`` nodes used
+    by languages whose scoped access is not a binary object+property
+    pair.  Exercised with tree-sitter-rust's ``scoped_identifier``."""
+
+    def test_basic_scoped_path_emits_dot_normalized_edge(self) -> None:
+        """``std::env::consts::OS`` emits edges for each scoped_identifier
+        level.  The middle level is the interesting one: base walks
+        left to ``std`` (in imports), so an edge with dst containing
+        ``std.env.consts`` fires — dot-normalized to survive downstream
+        ``:``-split parsing."""
+        source = "pub fn f() -> &'static str { std::env::consts::OS }\n"
+        root = _parse_rust(source)
+        caller = _fake_caller("rust:lib.rs:0-0:file:file")
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            source.encode("utf-8"),
+            {"std": "std"},
+            caller,
+            "rust",
+            edges,
+            node_kinds=("scoped_identifier",),
+            object_field_names=("path",),
+            property_field_names=("name",),
+            call_node_kinds=("call_expression",),
+            call_function_field_names=("function",),
+            scoped_path=True,
+        )
+        dsts = [e.dst for e in edges]
+        assert any(
+            d == "rust:std.env.consts:0-0:std.env.consts.OS:attribute"
+            for d in dsts
+        ), dsts
+
+    def test_scoped_call_callee_is_skipped(self) -> None:
+        """``std::env::var("HOME")`` — the outer scoped_identifier is
+        the callee of a call_expression, so the helper skips it to
+        avoid double-count with the ``calls`` pipeline."""
+        source = "pub fn f() { std::env::var(\"HOME\"); }\n"
+        root = _parse_rust(source)
+        caller = _fake_caller("rust:lib.rs:0-0:file:file")
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            source.encode("utf-8"),
+            {"std": "std"},
+            caller,
+            "rust",
+            edges,
+            node_kinds=("scoped_identifier",),
+            object_field_names=("path",),
+            property_field_names=("name",),
+            call_node_kinds=("call_expression",),
+            call_function_field_names=("function",),
+            scoped_path=True,
+        )
+        dsts = [e.dst for e in edges]
+        assert not any("std.env.var" in d for d in dsts), dsts
+
+    def test_unknown_leftmost_skipped(self) -> None:
+        """A scoped path whose leftmost identifier is not in the
+        imports map emits no edges."""
+        source = "pub fn f() -> i32 { mymod::inner::VALUE }\n"
+        root = _parse_rust(source)
+        caller = _fake_caller("rust:lib.rs:0-0:file:file")
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            source.encode("utf-8"),
+            {"std": "std"},
+            caller,
+            "rust",
+            edges,
+            node_kinds=("scoped_identifier",),
+            object_field_names=("path",),
+            property_field_names=("name",),
+            scoped_path=True,
+        )
+        assert edges == []
+
+    def test_aliased_leftmost_rewrites_to_real_module(self) -> None:
+        """Imports map ``env -> std::env`` — the helper rewrites the
+        leftmost segment so ``env::consts::OS`` emits edges carrying
+        ``std.env.consts`` in the dst (for catalog matching)."""
+        source = "pub fn f() -> &'static str { env::consts::OS }\n"
+        root = _parse_rust(source)
+        caller = _fake_caller("rust:lib.rs:0-0:file:file")
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            source.encode("utf-8"),
+            {"env": "std::env"},
+            caller,
+            "rust",
+            edges,
+            node_kinds=("scoped_identifier",),
+            object_field_names=("path",),
+            property_field_names=("name",),
+            scoped_path=True,
+        )
+        dsts = [e.dst for e in edges]
+        assert any("std.env.consts" in d for d in dsts), dsts
+
+    def test_missing_path_field_skips_node(self) -> None:
+        """If ``object_field_names`` resolves to no child (the path
+        field is absent from this node shape), the helper quietly
+        skips the node — no raise, no emit."""
+        source = "pub fn f() -> &'static str { std::env::consts::OS }\n"
+        root = _parse_rust(source)
+        caller = _fake_caller("rust:lib.rs:0-0:file:file")
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            root,
+            source.encode("utf-8"),
+            {"std": "std"},
+            caller,
+            "rust",
+            edges,
+            node_kinds=("scoped_identifier",),
+            object_field_names=("does_not_exist_anywhere",),
+            property_field_names=("name",),
+            scoped_path=True,
+        )
+        assert edges == []
+
+
 class TestAnalysisResult:
     """Tests for AnalysisResult dataclass."""
 

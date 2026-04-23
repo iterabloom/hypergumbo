@@ -47,6 +47,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    emit_module_attribute_refs,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -1496,6 +1497,41 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                             ))
+
+    # WI-vipur: emit module_attr_ref edges for scoped attribute reads
+    # on imported Rust paths (e.g. ``std::env::consts::OS``).  These
+    # pair with the ``attributes:`` entries in io_primitives/rust.yaml
+    # (``module: std::env, attributes: [consts]``).  Without them the
+    # env_read chain for ``consts`` was silently inert on the
+    # tree-sitter path — rust-analyzer's semantic backend has its own
+    # resolver and is unaffected.  ``std`` is injected as an implicit
+    # import (Rust stdlib is in-scope without a ``use`` statement).
+    attr_imports = dict(use_aliases)
+    attr_imports.setdefault("std", "std")
+    file_pseudo_symbol = Symbol(
+        id=file_id,
+        name=Path(file_path).name,
+        kind="module",
+        language="rust",
+        path=str(file_path),
+        span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+        origin=PASS_ID,
+        origin_run_id=run_id,
+    )
+    emit_module_attribute_refs(
+        tree.root_node,
+        source,
+        attr_imports,
+        file_pseudo_symbol,
+        "rust",
+        edges,
+        node_kinds=("scoped_identifier",),
+        object_field_names=("path",),
+        property_field_names=("name",),
+        call_node_kinds=("call_expression",),
+        call_function_field_names=("function",),
+        scoped_path=True,
+    )
 
     return edges
 

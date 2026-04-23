@@ -146,6 +146,14 @@ class IoBoundaryCatalog:
             # Qualified name: first one wins (shouldn't have duplicates)
             if p.qualified_name not in self._by_qualified:
                 self._by_qualified[p.qualified_name] = p
+            # WI-vipur: also register a dot-normalized alias so edges
+            # emitted in scoped-path mode (``::`` replaced with ``.`` to
+            # avoid colliding with the ``:``-delimited edge ID format)
+            # still hit the qualified index.  Only relevant for languages
+            # whose catalog module names contain ``::`` (Rust, C++).
+            dot_form = p.qualified_name.replace("::", ".")
+            if dot_form != p.qualified_name:
+                self._by_qualified.setdefault(dot_form, p)
             # Short name: may have multiple (e.g. open → fs_read + fs_write)
             self._by_short.setdefault(p.name, []).append(p)
 
