@@ -1,0 +1,20 @@
+- op: create  # 591f
+  at: '2026-04-23T07:43:30Z'  # 591f
+  by: agent  # 591f
+  actor: jgstern_agent  # 591f
+  clock: 1  # 591f
+  nonce: 591f  # 591f
+  data:  # 591f
+    kind: work_item  # 591f
+    title: "Python: missing call edges for dotted-submodule imports (urllib.request et al)"  # 591f
+    status: todo_hard  # 591f
+    priority: 2  # 591f
+    parent:  # 591f
+    tags:  # 591f
+    - analysis_quality  # 591f
+    isbefore: []  # 591f
+    duplicate_of: []  # 591f
+    not_duplicate_of: []  # 591f
+    pr_ref:  # 591f
+    description: "Self-analysis dogfood on dev @ 0b37e636c (2026-04-23) showed the Python analyzer emits NO 'calls' edges for call sites whose callable is imported from a dotted submodule. Observed on every one of the 7 urllib call sites in the repo:\n\nFacet A — 'from pkg.subpkg import X' then bare call 'X(...)' (3 sites, all missed):\n  packages/hypergumbo-core/src/hypergumbo_core/gitleaks.py:117  urlopen(GITLEAKS_RELEASES_URL, ...)\n  packages/hypergumbo-core/src/hypergumbo_core/gitleaks.py:164  urlopen(url, ...)\n  packages/hypergumbo-tracker/src/hypergumbo_tracker/sync.py:280 Request(url, ...)\n  packages/hypergumbo-tracker/src/hypergumbo_tracker/sync.py:286 urlopen(req, ...)\n\nFacet B — 'import pkg.subpkg' then qualified call 'pkg.subpkg.X(...)' (3 sites, all missed):\n  packages/hypergumbo-tracker/src/hypergumbo_tracker/embeddings.py:108  urllib.request.urlretrieve(...)\n  packages/hypergumbo-tracker/src/hypergumbo_tracker/stop_hook.py:401    urllib.request.Request(...)\n  packages/hypergumbo-tracker/src/hypergumbo_tracker/stop_hook.py:410    urllib.request.urlopen(...)\n\nControl: same files detect 2-segment calls correctly — e.g. sync.py _api_call emits 'calls: json:dumps:unresolved' for json.dumps(), and stop_hook.py _call_openrouter emits calls to json.dumps/json.loads. Only calls whose namespace involves a dotted Python submodule (urllib.request, os.path, etc.) are dropped.\n\nDownstream impact: 'hypergumbo io-boundaries' reports net_send chain_count=3 and all three chains have entry_points=[], because the 'chains' are synthesized from file→symbol *import* edges rather than actual call-graph walks. verify-claims taint sinks on 'network' are silently under-covered for any Python project using dotted stdlib submodules — urllib, http.client, os.path, shutil.*, xml.etree.*, concurrent.futures, etc.\n\nAnalogous cross-language items already resolved: WI-dulun (C stdlib calls), WI-bunul (Java import-based name resolution), WI-dadid (Elixir import-aware name resolution). This is the Python version of the same structural gap.\n\nReproduction:\n  hypergumbo run . --out /tmp/a.json\n  python3 -c \"import json; d=json.load(open('/tmp/a.json')); fac=next(n for n in d['nodes'] if n['name']=='_api_call' and 'sync.py' in n['path']); print([e for e in d['edges'] if e['src']==fac['id']])\"\nExpected: outgoing calls include urllib.request:urlopen and urllib.request:Request. Actual: only json.dumps, json.loads, add_header, read."  # 591f
+    fields: {}  # 591f

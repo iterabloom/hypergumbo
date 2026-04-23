@@ -1,0 +1,20 @@
+- op: create  # a305
+  at: '2026-04-23T08:30:52Z'  # a305
+  by: agent  # a305
+  actor: jgstern_agent  # a305
+  clock: 1  # a305
+  nonce: a305  # a305
+  data:  # a305
+    kind: work_item  # a305
+    title: "Level 2: NameMatcher utility + matcher-site retrofit + lint rule + polyglot coverage fixture"  # a305
+    status: todo_hard  # a305
+    priority: 2  # a305
+    parent:  # a305
+    tags:  # a305
+    - analysis_quality  # a305
+    isbefore: []  # a305
+    duplicate_of: []  # a305
+    not_duplicate_of: []  # a305
+    pr_ref:  # a305
+    description: "Containment strategy for the 'name-form normalization at matcher boundaries' bug class (WI-zigah parent class). See lab notebook notebookjournal_04232026_0343.md §'Three-Level Response'.\n\nScope:\n1. Build a shared NameMatcher utility that takes a canonical-form spec (language, optional module_path, name) and matches against any valid source-form spelling for that language. Handles the dotted-submodule / bare / aliased / namespace-as import variants.\n2. Retrofit confirmed-vulnerable matcher sites to use NameMatcher:\n   - packages/hypergumbo-core/src/hypergumbo_core/framework_patterns.py:287-310 (decorator / base_class / annotation matching — CONFIRMED vulnerable on 2026-04-23 audit)\n   - packages/hypergumbo-core/src/hypergumbo_core/linkers/di_resolution.py:641 (interface-name lookup — probable)\n   - Verify packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py lookup_with_module (line 833) — may already canonicalize; audit needed.\n3. Add a lint/test rule that flags raw re.match / string comparison against symbol-meta strings (decorators, base_classes, annotations) in matcher code paths, with a whitelist for legitimate uses.\n4. Polyglot coverage fixture: one fixture file per language (start with Python, JS/TS, Go, Rust, Java) enumerating the top ~5 import×call constructs. Property test asserts the count of syntactic call sites in the fixture matches the count of outgoing call edges from the analyzer.\n\nSibling: Level 1 (Python analyzer-layer) = WI-zigah-fanob-jitik-lanit-kurar-hujij-pugun-padan.\nParent of (structural-level goal): Level 3 canonical-form IR refactor (separate item, P4 needs_human_review).\n\nSuccess criteria: after retrofit, the framework_patterns.py audit test shows identical enrichment outputs for class Foo(BaseModel) imported three ways (from pydantic import BaseModel / import pydantic / from pydantic.main import BaseModel). After fixture, adding a new import construct to the fixture auto-fails CI if the analyzer misses it."  # a305
+    fields: {}  # a305
