@@ -41,6 +41,19 @@ New `module_attr_ref` edge type emitted across six languages for attribute reads
 - **New `browser_storage_write` io_primitives category (WI-lokuv Q3)**: `localStorage.setItem` / `sessionStorage.setItem` / `.clear` / `.removeItem` moved out of `javascript.yaml#fs_write`; auto-import routes them to the `browser_storage` zone instead of misreporting as host-filesystem writes.
 - **New `browser_storage_read` io_primitives category (WI-kanir-huzuj)**: `localStorage.getItem` / `sessionStorage.getItem` / `indexedDB.open` / `caches.{open,match,has,keys}` moved out of `javascript.yaml#fs_read`. Intentionally not in `AUTO_SOURCE_LABEL_MAP` — sensitivity depends on what's stored; project-local catalogs add their own `taint_sources` entries. `document.cookie` stays under `env_read` pending a getter/setter split.
 
+### Added
+
+#### Name-form normalization at matcher boundaries (WI-pisab, Level 2 of WI-zigah response)
+
+- **`hypergumbo_core.name_matcher.NameMatcher`**: shared utility wrapping a pattern string with two modes — canonical (alphanumeric + dots; matches via dotted-segment suffix in either direction) and regex (compiled pattern; tries the raw source string, falls back to the terminal dotted segment). Addresses the generalized bug class diagnosed from WI-zigah: the analyzer stores source-form strings in symbol metadata, YAML patterns carry canonical-path keys, and raw `re.match` silently drops whichever spelling the pattern did not anticipate. `NameMatcher.matches(source)` returns a bool; `NameMatcher.match(source)` returns a `re.Match` for capture-group users.
+
+### Changed
+
+#### Framework pattern matching — base_class via NameMatcher (WI-pisab)
+
+- **`Pattern._base_class_re` / `Pattern._parent_base_class_re`** now hold `NameMatcher` instances instead of raw `re.Pattern`. An anchored YAML pattern like `^BaseModel$` now matches a source-side spelling of `pydantic.BaseModel` (via `import pydantic` + `class Foo(pydantic.BaseModel)`) through NameMatcher's terminal-segment fallback. Previously that codebase missed `concept: model` enrichment that an otherwise-identical codebase using `from pydantic import BaseModel` received — a silent false negative in framework detection that propagated to every downstream linker filtering by concept.
+- Decorator / annotation / parameter-type matching still use raw compiled regex because their YAML patterns use capture groups (HTTP method extraction); migrating those requires the `match(source) -> Match` API which NameMatcher exposes but no callers have been updated yet. Remaining matcher retrofits (di_resolution, io_boundary audit, polyglot coverage fixture, lint enforcement) tracked under WI-pisab for follow-up.
+
 ### Fixed
 
 #### Python analyzer — dotted-submodule call resolution (WI-zigah)

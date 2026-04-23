@@ -122,6 +122,43 @@ class TestPattern:
         assert result["concept"] == "model"
         assert result["matched_base_class"] == "BaseModel"
 
+    def test_pattern_matches_base_class_qualified_spelling(self) -> None:
+        """Anchored pattern ``^BaseModel$`` matches qualified source ``pydantic.BaseModel``.
+
+        WI-pisab regression test. Prior to the NameMatcher retrofit, the raw
+        ``re.match`` against an anchored pattern rejected every qualified
+        source spelling: a codebase using ``import pydantic`` + ``class
+        Foo(pydantic.BaseModel)`` missed enrichment that an otherwise-
+        identical codebase using ``from pydantic import BaseModel`` got.
+        NameMatcher's terminal-segment fallback closes this gap.
+        """
+        pattern = Pattern(
+            concept="model",
+            base_class=r"^BaseModel$",
+        )
+
+        symbol = Symbol(
+            id="test:file.py:1:User:class",
+            name="User",
+            kind="class",
+            language="python",
+            path="file.py",
+            span=Span(1, 20, 0, 0),
+            meta={
+                # The analyzer stored the qualified form because the user
+                # wrote `class User(pydantic.BaseModel)` after `import pydantic`.
+                "base_classes": ["pydantic.BaseModel"],
+            },
+        )
+
+        result = pattern.matches(symbol)
+        assert result is not None, (
+            "Qualified source spelling should match anchored bare pattern "
+            "via terminal-segment fallback."
+        )
+        assert result["concept"] == "model"
+        assert result["matched_base_class"] == "pydantic.BaseModel"
+
     def test_pattern_matches_annotation(self) -> None:
         """Pattern matches Java annotation."""
         pattern = Pattern(

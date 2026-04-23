@@ -68,6 +68,8 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from hypergumbo_core.name_matcher import NameMatcher
+
 if TYPE_CHECKING:
     from .ir import Symbol
 
@@ -196,9 +198,16 @@ class Pattern:
     def __post_init__(self) -> None:
         """Compile regex patterns for efficiency."""
         self._decorator_re = re.compile(self.decorator) if self.decorator else None
-        self._base_class_re = re.compile(self.base_class) if self.base_class else None
+        # WI-pisab: base_class and parent_base_class use NameMatcher so that
+        # anchored YAML patterns (e.g., "^BaseModel$") still match a source
+        # spelling qualified by a different import style (e.g.,
+        # "pydantic.BaseModel" via `import pydantic`). NameMatcher falls back
+        # to the terminal dotted segment when the raw-source regex misses.
+        self._base_class_re = (
+            NameMatcher(self.base_class) if self.base_class else None
+        )
         self._parent_base_class_re = (
-            re.compile(self.parent_base_class) if self.parent_base_class else None
+            NameMatcher(self.parent_base_class) if self.parent_base_class else None
         )
         self._method_name_re = (
             re.compile(self.method_name) if self.method_name else None
@@ -306,7 +315,7 @@ class Pattern:
         # Try base class match
         if self._base_class_re:
             for base in base_classes:
-                if self._base_class_re.match(base):
+                if self._base_class_re.matches(base):
                     return [{"concept": self.concept, "matched_base_class": base}]
 
         # Try annotation match (Java) — collect ALL matching annotations
@@ -397,7 +406,7 @@ class Pattern:
             matched_parent_base = None
             if self._parent_base_class_re:
                 for base in parent_base_classes:
-                    if self._parent_base_class_re.match(base):
+                    if self._parent_base_class_re.matches(base):
                         parent_match = True
                         matched_parent_base = base
                         break
