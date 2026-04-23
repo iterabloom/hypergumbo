@@ -1,0 +1,23 @@
+- op: create  # 657c
+  at: '2026-04-23T20:15:47Z'  # 657c
+  by: agent  # 657c
+  actor: jgstern_agent  # 657c
+  clock: 1  # 657c
+  nonce: 657c  # 657c
+  data:  # 657c
+    kind: invariant  # 657c
+    title: "io_boundary catalog: method primitives whose short name collides with a builtin/duck-typed method must require module context"  # 657c
+    status: violated  # 657c
+    priority: 2  # 657c
+    parent:  # 657c
+    tags:  # 657c
+    - analysis_quality  # 657c
+    - awaits_bakeoff_validation  # 657c
+    isbefore: []  # 657c
+    duplicate_of: []  # 657c
+    not_duplicate_of: []  # 657c
+    pr_ref:  # 657c
+    description: "Discovered via 2026-04-23 self-audit. ~40 false-positive fs_write chains in hypergumbo's own self-analysis come from this single root cause (e.g., linkers/dependency.py:49 'name.replace(\"-\", \"_\")' is reported as fs_write).\n\nFix path: add 'replace', and any other Path/io method names that collide with builtin str/bytes/dict/list/set methods, to python.yaml#ambiguous_names. Verify by re-running 'hypergumbo io-boundaries' on hypergumbo and confirming the fs_write chain count drops by ~40.\n\nScope-expansion: same audit needed for java.yaml / javascript.yaml / go.yaml / rust.yaml. Bakeoff validation: BROAD-mode re-run on the existing corpus should show no language-wide regression in fs_write chain count and a measurable drop on Python repos."  # 657c
+    fields:  # 657c
+      statement: "A method-kind I/O primitive whose short name is in the catalog's ambiguous_names is matched ONLY when module_hint provides discriminating evidence — never on the unfiltered short-name fallback. Equivalently: every Path/io method primitive whose name collides with a stdlib non-io method (str, bytes, dict, list, set) MUST appear in ambiguous_names."  # 657c
+      root_cause: "python.yaml registers 'pathlib.Path.replace' as a fs_write method but does not list 'replace' in ambiguous_names. The catalog matcher's lookup_with_module() falls back to short-name match when module_hint is None/external, so every str.replace() / bytes.replace() / dict.replace() call in the codebase matches as Path.replace() and is reported as a filesystem rename. Same pattern likely repeats for any catalog where a method primitive shares a short name with a stdlib duck-typed method."  # 657c
