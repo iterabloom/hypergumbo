@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Summary
+
+`hypergumbo io-boundaries` now detects attribute-style IO primitives — `os.environ`, `sys.argv`, `process.env`, `System.out`, `os.Stdout`, `std::env::consts::OS`, and bare `stdout` / `stderr` / `stdin` in C — across Python, Go, JavaScript/TypeScript, Java, Rust (tree-sitter), and C. Before this cycle these entries were declared in the YAML catalog but no analyzer emitted matching edges, so every chain through them was silently invisible to the boundary map and to `verify-claims`. `verify-claims` also gains `--taint-sources`, `--taint-sinks`, `--taint-sanitizers` flags (and an `extra_catalogs:` key in the claims YAML) so projects can override the auto-derived defaults with their own trust zones, sanitizers, and label maps. Browser-local reads (`localStorage.getItem`, `indexedDB.open`, `caches.*`) are no longer misreported as host-filesystem reads.
+
 ### Added
 
 #### Analysis quality (WI-gotuv: C bare-identifier matching for stdio globals)

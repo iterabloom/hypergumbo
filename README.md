@@ -138,6 +138,19 @@ hypergumbo . --no-progress     # hide progress indicator (on by default)
 hypergumbo --help --all        # comprehensive help for all commands
 ```
 
+### Project-local taint catalogs
+
+`verify-claims` ships with paranoid defaults auto-derived from the built-in IO primitive catalog. Projects can supply their own trust zones, sanitizers, and label maps:
+
+```bash
+hypergumbo verify-claims claims.yaml \
+    --taint-sources    myrepo/taint/sources.yaml \
+    --taint-sinks      myrepo/taint/sinks/ \
+    --taint-sanitizers myrepo/taint/sanitizers.yaml
+```
+
+Each flag accepts a YAML file or a directory (globbed as `*.yaml`), and is repeatable. The same paths can be declared inside the claims YAML under `extra_catalogs: {sources, sinks, sanitizers}` — relative paths resolve against the claims-file directory. User entries whose `(module, name, kind)` triple matches a built-in replace it; sanitizers concatenate.
+
 Results are automatically cached in `~/.cache/hypergumbo/`. Just run:
 ```bash
 hypergumbo .    # auto-runs analysis if no cache exists, then generates sketch
