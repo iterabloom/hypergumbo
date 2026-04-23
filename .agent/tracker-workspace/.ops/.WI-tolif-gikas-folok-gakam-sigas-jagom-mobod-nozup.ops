@@ -1,0 +1,20 @@
+- op: create  # 4cf6
+  at: '2026-04-23T20:17:31Z'  # 4cf6
+  by: agent  # 4cf6
+  actor: jgstern_agent  # 4cf6
+  clock: 1  # 4cf6
+  nonce: 4cf6  # 4cf6
+  data:  # 4cf6
+    kind: work_item  # 4cf6
+    title: "io_boundary catalog: reclassify sys.stdout/sys.stderr/sys.stdin from ipc_send/ipc_recv to logging"  # 4cf6
+    status: todo_soft  # 4cf6
+    priority: 3  # 4cf6
+    parent:  # 4cf6
+    tags:  # 4cf6
+    - analysis_quality  # 4cf6
+    isbefore: []  # 4cf6
+    duplicate_of: []  # 4cf6
+    not_duplicate_of: []  # 4cf6
+    pr_ref:  # 4cf6
+    description: "Discovered via 2026-04-23 self-audit. python.yaml#ipc_send lists 'sys.stdout, sys.stderr' as attributes; python.yaml#ipc_recv lists 'sys.stdin'. As a result, the 'ipc_send' boundary in hypergumbo's own self-analysis shows 77 chains, 70 of which are just stderr writes (cli.py progress output, warnings). Technically correct (POSIX stdio is IPC) but cosmetically misleading: 'IPC' implies signal channels / sockets / pipes that route to other processes, whereas these are terminal output.\n\nThe catalog already defines a 'logging' boundary type (io_boundary.py line 260). Move sys.stdout/sys.stderr to logging; sys.stdin probably stays in ipc_recv (it CAN receive piped untrusted input — fs_read is a stretch).\n\nDownstream check before changing:\n- taint.py AUTO_SOURCE_LABEL_MAP / AUTO_SINK_LABEL_MAP — what does ipc_send map to today?\n- Any verify-claims fixture / test that asserts on the ipc_send category for stdio.\n- The same pattern is likely in java.yaml / go.yaml / javascript.yaml / etc. — file scope-expansion sub-items if found.\n\nAcceptance: hypergumbo io-boundaries on hypergumbo shows ipc_send chain count drop from 77 → ~5, and a new 'logging' bucket with ~70 chains."  # 4cf6
+    fields: {}  # 4cf6

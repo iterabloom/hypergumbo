@@ -1,0 +1,21 @@
+- op: create  # 3f3c
+  at: '2026-04-23T20:17:52Z'  # 3f3c
+  by: agent  # 3f3c
+  actor: jgstern_agent  # 3f3c
+  clock: 1  # 3f3c
+  nonce: 3f3c  # 3f3c
+  data:  # 3f3c
+    kind: work_item  # 3f3c
+    title: "io_boundary catalog: add huggingface_hub + sentence_transformers to net_send"  # 3f3c
+    status: todo_soft  # 3f3c
+    priority: 3  # 3f3c
+    parent:  # 3f3c
+    tags:  # 3f3c
+    - analysis_quality  # 3f3c
+    - awaits_bakeoff_validation  # 3f3c
+    isbefore: []  # 3f3c
+    duplicate_of: []  # 3f3c
+    not_duplicate_of: []  # 3f3c
+    pr_ref:  # 3f3c
+    description: "Discovered via 2026-04-23 self-audit. python.yaml#net_send already covers requests / aiohttp.ClientSession / httpx.{Client,AsyncClient} but does NOT cover huggingface_hub or sentence_transformers. Result: hypergumbo's own analysis (with the embeddings extra installed) shows zero net_send chains attributable to the HuggingFace Hub model-download path, even though the dogfooding run printed an 'unauthenticated requests to the HF Hub' warning — proof the call fires.\n\nThe actual hypergumbo call site is sketch_embeddings.py:122 'SentenceTransformer(_EMBEDDING_MODEL)' — the constructor downloads the model. The catalog needs to know that this constructor + huggingface_hub.{snapshot_download, hf_hub_download} reach the network.\n\nSuggested additions to python.yaml#net_send:\n  - module: huggingface_hub\n    functions: [snapshot_download, hf_hub_download]\n    notes: \"HF Hub model/file download\"\n  - module: huggingface_hub.HfApi\n    methods: [model_info, list_repo_files, download_file]\n  - module: sentence_transformers\n    functions: [SentenceTransformer]\n    notes: \"Model class — constructor downloads from HF Hub on first use\"\n\nAcceptance: hypergumbo io-boundaries on hypergumbo (with embeddings extra installed) shows net_send chain count > 0 attributable to sketch_embeddings.py."  # 3f3c
+    fields: {}  # 3f3c
