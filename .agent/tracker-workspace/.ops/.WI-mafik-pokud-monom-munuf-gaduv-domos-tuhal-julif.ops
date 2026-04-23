@@ -1,0 +1,20 @@
+- op: create  # 181b
+  at: '2026-04-23T08:34:26Z'  # 181b
+  by: agent  # 181b
+  actor: jgstern_agent  # 181b
+  clock: 1  # 181b
+  nonce: 181b  # 181b
+  data:  # 181b
+    kind: work_item  # 181b
+    title: "Level 1b: audit/fix dotted-name call resolution for non-Python analyzers (JS/TS, Go, Rust, Java, C++, Ruby, Elixir)"  # 181b
+    status: needs_human_review  # 181b
+    priority: 4  # 181b
+    parent:  # 181b
+    tags:  # 181b
+    - analysis_quality  # 181b
+    isbefore: []  # 181b
+    duplicate_of: []  # 181b
+    not_duplicate_of: []  # 181b
+    pr_ref:  # 181b
+    description: "Sibling of WI-zigah-fanob (Python Level 1). Each non-Python analyzer likely has its own dotted-name / namespace-aliased / star-import call-resolution gap analogous to the Python dotted-submodule bug. Audit and fix per-language as a later cohort of work, once Level 1 (Python) and Level 2 (NameMatcher utility) have shipped.\n\nLanguages to audit (non-exhaustive):\n- JavaScript/TypeScript: 'import { get } from axios' vs 'import axios' vs 'import * as ax from axios' — three source-form spellings of the same callable. Each should produce a calls edge.\n- Go: aliased package imports ('import h net/http' + 'h.Get()'), dot imports ('. net/http' + 'Get()').\n- Rust: 'use std::env::consts::OS' vs 'use std::env' + 'env::consts::OS' vs fully qualified 'std::env::consts::OS'. WI-vipur fixed some cases for the tree-sitter analyzer; the rust-analyzer backend and other cases likely remain.\n- Java: wildcard imports ('import java.util.*' + bare type use), static imports ('import static X.method'), nested class references.\n- C++: 'using namespace std;' + 'cout' (tracked under WI-zojid). Other namespace-aliased cases.\n- Ruby: namespaced constants ('include Foo::Bar'), explicit fully-qualified calls.\n- Elixir: aliased modules ('alias Foo.Bar' + 'Bar.baz()'), import with only: / except:.\n\nMethod: adopt the polyglot coverage fixture from Level 2 (WI-pisab-furis) as the audit instrument. Each language's fixture enumerates top-N import/call constructs; property test asserts the analyzer emits a calls edge for every call site. Failing cases → per-language work items (similar to WI-dulun for C, WI-bunul for Java, WI-dadid for Elixir already done).\n\nStatus = needs_human_review pending the Level 2 fixture being available to drive the audit, and human triage on scope/priority for each language's fix."  # 181b
+    fields: {}  # 181b

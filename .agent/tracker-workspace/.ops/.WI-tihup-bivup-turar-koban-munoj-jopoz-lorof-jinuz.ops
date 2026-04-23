@@ -1,0 +1,20 @@
+- op: create  # e57f
+  at: '2026-04-23T08:34:15Z'  # e57f
+  by: agent  # e57f
+  actor: jgstern_agent  # e57f
+  clock: 1  # e57f
+  nonce: e57f  # e57f
+  data:  # e57f
+    kind: work_item  # e57f
+    title: "Level 3: canonical-form IR refactor — structured (lang, module_path, name) on external-target edges"  # e57f
+    status: needs_human_review  # e57f
+    priority: 4  # e57f
+    parent:  # e57f
+    tags:  # e57f
+    - analysis_quality  # e57f
+    isbefore: []  # e57f
+    duplicate_of: []  # e57f
+    not_duplicate_of: []  # e57f
+    pr_ref:  # e57f
+    description: "Structural closure of the matcher-boundary bug class. Promote canonical form to a first-class IR field on Edge: every edge whose dst refers to an external entity carries a structured tuple (lang, module_path, name) instead of a string-only dst ID. Matchers operate on tuples, catalogs load to tuples at startup. Equivalent source-code spellings of the same entity become indistinguishable by construction.\n\nThis is a schema bump (v3 territory). Touches every analyzer (must emit the new field), every matcher (must consume the tuple), every catalog loader, every cache format. Do NOT do this reactively. Do it when you have other reasons to bump the schema.\n\nStatus = needs_human_review pending a human decision on whether to bundle this with an otherwise-planned v3 schema bump, or defer indefinitely. Level 2 (WI-pisab-furis) is a containment strategy sufficient for the near term; Level 3 is the nuclear option.\n\nDependencies: Level 2 should be complete and demonstrably containing the bug class before Level 3 is considered — if NameMatcher + lint + fixture suffice, Level 3 may be permanent wont_do."  # e57f
+    fields: {}  # e57f
