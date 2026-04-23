@@ -962,6 +962,47 @@ class TestTagIoBoundaries:
         count = tag_io_boundaries([edge], {"python": catalog})
         assert count == 0
 
+    def test_unresolved_replace_call_is_not_tagged(self) -> None:
+        # INV-maluk: pathlib.Path.replace is a method primitive whose short
+        # name collides with str/bytes/list/dict.replace. The Python analyzer
+        # emits "python:external:0-0:replace:unresolved" for any unresolved
+        # `something.replace(...)` call (40+ such edges in hypergumbo's own
+        # 2026-04-23 self-analysis came from string normalization in
+        # linkers, e.g. linkers/dependency.py:49 'name.replace("-", "_")').
+        # `replace` must be in python.yaml#ambiguous_names so the matcher
+        # refuses to fall back to the short-name match when there's no
+        # discriminating module context — same discipline that `read`,
+        # `write`, `close`, `get`, `post`, etc. already get.
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/some/file.py:10-12:caller:function",
+            dst="python:external:0-0:replace:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 0, (
+            "Unresolved bare `replace` call must NOT be tagged as a Path.replace "
+            "filesystem rename. Add 'replace' to python.yaml#ambiguous_names."
+        )
+        assert edge.meta is None
+
+    def test_resolved_path_replace_still_tagged_with_module_hint(self) -> None:
+        # Counterpart to test_unresolved_replace_call_is_not_tagged: when the
+        # analyzer DOES resolve the receiver (so the dst carries a
+        # pathlib.Path module hint), the matcher must still tag it as
+        # fs_write. Adding an entry to ambiguous_names suppresses ONLY the
+        # unfiltered short-name fallback — the module-context branch still
+        # fires.
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/some/file.py:10-12:caller:function",
+            dst="python:pathlib.Path:0-0:replace:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta is not None
+        assert edge.meta["io_boundary"] == "fs_write"
+        assert edge.meta["io_primitive"] == "pathlib.Path.replace"
+
     def test_tags_subprocess_call(self) -> None:
         catalog = load_catalog("python")
         edge = self._make_edge(

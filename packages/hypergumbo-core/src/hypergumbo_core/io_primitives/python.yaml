@@ -35,6 +35,13 @@ ambiguous_names:
   - next          # Scanner.next vs builtins.next()
   - dump          # json.dump vs any .dump()
   - input         # fileinput.input vs builtins.input (not IO boundary)
+  # INV-maluk: Path.replace and Path.rename are method primitives whose
+  # short names collide with str / bytes / list / dict.replace and various
+  # .rename() helpers (e.g. pandas DataFrame.rename). The 2026-04-23 audit
+  # found 40+ false-positive fs_write chains in hypergumbo's own self-
+  # analysis from string-normalization sites like name.replace("-", "_").
+  - replace       # pathlib.Path.replace / os.replace vs str.replace, bytes.replace
+  - rename        # pathlib.Path.rename / os.rename vs DataFrame.rename, dict-like .rename()
 
 fs_read:
   - module: builtins

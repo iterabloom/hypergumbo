@@ -39,6 +39,12 @@ New `module_attr_ref` edge type emitted across six languages for attribute reads
 
 - **`io_primitives/python.yaml`**: `sys.stdout` and `sys.stderr` move out of `ipc_send` into a new `logging` block. Same fix Go's `log` / `log/slog` / `fmt` already received (see `test_go_catalog_slog_logging`): writing to stdout/stderr is terminal/log output, not inter-process communication in any threat-model sense, and classifying it as `ipc_send` produced 70 false-positive chains in hypergumbo's own self-analysis (out of 77 ipc_send chains total). `sys.stdin` stays in `ipc_recv` — it can carry untrusted piped input from the parent process, which is a real IPC threat-model concern. Cross-language analogs (`c.yaml`, `javascript.yaml`, `rust.yaml`, `scala.yaml`) tracked separately.
 
+### Fixed
+
+#### IO catalog — `replace` / `rename` added to ambiguous_names (INV-maluk)
+
+- **`io_primitives/python.yaml#ambiguous_names`** gains `replace` and `rename`. Previously the catalog matcher's short-name fallback would match every unresolved `something.replace(...)` call as `pathlib.Path.replace` (a filesystem rename), producing 40+ false-positive `fs_write` chains in hypergumbo's own self-analysis from string-normalization sites like `name.replace("-", "_")` in linkers and analyzers. With `replace` and `rename` in `ambiguous_names`, unresolved bare `.replace()` / `.rename()` calls no longer fall through to the short-name match — same discipline already applied to `read`, `write`, `close`, `get`, `post`, etc. Resolved calls with a `pathlib.Path` module hint still tag correctly (regression test: `test_resolved_path_replace_still_tagged_with_module_hint`). Confirmed by re-running `hypergumbo io-boundaries` on hypergumbo: `fs_write` chain count drops from 138 to 98 (–40), real fs_write detections preserved. Cross-language audit of analogous method-name collisions in `java.yaml` / `javascript.yaml` / `go.yaml` / `rust.yaml` carried by INV-maluk's scope-expansion clause.
+
 ### Changed
 
 #### Taint catalog auto-derivation (WI-lokuv)
