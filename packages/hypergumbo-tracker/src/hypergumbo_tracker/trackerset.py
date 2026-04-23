@@ -78,6 +78,13 @@ class TrackerSet:
     ) -> None:
         self._tracker_root = tracker_root
 
+        # Wire the forensic race log to a per-tracker-root file under
+        # XDG_CACHE_HOME. Stable across CLI and TUI invocations in the
+        # same repo so all transient-read events land in one audit trail.
+        from . import race_log
+        self._race_log_path = race_log.compute_default_race_log_path(tracker_root)
+        race_log.configure_race_log(self._race_log_path)
+
         # Derive ops directories
         canonical_ops = tracker_root / "tracker" / ".ops"
         workspace_ops = tracker_root / "tracker-workspace" / ".ops"
@@ -133,6 +140,11 @@ class TrackerSet:
     def stealth(self) -> Store:
         """Return the stealth tier Store."""
         return self._stealth
+
+    @property
+    def race_log_path(self) -> Path:
+        """Return the configured race-log file path for this tracker root."""
+        return self._race_log_path
 
     def ops_mtime_signature(self) -> float:
         """Return a monotone float that advances when any ops file changes.

@@ -37,6 +37,7 @@ import os
 import secrets
 import subprocess  # nosec B404
 import sys
+import time
 import warnings
 from collections import defaultdict
 from io import StringIO
@@ -327,25 +328,52 @@ def _serialize_op(op_dict: dict[str, Any]) -> str:
     return result
 
 
+_OPS_READ_MAX_ATTEMPTS = 3
+_OPS_READ_BASE_BACKOFF_S = 0.02
+
+
 def _parse_ops_file(filepath: Path) -> list[dict[str, Any]]:
     """Parse an ops file using PyYAML CSafeLoader (fast C extension).
 
     Returns a list of op dicts. Raises CorruptFileError if the file
     cannot be parsed as valid YAML.
+
+    Transient ``PermissionError`` and ``FileNotFoundError`` are
+    retried up to ``_OPS_READ_MAX_ATTEMPTS`` times with short linear
+    backoff. These occur when a concurrent writer atomically replaces
+    the file (``mkstemp + fchmod + rename``) and the reader lands in
+    the brief window between the old inode vanishing and the new
+    inode being visible — observed 2026-04-22 on a long-running
+    ``htrac tui`` session. Every retry (and the final re-raise) is
+    recorded in the race log; see ``race_log.py``.
     """
-    try:
-        with open(filepath) as f:
-            content = f.read()
-        if not content.strip():
-            return []
-        data = yaml.load(content, Loader=yaml.CSafeLoader)
-        if data is None:
-            return []
-        if not isinstance(data, list):
-            raise CorruptFileError(f"{filepath}: expected YAML list, got {type(data).__name__}")
-        return data
-    except yaml.YAMLError as e:
-        raise CorruptFileError(f"{filepath}: {e}") from e
+    from . import race_log
+
+    for attempt in range(1, _OPS_READ_MAX_ATTEMPTS + 1):
+        try:
+            with open(filepath) as f:
+                content = f.read()
+            if not content.strip():
+                return []
+            data = yaml.load(content, Loader=yaml.CSafeLoader)
+            if data is None:
+                return []
+            if not isinstance(data, list):
+                raise CorruptFileError(
+                    f"{filepath}: expected YAML list, got {type(data).__name__}",
+                )
+            return data
+        except (PermissionError, FileNotFoundError) as e:
+            final = attempt >= _OPS_READ_MAX_ATTEMPTS
+            race_log.log_read_race(
+                filepath, attempt, _OPS_READ_MAX_ATTEMPTS, e, final=final,
+            )
+            if final:
+                raise
+            time.sleep(_OPS_READ_BASE_BACKOFF_S * attempt)
+        except yaml.YAMLError as e:
+            raise CorruptFileError(f"{filepath}: {e}") from e
+    raise AssertionError("unreachable")  # pragma: no cover — loop always returns or raises
 
 
 def _parse_ops_bytes(content: bytes) -> list[dict[str, Any]]:
@@ -2028,6 +2056,8 @@ class Store:
 
     def _compile_all(self) -> list[CompiledItem]:
         """Compile all items in the store."""
+        from . import race_log
+
         items: list[CompiledItem] = []
         for path in self._list_item_files():
             item_id = self._id_from_filename(path)
@@ -2037,6 +2067,9 @@ class Store:
                 item.frozen = self.is_frozen(item_id)
                 items.append(item)
             except CorruptFileError:
+                continue
+            except OSError as exc:
+                race_log.log_compile_suppression(path, exc)
                 continue
         return items
 
@@ -2049,6 +2082,8 @@ class Store:
 
         Falls back to _compile_all() if cache is None.
         """
+        from . import race_log
+
         items: list[CompiledItem] = []
         for path in self._list_item_files():
             item_id = self._id_from_filename(path)
@@ -2066,6 +2101,9 @@ class Store:
                 cache.upsert(item_id, item, stat.st_mtime, stat.st_size)
                 items.append(item)
             except CorruptFileError:
+                continue
+            except OSError as exc:
+                race_log.log_compile_suppression(path, exc)
                 continue
         return items
 

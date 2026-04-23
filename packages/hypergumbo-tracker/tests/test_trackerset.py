@@ -123,6 +123,17 @@ class TestTrackerSetConstructor:
         assert ts.config is not None
         assert "invariant" in ts.config.kinds
 
+    def test_configures_race_log_path(
+        self, tracker_root: Path, mock_agent_uid: None
+    ) -> None:
+        """TrackerSet.__init__ must install a race-log path so
+        _parse_ops_file's forensic logger has somewhere to write."""
+        from hypergumbo_tracker import race_log
+
+        ts = TrackerSet(tracker_root)
+        assert ts.race_log_path == race_log.get_race_log_path()
+        assert ts.race_log_path.name == "race_log.jsonl"
+
 
 # ---------------------------------------------------------------------------
 # Merged reads: list_items

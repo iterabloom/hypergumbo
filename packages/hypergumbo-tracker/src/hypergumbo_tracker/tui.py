@@ -472,6 +472,9 @@ _PREFS_DEFAULTS: dict = {
     "last_filters": {"hidden_statuses": [], "hidden_tags": []},
     "hide_tagged": False,
     "human_read_state": {},
+    # Recorded in prefs so the user can always find the forensic log,
+    # even after XDG_CACHE_HOME changes or hypergumbo upgrades.
+    "race_log_path": "",
 }
 
 _MAX_TOGGLE_SESSIONS = 9
@@ -510,6 +513,7 @@ def _load_tui_preferences(path: Path) -> dict:
             return defaults
         hrs_raw = data.get("human_read_state", {})
         hrs = hrs_raw if isinstance(hrs_raw, dict) else {}
+        rlp = data.get("race_log_path", "")
         result: dict = {
             "hidden_statuses": hs,
             "display_order": do,
@@ -521,6 +525,7 @@ def _load_tui_preferences(path: Path) -> dict:
             ),
             "hide_tagged": data.get("hide_tagged", False),
             "human_read_state": hrs,
+            "race_log_path": rlp if isinstance(rlp, str) else "",
         }
         # Migrate legacy flat toggle_counts → single-element sessions list
         if not result["toggle_sessions"] and "toggle_counts" in data:
@@ -542,6 +547,7 @@ def _save_tui_preferences(
     last_filters: dict[str, list[str]] | None = None,
     hide_tagged: bool = False,
     human_read_state: dict[str, dict[str, object]] | None = None,
+    race_log_path: str | None = None,
 ) -> bool:
     """Persist TUI preferences to disk (v2 schema).
 
@@ -559,7 +565,7 @@ def _save_tui_preferences(
     sessions = list(toggle_sessions) if toggle_sessions else []
     if len(sessions) > _MAX_TOGGLE_SESSIONS:
         sessions = sessions[-_MAX_TOGGLE_SESSIONS:]
-    has_v2 = hidden_tags is not None or toggle_sessions is not None or last_filters is not None or hide_tagged or human_read_state is not None
+    has_v2 = hidden_tags is not None or toggle_sessions is not None or last_filters is not None or hide_tagged or human_read_state is not None or race_log_path is not None
     data: dict[str, Any] = {
         "version": 2 if has_v2 else 1,
         "hidden_statuses": sorted(hidden_statuses),
@@ -573,6 +579,8 @@ def _save_tui_preferences(
         }
         data["hide_tagged"] = hide_tagged
         data["human_read_state"] = human_read_state or {}
+        if race_log_path is not None:
+            data["race_log_path"] = race_log_path
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
@@ -2364,6 +2372,22 @@ class TrackerApp(App):
         self._last_filters = prefs.get(
             "last_filters", {"hidden_statuses": [], "hidden_tags": []},
         )
+        # Record the forensic race-log path in prefs so the user can
+        # always locate it. Persisted lazily — only when the path in
+        # prefs disagrees with the live value.
+        expected_rlp = str(self._tracker_set.race_log_path)
+        if prefs.get("race_log_path", "") != expected_rlp:
+            _save_tui_preferences(
+                self._prefs_path,
+                self._hidden_statuses,
+                self._custom_order,
+                hidden_tags=self._hidden_tags,
+                toggle_sessions=self._toggle_sessions,
+                last_filters=self._last_filters,
+                hide_tagged=self._hide_tagged,
+                human_read_state=self._human_read_state,
+                race_log_path=expected_rlp,
+            )
         self._refresh_tier()
         self._load_items()
         self._update_status_filter_bar()
@@ -3873,12 +3897,18 @@ class TrackerApp(App):
         """
         if len(self.screen_stack) > 1:
             return
-        sig = self._tracker_set.ops_mtime_signature()
-        if sig == self._last_ops_signature:
+        try:
+            sig = self._tracker_set.ops_mtime_signature()
+            if sig == self._last_ops_signature:
+                return
+            self._last_ops_signature = sig
+            self._reload_after_write(select_id=self._selected_item_id)
+            self._update_status_filter_bar()
+        except OSError:
+            # A transient FS error during idle refresh must never kill
+            # the event loop. Persistent errors surface on the next
+            # user-initiated action; the race log captures the event.
             return
-        self._last_ops_signature = sig
-        self._reload_after_write(select_id=self._selected_item_id)
-        self._update_status_filter_bar()
 
     # ------------------------------------------------------------------
     # Human read/unread state management

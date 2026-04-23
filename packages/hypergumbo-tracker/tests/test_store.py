@@ -1207,6 +1207,226 @@ class TestCorruptFileHandling:
         assert items[0].title == "Good Item"
 
 
+class TestParseOpsReadRace:
+    """WI-fix: bounded retry on transient read races (observed 2026-04-22)."""
+
+    def _write_good(self, ops_dir: Path) -> Path:
+        path = ops_dir / ".INV-race.ops"
+        path.write_text("- op: create\n  at: T1\n")
+        return path
+
+    def test_retries_and_succeeds_on_permission_error(
+        self, ops_dir: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        path = self._write_good(ops_dir)
+        real_open = open
+        call_count = {"n": 0}
+
+        def flaky_open(*args: Any, **kwargs: Any) -> Any:
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise PermissionError(13, "simulated EACCES")
+            return real_open(*args, **kwargs)
+
+        monkeypatch.setattr("hypergumbo_tracker.store.open", flaky_open, raising=False)
+        ops = _parse_ops_file(path)
+        assert len(ops) == 1
+        assert call_count["n"] == 2
+
+    def test_retries_and_succeeds_on_file_not_found(
+        self, ops_dir: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        path = self._write_good(ops_dir)
+        real_open = open
+        call_count = {"n": 0}
+
+        def flaky_open(*args: Any, **kwargs: Any) -> Any:
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise FileNotFoundError(2, "simulated ENOENT")
+            return real_open(*args, **kwargs)
+
+        monkeypatch.setattr("hypergumbo_tracker.store.open", flaky_open, raising=False)
+        ops = _parse_ops_file(path)
+        assert len(ops) == 1
+        assert call_count["n"] == 2
+
+    def test_reraises_after_max_attempts(
+        self, ops_dir: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        path = self._write_good(ops_dir)
+
+        def always_fail(*args: Any, **kwargs: Any) -> Any:
+            raise PermissionError(13, "persistent EACCES")
+
+        monkeypatch.setattr("hypergumbo_tracker.store.open", always_fail, raising=False)
+        with pytest.raises(PermissionError):
+            _parse_ops_file(path)
+
+    def test_race_log_records_every_retry_and_final(
+        self,
+        ops_dir: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from hypergumbo_tracker import race_log
+
+        log_path = tmp_path / "race_log.jsonl"
+        race_log.configure_race_log(log_path)
+        try:
+            path = self._write_good(ops_dir)
+
+            def always_fail(*args: Any, **kwargs: Any) -> Any:
+                raise PermissionError(13, "persistent EACCES")
+
+            monkeypatch.setattr(
+                "hypergumbo_tracker.store.open", always_fail, raising=False,
+            )
+            with pytest.raises(PermissionError):
+                _parse_ops_file(path)
+        finally:
+            race_log.configure_race_log(None)
+
+        lines = log_path.read_text().splitlines()
+        assert len(lines) == 3  # one per attempt
+        records = [__import__("json").loads(line) for line in lines]
+        assert [r["attempt"] for r in records] == [1, 2, 3]
+        assert [r["final"] for r in records] == [False, False, True]
+        assert all(r["errno"] == 13 for r in records)
+        assert all(r["path"] == str(path) for r in records)
+
+    def test_compile_all_skips_persistent_io_error(
+        self,
+        ops_dir: Path,
+        tmp_path: Path,
+        mock_agent_uid: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Layer 2: a persistent-EACCES file must not crash the whole compile,
+        and the suppression MUST be recorded in the race log so silent
+        failures don't accumulate."""
+        from hypergumbo_tracker import race_log
+
+        log_path = tmp_path / "race_log.jsonl"
+        race_log.configure_race_log(log_path)
+        try:
+            store = Store(ops_dir, config=_make_config())
+            store.add(kind="invariant", fields=_INV_FIELDS, title="Good Item")
+            bad_path = ops_dir / ".INV-racy-test.ops"
+            bad_path.write_text("- op: create\n  at: T1\n")
+
+            real_open = open
+
+            def selectively_fail(file: Any, *args: Any, **kwargs: Any) -> Any:
+                if str(file) == str(bad_path):
+                    raise PermissionError(13, "persistent EACCES on racy file")
+                return real_open(file, *args, **kwargs)
+
+            monkeypatch.setattr(
+                "hypergumbo_tracker.store.open", selectively_fail, raising=False,
+            )
+            items = store.list_items()
+            # Good item still compiles; bad file is skipped.
+            titles = [i.title for i in items]
+            assert "Good Item" in titles
+            assert len(items) == 1
+        finally:
+            race_log.configure_race_log(None)
+
+        # Three read_retry records (one per attempt, final=True on last)
+        # plus one compile_suppressed record from _compile_all when the
+        # re-raised PermissionError is caught.
+        import json as _json
+        records = [_json.loads(line) for line in log_path.read_text().splitlines()]
+        events = [r["event"] for r in records]
+        assert events.count("read_retry") == 3
+        assert events.count("compile_suppressed") == 1
+        suppression = next(r for r in records if r["event"] == "compile_suppressed")
+        assert suppression["path"] == str(bad_path)
+        assert suppression["errno"] == 13
+
+    def test_compile_all_cached_logs_suppression(
+        self,
+        ops_dir: Path,
+        tmp_path: Path,
+        mock_agent_uid: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The cached-compile path must also log when it suppresses an
+        OSError — not just the uncached _compile_all variant."""
+        from hypergumbo_tracker import race_log
+
+        log_path = tmp_path / "race_log.jsonl"
+        race_log.configure_race_log(log_path)
+        try:
+            store = Store(ops_dir, config=_make_config())
+            store.add(kind="invariant", fields=_INV_FIELDS, title="Good Item")
+            bad_path = ops_dir / ".INV-cached-racy.ops"
+            bad_path.write_text("- op: create\n  at: T1\n")
+
+            fake_cache = MagicMock()
+            fake_cache.get_compiled.return_value = None  # always cache-miss
+
+            real_open = open
+
+            def selectively_fail(file: Any, *args: Any, **kwargs: Any) -> Any:
+                if str(file) == str(bad_path):
+                    raise PermissionError(13, "persistent EACCES on cached path")
+                return real_open(file, *args, **kwargs)
+
+            monkeypatch.setattr(
+                "hypergumbo_tracker.store.open", selectively_fail, raising=False,
+            )
+            items = store._compile_all_cached(fake_cache)
+            titles = [i.title for i in items]
+            assert "Good Item" in titles
+            assert len(items) == 1
+        finally:
+            race_log.configure_race_log(None)
+
+        import json as _json
+        records = [_json.loads(line) for line in log_path.read_text().splitlines()]
+        suppression_records = [r for r in records if r["event"] == "compile_suppressed"]
+        assert len(suppression_records) == 1
+        assert suppression_records[0]["path"] == str(bad_path)
+
+    def test_compile_all_logs_unexpected_oserror(
+        self,
+        ops_dir: Path,
+        tmp_path: Path,
+        mock_agent_uid: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """OSError subclasses that bypass _parse_ops_file's retry loop
+        (e.g. raised by compile_ops or is_frozen) must still be visible
+        in the race log via log_compile_suppression."""
+        from hypergumbo_tracker import race_log
+
+        log_path = tmp_path / "race_log.jsonl"
+        race_log.configure_race_log(log_path)
+        try:
+            store = Store(ops_dir, config=_make_config())
+            store.add(kind="invariant", fields=_INV_FIELDS, title="Good Item")
+
+            def boom(item_id: str) -> bool:
+                raise OSError(5, "synthetic EIO from is_frozen")
+
+            monkeypatch.setattr(store, "is_frozen", boom)
+            items = store.list_items()
+            # The good item's is_frozen raises, so it's suppressed — list
+            # is empty, but the event MUST be logged.
+            assert items == []
+        finally:
+            race_log.configure_race_log(None)
+
+        import json as _json
+        records = [_json.loads(line) for line in log_path.read_text().splitlines()]
+        # No read_retry entries (open() succeeded; error came from is_frozen).
+        assert all(r["event"] == "compile_suppressed" for r in records)
+        assert len(records) >= 1
+        assert records[0]["errno"] == 5
+
+
 # ---------------------------------------------------------------------------
 # Store: _parse_ops_bytes
 # ---------------------------------------------------------------------------

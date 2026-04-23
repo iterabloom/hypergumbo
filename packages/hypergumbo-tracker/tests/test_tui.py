@@ -5796,6 +5796,39 @@ class TestTuiPreferences:
         assert len(result["toggle_sessions"]) == 9
         assert result["toggle_sessions"][0] == {"s3": 3}
 
+    def test_race_log_path_roundtrip(self, tmp_path: Path) -> None:
+        """Race-log path must survive a save/load cycle so the user can
+        always find the forensic log from the prefs file."""
+        p = tmp_path / "prefs.json"
+        expected = "/some/cache/hypergumbo/tracker/abc123/race_log.jsonl"
+        assert _save_tui_preferences(
+            p, set(), [],
+            race_log_path=expected,
+        ) is True
+        result = _load_tui_preferences(p)
+        assert result["race_log_path"] == expected
+
+    def test_race_log_path_absent_when_not_saved(self, tmp_path: Path) -> None:
+        """A prefs file written without race_log_path loads with an
+        empty string (the default), not a KeyError."""
+        p = tmp_path / "prefs.json"
+        assert _save_tui_preferences(p, set(), []) is True
+        result = _load_tui_preferences(p)
+        assert result["race_log_path"] == ""
+
+    def test_race_log_path_non_string_treated_as_empty(self, tmp_path: Path) -> None:
+        """Malformed on-disk value (non-string) must not propagate."""
+        import json
+        p = tmp_path / "prefs.json"
+        p.write_text(json.dumps({
+            "version": 2,
+            "hidden_statuses": [],
+            "display_order": [],
+            "race_log_path": 12345,
+        }), encoding="utf-8")
+        result = _load_tui_preferences(p)
+        assert result["race_log_path"] == ""
+
 
 # ---------------------------------------------------------------------------
 # Pilot tests: status toggles (c/w keys)
@@ -9511,6 +9544,26 @@ class TestCheckExternalWrites:
             app._check_external_writes()
             await pilot.pause()
             assert app._update_status_filter_bar.call_count >= 1
+
+    async def test_oserror_during_refresh_does_not_crash(self, tmp_path: Path) -> None:
+        """Layer 2: a transient OSError during the background tick must
+        not propagate to Textual's event loop. The race log captures it;
+        the TUI stays up."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            baseline = app._last_ops_signature
+            app._tracker_set.ops_mtime_signature = MagicMock(
+                side_effect=PermissionError(13, "simulated EACCES mid-tick"),
+            )
+            # Must not raise.
+            app._check_external_writes()
+            await pilot.pause()
+            # Signature untouched because the exception short-circuited.
+            assert app._last_ops_signature == baseline
 
     async def test_reload_skipped_while_modal_is_open(self, tmp_path: Path) -> None:
         from textual.screen import ModalScreen
