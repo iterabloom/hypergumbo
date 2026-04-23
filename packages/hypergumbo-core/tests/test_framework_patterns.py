@@ -162,6 +162,99 @@ class TestPattern:
         )
         assert qualified.matches(symbol) is not None
 
+    def test_matcher_boundary_constructor_discipline(self) -> None:
+        """WI-pisab: Pattern.__post_init__ uses the right constructor per field.
+
+        AST-walks the source of ``Pattern.__post_init__`` and asserts that
+        each ``self._<field>_re`` assignment uses the expected constructor.
+        The discipline:
+
+        - **NameMatcher** for symbol-meta matchers whose semantics are
+          *assertion-like* (is-a / has-type / is-annotated-with): the same
+          canonical entity can be spelled several ways depending on import
+          style, and terminal-segment fallback is the right
+          canonicalization. Covers ``base_class``, ``parent_base_class``,
+          ``annotation``, ``parameter_type``.
+        - **re.compile** for decorator matching (YAML dispatch-set
+          triplets — see ``test_decorator_bare_pattern_does_not_match_qualified_source``
+          for rationale) and for structural-attribute matchers
+          (``method_name``, ``symbol_name``, ``language``, ``symbol_kind``,
+          ``modifiers``, ``modifiers_exclude``, ``symbol_path``) whose
+          target values are not import-scoped.
+
+        When adding a new matcher field, update ``EXPECTED`` and document
+        the choice in the WI-pisab tracker item. This lint catches
+        accidental reverts and new matchers that silently bypass
+        canonicalization.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        from hypergumbo_core.framework_patterns import Pattern
+
+        expected = {
+            "_decorator_re": "re.compile",
+            "_base_class_re": "NameMatcher",
+            "_parent_base_class_re": "NameMatcher",
+            "_method_name_re": "re.compile",
+            "_symbol_name_re": "re.compile",
+            "_language_re": "re.compile",
+            "_annotation_re": "NameMatcher",
+            "_param_type_re": "NameMatcher",
+            "_symbol_kind_re": "re.compile",
+            "_modifiers_re": "re.compile",
+            "_modifiers_exclude_re": "re.compile",
+            "_symbol_path_re": "re.compile",
+        }
+
+        source = textwrap.dedent(inspect.getsource(Pattern.__post_init__))
+        tree = ast.parse(source)
+
+        found: dict[str, str] = {}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            target = node.targets[0]
+            if not (
+                isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "self"
+                and target.attr.endswith("_re")
+            ):
+                continue
+
+            # RHS shapes we accept:
+            #   CALL(self.foo) if self.foo else None  (IfExp with Call body)
+            #   CALL(self.foo)                        (bare Call)
+            if isinstance(node.value, ast.Call):
+                call = node.value
+            elif isinstance(node.value, ast.IfExp) and isinstance(
+                node.value.body, ast.Call,
+            ):
+                call = node.value.body
+            else:
+                continue
+
+            if isinstance(call.func, ast.Attribute) and isinstance(
+                call.func.value, ast.Name,
+            ):
+                constructor = f"{call.func.value.id}.{call.func.attr}"
+            elif isinstance(call.func, ast.Name):
+                constructor = call.func.id
+            else:
+                continue
+
+            found[target.attr] = constructor
+
+        assert found == expected, (
+            "Pattern.__post_init__ matcher-constructor discipline violated.\n"
+            f"Expected: {expected}\n"
+            f"Found:    {found}\n"
+            "See WI-pisab for the rationale. When adding a new matcher "
+            "field, update the expected mapping and document the choice."
+        )
+
     def test_pattern_matches_base_class_qualified_spelling(self) -> None:
         """Anchored pattern ``^BaseModel$`` matches qualified source ``pydantic.BaseModel``.
 
