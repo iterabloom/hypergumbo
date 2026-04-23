@@ -14,13 +14,13 @@ other than Python).
 
 ## Current coverage
 
-- **Python** — 8 distinct import×call styles, including the two WI-zigah
+- **Python** — 8 distinct import-times-call styles, including the two WI-zigah
   fix cases (multi-segment attribute chain and dotted-submodule bare
   name) plus aliased / deep-nested / multi-name-import variants.
 
 ## Adding a new language
 
-1. Build a language fixture that exercises the top import×call styles
+1. Build a language fixture that exercises the top import-times-call styles
    for that language (start with the constructs that WI-zigah covered
    in Python — bare name from qualified-module import, multi-segment
    attribute chain, aliased root, aliased terminal name).
@@ -52,7 +52,7 @@ from hypergumbo_core.cli import run_behavior_map
 
 @dataclass(frozen=True)
 class PolyglotFixture:
-    """A language-specific import×call coverage fixture."""
+    """A language-specific import-times-call coverage fixture."""
 
     language: str
     filename: str
@@ -66,7 +66,7 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
         filename="polyglot_python_fixture.py",
         source=(
             '# SPDX-License-Identifier: AGPL-3.0-or-later\n'
-            '"""WI-pisab Python import×call coverage fixture."""\n'
+            '"""WI-pisab Python import-times-call coverage fixture."""\n'
             "import urllib.request\n"
             "import urllib.parse as parse_alias\n"
             "from urllib.request import urlopen\n"
