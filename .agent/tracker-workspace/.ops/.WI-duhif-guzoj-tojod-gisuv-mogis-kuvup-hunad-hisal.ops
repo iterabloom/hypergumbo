@@ -1,0 +1,20 @@
+- op: create  # 7451
+  at: '2026-04-23T09:51:14Z'  # 7451
+  by: agent  # 7451
+  actor: jgstern_agent  # 7451
+  clock: 1  # 7451
+  nonce: '7451'  # 7451
+  data:  # 7451
+    kind: work_item  # 7451
+    title: "graphql_resolver linker false-positives on its own source / docstring examples"  # 7451
+    status: todo_soft  # 7451
+    priority: 4  # 7451
+    parent:  # 7451
+    tags:  # 7451
+    - analysis_quality  # 7451
+    isbefore: []  # 7451
+    duplicate_of: []  # 7451
+    not_duplicate_of: []  # 7451
+    pr_ref:  # 7451
+    description: "Dogfood round 2 (post-WI-zigah, 2026-04-23): all 19 graphql_resolver symbols on hypergumbo self-analysis are orphan. Root cause is that _scan_python_resolvers in packages/hypergumbo-core/src/hypergumbo_core/linkers/graphql_resolver.py regex-scans raw file text and matches patterns embedded in its OWN source code (docstring examples at line 15-20, regex alternations at line 82/156/160 containing 'Query|Mutation|Subscription', substring tests at line 191). Every match creates a 'Mutation.createUser' / 'Query.users' symbol; when no real GraphQL schema symbols exist in the repo (as is the case for hypergumbo itself), none of these can be linked, so the symbols are 100% orphan.\n\nNot a user-impact bug: on repos with actual GraphQL schemas the linker works as intended. It's a self-analysis noise issue — the regex scanner can't distinguish code from strings-inside-code.\n\nProper fix: switch from regex-on-raw-text to AST-aware scanning that skips string literals / comments / docstrings. Or exclude hypergumbo's own linker source directory from analysis.\n\nLow priority — filing for visibility; address during a linker-cleanup pass rather than reactively."  # 7451
+    fields: {}  # 7451

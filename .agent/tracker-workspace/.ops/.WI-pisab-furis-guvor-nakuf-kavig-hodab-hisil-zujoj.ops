@@ -25,3 +25,18 @@
   clock: 2  # 231b
   nonce: 231b  # 231b
   message: "Scope revision (2026-04-23): Level 1's localized framework_patterns.py bug fix belongs to WI-zigah, not here. Level 2's role on framework_patterns.py is REFACTOR-TO-SHARED-UTILITY, not bug fix. Revised scope:\n1. Build NameMatcher utility (canonical-form tuples, source-spelling variants).\n2. REFACTOR framework_patterns.py to call NameMatcher instead of its local normalization from WI-zigah.\n3. Retrofit di_resolution.py (line 641 interface-name lookup).\n4. Audit io_boundary.py lookup_with_module (line 833) — may already canonicalize; if so, document and skip.\n5. Lint/test rule flagging raw regex/string matching against symbol-meta in matcher code paths.\n6. Polyglot coverage fixture (one file per language × top import/call constructs) + property test."  # 231b
+- op: update  # 2242
+  at: '2026-04-23T09:43:43Z'  # 2242
+  by: agent  # 2242
+  actor: jgstern_agent  # 2242
+  clock: 3  # 2242
+  nonce: '2242'  # 2242
+  set:  # 2242
+    status: todo_soft  # 2242
+- op: discuss  # 5b45
+  at: '2026-04-23T09:43:43Z'  # 5b45
+  by: agent  # 5b45
+  actor: jgstern_agent  # 5b45
+  clock: 4  # 5b45
+  nonce: 5b45  # 5b45
+  message: "Phase 1 shipped in PR #3313 (merged 2026-04-23): NameMatcher utility + framework_patterns.py base_class/parent_base_class retrofit. Remaining Level 2 scope downgraded to todo_soft and moved to follow-up: decorator/annotation retrofit via NameMatcher.match(), di_resolution.py interface-name lookup retrofit, io_boundary.py lookup_with_module audit, polyglot coverage fixture, lint rule flagging raw re.match on symbol-meta strings. The first-party payoff site (base_class matching) is live; remaining sites are hardening."  # 5b45

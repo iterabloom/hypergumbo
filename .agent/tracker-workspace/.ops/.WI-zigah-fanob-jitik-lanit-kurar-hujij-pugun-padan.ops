@@ -25,3 +25,18 @@
   clock: 2  # fff2
   nonce: fff2  # fff2
   message: "Scope clarification (per user on 2026-04-23): this item covers Level 1 of the matcher-boundary bug class response = Python analyzer (py.py) dotted-submodule call-edge emission PLUS framework_patterns.py localized normalization fix. The framework_patterns.py patch normalizes source-side meta strings (decorators, base_classes, annotations) against YAML pattern keys at the match site — a direct bug fix, not yet a refactor to a shared utility. Refactoring to the shared NameMatcher is Level 2 (WI-pisab-furis). Analogous non-Python analyzer gaps (JS/TS, Go, Rust, Java, C++, Ruby, Elixir) are Level 1b, filed separately at P4 needs_human_review."  # fff2
+- op: update  # c9f4
+  at: '2026-04-23T09:07:56Z'  # c9f4
+  by: agent  # c9f4
+  actor: jgstern_agent  # c9f4
+  clock: 3  # c9f4
+  nonce: c9f4  # c9f4
+  set:  # c9f4
+    status: done  # c9f4
+- op: discuss  # 4819
+  at: '2026-04-23T09:07:56Z'  # 4819
+  by: agent  # 4819
+  actor: jgstern_agent  # 4819
+  clock: 4  # 4819
+  nonce: '4819'  # 4819
+  message: "Fixed in PR #3312 (merged 2026-04-23). Two new elif branches in _process_call plus top-level-binding recording at import time. Ground truth post-fix: all 7 urllib call sites in the repo emit correct calls edges; io-boundaries net_send chains newly carry valid entry_points instead of empty. framework_patterns.py normalization was scoped to Level 2 (WI-pisab-furis) for architectural fit with the shared NameMatcher."  # 4819
