@@ -35,6 +35,10 @@ New `module_attr_ref` edge type emitted across six languages for attribute reads
 
 - **`io_primitives/python.yaml#net_send`** gains `huggingface_hub.{snapshot_download, hf_hub_download}`, `huggingface_hub.HfApi.{model_info, list_repo_files, download_file}`, and `sentence_transformers.SentenceTransformer`. Surfaced by the 2026-04-23 self-audit: hypergumbo's embeddings extra demonstrably contacts HF Hub (the dogfood run printed an "unauthenticated requests to the HF Hub" warning), but io-boundaries reported zero matching `net_send` chains because the HF stack lives one layer above the `requests` / `httpx` clients the catalog already covered. Adding the wrapper-layer entries lets `verify-claims` reason about the embeddings install's network surface without having to walk into third-party code.
 
+#### IO catalog — Python stdio reclassified from ipc_send to logging (WI-tolif)
+
+- **`io_primitives/python.yaml`**: `sys.stdout` and `sys.stderr` move out of `ipc_send` into a new `logging` block. Same fix Go's `log` / `log/slog` / `fmt` already received (see `test_go_catalog_slog_logging`): writing to stdout/stderr is terminal/log output, not inter-process communication in any threat-model sense, and classifying it as `ipc_send` produced 70 false-positive chains in hypergumbo's own self-analysis (out of 77 ipc_send chains total). `sys.stdin` stays in `ipc_recv` — it can carry untrusted piped input from the parent process, which is a real IPC threat-model concern. Cross-language analogs (`c.yaml`, `javascript.yaml`, `rust.yaml`, `scala.yaml`) tracked separately.
+
 ### Changed
 
 #### Taint catalog auto-derivation (WI-lokuv)

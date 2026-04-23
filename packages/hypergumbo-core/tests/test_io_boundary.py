@@ -80,6 +80,26 @@ class TestLoadCatalog:
         names = {p.qualified_name for p in net_sends}
         assert "socket.socket.send" in names
 
+    def test_python_catalog_stdio_is_logging_not_ipc_send(self) -> None:
+        # WI-tolif: 2026-04-23 self-audit found that 70 of hypergumbo's 77
+        # ipc_send chains were just sys.stderr writes (cli.py progress
+        # output, warnings) — the same false-positive class that drove
+        # Go's log/slog/fmt to be moved out of ipc_send into logging
+        # (see test_go_catalog_slog_logging). Same fix here for Python:
+        # stdout/stderr are terminal output, not inter-process communication.
+        catalog = load_catalog("python")
+        for attr in ("stdout", "stderr"):
+            hit = catalog.lookup_with_module(attr, "sys")
+            assert hit is not None, f"sys.{attr} should be in the Python IO catalog"
+            assert hit.boundary == "logging", (
+                f"sys.{attr} should be classified as logging, not {hit.boundary}"
+            )
+        # sys.stdin stays in ipc_recv — it can carry untrusted piped input
+        # from the parent process (a real IPC threat model, not just terminal echo).
+        hit = catalog.lookup_with_module("stdin", "sys")
+        assert hit is not None
+        assert hit.boundary == "ipc_recv"
+
     def test_python_catalog_has_huggingface_hub_net_send(self) -> None:
         # WI-jihuj: 2026-04-23 self-audit found that hypergumbo's embeddings
         # extra demonstrably hits HuggingFace Hub (the dogfood run printed

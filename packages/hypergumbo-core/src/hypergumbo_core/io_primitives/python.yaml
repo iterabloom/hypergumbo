@@ -157,13 +157,20 @@ net_recv:
     notes: "aiohttp web server"
 
 ipc_send:
-  - module: sys
-    attributes: [stdout, stderr]
-    notes: "Writing to stdout/stderr sends data to the parent process or terminal"
   - module: multiprocessing.Queue
     methods: [put, put_nowait]
   - module: multiprocessing.Pipe
     methods: [send, send_bytes]
+
+logging:
+  # WI-tolif: stdio writes are terminal output / log destinations, not
+  # inter-process communication in any threat-model sense — same reason
+  # Go's log/slog/fmt sit in `logging` rather than `ipc_send`.  Keeping
+  # them under ipc_send produced 70+ false positives per repo
+  # (hypergumbo's own self-audit on 2026-04-23 surfaced this).
+  - module: sys
+    attributes: [stdout, stderr]
+    notes: "Terminal / log output; redirectable to file or pipe but not by itself an IPC channel"
 
 ipc_recv:
   - module: sys
