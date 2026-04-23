@@ -18,3 +18,18 @@
     pr_ref:  # 4cf6
     description: "Discovered via 2026-04-23 self-audit. python.yaml#ipc_send lists 'sys.stdout, sys.stderr' as attributes; python.yaml#ipc_recv lists 'sys.stdin'. As a result, the 'ipc_send' boundary in hypergumbo's own self-analysis shows 77 chains, 70 of which are just stderr writes (cli.py progress output, warnings). Technically correct (POSIX stdio is IPC) but cosmetically misleading: 'IPC' implies signal channels / sockets / pipes that route to other processes, whereas these are terminal output.\n\nThe catalog already defines a 'logging' boundary type (io_boundary.py line 260). Move sys.stdout/sys.stderr to logging; sys.stdin probably stays in ipc_recv (it CAN receive piped untrusted input — fs_read is a stretch).\n\nDownstream check before changing:\n- taint.py AUTO_SOURCE_LABEL_MAP / AUTO_SINK_LABEL_MAP — what does ipc_send map to today?\n- Any verify-claims fixture / test that asserts on the ipc_send category for stdio.\n- The same pattern is likely in java.yaml / go.yaml / javascript.yaml / etc. — file scope-expansion sub-items if found.\n\nAcceptance: hypergumbo io-boundaries on hypergumbo shows ipc_send chain count drop from 77 → ~5, and a new 'logging' bucket with ~70 chains."  # 4cf6
     fields: {}  # 4cf6
+- op: update  # bb21
+  at: '2026-04-23T20:56:29Z'  # bb21
+  by: agent  # bb21
+  actor: jgstern_agent  # bb21
+  clock: 2  # bb21
+  nonce: bb21  # bb21
+  set:  # bb21
+    status: done  # bb21
+- op: discuss  # 89ba
+  at: '2026-04-23T20:56:29Z'  # 89ba
+  by: agent  # 89ba
+  actor: jgstern_agent  # 89ba
+  clock: 3  # 89ba
+  nonce: 89ba  # 89ba
+  message: "Merged in PR via commit 2ece85238. Cross-language scope-expansion tracked as WI-dutah."  # 89ba
