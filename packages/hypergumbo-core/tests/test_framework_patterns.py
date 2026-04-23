@@ -122,6 +122,46 @@ class TestPattern:
         assert result["concept"] == "model"
         assert result["matched_base_class"] == "BaseModel"
 
+    def test_decorator_bare_pattern_does_not_match_qualified_source(self) -> None:
+        """Decorator YAML uses dispatch-set triplets; bare patterns must stay literal.
+
+        Regression guard for WI-pisab Phase 2. The YAML decorator corpus pairs
+        bare patterns (e.g., ``^task$`` in celery.yaml) with qualified
+        counterparts (``^(celery|app)\\.task$``) as a mutually-exclusive
+        dispatch set. Retrofitting ``_decorator_re`` to NameMatcher would
+        make the bare pattern also match the qualified source via the
+        terminal-segment fallback, firing both rules against one decorator
+        and doubling the concept enrichment on every celery/cdi codebase.
+
+        Keep decorator matching on raw ``re.compile``. The equivalent retrofit
+        lands safely on base_class, parent_base_class, annotation, and
+        parameter_type because their YAML corpora do not use dispatch-set
+        triplets.
+        """
+        bare = Pattern(concept="task_bare", decorator=r"^task$")
+        qualified = Pattern(
+            concept="task_qualified", decorator=r"^(celery|app)\.task$",
+        )
+
+        symbol = Symbol(
+            id="test:tasks.py:1:worker:function",
+            name="worker",
+            kind="function",
+            language="python",
+            path="tasks.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [{"name": "app.task"}],
+            },
+        )
+
+        assert bare.matches(symbol) is None, (
+            "Bare decorator pattern ``^task$`` must not match qualified "
+            "source ``app.task`` — terminal-fallback would break "
+            "dispatch-set mutual exclusion."
+        )
+        assert qualified.matches(symbol) is not None
+
     def test_pattern_matches_base_class_qualified_spelling(self) -> None:
         """Anchored pattern ``^BaseModel$`` matches qualified source ``pydantic.BaseModel``.
 
@@ -185,6 +225,45 @@ class TestPattern:
         assert result["concept"] == "route"
         assert result["matched_annotation"] == "@GetMapping"
 
+    def test_pattern_matches_annotation_qualified_spelling(self) -> None:
+        """Anchored bare pattern matches qualified annotation via terminal fallback.
+
+        WI-pisab regression test (Phase 2). A YAML annotation pattern like
+        ``^RestController$`` should match a source spelling of
+        ``org.springframework.web.bind.annotation.RestController`` —
+        otherwise Java codebases whose analyzer stores fully-qualified
+        annotation names silently lose concept enrichment.
+        """
+        pattern = Pattern(
+            concept="controller",
+            annotation=r"^RestController$",
+        )
+
+        symbol = Symbol(
+            id="test:UserController.java:1:UserController:class",
+            name="UserController",
+            kind="class",
+            language="java",
+            path="UserController.java",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "org.springframework.web.bind.annotation.RestController"},
+                ],
+            },
+        )
+
+        result = pattern.matches(symbol)
+        assert result is not None, (
+            "Fully-qualified annotation spelling should match anchored bare "
+            "pattern via terminal-segment fallback."
+        )
+        assert result["concept"] == "controller"
+        assert (
+            result["matched_annotation"]
+            == "org.springframework.web.bind.annotation.RestController"
+        )
+
     def test_pattern_matches_parameter_type(self) -> None:
         """Pattern matches function parameter type."""
         pattern = Pattern(
@@ -210,6 +289,42 @@ class TestPattern:
         assert result is not None
         assert result["concept"] == "dependency"
         assert result["matched_parameter_type"] == "Depends"
+
+    def test_pattern_matches_parameter_type_qualified_spelling(self) -> None:
+        """Anchored bare pattern matches qualified param type via terminal fallback.
+
+        WI-pisab regression test (Phase 2). A YAML parameter_type pattern like
+        ``^Depends$`` should match a source parameter type spelling of
+        ``fastapi.Depends`` stored in the ``type`` field. Matters whenever a
+        language analyzer records type annotations in their qualified form
+        (``import fastapi`` + ``def handler(db: fastapi.Depends) -> ...``).
+        """
+        pattern = Pattern(
+            concept="dependency",
+            parameter_type=r"^Depends$",
+        )
+
+        symbol = Symbol(
+            id="test:file.py:1:func:function",
+            name="create_user",
+            kind="function",
+            language="python",
+            path="file.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "parameters": [
+                    {"name": "db", "type": "fastapi.Depends"},
+                ],
+            },
+        )
+
+        result = pattern.matches(symbol)
+        assert result is not None, (
+            "Qualified parameter type spelling should match anchored bare "
+            "pattern via terminal-segment fallback."
+        )
+        assert result["concept"] == "dependency"
+        assert result["matched_parameter_type"] == "fastapi.Depends"
 
     def test_pattern_handles_none_parameter_type(self) -> None:
         """Pattern handles None parameter type without crashing."""

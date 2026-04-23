@@ -197,12 +197,30 @@ class Pattern:
 
     def __post_init__(self) -> None:
         """Compile regex patterns for efficiency."""
-        self._decorator_re = re.compile(self.decorator) if self.decorator else None
-        # WI-pisab: base_class and parent_base_class use NameMatcher so that
-        # anchored YAML patterns (e.g., "^BaseModel$") still match a source
-        # spelling qualified by a different import style (e.g.,
-        # "pydantic.BaseModel" via `import pydantic`). NameMatcher falls back
-        # to the terminal dotted segment when the raw-source regex misses.
+        # WI-pisab: symbol-meta matchers for inheritance / type-annotation
+        # semantics (base_class, parent_base_class, annotation,
+        # parameter_type) use NameMatcher so that anchored YAML patterns
+        # (e.g., ``^BaseModel$``) still match a source spelling qualified
+        # by a different import style (e.g., ``pydantic.BaseModel`` via
+        # ``import pydantic``). NameMatcher falls back to the terminal
+        # dotted segment when the raw-source regex misses.
+        #
+        # decorator stays on raw re.compile. The decorator YAML corpus uses
+        # dispatch-set triplets — e.g., celery.yaml pairs ``^task$`` for
+        # ``@task`` with ``^(celery|app)\.task$`` for ``@app.task``, and
+        # jakarta-cdi.yaml pairs ``^ApplicationScoped$`` with
+        # ``^jakarta\.enterprise\.context\.ApplicationScoped$``. Terminal
+        # fallback would break the mutual exclusion (``^task$`` would
+        # match ``@app.task`` via the terminal segment, firing two rules
+        # against one decorator).
+        #
+        # Non-symbol-meta fields (method_name, symbol_name, language,
+        # modifiers, symbol_path, symbol_kind) compare against structural
+        # symbol attributes — not import-scoped spellings — so they stay
+        # on raw re.compile.
+        self._decorator_re = (
+            re.compile(self.decorator) if self.decorator else None
+        )
         self._base_class_re = (
             NameMatcher(self.base_class) if self.base_class else None
         )
@@ -216,9 +234,11 @@ class Pattern:
             re.compile(self.symbol_name) if self.symbol_name else None
         )
         self._language_re = re.compile(self.language) if self.language else None
-        self._annotation_re = re.compile(self.annotation) if self.annotation else None
+        self._annotation_re = (
+            NameMatcher(self.annotation) if self.annotation else None
+        )
         self._param_type_re = (
-            re.compile(self.parameter_type) if self.parameter_type else None
+            NameMatcher(self.parameter_type) if self.parameter_type else None
         )
         self._symbol_kind_re = (
             re.compile(self.symbol_kind) if self.symbol_kind else None
