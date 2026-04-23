@@ -18,3 +18,18 @@
     pr_ref:  # 8a08
     description: "Follow-up to WI-lozug PR 4 (see /home/jgstern_agent/.claude/plans/zany-tumbling-plum.md §A). emit_module_attribute_refs in analyze/base.py currently walks attribute-access nodes (e.g. member_expression, field_access, selector_expression) using an object-and-property child pair. Some language grammars use a left-recursive scoped-path structure instead: Rust 'std::env::consts::OS' is tree-sitter-rust's scoped_identifier with path+name children (not field_expression); C++ 'std::cout' / 'std::cerr' / 'std::cin' use qualified_identifier; Groovy and Kotlin use scoped_identifier for package-qualified references. The helper's current model cannot match these. Needed: extend emit_module_attribute_refs with an optional kwarg (e.g. use_scoped_path=True) that switches the traversal from object_field_names to a left-recursive walk of the path field, yielding the leftmost identifier as the base and the full dotted name as the attribute. Then wire up: (1) Rust tree-sitter path in rust.py (matches 'std::env: [consts]' under env_read in rust.yaml — currently inert on the tree-sitter path; rust-analyzer path is separate and already functional), (2) C++ in cpp.py (requires cpp.yaml additions for std::cout/cerr/cin under ipc_send/ipc_recv if not already there), (3) Groovy and Kotlin if YAML coverage merits. Unit tests follow WI-gapam's TestEmitModuleAttributeRefs pattern. Real-repo validation on ripgrep / bat for Rust, any C++ CLI for C++."  # 8a08
     fields: {}  # 8a08
+- op: update  # 126f
+  at: '2026-04-23T03:10:47Z'  # 126f
+  by: agent  # 126f
+  actor: jgstern_agent  # 126f
+  clock: 2  # 126f
+  nonce: 126f  # 126f
+  set:  # 126f
+    status: done  # 126f
+- op: discuss  # d532
+  at: '2026-04-23T03:10:47Z'  # d532
+  by: agent  # d532
+  actor: jgstern_agent  # d532
+  clock: 3  # d532
+  nonce: d532  # d532
+  message: "Merged in c727ae1c9 (PR #3304). emit_module_attribute_refs gained a scoped_path=True mode (left-recursive walk over path/name fields, dot-normalized module paths in the edge ID). IoBoundaryCatalog._rebuild_indices registers dot-form aliases for ::-containing qualified names so scoped-path edges hit the qualified lookup index. Wired into the tree-sitter Rust analyzer with std injected as an implicit import. WI-lozug PR 4 regression-guard stub flipped to positive emission (TestRustModuleAttrRefsScoped, 4 tests). C++ qualified_identifier wire-up deferred — filed as WI-zojid (needs cpp.yaml with std::cout/cerr/cin attributes first, can then use the same helper with node_kinds=('qualified_identifier',)). Groovy/Kotlin scoped_identifier remains out of scope until their respective YAML catalogs gain attributes entries."  # d532

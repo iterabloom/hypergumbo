@@ -1,0 +1,20 @@
+- op: create  # 5d83
+  at: '2026-04-23T03:08:25Z'  # 5d83
+  by: agent  # 5d83
+  actor: jgstern_agent  # 5d83
+  clock: 1  # 5d83
+  nonce: 5d83  # 5d83
+  data:  # 5d83
+    kind: work_item  # 5d83
+    title: "C++ scoped-path attribute emission: cpp.yaml std::cout/cerr/cin + qualified_identifier wire-up"  # 5d83
+    status: todo_soft  # 5d83
+    priority: 3  # 5d83
+    parent:  # 5d83
+    tags:  # 5d83
+    - analysis_quality  # 5d83
+    isbefore: []  # 5d83
+    duplicate_of: []  # 5d83
+    not_duplicate_of: []  # 5d83
+    pr_ref:  # 5d83
+    description: "Follow-up deferred from WI-vipur (see CHANGELOG.md [Unreleased] 'WI-vipur: cross-language scoped-path mode'). WI-vipur landed the scoped_path=True mode on emit_module_attribute_refs and wired it to Rust's scoped_identifier. C++'s qualified_identifier has the same left-recursive path/name shape and would work with the same helper (node_kinds=('qualified_identifier',)), but C++ currently aliases to the C catalog (_CATALOG_ALIASES['cpp']='c' in io_boundary.py:319), and c.yaml's stdio attributes are bare C identifiers (stdout/stderr/stdin under module: stdio) — not the C++ std:: forms. Work needed: (a) create packages/hypergumbo-core/src/hypergumbo_core/io_primitives/cpp.yaml with ipc_send entries for module: std, attributes: [cout, cerr] and ipc_recv module: std, attributes: [cin], inheriting the rest from c.yaml via _CATALOG_PARENTS['cpp']='c' (the io_boundary.py already has the parent-inheritance mechanism used by kotlin/scala/elixir); (b) wire the helper into cpp.py's Pass-2 loop with scoped_path=True, node_kinds=('qualified_identifier',), object_field_names and property_field_names matching the tree-sitter-cpp grammar fields (verify with a sandbox parse first — they may be 'scope' / 'name' or similar), and inject 'std' as an implicit import; (c) unit tests following WI-vipur's pattern in test_cpp.py. Real-repo validation candidates under 50MB: any C++ CLI using std::cout/cerr heavily. Pairs with the other WI-vipur-adjacent language follow-up, which was noted but not tracked: Groovy and Kotlin scoped_identifier in package-qualified references — but those only matter if the respective YAML catalogs gain attributes entries (they don't today), so Groovy/Kotlin remain out of scope until someone adds catalog entries that would benefit from scoped-path mode."  # 5d83
+    fields: {}  # 5d83
