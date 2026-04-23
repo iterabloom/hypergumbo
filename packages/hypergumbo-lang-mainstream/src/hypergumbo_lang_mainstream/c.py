@@ -46,6 +46,8 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
+    iter_tree_with_context,
+    make_file_id,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
@@ -733,6 +735,120 @@ def _analyze_c_file(
     return symbols, edges, True
 
 
+# WI-gotuv: bare-identifier C stdio globals.  Map of identifier name to
+# the c.yaml module under which the matching ``attributes:`` entry lives.
+# These are extern ``FILE *`` declared in ``<stdio.h>`` — they are referenced
+# in code as bare identifiers (``fprintf(stdout, ...)``), never as a
+# member-expression.  The WI-gapam ``emit_module_attribute_refs`` helper
+# only matches member / scoped shapes and so will not produce edges for
+# these.  This module emits ``module_attr_ref`` edges for non-shadowed
+# references, which then get tagged as ``ipc_send`` / ``ipc_recv`` by
+# ``io_boundary.tag_io_boundaries`` against the existing entries at
+# ``io_primitives/c.yaml:85,92``.
+_C_STDIO_GLOBALS: dict[str, str] = {
+    "stdout": "stdio",
+    "stderr": "stdio",
+    "stdin": "stdio",
+}
+
+
+def _terminal_declarator_name(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """Walk ``declarator`` field children down to the terminal identifier.
+
+    Tree-sitter-c nests declarators: ``int *foo[3]`` parses as
+    ``declaration → init_declarator → array_declarator →
+    pointer_declarator → identifier``.  Each non-terminal level carries
+    its inner declarator under the ``declarator`` field.  Walk that
+    field repeatedly until it returns ``None``, then read the terminal
+    node — which is normally an ``identifier``.  Returns ``None`` for
+    declaration shapes whose terminal node isn't an identifier
+    (function pointers, abstract declarators, etc.).
+    """
+    cur = node
+    while True:
+        nxt = cur.child_by_field_name("declarator")
+        if nxt is None:
+            break
+        cur = nxt
+    if cur.type == "identifier":
+        return node_text(cur, source)
+    return None  # pragma: no cover -- abstract / function-pointer declarators
+
+
+def _emit_stdio_identifier_refs(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    run: AnalysisRun,
+    edges_out: list[Edge],
+) -> None:
+    """Emit ``module_attr_ref`` edges for non-shadowed bare references to
+    well-known C stdio globals (``stdout`` / ``stderr`` / ``stdin``).
+
+    Pairs with ``c.yaml``'s ``attributes:`` entries under ``ipc_send`` /
+    ``ipc_recv``.  ``io_boundary.tag_io_boundaries`` already handles the
+    matching — this just produces the edges to be tagged.
+
+    Skips identifier references that are shadowed by a local declaration
+    or parameter of the same name in the enclosing function (or by a
+    file-scope declaration when the reference is at top level), so a
+    function with ``FILE *stdout = NULL;`` doesn't produce a false
+    positive.
+
+    The edge dst format matches the WI-gapam convention used by
+    Go / JS / Java / Rust:
+    ``c:stdio:0-0:stdio.<name>:attribute``.  Confidence 0.85,
+    evidence_type ``module_identifier_reference``.  Caller src is the
+    file-level pseudo-symbol (``make_file_id``).
+    """
+    root = tree.root_node
+    file_id = make_file_id("c", str(file_path))
+    func_kinds = {"function_definition"}
+    decl_kinds = {"declaration", "parameter_declaration"}
+
+    # Pre-pass: collect names declared locally that shadow stdio globals.
+    # Key = enclosing function node id, or None for file-scope declarations.
+    shadows: dict[Optional[int], set[str]] = {None: set()}
+    for node, ctx in iter_tree_with_context(root, func_kinds):
+        if node.type not in decl_kinds:
+            continue
+        name = _terminal_declarator_name(node, source)
+        if name is None:
+            continue
+        if name not in _C_STDIO_GLOBALS:
+            continue
+        ctx_key: Optional[int] = ctx.id if ctx is not None else None
+        shadows.setdefault(ctx_key, set()).add(name)
+
+    file_scope_shadows = shadows[None]
+
+    # Main pass: emit for unshadowed identifier references.
+    for node, ctx in iter_tree_with_context(root, func_kinds):
+        if node.type != "identifier":
+            continue
+        name = node_text(node, source)
+        if name not in _C_STDIO_GLOBALS:
+            continue
+        if name in file_scope_shadows:
+            continue
+        if ctx is not None and name in shadows.get(ctx.id, set()):
+            continue
+        module = _C_STDIO_GLOBALS[name]
+        qname = f"{module}.{name}"
+        edges_out.append(Edge.create(
+            src=file_id,
+            dst=f"c:{module}:0-0:{qname}:attribute",
+            edge_type="module_attr_ref",
+            line=node.start_point[0] + 1,
+            confidence=0.85,
+            evidence_type="module_identifier_reference",
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        ))
+
+
 class CAnalyzer(TreeSitterAnalyzer):
     """Tree-sitter-based C analyzer.
 
@@ -805,10 +921,12 @@ class CAnalyzer(TreeSitterAnalyzer):
         resolver: NameResolver,
     ) -> list[Edge]:
         """Extract call edges from a single C file."""
-        return _extract_edges(
+        edges = _extract_edges(
             tree, source, file_path, run, global_symbols, resolver,
             local_symbols=local_symbols,
         )
+        _emit_stdio_identifier_refs(tree, source, file_path, run, edges)
+        return edges
 
     def analyze(
         self,

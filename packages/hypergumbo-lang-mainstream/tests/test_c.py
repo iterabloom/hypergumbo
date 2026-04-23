@@ -1992,3 +1992,163 @@ class TestCShapeId:
         assert struct.shape_id is not None
         assert struct.shape_id.startswith("sha256:")
 
+
+# WI-gotuv: bare-identifier matching for C stdio globals
+# (stdout / stderr / stdin).  c.yaml declares `attributes: [stdout, stderr]`
+# under ipc_send and `attributes: [stdin]` under ipc_recv but those entries
+# were inert until the C analyzer started emitting `module_attr_ref` edges
+# for non-shadowed bare references to those identifiers.
+class TestCStdioIdentifierRefs:
+    """Tests for the WI-gotuv stdio-globals identifier-ref emission."""
+
+    def _attr_edges(self, edges: list) -> list:
+        return [e for e in edges if e.edge_type == "module_attr_ref"]
+
+    def test_stdout_in_fprintf_call_emits(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text(
+            "#include <stdio.h>\n"
+            "void greet(void) {\n"
+            "    fprintf(stdout, \"hi\\n\");\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        attrs = self._attr_edges(result.edges)
+        dsts = [e.dst for e in attrs]
+        assert "c:stdio:0-0:stdio.stdout:attribute" in dsts, dsts
+        edge = next(e for e in attrs if "stdout" in e.dst)
+        assert edge.confidence == 0.85
+        assert edge.evidence_type == "module_identifier_reference"
+
+    def test_all_three_globals_in_one_file(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "io.c").write_text(
+            "#include <stdio.h>\n"
+            "void doit(void) {\n"
+            "    char buf[64];\n"
+            "    fprintf(stderr, \"err\\n\");\n"
+            "    fprintf(stdout, \"out\\n\");\n"
+            "    fgets(buf, sizeof(buf), stdin);\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        attrs = self._attr_edges(result.edges)
+        dsts = {e.dst for e in attrs}
+        assert "c:stdio:0-0:stdio.stdout:attribute" in dsts
+        assert "c:stdio:0-0:stdio.stderr:attribute" in dsts
+        assert "c:stdio:0-0:stdio.stdin:attribute" in dsts
+
+    def test_local_shadowing_skips_emission(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "shadow.c").write_text(
+            "#include <stdio.h>\n"
+            "void shadow(void) {\n"
+            "    FILE *stdout = (void*)0;\n"
+            "    fprintf(stdout, \"x\");\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        attrs = self._attr_edges(result.edges)
+        assert not any(
+            "stdio.stdout" in e.dst for e in attrs
+        ), [e.dst for e in attrs]
+
+    def test_parameter_shadowing_skips_emission(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "param.c").write_text(
+            "#include <stdio.h>\n"
+            "void writer(FILE *stdout) {\n"
+            "    fprintf(stdout, \"x\");\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        attrs = self._attr_edges(result.edges)
+        assert not any(
+            "stdio.stdout" in e.dst for e in attrs
+        ), [e.dst for e in attrs]
+
+    def test_unrelated_identifier_not_emitted(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "other.c").write_text(
+            "#include <stdio.h>\n"
+            "void f(void) {\n"
+            "    int out = 42;\n"
+            "    (void)out;\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        attrs = self._attr_edges(result.edges)
+        assert attrs == [], [e.dst for e in attrs]
+
+    def test_file_scope_shadow_skips_in_function(
+        self, tmp_path: Path,
+    ) -> None:
+        """A file-scope declaration that shadows a stdio global causes
+        subsequent references (including inside function bodies) to be
+        skipped, because file-scope shadows apply to every enclosing
+        scope below them."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "fshadow.c").write_text(
+            "#include <stdio.h>\n"
+            "static FILE *stdout = (void*)0;\n"
+            "void use(void) {\n"
+            "    fprintf(stdout, \"x\");\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        attrs = self._attr_edges(result.edges)
+        assert not any(
+            "stdio.stdout" in e.dst for e in attrs
+        ), [e.dst for e in attrs]
+
+    def test_top_level_extern_reference_emits(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "globals.c").write_text(
+            "#include <stdio.h>\n"
+            "static FILE *log_target = stderr;\n"
+            "void use(void) { (void)log_target; }\n"
+        )
+        result = analyze_c(tmp_path)
+        attrs = self._attr_edges(result.edges)
+        dsts = [e.dst for e in attrs]
+        assert "c:stdio:0-0:stdio.stderr:attribute" in dsts, dsts
+
+    def test_io_boundary_tags_emitted_edges(self, tmp_path: Path) -> None:
+        from hypergumbo_core.io_boundary import (
+            load_catalog,
+            tag_io_boundaries,
+        )
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "tag.c").write_text(
+            "#include <stdio.h>\n"
+            "void f(void) {\n"
+            "    char buf[64];\n"
+            "    fprintf(stdout, \"o\");\n"
+            "    fprintf(stderr, \"e\");\n"
+            "    fgets(buf, sizeof(buf), stdin);\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        catalogs = {"c": load_catalog("c")}
+        tagged = tag_io_boundaries(result.edges, catalogs)
+        assert tagged > 0
+        attrs = self._attr_edges(result.edges)
+        by_name = {e.dst.split(":")[-2]: e for e in attrs}
+        out_edge = by_name["stdio.stdout"]
+        assert out_edge.meta is not None
+        assert out_edge.meta.get("io_boundary") == "ipc_send"
+        assert out_edge.meta.get("io_primitive") == "stdio.stdout"
+        err_edge = by_name["stdio.stderr"]
+        assert err_edge.meta.get("io_boundary") == "ipc_send"
+        in_edge = by_name["stdio.stdin"]
+        assert in_edge.meta.get("io_boundary") == "ipc_recv"
+        assert in_edge.meta.get("io_primitive") == "stdio.stdin"
+
