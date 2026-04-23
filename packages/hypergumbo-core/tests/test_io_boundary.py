@@ -80,6 +80,19 @@ class TestLoadCatalog:
         names = {p.qualified_name for p in net_sends}
         assert "socket.socket.send" in names
 
+    def test_python_catalog_has_huggingface_hub_net_send(self) -> None:
+        # WI-jihuj: 2026-04-23 self-audit found that hypergumbo's embeddings
+        # extra demonstrably hits HuggingFace Hub (the dogfood run printed
+        # "unauthenticated requests to the HF Hub"), but io-boundaries
+        # reported zero net_send chains for it because huggingface_hub /
+        # sentence_transformers were missing from the catalog.
+        catalog = load_catalog("python")
+        net_sends = {p.qualified_name for p in catalog.primitives
+                     if p.boundary == "net_send"}
+        assert "huggingface_hub.snapshot_download" in net_sends
+        assert "huggingface_hub.hf_hub_download" in net_sends
+        assert "sentence_transformers.SentenceTransformer" in net_sends
+
     def test_python_catalog_has_subprocess(self) -> None:
         catalog = load_catalog("python")
         subprocs = [p for p in catalog.primitives if p.boundary == "subprocess"]

@@ -112,6 +112,18 @@ net_send:
     notes: "httpx sync/async HTTP client"
   - module: httpx.AsyncClient
     methods: [get, post, put, delete, head, patch, request, send]
+  # WI-jihuj: high-level network clients that wrap requests/httpx but live one
+  # layer above what the io-boundary tracer can see by walking edges in
+  # third-party code. Covers the embeddings extra's HF Hub download surface
+  # (sentence_transformers.SentenceTransformer constructor → hf_hub).
+  - module: huggingface_hub
+    functions: [snapshot_download, hf_hub_download]
+    notes: "HF Hub model/file download"
+  - module: huggingface_hub.HfApi
+    methods: [model_info, list_repo_files, download_file]
+  - module: sentence_transformers
+    functions: [SentenceTransformer]
+    notes: "Constructor downloads from HF Hub on first use (model not cached locally)"
 
 net_recv:
   - module: socket.socket

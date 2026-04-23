@@ -31,6 +31,10 @@ New `module_attr_ref` edge type emitted across six languages for attribute reads
 - **New flags `--taint-sources PATH` / `--taint-sinks PATH` / `--taint-sanitizers PATH`** (repeatable; each PATH is a YAML file or directory globbed as `*.yaml` in sorted order). Claims YAML can carry the same paths under a top-level `extra_catalogs: {sources, sinks, sanitizers}` key; relative paths resolve against the claims-file directory. User source/sink entries matching `(module, name, kind)` replace the auto-derived or built-in entry; user sanitizers concatenate.
 - **Public helper `hypergumbo_core.taint.load_full_taint_catalog(extra_source_paths, extra_sink_paths, extra_sanitizer_paths)`**; one-line stderr summary when extra catalogs are loaded.
 
+#### IO catalog — HuggingFace Hub network primitives (WI-jihuj)
+
+- **`io_primitives/python.yaml#net_send`** gains `huggingface_hub.{snapshot_download, hf_hub_download}`, `huggingface_hub.HfApi.{model_info, list_repo_files, download_file}`, and `sentence_transformers.SentenceTransformer`. Surfaced by the 2026-04-23 self-audit: hypergumbo's embeddings extra demonstrably contacts HF Hub (the dogfood run printed an "unauthenticated requests to the HF Hub" warning), but io-boundaries reported zero matching `net_send` chains because the HF stack lives one layer above the `requests` / `httpx` clients the catalog already covered. Adding the wrapper-layer entries lets `verify-claims` reason about the embeddings install's network surface without having to walk into third-party code.
+
 ### Changed
 
 #### Taint catalog auto-derivation (WI-lokuv)
