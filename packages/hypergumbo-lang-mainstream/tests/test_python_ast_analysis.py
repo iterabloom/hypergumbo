@@ -384,6 +384,108 @@ def test_run_detects_submodule_import_calls(tmp_path: Path) -> None:
     assert "unresolved" not in edge["dst"], f"Target should be resolved: {edge['dst']}"
 
 
+def test_run_detects_dotted_submodule_from_import_call(tmp_path: Path) -> None:
+    """`from pkg.subpkg import X` then bare `X(...)` must emit a calls edge.
+
+    WI-zigah-fanob regression test. Prior to the fix, the analyzer dropped
+    the edge entirely because _lookup_symbol_by_module returned None for
+    stdlib/external targets and no unresolved fallback existed for bare
+    Name calls.
+    """
+    main_file = tmp_path / "client.py"
+    main_file.write_text(
+        "from urllib.request import urlopen\n"
+        "\n"
+        "def fetch(url):\n"
+        "    return urlopen(url).read()\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+    fetch_to_urlopen = [
+        e for e in call_edges
+        if "fetch" in e["src"] and "urlopen" in e["dst"]
+    ]
+    assert len(fetch_to_urlopen) == 1, (
+        f"Expected 1 edge from fetch to urlopen, got {len(fetch_to_urlopen)}. "
+        f"All call edges: {call_edges}"
+    )
+    dst = fetch_to_urlopen[0]["dst"]
+    assert "urllib.request" in dst, f"Expected qualified module in dst: {dst}"
+
+
+def test_run_detects_dotted_submodule_attribute_chain_call(tmp_path: Path) -> None:
+    """`import pkg.subpkg` then `pkg.subpkg.X(...)` must emit a calls edge.
+
+    WI-zigah-fanob regression test. Prior to the fix, the analyzer dropped
+    the edge because _process_call only handled ast.Attribute with an
+    ast.Name receiver — a multi-segment chain where func.value is itself
+    an ast.Attribute (e.g., `urllib.request.urlretrieve(...)`) matched
+    no case.
+    """
+    main_file = tmp_path / "client.py"
+    main_file.write_text(
+        "import urllib.request\n"
+        "\n"
+        "def fetch(url, dest):\n"
+        "    urllib.request.urlretrieve(url, dest)\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+    fetch_to_urlretrieve = [
+        e for e in call_edges
+        if "fetch" in e["src"] and "urlretrieve" in e["dst"]
+    ]
+    assert len(fetch_to_urlretrieve) == 1, (
+        f"Expected 1 edge from fetch to urlretrieve, got {len(fetch_to_urlretrieve)}. "
+        f"All call edges: {call_edges}"
+    )
+    dst = fetch_to_urlretrieve[0]["dst"]
+    assert "urllib.request" in dst, f"Expected qualified module in dst: {dst}"
+
+
+def test_run_detects_aliased_deep_attribute_chain_call(tmp_path: Path) -> None:
+    """`import pkg as alias` then `alias.sub.X(...)` must emit a calls edge.
+
+    Regression guard covering 3-segment chains with aliased root. The
+    analyzer must walk the chain, canonicalize the root via module_imports,
+    and emit a qualified unresolved edge.
+    """
+    main_file = tmp_path / "client.py"
+    main_file.write_text(
+        "import numpy as np\n"
+        "\n"
+        "def norm(x):\n"
+        "    return np.linalg.norm(x)\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+    norm_to_norm = [
+        e for e in call_edges
+        if ":norm:function" in e["src"] and ":norm:" in e["dst"]
+        and e["src"] != e["dst"]
+    ]
+    assert len(norm_to_norm) == 1, (
+        f"Expected 1 edge from caller norm() to numpy.linalg.norm, "
+        f"got {len(norm_to_norm)}. All call edges: {call_edges}"
+    )
+    dst = norm_to_norm[0]["dst"]
+    assert "numpy.linalg" in dst or "numpy" in dst, (
+        f"Expected canonicalized numpy-prefixed module in dst: {dst}"
+    )
+
+
 def test_extract_nodes_detects_local_calls(tmp_path: Path) -> None:
     """extract_nodes should detect intra-file calls."""
     py_file = tmp_path / "app.py"

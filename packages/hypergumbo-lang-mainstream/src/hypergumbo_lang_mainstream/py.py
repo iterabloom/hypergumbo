@@ -1593,6 +1593,15 @@ def _extract_imports(
                 module_name = alias.name
                 local_name = alias.asname if alias.asname else alias.name
                 module_imports[local_name] = module_name
+                # WI-zigah: for `import pkg.subpkg` with no alias, Python binds
+                # only the top-level `pkg` name. Call sites see
+                # `pkg.subpkg.func(...)` where `pkg` is the AST root — so the
+                # full dotted `local_name` is dead data no downstream lookup
+                # reaches. Record the top-level binding so the chain walker
+                # in _process_call can canonicalize the qualified path.
+                if alias.asname is None and "." in module_name:
+                    top_level = module_name.split(".", 1)[0]
+                    module_imports.setdefault(top_level, top_level)
 
     return symbol_imports, module_imports
 
@@ -2695,6 +2704,31 @@ def _extract_edges(
     return edges
 
 
+def _unwind_attribute_chain(
+    node: ast.Attribute,
+) -> tuple[ast.Name, list[str]] | None:
+    """Walk an ``ast.Attribute`` chain back to its root ``ast.Name``.
+
+    Given ``a.b.c.d`` — parsed as
+    ``Attribute(Attribute(Attribute(Name('a'), 'b'), 'c'), 'd')`` — returns
+    ``(Name('a'), ['b', 'c', 'd'])``. Attributes are returned root-to-leaf.
+
+    Returns ``None`` when the chain's root is not an ``ast.Name`` (e.g.,
+    ``f().x.y`` roots at a ``Call``, ``(a+b).c`` at a ``BinOp``). Those
+    receivers don't participate in import-qualified call resolution and
+    would be misresolved if we pretended they did.
+    """
+    attrs: list[str] = []
+    current: ast.expr = node
+    while isinstance(current, ast.Attribute):
+        attrs.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name):
+        return None
+    attrs.reverse()
+    return current, attrs
+
+
 def _resolve_call_target(
     call_node: ast.Call,
     local_symbols: dict[str, Symbol],
@@ -2922,6 +2956,47 @@ def _process_call(
                     line=call_node.lineno,
                     evidence_type="unresolved_variable_method_call",
                     confidence=0.40,
+                ))
+        elif isinstance(func, ast.Attribute):
+            # WI-zigah: multi-segment chain like `urllib.request.urlopen(x)`
+            # where func.value is itself an Attribute. Walk back to the root
+            # Name, look it up in module_imports, and emit a qualified
+            # unresolved edge so io-boundaries and taint-flow can match
+            # dotted-submodule stdlib primitives.
+            chain = _unwind_attribute_chain(func)
+            if chain is not None:
+                root_name_node, chain_attrs = chain
+                root_name = root_name_node.id
+                if root_name in module_imports and len(chain_attrs) >= 2:
+                    real_root = module_imports[root_name]
+                    submodule = real_root + "." + ".".join(chain_attrs[:-1])
+                    callee = chain_attrs[-1]
+                    dst_id = f"python:{submodule}:0-0:{callee}:unresolved"
+                    edges.append(Edge.create(
+                        src=caller_symbol.id,
+                        dst=dst_id,
+                        edge_type="calls",
+                        line=call_node.lineno,
+                        evidence_type="unresolved_dotted_submodule_call",
+                        confidence=0.50,
+                    ))
+        elif isinstance(func, ast.Name):
+            # WI-zigah: bare call like `urlopen(x)` after
+            # `from urllib.request import urlopen`, where Case 1 looked the
+            # name up in `imports` but _lookup_symbol_by_module returned None
+            # (stdlib/external target). Emit an unresolved edge keyed by the
+            # recorded (module, original_name) pair.
+            callee_name = func.id
+            if callee_name in imports:
+                module_name, original_name = imports[callee_name]
+                dst_id = f"python:{module_name}:0-0:{original_name}:unresolved"
+                edges.append(Edge.create(
+                    src=caller_symbol.id,
+                    dst=dst_id,
+                    edge_type="calls",
+                    line=call_node.lineno,
+                    evidence_type="unresolved_imported_name_call",
+                    confidence=0.50,
                 ))
 
 

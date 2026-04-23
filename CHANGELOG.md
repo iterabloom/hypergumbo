@@ -43,6 +43,12 @@ New `module_attr_ref` edge type emitted across six languages for attribute reads
 
 ### Fixed
 
+#### Python analyzer — dotted-submodule call resolution (WI-zigah)
+
+- **`_process_call` now emits `calls` edges for call sites whose callable is imported from a dotted submodule.** Two forms were silently dropped: `from pkg.subpkg import X` + bare `X(...)` (e.g., `urlopen` from `urllib.request`), and `import pkg.subpkg` + `pkg.subpkg.X(...)` (multi-segment attribute chain where `func.value` is itself an `Attribute`). The former fell through Case 1 without an unresolved fallback; the latter never matched any case because the else-branch only handled `ast.Attribute` with an `ast.Name` receiver. Both now emit `python:{module}:0-0:{name}:unresolved` edges so io-boundaries and taint-flow can match dotted stdlib primitives (urllib, http.client, os.path, shutil.*, xml.etree.*, concurrent.futures.*, asyncio.subprocess.*, …).
+- **`_extract_imports` records the top-level binding for dotted imports.** `import pkg.subpkg` (no alias) Python-semantically binds only `pkg` — the previous `module_imports["pkg.subpkg"] = "pkg.subpkg"` entry was dead data no downstream lookup could reach, because `ast.Name.id` never contains dots. The new `setdefault(top_level, top_level)` matches what the chain walker needs.
+- **New helper `_unwind_attribute_chain`** returns `(root_name_node, chain_attrs)` or `None` for non-`Name` roots (e.g., `f().x.y`). Used by the fallback branch to canonicalize dotted chains back to their qualified form via `module_imports`.
+
 #### CI / build system
 
 - **`release.yml` security-audit: `pip-audit` CVE-ignore aligned with `ci.yml`.** Adds `--ignore-vuln CVE-2025-71176` (pytest 9.0.2 TOCTOU, dev-only transitive via `pytest-textual-snapshot 1.1.0`; single-tenant self-hosted runner). Both gates drop the ignore when `Textualize/pytest-textual-snapshot#24` ships.
