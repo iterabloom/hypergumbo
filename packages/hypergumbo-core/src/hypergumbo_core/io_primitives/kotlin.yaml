@@ -3,22 +3,22 @@
 #
 # Kotlin-specific I/O primitives. This catalog is MERGED with java.yaml
 # (via _CATALOG_PARENTS) so all java.io.*, java.nio.*, java.net.*, JDBC,
-# JPA, SLF4J, etc. entries are also available — Kotlin code that calls
+# JPA entries are also available — Kotlin code that calls
 # `java.io.FileInputStream` directly is matched via the parent. This file
 # adds the things Kotlin idiom favors over the raw Java APIs:
 #
 # - Kotlin stdlib top-level I/O (println, print, readLine).
-# - kotlin.io extension functions on java.io.File (readText, writeText,
-#   forEachLine, useLines, copyTo, walk, etc.).
-# - ktor client (the de facto Kotlin HTTP client).
-# - Android Log (very common in Kotlin codebases targeting Android).
-# - kotlin-logging (mu.KLogger) — popular SLF4J wrapper.
-# - Exposed (the Kotlin-native ORM commonly used with Postgres/MySQL).
+# - kotlin.io extension functions on java.io.File / java.nio.file.Path
+#   (readText, writeText, forEachLine, useLines, copyTo, walk, etc.).
 #
-# Was previously aliased to java.yaml outright; that produced 1 boundary
-# on detekt (net_send only) because none of the above are in java.yaml.
-# Splitting Kotlin into its own catalog with java as the parent is the
-# WI-rujos / UAT BUG-09d fix.
+# Plan C, PR A: strict-stdlib rule. Kotlin's stdlib is `kotlin.*`
+# (plus inherited `java.*` / `javax.*` / `jakarta.*` from the Java
+# parent). The previously-catalogued third-party Kotlin ecosystem —
+# ktor, kotlin-logging (mu.KLogger / io.github.oshai.kotlinlogging),
+# Android SDK (android.util.Log), Exposed ORM
+# (org.jetbrains.exposed.*) — is removed. First-party calls into them
+# surface in `external_potential` (Plan C, PR C); project-local taint
+# catalogs (WI-votan) provide per-project classification when needed.
 language: kotlin
 
 # ---------------------------------------------------------------------------
@@ -138,67 +138,12 @@ fs_write:
     notes: "Kotlin 1.5+ kotlin.io.path.* extensions"
 
 # ---------------------------------------------------------------------------
-# Net send — ktor client and OkHttp/Retrofit (already in java.yaml)
-# ---------------------------------------------------------------------------
-net_send:
-  - module: io.ktor.client.HttpClient
-    methods: [get, post, put, delete, patch, head, options, request]
-    notes: "ktor: idiomatic Kotlin HTTP client"
-  - module: io.ktor.client.statement.HttpStatement
-    methods: [execute, body, bodyAsText, bodyAsChannel, bodyAsBytes]
-    notes: "ktor: response materialization"
-  - module: io.ktor.client.request.HttpRequestBuilder
-    methods: [url, header, parameter, setBody]
-    notes: "ktor: request configuration verbs (signal, not sole evidence)"
-
-# ---------------------------------------------------------------------------
-# Net recv — ktor server
-# ---------------------------------------------------------------------------
-net_recv:
-  - module: io.ktor.server.routing.Route
-    methods: [get, post, put, delete, patch, head, options, route, handle]
-    notes: "ktor server routing — receive HTTP requests"
-  - module: io.ktor.server.routing.Routing
-    methods: [get, post, put, delete, patch, route]
-  - module: io.ktor.server.application.ApplicationCall
-    methods: [respond, respondText, respondBytes, respondFile, receive, receiveText]
-    notes: "ktor server: read request / write response"
-
-# ---------------------------------------------------------------------------
-# Logging — Kotlin top-level println/print + KotlinLogging + Android Log
+# Logging — Kotlin top-level println/print only (stdlib).
+# Plan C, PR A: SLF4J wrappers (kotlin-logging mu.KLogger /
+# io.github.oshai.kotlinlogging.KLogger), Android Log (android.util.Log),
+# and ktor's logger removed under strict-stdlib rule.
 # ---------------------------------------------------------------------------
 logging:
   - module: kotlin.io.ConsoleKt
     methods: [println, print]
     notes: "kotlin.io top-level println/print (compiler emits ConsoleKt receiver)"
-  - module: mu.KLogger
-    methods: [trace, debug, info, warn, error]
-    notes: "kotlin-logging facade — popular SLF4J wrapper"
-  - module: io.github.oshai.kotlinlogging.KLogger
-    methods: [trace, debug, info, warn, error]
-    notes: "kotlin-logging 5.x relocated package"
-  - module: android.util.Log
-    methods: [v, d, i, w, e, wtf]
-    notes: "Android logging — every Kotlin Android codebase uses this"
-  - module: io.ktor.util.logging.Logger
-    methods: [trace, debug, info, warn, error]
-    notes: "ktor's built-in logger"
-
-# ---------------------------------------------------------------------------
-# Database — Exposed (Kotlin-native ORM)
-# ---------------------------------------------------------------------------
-db_read:
-  - module: org.jetbrains.exposed.sql.Query
-    methods: [forEach, toList, count, single, singleOrNull, first, firstOrNull, empty, any]
-    notes: "Exposed: query result materialization"
-  - module: org.jetbrains.exposed.sql.Table
-    methods: [select, selectAll, slice]
-    notes: "Exposed: query construction (read path)"
-
-db_write:
-  - module: org.jetbrains.exposed.sql.Table
-    methods: [insert, insertAndGetId, insertIgnore, batchInsert, update, deleteWhere, deleteAll]
-    notes: "Exposed: write operations"
-  - module: org.jetbrains.exposed.sql.Transaction
-    methods: [commit, rollback, exec]
-    notes: "Exposed: transaction control"

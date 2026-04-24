@@ -1217,9 +1217,12 @@ class TestAutoImportFromIoPrimitives:
         catalog = load_builtin_taint_catalog()
         py_sinks = catalog.sinks_for_language("python")
         by_qname = {s.qualified_name: s for s in py_sinks}
-        # requests.post lives in io_primitives/python.yaml#net_send.
-        assert "requests.post" in by_qname
-        assert by_qname["requests.post"].zone == "network"
+        # urllib.request.urlopen is the canonical stdlib net_send entry.
+        # (Plan C, PR A: replaced the previous `requests.post` assertion —
+        # `requests` is no longer in the catalog under the strict-stdlib
+        # rule. urllib.request is stdlib so the test stays meaningful.)
+        assert "urllib.request.urlopen" in by_qname
+        assert by_qname["urllib.request.urlopen"].zone == "network"
 
     def test_auto_import_browser_storage_write_maps_to_browser_storage_zone(
         self,

@@ -105,29 +105,15 @@ net_send:
     notes: "asyncio TCP client"
   - module: asyncio.StreamWriter
     methods: [write, writelines, close]
-  # Popular HTTP clients
-  - module: requests
-    functions: [get, post, put, delete, head, patch, request]
-    notes: "requests library (most popular Python HTTP client)"
-  - module: requests.Session
-    methods: [get, post, put, delete, head, patch, request, send]
-  - module: aiohttp.ClientSession
-    methods: [get, post, put, delete, head, patch, request, ws_connect]
-    notes: "aiohttp async HTTP client"
-  - module: httpx.Client
-    methods: [get, post, put, delete, head, patch, request, send]
-    notes: "httpx sync/async HTTP client"
-  - module: httpx.AsyncClient
-    methods: [get, post, put, delete, head, patch, request, send]
-  # WI-jihuj's huggingface_hub / sentence_transformers entries were
-  # removed: the catalog is for true I/O primitives (stdlib + universally-
-  # recognized HTTP clients), not arbitrary third-party wrappers — adding
-  # one wrapper per popular library is a maintenance treadmill. The
-  # structural fix is the dst_tier field on IoChain (PR2 of stop-stripping
-  # plan): consumers can now read the destination's supply_chain.tier and
-  # treat tier-3 boundary destinations as "may make network calls"
-  # without the catalog having to enumerate them. See INV-miniz / PR3 of
-  # stop-stripping plan for the architectural rationale.
+  # Plan C, PR A: third-party HTTP clients (requests / httpx / aiohttp,
+  # plus WI-jihuj's huggingface_hub / sentence_transformers from before)
+  # are no longer in the catalog. The catalog is strictly stdlib I/O
+  # primitives — anything else creates a maintenance treadmill (one
+  # entry per popular wrapper, no principled stopping point). The
+  # structural answer is the external_potential bucket (Plan C, PR C):
+  # tier-3 boundary calls surface as their own bucket, sub-grouped by
+  # is_stdlib, without the catalog having to enumerate them. See
+  # INV-miniz / Plan C / stop-stripping plan PRs for the rationale.
 
 net_recv:
   - module: socket.socket

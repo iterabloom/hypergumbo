@@ -112,17 +112,11 @@ net_send:
     functions: [fetch]
     notes: "Global fetch (Node 18+)"
   # Express response
-  - module: express.Response
-    methods: [send, json, render, redirect, download, sendFile, status]
-    notes: "Express response methods"
-  # Axios HTTP client
-  - module: axios
-    functions: [get, post, put, delete, patch, request, create]
-    notes: "Axios HTTP client"
-  # node-fetch
-  - module: node-fetch
-    functions: [fetch]
-    notes: "node-fetch package (pre Node 18)"
+  # Plan C, PR A: third-party npm HTTP clients (axios, node-fetch, ky,
+  # superagent, got, undici) and the Express response surface
+  # (express.Response.send / json / render / redirect / download / sendFile)
+  # removed under strict-stdlib rule. First-party calls into these
+  # surface in external_potential (Plan C, PR C).
   # Deno runtime API
   - module: Deno
     functions: [connect, connectTls]
@@ -140,20 +134,6 @@ net_send:
   - module: XMLHttpRequest
     methods: [send, open, setRequestHeader]
     notes: "Browser XHR"
-  # Common browser HTTP client libraries (resolved via named imports)
-  - module: ky
-    functions: [get, post, put, delete, patch, head, create]
-    notes: "ky HTTP client (browser/Deno)"
-  - module: superagent
-    functions: [get, post, put, delete, patch, head]
-    notes: "superagent HTTP client"
-  - module: got
-    functions: [get, post, put, delete, patch, head, request]
-    notes: "got HTTP client (Node)"
-  - module: undici
-    functions: [request, fetch, stream]
-    notes: "undici HTTP client (Node)"
-
 net_recv:
   - module: http
     functions: [createServer]
@@ -167,18 +147,9 @@ net_recv:
   - module: Deno
     functions: [listen, listenTls, listenDatagram]
     notes: "Deno runtime server operations"
-  # Express/Fastify/Koa server
-  - module: express
-    functions: [listen]
-    notes: "Express server listen"
-  - module: express.Application
-    methods: [listen]
-  - module: fastify.FastifyInstance
-    methods: [listen]
-    notes: "Fastify server listen"
-  - module: koa.Application
-    methods: [listen]
-    notes: "Koa server listen"
+  # Plan C, PR A: Express, Fastify, Koa servers removed under
+  # strict-stdlib rule. First-party calls into these surface in
+  # external_potential (Plan C, PR C).
   # Browser network sources (WI-banaf)
   - module: EventSource
     methods: [addEventListener, onmessage, onerror]

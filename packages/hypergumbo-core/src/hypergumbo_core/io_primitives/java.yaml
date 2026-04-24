@@ -54,15 +54,10 @@ fs_read:
   - module: java.util.Scanner
     methods: [next, nextLine, nextInt]
     notes: "When reading from a file"
-  # Apache Commons IO (WI-sakan)
-  - module: org.apache.commons.io.FileUtils
-    functions: [readFileToString, readFileToByteArray, readLines, lineIterator]
-    methods: [readFileToString, readFileToByteArray, readLines, lineIterator]
-    notes: "Apache Commons IO file read helpers"
-  - module: org.apache.commons.io.IOUtils
-    functions: [toString, toByteArray, readLines, copy, buffer]
-    methods: [toString, toByteArray, readLines, copy, buffer]
-    notes: "Apache Commons IO stream helpers"
+  # Plan C, PR A: Apache Commons IO removed under strict-stdlib rule.
+  # First-party calls into Commons IO surface in external_potential
+  # (Plan C, PR C); project-local taint-source catalogs (WI-votan) handle
+  # case-by-case classification.
 
 fs_write:
   - module: java.io.File
@@ -75,11 +70,6 @@ fs_write:
     methods: [write, newLine]
   - module: java.nio.file.Files
     methods: [write, writeString, createFile, createDirectory, createDirectories, delete, deleteIfExists, move, copy, createTempFile, createTempDirectory]
-  # Apache Commons IO (WI-sakan)
-  - module: org.apache.commons.io.FileUtils
-    functions: [writeStringToFile, writeByteArrayToFile, writeLines, copyFile, copyDirectory, copyInputStreamToFile, deleteDirectory, deleteQuietly, forceDelete, forceMkdir, moveFile, touch, write]
-    methods: [writeStringToFile, writeByteArrayToFile, writeLines, copyFile, copyDirectory, copyInputStreamToFile, deleteDirectory, deleteQuietly, forceDelete, forceMkdir, moveFile, touch, write]
-    notes: "Apache Commons IO file write helpers"
 
 net_send:
   - module: java.net.Socket
@@ -90,47 +80,12 @@ net_send:
     methods: [connect, getOutputStream, setRequestMethod]
   - module: java.net.http.HttpClient
     methods: [send, sendAsync]
-  # Netty framework
-  - module: io.netty.channel.Channel
-    methods: [write, writeAndFlush, flush]
-    notes: "Netty channel write operations"
-  - module: io.netty.channel.ChannelHandlerContext
-    methods: [write, writeAndFlush, flush, fireChannelRead]
-    notes: "Netty handler context write operations"
-  - module: io.netty.buffer.ByteBuf
-    methods: [writeBytes, writeInt, writeLong, writeShort, writeByte, writeFloat, writeDouble, writeCharSequence, writeZero]
-    notes: "Netty ByteBuf write operations"
-  # OkHttp / Retrofit
-  - module: okhttp3.Call
-    methods: [execute, enqueue]
-    notes: "OkHttp synchronous and asynchronous HTTP calls"
-  - module: okhttp3.OkHttpClient
-    methods: [newCall]
-  # Spring Web
-  - module: org.springframework.web.client.RestTemplate
-    methods: [getForObject, getForEntity, postForObject, postForEntity, put, delete, exchange]
-    notes: "Spring RestTemplate HTTP operations"
-  # Spring 6 WebClient (reactive replacement for RestTemplate)
-  - module: org.springframework.web.reactive.function.client.WebClient
-    methods: [get, post, put, patch, delete, method]
-    notes: "Spring WebClient fluent HTTP"
-  # Apache HttpClient (4.x + 5.x)
-  - module: org.apache.http.client.HttpClient
-    methods: [execute]
-    notes: "Apache HttpClient 4.x"
-  - module: org.apache.hc.client5.http.classic.HttpClient
-    methods: [execute]
-    notes: "Apache HttpClient 5.x"
-  - module: org.apache.http.impl.client.CloseableHttpClient
-    methods: [execute]
-  # Unirest
-  - module: kong.unirest.Unirest
-    methods: [get, post, put, patch, delete, head, options]
-    notes: "Unirest HTTP client"
-  # Retrofit
-  - module: retrofit2.Call
-    methods: [execute, enqueue]
-    notes: "Retrofit typed HTTP calls"
+  # Plan C, PR A: third-party HTTP / async-IO frameworks removed under
+  # strict-stdlib rule (Netty, OkHttp / Retrofit, Spring Web /
+  # RestTemplate / WebClient, Apache HttpClient 4.x / 5.x, Unirest).
+  # First-party calls into these surface in external_potential
+  # (Plan C, PR C); project-local taint-source catalogs (WI-votan)
+  # provide per-project classification when needed.
 
 net_recv:
   - module: java.net.ServerSocket
@@ -139,20 +94,9 @@ net_recv:
     methods: [getInputStream]
   - module: java.net.DatagramSocket
     methods: [receive, bind]
-  # Netty framework
-  - module: io.netty.channel.Channel
-    methods: [read]
-    notes: "Netty channel read operations"
-  - module: io.netty.channel.ChannelHandlerContext
-    methods: [read, fireChannelRead]
-    notes: "Netty handler context read operations"
-  - module: io.netty.buffer.ByteBuf
-    methods: [readBytes, readInt, readLong, readShort, readByte, readFloat, readDouble, readCharSequence, readSlice, readRetainedSlice]
-    notes: "Netty ByteBuf read operations"
-  # Netty server bootstrap
-  - module: io.netty.bootstrap.ServerBootstrap
-    methods: [bind]
-    notes: "Netty server bind — starts accepting connections"
+  # Plan C, PR A: Netty (io.netty.*) removed under strict-stdlib rule.
+  # First-party calls into Netty surface in external_potential
+  # (Plan C, PR C).
 
 subprocess:
   - module: java.lang.ProcessBuilder
@@ -199,17 +143,9 @@ db_read:
     methods: [getSingleResult, getResultList, getResultStream]
   - module: jakarta.persistence.TypedQuery
     methods: [getSingleResult, getResultList, getResultStream]
-  - module: org.springframework.jdbc.core.JdbcTemplate
-    methods: [query, queryForObject, queryForList, queryForMap, queryForRowSet]
-    notes: "Spring JdbcTemplate query operations"
-  - module: org.springframework.data.repository.CrudRepository
-    methods: [findById, findAll, findAllById, existsById, count]
-    notes: "Spring Data repository query methods"
-  - module: org.springframework.data.jpa.repository.JpaRepository
-    methods: [findById, findAll, findAllById, existsById, count, getOne, getReferenceById]
-  - module: org.hibernate.Session
-    methods: [get, load, find, createQuery, createNamedQuery, createNativeQuery, byId]
-    notes: "Hibernate Session query path"
+  # Plan C, PR A: Spring Data, Spring JdbcTemplate, and Hibernate
+  # removed under strict-stdlib rule. JDBC + JPA / Jakarta EE persistence
+  # interfaces stay (java.sql.* / javax.persistence.* / jakarta.persistence.*).
 
 db_write:
   - module: java.sql.Statement
@@ -225,31 +161,15 @@ db_write:
     methods: [persist, merge, remove, flush, refresh]
   - module: jakarta.persistence.EntityManager
     methods: [persist, merge, remove, flush, refresh]
-  - module: org.springframework.jdbc.core.JdbcTemplate
-    methods: [update, batchUpdate, execute]
-    notes: "Spring JdbcTemplate write operations"
-  - module: org.springframework.data.repository.CrudRepository
-    methods: [save, saveAll, delete, deleteById, deleteAll]
-  - module: org.springframework.data.jpa.repository.JpaRepository
-    methods: [save, saveAll, delete, deleteById, deleteAll, saveAndFlush, flush]
-  - module: org.hibernate.Session
-    methods: [save, update, saveOrUpdate, persist, delete, flush, merge]
+  # Plan C, PR A: Spring Data, Spring JdbcTemplate, and Hibernate
+  # removed under strict-stdlib rule.
 
-# WI-sakan: logging — SLF4J / Log4j / java.util.logging / Logback.
+# Plan C, PR A: only java.util.logging stays (JDK built-in). SLF4J,
+# Log4j 1.x / 2.x, and Logback are third-party façades / implementations
+# and surface in external_potential (Plan C, PR C) when first-party
+# code uses them.
 logging:
-  - module: org.slf4j.Logger
-    methods: [trace, debug, info, warn, error]
-    notes: "SLF4J facade — universal Java logging API"
-  - module: org.apache.logging.log4j.Logger
-    methods: [trace, debug, info, warn, error, fatal]
-    notes: "Log4j 2.x"
-  - module: org.apache.log4j.Logger
-    methods: [trace, debug, info, warn, error, fatal]
-    notes: "Log4j 1.x (legacy but still widespread)"
   - module: java.util.logging.Logger
     methods: [log, logp, fine, finer, finest, info, warning, severe, config]
     notes: "java.util.logging (JDK built-in)"
-  - module: ch.qos.logback.classic.Logger
-    methods: [trace, debug, info, warn, error]
-    notes: "Logback classic implementation"
 

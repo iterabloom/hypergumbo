@@ -101,28 +101,137 @@ class TestLoadCatalog:
         assert hit.boundary == "ipc_recv"
 
     def test_python_catalog_excludes_third_party_wrappers(self) -> None:
-        # PR3 of stop-stripping plan reverts WI-jihuj. The catalog is for
-        # true I/O primitives (stdlib + universally-recognized HTTP
-        # clients: requests / aiohttp / httpx); arbitrary third-party
-        # wrappers are NOT in scope — adding one wrapper per popular
-        # library is a maintenance treadmill the catalog principle
-        # explicitly rejects (see python.yaml header). The structural
-        # answer to "first-party code calls SentenceTransformer which may
-        # download from HF Hub" is the dst_tier field on IoChain (PR2):
-        # consumers read the boundary's supply_chain.tier and treat tier-3
-        # destinations as "may make network calls" without the catalog
-        # needing the entry.
+        # Plan C, PR A: strict-stdlib-only rule. The previous "grandfathered
+        # universally-known HTTP clients" carve-out (requests / httpx /
+        # aiohttp) is removed — once you allow one third-party wrapper,
+        # the slope is open (treq / niquests / urllib3 / pycurl / ...) and
+        # the catalog becomes a maintenance treadmill. The structural
+        # answer is the external_potential bucket (PR C of the same plan):
+        # tier-3 boundary calls surface as their own bucket, sub-grouped
+        # by is_stdlib, without the catalog having to enumerate them.
         catalog = load_catalog("python")
         net_sends = {p.qualified_name for p in catalog.primitives
                      if p.boundary == "net_send"}
+        # Originally added in WI-jihuj, reverted in PR3 of stop-stripping.
         assert "huggingface_hub.snapshot_download" not in net_sends
         assert "huggingface_hub.hf_hub_download" not in net_sends
         assert "sentence_transformers.SentenceTransformer" not in net_sends
-        # The legitimate HTTP-client entries stay — these are widely-used,
-        # universally-recognized direct HTTP wrappers, not arbitrary
-        # third-party libraries that wrap them.
-        assert any(p.module == "requests" for p in catalog.primitives)
-        assert any(p.module == "httpx.Client" for p in catalog.primitives)
+        # Now removed under the strict-stdlib rule (Plan C PR A).
+        assert not any(p.module == "requests" for p in catalog.primitives)
+        assert not any(p.module == "requests.Session" for p in catalog.primitives)
+        assert not any(p.module == "aiohttp.ClientSession" for p in catalog.primitives)
+        assert not any(p.module == "httpx.Client" for p in catalog.primitives)
+        assert not any(p.module == "httpx.AsyncClient" for p in catalog.primitives)
+        # Stdlib HTTP clients stay.
+        assert any(p.module == "urllib.request" for p in catalog.primitives)
+        assert any(p.module == "http.client.HTTPConnection"
+                   for p in catalog.primitives)
+
+    def test_java_catalog_excludes_third_party_wrappers(self) -> None:
+        # Plan C, PR A: strict-stdlib rule. Java's stdlib is the JDK
+        # (java.*) plus the historically-bundled javax.* and the
+        # standardized jakarta.* (Jakarta EE, formerly Java EE).
+        # Everything else is third-party and out: OkHttp, Spring,
+        # Apache HttpClient/Commons IO, Unirest, Retrofit, Netty,
+        # Hibernate, SLF4J / Log4j / Logback. The structural answer to
+        # "first-party Java code calls into Spring or Netty" is the
+        # external_potential bucket (Plan C, PR C).
+        catalog = load_catalog("java")
+        for p in catalog.primitives:
+            assert (
+                p.module.startswith("java.")
+                or p.module.startswith("javax.")
+                or p.module.startswith("jakarta.")
+            ), (
+                f"Java catalog should be strict-stdlib only "
+                f"(java.* / javax.* / jakarta.*); third-party module "
+                f"{p.module!r} found ({p.qualified_name})"
+            )
+        # Sanity-check JDK stdlib is still present.
+        modules = {p.module for p in catalog.primitives}
+        assert "java.net.http.HttpClient" in modules
+        assert any(m.startswith("java.io") for m in modules)
+        assert any(m.startswith("java.nio") for m in modules)
+
+    def test_javascript_catalog_excludes_third_party_wrappers(self) -> None:
+        # Plan C, PR A: cull npm packages. JS doesn't have a single
+        # "stdlib" — instead, runtime built-ins per platform stay (Node:
+        # http / https / fs / net / child_process; Deno: Deno.* APIs;
+        # browser globals: XMLHttpRequest / WebSocket / fetch / window /
+        # navigator / document / localStorage / sessionStorage / etc.).
+        # Out: any npm package (axios, node-fetch, ky, superagent, got,
+        # undici, express, fastify, koa, ...).
+        catalog = load_catalog("javascript")
+        modules = {p.module for p in catalog.primitives}
+        # Third-party HTTP clients.
+        assert "axios" not in modules
+        assert "node-fetch" not in modules
+        assert "ky" not in modules
+        assert "superagent" not in modules
+        assert "got" not in modules
+        assert "undici" not in modules
+        # Third-party server frameworks.
+        assert "express" not in modules
+        assert "express.Application" not in modules
+        assert "express.Response" not in modules
+        assert "fastify.FastifyInstance" not in modules
+        assert "koa.Application" not in modules
+        # Runtime built-ins stay.
+        assert "http" in modules
+        assert "https" in modules
+        assert "fs" in modules
+        assert "fetch" in modules
+
+    def test_rust_catalog_excludes_third_party_crates(self) -> None:
+        # Plan C, PR A: cull tokio / hyper / reqwest. tokio is ubiquitous
+        # but third-party — strict rule applies; same governance as every
+        # other wrapper. Keep std::*.
+        catalog = load_catalog("rust")
+        modules = {p.module for p in catalog.primitives}
+        assert "tokio::fs" not in modules
+        assert "hyper::Client" not in modules
+        assert "hyper::client::Client" not in modules
+        assert "reqwest::Client" not in modules
+        assert not any(m.startswith("tokio::net") for m in modules)
+        # std stays.
+        assert any(m.startswith("std::") for m in modules)
+
+    def test_kotlin_catalog_excludes_third_party_wrappers(self) -> None:
+        # Plan C, PR A: Kotlin's stdlib namespace is `kotlin.*` (plus
+        # inherited `java.*` / `javax.*` / `jakarta.*` from the Java
+        # parent catalog). Removed: ktor (`io.ktor.*`), kotlin-logging
+        # (`mu.KLogger`, `io.github.oshai.kotlinlogging.*`), Android SDK
+        # (`android.*`), Exposed ORM (`org.jetbrains.exposed.*`).
+        catalog = load_catalog("kotlin")
+        for p in catalog.primitives:
+            assert (
+                p.module.startswith("kotlin")
+                or p.module.startswith("java.")
+                or p.module.startswith("javax.")
+                or p.module.startswith("jakarta.")
+            ), (
+                f"Kotlin catalog should be strict-stdlib only "
+                f"(kotlin.* / java.* / javax.* / jakarta.*); third-party "
+                f"module {p.module!r} found ({p.qualified_name})"
+            )
+
+    def test_scala_catalog_excludes_third_party_wrappers(self) -> None:
+        # Plan C, PR A: Scala stdlib is `scala.*` (and inherits `java.*` /
+        # `javax.*` / `jakarta.*` from the Java catalog). Everything else
+        # is third-party and out: akka.*, org.apache.pekko.*, org.http4s.*,
+        # play.api.*, sttp.*, fs2.*, cats.*, zio.*.
+        catalog = load_catalog("scala")
+        for p in catalog.primitives:
+            assert (
+                p.module.startswith("scala")
+                or p.module.startswith("java.")
+                or p.module.startswith("javax.")
+                or p.module.startswith("jakarta.")
+            ), (
+                f"Scala catalog should be strict-stdlib only "
+                f"(scala.* / java.* / javax.* / jakarta.*); third-party "
+                f"module {p.module!r} found ({p.qualified_name})"
+            )
 
     def test_python_catalog_has_subprocess(self) -> None:
         catalog = load_catalog("python")
@@ -174,16 +283,9 @@ class TestLoadCatalog:
         expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
         assert expected.issubset(boundaries)
 
-    def test_rust_catalog_has_tokio_framework_entries(self) -> None:
-        """Rust catalog includes Tokio/Hyper/Reqwest framework entries."""
-        catalog = load_catalog("rust")
-        qualified_names = {p.qualified_name for p in catalog.primitives}
-        assert "tokio::net::TcpStream.connect" in qualified_names
-        assert "tokio::net::TcpListener.bind" in qualified_names
-        assert "tokio::fs.read" in qualified_names
-        assert "reqwest::Client.get" in qualified_names
-        assert "hyper::Client.get" in qualified_names
-        assert "axum::Router.route" in qualified_names
+    # Plan C, PR A: presence test for Tokio / Hyper / Reqwest / Axum
+    # removed — those crates are no longer in the catalog. Inverse
+    # coverage: test_rust_catalog_excludes_third_party_crates.
 
     def test_javascript_catalog_has_all_boundary_types(self) -> None:
         catalog = load_catalog("javascript")
@@ -363,28 +465,21 @@ class TestLoadCatalog:
         expected = {"fs_read", "fs_write", "net_send", "net_recv", "subprocess", "env_read"}
         assert expected.issubset(boundaries)
 
-    def test_java_catalog_has_netty_framework_entries(self) -> None:
-        """Java catalog includes Netty framework IO methods."""
-        catalog = load_catalog("java")
-        qualified_names = {p.qualified_name for p in catalog.primitives}
-        assert "io.netty.channel.Channel.write" in qualified_names
-        assert "io.netty.channel.Channel.read" in qualified_names
-        assert "io.netty.buffer.ByteBuf.writeBytes" in qualified_names
-        assert "io.netty.buffer.ByteBuf.readBytes" in qualified_names
-        assert "io.netty.bootstrap.ServerBootstrap.bind" in qualified_names
+    # Plan C, PR A: presence tests for Netty / Apache HttpClient /
+    # WebClient / Unirest / Retrofit / Apache Commons IO removed —
+    # those entries are no longer in the catalog. Inverse coverage:
+    # test_java_catalog_excludes_third_party_wrappers iterates every
+    # primitive and asserts its module starts with java.* / javax.* /
+    # jakarta.*, structurally enforcing the strict-stdlib rule.
 
-    def test_java_catalog_netty_channel_write_is_net_send(self) -> None:
-        """Netty Channel.write is classified as net_send."""
-        catalog = load_catalog("java")
-        match = catalog.lookup("io.netty.channel.Channel.write")
-        assert match is not None
-        assert match.boundary == "net_send"
-
-    def test_java_catalog_covers_jdbc_and_jpa(self) -> None:
-        """WI-sakan: JDBC, JPA, Hibernate, Spring Data covered under db_read / db_write."""
+    def test_java_catalog_covers_jdbc_and_jpa_stdlib(self) -> None:
+        """JDBC and JPA / Jakarta EE persistence stay in the catalog —
+        they're stdlib (java.sql.* / javax.persistence.* /
+        jakarta.persistence.*). Spring Data and Hibernate were removed
+        in Plan C, PR A as third-party.
+        """
         catalog = load_catalog("java")
         qnames = {p.qualified_name: p for p in catalog.primitives}
-
         # JDBC read path
         assert qnames["java.sql.Statement.executeQuery"].boundary == "db_read"
         assert qnames["java.sql.PreparedStatement.executeQuery"].boundary == "db_read"
@@ -397,55 +492,26 @@ class TestLoadCatalog:
         # JPA (both javax and jakarta namespaces)
         assert qnames["javax.persistence.EntityManager.find"].boundary == "db_read"
         assert qnames["jakarta.persistence.EntityManager.persist"].boundary == "db_write"
-        # Spring Data / JdbcTemplate
-        assert qnames["org.springframework.jdbc.core.JdbcTemplate.query"].boundary == "db_read"
-        assert qnames["org.springframework.jdbc.core.JdbcTemplate.update"].boundary == "db_write"
-        assert qnames["org.springframework.data.repository.CrudRepository.findById"].boundary == "db_read"
-        assert qnames["org.springframework.data.repository.CrudRepository.save"].boundary == "db_write"
-        # Hibernate Session
-        assert qnames["org.hibernate.Session.get"].boundary == "db_read"
-        assert qnames["org.hibernate.Session.save"].boundary == "db_write"
 
-    def test_java_catalog_covers_logging_facades(self) -> None:
-        """WI-sakan: SLF4J, Log4j, java.util.logging, Logback covered under logging."""
+    def test_java_catalog_covers_jdk_logging(self) -> None:
+        """java.util.logging stays in the catalog — JDK built-in.
+        SLF4J, Log4j 1.x / 2.x, Logback were removed in Plan C, PR A
+        as third-party façades / implementations.
+        """
         catalog = load_catalog("java")
         qnames = {p.qualified_name: p for p in catalog.primitives}
-
-        assert qnames["org.slf4j.Logger.info"].boundary == "logging"
-        assert qnames["org.slf4j.Logger.error"].boundary == "logging"
-        assert qnames["org.apache.logging.log4j.Logger.info"].boundary == "logging"
-        assert qnames["org.apache.log4j.Logger.info"].boundary == "logging"
         assert qnames["java.util.logging.Logger.info"].boundary == "logging"
-        assert qnames["ch.qos.logback.classic.Logger.info"].boundary == "logging"
-
-    def test_java_catalog_covers_http_clients(self) -> None:
-        """WI-sakan: Apache HttpClient 4.x/5.x, WebClient, Unirest, Retrofit."""
-        catalog = load_catalog("java")
-        qnames = {p.qualified_name: p for p in catalog.primitives}
-
-        assert qnames["org.apache.http.client.HttpClient.execute"].boundary == "net_send"
-        assert qnames["org.apache.hc.client5.http.classic.HttpClient.execute"].boundary == "net_send"
-        assert qnames["org.springframework.web.reactive.function.client.WebClient.get"].boundary == "net_send"
-        assert qnames["kong.unirest.Unirest.post"].boundary == "net_send"
-        assert qnames["retrofit2.Call.execute"].boundary == "net_send"
-
-    def test_java_catalog_covers_commons_io(self) -> None:
-        """WI-sakan: Apache Commons IO file helpers covered under fs_read / fs_write."""
-        catalog = load_catalog("java")
-        qnames = {p.qualified_name: p for p in catalog.primitives}
-
-        assert qnames["org.apache.commons.io.FileUtils.readFileToString"].boundary == "fs_read"
-        assert qnames["org.apache.commons.io.FileUtils.writeStringToFile"].boundary == "fs_write"
-        assert qnames["org.apache.commons.io.IOUtils.toString"].boundary == "fs_read"
 
     def test_kotlin_loads_own_catalog_with_java_parent(self) -> None:
         """WI-rujos: Kotlin has its own catalog merged with Java parent.
 
         Kotlin idiom favors extension functions on java.io.File (readText,
         writeText, forEachLine) and top-level println/print that have no
-        Java analog. Plus ktor, kotlin-logging, Android Log, Exposed ORM.
-        The Java parent fills in the raw java.io/java.net/JDBC entries so
-        code using the underlying Java APIs directly is still matched.
+        Java analog. The Java parent fills in the raw java.io/java.net/JDBC
+        entries so code using the underlying Java APIs directly is still
+        matched. Plan C, PR A: third-party Kotlin ecosystem (ktor,
+        kotlin-logging, Android SDK, Exposed) removed under strict-stdlib
+        rule.
         """
         catalog = load_catalog("kotlin")
         assert catalog.language == "kotlin"
@@ -456,10 +522,6 @@ class TestLoadCatalog:
         assert catalog.lookup("java.io.File.writeText") is not None
         # kotlin.io top-level println — what detekt et al. actually use
         assert catalog.lookup("kotlin.io.ConsoleKt.println") is not None
-        # ktor client
-        assert catalog.lookup("io.ktor.client.HttpClient.get") is not None
-        # Android Log (very common in Kotlin Android codebases)
-        assert catalog.lookup("android.util.Log.d") is not None
 
     def test_kotlin_catalog_covers_all_expected_boundaries(self) -> None:
         """Kotlin catalog emits every boundary kind the UAT flagged missing.
@@ -1978,68 +2040,16 @@ class TestScalaCatalog:
         # Java stdlib entries should be available through inheritance
         assert catalog.lookup("java.io.FileInputStream.read") is not None
 
-    def test_scala_has_effect_system_entries(self) -> None:
-        """Scala catalog covers cats-effect and ZIO I/O primitives."""
-        catalog = load_catalog("scala")
-        scala_modules = {p.module for p in catalog.primitives}
-        # At least one effect system should be present
-        has_cats_effect = any("cats.effect" in m for m in scala_modules)
-        has_zio = any("zio" in m for m in scala_modules)
-        assert has_cats_effect or has_zio, (
-            f"Expected cats-effect or ZIO entries, got modules: "
-            f"{sorted(m for m in scala_modules if 'scala' in m.lower() or 'cats' in m.lower() or 'zio' in m.lower())}"
-        )
-
-    def test_scala_has_http_client_entries(self) -> None:
-        """Scala catalog covers Scala HTTP client libraries."""
-        catalog = load_catalog("scala")
-        scala_modules = {p.module for p in catalog.primitives}
-        has_sttp = any("sttp" in m for m in scala_modules)
-        has_http4s = any("http4s" in m for m in scala_modules)
-        has_akka_http = any("akka.http" in m or "pekko.http" in m for m in scala_modules)
-        assert has_sttp or has_http4s or has_akka_http, (
-            "Scala catalog should include at least one Scala HTTP client library"
-        )
-
-    def test_scala_has_streaming_entries(self) -> None:
-        """Scala catalog covers streaming I/O libraries (fs2, akka/pekko streams)."""
-        catalog = load_catalog("scala")
-        scala_modules = {p.module for p in catalog.primitives}
-        has_fs2 = any("fs2" in m for m in scala_modules)
-        has_akka_stream = any("akka.stream" in m or "pekko.stream" in m for m in scala_modules)
-        assert has_fs2 or has_akka_stream, (
-            "Scala catalog should include streaming I/O entries"
-        )
-
-    def test_fs2_file_ops_are_fs_not_net(self) -> None:
-        """fs2.io.file.Files operations should be fs_read/fs_write, NOT net_recv."""
-        catalog = load_catalog("scala")
-        readAll = catalog.lookup("fs2.io.file.Files.readAll")
-        assert readAll is not None
-        assert readAll.boundary == "fs_read", (
-            f"fs2.io.file.Files.readAll should be fs_read, got {readAll.boundary}"
-        )
-        writeAll = catalog.lookup("fs2.io.file.Files.writeAll")
-        assert writeAll is not None
-        assert writeAll.boundary == "fs_write", (
-            f"fs2.io.file.Files.writeAll should be fs_write, got {writeAll.boundary}"
-        )
-        createDir = catalog.lookup("fs2.io.file.Files.createDirectory")
-        assert createDir is not None
-        assert createDir.boundary == "fs_write", (
-            f"fs2.io.file.Files.createDirectory should be fs_write, got {createDir.boundary}"
-        )
-
-    def test_scala_has_db_entries(self) -> None:
-        """Scala catalog covers database access libraries."""
-        catalog = load_catalog("scala")
-        boundaries = {p.boundary for p in catalog.primitives}
-        assert "db_read" in boundaries or "db_write" in boundaries, (
-            "Scala catalog should include database boundary entries"
-        )
+    # Plan C, PR A: presence tests for cats-effect / ZIO / sttp / http4s
+    # / akka-http / pekko-http / fs2 / Slick / Doobie / Quill /
+    # ScalikeJDBC / Anorm / ReactiveMongo removed — those are no longer
+    # in the catalog. Inverse coverage: test_scala_catalog_excludes_third_party_wrappers
+    # is structural (asserts every module starts with scala.* / java.* /
+    # javax.* / jakarta.*).
 
     def test_scala_catalog_all_boundary_types(self) -> None:
-        """Scala catalog covers all major boundary types."""
+        """Scala catalog covers all major boundary types via its own
+        entries plus the Java parent merge."""
         catalog = load_catalog("scala")
         boundaries = {p.boundary for p in catalog.primitives}
         # Scala should have at least these from its own + Java parent
