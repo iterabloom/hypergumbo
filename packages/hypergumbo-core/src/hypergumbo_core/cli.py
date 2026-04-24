@@ -3380,7 +3380,16 @@ def _print_io_boundaries_by_type(
                 tier_tag = ""
                 if chain.dst_external_boundary and chain.dst_tier_name:
                     tier_tag = f"  [tier-{chain.dst_tier} {chain.dst_tier_name}]"
-                print(f"      <- {caller}{tier_tag}")
+                # Plan C, PR C: external_potential chains for in_progress
+                # source languages flag the absence-of-catalog-hit as
+                # unreliable so the user knows the language's stdlib is
+                # not yet provenance-validated.
+                unreliable_tag = (
+                    "  [unreliable]"
+                    if chain.dst_classification_unreliable
+                    else ""
+                )
+                print(f"      <- {caller}{tier_tag}{unreliable_tag}")
                 if chain.entry_points:
                     ep_names = [
                         _format_io_caller(ep, nodes_by_id, repo_root)

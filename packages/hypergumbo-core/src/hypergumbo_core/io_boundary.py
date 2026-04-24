@@ -588,6 +588,13 @@ class IoChain:
         dst_external_boundary: True when the dst is a synthetic
             ``meta.external_boundary`` node (i.e., the call reaches into
             code that hypergumbo did not analyze).
+        dst_classification_unreliable: Plan C, PR C — set on
+            ``boundary="external_potential"`` chains whose source
+            language has ``status: in_progress``. The chain is emitted
+            because the dst is an external boundary node, but absence
+            from the (incomplete) catalog does not authoritatively mean
+            the dst is third-party — the language's stdlib enumeration
+            isn't yet provenance-validated.
     """
 
     boundary: str
@@ -598,6 +605,7 @@ class IoChain:
     dst_tier: Optional[int] = None
     dst_tier_name: Optional[str] = None
     dst_external_boundary: bool = False
+    dst_classification_unreliable: bool = False
 
     def to_dict(self) -> dict:
         """Serialize to JSON-friendly dict including high-risk flag."""
@@ -611,6 +619,9 @@ class IoChain:
             "dst_tier": self.dst_tier,
             "dst_tier_name": self.dst_tier_name,
             "dst_external_boundary": self.dst_external_boundary,
+            "dst_classification_unreliable": (
+                self.dst_classification_unreliable
+            ),
         }
 
 
@@ -732,6 +743,90 @@ def _reachable_entry_points(
     return reachable_eps
 
 
+def _compute_external_potential(
+    edges: list,
+    catalogs: dict[str, IoBoundaryCatalog],
+    nodes_by_id: dict[str, dict],
+    ep_map: dict[str, set[str]],
+) -> list[IoChain]:
+    """Synthesize ``external_potential`` IoChains for unmatched boundary edges.
+
+    Plan C, PR C: for every edge whose ``meta.io_boundary`` is unset
+    (so the catalog did not classify it) and whose dst is a synthetic
+    external-boundary node (``meta.external_boundary == True``), emit a
+    chain into the ``external_potential`` bucket so the user sees
+    "first-party code reaches into untrusted territory" as a first-class
+    signal.
+
+    Filters:
+    - Only edge types in :data:`_TRACEABLE_EDGE_TYPES` (same set the
+      reverse-graph uses).
+    - The dst MUST be in ``nodes_by_id`` AND be marked
+      ``meta.external_boundary``.
+    - The source language MUST have a loaded catalog
+      (``catalog.is_supported``); we don't speculate about languages
+      we can't classify at all.
+    - The composed primitive name (``module.name`` from the dst ID) MUST
+      NOT be in the catalog's ``stdlib_other`` set — those are stdlib
+      symbols we know are not IO, so they aren't catalog gaps.
+
+    Annotation:
+    - When the source language's catalog is ``status: in_progress``,
+      ``dst_classification_unreliable=True`` is set on each chain.
+      (Suppressing the chain entirely would silently hide data; the
+      annotation lets users see them while knowing the absence-of-
+      catalog-hit isn't authoritative.)
+    """
+    chains: list[IoChain] = []
+    for edge in edges:
+        meta = edge.meta
+        if meta and meta.get("io_boundary"):
+            continue
+        if edge.edge_type not in _TRACEABLE_EDGE_TYPES:
+            continue
+        dst_node = nodes_by_id.get(edge.dst)
+        if dst_node is None:
+            continue
+        dst_meta = dst_node.get("meta") or {}
+        if not dst_meta.get("external_boundary"):
+            continue
+
+        src_parts = edge.src.split(":")
+        src_lang = src_parts[0] if src_parts else ""
+        catalog = catalogs.get(src_lang)
+        if catalog is None or not catalog.is_supported:
+            continue
+
+        # Compose primitive name from module hint + dst name. Module hint
+        # is the most useful disambiguator (huggingface_hub.snapshot_download
+        # vs anything.snapshot_download); name alone would collapse them.
+        module_hint = _extract_module_hint(edge.dst) or ""
+        dst_name = dst_node.get("name") or _extract_callee_name(edge.dst)
+        if module_hint and module_hint != "external":
+            primitive = f"{module_hint}.{dst_name}"
+        else:
+            primitive = dst_name
+
+        # Filter out stdlib non-IO symbols — those aren't catalog gaps.
+        if primitive in catalog.stdlib_other:
+            continue
+
+        sc = dst_node.get("supply_chain") or {}
+        chain = IoChain(
+            boundary="external_potential",
+            primitive=primitive,
+            io_edge_src=edge.src,
+            io_edge_dst=edge.dst,
+            entry_points=sorted(ep_map.get(edge.src, set())),
+            dst_tier=sc.get("tier"),
+            dst_tier_name=sc.get("tier_name"),
+            dst_external_boundary=True,
+            dst_classification_unreliable=(catalog.status == "in_progress"),
+        )
+        chains.append(chain)
+    return chains
+
+
 def compute_boundary_map(
     edges: list,
     catalogs: dict[str, IoBoundaryCatalog],
@@ -819,6 +914,21 @@ def compute_boundary_map(
             dst_external_boundary=dst_external,
         )
         by_boundary.setdefault(boundary, []).append(chain)
+
+    # Plan C, PR C: external_potential second pass.  Synthesize chains
+    # for unmatched edges whose dst is a synthetic external-boundary
+    # node — i.e., first-party code reaches into untrusted territory
+    # the catalog doesn't classify.  Surfaces the structural answer to
+    # "the catalog can't enumerate every popular wrapper": instead of
+    # adding entries for huggingface_hub / requests / okhttp / etc., the
+    # bucket emits one chain per such call so the user can see the
+    # surface area as a first-class signal.
+    if nodes_by_id is not None:
+        ext_chains = _compute_external_potential(
+            edges, catalogs, nodes_by_id, ep_map,
+        )
+        if ext_chains:
+            by_boundary["external_potential"] = ext_chains
 
     # Build boundary map entries, including WI-darad leaf-caller roll-ups.
     # A "leaf caller" of an io_edge_src is an immediate caller of that src

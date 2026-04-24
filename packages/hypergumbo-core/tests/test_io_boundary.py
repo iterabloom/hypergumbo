@@ -2300,6 +2300,373 @@ class TestBoundaryMapEntryEnriched:
         assert d["primitives_used"] == ["os.listdir"]
 
 
+class TestExternalPotentialBucket:
+    """Plan C, PR C: ``external_potential`` bucket in compute_boundary_map.
+
+    After PR A culled all third-party wrappers from the catalog, calls
+    into wrappers like ``huggingface_hub.snapshot_download`` no longer
+    surface as ``net_send`` chains.  The structural answer (instead of
+    re-adding wrappers one-by-one) is to synthesize ``external_potential``
+    chains for every edge whose dst is a tier-3 boundary node not in any
+    catalog.  This surfaces "first-party code reaches into untrusted
+    territory" as a first-class signal alongside ``net_send`` /
+    ``fs_read`` / etc., without the catalog having to enumerate every
+    popular wrapper.
+
+    The bucket is gated on ``status: complete`` for the source
+    language's catalog: in_progress catalogs flag chains as
+    ``dst_classification_unreliable=True`` so users see them but know
+    the absence-of-catalog-hit isn't authoritative.
+    """
+
+    def _mock_edge(self, src: str, dst: str, edge_type: str = "calls"):
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(src=src, dst=dst, edge_type=edge_type)
+
+    def _boundary_node(
+        self, dst_id: str, name: str, lang: str = "python", tier: int = 3,
+        tier_name: str = "external_dep",
+    ) -> dict:
+        return {
+            "id": dst_id,
+            "name": name,
+            "kind": "external_symbol",
+            "language": lang,
+            "path": "<external>",
+            "meta": {"external_boundary": True},
+            "supply_chain": {"tier": tier, "tier_name": tier_name},
+        }
+
+    def test_unmatched_edge_to_tier3_boundary_emits_external_potential_chain(
+        self,
+    ) -> None:
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        # huggingface_hub.snapshot_download is no longer in the catalog
+        # (PR A removed third-party wrappers). Without external_potential,
+        # this call would be entirely invisible.
+        dst = "python:huggingface_hub:0-0:snapshot_download:unresolved"
+        edge = self._mock_edge(
+            src="python:/app/load.py:5-10:load_model:function",
+            dst=dst,
+        )
+        nodes_by_id = {dst: self._boundary_node(dst, "snapshot_download")}
+        bmap = compute_boundary_map(
+            [edge],
+            {"python": load_catalog("python")},
+            nodes_by_id=nodes_by_id,
+        )
+        ext = bmap.entries.get("external_potential")
+        assert ext is not None, "external_potential bucket must be emitted"
+        assert len(ext.chains) == 1
+        chain = ext.chains[0]
+        assert chain.boundary == "external_potential"
+        assert "snapshot_download" in chain.primitive
+        assert chain.dst_external_boundary is True
+        assert chain.dst_tier == 3
+        assert chain.dst_tier_name == "external_dep"
+
+    def test_catalog_matched_edge_does_not_appear_in_external_potential(
+        self,
+    ) -> None:
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        # urllib.request.urlopen IS in the catalog → net_send.
+        # external_potential must NOT also include it (no double-counting).
+        dst = "python:urllib.request:0-0:urlopen:unresolved"
+        edge = self._mock_edge(
+            src="python:/app/fetch.py:5-10:fetch:function",
+            dst=dst,
+        )
+        nodes_by_id = {dst: self._boundary_node(dst, "urlopen")}
+        bmap = compute_boundary_map(
+            [edge],
+            {"python": load_catalog("python")},
+            nodes_by_id=nodes_by_id,
+        )
+        net_send = bmap.entries.get("net_send")
+        assert net_send is not None and len(net_send.chains) == 1
+        # The same edge MUST NOT also be in external_potential.
+        ext = bmap.entries.get("external_potential")
+        if ext is not None:
+            for chain in ext.chains:
+                assert chain.io_edge_dst != dst, (
+                    "catalog-matched edge leaked into external_potential"
+                )
+
+    def test_in_progress_language_emits_chain_with_unreliable_annotation(
+        self,
+    ) -> None:
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        # Go's catalog is status=in_progress (until per-language follow-up
+        # promotes it). Unmatched calls into Go boundary nodes still
+        # surface in external_potential, but each chain is annotated with
+        # dst_classification_unreliable=True so the user knows the
+        # absence-of-catalog-hit isn't authoritative.
+        dst = "go:github.com/some/wrapper:0-0:Fetch:unresolved"
+        edge = self._mock_edge(
+            src="go:/app/main.go:5-10:run:function",
+            dst=dst,
+        )
+        nodes_by_id = {
+            dst: self._boundary_node(dst, "Fetch", lang="go"),
+        }
+        bmap = compute_boundary_map(
+            [edge],
+            {"go": load_catalog("go")},
+            nodes_by_id=nodes_by_id,
+        )
+        ext = bmap.entries.get("external_potential")
+        assert ext is not None and len(ext.chains) == 1
+        assert ext.chains[0].dst_classification_unreliable is True
+
+    def test_complete_language_chain_is_not_marked_unreliable(self) -> None:
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        dst = "python:huggingface_hub:0-0:snapshot_download:unresolved"
+        edge = self._mock_edge(
+            src="python:/app/load.py:5-10:load_model:function",
+            dst=dst,
+        )
+        nodes_by_id = {dst: self._boundary_node(dst, "snapshot_download")}
+        bmap = compute_boundary_map(
+            [edge],
+            {"python": load_catalog("python")},
+            nodes_by_id=nodes_by_id,
+        )
+        chain = bmap.entries["external_potential"].chains[0]
+        assert chain.dst_classification_unreliable is False
+
+    def test_external_potential_chain_carries_dst_tier_and_qualified_name(
+        self,
+    ) -> None:
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        dst = "python:sentence_transformers:0-0:SentenceTransformer:unresolved"
+        edge = self._mock_edge(
+            src="python:/app/embed.py:5-10:embed:function",
+            dst=dst,
+        )
+        nodes_by_id = {
+            dst: self._boundary_node(
+                dst, "SentenceTransformer", tier=3,
+                tier_name="external_dep",
+            ),
+        }
+        bmap = compute_boundary_map(
+            [edge],
+            {"python": load_catalog("python")},
+            nodes_by_id=nodes_by_id,
+        )
+        chain = bmap.entries["external_potential"].chains[0]
+        assert chain.dst_tier == 3
+        assert chain.dst_tier_name == "external_dep"
+        assert chain.dst_external_boundary is True
+        # Primitive carries module + name so the user can identify the
+        # specific wrapper, not just "something external".
+        assert "sentence_transformers" in chain.primitive
+        assert "SentenceTransformer" in chain.primitive
+
+    def test_external_potential_skips_when_nodes_by_id_missing(self) -> None:
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        # Without nodes_by_id the boundary-node check can't run; we
+        # cannot tell external_boundary from first-party. Defensive: no
+        # external_potential bucket at all.
+        edge = self._mock_edge(
+            src="python:/app/x.py:5-10:f:function",
+            dst="python:something:0-0:Random:unresolved",
+        )
+        bmap = compute_boundary_map(
+            [edge], {"python": load_catalog("python")},
+        )
+        assert "external_potential" not in bmap.entries
+
+    def test_external_potential_skips_when_dst_not_external_boundary(
+        self,
+    ) -> None:
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        # First-party dst (no external_boundary flag) — even if its tier
+        # were exotic, it's our own code; don't synthesize a chain.
+        dst = "python:/app/util.py:5-10:helper:function"
+        edge = self._mock_edge(
+            src="python:/app/main.py:5-10:main:function",
+            dst=dst,
+        )
+        nodes_by_id = {
+            dst: {
+                "id": dst,
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "/app/util.py",
+                "meta": {},  # no external_boundary
+                "supply_chain": {"tier": 1, "tier_name": "first_party"},
+            },
+        }
+        bmap = compute_boundary_map(
+            [edge],
+            {"python": load_catalog("python")},
+            nodes_by_id=nodes_by_id,
+        )
+        assert "external_potential" not in bmap.entries
+
+    def test_external_potential_skips_stdlib_other_symbols(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_core.io_boundary import (
+            IoBoundaryCatalog,
+            compute_boundary_map,
+        )
+
+        # Build a fake-language catalog declaring math.sqrt as stdlib_other,
+        # then verify a call to math.sqrt does NOT appear in
+        # external_potential — it's stdlib non-IO, not a catalog gap.
+        catalog = IoBoundaryCatalog._from_dict({
+            "language": "python",
+            "status": "complete",
+            "stdlib_provenance": {
+                "source_url": "https://docs.python.org/3.13/library/index.html",
+                "version": "3.13",
+                "retrieved": "2026-04-23",
+            },
+            "stdlib_other": [{"module": "math", "functions": ["sqrt"]}],
+        })
+        dst = "python:math:0-0:sqrt:unresolved"
+        edge = self._mock_edge(
+            src="python:/app/calc.py:5-10:run:function", dst=dst,
+        )
+        nodes_by_id = {dst: self._boundary_node(dst, "sqrt")}
+        bmap = compute_boundary_map(
+            [edge], {"python": catalog}, nodes_by_id=nodes_by_id,
+        )
+        assert "external_potential" not in bmap.entries
+
+    def test_external_potential_skips_when_language_unsupported(self) -> None:
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        # No catalog for "fortran"; we don't know its stdlib at all so
+        # we can't make completeness claims either way. Defensive skip.
+        dst = "fortran:weird:0-0:doSomething:unresolved"
+        edge = self._mock_edge(
+            src="fortran:/app/main.f90:5-10:main:function",
+            dst=dst,
+        )
+        nodes_by_id = {
+            dst: self._boundary_node(dst, "doSomething", lang="fortran"),
+        }
+        bmap = compute_boundary_map(
+            [edge], {}, nodes_by_id=nodes_by_id,
+        )
+        assert "external_potential" not in bmap.entries
+
+    def test_external_potential_chain_to_dict_includes_unreliable_flag(
+        self,
+    ) -> None:
+        chain = IoChain(
+            boundary="external_potential",
+            primitive="huggingface_hub.snapshot_download",
+            io_edge_src="s1",
+            io_edge_dst="d1",
+            dst_tier=3,
+            dst_tier_name="external_dep",
+            dst_external_boundary=True,
+            dst_classification_unreliable=True,
+        )
+        d = chain.to_dict()
+        assert d["dst_classification_unreliable"] is True
+        # Defaults to False when not set.
+        chain2 = IoChain(
+            boundary="external_potential", primitive="x",
+            io_edge_src="s", io_edge_dst="d",
+        )
+        assert chain2.to_dict()["dst_classification_unreliable"] is False
+
+    def test_external_potential_skips_non_traceable_edge_types(self) -> None:
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        # contains/inherits/etc. are not in _TRACEABLE_EDGE_TYPES — even
+        # if the dst is an external boundary, those don't represent
+        # call/data-flow reach so they shouldn't synthesize chains.
+        dst = "python:huggingface_hub:0-0:snapshot_download:unresolved"
+        edge = self._mock_edge(
+            src="python:/app/load.py:5-10:Holder:class",
+            dst=dst,
+            edge_type="contains",
+        )
+        nodes_by_id = {dst: self._boundary_node(dst, "snapshot_download")}
+        bmap = compute_boundary_map(
+            [edge],
+            {"python": load_catalog("python")},
+            nodes_by_id=nodes_by_id,
+        )
+        assert "external_potential" not in bmap.entries
+
+    def test_external_potential_falls_back_to_bare_name_when_no_module_hint(
+        self,
+    ) -> None:
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        # When _extract_module_hint returns "external" (or the hint is
+        # missing), the composed primitive is just the dst name. The
+        # chain is still emitted; the user gets less context but the
+        # signal isn't lost.
+        dst = "python:external:0-0:MysteryThing:unresolved"
+        edge = self._mock_edge(
+            src="python:/app/x.py:5-10:f:function",
+            dst=dst,
+        )
+        nodes_by_id = {dst: self._boundary_node(dst, "MysteryThing")}
+        bmap = compute_boundary_map(
+            [edge],
+            {"python": load_catalog("python")},
+            nodes_by_id=nodes_by_id,
+        )
+        ext = bmap.entries.get("external_potential")
+        assert ext is not None and len(ext.chains) == 1
+        # No module prefix — bare dst name.
+        assert ext.chains[0].primitive == "MysteryThing"
+
+    def test_external_potential_aggregates_multiple_chains_per_primitive(
+        self,
+    ) -> None:
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        dst = "python:huggingface_hub:0-0:snapshot_download:unresolved"
+        edges = [
+            self._mock_edge(
+                src=f"python:/app/load{i}.py:5-10:load:function", dst=dst,
+            )
+            for i in range(3)
+        ]
+        nodes_by_id = {dst: self._boundary_node(dst, "snapshot_download")}
+        bmap = compute_boundary_map(
+            edges,
+            {"python": load_catalog("python")},
+            nodes_by_id=nodes_by_id,
+        )
+        ext = bmap.entries["external_potential"]
+        assert len(ext.chains) == 3
+        # Aggregation: primitives_used dedupes
+        assert ext.primitives_used == ["huggingface_hub.snapshot_download"]
+        # Per-primitive count surfaces in to_dict
+        d = ext.to_dict()
+        assert d["primitive_counts"] == {
+            "huggingface_hub.snapshot_download": 3,
+        }
+
+
 class TestScalaCatalog:
     """Tests for the standalone Scala I/O catalog with Java parent merging."""
 

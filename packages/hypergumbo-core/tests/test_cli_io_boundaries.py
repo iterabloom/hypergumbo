@@ -229,6 +229,128 @@ def test_cmd_io_boundaries_chain_shows_dst_tier_for_external_boundary(
     assert "[tier-3 external_dep]" in text
 
 
+def test_cmd_io_boundaries_renders_external_potential_section(
+    tmp_path: Path, capsys,
+) -> None:
+    """Plan C, PR C: edges into a tier-3 boundary node not in the catalog
+    surface as ``external_potential`` chains, both in JSON output and in
+    the text-mode boundary section.  The Python catalog (status=complete)
+    means the annotation is the standard ``[tier-3 external_dep]``;
+    chains for in_progress catalogs additionally render the
+    ``[unreliable]`` marker so the user sees that absence-of-catalog-hit
+    isn't authoritative for that language.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {
+                "id": "python:src/load.py:1-5:load:function",
+                "name": "load", "kind": "function", "language": "python",
+                "path": "src/load.py",
+                "span": {"start_line": 1, "end_line": 5},
+                "supply_chain": {"tier": 1, "tier_name": "first_party"},
+            },
+            # Tier-3 boundary node for a wrapper not in the catalog
+            # (huggingface_hub.snapshot_download was reverted in the
+            # WI-jihuj revert; PR A enforces strict-stdlib).
+            {
+                "id": "python:huggingface_hub:0-0:snapshot_download:unresolved",
+                "name": "snapshot_download", "kind": "external_symbol",
+                "language": "python", "path": "<external>",
+                "span": {"start_line": 0, "end_line": 0,
+                         "start_col": 0, "end_col": 0},
+                "meta": {"external_boundary": True},
+                "supply_chain": {"tier": 3, "tier_name": "external_dep",
+                                 "reason": "unresolved external reference"},
+            },
+        ],
+        edges=[
+            {
+                "src": "python:src/load.py:1-5:load:function",
+                "dst": "python:huggingface_hub:0-0:snapshot_download:unresolved",
+                "type": "calls", "confidence": 0.9,
+            },
+        ],
+    )
+    # JSON mode: external_potential bucket present, chain carries the
+    # tier fields and dst_classification_unreliable=False (Python is
+    # status=complete).
+    args = _make_args(tmp_path, bmap, json_output=True)
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert "external_potential" in data["boundaries"], (
+        "external_potential bucket missing from JSON output"
+    )
+    chains = data["boundaries"]["external_potential"]["chains"]
+    assert len(chains) == 1
+    chain = chains[0]
+    assert "snapshot_download" in chain["primitive"]
+    assert chain["dst_tier"] == 3
+    assert chain["dst_external_boundary"] is True
+    assert chain["dst_classification_unreliable"] is False
+
+    # Text mode: external_potential boundary type appears in the
+    # by-type rendering, with the standard tier annotation.
+    args2 = _make_args(tmp_path, bmap)
+    rc = cmd_io_boundaries(args2)
+    assert rc == 0
+    text = capsys.readouterr().out
+    assert "external_potential" in text
+    assert "[tier-3 external_dep]" in text
+    assert "huggingface_hub.snapshot_download" in text
+
+
+def test_cmd_io_boundaries_external_potential_unreliable_annotation(
+    tmp_path: Path, capsys,
+) -> None:
+    """Chains in external_potential whose source language has
+    ``status: in_progress`` carry ``dst_classification_unreliable=True``
+    in JSON and an ``[unreliable]`` marker in text output, signaling
+    that absence-of-catalog-hit is not authoritative for that language.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {
+                "id": "go:src/main.go:1-5:run:function",
+                "name": "run", "kind": "function", "language": "go",
+                "path": "src/main.go",
+                "span": {"start_line": 1, "end_line": 5},
+                "supply_chain": {"tier": 1, "tier_name": "first_party"},
+            },
+            {
+                "id": "go:github.com/some/wrapper:0-0:Fetch:unresolved",
+                "name": "Fetch", "kind": "external_symbol",
+                "language": "go", "path": "<external>",
+                "span": {"start_line": 0, "end_line": 0,
+                         "start_col": 0, "end_col": 0},
+                "meta": {"external_boundary": True},
+                "supply_chain": {"tier": 3, "tier_name": "external_dep"},
+            },
+        ],
+        edges=[
+            {
+                "src": "go:src/main.go:1-5:run:function",
+                "dst": "go:github.com/some/wrapper:0-0:Fetch:unresolved",
+                "type": "calls", "confidence": 0.9,
+            },
+        ],
+    )
+    # JSON: dst_classification_unreliable=True for in_progress lang.
+    args = _make_args(tmp_path, bmap, json_output=True)
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    chain = data["boundaries"]["external_potential"]["chains"][0]
+    assert chain["dst_classification_unreliable"] is True
+
+    # Text: the [unreliable] marker is present.
+    args2 = _make_args(tmp_path, bmap)
+    rc = cmd_io_boundaries(args2)
+    assert rc == 0
+    text = capsys.readouterr().out
+    assert "[unreliable]" in text
+
+
 def test_cmd_io_boundaries_no_io_calls(tmp_path: Path, capsys) -> None:
     """When no I/O calls found, reports accordingly."""
     bmap = _make_behavior_map(
