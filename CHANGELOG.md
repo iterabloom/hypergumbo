@@ -41,6 +41,13 @@ New `module_attr_ref` edge type emitted across six languages for attribute reads
 
 - **`io_primitives/python.yaml`**: `sys.stdout` and `sys.stderr` move out of `ipc_send` into a new `logging` block. Same fix Go's `log` / `log/slog` / `fmt` already received (see `test_go_catalog_slog_logging`): writing to stdout/stderr is terminal/log output, not inter-process communication in any threat-model sense, and classifying it as `ipc_send` produced 70 false-positive chains in hypergumbo's own self-analysis (out of 77 ipc_send chains total). `sys.stdin` stays in `ipc_recv` — it can carry untrusted piped input from the parent process, which is a real IPC threat-model concern. Cross-language analogs (`c.yaml`, `javascript.yaml`, `rust.yaml`, `scala.yaml`) tracked separately.
 
+### Removed
+
+#### IO catalog — HuggingFace Hub wrappers reverted (PR3 of stop-stripping plan, supersedes WI-jihuj)
+
+- **`io_primitives/python.yaml#net_send`**: removed `huggingface_hub.{snapshot_download, hf_hub_download}`, `huggingface_hub.HfApi.{model_info, list_repo_files, download_file}`, and `sentence_transformers.SentenceTransformer` (added in WI-jihuj). The catalog is for true I/O primitives (stdlib + universally-recognized HTTP clients: `requests`, `aiohttp`, `httpx`); arbitrary third-party wrappers are not in scope — adding one wrapper per popular library is a maintenance treadmill the catalog principle explicitly rejects (per the file's own header: *"Third-party libraries (requests, aiohttp, etc.) are detected transitively — they ultimately call these primitives"*). The `requests` / `aiohttp` / `httpx` entries themselves are grandfathered as universally-known direct HTTP clients but the line is drawn there.
+- **The structural answer to the WI-jihuj concern** is the `IoChain.dst_tier` field (PR2 of stop-stripping plan): `verify-claims`, `sketch`, and external consumers can now read the destination's `supply_chain.tier` and treat tier-3 boundary destinations as "may make network calls" without the catalog needing to enumerate every wrapper. Tier-aware claim semantics (e.g., a `must_not_exist net_send` claim that surfaces tier-3 reach as informational) are deferred to a focused follow-up PR rather than bundled here.
+
 ### Added
 
 #### IO chains carry destination supply-chain tier (PR2 of stop-stripping plan)

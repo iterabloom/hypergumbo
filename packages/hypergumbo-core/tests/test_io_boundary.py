@@ -100,18 +100,29 @@ class TestLoadCatalog:
         assert hit is not None
         assert hit.boundary == "ipc_recv"
 
-    def test_python_catalog_has_huggingface_hub_net_send(self) -> None:
-        # WI-jihuj: 2026-04-23 self-audit found that hypergumbo's embeddings
-        # extra demonstrably hits HuggingFace Hub (the dogfood run printed
-        # "unauthenticated requests to the HF Hub"), but io-boundaries
-        # reported zero net_send chains for it because huggingface_hub /
-        # sentence_transformers were missing from the catalog.
+    def test_python_catalog_excludes_third_party_wrappers(self) -> None:
+        # PR3 of stop-stripping plan reverts WI-jihuj. The catalog is for
+        # true I/O primitives (stdlib + universally-recognized HTTP
+        # clients: requests / aiohttp / httpx); arbitrary third-party
+        # wrappers are NOT in scope — adding one wrapper per popular
+        # library is a maintenance treadmill the catalog principle
+        # explicitly rejects (see python.yaml header). The structural
+        # answer to "first-party code calls SentenceTransformer which may
+        # download from HF Hub" is the dst_tier field on IoChain (PR2):
+        # consumers read the boundary's supply_chain.tier and treat tier-3
+        # destinations as "may make network calls" without the catalog
+        # needing the entry.
         catalog = load_catalog("python")
         net_sends = {p.qualified_name for p in catalog.primitives
                      if p.boundary == "net_send"}
-        assert "huggingface_hub.snapshot_download" in net_sends
-        assert "huggingface_hub.hf_hub_download" in net_sends
-        assert "sentence_transformers.SentenceTransformer" in net_sends
+        assert "huggingface_hub.snapshot_download" not in net_sends
+        assert "huggingface_hub.hf_hub_download" not in net_sends
+        assert "sentence_transformers.SentenceTransformer" not in net_sends
+        # The legitimate HTTP-client entries stay — these are widely-used,
+        # universally-recognized direct HTTP wrappers, not arbitrary
+        # third-party libraries that wrap them.
+        assert any(p.module == "requests" for p in catalog.primitives)
+        assert any(p.module == "httpx.Client" for p in catalog.primitives)
 
     def test_python_catalog_has_subprocess(self) -> None:
         catalog = load_catalog("python")
