@@ -1,9 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# Migration Guide: Plan C (I/O catalog refactor)
+# Migration Guide: I/O catalog refactor
 
-Plan C is a three-PR refactor of hypergumbo's I/O catalog system that
-ships in the next release after the current `[Unreleased]` window. It
-changes what `hypergumbo io-boundaries` reports — and, indirectly, what
+This release refactors hypergumbo's I/O catalog system. It changes
+what `hypergumbo io-boundaries` reports — and, indirectly, what
 `hypergumbo verify-claims` will accept — for every repo that uses
 third-party I/O wrappers.
 
@@ -24,22 +23,23 @@ and what to do if you depend on the old behavior.
 
 ## Why the change
 
-Before Plan C, the I/O catalog grandfathered popular third-party
+Previously, the I/O catalog grandfathered popular third-party
 wrappers (`requests`, `axios`, `okhttp3.*`, `tokio::fs`, akka,
 `huggingface_hub`, ...) so they would show up under `net_send` /
 `fs_read` / etc. instead of being silently invisible. That carve-out
 was a slippery slope: every popular library wanted its own entry, and
 there was no principled stopping point.
 
-The structural answer is to stop trying to enumerate every wrapper and
-instead expose the **shape** of untrusted-territory reach as its own
-signal. That is what the new `external_potential` bucket is.
+The structural answer is to stop trying to enumerate every wrapper
+and instead expose the **shape** of untrusted-territory reach as its
+own signal. That is what the new `external_potential` bucket is.
 
-The catalog now enumerates **only** stdlib symbols, with a per-language
-`status` declaration (`complete` or `in_progress`) so absence-from-the-
-catalog has a clear meaning: for `status: complete` languages, "not in
-the catalog" = "not stdlib, probably third-party"; for `status:
-in_progress` languages, the absence is flagged as not-yet-authoritative.
+The catalog now enumerates **only** stdlib symbols, with a per-
+language `status` declaration (`complete` or `in_progress`) so
+absence-from-the-catalog has a clear meaning: for `status: complete`
+languages, "not in the catalog" = "not stdlib, probably third-party";
+for `status: in_progress` languages, the absence is flagged as
+not-yet-authoritative.
 
 ## What the output looks like now
 
@@ -70,10 +70,10 @@ chain in `external_potential` carries an `[unreliable]` marker:
 ```
 
 The `[unreliable]` marker means: "this language's stdlib catalog
-hasn't been audited end-to-end yet, so the absence-of-catalog-hit that
-caused this chain to land in `external_potential` isn't authoritative
-— after the catalog is promoted to `status: complete`, the chain may
-either stay here or move into a classical bucket."
+hasn't been audited end-to-end yet, so the absence-of-catalog-hit
+that caused this chain to land in `external_potential` isn't
+authoritative — after the catalog is promoted to `status: complete`,
+the chain may either stay here or move into a classical bucket."
 
 ### JSON mode
 
@@ -158,13 +158,13 @@ Two additive changes:
 Total chain counts will change. If you compute health metrics off
 chain counts, recalibrate against the post-cull numbers.
 
-### ...maintain a project-local taint catalog (WI-votan,  `--taint-sources` / `--taint-sinks` / `--taint-sanitizers`)
+### ...maintain a project-local taint catalog (`--taint-sources` / `--taint-sinks` / `--taint-sanitizers`)
 
 No change. Project-local catalogs continue to override the built-in
 catalog the same way they did before. If a third-party wrapper your
 project cares about is no longer in the global catalog, you can
-re-add it for your repo via a project-local catalog without affecting
-anyone else.
+re-add it for your repo via a project-local catalog without
+affecting anyone else.
 
 ### ...are a catalog contributor for a non-Python language
 
@@ -181,9 +181,9 @@ language: <lang>
 status: complete | in_progress
 
 # REQUIRED for status: complete. Optional for status: in_progress.
-# Cited at load time; URL hostname must suffix-match
-# ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES (a curated allowlist of
-# official-stdlib documentation hosts).
+# Cited at load time; URL hostname must suffix-match an allowlist
+# of official-stdlib documentation hosts declared in
+# io_boundary.py.
 stdlib_provenance:
   source_url: https://docs.<authority>/<version>/library/index.html
   version: "<stdlib release>"
@@ -193,46 +193,37 @@ stdlib_provenance:
     a language's "list all modules" page, etc.).
 
 # OPTIONAL. Stdlib symbols that are NOT I/O primitives.
-# Used by the external_potential filter to drop "first-party calls a
-# stdlib non-IO symbol" — math.sqrt, collections.deque, etc. — from
-# the bucket. Empty until you populate it.
+# Used by the external_potential filter to drop "first-party calls
+# a stdlib non-IO symbol" — math.sqrt, collections.deque, etc. —
+# from the bucket. Empty until you populate it.
 stdlib_other:
   - module: math
     functions: [sqrt, sin, cos, ...]
 ```
 
 Promoting a language from `in_progress` to `complete` is a regular
-PR. Adding to `ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES` is a governance
-change requiring PR review (same shape as `ALLOWED_WEBSITES.md`).
-
-The 12 follow-up tracker items (`WI-ganid` plus 11 siblings) track
-the catalog-completion backlog. Pick one, audit the catalog against
-the language's official docs, add `stdlib_provenance`, and flip
-`status` to `complete`.
+PR: audit the catalog against the language's official stdlib
+documentation, add `stdlib_provenance`, and flip `status` to
+`complete`. Adding a hostname to the provenance allowlist is a
+governance change requiring PR review (same shape as
+`ALLOWED_WEBSITES.md`).
 
 ### ...care about the strict-stdlib rule itself
 
 The catalog principle is now: **catalog membership = stdlib
 (language ships it); absence = probably third-party, not certain**.
-The validator (`_validate_catalog_dict` in `io_boundary.py`) hard-
-errors at load time on any catalog declaring `status: complete`
-without provenance, so completeness claims are auditable. The
-allowlist (`ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES`) defends against
-typos and unofficial sources.
+A load-time validator hard-errors on any catalog declaring
+`status: complete` without provenance, so completeness claims are
+auditable. The hostname allowlist defends against typos and
+unofficial sources.
 
-Project-local catalogs (WI-votan) remain the escape hatch for
-"my project depends on a wrapper not in the global catalog and I
-want it classified" — they always take precedence over built-in
-entries.
+Project-local catalogs remain the escape hatch for "my project
+depends on a wrapper not in the global catalog and I want it
+classified" — they always take precedence over built-in entries.
 
 ## Reference
 
-- The original plan: `/home/jgstern_agent/.claude/plans/yeah-we-should-do-parallel-pnueli.md`
-  (in the agent workspace; not committed).
-- Per-PR detail: `[Unreleased]` section of `CHANGELOG.md`,
-  subsections for "IO catalog — strict-stdlib cull (Plan C, PR A)",
-  "IO catalog — `status` / `stdlib_provenance` / ... (Plan C, PR B)",
-  and "IO boundaries — `external_potential` bucket (Plan C, PR C)".
-- Tracker: `WI-koluz` (PR B), `WI-tanas` (PR C), `INV-pomir`
-  (provenance / allowlist invariant), `WI-ganid` + 11 siblings
-  (per-language promotion backlog).
+Per-change detail — down to the API-level and YAML-level shape of
+each subsystem covered above — lives in the `[Unreleased]` section
+of `CHANGELOG.md`, under the subsections for the strict-stdlib cull,
+the catalog schema additions, and the `external_potential` bucket.
