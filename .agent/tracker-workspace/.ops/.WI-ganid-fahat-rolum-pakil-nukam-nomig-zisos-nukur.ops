@@ -1,0 +1,20 @@
+- op: create  # 44b2
+  at: '2026-04-24T08:30:01Z'  # 44b2
+  by: agent  # 44b2
+  actor: jgstern_agent  # 44b2
+  clock: 1  # 44b2
+  nonce: 44b2  # 44b2
+  data:  # 44b2
+    kind: work_item  # 44b2
+    title: "Promote c.yaml from status=in_progress to status=complete with stdlib_provenance"  # 44b2
+    status: todo_soft  # 44b2
+    priority: 3  # 44b2
+    parent:  # 44b2
+    tags:  # 44b2
+    - analysis_quality  # 44b2
+    isbefore: []  # 44b2
+    duplicate_of: []  # 44b2
+    not_duplicate_of: []  # 44b2
+    pr_ref:  # 44b2
+    description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/c.yaml from status=in_progress to status=complete by: (1) auditing the catalog against C ISO C / POSIX's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing cppreference.com or the open-group POSIX docs, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # 44b2
+    fields: {}  # 44b2
