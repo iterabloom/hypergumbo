@@ -1,0 +1,22 @@
+- op: create  # bfba
+  at: '2026-04-24T08:28:32Z'  # bfba
+  by: agent  # bfba
+  actor: jgstern_agent  # bfba
+  clock: 1  # bfba
+  nonce: bfba  # bfba
+  data:  # bfba
+    kind: invariant  # bfba
+    title: "Every catalog with status=complete MUST declare stdlib_provenance whose source_url hostname suffix-matches ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES"  # bfba
+    status: pending_validation  # bfba
+    priority: 1  # bfba
+    parent:  # bfba
+    tags:  # bfba
+    - analysis_quality  # bfba
+    isbefore: []  # bfba
+    duplicate_of: []  # bfba
+    not_duplicate_of: []  # bfba
+    pr_ref:  # bfba
+    description: "Plan C, PR B governance invariant."  # bfba
+    fields:  # bfba
+      statement: "For every io_primitives/<lang>.yaml whose top-level status is 'complete' (explicit OR defaulted when the field is absent), the file MUST declare stdlib_provenance.source_url; the URL MUST use the https scheme; and its hostname MUST suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES (defined as a frozenset in io_boundary.py). Validated by _validate_catalog_dict() at load time — violations raise ValueError before any edge matching runs."  # bfba
+      root_cause: "The catalog principle (membership = stdlib, absence = probably-third-party-not-certain) only holds if completeness claims are auditable. Without provenance + allowlist, a typo or unofficial source could mislead consumers about what 'complete' means; without hard-error validation, the rule degrades to an honor-code comment that erodes over time. Allowlist additions go through PR review with justification (same governance shape as ALLOWED_WEBSITES.md)."  # bfba
