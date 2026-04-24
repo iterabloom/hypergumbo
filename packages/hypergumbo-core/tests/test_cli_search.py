@@ -58,6 +58,62 @@ def test_cmd_search_finds_exact_match(tmp_path: Path, capsys) -> None:
     assert "src/main.py" in out
 
 
+def test_cmd_search_excludes_external_boundary_nodes(tmp_path: Path, capsys) -> None:
+    """Search must skip synthetic boundary nodes (kind=external_symbol).
+
+    Boundary nodes (created by ir.create_boundary_nodes for unresolved
+    external edge endpoints — stdlib calls, third-party imports) have
+    no source location and would surface as confusing "<external>"
+    rows in default search output. They are first-class records in
+    behavior_map['nodes'] now (PR1 of stop-stripping plan), so cmd_search
+    must filter them via ir.is_external_boundary().
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/fetch.py:1-3:fetch:function",
+                "name": "fetch",
+                "kind": "function",
+                "language": "python",
+                "path": "src/fetch.py",
+                "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 10},
+            },
+            {
+                # Boundary node for the urllib.request.urlopen call inside fetch.
+                "id": "python:urllib.request:0-0:urlopen:unresolved",
+                "name": "urlopen",
+                "kind": "external_symbol",
+                "language": "python",
+                "path": "<external>",
+                "span": {"start_line": 0, "end_line": 0, "start_col": 0, "end_col": 0},
+                "meta": {"external_boundary": True},
+                "supply_chain": {"tier": 3, "tier_name": "external_dep",
+                                 "reason": "unresolved external reference"},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.pattern = "urlopen"  # would match the boundary node by name
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 20
+
+    result = cmd_search(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # No symbols found — boundary node was filtered out.
+    assert "No symbols found" in out
+    assert "<external>" not in out
+
+
 def test_cmd_search_fuzzy_match(tmp_path: Path, capsys) -> None:
     """Search finds symbols by fuzzy/partial match."""
     behavior_map = {
