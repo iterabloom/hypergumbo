@@ -1,0 +1,20 @@
+- op: create  # 4a62
+  at: '2026-04-24T22:01:00Z'  # 4a62
+  by: agent  # 4a62
+  actor: jgstern_agent  # 4a62
+  clock: 1  # 4a62
+  nonce: 4a62  # 4a62
+  data:  # 4a62
+    kind: work_item  # 4a62
+    title: "Doc-ingest emits markdown link targets as Symbol.language; 9 orphan external_symbol nodes with language like '../../AGENTS.md'"  # 4a62
+    status: todo_soft  # 4a62
+    priority: 3  # 4a62
+    parent:  # 4a62
+    tags:  # 4a62
+    - analysis_quality  # 4a62
+    isbefore: []  # 4a62
+    duplicate_of: []  # 4a62
+    not_duplicate_of: []  # 4a62
+    pr_ref:  # 4a62
+    description: "Root-caused from dogfood round 2026-04-24 on `dev` @ f7b3f3f87.\n\n## Symptom\n\n9 `external_symbol` nodes have a markdown-doc relative path in the `language` field:\n\n| id / name | language | path |\n|---|---|---|\n| `../../AGENTS.md` | `../../AGENTS.md` | `<external>` |\n| `../AGENTS.md` | `../AGENTS.md` | `<external>` |\n| `../LINKERS.md` | `../LINKERS.md` | `<external>` |\n| `../adr/0001-portable-agent-instructions.md` | `../adr/0001-portable-agent-instructions.md` | `<external>` |\n| `../hypergumbo-spec.md` | `../hypergumbo-spec.md` | `<external>` |\n| `../hypergumbo-spec.md#20-future-work` | `../hypergumbo-spec.md#20-future-work` | `<external>` |\n| `../hypergumbo-spec.md#spec-b` | `../hypergumbo-spec.md#spec-b` | `<external>` |\n| `../packages/hypergumbo-tracker/README.md` | `../packages/hypergumbo-tracker/README.md` | `<external>` |\n| `../scripts/contribute` | `../scripts/contribute` | `<external>` |\n\nThe same strings also appear in `hypergumbo io-boundaries --json` output under `unsupported_languages`, mixed in with legitimate language identifiers (`bash`, `html`, `json`, `toml`, `ansible`). A 52-item `unsupported_languages` list should not contain paths.\n\n## Likely root cause\n\nA markdown-doc link ingestion path (probably the dependency / doc-reference linker, or an analyzer that walks `.md` files) is extracting hyperlink targets and materialising each one as an `external_symbol` — but stuffing the raw link target into `Symbol.language` instead of setting `language` to `markdown` (or similar) and putting the URL in `path` or `meta.link_target`.\n\nA trigger check: the links in the sample are exactly the style used from `docs/adr/*.md` back to `../../AGENTS.md`, `../hypergumbo-spec.md`, etc. So the ingestor is likely walking a Markdown file, extracting relative-link targets, failing to resolve them to an in-repo Symbol, and synthesizing an external with the *URL as language*.\n\n## Impact\n\nCosmetic but leaky:\n- Contaminates `unsupported_languages` output — consumers can't trust this field to be a clean set of language identifiers.\n- The 9 orphans pollute any consumer that iterates `external_symbol` nodes by `language`.\n- Sets a bad precedent for any future doc-ingesting analyzer.\n\n## Reproduce\n\n```bash\nhypergumbo run . --out /tmp/hg.json\npython3 -c \"\nimport json\nnodes = json.load(open('/tmp/hg.json'))['nodes']\nweird = [n for n in nodes if n.get('language', '').startswith('..') or n.get('language', '').endswith('.md')]\nfor n in weird: print(n.get('name'), '|', n.get('language'), '|', n.get('path'))\n\"\n```\n\n## Fix direction\n\n1. Find the emission site (grep for `language=.*\\\\.md` or for code that writes `Symbol(..., language=link_target, ...)`).\n2. Either:\n   - Skip markdown link targets that can't be resolved in-repo (don't synthesize a node at all), or\n   - Synthesize with `language=\"markdown\"`, `path=<relative-link-target>`, `meta.external_boundary=True`, and a sensible name (basename rather than the full link).\n\n## Scope expansion (structural-fix protocol)\n\n- Check whether HTML, AsciiDoc, reStructuredText, or other doc formats have the same class of ingestion bug.\n- Audit all emission sites that construct `Symbol(..., language=X, ...)` — assert `X` is a known language id or `external_symbol`.\n- If the root cause is a shared helper, fix it there and add a test that rejects non-language-id values."  # 4a62
+    fields: {}  # 4a62

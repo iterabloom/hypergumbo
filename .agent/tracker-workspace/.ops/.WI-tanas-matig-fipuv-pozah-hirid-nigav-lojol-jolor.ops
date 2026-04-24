@@ -18,3 +18,20 @@
     pr_ref:  # e32f
     description: "Per /home/jgstern_agent/.claude/plans/yeah-we-should-do-parallel-pnueli.md PR C: synthesize IoChains for unmatched edges whose dst is a synthetic external-boundary node (meta.external_boundary=True), aggregated into bmap.entries['external_potential']. Filter by source-language catalog completeness (catalog.is_supported), drop entries that are in catalog.stdlib_other, and annotate chains as dst_classification_unreliable when the source language's catalog is status=in_progress. Update _print_io_boundaries_by_type to render external_potential and the [unreliable] marker. Branch: jgstern-agent/feat/io-boundary-external-potential. Tag awaits_bakeoff_validation at merge — the chain-count behavior on a real corpus will only be visible once a DEEP-mode bakeoff cycle picks the change up."  # e32f
     fields: {}  # e32f
+- op: update  # 7239
+  at: '2026-04-24T10:16:04Z'  # 7239
+  by: agent  # 7239
+  actor: jgstern_agent  # 7239
+  clock: 2  # 7239
+  nonce: '7239'  # 7239
+  set:  # 7239
+    status: done  # 7239
+  add:  # 7239
+    tags: [awaits_bakeoff_validation]  # 7239
+- op: discuss  # 6101
+  at: '2026-04-24T10:16:04Z'  # 6101
+  by: agent  # 6101
+  actor: jgstern_agent  # 6101
+  clock: 3  # 6101
+  nonce: '6101'  # 6101
+  message: "Merged in PR #3338. external_potential bucket synthesizes IoChains for unmatched edges into tier-3 boundary nodes; chains carry dst_tier/dst_tier_name/dst_external_boundary plus dst_classification_unreliable for in_progress source-language catalogs. CLI rendering already handles new boundary types via the sorted-keys loop; per-chain output adds [unreliable] marker. Smart-test 2857 passed, 100% coverage. Tagging awaits_bakeoff_validation since the chain-count behavior on a real corpus only becomes visible once a DEEP-mode bakeoff cycle picks up the change."  # 6101
