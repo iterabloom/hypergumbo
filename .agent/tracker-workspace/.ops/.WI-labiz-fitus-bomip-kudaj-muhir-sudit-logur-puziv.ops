@@ -1,0 +1,20 @@
+- op: create  # f750
+  at: '2026-04-24T08:36:01Z'  # f750
+  by: agent  # f750
+  actor: jgstern_agent  # f750
+  clock: 1  # f750
+  nonce: f750  # f750
+  data:  # f750
+    kind: work_item  # f750
+    title: "Promote kotlin.yaml from status=in_progress to status=complete with stdlib_provenance"  # f750
+    status: todo_soft  # f750
+    priority: 3  # f750
+    parent:  # f750
+    tags:  # f750
+    - analysis_quality  # f750
+    isbefore: []  # f750
+    duplicate_of: []  # f750
+    not_duplicate_of: []  # f750
+    pr_ref:  # f750
+    description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/kotlin.yaml from status=in_progress to status=complete by: (1) auditing the catalog against Kotlin's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing kotlinlang.org, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # f750
+    fields: {}  # f750

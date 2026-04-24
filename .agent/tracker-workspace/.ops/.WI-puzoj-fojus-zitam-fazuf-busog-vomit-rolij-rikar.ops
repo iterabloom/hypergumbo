@@ -1,0 +1,20 @@
+- op: create  # a5ca
+  at: '2026-04-24T08:36:04Z'  # a5ca
+  by: agent  # a5ca
+  actor: jgstern_agent  # a5ca
+  clock: 1  # a5ca
+  nonce: a5ca  # a5ca
+  data:  # a5ca
+    kind: work_item  # a5ca
+    title: "Promote swift.yaml from status=in_progress to status=complete with stdlib_provenance"  # a5ca
+    status: todo_soft  # a5ca
+    priority: 3  # a5ca
+    parent:  # a5ca
+    tags:  # a5ca
+    - analysis_quality  # a5ca
+    isbefore: []  # a5ca
+    duplicate_of: []  # a5ca
+    not_duplicate_of: []  # a5ca
+    pr_ref:  # a5ca
+    description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/swift.yaml from status=in_progress to status=complete by: (1) auditing the catalog against Swift's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing swift.org or developer.apple.com, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # a5ca
+    fields: {}  # a5ca

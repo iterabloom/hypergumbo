@@ -1,0 +1,20 @@
+- op: create  # 70bf
+  at: '2026-04-24T08:35:26Z'  # 70bf
+  by: agent  # 70bf
+  actor: jgstern_agent  # 70bf
+  clock: 1  # 70bf
+  nonce: 70bf  # 70bf
+  data:  # 70bf
+    kind: work_item  # 70bf
+    title: "Promote java.yaml from status=in_progress to status=complete with stdlib_provenance"  # 70bf
+    status: todo_soft  # 70bf
+    priority: 3  # 70bf
+    parent:  # 70bf
+    tags:  # 70bf
+    - analysis_quality  # 70bf
+    isbefore: []  # 70bf
+    duplicate_of: []  # 70bf
+    not_duplicate_of: []  # 70bf
+    pr_ref:  # 70bf
+    description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/java.yaml from status=in_progress to status=complete by: (1) auditing the catalog against Java SE's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing docs.oracle.com (java.se) or openjdk.org, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # 70bf
+    fields: {}  # 70bf

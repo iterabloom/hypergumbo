@@ -1,0 +1,20 @@
+- op: create  # 0d34
+  at: '2026-04-24T08:36:00Z'  # 0d34
+  by: agent  # 0d34
+  actor: jgstern_agent  # 0d34
+  clock: 1  # 0d34
+  nonce: 0d34  # 0d34
+  data:  # 0d34
+    kind: work_item  # 0d34
+    title: "Promote javascript.yaml from status=in_progress to status=complete with stdlib_provenance"  # 0d34
+    status: todo_soft  # 0d34
+    priority: 3  # 0d34
+    parent:  # 0d34
+    tags:  # 0d34
+    - analysis_quality  # 0d34
+    isbefore: []  # 0d34
+    duplicate_of: []  # 0d34
+    not_duplicate_of: []  # 0d34
+    pr_ref:  # 0d34
+    description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/javascript.yaml from status=in_progress to status=complete by: (1) auditing the catalog against JavaScript / Node + browser's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing nodejs.org and developer.mozilla.org, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # 0d34
+    fields: {}  # 0d34

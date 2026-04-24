@@ -1,0 +1,20 @@
+- op: create  # 6a49
+  at: '2026-04-24T08:36:03Z'  # 6a49
+  by: agent  # 6a49
+  actor: jgstern_agent  # 6a49
+  clock: 1  # 6a49
+  nonce: 6a49  # 6a49
+  data:  # 6a49
+    kind: work_item  # 6a49
+    title: "Promote rust.yaml from status=in_progress to status=complete with stdlib_provenance"  # 6a49
+    status: todo_soft  # 6a49
+    priority: 3  # 6a49
+    parent:  # 6a49
+    tags:  # 6a49
+    - analysis_quality  # 6a49
+    isbefore: []  # 6a49
+    duplicate_of: []  # 6a49
+    not_duplicate_of: []  # 6a49
+    pr_ref:  # 6a49
+    description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/rust.yaml from status=in_progress to status=complete by: (1) auditing the catalog against Rust's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing doc.rust-lang.org/std/, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # 6a49
+    fields: {}  # 6a49

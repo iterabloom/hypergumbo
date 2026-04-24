@@ -1,0 +1,20 @@
+- op: create  # dc58
+  at: '2026-04-24T08:36:02Z'  # dc58
+  by: agent  # dc58
+  actor: jgstern_agent  # dc58
+  clock: 1  # dc58
+  nonce: dc58  # dc58
+  data:  # dc58
+    kind: work_item  # dc58
+    title: "Promote objc.yaml from status=in_progress to status=complete with stdlib_provenance"  # dc58
+    status: todo_soft  # dc58
+    priority: 3  # dc58
+    parent:  # dc58
+    tags:  # dc58
+    - analysis_quality  # dc58
+    isbefore: []  # dc58
+    duplicate_of: []  # dc58
+    not_duplicate_of: []  # dc58
+    pr_ref:  # dc58
+    description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/objc.yaml from status=in_progress to status=complete by: (1) auditing the catalog against Objective-C / Foundation's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing developer.apple.com, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # dc58
+    fields: {}  # dc58

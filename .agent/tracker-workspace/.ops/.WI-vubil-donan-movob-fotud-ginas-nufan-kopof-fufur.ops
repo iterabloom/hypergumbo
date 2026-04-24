@@ -1,0 +1,20 @@
+- op: create  # f895
+  at: '2026-04-24T08:36:04Z'  # f895
+  by: agent  # f895
+  actor: jgstern_agent  # f895
+  clock: 1  # f895
+  nonce: f895  # f895
+  data:  # f895
+    kind: work_item  # f895
+    title: "Promote scala.yaml from status=in_progress to status=complete with stdlib_provenance"  # f895
+    status: todo_soft  # f895
+    priority: 3  # f895
+    parent:  # f895
+    tags:  # f895
+    - analysis_quality  # f895
+    isbefore: []  # f895
+    duplicate_of: []  # f895
+    not_duplicate_of: []  # f895
+    pr_ref:  # f895
+    description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/scala.yaml from status=in_progress to status=complete by: (1) auditing the catalog against Scala's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing scala-lang.org, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # f895
+    fields: {}  # f895

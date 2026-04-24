@@ -18,3 +18,18 @@
     pr_ref:  # b23b
     description: "Per /home/jgstern_agent/.claude/plans/yeah-we-should-do-parallel-pnueli.md PR B: extend io_boundary.IoBoundaryCatalog with status (complete | in_progress), stdlib_provenance (source_url + version + retrieved + notes), and stdlib_other (non-IO stdlib symbols). Add ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES allowlist + _validate_catalog_dict() validator that hard-errors at load time on missing/invalid provenance. Promote python.yaml to status=complete (citing docs.python.org/3.13); mark all 12 other catalogs as status=in_progress. Status=complete is the default — every catalog must explicitly opt in to in_progress or supply provenance. INV-stdlib-provenance is the durable invariant that protects the rule going forward; per-language WI-promote-* items are the catalog-completion backlog. Branch: jgstern-agent/feat/io-catalog-status-and-provenance."  # b23b
     fields: {}  # b23b
+- op: update  # 4689
+  at: '2026-04-24T08:50:02Z'  # 4689
+  by: agent  # 4689
+  actor: jgstern_agent  # 4689
+  clock: 2  # 4689
+  nonce: '4689'  # 4689
+  set:  # 4689
+    status: done  # 4689
+- op: discuss  # 0d15
+  at: '2026-04-24T08:50:02Z'  # 0d15
+  by: agent  # 0d15
+  actor: jgstern_agent  # 0d15
+  clock: 3  # 0d15
+  nonce: 0d15  # 0d15
+  message: "Merged in PR #3336 (commit 0f0a778a4). Ships status / stdlib_provenance / stdlib_other / ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES / _validate_catalog_dict in io_boundary.py; python.yaml declares status=complete with provenance citing docs.python.org/3.13; the other 12 catalogs declare status=in_progress (per-language promotion items WI-ganid + 11 siblings track the backlog). Smart-test 8819 passed, 100% coverage. INV-pomir is the durable invariant guarding the rule."  # 0d15

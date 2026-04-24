@@ -1,0 +1,20 @@
+- op: create  # e32f
+  at: '2026-04-24T09:07:10Z'  # e32f
+  by: agent  # e32f
+  actor: jgstern_agent  # e32f
+  clock: 1  # e32f
+  nonce: e32f  # e32f
+  data:  # e32f
+    kind: work_item  # e32f
+    title: "Plan C, PR C: external_potential bucket in compute_boundary_map"  # e32f
+    status: todo_hard  # e32f
+    priority: 1  # e32f
+    parent:  # e32f
+    tags:  # e32f
+    - analysis_quality  # e32f
+    isbefore: []  # e32f
+    duplicate_of: []  # e32f
+    not_duplicate_of: []  # e32f
+    pr_ref:  # e32f
+    description: "Per /home/jgstern_agent/.claude/plans/yeah-we-should-do-parallel-pnueli.md PR C: synthesize IoChains for unmatched edges whose dst is a synthetic external-boundary node (meta.external_boundary=True), aggregated into bmap.entries['external_potential']. Filter by source-language catalog completeness (catalog.is_supported), drop entries that are in catalog.stdlib_other, and annotate chains as dst_classification_unreliable when the source language's catalog is status=in_progress. Update _print_io_boundaries_by_type to render external_potential and the [unreliable] marker. Branch: jgstern-agent/feat/io-boundary-external-potential. Tag awaits_bakeoff_validation at merge — the chain-count behavior on a real corpus will only be visible once a DEEP-mode bakeoff cycle picks the change up."  # e32f
+    fields: {}  # e32f
