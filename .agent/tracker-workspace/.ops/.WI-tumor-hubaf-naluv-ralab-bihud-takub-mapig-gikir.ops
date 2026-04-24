@@ -1,0 +1,20 @@
+- op: create  # 403a
+  at: '2026-04-24T08:31:22Z'  # 403a
+  by: agent  # 403a
+  actor: jgstern_agent  # 403a
+  clock: 1  # 403a
+  nonce: 403a  # 403a
+  data:  # 403a
+    kind: work_item  # 403a
+    title: "Promote elixir.yaml from status=in_progress to status=complete with stdlib_provenance"  # 403a
+    status: todo_soft  # 403a
+    priority: 3  # 403a
+    parent:  # 403a
+    tags:  # 403a
+    - analysis_quality  # 403a
+    isbefore: []  # 403a
+    duplicate_of: []  # 403a
+    not_duplicate_of: []  # 403a
+    pr_ref:  # 403a
+    description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/elixir.yaml from status=in_progress to status=complete by: (1) auditing the catalog against Elixir's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing hexdocs.pm/elixir or elixir-lang.org, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # 403a
+    fields: {}  # 403a
