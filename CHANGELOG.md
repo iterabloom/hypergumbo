@@ -41,6 +41,15 @@ New `module_attr_ref` edge type emitted across six languages for attribute reads
 
 - **`io_primitives/python.yaml`**: `sys.stdout` and `sys.stderr` move out of `ipc_send` into a new `logging` block. Same fix Go's `log` / `log/slog` / `fmt` already received (see `test_go_catalog_slog_logging`): writing to stdout/stderr is terminal/log output, not inter-process communication in any threat-model sense, and classifying it as `ipc_send` produced 70 false-positive chains in hypergumbo's own self-analysis (out of 77 ipc_send chains total). `sys.stdin` stays in `ipc_recv` — it can carry untrusted piped input from the parent process, which is a real IPC threat-model concern. Cross-language analogs (`c.yaml`, `javascript.yaml`, `rust.yaml`, `scala.yaml`) tracked separately.
 
+### Added
+
+#### IO chains carry destination supply-chain tier (PR2 of stop-stripping plan)
+
+- **`io_boundary.IoChain`** gains optional fields `dst_tier`, `dst_tier_name`, `dst_external_boundary`. They are populated when `compute_boundary_map` is called with the new `nodes_by_id` keyword argument (a `{symbol_id: node_dict}` lookup, exactly the structure `cmd_io_boundaries` already builds at `cli.py:3188`).
+- **`cmd_io_boundaries`** passes `nodes_by_id` through, so `--json` output now exposes the tier fields per-chain. The text output annotates external-boundary destinations with `[tier-N tier_name]` after the call site so users can distinguish "first-party calls first-party I/O" from "first-party calls a tier-3 wrapper that may reach the network."
+- **Backwards-compat**: when `nodes_by_id` is omitted (or a pre-PR1 JSON file is loaded that lacks boundary nodes), the new fields stay `None` / `False` and serialize as such — no consumer break.
+- This is the structural answer to the WI-jihuj concern (catalog should not enumerate every popular third-party HTTP wrapper). PR3 reverts the WI-jihuj catalog additions and lets `verify-claims` reason about tier-3 chains directly.
+
 ### Changed
 
 #### IR — external boundary nodes are no longer stripped from JSON output (INV-miniz, supersedes WI-sikur strip step)

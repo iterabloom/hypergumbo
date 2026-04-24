@@ -419,6 +419,15 @@ class IoChain:
         io_edge_src: The symbol ID of the caller of the I/O primitive.
         io_edge_dst: The symbol ID of the I/O primitive itself.
         entry_points: Set of entry-point symbol IDs that can reach this I/O call.
+        dst_tier: ``supply_chain.tier`` of the io_edge_dst symbol when known.
+            None when the caller did not pass a ``nodes_by_id`` lookup or the
+            dst is not present in the lookup (pre-PR1 JSON files lack
+            external boundary nodes).
+        dst_tier_name: Human-readable tier name (``"first_party"`` /
+            ``"internal_dep"`` / ``"external_dep"`` / ``"derived"``).
+        dst_external_boundary: True when the dst is a synthetic
+            ``meta.external_boundary`` node (i.e., the call reaches into
+            code that hypergumbo did not analyze).
     """
 
     boundary: str
@@ -426,6 +435,9 @@ class IoChain:
     io_edge_src: str
     io_edge_dst: str
     entry_points: list[str] = field(default_factory=list)
+    dst_tier: Optional[int] = None
+    dst_tier_name: Optional[str] = None
+    dst_external_boundary: bool = False
 
     def to_dict(self) -> dict:
         """Serialize to JSON-friendly dict including high-risk flag."""
@@ -436,6 +448,9 @@ class IoChain:
             "io_edge_dst": self.io_edge_dst,
             "entry_points": self.entry_points,
             "high_risk": is_high_risk(self.primitive),
+            "dst_tier": self.dst_tier,
+            "dst_tier_name": self.dst_tier_name,
+            "dst_external_boundary": self.dst_external_boundary,
         }
 
 
@@ -562,6 +577,7 @@ def compute_boundary_map(
     catalogs: dict[str, IoBoundaryCatalog],
     *,
     entrypoint_ids: set[str] | None = None,
+    nodes_by_id: dict[str, dict] | None = None,
 ) -> BoundaryMap:
     """Compute the I/O boundary map from a set of edges.
 
@@ -576,6 +592,14 @@ def compute_boundary_map(
         entrypoint_ids: Optional set of entrypoint symbol IDs. When
             provided, populates ``entry_points`` on each IoChain and
             BoundaryMapEntry.
+        nodes_by_id: Optional ``{symbol_id: node_dict}`` lookup. When
+            provided, each IoChain picks up the dst symbol's
+            ``supply_chain.tier`` / ``tier_name`` and ``meta.external_boundary``
+            so downstream consumers (verify-claims, sketch) can distinguish
+            "first-party calls first-party I/O" from "first-party calls
+            tier-3 wrapper that may reach the network." Pre-PR1 JSON
+            files lack boundary nodes; in that case the dst lookup yields
+            ``None`` and chain.dst_tier stays ``None`` (backwards-compat).
 
     Returns:
         BoundaryMap with per-boundary-type aggregation.
@@ -608,12 +632,31 @@ def compute_boundary_map(
             continue
         primitive = meta.get("io_primitive", "")
         chain_eps = sorted(ep_map.get(edge.src, set()))
+        # Tier lookup on the dst Symbol — only available when the caller
+        # passed nodes_by_id and the dst is in the lookup. PR1 of the
+        # stop-stripping plan ensures boundary nodes are now in
+        # behavior_map["nodes"] so this resolves for previously-dangling
+        # external dsts too.
+        dst_tier: Optional[int] = None
+        dst_tier_name: Optional[str] = None
+        dst_external = False
+        if nodes_by_id is not None:
+            dst_node = nodes_by_id.get(edge.dst)
+            if dst_node is not None:
+                sc = dst_node.get("supply_chain") or {}
+                dst_tier = sc.get("tier")
+                dst_tier_name = sc.get("tier_name")
+                dst_meta = dst_node.get("meta") or {}
+                dst_external = bool(dst_meta.get("external_boundary"))
         chain = IoChain(
             boundary=boundary,
             primitive=primitive,
             io_edge_src=edge.src,
             io_edge_dst=edge.dst,
             entry_points=chain_eps,
+            dst_tier=dst_tier,
+            dst_tier_name=dst_tier_name,
+            dst_external_boundary=dst_external,
         )
         by_boundary.setdefault(boundary, []).append(chain)
 

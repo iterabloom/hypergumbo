@@ -3181,11 +3181,20 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         for ep in behavior_map.get("entrypoints", [])
     }
 
-    # Compute boundary map with entrypoint tracing
-    bmap = compute_boundary_map(edges, catalogs, entrypoint_ids=entrypoint_ids or None)
-
-    # Build node lookup for human-readable caller names
+    # Build node lookup for human-readable caller names AND for IoChain
+    # tier surfacing — passing nodes_by_id into compute_boundary_map lets
+    # each chain carry its dst's supply_chain.tier so verify-claims /
+    # sketch / external consumers can distinguish "first-party calls
+    # first-party I/O" from "first-party calls tier-3 wrapper that may
+    # reach the network" without per-library catalog growth.
     nodes_by_id: Dict[str, Any] = {n["id"]: n for n in behavior_map.get("nodes", [])}
+
+    # Compute boundary map with entrypoint tracing AND tier lookup
+    bmap = compute_boundary_map(
+        edges, catalogs,
+        entrypoint_ids=entrypoint_ids or None,
+        nodes_by_id=nodes_by_id,
+    )
 
     # Apply boundary/primitive/exclude-tests filters
     boundary_filter = getattr(args, "boundary", None)
@@ -3363,7 +3372,15 @@ def _print_io_boundaries_by_type(
             print(f"    {prim} ({count}){risk_flag}")
             for chain in chains_by_prim[prim]:
                 caller = _format_io_caller(chain.io_edge_src, nodes_by_id, repo_root)
-                print(f"      <- {caller}")
+                # Surface dst supply-chain tier so the user can tell apart
+                # "first-party calls first-party I/O" from "first-party
+                # calls a tier-3 wrapper that may reach the network."
+                # Only annotate when the dst is an external boundary —
+                # the common case for stdlib / npm / third-party deps.
+                tier_tag = ""
+                if chain.dst_external_boundary and chain.dst_tier_name:
+                    tier_tag = f"  [tier-{chain.dst_tier} {chain.dst_tier_name}]"
+                print(f"      <- {caller}{tier_tag}")
                 if chain.entry_points:
                     ep_names = [
                         _format_io_caller(ep, nodes_by_id, repo_root)

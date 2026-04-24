@@ -1767,6 +1767,131 @@ class TestIoChainToDict:
         assert d["high_risk"] is True
 
 
+class TestIoChainTierFields:
+    """Tests for IoChain dst_tier surfacing (PR2 of stop-stripping plan).
+
+    Once boundary nodes are addressable from disk-loaded JSON (PR1), the
+    natural extension is to expose the destination's supply_chain.tier on
+    each chain so verify-claims / sketch / external consumers can
+    distinguish "first-party network call" from "first-party calls into
+    a tier-3 wrapper that may make a network call" without the catalog
+    needing to enumerate every popular wrapper.
+    """
+
+    def test_dst_tier_populated_when_boundary_node_in_lookup(self) -> None:
+        # Boundary node carries supply_chain.tier=3 (or 2 for direct deps).
+        # When compute_boundary_map is given a nodes_by_id lookup, the chain
+        # picks up the tier from the dst Symbol record.
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        # Mock edge — calls into urllib.request.urlopen
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+
+        edge = MockEdge(
+            src="python:/app/fetch.py:5-10:fetch:function",
+            dst="python:urllib.request:0-0:urlopen:unresolved",
+            edge_type="calls",
+        )
+        # Boundary node as a dict (matches what behavior_map["nodes"] holds
+        # after JSON round-trip).
+        nodes_by_id = {
+            "python:urllib.request:0-0:urlopen:unresolved": {
+                "id": "python:urllib.request:0-0:urlopen:unresolved",
+                "name": "urlopen",
+                "kind": "external_symbol",
+                "language": "python",
+                "path": "<external>",
+                "meta": {"external_boundary": True},
+                "supply_chain": {"tier": 3, "tier_name": "external_dep"},
+            },
+        }
+        catalog = load_catalog("python")
+        bmap = compute_boundary_map([edge], {"python": catalog},
+                                     nodes_by_id=nodes_by_id)
+        net_send = bmap.entries.get("net_send")
+        assert net_send is not None and len(net_send.chains) == 1
+        chain = net_send.chains[0]
+        assert chain.dst_tier == 3
+        assert chain.dst_tier_name == "external_dep"
+        assert chain.dst_external_boundary is True
+
+    def test_dst_tier_none_when_nodes_not_provided(self) -> None:
+        # Backwards-compat: pre-PR1 JSON files lack boundary nodes; the
+        # tier lookup yields None and serialization tolerates it.
+        from hypergumbo_core.io_boundary import compute_boundary_map
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+
+        edge = MockEdge(
+            src="python:/app/fetch.py:5-10:fetch:function",
+            dst="python:urllib.request:0-0:urlopen:unresolved",
+            edge_type="calls",
+        )
+        catalog = load_catalog("python")
+        bmap = compute_boundary_map([edge], {"python": catalog})
+        chain = bmap.entries["net_send"].chains[0]
+        assert chain.dst_tier is None
+        assert chain.dst_tier_name is None
+        assert chain.dst_external_boundary is False
+        # to_dict still works.
+        d = chain.to_dict()
+        assert d["dst_tier"] is None
+        assert d["dst_tier_name"] is None
+        assert d["dst_external_boundary"] is False
+
+    def test_dst_tier_picks_up_real_symbol_tier(self) -> None:
+        # When the dst is a real first-party Symbol (not a boundary), the
+        # chain still carries that symbol's tier so downstream reasoning
+        # treats "first-party calls first-party I/O wrapper" distinctly
+        # from "first-party calls third-party wrapper".
+        from hypergumbo_core.io_boundary import compute_boundary_map
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str
+            meta: Optional[Dict[str, Any]] = None
+
+        edge = MockEdge(
+            src="python:/app/fetch.py:5-10:fetch:function",
+            dst="python:urllib.request:0-0:urlopen:unresolved",
+            edge_type="calls",
+        )
+        nodes_by_id = {
+            "python:urllib.request:0-0:urlopen:unresolved": {
+                "id": "python:urllib.request:0-0:urlopen:unresolved",
+                "kind": "function",
+                "supply_chain": {"tier": 1, "tier_name": "first_party"},
+                # No external_boundary meta — this is a real first-party symbol.
+            },
+        }
+        catalog = load_catalog("python")
+        bmap = compute_boundary_map([edge], {"python": catalog},
+                                     nodes_by_id=nodes_by_id)
+        chain = bmap.entries["net_send"].chains[0]
+        assert chain.dst_tier == 1
+        assert chain.dst_tier_name == "first_party"
+        assert chain.dst_external_boundary is False
+
+
 class TestBoundaryMapEntryEnriched:
     """Tests for enriched BoundaryMapEntry.to_dict()."""
 

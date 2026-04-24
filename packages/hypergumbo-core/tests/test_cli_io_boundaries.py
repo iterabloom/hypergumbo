@@ -171,6 +171,64 @@ def test_cmd_io_boundaries_json_output(tmp_path: Path, capsys) -> None:
     assert "subprocess" in data["boundaries"]
 
 
+def test_cmd_io_boundaries_chain_shows_dst_tier_for_external_boundary(
+    tmp_path: Path, capsys,
+) -> None:
+    """PR2 of stop-stripping plan: each chain's JSON output carries
+    dst_tier / dst_tier_name / dst_external_boundary, and the human
+    text output annotates external-boundary destinations with
+    [tier-N tier_name] so users can see at a glance whether a chain
+    reaches into first-party I/O or a third-party wrapper.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {
+                "id": "python:src/fetch.py:1-5:fetch:function",
+                "name": "fetch", "kind": "function", "language": "python",
+                "path": "src/fetch.py",
+                "span": {"start_line": 1, "end_line": 5},
+                "supply_chain": {"tier": 1, "tier_name": "first_party"},
+            },
+            # The boundary node serialized after PR1.
+            {
+                "id": "python:urllib.request:0-0:urlopen:unresolved",
+                "name": "urlopen", "kind": "external_symbol",
+                "language": "python", "path": "<external>",
+                "span": {"start_line": 0, "end_line": 0,
+                         "start_col": 0, "end_col": 0},
+                "meta": {"external_boundary": True},
+                "supply_chain": {"tier": 3, "tier_name": "external_dep",
+                                 "reason": "unresolved external reference"},
+            },
+        ],
+        edges=[
+            {
+                "src": "python:src/fetch.py:1-5:fetch:function",
+                "dst": "python:urllib.request:0-0:urlopen:unresolved",
+                "type": "calls", "confidence": 0.9,
+            },
+        ],
+    )
+    # JSON mode: assert structured tier fields.
+    args = _make_args(tmp_path, bmap, json_output=True)
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    chains = data["boundaries"]["net_send"]["chains"]
+    assert len(chains) == 1
+    chain = chains[0]
+    assert chain["dst_tier"] == 3
+    assert chain["dst_tier_name"] == "external_dep"
+    assert chain["dst_external_boundary"] is True
+
+    # Text mode: assert the [tier-3 external_dep] annotation appears.
+    args2 = _make_args(tmp_path, bmap)
+    rc = cmd_io_boundaries(args2)
+    assert rc == 0
+    text = capsys.readouterr().out
+    assert "[tier-3 external_dep]" in text
+
+
 def test_cmd_io_boundaries_no_io_calls(tmp_path: Path, capsys) -> None:
     """When no I/O calls found, reports accordingly."""
     bmap = _make_behavior_map(
