@@ -9,32 +9,15 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Added
 
-- **Forensic race log for transient `.ops` read failures**: new `race_log` module
-  captures every `PermissionError` / `FileNotFoundError` raised while reading an
-  ops file, with timestamp, pid, euid, stat snapshot, and attempt number. Path
-  is `~/.cache/hypergumbo/tracker/<tracker-root-fingerprint>/race_log.jsonl`
-  (honors `XDG_CACHE_HOME`); wired by `TrackerSet.__init__`. The location is
-  also recorded in `tui_preferences.json` under `race_log_path` so users can
-  find the log without guessing.
+- **Forensic race log** for transient `.ops` read failures: new `race_log` module captures every `PermissionError` / `FileNotFoundError` (timestamp, pid, euid, stat snapshot, attempt number) to `~/.cache/hypergumbo/tracker/<root-fingerprint>/race_log.jsonl` (honors `XDG_CACHE_HOME`). Path surfaced in `tui_preferences.json` as `race_log_path`. Wired by `TrackerSet.__init__`.
 
 ### Fixed
 
-- **`_parse_ops_file` retries transient read races**: observed 2026-04-22 —
-  a long-running `htrac tui` crashed with `PermissionError [Errno 13]` on an
-  ops file that was mode 0o664 and owned by the reading user. Root cause was
-  a narrow window where the reader's `stat()` saw the old inode but the
-  subsequent `open()` landed on a new inode written by a concurrent
-  atomic-rename writer. `_parse_ops_file` now retries up to 3 times with
-  linear backoff (20ms, 40ms) on `PermissionError` / `FileNotFoundError`;
-  every retry and the final re-raise are logged to the race log.
-- **`_compile_all` / `_compile_all_cached` tolerate persistent read failures**:
-  a single unreadable ops file no longer poisons the entire compile — the
-  except was widened from `CorruptFileError` to `(CorruptFileError, OSError)`,
-  so the bad file is skipped and the rest of the tier still renders.
-- **TUI `_check_external_writes` survives I/O errors**: the periodic background
-  refresh callback in `htrac tui` now catches `OSError` so a transient FS
-  hiccup cannot kill the Textual event loop. Persistent errors surface on
-  the next user-initiated action; the race log retains the detail.
+#### Transient `.ops` read-race hardening
+
+- **`_parse_ops_file` retries transient read races** (observed 2026-04-22): a long-running `htrac tui` crashed with `PermissionError [Errno 13]` on a mode-0o664 ops file owned by the reader — narrow window where `stat()` saw the old inode but `open()` landed on a new one written by a concurrent atomic-rename writer. Now retries up to 3 times with 20 ms / 40 ms linear backoff on `PermissionError` / `FileNotFoundError`; every retry and final re-raise logged to the race log.
+- **`_compile_all` / `_compile_all_cached` widen except to `(CorruptFileError, OSError)`**: a single unreadable ops file no longer poisons the entire compile — the bad file is skipped and the rest of the tier still renders.
+- **TUI `_check_external_writes` catches `OSError`**: the periodic background refresh in `htrac tui` no longer lets a transient FS hiccup kill the Textual event loop. Persistent errors surface on the next user action; the race log retains the detail.
 
 ## [0.4.0] - 2026-04-21
 
