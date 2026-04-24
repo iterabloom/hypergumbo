@@ -7,6 +7,24 @@
 # etc.) are detected transitively — they ultimately call these primitives.
 language: python
 
+# Plan C, PR B: this is the worked-example catalog — Python's stdlib
+# is enumerated end-to-end from the official documentation index plus
+# ``sys.stdlib_module_names`` (Python 3.13). Promotion to
+# ``status: complete`` requires ``stdlib_provenance`` to point at an
+# allowlisted documentation host (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES
+# in io_boundary.py).
+status: complete
+stdlib_provenance:
+  source_url: https://docs.python.org/3.13/library/index.html
+  version: "3.13"
+  retrieved: "2026-04-23"
+  notes: |
+    Python stdlib I/O primitives derived from docs.python.org's
+    library index for Python 3.13, cross-checked against
+    ``sys.stdlib_module_names``. Non-IO stdlib symbols are not yet
+    enumerated in stdlib_other — populated incrementally as needed
+    by the PR C external_potential filter.
+
 # Method names that are too generic to match without module context.
 # Python duck-typing means .read(), .write(), .close() appear on many objects.
 ambiguous_names:

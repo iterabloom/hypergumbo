@@ -15,6 +15,11 @@
 # project-local taint catalogs (WI-votan) provide per-project
 # classification when needed.
 language: scala
+# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
+# requires enumerating Scala stdlib (scala.*, scala.collection.*, etc.)
+# on top of the Java parent and adding ``stdlib_provenance``
+# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py).
+status: in_progress
 
 # Short names that are ambiguous between I/O and non-I/O Scala operations.
 # When module_hint is "external" (unresolved), these names are skipped for

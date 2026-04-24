@@ -8,6 +8,10 @@
 # Note: C-level I/O (fopen, read, write, socket, etc.) is covered by c.yaml.
 # This catalog covers ObjC-specific Foundation/Cocoa wrappers.
 language: objc
+# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
+# requires enumerating Foundation/CoreFoundation stdlib and adding
+# ``stdlib_provenance`` (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES).
+status: in_progress
 
 # Selector names that are too generic to match without class context.
 # ObjC message sends use short selectors that appear on many classes.

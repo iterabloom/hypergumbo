@@ -6,6 +6,10 @@
 # Third-party libraries (cowboy, ranch, etc.) call these primitives
 # transitively, so covering stdlib + OTP is sufficient.
 language: erlang
+# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
+# requires enumerating Erlang/OTP stdlib and adding ``stdlib_provenance``
+# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py).
+status: in_progress
 
 # Function names that are too generic to match without module context.
 # Erlang modules use short, generic names for very different operations.

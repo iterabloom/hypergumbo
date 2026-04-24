@@ -3,6 +3,10 @@
 #
 # Maps C standard library and POSIX functions to I/O boundary types.
 language: c
+# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
+# requires enumerating C stdlib and adding ``stdlib_provenance`` (see
+# ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py).
+status: in_progress
 
 # Function names that are too generic to match without module context.
 # C has no namespaces, so bare names like read/write/open/close are always

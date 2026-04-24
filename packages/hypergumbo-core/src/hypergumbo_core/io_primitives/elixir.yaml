@@ -17,6 +17,10 @@
 # dotted form matches the `module.name` lookup the io_boundary engine
 # uses for `kind="function"` entries.
 language: elixir
+# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
+# requires enumerating Elixir stdlib and adding ``stdlib_provenance``
+# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py).
+status: in_progress
 
 # ---------------------------------------------------------------------------
 # Ambiguous short names — function names that collide across Elixir

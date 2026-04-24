@@ -3,6 +3,10 @@
 #
 # Maps Java standard library classes/methods to I/O boundary types.
 language: java
+# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
+# requires enumerating Java SE stdlib and adding ``stdlib_provenance``
+# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py).
+status: in_progress
 
 # Method names that are too generic to match without module context.
 # Java interfaces mean .read(), .write(), .close() appear on many classes.

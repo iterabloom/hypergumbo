@@ -701,6 +701,7 @@ class TestLoadCatalog:
     def test_catalog_from_yaml(self, tmp_path: Path) -> None:
         yaml_content = """\
 language: testlang
+status: in_progress
 
 fs_read:
   - module: io
@@ -809,6 +810,283 @@ net_send:
         assert hit is not None
 
 
+class TestCatalogStatus:
+    """Plan C, PR B: catalog ``status`` + ``stdlib_provenance`` validation.
+
+    Catalogs declare ``status: complete | in_progress`` plus an optional
+    ``stdlib_provenance`` block.  ``status: complete`` (explicit OR
+    defaulted when both ``status`` and ``stdlib_provenance`` are absent)
+    REQUIRES a ``stdlib_provenance`` block whose ``source_url`` is an
+    HTTPS URL whose hostname suffix-matches
+    :data:`ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES`.  Catalogs with
+    ``status: in_progress`` may omit provenance.
+    """
+
+    def test_default_status_is_complete_when_absent(self) -> None:
+        # status defaulted; complete provenance provided ⇒ status="complete".
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {
+            "language": "fakelang",
+            "stdlib_provenance": {
+                "source_url": "https://docs.python.org/3.13/library/index.html",
+                "version": "3.13",
+                "retrieved": "2026-04-23",
+            },
+        }
+        catalog = IoBoundaryCatalog._from_dict(data)
+        assert catalog.status == "complete"
+
+    def test_in_progress_status_does_not_require_provenance(self) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {"language": "fakelang", "status": "in_progress"}
+        catalog = IoBoundaryCatalog._from_dict(data)
+        assert catalog.status == "in_progress"
+        assert catalog.stdlib_provenance is None
+
+    def test_complete_status_requires_provenance_source_url(self) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {"language": "fakelang", "status": "complete"}
+        with pytest.raises(ValueError, match="stdlib_provenance"):
+            IoBoundaryCatalog._from_dict(data)
+
+    def test_complete_status_requires_provenance_when_block_present_but_no_url(
+        self,
+    ) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {
+            "language": "fakelang",
+            "status": "complete",
+            "stdlib_provenance": {"version": "3.13"},  # no source_url
+        }
+        with pytest.raises(ValueError, match="source_url"):
+            IoBoundaryCatalog._from_dict(data)
+
+    def test_provenance_url_must_be_https(self) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {
+            "language": "fakelang",
+            "status": "complete",
+            "stdlib_provenance": {
+                "source_url": "http://docs.python.org/3.13/library/index.html",
+                "version": "3.13",
+                "retrieved": "2026-04-23",
+            },
+        }
+        with pytest.raises(ValueError, match="https"):
+            IoBoundaryCatalog._from_dict(data)
+
+    def test_provenance_url_hostname_must_suffix_match_allowlist(self) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {
+            "language": "fakelang",
+            "status": "complete",
+            "stdlib_provenance": {
+                "source_url": "https://evil.example.com/python/",
+                "version": "3.13",
+                "retrieved": "2026-04-23",
+            },
+        }
+        with pytest.raises(ValueError, match="allowlist"):
+            IoBoundaryCatalog._from_dict(data)
+
+    def test_provenance_url_with_allowlisted_suffix_loads_cleanly(self) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {
+            "language": "fakelang",
+            "status": "complete",
+            "stdlib_provenance": {
+                "source_url": "https://docs.python.org/3.13/library/index.html",
+                "version": "3.13",
+                "retrieved": "2026-04-23",
+            },
+        }
+        catalog = IoBoundaryCatalog._from_dict(data)
+        assert catalog.stdlib_provenance is not None
+        assert catalog.stdlib_provenance["source_url"].startswith(
+            "https://docs.python.org",
+        )
+
+    def test_provenance_url_with_bare_allowlisted_hostname_loads_cleanly(
+        self,
+    ) -> None:
+        # Bare hostname (no subdomain) like "python.org" should pass too.
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {
+            "language": "fakelang",
+            "status": "complete",
+            "stdlib_provenance": {
+                "source_url": "https://python.org/",
+                "version": "3.13",
+                "retrieved": "2026-04-23",
+            },
+        }
+        catalog = IoBoundaryCatalog._from_dict(data)
+        assert catalog.stdlib_provenance is not None
+
+    def test_invalid_status_value_raises(self) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {"language": "fakelang", "status": "wat"}
+        with pytest.raises(ValueError, match="status"):
+            IoBoundaryCatalog._from_dict(data)
+
+    def test_provenance_must_be_dict(self) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {
+            "language": "fakelang",
+            "status": "in_progress",
+            "stdlib_provenance": "https://python.org/",  # str, not dict
+        }
+        with pytest.raises(ValueError, match="stdlib_provenance"):
+            IoBoundaryCatalog._from_dict(data)
+
+    def test_python_catalog_is_complete_with_provenance(self) -> None:
+        # The shipped Python catalog must declare status=complete with a
+        # valid stdlib_provenance block. This is the worked example.
+        catalog = load_catalog("python")
+        assert catalog.status == "complete"
+        assert catalog.stdlib_provenance is not None
+        assert catalog.stdlib_provenance["source_url"].startswith("https://")
+
+    def test_other_catalogs_declare_status_in_progress(self) -> None:
+        # All non-Python catalogs must declare status=in_progress until a
+        # follow-up PR promotes them to complete.
+        for lang in (
+            "c", "elixir", "erlang", "go", "haskell", "java", "javascript",
+            "kotlin", "objc", "rust", "scala", "swift",
+        ):
+            catalog = load_catalog(lang)
+            assert catalog.status == "in_progress", (
+                f"{lang}.yaml must declare status=in_progress until a "
+                f"follow-up PR promotes it to complete with provenance."
+            )
+
+    def test_allowlist_includes_core_language_doc_hosts(self) -> None:
+        from hypergumbo_core.io_boundary import (
+            ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES,
+        )
+
+        # Spot-check the major-language doc hosts the allowlist must cover.
+        # This is the contract the catalog-completion backlog leans on.
+        for host in (
+            "python.org", "golang.org", "rust-lang.org", "nodejs.org",
+            "oracle.com", "openjdk.org", "kotlinlang.org",
+            "scala-lang.org", "swift.org", "haskell.org", "erlang.org",
+            "elixir-lang.org", "apple.com", "developer.apple.com",
+            "cppreference.com", "gnu.org",
+        ):
+            assert host in ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES, (
+                f"{host!r} should be in ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES "
+                f"because it hosts an official stdlib doc."
+            )
+
+
+class TestStdlibOther:
+    """Plan C, PR B: ``stdlib_other`` (non-IO stdlib symbols) section.
+
+    Catalogs may declare a ``stdlib_other:`` section enumerating stdlib
+    symbols that are NOT I/O primitives (e.g., ``math.sqrt``).  These
+    feed the PR C ``external_potential`` filter — a first-party call to
+    ``math.sqrt`` is stdlib (so not "untrusted external"), but it's also
+    not an I/O primitive.  Without this section, the filter has no way
+    to distinguish "stdlib non-IO" from "third-party not-yet-catalogued".
+    """
+
+    def test_stdlib_other_section_parses_into_dedicated_field(self) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {
+            "language": "fakelang",
+            "status": "in_progress",
+            "stdlib_other": [
+                {"module": "math", "functions": ["sqrt", "sin", "cos"]},
+                {"module": "collections", "methods": ["get", "items"]},
+                {"module": "sys", "attributes": ["version_info"]},
+            ],
+        }
+        catalog = IoBoundaryCatalog._from_dict(data)
+        assert "math.sqrt" in catalog.stdlib_other
+        assert "math.sin" in catalog.stdlib_other
+        assert "math.cos" in catalog.stdlib_other
+        assert "collections.get" in catalog.stdlib_other
+        assert "collections.items" in catalog.stdlib_other
+        assert "sys.version_info" in catalog.stdlib_other
+
+    def test_stdlib_other_symbols_are_not_matched_as_io_primitives(self) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {
+            "language": "fakelang",
+            "status": "in_progress",
+            "stdlib_other": [{"module": "math", "functions": ["sqrt"]}],
+        }
+        catalog = IoBoundaryCatalog._from_dict(data)
+        # math.sqrt is stdlib-but-not-IO; it MUST NOT appear in the IO
+        # primitive index.
+        assert catalog.lookup("math.sqrt") is None
+        # But it IS marked as stdlib (used by the PR C external_potential
+        # filter to drop "stdlib non-IO" calls from the bucket).
+        assert "math.sqrt" in catalog.stdlib_other
+
+    def test_stdlib_other_absent_yields_empty_set(self) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {"language": "fakelang", "status": "in_progress"}
+        catalog = IoBoundaryCatalog._from_dict(data)
+        assert catalog.stdlib_other == frozenset()
+
+    def test_stdlib_other_non_dict_entries_are_skipped(self) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {
+            "language": "fakelang",
+            "status": "in_progress",
+            "stdlib_other": [
+                "not_a_dict",  # skipped
+                {"module": "math", "functions": ["sqrt"]},
+            ],
+        }
+        catalog = IoBoundaryCatalog._from_dict(data)
+        assert catalog.stdlib_other == frozenset({"math.sqrt"})
+
+    def test_stdlib_other_non_list_yields_empty_set(self) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        data = {
+            "language": "fakelang",
+            "status": "in_progress",
+            "stdlib_other": "not_a_list",
+        }
+        catalog = IoBoundaryCatalog._from_dict(data)
+        assert catalog.stdlib_other == frozenset()
+
+    def test_stdlib_other_inherits_from_parent_via_merge(self) -> None:
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+        parent = IoBoundaryCatalog._from_dict({
+            "language": "java",
+            "status": "in_progress",
+            "stdlib_other": [{"module": "java.lang.Math", "methods": ["abs"]}],
+        })
+        child = IoBoundaryCatalog._from_dict({
+            "language": "kotlin",
+            "status": "in_progress",
+            "stdlib_other": [{"module": "kotlin.math", "functions": ["abs"]}],
+        })
+        merged = child.merge(parent)
+        assert "java.lang.Math.abs" in merged.stdlib_other
+        assert "kotlin.math.abs" in merged.stdlib_other
+
+
 class TestMatchEdgeToPrimitive:
     """Tests for matching call edges to I/O primitives."""
 
@@ -879,6 +1157,7 @@ class TestMatchEdgeToPrimitive:
         """Non-list boundary values and non-dict entries are skipped."""
         yaml_content = """\
 language: broken
+status: in_progress
 
 fs_read: "not a list"
 

@@ -10,6 +10,10 @@
 # distinctive enough to avoid false positives without module disambiguation.
 # Overly generic names (write, read, run, data) go in ambiguous_names.
 language: swift
+# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
+# requires enumerating Foundation/Combine/Network stdlib and adding
+# ``stdlib_provenance`` (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES).
+status: in_progress
 
 fs_read:
   - module: FileManager

@@ -7,6 +7,10 @@
 # Third-party web frameworks (Servant, Yesod, Warp) call these primitives
 # transitively, so covering base + common libraries is sufficient.
 language: haskell
+# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
+# requires enumerating Haskell base/network/etc. and adding
+# ``stdlib_provenance`` (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES).
+status: in_progress
 
 # Function names that are too generic to match without module context.
 # Haskell Prelude auto-imports many names; same names appear in non-IO contexts.

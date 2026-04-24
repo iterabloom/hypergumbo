@@ -4,6 +4,10 @@
 # Maps std library functions to I/O boundary types. Covers Rust stable std.
 # Third-party crates (tokio, reqwest, etc.) trace through these primitives.
 language: rust
+# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
+# requires enumerating Rust ``std::*`` and adding ``stdlib_provenance``
+# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py).
+status: in_progress
 
 # Method names that are too generic to match without module context.
 # Rust traits mean .read(), .write(), .connect() etc. appear on many types;

@@ -27,11 +27,112 @@ add new languages or community-contributed corrections.
 """
 from __future__ import annotations
 
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 import yaml
+
+
+# ---------------------------------------------------------------------------
+# Provenance allowlist (Plan C, PR B)
+# ---------------------------------------------------------------------------
+# Hostnames that are permitted as the host of a catalog's
+# ``stdlib_provenance.source_url``.  Match is suffix-based, so
+# ``docs.python.org`` matches the ``python.org`` suffix.  This defends
+# against typos and unofficial sources: a catalog declaring
+# ``status: complete`` with provenance pointing at, say,
+# ``stackoverflow.com`` is rejected at load time.
+#
+# Adding to this list is a governance change — additions go through PR
+# review with justification (same shape as ``ALLOWED_WEBSITES.md``).
+# Each entry must be the official documentation host of a programming
+# language's stdlib (or a closely-related authority such as MDN for
+# browser globals, cppreference.com for C/C++, GNU for libc).
+
+ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES: frozenset[str] = frozenset({
+    # Python
+    "python.org",
+    # Go
+    "golang.org", "go.dev", "pkg.go.dev",
+    # Rust
+    "rust-lang.org",
+    # JavaScript / Node / browsers
+    "nodejs.org", "developer.mozilla.org",
+    # Java / JVM ecosystem
+    "oracle.com", "openjdk.org",
+    # C# / .NET
+    "microsoft.com", "dotnet.microsoft.com",
+    # Apple platforms (Swift, Objective-C)
+    "apple.com", "developer.apple.com", "swift.org",
+    # JVM offshoots
+    "kotlinlang.org", "scala-lang.org",
+    # BEAM
+    "elixir-lang.org", "hexdocs.pm", "erlang.org",
+    # Functional family
+    "haskell.org", "ocaml.org", "clojure.org",
+    # Other major languages
+    "ruby-lang.org", "dart.dev", "php.net", "perl.org",
+    "crystal-lang.org", "nim-lang.org", "ziglang.org",
+    "julialang.org", "racket-lang.org", "tcl-lang.org",
+    "lua.org", "r-project.org",
+    # C / C++ / POSIX
+    "cppreference.com", "gnu.org", "man7.org",
+    "openbsd.org", "freebsd.org", "netbsd.org",
+    "opengroup.org",
+    # Standards bodies (ISO C, ISO C++, RFCs)
+    "iso.org", "ietf.org",
+})
+
+
+def _validate_catalog_dict(
+    language: str, status: str, provenance: Optional[dict],
+) -> None:
+    """Validate a catalog dict against the Plan C, PR B governance rules.
+
+    For ``status: complete``, ``stdlib_provenance`` MUST be present and
+    its ``source_url`` MUST be an HTTPS URL whose hostname suffix-matches
+    an entry in :data:`ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES`.  For
+    ``status: in_progress``, no provenance is required.
+
+    Raises ``ValueError`` on any violation.  Called from
+    :meth:`IoBoundaryCatalog._from_dict` so violations surface at load
+    time, not at edge-matching time.
+    """
+    if status not in ("complete", "in_progress"):
+        raise ValueError(
+            f"Catalog for {language!r} has invalid status {status!r}; "
+            f"expected 'complete' or 'in_progress'.",
+        )
+    if status != "complete":
+        return
+    if not provenance or not provenance.get("source_url"):
+        raise ValueError(
+            f"Catalog for {language!r} has status='complete' but no "
+            f"stdlib_provenance.source_url. Either declare a provenance "
+            f"URL or set status to 'in_progress'.",
+        )
+    url = provenance["source_url"]
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https":
+        raise ValueError(
+            f"Catalog for {language!r} has stdlib_provenance.source_url "
+            f"{url!r} — must use https scheme.",
+        )
+    hostname = parsed.hostname or ""
+    matched = any(
+        hostname == suffix or hostname.endswith("." + suffix)
+        for suffix in ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES
+    )
+    if not matched:
+        raise ValueError(
+            f"Catalog for {language!r} has stdlib_provenance.source_url "
+            f"{url!r} whose hostname {hostname!r} does not suffix-match "
+            f"the allowlist (ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES). Add "
+            f"the hostname suffix to the allowlist if it is the official "
+            f"documentation source for the language's stdlib.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +228,25 @@ class IoBoundaryCatalog:
     # the class of bug the invariant guards against: output identical
     # to a clean codebase, plus false security confidence in taint-flow.
     is_supported: bool = True
+    # Plan C, PR B: catalog completeness status. ``"complete"`` means
+    # the catalog enumerates the entire stdlib of the language and has
+    # declared ``stdlib_provenance`` (validated at load time).
+    # ``"in_progress"`` means the catalog is partial; downstream code
+    # (PR C) flags ``external_potential`` reports as unreliable for
+    # in-progress languages so absence-of-catalog-hit isn't conflated
+    # with "definitely third-party".
+    status: str = "complete"
+    # Plan C, PR B: provenance of the stdlib symbol list. ``None`` for
+    # ``status: in_progress``; required (and validated) for
+    # ``status: complete``. Shape: ``{source_url, version, retrieved,
+    # notes?}``.
+    stdlib_provenance: Optional[dict] = None
+    # Plan C, PR B: stdlib qualified names that are NOT I/O primitives
+    # (e.g., ``math.sqrt``). Used by the PR C ``external_potential``
+    # filter to drop "first-party calls a stdlib non-IO symbol" from
+    # the bucket — those aren't catalog gaps. Empty until catalogs
+    # populate ``stdlib_other:`` sections.
+    stdlib_other: frozenset[str] = field(default_factory=frozenset)
     _by_qualified: dict[str, IoPrimitive] = field(
         default_factory=dict, repr=False,
     )
@@ -227,6 +347,12 @@ class IoBoundaryCatalog:
         Used for language inheritance (e.g. Scala inherits from Java):
         Scala-specific entries override Java entries with the same qualified
         name, while Java entries not present in Scala are added.
+
+        ``stdlib_other`` is unioned across child and parent so a Kotlin
+        project benefits from Java's enumerated stdlib non-IO symbols.
+        ``status`` and ``stdlib_provenance`` stay on the child — the
+        completeness claim belongs to the language whose catalog is
+        being loaded, not the parent.
         """
         existing_qnames = {p.qualified_name for p in self.primitives}
         merged_primitives = list(self.primitives) + [
@@ -234,10 +360,14 @@ class IoBoundaryCatalog:
             if p.qualified_name not in existing_qnames
         ]
         merged_ambiguous = self.ambiguous_names | parent.ambiguous_names
+        merged_stdlib_other = self.stdlib_other | parent.stdlib_other
         return IoBoundaryCatalog(
             language=self.language,
             primitives=merged_primitives,
             ambiguous_names=merged_ambiguous,
+            status=self.status,
+            stdlib_provenance=self.stdlib_provenance,
+            stdlib_other=merged_stdlib_other,
         )
 
     @classmethod
@@ -249,8 +379,22 @@ class IoBoundaryCatalog:
 
     @classmethod
     def _from_dict(cls, data: dict) -> IoBoundaryCatalog:
-        """Build a catalog from a parsed YAML dict."""
+        """Build a catalog from a parsed YAML dict.
+
+        Plan C, PR B: validates ``status`` + ``stdlib_provenance`` and
+        parses the new ``stdlib_other`` section. Hard-errors at load
+        time on missing/invalid provenance for ``status: complete``
+        catalogs (see :func:`_validate_catalog_dict`).
+        """
         language = data.get("language", "unknown")
+        status = data.get("status", "complete")
+        provenance = data.get("stdlib_provenance")
+        if provenance is not None and not isinstance(provenance, dict):
+            raise ValueError(
+                f"Catalog for {language!r} stdlib_provenance must be a "
+                f"mapping, got {type(provenance).__name__}.",
+            )
+        _validate_catalog_dict(language, status, provenance)
         primitives: list[IoPrimitive] = []
 
         boundary_types = [
@@ -306,10 +450,26 @@ class IoBoundaryCatalog:
                     ))
 
         ambiguous = frozenset(data.get("ambiguous_names", []))
+
+        # Plan C, PR B: parse stdlib_other (non-IO stdlib symbols).
+        stdlib_other_set: set[str] = set()
+        stdlib_other_entries = data.get("stdlib_other", [])
+        if isinstance(stdlib_other_entries, list):
+            for entry in stdlib_other_entries:
+                if not isinstance(entry, dict):
+                    continue
+                module = entry.get("module", "")
+                for kind_key in ("functions", "methods", "attributes"):
+                    for sym_name in entry.get(kind_key, []):
+                        stdlib_other_set.add(f"{module}.{sym_name}")
+
         catalog = cls(
             language=language,
             primitives=primitives,
             ambiguous_names=ambiguous,
+            status=status,
+            stdlib_provenance=provenance,
+            stdlib_other=frozenset(stdlib_other_set),
         )
         return catalog
 

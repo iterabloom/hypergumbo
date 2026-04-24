@@ -5,6 +5,10 @@
 # Third-party packages (express, axios, etc.) trace through these.
 # Also used for TypeScript (same runtime primitives).
 language: javascript
+# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
+# requires enumerating Node built-ins + browser globals and adding
+# ``stdlib_provenance`` (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES).
+status: in_progress
 
 # Method/function names that are too generic to match without module context.
 # Node.js uses the same names across many modules and user code.

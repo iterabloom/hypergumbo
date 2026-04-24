@@ -3,6 +3,10 @@
 #
 # Maps Go standard library functions to I/O boundary types.
 language: go
+# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
+# requires enumerating Go stdlib and adding ``stdlib_provenance``
+# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py).
+status: in_progress
 
 # Method names that are too generic to match without module context.
 # When the edge has no module_hint (or "external"), these names are skipped
