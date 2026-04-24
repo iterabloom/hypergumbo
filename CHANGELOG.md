@@ -41,6 +41,12 @@ New `module_attr_ref` edge type emitted across six languages for attribute reads
 
 - **`io_primitives/python.yaml`**: `sys.stdout` and `sys.stderr` move out of `ipc_send` into a new `logging` block. Same fix Go's `log` / `log/slog` / `fmt` already received (see `test_go_catalog_slog_logging`): writing to stdout/stderr is terminal/log output, not inter-process communication in any threat-model sense, and classifying it as `ipc_send` produced 70 false-positive chains in hypergumbo's own self-analysis (out of 77 ipc_send chains total). `sys.stdin` stays in `ipc_recv` — it can carry untrusted piped input from the parent process, which is a real IPC threat-model concern. Cross-language analogs (`c.yaml`, `javascript.yaml`, `rust.yaml`, `scala.yaml`) tracked separately.
 
+### Fixed
+
+#### sketch_embeddings — load HuggingFace models offline-first (silences `hypergumbo .` HF Hub network call)
+
+- **`sketch_embeddings._load_st_model_offline_first(st_cls, name, **kwargs)`** new helper used by both `_load_embedding_model` and `_load_modernbert_model`. Tries `SentenceTransformer(name, local_files_only=True, ...)` first; falls back to a normal load only on `(OSError, ValueError)` — typical for the first install when the model isn't cached yet. Once the cache is warm, every subsequent invocation skips the HuggingFace Hub freshness check entirely, eliminating the "unauthenticated requests to the HF Hub" warning that fired on every `hypergumbo .` run with the embeddings extra installed. The `network_send` chain hypergumbo itself produced via this constructor is now genuinely absent (not just hidden), which validates the PR3 architectural choice (catalog stays focused on true I/O primitives; tier-aware reasoning via `IoChain.dst_tier` covers wrappers).
+
 ### Removed
 
 #### IO catalog — HuggingFace Hub wrappers reverted (PR3 of stop-stripping plan, supersedes WI-jihuj)

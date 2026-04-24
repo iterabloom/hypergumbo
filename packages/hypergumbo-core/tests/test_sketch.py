@@ -8191,6 +8191,91 @@ class TestEmbeddingModelSingleton:
             mod._cached_embedding_model = original_cache
 
 
+class TestStModelOfflineFirst:
+    """Tests for _load_st_model_offline_first.
+
+    SentenceTransformer's constructor contacts HF Hub on every invocation
+    for a cache-freshness check. The wrapper here tries
+    ``local_files_only=True`` first to suppress the network call when the
+    model is already cached, and falls back to a normal load only on
+    cache miss (typically the first install). After this fix,
+    ``hypergumbo .`` runs do not hit HF Hub on every invocation.
+    """
+
+    def test_offline_load_succeeds_on_first_try(self) -> None:
+        """When the model is cached, the local_files_only path is used
+        and the network-allowing path is never tried."""
+        from unittest.mock import MagicMock
+        from hypergumbo_core.sketch_embeddings import (
+            _load_st_model_offline_first,
+        )
+
+        sentinel = object()
+        st_cls = MagicMock(return_value=sentinel)
+
+        result = _load_st_model_offline_first(st_cls, "model-name")
+        assert result is sentinel
+        # Exactly one call, with local_files_only=True.
+        assert st_cls.call_count == 1
+        st_cls.assert_called_once_with("model-name", local_files_only=True)
+
+    def test_falls_back_to_network_on_cache_miss(self) -> None:
+        """When local-only load raises (model not cached), fall through
+        to the network-allowing path."""
+        from unittest.mock import MagicMock
+        from hypergumbo_core.sketch_embeddings import (
+            _load_st_model_offline_first,
+        )
+
+        sentinel = object()
+        # First call raises (cache miss), second call succeeds.
+        st_cls = MagicMock(side_effect=[OSError("not in cache"), sentinel])
+
+        result = _load_st_model_offline_first(st_cls, "model-name")
+        assert result is sentinel
+        assert st_cls.call_count == 2
+        # First call: local-only.
+        assert st_cls.call_args_list[0].kwargs.get("local_files_only") is True
+        # Second call: no local_files_only kwarg → constructor allowed
+        # to hit the network.
+        assert "local_files_only" not in st_cls.call_args_list[1].kwargs
+
+    def test_passes_extra_kwargs_through_on_both_paths(self) -> None:
+        """truncate_dim and similar SentenceTransformer kwargs propagate
+        through the offline-first wrapper on both the cache-hit and
+        cache-miss paths.
+        """
+        from unittest.mock import MagicMock
+        from hypergumbo_core.sketch_embeddings import (
+            _load_st_model_offline_first,
+        )
+
+        # Cache-hit path: extra kwargs go through with local_files_only.
+        st_cls = MagicMock(return_value=object())
+        _load_st_model_offline_first(st_cls, "m", truncate_dim=256)
+        st_cls.assert_called_once_with("m", local_files_only=True, truncate_dim=256)
+
+        # Cache-miss path: extra kwargs go through on fallback too.
+        st_cls = MagicMock(side_effect=[ValueError("miss"), object()])
+        _load_st_model_offline_first(st_cls, "m", truncate_dim=256)
+        assert st_cls.call_args_list[1].args == ("m",)
+        assert st_cls.call_args_list[1].kwargs == {"truncate_dim": 256}
+
+    def test_cache_miss_via_value_error_falls_back(self) -> None:
+        """huggingface_hub raises ValueError variants in some cases too —
+        the broader ``(OSError, ValueError)`` clause covers both."""
+        from unittest.mock import MagicMock
+        from hypergumbo_core.sketch_embeddings import (
+            _load_st_model_offline_first,
+        )
+
+        sentinel = object()
+        st_cls = MagicMock(side_effect=[ValueError("bad cache"), sentinel])
+        result = _load_st_model_offline_first(st_cls, "m")
+        assert result is sentinel
+        assert st_cls.call_count == 2
+
+
 class TestConfigFilesNoLockFiles:
     """Lock files should not be in CONFIG_FILES_BY_LANG.
 

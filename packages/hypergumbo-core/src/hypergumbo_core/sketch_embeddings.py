@@ -119,12 +119,42 @@ def _load_embedding_model():
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
     try:
-        model = SentenceTransformer(_EMBEDDING_MODEL)
+        model = _load_st_model_offline_first(SentenceTransformer, _EMBEDDING_MODEL)
     finally:
         sys.stdout = old_stdout
         _restore_no_proxy(old_no_proxy)
     _cached_embedding_model = model
     return model
+
+
+def _load_st_model_offline_first(st_cls, model_name, **kwargs):
+    """Construct a SentenceTransformer model, preferring the local cache.
+
+    sentence_transformers' ``SentenceTransformer(name)`` constructor
+    contacts HuggingFace Hub on every invocation for a cache-freshness
+    check (a HEAD request on the model's manifest). Even when the model
+    is fully cached locally, this produces network traffic and the
+    library logs an "unauthenticated requests to the HF Hub" warning if
+    no HF_TOKEN is set. For ``hypergumbo .`` runs that's noise on every
+    invocation.
+
+    Strategy: try the constructor with ``local_files_only=True`` first
+    (which suppresses the freshness check entirely). If the model isn't
+    cached yet (typically the first install after ``hypergumbo
+    install-embeddings``), HuggingFace Hub raises ``LocalEntryNotFoundError``
+    (a subclass of ``OSError``) — fall back to a normal load that allows
+    the download. After the first successful load, all subsequent calls
+    take the offline path with no network.
+
+    Catching the broader ``(OSError, ValueError)`` covers all the
+    documented "no local entry" exception variants without forcing a
+    hard import of ``huggingface_hub.errors`` (which would create an
+    implicit dep on a specific HF Hub version).
+    """
+    try:
+        return st_cls(model_name, local_files_only=True, **kwargs)
+    except (OSError, ValueError):
+        return st_cls(model_name, **kwargs)
 
 # Probe patterns for embedding-based config extraction
 # These are embedded and compared against config file content
@@ -1566,9 +1596,10 @@ def _load_modernbert_model():
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
     try:
-        model = SentenceTransformer(
+        model = _load_st_model_offline_first(
+            SentenceTransformer,
             _MODERNBERT_MODEL_NAME,
-            truncate_dim=_MODERNBERT_TRUNCATE_DIM
+            truncate_dim=_MODERNBERT_TRUNCATE_DIM,
         )
     finally:
         sys.stdout = old_stdout
