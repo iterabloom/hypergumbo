@@ -1,0 +1,20 @@
+- op: create  # b4a0
+  at: '2026-04-24T08:32:30Z'  # b4a0
+  by: agent  # b4a0
+  actor: jgstern_agent  # b4a0
+  clock: 1  # b4a0
+  nonce: b4a0  # b4a0
+  data:  # b4a0
+    kind: work_item  # b4a0
+    title: "Promote erlang.yaml from status=in_progress to status=complete with stdlib_provenance"  # b4a0
+    status: todo_soft  # b4a0
+    priority: 3  # b4a0
+    parent:  # b4a0
+    tags:  # b4a0
+    - analysis_quality  # b4a0
+    isbefore: []  # b4a0
+    duplicate_of: []  # b4a0
+    not_duplicate_of: []  # b4a0
+    pr_ref:  # b4a0
+    description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/erlang.yaml from status=in_progress to status=complete by: (1) auditing the catalog against Erlang/OTP's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing erlang.org, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # b4a0
+    fields: {}  # b4a0
