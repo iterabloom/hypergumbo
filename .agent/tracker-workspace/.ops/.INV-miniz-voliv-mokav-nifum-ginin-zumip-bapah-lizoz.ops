@@ -36,3 +36,18 @@
   clock: 3  # 60a3
   nonce: 60a3  # 60a3
   message: "Fixed in PR #1682. Boundary nodes created for dangling edge endpoints. Annotation edges fixed (WI-divob). Remaining: edges from YAML framework patterns may reference unresolved targets, but these are now handled by boundary nodes."  # 60a3
+- op: update  # 9f96
+  at: '2026-04-24T01:08:57Z'  # 9f96
+  by: agent  # 9f96
+  actor: jgstern_agent  # 9f96
+  clock: 4  # 9f96
+  nonce: 9f96  # 9f96
+  set:  # 9f96
+    status: satisfied  # 9f96
+- op: discuss  # 318f
+  at: '2026-04-24T01:08:57Z'  # 318f
+  by: agent  # 318f
+  actor: jgstern_agent  # 318f
+  clock: 5  # 318f
+  nonce: 318f  # 318f
+  message: "PR1 of stop-stripping plan merged (commits c7d60b1a3 + f829acd14). cli.run_behavior_map no longer strips boundary nodes from JSON output; the f5ab42e61 strip block is gone. Every disk-load consumer now sees boundary nodes via behavior_map['nodes'] with kind=external_symbol, supply_chain.tier populated. Schema bumped 0.2.2→0.2.3 (additive: external_symbol added to Symbol.kind enum, Span line minimum loosened to 0)."  # 318f

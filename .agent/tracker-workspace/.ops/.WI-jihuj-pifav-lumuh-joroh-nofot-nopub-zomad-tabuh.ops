@@ -34,3 +34,10 @@
   clock: 3  # 8834
   nonce: '8834'  # 8834
   message: "Fixed in PR #3320 (commit b93678e9e). Added huggingface_hub.{snapshot_download, hf_hub_download}, huggingface_hub.HfApi.{model_info, list_repo_files, download_file}, sentence_transformers.SentenceTransformer to python.yaml#net_send. Validated by test_python_catalog_has_huggingface_hub_net_send. awaits_bakeoff_validation tag retained pending DEEP cycle on a Python repo with the embeddings extra."  # 8834
+- op: discuss  # 2160
+  at: '2026-04-24T02:00:25Z'  # 2160
+  by: agent  # 2160
+  actor: jgstern_agent  # 2160
+  clock: 4  # 2160
+  nonce: '2160'  # 2160
+  message: "Catalog adds reverted in PR3 of stop-stripping plan. The WI-jihuj fix was the wrong layer — the catalog is for true I/O primitives, not arbitrary third-party wrappers. The structural answer (IoChain.dst_tier from PR2) lets verify-claims reason about tier-3 destinations as 'may make network calls' without per-library catalog growth. Awaits-bakeoff-validation tag retained: bakeoff should confirm this revert doesn't regress real net_send detection on diverse repos."  # 2160

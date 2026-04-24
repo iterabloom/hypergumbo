@@ -21,3 +21,18 @@
     fields:  # 657c
       statement: "A method-kind I/O primitive whose short name is in the catalog's ambiguous_names is matched ONLY when module_hint provides discriminating evidence — never on the unfiltered short-name fallback. Equivalently: every Path/io method primitive whose name collides with a stdlib non-io method (str, bytes, dict, list, set) MUST appear in ambiguous_names."  # 657c
       root_cause: "python.yaml registers 'pathlib.Path.replace' as a fs_write method but does not list 'replace' in ambiguous_names. The catalog matcher's lookup_with_module() falls back to short-name match when module_hint is None/external, so every str.replace() / bytes.replace() / dict.replace() call in the codebase matches as Path.replace() and is reported as a filesystem rename. Same pattern likely repeats for any catalog where a method primitive shares a short name with a stdlib duck-typed method."  # 657c
+- op: update  # 64fa
+  at: '2026-04-23T21:17:22Z'  # 64fa
+  by: agent  # 64fa
+  actor: jgstern_agent  # 64fa
+  clock: 2  # 64fa
+  nonce: 64fa  # 64fa
+  set:  # 64fa
+    status: pending_validation  # 64fa
+- op: discuss  # 63b3
+  at: '2026-04-23T21:17:22Z'  # 63b3
+  by: agent  # 63b3
+  actor: jgstern_agent  # 63b3
+  clock: 3  # 63b3
+  nonce: 63b3  # 63b3
+  message: "Merged in PR via commit 635164e0c. Status pending_validation per protocol: invariant fix landed, awaiting BROAD-mode bakeoff cycle to confirm fs_write FP drop on broader corpus. Cross-language scope-expansion for java/javascript/go/rust catalogs deferred to follow-up."  # 63b3

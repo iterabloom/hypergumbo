@@ -1,0 +1,20 @@
+- op: create  # b23b
+  at: '2026-04-24T08:26:15Z'  # b23b
+  by: agent  # b23b
+  actor: jgstern_agent  # b23b
+  clock: 1  # b23b
+  nonce: b23b  # b23b
+  data:  # b23b
+    kind: work_item  # b23b
+    title: "Plan C, PR B: IO catalog status / stdlib_provenance / stdlib_other / allowlist / validator"  # b23b
+    status: todo_hard  # b23b
+    priority: 1  # b23b
+    parent:  # b23b
+    tags:  # b23b
+    - analysis_quality  # b23b
+    isbefore: []  # b23b
+    duplicate_of: []  # b23b
+    not_duplicate_of: []  # b23b
+    pr_ref:  # b23b
+    description: "Per /home/jgstern_agent/.claude/plans/yeah-we-should-do-parallel-pnueli.md PR B: extend io_boundary.IoBoundaryCatalog with status (complete | in_progress), stdlib_provenance (source_url + version + retrieved + notes), and stdlib_other (non-IO stdlib symbols). Add ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES allowlist + _validate_catalog_dict() validator that hard-errors at load time on missing/invalid provenance. Promote python.yaml to status=complete (citing docs.python.org/3.13); mark all 12 other catalogs as status=in_progress. Status=complete is the default — every catalog must explicitly opt in to in_progress or supply provenance. INV-stdlib-provenance is the durable invariant that protects the rule going forward; per-language WI-promote-* items are the catalog-completion backlog. Branch: jgstern-agent/feat/io-catalog-status-and-provenance."  # b23b
+    fields: {}  # b23b
