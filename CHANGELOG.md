@@ -12,6 +12,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Summary
 
+External boundary nodes — synthetic `Symbol` records minted for every dangling edge endpoint (stdlib calls, third-party imports) — are now serialized into `behavior_map["nodes"]` with `kind="external_symbol"`, `path="<external>"`, `meta.external_boundary=True`, and `supply_chain.tier` populated. They were previously stripped before output, which silently re-introduced the dangling-reference problem WI-sikur was meant to fix for every disk-load consumer (`cmd_slice`, `cmd_test_coverage`, `cmd_verify_claims`, etc.). INV-miniz transitions to satisfied. Display surfaces (sketch, compact, search) continue to filter boundary nodes via the new `ir.is_external_boundary()` helper, so the user-facing output is unchanged. PR1 of a three-PR plan; PR2 surfaces tier on `IoChain` and PR3 lets `verify-claims` reason about tier-3 wrappers without per-library catalog growth. Schema bumped 0.2.2 → 0.2.3 (additive: `external_symbol` added to `Symbol.kind` enum; Span `start_line` / `end_line` minimum loosened from 1 to 0 for synthetic zero-span nodes).
+
 `hypergumbo io-boundaries` now detects attribute-style IO primitives — `os.environ`, `sys.argv`, `process.env`, `System.out`, `os.Stdout`, `std::env::consts::OS`, and bare `stdout` / `stderr` / `stdin` in C — across Python, Go, JavaScript/TypeScript, Java, Rust (tree-sitter), and C. These entries were declared in the YAML catalog but had no matching analyzer edges, so every chain through them was invisible. `verify-claims` also gains `--taint-sources`, `--taint-sinks`, `--taint-sanitizers` flags (and an `extra_catalogs:` key in the claims YAML) for project-local trust zones, sanitizers, and label maps. Browser-local reads (`localStorage.getItem`, `indexedDB.open`, `caches.*`) are no longer misreported as host-filesystem reads.
 
 ### Added
@@ -38,6 +40,15 @@ New `module_attr_ref` edge type emitted across six languages for attribute reads
 #### IO catalog — Python stdio reclassified from ipc_send to logging (WI-tolif)
 
 - **`io_primitives/python.yaml`**: `sys.stdout` and `sys.stderr` move out of `ipc_send` into a new `logging` block. Same fix Go's `log` / `log/slog` / `fmt` already received (see `test_go_catalog_slog_logging`): writing to stdout/stderr is terminal/log output, not inter-process communication in any threat-model sense, and classifying it as `ipc_send` produced 70 false-positive chains in hypergumbo's own self-analysis (out of 77 ipc_send chains total). `sys.stdin` stays in `ipc_recv` — it can carry untrusted piped input from the parent process, which is a real IPC threat-model concern. Cross-language analogs (`c.yaml`, `javascript.yaml`, `rust.yaml`, `scala.yaml`) tracked separately.
+
+### Changed
+
+#### IR — external boundary nodes are no longer stripped from JSON output (INV-miniz, supersedes WI-sikur strip step)
+
+- **`ir.is_external_boundary(symbol_or_dict)`** new shared helper, accepts a `Symbol` or a JSON dict, returns True iff `meta.external_boundary == True`. Replaces three ad-hoc inline checks (`cli.run_behavior_map`, `cli._classify_symbols` boundary exemption, `compact.format_compact_behavior_map` filter).
+- **`cli.run_behavior_map` no longer strips boundary nodes from `behavior_map["nodes"]`** (the `f5ab42e61` strip block is gone). Synthetic boundary symbols — `kind="external_symbol"`, `path="<external>"`, `meta.external_boundary=True`, `supply_chain.tier=3` (or 2 for Go/Java/Kotlin direct deps via `DependencyManifest`) — now round-trip through the JSON. INV-miniz ("every edge must point to a node or explicit external boundary") is satisfied for disk-load consumers (`cmd_slice`, `cmd_test_coverage`, `cmd_verify_claims`); previously the in-memory pipeline saw boundary nodes but the serialized output didn't, silently re-introducing the slice-traversal stalls WI-sikur originally fixed.
+- **Display surfaces continue to filter boundary nodes via `is_external_boundary()`**: `compact.format_compact_behavior_map` (tiered view), `cli.cmd_search` (default search hits), `cli.cmd_dead_code_maybe` and `cli.cmd_test_coverage` (already filter by `kind in {"function","method"}`, naturally excluded). `cli.cmd_explain` intentionally surfaces boundary symbols — they are useful to see when explaining a function's external dependencies.
+- **Schema bump 0.2.2 → 0.2.3** (additive): `Symbol.kind` enum gains `external_symbol`; `Span.start_line` / `end_line` minimum loosened from 1 to 0 to accept boundary nodes' zero-span placeholder. New behavior maps validate; old behavior maps (lacking boundary nodes) still validate.
 
 ### Fixed
 

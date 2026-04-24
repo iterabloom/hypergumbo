@@ -159,6 +159,30 @@ class TestSchemaValidation:
         validator = make_validator(schema, "Symbol")
         validator.validate(symbol.to_dict())
 
+    def test_external_boundary_symbol_validates(self):
+        """A synthetic external boundary Symbol (kind=external_symbol,
+        path=<external>, meta.external_boundary=True) validates against
+        the schema. Stop-stripping plan PR1 starts emitting these in
+        behavior_map['nodes']; without external_symbol in the kind enum,
+        any consumer JSON-schema-validating the output would fail.
+        """
+        from hypergumbo_core.ir import Span, Symbol
+
+        schema = load_schema()
+        boundary = Symbol(
+            id="python:urllib.request:0-0:urlopen:unresolved",
+            name="urlopen",
+            kind="external_symbol",
+            language="python",
+            path="<external>",
+            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+            meta={"external_boundary": True},
+            supply_chain_tier=3,
+            supply_chain_reason="unresolved external reference",
+        )
+        validator = make_validator(schema, "Symbol")
+        validator.validate(boundary.to_dict())
+
     def test_edge_with_all_fields_validates(self):
         """An Edge with all optional fields validates."""
         from hypergumbo_core.ir import Edge
@@ -331,6 +355,10 @@ class TestSchemaUpToDate:
             "grpc_service", "grpc_servicer", "grpc_stub", "grpc_client", "grpc_server",
             "http_client", "graphql_client", "graphql_resolver",
             "mq_publisher", "mq_subscriber", "db_query",
+            # Synthetic boundary node for unresolved external edge endpoints
+            # (created by ir.create_boundary_nodes; surfaced in the JSON
+            # output after PR1 of stop-stripping plan).
+            "external_symbol",
         }
 
         missing = known_kinds - kinds_in_schema

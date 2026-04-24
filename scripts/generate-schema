@@ -244,13 +244,13 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
         "properties": {
             "start_line": {
                 "type": "integer",
-                "minimum": 1,
-                "description": "Starting line number (1-indexed)"
+                "minimum": 0,
+                "description": "Starting line number (1-indexed); 0 reserved for synthetic boundary symbols (kind=external_symbol) which have no source location"
             },
             "end_line": {
                 "type": "integer",
-                "minimum": 1,
-                "description": "Ending line number (1-indexed)"
+                "minimum": 0,
+                "description": "Ending line number (1-indexed); 0 reserved for synthetic boundary symbols (kind=external_symbol) which have no source location"
             },
             "start_col": {
                 "type": "integer",
@@ -291,7 +291,12 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "ipc_send", "ipc_receive", "websocket_endpoint",
                     "grpc_service", "grpc_servicer", "grpc_stub", "grpc_client", "grpc_server",
                     "http_client", "graphql_client", "graphql_resolver",
-                    "mq_publisher", "mq_subscriber", "db_query"
+                    "mq_publisher", "mq_subscriber", "db_query",
+                    # Synthetic boundary node for unresolved external edge
+                    # endpoints (WI-sikur / INV-miniz). Created by
+                    # ir.create_boundary_nodes after analysis to make
+                    # slice traversal stop gracefully at external code.
+                    "external_symbol"
                 ]
             },
             "language": {"type": "string", "description": "Programming language"},

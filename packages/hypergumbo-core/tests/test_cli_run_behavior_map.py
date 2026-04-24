@@ -102,6 +102,58 @@ def test_cli_run_with_max_files(tmp_path: Path) -> None:
     assert limits.get("max_files_per_analyzer") == 2
 
 
+def test_boundary_nodes_appear_in_output(tmp_path: Path) -> None:
+    """Boundary nodes for unresolved external dsts must appear in
+    behavior_map['nodes'] (PR1 of stop-stripping plan).
+
+    Before this change, ir.create_boundary_nodes minted synthetic Symbols
+    for every dangling edge endpoint but cli.run_behavior_map stripped
+    them out before serialization. That left disk-load consumers
+    (cmd_slice / cmd_test_coverage / verify-claims) unable to resolve the
+    boundary's supply_chain.tier and reproduced the slice-traversal
+    stalls WI-sikur was originally meant to fix.
+    """
+    import json
+    from hypergumbo_core.cli import run_behavior_map
+
+    # urlopen() lives in the stdlib (urllib.request), which the analyzer
+    # never sees a Symbol for. The call edge dst becomes
+    # python:urllib.request:0-0:urlopen:unresolved → boundary node.
+    (tmp_path / "fetch.py").write_text(
+        "from urllib.request import urlopen\n"
+        "def fetch(url):\n"
+        "    return urlopen(url).read()\n"
+    )
+    out_path = tmp_path / "results.json"
+    run_behavior_map(
+        tmp_path, out_path, budgets="none",
+        include_sketch_precomputed=False, enable_handler_slices=False,
+    )
+    data = json.loads(out_path.read_text())
+
+    boundary_nodes = [
+        n for n in data["nodes"] if n.get("kind") == "external_symbol"
+    ]
+    assert boundary_nodes, (
+        "Expected at least one boundary node (kind=external_symbol) for "
+        "the unresolved urllib.request.urlopen call. Strip block in "
+        "cli.run_behavior_map may have been re-introduced."
+    )
+    # Pick the urlopen one specifically.
+    urlopen_node = next(
+        (n for n in boundary_nodes if n.get("name") == "urlopen"), None
+    )
+    assert urlopen_node is not None
+    assert urlopen_node["path"] == "<external>"
+    assert (urlopen_node.get("meta") or {}).get("external_boundary") is True
+    # supply_chain.tier defaults to 3 (external_dep) for boundary nodes
+    # without a DependencyManifest match.
+    assert urlopen_node["supply_chain"]["tier"] == 3
+    # Zero-span placeholder.
+    assert urlopen_node["span"]["start_line"] == 0
+    assert urlopen_node["span"]["end_line"] == 0
+
+
 def test_run_behavior_map_returns_generated_files(tmp_path: Path) -> None:
     """Test that run_behavior_map returns list of generated file paths."""
     from hypergumbo_core.cli import run_behavior_map

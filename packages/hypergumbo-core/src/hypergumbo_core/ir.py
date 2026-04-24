@@ -612,6 +612,29 @@ class UsageContext:
         }
 
 
+def is_external_boundary(symbol_or_dict: Any) -> bool:
+    """True iff *symbol_or_dict* is a synthetic external-boundary node.
+
+    Boundary nodes are minted by :func:`create_boundary_nodes` for every
+    edge endpoint that doesn't resolve to a real Symbol (stdlib calls,
+    npm imports, third-party constructors). They carry
+    ``meta.external_boundary == True`` regardless of how they were
+    serialized — so this helper accepts either a live :class:`Symbol`
+    instance (in-memory pipeline) or a JSON-loaded dict (consumers that
+    rehydrate ``behavior_map["nodes"]`` from disk).
+
+    Centralized here so consumers (sketch / compact / search /
+    dead-code-maybe / explain) all use the same predicate; previously
+    the check was duplicated ad-hoc as
+    ``not (s.meta and s.meta.get("external_boundary"))``.
+    """
+    if isinstance(symbol_or_dict, Symbol):
+        meta = symbol_or_dict.meta
+    else:
+        meta = symbol_or_dict.get("meta") if isinstance(symbol_or_dict, dict) else None
+    return bool(meta and meta.get("external_boundary"))
+
+
 def create_boundary_nodes(
     symbols: List[Symbol],
     edges: List[Edge],

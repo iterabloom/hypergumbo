@@ -11,7 +11,7 @@ from hypergumbo_core.cli import cmd_dead_code_maybe
 
 def _make_behavior_map(tmp_path: Path, nodes: list, edges: list) -> Path:
     """Write a behavior map JSON and return its path."""
-    bm = {"schema_version": "0.2.2", "nodes": nodes, "edges": edges}
+    bm = {"schema_version": "0.2.3", "nodes": nodes, "edges": edges}
     p = tmp_path / "hg.json"
     p.write_text(json.dumps(bm))
     return p

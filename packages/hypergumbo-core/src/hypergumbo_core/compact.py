@@ -50,7 +50,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
-from .ir import Symbol, Edge
+from .ir import Symbol, Edge, is_external_boundary
 from .ranking import compute_centrality, apply_tier_weights
 from .selection.filters import (
     EXAMPLE_PATH_PATTERNS,  # re-export for backwards compatibility
@@ -1318,14 +1318,16 @@ def format_tiered_behavior_map(
     # Filter symbols the same way select_by_tokens does: exclude tests,
     # non-code, example paths, and boundary nodes so they don't pollute
     # the tiered view.  Boundary nodes (external_symbol, path=<external>)
-    # exist in all_symbols for slice traversal but are filtered from the
-    # full behavior_map["nodes"] output — the tiered view must match.
+    # are now serialized in behavior_map["nodes"] for disk-load consumers
+    # (slice / verify-claims / test-coverage) to reason about external
+    # edges, but the tiered compact view must still hide them because
+    # they have no source code.
     eligible_symbols = [
         s for s in symbols
         if s.kind not in EXCLUDED_KINDS
         and not _is_test_node(s.path, s.meta)
         and not _is_example_path(s.path)
-        and not (s.meta and s.meta.get("external_boundary"))
+        and not is_external_boundary(s)
     ]
 
     # Language-proportional seeding: inject seeds for dominant languages

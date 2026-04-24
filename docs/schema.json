@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.2.2"
+      "const": "0.2.3"
     },
     "confidence_model": {
       "type": "string",
@@ -146,13 +146,13 @@
       "properties": {
         "start_line": {
           "type": "integer",
-          "minimum": 1,
-          "description": "Starting line number (1-indexed)"
+          "minimum": 0,
+          "description": "Starting line number (1-indexed); 0 reserved for synthetic boundary symbols (kind=external_symbol) which have no source location"
         },
         "end_line": {
           "type": "integer",
-          "minimum": 1,
-          "description": "Ending line number (1-indexed)"
+          "minimum": 0,
+          "description": "Ending line number (1-indexed); 0 reserved for synthetic boundary symbols (kind=external_symbol) which have no source location"
         },
         "start_col": {
           "type": "integer",
@@ -249,7 +249,8 @@
             "graphql_resolver",
             "mq_publisher",
             "mq_subscriber",
-            "db_query"
+            "db_query",
+            "external_symbol"
           ]
         },
         "language": {

@@ -105,7 +105,10 @@ import hypergumbo_core.linkers.kafka_streams_dispatch as _kafka_streams_dispatch
 import hypergumbo_core.linkers.django_orm_dispatch as _django_orm_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
-from .ir import Symbol, Edge, UsageContext, create_boundary_nodes, deduplicate_edges
+from .ir import (
+    Symbol, Edge, UsageContext, create_boundary_nodes, deduplicate_edges,
+    is_external_boundary,
+)
 from .metrics import compute_metrics
 from .profile import detect_profile
 from .schema import new_behavior_map
@@ -1524,6 +1527,11 @@ def cmd_search(args: argparse.Namespace) -> int:
     matches = []
 
     for node in nodes:
+        # Skip synthetic boundary nodes — they have no source location
+        # and would surface as confusing "<external>" rows. Users searching
+        # for `urlopen` want their fetch() call site, not the placeholder.
+        if is_external_boundary(node):
+            continue
         name = node.get("name", "")
         # Check if pattern matches name (fuzzy substring match)
         if pattern in name.lower():
@@ -6638,7 +6646,7 @@ def run_behavior_map(
         removed_symbol_ids = {
             s.id for s in all_symbols
             if s.id not in filtered_symbol_ids
-            and not (s.meta and s.meta.get("external_boundary"))
+            and not is_external_boundary(s)
         }
 
         def _is_valid_edge_src(src: str) -> bool:
@@ -6700,16 +6708,15 @@ def run_behavior_map(
     ranked_symbols = [r.symbol for r in ranked]
     del ranked  # Free RankedSymbol wrappers
 
-    # Filter boundary nodes from output.  They exist in `all_symbols` to make
-    # edge endpoints resolvable for slice traversal, but shouldn't appear in
-    # the behavior map output — they're synthetic, have no source code, and
-    # would inflate node counts.  Edges pointing to boundary node IDs are
-    # retained (consumers can detect them by the "<external>" path or
-    # external_boundary meta flag).
-    ranked_symbols = [
-        s for s in ranked_symbols
-        if not (s.meta and s.meta.get("external_boundary"))
-    ]
+    # Boundary nodes (synthetic Symbols for unresolved external edge endpoints
+    # created by ir.create_boundary_nodes per WI-sikur / INV-miniz) are kept
+    # in the output. Display surfaces (sketch / compact / search /
+    # dead-code / explain) filter them via ir.is_external_boundary so the
+    # presentation stays focused on first-party code, but the JSON exposes
+    # them so disk-load consumers (slice / verify-claims / test-coverage)
+    # can resolve every edge endpoint to a node and reason over the
+    # boundary's supply_chain.tier (e.g., tier-3 wrappers that may reach
+    # the network).
 
     # Convert to dicts for output (in ranked order)
     all_nodes = [s.to_dict() for s in ranked_symbols]

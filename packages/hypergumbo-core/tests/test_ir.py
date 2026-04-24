@@ -5,6 +5,7 @@ from pathlib import Path
 from hypergumbo_core.ir import (
     VALID_ACCESS_MODES,
     AnalysisRun, Edge, Span, Symbol, UsageContext, create_boundary_nodes,
+    is_external_boundary,
 )
 from hypergumbo_lang_mainstream.py import analyze_python
 
@@ -1399,3 +1400,63 @@ class TestCreateBoundaryNodes:
         result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 3
+
+
+class TestIsExternalBoundary:
+    """Tests for is_external_boundary helper (PR1 of stop-stripping plan)."""
+
+    def _real_symbol(self) -> Symbol:
+        return Symbol(
+            id="python:foo.py:1-1:foo:function",
+            name="foo", kind="function", language="python",
+            path="foo.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        )
+
+    def _boundary_symbol(self) -> Symbol:
+        return Symbol(
+            id="python:urllib.request:0-0:urlopen:unresolved",
+            name="urlopen", kind="external_symbol", language="python",
+            path="<external>",
+            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+            meta={"external_boundary": True},
+            supply_chain_tier=3,
+        )
+
+    def test_returns_true_for_boundary_symbol(self) -> None:
+        assert is_external_boundary(self._boundary_symbol()) is True
+
+    def test_returns_false_for_real_symbol(self) -> None:
+        assert is_external_boundary(self._real_symbol()) is False
+
+    def test_returns_true_for_boundary_dict(self) -> None:
+        # Dict shape — Symbol.to_dict() roundtrip via behavior_map JSON.
+        d = self._boundary_symbol().to_dict()
+        assert is_external_boundary(d) is True
+
+    def test_returns_false_for_real_dict(self) -> None:
+        d = self._real_symbol().to_dict()
+        assert is_external_boundary(d) is False
+
+    def test_returns_false_when_meta_missing(self) -> None:
+        # Symbol with no meta dict at all.
+        s = Symbol(
+            id="python:x.py:1-1:x:function",
+            name="x", kind="function", language="python",
+            path="x.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            meta=None,
+        )
+        assert is_external_boundary(s) is False
+
+    def test_returns_false_for_dict_without_meta(self) -> None:
+        # Dict with no meta key.
+        assert is_external_boundary({"id": "x", "kind": "function"}) is False
+
+    def test_returns_false_when_meta_external_boundary_falsy(self) -> None:
+        # Defensive: explicit False or missing key both mean "not boundary".
+        s = self._real_symbol()
+        s.meta = {"external_boundary": False}
+        assert is_external_boundary(s) is False
+        s.meta = {"other_key": True}
+        assert is_external_boundary(s) is False

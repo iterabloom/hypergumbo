@@ -150,8 +150,13 @@ def test_run_detects_cross_file_call_edges(tmp_path: Path) -> None:
     # Load results
     data = json.loads(out_path.read_text())
 
-    # Should have two function nodes (helper in utils, run in main)
-    assert len(data["nodes"]) == 2
+    # Should have two function nodes (helper in utils, run in main).
+    # Filter out synthetic boundary nodes (kind=external_symbol) — those
+    # are minted by ir.create_boundary_nodes for any unresolved external
+    # call (e.g., the `from utils import helper` import resolution may
+    # leave a boundary if it can't fully bind in pass-1).
+    real_nodes = [n for n in data["nodes"] if n.get("kind") != "external_symbol"]
+    assert len(real_nodes) == 2
 
     # Should have both call and import edges
     call_edges = [e for e in data["edges"] if e["type"] == "calls"]
