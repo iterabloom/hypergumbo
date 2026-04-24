@@ -1,0 +1,20 @@
+- op: create  # 7e9a
+  at: '2026-04-24T08:34:20Z'  # 7e9a
+  by: agent  # 7e9a
+  actor: jgstern_agent  # 7e9a
+  clock: 1  # 7e9a
+  nonce: 7e9a  # 7e9a
+  data:  # 7e9a
+    kind: work_item  # 7e9a
+    title: "Promote haskell.yaml from status=in_progress to status=complete with stdlib_provenance"  # 7e9a
+    status: todo_soft  # 7e9a
+    priority: 3  # 7e9a
+    parent:  # 7e9a
+    tags:  # 7e9a
+    - analysis_quality  # 7e9a
+    isbefore: []  # 7e9a
+    duplicate_of: []  # 7e9a
+    not_duplicate_of: []  # 7e9a
+    pr_ref:  # 7e9a
+    description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/haskell.yaml from status=in_progress to status=complete by: (1) auditing the catalog against Haskell's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing haskell.org or hackage's base/network/etc. doc, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # 7e9a
+    fields: {}  # 7e9a
