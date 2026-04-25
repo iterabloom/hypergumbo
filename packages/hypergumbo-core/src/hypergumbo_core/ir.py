@@ -635,36 +635,167 @@ def is_external_boundary(symbol_or_dict: Any) -> bool:
     return bool(meta and meta.get("external_boundary"))
 
 
+# Cap for ``Edge.meta.referring_paths`` — the per-reference-site path
+# slots preserved when src-side dedupe collapses N edges into one. 50 is
+# arbitrary but large enough to retain attribution on virtually any
+# real-world repo (the largest hypergumbo collapse target was 732 file
+# externals → 1 boundary, but per-edge collapse depth is much lower).
+_REFERRING_PATHS_CAP = 50
+
+
+def _canonical_external_id(language: str, path: str, name: str, kind: str) -> str:
+    """Canonical id for a deduplicated boundary Symbol (WI-fozoh).
+
+    Format mirrors :func:`make_symbol_id` so downstream tooling parses
+    it consistently. The path slot is preserved for kinds where it
+    carries semantic identity (e.g. module name for ``kind="module"``,
+    qualified path for ``kind="unresolved"``); for ``kind="file"``
+    pseudo-IDs the path slot is replaced with ``<external>`` and all
+    per-reference variants collapse into one canonical Symbol per
+    language.
+    """
+    return f"{language}:{path}:0-0:{name}:{kind}"
+
+
+def _canonical_external_stable_id(
+    language: str, path: str, name: str, kind: str,
+) -> str:
+    """Stable cross-run identity for a boundary Symbol.
+
+    Identity is a function of the dedupe key — ``(language, name, kind)``
+    for collapsed file-id groups (path absent), or
+    ``(language, path, name, kind)`` for full-identity externals. Two
+    runs against equivalent code produce the same stable_id for the
+    same logical boundary.
+    """
+    payload = f"external:{language}:{path}:{name}:{kind}"
+    return f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}"
+
+
+def _extract_path_slot(symbol_id: str) -> Optional[str]:
+    """Extract the ``path`` slot from a ``{lang}:{path}:{span}:{name}:{kind}`` id.
+
+    Returns ``None`` if the id doesn't have at least 5 colon-separated parts.
+    Used to record the original referring-site path on edges whose src
+    was collapsed by :func:`apply_external_id_remap`.
+    """
+    parts = symbol_id.split(":")
+    if len(parts) >= 5:
+        return parts[1]
+    return None
+
+
+def _parse_dangling_id(dangling_id: str) -> tuple[str, str, str, str]:
+    """Parse ``{lang}:{path}:{span}:{name}:{kind}`` into its components.
+
+    The path slot may itself contain colons (e.g. dart imports like
+    ``dart:dart:io:0-0:module:module`` where path = ``dart:io``), so the
+    parse uses the LAST three colon-separated tokens as span / name /
+    kind, joining everything between ``lang`` and that suffix as the
+    path.
+
+    Returns ``(language, path, name, kind)``. Falls back to safe defaults
+    when the id has fewer than 5 colon-separated parts.
+    """
+    parts = dangling_id.split(":")
+    if len(parts) < 5:
+        # Non-standard id — keep whatever we can.
+        language = parts[0] if parts else "unknown"
+        name = parts[-2] if len(parts) >= 2 else dangling_id
+        kind = parts[-1] if parts else "external_symbol"
+        return language, "<unknown>", name, kind
+    language = parts[0]
+    kind = parts[-1]
+    name = parts[-2]
+    # parts[-3] is the span; everything between lang and span is the path
+    # (which may contain colons).
+    path = ":".join(parts[1:-3])
+    return language, path, name, kind
+
+
+def _dedupe_key(
+    language: str, path: str, name: str, kind: str,
+) -> tuple[str, str, str, str]:
+    """Compute the dedupe key for an external boundary group.
+
+    For ``kind="file"`` pseudo-IDs (produced by ``make_file_id`` in
+    every Python file's import-edge src), the path slot is a
+    per-reference filesystem path with no semantic identity — collapse
+    all such ids per language into one canonical "file" boundary by
+    using ``"<external>"`` in place of the path. For every other kind,
+    the path slot is meaningful (module name for imports, qualified
+    submodule for unresolved calls, etc.) and is kept in the key so
+    distinct logical externals stay distinct.
+    """
+    if kind == "file":
+        return (language, "<external>", name, kind)
+    return (language, path, name, kind)
+
+
 def create_boundary_nodes(
     symbols: List[Symbol],
     edges: List[Edge],
     dependency_manifest: Any = None,
-) -> List[Symbol]:
-    """Create lightweight boundary nodes for dangling edge endpoints.
+) -> tuple[List[Symbol], Dict[str, str]]:
+    """Create boundary nodes for dangling edge endpoints, with cross-run identity.
 
-    After all analyzers and linkers have run, some edges point to IDs that
-    don't exist as symbols (e.g., calls to Go stdlib functions, imports of
-    npm packages, or references to Java standard library classes).  Rather
-    than leaving these as dangling edges that break slice traversal, this
-    function creates synthetic "boundary" nodes that mark where the analyzed
-    codebase ends and external dependencies begin.
+    After all analyzers and linkers have run, some edges point to IDs
+    that don't exist as symbols (calls to Go stdlib functions, imports
+    of npm packages, references to Java standard library classes,
+    every Python file's ``make_file_id`` import-edge src…). Rather than
+    leaving these as dangling edges that break slice traversal, this
+    function creates synthetic "boundary" nodes that mark where the
+    analyzed codebase ends.
 
-    Boundary nodes are:
-    - kind="external_symbol" (generic) or inferred from the ID format
-    - supply_chain_tier=3 (external dependency) by default, or tier 2 for
-      direct dependencies when a dependency_manifest is provided
-    - Flagged with meta.external_boundary=True
-    - Zero-span (no source location)
+    Two universal effects (WI-fozoh):
+
+    * **Cross-run identity.** Every boundary Symbol gets a non-null
+      ``stable_id`` and ``canonical_name`` derived from its dedupe key,
+      so consumers (sketch / slice / cross-run diff) can group and
+      compare boundary nodes the same way ADR-0014 stable_ids work for
+      first-party symbols.
+    * **Targeted dedupe of file-id pseudo-symbols.** For
+      ``kind="file"`` boundary ids — the per-Python-file
+      ``make_file_id`` synthetic ids that are dangling because the
+      module Symbol uses a different id format — all per-reference
+      variants per language collapse into one canonical "file"
+      boundary. Other externals (module imports, unresolved calls)
+      preserve their full path-slot identity, so two distinct modules
+      with the same exported name (e.g. ``urllib.request.urlopen`` vs
+      ``urllib.parse.urlopen``) stay distinct boundaries.
+
+    The structural mismatch driving file-id externals (``_make_file_id``
+    in analyzers ↔ module-Symbol id format) is tracked separately and
+    fixed at the producer side per the Plan B / file-id-emit-symbol
+    invariant.
+
+    Tier classification is **tier-min** across the collapsed group: if
+    *any* referring site classifies as tier-2 via the dependency
+    manifest, the canonical node is tier-2. One tier-2 signal means
+    "this external IS declared somewhere" — we don't want a second
+    tier-3 referring site to silently demote it.
 
     Args:
         symbols: All extracted symbols from analyzers and linkers.
         edges: All edges (after deduplication).
-        dependency_manifest: Optional DependencyManifest from supply_chain.py.
-            When provided, Go boundary nodes are classified as tier 2 (direct
-            dependency) or tier 3 (indirect/stdlib) based on go.mod data.
+        dependency_manifest: Optional DependencyManifest from
+            supply_chain.py. When provided, boundary nodes for
+            languages with a manifest parser (go, java, kotlin, python)
+            are classified tier-2 vs tier-3 based on declared deps.
 
     Returns:
-        List of new boundary Symbol objects to extend the symbol list.
+        Tuple ``(boundary_symbols, id_remap)``.
+
+        * ``boundary_symbols``: list of new boundary Symbols (one per
+          dedupe-key group, sorted by id for determinism).
+        * ``id_remap``: ``{original_dangling_id: canonical_id}`` mapping.
+          Callers MUST apply this to every edge's ``src`` / ``dst`` via
+          :func:`apply_external_id_remap` before serialization, or the
+          graph will contain edges pointing at the original (now-absent)
+          dangling ids. For most ids the remap is a no-op (canonical id
+          equals original); the file-id collapse case is the one that
+          actually changes ids.
+
         Does NOT modify the input lists.
     """
     symbol_ids = {sym.id for sym in symbols}
@@ -677,60 +808,128 @@ def create_boundary_nodes(
             dangling_ids.add(edge.dst)
 
     if not dangling_ids:
-        return []
+        return [], {}
+
+    # Group dangling ids by dedupe key. The key collapses file-id
+    # pseudo-symbols per language; other kinds keep full identity.
+    groups: Dict[tuple[str, str, str, str], List[str]] = {}
+    for dangling_id in dangling_ids:
+        language, path, name, kind = _parse_dangling_id(dangling_id)
+        key = _dedupe_key(language, path, name, kind)
+        groups.setdefault(key, []).append(dangling_id)
 
     boundary_nodes: List[Symbol] = []
+    id_remap: Dict[str, str] = {}
     zero_span = Span(start_line=0, end_line=0, start_col=0, end_col=0)
 
-    for dangling_id in sorted(dangling_ids):
-        # Parse the ID to extract language and name.
-        # Common formats:
-        #   {lang}:unresolved:0-0:{name}:unresolved
-        #   {lang}:external:0-0:{name}:unresolved
-        #   {lang}:{path}:0-0:{name}:{kind}
-        #   {lang}:{path}:{start}-{end}:{name}:{kind}  (rare edge case)
-        parts = dangling_id.split(":")
-        language = parts[0] if parts else "unknown"
-        # Extract name: second-to-last part in the colon-separated ID
-        name = parts[-2] if len(parts) >= 2 else dangling_id
+    # Iterate groups in sorted order so the output is deterministic.
+    for (language, key_path, name, kind), members in sorted(groups.items()):
+        canonical_id = _canonical_external_id(language, key_path, name, kind)
 
-        # Default tier classification
-        tier = 3
-        reason = "unresolved external reference"
-
-        # Consult dependency manifest for boundary nodes in any language
-        # whose analyzer ships a parser (Go go.mod, Java/Kotlin Gradle/Maven,
-        # Python pyproject.toml). Languages absent from this allow-list fall
-        # through to the tier-3 default.
+        # Tier-min selection: if ANY referring site classifies as tier-2
+        # via the manifest, the canonical node is tier-2.
+        best_tier = 3
+        best_reason = "unresolved external reference"
         if (
             dependency_manifest is not None
             and language in ("go", "java", "kotlin", "python")
-            and len(parts) >= 3
         ):
-            # Extract the import/module path from the ID.
-            # Format: "{lang}:{import_path}:0-0:{name}:{kind}"
-            import_path = parts[1]
-            manifest_tier = dependency_manifest.classify_import(import_path)
-            tier = manifest_tier.value
-            if tier == 2:
-                if language == "go":
-                    reason = "direct dependency (go.mod)"
-                elif language == "python":
-                    reason = "direct dependency (pyproject.toml)"
-                else:
-                    reason = "direct dependency (build manifest)"
+            for member_id in members:
+                _, member_path, _, _ = _parse_dangling_id(member_id)
+                if not member_path or member_path == "<unknown>":
+                    continue  # pragma: no cover  # defensive — generated ids all have 5 parts
+                manifest_tier = dependency_manifest.classify_import(member_path)
+                if manifest_tier.value < best_tier:
+                    best_tier = manifest_tier.value
+                    if best_tier == 2:
+                        if language == "go":
+                            best_reason = "direct dependency (go.mod)"
+                        elif language == "python":
+                            best_reason = "direct dependency (pyproject.toml)"
+                        else:
+                            best_reason = "direct dependency (build manifest)"
+                    if best_tier == 1:  # pragma: no cover - manifests don't return tier-1
+                        break
 
         sym = Symbol(
-            id=dangling_id,
+            id=canonical_id,
+            stable_id=_canonical_external_stable_id(language, key_path, name, kind),
+            canonical_name=f"{language}:{key_path}:{name}:{kind}",
             name=name,
             kind="external_symbol",
             language=language,
             path="<external>",
             span=zero_span,
             meta={"external_boundary": True},
-            supply_chain_tier=tier,
-            supply_chain_reason=reason,
+            supply_chain_tier=best_tier,
+            supply_chain_reason=best_reason,
         )
         boundary_nodes.append(sym)
+        for member_id in members:
+            # Only register the remap when canonicalization actually
+            # changes the id — saves a no-op rewrite pass and lets
+            # callers cheaply detect "nothing collapsed."
+            if member_id != canonical_id:
+                id_remap[member_id] = canonical_id
 
-    return boundary_nodes
+    return boundary_nodes, id_remap
+
+
+def apply_external_id_remap(
+    edges: List[Edge],
+    id_remap: Dict[str, str],
+) -> List[Edge]:
+    """Rewrite edges' ``src`` / ``dst`` per the remap from
+    :func:`create_boundary_nodes`, dedupe collapsed edges, and capture
+    per-reference attribution on collisions.
+
+    The 732 ``file``-named externals on hypergumbo self-analysis collapse
+    to one canonical boundary Symbol. Every Python file's import edges
+    therefore acquire the same canonical ``src`` and need to dedupe
+    against each other — without preserving attribution, "which files
+    import click?" becomes unanswerable from the graph alone.
+
+    For every edge whose ``src`` is remapped, the original ``src`` id's
+    path slot is captured into ``edge.meta.referring_paths`` (capped at
+    :data:`_REFERRING_PATHS_CAP`). When multiple edges collapse onto the
+    same ``(canonical_src, canonical_dst, edge_type)``, the
+    first-encountered edge wins (matching :func:`deduplicate_edges`'s
+    convention) and the colliding edges' original src paths union into
+    its ``referring_paths``.
+
+    Mutates edges in place. Returns the surviving edge list (subset of
+    input).
+    """
+    if not id_remap:
+        return edges
+
+    seen: Dict[str, Edge] = {}
+    out: List[Edge] = []
+    for edge in edges:
+        new_src = id_remap.get(edge.src, edge.src)
+        new_dst = id_remap.get(edge.dst, edge.dst)
+        orig_src_path: Optional[str] = None
+        if new_src != edge.src:
+            orig_src_path = _extract_path_slot(edge.src)
+        edge.src = new_src
+        edge.dst = new_dst
+        edge.edge_key = _compute_edge_key(new_src, new_dst, edge.edge_type)
+
+        kept = seen.get(edge.edge_key)
+        if kept is None:
+            if orig_src_path:
+                edge.meta = dict(edge.meta or {})
+                edge.meta["referring_paths"] = [orig_src_path]
+            seen[edge.edge_key] = edge
+            out.append(edge)
+            continue
+
+        # Collapse case — union referring_paths into the kept edge.
+        if orig_src_path:
+            kept.meta = dict(kept.meta or {})
+            existing = list(kept.meta.get("referring_paths") or [])
+            if orig_src_path not in existing and len(existing) < _REFERRING_PATHS_CAP:
+                existing.append(orig_src_path)
+            kept.meta["referring_paths"] = existing
+
+    return out

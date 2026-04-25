@@ -1171,25 +1171,38 @@ class TestCreateBoundaryNodes:
         s1 = self._make_symbol("python:a.py:1-1:foo:function")
         s2 = self._make_symbol("python:b.py:1-1:bar:function")
         e = Edge.create(src=s1.id, dst=s2.id, edge_type="calls", line=1)
-        result = create_boundary_nodes([s1, s2], [e])
+        result, remap = create_boundary_nodes([s1, s2], [e])
         assert result == []
+        assert remap == {}
 
     def test_dangling_dst_creates_boundary(self):
-        """Edges pointing to nonexistent dst get boundary nodes."""
+        """Edges pointing to nonexistent dst get boundary nodes.
+
+        WI-fozoh: non-file-kind dangling ids preserve their full path
+        slot in the canonical id (so semantically distinct externals
+        like ``urllib.request.urlopen`` vs ``urllib.parse.urlopen`` stay
+        separate boundary nodes).
+        """
         s1 = self._make_symbol("python:a.py:1-1:foo:function")
         e = Edge.create(
             src=s1.id, dst="go:fmt:0-0:Errorf:unresolved",
             edge_type="calls", line=5,
         )
-        result = create_boundary_nodes([s1], [e])
+        result, remap = create_boundary_nodes([s1], [e])
         assert len(result) == 1
         node = result[0]
+        # Non-file kind: canonical id == original (no rewrite needed).
         assert node.id == "go:fmt:0-0:Errorf:unresolved"
         assert node.kind == "external_symbol"
         assert node.language == "go"
         assert node.name == "Errorf"
         assert node.supply_chain_tier == 3
         assert node.meta["external_boundary"] is True
+        # Stable identity is populated for cross-run grouping (WI-fozoh).
+        assert node.stable_id is not None
+        assert node.canonical_name == "go:fmt:Errorf:unresolved"
+        # Canonical id == original id, so remap is empty (no rewrite needed).
+        assert remap == {}
 
     def test_dangling_src_creates_boundary(self):
         """Edges with nonexistent src also get boundary nodes."""
@@ -1198,8 +1211,9 @@ class TestCreateBoundaryNodes:
             src="external:lib:0-0:helper:unresolved", dst=s1.id,
             edge_type="calls", line=1,
         )
-        result = create_boundary_nodes([s1], [e])
+        result, _ = create_boundary_nodes([s1], [e])
         assert len(result) == 1
+        # Non-file kind: canonical id == original.
         assert result[0].id == "external:lib:0-0:helper:unresolved"
 
     def test_multiple_dangling_deduped(self):
@@ -1209,9 +1223,30 @@ class TestCreateBoundaryNodes:
         dangling_id = "go:fmt:0-0:Println:unresolved"
         e1 = Edge.create(src=s1.id, dst=dangling_id, edge_type="calls", line=1)
         e2 = Edge.create(src=s2.id, dst=dangling_id, edge_type="calls", line=2)
-        result = create_boundary_nodes([s1, s2], [e1, e2])
+        result, _ = create_boundary_nodes([s1, s2], [e1, e2])
         assert len(result) == 1
         assert result[0].id == dangling_id
+
+    def test_distinct_modules_with_same_name_stay_distinct(self):
+        """WI-fozoh: ``urllib.request.urlopen`` and ``urllib.parse.urlopen``
+        are different functions in Python; they must NOT collapse to a
+        single boundary just because their ``name`` and ``kind`` match.
+        Non-file kinds keep the path slot in their dedupe key.
+        """
+        s1 = self._make_symbol("python:a.py:1-1:f:function")
+        e1 = Edge.create(
+            src=s1.id, dst="python:urllib.request:0-0:urlopen:unresolved",
+            edge_type="calls", line=1,
+        )
+        e2 = Edge.create(
+            src=s1.id, dst="python:urllib.parse:0-0:urlopen:unresolved",
+            edge_type="calls", line=2,
+        )
+        result, _ = create_boundary_nodes([s1], [e1, e2])
+        assert len(result) == 2
+        ids = {n.id for n in result}
+        assert "python:urllib.request:0-0:urlopen:unresolved" in ids
+        assert "python:urllib.parse:0-0:urlopen:unresolved" in ids
 
     def test_boundary_node_path_is_external(self):
         """Boundary nodes have path '<external>'."""
@@ -1220,7 +1255,7 @@ class TestCreateBoundaryNodes:
             src=s1.id, dst="lua:?:0-0:ngx.log:unresolved",
             edge_type="calls", line=1,
         )
-        result = create_boundary_nodes([s1], [e])
+        result, _ = create_boundary_nodes([s1], [e])
         assert result[0].path == "<external>"
 
     def test_boundary_node_zero_span(self):
@@ -1230,7 +1265,7 @@ class TestCreateBoundaryNodes:
             src=s1.id, dst="rust:std:0-0:println:unresolved",
             edge_type="calls", line=1,
         )
-        result = create_boundary_nodes([s1], [e])
+        result, _ = create_boundary_nodes([s1], [e])
         assert result[0].span.start_line == 0
         assert result[0].span.end_line == 0
 
@@ -1241,7 +1276,7 @@ class TestCreateBoundaryNodes:
             src=s1.id, dst="go:github.com/pkg/errors:0-0:package:package",
             edge_type="imports", line=1,
         )
-        result = create_boundary_nodes([s1], [e])
+        result, _ = create_boundary_nodes([s1], [e])
         assert len(result) == 1
         assert result[0].language == "go"
         assert result[0].name == "package"
@@ -1251,9 +1286,75 @@ class TestCreateBoundaryNodes:
         s1 = self._make_symbol("python:a.py:1-1:foo:function")
         e1 = Edge.create(src=s1.id, dst="z:z:0-0:z:unresolved", edge_type="calls", line=1)
         e2 = Edge.create(src=s1.id, dst="a:a:0-0:a:unresolved", edge_type="calls", line=2)
-        result = create_boundary_nodes([s1], [e1, e2])
+        result, _ = create_boundary_nodes([s1], [e1, e2])
         assert len(result) == 2
         assert result[0].id < result[1].id
+
+    def test_file_kind_collapses_per_language(self):
+        """WI-fozoh: ``kind="file"`` pseudo-IDs collapse per language.
+
+        On hypergumbo self-analysis, every Python file's import-edge src
+        is a ``make_file_id``-style id with a different per-reference
+        filesystem path but the same ``name="file"``, ``kind="file"``.
+        These all collapse to one canonical "file" boundary per language.
+        """
+        # Two real Python file pseudo-IDs (the symptom: 732 of these on
+        # hypergumbo self-analysis).
+        e1 = Edge.create(
+            src="python:packages/foo/A.py:1-1:file:file",
+            dst="python:click:0-0:click:unresolved",
+            edge_type="imports", line=1,
+        )
+        e2 = Edge.create(
+            src="python:packages/bar/B.py:1-1:file:file",
+            dst="python:click:0-0:click:unresolved",
+            edge_type="imports", line=1,
+        )
+        result, remap = create_boundary_nodes([], [e1, e2])
+        # Two boundary nodes: 1 collapsed "file" boundary covering both
+        # source files, plus 1 click boundary from the shared dst.
+        ids = {n.id for n in result}
+        canonical_file = "python:<external>:0-0:file:file"
+        assert canonical_file in ids
+        assert "python:click:0-0:click:unresolved" in ids
+        # Both distinct file-id srcs remap to the canonical "file" id.
+        assert remap["python:packages/foo/A.py:1-1:file:file"] == canonical_file
+        assert remap["python:packages/bar/B.py:1-1:file:file"] == canonical_file
+        # The click dst is non-file kind: canonical id == original, no remap.
+        assert "python:click:0-0:click:unresolved" not in remap
+
+    def test_tier_min_selection_picks_tier2_when_any_member_matches(self):
+        """WI-fozoh: tier-min selection — if any member of the collapsed
+        group classifies as tier-2, the canonical node is tier-2.
+
+        Two file pseudo-IDs collapse, with different per-reference path
+        slots. The manifest classifies neither file path (because they
+        ARE filesystem paths, not module names), but for the file-id
+        collapse case the path slot is uninformative anyway. This test
+        therefore exercises a scenario where the collapsed group
+        receives a path slot that DOES match the manifest — uses Go
+        package-style ids where the path slot is the import path.
+        """
+        from hypergumbo_core.supply_chain import DependencyManifest
+
+        # Two go package boundary ids with the SAME path (same external).
+        # They have full identity preservation (kind="package"); manifest
+        # match works on the path slot. No collapse here, just stable_id
+        # identity verification.
+        s1 = self._make_symbol("go:main.go:1-1:main:function")
+        e = Edge.create(
+            src=s1.id, dst="go:github.com/go-kit/log:0-0:package:package",
+            edge_type="imports", line=3,
+        )
+        manifest = DependencyManifest(entries={
+            "github.com/go-kit/log": {"direct": True},
+        })
+        result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        assert len(result) == 1
+        assert result[0].supply_chain_tier == 2
+        # stable_id is populated regardless of manifest match (WI-fozoh).
+        assert result[0].stable_id is not None
+        assert result[0].canonical_name is not None
 
     def test_manifest_classifies_direct_dep_as_tier2(self):
         """Boundary nodes for direct deps get tier 2 when manifest provided."""
@@ -1267,7 +1368,7 @@ class TestCreateBoundaryNodes:
         manifest = DependencyManifest(entries={
             "github.com/go-kit/log": {"direct": True},
         })
-        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 2
         assert "direct dependency" in result[0].supply_chain_reason
@@ -1284,7 +1385,7 @@ class TestCreateBoundaryNodes:
         manifest = DependencyManifest(entries={
             "github.com/beorn7/perp": {"direct": False},
         })
-        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 3
 
@@ -1300,7 +1401,7 @@ class TestCreateBoundaryNodes:
         manifest = DependencyManifest(entries={
             "github.com/foo/bar": {"direct": True},
         })
-        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 3
 
@@ -1311,7 +1412,7 @@ class TestCreateBoundaryNodes:
             src=s1.id, dst="go:github.com/go-kit/log:0-0:package:package",
             edge_type="imports", line=3,
         )
-        result = create_boundary_nodes([s1], [e])
+        result, _ = create_boundary_nodes([s1], [e])
         assert len(result) == 1
         assert result[0].supply_chain_tier == 3
 
@@ -1328,25 +1429,28 @@ class TestCreateBoundaryNodes:
         manifest = DependencyManifest(entries={
             "github.com/go-kit/log": {"direct": True},
         })
-        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 2
 
     def test_manifest_non_go_language_unaffected(self):
-        """Non-Go/Java/Kotlin boundary nodes are not reclassified by manifest."""
+        """Languages without manifest support stay tier 3 (the lua language
+        has no manifest parser; even if a passed manifest happened to
+        match by string prefix, classification should fall through).
+        """
         from hypergumbo_core.supply_chain import DependencyManifest
 
-        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        s1 = self._make_symbol("lua:a.lua:1-1:foo:function")
         e = Edge.create(
-            src=s1.id, dst="python:requests:0-0:get:unresolved",
+            src=s1.id, dst="lua:redis:0-0:get:unresolved",
             edge_type="calls", line=5,
         )
         manifest = DependencyManifest(entries={
             "github.com/go-kit/log": {"direct": True},
         })
-        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
-        # Non-Go/Java/Kotlin: manifest doesn't apply, stays tier 3
+        # lua not in the allow-list: manifest doesn't apply, stays tier 3
         assert result[0].supply_chain_tier == 3
 
     def test_manifest_classifies_java_direct_dep_as_tier2(self):
@@ -1362,7 +1466,7 @@ class TestCreateBoundaryNodes:
         manifest = DependencyManifest(entries={
             "com.fasterxml.jackson.core": {"direct": True},
         })
-        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 2
         assert "direct dependency" in result[0].supply_chain_reason
@@ -1380,7 +1484,7 @@ class TestCreateBoundaryNodes:
         manifest = DependencyManifest(entries={
             "io.ktor": {"direct": True},
         })
-        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 2
 
@@ -1397,9 +1501,147 @@ class TestCreateBoundaryNodes:
         manifest = DependencyManifest(entries={
             "com.fasterxml.jackson.core": {"direct": True},
         })
-        result = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
+        result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 3
+
+
+class TestApplyExternalIdRemap:
+    """Tests for apply_external_id_remap (WI-fozoh).
+
+    The remap returned by ``create_boundary_nodes`` collapses N
+    per-reference dangling ids into one canonical boundary id. Edges
+    pointing at the original ids must be rewritten to the canonical id,
+    deduped on collision, and have their original src path slots
+    captured into ``meta.referring_paths`` so per-file attribution
+    survives src-side dedupe.
+    """
+
+    def _make_real(self, sym_id: str) -> Symbol:
+        return Symbol(
+            id=sym_id, name="x", kind="function", language="python",
+            path="x.py", span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        )
+
+    def test_empty_remap_returns_input_unchanged(self):
+        from hypergumbo_core.ir import apply_external_id_remap
+
+        s1 = self._make_real("python:a.py:1-1:foo:function")
+        e = Edge.create(src=s1.id, dst="other", edge_type="calls", line=1)
+        result = apply_external_id_remap([e], {})
+        assert result == [e]
+
+    def test_dst_remap_rewrites_dst(self):
+        from hypergumbo_core.ir import apply_external_id_remap
+
+        s1 = self._make_real("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src=s1.id, dst="python:click:0-0:click:unresolved",
+            edge_type="calls", line=5,
+        )
+        canonical = "python:<external>:0-0:click:unresolved"
+        result = apply_external_id_remap(
+            [e], {"python:click:0-0:click:unresolved": canonical},
+        )
+        assert len(result) == 1
+        assert result[0].dst == canonical
+
+    def test_src_remap_captures_referring_path(self):
+        """When src is collapsed, the original src's path slot lands in
+        ``meta.referring_paths`` on the surviving edge."""
+        from hypergumbo_core.ir import apply_external_id_remap
+
+        e = Edge.create(
+            src="python:packages/foo/A.py:1-1:file:file",
+            dst="python:click:0-0:click:unresolved",
+            edge_type="imports", line=1,
+        )
+        canonical_file = "python:<external>:0-0:file:file"
+        canonical_click = "python:<external>:0-0:click:unresolved"
+        remap = {
+            "python:packages/foo/A.py:1-1:file:file": canonical_file,
+            "python:click:0-0:click:unresolved": canonical_click,
+        }
+        result = apply_external_id_remap([e], remap)
+        assert len(result) == 1
+        assert result[0].meta is not None
+        assert result[0].meta.get("referring_paths") == ["packages/foo/A.py"]
+
+    def test_collision_dedupes_and_unions_paths(self):
+        """Two edges with the same canonical (src, dst, edge_type) collapse
+        to one; their original src paths union into referring_paths."""
+        from hypergumbo_core.ir import apply_external_id_remap
+
+        e1 = Edge.create(
+            src="python:packages/foo/A.py:1-1:file:file",
+            dst="python:click:0-0:click:unresolved",
+            edge_type="imports", line=1,
+        )
+        e2 = Edge.create(
+            src="python:packages/bar/B.py:1-1:file:file",
+            dst="python:click:0-0:click:unresolved",
+            edge_type="imports", line=1,
+        )
+        canonical_file = "python:<external>:0-0:file:file"
+        canonical_click = "python:<external>:0-0:click:unresolved"
+        remap = {
+            "python:packages/foo/A.py:1-1:file:file": canonical_file,
+            "python:packages/bar/B.py:1-1:file:file": canonical_file,
+            "python:click:0-0:click:unresolved": canonical_click,
+        }
+        result = apply_external_id_remap([e1, e2], remap)
+        # Only one edge survives — they collapsed.
+        assert len(result) == 1
+        paths = result[0].meta.get("referring_paths")
+        assert set(paths) == {"packages/foo/A.py", "packages/bar/B.py"}
+
+    def test_collision_caps_referring_paths_at_50(self):
+        """No more than _REFERRING_PATHS_CAP entries are kept on collisions."""
+        from hypergumbo_core.ir import _REFERRING_PATHS_CAP, apply_external_id_remap
+
+        canonical_file = "python:<external>:0-0:file:file"
+        canonical_click = "python:<external>:0-0:click:unresolved"
+        remap = {"python:click:0-0:click:unresolved": canonical_click}
+        edges: list[Edge] = []
+        # Generate 75 distinct file srcs all importing click — should cap at 50.
+        for i in range(75):
+            src_id = f"python:packages/p{i}.py:1-1:file:file"
+            remap[src_id] = canonical_file
+            edges.append(Edge.create(
+                src=src_id,
+                dst="python:click:0-0:click:unresolved",
+                edge_type="imports", line=1,
+            ))
+        result = apply_external_id_remap(edges, remap)
+        assert len(result) == 1
+        paths = result[0].meta.get("referring_paths")
+        assert len(paths) == _REFERRING_PATHS_CAP
+
+    def test_collision_dedupes_repeated_paths(self):
+        """Two edges from the SAME origin file (e.g. two `import` lines in
+        one module) shouldn't double-list their src path."""
+        from hypergumbo_core.ir import apply_external_id_remap
+
+        e1 = Edge.create(
+            src="python:packages/foo/A.py:1-1:file:file",
+            dst="python:click:0-0:click:unresolved",
+            edge_type="imports", line=1,
+        )
+        e2 = Edge.create(
+            src="python:packages/foo/A.py:1-1:file:file",
+            dst="python:click:0-0:click:unresolved",
+            edge_type="imports", line=2,
+        )
+        canonical_file = "python:<external>:0-0:file:file"
+        canonical_click = "python:<external>:0-0:click:unresolved"
+        remap = {
+            "python:packages/foo/A.py:1-1:file:file": canonical_file,
+            "python:click:0-0:click:unresolved": canonical_click,
+        }
+        result = apply_external_id_remap([e1, e2], remap)
+        assert len(result) == 1
+        paths = result[0].meta.get("referring_paths")
+        assert paths == ["packages/foo/A.py"]
 
 
 class TestIsExternalBoundary:

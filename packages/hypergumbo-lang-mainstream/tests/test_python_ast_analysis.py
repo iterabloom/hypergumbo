@@ -199,9 +199,13 @@ def test_run_detects_import_edges(tmp_path: Path) -> None:
     import_edges = [e for e in data["edges"] if e["type"] == "imports"]
     assert len(import_edges) >= 1, "Expected at least one import edge"
 
-    # The import edge should reference the imported symbol
+    # The import edge should reference the imported symbol.
     import_edge = import_edges[0]
-    assert "main.py" in import_edge["src"]
+    # WI-fozoh: file-id pseudo-symbols collapse per language, so the
+    # importing file's path no longer appears in src — it's preserved
+    # on `meta.referring_paths` instead.
+    assert import_edge["src"] == "python:<external>:0-0:file:file"
+    assert "main.py" in (import_edge["meta"].get("referring_paths") or [])
     assert "helper" in import_edge["dst"]
     assert import_edge["meta"]["evidence_type"] == "ast_import"
     # Static imports should have high confidence
@@ -230,9 +234,12 @@ def test_run_detects_module_import_edges(tmp_path: Path) -> None:
     import_edges = [e for e in data["edges"] if e["type"] == "imports"]
     assert len(import_edges) >= 1, "Expected at least one import edge for 'import os'"
 
-    # The import edge should reference the module
+    # The import edge should reference the module. WI-fozoh: file-id
+    # pseudo-symbols collapse per language; the importing file's path
+    # is preserved on `meta.referring_paths`.
     import_edge = import_edges[0]
-    assert "main.py" in import_edge["src"]
+    assert import_edge["src"] == "python:<external>:0-0:file:file"
+    assert "main.py" in (import_edge["meta"].get("referring_paths") or [])
     assert "os" in import_edge["dst"]
 
 

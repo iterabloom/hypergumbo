@@ -197,7 +197,7 @@ some code
             tmp_path, "docs/adr/x.md", "See [agents](../../AGENTS.md) for rules.\n",
         )
         result = analyze_markdown(tmp_path)
-        boundary_nodes = create_boundary_nodes(result.symbols, result.edges)
+        boundary_nodes, _ = create_boundary_nodes(result.symbols, result.edges)
         link_externals = [
             n for n in boundary_nodes
             if (n.meta or {}).get("external_boundary") and n.language == "markdown"

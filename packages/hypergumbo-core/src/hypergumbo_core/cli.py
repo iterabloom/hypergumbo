@@ -106,7 +106,8 @@ import hypergumbo_core.linkers.django_orm_dispatch as _django_orm_dispatch_linke
 import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
 from .ir import (
-    Symbol, Edge, UsageContext, create_boundary_nodes, deduplicate_edges,
+    Symbol, Edge, UsageContext, apply_external_id_remap, create_boundary_nodes,
+    deduplicate_edges,
     is_external_boundary,
 )
 from .metrics import compute_metrics
@@ -6624,11 +6625,17 @@ def run_behavior_map(
     # Create boundary nodes for dangling edge endpoints (WI-sikur / INV-miniz).
     # Edges to external functions (stdlib, npm packages, etc.) would otherwise
     # break slice traversal by pointing to nonexistent nodes.
-    boundary = create_boundary_nodes(
+    # WI-fozoh: synthesizer collapses dangling refs by (lang, name, kind) and
+    # returns an id_remap so we can rewrite edges to point at the canonical
+    # boundary Symbols. Without this rewrite, edges would still reference the
+    # original (now-absent) per-reference dangling ids.
+    boundary, id_remap = create_boundary_nodes(
         all_symbols, all_edges, dependency_manifest=dependency_manifest,
     )
     if boundary:
         all_symbols.extend(boundary)
+    if id_remap:
+        all_edges = apply_external_id_remap(all_edges, id_remap)
     _log_memory("after boundary nodes")
 
     # Apply supply chain classification to all symbols
