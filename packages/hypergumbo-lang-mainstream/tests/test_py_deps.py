@@ -273,3 +273,120 @@ class TestPyprojectClassifiesAsTier2:
         if externals:  # may be 0 depending on edge production
             tiers = {(n.get("supply_chain") or {}).get("tier") for n in externals}
             assert tiers == {3}
+
+
+class TestLoadPyprojectOSError:
+    """Direct exercise of `_load_pyproject`'s OSError-on-read defensive path.
+
+    Reachable in production: `_find_pyproject_files` discovers a pyproject,
+    but between discovery and `_load_pyproject(file)` the file may disappear
+    (transient cleanup) or become unreadable (permission change). Both
+    realistic in monorepo CI environments where workspace cleanup runs
+    concurrently with analysis.
+    """
+
+    def test_returns_none_when_read_text_raises(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        from hypergumbo_lang_mainstream.py_deps import _load_pyproject
+
+        existing = tmp_path / "pyproject.toml"
+        existing.write_text("[project]\nname = 'x'\n")
+        with patch.object(Path, "read_text", side_effect=OSError("simulated")):
+            assert _load_pyproject(existing) is None
+
+
+class TestParsePythonDependenciesMonorepo:
+    """WI-zujip: walks `packages/<pkg>/pyproject.toml` so monorepo layouts
+    (where the root pyproject is shared-tool-config-only and actual deps live
+    in per-package files) get tier-2 classification on declared deps. Parallel
+    of WI-davan E1's source-root walking."""
+
+    def test_walks_packages_pyproject_files(self, tmp_path: Path) -> None:
+        # Root pyproject is shared-config-only (no [project]).
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.pytest.ini_options]\n"
+            'python_files = ["test_*.py"]\n'
+        )
+        (tmp_path / "packages" / "pkg1").mkdir(parents=True)
+        (tmp_path / "packages" / "pkg1" / "pyproject.toml").write_text(
+            "[project]\n"
+            'name = "pkg1"\n'
+            'dependencies = ["click>=8.0"]\n'
+        )
+        (tmp_path / "packages" / "pkg2").mkdir(parents=True)
+        (tmp_path / "packages" / "pkg2" / "pyproject.toml").write_text(
+            "[project]\n"
+            'name = "pkg2"\n'
+            'dependencies = ["rich"]\n'
+        )
+        manifest = parse_python_dependencies(tmp_path)
+        assert "click" in manifest.entries
+        assert "rich" in manifest.entries
+
+    def test_root_only_still_works(self, tmp_path: Path) -> None:
+        # Single-package layout: root pyproject with deps. Should remain
+        # functional (no regression vs. pre-walk behaviour).
+        (tmp_path / "pyproject.toml").write_text(
+            "[project]\n"
+            'name = "demo"\n'
+            'dependencies = ["click"]\n'
+        )
+        manifest = parse_python_dependencies(tmp_path)
+        assert "click" in manifest.entries
+
+    def test_no_pyproject_anywhere_returns_empty(self, tmp_path: Path) -> None:
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("def main(): pass\n")
+        manifest = parse_python_dependencies(tmp_path)
+        assert manifest.entries == {}
+
+    def test_dedup_same_dep_across_packages(self, tmp_path: Path) -> None:
+        # Two packages declaring `click` should produce one entry, not two.
+        (tmp_path / "packages" / "pkg1").mkdir(parents=True)
+        (tmp_path / "packages" / "pkg1" / "pyproject.toml").write_text(
+            "[project]\nname = \"pkg1\"\ndependencies = [\"click\"]\n",
+        )
+        (tmp_path / "packages" / "pkg2").mkdir(parents=True)
+        (tmp_path / "packages" / "pkg2" / "pyproject.toml").write_text(
+            "[project]\nname = \"pkg2\"\ndependencies = [\"click\"]\n",
+        )
+        manifest = parse_python_dependencies(tmp_path)
+        assert "click" in manifest.entries
+        # Single canonical entry — no per-package suffixing or duplication.
+        click_entries = [k for k in manifest.entries if k == "click"]
+        assert len(click_entries) == 1
+
+    def test_skips_default_excludes(self, tmp_path: Path) -> None:
+        # A pyproject.toml inside .venv/ or node_modules/ must NOT be picked up.
+        (tmp_path / ".venv" / "lib" / "site-packages" / "rogue").mkdir(parents=True)
+        (tmp_path / ".venv" / "lib" / "site-packages" / "rogue" / "pyproject.toml").write_text(
+            "[project]\nname = \"rogue\"\ndependencies = [\"smuggled\"]\n",
+        )
+        (tmp_path / "node_modules" / "rogue2").mkdir(parents=True)
+        (tmp_path / "node_modules" / "rogue2" / "pyproject.toml").write_text(
+            "[project]\nname = \"rogue2\"\ndependencies = [\"smuggled2\"]\n",
+        )
+        # A real package whose deps SHOULD be picked up.
+        (tmp_path / "packages" / "pkg1").mkdir(parents=True)
+        (tmp_path / "packages" / "pkg1" / "pyproject.toml").write_text(
+            "[project]\nname = \"pkg1\"\ndependencies = [\"click\"]\n",
+        )
+        manifest = parse_python_dependencies(tmp_path)
+        assert "click" in manifest.entries
+        assert "smuggled" not in manifest.entries
+        assert "smuggled2" not in manifest.entries
+
+    def test_skips_dotfile_dirs(self, tmp_path: Path) -> None:
+        # Generic dotfile dirs (.git, .pytest_cache, …) are skipped.
+        (tmp_path / ".pytest_cache" / "lurking").mkdir(parents=True)
+        (tmp_path / ".pytest_cache" / "lurking" / "pyproject.toml").write_text(
+            "[project]\nname = \"lurking\"\ndependencies = [\"hidden\"]\n",
+        )
+        (tmp_path / "packages" / "pkg1").mkdir(parents=True)
+        (tmp_path / "packages" / "pkg1" / "pyproject.toml").write_text(
+            "[project]\nname = \"pkg1\"\ndependencies = [\"click\"]\n",
+        )
+        manifest = parse_python_dependencies(tmp_path)
+        assert "click" in manifest.entries
+        assert "hidden" not in manifest.entries

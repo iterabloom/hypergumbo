@@ -24,6 +24,18 @@ Sources parsed
    ``python`` key is excluded — it's the interpreter constraint, not a
    library dep).
 
+Monorepo support (WI-zujip)
+---------------------------
+The walk collects every ``pyproject.toml`` under ``repo_root`` rather
+than just the root file. Monorepo layouts where the root pyproject is
+shared-tool-configuration only and actual ``[project].dependencies``
+live in ``packages/<pkg>/pyproject.toml`` are first-class. Skips the
+shared ``DEFAULT_EXCLUDES`` directory set (``node_modules``, ``venv``,
+``dist``, …) and dot-prefixed dirs so a ``pyproject.toml`` inside a
+``.venv/`` site-packages directory cannot smuggle a fake dep.
+Mirrors :func:`hypergumbo_lang_mainstream.py._detect_source_roots`,
+which fixed the same monorepo gap for file discovery (WI-davan E1).
+
 Distribution-name vs import-name resolution
 -------------------------------------------
 The dist name on PyPI doesn't always equal the Python import name —
@@ -184,17 +196,52 @@ def _resolve_import_names(dist_names: set[str]) -> set[str]:
     return out
 
 
-def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
-    """Parse ``pyproject.toml`` files into a ``DependencyManifest``.
+def _find_pyproject_files(repo_root: Path) -> list[Path]:
+    """Walk ``repo_root`` and return every ``pyproject.toml`` path.
 
-    Scans the root for ``pyproject.toml``. Returns an empty manifest if
-    no pyproject is present, parsing failed, or no dependencies were
-    declared.
+    Monorepo support: collects the root pyproject AND every
+    ``packages/<pkg>/pyproject.toml`` (or any depth). Skips
+    ``DEFAULT_EXCLUDES`` directories (``node_modules``, ``venv``,
+    ``dist``, …) and dot-prefixed dirs so fake deps inside a vendored
+    ``.venv/site-packages/<some-pkg>/pyproject.toml`` cannot leak
+    into the manifest.
+
+    Returns sorted by path for deterministic output.
+    """
+    from hypergumbo_core.discovery import DEFAULT_EXCLUDES
+
+    skip = set(DEFAULT_EXCLUDES)
+    out: list[Path] = []
+    stack: list[Path] = [repo_root]
+    while stack:
+        cur = stack.pop()
+        try:
+            entries = list(cur.iterdir())
+        except (PermissionError, OSError):  # pragma: no cover
+            continue
+        for entry in entries:
+            if entry.is_file() and entry.name == "pyproject.toml":
+                out.append(entry)
+            elif entry.is_dir():
+                if entry.name in skip or entry.name.startswith("."):
+                    continue
+                stack.append(entry)
+    return sorted(out)
+
+
+def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
+    """Parse every ``pyproject.toml`` in ``repo_root`` into a ``DependencyManifest``.
+
+    Walks the tree to collect the root pyproject AND any per-package
+    pyprojects (monorepo layouts under ``packages/<pkg>/pyproject.toml``,
+    ``libs/<lib>/pyproject.toml``, etc., per WI-zujip). Returns an empty
+    manifest when no pyproject is present anywhere.
 
     Stdlib module names are filtered out via ``sys.stdlib_module_names``
     (Python 3.10+) so a user who erroneously declares ``os`` (or any
     other stdlib name) in pyproject doesn't accidentally promote it to
-    tier 2.
+    tier 2. Same dependency declared by multiple packages collapses to
+    one entry (set-union semantics).
 
     Returns:
         ``DependencyManifest`` mapping importable top-level names to
@@ -203,17 +250,17 @@ def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
     """
     entries: dict[str, dict] = {}
 
-    pyproject = repo_root / "pyproject.toml"
-    if not pyproject.exists():
-        return DependencyManifest(entries=entries)
-
-    data = _load_pyproject(pyproject)
-    if not isinstance(data, dict):
+    pyproject_files = _find_pyproject_files(repo_root)
+    if not pyproject_files:
         return DependencyManifest(entries=entries)
 
     dist_names: set[str] = set()
-    dist_names |= _extract_pep621_distribution_names(data)
-    dist_names |= _extract_poetry_distribution_names(data)
+    for pyproject in pyproject_files:
+        data = _load_pyproject(pyproject)
+        if not isinstance(data, dict):
+            continue
+        dist_names |= _extract_pep621_distribution_names(data)
+        dist_names |= _extract_poetry_distribution_names(data)
 
     import_names = _resolve_import_names(dist_names)
 
