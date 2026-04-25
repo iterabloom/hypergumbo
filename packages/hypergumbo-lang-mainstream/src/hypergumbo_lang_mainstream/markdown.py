@@ -62,6 +62,25 @@ PASS_ID = make_pass_id("markdown")
 _LINK_PATTERN = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 
 
+def _make_link_dst_id(url: str) -> str:
+    """Build a properly-formed external symbol id for a markdown link target.
+
+    The link target (e.g. ``../../AGENTS.md#section``) cannot be used directly
+    as an Edge ``dst`` — ``ir.create_boundary_nodes`` parses the id as
+    ``{lang}:{path}:{span}:{name}:{kind}`` to synthesize external boundary
+    nodes, and a raw URL would land in the language slot (WI-diruj).
+
+    Strips the anchor fragment for file identity, derives the basename for the
+    name slot, and replaces colons in the path with ``_`` so the 5-part shape
+    is preserved even on URLs containing ``:``.
+    """
+    target_path = url.split("#", 1)[0] or url
+    safe_path = target_path.replace(":", "_")
+    name = Path(target_path).name or target_path or url
+    safe_name = name.replace(":", "_")
+    return make_symbol_id("markdown", safe_path, 0, 0, safe_name, "doc_link")
+
+
 def find_markdown_files(repo_root: Path) -> list[Path]:
     """Find all markdown files in the repository."""
     files = list(find_files(repo_root, ["*.md"]))
@@ -314,7 +333,7 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
             if is_internal:
                 edge = Edge.create(
                     src=symbol_id,
-                    dst=url,
+                    dst=_make_link_dst_id(url),
                     edge_type="links_to",
                     line=line,
                     origin=PASS_ID,

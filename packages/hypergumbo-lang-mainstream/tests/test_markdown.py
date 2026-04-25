@@ -172,7 +172,45 @@ some code
         result = analyze_markdown(tmp_path)
         edge = next((e for e in result.edges if e.edge_type == "links_to"), None)
         assert edge is not None
-        assert edge.dst == "./docs/guide.md"
+        # WI-diruj: dst is a properly-formed 5-part symbol id, NOT the raw URL.
+        # Format: markdown:<path>:0-0:<basename>:doc_link
+        assert edge.dst == "markdown:./docs/guide.md:0-0:guide.md:doc_link"
+
+    def test_link_edge_dst_strips_anchor_fragment(self, tmp_path: Path) -> None:
+        # WI-diruj: anchor fragments (#section) belong to the within-target
+        # navigation, not the file identity — strip before building the dst id.
+        make_markdown_file(
+            tmp_path, "README.md", "See [section](../spec.md#anchor) here.\n",
+        )
+        result = analyze_markdown(tmp_path)
+        edge = next((e for e in result.edges if e.edge_type == "links_to"), None)
+        assert edge is not None
+        assert edge.dst == "markdown:../spec.md:0-0:spec.md:doc_link"
+
+    def test_link_edge_synthesizes_clean_external_node(self, tmp_path: Path) -> None:
+        # WI-diruj: feed the markdown link edge through create_boundary_nodes
+        # and verify the synthesized external_symbol carries language="markdown"
+        # — NOT the raw URL string from the link target.
+        from hypergumbo_core.ir import create_boundary_nodes
+
+        make_markdown_file(
+            tmp_path, "docs/adr/x.md", "See [agents](../../AGENTS.md) for rules.\n",
+        )
+        result = analyze_markdown(tmp_path)
+        boundary_nodes = create_boundary_nodes(result.symbols, result.edges)
+        link_externals = [
+            n for n in boundary_nodes
+            if (n.meta or {}).get("external_boundary") and n.language == "markdown"
+        ]
+        assert len(link_externals) == 1
+        node = link_externals[0]
+        assert node.language == "markdown"
+        assert node.name == "AGENTS.md"
+        # No node should carry a path-shaped string in its language field.
+        assert all(
+            ".md" not in (n.language or "") and "../" not in (n.language or "")
+            for n in boundary_nodes
+        )
 
     def test_no_edge_for_external_link(self, tmp_path: Path) -> None:
         make_markdown_file(tmp_path, "README.md", "Visit [GitHub](https://github.com).\n")
@@ -296,10 +334,10 @@ Does something.
         links = [s for s in result.symbols if s.kind == "link"]
         assert len(links) == 2
 
-        # Internal link edge
+        # Internal link edge — properly-formed dst id (WI-diruj)
         edges = [e for e in result.edges if e.edge_type == "links_to"]
         assert len(edges) == 1
-        assert edges[0].dst == "./docs/README.md"
+        assert edges[0].dst == "markdown:./docs/README.md:0-0:README.md:doc_link"
 
     def test_link_truncates_long_url_in_signature(self, tmp_path: Path) -> None:
         long_url = "https://example.com/" + "x" * 50
