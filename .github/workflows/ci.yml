@@ -284,7 +284,18 @@ jobs:
           # https://github.com/Textualize/pytest-textual-snapshot/pull/24
           # When that merges and a new pytest-textual-snapshot release ships,
           # bump pytest to 9.0.3+ and drop this ignore.
-          pip-audit --skip-editable --ignore-vuln CVE-2025-71176
+          #
+          # CVE-2026-3219: pip concatenated-ZIP+tar archive confusion.
+          # CVSS 4.6 MEDIUM; AV:L, UI:A, VI:L only. Exploitation requires a
+          # user to install a hand-crafted archive that is simultaneously a
+          # valid ZIP and a valid tar — our CI only installs pinned deps
+          # from PyPI, so the attack surface is zero on the self-hosted
+          # runner. Fix is pip 26.1 (PR pypa/pip#13870) but that release
+          # was not yet on PyPI when this ignore was added (CVE published
+          # 2026-04-20); the existing `pip install --upgrade pip` step at
+          # install time will pick it up automatically once it ships.
+          # Exit plan: drop this ignore once pip-audit stops flagging pip.
+          pip-audit --skip-editable --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219
 
   verify-generated:
     needs: [changes, stop-the-line]
