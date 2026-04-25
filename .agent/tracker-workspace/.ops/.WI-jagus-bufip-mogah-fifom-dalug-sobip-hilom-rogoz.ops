@@ -1,0 +1,20 @@
+- op: create  # 0265
+  at: '2026-04-25T07:51:45Z'  # 0265
+  by: agent  # 0265
+  actor: jgstern_agent  # 0265
+  clock: 1  # 0265
+  nonce: '0265'  # 0265
+  data:  # 0265
+    kind: work_item  # 0265
+    title: "Emit references edge from 'from X import BAR' site to BAR variable Symbol (WI-gafog follow-up)"  # 0265
+    status: todo_hard  # 0265
+    priority: 3  # 0265
+    parent:  # 0265
+    tags:  # 0265
+    - analysis_quality  # 0265
+    isbefore: []  # 0265
+    duplicate_of: []  # 0265
+    not_duplicate_of: []  # 0265
+    pr_ref:  # 0265
+    description: "Follow-up to WI-gafog (PR #3357 — Python module-level constants\nindexed as variable Symbols). The new variable Symbols are produced\ncorrectly, but `from X import BAR` statements don't emit any edge to\nthe imported BAR Symbol, so the imported-and-used constants appear as\norphan nodes in the graph.\n\n## Symptom (observed 2026-04-25 self-analysis)\n\n- Total python `variable` Symbols: 1,315 (1,132 ALL_CAPS constants).\n- Orphan `variable` nodes (no in, no out): 1,171.\n- Net effect: graph orphan rate jumped 1.0% → 4.9% between\n  v2.5.1 (2026-04-05 baseline) and v2.7.0 (today), almost entirely\n  driven by these new orphans.\n\nThe constants ARE being imported and used at import sites — for\nexample `PASS_VERSION` is referenced by every analyzer module — but\nthe analyzer's import-resolution pass only looks up function and\nclass symbols, not `variable`-kind symbols.\n\n## Recommended fix\n\nExtend Python's import-resolution pass (in\n`packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py`,\nin the `_process_import` / cross-file binding-resolution code path)\nso that `from <mod> import <NAME>`:\n\n1. Looks up `<NAME>` in the global symbol registry across all kinds\n   (function, class, **variable**, …) — currently restricted.\n2. When `<NAME>` resolves to a `variable`-kind symbol, emits a\n   `references` edge from the importing module/file to the variable\n   Symbol with `evidence_type='ast_import_reference'`.\n3. Also handles bare attribute access at use sites — `mod.CONSTANT`\n   should emit a `references` edge to the variable.\n\n## Acceptance criteria\n\nAfter this lands:\n\n- Self-analysis dogfood: orphan `variable` count drops from ~1,171 to\n  near zero (modulo genuinely-exported-but-internally-unused constants\n  like `__all__` entries that are only consumed by external code).\n- Overall orphan rate returns toward the v2.5.1 1.0% baseline (within\n  ~0.5pp).\n- New regression test: a fixture with `module1.py` defining\n  `CONSTANT = 1` and `module2.py` doing `from module1 import CONSTANT`\n  — assert a `references` edge from module2 to the CONSTANT Symbol.\n\n## Validation\n\n1. `pytest` — green, 100% coverage on changed files.\n2. Self-analysis dogfood: orphan-rate metric drops back near baseline.\n3. Tag `awaits_bakeoff_validation` at merge time. Claim: \"Python\n   constant import-reference recovery reduces orphan-variable count\n   on the bakeoff corpus and improves centrality ranking signal for\n   shared-constants modules.\"\n\n## Out of scope\n\n- Type-narrowing import resolution (e.g. `from X import Y` where Y is\n  a class or function — those already work).\n- Star-imports (`from X import *`) — separate (and harder) problem.\n- Cross-language constant references — Python-only for this item.\n- Promoting \"used by N importers\" into the centrality ranking\n  weighting — a separate enrichment item once the references edges\n  exist.\n\n## Relationship to WI-gafog (PR #3357)\n\nWI-gafog made the variables visible. This item makes them connected.\nOnce both land, module-level constants participate in the call graph\nthe same way functions and classes do."  # 0265
+    fields: {}  # 0265
