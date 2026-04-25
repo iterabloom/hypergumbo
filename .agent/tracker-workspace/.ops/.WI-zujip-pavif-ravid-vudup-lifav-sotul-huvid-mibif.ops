@@ -18,3 +18,35 @@
     pr_ref:  # 900e
     description: "Follow-up to WI-nunuj (pyproject.toml dep manifest, PR #3354). The\nshipped parser only inspects `repo_root/pyproject.toml`, which\nsilently misses monorepo layouts where the root file is shared-tool\nconfiguration only and actual dependencies live in\n`packages/<pkg>/pyproject.toml` files.\n\n## Symptom (observed 2026-04-25 self-analysis)\n\nOn hypergumbo's own codebase:\n\n- Root `pyproject.toml` declares no `[project].dependencies` (header\n  comment: \"Root pyproject.toml - shared tool configuration only.\n  Packages are defined in packages/*/pyproject.toml\").\n- `parse_python_dependencies(Path(\".\"))` returns a `DependencyManifest`\n  with `entries = []`.\n- Wire-up at `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py:3307`\n  evaluates `if py_manifest.entries` and sets `dependency_manifest=None`.\n- `ir.create_boundary_nodes` skips the manifest-aware classification\n  branch (`ir.py:833-836`).\n- All 1,443 python `external_symbol` boundary nodes stay tier-3\n  including `tree_sitter`, `protobuf`, `rich`, `pyyaml`, `pygments`,\n  `sentence_transformers`, `pytest`, `jsonschema`, `yamllint` — every\n  one of which IS declared in some `packages/*/pyproject.toml`.\n\n## Recommended fix (parallel to WI-davan E1)\n\nWI-davan E1 fixed exactly this structural pattern on the file-discovery\nside: `_detect_src_layout` was upgraded to `_detect_source_roots` which\nwalks the tree (skipping `DEFAULT_EXCLUDES` + dotfile dirs) and\ncollects all `packages/<pkg>/src/` roots. The dep-parser side of the\nsame monorepo problem wasn't generalized at the same time.\n\nFix shape:\n- `parse_python_dependencies(repo_root)` walks `repo_root` for every\n  `pyproject.toml` (skip `DEFAULT_EXCLUDES` and dotfile dirs).\n- For each one, parse `[project].dependencies`,\n  `[project.optional-dependencies]`, and `[tool.poetry.dependencies]`\n  the same way the current implementation does for the root file.\n- Merge the per-file results via the existing\n  `DependencyManifest.merge` method.\n- Return the merged manifest.\n\nThe existing single-file behavior is the natural collapse case\n(monorepos with one pyproject still work).\n\n## Acceptance criteria\n\nAfter this lands:\n\n- `parse_python_dependencies(Path(\".\"))` on hypergumbo returns a\n  manifest with non-zero `entries` (~30+ distinct distribution names\n  across all `packages/*/pyproject.toml`).\n- Self-analysis dogfood: `tree-sitter`, `rich`, `pyyaml`, `pygments`,\n  `protobuf`, `sentence_transformers`, `pytest`, `pytest-cov`,\n  `pytest-xdist`, `ruff`, `bandit`, `pip-audit`, `jsonschema`,\n  `yamllint`, `check-jsonschema` all classify tier-2 (was tier-3).\n- The previously-promoted Java/Kotlin manifest behavior (WI-duhom)\n  is unaffected — already walks `build.gradle`/`pom.xml`.\n- New regression test: synthetic monorepo fixture with two package\n  directories declaring distinct deps, assert merged manifest has both.\n- Existing single-pyproject-file test: behavior unchanged.\n\n## Validation\n\n1. `pytest` — green, 100% coverage on changed files.\n2. **Self-analysis dogfood**: re-run hypergumbo on itself and confirm\n   the per-tier breakdown for python externals shifts to include\n   tier-2 entries.\n3. Tag `awaits_bakeoff_validation` at merge time. Claim: \"tier-2\n   python boundary count rises on monorepo repos in the bakeoff corpus\n   (currently zero on hypergumbo self-analysis).\"\n\n## Out of scope\n\n- Generalizing the same fix for `jvm_deps.py` (`build.gradle`/`pom.xml`)\n  — already walks the tree per WI-duhom.\n- `go.mod` walking (WI-vovuk) — Go monorepos rarely use multi-module\n  layouts; defer to evidence from the bakeoff if it surfaces.\n- Resolving extras vs. base deps differently — keep the current\n  unified treatment (extras are still declared deps).\n\n## Relationship to WI-nunuj (PR #3354)\n\nWI-nunuj established the parser, the wire-up, and the boundary-node\nclassification. This item generalizes the parser to monorepos. Once\nboth land, the manifest-aware classification path works for both\nsingle-pyproject and multi-pyproject Python repos."  # 900e
     fields: {}  # 900e
+- op: update  # 0a74
+  at: '2026-04-25T08:20:03Z'  # 0a74
+  by: agent  # 0a74
+  actor: jgstern_agent  # 0a74
+  clock: 2  # 0a74
+  nonce: 0a74  # 0a74
+  set: {}  # 0a74
+  add:  # 0a74
+    tags: [awaits_bakeoff_validation]  # 0a74
+- op: discuss  # c346
+  at: '2026-04-25T08:20:03Z'  # c346
+  by: agent  # c346
+  actor: jgstern_agent  # c346
+  clock: 3  # c346
+  nonce: c346  # c346
+  message: "Implementation in jgstern-agent/fix/wi-zujip-monorepo-pyproject. Self-analysis dogfood: 0 → 90 declared imports; tree_sitter, rich, pygments, yaml, sentence_transformers, pytest, jsonschema, requests now classify tier-2 (was all tier-3). Awaits DEEP-mode bakeoff cycle to confirm tier-2 promotion lifts the python boundary tier-2 count on the diverse-repo corpus."  # c346
+- op: update  # 6126
+  at: '2026-04-25T08:28:01Z'  # 6126
+  by: agent  # 6126
+  actor: jgstern_agent  # 6126
+  clock: 4  # 6126
+  nonce: '6126'  # 6126
+  set:  # 6126
+    status: done  # 6126
+    pr_ref: '3360'  # 6126
+- op: discuss  # 0d92
+  at: '2026-04-25T08:28:01Z'  # 0d92
+  by: agent  # 0d92
+  actor: jgstern_agent  # 0d92
+  clock: 5  # 0d92
+  nonce: 0d92  # 0d92
+  message: "Merged in PR #3360. parse_python_dependencies now walks the tree for every pyproject.toml under repo_root, skipping DEFAULT_EXCLUDES and dotfile dirs. Self-analysis dogfood post-merge: 0 → 90 declared imports; tree_sitter, rich, pygments, yaml, sentence_transformers, pytest, jsonschema, requests all classify tier-2. Tag awaits_bakeoff_validation remains until DEEP cycle confirms tier-2 promotion lifts the python boundary tier-2 count on the diverse-repo corpus."  # 0d92
