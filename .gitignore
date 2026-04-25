@@ -42,6 +42,7 @@ autonomous_intent.txt
 .agent/.transcript-sync-state.*.json
 .agent/.transcript-poll-state.*
 .agent/.transcript-injection-state.*.json
+.agent/.transcript-injection-state.*.lock
 .agent/.last_session_transcript.jsonl
 .agent/.second_to_last_transcript.jsonl
 .agent/.last_injection_history.jsonl

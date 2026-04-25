@@ -22,7 +22,9 @@ Configuration (environment variables):
   TRANSCRIPT_DEDUP_TOKENS   — suppress re-injection within this many tokens (default: 50000)
 """
 
+import contextlib
 import datetime
+import fcntl
 import json
 import os
 import re
@@ -625,6 +627,46 @@ def _state_path(repo_root: str, session_id: str) -> str:
     return os.path.join(repo_root, ".agent", filename)
 
 
+def _lock_path(repo_root: str, session_id: str) -> str:
+    """Return the per-session injection-state lock file path.
+
+    Sibling of ``_state_path``; used by ``injection_state_lock`` to
+    serialize concurrent hook invocations (WI-ritut).
+    """
+    filename = f".transcript-injection-state.{session_id}.lock"
+    return os.path.join(repo_root, ".agent", filename)
+
+
+@contextlib.contextmanager
+def injection_state_lock(repo_root: str, session_id: str):
+    """Exclusive advisory lock covering the injection-state critical section.
+
+    Serializes concurrent ``on_transcript_change`` hook invocations on the
+    same session so their load-check-save sequences don't overlap. When
+    the agent makes parallel tool calls, each tool's PostToolUse hook
+    fires concurrently; without this lock every hook reads the same
+    pre-write state, independently decides to inject the same playbooks,
+    and emits duplicate content into the agent's context. With the lock,
+    the second hook blocks until the first commits its injection record,
+    then reads the updated state and correctly dedups (WI-ritut).
+
+    POSIX-only (``fcntl.flock``). The lock is advisory and per-session —
+    concurrent sessions in the same repo use different lockfiles and do
+    not serialize against each other.
+    """
+    path = _lock_path(repo_root, session_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    lock_fd = open(path, "w")
+    try:
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+    finally:
+        lock_fd.close()
+
+
 def _empty_state(session_id: str) -> dict:
     """Return a fresh injection state tagged with the session id."""
     return {
@@ -783,6 +825,37 @@ def main() -> None:
         "vendor_version": _tmeta["vendor_version"],
     }
 
+    # Serialize concurrent hook invocations on the same session so parallel
+    # hooks don't race on injection state and emit duplicate playbooks
+    # (WI-ritut). Everything from the state load through the state save
+    # must happen under this lock; sys.exit() inside the block releases
+    # the lock via normal process-exit cleanup.
+    with injection_state_lock(repo_root, session_id):
+        _run_injection_pipeline(
+            transcript_path=transcript_path,
+            session_id=session_id,
+            repo_root=repo_root,
+            dry_run=dry_run,
+            verbose=verbose,
+            cohort_kw=_cohort_kw,
+        )
+
+
+def _run_injection_pipeline(
+    *,
+    transcript_path: str,
+    session_id: str,
+    repo_root: str,
+    dry_run: bool,
+    verbose: bool,
+    cohort_kw: dict,
+) -> None:
+    """Load → decide → inject → save. Must run under injection_state_lock.
+
+    Extracted from ``main`` so the critical-section boundary is explicit
+    and the lock wrapping in ``main`` stays a single ``with`` statement
+    instead of a 150-line indent.
+    """
     # Step 0a: Check if all playbooks are recently injected (skip LLM calls entirely)
     all_ids = [pb_id for pb_id, _, _ in PLAYBOOKS]
     already, inj_state = recently_injected(
@@ -831,7 +904,7 @@ def main() -> None:
             sys.exit(0)
         log_training_example(
             repo_root, "goal_distillation", step1_prompt, agent_goals,
-            model=DISTILL_MODEL, **_cohort_kw,
+            model=DISTILL_MODEL, **cohort_kw,
         )
 
     if verbose:
@@ -878,7 +951,7 @@ def main() -> None:
         repo_root, "sparse_selection", step2_prompt, selection_text,
         model=SELECT_MODEL,
         extra={"event_id": event_id},
-        **_cohort_kw,
+        **cohort_kw,
     )
 
     if verbose:
