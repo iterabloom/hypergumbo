@@ -1468,47 +1468,86 @@ class FileAnalysis:
     source: str = ""
 
 
-def _detect_src_layout(repo_root: Path) -> Path | None:
-    """Detect if repo uses src/ layout (PEP 517/518 style).
+def _detect_source_roots(repo_root: Path) -> list[Path]:
+    """Detect every src/ layout source root inside ``repo_root``.
 
-    Returns the source root (e.g., repo_root/src) if detected, else None.
+    A *source root* is a directory named ``src`` that:
+    1. is not itself a Python package (no ``__init__.py`` in it), and
+    2. contains at least one Python package (a child dir with ``__init__.py``).
 
-    A src/ layout is detected when:
-    1. repo_root/src/ directory exists
-    2. src/ contains at least one Python package (dir with __init__.py)
-    3. There's no __init__.py directly in src/ (it's not itself a package)
+    Supports both the traditional single-root layout (``repo/src/<pkg>/``)
+    and monorepo layouts where each package owns its own src dir
+    (``repo/packages/<pkg>/src/<mod>/``, ``repo/libs/<lib>/src/<mod>/``, …).
+    Without this multi-root detection a file under
+    ``packages/hypergumbo-core/src/hypergumbo_core/taxonomy.py`` would be
+    derived as the path-shaped module qualifier
+    ``packages.hypergumbo-core.src.hypergumbo_core.taxonomy`` — invalid
+    Python (hyphen) and not the real importable name (WI-davan E1).
+
+    Implementation: iterative directory walk. Skips DEFAULT_EXCLUDES
+    directories and dot-prefixed dirs to avoid `.git` / `node_modules` /
+    build outputs. When a ``src`` directory satisfies both conditions, it
+    is collected and not descended into; nested ``src`` directories
+    deeper inside another source root are not searched (they would be
+    inside the package, not separate roots).
+
+    Returns a list sorted by path (deterministic for tests and consumers).
     """
-    src_dir = repo_root / "src"
-    if not src_dir.is_dir():
-        return None
+    from hypergumbo_core.discovery import DEFAULT_EXCLUDES
 
-    # Check src/ is not itself a package
-    if (src_dir / "__init__.py").exists():
-        return None
-
-    # Check if src/ contains at least one package
-    for child in src_dir.iterdir():
-        if child.is_dir() and (child / "__init__.py").exists():
-            return src_dir
-
-    return None
+    skip = set(DEFAULT_EXCLUDES)
+    roots: list[Path] = []
+    stack: list[Path] = [repo_root]
+    while stack:
+        cur = stack.pop()
+        try:
+            entries = list(cur.iterdir())
+        except (PermissionError, OSError):  # pragma: no cover
+            continue
+        for entry in entries:
+            if not entry.is_dir():
+                continue
+            if entry.name in skip or entry.name.startswith("."):
+                continue
+            if entry.name == "src":
+                # Classify and stop descending — either a source root, a
+                # package itself, or a dir whose children aren't packages.
+                if (entry / "__init__.py").exists():
+                    continue
+                try:
+                    has_pkg = any(
+                        (c / "__init__.py").exists()
+                        for c in entry.iterdir()
+                        if c.is_dir()
+                    )
+                except (PermissionError, OSError):  # pragma: no cover
+                    has_pkg = False
+                if has_pkg:
+                    roots.append(entry)
+                continue
+            stack.append(entry)
+    return sorted(roots)
 
 
 def _module_name_from_path(
-    py_file: Path, repo_root: Path, source_root: Path | None = None
+    py_file: Path,
+    repo_root: Path,
+    source_roots: list[Path] | None = None,
 ) -> str:
-    """Convert a file path to a module name.
+    """Convert a file path to a Python module name.
 
-    E.g., /repo/utils.py -> 'utils', /repo/pkg/mod.py -> 'pkg.mod'
+    E.g., ``/repo/utils.py`` -> ``utils``, ``/repo/pkg/mod.py`` -> ``pkg.mod``.
 
-    If source_root is provided (e.g., repo_root/src for src/ layout),
-    paths are computed relative to source_root instead of repo_root
-    when the file is under source_root.
+    If ``source_roots`` is provided, paths under any source root are
+    computed relative to the *most-specific* (longest-path) matching root.
     """
-    # For src/ layout, use source_root as base for files under it
-    if source_root and py_file.is_relative_to(source_root):
+    roots = source_roots or []
+    # Pick the most-specific (deepest) source root that contains the file
+    matching = [r for r in roots if py_file.is_relative_to(r)]
+    if matching:
+        best = max(matching, key=lambda r: len(r.parts))
         try:
-            rel_path = py_file.relative_to(source_root)
+            rel_path = py_file.relative_to(best)
         except ValueError:  # pragma: no cover
             rel_path = py_file.relative_to(repo_root)
     else:
@@ -1797,7 +1836,7 @@ def _extract_inheritance_edges(
 def _extract_file_analysis(
     py_file: Path,
     repo_root: Path | None = None,
-    source_root: Path | None = None,
+    source_roots: list[Path] | None = None,
 ) -> FileAnalysis | None:
     """Extract symbols and imports from a single file.
 
@@ -1805,8 +1844,10 @@ def _extract_file_analysis(
         py_file: Path to the Python file
         repo_root: Repository root for resolving relative imports. If None,
                    relative imports won't be fully resolved.
-        source_root: For src/ layout projects, the source directory (e.g., repo/src).
-                     Used for correct module name calculation.
+        source_roots: For src/ layout projects, the source directories
+                     (e.g., ``[repo/src]`` or per-package
+                     ``[packages/A/src, packages/B/src]``). Used for correct
+                     module name calculation.
 
     Returns None if the file cannot be parsed.
     """
@@ -2196,7 +2237,7 @@ def _extract_file_analysis(
 
     # Compute module name for import resolution
     if repo_root is not None:
-        importing_module = _module_name_from_path(py_file, repo_root, source_root)
+        importing_module = _module_name_from_path(py_file, repo_root, source_roots)
     else:
         importing_module = py_file.stem  # Fallback to just filename
     symbol_imports, module_imports = _extract_imports(tree, importing_module)
@@ -3047,15 +3088,15 @@ def analyze_python(
     # Create analysis run for provenance tracking
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
-    # Detect src/ layout (PEP 517/518 style)
-    # If detected, use src/ as the base for module names
-    source_root = _detect_src_layout(repo_root)
+    # Detect src/ layout source roots (PEP 517/518 + monorepo
+    # packages/<pkg>/src/<mod>/ layouts — WI-davan E1).
+    source_roots = _detect_source_roots(repo_root)
 
     # First pass: collect all symbols and imports from all files
     file_analyses: dict[Path, FileAnalysis] = {}
     files_skipped = 0
     for py_file in find_python_files(repo_root, max_files=max_files):
-        analysis = _extract_file_analysis(py_file, repo_root, source_root)
+        analysis = _extract_file_analysis(py_file, repo_root, source_roots)
         if analysis is not None:
             file_analyses[py_file] = analysis
         else:
@@ -3064,7 +3105,7 @@ def analyze_python(
     # Build global symbol table: (module_name, symbol_name) -> Symbol
     global_symbols: dict[tuple[str, str], Symbol] = {}
     for py_file, analysis in file_analyses.items():
-        module_name = _module_name_from_path(py_file, repo_root, source_root)
+        module_name = _module_name_from_path(py_file, repo_root, source_roots)
         for symbol in analysis.symbols:
             global_symbols[(module_name, symbol.name)] = symbol
 
@@ -3075,7 +3116,7 @@ def analyze_python(
         if py_file.name != "__init__.py":
             continue
 
-        module_name = _module_name_from_path(py_file, repo_root, source_root)
+        module_name = _module_name_from_path(py_file, repo_root, source_roots)
         # Package name is module name without .__init__ suffix
         package_name = module_name.rsplit(".__init__", 1)[0]
 
@@ -3114,7 +3155,7 @@ def analyze_python(
     # in annotate_dataflow_ast (per-file is wasteful — it's a static config).
     py_dataflow_config = get_dataflow_config("python")
     for py_file, analysis in file_analyses.items():
-        module_name = _module_name_from_path(py_file, repo_root, source_root)
+        module_name = _module_name_from_path(py_file, repo_root, source_roots)
 
         # Set origin on symbols
         for symbol in analysis.symbols:

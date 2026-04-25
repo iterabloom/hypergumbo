@@ -6,6 +6,7 @@ from pathlib import Path
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_lang_mainstream.py import (
     extract_nodes,
+    _detect_source_roots,
     _module_name_from_path,
     _resolve_relative_import,
     _compute_cyclomatic_complexity,
@@ -2421,6 +2422,141 @@ def test_src_layout_reexport_resolution(tmp_path: Path) -> None:
     call_dsts = {e["dst"] for e in call_edges}
     assert helper_id in call_dsts, \
         f"Call edge should point to real helper {helper_id}, got {call_dsts}"
+
+
+def test_detect_source_roots_monorepo_packages_layout(tmp_path: Path) -> None:
+    """WI-davan E1: monorepo packages/<pkg>/src/<mod>/ layouts are recognised.
+
+    Two-package layout with hyphenated package directory names (the form
+    that breaks valid-Python-identifier expectations). Each package has its
+    own src/ source root.
+    """
+    # packages/pkg-a/src/pkg_a/__init__.py
+    pkg_a_src = tmp_path / "packages" / "pkg-a" / "src"
+    (pkg_a_src / "pkg_a").mkdir(parents=True)
+    (pkg_a_src / "pkg_a" / "__init__.py").write_text("")
+    # packages/pkg-b/src/pkg_b/__init__.py
+    pkg_b_src = tmp_path / "packages" / "pkg-b" / "src"
+    (pkg_b_src / "pkg_b").mkdir(parents=True)
+    (pkg_b_src / "pkg_b" / "__init__.py").write_text("")
+
+    roots = _detect_source_roots(tmp_path)
+    assert pkg_a_src in roots
+    assert pkg_b_src in roots
+    # Sorted deterministically
+    assert roots == sorted(roots)
+
+
+def test_detect_source_roots_top_level_src(tmp_path: Path) -> None:
+    """WI-davan E1: traditional single-root src/ layout still works."""
+    src = tmp_path / "src"
+    (src / "mypkg").mkdir(parents=True)
+    (src / "mypkg" / "__init__.py").write_text("")
+    roots = _detect_source_roots(tmp_path)
+    assert roots == [src]
+
+
+def test_detect_source_roots_no_layout(tmp_path: Path) -> None:
+    """WI-davan E1: a repo without any src/ layout returns []."""
+    (tmp_path / "main.py").write_text("def main(): pass\n")
+    assert _detect_source_roots(tmp_path) == []
+
+
+def test_module_name_from_path_monorepo_packages_layout(tmp_path: Path) -> None:
+    """WI-davan E1: a file under packages/<pkg>/src/<mod>/ produces the
+    real Python module name (e.g. 'pkg_a.helper'), NOT the path-shaped
+    'packages.pkg-a.src.pkg_a.helper' that the previous single-root
+    detector produced.
+    """
+    pkg_a_src = tmp_path / "packages" / "pkg-a" / "src"
+    (pkg_a_src / "pkg_a").mkdir(parents=True)
+    (pkg_a_src / "pkg_a" / "__init__.py").write_text("")
+    helper = pkg_a_src / "pkg_a" / "helper.py"
+    helper.write_text("def helper(): pass\n")
+
+    source_roots = _detect_source_roots(tmp_path)
+    name = _module_name_from_path(helper, tmp_path, source_roots)
+    assert name == "pkg_a.helper"
+
+
+def test_module_name_from_path_picks_most_specific_source_root(
+    tmp_path: Path,
+) -> None:
+    """WI-davan E1: when multiple source roots could apply, the most-specific
+    (deepest) one wins. Ensures the top-level repo/src/ doesn't shadow a
+    nested packages/<pkg>/src/."""
+    # Outer source root
+    outer_src = tmp_path / "src"
+    (outer_src / "outer_pkg").mkdir(parents=True)
+    (outer_src / "outer_pkg" / "__init__.py").write_text("")
+    # Inner monorepo source root inside packages/
+    inner_src = tmp_path / "packages" / "p" / "src"
+    (inner_src / "inner_pkg").mkdir(parents=True)
+    (inner_src / "inner_pkg" / "__init__.py").write_text("")
+    inner_mod = inner_src / "inner_pkg" / "mod.py"
+    inner_mod.write_text("X = 1\n")
+
+    roots = _detect_source_roots(tmp_path)
+    assert outer_src in roots and inner_src in roots
+    # File under packages/p/src/ resolves against the inner source root,
+    # not the outer one.
+    assert _module_name_from_path(inner_mod, tmp_path, roots) == "inner_pkg.mod"
+
+
+def test_monorepo_layout_module_qualifiers_have_no_path_shape(
+    tmp_path: Path,
+) -> None:
+    """WI-davan E1 end-to-end: behaviour-map symbol ids on a synthetic
+    monorepo never carry the 'packages.<dashed>.src.<pkg>' path-shape in
+    their module qualifier.
+    """
+    # Two cooperating packages under packages/<dashed>/src/<pkg>/
+    pkg_a_src = tmp_path / "packages" / "pkg-a" / "src"
+    (pkg_a_src / "pkg_a").mkdir(parents=True)
+    (pkg_a_src / "pkg_a" / "__init__.py").write_text("")
+    (pkg_a_src / "pkg_a" / "helper.py").write_text(
+        "def helper():\n    return 42\n"
+    )
+
+    pkg_b_src = tmp_path / "packages" / "pkg-b" / "src"
+    (pkg_b_src / "pkg_b").mkdir(parents=True)
+    (pkg_b_src / "pkg_b" / "__init__.py").write_text("")
+    (pkg_b_src / "pkg_b" / "main.py").write_text(
+        "from pkg_a.helper import helper\n"
+        "\n"
+        "def caller():\n"
+        "    helper()\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path,
+        include_sketch_precomputed=False,
+    )
+    data = json.loads(out_path.read_text())
+
+    # No symbol id may carry 'packages.' or '.src.' in its module qualifier
+    # (the segment between '{lang}:' and the span). Format reminder:
+    #   {lang}:{path}:{start}-{end}:{name}:{kind}
+    # For module-qualifier-shaped ids the {path} segment is the qualifier;
+    # path-shape leak puts 'packages.' / '.src.' there.
+    for node in data["nodes"]:
+        if node.get("language") != "python":
+            continue
+        nid = node.get("id", "")
+        # Real file paths are repo-relative and contain '/', not '.';
+        # the leak shape is the *dotted* form containing 'packages.' or
+        # '.src.' segments.
+        parts = nid.split(":")
+        if len(parts) < 5:
+            continue
+        qualifier = parts[1]
+        if "/" in qualifier:
+            # Real file path — fine.
+            continue
+        assert "packages." not in qualifier and ".src." not in qualifier, (
+            f"WI-davan E1 leak: module qualifier {qualifier!r} in {nid}"
+        )
 
 
 def test_src_dir_without_packages_not_detected_as_layout(tmp_path: Path) -> None:
