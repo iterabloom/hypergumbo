@@ -33,3 +33,28 @@
   clock: 3  # 2d2d
   nonce: 2d2d  # 2d2d
   message: "Updated 2026-04-25 to make the centrality noise-filter co-required (was 'if needed' under Risks/Mitigations). Self-analysis dogfood instrumentation revealed the imports-edge count would jump 2,136 → ~14,149 (6.6×) post-fix, with ~700+ new high-in-degree file Symbols deterministically displacing today's top-ranked classes/functions in centrality output. Mirrors WI-gafog's language-conditional kind='variable' filter precedent. Empirically-confirmed scope and validation steps added; bakeoff revalidation of WI-fozoh's external_symbol count claim flagged as coupled work."  # 2d2d
+- op: update  # 3909
+  at: '2026-04-25T10:36:53Z'  # 3909
+  by: agent  # 3909
+  actor: jgstern_agent  # 3909
+  clock: 4  # 3909
+  nonce: '3909'  # 3909
+  set:  # 3909
+    status: done  # 3909
+- op: discuss  # c2a4
+  at: '2026-04-25T10:36:53Z'  # c2a4
+  by: agent  # c2a4
+  actor: jgstern_agent  # c2a4
+  clock: 5  # c2a4
+  nonce: c2a4  # c2a4
+  message: "Shipped in PR #3363 (commit 301a80123). All four acceptance criteria met on hypergumbo self-analysis dogfood: (#1) canonical python:<external>:0-0:file:file boundary Symbol drops 1 -> 0; (#1) imports edge count rises 2,136 -> 9,252 with full per-file src attribution restored; (#2) parameterized synthesis-helper unit tests + orchestrator-level integration tests + per-file file-Symbol no-duplication test cover the invariant; (#3) sketch top-30 contains zero kind=file Symbols, top-30 list preserved within +/-3 (TreeSitterAnalyzer / find_files / Symbol / Span / register_analyzer / ...). 739 first-party file Symbols enter the graph (kept in JSON for slice / containment / per-file metrics). Schema 0.2.3 -> 0.2.4 (additive: 'file' added to Symbol.kind enum). Tagged awaits_bakeoff_validation; the cohort that confirms it should ALSO revisit WI-fozoh's '37% external_symbol drop' tag, since the denominator changes when these 739 Symbols stop counting as boundary externals."  # c2a4
+- op: update  # 3306
+  at: '2026-04-25T10:37:12Z'  # 3306
+  by: agent  # 3306
+  actor: jgstern_agent  # 3306
+  clock: 6  # 3306
+  nonce: '3306'  # 3306
+  set:  # 3306
+    pr_ref: '3363'  # 3306
+  add:  # 3306
+    tags: [awaits_bakeoff_validation]  # 3306

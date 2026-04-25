@@ -38,3 +38,10 @@
   clock: 3  # b0ba
   nonce: b0ba  # b0ba
   message: "Producer-side fix shipped in PR #3362 for the toml_config.py [project.scripts] emitter (the only confirmed leaker on hypergumbo self-analysis). dst is now a well-formed Python id, target_path moved to meta. Self-analysis post-merge: 0 path-shaped-language boundary nodes (was 2). Status pending_validation pending DEEP-mode bakeoff cycle to confirm no other defines_target producer (xml_config, json_config, manifest_targets — 8 sites in total) leaks on a diverse-repo corpus. If bakeoff surfaces violations from the other producers, file a follow-up WI to propagate the same dst-shape pattern to them; if not, transition to satisfied. Defensive _parse_dangling_id guard remains an option if multiple producers re-introduce the bug."  # b0ba
+- op: discuss  # fb2d
+  at: '2026-04-25T10:53:54Z'  # fb2d
+  by: agent  # fb2d
+  actor: jgstern_agent  # fb2d
+  clock: 4  # fb2d
+  nonce: fb2d  # fb2d
+  message: "iter-10 DEEP bakeoff cycle (cohort-001 alertmanager+kafka+prometheus, post-WI-ramuv merge) ran clean and produced 3 GOOD verdicts with 0 concerns. No regression surfaced at the diagnose-threshold level. Per-claim reflect-aggregate validation is pending (requires LLM agent invocations per-repo)."  # fb2d
