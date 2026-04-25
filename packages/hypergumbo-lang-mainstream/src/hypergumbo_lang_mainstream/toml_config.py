@@ -591,19 +591,33 @@ def _extract_pyproject_scripts(
                     )
                 )
 
-                # Create defines_target edge for build-target linker
+                # Create defines_target edge for build-target linker.
+                # The dst is a well-formed Python id of the entry-point
+                # function (lang:module:span:name:kind), so
+                # ir.create_boundary_nodes synthesises a clean boundary
+                # node instead of stuffing the path into the language
+                # slot via _parse_dangling_id's len(parts)<5 fallback
+                # (INV-nodij). The actual file path lives in
+                # meta.target_path so the build-target linker can still
+                # resolve via path lookup; meta.target_function carries
+                # the entry-point function name.
                 if entry_point:
                     parsed = _python_entry_point_to_path(entry_point)
                     if parsed:
                         target_path, target_func = parsed
+                        module_dotted = entry_point.rsplit(":", 1)[0]
+                        dst_id = f"python:{module_dotted}:0-0:{target_func}:unresolved"
                         edges.append(
                             Edge.create(
                                 src=symbol_id,
-                                dst=target_path,
+                                dst=dst_id,
                                 edge_type="defines_target",
                                 line=start_line,
                                 confidence=1.0,
                                 origin=PASS_ID,
-                                meta={"target_function": target_func},
+                                meta={
+                                    "target_function": target_func,
+                                    "target_path": target_path,
+                                },
                             )
                         )

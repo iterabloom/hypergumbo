@@ -131,9 +131,12 @@ my-tool = "mypackage.tool:run"
 def test_pyproject_scripts_emit_defines_target_edges(tmp_path):
     """pyproject.toml [project.scripts] should emit defines_target edges.
 
-    Entry points like "mypackage.cli:main" should produce defines_target
-    edges pointing to the resolved file path (mypackage/cli.py), enabling
-    the build-target linker to connect the script symbol to main().
+    Entry points like "mypackage.cli:main" produce defines_target edges
+    whose dst is a well-formed Python id (so create_boundary_nodes
+    cannot misclassify the path as a language token, INV-nodij), and
+    whose meta carries both ``target_path`` (for the build-target
+    linker's path lookup) and ``target_function`` (the entry-point
+    function name).
     """
     toml_file = tmp_path / "pyproject.toml"
     toml_file.write_text("""
@@ -146,21 +149,55 @@ my-tool = "mypackage.tool:run"
 """)
     result = analyze_toml_files(tmp_path)
 
-    # Should have defines_target edges from script symbols
     dt_edges = [e for e in result.edges if e.edge_type == "defines_target"]
     assert len(dt_edges) >= 2, (
         f"Expected defines_target edges for pyproject.toml scripts, got {len(dt_edges)}"
     )
 
-    # Check that the edge dst is a resolved file path (module path → file path)
-    dsts = {e.dst for e in dt_edges}
-    assert "mypackage/cli.py" in dsts, f"Expected mypackage/cli.py in {dsts}"
-    assert "mypackage/tool.py" in dsts, f"Expected mypackage/tool.py in {dsts}"
+    # target_path is now in meta (was the dst). The dst is a well-formed
+    # Python id of the entry-point function.
+    target_paths_in_meta = {(e.meta or {}).get("target_path") for e in dt_edges}
+    assert "mypackage/cli.py" in target_paths_in_meta
+    assert "mypackage/tool.py" in target_paths_in_meta
 
-    # Each edge should have the function name in meta
-    cli_edge = next(e for e in dt_edges if e.dst == "mypackage/cli.py")
+    cli_edge = next(
+        e for e in dt_edges if (e.meta or {}).get("target_path") == "mypackage/cli.py"
+    )
     assert cli_edge.meta is not None
     assert cli_edge.meta.get("target_function") == "main"
+    # Dst must have the 5-part Python id shape so _parse_dangling_id
+    # recognises it cleanly (INV-nodij).
+    assert cli_edge.dst == "python:mypackage.cli:0-0:main:unresolved"
+
+
+def test_pyproject_scripts_dst_is_well_formed_id(tmp_path):
+    """INV-nodij regression: every pyproject script defines_target dst
+    parses cleanly into 5 colon-separated id slots, so the boundary
+    node synthesizer never stuffs a path into the language slot.
+    """
+    toml_file = tmp_path / "pyproject.toml"
+    toml_file.write_text("""
+[project]
+name = "mypackage"
+
+[project.scripts]
+cli = "mypackage.cli:main"
+""")
+    result = analyze_toml_files(tmp_path)
+    dt_edges = [e for e in result.edges if e.edge_type == "defines_target"]
+    assert dt_edges
+    for e in dt_edges:
+        parts = e.dst.split(":")
+        assert len(parts) == 5, (
+            f"defines_target dst must be a 5-part id (lang:path:span:name:kind), "
+            f"got {e.dst!r} ({len(parts)} parts)"
+        )
+        assert parts[0] == "python", (
+            f"Python entry-point dst language slot should be 'python', got {parts[0]!r}"
+        )
+        assert "/" not in parts[0], (
+            f"Language slot must not contain '/': {parts[0]!r} (would re-introduce INV-nodij)"
+        )
 
 
 def test_pyproject_scripts_no_colon_no_edge(tmp_path):
@@ -208,7 +245,8 @@ my-gui = "mypackage.gui:start"
 
     dt_edges = [e for e in result.edges if e.edge_type == "defines_target"]
     assert len(dt_edges) >= 1
-    assert any(e.dst == "mypackage/gui.py" for e in dt_edges)
+    assert any((e.meta or {}).get("target_path") == "mypackage/gui.py" for e in dt_edges)
+    assert any(e.dst == "python:mypackage.gui:0-0:start:unresolved" for e in dt_edges)
 
 
 def test_analyze_table_array(tmp_path):

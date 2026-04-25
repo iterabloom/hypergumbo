@@ -102,7 +102,14 @@ def link_build_targets(ctx: LinkerContext) -> LinkerResult:
         if edge.edge_type != "defines_target":
             continue
 
-        target_path = edge.dst
+        # Producers may carry the file path in meta when the dst is a
+        # well-formed symbol id (INV-nodij — toml_config's pyproject
+        # scripts emitter). Older producers continue to put the path
+        # directly in dst.
+        target_path = (
+            (edge.meta or {}).get("target_path")
+            or edge.dst
+        )
         candidates = symbols_by_path.get(target_path, [])
 
         # If no candidates found at the raw path, try resolving relative
