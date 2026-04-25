@@ -522,6 +522,119 @@ def test_extract_nodes_handles_syntax_error(tmp_path: Path) -> None:
     assert result.edges == []
 
 
+def test_module_level_constant_emits_symbol(tmp_path: Path) -> None:
+    """WI-gafog E2: a module-level `NAME = ...` assignment must emit a Symbol
+    so that `from <mod> import NAME` can resolve cross-file. Before the fix,
+    only classes/functions/methods were extracted; constants fell through
+    to external boundary synthesis.
+    """
+    py_file = tmp_path / "consts.py"
+    py_file.write_text(
+        "PASS_VERSION = '0.1.0'\n"
+        "EXIT_SUCCESS = 0\n"
+        "LANGUAGE_ALIASES = {'py': 'python'}\n"
+    )
+    result = extract_nodes(py_file)
+    names = {s.name for s in result.symbols if s.kind == "variable"}
+    assert {"PASS_VERSION", "EXIT_SUCCESS", "LANGUAGE_ALIASES"} <= names
+
+
+def test_module_level_ann_assign_emits_symbol(tmp_path: Path) -> None:
+    """WI-gafog E2: ``X: int = 1`` (AnnAssign) is also indexed."""
+    py_file = tmp_path / "consts.py"
+    py_file.write_text(
+        "MAX_RETRIES: int = 3\n"
+        "BANNER: str = 'hello'\n"
+    )
+    result = extract_nodes(py_file)
+    names = {s.name for s in result.symbols if s.kind == "variable"}
+    assert {"MAX_RETRIES", "BANNER"} <= names
+
+
+def test_module_level_tuple_assign_emits_symbols(tmp_path: Path) -> None:
+    """WI-gafog E2: ``A, B = 1, 2`` emits one Symbol per name."""
+    py_file = tmp_path / "consts.py"
+    py_file.write_text("FOO, BAR = 1, 2\n")
+    result = extract_nodes(py_file)
+    names = {s.name for s in result.symbols if s.kind == "variable"}
+    assert {"FOO", "BAR"} <= names
+
+
+def test_constant_inside_function_not_emitted(tmp_path: Path) -> None:
+    """WI-gafog E2: only TOP-LEVEL assignments are indexed. A local
+    variable inside a function is not a module-level binding.
+    """
+    py_file = tmp_path / "f.py"
+    py_file.write_text(
+        "def fn():\n"
+        "    LOCAL = 1\n"
+        "    return LOCAL\n"
+    )
+    result = extract_nodes(py_file)
+    names = {s.name for s in result.symbols if s.kind == "variable"}
+    assert "LOCAL" not in names
+
+
+def test_class_attribute_not_emitted_as_module_constant(tmp_path: Path) -> None:
+    """WI-gafog E2: class-body attributes are not module-level — they are
+    class members and must not be confused with module constants.
+    """
+    py_file = tmp_path / "f.py"
+    py_file.write_text(
+        "class Foo:\n"
+        "    ATTR = 1\n"
+    )
+    result = extract_nodes(py_file)
+    var_symbols = [s for s in result.symbols if s.kind == "variable"]
+    var_names = {s.name for s in var_symbols}
+    assert "ATTR" not in var_names
+
+
+def test_module_constant_resolves_cross_file_import(tmp_path: Path) -> None:
+    """WI-gafog E2 end-to-end: ``from .consts import LANGUAGE_ALIASES`` from
+    one file to another resolves to the real constant Symbol — no
+    external_symbol synthesised for the imported name.
+    """
+    pkg = tmp_path / "mypkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "consts.py").write_text(
+        "LANGUAGE_ALIASES = {'py': 'python'}\n"
+    )
+    (pkg / "main.py").write_text(
+        "from .consts import LANGUAGE_ALIASES\n"
+        "\n"
+        "def use_aliases():\n"
+        "    return LANGUAGE_ALIASES\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path,
+        include_sketch_precomputed=False,
+    )
+    data = json.loads(out_path.read_text())
+
+    # The constant Symbol must exist with kind=variable
+    consts = [
+        n for n in data["nodes"]
+        if n.get("language") == "python"
+        and n.get("name") == "LANGUAGE_ALIASES"
+        and n.get("kind") == "variable"
+    ]
+    assert len(consts) == 1, (
+        f"Expected one variable named LANGUAGE_ALIASES; got {len(consts)}"
+    )
+
+    # No external_symbol should be synthesised for this name
+    leaks = [
+        n for n in data["nodes"]
+        if n.get("kind") == "external_symbol"
+        and n.get("name") == "LANGUAGE_ALIASES"
+    ]
+    assert leaks == [], f"Unexpected external for LANGUAGE_ALIASES: {leaks}"
+
+
 def test_module_name_from_path_basic(tmp_path: Path) -> None:
     """_module_name_from_path should convert paths to module names."""
     py_file = tmp_path / "utils.py"

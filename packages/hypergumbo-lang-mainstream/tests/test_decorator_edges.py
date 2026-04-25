@@ -310,6 +310,43 @@ def multi_signal_handler(sender, instance, **kwargs):
         assert any("post_save" in src for src in signal_srcs)
         assert any("post_delete" in src for src in signal_srcs)
 
+    def test_receiver_with_undefined_signal_emits_unresolved_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        """``@receiver(some_undefined_name)`` falls through to the unresolved
+        branch — the name is neither defined locally nor imported, so the
+        analyzer emits a `signal_receiver` edge with a synthetic
+        `python:unresolved:0-0:<name>:signal` source for visibility.
+
+        Before WI-gafog E2, module-level `post_save = Signal()` left
+        `post_save` un-indexed — many tests with that pattern accidentally
+        exercised this branch. Now those tests resolve to the new variable
+        Symbol and skip this branch; this test pins coverage explicitly.
+        """
+        code = '''
+def receiver(signal, **kwargs):
+    def decorator(func):
+        return func
+    return decorator
+
+@receiver(some_undefined_signal)
+def handler(sender, **kwargs):
+    pass
+'''
+        py_file = tmp_path / "undefined.py"
+        py_file.write_text(code)
+
+        result = analyze_python(tmp_path)
+
+        signal_edges = [
+            e for e in result.edges
+            if e.edge_type == "signal_receiver"
+        ]
+        assert len(signal_edges) == 1
+        edge = signal_edges[0]
+        assert edge.src == "python:unresolved:0-0:some_undefined_signal:signal"
+        assert "handler" in edge.dst
+
     def test_receiver_no_args_no_crash(self, tmp_path: Path) -> None:
         """@receiver() with no args should not crash."""
         code = '''

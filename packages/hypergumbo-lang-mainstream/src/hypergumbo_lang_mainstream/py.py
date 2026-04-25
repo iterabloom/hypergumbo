@@ -222,6 +222,72 @@ def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -
     return f"python:{path}:{line}-{end_line}:{name}:{kind}"
 
 
+def _emit_module_level_assign_symbols(
+    tree: "ast.Module",
+    py_file: Path,
+    module_all: frozenset[str] | None,
+) -> list[Symbol]:
+    """Emit ``Symbol(kind="variable", ...)`` for each top-level binding.
+
+    Without this pass, ``from <mod> import NAME`` for any module-level
+    constant (e.g. ``LANGUAGE_ALIASES``, ``PASS_VERSION``) misses the
+    cross-file lookup and synthesises a tier-3 ``external_symbol`` —
+    151 such ALL-CAPS externals on hypergumbo self-analysis (WI-gafog E2).
+
+    Walks ``tree.body`` (top-level statements only). Handles:
+
+    * ``ast.Assign`` with one or more ``Name`` targets, including
+      tuple/list-unpacking targets like ``A, B = 1, 2``.
+    * ``ast.AnnAssign`` with a ``Name`` target (``X: int = 1`` or ``X: int``).
+
+    Does NOT emit for:
+
+    * ``ast.AugAssign`` (``X += 1``) — mutation, not a fresh binding.
+    * Subscript or attribute targets (``X[0] = 1``, ``X.y = 1``).
+    * Names defined inside class or function bodies — those are not
+      module-level (the walk only inspects ``tree.body``).
+    """
+    out: list[Symbol] = []
+    for node in tree.body:
+        targets: list[ast.Name] = []
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    targets.append(t)
+                elif isinstance(t, (ast.Tuple, ast.List)):
+                    for el in t.elts:
+                        if isinstance(el, ast.Name):
+                            targets.append(el)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            targets.append(node.target)
+        else:
+            continue
+        for tgt in targets:
+            line = tgt.lineno
+            end_line = node.end_lineno or line
+            span = Span(
+                start_line=line,
+                end_line=end_line,
+                start_col=tgt.col_offset,
+                end_col=node.end_col_offset or 0,
+            )
+            out.append(
+                Symbol(
+                    id=_make_symbol_id(str(py_file), line, end_line, tgt.id, "variable"),
+                    name=tgt.id,
+                    kind="variable",
+                    language="python",
+                    path=str(py_file),
+                    span=span,
+                    origin="",
+                    origin_run_id="",
+                    modifiers=_python_visibility_modifiers(tgt.id),
+                    is_exported=_is_python_top_level_exported(tgt.id, module_all),
+                )
+            )
+    return out
+
+
 def _make_file_id(path: str) -> str:
     """Generate ID for a Python file node (used as import edge source)."""
     return f"python:{path}:1-1:file:file"
@@ -1903,6 +1969,12 @@ def _extract_file_analysis(
         )
         symbols.append(module_symbol)
         symbol_by_name["<module>"] = module_symbol
+
+    # WI-gafog E2: emit Symbols for module-level NAME = ... so that
+    # `from <mod> import NAME` resolves cross-file rather than externalising.
+    for cs in _emit_module_level_assign_symbols(tree, py_file, module_all):
+        symbols.append(cs)
+        symbol_by_name[cs.name] = cs
 
     # Track functions already processed as methods (to avoid duplicates)
     # Key: (start_line, name) tuple

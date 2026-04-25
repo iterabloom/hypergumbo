@@ -6711,14 +6711,28 @@ def run_behavior_map(
             # CSS structural (degree-0 in behavior maps)
             "class_selector", "id_selector", "rule_set",
             "property", "media", "keyframes", "font_face",
-            "variable",     # CSS custom properties / SCSS variables (zero edges)
             # Config metadata (degree-0 across all tested repos)
             "pattern",      # .gitignore entries
             "script",       # npm scripts / pyproject.toml entry points
             "requirement",  # pip requirements.txt entries
         })
-        noise_ids = {s.id for s in all_symbols if s.kind in _NOISE_KINDS}
-        all_symbols = [s for s in all_symbols if s.kind not in _NOISE_KINDS]
+        # CSS-family `variable` (custom properties, SCSS / Sass variables) is
+        # zero-edge noise and stays excluded. WI-gafog E2: in any other
+        # language, `variable` is a real top-level binding (Python module
+        # constants, Go top-level `var`, YAML / Make variables) and must
+        # remain in the output for cross-file `from <mod> import NAME`
+        # resolution.
+        _CSS_LANGUAGES = frozenset({"css", "scss", "sass", "less"})
+
+        def _is_noise(sym: "Symbol") -> bool:
+            if sym.kind in _NOISE_KINDS:
+                return True
+            if sym.kind == "variable" and sym.language in _CSS_LANGUAGES:
+                return True
+            return False
+
+        noise_ids = {s.id for s in all_symbols if _is_noise(s)}
+        all_symbols = [s for s in all_symbols if not _is_noise(s)]
         all_edges = [
             e for e in all_edges
             if e.src not in noise_ids and e.dst not in noise_ids
