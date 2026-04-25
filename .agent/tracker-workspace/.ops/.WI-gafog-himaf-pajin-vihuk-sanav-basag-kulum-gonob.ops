@@ -25,3 +25,20 @@
   clock: 2  # b44b
   nonce: b44b  # b44b
   message: "Split off from WI-davan-disis-jamag-bubol-buzaf-homul-mijik-gakoz on 2026-04-24 per its 2026-04-24T23:21:37Z drill-down note. WI-davan retains E1 (monorepo src/ layout detection); this item carries E2 (module-level Assign / AnnAssign not emitted as Symbols → 151 ALL-CAPS externals on hypergumbo self-analysis). Independent fix sites; either may land first."  # b44b
+- op: update  # 27f1
+  at: '2026-04-25T03:54:27Z'  # 27f1
+  by: agent  # 27f1
+  actor: jgstern_agent  # 27f1
+  clock: 3  # 27f1
+  nonce: 27f1  # 27f1
+  set:  # 27f1
+    status: done  # 27f1
+  add:  # 27f1
+    tags: [awaits_bakeoff_validation]  # 27f1
+- op: discuss  # f5ab
+  at: '2026-04-25T03:54:27Z'  # f5ab
+  by: agent  # f5ab
+  actor: jgstern_agent  # f5ab
+  clock: 4  # f5ab
+  nonce: f5ab  # f5ab
+  message: "Fixed in PR #3353 (commit 259b379ba). Added _emit_module_level_assign_symbols helper that walks tree.body and emits Symbol(kind='variable', ...) for top-level Assign and AnnAssign with Name targets, including tuple unpacking. Also made the cli.py noise-filter language-conditional for 'variable' kind ({css, scss, sass, less} stays excluded; Python/Go/YAML/Make stay in output). Tagged awaits_bakeoff_validation — claim is 'ALL-CAPS python externals drop from ~150 to near-zero on hypergumbo self-analysis.'"  # f5ab
