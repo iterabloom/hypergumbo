@@ -931,42 +931,65 @@ def compute_boundary_map(
             by_boundary["external_potential"] = ext_chains
 
     # Build boundary map entries, including WI-darad leaf-caller roll-ups.
-    # A "leaf caller" of an io_edge_src is an immediate caller of that src
-    # in the reverse graph; when src has no callers, src itself is its own
-    # leaf (the primitive is invoked directly from that function).
     bmap = BoundaryMap(total_io_edges=tagged_count)
     leaf_ep_cache: dict[str, set[str]] = {}
     for boundary, chains in by_boundary.items():
-        entry_points_set: set[str] = set()
-        primitives_set: set[str] = set()
-        leaf_set: set[str] = set()
-        per_leaf: dict[str, set[str]] = {}
-        for chain in chains:
-            primitives_set.add(chain.primitive)
-            for ep in chain.entry_points:
-                entry_points_set.add(ep)
-            callers = reverse_graph.get(chain.io_edge_src, set())
-            leaves = callers if callers else {chain.io_edge_src}
-            for leaf in leaves:
-                leaf_set.add(leaf)
-                if entrypoint_ids:
-                    if leaf not in leaf_ep_cache:
-                        leaf_ep_cache[leaf] = _reachable_entry_points(
-                            leaf, reverse_graph, entrypoint_ids
-                        )
-                    per_leaf.setdefault(leaf, set()).update(leaf_ep_cache[leaf])
+        leaf_callers, entry_points_per_leaf = compute_leaf_rollups(
+            chains, reverse_graph, entrypoint_ids, leaf_ep_cache,
+        )
         bmap.entries[boundary] = BoundaryMapEntry(
             boundary=boundary,
             chains=chains,
-            entry_points=sorted(entry_points_set),
-            primitives_used=sorted(primitives_set),
-            leaf_callers=sorted(leaf_set),
-            entry_points_per_leaf={
-                leaf: sorted(eps) for leaf, eps in per_leaf.items()
-            },
+            entry_points=sorted({ep for c in chains for ep in c.entry_points}),
+            primitives_used=sorted({c.primitive for c in chains}),
+            leaf_callers=leaf_callers,
+            entry_points_per_leaf=entry_points_per_leaf,
         )
 
     return bmap
+
+
+def compute_leaf_rollups(
+    chains: list[IoChain],
+    reverse_graph: dict[str, set[str]],
+    entrypoint_ids: Optional[set[str]] = None,
+    leaf_ep_cache: Optional[dict[str, set[str]]] = None,
+) -> tuple[list[str], dict[str, list[str]]]:
+    """Compute the WI-darad leaf-caller roll-ups for a chain set.
+
+    A "leaf caller" of an io_edge_src is an immediate caller of that src
+    in the reverse graph; when src has no callers, src itself is its own
+    leaf (the primitive is invoked directly from that function).
+
+    Exposed at module level so the CLI's filter pass (cmd_io_boundaries)
+    can recompute rollups for a subset of chains after dropping test-file
+    chains or applying --primitive — otherwise the BoundaryMapEntry it
+    rebuilds loses the rollups, and the bakeoff io-boundaries.txt shows
+    chain_count>0 with leaf_callers=[] (WI-rubir regression).
+
+    ``leaf_ep_cache`` lets callers reuse entry-point reachability sets
+    across multiple boundary types in the same map; pass ``None`` to use
+    a per-call scratch cache.
+    """
+    if leaf_ep_cache is None:
+        leaf_ep_cache = {}
+    leaf_set: set[str] = set()
+    per_leaf: dict[str, set[str]] = {}
+    for chain in chains:
+        callers = reverse_graph.get(chain.io_edge_src, set())
+        leaves = callers if callers else {chain.io_edge_src}
+        for leaf in leaves:
+            leaf_set.add(leaf)
+            if entrypoint_ids:
+                if leaf not in leaf_ep_cache:
+                    leaf_ep_cache[leaf] = _reachable_entry_points(
+                        leaf, reverse_graph, entrypoint_ids
+                    )
+                per_leaf.setdefault(leaf, set()).update(leaf_ep_cache[leaf])
+    return (
+        sorted(leaf_set),
+        {leaf: sorted(eps) for leaf, eps in per_leaf.items()},
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1272,3 +1272,126 @@ def test_cmd_io_boundaries_json_output_empty_unsupported_when_all_supported(
 
     data = json.loads(capsys.readouterr().out)
     assert data["unsupported_languages"] == []
+
+
+# ---------------------------------------------------------------------------
+# WI-rubir: leaf-caller rollups must survive the CLI filter pass
+# ---------------------------------------------------------------------------
+
+
+class TestLeafCallersSurviveFilterPass:
+    """The WI-darad rollups (leaf_callers, entry_points_per_leaf) are
+    computed inside compute_boundary_map but cmd_io_boundaries runs a
+    filter pass (default exclude_tests=True) that previously dropped
+    them by reconstructing BoundaryMapEntry without those fields.
+    Bakeoff cohort-001/iter-010 caught this as a regression: every
+    boundary had chain_count>0 but leaf_callers=[].
+    """
+
+    def test_leaf_callers_present_with_default_exclude_tests(
+        self, tmp_path: Path, capsys,
+    ) -> None:
+        """Default args (exclude_tests=True) must preserve leaf_callers."""
+        bmap = _make_behavior_map(
+            nodes=[
+                {
+                    "id": "python:src/app.py:1-5:app:function",
+                    "name": "app",
+                    "kind": "function",
+                    "language": "python",
+                    "path": "src/app.py",
+                    "span": {"start_line": 1, "end_line": 5},
+                },
+            ],
+            edges=[
+                {
+                    "src": "python:src/app.py:1-5:app:function",
+                    "dst": "python:stdlib/os.py:1:os.listdir:function",
+                    "type": "calls",
+                },
+            ],
+        )
+        args = _make_args(tmp_path, bmap, json_output=True)
+        rc = cmd_io_boundaries(args)
+        assert rc == 0
+
+        data = json.loads(capsys.readouterr().out)
+        fs_read = data["boundaries"]["fs_read"]
+        assert fs_read["chain_count"] == 1
+        assert fs_read["leaf_callers"] == [
+            "python:src/app.py:1-5:app:function"
+        ], (
+            "leaf_callers must include the io_edge_src when the src has no "
+            "callers (leaf is the src itself per WI-darad)"
+        )
+
+    def test_entry_points_per_leaf_present_with_default_exclude_tests(
+        self, tmp_path: Path, capsys,
+    ) -> None:
+        """Default args must also preserve entry_points_per_leaf."""
+        bmap = _make_behavior_map(
+            nodes=[
+                {
+                    "id": "python:src/app.py:1-5:main:function",
+                    "name": "main",
+                    "kind": "function",
+                    "language": "python",
+                    "path": "src/app.py",
+                    "span": {"start_line": 1, "end_line": 5},
+                },
+            ],
+            edges=[
+                {
+                    "src": "python:src/app.py:1-5:main:function",
+                    "dst": "python:stdlib/os.py:1:os.listdir:function",
+                    "type": "calls",
+                },
+            ],
+            entrypoints=[
+                {"symbol_id": "python:src/app.py:1-5:main:function"},
+            ],
+        )
+        args = _make_args(tmp_path, bmap, json_output=True)
+        rc = cmd_io_boundaries(args)
+        assert rc == 0
+
+        data = json.loads(capsys.readouterr().out)
+        fs_read = data["boundaries"]["fs_read"]
+        leaf = "python:src/app.py:1-5:main:function"
+        assert fs_read["entry_points_per_leaf"] == {leaf: [leaf]}
+
+    def test_leaf_callers_present_with_primitive_filter(
+        self, tmp_path: Path, capsys,
+    ) -> None:
+        """The other filter trigger (primitive_filter) must also keep
+        leaf_callers."""
+        bmap = _make_behavior_map(
+            nodes=[
+                {
+                    "id": "python:src/app.py:1-5:app:function",
+                    "name": "app",
+                    "kind": "function",
+                    "language": "python",
+                    "path": "src/app.py",
+                    "span": {"start_line": 1, "end_line": 5},
+                },
+            ],
+            edges=[
+                {
+                    "src": "python:src/app.py:1-5:app:function",
+                    "dst": "python:stdlib/os.py:1:os.listdir:function",
+                    "type": "calls",
+                },
+            ],
+        )
+        args = _make_args(
+            tmp_path, bmap, json_output=True, primitive="os.listdir",
+        )
+        rc = cmd_io_boundaries(args)
+        assert rc == 0
+
+        data = json.loads(capsys.readouterr().out)
+        fs_read = data["boundaries"]["fs_read"]
+        assert fs_read["leaf_callers"] == [
+            "python:src/app.py:1-5:app:function"
+        ]

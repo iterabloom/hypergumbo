@@ -3205,7 +3205,25 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     # CLI users do the same via --include-tests.
     exclude_tests = getattr(args, "exclude_tests", True)
 
-    from .io_boundary import BoundaryMapEntry
+    from .io_boundary import (
+        BoundaryMapEntry,
+        _build_reverse_graph,
+        compute_leaf_rollups,
+    )
+
+    # WI-rubir: when the filter path rebuilds BoundaryMapEntry it must
+    # also recompute the WI-darad leaf-caller roll-ups for the surviving
+    # chain subset; otherwise leaf_callers / entry_points_per_leaf are
+    # silently dropped (they default to empty on the dataclass), and
+    # because exclude_tests=True is the default, every normal CLI
+    # invocation hits this path.
+    reverse_graph_for_filter: Optional[Dict[str, set[str]]] = None
+
+    def _ensure_reverse_graph() -> Dict[str, set[str]]:
+        nonlocal reverse_graph_for_filter
+        if reverse_graph_for_filter is None:
+            reverse_graph_for_filter = _build_reverse_graph(edges)
+        return reverse_graph_for_filter
 
     filtered_entries: Dict[str, BoundaryMapEntry] = {}
     for btype, entry in bmap.entries.items():
@@ -3231,11 +3249,18 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             continue
 
         if primitive_filter or exclude_tests:
+            leaf_callers, entry_points_per_leaf = compute_leaf_rollups(
+                chains,
+                _ensure_reverse_graph(),
+                entrypoint_ids or None,
+            )
             filtered_entries[btype] = BoundaryMapEntry(
                 boundary=entry.boundary,
                 chains=chains,
                 entry_points=sorted({ep for c in chains for ep in c.entry_points}),
                 primitives_used=sorted({c.primitive for c in chains}),
+                leaf_callers=leaf_callers,
+                entry_points_per_leaf=entry_points_per_leaf,
             )
         else:
             filtered_entries[btype] = entry
