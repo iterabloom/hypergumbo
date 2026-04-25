@@ -361,22 +361,52 @@ def _cmd_log(args: argparse.Namespace, ts: TrackerSet) -> int:
     return EXIT_SUCCESS
 
 
-def _resolve_ref(ts: TrackerSet, raw: str, field_name: str) -> str:
+def _resolve_ref(
+    ts: TrackerSet,
+    raw: str,
+    field_name: str,
+    *,
+    writer_tier: Tier | None = None,
+) -> str:
     """Resolve a short ID prefix to its full proquint ID.
 
     Used for --parent, --isbefore, --add-duplicate-of, etc. to ensure
     that references stored in ops files are always full IDs, not
     short prefixes that would fail cross-file validation.
+
+    When ``writer_tier`` is supplied, the target's tier is checked
+    against the writer's tier per WI-sohot's cross-tier resolution rule:
+    canonical and workspace items may not point at stealth-tier items,
+    because stealth is gitignored and CI cannot resolve the reference.
+    Stealth items may reference any tier.
     """
     try:
-        full_id, _store, _tier = ts._resolve_id(raw)
-        return full_id
+        full_id, _store, target_tier = ts._resolve_id(raw)
     except (ItemNotFoundError, AmbiguousPrefixError) as exc:
         print(
             f"error: cannot resolve {field_name} '{raw}': {exc}",
             file=sys.stderr,
         )
         raise
+    if (
+        writer_tier is not None
+        and writer_tier != Tier.STEALTH
+        and target_tier == Tier.STEALTH
+    ):
+        print(
+            f"error: {field_name} '{raw}' resolves to stealth-tier item "
+            f"{full_id} but the writing item is in tier '{writer_tier.value}'. "
+            f"Stealth items are gitignored; CI cannot resolve cross-tier "
+            f"references from canonical/workspace into stealth. "
+            f"Either move the writing item to stealth (`tracker stealth ...`) "
+            f"or move the target out of stealth (`tracker unstealth ...`).",
+            file=sys.stderr,
+        )
+        raise ItemNotFoundError(
+            f"cross-tier reference rejected: {field_name} '{raw}' → "
+            f"stealth target {full_id} from {writer_tier.value} writer"
+        )
+    return full_id
 
 
 def _resolve_description(args: argparse.Namespace) -> str | None:
@@ -427,11 +457,14 @@ def _cmd_add(args: argparse.Namespace, ts: TrackerSet) -> int:
     if args.priority is not None:
         kwargs["priority"] = args.priority
     if args.parent:
-        kwargs["parent"] = _resolve_ref(ts, args.parent, "--parent")
+        kwargs["parent"] = _resolve_ref(ts, args.parent, "--parent", writer_tier=tier)
     if args.tag:
         kwargs["tags"] = args.tag
     if args.isbefore:
-        kwargs["isbefore"] = [_resolve_ref(ts, b, "--isbefore") for b in args.isbefore]
+        kwargs["isbefore"] = [
+            _resolve_ref(ts, b, "--isbefore", writer_tier=tier)
+            for b in args.isbefore
+        ]
     desc = _resolve_description(args)
     if desc is _DESC_ERROR:
         return EXIT_USER_ERROR
@@ -588,6 +621,13 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
     add_fields: dict[str, list[Any]] = {}
     remove_fields: dict[str, list[Any]] = {}
 
+    # Writer's tier is the tier of the item being updated. Used to enforce
+    # cross-tier reference rules at write time (WI-sohot).
+    try:
+        _, _, writer_tier = ts._resolve_id(args.item_id)
+    except (ItemNotFoundError, AmbiguousPrefixError):
+        writer_tier = None
+
     if args.status:
         set_fields["status"] = args.status
     if args.priority is not None:
@@ -595,7 +635,9 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
     if args.title:
         set_fields["title"] = args.title
     if args.parent:
-        set_fields["parent"] = _resolve_ref(ts, args.parent, "--parent")
+        set_fields["parent"] = _resolve_ref(
+            ts, args.parent, "--parent", writer_tier=writer_tier,
+        )
     if args.pr_ref:
         set_fields["pr_ref"] = args.pr_ref
     desc = _resolve_description(args)
@@ -610,15 +652,19 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
         remove_fields["tags"] = args.remove_tag
     if args.add_isbefore:
         add_fields["isbefore"] = [
-            _resolve_ref(ts, b, "--add-isbefore") for b in args.add_isbefore
+            _resolve_ref(ts, b, "--add-isbefore", writer_tier=writer_tier)
+            for b in args.add_isbefore
         ]
     if args.remove_isbefore:
+        # Remove operations don't need write-time tier enforcement: removing a
+        # ref can only narrow the dependency set, never create a cross-tier
+        # reference.
         remove_fields["isbefore"] = [
             _resolve_ref(ts, b, "--remove-isbefore") for b in args.remove_isbefore
         ]
     if args.add_duplicate_of:
         add_fields["duplicate_of"] = [
-            _resolve_ref(ts, d, "--add-duplicate-of")
+            _resolve_ref(ts, d, "--add-duplicate-of", writer_tier=writer_tier)
             for d in args.add_duplicate_of
         ]
     if args.remove_duplicate_of:
@@ -628,7 +674,7 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
         ]
     if args.add_not_duplicate_of:
         add_fields["not_duplicate_of"] = [
-            _resolve_ref(ts, d, "--add-not-duplicate-of")
+            _resolve_ref(ts, d, "--add-not-duplicate-of", writer_tier=writer_tier)
             for d in args.add_not_duplicate_of
         ]
     if args.remove_not_duplicate_of:
@@ -691,13 +737,30 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
     changes = _describe_changes(old_item, new_item, ts)
 
     # Handle --add-blocked-by / --remove-blocked-by (inverse isbefore links)
-    # These modify OTHER items, not the primary target.
+    # These modify OTHER items, not the primary target. The writer of the
+    # update is the BLOCKER (the one gaining an isbefore entry), so the
+    # cross-tier check resolves blocker_tier vs target_tier.
     blocked_by_changes: list[str] = []
-    target_full_id, _, _ = ts._resolve_id(args.item_id)
+    target_full_id, _, target_tier = ts._resolve_id(args.item_id)
 
     if getattr(args, "add_blocked_by", None):
         for ref in args.add_blocked_by:
-            blocker_id = _resolve_ref(ts, ref, "--add-blocked-by")
+            blocker_id, _, blocker_tier = ts._resolve_id(ref)
+            if (
+                blocker_tier != Tier.STEALTH
+                and target_tier == Tier.STEALTH
+            ):
+                print(
+                    f"error: --add-blocked-by '{ref}' would make "
+                    f"{_short_id(blocker_id)} (tier {blocker_tier.value}) "
+                    f"block stealth-tier {_short_id(target_full_id)}; "
+                    f"CI cannot resolve the cross-tier reference.",
+                    file=sys.stderr,
+                )
+                raise ItemNotFoundError(
+                    f"cross-tier --add-blocked-by rejected: "
+                    f"{blocker_tier.value} blocker → stealth target"
+                )
             ts.update(
                 blocker_id,
                 add_fields={"isbefore": [target_full_id]},

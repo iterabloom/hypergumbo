@@ -20,7 +20,7 @@ from hypergumbo_tracker.validation import (
     ValidationResult,
     _check_before_cycles,
     _check_config_comparison,
-    _check_dangling_parents,
+    _check_ref_resolution,
     _check_embedding_duplicates,
     _check_id_prefix_mismatch,
     _check_lock_violations,
@@ -1070,6 +1070,289 @@ class TestCrossFileValidation:
         result = validate_all(tracker_root, _make_config())
         assert any("cycle in isbefore links" in e for e in result.errors)
 
+
+# ---------------------------------------------------------------------------
+# Cross-tier reference validation (WI-sohot)
+#
+# Per-item structural checks (op format, schema, etc.) run on every tier
+# regardless. Cross-tier reference-resolution rules:
+#
+# - canonical or workspace items: refs must resolve in canonical-union-workspace
+#   - this matches CI's view (stealth is gitignored). A workspace item with a
+#   stealth parent passes locally today but fails in CI.
+# - stealth items: refs may resolve in the full local index (canonical, workspace,
+#   and stealth). Stealth items can validly reference any tier.
+# ---------------------------------------------------------------------------
+
+
+class TestCrossTierRefValidation:
+    """Tests for tier-aware cross-tier reference resolution."""
+
+    @staticmethod
+    def _scaffold(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+        """Build canonical/workspace/stealth ops dirs and return their paths."""
+        tracker_root = tmp_path / ".agent"
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        workspace_ops = tracker_root / "tracker-workspace" / ".ops"
+        stealth_ops = tracker_root / "tracker-workspace" / "stealth"
+        canonical_ops.mkdir(parents=True)
+        workspace_ops.mkdir(parents=True)
+        stealth_ops.mkdir(parents=True)
+        return tracker_root, canonical_ops, workspace_ops, stealth_ops
+
+    @staticmethod
+    def _create_op(
+        title: str,
+        nonce: str,
+        *,
+        parent: str | None = None,
+        isbefore: list[str] | None = None,
+        duplicate_of: list[str] | None = None,
+        not_duplicate_of: list[str] | None = None,
+    ) -> str:
+        lines = [
+            "- op: create",
+            '  at: "2026-01-01T00:00:00Z"',
+            "  by: agent",
+            "  actor: test_agent",
+            "  clock: 1",
+            f"  nonce: {nonce}",
+            "  data:",
+            "    kind: work_item",
+            f'    title: "{title}"',
+            "    status: todo_hard",
+            "    priority: 2",
+        ]
+        if parent is not None:
+            lines.append(f"    parent: {parent}")
+        if isbefore:
+            lines.append(f"    isbefore: [{', '.join(isbefore)}]")
+        if duplicate_of:
+            lines.append(f"    duplicate_of: [{', '.join(duplicate_of)}]")
+        if not_duplicate_of:
+            lines.append(f"    not_duplicate_of: [{', '.join(not_duplicate_of)}]")
+        return "\n".join(lines) + "\n"
+
+    # -- workspace -> stealth: should fail (stealth is gitignored) -----------
+
+    def test_workspace_parent_to_stealth_fails(self, tmp_path: Path) -> None:
+        tracker_root, _, ws, st = self._scaffold(tmp_path)
+        (st / ".WI-stealth-target-aaaa.ops").write_text(
+            self._create_op("Stealth target", "0001")
+        )
+        (ws / ".WI-workspace-src-bbbb.ops").write_text(
+            self._create_op("Workspace src", "0002",
+                            parent="WI-stealth-target-aaaa")
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert any(
+            "cross-tier" in e and "parent" in e and "WI-stealth-target-aaaa" in e
+            for e in result.errors
+        ), result.errors
+
+    def test_workspace_isbefore_to_stealth_fails(self, tmp_path: Path) -> None:
+        tracker_root, _, ws, st = self._scaffold(tmp_path)
+        (st / ".WI-stealth-target-aaaa.ops").write_text(
+            self._create_op("Stealth target", "0001")
+        )
+        (ws / ".WI-workspace-src-bbbb.ops").write_text(
+            self._create_op("Workspace src", "0002",
+                            isbefore=["WI-stealth-target-aaaa"])
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert any(
+            "cross-tier" in e and "isbefore" in e for e in result.errors
+        ), result.errors
+
+    def test_workspace_duplicate_of_to_stealth_fails(self, tmp_path: Path) -> None:
+        tracker_root, _, ws, st = self._scaffold(tmp_path)
+        (st / ".WI-stealth-target-aaaa.ops").write_text(
+            self._create_op("Stealth target", "0001")
+        )
+        (ws / ".WI-workspace-src-bbbb.ops").write_text(
+            self._create_op("Workspace src", "0002",
+                            duplicate_of=["WI-stealth-target-aaaa"])
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert any(
+            "cross-tier" in e and "duplicate_of" in e for e in result.errors
+        ), result.errors
+
+    def test_workspace_not_duplicate_of_to_stealth_fails(self, tmp_path: Path) -> None:
+        tracker_root, _, ws, st = self._scaffold(tmp_path)
+        (st / ".WI-stealth-target-aaaa.ops").write_text(
+            self._create_op("Stealth target", "0001")
+        )
+        (ws / ".WI-workspace-src-bbbb.ops").write_text(
+            self._create_op("Workspace src", "0002",
+                            not_duplicate_of=["WI-stealth-target-aaaa"])
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert any(
+            "cross-tier" in e and "not_duplicate_of" in e for e in result.errors
+        ), result.errors
+
+    # -- canonical -> stealth: should fail -----------------------------------
+
+    def test_canonical_parent_to_stealth_fails(self, tmp_path: Path) -> None:
+        tracker_root, can, _, st = self._scaffold(tmp_path)
+        (st / ".WI-stealth-target-aaaa.ops").write_text(
+            self._create_op("Stealth target", "0001")
+        )
+        (can / ".WI-canonical-src-bbbb.ops").write_text(
+            self._create_op("Canonical src", "0002",
+                            parent="WI-stealth-target-aaaa")
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert any(
+            "cross-tier" in e and "parent" in e for e in result.errors
+        ), result.errors
+
+    def test_canonical_isbefore_to_stealth_fails(self, tmp_path: Path) -> None:
+        tracker_root, can, _, st = self._scaffold(tmp_path)
+        (st / ".WI-stealth-target-aaaa.ops").write_text(
+            self._create_op("Stealth target", "0001")
+        )
+        (can / ".WI-canonical-src-bbbb.ops").write_text(
+            self._create_op("Canonical src", "0002",
+                            isbefore=["WI-stealth-target-aaaa"])
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert any(
+            "cross-tier" in e and "isbefore" in e for e in result.errors
+        ), result.errors
+
+    def test_canonical_duplicate_of_to_stealth_fails(self, tmp_path: Path) -> None:
+        tracker_root, can, _, st = self._scaffold(tmp_path)
+        (st / ".WI-stealth-target-aaaa.ops").write_text(
+            self._create_op("Stealth target", "0001")
+        )
+        (can / ".WI-canonical-src-bbbb.ops").write_text(
+            self._create_op("Canonical src", "0002",
+                            duplicate_of=["WI-stealth-target-aaaa"])
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert any(
+            "cross-tier" in e and "duplicate_of" in e for e in result.errors
+        ), result.errors
+
+    def test_canonical_not_duplicate_of_to_stealth_fails(self, tmp_path: Path) -> None:
+        tracker_root, can, _, st = self._scaffold(tmp_path)
+        (st / ".WI-stealth-target-aaaa.ops").write_text(
+            self._create_op("Stealth target", "0001")
+        )
+        (can / ".WI-canonical-src-bbbb.ops").write_text(
+            self._create_op("Canonical src", "0002",
+                            not_duplicate_of=["WI-stealth-target-aaaa"])
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert any(
+            "cross-tier" in e and "not_duplicate_of" in e for e in result.errors
+        ), result.errors
+
+    # -- canonical/workspace -> canonical/workspace: pass --------------------
+
+    def test_canonical_to_workspace_passes(self, tmp_path: Path) -> None:
+        """Per corrected design: canonical/workspace items resolve in the
+        canonical-union-workspace set. canonical -> workspace is allowed."""
+        tracker_root, can, ws, _ = self._scaffold(tmp_path)
+        (ws / ".WI-workspace-target-aaaa.ops").write_text(
+            self._create_op("Workspace target", "0001")
+        )
+        (can / ".WI-canonical-src-bbbb.ops").write_text(
+            self._create_op("Canonical src", "0002",
+                            parent="WI-workspace-target-aaaa")
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert not any("cross-tier" in e or "dangling" in e for e in result.errors), \
+            result.errors
+
+    def test_workspace_to_canonical_passes(self, tmp_path: Path) -> None:
+        tracker_root, can, ws, _ = self._scaffold(tmp_path)
+        (can / ".WI-canonical-target-aaaa.ops").write_text(
+            self._create_op("Canonical target", "0001")
+        )
+        (ws / ".WI-workspace-src-bbbb.ops").write_text(
+            self._create_op("Workspace src", "0002",
+                            parent="WI-canonical-target-aaaa")
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert not any("cross-tier" in e or "dangling" in e for e in result.errors), \
+            result.errors
+
+    # -- stealth -> any tier: passes (stealth has full local scope) ----------
+
+    def test_stealth_to_canonical_passes(self, tmp_path: Path) -> None:
+        tracker_root, can, _, st = self._scaffold(tmp_path)
+        (can / ".WI-canonical-target-aaaa.ops").write_text(
+            self._create_op("Canonical target", "0001")
+        )
+        (st / ".WI-stealth-src-bbbb.ops").write_text(
+            self._create_op("Stealth src", "0002",
+                            parent="WI-canonical-target-aaaa")
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert not any("cross-tier" in e or "dangling" in e for e in result.errors), \
+            result.errors
+
+    def test_stealth_to_workspace_passes(self, tmp_path: Path) -> None:
+        tracker_root, _, ws, st = self._scaffold(tmp_path)
+        (ws / ".WI-workspace-target-aaaa.ops").write_text(
+            self._create_op("Workspace target", "0001")
+        )
+        (st / ".WI-stealth-src-bbbb.ops").write_text(
+            self._create_op("Stealth src", "0002",
+                            parent="WI-workspace-target-aaaa")
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert not any("cross-tier" in e or "dangling" in e for e in result.errors), \
+            result.errors
+
+    def test_stealth_to_stealth_passes(self, tmp_path: Path) -> None:
+        tracker_root, _, _, st = self._scaffold(tmp_path)
+        (st / ".WI-stealth-target-aaaa.ops").write_text(
+            self._create_op("Stealth target", "0001")
+        )
+        (st / ".WI-stealth-src-bbbb.ops").write_text(
+            self._create_op("Stealth src", "0002",
+                            parent="WI-stealth-target-aaaa")
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert not any("cross-tier" in e or "dangling" in e for e in result.errors), \
+            result.errors
+
+    # -- dangling refs (target not in any tier) ------------------------------
+
+    def test_dangling_isbefore(self, tmp_path: Path) -> None:
+        tracker_root, can, _, _ = self._scaffold(tmp_path)
+        (can / ".WI-test-aaaa.ops").write_text(
+            self._create_op("Test", "0001",
+                            isbefore=["WI-nonexistent"])
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert any("dangling" in e and "isbefore" in e for e in result.errors), \
+            result.errors
+
+    def test_dangling_duplicate_of(self, tmp_path: Path) -> None:
+        tracker_root, can, _, _ = self._scaffold(tmp_path)
+        (can / ".WI-test-aaaa.ops").write_text(
+            self._create_op("Test", "0001",
+                            duplicate_of=["WI-nonexistent"])
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert any("dangling" in e and "duplicate_of" in e for e in result.errors), \
+            result.errors
+
+    def test_dangling_not_duplicate_of(self, tmp_path: Path) -> None:
+        tracker_root, can, _, _ = self._scaffold(tmp_path)
+        (can / ".WI-test-aaaa.ops").write_text(
+            self._create_op("Test", "0001",
+                            not_duplicate_of=["WI-nonexistent"])
+        )
+        result = validate_all(tracker_root, _make_config())
+        assert any(
+            "dangling" in e and "not_duplicate_of" in e for e in result.errors
+        ), result.errors
 
 
 # ---------------------------------------------------------------------------

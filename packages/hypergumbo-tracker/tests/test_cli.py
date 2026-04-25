@@ -808,6 +808,82 @@ class TestWriteCommands:
             ])
         assert exc.value.code == EXIT_USER_ERROR
 
+    def test_add_workspace_parent_to_stealth_rejected(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """WI-sohot: workspace item cannot reference a stealth-tier parent.
+
+        Stealth is gitignored, so CI cannot resolve the reference. The CLI
+        must refuse the add at write time rather than letting it through to
+        fail later in CI.
+        """
+        tracker_root = _setup_tracker(tmp_path)
+        stealth_dir = tracker_root / "tracker-workspace" / "stealth"
+        _add_item(stealth_dir, "WI-stealth-target", title="Stealth")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "add", "--kind", "work_item", "--title", "Child",
+                "--tier", "workspace",
+                "--parent", "WI-stealth-target",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+        captured = capsys.readouterr()
+        assert "stealth" in captured.err.lower()
+        assert "ci cannot resolve" in captured.err.lower()
+
+    def test_add_canonical_isbefore_to_stealth_rejected(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """WI-sohot: canonical item cannot --isbefore a stealth target."""
+        tracker_root = _setup_tracker(tmp_path)
+        stealth_dir = tracker_root / "tracker-workspace" / "stealth"
+        _add_item(stealth_dir, "WI-stealth-target", title="Stealth")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "add", "--kind", "work_item", "--title", "Blocker",
+                "--tier", "canonical",
+                "--isbefore", "WI-stealth-target",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+    def test_add_stealth_parent_to_canonical_allowed(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """WI-sohot: stealth items may reference any tier (full local scope)."""
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_dir = tracker_root / "tracker" / ".ops"
+        _add_item(canonical_dir, "WI-canonical-target", title="Canonical")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "add", "--kind", "work_item", "--title", "StealthChild",
+                "--tier", "stealth",
+                "--parent", "WI-canonical-target",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_add_workspace_parent_to_workspace_allowed(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Sanity: workspace→workspace references are unaffected."""
+        tracker_root = _setup_tracker(tmp_path)
+        ws_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ws_dir, "WI-ws-target", title="Workspace target")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "add", "--kind", "work_item", "--title", "WSChild",
+                "--tier", "workspace",
+                "--parent", "WI-ws-target",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
     def test_add_description_file(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                                   mock_agent_uid: None) -> None:
         """--description-file reads description from a file (WI-pudan)."""
@@ -1496,6 +1572,66 @@ class TestVerboseConfirmations:
         out = capsys.readouterr().out
         assert "updated" in out
         assert "blocks" in out.lower() or "isbefore" in out.lower()
+
+    def test_update_workspace_add_isbefore_to_stealth_rejected(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """WI-sohot: update --add-isbefore from workspace to stealth fails."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        stealth_dir = tracker_root / "tracker-workspace" / "stealth"
+        _add_item(ops_dir, "WI-alpha", title="Alpha task")
+        _add_item(stealth_dir, "WI-stealth", title="Stealth target")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-alpha", "--add-isbefore", "WI-stealth",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+        assert "stealth" in capsys.readouterr().err.lower()
+
+    def test_update_remove_isbefore_skips_tier_check(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Removal narrows refs and never creates a cross-tier link, so the
+        tier guard does not apply to --remove-isbefore."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        stealth_dir = tracker_root / "tracker-workspace" / "stealth"
+        _add_item(ops_dir, "WI-alpha", title="Alpha")
+        _add_item(stealth_dir, "WI-stealth", title="Stealth")
+        # remove-isbefore on a stealth target succeeds (it's a no-op since
+        # alpha never had stealth in its isbefore, but the guard must not
+        # synthesize a "cross-tier" rejection here).
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-alpha", "--remove-isbefore", "WI-stealth",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_update_add_blocked_by_canonical_target_to_stealth_blocker_rejected(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """WI-sohot: --add-blocked-by puts isbefore on the BLOCKER. If the
+        target is stealth and the blocker is canonical/workspace, the blocker
+        would gain a cross-tier isbefore reference — reject."""
+        tracker_root = _setup_tracker(tmp_path)
+        ws_dir = tracker_root / "tracker-workspace" / ".ops"
+        stealth_dir = tracker_root / "tracker-workspace" / "stealth"
+        _add_item(ws_dir, "WI-blocker", title="Workspace blocker")
+        _add_item(stealth_dir, "WI-stealth-target", title="Stealth target")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-stealth-target",
+                "--add-blocked-by", "WI-blocker",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+        assert "stealth" in capsys.readouterr().err.lower()
 
     def test_update_remove_isbefore_shows_relationship(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,

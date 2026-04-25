@@ -13,6 +13,13 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Fixed
 
+#### Cross-tier reference resolution (WI-sohot)
+
+- **`tracker validate` now matches CI's view by default** (WI-sohot): the cross-file reference checks in `_check_ref_resolution` (renamed from `_check_dangling_parents`) split into two index scopes by writer tier. Canonical and workspace items must resolve refs in canonical ∪ workspace (the CI-visible set, since `tracker-workspace/stealth/` is gitignored); stealth items resolve in the full canonical ∪ workspace ∪ stealth index. Reproduces the PR #3365 CI failure locally — workspace items pointing at stealth-tier ids no longer pass `tracker validate` only to fail in CI.
+- **All four ref-typed fields are now checked for dangling/cross-tier issues**: `parent`, `isbefore`, `duplicate_of`, `not_duplicate_of`. Previously only `parent` was checked for dangling references; `isbefore` was checked only for cycles, and `duplicate_of` / `not_duplicate_of` weren't validated at all. Two error classes are emitted: `dangling <field> reference` (target absent in every tier) and `cross-tier <field> reference … from <tier> to stealth` (target exists but in a tier the writer cannot legally reference).
+- **CLI write-time guard** for `tracker add` / `tracker update`: `_resolve_ref` now accepts a `writer_tier` argument and refuses to resolve a reference whose target is in stealth when the writer is canonical or workspace. Threaded through `--parent`, `--isbefore`, `--add-isbefore`, `--add-duplicate-of`, `--add-not-duplicate-of`, and `--add-blocked-by` (where the blocker is the writer of the new `isbefore` link). Removal flags (`--remove-isbefore`, etc.) skip the check — narrowing a ref set can never create a cross-tier link.
+- **Three pre-existing latent dangling refs cleaned up** as a side-effect of tightening `_check_ref_resolution`: `WI-dogir.isbefore` referenced ambiguous short id `WI-duzul` (resolved to `WI-duzul-kugag-…`, the Phase 3 stable_id item per the description); `WI-nugiv.duplicate_of` and `WI-vibat.duplicate_of` referenced short id `WI-hugir-balik` (resolved to `WI-hugir-balik-tajub-…`). These predated the WI-sohot fix but were invisible because the fields weren't checked.
+
 #### Transient `.ops` read-race hardening
 
 - **`_parse_ops_file` retries transient read races** (observed 2026-04-22): a long-running `htrac tui` crashed with `PermissionError [Errno 13]` on a mode-0o664 ops file owned by the reader — narrow window where `stat()` saw the old inode but `open()` landed on a new one written by a concurrent atomic-rename writer. Now retries up to 3 times with 20 ms / 40 ms linear backoff on `PermissionError` / `FileNotFoundError`; every retry and final re-raise logged to the race log.

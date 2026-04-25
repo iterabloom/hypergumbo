@@ -613,7 +613,7 @@ def validate_all(
                 continue
 
     # Cross-file checks
-    _check_dangling_parents(all_items, result)
+    _check_ref_resolution(all_items, result)
     _check_id_prefix_mismatch(all_items, config, result)
     _check_before_cycles(all_items, result)
 
@@ -636,16 +636,66 @@ def validate_all(
     return result
 
 
-def _check_dangling_parents(
+# Ref-typed fields on CompiledItem checked by _check_ref_resolution.
+# parent is single-valued (str | None); the others are list-valued.
+_REF_FIELDS: tuple[str, ...] = (
+    "parent", "isbefore", "duplicate_of", "not_duplicate_of",
+)
+
+
+def _check_ref_resolution(
     all_items: dict[str, tuple[str, Any]], result: ValidationResult
 ) -> None:
-    """Check for parent references to non-existent items."""
-    all_ids = set(all_items.keys())
-    for item_id, (_tier_name, item) in all_items.items():
-        if item.parent and item.parent not in all_ids:
-            result.errors.append(
-                f"{item_id}: dangling parent reference '{item.parent}'"
-            )
+    """Check that ref-typed fields resolve within the writer's tier scope.
+
+    Per WI-sohot: stealth items are gitignored, so a workspace or canonical
+    item that points at a stealth-tier id passes locally but fails in CI
+    (where the stealth ops files don't exist). Tier-scoped resolution makes
+    the local validate produce the same verdict CI does.
+
+    Scope rules (one rule per writer tier):
+      canonical / workspace items -> refs must resolve in canonical-union-workspace
+                                    (the CI-visible set).
+      stealth items              -> refs may resolve in the full local index
+                                    (canonical, workspace, and stealth).
+
+    Per-item structural checks (op format, schema, etc.) run on every tier
+    regardless and are unaffected by this asymmetry.
+
+    Two error classes:
+      - "dangling": target not present in any tier — almost certainly a typo
+        or an item that was deleted.
+      - "cross-tier": target exists in stealth but the referrer is in a
+        committed tier — visible locally, invisible to CI.
+    """
+    by_tier: dict[str, set[str]] = {"canonical": set(), "workspace": set(), "stealth": set()}
+    for ref_id, (tier_name, _) in all_items.items():
+        by_tier[tier_name].add(ref_id)
+    committed = by_tier["canonical"] | by_tier["workspace"]
+    full = committed | by_tier["stealth"]
+
+    for item_id, (tier_name, item) in all_items.items():
+        scope = full if tier_name == "stealth" else committed
+        for field_name in _REF_FIELDS:
+            value = getattr(item, field_name, None)
+            if value is None:
+                continue
+            refs = value if isinstance(value, list) else [value]
+            for ref in refs:
+                if not ref or ref in scope:
+                    continue
+                if ref in full:
+                    # Exists in stealth but referrer is canonical/workspace.
+                    result.errors.append(
+                        f"{item_id}: cross-tier {field_name} reference "
+                        f"'{ref}' from {tier_name} to stealth "
+                        f"(stealth is gitignored; CI cannot resolve this)"
+                    )
+                else:
+                    # Not present in any tier.
+                    result.errors.append(
+                        f"{item_id}: dangling {field_name} reference '{ref}'"
+                    )
 
 
 def _check_id_prefix_mismatch(
