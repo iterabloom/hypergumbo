@@ -1,0 +1,22 @@
+- op: create  # 9ad9
+  at: '2026-04-25T16:07:38Z'  # 9ad9
+  by: agent  # 9ad9
+  actor: jgstern_agent  # 9ad9
+  clock: 1  # 9ad9
+  nonce: 9ad9  # 9ad9
+  data:  # 9ad9
+    kind: work_item  # 9ad9
+    title: "Go analyzer: populate access_mode on calls edges via Tier 1 dataflow path (parallel to Python WI-zobid)"  # 9ad9
+    status: todo_hard  # 9ad9
+    priority: 2  # 9ad9
+    parent:  # 9ad9
+    tags:  # 9ad9
+    - analysis_quality  # 9ad9
+    - bakeoff  # 9ad9
+    - dataflow  # 9ad9
+    isbefore: []  # 9ad9
+    duplicate_of: []  # 9ad9
+    not_duplicate_of: []  # 9ad9
+    pr_ref:  # 9ad9
+    description: "# Symptom\n\n`bakeoff-deep-reflect` for cohort-001/iter-010 against alertmanager,\nkafka, and prometheus all reported the same finding: Go's `calls`\nedges carry no `access_mode`, so `--dataflow` slicing on Go repos\nonly prunes the edge set; it does not annotate read/write directionality.\nOn alertmanager: 0 of 373 edges in `slice.dataflow.0.json` carry\n`access_mode`. On kafka: ~10% of 638 dataflow-slice edges have it\n(the SLF4J/log primitives via library_patterns), the remaining ~90%\nare unannotated. The feature offers limited value over a regular slice\non Go-heavy repos.\n\n# Scope\n\nThree pieces shipped earlier give partial coverage:\n\n- WI-hagok (P1, done): edge schema accepts `access_mode`.\n- WI-fubod (P1, done): retrofit linkers to set it where applicable.\n- WI-satuv (P3, done): Go library_patterns for mutating method calls\n  (e.g. `append`, `map[k]=v`).\n\nThe remaining gap is the Go *analyzer* itself: when emitting `calls`\nedges (the bulk of the edge population), it does not consult the\nshared `annotate_dataflow` helper to set `access_mode` on the\ncaller-side parameters or the return value. Python's analyzer does\nthis via the Tier 1 dataflow YAMLs (WI-zobid).\n\nThe fix is to wire Go's call-emission sites through the same\nTier 1 dataflow path Python uses. Per ADR-0015, this is what the\n\"Tier 1 integration\" PR (WI-tobul) was supposed to provide for every\nanalyzer, not just Python.\n\n# Acceptance\n\n- A new test asserts `>50%` of `calls` edges in a Go fixture's\n  `slice.dataflow.0.json` carry `access_mode in {read, write,\n  read_write, none}`.\n- Bakeoff revalidation on a polyglot cohort shows access_mode coverage\n  on Go calls edges crosses some threshold (TBD by reflect verdict);\n  tag `awaits_bakeoff_validation` at merge time.\n\n# Out of scope\n\n- Other languages with the same gap (Rust, Java, Kotlin, JS/TS) —\n  separate items if/when surfaced by reflect.\n- Go-specific dataflow library patterns beyond what WI-satuv shipped.\n\n# Source\n\nbakeoff-deep-reflect cohort-001/iter-010 (alertmanager + kafka +\nprometheus all reported the same finding independently)."  # 9ad9
+    fields: {}  # 9ad9

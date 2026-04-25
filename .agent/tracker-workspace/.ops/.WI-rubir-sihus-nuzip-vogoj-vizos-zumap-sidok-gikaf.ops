@@ -1,0 +1,29 @@
+- op: create  # 8553
+  at: '2026-04-25T11:01:55Z'  # 8553
+  by: agent  # 8553
+  actor: jgstern_agent  # 8553
+  clock: 1  # 8553
+  nonce: '8553'  # 8553
+  data:  # 8553
+    kind: work_item  # 8553
+    title: "Regression: WI-darad-nozut-hudum-jalug-digoh-tapuz-vojav-lumiv did not move in bakeoff cohort-001/iter-010"  # 8553
+    status: todo_soft  # 8553
+    priority: 1  # 8553
+    parent: WI-darad-nozut-hudum-jalug-digoh-tapuz-vojav-lumiv  # 8553
+    tags:  # 8553
+    - regression  # 8553
+    - awaits_bakeoff_validation  # 8553
+    isbefore: []  # 8553
+    duplicate_of: []  # 8553
+    not_duplicate_of: []  # 8553
+    pr_ref:  # 8553
+    description: "Parent item WI-darad-nozut-hudum-jalug-digoh-tapuz-vojav-lumiv carries an unvalidated bakeoff claim. Cohort cohort-001/iter-010 produced plurality verdict no_move (moved=0 no_move=3 inconclusive=0). Evidence: alertmanager=no_move: io-boundaries.txt for net_send shows leaf_callers=[] and entry_points_per_leaf={} for every boundary type; the notify/ut…; kafka=no_move: io-boundaries.txt net_send section still shows JsonRestServer.httpRequest as a single chain with entry_points=[], not on…; prometheus=no_move: io-boundaries.txt for prometheus shows leaf_callers=[] and entry_points_per_leaf={} for all 12 boundaries; the notifier/….\n\nInvestigate why the claimed metric did not move: either the fix did not land as expected, the claim was overstated, or the cohort is an unfair test (in which case the parent verdict should be re-run against a different cohort and this regression item closed as wont_do with that rationale)."  # 8553
+    fields: {}  # 8553
+- op: update  # 9b41
+  at: '2026-04-25T19:50:00Z'  # 9b41
+  by: agent  # 9b41
+  actor: jgstern_agent  # 9b41
+  clock: 2  # 9b41
+  nonce: '9b41'  # 9b41
+  set:  # 9b41
+    parent: null  # 9b41
