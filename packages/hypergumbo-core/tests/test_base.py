@@ -36,6 +36,7 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
     split_params_top_level,
     strip_fqn_prefix,
+    synthesize_file_symbols_for_dangling_edges,
     visibility_from_modifiers,
 )
 from hypergumbo_core.ir import Edge, Span, Symbol
@@ -1581,3 +1582,139 @@ class TestMakeUnresolvedEdge:
             module_hint="java.io.InputStream",
         )
         assert edge.dst == "java:java.io.InputStream:0-0:read:unresolved"
+
+
+def _make_caller_symbol(
+    sym_id: str = "python:src/main.py:10-20:foo:function",
+    language: str = "python",
+    path: str = "src/main.py",
+) -> Symbol:
+    return Symbol(
+        id=sym_id,
+        name="foo",
+        kind="function",
+        language=language,
+        path=path,
+        span=Span(start_line=10, start_col=0, end_line=20, end_col=0),
+    )
+
+
+class TestSynthesizeFileSymbolsForDanglingEdges:
+    """Tests for WI-ramuv synthesize_file_symbols_for_dangling_edges."""
+
+    def test_synthesizes_for_dangling_src(self) -> None:
+        """A make_file_id-shape src with no matching Symbol gets one synthesized."""
+        caller = _make_caller_symbol()
+        edge = Edge.create(
+            src=make_file_id("python", "src/main.py"),
+            dst=caller.id,
+            edge_type="imports",
+            line=1,
+        )
+
+        new_syms = synthesize_file_symbols_for_dangling_edges([caller], [edge])
+
+        assert len(new_syms) == 1
+        sym = new_syms[0]
+        assert sym.id == "python:src/main.py:1-1:file:file"
+        assert sym.kind == "file"
+        assert sym.name == "src/main.py"
+        assert sym.language == "python"
+        assert sym.path == "src/main.py"
+        assert sym.span.start_line == 1
+        assert sym.span.end_line == 1
+        assert sym.origin == "orchestrator_file_symbol_synthesis"
+
+    def test_synthesizes_for_dangling_dst(self) -> None:
+        """make_file_id-shape on the dst side is also covered."""
+        caller = _make_caller_symbol()
+        edge = Edge.create(
+            src=caller.id,
+            dst=make_file_id("typescript", "lib/utils.ts"),
+            edge_type="imports",
+            line=5,
+        )
+
+        new_syms = synthesize_file_symbols_for_dangling_edges([caller], [edge])
+
+        assert len(new_syms) == 1
+        assert new_syms[0].language == "typescript"
+        assert new_syms[0].path == "lib/utils.ts"
+
+    def test_skips_when_symbol_already_exists(self) -> None:
+        """If an analyzer already emits a matching file Symbol, do not duplicate it."""
+        existing = Symbol(
+            id=make_file_id("html", "index.html"),
+            name="index.html",
+            kind="file",
+            language="html",
+            path="index.html",
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+        )
+        edge = Edge.create(
+            src=existing.id,
+            dst="html:index.html:5-10:button:tag",
+            edge_type="contains",
+            line=5,
+        )
+
+        new_syms = synthesize_file_symbols_for_dangling_edges([existing], [edge])
+
+        assert new_syms == []
+
+    def test_dedupes_repeated_dangling_endpoints(self) -> None:
+        """Multiple edges referencing the same dangling file id produce one Symbol."""
+        caller_a = _make_caller_symbol("python:a.py:1-3:a:function", path="a.py")
+        caller_b = _make_caller_symbol("python:b.py:1-3:b:function", path="b.py")
+        file_id = make_file_id("python", "common.py")
+        edges = [
+            Edge.create(src=file_id, dst=caller_a.id, edge_type="imports", line=1),
+            Edge.create(src=file_id, dst=caller_b.id, edge_type="imports", line=1),
+        ]
+
+        new_syms = synthesize_file_symbols_for_dangling_edges(
+            [caller_a, caller_b], edges
+        )
+
+        assert len(new_syms) == 1
+        assert new_syms[0].id == file_id
+
+    def test_ignores_non_file_id_endpoints(self) -> None:
+        """Endpoints that are not make_file_id-shape are left alone."""
+        caller = _make_caller_symbol()
+        edge = Edge.create(
+            src=caller.id,
+            # An unresolved-external dst, not a file-id shape.
+            dst="python:requests:0-0:get:unresolved",
+            edge_type="calls",
+            line=12,
+        )
+
+        new_syms = synthesize_file_symbols_for_dangling_edges([caller], [edge])
+
+        assert new_syms == []
+
+    def test_preserves_colons_in_path(self) -> None:
+        """Languages whose ``path`` slot contains colons (e.g. Dart ``dart:io``) parse correctly."""
+        caller = _make_caller_symbol(
+            "dart:lib/app.dart:1-3:main:function",
+            language="dart",
+            path="lib/app.dart",
+        )
+        # Dart's import-edge src for the dart:io stdlib module looks like
+        # "dart:dart:io:1-1:file:file" — the path slot is "dart:io".
+        file_id = "dart:dart:io:1-1:file:file"
+        edge = Edge.create(
+            src=file_id, dst=caller.id, edge_type="imports", line=1,
+        )
+
+        new_syms = synthesize_file_symbols_for_dangling_edges([caller], [edge])
+
+        assert len(new_syms) == 1
+        assert new_syms[0].language == "dart"
+        assert new_syms[0].path == "dart:io"
+        assert new_syms[0].id == file_id
+
+    def test_returns_empty_when_no_dangling(self) -> None:
+        """No edges → no synthesis."""
+        assert synthesize_file_symbols_for_dangling_edges([], []) == []

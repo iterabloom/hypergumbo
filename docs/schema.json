@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.2.3"
+      "const": "0.2.4"
     },
     "confidence_model": {
       "type": "string",
@@ -250,7 +250,8 @@
             "mq_publisher",
             "mq_subscriber",
             "db_query",
-            "external_symbol"
+            "external_symbol",
+            "file"
           ]
         },
         "language": {

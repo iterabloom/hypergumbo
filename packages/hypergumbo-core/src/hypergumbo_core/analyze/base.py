@@ -306,6 +306,73 @@ def make_file_id(lang: str, path: str) -> str:
     return f"{lang}:{path}:1-1:file:file"
 
 
+_FILE_ID_SUFFIX = ":1-1:file:file"
+
+
+def synthesize_file_symbols_for_dangling_edges(
+    symbols: list[Symbol],
+    edges: list[Edge],
+) -> list[Symbol]:
+    """Synthesize real file Symbols for any ``make_file_id``-shape dangling edge endpoint.
+
+    WI-ramuv chokepoint: many analyzers emit import / module-level edges
+    whose ``src`` (and occasionally ``dst``) is :func:`make_file_id` shape
+    (``{lang}:{path}:1-1:file:file``) without emitting a matching producer-
+    side ``kind="file"`` Symbol. ``ir.create_boundary_nodes`` then turns
+    every such dangling endpoint into an external boundary node, which is
+    structurally wrong (the file IS first-party) and forces Plan A
+    canonical-id collapsing as a band-aid.
+
+    This helper runs at the orchestrator (after analyzer result
+    aggregation, before boundary-node synthesis) and emits one real
+    ``kind="file"`` Symbol per distinct dangling ``make_file_id`` id, so
+    those edges land on real producer-side Symbols and never enter the
+    boundary pipeline.
+
+    Args:
+        symbols: All Symbols collected from analyzers (mutated only via
+            return value — this function is non-destructive).
+        edges: All Edges collected from analyzers.
+
+    Returns:
+        List of new Symbols (one per previously-dangling
+        ``make_file_id`` id). The caller appends these to the global
+        Symbol list.
+    """
+    existing_ids = {s.id for s in symbols}
+    synthesized: dict[str, Symbol] = {}
+
+    for edge in edges:
+        for endpoint in (edge.src, edge.dst):
+            if not endpoint.endswith(_FILE_ID_SUFFIX):
+                continue
+            if endpoint in existing_ids or endpoint in synthesized:
+                continue
+            # Canonical make_file_id shape is "{lang}:{path}:1-1:file:file".
+            # path may itself contain colons (e.g. dart "dart:io"), so we
+            # split off the language at the first colon and strip the
+            # fixed suffix. Anything that doesn't match this shape was
+            # filtered above.
+            head = endpoint[: -len(_FILE_ID_SUFFIX)]
+            colon = head.find(":")
+            if colon < 0:  # pragma: no cover
+                continue
+            language = head[:colon]
+            path = head[colon + 1 :]
+            synthesized[endpoint] = Symbol(
+                id=endpoint,
+                name=path,
+                kind="file",
+                language=language,
+                path=path,
+                span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+                origin="orchestrator_file_symbol_synthesis",
+                origin_run_id="",
+            )
+
+    return list(synthesized.values())
+
+
 def make_unresolved_edge(
     lang: str,
     src_id: str,

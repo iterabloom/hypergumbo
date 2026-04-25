@@ -296,7 +296,13 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     # endpoints (WI-sikur / INV-miniz). Created by
                     # ir.create_boundary_nodes after analysis to make
                     # slice traversal stop gracefully at external code.
-                    "external_symbol"
+                    "external_symbol",
+                    # Per-file pseudo-Symbol synthesised at the orchestrator
+                    # for any make_file_id-shape edge endpoint with no
+                    # producer-side Symbol (WI-ramuv). A handful of analyzers
+                    # (HTML, Lua, yaml_ansible, the tree-sitter base class
+                    # via create_file_symbols) also emit these directly.
+                    "file"
                 ]
             },
             "language": {"type": "string", "description": "Programming language"},

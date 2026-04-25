@@ -155,8 +155,13 @@ def test_run_detects_cross_file_call_edges(tmp_path: Path) -> None:
     # Filter out synthetic boundary nodes (kind=external_symbol) — those
     # are minted by ir.create_boundary_nodes for any unresolved external
     # call (e.g., the `from utils import helper` import resolution may
-    # leave a boundary if it can't fully bind in pass-1).
-    real_nodes = [n for n in data["nodes"] if n.get("kind") != "external_symbol"]
+    # leave a boundary if it can't fully bind in pass-1) — and the
+    # per-file kind="file" Symbols synthesised by the orchestrator's
+    # WI-ramuv post-process for every make_file_id-shape import-edge src.
+    real_nodes = [
+        n for n in data["nodes"]
+        if n.get("kind") not in {"external_symbol", "file"}
+    ]
     assert len(real_nodes) == 2
 
     # Should have both call and import edges
@@ -201,11 +206,14 @@ def test_run_detects_import_edges(tmp_path: Path) -> None:
 
     # The import edge should reference the imported symbol.
     import_edge = import_edges[0]
-    # WI-fozoh: file-id pseudo-symbols collapse per language, so the
-    # importing file's path no longer appears in src — it's preserved
-    # on `meta.referring_paths` instead.
-    assert import_edge["src"] == "python:<external>:0-0:file:file"
-    assert "main.py" in (import_edge["meta"].get("referring_paths") or [])
+    # WI-ramuv: the orchestrator now synthesises a real producer-side
+    # kind="file" Symbol for every make_file_id-shape import-edge src,
+    # so apply_external_id_remap leaves these edges alone — the src is
+    # the per-file id (``python:main.py:1-1:file:file``), not the
+    # WI-fozoh canonical ``python:<external>:0-0:file:file`` boundary.
+    # Per-file attribution lives in src directly; meta.referring_paths
+    # is no longer populated for first-party file-id sources.
+    assert import_edge["src"] == "python:main.py:1-1:file:file"
     assert "helper" in import_edge["dst"]
     assert import_edge["meta"]["evidence_type"] == "ast_import"
     # Static imports should have high confidence
@@ -234,12 +242,12 @@ def test_run_detects_module_import_edges(tmp_path: Path) -> None:
     import_edges = [e for e in data["edges"] if e["type"] == "imports"]
     assert len(import_edges) >= 1, "Expected at least one import edge for 'import os'"
 
-    # The import edge should reference the module. WI-fozoh: file-id
-    # pseudo-symbols collapse per language; the importing file's path
-    # is preserved on `meta.referring_paths`.
+    # The import edge should reference the module. WI-ramuv: the
+    # orchestrator synthesises a real per-file kind="file" Symbol so
+    # the WI-fozoh ``python:<external>:0-0:file:file`` collapse no
+    # longer applies — the src is the per-file id directly.
     import_edge = import_edges[0]
-    assert import_edge["src"] == "python:<external>:0-0:file:file"
-    assert "main.py" in (import_edge["meta"].get("referring_paths") or [])
+    assert import_edge["src"] == "python:main.py:1-1:file:file"
     assert "os" in import_edge["dst"]
 
 

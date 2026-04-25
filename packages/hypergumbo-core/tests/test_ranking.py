@@ -3809,6 +3809,94 @@ class TestApplyGeneratedCodeWeights:
         assert result[gen_sym.id] == pytest.approx(0.1)
 
 
+class TestApplyFileKindWeights:
+    """WI-ramuv: kind="file" Symbols are suppressed from ranking by default."""
+
+    def test_file_kind_symbol_zeroed(self):
+        """A kind="file" Symbol's centrality is multiplied by 0 (default)."""
+        from hypergumbo_core.ranking import apply_file_kind_weights
+
+        file_sym = make_symbol("app.py", path="app.py", kind="file")
+        centrality = {file_sym.id: 7.0}
+
+        result = apply_file_kind_weights(centrality, [file_sym])
+        assert result[file_sym.id] == pytest.approx(0.0)
+
+    def test_non_file_symbol_unchanged(self):
+        """Functions / classes pass through unchanged."""
+        from hypergumbo_core.ranking import apply_file_kind_weights
+
+        func = make_symbol("main", kind="function")
+        centrality = {func.id: 3.0}
+
+        result = apply_file_kind_weights(centrality, [func])
+        assert result[func.id] == 3.0
+
+    def test_no_file_kind_symbols_returns_input(self):
+        """No file Symbols → fast path returns the input dict unchanged."""
+        from hypergumbo_core.ranking import apply_file_kind_weights
+
+        sym = make_symbol("foo")
+        centrality = {sym.id: 1.0}
+
+        result = apply_file_kind_weights(centrality, [sym])
+        assert result is centrality
+
+    def test_mixed_file_and_real(self):
+        """Real Symbols outrank file Symbols after the dampener."""
+        from hypergumbo_core.ranking import apply_file_kind_weights
+
+        file_sym = make_symbol("a.py", path="a.py", kind="file")
+        func = make_symbol("main", kind="function")
+        centrality = {file_sym.id: 100.0, func.id: 1.0}
+
+        result = apply_file_kind_weights(centrality, [file_sym, func])
+        assert result[file_sym.id] == pytest.approx(0.0)
+        assert result[func.id] == 1.0
+
+    def test_custom_weight(self):
+        """``file_kind_weight`` parameter overrides the default of 0."""
+        from hypergumbo_core.ranking import apply_file_kind_weights
+
+        file_sym = make_symbol("a.py", path="a.py", kind="file")
+        centrality = {file_sym.id: 4.0}
+
+        result = apply_file_kind_weights(
+            centrality, [file_sym], file_kind_weight=0.25,
+        )
+        assert result[file_sym.id] == pytest.approx(1.0)
+
+    def test_allow_listed_language_passes_through(self):
+        """Languages in the allow-list keep their full file-kind centrality."""
+        from hypergumbo_core import ranking as ranking_mod
+        from hypergumbo_core.ranking import apply_file_kind_weights
+
+        # Temporarily opt one language back in to ranking.
+        original = ranking_mod._FILE_KIND_RANKING_ALLOWED_LANGUAGES
+        ranking_mod._FILE_KIND_RANKING_ALLOWED_LANGUAGES = frozenset(
+            {"html"}
+        )
+        try:
+            html_file = make_symbol(
+                "index.html", path="index.html",
+                kind="file", language="html",
+            )
+            python_file = make_symbol(
+                "main.py", path="main.py",
+                kind="file", language="python",
+            )
+            centrality = {html_file.id: 5.0, python_file.id: 5.0}
+
+            result = apply_file_kind_weights(
+                centrality, [html_file, python_file],
+            )
+
+            assert result[html_file.id] == 5.0  # opted back in
+            assert result[python_file.id] == pytest.approx(0.0)
+        finally:
+            ranking_mod._FILE_KIND_RANKING_ALLOWED_LANGUAGES = original
+
+
 class TestEventSubscribesEdgeWeight:
     """event_subscribes edges should be weighted as call-flow edges, not defaults."""
 

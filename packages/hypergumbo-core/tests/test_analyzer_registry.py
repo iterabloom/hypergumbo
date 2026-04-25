@@ -1011,3 +1011,115 @@ class TestRunAllAnalyzersDependencyManifest:
             _, _, _, _, _, _, merged = facade_run_all(Path("/test"))
 
         assert merged is None
+
+
+class TestRunAllAnalyzersFileSymbolSynthesis:
+    """WI-ramuv: orchestrator synthesizes file Symbols for dangling make_file_id endpoints."""
+
+    def test_synthesizes_missing_file_symbol_for_dangling_endpoint(self) -> None:
+        """An import edge with make_file_id-shape src and no producer-side
+        Symbol gets a real file Symbol synthesized at the orchestrator."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+
+        repo_root = Path("/test")
+        caller = Symbol(
+            id="python:src/main.py:10-20:foo:function",
+            name="foo",
+            kind="function",
+            language="python",
+            path="src/main.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="py-v1",
+            origin_run_id="run1",
+        )
+        dangling_file_id = make_file_id("python", "src/main.py")
+        edge = Edge.create(
+            src=dangling_file_id,
+            dst=caller.id,
+            edge_type="imports_module",
+            line=1,
+            origin="py-v1",
+            origin_run_id="run1",
+        )
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "py-v1"}
+        run.pass_id = "py-v1"
+
+        result = AnalysisResult(
+            symbols=[caller], edges=[edge], usage_contexts=[],
+            run=run, skipped=False,
+        )
+
+        @register_analyzer("test_file_synth")
+        def analyze_test(root: Path) -> AnalysisResult:
+            return result
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, symbols, _, _, _, _, _ = facade_run_all(repo_root)
+
+        synth = [s for s in symbols if s.id == dangling_file_id]
+        assert len(synth) == 1
+        assert synth[0].kind == "file"
+        assert synth[0].language == "python"
+        assert synth[0].path == "src/main.py"
+
+    def test_does_not_duplicate_when_analyzer_already_emits_file_symbol(
+        self,
+    ) -> None:
+        """Analyzers (Lua, HTML, yaml_ansible) that already emit a producer-
+        side file Symbol must not gain a duplicate from the post-process."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+
+        repo_root = Path("/test")
+        file_id = make_file_id("lua", "init.lua")
+        existing_file_sym = Symbol(
+            id=file_id,
+            name="init.lua",
+            kind="file",
+            language="lua",
+            path="init.lua",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="lua-v1",
+            origin_run_id="run1",
+        )
+        edge = Edge.create(
+            src=file_id,
+            dst="lua:init.lua:5-10:hello:function",
+            edge_type="contains",
+            line=5,
+            origin="lua-v1",
+            origin_run_id="run1",
+        )
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "lua-v1"}
+        run.pass_id = "lua-v1"
+
+        result = AnalysisResult(
+            symbols=[existing_file_sym], edges=[edge], usage_contexts=[],
+            run=run, skipped=False,
+        )
+
+        @register_analyzer("test_file_no_dup")
+        def analyze_test(root: Path) -> AnalysisResult:
+            return result
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, symbols, _, _, _, _, _ = facade_run_all(repo_root)
+
+        file_syms = [s for s in symbols if s.id == file_id]
+        assert len(file_syms) == 1
+        assert file_syms[0].origin == "lua-v1"  # producer's, not the synth's

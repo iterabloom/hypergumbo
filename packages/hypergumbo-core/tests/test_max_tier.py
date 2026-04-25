@@ -662,3 +662,93 @@ class TestConfigNoiseFiltering:
         assert kinds & {"pattern", "script", "requirement"}, (
             "With include_docs=True, pattern/script/requirement nodes should be present"
         )
+
+
+class TestFileKindRankingSuppression:
+    """WI-ramuv: file-kind Symbols are kept in the graph but suppressed from ranking.
+
+    The orchestrator post-process synthesizes one ``kind="file"`` Symbol
+    per analyzed source file (replacing dangling ``make_file_id`` boundary
+    pseudo-IDs). Because each file's in-degree equals its import count
+    (5-50 typical for Python), they would deterministically displace
+    every real ranked symbol on a polyglot repo. The ranking suppression
+    keeps them in the graph (so containment, slice traversal, and per-
+    file metrics still see them) but zeros their centrality so they
+    never displace real functions/classes in the ranked output.
+    """
+
+    @pytest.fixture()
+    def repo_with_imports(self, tmp_path: Path) -> Path:
+        """A small Python repo whose import edges synthesize file Symbols."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "common.py").write_text("def helper():\n    return 1\n")
+        (repo / "app.py").write_text(
+            "from common import helper\n"
+            "def main():\n"
+            "    return helper()\n"
+        )
+        return repo
+
+    def test_file_kind_symbols_are_kept_in_output(
+        self, repo_with_imports: Path, tmp_path: Path
+    ) -> None:
+        """Synthesized kind="file" Symbols stay in the JSON (graph
+        containment, slice traversal, and per-file metrics rely on them)."""
+        out_path = tmp_path / "results.json"
+        run_behavior_map(
+            repo_with_imports, out_path, include_sketch_precomputed=False
+        )
+        data = json.loads(out_path.read_text())
+        kinds = {n["kind"] for n in data["nodes"]}
+        assert "file" in kinds, (
+            "kind=file Symbols should be present in the JSON output "
+            "(needed for slice / containment); WI-ramuv suppresses them "
+            "from ranking, not from the graph."
+        )
+
+    def test_top_ranked_symbol_is_not_kind_file(
+        self, repo_with_imports: Path, tmp_path: Path
+    ) -> None:
+        """The most-central Symbol in the fixture is a real function, not a
+        synthesized kind="file" Symbol whose centrality is suppressed."""
+        out_path = tmp_path / "results.json"
+        run_behavior_map(
+            repo_with_imports, out_path, include_sketch_precomputed=False
+        )
+        data = json.loads(out_path.read_text())
+        nodes = data["nodes"]
+        # The fixture has at least one real function (helper) with an
+        # incoming call edge — its centrality is > 0 and dominates the
+        # suppressed-to-0 kind="file" entries.
+        assert any(n["kind"] == "file" for n in nodes), (
+            "expected synthesized file Symbol(s) in the fixture"
+        )
+        assert nodes[0]["kind"] != "file", (
+            f"rank-0 Symbol should be a real function/class, not kind=file: "
+            f"got {nodes[0]['kind']} ({nodes[0]['id']})"
+        )
+
+    def test_file_kind_ranks_below_real_symbol_with_incoming_edges(
+        self, repo_with_imports: Path, tmp_path: Path
+    ) -> None:
+        """A real function with incoming call edges always outranks every
+        kind="file" Symbol, regardless of how many file Symbols exist."""
+        out_path = tmp_path / "results.json"
+        run_behavior_map(
+            repo_with_imports, out_path, include_sketch_precomputed=False
+        )
+        data = json.loads(out_path.read_text())
+        nodes = data["nodes"]
+        helper_idx = next(
+            (i for i, n in enumerate(nodes) if n["name"] == "helper"), None
+        )
+        first_file_idx = next(
+            (i for i, n in enumerate(nodes) if n["kind"] == "file"), None
+        )
+        assert helper_idx is not None, "fixture's helper() must be present"
+        assert first_file_idx is not None, "synthesized file Symbol expected"
+        assert helper_idx < first_file_idx, (
+            "helper() (incoming call from main) must outrank every "
+            "synthesized kind=file Symbol"
+        )

@@ -755,6 +755,63 @@ def apply_trivial_sink_weights(
     return weighted
 
 
+# WI-ramuv: ``kind="file"`` Symbols are language-conditionally suppressed
+# from centrality ranking. Inverse of WI-gafog's CSS-variable allow-list:
+# the default is "exclude file Symbols from ranking" (their in-degree
+# equals each file's import count, which deterministically displaces real
+# functions/classes) and a future language whose file Symbols ARE
+# meaningful as ranking entries can opt back in by joining this set.
+# Empty by default — every language's file Symbols are ranking-suppressed.
+_FILE_KIND_RANKING_ALLOWED_LANGUAGES: frozenset[str] = frozenset()
+
+
+def apply_file_kind_weights(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    file_kind_weight: float = 0.0,
+) -> Dict[str, float]:
+    """Suppress centrality for ``kind="file"`` Symbols (WI-ramuv).
+
+    The orchestrator post-process synthesizes one ``kind="file"`` Symbol
+    per analyzed source file (so every ``make_file_id``-shape import
+    edge lands on a real producer-side Symbol instead of a synthetic
+    boundary node). Their in-degree equals each file's import count
+    (5-50 for typical Python), so without dampening they would
+    deterministically displace real functions/classes in centrality
+    rankings.
+
+    The Symbols stay in the symbol list (so containment, slice traversal,
+    and per-file metrics still see them); only their ranking weight is
+    zeroed. Inverse of the WI-gafog precedent: filter is applied by
+    default and languages opt back in via
+    :data:`_FILE_KIND_RANKING_ALLOWED_LANGUAGES`.
+
+    Args:
+        centrality: Centrality scores to weight.
+        symbols: Symbol list (used for kind / language lookup).
+        file_kind_weight: Multiplier applied to file-kind Symbols
+            (default 0.0 = full suppression).
+
+    Returns:
+        Dictionary mapping symbol ID to weighted centrality score.
+    """
+    suppressed_ids = {
+        s.id
+        for s in symbols
+        if s.kind == "file"
+        and s.language not in _FILE_KIND_RANKING_ALLOWED_LANGUAGES
+    }
+    if not suppressed_ids:
+        return centrality
+    weighted = {}
+    for sid, score in centrality.items():
+        if sid in suppressed_ids:
+            weighted[sid] = score * file_kind_weight
+        else:
+            weighted[sid] = score
+    return weighted
+
+
 def apply_generated_code_weights(
     centrality: Dict[str, float],
     symbols: List[Symbol],
@@ -1128,6 +1185,13 @@ def rank_symbols(
 
     # WI-tizij: de-weight generated code (OpenAPI models, protobuf stubs, etc.)
     weighted_centrality = apply_generated_code_weights(
+        weighted_centrality, symbols,
+    )
+
+    # WI-ramuv: suppress kind="file" Symbols from ranking. They stay in the
+    # graph (containment / slice / per-file metrics) but never displace
+    # real functions/classes in the ranked output.
+    weighted_centrality = apply_file_kind_weights(
         weighted_centrality, symbols,
     )
 

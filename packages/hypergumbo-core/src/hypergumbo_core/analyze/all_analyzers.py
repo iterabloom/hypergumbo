@@ -21,6 +21,7 @@ from ..discovery import set_global_on_file_skipped
 from ..ir import Edge, Symbol, UsageContext
 from ..limits import Limits
 from ..paths import normalize_path
+from .base import synthesize_file_symbols_for_dangling_edges
 from .registry import (
     RegisteredAnalyzer,
     clear_registry,
@@ -173,6 +174,16 @@ def run_all_analyzers(
             seen_edge_ids.add(edge.id)
             deduped_edges.append(edge)
     all_edges = deduped_edges
+
+    # WI-ramuv: synthesize real file Symbols for any edge endpoint matching
+    # ``make_file_id`` shape that has no producer-side Symbol. Without this,
+    # ``ir.create_boundary_nodes`` would treat these dangling endpoints as
+    # external boundaries even though the file is first-party. Doing it
+    # here at the orchestrator chokepoint covers every analyzer in one
+    # place and obviates per-analyzer fixes.
+    all_symbols.extend(
+        synthesize_file_symbols_for_dangling_edges(all_symbols, all_edges)
+    )
 
     # Normalize paths: some analyzers produce absolute paths instead of
     # paths relative to repo_root.  Stripping the repo_root prefix ensures

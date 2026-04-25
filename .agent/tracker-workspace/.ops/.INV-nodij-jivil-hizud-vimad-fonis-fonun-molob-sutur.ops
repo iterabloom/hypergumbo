@@ -20,3 +20,21 @@
     fields:  # e623
       statement: "Every external boundary Symbol synthesized by ir.create_boundary_nodes has language ∈ known language tokens, kind ∈ Symbol.kind enum, name without '/' or ':' delimiters, and path that is either '<external>', '<unknown>', or a syntactically valid filesystem path."  # e623
       root_cause: "TOML analyzer's [project.scripts] emitter (origin='toml-v1') emits defines_target edges with bare-path dst (no language prefix, no colons), which falls through _parse_dangling_id's parts<5 fallback (ir.py:701-706) and stuffs the path into the language slot of the synthesized boundary id. Same shape as the WI-diruj Markdown bug, different producer. Fix surfaces: (a) toml_config.py emits a properly-formed dst id, (b) defensive guard at _parse_dangling_id sentinel-fills bad slots, or (c) producer-side validation at edge construction."  # e623
+- op: update  # 01f1
+  at: '2026-04-25T09:36:29Z'  # 01f1
+  by: agent  # 01f1
+  actor: jgstern_agent  # 01f1
+  clock: 2  # 01f1
+  nonce: 01f1  # 01f1
+  set:  # 01f1
+    status: pending_validation  # 01f1
+    pr_ref: '3362'  # 01f1
+  add:  # 01f1
+    tags: [awaits_bakeoff_validation]  # 01f1
+- op: discuss  # b0ba
+  at: '2026-04-25T09:36:29Z'  # b0ba
+  by: agent  # b0ba
+  actor: jgstern_agent  # b0ba
+  clock: 3  # b0ba
+  nonce: b0ba  # b0ba
+  message: "Producer-side fix shipped in PR #3362 for the toml_config.py [project.scripts] emitter (the only confirmed leaker on hypergumbo self-analysis). dst is now a well-formed Python id, target_path moved to meta. Self-analysis post-merge: 0 path-shaped-language boundary nodes (was 2). Status pending_validation pending DEEP-mode bakeoff cycle to confirm no other defines_target producer (xml_config, json_config, manifest_targets — 8 sites in total) leaks on a diverse-repo corpus. If bakeoff surfaces violations from the other producers, file a follow-up WI to propagate the same dst-shape pattern to them; if not, transition to satisfied. Defensive _parse_dangling_id guard remains an option if multiple producers re-introduce the bug."  # b0ba
