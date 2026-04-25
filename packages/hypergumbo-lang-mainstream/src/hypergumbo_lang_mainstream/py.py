@@ -3293,9 +3293,16 @@ def analyze_python(
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
+    # Parse pyproject.toml deps for tier-2 classification of boundary
+    # nodes (WI-nunuj). Empty manifest → no entries → boundary nodes
+    # stay tier 3 (no regression vs. previous behaviour).
+    from hypergumbo_lang_mainstream.py_deps import parse_python_dependencies
+    py_manifest = parse_python_dependencies(repo_root)
+
     return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         usage_contexts=all_usage_contexts,
         run=run,
+        dependency_manifest=py_manifest if py_manifest.entries else None,
     )
