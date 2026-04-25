@@ -26,3 +26,18 @@
   clock: 2  # ee26
   nonce: ee26  # ee26
   message: "Correction to fix #4 (re: user feedback). Earlier framing of '--include-stealth opt-in' was wrong: stealth items must always be well-formed, not opt-in. The correct design splits validation into per-item structural checks (run always on every tier) and cross-tier reference-resolution checks (run with two index scopes, switched on the source item's tier):\n\n- Items in canonical or workspace must have refs that resolve in (canonical union workspace) — i.e. CI's view. A workspace item pointing at a stealth-tier id fails locally too, matching CI.\n- Items in stealth must have refs that resolve in (canonical union workspace union stealth) — the full local index. Stealth items can validly point at workspace items (CI sees those independently), at canonical items, or at other stealth items. A stealth ref to a non-existent id is still a real bug, surfaced under the local scope.\n\nPer-item structural validation (op format, clock ordering, nonces, required fields) does not change — it iterates every ops file regardless of tier.\n\nThe asymmetry is purely: which target-set is each tier's REFERENCE-fields allowed to resolve into. This catches the workspace->stealth class (CI failure) AND keeps stealth's own integrity guarantees, without making stealth validation optional."  # ee26
+- op: update  # 2c5e
+  at: '2026-04-25T21:36:23Z'  # 2c5e
+  by: agent  # 2c5e
+  actor: jgstern_agent  # 2c5e
+  clock: 3  # 2c5e
+  nonce: 2c5e  # 2c5e
+  set:  # 2c5e
+    status: done  # 2c5e
+- op: discuss  # 058a
+  at: '2026-04-25T21:36:23Z'  # 058a
+  by: agent  # 058a
+  actor: jgstern_agent  # 058a
+  clock: 4  # 058a
+  nonce: 058a  # 058a
+  message: "Fixed in PR #3368. Tier-scoped cross-tier reference validation: `_check_dangling_parents` -> `_check_ref_resolution` now checks all four ref-typed fields (parent, isbefore, duplicate_of, not_duplicate_of) with two index scopes — canonical/workspace items resolve in canonical-union-workspace (CI's view), stealth items resolve in the full local index. CLI write-time guard threaded through `tracker add`/`update` for --parent, --isbefore, --add-isbefore, --add-duplicate-of, --add-not-duplicate-of, --add-blocked-by. Removal flags skip the check (narrowing a ref set never creates a cross-tier link). Per-item structural validation unchanged. PR #3365's failure mode is now caught locally before push."  # 058a
