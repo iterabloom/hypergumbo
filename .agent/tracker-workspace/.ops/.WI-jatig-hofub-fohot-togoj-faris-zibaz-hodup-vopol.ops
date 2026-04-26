@@ -1,0 +1,21 @@
+- op: create  # 5428
+  at: '2026-04-26T02:56:22Z'  # 5428
+  by: agent  # 5428
+  actor: jgstern_agent  # 5428
+  clock: 1  # 5428
+  nonce: '5428'  # 5428
+  data:  # 5428
+    kind: work_item  # 5428
+    title: "RST/Sphinx producer leaks .rst paths into boundary node language slot (3079 nodes on airflow, INV-nodij sub)"  # 5428
+    status: todo_soft  # 5428
+    priority: 3  # 5428
+    parent:  # 5428
+    tags:  # 5428
+    - analysis_quality  # 5428
+    - invariant_violation  # 5428
+    isbefore: []  # 5428
+    duplicate_of: []  # 5428
+    not_duplicate_of: []  # 5428
+    pr_ref:  # 5428
+    description: "Per WI-vobiv-kivop investigation 2026-04-26 on cohort cohort-001/iter-001 (deep-20260425-210357), airflow's hg.json contains 3,079 external_symbol nodes whose 'language' slot is the literal string 'rst' (and 450 nodes with names containing '/' or ':'). Likely producer: a Sphinx/RST cross-reference handler emitting :func:`...` references with .rst paths in the dst. Same shape as the original INV-nodij toml_config bug and the Vue analyzer leak (now fixed in PR #3385). Fix paths: (a) locate the producer (grep packages for .rst handling and dst construction sites); (b) decide whether RST should be added to the known-language set with kind='document' or whether the producer should skip emitting boundary-bound edges altogether; (c) add a property test asserting all language slots ∈ known-langs across a synthetic Python+RST repo. Acceptance: airflow's external_symbol language slot count for 'rst' drops to 0 in a future cohort."  # 5428
+    fields: {}  # 5428

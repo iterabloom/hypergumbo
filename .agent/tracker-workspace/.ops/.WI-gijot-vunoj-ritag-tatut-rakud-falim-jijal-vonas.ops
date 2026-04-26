@@ -1,0 +1,21 @@
+- op: create  # cb95
+  at: '2026-04-26T02:56:51Z'  # cb95
+  by: agent  # cb95
+  actor: jgstern_agent  # cb95
+  clock: 1  # cb95
+  nonce: cb95  # cb95
+  data:  # cb95
+    kind: work_item  # cb95
+    title: "Jsonnet leaks into boundary node language slot — add jsonnet to known-language enum (50/63 nodes on alertmanager/prometheus, INV-nodij sub)"  # cb95
+    status: todo_soft  # cb95
+    priority: 3  # cb95
+    parent:  # cb95
+    tags:  # cb95
+    - analysis_quality  # cb95
+    - invariant_violation  # cb95
+    isbefore: []  # cb95
+    duplicate_of: []  # cb95
+    not_duplicate_of: []  # cb95
+    pr_ref:  # cb95
+    description: "Per WI-vobiv-kivop investigation 2026-04-26 on cohort cohort-001/iter-001 (deep-20260425-210357): alertmanager has 50 external_symbol nodes with language='jsonnet'; prometheus has 63 (mix of jsonnet, dist/index.cjs, etc.). Jsonnet is a real templating language widely used by Grafana / Tanka / monitoring stacks; it has a tree-sitter grammar. The simplest fix is likely just adding 'jsonnet' to the known-language enum in the INV-nodij validator (and any other places that gate on a fixed language list). The boundary nodes themselves may be structurally correct; the validator is over-strict. Verify by inspecting a sample boundary node — if name and kind slots are clean, the only fix needed is the enum widening. Acceptance: alertmanager + prometheus's external_symbol nodes with language='jsonnet' STOP being flagged as INV-nodij violations in a future cohort. Tag: invariant_violation cleanup."  # cb95
+    fields: {}  # cb95
