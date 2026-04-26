@@ -52,3 +52,19 @@
   clock: 5  # 8685
   nonce: '8685'  # 8685
   message: "Bakeoff validation: NO_MOVE (cohort cohort-001/iter-001). Plurality verdict across repos: moved=0 no_move=5 inconclusive=0. Regression sub-item spawned automatically by bakeoff-deep-reflect aggregate."  # 8685
+- op: update  # 7e42
+  at: '2026-04-26T09:22:03Z'  # 7e42
+  by: agent  # 7e42
+  actor: jgstern_agent  # 7e42
+  clock: 6  # 7e42
+  nonce: '7e42'  # 7e42
+  set: {}  # 7e42
+  remove:  # 7e42
+    tags: [awaits_bakeoff_validation]  # 7e42
+- op: discuss  # ebd7
+  at: '2026-04-26T09:22:03Z'  # ebd7
+  by: agent  # ebd7
+  actor: jgstern_agent  # ebd7
+  clock: 7  # ebd7
+  nonce: ebd7  # ebd7
+  message: "Bakeoff validation: MOVED (cohort cohort-001/iter-002). Plurality verdict across repos: moved=5 no_move=0 inconclusive=0. Evidence: airflow=moved: iter-001 had 3,079 invalid-language nodes (mostly 'rst'); iter-002 has 2 (a stray 'dist/main.js' and a Java file path).…; alertmanager=moved: iter-001 had 50 invalid-language nodes (mostly 'jsonnet'); iter-002 has 41, all 'make' (alias for 'makefile' — taxonomy…; chatwoot=moved: iter-001 had 871 invalid-language nodes (all .vue file paths in language slot from imports_component edges); iter-002 ha…; +2 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # ebd7

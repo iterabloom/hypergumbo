@@ -26,3 +26,19 @@
   clock: 2  # 9fcf
   nonce: 9fcf  # 9fcf
   message: "Investigation + partial fix (audit 2026-04-26). Cohort cohort-001/iter-001 (deep-20260425-210357) surfaced 4 distinct producer leaks into the language slot of synthesized boundary nodes — same INV-nodij invariant the toml_config fix (PR #3362) addressed for one producer, but multiple others were untouched. (1) Vue analyzer's imports_component edge emitter — 871 leaks on chatwoot. **FIXED in PR #3385 (commit 8e7960a35)**: dst now constructs a properly-formed 5-part id (vue:{path}:0-0:{name}:component); raw import_path preserved on edge.meta for the linker's path-resolution. (2) airflow .rst leaks — 3,079. **Not yet fixed** — filed as separate work item. (3) alertmanager/prometheus jsonnet leaks — 50/63. **Not yet fixed** — filed as separate work item. (4) kafka properties/manifest extractor leaks — 56. **Not yet fixed** — filed as separate work item. Plus 'unresolved' sentinel-vs-leak question (alertmanager 39 nodes) filed as a fourth item. Per the scope-expansion protocol, this umbrella WI-vobiv stays open until all 4 sub-producer leaks are addressed AND a future cohort confirms cohort-wide MOVED on INV-nodij. The Vue fix is structurally validated by a property test (TestImportsComponentDstIdShape) so it should automatically MOVE on the next cohort."  # 9fcf
+- op: update  # 7f18
+  at: '2026-04-26T09:22:03Z'  # 7f18
+  by: agent  # 7f18
+  actor: jgstern_agent  # 7f18
+  clock: 3  # 7f18
+  nonce: 7f18  # 7f18
+  set: {}  # 7f18
+  remove:  # 7f18
+    tags: [awaits_bakeoff_validation]  # 7f18
+- op: discuss  # 9e33
+  at: '2026-04-26T09:22:03Z'  # 9e33
+  by: agent  # 9e33
+  actor: jgstern_agent  # 9e33
+  clock: 4  # 9e33
+  nonce: '9e33'  # 9e33
+  message: "Bakeoff validation: MOVED (cohort cohort-001/iter-002). Plurality verdict across repos: moved=5 no_move=0 inconclusive=0. Evidence: airflow=moved: Effective elimination of RST false flags + tiny residual (2 edges) of a different shape.; alertmanager=moved: alertmanager has no Vue/RST/jsonnet/kafka-properties-style leaks. The 50 jsonnet nodes from iter-001 are now legitimate…; chatwoot=moved: Cleanest single-producer fix in the session: 871 → 0 language-slot leaks via PR #3385.; +2 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 9e33
