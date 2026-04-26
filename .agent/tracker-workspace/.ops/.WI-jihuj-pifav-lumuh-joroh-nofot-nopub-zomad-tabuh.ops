@@ -51,3 +51,10 @@
     status: wont_do  # 822d
   remove:  # 822d
     tags: [awaits_bakeoff_validation]  # 822d
+- op: discuss  # 4054
+  at: '2026-04-26T00:46:54Z'  # 4054
+  by: agent  # 4054
+  actor: jgstern_agent  # 4054
+  clock: 6  # 4054
+  nonce: '4054'  # 4054
+  message: "awaits_bakeoff_validation tag stripped and item resolved as wont_do (audit 2026-04-26). Original quantitative claim (huggingface_hub + sentence_transformers added to python.yaml#net_send) was reverted in PR3 of the stop-stripping plan — see 2026-04-24 discussion entry: 'the WI-jihuj fix was the wrong layer — the catalog is for true I/O primitives, not arbitrary third-party wrappers. The structural answer (IoChain.dst_tier from PR2) lets verify-claims reason about tier-3 destinations as may make network calls without per-library catalog growth.' Since the original fix is gone, the original quantitative claim no longer applies and the tag is structurally inapplicable to this item. The 'confirm revert doesn't regress real net_send detection' question raised at revert time is a property of the stop-stripping plan PR3, not of this item; if it warrants a quantitative claim, the right home is on that PR's tracker entry."  # 4054

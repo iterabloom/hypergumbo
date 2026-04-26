@@ -43,3 +43,19 @@
   clock: 4  # 8829
   nonce: '8829'  # 8829
   message: "iter-10 DEEP bakeoff cycle (cohort-001 alertmanager+kafka+prometheus, post-WI-ramuv merge) ran clean and produced 3 GOOD verdicts with 0 concerns. No regression surfaced at the diagnose-threshold level. Per-claim reflect-aggregate validation is pending (requires LLM agent invocations per-repo)."  # 8829
+- op: update  # 4124
+  at: '2026-04-26T01:51:04Z'  # 4124
+  by: agent  # 4124
+  actor: jgstern_agent  # 4124
+  clock: 5  # 4124
+  nonce: '4124'  # 4124
+  set: {}  # 4124
+  remove:  # 4124
+    tags: [awaits_bakeoff_validation]  # 4124
+- op: discuss  # b987
+  at: '2026-04-26T01:51:04Z'  # b987
+  by: agent  # b987
+  actor: jgstern_agent  # b987
+  clock: 6  # b987
+  nonce: b987  # b987
+  message: "Bakeoff validation: MOVED (cohort cohort-001/iter-001). Plurality verdict across repos: moved=4 no_move=0 inconclusive=1. Evidence: airflow=moved: fs_write chain_count=1; the single match is os.replace (a legitimate file rename primitive, not a str.replace false posi…; alertmanager=moved: fs_write chain_count=9; ZERO chains matched on bare 'replace' short-name (ambiguous_names guard working); chatwoot=inconclusive: no fs_write chains in this repo (nothing to test for replace ambiguity); +2 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # b987

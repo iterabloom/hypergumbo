@@ -105,3 +105,19 @@
   clock: 12  # d726
   nonce: d726  # d726
   message: "Validation likely needs a second hg-uat session, not a standard bakeoff cycle. This is a package-scaffolding deliverable — the quantitative downstream claims (FP-reduction on Rust corpora when the SCIP backend is enabled) live in the follow-up items WI-vovad (BROAD-mode bakeoff cohort for rust-analyzer backend validation) and WI-burud (Upgrade Rust-touching linkers to consume rust-analyzer symbols). For this item itself, a UAT pass would install the package extra, run hypergumbo on a Rust repo with rust-analyzer enabled, and confirm the gate / graceful-degrade / translate paths produce the expected SCIP-derived Symbols. Bakeoff diagnostics measure neither the scaffolding nor end-to-end SCIP wiring directly."  # d726
+- op: update  # 98a7
+  at: '2026-04-26T00:47:11Z'  # 98a7
+  by: agent  # 98a7
+  actor: jgstern_agent  # 98a7
+  clock: 13  # 98a7
+  nonce: 98a7  # 98a7
+  set: {}  # 98a7
+  remove:  # 98a7
+    tags: [awaits_bakeoff_validation]  # 98a7
+- op: discuss  # e069
+  at: '2026-04-26T00:47:12Z'  # e069
+  by: agent  # e069
+  actor: jgstern_agent  # e069
+  clock: 14  # e069
+  nonce: e069  # e069
+  message: "awaits_bakeoff_validation tag stripped (audit 2026-04-26). Misapplied: this item ships package scaffolding (gate, graceful-degrade, translate paths, optional extras) — infrastructure with no quantitative metric of its own. The bakeoff-validation discipline targets PRs 'whose description or tracker discussion contains a quantitative bakeoff-improvement claim'; scaffolding is not such a claim. The downstream quantitative claims live in WI-vovad (BROAD-mode bakeoff cohort for rust-analyzer backend validation) and WI-burud (Upgrade Rust-touching linkers to consume rust-analyzer symbols when present) — those items, when shipped, are the ones that should carry the tag. The earlier note about a hg-uat-style smoke-test for the scaffold's plumbing is still relevant but is correctness verification, not the discipline's quantitative-claim validation."  # e069

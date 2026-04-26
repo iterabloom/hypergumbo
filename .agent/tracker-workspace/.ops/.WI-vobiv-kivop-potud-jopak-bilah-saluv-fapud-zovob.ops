@@ -1,0 +1,21 @@
+- op: create  # 39b4
+  at: '2026-04-26T01:51:04Z'  # 39b4
+  by: agent  # 39b4
+  actor: jgstern_agent  # 39b4
+  clock: 1  # 39b4
+  nonce: 39b4  # 39b4
+  data:  # 39b4
+    kind: work_item  # 39b4
+    title: "Regression: INV-nodij-jivil-hizud-vimad-fonis-fonun-molob-sutur did not move in bakeoff cohort-001/iter-001"  # 39b4
+    status: todo_soft  # 39b4
+    priority: 1  # 39b4
+    parent: INV-nodij-jivil-hizud-vimad-fonis-fonun-molob-sutur  # 39b4
+    tags:  # 39b4
+    - regression  # 39b4
+    - awaits_bakeoff_validation  # 39b4
+    isbefore: []  # 39b4
+    duplicate_of: []  # 39b4
+    not_duplicate_of: []  # 39b4
+    pr_ref:  # 39b4
+    description: "Parent item INV-nodij-jivil-hizud-vimad-fonis-fonun-molob-sutur carries an unvalidated bakeoff claim. Cohort cohort-001/iter-001 produced plurality verdict no_move (moved=0 no_move=5 inconclusive=0). Evidence: airflow=no_move: 3079 nodes with invalid language (sample: ['rst', 'rst', 'rst']); 450 with invalid name; alertmanager=no_move: 50 nodes with invalid language (sample: ['jsonnet', 'unresolved', 'unresolved']); 209 with invalid name; chatwoot=no_move: 871 nodes with invalid language (sample: ['dashboard/components-next/button/Button.vue', 'dashboard/components-next/inpu…; +2 more.\n\nInvestigate why the claimed metric did not move: either the fix did not land as expected, the claim was overstated, or the cohort is an unfair test (in which case the parent verdict should be re-run against a different cohort and this regression item closed as wont_do with that rationale)."  # 39b4
+    fields: {}  # 39b4
