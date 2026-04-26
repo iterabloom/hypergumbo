@@ -19,3 +19,18 @@
     pr_ref:  # e743
     description: "Per user observation 2026-04-26 on PR #3392/#3393: auto-pr's Scenario B recovery (CI-stuck timeout) closes the PR and re-pushes a fresh one to bypass the perceived hang. Currently this happens unconditionally after the CI-poll timeout fires — even if (a) the PR was about to merge anyway, or (b) the API was just returning 502s on the status-polling endpoint while CI was actually running fine, or (c) someone (human / another agent) merged the PR via the web UI in the meantime. In case (c), auto-pr's close step would fail (cannot close a merged PR), and the user is left with two PRs covering the same change, both of which look stale. Even in cases (a)/(b), the PR-close-and-re-push churns CI runners unnecessarily and creates a duplicate-PR ambiguity. Required defensive checks before the recovery action: (1) Re-fetch the PR via API and check merged=true — if so, abort the recovery (the work is done) and report success. (2) If merged=false, also check the latest CI status with a fresh API call — if the previous timeout was due to API flakiness (HTTP 5xx in the polling output), retry the poll once with normal timeout before declaring stuck. (3) When closing IS the right call, log the rationale explicitly: include the timeout duration, the count of HTTP errors observed during polling, and the last-seen overall CI state. Do not just print '🔄 Timeout recovery: closing PR #N' as if it were obvious. A related agent-side gap: the assistant trusted auto-pr's state-change announcement at face value instead of cross-checking via ci-debug pr-status. Adding a defensive verification step in agent process notes (separate from this auto-pr code change). Implementation surface: scripts/auto-pr around the soft-retry / Scenario B handler. Test by simulating a 502-during-polling scenario and verifying auto-pr does NOT close the PR if API recovers."  # e743
     fields: {}  # e743
+- op: update  # 5667
+  at: '2026-04-26T06:54:53Z'  # 5667
+  by: agent  # 5667
+  actor: jgstern_agent  # 5667
+  clock: 2  # 5667
+  nonce: '5667'  # 5667
+  set:  # 5667
+    status: wont_do  # 5667
+- op: discuss  # c324
+  at: '2026-04-26T06:54:53Z'  # c324
+  by: agent  # c324
+  actor: jgstern_agent  # c324
+  clock: 3  # c324
+  nonce: c324  # c324
+  message: "Closing wont_do (audit 2026-04-26). Concern is properly routed via a discussion entry on INV-rahib, which already states the relevant invariant: 'auto-pr must converge to merged or explicit failure regardless of concurrent activity'. This item was an over-eager scope-expansion file — the user pointed out that I shouldn't be reaching for a new tracker item when an existing satisfied invariant covers the same surface. INV-rahib's status will need to be moved off 'satisfied' (back to 'violated' or 'pending_validation') as part of addressing the underlying auto-pr gap."  # c324

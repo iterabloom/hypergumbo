@@ -110,3 +110,10 @@
   clock: 13  # 2a7f
   nonce: 2a7f  # 2a7f
   message: "Migrated from deprecated 'holding'. PR #2637 was its own live test — auto-pr ran with new gate timing and merged successfully."  # 2a7f
+- op: discuss  # 471a
+  at: '2026-04-26T06:54:27Z'  # 471a
+  by: agent  # 471a
+  actor: jgstern_agent  # 471a
+  clock: 14  # 471a
+  nonce: 471a  # 471a
+  message: "Regression observed 2026-04-26 on PR #3392/#3393 (WI-gijot ship). Sequence: (1) Created PR #3392 → CI polling timed out (Codeberg flakiness — many ?? markers in the polling line). (2) Auto-pr Scenario B kicked in: closed #3392, re-pushed → got #3393. (3) CI passed on #3393. (4) Fast-forward merge failed (head behind base — concurrent tracker auto-syncs advanced dev during the long polling window). (5) Auto-pr rebased locally + force-pushed (new SHA 63a38b9a577d). (6) Merge attempted on new SHA — 'Merge not accepted after rebase (CI may need to re-run on new SHA).' (7) **Auto-pr exited** with 'Recovery: ./scripts/merge-pr 3393 --wait-for-ci' — punting to human/agent. The invariant 'auto-pr must converge to merged or explicit failure regardless of concurrent activity' is violated: the right behavior at step (6) is to keep polling CI on the new SHA until either pass+merge or unrecoverable failure. The current behavior asks the human to run merge-pr by hand, which IS exactly merge-pr-with-wait-for-ci that auto-pr should have performed itself. Closely related to the new auto-pr Scenario B defensive-check concern (was about to file as a separate item but folding here instead per user feedback to stop over-filing). Recommend: unsatisfy INV-rahib pending a regression fix, or file a tightly-scoped sub-item that adds a 'post-rebase poll-and-merge' step in scripts/auto-pr around the do_merge cascade. Either way the fix is to extend auto-pr's loop to keep working past the rebase-force-push transition rather than emitting Recovery: hints."  # 471a
