@@ -1,0 +1,21 @@
+- op: create  # 0085
+  at: '2026-04-26T01:52:54Z'  # 0085
+  by: agent  # 0085
+  actor: jgstern_agent  # 0085
+  clock: 1  # 0085
+  nonce: '0085'  # 0085
+  data:  # 0085
+    kind: work_item  # 0085
+    title: "Regression: WI-gudob-tibov-nirod-nahop-banoj-tizof-zasif-dihih did not move in bakeoff cohort-001/iter-001"  # 0085
+    status: todo_soft  # 0085
+    priority: 1  # 0085
+    parent: WI-gudob-tibov-nirod-nahop-banoj-tizof-zasif-dihih  # 0085
+    tags:  # 0085
+    - regression  # 0085
+    - awaits_bakeoff_validation  # 0085
+    isbefore: []  # 0085
+    duplicate_of: []  # 0085
+    not_duplicate_of: []  # 0085
+    pr_ref:  # 0085
+    description: "Parent item WI-gudob-tibov-nirod-nahop-banoj-tizof-zasif-dihih carries an unvalidated bakeoff claim. Cohort cohort-001/iter-001 produced plurality verdict no_move (moved=2 no_move=3 inconclusive=0). Evidence: airflow=moved: concept-tagged nodes: error_handler=3, serializer=17; alertmanager=no_move: no nodes carry concept ∈ {error_handler, controller, router, form, serializer}; chatwoot=no_move: no nodes carry concept ∈ {error_handler, controller, router, form, serializer}; +2 more.\n\nInvestigate why the claimed metric did not move: either the fix did not land as expected, the claim was overstated, or the cohort is an unfair test (in which case the parent verdict should be re-run against a different cohort and this regression item closed as wont_do with that rationale)."  # 0085
+    fields: {}  # 0085

@@ -34,3 +34,10 @@
   clock: 3  # a7ae
   nonce: a7ae  # a7ae
   message: "Shipped in PR #3185 (commit 97d138ef9). Linker emits contains_routes edges for decorator-based controller frameworks (NestJS/Spring/ASP.NET/Laravel/Symfony/Phoenix/Micronaut/Ktor/Grails/CakePHP). controller concept flipped inert → live in docs/CONCEPTS.md. 16 tests, 100% coverage, 100% per-package coverage. Tagged awaits_bakeoff_validation — numerical FP-reduction claim to be made against a bakeoff cohort containing at least one decorator-based controller framework. Rails and Django CBVs explicitly out of scope (different dispatch model handled by route_handler.py)."  # a7ae
+- op: discuss  # 6558
+  at: '2026-04-26T01:52:54Z'  # 6558
+  by: agent  # 6558
+  actor: jgstern_agent  # 6558
+  clock: 4  # 6558
+  nonce: '6558'  # 6558
+  message: "Bakeoff validation: NO_MOVE (cohort cohort-001/iter-001). Plurality verdict across repos: moved=0 no_move=5 inconclusive=0. Regression sub-item spawned automatically by bakeoff-deep-reflect aggregate."  # 6558
