@@ -211,6 +211,26 @@ PLAYBOOKS = [
      ".ops backup/restore cycle can overwrite tracker discuss/add/update operations made "
      "during the run — avoid tracker writes while auto-pr is in flight. Recovery procedure "
      "(including the pre-pop stash verification step) lives in the playbook itself."),
+    ("process-validation-queue-with-bakeoffs-and-uat",
+     ".agent/agent_playbooks_protocols_sops_skills/process-validation-queue-with-bakeoffs-and-uat.md",
+     "Routine for processing the awaits_bakeoff_validation queue end-to-end. "
+     "Seven phases: audit-and-classify each tagged item by validation modality "
+     "(Bucket A cohort-validatable / B-prospector pipeline-dependent / B-shape "
+     "shape-claim / D-stale already-validated / E-misapplied no-quantitative-claim "
+     "/ F-reverted fix-undone); strip anomalies first; design a minimum-target "
+     "cohort that exercises every Bucket A claim; run + write a verification "
+     "script importing canonical taxonomy (DO NOT hand-roll allowlists — one "
+     "such mistake produced 3000+ false flags); fill substantive YAMLs with "
+     "verdicts for every applicable claim (not just the auto-injected ones); "
+     "apply via aggregate; hand-correct inconclusive plurality with rationale "
+     "for niche-language claims; tackle regression sub-items (fix structurally, "
+     "or close wont_do for by-design limitations or cohort-coverage gaps); "
+     "re-iterate with `bakeoff-deep cycle --workdir <existing-session>` to "
+     "produce iter-002 in the same session, NEVER fresh `init` for a validation "
+     "re-run (breaks convergence tracking). Bucket B items get UAT-style "
+     "spot-check (10-15 candidate ground-truth) rather than cohort. Hard rules: "
+     "import canonical sources don't hand-roll; match canonical-cohort conditions "
+     "for regression validations; audit-trail every tag-strip with discussion."),
     ("pre-work-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md",
      "Checklist before starting any new feature: verify no auto-pr is in flight "
