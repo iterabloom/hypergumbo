@@ -1,0 +1,21 @@
+- op: create  # d461
+  at: '2026-04-26T01:51:54Z'  # d461
+  by: agent  # d461
+  actor: jgstern_agent  # d461
+  clock: 1  # d461
+  nonce: d461  # d461
+  data:  # d461
+    kind: work_item  # d461
+    title: "Regression: WI-gokop-vifal-dijaf-jumav-bazat-kuzil-larap-hizub did not move in bakeoff cohort-001/iter-001"  # d461
+    status: todo_soft  # d461
+    priority: 1  # d461
+    parent: WI-gokop-vifal-dijaf-jumav-bazat-kuzil-larap-hizub  # d461
+    tags:  # d461
+    - regression  # d461
+    - awaits_bakeoff_validation  # d461
+    isbefore: []  # d461
+    duplicate_of: []  # d461
+    not_duplicate_of: []  # d461
+    pr_ref:  # d461
+    description: "Parent item WI-gokop-vifal-dijaf-jumav-bazat-kuzil-larap-hizub carries an unvalidated bakeoff claim. Cohort cohort-001/iter-001 produced plurality verdict no_move (moved=0 no_move=5 inconclusive=0). Evidence: airflow=no_move: no controller-concept nodes in this repo; alertmanager=no_move: no controller-concept nodes in this repo; chatwoot=no_move: no controller-concept nodes in this repo; +2 more.\n\nInvestigate why the claimed metric did not move: either the fix did not land as expected, the claim was overstated, or the cohort is an unfair test (in which case the parent verdict should be re-run against a different cohort and this regression item closed as wont_do with that rationale)."  # d461
+    fields: {}  # d461
