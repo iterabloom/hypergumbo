@@ -19,3 +19,13 @@
     pr_ref:  # d461
     description: "Parent item WI-gokop-vifal-dijaf-jumav-bazat-kuzil-larap-hizub carries an unvalidated bakeoff claim. Cohort cohort-001/iter-001 produced plurality verdict no_move (moved=0 no_move=5 inconclusive=0). Evidence: airflow=no_move: no controller-concept nodes in this repo; alertmanager=no_move: no controller-concept nodes in this repo; chatwoot=no_move: no controller-concept nodes in this repo; +2 more.\n\nInvestigate why the claimed metric did not move: either the fix did not land as expected, the claim was overstated, or the cohort is an unfair test (in which case the parent verdict should be re-run against a different cohort and this regression item closed as wont_do with that rationale)."  # d461
     fields: {}  # d461
+- op: update  # 406e
+  at: '2026-04-26T02:19:45Z'  # 406e
+  by: agent  # 406e
+  actor: jgstern_agent  # 406e
+  clock: 2  # 406e
+  nonce: 406e  # 406e
+  set:  # 406e
+    status: wont_do  # 406e
+  remove:  # 406e
+    tags: [awaits_bakeoff_validation]  # 406e

@@ -50,3 +50,19 @@
   clock: 5  # 0d92
   nonce: 0d92  # 0d92
   message: "Merged in PR #3360. parse_python_dependencies now walks the tree for every pyproject.toml under repo_root, skipping DEFAULT_EXCLUDES and dotfile dirs. Self-analysis dogfood post-merge: 0 → 90 declared imports; tree_sitter, rich, pygments, yaml, sentence_transformers, pytest, jsonschema, requests all classify tier-2. Tag awaits_bakeoff_validation remains until DEEP cycle confirms tier-2 promotion lifts the python boundary tier-2 count on the diverse-repo corpus."  # 0d92
+- op: update  # 51bf
+  at: '2026-04-26T02:06:42Z'  # 51bf
+  by: agent  # 51bf
+  actor: jgstern_agent  # 51bf
+  clock: 6  # 51bf
+  nonce: 51bf  # 51bf
+  set: {}  # 51bf
+  remove:  # 51bf
+    tags: [awaits_bakeoff_validation]  # 51bf
+- op: discuss  # 94f1
+  at: '2026-04-26T02:06:42Z'  # 94f1
+  by: agent  # 94f1
+  actor: jgstern_agent  # 94f1
+  clock: 7  # 94f1
+  nonce: 94f1  # 94f1
+  message: "awaits_bakeoff_validation tag stripped via hand-correction of inconclusive plurality verdict from cohort cohort-001/iter-001 (deep-20260425-210357). Per-repo verdicts: airflow=moved (2,602 Python tier-2 externals on a true monorepo Python target — providers/<pkg>/pyproject.toml layout. Sample (BS3TextFieldWidget, Column, Console, String, StringField) confirms Flask-AppBuilder + SQLAlchemy declared deps from per-package pyprojects are being parsed and tier-promoted, not just the root pyproject. The fix shipped in PR #3360 works in production, not just in self-analysis dogfood). Other 4 repos verdict=inconclusive (not monorepo Python targets — kafka has Python only as tooling; alertmanager/prometheus are Go; chatwoot is Ruby). Plurality returned inconclusive because monorepo Python is structurally rare in the standard cohort pool; the targeted-repo verdict is unambiguously moved. Hand-stripping per the operator decision."  # 94f1

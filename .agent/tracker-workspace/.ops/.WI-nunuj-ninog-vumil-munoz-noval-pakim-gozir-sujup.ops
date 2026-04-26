@@ -51,3 +51,10 @@
   set: {}  # 70c1
   remove:  # 70c1
     tags: [awaits_bakeoff_validation]  # 70c1
+- op: discuss  # 89cf
+  at: '2026-04-26T02:06:23Z'  # 89cf
+  by: agent  # 89cf
+  actor: jgstern_agent  # 89cf
+  clock: 6  # 89cf
+  nonce: 89cf  # 89cf
+  message: "awaits_bakeoff_validation tag stripped via hand-correction of inconclusive plurality verdict from cohort cohort-001/iter-001 (deep-20260425-210357). Per-repo verdicts: airflow=moved (2,602 Python tier-2 externals; pyproject.toml deps reclassified tier-3 -> tier-2; sample includes BS3TextFieldWidget, Column, Console, String, StringField from declared Flask-AppBuilder + SQLAlchemy deps). kafka=no_move (527 Python externals all tier-3 — kafka has Python only as dev tooling, no pyproject-declared deps to promote). Other 3 repos verdict=inconclusive (not Python targets). The kafka 'no_move' is structurally expected (no declared Python deps to find), not a regression. The targeted-repo verdict on airflow is unambiguously moved. Hand-stripping per the operator decision: a Python-pyproject-promotion claim is validated by 'on a Python repo with declared deps, the promotion fires.'"  # 89cf

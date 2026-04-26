@@ -42,3 +42,19 @@
   clock: 4  # f5ab
   nonce: f5ab  # f5ab
   message: "Fixed in PR #3353 (commit 259b379ba). Added _emit_module_level_assign_symbols helper that walks tree.body and emits Symbol(kind='variable', ...) for top-level Assign and AnnAssign with Name targets, including tuple unpacking. Also made the cli.py noise-filter language-conditional for 'variable' kind ({css, scss, sass, less} stays excluded; Python/Go/YAML/Make stay in output). Tagged awaits_bakeoff_validation — claim is 'ALL-CAPS python externals drop from ~150 to near-zero on hypergumbo self-analysis.'"  # f5ab
+- op: update  # 5a45
+  at: '2026-04-26T02:06:31Z'  # 5a45
+  by: agent  # 5a45
+  actor: jgstern_agent  # 5a45
+  clock: 5  # 5a45
+  nonce: 5a45  # 5a45
+  set: {}  # 5a45
+  remove:  # 5a45
+    tags: [awaits_bakeoff_validation]  # 5a45
+- op: discuss  # 7c9a
+  at: '2026-04-26T02:06:31Z'  # 7c9a
+  by: agent  # 7c9a
+  actor: jgstern_agent  # 7c9a
+  clock: 6  # 7c9a
+  nonce: 7c9a  # 7c9a
+  message: "awaits_bakeoff_validation tag stripped via hand-correction of inconclusive plurality verdict from cohort cohort-001/iter-001 (deep-20260425-210357). Per-repo verdicts: airflow=moved (15,095 Python kind=variable nodes; 9,794 ALL_CAPS — module-level NAME = ... constants now indexed, far above the 'drop from ~150 ALL-CAPS externals to near-zero' threshold the claim predicted). kafka=moved (297 Python kind=variable nodes; 218 ALL_CAPS — works on Python-as-dev-tooling too). Other 3 repos verdict=inconclusive (no Python content). Plurality returned inconclusive because most repos cannot test a Python-only claim; the 2 repos that could both report moved. Hand-stripping per the operator decision."  # 7c9a
