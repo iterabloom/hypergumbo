@@ -69,3 +69,19 @@
   clock: 7  # 48ea
   nonce: 48ea  # 48ea
   message: "Merged PR #3247 (dev SHA fc08ab060). _scan_elm_file now folds let-bound String.join URL bindings — Alertmanager's getSilence / getSilences / create / destroy / fetchAlerts / fetchAlertGroups should now emit Elm → Go http_calls edges. The full Elm analyzer package noted in the original description turned out to be unnecessary for the let+String.join pattern that dominates the Alertmanager/Prometheus corpora — a bounded regex scan suffices. 13 new tests, 100% coverage. Tagged awaits_bakeoff_validation per AGENTS.md discipline — expected outcome is new Elm→Go edges on Alertmanager UI in the next DEEP cycle."  # 48ea
+- op: update  # 29b4
+  at: '2026-04-26T02:05:18Z'  # 29b4
+  by: agent  # 29b4
+  actor: jgstern_agent  # 29b4
+  clock: 8  # 29b4
+  nonce: 29b4  # 29b4
+  set: {}  # 29b4
+  remove:  # 29b4
+    tags: [awaits_bakeoff_validation]  # 29b4
+- op: discuss  # d51f
+  at: '2026-04-26T02:05:18Z'  # d51f
+  by: agent  # d51f
+  actor: jgstern_agent  # d51f
+  clock: 9  # d51f
+  nonce: d51f  # d51f
+  message: "awaits_bakeoff_validation tag stripped via hand-correction of inconclusive plurality verdict from cohort cohort-001/iter-001 (deep-20260425-210357). Per-repo verdicts: alertmanager=moved (6 http_calls edges from ui/app/src/Alerts/Api.elm and ui/app/src/Silences/Api.elm to Go API routes including api/v1_deprecation_router.go and api/v2/restapi/operations/* — exactly the let-bound String.join URL pattern that PR #3247 promised would surface fetchAlerts/getSilence/getSilences/create/destroy/fetchAlertGroups). Other 4 repos verdict=inconclusive (no Elm content). The plurality logic returned inconclusive because 4 of 5 repos cannot test an Elm-only claim; the targeted-repo verdict is unambiguously moved. Hand-stripping per the operator decision that 1-of-N moved with N-1 inconclusive (not no_move) on a niche-language claim satisfies the discipline's confirmed-movement criterion."  # d51f

@@ -35,3 +35,19 @@
   clock: 3  # 6101
   nonce: '6101'  # 6101
   message: "Merged in PR #3338. external_potential bucket synthesizes IoChains for unmatched edges into tier-3 boundary nodes; chains carry dst_tier/dst_tier_name/dst_external_boundary plus dst_classification_unreliable for in_progress source-language catalogs. CLI rendering already handles new boundary types via the sorted-keys loop; per-chain output adds [unreliable] marker. Smart-test 2857 passed, 100% coverage. Tagging awaits_bakeoff_validation since the chain-count behavior on a real corpus only becomes visible once a DEEP-mode bakeoff cycle picks up the change."  # 6101
+- op: update  # ba30
+  at: '2026-04-26T01:53:55Z'  # ba30
+  by: agent  # ba30
+  actor: jgstern_agent  # ba30
+  clock: 4  # ba30
+  nonce: ba30  # ba30
+  set: {}  # ba30
+  remove:  # ba30
+    tags: [awaits_bakeoff_validation]  # ba30
+- op: discuss  # eda7
+  at: '2026-04-26T01:53:55Z'  # eda7
+  by: agent  # eda7
+  actor: jgstern_agent  # eda7
+  clock: 5  # eda7
+  nonce: eda7  # eda7
+  message: "Bakeoff validation: MOVED (cohort cohort-001/iter-001). Plurality verdict across repos: moved=5 no_move=0 inconclusive=0. Evidence: airflow=moved: external_potential bucket has chain_count=28912; 2641 chains carry dst_classification_unreliable=True; alertmanager=moved: external_potential bucket has chain_count=2339; 2339 chains carry dst_classification_unreliable=True; chatwoot=moved: external_potential bucket has chain_count=3425; 3425 chains carry dst_classification_unreliable=True; +2 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # eda7

@@ -42,3 +42,12 @@
   clock: 4  # 320c
   nonce: 320c  # 320c
   message: "Fixed in PR #3354 (commit bdbe95890). New py_deps.py parses pyproject.toml ([project].dependencies, [project.optional-dependencies], [tool.poetry.dependencies]). Distribution-name → import-name resolution via importlib.metadata.packages_distributions(). Stdlib carve-out via sys.stdlib_module_names. Wired into analyze_python; ir.create_boundary_nodes allow-list extends to 'python'. Tagged awaits_bakeoff_validation — claim is 'Python tier-2 boundary node count on repos with pyproject.toml goes from ~0 to (# direct deps).'"  # 320c
+- op: update  # 70c1
+  at: '2026-04-26T02:05:31Z'  # 70c1
+  by: agent  # 70c1
+  actor: jgstern_agent  # 70c1
+  clock: 5  # 70c1
+  nonce: 70c1  # 70c1
+  set: {}  # 70c1
+  remove:  # 70c1
+    tags: [awaits_bakeoff_validation]  # 70c1

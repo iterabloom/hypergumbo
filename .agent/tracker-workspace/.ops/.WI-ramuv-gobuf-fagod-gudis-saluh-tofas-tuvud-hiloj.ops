@@ -67,3 +67,10 @@
   set: {}  # ec24
   remove:  # ec24
     tags: [awaits_bakeoff_validation]  # ec24
+- op: discuss  # 15aa
+  at: '2026-04-26T01:53:55Z'  # 15aa
+  by: agent  # 15aa
+  actor: jgstern_agent  # 15aa
+  clock: 8  # 15aa
+  nonce: 15aa  # 15aa
+  message: "Bakeoff validation: MOVED (cohort cohort-001/iter-001). Plurality verdict across repos: moved=5 no_move=0 inconclusive=0. Evidence: airflow=moved: 4743 kind=file Symbols; 58635 imports edges; canonical <external>:file:file count=0; alertmanager=moved: 270 kind=file Symbols; 2785 imports edges; canonical <external>:file:file count=0; chatwoot=moved: 95 kind=file Symbols; 6584 imports edges; canonical <external>:file:file count=1; +2 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 15aa
