@@ -108,3 +108,12 @@
   clock: 13  # a155
   nonce: a155  # a155
   message: "Bakeoff validation: NO_MOVE (cohort cohort-001/iter-001). Plurality verdict across repos: moved=2 no_move=3 inconclusive=0. Regression sub-item spawned automatically by bakeoff-deep-reflect aggregate."  # a155
+- op: update  # 18af
+  at: '2026-04-26T04:32:17Z'  # 18af
+  by: agent  # 18af
+  actor: jgstern_agent  # 18af
+  clock: 14  # 18af
+  nonce: 18af  # 18af
+  set: {}  # 18af
+  remove:  # 18af
+    tags: [awaits_bakeoff_validation]  # 18af

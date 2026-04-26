@@ -1,0 +1,22 @@
+- op: create  # f425
+  at: '2026-04-26T03:50:07Z'  # f425
+  by: agent  # f425
+  actor: jgstern_agent  # f425
+  clock: 1  # f425
+  nonce: f425  # f425
+  data:  # f425
+    kind: work_item  # f425
+    title: "Refactor _AUTOLOAD_BY_CONVENTION_FRAMEWORKS hardcoded set to data-driven configuration (WI-lohok follow-up)"  # f425
+    status: todo_soft  # f425
+    priority: 4  # f425
+    parent:  # f425
+    tags:  # f425
+    - analysis_quality  # f425
+    - developer_experience  # f425
+    - framework_detection  # f425
+    isbefore: []  # f425
+    duplicate_of: []  # f425
+    not_duplicate_of: []  # f425
+    pr_ref:  # f425
+    description: "Per WI-lohok fix (Rails autoload exemption in refine_frameworks), the autoload-by-convention list is currently a hardcoded frozenset in profile.py: _AUTOLOAD_BY_CONVENTION_FRAMEWORKS = frozenset({'rails'}). Other frameworks may fit the same pattern but the discovery / addition path is unclear. Candidates worth investigating: Phoenix (Elixir, autoloaded via mix); Express (Node.js, technically requires require('express') so probably not exempt); various Ruby frameworks (Hanami/Roda/Padrino — most require require explicitly so probably not exempt either); Spring Boot (Java has no import edges anyway, gets a different fallback). The structural concern is that the hardcoded set has no clear extensibility story or documented criteria for inclusion. Possible refactors: (a) move to a YAML data file alongside the framework patterns; (b) add an autoloaded: true field to each framework's existing pattern YAML and read it at framework_languages-resolution time; (c) keep hardcoded but add a docstring section enumerating evaluation criteria for new candidates. Priority is P4 because Rails alone resolves the immediate bakeoff blocker (chatwoot rails.yaml not loading); other framework gaps will surface organically as cohorts find them. Discovered while reviewing the WI-lohok fix on 2026-04-26."  # f425
+    fields: {}  # f425

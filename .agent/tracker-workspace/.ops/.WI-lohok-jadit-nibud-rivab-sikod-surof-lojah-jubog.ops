@@ -20,3 +20,18 @@
     pr_ref:  # 5b81
     description: "Discovered via DEEP cohort cohort-001/iter-001 (deep-20260425-210357) on chatwoot. profile.detect_ruby_frameworks correctly identifies Rails from chatwoot's Gemfile (gem 'rails', '~> 7.1'). However, profile.refine_frameworks demotes Rails to dev_frameworks because Ruby app code has zero explicit import edges to the rails gem (Rails autoloads everything via Bundler at boot + convention-based class loading; no .rb file in app code says require 'rails'). enrich_symbols only loads framework patterns from profile.frameworks, not dev_frameworks, so rails.yaml never applies. Concrete consequence on chatwoot: 0 'controller' / 'route' / 'form' / 'serializer' concept tags despite 181 Ruby Controller-named classes (1 of which IS ApplicationController extending ActionController::Base — would match rails.yaml's controller pattern if loaded). 14 classes got the naming-conventions fallback 'controller_by_name' tag. Affects: (a) any Rails app analysis (controller/route/form/serializer concept tagging), (b) downstream linkers that read those tags (controller_routes.py, etc.), (c) bakeoff validation of WI-gudob/WI-gokop on Rails-cohort targets, (d) likely also Phoenix/Elixir (mix-loaded), Django (autoload-by-installed-apps), and other convention-driven frameworks where 'has explicit production import' is a poor proxy for 'is the production framework'. Fix paths: (1) skip refine_frameworks demotion for languages where convention-based loading is the norm (ruby + Gemfile, elixir + mix.exs, etc.); (2) add language-specific evidence beyond import edges (Ruby: presence of config/application.rb with 'class Application < Rails::Application', presence of ApplicationController extending ActionController::Base); (3) merge dev_frameworks into the enrich_symbols input set unconditionally and let the per-pattern symbol_path filter handle the dev/prod scoping. Option (1) is narrowest. Option (3) is broadest but might over-trigger framework patterns on test-only files."  # 5b81
     fields: {}  # 5b81
+- op: update  # 36b0
+  at: '2026-04-26T04:21:21Z'  # 36b0
+  by: agent  # 36b0
+  actor: jgstern_agent  # 36b0
+  clock: 2  # 36b0
+  nonce: 36b0  # 36b0
+  set:  # 36b0
+    status: done  # 36b0
+- op: discuss  # 6b5e
+  at: '2026-04-26T04:21:21Z'  # 6b5e
+  by: agent  # 6b5e
+  actor: jgstern_agent  # 6b5e
+  clock: 3  # 6b5e
+  nonce: 6b5e  # 6b5e
+  message: "Fixed in PR #3388 (commit 92914326a). Added _AUTOLOAD_BY_CONVENTION_FRAMEWORKS exemption frozenset in profile.py; refine_frameworks now keeps Rails in profile.frameworks based on Gemfile detection alone, even when the import-edge confirmation check would have demoted it. Three new tests cover the Rails autoload case, the zero-edges degenerate case, and the Sinatra counter-test (which IS imported and stays subject to demotion). 100% coverage; full smart-test suite passed (16,168 tests). The expected downstream effect is that chatwoot's next bakeoff cohort shows non-empty 'controller'/'route'/'form'/'serializer' concept tags from rails.yaml — to be validated by the WI-gokop/WI-gudob mini-cohort being run next."  # 6b5e
