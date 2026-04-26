@@ -291,3 +291,30 @@ local getConfig() = { name: "test" };
         # self.greet() should be filtered as builtin (self is builtin)
         self_edges = [e for e in result.edges if "self" in e.dst.lower()]
         assert len(self_edges) == 0
+
+    def test_unresolved_call_dst_is_well_formed_5part_id(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-bagon: unresolved call dsts must be 5-part ids with
+        language='jsonnet' in the language slot, not the malformed 2-part
+        'unresolved:{name}' that fell through ir._parse_dangling_id and
+        produced boundary nodes with language='unresolved' (sentinel
+        leak observed on alertmanager: 39 such nodes in cohort-001/
+        iter-001)."""
+        make_jsonnet_file(tmp_path, "test.jsonnet", """
+local result = some_undefined_function(1, 2, 3);
+result
+""")
+        result = analyze_jsonnet(tmp_path)
+        unresolved_edges = [
+            e for e in result.edges
+            if "some_undefined_function" in e.dst and e.confidence == 0.6
+        ]
+        assert len(unresolved_edges) == 1
+        dst = unresolved_edges[0].dst
+        parts = dst.split(":")
+        assert len(parts) == 5, f"dst should be 5-part, got {dst!r}"
+        assert parts[0] == "jsonnet", (
+            f"language slot must be 'jsonnet', got {parts[0]!r}: {dst!r}"
+        )
+        assert parts[3] == "some_undefined_function"

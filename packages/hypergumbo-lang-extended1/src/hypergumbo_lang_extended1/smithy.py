@@ -367,7 +367,11 @@ def _make_reference_edge(
         dst = dst_id
     else:
         confidence = 0.6
-        dst = f"unresolved:{ref_name}"
+        # WI-bagon: well-formed 5-part dst (see luau / hack / jsonnet /
+        # apex companion fixes); avoids the language='unresolved'
+        # sentinel leak that the 2-part 'unresolved:{name}' previously
+        # produced via ir._parse_dangling_id fallthrough.
+        dst = f"smithy:unresolved:0-0:{ref_name}:unresolved"
 
     src_id = symbol_registry.get(src_name, f"smithy:{rel_path}:file")
 

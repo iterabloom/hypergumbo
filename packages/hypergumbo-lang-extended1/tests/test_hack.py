@@ -244,6 +244,17 @@ function main(): void {
         assert edge is not None
         assert "unresolved" in edge.dst
         assert edge.confidence == 0.6
+        # WI-bagon: dst must be a well-formed 5-part id with
+        # language='hack' in the language slot, not a 2-part
+        # 'unresolved:{name}' (which produced language='unresolved'
+        # boundary nodes via ir._parse_dangling_id fallthrough).
+        parts = edge.dst.split(":")
+        assert len(parts) == 5, (
+            f"unresolved-call dst must be 5-part, got {edge.dst!r}"
+        )
+        assert parts[0] == "hack", (
+            f"language slot must be 'hack', got {parts[0]!r}: {edge.dst!r}"
+        )
 
     def test_pass_id(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", """<?hh

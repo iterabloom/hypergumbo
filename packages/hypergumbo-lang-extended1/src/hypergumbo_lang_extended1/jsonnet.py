@@ -258,7 +258,11 @@ def _extract_edges_recursive(
                 dst = callee_id
             else:
                 confidence = 0.6
-                dst = f"unresolved:{call_name}"
+                # WI-bagon: well-formed 5-part dst (matches mainstream
+                # convention); avoids the language='unresolved' sentinel
+                # leak observed on alertmanager — 39 boundary nodes had
+                # language='unresolved' from this 2-part shape.
+                dst = f"jsonnet:unresolved:0-0:{call_name}:unresolved"
 
             edge = Edge.create(
                 src=f"jsonnet:{rel_path}:file",

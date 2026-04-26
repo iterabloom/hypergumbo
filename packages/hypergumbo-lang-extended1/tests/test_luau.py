@@ -278,6 +278,18 @@ end
         )
         assert edge is not None
         assert edge.confidence == 0.6
+        # WI-bagon: dst must be a well-formed 5-part id
+        # (lang:path:span:name:kind), not the legacy 2-part
+        # 'unresolved:{name}' that fell through ir._parse_dangling_id and
+        # produced boundary nodes with language='unresolved' (sentinel
+        # leak; INV-nodij violation).
+        parts = edge.dst.split(":")
+        assert len(parts) == 5, (
+            f"unresolved-call dst must be 5-part, got {edge.dst!r}"
+        )
+        assert parts[0] == "luau", (
+            f"language slot must be 'luau', got {parts[0]!r}: {edge.dst!r}"
+        )
 
     def test_pass_id(self, tmp_path: Path) -> None:
         make_luau_file(tmp_path, "test.luau", """

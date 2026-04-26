@@ -426,7 +426,12 @@ def _extract_edges_recursive(
                 dst = callee_id
             else:
                 confidence = 0.6
-                dst = f"unresolved:{call_name}"
+                # WI-bagon: well-formed 5-part dst (matches mainstream
+                # convention: csharp/rust/java/py); avoids the
+                # language='unresolved' sentinel leak that the 2-part
+                # 'unresolved:{name}' produced via ir._parse_dangling_id
+                # fallthrough.
+                dst = f"hack:unresolved:0-0:{call_name}:unresolved"
 
             caller_id = f"hack:{rel_path}:file"
             if current_class:

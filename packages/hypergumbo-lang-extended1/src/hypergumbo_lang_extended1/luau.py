@@ -336,7 +336,13 @@ def _extract_function_call(
             dst = dst_id
         else:
             confidence = 0.6
-            dst = f"unresolved:{call_name}"
+            # WI-bagon: 2-part 'unresolved:{name}' was malformed and fell
+            # through ir._parse_dangling_id, producing boundary nodes with
+            # language='unresolved' (sentinel leak; INV-nodij violation
+            # observed on alertmanager). Use the established mainstream
+            # 5-part shape (see csharp/rust/java/py) so the boundary node
+            # carries language='luau'.
+            dst = f"luau:unresolved:0-0:{call_name}:unresolved"
 
         edge = Edge.create(
             src=src_id,

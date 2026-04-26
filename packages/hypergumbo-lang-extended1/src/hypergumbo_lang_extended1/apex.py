@@ -715,7 +715,10 @@ def _add_call_edge(
         dst = dst_id
     else:
         confidence = 0.6
-        dst = f"unresolved:{call_name}"
+        # WI-bagon: well-formed 5-part dst (matches mainstream convention);
+        # avoids the language='unresolved' sentinel leak that the 2-part
+        # 'unresolved:{name}' produced via ir._parse_dangling_id fallthrough.
+        dst = f"apex:unresolved:0-0:{call_name}:unresolved"
 
     src_id = symbol_registry.get(
         src_name, f"apex:{rel_path}:file"

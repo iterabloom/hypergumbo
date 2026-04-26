@@ -230,6 +230,15 @@ operation GetCity {
         assert edge is not None
         assert "unresolved" in edge.dst
         assert edge.confidence == 0.6
+        # WI-bagon: dst must be a well-formed 5-part id with
+        # language='smithy', not a malformed 2-part 'unresolved:{name}'.
+        parts = edge.dst.split(":")
+        assert len(parts) == 5, (
+            f"unresolved-ref dst must be 5-part, got {edge.dst!r}"
+        )
+        assert parts[0] == "smithy", (
+            f"language slot must be 'smithy', got {parts[0]!r}: {edge.dst!r}"
+        )
 
     def test_pass_id(self, tmp_path: Path) -> None:
         make_smithy_file(tmp_path, "test.smithy", """
