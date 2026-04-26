@@ -19,3 +19,18 @@
     pr_ref:  # e1f4
     description: "Per WI-vobiv-kivop investigation 2026-04-26 on cohort cohort-001/iter-001 (deep-20260425-210357): alertmanager has 39 external_symbol nodes with language='unresolved'. Question: is 'unresolved' an intentional sentinel value when the source language can't be determined, or is it a leak from somewhere? If sentinel — add 'unresolved' to the explicit allowed-sentinel set in the INV-nodij validator so it stops being flagged. If leak — trace the producer and fix it. Lower priority than the other three INV-nodij sub-items (RST, jsonnet, kafka) because the volume is smaller and the right resolution is most likely just 'add to allowed sentinels'."  # e1f4
     fields: {}  # e1f4
+- op: update  # 2f58
+  at: '2026-04-26T08:48:34Z'  # 2f58
+  by: agent  # 2f58
+  actor: jgstern_agent  # 2f58
+  clock: 2  # 2f58
+  nonce: 2f58  # 2f58
+  set:  # 2f58
+    status: done  # 2f58
+- op: discuss  # 1360
+  at: '2026-04-26T08:48:34Z'  # 1360
+  by: agent  # 1360
+  actor: jgstern_agent  # 1360
+  clock: 3  # 1360
+  nonce: '1360'  # 1360
+  message: "Fixed in PR #3396 (commit 1824a4cf8). Five extended1 analyzers (luau / smithy / hack / jsonnet / apex) updated to use the established mainstream 5-part dst id shape ({lang}:unresolved:0-0:{name}:unresolved) instead of the legacy 2-part 'unresolved:{name}'. Each existing test_unresolved_call_* test gained an assertion that the dst splits into 5 colon-parts with the expected language token in slot 0; jsonnet adds a fresh test_unresolved_call_dst_is_well_formed_5part_id. 100% coverage on changed files. Out-of-scope follow-up (filed conceptually but not yet a tracker item — could be added if it surfaces): six other analyzers (robot/racket/purescript/scheme/matlab/prisma) emit a 3-part {lang}:unresolved:{name} shape that produces correct language={lang} but malformed boundary-node name/kind slots. Cohort verification: language='unresolved' nodes will drop to 0 on alertmanager (was 39) once the next cohort re-runs."  # 1360

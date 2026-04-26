@@ -19,3 +19,18 @@
     pr_ref:  # cb95
     description: "Per WI-vobiv-kivop investigation 2026-04-26 on cohort cohort-001/iter-001 (deep-20260425-210357): alertmanager has 50 external_symbol nodes with language='jsonnet'; prometheus has 63 (mix of jsonnet, dist/index.cjs, etc.). Jsonnet is a real templating language widely used by Grafana / Tanka / monitoring stacks; it has a tree-sitter grammar. The simplest fix is likely just adding 'jsonnet' to the known-language enum in the INV-nodij validator (and any other places that gate on a fixed language list). The boundary nodes themselves may be structurally correct; the validator is over-strict. Verify by inspecting a sample boundary node — if name and kind slots are clean, the only fix needed is the enum widening. Acceptance: alertmanager + prometheus's external_symbol nodes with language='jsonnet' STOP being flagged as INV-nodij violations in a future cohort. Tag: invariant_violation cleanup."  # cb95
     fields: {}  # cb95
+- op: update  # 5f41
+  at: '2026-04-26T07:02:28Z'  # 5f41
+  by: agent  # 5f41
+  actor: jgstern_agent  # 5f41
+  clock: 2  # 5f41
+  nonce: 5f41  # 5f41
+  set:  # 5f41
+    status: done  # 5f41
+- op: discuss  # 75e8
+  at: '2026-04-26T07:02:28Z'  # 75e8
+  by: agent  # 75e8
+  actor: jgstern_agent  # 75e8
+  clock: 3  # 75e8
+  nonce: '75e8'  # 75e8
+  message: "Fixed in PR #3393 (commit 6a9b8bf35). Added jsonnet to taxonomy.LANGUAGES under FileRole.CONFIG with .jsonnet and .libsonnet extensions. Test under TestLanguageRegistry asserts presence + extension coverage. Boundary nodes synthesized from jsonnet sources will now satisfy the language ∈ taxonomy.LANGUAGES check (cohort verification deferred to next INV-nodij re-validation cycle)."  # 75e8

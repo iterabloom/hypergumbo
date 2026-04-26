@@ -20,3 +20,18 @@
     pr_ref:  # 77dd
     description: "Per WI-vobiv-kivop investigation 2026-04-26 on cohort cohort-001/iter-001 (deep-20260425-210357): kafka's hg.json has 56 external_symbol nodes whose 'language' slot contains a Java file path or shell script path. Sample bad languages: 'org/apache/kafka/clients/admin/AdminClientConfig.java', 'org/apache/kafka/clients/consumer/ConsumerConfig.java', 'org/apache/kafka/clients/producer/ProducerConfig.java', '/etc/kafka/docker/bash-config', '/etc/kafka/docker/configure', '-jar.java'. Pattern suggests a Java-config-extractor or properties/manifest analyzer that emits cross-references with raw file paths in the dst slot — falls through ir._parse_dangling_id and stuffs the path into the language slot. Same shape as the toml_config bug (INV-nodij) and the Vue leak (fixed in PR #3385). Fix: (a) trace which producer emits these — likely a Kafka-specific config-class extractor or the Properties handler that reads kafka's *Config.java files; (b) construct properly-formed dst id (e.g., 'java:{path}:0-0:{class_name}:class' or similar); (c) add a property test on a synthetic Java repo with config-property files. Acceptance: kafka's 56 invalid-language external_symbol nodes drop to 0 in a future cohort."  # 77dd
     fields: {}  # 77dd
+- op: update  # 48d0
+  at: '2026-04-26T08:49:08Z'  # 48d0
+  by: agent  # 48d0
+  actor: jgstern_agent  # 48d0
+  clock: 2  # 48d0
+  nonce: 48d0  # 48d0
+  set:  # 48d0
+    status: done  # 48d0
+- op: discuss  # 64f7
+  at: '2026-04-26T08:49:09Z'  # 64f7
+  by: agent  # 64f7
+  actor: jgstern_agent  # 64f7
+  clock: 3  # 64f7
+  nonce: 64f7  # 64f7
+  message: "Fixed in PR #3398 (commit 5655bf501). Two producers updated: (1) manifest_targets._emit moved target_path from edge.dst to edge.meta['target_path'] and constructs a 5-part dst id ({language}:{target_path}:0-0:{name}:unresolved) — language slot is the existing per-extractor meta-language (gradle/csproj/swift/sbt/etc.). (2) bash sources edges similarly use 5-part bash:{sourced_path}:0-0:{basename}:file with sourced_path on edge.meta. Updated 18 existing test assertions to query edge.meta.get('target_path') as the canonical location, plus added TestDefinesTargetDstShape and a bash sources shape test. Cohort verification: kafka's 34 manifest leaks + 8 bash sources leaks (42 total invalid-language nodes) will drop to 0 once the next cohort re-runs."  # 64f7
