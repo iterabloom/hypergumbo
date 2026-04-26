@@ -19,3 +19,20 @@
     pr_ref:  # 5428
     description: "Per WI-vobiv-kivop investigation 2026-04-26 on cohort cohort-001/iter-001 (deep-20260425-210357), airflow's hg.json contains 3,079 external_symbol nodes whose 'language' slot is the literal string 'rst' (and 450 nodes with names containing '/' or ':'). Likely producer: a Sphinx/RST cross-reference handler emitting :func:`...` references with .rst paths in the dst. Same shape as the original INV-nodij toml_config bug and the Vue analyzer leak (now fixed in PR #3385). Fix paths: (a) locate the producer (grep packages for .rst handling and dst construction sites); (b) decide whether RST should be added to the known-language set with kind='document' or whether the producer should skip emitting boundary-bound edges altogether; (c) add a property test asserting all language slots ∈ known-langs across a synthetic Python+RST repo. Acceptance: airflow's external_symbol language slot count for 'rst' drops to 0 in a future cohort."  # 5428
     fields: {}  # 5428
+- op: update  # 6eb1
+  at: '2026-04-26T04:47:27Z'  # 6eb1
+  by: agent  # 6eb1
+  actor: jgstern_agent  # 6eb1
+  clock: 2  # 6eb1
+  nonce: 6eb1  # 6eb1
+  set:  # 6eb1
+    status: wont_do  # 6eb1
+  remove:  # 6eb1
+    tags: [awaits_bakeoff_validation]  # 6eb1
+- op: discuss  # 0d6f
+  at: '2026-04-26T04:47:27Z'  # 0d6f
+  by: agent  # 0d6f
+  actor: jgstern_agent  # 0d6f
+  clock: 3  # 0d6f
+  nonce: 0d6f  # 0d6f
+  message: "Closing as wont_do (audit 2026-04-26). Investigation: 'rst' IS in taxonomy.LANGUAGES (packages/hypergumbo-core/src/hypergumbo_core/taxonomy.py:451). The 3,079 'invalid language' hits on airflow were a verification-script bug — my /tmp/verify_bucket_a.py defined a hand-rolled KNOWN_LANGS set that omitted rst. The boundary nodes with language='rst' are structurally correct per the actual hypergumbo invariant. Of the 450 invalid-name nodes on airflow that ARE genuinely INV-nodij violations, only 20 are language=rst (sample names contain '/' — Sphinx cross-refs); the rest are typescript (360) and other producers. Those typescript invalid-name nodes are a different problem. Filing a follow-up if/when that becomes a priority. Net: this regression sub-item was misfiled; rst itself is fine."  # 0d6f

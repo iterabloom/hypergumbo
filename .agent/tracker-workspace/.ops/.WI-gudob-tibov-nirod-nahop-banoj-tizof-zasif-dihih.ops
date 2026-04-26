@@ -117,3 +117,19 @@
   set: {}  # 18af
   remove:  # 18af
     tags: [awaits_bakeoff_validation]  # 18af
+- op: discuss  # 755c
+  at: '2026-04-26T04:33:17Z'  # 755c
+  by: agent  # 755c
+  actor: jgstern_agent  # 755c
+  clock: 15  # 755c
+  nonce: 755c  # 755c
+  message: "Bakeoff validation: MOVED (cohort cohort-001/iter-001). Plurality verdict across repos: moved=2 no_move=0 inconclusive=0. Evidence: chatwoot=moved: Post WI-lohok fix, Phase 2 (controller) fires on Rails: 36 controller-concept tagged Ruby classes (was 0 in cohort-001/i…; spring-petclinic=moved: Phase 2 (controller) fires cleanly: 6 controller-concept Spring classes, 17 outgoing dispatch edges. Phases 1/3/4/5 (err… — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 755c
+- op: update  # d590
+  at: '2026-04-26T04:33:59Z'  # d590
+  by: agent  # d590
+  actor: jgstern_agent  # d590
+  clock: 16  # d590
+  nonce: d590  # d590
+  set: {}  # d590
+  remove:  # d590
+    tags: [awaits_bakeoff_validation]  # d590

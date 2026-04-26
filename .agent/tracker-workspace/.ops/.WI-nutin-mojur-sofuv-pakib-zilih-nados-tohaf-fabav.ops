@@ -1,0 +1,22 @@
+- op: create  # 5540
+  at: '2026-04-26T05:55:07Z'  # 5540
+  by: agent  # 5540
+  actor: jgstern_agent  # 5540
+  clock: 1  # 5540
+  nonce: '5540'  # 5540
+  data:  # 5540
+    kind: work_item  # 5540
+    title: "TRACKER_SYNC_PENDING marker can leak on SIGKILL — needs fcntl.flock + stale-marker auto-recovery + vociferous failure messaging"  # 5540
+    status: todo_hard  # 5540
+    priority: 1  # 5540
+    parent:  # 5540
+    tags:  # 5540
+    - bakeoff_infrastructure  # 5540
+    - developer_experience  # 5540
+    - invariant_violation  # 5540
+    isbefore: []  # 5540
+    duplicate_of: []  # 5540
+    not_duplicate_of: []  # 5540
+    pr_ref:  # 5540
+    description: "Real bug observed 2026-04-26 during WI-gokop tag-strip work: reflect-aggregate's apply-verdicts step calls 'tracker update --remove-tag' via subprocess.run(timeout=60). That sync exceeded 60s, parent SIGKILLed the subprocess, Python's try/finally at sync.py:1201-1206 did NOT run (SIGKILL bypasses finally), and the .git/TRACKER_SYNC_PENDING marker was left stale. Subsequent ./scripts/auto-pr runs all failed with the unhelpful message 'Error: tracker sync in progress. Wait for htrac sync to complete.' until the marker was manually deleted an hour later. Mechanically this should never require manual cleanup. Required design properties (per user 2026-04-26): (1) marker MUST clean up after itself unconditionally — even on SIGKILL, even on Python crash, even on power loss. The standard pattern is fcntl.flock on an open file descriptor: the OS releases the lock when the fd closes, regardless of how the process exits. Smart-test already uses this pattern (.ci/.smart-test.lock per WI-sinap). (2) Failure detection MUST be vociferous: when a sync attempt finds the marker present, it should log loudly with marker age, holder PID (if recorded), and what to do about it — not silently refuse with a one-line cryptic message. (3) Failure handling MUST be graceful: detect stale markers (PID gone OR file age > threshold OR fcntl lock not held by anyone) and auto-recover with a logged warning, rather than blocking all subsequent operations. Suggested implementation: replace the marker-file pattern at sync.py:855 / 869 / 1009 / 1065 / 1201-1206 with an fcntl.flock-managed lock file that records the holder PID and start-timestamp inside its content for diagnostic purposes. Update auto-pr's gate checks (scripts/auto-pr:730 / 955 / 1127) to query the lock state via flock(LOCK_SH|LOCK_NB) — non-blocking attempt to take a shared lock, success means no exclusive holder. Also handle the related sync.py:670/679 'sync_pending' check in preflight similarly. Loud failure messaging should include: marker age, holder PID, holder PID alive/dead, recommended recovery action (almost always: nothing — the next sync will just retry). This is filed as P1 because it has caused real cross-session friction multiple times this week (TRACKER_SYNC_FAILED was the related but separate marker that I had to clean up earlier today; both share the no-self-cleanup-on-SIGKILL anti-pattern)."  # 5540
+    fields: {}  # 5540

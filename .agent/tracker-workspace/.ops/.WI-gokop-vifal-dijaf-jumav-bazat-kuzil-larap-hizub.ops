@@ -41,3 +41,19 @@
   clock: 4  # 6558
   nonce: '6558'  # 6558
   message: "Bakeoff validation: NO_MOVE (cohort cohort-001/iter-001). Plurality verdict across repos: moved=0 no_move=5 inconclusive=0. Regression sub-item spawned automatically by bakeoff-deep-reflect aggregate."  # 6558
+- op: update  # 4532
+  at: '2026-04-26T04:35:38Z'  # 4532
+  by: agent  # 4532
+  actor: jgstern_agent  # 4532
+  clock: 5  # 4532
+  nonce: '4532'  # 4532
+  set: {}  # 4532
+  remove:  # 4532
+    tags: [awaits_bakeoff_validation]  # 4532
+- op: discuss  # 774f
+  at: '2026-04-26T04:35:38Z'  # 774f
+  by: agent  # 774f
+  actor: jgstern_agent  # 774f
+  clock: 6  # 774f
+  nonce: 774f  # 774f
+  message: "awaits_bakeoff_validation tag stripped via hand-correction of tied plurality verdict from cohort cohort-001/iter-001 (deep-20260426-002136). Per-repo verdicts: spring-petclinic=moved (6 controller-concept Spring classes — CrashController, OwnerController, PetController, etc. — emit 17 contains_routes outgoing edges to @GetMapping/@PostMapping handler methods. Decorator-based controller dispatch works exactly as documented in controller_routes.py module docstring). chatwoot=no_move (36 controller-concept Ruby classes correctly tagged post-WI-lohok-fix, but 0 outgoing dispatches — Rails route definitions live in config/routes.rb separate from controller bodies; controller_routes.py docstring explicitly excludes Rails-style routing-table frameworks). Plurality returned tied because the cohort happened to include one repo of each kind; the targeted-repo verdict for the documented scope (decorator-based) is unambiguously moved. Hand-stripping per the operator decision that the linker works for what it claims — Rails-style routing-table dispatch is a separate problem requiring a config/routes.rb-aware linker (not yet filed; would be a P3-P4 follow-up item if the dead-code prospector signal warrants)."  # 774f
