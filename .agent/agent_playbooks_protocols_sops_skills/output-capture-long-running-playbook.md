@@ -44,7 +44,7 @@ Monitor:
       -E "merged|Merged|FAIL|failed|Error|ERROR|SUCCESS|TIMEOUT|Cannot|blocked|Exit code|Recovery:"
 ```
 
-Note the `|Recovery:` alternation — `scripts/auto-pr` emits `Recovery: ...` hints when the final merge did not actually complete but the script exited 0 anyway (tracked as WI-kujis). Without this alternation, the Monitor stays silent on that failure mode.
+The `|Recovery:` alternation is load-bearing: `scripts/auto-pr` emits `Recovery: ...` hints when the final merge did not actually complete but the script exited 0 anyway. Without that pattern in the Monitor alternation, the script appears to succeed silently.
 
 ### Reading the captured log
 
@@ -52,36 +52,44 @@ Use the `Read` tool on the file, or `Grep` for the pattern you care about. **Do 
 
 ## Special Hazards
 
-### auto-pr rebase stashes tracker .ops edits
+### auto-pr backs up and restores tracker .ops edits during rebase
 
-When `auto-pr` detects that the feature branch is behind base, it backs up
+When `auto-pr` detects that the feature branch is behind base, it copies
 `.agent/tracker-workspace/.ops` and `.agent/tracker/.ops` to a temp directory,
-rebases, and restores the backup. Any `tracker discuss` / `tracker add` / `tracker update`
-operations performed *during* the auto-pr run are at risk of being overwritten
-by the restore step. Symptom: a comment you just posted disappears from the TUI
-mid-session.
+rebases, then restores the temp copy. This is a plain file copy — *not* a `git stash`.
+Any `tracker discuss` / `tracker add` / `tracker update` operations performed
+*during* the auto-pr run are at risk of being silently overwritten by the restore
+step. Symptom: a comment you just posted disappears from the TUI mid-session.
 
-Recovery if it happens to you:
+**Mitigation:** do not perform tracker `discuss` / `add` / `update` operations while an `auto-pr` run is in flight. Wait for the merge to complete first.
 
-1. `git stash list` — the lost edits may be auto-stashed under a fresh `WIP on dev:` entry created by the post-merge `git checkout dev`.
-2. Reset `affected-tests.txt` first, then `git stash pop stash@{0}`:
+**Recovery if it happens to you:**
+
+A separate, unrelated mechanism — the post-merge `git checkout dev` step — may have *also* created a `git stash` entry containing your lost edits. This is independent of the temp-directory backup and is a possible second line of defense, but it is not guaranteed.
+
+1. `git stash list` — look for a recent `WIP on dev:` or `WIP on <branch>:` entry.
+2. **Verify before popping.** `stash@{0}` is "most recent across all of git", which may include unrelated stashes from other work. Confirm the stash actually contains your lost tracker edits:
+   ```bash
+   git stash show stash@{0} --name-only
+   ```
+   The output should list files under `.agent/tracker-workspace/.ops/` or `.agent/tracker/.ops/`. If it lists something else, **do not pop it** — you would be unstashing somebody else's WIP. Skip to step 4.
+3. Reset `.ci/affected-tests.txt` first (smart-test regenerates it on every run, so the stash pop will conflict on it), then pop:
    ```bash
    git checkout -- "$(git rev-parse --show-toplevel)/.ci/affected-tests.txt"
    git stash pop stash@{0}
    ```
-3. `./scripts/tracker sync` to push the restored `.ops` edits.
-
-Mitigation until the underlying bug is fixed (tracked as WI-buhov): do not perform tracker `discuss` / `add` / `update` operations while an `auto-pr` run is in flight. Wait for the merge to complete first.
+   The next tracker mutation will trigger an auto-sync that pushes the restored ops.
+4. **If no usable stash exists:** re-issue the lost `tracker` operations by hand. State-changing flags (`--status`, `--add-tag`, `--remove-tag`) are idempotent — re-running them yields the same compiled state. Discussion entries are not idempotent: they need to be re-added with `tracker discuss` and will carry fresh timestamps.
 
 ## Why
 
-Re-running a 15-minute command because `| tail -30` missed the relevant lines is pure waste. Capturing to a file costs nothing and enables targeted searching after the fact. On 2026-04-17 the agent hit both failure modes in sequence — `tail`-pipe on `auto-pr` hid the "Recovery:" hint, then a second `tail`-pipe on `merge-pr` made the Monitor silent — and had to be told by the user that the rule already existed.
+Re-running a 15-minute command because `| tail -30` missed the relevant lines is pure waste. Capturing to a file costs nothing and enables targeted searching after the fact. The disk is cheap; the context window is not.
 
 ## Quick self-check before running a long command
 
 - Will the output fit on one screen? If no, **redirect to a file**.
 - Will the output be useful if only the last 30 lines survive? If no, **redirect to a file**.
-- Is this a command I've seen listed under "Commands this applies to"? If yes, **redirect to a file**.
+- Is this a command listed under "The rule applies to"? If yes, **redirect to a file**.
 - Do I plan to keep working while it runs? If yes, **run in background + Monitor on the file**.
 
-When in doubt, redirect. The disk is cheap; your context window is not.
+When in doubt, redirect.

@@ -209,8 +209,8 @@ PLAYBOOKS = [
      "that take many minutes, run in background and point a Monitor at the file with an "
      "alternation covering every terminal state, not just the happy path. Hazard: auto-pr's "
      ".ops backup/restore cycle can overwrite tracker discuss/add/update operations made "
-     "during the run — avoid tracker writes while auto-pr is in flight. Recovery for lost "
-     ".ops edits: git stash list, then git stash pop (after resetting .ci/affected-tests.txt)."),
+     "during the run — avoid tracker writes while auto-pr is in flight. Recovery procedure "
+     "(including the pre-pop stash verification step) lives in the playbook itself."),
     ("pre-work-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/pre-work-playbook.md",
      "Checklist before starting any new feature: verify no auto-pr is in flight "
