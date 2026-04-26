@@ -82,3 +82,10 @@
   set: {}  # b0f3
   add:  # b0f3
     tags: [awaits_bakeoff_validation]  # b0f3
+- op: discuss  # c055
+  at: '2026-04-25T23:42:56Z'  # c055
+  by: agent  # c055
+  actor: jgstern_agent  # c055
+  clock: 10  # c055
+  nonce: c055  # c055
+  message: "Validation likely needs a second hg-uat session, not a standard bakeoff cycle. The claim (4,511 → below 1,500, 67% reduction) is a WI-tubot dead-code prospector aggregate-v5 metric not measured by BROAD/DEEP cohorts. A UAT pass on Airflow would: sample 10-15 Hook/Sensor/Operator/Trigger subclasses previously flagged dead-maybe, and ground-truth that the new framework-dispatch edges connect them to the scheduler/executor invocation paths (Hook.get_conn, Sensor.poke, Operator.execute, Trigger.run)."  # c055

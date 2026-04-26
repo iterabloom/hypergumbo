@@ -49,3 +49,19 @@
   set: {}  # e020
   add:  # e020
     tags: [awaits_bakeoff_validation]  # e020
+- op: update  # 831c
+  at: '2026-04-25T23:41:14Z'  # 831c
+  by: agent  # 831c
+  actor: jgstern_agent  # 831c
+  clock: 6  # 831c
+  nonce: 831c  # 831c
+  set: {}  # 831c
+  remove:  # 831c
+    tags: [awaits_bakeoff_validation]  # 831c
+- op: discuss  # 8732
+  at: '2026-04-25T23:41:23Z'  # 8732
+  by: agent  # 8732
+  actor: jgstern_agent  # 8732
+  clock: 7  # 8732
+  nonce: '8732'  # 8732
+  message: "awaits_bakeoff_validation tag stripped. The validation discussion entry from 2026-04-12 already established this item as validated: 90% drop in /openapi-gen/ TS dead-code candidates (599 → 57 = 542 eliminated), exceeding the 200+ candidate goal. Residual 57 candidates were filed as follow-up WI-jifup. Tag was simply never stripped at validation time — process artifact, not a state change."  # 8732

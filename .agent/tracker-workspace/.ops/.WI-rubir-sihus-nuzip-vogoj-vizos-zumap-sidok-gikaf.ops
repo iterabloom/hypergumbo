@@ -58,3 +58,10 @@
   set: {}  # f054
   remove:  # f054
     tags: [awaits_bakeoff_validation]  # f054
+- op: discuss  # 08e5
+  at: '2026-04-26T00:02:35Z'  # 08e5
+  by: agent  # 08e5
+  actor: jgstern_agent  # 08e5
+  clock: 7  # 08e5
+  nonce: '08e5'  # 08e5
+  message: "awaits_bakeoff_validation tag stripped per user direction. Rationale (re-added 2026-04-25T23:55Z after the original entry was lost in an auto-pr restore + re-apply cycle): this item was itself a regression report against WI-darad's bakeoff claim, not an independent quantitative claim. The fix in PR #3370 was structural (CLI filter pass dropped leaf_callers/entry_points_per_leaf) and was validated by direct inspection of the bakeoff cohort artifact (cohort-001/iter-010 alertmanager io-boundaries.txt) — no per-claim cohort revalidation needed for this item itself. WI-darad retains the awaits_bakeoff_validation tag and will be re-validated by the next DEEP cohort that exercises a shared-helper IO sink (alertmanager/kafka/prometheus) — that's the cohort that will confirm or deny WI-darad's original metric-movement claim now that the strip bug is fixed."  # 08e5

@@ -81,3 +81,10 @@
   set: {}  # 298f
   add:  # 298f
     tags: [awaits_bakeoff_validation]  # 298f
+- op: discuss  # 3846
+  at: '2026-04-25T23:42:47Z'  # 3846
+  by: agent  # 3846
+  actor: jgstern_agent  # 3846
+  clock: 10  # 3846
+  nonce: '3846'  # 3846
+  message: "Validation likely needs a second hg-uat session, not a standard bakeoff cycle. The claim (7,614 java_bean_accessor candidates drop) is sourced from the WI-tubot dead-code prospector aggregate-v5 pipeline, which is not part of BROAD/DEEP cohort runs. A UAT-style pass would: pick a Jackson-using Java repo (kafka, spring-petclinic), run hypergumbo, sample 10-15 previously-flagged bean accessors, and ground-truth that the new dispatches_to edges connect them to the right ObjectMapper.writeValueAsString call sites. That gives a precision/recall verdict the bakeoff diagnostic counts cannot."  # 3846

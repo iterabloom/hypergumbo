@@ -58,3 +58,10 @@
   clock: 6  # edb9
   nonce: edb9  # edb9
   message: "Fixed in PR #3350 (commit 132cd2324). _detect_src_layout replaced with _detect_source_roots (returns list); _module_name_from_path picks deepest matching root. End-to-end test asserts no 'packages.' / '.src.' segments in python module qualifiers. Tagged awaits_bakeoff_validation — claim is 'qualifiers on hypergumbo-style monorepos no longer carry path-shape segments.'"  # edb9
+- op: discuss  # 96f4
+  at: '2026-04-25T23:43:23Z'  # 96f4
+  by: agent  # 96f4
+  actor: jgstern_agent  # 96f4
+  clock: 7  # 96f4
+  nonce: 96f4  # 96f4
+  message: "Validation likely needs a second hg-uat session, not a standard bakeoff cycle. The claim is a shape-of-output property — module-qualifier slots no longer carry 'packages.<pkg-name>.src.<module>' segments — which has no aggregate metric a BROAD/DEEP diagnostic measures. A UAT pass on a monorepo Python project (hypergumbo itself, or any pdm/hatch/poetry workspace from ALL_REPOS) would grep symbol IDs in the cohort artifact and confirm zero ID slots contain hyphens or '.src.' segments. Self-analysis dogfooding is the cleanest ground truth here."  # 96f4

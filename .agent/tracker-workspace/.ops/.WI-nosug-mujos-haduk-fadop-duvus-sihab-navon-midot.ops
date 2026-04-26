@@ -43,3 +43,10 @@
   set: {}  # b012
   add:  # b012
     tags: [awaits_bakeoff_validation]  # b012
+- op: discuss  # 0f9b
+  at: '2026-04-25T23:43:02Z'  # 0f9b
+  by: agent  # 0f9b
+  actor: jgstern_agent  # 0f9b
+  clock: 5  # 0f9b
+  nonce: 0f9b  # 0f9b
+  message: "Validation likely needs a second hg-uat session, not a standard bakeoff cycle. The claim (2,441 python_orm_dispatch candidates drop meaningfully) is a WI-tubot prospector aggregate-v5 metric outside BROAD/DEEP scope. A UAT pass on a Django app (e.g. pretix from round 04) would: sample 10-15 Model methods previously flagged dead and ground-truth that .objects.filter()/.get()/instance.save() callers now resolve to those Model definitions through the QuerySet/Manager proxy."  # 0f9b

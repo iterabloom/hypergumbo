@@ -85,3 +85,19 @@
   clock: 10  # b306
   nonce: b306  # b306
   message: "Slice 1/2/2b/3 have all shipped. Only slice 4 (acceptance demo) remains, and that is inherently bakeoff-cadence-bound — no coding work is gated by this item. Lowering P3→P4 so other P3 items (WI-sulij, WI-gudob) rise naturally in the ready queue."  # b306
+- op: update  # d368
+  at: '2026-04-25T23:41:14Z'  # d368
+  by: agent  # d368
+  actor: jgstern_agent  # d368
+  clock: 11  # d368
+  nonce: d368  # d368
+  set: {}  # d368
+  remove:  # d368
+    tags: [awaits_bakeoff_validation]  # d368
+- op: discuss  # 2fd9
+  at: '2026-04-25T23:41:24Z'  # 2fd9
+  by: agent  # 2fd9
+  actor: jgstern_agent  # 2fd9
+  clock: 12  # 2fd9
+  nonce: 2fd9  # 2fd9
+  message: "awaits_bakeoff_validation tag stripped. This item IS the wiring task that implements the tag's reflect-aggregate enforcement — tagging it with the tag it defines is a self-referential process artifact, not a meaningful claim awaiting cohort validation. The item's quantitative axis is whether the wiring works (per-claim moved/no_move/inconclusive prompt injection lands in the reflect pass), which is verified by code review and a smoke test, not by a bakeoff cohort."  # 2fd9

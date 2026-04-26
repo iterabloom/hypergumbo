@@ -43,3 +43,10 @@
   set: {}  # 0d33
   add:  # 0d33
     tags: [awaits_bakeoff_validation]  # 0d33
+- op: discuss  # d99a
+  at: '2026-04-25T23:43:09Z'  # d99a
+  by: agent  # d99a
+  actor: jgstern_agent  # d99a
+  clock: 5  # d99a
+  nonce: d99a  # d99a
+  message: "Validation likely needs a second hg-uat session, not a standard bakeoff cycle. The combined claim (rust_trait_impl 2,128 + rust_instruction_descriptor 876 = ~3,004 candidates drop) is a WI-tubot prospector aggregate-v5 metric not surfaced by BROAD/DEEP. A UAT pass on candle / zed / codex would: sample 10-15 trait method call sites and ground-truth that static-dispatch (generic bounds) cases emit uses edges to all reachable concrete impls, and that dynamic-dispatch (dyn Trait) cases emit is_dispatched_by edges that fan out via existing implements edges."  # d99a
