@@ -517,6 +517,16 @@ LANGUAGES: dict[str, LanguageSpec] = {
         extensions=["BUILD", "BUILD.bazel", "BUCK", "*.bzl"],
         roles=FileRole.CONFIG,
     ),
+    # WI-gijot: jsonnet has a tree-sitter grammar and a working analyzer
+    # in hypergumbo-lang-extended1/jsonnet.py, but was missing from this
+    # taxonomy until 2026-04-26. Used widely for Grafana dashboards
+    # (Grafonnet) and Tanka manifests; observed as the source-language
+    # of legitimate boundary nodes in alertmanager + prometheus.
+    "jsonnet": LanguageSpec(
+        name="jsonnet",
+        extensions=["*.jsonnet", "*.libsonnet"],
+        roles=FileRole.CONFIG,
+    ),
 
     # -------------------------------------------------------------------------
     # Ambiguous - needs filename-level disambiguation

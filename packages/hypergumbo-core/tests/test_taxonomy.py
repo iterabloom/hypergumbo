@@ -105,6 +105,20 @@ class TestLanguagesRegistry:
         assert LANGUAGES["jupyter"].roles == FileRole.ANALYZABLE
         assert "*.ipynb" in LANGUAGES["jupyter"].extensions
 
+    def test_jsonnet_is_config(self) -> None:
+        """WI-gijot: jsonnet is a real templating language with a tree-sitter
+        grammar and a working analyzer in hypergumbo-lang-extended1; it must
+        appear in the LANGUAGES taxonomy so the INV-nodij invariant
+        (boundary node language ∈ known langs) is satisfied for boundary
+        nodes synthesized from jsonnet sources (e.g., Grafonnet dashboards
+        in alertmanager / prometheus). Both .jsonnet and .libsonnet
+        extensions are registered."""
+        assert "jsonnet" in LANGUAGES
+        spec = LANGUAGES["jsonnet"]
+        assert spec.roles == FileRole.CONFIG
+        assert "*.jsonnet" in spec.extensions
+        assert "*.libsonnet" in spec.extensions
+
 
 class TestGetLanguage:
     """Tests for language detection from file path."""
