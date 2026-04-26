@@ -15,9 +15,20 @@
 #     crashed-session current files, and removes their stale PID files.
 #     A live sibling session has a live PID and is left alone.
 #
-# This script does NOT call kill-transcript-sync.sh against the new session,
-# because the new session is being launched here for the first time. Cleanup
-# of stale PID files from CRASHED prior sessions is handled inline.
+# Same-SID idempotence guard:
+#   Claude Code (and other vendors) fire SessionStart on multiple lifecycle
+#   events with the SAME session_id — startup, resume, /clear, and /compact
+#   all re-fire the hook. Without the guard below, each re-fire would launch
+#   a second watcher on top of the live one, both tailing the same vendor
+#   source and racing on the unlocked filter-transcript.py state file. The
+#   result was uniform 2x duplication of every event in the per-session DEST
+#   (observed in archived session fb7b3494 and 3 other archived sessions
+#   on April 21–26 2026, ~3% of all sessions). The guard here mirrors the
+#   two-phase cleanup in kill-transcript-sync.sh.
+#
+# This script does NOT call kill-transcript-sync.sh against SIBLING sessions,
+# because their per-session DEST is isolated. Cleanup of stale PID files from
+# CRASHED prior sessions is handled by the orphan sweep further down.
 
 set -euo pipefail
 
@@ -29,6 +40,50 @@ AGENT_DIR="$REPO_ROOT/.agent"
 DEST="$AGENT_DIR/.current_session_transcript.${SESSION_ID}.jsonl"
 
 mkdir -p "$AGENT_DIR"
+
+# ---------------------------------------------------------------------------
+# Same-SID idempotence guard (two-phase, mirrors kill-transcript-sync.sh).
+# Run BEFORE the orphan sweep so the prior watcher's PID file is gone by
+# the time the sweep walks .transcript-sync.*.pid.
+# ---------------------------------------------------------------------------
+SELF_PID_FILE="$AGENT_DIR/.transcript-sync.${SESSION_ID}.pid"
+
+# Phase 1: PID-file path.
+if [[ -f "$SELF_PID_FILE" ]]; then
+    self_pid=$(cat "$SELF_PID_FILE" 2>/dev/null || true)
+    if [[ -n "$self_pid" ]] && kill -0 "$self_pid" 2>/dev/null; then
+        kill "$self_pid" 2>/dev/null || true
+        # Brief wait for the watcher's EXIT trap to fire so its inotifywait
+        # is gone and we don't have two writers racing during the new launch.
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            kill -0 "$self_pid" 2>/dev/null || break
+            sleep 0.1
+        done
+    fi
+    rm -f "$SELF_PID_FILE"
+fi
+
+# Phase 2: pgrep fallback. Catches a prior watcher whose PID file was lost
+# (disk-full, manual rm, crash mid-write) but whose process is still alive.
+# Match by SESSION_ID at offset +3 from the script-name field, identically
+# to kill-transcript-sync.sh's Phase 2 — that's the structural shape of a
+# real watcher's command line.
+while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    pid="${line%% *}"
+    [[ "$pid" == "$$" ]] && continue
+    proc_sid=$(awk '{
+        for (i=2; i<=NF; i++) {
+            if ($i ~ /sync-transcript\.sh$/) {
+                print $(i+3)
+                exit
+            }
+        }
+    }' <<< "$line")
+    if [[ -n "$proc_sid" && "$proc_sid" == "$SESSION_ID" ]]; then
+        kill "$pid" 2>/dev/null || true
+    fi
+done < <(pgrep -af 'sync-transcript\.sh' 2>/dev/null || true)
 
 # ---------------------------------------------------------------------------
 # One-time legacy cleanup (upgrade migration from pre-per-session pipeline).

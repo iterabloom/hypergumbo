@@ -411,6 +411,121 @@ class TestLaunchScript:
                 capture_output=True,
             )
 
+    def test_launch_kills_prior_watcher_for_same_session_id(
+        self, tmp_path: Path,
+    ) -> None:
+        """Same-SID idempotence guard: re-running launch-transcript-sync.sh
+        for a SESSION_ID that already has a live watcher must kill the prior
+        watcher before launching a new one.
+
+        Without this guard, Claude Code's SessionStart hook fires on
+        every lifecycle event (startup, resume, clear, compact) and
+        unconditionally calls launch-transcript-sync.sh — so a /compact
+        mid-session would leave two watchers tailing the same source and
+        each event would be filtered+appended twice consecutively. That
+        produced the uniform 2x doubling pattern observed in fb7b3494
+        and 3 other archived sessions (4/132 = ~3% HIT rate before fix).
+        """
+        shared = _isolate_shared_scripts(tmp_path)
+        launch_script = shared / "launch-transcript-sync.sh"
+        kill_script = shared / "kill-transcript-sync.sh"
+
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir(exist_ok=True)
+
+        sid = "compaction-doubled-session"
+        src = tmp_path / "src.jsonl"
+        src.touch()
+        dest_str = str(
+            agent_dir / f".current_session_transcript.{sid}.jsonl"
+        )
+        prior = _spawn_fake_watcher(str(src), dest_str, sid, tmp_path)
+        (agent_dir / f".transcript-sync.{sid}.pid").write_text(
+            str(prior.pid)
+        )
+
+        try:
+            assert _proc_alive(prior.pid)
+
+            env = os.environ.copy()
+            env["REPO_ROOT"] = str(tmp_path)
+            result = subprocess.run(
+                ["bash", str(launch_script), str(src), sid],
+                capture_output=True, text=True, env=env,
+            )
+            assert result.returncode == 0, result.stderr
+
+            assert _wait_proc_dead(prior, timeout=2.0), (
+                "prior watcher for the same SESSION_ID must be killed "
+                "before launching a replacement — otherwise both watchers "
+                "tail the same source and each event lands 2x consecutively"
+            )
+
+            pid_file = agent_dir / f".transcript-sync.{sid}.pid"
+            for _ in range(50):
+                if pid_file.exists() and pid_file.read_text().strip():
+                    break
+                time.sleep(0.1)
+            assert pid_file.exists(), (
+                "new watcher did not register its per-session PID file"
+            )
+            new_pid = int(pid_file.read_text().strip())
+            assert new_pid != prior.pid, (
+                "PID file should reference the new watcher, not the dead one"
+            )
+        finally:
+            _cleanup_proc(prior)
+            subprocess.run(
+                ["bash", str(kill_script), str(tmp_path), sid],
+                capture_output=True,
+            )
+
+    def test_launch_kills_prior_via_pgrep_when_pid_file_missing(
+        self, tmp_path: Path,
+    ) -> None:
+        """Defense-in-depth: even if the per-session PID file is missing
+        (e.g., crashed mid-write, or manually clobbered), the same-SID
+        guard's pgrep fallback finds prior watchers by SESSION_ID and
+        kills them. Mirrors kill-transcript-sync.sh's two-phase pattern.
+        """
+        shared = _isolate_shared_scripts(tmp_path)
+        launch_script = shared / "launch-transcript-sync.sh"
+        kill_script = shared / "kill-transcript-sync.sh"
+
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir(exist_ok=True)
+
+        sid = "no-pid-file-session"
+        src = tmp_path / "src.jsonl"
+        src.touch()
+        dest_str = str(
+            agent_dir / f".current_session_transcript.{sid}.jsonl"
+        )
+        prior = _spawn_fake_watcher(str(src), dest_str, sid, tmp_path)
+        # Note: deliberately NOT writing the PID file.
+
+        try:
+            assert _proc_alive(prior.pid)
+
+            env = os.environ.copy()
+            env["REPO_ROOT"] = str(tmp_path)
+            result = subprocess.run(
+                ["bash", str(launch_script), str(src), sid],
+                capture_output=True, text=True, env=env,
+            )
+            assert result.returncode == 0, result.stderr
+
+            assert _wait_proc_dead(prior, timeout=2.0), (
+                "pgrep fallback must find and kill the prior watcher by "
+                "SESSION_ID even when the per-session PID file is absent"
+            )
+        finally:
+            _cleanup_proc(prior)
+            subprocess.run(
+                ["bash", str(kill_script), str(tmp_path), sid],
+                capture_output=True,
+            )
+
 
 # ---------------------------------------------------------------------------
 # Crashed-session orphan sweep tests

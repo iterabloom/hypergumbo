@@ -16,6 +16,18 @@ for filesystem oddities (truncation/replacement edge cases that should
 not occur under normal Claude Code operation since transcripts are
 append-only across compaction).
 
+Concurrent-invocation safety: ``main()`` wraps the entire load_state →
+filter_new_lines → save_state critical section in an exclusive
+``fcntl.flock`` against the state file. This is defense-in-depth against
+the duplicate-watcher transcript-doubling bug — if the same-SID
+idempotence guard in launch-transcript-sync.sh is bypassed and two
+sync-transcript.sh watchers race on the same source's close_write event,
+their concurrent ``filter-transcript.py`` invocations serialize on the
+flock so only one of them advances the offset and appends the new
+filtered bytes. Without the lock, both would read offset O, both append
+the same N bytes, both write back O+N, producing the uniform 2x doubling
+pattern observed in archived session fb7b3494.
+
 Filter rules:
   1. Drop bash_progress lines with empty output
   2. Drop bash_progress lines with output identical to the previous one
@@ -32,6 +44,7 @@ is auto-detected from row content and cached in the state file.
 Usage: filter-transcript.py <source> <dest> <state-file>
 """
 
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -237,9 +250,28 @@ def main():
     if not os.path.exists(src_path):
         sys.exit(0)
 
-    state = load_state(state_path)
-    state = filter_new_lines(src_path, dest_path, state)
-    save_state(state_path, state)
+    # Defense-in-depth flock: serialize concurrent filter invocations
+    # against the same state file. The lock target is the state file path
+    # itself — opened r+ if it exists, else created. We hold the lock for
+    # the full read-modify-write of (offset, dest-append, state-update),
+    # so a racing second invocation blocks here, then sees the advanced
+    # offset and writes nothing new. See module docstring for context.
+    lock_fd = os.open(
+        state_path, os.O_RDWR | os.O_CREAT, 0o644,
+    )
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        state = load_state(state_path)
+        state = filter_new_lines(src_path, dest_path, state)
+        save_state(state_path, state)
+    finally:
+        # Releasing the fd's flock implicitly via close is portable; an
+        # explicit LOCK_UN is paranoid but cheap.
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        except OSError:  # pragma: no cover
+            pass
+        os.close(lock_fd)
 
 
 if __name__ == "__main__":
