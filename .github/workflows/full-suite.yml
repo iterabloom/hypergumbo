@@ -8,12 +8,12 @@ name: Full Test Suite
 on:
   # Manual trigger for debugging
   workflow_dispatch:
-  # Periodic validation (every 4 hours)
+  # Periodic validation (twice daily at 01:00 and 13:00 UTC)
   # Post-merge push trigger removed: with 20+ merges/day and singleton
   # concurrency, the queue never clears. Periodic runs catch regressions
   # within hours while saving CI resources.
   schedule:
-    - cron: '0 */4 * * *'  # Every 4 hours
+    - cron: '0 1,13 * * *'  # 01:00 and 13:00 UTC
 
 # Singleton concurrency - only one full suite runs at a time
 # This prevents resource contention and ensures clear pass/fail state

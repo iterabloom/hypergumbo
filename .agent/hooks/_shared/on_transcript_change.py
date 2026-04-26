@@ -268,7 +268,7 @@ PLAYBOOKS = [
     ("ci-debug-protocol",
      ".agent/agent_playbooks_protocols_sops_skills/ci-debug-protocol.md",
      "When CI fails but tests pass locally, use ci-debug runs/status/analyze-deps. Four CI "
-     "workflows: ci.yml (per-PR smart-test), full-suite (every 4 hours, all packages), "
+     "workflows: ci.yml (per-PR smart-test), full-suite (twice daily at 01:00 and 13:00 UTC, all packages), "
      "nightly (multi-Python matrix + integration tests), release (on tag push). Common root "
      "causes: missing pyproject.toml dependencies, version mismatches, platform differences. "
      "Never use pytest.skip() to hide failures."),

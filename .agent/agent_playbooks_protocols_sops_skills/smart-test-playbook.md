@@ -34,7 +34,7 @@ TOTAL                   33003     10    99%
 FAIL Required test coverage of 100% not reached. Total coverage: 99.97%
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Full output: .ci/pytest-output.log
-Targeted run (14 test files, 3 changed sources). Full suite runs in CI every 4 hours (not post-merge); running it now would be wasteful.
+Targeted run (14 test files, 3 changed sources). Full suite runs in CI twice daily at 01:00 and 13:00 UTC (not post-merge); running it now would be wasteful.
 ```
 
 The Missing column shows exact line numbers to fix. **Do NOT re-run tests** just to find missing lines. The "Targeted run" message means smart-test already validated 100% coverage for your changed files — do NOT follow up with `pytest --full`.
