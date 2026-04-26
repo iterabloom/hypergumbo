@@ -29,3 +29,10 @@
     status: wont_do  # 406e
   remove:  # 406e
     tags: [awaits_bakeoff_validation]  # 406e
+- op: discuss  # 8d35
+  at: '2026-04-26T02:20:54Z'  # 8d35
+  by: agent  # 8d35
+  actor: jgstern_agent  # 8d35
+  clock: 3  # 8d35
+  nonce: 8d35  # 8d35
+  message: "Closing as wont_do (audit 2026-04-26). Root cause analysis after deep investigation: (1) The controller_routes.py linker explicitly does NOT claim to work for Rails or Django class-based-view frameworks per its own module docstring — it's effective only for decorator-based controller families (Spring, NestJS, ASP.NET, Laravel, Symfony, Phoenix, Micronaut, Ktor, Grails, CakePHP). For Rails, route definitions live in config/routes.rb separate from controller method bodies; route_handler.py handles that path. (2) The cohort-001/iter-001 set (alertmanager, kafka, prometheus, airflow, chatwoot) does not include any decorator-based controller framework target. The 66 'controller' concept hits on kafka are jersey/jax-rs naming-collision matches against Kafka's internal Controller* classes (KafkaController, etc.) — not framework controllers; correctly produced 0 outgoing dispatches_to. (3) chatwoot DOES use Rails but rails.yaml never loaded because of a separate refine_frameworks bug (Rails got demoted to dev_frameworks because Ruby has no explicit  edges) — filed as a separate work item. Net: WI-gokop's claim is structurally limited to decorator-based controller frameworks; the linker works as designed; this regression is a cohort-coverage gap, not a code bug. To re-validate WI-gokop properly, a future cohort needs spring-petclinic or similar decorator-based target."  # 8d35
