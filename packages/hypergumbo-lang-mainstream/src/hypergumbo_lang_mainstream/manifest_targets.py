@@ -114,15 +114,26 @@ def _emit(
         origin=PASS_ID,
         meta={"target_path": target_path},
     ))
-    meta = {"target_function": target_function} if target_function else None
+    # WI-hugom: previously dst was the raw target_path, which fell
+    # through ir._parse_dangling_id and stuffed the path into the
+    # language slot of the synthesized boundary node — observed on kafka
+    # cohort-001/iter-001 as 34 nodes with paths like
+    # 'org/apache/kafka/.../FooConfig.java' in the language slot. Same
+    # shape as the original INV-nodij toml_config bug. Construct a
+    # properly-formed 5-part dst id and stash target_path on the edge
+    # meta where build_target.py's linker already looks first.
+    edge_meta: dict[str, str] = {"target_path": target_path}
+    if target_function:
+        edge_meta["target_function"] = target_function
+    dst_id = f"{language}:{target_path}:0-0:{name}:unresolved"
     edges.append(Edge.create(
         src=sym_id,
-        dst=target_path,
+        dst=dst_id,
         edge_type="defines_target",
         line=line,
         confidence=1.0,
         origin=PASS_ID,
-        meta=meta,
+        meta=edge_meta,
     ))
 
 

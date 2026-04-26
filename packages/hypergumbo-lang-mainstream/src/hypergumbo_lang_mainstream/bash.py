@@ -351,15 +351,32 @@ class BashAnalyzer(TreeSitterAnalyzer):
                             ]
                             if words:
                                 sourced_path = node_text(words[0], source)
+                                # WI-hugom: previously dst was the raw
+                                # sourced_path (e.g. '/etc/kafka/docker/launch'),
+                                # which fell through ir._parse_dangling_id and
+                                # stuffed the path into the language slot of the
+                                # synthesized boundary node (observed on kafka
+                                # cohort-001/iter-001 as 8 such nodes). Construct
+                                # a properly-formed 5-part dst id; sourced_path
+                                # preserved on edge.meta for any future consumer
+                                # that needs path-based resolution.
+                                dst_basename = (
+                                    sourced_path.rsplit("/", 1)[-1]
+                                    or sourced_path
+                                )
+                                dst_id = (
+                                    f"bash:{sourced_path}:0-0:{dst_basename}:file"
+                                )
                                 edges.append(Edge.create(
                                     src=file_id,
-                                    dst=sourced_path,
+                                    dst=dst_id,
                                     edge_type="sources",
                                     line=line,
                                     evidence_type="source_statement",
                                     confidence=0.95,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
+                                    meta={"sourced_path": sourced_path},
                                 ))
 
                         # Track function calls

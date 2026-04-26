@@ -210,6 +210,38 @@ source lib/common.sh
         import_edges = [e for e in result.edges if e.edge_type == "sources"]
         assert len(import_edges) >= 2
 
+    def test_sources_dst_is_well_formed_5part_id(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-hugom: 'sources' edges previously emitted dst as the raw
+        sourced_path (e.g. '/etc/kafka/docker/launch'), which fell through
+        ir._parse_dangling_id and stuffed the path into the language slot
+        of the synthesized boundary node (8 such leaks observed on kafka
+        cohort-001/iter-001). Fix uses a properly-formed 5-part dst id
+        (bash:{path}:0-0:{basename}:file); raw sourced_path preserved on
+        edge.meta."""
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        bash_file = tmp_path / "run.sh"
+        bash_file.write_text("""#!/bin/bash
+source /etc/kafka/docker/configure
+""")
+        result = analyze_bash(tmp_path)
+        edges = [e for e in result.edges if e.edge_type == "sources"]
+        assert len(edges) == 1
+        edge = edges[0]
+        parts = edge.dst.split(":")
+        assert len(parts) == 5, f"dst must be 5-part, got {edge.dst!r}"
+        assert parts[0] == "bash", (
+            f"language slot must be 'bash', got {parts[0]!r}: {edge.dst!r}"
+        )
+        # name slot is the basename, no '/' or ':'
+        assert "/" not in parts[3] and ":" not in parts[3], (
+            f"name slot must be a clean basename, got {parts[3]!r}"
+        )
+        assert edge.meta["sourced_path"] == "/etc/kafka/docker/configure"
+
+
 class TestBashCallEdges:
     """Tests for extracting function call edges."""
 
