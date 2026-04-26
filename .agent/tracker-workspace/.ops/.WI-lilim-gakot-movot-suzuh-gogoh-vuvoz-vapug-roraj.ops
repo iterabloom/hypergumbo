@@ -1,0 +1,21 @@
+- op: create  # e743
+  at: '2026-04-26T06:49:36Z'  # e743
+  by: agent  # e743
+  actor: jgstern_agent  # e743
+  clock: 1  # e743
+  nonce: e743  # e743
+  data:  # e743
+    kind: work_item  # e743
+    title: "auto-pr Scenario B recovery should check PR-merged state before closing + re-pushing"  # e743
+    status: todo_hard  # e743
+    priority: 2  # e743
+    parent:  # e743
+    tags:  # e743
+    - bakeoff_infrastructure  # e743
+    - developer_experience  # e743
+    isbefore: []  # e743
+    duplicate_of: []  # e743
+    not_duplicate_of: []  # e743
+    pr_ref:  # e743
+    description: "Per user observation 2026-04-26 on PR #3392/#3393: auto-pr's Scenario B recovery (CI-stuck timeout) closes the PR and re-pushes a fresh one to bypass the perceived hang. Currently this happens unconditionally after the CI-poll timeout fires — even if (a) the PR was about to merge anyway, or (b) the API was just returning 502s on the status-polling endpoint while CI was actually running fine, or (c) someone (human / another agent) merged the PR via the web UI in the meantime. In case (c), auto-pr's close step would fail (cannot close a merged PR), and the user is left with two PRs covering the same change, both of which look stale. Even in cases (a)/(b), the PR-close-and-re-push churns CI runners unnecessarily and creates a duplicate-PR ambiguity. Required defensive checks before the recovery action: (1) Re-fetch the PR via API and check merged=true — if so, abort the recovery (the work is done) and report success. (2) If merged=false, also check the latest CI status with a fresh API call — if the previous timeout was due to API flakiness (HTTP 5xx in the polling output), retry the poll once with normal timeout before declaring stuck. (3) When closing IS the right call, log the rationale explicitly: include the timeout duration, the count of HTTP errors observed during polling, and the last-seen overall CI state. Do not just print '🔄 Timeout recovery: closing PR #N' as if it were obvious. A related agent-side gap: the assistant trusted auto-pr's state-change announcement at face value instead of cross-checking via ci-debug pr-status. Adding a defensive verification step in agent process notes (separate from this auto-pr code change). Implementation surface: scripts/auto-pr around the soft-retry / Scenario B handler. Test by simulating a 502-during-polling scenario and verifying auto-pr does NOT close the PR if API recovers."  # e743
+    fields: {}  # e743
