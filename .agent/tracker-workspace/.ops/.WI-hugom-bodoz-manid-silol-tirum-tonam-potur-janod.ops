@@ -1,0 +1,22 @@
+- op: create  # 77dd
+  at: '2026-04-26T02:58:24Z'  # 77dd
+  by: agent  # 77dd
+  actor: jgstern_agent  # 77dd
+  clock: 1  # 77dd
+  nonce: 77dd  # 77dd
+  data:  # 77dd
+    kind: work_item  # 77dd
+    title: "Kafka properties/manifest extractor leaks Java file paths into language slot (56 nodes on kafka, INV-nodij sub)"  # 77dd
+    status: todo_soft  # 77dd
+    priority: 3  # 77dd
+    parent:  # 77dd
+    tags:  # 77dd
+    - analysis_quality  # 77dd
+    - invariant_violation  # 77dd
+    - java_analyzer  # 77dd
+    isbefore: []  # 77dd
+    duplicate_of: []  # 77dd
+    not_duplicate_of: []  # 77dd
+    pr_ref:  # 77dd
+    description: "Per WI-vobiv-kivop investigation 2026-04-26 on cohort cohort-001/iter-001 (deep-20260425-210357): kafka's hg.json has 56 external_symbol nodes whose 'language' slot contains a Java file path or shell script path. Sample bad languages: 'org/apache/kafka/clients/admin/AdminClientConfig.java', 'org/apache/kafka/clients/consumer/ConsumerConfig.java', 'org/apache/kafka/clients/producer/ProducerConfig.java', '/etc/kafka/docker/bash-config', '/etc/kafka/docker/configure', '-jar.java'. Pattern suggests a Java-config-extractor or properties/manifest analyzer that emits cross-references with raw file paths in the dst slot — falls through ir._parse_dangling_id and stuffs the path into the language slot. Same shape as the toml_config bug (INV-nodij) and the Vue leak (fixed in PR #3385). Fix: (a) trace which producer emits these — likely a Kafka-specific config-class extractor or the Properties handler that reads kafka's *Config.java files; (b) construct properly-formed dst id (e.g., 'java:{path}:0-0:{class_name}:class' or similar); (c) add a property test on a synthetic Java repo with config-property files. Acceptance: kafka's 56 invalid-language external_symbol nodes drop to 0 in a future cohort."  # 77dd
+    fields: {}  # 77dd

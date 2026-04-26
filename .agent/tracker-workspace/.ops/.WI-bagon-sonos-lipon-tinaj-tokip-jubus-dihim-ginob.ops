@@ -1,0 +1,21 @@
+- op: create  # e1f4
+  at: '2026-04-26T02:58:41Z'  # e1f4
+  by: agent  # e1f4
+  actor: jgstern_agent  # e1f4
+  clock: 1  # e1f4
+  nonce: e1f4  # e1f4
+  data:  # e1f4
+    kind: work_item  # e1f4
+    title: "'unresolved' sentinel-vs-leak in boundary node language slot (alertmanager 39 nodes, INV-nodij sub)"  # e1f4
+    status: todo_soft  # e1f4
+    priority: 4  # e1f4
+    parent:  # e1f4
+    tags:  # e1f4
+    - analysis_quality  # e1f4
+    - invariant_violation  # e1f4
+    isbefore: []  # e1f4
+    duplicate_of: []  # e1f4
+    not_duplicate_of: []  # e1f4
+    pr_ref:  # e1f4
+    description: "Per WI-vobiv-kivop investigation 2026-04-26 on cohort cohort-001/iter-001 (deep-20260425-210357): alertmanager has 39 external_symbol nodes with language='unresolved'. Question: is 'unresolved' an intentional sentinel value when the source language can't be determined, or is it a leak from somewhere? If sentinel — add 'unresolved' to the explicit allowed-sentinel set in the INV-nodij validator so it stops being flagged. If leak — trace the producer and fix it. Lower priority than the other three INV-nodij sub-items (RST, jsonnet, kafka) because the volume is smaller and the right resolution is most likely just 'add to allowed sentinels'."  # e1f4
+    fields: {}  # e1f4
