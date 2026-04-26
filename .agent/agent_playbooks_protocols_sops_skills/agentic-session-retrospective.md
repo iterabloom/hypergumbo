@@ -143,17 +143,32 @@ Read `.agent/.last_injection_history.jsonl`. Each line is one LLM poll, recorded
 
 Compute:
 - **Total polls** — `wc -l .agent/.last_injection_history.jsonl`
-- **Empty-selection rate** — fraction of polls where `selected` is `[]`. High rate (>50%) suggests the selector is correctly recognizing "nothing relevant", but very high (>90%) suggests the polling is wasted CPU.
-- **Dedup hit rate** — fraction of polls where `skipped_dedup` is non-empty. Very high (>50%) suggests the dedup window is too small or the selector keeps re-picking the same things.
+- **Empty-selection rate** — fraction of polls where `selected` is `[]`. High rate (>50%) suggests the selector is correctly recognizing "nothing relevant"; very high (>90%) suggests the polling is firing too eagerly relative to transcript-delta.
+- **Dedup hit rate** — fraction of polls where `skipped_dedup` is non-empty. Empirically this runs 70–95% in normal sessions and that's expected — the dedup window protects the agent's working context within a single span, while the selector judges relevance against the distilled goal across all spans. A persistently relevant playbook will be re-selected every poll and dedup-caught most of the time. Do **not** read a high dedup rate as "selector waste" — see "Common misreadings" below.
 - **Top-3 most-injected playbooks** — `jq -r '.injected[]' .agent/.last_injection_history.jsonl | sort | uniq -c | sort -rn | head -3`
-- **Top-3 most-selected-but-deduped playbooks** — same with `.skipped_dedup[]`. These are the playbooks that fight the dedup loop hardest; consider whether they should be pinned, removed, or have their summaries rewritten.
-- **Read-then-injected overlap** — for a sample of injection events, scan the transcript before the event for explicit `Read` tool calls of the same playbook file. If the agent already read the playbook and then it got injected anyway, that's pure waste.
+- **Top-3 most-selected-but-deduped playbooks** — same with `.skipped_dedup[]`. These are the playbooks the selector judges most-persistently relevant across the session. That's a feature, not a bug: the relevance signal is load-bearing across many turns. Do not propose pinning, removing, or rewriting these on the basis of selection-frequency alone — that's confusing "frequently picked" with "wrongly picked".
+- **Read-then-injected overlap** — for a sample of injection events, scan the transcript before the event for explicit `Read` tool calls of the same playbook file. If the agent already read the playbook in full *within the dedup window* and then it got injected anyway, that's a real dedup miss worth investigating. (A `Read` from many turns ago, where the content has rolled out of working context, is not — the injection is doing its job.)
 - **Precision estimate** — manually rate a sample of 10 `agent_goals` + `injected` pairs against your sense of relevance (1=clearly relevant, 0=clearly irrelevant, 0.5=marginal). Report a precision number, but treat it as a vibes-based ceiling, not a measurement.
 
 Also ask:
 - Were any playbooks **missing** that would have been helpful? Cross-reference with the registry in `.agent/hooks/_shared/on_transcript_change.py:PLAYBOOKS`.
 - Did injection **timing** align with need (before the agent needed it, not after)?
 - Were the **distilled goals** accurate summaries of what the agent was actually doing? A bad goal distillation poisons every downstream selection.
+
+**Common misreadings of the injection log (read this before drawing conclusions).**
+
+1. **"High dedup rate = wasted selector calls."** Wrong. The pipeline writes every successful LLM input/output pair to `.agent/.training-data.jsonl` per **ADR-0018 §"Training data collection for local model replacement"**. That file is the SFT corpus for the planned Qwen2.5-0.5B-Instruct local-distillation replacement (see ADR-0018 lines 252–274 and §"G-Vendi-guided data selection and finetuning pipeline"). Subsampling for finetune uses **G-Vendi** (arXiv:2505.20161), which scores examples by gradient diversity in CountSketch-projected gradient space. Gradient diversity is the relevant signal *because* the natural distribution contains rich repeated structure — masking re-selections upstream would corrupt exactly the signal G-Vendi consumes downstream. The selector inference cost is the price of producing the training trace, not "waste".
+
+2. **"Selector should be given a forbidden-recently-injected list."** No. See (1). And separately: the dedup window is bounded (~recent-context); a playbook injected 100K tokens ago is functionally absent from the agent's working memory, so re-selecting it is *correct selector behavior* — dedup catching it is a separate protective layer, not evidence the selector misjudged. The two layers should not be conflated.
+
+3. **"Top-injected playbook is 'over-eager'."** Re-read the actual playbook content first. `output-capture-long-running-playbook` and `smart-test-playbook` legitimately apply to most bash invocations and most pytest runs respectively; high selection frequency reflects real applicability, not over-eagerness.
+
+**What ARE valid concerns from the injection log:**
+
+- **Selection precision against the distilled goal** — does the selected playbook actually fit what the agent is doing? Example: `trackerize` selected when the user has not typed the trigger word — that's a precision miss in the selection criterion, addressable by rewriting the playbook's hook summary to lead with the literal trigger.
+- **Distill-goal accuracy** — sample 10 events; are the goals accurate summaries of what the agent was actually doing? A wrong goal poisons every downstream selection.
+- **Coverage gaps** — are there playbooks that *should* have been injected but weren't, because they're missing from the registry or have weak hook summaries that don't match the situations where they apply?
+- **Selection-time alignment** — did the playbook arrive *before* the agent needed it, or *after* the agent already did the wrong thing? Latency is a real concern; selection frequency is not.
 
 #### 2e. AGENTS.md Compliance
 
