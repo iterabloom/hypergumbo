@@ -358,7 +358,12 @@ export default {
         result = analyze_vue(tmp_path)
         edge = next((e for e in result.edges if e.edge_type == "imports_component"), None)
         assert edge is not None
-        assert edge.dst == "./Header.vue"
+        # WI-vobiv: dst is now a properly-formed 5-part id (lang:path:span:name:kind)
+        # so when the import target isn't analyzed (no resolved Symbol), the
+        # boundary-node minting site doesn't stuff the raw path into the
+        # language slot. raw import path is preserved in meta.
+        assert edge.dst == "vue:./Header.vue:0-0:Header:component"
+        assert edge.meta and edge.meta.get("import_path") == "./Header.vue"
 
     def test_component_with_import_path(self, tmp_path: Path) -> None:
         make_vue_file(tmp_path, "App.vue", """<template>
@@ -537,7 +542,9 @@ export default {
         # Check edges
         edges = [e for e in result.edges if e.edge_type == "imports_component"]
         assert len(edges) == 1
-        assert edges[0].dst == "./Avatar.vue"
+        # WI-vobiv: well-formed 5-part dst id; raw path in meta.
+        assert edges[0].dst == "vue:./Avatar.vue:0-0:Avatar:component"
+        assert edges[0].meta and edges[0].meta.get("import_path") == "./Avatar.vue"
 
     def test_named_import_component(self, tmp_path: Path) -> None:
         """Test named imports of components."""
@@ -661,3 +668,93 @@ export default {
         directive = next((s for s in result.symbols if s.kind == "directive"), None)
         assert directive is not None
         assert "handler_expression" not in (directive.meta or {})
+
+
+class TestImportsComponentDstIdShape:
+    """WI-vobiv (regression of INV-nodij): the imports_component edges emitted
+    by the Vue analyzer must use a properly-formed 5-part dst id
+    (lang:path:span:name:kind), not a raw filesystem path. Otherwise
+    ir._parse_dangling_id falls through and stuffs the path into the
+    language slot of the synthesized boundary node — producing 871 invalid
+    boundary nodes on chatwoot in cohort-001/iter-001.
+    """
+
+    def test_dst_has_five_colon_parts_with_vue_language(self, tmp_path: Path) -> None:
+        """Every imports_component dst must split into exactly 5 colon-parts
+        with 'vue' in the language slot."""
+        from hypergumbo_lang_common.vue import analyze_vue
+
+        (tmp_path / "App.vue").write_text("""<template>
+  <UserCard/>
+  <SettingsPanel/>
+</template>
+
+<script>
+import UserCard from './components/UserCard.vue';
+import SettingsPanel from '@/components/widgets/SettingsPanel.vue';
+</script>
+""")
+        result = analyze_vue(tmp_path)
+        edges = [e for e in result.edges if e.edge_type == "imports_component"]
+        assert len(edges) == 2
+        for edge in edges:
+            parts = edge.dst.split(":")
+            assert len(parts) == 5, (
+                f"dst should be 5 colon-separated parts, got {len(parts)}: {edge.dst!r}"
+            )
+            assert parts[0] == "vue", (
+                f"language slot must be 'vue', got {parts[0]!r}: {edge.dst!r}"
+            )
+            assert parts[4] == "component", (
+                f"kind slot must be 'component' (in Symbol.kind enum), "
+                f"got {parts[4]!r}: {edge.dst!r}"
+            )
+            # name slot must be non-empty and not contain '/' or ':'
+            assert parts[3] and "/" not in parts[3] and ":" not in parts[3], (
+                f"name slot must be a clean identifier, got {parts[3]!r}: {edge.dst!r}"
+            )
+            # raw import path is preserved in meta for the linker's path
+            # resolution step
+            assert edge.meta and edge.meta.get("import_path"), (
+                f"raw import_path must be preserved in meta: {edge.meta!r}"
+            )
+
+    def test_relative_path_dst_format(self, tmp_path: Path) -> None:
+        """Relative path import: dst format is vue:{rel_path}:0-0:{stem}:component."""
+        from hypergumbo_lang_common.vue import analyze_vue
+
+        (tmp_path / "App.vue").write_text("""<template>
+  <Header/>
+</template>
+
+<script>
+import Header from '../shared/Header.vue';
+</script>
+""")
+        result = analyze_vue(tmp_path)
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports_component"), None
+        )
+        assert edge is not None
+        assert edge.dst == "vue:../shared/Header.vue:0-0:Header:component"
+        assert edge.meta.get("import_path") == "../shared/Header.vue"
+
+    def test_alias_path_dst_format(self, tmp_path: Path) -> None:
+        """Alias path import (@/...): dst preserves the alias in path slot."""
+        from hypergumbo_lang_common.vue import analyze_vue
+
+        (tmp_path / "App.vue").write_text("""<template>
+  <Modal/>
+</template>
+
+<script>
+import Modal from '@/components/Modal.vue';
+</script>
+""")
+        result = analyze_vue(tmp_path)
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports_component"), None
+        )
+        assert edge is not None
+        assert edge.dst == "vue:@/components/Modal.vue:0-0:Modal:component"
+        assert edge.meta.get("import_path") == "@/components/Modal.vue"

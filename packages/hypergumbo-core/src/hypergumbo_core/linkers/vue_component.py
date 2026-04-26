@@ -199,8 +199,11 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
 
     # Process each import edge
     for edge in import_edges:
-        # The dst is a raw import path like './Header.vue'
-        raw_path = edge.dst
+        # WI-vobiv: edge.dst is now a properly-formed 5-part id
+        # (vue:{path}:0-0:{name}:component). The raw import path lives in
+        # edge.meta["import_path"]; fall back to dst for back-compat with
+        # any pre-WI-vobiv edges.
+        raw_path = (edge.meta or {}).get("import_path", edge.dst)
 
         # Get the source file path for relative import resolution
         src_path = symbol_path_map.get(edge.src, "")

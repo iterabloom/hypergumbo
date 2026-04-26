@@ -567,15 +567,27 @@ class VueAnalyzer(TreeSitterAnalyzer):
             symbols.append(symbol)
 
             if import_path:
+                # WI-vobiv: previously dst was the raw import_path (e.g.
+                # "./Header.vue"), which falls through ir._parse_dangling_id
+                # and stuffs the path into the language slot of the
+                # synthesized boundary node — producing 871 invalid boundary
+                # nodes on chatwoot in cohort-001/iter-001 (INV-nodij class).
+                # Construct a properly-formed 5-part dst id; the linker
+                # vue_component.py reads the raw path from edge.meta.
+                component_name_from_path = Path(import_path).stem or tag_name
+                formatted_dst = (
+                    f"vue:{import_path}:0-0:{component_name_from_path}:component"
+                )
                 edge = Edge.create(
                     src=symbol_id,
-                    dst=import_path,
+                    dst=formatted_dst,
                     edge_type="imports_component",
                     line=line,
                     origin=PASS_ID,
                     origin_run_id=execution_id,
                     evidence_type="import",
                     confidence=0.95,
+                    meta={"import_path": import_path},
                 )
                 edges.append(edge)
 
