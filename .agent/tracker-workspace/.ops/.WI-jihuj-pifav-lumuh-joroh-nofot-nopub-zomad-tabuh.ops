@@ -41,3 +41,13 @@
   clock: 4  # 2160
   nonce: '2160'  # 2160
   message: "Catalog adds reverted in PR3 of stop-stripping plan. The WI-jihuj fix was the wrong layer — the catalog is for true I/O primitives, not arbitrary third-party wrappers. The structural answer (IoChain.dst_tier from PR2) lets verify-claims reason about tier-3 destinations as 'may make network calls' without per-library catalog growth. Awaits-bakeoff-validation tag retained: bakeoff should confirm this revert doesn't regress real net_send detection on diverse repos."  # 2160
+- op: update  # 822d
+  at: '2026-04-26T00:45:44Z'  # 822d
+  by: agent  # 822d
+  actor: jgstern_agent  # 822d
+  clock: 5  # 822d
+  nonce: 822d  # 822d
+  set:  # 822d
+    status: wont_do  # 822d
+  remove:  # 822d
+    tags: [awaits_bakeoff_validation]  # 822d

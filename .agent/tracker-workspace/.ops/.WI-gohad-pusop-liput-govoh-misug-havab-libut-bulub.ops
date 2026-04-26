@@ -53,3 +53,19 @@
   set: {}  # 8ae5
   add:  # 8ae5
     tags: [awaits_bakeoff_validation]  # 8ae5
+- op: update  # a771
+  at: '2026-04-26T00:45:30Z'  # a771
+  by: agent  # a771
+  actor: jgstern_agent  # a771
+  clock: 6  # a771
+  nonce: a771  # a771
+  set: {}  # a771
+  remove:  # a771
+    tags: [awaits_bakeoff_validation]  # a771
+- op: discuss  # 30ee
+  at: '2026-04-26T00:45:30Z'  # 30ee
+  by: agent  # 30ee
+  actor: jgstern_agent  # 30ee
+  clock: 7  # 30ee
+  nonce: 30ee  # 30ee
+  message: "awaits_bakeoff_validation tag stripped (audit 2026-04-26). Validation already happened on 2026-04-12 — see preceding discussion entry. Original alertmanager target was moot (uses kingpin, not cobra; categorizer misclassification); validated instead on buildah, where 1/5 cobra handlers (umountCmd, defined inside an init() function literal) received a dispatches_to edge and was removed from the dead list. The other 4 handlers used the package-level var pattern that the v1 regex didn't match — that residual gap is owned by follow-up item WI-lihih-putuz-rilur-nazir-paku and an additional enclosing-function-lookup bug surfaced in the same validation. Per the bakeoff-validation discipline ('on confirmed movement the tag is stripped... and on no-movement a regression sub-item is created'), partial-but-real movement with a filed sub-item satisfies the strip condition for this item."  # 30ee

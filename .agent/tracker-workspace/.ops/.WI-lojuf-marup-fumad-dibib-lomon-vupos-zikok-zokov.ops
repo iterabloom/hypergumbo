@@ -52,3 +52,19 @@
   set: {}  # 4a13
   add:  # 4a13
     tags: [awaits_bakeoff_validation]  # 4a13
+- op: update  # 60b4
+  at: '2026-04-26T00:45:17Z'  # 60b4
+  by: agent  # 60b4
+  actor: jgstern_agent  # 60b4
+  clock: 6  # 60b4
+  nonce: 60b4  # 60b4
+  set: {}  # 60b4
+  remove:  # 60b4
+    tags: [awaits_bakeoff_validation]  # 60b4
+- op: discuss  # 8e37
+  at: '2026-04-26T00:45:17Z'  # 8e37
+  by: agent  # 8e37
+  actor: jgstern_agent  # 8e37
+  clock: 7  # 8e37
+  nonce: '8e37'  # 8e37
+  message: "awaits_bakeoff_validation tag stripped (audit 2026-04-26). Validation already happened on 2026-04-12 — see preceding discussion entry: alertmanager pre-fix had 11 memberlist delegate methods in dead-code list; post-fix run on dev HEAD eliminated all 11 (100%), with cluster/ dir total dead dropping 43 → 13 from cascading reachability. Item explicitly self-resolved as 'WI-lojuf validated. No follow-up item.' Tag was retained in error; this strip is the audit-trail entry the discipline expects on confirmed movement."  # 8e37
