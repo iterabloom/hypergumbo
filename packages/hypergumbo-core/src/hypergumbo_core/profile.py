@@ -351,6 +351,26 @@ SCALA_FRAMEWORKS = {
 }
 
 # Ruby gem detection patterns (from Gemfile)
+# WI-lohok: frameworks loaded by convention rather than explicit import.
+# refine_frameworks's default rule (require a production import edge to
+# confirm a framework) demotes these to dev_frameworks even on real
+# production apps, because no app code says e.g. `require 'rails'` —
+# Bundler / mix / similar machinery loads them at boot. enrich_symbols
+# only loads framework patterns from profile.frameworks (not
+# dev_frameworks), so a demoted framework's YAML never applies.
+# Members of this set are exempted from the import-edge demotion check
+# and stay in profile.frameworks based on manifest detection alone.
+#
+# Add to this set ONLY for frameworks whose canonical usage pattern is
+# "declared in the manifest, autoloaded at runtime, not imported in app
+# code." Counter-examples: Sinatra requires `require 'sinatra'` in app
+# code; Django requires `from django.X import Y`; both correctly fall
+# through the standard import-edge check.
+_AUTOLOAD_BY_CONVENTION_FRAMEWORKS: frozenset[str] = frozenset({
+    "rails",  # Ruby on Rails: gem 'rails' in Gemfile, no `require 'rails'` in app code
+})
+
+
 RUBY_FRAMEWORKS = {
     # Web frameworks
     "rails": ["rails"],
@@ -1809,6 +1829,20 @@ def refine_frameworks(
     dev_only: list[str] = []
 
     for fw in profile.frameworks:
+        # WI-lohok: some frameworks are loaded by convention (Bundler /
+        # mix / etc.), not by an explicit production-code import. The
+        # import-edge demotion check would incorrectly demote them to
+        # dev_frameworks even on real production apps. The downstream
+        # cost is severe: enrich_symbols only loads framework patterns
+        # for profile.frameworks (not dev_frameworks), so a demoted
+        # framework's YAML never applies, starving the concept-tag
+        # linkers of inputs (observed on chatwoot / cohort-001/iter-001
+        # — Rails detected from Gemfile then demoted, rails.yaml never
+        # loaded, 0 controller/route/form/serializer concept hits).
+        if fw in _AUTOLOAD_BY_CONVENTION_FRAMEWORKS:
+            confirmed.append(fw)
+            continue
+
         fw_langs = _framework_languages(fw)
 
         # Fallback: if none of this framework's languages produced import

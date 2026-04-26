@@ -2747,6 +2747,112 @@ def test_refine_frameworks_java_no_import_edges_stays() -> None:
     assert "spring-boot" in result.frameworks
 
 
+def test_refine_frameworks_rails_autoloaded_stays_in_prod(tmp_path) -> None:
+    """WI-lohok: Rails (Ruby) is loaded by Bundler at boot; production Ruby
+    code never has explicit `require 'rails'` import edges. The previous
+    behavior demoted Rails to dev_frameworks even on real Rails apps,
+    which prevented rails.yaml from loading and starved the controller /
+    route / form / serializer concept linkers of Rails inputs (observed
+    on chatwoot in cohort cohort-001/iter-001). The fix exempts Rails
+    from the import-edge demotion check so the framework-pattern dispatch
+    actually fires on Rails apps.
+    """
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["rails", "rspec"])
+    # Realistic Rails repo: Ruby code has plenty of import edges (to
+    # other gems and to internal modules) — so 'ruby' IS in
+    # import_edge_langs — but no edge has dst starting with `ruby:rails`.
+    # rspec IS imported in test files (so it should still get demoted).
+    edges = [
+        _make_edge(
+            src="ruby:app/controllers/contacts_controller.rb:1-5:show:method",
+            dst="ruby:devise:0-0:module:module",
+        ),
+        _make_edge(
+            src="ruby:app/models/contact.rb:1-5:initialize:method",
+            dst="ruby:active_record:0-0:module:module",
+        ),
+        _make_edge(
+            src="ruby:spec/models/contact_spec.rb:1-5:test_validates:method",
+            dst="ruby:rspec:0-0:module:module",
+        ),
+    ]
+    symbols = [
+        _make_symbol(
+            "ruby:app/controllers/contacts_controller.rb:1-5:show:method",
+            "app/controllers/contacts_controller.rb",
+            "ruby",
+        ),
+        _make_symbol(
+            "ruby:app/models/contact.rb:1-5:initialize:method",
+            "app/models/contact.rb",
+            "ruby",
+        ),
+        _make_symbol(
+            "ruby:spec/models/contact_spec.rb:1-5:test_validates:method",
+            "spec/models/contact_spec.rb",
+            "ruby",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "rails" in result.frameworks, (
+        "Rails should stay in production frameworks (autoload exemption); "
+        f"got frameworks={result.frameworks}, dev_frameworks={result.dev_frameworks}"
+    )
+    assert "rails" not in result.dev_frameworks
+    # rspec should still get demoted — it IS imported, but only in spec/
+    assert "rspec" not in result.frameworks
+    assert "rspec" in result.dev_frameworks
+
+
+def test_refine_frameworks_rails_kept_even_with_zero_ruby_import_edges() -> None:
+    """The exemption applies even if Ruby happens to have zero import
+    edges — should never get to the demotion check at all for Rails."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["rails"])
+    # Edge case: trivial Ruby repo with no imports of anything yet.
+    edges = []
+    symbols = [
+        _make_symbol(
+            "ruby:app/controllers/application_controller.rb:1-5:foo:method",
+            "app/controllers/application_controller.rb",
+            "ruby",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "rails" in result.frameworks
+    assert "rails" not in result.dev_frameworks
+
+
+def test_refine_frameworks_sinatra_not_exempted() -> None:
+    """Counter-test: sinatra IS explicitly required in app code
+    (`require 'sinatra'`) — should NOT be exempt from the demotion
+    check. Without an import edge confirming production use, sinatra
+    moves to dev_frameworks per the unmodified rule."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["sinatra"])
+    # Ruby has import edges but none to sinatra
+    edges = [
+        _make_edge(
+            src="ruby:app/foo.rb:1-5:bar:method",
+            dst="ruby:json:0-0:module:module",
+        ),
+    ]
+    symbols = [
+        _make_symbol("ruby:app/foo.rb:1-5:bar:method", "app/foo.rb", "ruby"),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    # Sinatra IS required, so missing edge means demote — not exempt.
+    assert "sinatra" not in result.frameworks
+    assert "sinatra" in result.dev_frameworks
+
+
 def test_refine_frameworks_import_override_pytorch() -> None:
     """IMPORT_OVERRIDES maps 'torch' manifest pattern to 'torch' import."""
     from hypergumbo_core.profile import refine_frameworks
