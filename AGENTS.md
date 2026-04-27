@@ -133,28 +133,19 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
 Always use the `pytest` alias (which invokes smart-test), never `python -m pytest` or direct pytest. Provides compact ~20-line summary; full output saved to `.ci/pytest-output.log`. Runs only tests affected by changed files. Commit `.ci/affected-tests.txt` with every PR for CI smart test selection. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/smart-test-playbook.md`.)
 
 ### Output Capture for Long-Running Commands
-**NEVER** pipe the output of long-running commands through `| tail -N` or `| head -N` as the primary capture method. Truncated output loses critical information (error messages, coverage gaps, CI failures) and forces expensive re-runs.
 
-**Required pattern:**
+**Canonical pattern.** For any command that takes more than a few seconds, capture full output to a file, then read it back with the Read tool or targeted grep:
+
 ```bash
-# 1. Redirect full output to a file
 some-long-command > /tmp/cmd-output.log 2>&1
-
-# 2. Read the file with the Read tool or targeted grep
-# (Use the Read tool, not cat/head/tail)
+# then: Read /tmp/cmd-output.log     (or Grep for a specific pattern)
 ```
 
-**Commands this applies to** (non-exhaustive):
-- `pytest` / `smart-test`
-- `./scripts/auto-pr`
-- `./scripts/release-check`
-- `./scripts/bakeoff-broad` and `./scripts/bakeoff-deep` (all subcommands)
-- `./scripts/ci-debug`
-- Any command that takes more than a few seconds to run
+The full transcript lives on disk; you can search it freely; you never have to re-run the command to recover output. Use this shape for `pytest` / `smart-test`, `./scripts/auto-pr`, `./scripts/release-check`, `./scripts/bakeoff-broad` and `./scripts/bakeoff-deep` (all subcommands), `./scripts/ci-debug`, and any command that polls CI, drives the tracker, or contacts the network.
 
-**Safety valve:** If output volume is a concern (e.g., infinite loops), use `head -100000` (100K lines, ~5-10MB) as an upper bound — not `tail -30`.
+**Anti-pattern.** Avoid `<long-running-command> | tail -N` or `| head -N` as the primary capture method — the pipe buffers, truncation destroys whatever the failure mode left earlier in stdout, and re-running the command to recover the lost lines wastes minutes. (Piping `tail`/`head` on cheap commands like `git log --oneline | tail -5` is fine — the rule is about long-running commands where re-running is expensive.)
 
-**Why:** Re-running a 15-minute command because `| tail -30` missed the relevant lines is pure waste. Capturing to a file costs nothing and enables targeted searching after the fact.
+**Safety valve.** If output volume is a concern (e.g., infinite loops), use `head -100000` (100K lines, ~5-10MB) as an upper bound after the redirect — not as a substitute for it.
 
 **Hazard specific to `auto-pr`:** when `auto-pr` rebases (because the feature branch is behind base), it copies the tracker `.ops` directories to a temp dir and restores them after the rebase — silently overwriting any `tracker discuss` / `add` / `update` performed during the run. **Mitigation: do not perform tracker mutations while an `auto-pr` run is in flight.** The recovery procedure (including the pre-pop verification step for the post-merge auto-stash, which is a separate mechanism that may or may not have your edits) lives in the playbook. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/output-capture-long-running-playbook.md`.)
 

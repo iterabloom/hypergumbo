@@ -1,11 +1,21 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Long-Running Output Capture Playbook
 
-## Rule
+## The canonical pattern
 
-**NEVER** pipe the output of a long-running command through `| tail -N` or `| head -N` as the primary capture method. The pipe buffers; truncation destroys the lines you need; re-running the command wastes everyone's time.
+For any command that takes more than a handful of seconds, **capture full output to a file, then read it back with `Read` or `Grep`**:
 
-The rule applies to every command that takes more than a handful of seconds:
+```bash
+some-long-command > /tmp/cmd-output.log 2>&1
+# then: Read /tmp/cmd-output.log     (or Grep for a specific pattern)
+```
+
+This is the shape every long-running invocation in this repo should take. The full transcript lives on disk; you can search it freely; you never have to re-run the command to recover output you already produced.
+
+## Which commands this applies to
+
+Commands that routinely run for many seconds to many minutes:
+
 - `pytest` / `smart-test`
 - `./scripts/auto-pr`
 - `./scripts/merge-pr`
@@ -14,22 +24,15 @@ The rule applies to every command that takes more than a handful of seconds:
 - `./scripts/ci-debug`
 - anything that polls CI, drives the tracker, or contacts the network
 
-## Required Pattern
+When in doubt, capture. The disk is cheap; the context window is not.
 
-### Capture to a file, not a pipe
+## Anti-pattern: piping through `tail` / `head`
 
-```bash
-# Right — the full transcript is on disk, available to Read / Grep
-some-long-command > /tmp/cmd-output.log 2>&1
-```
+The shape to avoid is `<long-running-command> | tail -N` (or `| head -N`) as the *primary* capture method. The pipe buffers, the truncation destroys whatever the failure mode left earlier in stdout, and re-running the command to recover the lost lines is pure waste. Use the canonical pattern above instead.
 
-```bash
-# Wrong — the pipe buffers until the whole command completes, and
-# truncation destroys anything the failure mode left earlier in stdout
-some-long-command 2>&1 | tail -40
-```
+(Note: `| tail -N` on a *cheap* command like `git log --oneline | tail -5` is fine — the rule is about long-running commands where re-running is expensive.)
 
-### Background + Monitor for very long commands
+## Background + Monitor for very long commands
 
 `./scripts/auto-pr` and bakeoff subcommands can run for many minutes. Start them in the background, then point a `Monitor` at the output file with an alternation that covers *every terminal state*, not just the happy path:
 
@@ -46,9 +49,9 @@ Monitor:
 
 The `|Recovery:` alternation is load-bearing: `scripts/auto-pr` emits `Recovery: ...` hints when the final merge did not actually complete but the script exited 0 anyway. Without that pattern in the Monitor alternation, the script appears to succeed silently.
 
-### Reading the captured log
+## Reading the captured log
 
-Use the `Read` tool on the file, or `Grep` for the pattern you care about. **Do not** re-run the command to "see what happened" — the log already has it.
+Use the `Read` tool on the file, or `Grep` for the pattern you care about. The log already has everything — re-running the command to "see what happened" produces nothing the file doesn't already contain.
 
 ## Special Hazards
 
@@ -81,15 +84,11 @@ A separate, unrelated mechanism — the post-merge `git checkout dev` step — m
    The next tracker mutation will trigger an auto-sync that pushes the restored ops.
 4. **If no usable stash exists:** re-issue the lost `tracker` operations by hand. State-changing flags (`--status`, `--add-tag`, `--remove-tag`) are idempotent — re-running them yields the same compiled state. Discussion entries are not idempotent: they need to be re-added with `tracker discuss` and will carry fresh timestamps.
 
-## Why
-
-Re-running a 15-minute command because `| tail -30` missed the relevant lines is pure waste. Capturing to a file costs nothing and enables targeted searching after the fact. The disk is cheap; the context window is not.
-
 ## Quick self-check before running a long command
 
 - Will the output fit on one screen? If no, **redirect to a file**.
 - Will the output be useful if only the last 30 lines survive? If no, **redirect to a file**.
-- Is this a command listed under "The rule applies to"? If yes, **redirect to a file**.
+- Is this a command listed above under "Which commands this applies to"? If yes, **redirect to a file**.
 - Do I plan to keep working while it runs? If yes, **run in background + Monitor on the file**.
 
 When in doubt, redirect.
