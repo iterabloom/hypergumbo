@@ -5151,7 +5151,7 @@ class TestSyncReminder:
             mock_pending.return_value = 5
             _print_sync_reminder()
         captured = capsys.readouterr()
-        assert "threshold=40" in captured.err
+        assert "threshold=80" in captured.err
 
     def test_git_failure_silently_returns(
         self,
