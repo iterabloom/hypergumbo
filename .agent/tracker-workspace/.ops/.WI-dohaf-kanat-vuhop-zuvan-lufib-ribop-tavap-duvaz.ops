@@ -1,0 +1,22 @@
+- op: create  # fe77
+  at: '2026-04-27T22:33:19Z'  # fe77
+  by: agent  # fe77
+  actor: jgstern_agent  # fe77
+  clock: 1  # fe77
+  nonce: fe77  # fe77
+  data:  # fe77
+    kind: work_item  # fe77
+    title: "Backfill compute_centrality parameters across sketch/compact selection surfaces"  # fe77
+    status: todo_hard  # fe77
+    priority: 3  # fe77
+    parent:  # fe77
+    tags:  # fe77
+    - analysis_quality  # fe77
+    - developer_experience  # fe77
+    - bakeoff_infrastructure  # fe77
+    isbefore: []  # fe77
+    duplicate_of: []  # fe77
+    not_duplicate_of: []  # fe77
+    pr_ref:  # fe77
+    description: "Sibling/follow-up to WI-lidum-rubin (dampener-stack audit). Discovered while reading the four selection surfaces: they don't just diverge from rank_symbols on which dampener passes they call; they also diverge on the parameters they pass to compute_centrality.\n\nConcretely, rank_symbols calls:\n  compute_centrality(symbols, edges,\n      hub_threshold=100,\n      within_file_weight=0.3,\n      max_per_file_in=5,\n      edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,\n  )\n\nwhile these four surfaces all call compute_centrality(symbols, edges) with bare defaults (hub_threshold=None, within_file_weight=1.0, max_per_file_in=None, edge_type_weights=None):\n  - sketch._format_symbols (sketch.py:5529)\n  - compact.select_by_coverage (compact.py:772)\n  - compact.select_by_connectivity (compact.py:606-607, when caller does not supply centrality)\n  - compact.format_tiered_behavior_map (compact.py:1393, post-selection victim-removal step)\n\nWhat each parameter dampens (all motivated by prior bakeoffs that showed >0 FP movement):\n  - hub_threshold=100 — dampens infrastructure utility hubs (loggers, error sentinels)\n  - max_per_file_in=5 — caps per-source-file in-degree contribution; this is the parameter that fixes the 'createYAMLNode called 46 times from 1 file' case the WI-lidum description cites\n  - within_file_weight=0.3 — dampens local-variable inflation\n  - edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS — makes import edges count less than call edges\n\nOut of scope for WI-lidum per its 'Out of scope' section ('Moving edge-type weighting out of compute_centrality'); filing as a separate item rather than expanding WI-lidum because the fix shape differs (parameter wiring, not function-call insertion) and the FP class differs (graph-structural vs name/path).\n\nProposed fix: one-line update per surface to pass the rank_symbols parameter set. The rank_symbols defaults are already documented and bakeoff-validated, so re-derivation should not be necessary; if a surface has a reason to deviate from a parameter (e.g., sketch's centrality-on-key-symbols-only context), document the deviation in the surface's module docstring.\n\nValidation: the WI-lidum 3-repo measurement run (alertmanager, prometheus, kserve) will produce FP-evidence for these parameters as a side effect of comparing top-N selection on each surface — if a parameter does not move FPs on any of the three repos, downgrade or wont_do this item with the evidence. Otherwise tag awaits_bakeoff_validation at PR time per the discipline.\n\nReferences:\n  - ~/hypergumbo_lab_notebook/notebookjournal_04272026_2159.md (Finding 2)\n  - WI-lidum-rubin (parent audit context)\n  - rank_symbols call site at packages/hypergumbo-core/src/hypergumbo_core/ranking.py:1152"  # fe77
+    fields: {}  # fe77

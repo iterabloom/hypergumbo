@@ -62,3 +62,10 @@
   clock: 7  # 1697
   nonce: '1697'  # 1697
   message: "please file (a) only, for now. (a) has my approval for using auto-pr WITHOUT --gov."  # 1697
+- op: discuss  # 9dde
+  at: '2026-04-27T20:06:12Z'  # 9dde
+  by: agent  # 9dde
+  actor: jgstern_agent  # 9dde
+  clock: 8  # 9dde
+  nonce: 9dde  # 9dde
+  message: "Status of follow-up (a) per your 2026-04-27T15:17:38Z approval:\n\n(a) was already filed AS WI-nisop-najib-fadoz-digir-nokon-sonum-zilat-zuviz at 2026-04-27T15:19:46Z (~2 minutes after your approval message), parented under this item. The pre-approval-for-auto-pr-without-gov clause is recorded explicitly in WI-nisop's description.\n\nImplementation has also already merged: commit 040bacf6e (\"docs(hooks): mention session-end agent-notes refresh in recover-state hook summary (WI-nisop)\") on dev. The PLAYBOOKS entry at .agent/hooks/_shared/on_transcript_change.py:240-256 now carries the session-end refresh language. Just updated WI-nisop status from todo_soft to done with a closure note pointing at the commit.\n\n(b) - stop hook nudge on stale agent_notes.json mtime - still deferred per your direction; pending evidence the playbook-only nudge isn't producing notes refreshes.\n\nNo new tracker item filed under this WI-borur thread, since (a) is fully covered by WI-nisop (now closed) and filing a duplicate would fragment the discussion."  # 9dde

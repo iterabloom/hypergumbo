@@ -107,3 +107,32 @@
   clock: 13  # dfde
   nonce: dfde  # dfde
   message: "Above you wrote \"So the playbook's 'spot-check titles' step at point 1 ('run scripts/tracker list --tag <plausible-tag>') currently relies on the agent guessing tag names from memory\" -- but I think WI-lifal has been implemented now, so maybe there is a language tweak to make?"  # dfde
+- op: discuss  # e610
+  at: '2026-04-27T20:06:13Z'  # e610
+  by: agent  # e610
+  actor: jgstern_agent  # e610
+  clock: 14  # e610
+  nonce: e610  # e610
+  message: "WI-lifal landed on dev (commit 7ef3cb723d) and was just closed. The \"guessing tag names from memory\" rationale on point 1 of the playbook is no longer accurate, so a small language tweak is in order.\n\nCurrent text (`structural-fix-scope-expansion-protocol.md:25`):\n\n> 1. **Existing-coverage check.** Before filing, run `scripts/tracker list --tag <plausible-tag>` or `tracker list --kind <invariant|work_item>` and spot-check titles. If an existing item already covers the surface, prefer `tracker discuss <ID>` with a regression note rather than a new item. New items fragment the discussion thread the human is reading.\n\nProposed replacement:\n\n> 1. **Existing-coverage check.** Before filing, run `scripts/tracker tags` to see the current tag vocabulary, then `scripts/tracker list --tag <tag>` or `scripts/tracker list --kind <invariant|work_item>` and spot-check titles. If an existing item already covers the surface, prefer `tracker discuss <ID>` with a regression note rather than a new item. New items fragment the discussion thread the human is reading.\n\nOne phrase swap; replaces the implicit \"guess plausible tag\" assumption with explicit enumeration via the new subcommand. Remainder of point 1 unchanged.\n\nTwo open questions:\n\n1. **Bundling.** Land this as a small standalone PR now (playbook .md only, non-governance, can use auto-pr without --gov), OR queue it inside the still-pending WI-mobup hook-summary PR alongside the on_transcript_change.py update? The hook-summary update is governance; bundling the playbook tweak with it makes the governance review slightly larger but keeps WI-mobup as a single coherent PR.\n\n2. **PLAYBOOKS summary parity.** The on_transcript_change.py PLAYBOOKS summary for structural-fix-scope-expansion-protocol likely paraphrases this point. Will read it before drafting any PR; if it currently echoes the \"plausible-tag\" framing, the same phrase swap should be made there too (and that part IS governance).\n\nAwaiting your direction on (1) before drafting. WI-mobup status remains todo_soft."  # e610
+- op: discuss  # 73ca
+  at: '2026-04-27T20:53:23Z'  # 73ca
+  by: human  # 73ca
+  actor: jgstern  # 73ca
+  clock: 15  # 73ca
+  nonce: 73ca  # 73ca
+  message: "please combine everything outstanding into a single PR. to the extent that it touches governance, I approve using auto-pr WITHOUT --gov"  # 73ca
+- op: update  # 9706
+  at: '2026-04-27T21:10:15Z'  # 9706
+  by: agent  # 9706
+  actor: jgstern_agent  # 9706
+  clock: 16  # 9706
+  nonce: '9706'  # 9706
+  set:  # 9706
+    status: done  # 9706
+- op: discuss  # c347
+  at: '2026-04-27T21:10:15Z'  # c347
+  by: agent  # c347
+  actor: jgstern_agent  # c347
+  clock: 17  # c347
+  nonce: c347  # c347
+  message: "Bundled outstanding edits shipped in PR #150 (commit e689625db, fast-forward merge to dev). Two changes:\n\n1. structural-fix-scope-expansion-protocol.md point 1: replaced 'tracker list --tag <plausible-tag>' framing with explicit 'scripts/tracker tags' enumeration (now possible after WI-lifal landed). One-phrase swap; rest of point 1 unchanged.\n\n2. .agent/hooks/_shared/on_transcript_change.py PLAYBOOKS summary for the structural-fix playbook: expanded to mention all three 'when NOT to file' failure modes (existing-coverage, conversation-in-progress, property-of-existing-invariant). This fulfills WI-mobup original implementation step 2, deferred from PR #3425.\n\nPer the 2026-04-27T20:53Z directive, both changes were combined into one PR; auto-pr ran without --gov even though the hook file is governance, per the human's explicit pre-approval in that same message."  # c347

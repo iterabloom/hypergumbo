@@ -19,3 +19,18 @@
     pr_ref:  # a54b
     description: "Update the `recover-state-playbook` entry's summary string in `.agent/hooks/_shared/on_transcript_change.py:PLAYBOOKS` so the in-context hook description mentions the session-end write step that PR #3424 added to the playbook itself.\n\n**Motivating gap (WI-borur deferred follow-up (a)):** PR #3424 added a \"Session-end agent-notes refresh (write side of the recovery loop)\" sub-section to `recover-state-playbook.md` naming the write-side obligation. The PLAYBOOKS-registry summary that the on-transcript-change hook injects when the playbook is selected was not updated to mention the new section, so an agent that consults only the injected summary (not the full playbook) would miss the write-side step. The summary currently says \"Keep notes fresh after key milestones\" but no longer reflects the explicit pre-sign-off obligation.\n\n**Scope:**\nEdit the `recover-state-playbook` summary tuple in `PLAYBOOKS` at `.agent/hooks/_shared/on_transcript_change.py:240-249`. Add a sentence near the end like: \"Before signing off, append a one-paragraph summary of what the next session needs to know (open invariant violations, status changes, cross-cutting context) via `scripts/agent-notes --append`.\"\n\n**Governance:**\n`.agent/hooks/_shared/on_transcript_change.py` is a governance file per AGENTS.md. The user has pre-approved using auto-pr **without --gov** for this specific change (jgstern message on WI-borur, 2026-04-27T15:17:38Z). Implementation PR commit message must reference this approval explicitly.\n\n**Tests:**\nThe existing `tests/test_transcript_pipeline_properties.py` smoke-tests that PLAYBOOKS is well-formed. No new tests required for the wording change itself; the test suite is sufficient. (If a snapshot test exists that pins the exact summary text, it must be updated in the same PR.)\n\n**Cross-references:**\n- WI-borur-pitil-bikad-jivap-havaf-lamad-miduz-jujum (parent — the playbook edit this follow-up belongs to)\n- PR #3424 (commit 145377532 — the playbook addition this summary now needs to mirror)\n- `.agent/hooks/_shared/on_transcript_change.py:240-249` (call-site)\n- `.agent/agent_playbooks_protocols_sops_skills/recover-state-playbook.md` §\"Session-end agent-notes refresh (write side of the recovery loop)\" (the section the new summary text should mirror)"  # a54b
     fields: {}  # a54b
+- op: update  # 6ec2
+  at: '2026-04-27T20:06:12Z'  # 6ec2
+  by: agent  # 6ec2
+  actor: jgstern_agent  # 6ec2
+  clock: 2  # 6ec2
+  nonce: 6ec2  # 6ec2
+  set:  # 6ec2
+    status: done  # 6ec2
+- op: discuss  # 5242
+  at: '2026-04-27T20:06:12Z'  # 5242
+  by: agent  # 5242
+  actor: jgstern_agent  # 5242
+  clock: 3  # 5242
+  nonce: '5242'  # 5242
+  message: "Implementation merged in commit 040bacf6e (\"docs(hooks): mention session-end agent-notes refresh in recover-state hook summary (WI-nisop)\") on dev. The PLAYBOOKS entry at .agent/hooks/_shared/on_transcript_change.py:240-256 now includes the session-end refresh language (\"Before signing off ... append a one-paragraph summary ... via scripts/agent-notes --append. The during-session 'keep notes fresh' rule covers updates as you go; the session-end refresh is the symmetric write obligation that closes the recovery loop\"). Closes the WI-borur (a) follow-up. WI-borur (b) (stop hook nudge on stale agent_notes.json mtime) remains deferred per the user's direction."  # 5242
