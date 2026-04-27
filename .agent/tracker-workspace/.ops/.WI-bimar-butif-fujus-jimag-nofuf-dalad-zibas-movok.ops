@@ -1,0 +1,20 @@
+- op: create  # d5c4
+  at: '2026-04-27T02:38:29Z'  # d5c4
+  by: agent  # d5c4
+  actor: jgstern_agent  # d5c4
+  clock: 1  # d5c4
+  nonce: d5c4  # d5c4
+  data:  # d5c4
+    kind: work_item  # d5c4
+    title: "Lua FFI linker: handle LuaJIT metatype patterns for C struct method binding"  # d5c4
+    status: todo_soft  # d5c4
+    priority: 4  # d5c4
+    parent:  # d5c4
+    tags:  # d5c4
+    - cross_language_linkers  # d5c4
+    isbefore: []  # d5c4
+    duplicate_of: []  # d5c4
+    not_duplicate_of: []  # d5c4
+    pr_ref:  # d5c4
+    description: "Follow-up carved off WI-masuz at close-time (2026-04-27). The base Lua FFI linker (packages/hypergumbo-core/src/hypergumbo_core/linkers/lua_ffi.py, 305 lines, Bridge subcategory per ADR-0003-ext) parses ffi.cdef string literals and links ffi.C.func_name calls to C declarations. The one specification gap surfaced in WI-masuz's 2026-02-18T14:01:12Z early-design entry that the merged implementation does not address: 'LuaJIT metatype patterns also need handling for C struct method binding.'\n\nContext: ffi.metatype(ctype, {...}) attaches Lua method tables to FFI-declared C types so that struct_instance:method() dispatches to a Lua-side function that internally manipulates the C struct. The dispatch is invisible to the current ffi.C.<name> regex/AST scan because the method call site uses bare colon-syntax on a value of FFI type, not a qualified ffi.C reference.\n\nWhen to address: only when a polyglot Lua+C bakeoff cohort or a UAT report surfaces the metatype-binding gap as a measurable dead-code or call-graph FP. Until then, sits at P4 todo_soft as scope-expansion work per the Commitment Protocol. No acute signal currently.\n\nSource plan reference: WI-masuz close discussion + 2026-02-18T14:01:12Z scope note."  # d5c4
+    fields: {}  # d5c4

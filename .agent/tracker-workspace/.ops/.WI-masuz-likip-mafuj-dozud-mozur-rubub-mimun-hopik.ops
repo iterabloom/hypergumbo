@@ -118,3 +118,18 @@
   clock: 15  # 5dde
   nonce: 5dde  # 5dde
   message: "Re-review (2026-04-17): this item appears OBSOLETE. The implementation it proposes — Lua FFI linker parsing `ffi.cdef` / `ffi.load` / `ffi.C.funcname` and matching to C implementations — already exists in the tree as `packages/hypergumbo-core/src/hypergumbo_core/linkers/lua_ffi.py` (305 lines; docstring now declares \"Bridge linker: Lua FFI for connecting LuaJIT FFI calls to C function implementations\" per ADR-0003-ext). Git history shows the file was created on 2026-02-18 in commit 9af4942be — same day as the early discussion comments on this item (\"Auto-sync test 4: Lua FFI linker remains deferred\", etc.), suggesting the item and the implementation happened in parallel without the item being updated.\n\nCurrent item metadata is also misleading: status `needs_human_review`, `pr_ref: PR-pending` — but no PR is pending (the code is merged).\n\nRecommendation to the human reviewer: close as `done` with a resolution note pointing to commit 9af4942be / file path, or promote to a follow-up item scoped to the specific gap (if any) that motivated the \"deferred\" framing (the only concrete gap I can find in the discussion thread is 'LuaJIT metatype patterns also need handling for C struct method binding', which would be a narrower WI if still relevant). I am NOT changing the status myself since it's locked behind human review, and marking an item `done` without reviewer input on the scope-vs-coverage question feels premature.\n\nSubcategory classification per ADR-0003-ext: Bridge Linker (cross-language Lua↔C via FFI)."  # 5dde
+- op: update  # 0f42
+  at: '2026-04-27T02:39:12Z'  # 0f42
+  by: agent  # 0f42
+  actor: jgstern_agent  # 0f42
+  clock: 16  # 0f42
+  nonce: 0f42  # 0f42
+  set:  # 0f42
+    status: done  # 0f42
+- op: discuss  # db6b
+  at: '2026-04-27T02:39:12Z'  # db6b
+  by: agent  # db6b
+  actor: jgstern_agent  # db6b
+  clock: 17  # db6b
+  nonce: db6b  # db6b
+  message: "Closed done per human confirmation 2026-04-27. The proposed implementation already exists in the tree at packages/hypergumbo-core/src/hypergumbo_core/linkers/lua_ffi.py (305 lines, 'Bridge linker: Lua FFI for connecting LuaJIT FFI calls to C function implementations' per ADR-0003-ext). File created 2026-02-18 in commit 9af4942be — same day as this item's early scope-discussion entries, suggesting the item and the implementation happened in parallel without the item being updated. The misleading metadata (status=needs_human_review, pr_ref=PR-pending) is the only thing that was actually open. The one residual specification gap from this item's 2026-02-18T14:01:12Z entry — 'LuaJIT metatype patterns also need handling for C struct method binding' — has been carved off as a narrower follow-up: WI-bimar-butif-fujus-jimag-nofuf-dalad-zibas-movok (P4 todo_soft, cross_language_linkers tag) to be addressed only when a polyglot Lua+C bakeoff cohort surfaces it as a measurable gap."  # db6b

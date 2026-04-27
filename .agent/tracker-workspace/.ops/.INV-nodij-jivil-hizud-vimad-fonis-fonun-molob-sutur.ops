@@ -68,3 +68,18 @@
   clock: 7  # ebd7
   nonce: ebd7  # ebd7
   message: "Bakeoff validation: MOVED (cohort cohort-001/iter-002). Plurality verdict across repos: moved=5 no_move=0 inconclusive=0. Evidence: airflow=moved: iter-001 had 3,079 invalid-language nodes (mostly 'rst'); iter-002 has 2 (a stray 'dist/main.js' and a Java file path).…; alertmanager=moved: iter-001 had 50 invalid-language nodes (mostly 'jsonnet'); iter-002 has 41, all 'make' (alias for 'makefile' — taxonomy…; chatwoot=moved: iter-001 had 871 invalid-language nodes (all .vue file paths in language slot from imports_component edges); iter-002 ha…; +2 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # ebd7
+- op: update  # 29bd
+  at: '2026-04-27T02:41:51Z'  # 29bd
+  by: agent  # 29bd
+  actor: jgstern_agent  # 29bd
+  clock: 8  # 29bd
+  nonce: 29bd  # 29bd
+  set:  # 29bd
+    status: satisfied  # 29bd
+- op: discuss  # d05e
+  at: '2026-04-27T02:41:51Z'  # d05e
+  by: agent  # d05e
+  actor: jgstern_agent  # d05e
+  clock: 9  # d05e
+  nonce: d05e  # d05e
+  message: "Advanced pending_validation → satisfied per human confirmation 2026-04-27. Evidence: cohort-001/iter-002 plurality MOVED across 5/5 repos (2026-04-26T09:22:03Z), with awaits_bakeoff_validation tag auto-stripped by bakeoff-deep-reflect aggregate. Per-repo evidence — airflow: iter-001 had 3,079 invalid-language nodes (mostly 'rst'), iter-002 has 2 (a stray 'dist/main.js' and a Java file path); alertmanager: iter-001 had 50 invalid-language nodes (mostly 'jsonnet'), iter-002 has 41 all 'make' (alias for 'makefile' — taxonomy issue, not invariant violation); chatwoot: 871 → 0 (Vue analyzer fix in PR #3385); +2 more. The convergence loop closed: iter-001 NO_MOVE spawned regression sub-item WI-vobiv which identified 4 distinct producer leaks (Vue, airflow .rst, alertmanager jsonnet, kafka properties). The Vue fix shipped PR #3385; the airflow/alertmanager/kafka leaks resolved structurally as the language-slot validity invariant was enforced cohort-wide. Future regression risk: defines_target producers other than toml_config (xml_config, json_config, manifest_targets — 8 sites total per the description's empirical scope sweep) could re-introduce the bug under repos not in the validation cohort. If a future bakeoff surfaces such a violation, this invariant transitions back to violated and a sibling work_item handles the new producer."  # d05e
