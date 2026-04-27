@@ -4705,31 +4705,49 @@ class TestAutoSyncEarlyGateCheck:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture,
     ) -> None:
-        """auto-sync bails early when TRACKER_SYNC_PENDING exists."""
+        """auto-sync bails early when sync gate is held by an OS-level flock.
+
+        Post-WI-nutin: a bare TRACKER_SYNC_PENDING file with no flock holder
+        is treated as stale and auto-cleaned. To verify the skip path we
+        must hold the flock for the duration of the test.
+        """
+        import fcntl
+
         monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
         git_dir = tmp_path / ".git"
         git_dir.mkdir(exist_ok=True)
-        (git_dir / "TRACKER_SYNC_PENDING").write_text("sync\n")
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = _make_completed_process(
-                stdout=str(tmp_path)
-            )
-            with patch(
-                "hypergumbo_tracker.sync.pending_sync_lines",
-                return_value=100,
-            ), patch(
-                "hypergumbo_tracker.sync.preflight_check",
-            ) as mock_pre, patch(
-                "hypergumbo_tracker.sync.do_sync",
-            ) as mock_sync:
-                _maybe_auto_sync(tmp_path)
-                # Neither preflight nor do_sync should have been called
-                mock_pre.assert_not_called()
-                mock_sync.assert_not_called()
+        gate_path = git_dir / "TRACKER_SYNC_PENDING"
+        fh = open(gate_path, "a+")
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fh.write(f"pid={os.getpid()}\nstarted=1000000000\n")
+        fh.flush()
+        try:
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = _make_completed_process(
+                    stdout=str(tmp_path)
+                )
+                with patch(
+                    "hypergumbo_tracker.sync.pending_sync_lines",
+                    return_value=100,
+                ), patch(
+                    "hypergumbo_tracker.sync.preflight_check",
+                ) as mock_pre, patch(
+                    "hypergumbo_tracker.sync.do_sync",
+                ) as mock_sync:
+                    _maybe_auto_sync(tmp_path)
+                    # Neither preflight nor do_sync should have been called
+                    mock_pre.assert_not_called()
+                    mock_sync.assert_not_called()
+        finally:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+            fh.close()
 
         captured = capsys.readouterr()
-        assert "sync already in progress" in captured.err
+        assert "tracker sync gate locked" in captured.err
+        assert f"PID {os.getpid()}" in captured.err
 
 
 class TestAutoSyncCircuitBreaker:

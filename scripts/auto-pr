@@ -41,6 +41,94 @@ source "$SCRIPT_DIR/lib/forgejo-api.sh"
 
 load_env
 QUEUE_FILE="$REPO_ROOT/.git/PR_QUEUE"
+
+# ------------------------------------------------------------------
+# Sync gate check (WI-nutin)
+#
+# The tracker sync workflow holds an OS-level fcntl flock on
+# .git/TRACKER_SYNC_PENDING while a sync PR is in flight.  We use
+# flock(1) --shared --nonblock to *peek* at the lock state without
+# disturbing the holder; if the file exists but no holder is present,
+# it's a stale marker (e.g. left by a SIGKILL) and we silently clean
+# it up.  If the lock IS held, we emit a friendly diagnostic that
+# names the holder PID, alive/dead state, and lock age — the inverse
+# of the pre-WI-nutin one-line "tracker sync in progress" message
+# that gave the reader nothing actionable.
+#
+# Returns 0 (not held) or 1 (held).  Stdout: friendly message when held.
+# ------------------------------------------------------------------
+_autopr_sync_gate_friendly_message() {
+	local content="$1"
+	local pid="" started="" pr=""
+	while IFS='=' read -r key val; do
+		case "$key" in
+			pid) pid="$val" ;;
+			started) started="$val" ;;
+			pr) pr="$val" ;;
+		esac
+	done <<<"$content"
+
+	local age_str=""
+	if [[ "$started" =~ ^[0-9]+$ ]]; then
+		local now age
+		now=$(date +%s)
+		age=$((now - started))
+		(( age < 0 )) && age=0
+		if (( age < 60 )); then
+			age_str="${age}s"
+		elif (( age < 3600 )); then
+			age_str="$((age / 60))m"
+		else
+			age_str="$((age / 3600))h$(printf '%02d' $(( (age % 3600) / 60 )))m"
+		fi
+	fi
+
+	local alive_state=""
+	if [[ "$pid" =~ ^[0-9]+$ ]]; then
+		if kill -0 "$pid" 2>/dev/null; then
+			alive_state="alive"
+		else
+			alive_state="DEAD"
+		fi
+	fi
+
+	local msg="tracker sync gate locked"
+	if [[ -n "$pid" ]]; then
+		msg+=" by PID $pid"
+		if [[ -n "$alive_state" ]]; then
+			msg+=" ($alive_state"
+			[[ -n "$age_str" ]] && msg+=", started ${age_str} ago"
+			msg+=")"
+		fi
+	fi
+	[[ -n "$pr" ]] && msg+=" working on PR #$pr"
+	msg+="."
+	if [[ "$alive_state" == "DEAD" ]]; then
+		msg+=" Stale lock — the OS will release it on the next acquire attempt; no manual cleanup needed."
+	else
+		msg+=" Your operation will be retried automatically when the sync completes."
+	fi
+	echo "$msg"
+}
+
+_autopr_sync_gate_held() {
+	local gate_file="$REPO_ROOT/.git/TRACKER_SYNC_PENDING"
+	if [[ ! -f "$gate_file" ]]; then
+		return 1
+	fi
+	# flock(1) --shared --nonblock succeeds iff no exclusive holder.
+	# If it succeeds: file is stale; clean up and report not-held.
+	# If it fails:    holder is live; report held with diagnostics.
+	if flock --shared --nonblock "$gate_file" true 2>/dev/null; then
+		rm -f "$gate_file"
+		echo "Note: cleaned up stale tracker-sync marker (no live holder)." >&2
+		return 1
+	fi
+	local content
+	content=$(cat "$gate_file" 2>/dev/null || true)
+	_autopr_sync_gate_friendly_message "$content"
+	return 0
+}
 FORCE_SQUASH=false
 CI_POLL_TIMEOUT=""
 GOVERNANCE_MODE=false
@@ -727,8 +815,8 @@ Individual commits are preserved in the history."
 	# (WI-miriz: trap _autopr_finalize is already installed at flush_queue's
 	# entry; it removes PR_PENDING on exit.  No replacement trap needed here.)
 
-	if [[ -f "$REPO_ROOT/.git/TRACKER_SYNC_PENDING" ]]; then
-		echo "Error: tracker sync started while preparing flush. Retry after sync completes."
+	if _gate_msg=$(_autopr_sync_gate_held); then
+		echo "Error: $_gate_msg"
 		_autopr_state_final="failed_tracker_sync_pending"
 		exit 1
 	fi
@@ -951,9 +1039,10 @@ do_pr() {
 		exit 1
 	fi
 
-	# Check for tracker sync in progress
-	if [[ -f "$REPO_ROOT/.git/TRACKER_SYNC_PENDING" ]]; then
-		echo "Error: tracker sync in progress. Wait for htrac sync to complete."
+	# Check for tracker sync in progress (WI-nutin: flock-based, with
+	# stale-marker auto-recovery + friendly diagnostics).
+	if _gate_msg=$(_autopr_sync_gate_held); then
+		echo "Error: $_gate_msg"
 		_autopr_state_final="failed_tracker_sync_pending"
 		exit 1
 	fi
@@ -1124,8 +1213,8 @@ do_pr() {
 	# _autopr_state_keep_pending.  No replacement trap needed here.)
 
 	# Re-check: tracker sync may have started since our initial preflight
-	if [[ -f "$REPO_ROOT/.git/TRACKER_SYNC_PENDING" ]]; then
-		echo "Error: tracker sync started while preparing push. Retry after sync completes."
+	if _gate_msg=$(_autopr_sync_gate_held); then
+		echo "Error: $_gate_msg"
 		_autopr_state_final="failed_tracker_sync_pending"
 		exit 1
 	fi

@@ -13,6 +13,13 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Fixed
 
+#### Sync gate self-recovery (WI-nutin)
+
+- **`.git/TRACKER_SYNC_PENDING` is now an OS-managed flock, not a marker file**: previously the file's existence meant "sync in progress"; cleanup ran only in `do_sync`'s `finally` block, which a SIGKILL bypasses, so the marker leaked across crashes and silently blocked every subsequent `auto-pr` until manual `rm`. Replaced with `SyncGate` — opens the file, takes `fcntl.flock(LOCK_EX | LOCK_NB)`, writes `pid=…\nstarted=…\npr=…` into the body for diagnostics. The OS releases the flock unconditionally on process exit (SIGKILL, segfault, power loss), so the lock can never leak and the next acquirer simply succeeds over the stale body.
+- **`check_sync_gate_held` for non-destructive callers** (preflight, `_maybe_auto_sync`, bash `auto-pr`): tries `LOCK_SH | LOCK_NB`; on success, the file is stale (no exclusive holder) and is silently auto-removed; on `BlockingIOError`, the file body is parsed and a friendly diagnostic is returned.
+- **Friendly, actionable holder messages** replace the prior `Error: tracker sync in progress. Wait for htrac sync to complete.` one-liner. New shape: `tracker sync gate locked by PID 12345 (alive, started 2m ago) working on PR #3392. Your operation will be retried automatically when the sync completes.` (or, if PID is dead: `… (DEAD, started 1h17m ago). Stale lock — the OS will release it on the next acquire attempt; no manual cleanup needed.`).
+- **`scripts/auto-pr`'s three sync-gate checks** (`flush_queue`, `do_pr` preflight, post-`PR_PENDING` re-check) now route through a shared bash helper `_autopr_sync_gate_held` that uses `flock --shared --nonblock` to inspect the lock state without disturbing the holder, auto-cleans stale files, and renders the same diagnostic shape as the Python side.
+
 #### Cross-tier reference resolution (WI-sohot)
 
 - **`tracker validate` now matches CI's view by default** (WI-sohot): the cross-file reference checks in `_check_ref_resolution` (renamed from `_check_dangling_parents`) split into two index scopes by writer tier. Canonical and workspace items must resolve refs in canonical ∪ workspace (the CI-visible set, since `tracker-workspace/stealth/` is gitignored); stealth items resolve in the full canonical ∪ workspace ∪ stealth index. Reproduces the PR #3365 CI failure locally — workspace items pointing at stealth-tier ids no longer pass `tracker validate` only to fail in CI.

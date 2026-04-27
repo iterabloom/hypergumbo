@@ -16,8 +16,13 @@ Design:
   custom environment variables (e.g. ``GIT_INDEX_FILE``).
 - All Forgejo API calls go through ``_api_call()`` using only stdlib
   ``urllib.request`` (no ``requests`` dependency).
-- Gate files (``.git/TRACKER_SYNC_PENDING``) provide mutual exclusion with
-  ``auto-pr`` (which uses ``.git/PR_PENDING``).
+- The sync gate file (``.git/TRACKER_SYNC_PENDING``) provides mutual
+  exclusion with ``auto-pr`` (which uses ``.git/PR_PENDING``).  The gate
+  is held via ``fcntl.flock`` on an open file descriptor, which the OS
+  releases unconditionally when the holding process exits — even on
+  SIGKILL, segfault, or power loss — so a stale marker can never block
+  subsequent operations.  See ``SyncGate`` and
+  ``check_sync_gate_held`` below.
 - Preflight checks fail fast on the first problem (sequential, short-circuit).
 - ``do_sync()`` uses git plumbing (read-tree/write-tree/commit-tree) with a
   temporary index file to build the sync commit on top of ``origin/dev``
@@ -33,12 +38,14 @@ See the plan document for the full design specification.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
 import subprocess  # nosec B404 — required for git subprocess calls
 import time
 from dataclasses import dataclass, field
+from io import TextIOWrapper
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -46,6 +53,231 @@ from urllib.request import Request, urlopen
 
 from hypergumbo_tracker.sync_log import init_sync_log, write_log
 from hypergumbo_tracker.validation import validate_all
+
+
+# ---------------------------------------------------------------------------
+# Sync gate (fcntl-based mutual exclusion)
+# ---------------------------------------------------------------------------
+#
+# Pre-WI-nutin design: ``.git/TRACKER_SYNC_PENDING`` was a marker whose
+# *existence* meant "sync in progress".  Cleanup ran in ``do_sync``'s
+# ``finally`` block — but a SIGKILL bypasses ``finally``, so the marker
+# could leak and silently block every subsequent operation until manual
+# ``rm`` cleanup hours later.
+#
+# Post-WI-nutin design: the same path is now an OS-managed lock file.  A
+# holder opens it, calls ``fcntl.flock(LOCK_EX | LOCK_NB)``, and writes
+# its PID + start-time + (later) PR number into the body for diagnostic
+# messaging.  The OS releases the lock unconditionally on process exit,
+# regardless of cause, so a stale lock file is automatically reusable —
+# the next acquirer's ``LOCK_EX`` succeeds even if the file is non-empty.
+#
+# Non-destructive callers (preflight, auto-sync threshold check, the bash
+# ``auto-pr`` script) use ``check_sync_gate_held`` (Python) or
+# ``flock --shared --nonblock`` (bash) to peek at the lock state and
+# auto-clean stale files.
+
+
+def _format_gate_holder_message(content: str) -> str:
+    """Format a friendly description of who is holding the sync gate.
+
+    Parses ``pid=...``, ``started=...`` (Unix seconds), and ``pr=...``
+    lines from the lock-file content.  Reports holder PID, alive/dead
+    state (via ``kill(pid, 0)``), age of the lock, and the PR number it
+    is working on if recorded.  Tone is reassuring: the message tells
+    the reader the system has self-recovery and nothing manual is
+    required.
+    """
+    holder_pid = ""
+    started = ""
+    pr_num = ""
+    for line in content.splitlines():
+        if line.startswith("pid="):
+            holder_pid = line[4:].strip()
+        elif line.startswith("started="):
+            started = line[8:].strip()
+        elif line.startswith("pr="):
+            pr_num = line[3:].strip()
+
+    age_str = ""
+    if started.isdigit():
+        age_secs = max(0, int(time.time()) - int(started))
+        if age_secs < 60:
+            age_str = f"{age_secs}s"
+        elif age_secs < 3600:
+            age_str = f"{age_secs // 60}m"
+        else:
+            hours, mins = divmod(age_secs // 60, 60)
+            age_str = f"{hours}h{mins:02d}m"
+
+    alive_state = ""
+    if holder_pid.isdigit():
+        try:
+            os.kill(int(holder_pid), 0)
+            alive_state = "alive"
+        except ProcessLookupError:
+            alive_state = "DEAD"
+        except PermissionError:  # pragma: no cover — different-user lock
+            alive_state = "alive (other user)"
+
+    parts = ["tracker sync gate locked"]
+    if holder_pid:
+        suffix = f"by PID {holder_pid}"
+        if alive_state:
+            suffix += f" ({alive_state}"
+            if age_str:
+                suffix += f", started {age_str} ago"
+            suffix += ")"
+        parts.append(suffix)
+    if pr_num:
+        parts.append(f"working on PR #{pr_num}")
+    msg = " ".join(parts) + "."
+    if alive_state == "DEAD":
+        msg += (
+            " Stale lock — the OS will release it on the next acquire "
+            "attempt; no manual cleanup needed."
+        )
+    else:
+        msg += (
+            " Your operation will be retried automatically when the "
+            "sync completes."
+        )
+    return msg
+
+
+class SyncGate:
+    """fcntl-based exclusive lock for the tracker sync workflow.
+
+    Replaces the marker-file-existence pattern.  The OS releases the
+    flock when the holding process exits — even on SIGKILL — so the
+    gate cannot leak across process lifetimes.
+
+    The lock file at ``self.lock_path`` is created on ``try_acquire``
+    and removed on ``release``; its body records ``pid``, ``started``
+    (Unix seconds), and optionally ``pr`` for diagnostic messages
+    surfaced when other processes try to acquire the lock.
+
+    Usage::
+
+        gate = SyncGate(git_dir / "TRACKER_SYNC_PENDING")
+        acquired, msg = gate.try_acquire()
+        if not acquired:
+            return SyncResult(success=False, error=msg, exit_code=1)
+        try:
+            ...                       # do work
+            gate.update_pr(pr_num)    # record PR in lock body
+            ...
+        finally:
+            gate.release()
+    """
+
+    def __init__(self, lock_path: Path) -> None:
+        self.lock_path = lock_path
+        self._fh: TextIOWrapper | None = None
+
+    def try_acquire(self) -> tuple[bool, str]:
+        """Acquire the gate non-blocking.
+
+        Returns ``(True, "")`` on success — caller MUST call
+        :meth:`release`.  Returns ``(False, friendly_message)`` if
+        another process holds the lock, where ``friendly_message`` is
+        produced by :func:`_format_gate_holder_message`.
+
+        Stale lock files (file present but no holder, e.g. from a prior
+        SIGKILL) are silently re-acquired by the OS — ``LOCK_EX`` simply
+        succeeds, and we overwrite the body with our own state.
+        """
+        # Open r+ if exists, else create for write. ``a+`` works for
+        # both: creates if missing, opens read/write, doesn't truncate.
+        fh = open(self.lock_path, "a+")
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            fh.seek(0)
+            content = fh.read()
+            fh.close()
+            return False, _format_gate_holder_message(content)
+        self._fh = fh
+        self._write_state(pr_num=None)
+        return True, ""
+
+    def update_pr(self, pr_num: int) -> None:
+        """Record the PR number in the lock body for diagnostics."""
+        if self._fh is None:  # pragma: no cover — defensive
+            return
+        self._write_state(pr_num=pr_num)
+
+    def _write_state(self, pr_num: int | None) -> None:
+        assert self._fh is not None
+        self._fh.seek(0)
+        self._fh.truncate()
+        lines = [f"pid={os.getpid()}", f"started={int(time.time())}"]
+        if pr_num is not None:
+            lines.append(f"pr={pr_num}")
+        self._fh.write("\n".join(lines) + "\n")
+        self._fh.flush()
+
+    def release(self) -> None:
+        """Release the gate and remove the lock file.  Idempotent.
+
+        The OS would release the flock on process exit anyway; calling
+        this explicitly lets concurrent waiters proceed sooner and
+        removes the lock file so the next ``try_acquire`` doesn't have
+        to re-acquire over a stale body.
+        """
+        if self._fh is not None:
+            try:
+                fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
+            finally:
+                self._fh.close()
+                self._fh = None
+        try:
+            self.lock_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def check_sync_gate_held(lock_path: Path) -> tuple[bool, str]:
+    """Non-destructively check whether the sync gate is held.
+
+    Returns ``(False, "")`` when the gate is free — including the case
+    where a stale lock file exists but no live holder remains; the
+    stale file is removed as a side effect.
+
+    Returns ``(True, friendly_message)`` when an exclusive holder is
+    present; ``friendly_message`` describes the holder.
+
+    Used by :func:`preflight_check`, ``cli._maybe_auto_sync``'s
+    pre-preflight gate, and the bash ``auto-pr`` script's gate checks
+    so that callers see actionable diagnostics without having to take
+    the lock themselves.
+    """
+    if not lock_path.exists():
+        return False, ""
+    try:
+        fh = open(lock_path, "a+")
+    except OSError:  # pragma: no cover — permission/FS error
+        return False, ""
+    try:
+        try:
+            # Shared lock: grants if no exclusive holder, blocks otherwise.
+            fcntl.flock(fh.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            fh.seek(0)
+            content = fh.read()
+            return True, _format_gate_holder_message(content)
+        # No exclusive holder: stale file. Release shared lock, clean up.
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        except OSError:  # pragma: no cover
+            pass
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:  # pragma: no cover — race
+            pass
+        return False, ""
+    finally:
+        fh.close()
 
 
 # ---------------------------------------------------------------------------
@@ -673,11 +905,9 @@ def preflight_check(repo_root: Path) -> PreflightResult:
             ok=False,
             error="auto-pr in flight (PR_PENDING exists). Wait for it to complete.",
         )
-    if sync_pending.exists():
-        return PreflightResult(
-            ok=False,
-            error="tracker sync already in progress (TRACKER_SYNC_PENDING exists).",
-        )
+    held, holder_msg = check_sync_gate_held(sync_pending)
+    if held:
+        return PreflightResult(ok=False, error=holder_msg)
 
     # 2b. Write access — sync needs to create branches in .git/refs/heads
     refs_heads = git_dir / "refs" / "heads"
@@ -852,7 +1082,7 @@ def do_sync(
 
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     sync_branch = f"tracker-sync/{timestamp}"
-    gate_file = preflight.git_dir / "TRACKER_SYNC_PENDING"
+    gate = SyncGate(preflight.git_dir / "TRACKER_SYNC_PENDING")
     file_count = len(preflight.changed_files)
 
     # Temporary index file for plumbing — avoids checkout, keeps working
@@ -861,13 +1091,16 @@ def do_sync(
     tmp_index = str(preflight.git_dir / "tmp-sync-index")
     idx_env = {"GIT_INDEX_FILE": tmp_index}
 
-    try:
-        # 0a. Create gate file immediately to prevent concurrent syncs.
-        # Previously this was done at step 8 (after commit creation),
-        # leaving a window where concurrent _maybe_auto_sync calls could
-        # all pass preflight and create duplicate PRs.
-        gate_file.write_text("sync\n")
+    # 0a. Acquire the sync gate atomically.  fcntl.flock on an open fd
+    # closes the race window between preflight and do_sync (concurrent
+    # _maybe_auto_sync calls used to all pass preflight and push
+    # duplicate PRs); the OS releases the lock unconditionally on
+    # process exit so the gate can never leak across crashes.
+    acquired, holder_msg = gate.try_acquire()
+    if not acquired:
+        return SyncResult(success=False, error=holder_msg, exit_code=1)
 
+    try:
         # 0b. Fetch latest base branch (non-fatal if offline — we'll use
         #     the local ref which may be slightly stale but still correct).
         _git(
@@ -1005,8 +1238,9 @@ def do_sync(
             )
         pr_num, head_sha = pr_info
 
-        # 11. Update gate file with PR number
-        gate_file.write_text(f"{pr_num}\n")
+        # 11. Record PR number in gate body (for diagnostic messages
+        # if another process tries to acquire the gate).
+        gate.update_pr(pr_num)
 
         # 12. Poll CI (with hung-run retry)
         max_hung_retries = 2
@@ -1062,7 +1296,7 @@ def do_sync(
                     exit_code=1,
                 )
             pr_num, head_sha = pr_info
-            gate_file.write_text(f"{pr_num}\n")
+            gate.update_pr(pr_num)
 
         if ci_result == "failure":
             return SyncResult(
@@ -1201,9 +1435,10 @@ def do_sync(
     finally:
         # Cleanup — plumbing approach never leaves the original branch,
         # so ops files remain in the working tree regardless of outcome.
-        # Remove gate file
-        if gate_file.exists():
-            gate_file.unlink()
+        # Release the sync gate (idempotent; OS would also auto-release
+        # on process exit, but this lets concurrent waiters proceed
+        # immediately and removes the lock file body).
+        gate.release()
 
         # Remove temporary index file
         tmp_index_path = Path(tmp_index)

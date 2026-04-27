@@ -14,9 +14,12 @@ Mocking strategy:
 
 from __future__ import annotations
 
+import fcntl
 import json
+import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from http.client import HTTPResponse
 from io import BytesIO
@@ -29,11 +32,13 @@ import pytest
 from hypergumbo_tracker.sync import (
     PreflightResult,
     SyncResult,
+    SyncGate,
     _FailoverState,
     _api_call,
     _detect_api_base,
     _detect_failover,
     _find_open_pr,
+    _format_gate_holder_message,
     _git,
     _load_env,
     _check_pr_merged,
@@ -42,10 +47,13 @@ from hypergumbo_tracker.sync import (
     _merge_pr,
     _poll_ci,
     _sum_added_lines,
+    check_sync_gate_held,
     do_sync,
     pending_sync_lines,
     preflight_check,
 )
+
+
 from hypergumbo_tracker.sync_log import (
     RETENTION_DAYS,
     _LOG_FILENAME_RE,
@@ -54,6 +62,26 @@ from hypergumbo_tracker.sync_log import (
     init_sync_log,
     write_log,
 )
+
+
+@pytest.fixture
+def held_sync_gate(tmp_path: Path):
+    """Create a TRACKER_SYNC_PENDING file with an exclusive flock held."""
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir(exist_ok=True)
+    gate_path = git_dir / "TRACKER_SYNC_PENDING"
+    fh = open(gate_path, "a+")
+    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    fh.write(f"pid={os.getpid()}\nstarted={int(time.time())}\n")
+    fh.flush()
+    yield gate_path
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        pass
+    fh.close()
+    if gate_path.exists():
+        gate_path.unlink()
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +137,161 @@ def _make_urlopen_response(
     resp.__enter__ = MagicMock(return_value=resp)
     resp.__exit__ = MagicMock(return_value=False)
     return resp
+
+
+# ---------------------------------------------------------------------------
+# TestSyncGate (WI-nutin)
+# ---------------------------------------------------------------------------
+
+
+class TestSyncGate:
+    """Tests for the fcntl-based sync gate (WI-nutin)."""
+
+    def test_acquire_release_roundtrip(self, tmp_path: Path) -> None:
+        gate = SyncGate(tmp_path / "TRACKER_SYNC_PENDING")
+        acquired, msg = gate.try_acquire()
+        assert acquired
+        assert msg == ""
+        assert gate.lock_path.exists()
+        body = gate.lock_path.read_text()
+        assert f"pid={os.getpid()}" in body
+        assert "started=" in body
+        gate.release()
+        assert not gate.lock_path.exists()
+
+    def test_release_is_idempotent(self, tmp_path: Path) -> None:
+        gate = SyncGate(tmp_path / "TRACKER_SYNC_PENDING")
+        gate.release()  # never acquired — must not raise
+        acquired, _ = gate.try_acquire()
+        assert acquired
+        gate.release()
+        gate.release()  # second call — must not raise
+
+    def test_try_acquire_blocked_by_holder(self, tmp_path: Path) -> None:
+        gate1 = SyncGate(tmp_path / "TRACKER_SYNC_PENDING")
+        acquired1, _ = gate1.try_acquire()
+        assert acquired1
+        try:
+            gate2 = SyncGate(tmp_path / "TRACKER_SYNC_PENDING")
+            acquired2, msg = gate2.try_acquire()
+            assert not acquired2
+            assert "tracker sync gate locked" in msg
+            assert f"PID {os.getpid()}" in msg
+            assert "alive" in msg
+            assert "retried automatically" in msg
+        finally:
+            gate1.release()
+
+    def test_try_acquire_recovers_stale_marker(self, tmp_path: Path) -> None:
+        """A pre-existing file with no live holder is reused (OS-level flock)."""
+        stale = tmp_path / "TRACKER_SYNC_PENDING"
+        stale.write_text("pid=99999\nstarted=1000000000\n")
+        gate = SyncGate(stale)
+        acquired, _ = gate.try_acquire()
+        assert acquired
+        # Body has been overwritten with our state
+        body = stale.read_text()
+        assert f"pid={os.getpid()}" in body
+        assert "pid=99999" not in body
+        gate.release()
+
+    def test_update_pr_records_pr_number(self, tmp_path: Path) -> None:
+        gate = SyncGate(tmp_path / "TRACKER_SYNC_PENDING")
+        gate.try_acquire()
+        try:
+            gate.update_pr(42)
+            body = gate.lock_path.read_text()
+            assert "pr=42" in body
+            assert f"pid={os.getpid()}" in body
+        finally:
+            gate.release()
+
+
+class TestCheckSyncGateHeld:
+    """Tests for check_sync_gate_held — non-destructive gate inspection."""
+
+    def test_no_file_means_not_held(self, tmp_path: Path) -> None:
+        held, msg = check_sync_gate_held(tmp_path / "TRACKER_SYNC_PENDING")
+        assert not held
+        assert msg == ""
+
+    def test_held_when_holder_present(self, tmp_path: Path) -> None:
+        gate = SyncGate(tmp_path / "TRACKER_SYNC_PENDING")
+        gate.try_acquire()
+        try:
+            held, msg = check_sync_gate_held(gate.lock_path)
+            assert held
+            assert "tracker sync gate locked" in msg
+            # File preserved while holder present
+            assert gate.lock_path.exists()
+        finally:
+            gate.release()
+
+    def test_stale_file_auto_cleaned(self, tmp_path: Path) -> None:
+        """A file with no flock holder is cleaned up; check returns not-held."""
+        stale = tmp_path / "TRACKER_SYNC_PENDING"
+        stale.write_text("pid=99999\nstarted=1000000000\n")
+        held, msg = check_sync_gate_held(stale)
+        assert not held
+        assert msg == ""
+        assert not stale.exists()
+
+
+class TestFormatGateHolderMessage:
+    """Tests for the diagnostic message formatter."""
+
+    def test_alive_holder_with_age_seconds(self) -> None:
+        started = int(time.time()) - 10
+        content = f"pid={os.getpid()}\nstarted={started}\n"
+        msg = _format_gate_holder_message(content)
+        assert "tracker sync gate locked" in msg
+        assert f"PID {os.getpid()}" in msg
+        assert "alive" in msg
+        assert "started" in msg
+        assert "ago" in msg
+        assert "retried automatically" in msg
+
+    def test_dead_holder_message(self) -> None:
+        # PID 99999 is unlikely to exist on test runners
+        content = f"pid=99999\nstarted={int(time.time()) - 5}\n"
+        msg = _format_gate_holder_message(content)
+        assert "DEAD" in msg
+        assert "auto-clear" in msg or "Stale lock" in msg
+
+    def test_age_minutes(self) -> None:
+        content = f"pid={os.getpid()}\nstarted={int(time.time()) - 600}\n"
+        msg = _format_gate_holder_message(content)
+        assert "10m" in msg
+
+    def test_age_hours(self) -> None:
+        # 1h05m = 3900s
+        content = f"pid={os.getpid()}\nstarted={int(time.time()) - 3900}\n"
+        msg = _format_gate_holder_message(content)
+        assert "1h05m" in msg
+
+    def test_pr_number_in_message(self) -> None:
+        content = (
+            f"pid={os.getpid()}\nstarted={int(time.time())}\npr=1234\n"
+        )
+        msg = _format_gate_holder_message(content)
+        assert "PR #1234" in msg
+
+    def test_empty_content_safe(self) -> None:
+        msg = _format_gate_holder_message("")
+        assert "tracker sync gate locked" in msg
+
+    def test_clamps_negative_age(self) -> None:
+        # ``started`` in the future (clock skew) → age clamped to 0s.
+        content = f"pid={os.getpid()}\nstarted={int(time.time()) + 999}\n"
+        msg = _format_gate_holder_message(content)
+        assert "0s ago" in msg
+
+    def test_unparseable_pid_alive_state_omitted(self) -> None:
+        # Non-numeric pid: no kill(0) check; alive_state stays empty.
+        content = "pid=garbage\nstarted=invalid\n"
+        msg = _format_gate_holder_message(content)
+        # Doesn't crash; returns a generic message.
+        assert "tracker sync gate locked" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -1099,16 +1282,46 @@ class TestPreflightCheck:
         mock_env: MagicMock,
         mock_git: MagicMock,
         tmp_path: Path,
+        held_sync_gate: Path,
     ) -> None:
-        git_dir = tmp_path / ".git"
-        git_dir.mkdir()
-        (git_dir / "TRACKER_SYNC_PENDING").write_text("sync\n")
+        """Preflight rejects when the sync gate is held by an OS-level flock."""
+        git_dir = held_sync_gate.parent
         mock_git.return_value = _make_completed_process(
             stdout=str(git_dir)
         )
         result = preflight_check(tmp_path)
         assert not result.ok
-        assert "already in progress" in result.error
+        assert "tracker sync gate locked" in result.error
+        assert f"PID {os.getpid()}" in result.error
+
+    @patch("hypergumbo_tracker.sync._git")
+    @patch("hypergumbo_tracker.sync._load_env")
+    @patch("hypergumbo_tracker.sync._detect_api_base")
+    def test_stale_sync_marker_auto_recovery(
+        self,
+        mock_api_base: MagicMock,
+        mock_env: MagicMock,
+        mock_git: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """A TRACKER_SYNC_PENDING file with no flock holder is auto-cleaned.
+
+        This is the WI-nutin scenario: a SIGKILLed prior holder leaves the
+        marker on disk, but the OS released the flock. ``check_sync_gate_held``
+        observes no holder, removes the stale file, and preflight proceeds.
+        """
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        gate = git_dir / "TRACKER_SYNC_PENDING"
+        gate.write_text("pid=99999\nstarted=1000000000\n")
+        mock_git.return_value = _make_completed_process(
+            stdout=str(git_dir)
+        )
+        # First call: reaches the gate check, observes no holder, cleans up.
+        # Subsequent preflight steps need real data we don't supply, but
+        # the sync_pending check is what we're verifying — gate file removal.
+        preflight_check(tmp_path)
+        assert not gate.exists()
 
     @patch("hypergumbo_tracker.sync._git")
     @patch("hypergumbo_tracker.sync._load_env")
@@ -3573,6 +3786,42 @@ class TestCloseLogAndGetLogDir:
 # ---------------------------------------------------------------------------
 # TestDoSync stale-pending retry paths
 # ---------------------------------------------------------------------------
+
+
+class TestDoSyncGateContention:
+    """do_sync bails out cleanly when another holder owns the sync gate."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_init_sync_log(self) -> Any:
+        with patch("hypergumbo_tracker.sync.init_sync_log"):
+            yield
+
+    def test_returns_blocked_message_when_gate_held(
+        self, tmp_path: Path,
+    ) -> None:
+        """If a concurrent holder owns the gate, do_sync returns exit=1
+        with the friendly diagnostic, never enters the work try block."""
+        pre = _make_preflight(tmp_path)
+        # Acquire the gate from outside ``do_sync`` to simulate a
+        # concurrent holder racing past preflight.
+        gate_path = pre.git_dir / "TRACKER_SYNC_PENDING"
+        fh = open(gate_path, "a+")
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fh.write(f"pid={os.getpid()}\nstarted={int(time.time())}\n")
+        fh.flush()
+        try:
+            result = do_sync(repo_root=tmp_path, preflight=pre)
+            assert not result.success
+            assert result.exit_code == 1
+            assert "tracker sync gate locked" in result.error
+        finally:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+            fh.close()
+            if gate_path.exists():
+                gate_path.unlink()
 
 
 class TestDoSyncStalePending:
