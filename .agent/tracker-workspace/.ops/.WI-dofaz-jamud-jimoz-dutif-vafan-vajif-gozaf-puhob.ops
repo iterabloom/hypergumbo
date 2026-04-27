@@ -27,3 +27,34 @@
   nonce: a845  # a845
   set:  # a845
     status: todo_soft  # a845
+- op: update  # c3a0
+  at: '2026-04-27T09:00:20Z'  # c3a0
+  by: agent  # c3a0
+  actor: jgstern_agent  # c3a0
+  clock: 3  # c3a0
+  nonce: c3a0  # c3a0
+  set:  # c3a0
+    status: needs_human_review  # c3a0
+    pr_ref: '3428'  # c3a0
+- op: discuss  # f5b4
+  at: '2026-04-27T09:00:20Z'  # f5b4
+  by: agent  # f5b4
+  actor: jgstern_agent  # f5b4
+  clock: 4  # f5b4
+  nonce: f5b4  # f5b4
+  message: "Pushed as PR #3428. CI passed. Awaiting human review and merge per --gov governance protocol (touches scripts/auto-pr + scripts/lib/forgejo-api.sh). Implementation: new find_open_tracker_sync_prs helper in forgejo-api.sh (uses Python json shim mirroring find_merged_pr; emits PR_NUM<TAB>BRANCH<TAB>CREATED_EPOCH<TAB>AGE_SECONDS rows). New _autopr_warn_orphan_tracker_sync_prs in auto-pr filters helper output to rows whose CREATED_EPOCH precedes _autopr_run_started_epoch (captured at do_pr/flush_queue entry) — surfaces orphans only, does not auto-merge, never affects exit code. Wired at both successful-merge paths (do_pr post-success and flush_queue post-success). Smoke-tested locally: helper correctly filters tracker-sync/* PRs from feature PRs; warner emits warning only for pre-cycle orphans, silent on mid-cycle creations."  # f5b4
+- op: update  # 010b
+  at: '2026-04-27T13:56:16Z'  # 010b
+  by: agent  # 010b
+  actor: jgstern_agent  # 010b
+  clock: 5  # 010b
+  nonce: 010b  # 010b
+  set:  # 010b
+    status: done  # 010b
+- op: discuss  # 8e27
+  at: '2026-04-27T13:56:16Z'  # 8e27
+  by: agent  # 8e27
+  actor: jgstern_agent  # 8e27
+  clock: 6  # 8e27
+  nonce: '8e27'  # 8e27
+  message: "Merged via PR #3428 (manual web UI merge confirmed by jgstern 2026-04-27). Implementation: find_open_tracker_sync_prs in forgejo-api.sh emits PR_NUM<TAB>BRANCH<TAB>CREATED_EPOCH<TAB>AGE_SECONDS for tracker-sync/* PRs; _autopr_warn_orphan_tracker_sync_prs in auto-pr filters to rows whose CREATED_EPOCH precedes _autopr_run_started_epoch and emits a vociferous diagnostic. Wired at both do_pr and flush_queue post-success paths. Gov-cleanup completed; PR_PENDING gate cleared."  # 8e27

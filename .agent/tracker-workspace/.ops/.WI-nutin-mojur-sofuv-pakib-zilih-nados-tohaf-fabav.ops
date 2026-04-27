@@ -34,3 +34,25 @@
   clock: 3  # 0fd1
   nonce: 0fd1  # 0fd1
   message: "I approve and I approve using auto-pr WITHOUT --gov"  # 0fd1
+- op: update  # 41f7
+  at: '2026-04-27T08:39:52Z'  # 41f7
+  by: agent  # 41f7
+  actor: jgstern_agent  # 41f7
+  clock: 4  # 41f7
+  nonce: 41f7  # 41f7
+  set:  # 41f7
+    status: done  # 41f7
+- op: discuss  # f347
+  at: '2026-04-27T08:39:52Z'  # f347
+  by: agent  # f347
+  actor: jgstern_agent  # f347
+  clock: 5  # f347
+  nonce: f347  # f347
+  message: "Fixed in PR #3427 (commit fc2c817b). SyncGate uses fcntl.flock(LOCK_EX | LOCK_NB) on .git/TRACKER_SYNC_PENDING; OS releases the lock unconditionally on process exit so the marker can never leak across SIGKILL/segfault/power-loss. Stale lock files are auto-recovered by the next acquirer's LOCK_EX (succeeds over the stale body) and by check_sync_gate_held (LOCK_SH probe — silent unlink on no-holder). Friendly diagnostic messages report holder PID + alive/dead state + age + working PR number, replacing the prior cryptic 'Error: tracker sync in progress.' All four design properties from the description are satisfied: (1) self-cleanup via OS, (2) vociferous messaging with diagnostic detail, (3) graceful auto-recovery, (4) message includes recovery action and reassuring tone. Three sites in scripts/auto-pr (flush_queue, do_pr preflight, post-PR_PENDING re-check) now route through a shared bash helper using flock(1) --shared --nonblock that mirrors the Python diagnostics. 19 new tests cover SyncGate, check_sync_gate_held, _format_gate_holder_message, the preflight integration, do_sync gate contention, and _maybe_auto_sync's pre-preflight check."  # f347
+- op: discuss  # 78c1
+  at: '2026-04-27T08:40:21Z'  # 78c1
+  by: agent  # 78c1
+  actor: jgstern_agent  # 78c1
+  clock: 6  # 78c1
+  nonce: 78c1  # 78c1
+  message: "Fixed in PR #3427 (commit fc2c817b). SyncGate uses fcntl.flock(LOCK_EX | LOCK_NB) on .git/TRACKER_SYNC_PENDING; OS releases the lock unconditionally on process exit so the marker can never leak across SIGKILL/segfault/power-loss. Stale lock files are auto-recovered by the next acquirer's LOCK_EX (succeeds over the stale body) and by check_sync_gate_held (LOCK_SH probe — silent unlink on no-holder). Friendly diagnostic messages report holder PID + alive/dead state + age + working PR number, replacing the prior cryptic 'Error: tracker sync in progress.' All four design properties from the description are satisfied: (1) self-cleanup via OS, (2) vociferous messaging with diagnostic detail, (3) graceful auto-recovery, (4) message includes recovery action and reassuring tone. Three sites in scripts/auto-pr (flush_queue, do_pr preflight, post-PR_PENDING re-check) now route through a shared bash helper using flock(1) --shared --nonblock that mirrors the Python diagnostics. 19 new tests cover SyncGate, check_sync_gate_held, _format_gate_holder_message, the preflight integration, do_sync gate contention, and _maybe_auto_sync's pre-preflight check."  # 78c1
