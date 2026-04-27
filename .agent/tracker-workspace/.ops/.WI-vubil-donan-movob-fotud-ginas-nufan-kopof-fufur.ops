@@ -33,3 +33,11 @@
   clock: 3  # 7b52
   nonce: 7b52  # 7b52
   message: "Closed wont_do per human direction 2026-04-27. Superseded by umbrella WI-tukif-fuhug-tisiv-judor-pobat-fisat-hadap-zojol which consolidates the 12 nearly-identical stdlib-provenance items (all created 2026-04-24, all zero discussion, all the same template) into a single tracking item with a per-language checklist. The work itself is preserved on the umbrella; this individual item is closed because discrete per-language tracking made the queue noisy without conveying useful priority information."  # 7b52
+- op: update  # 418e
+  at: '2026-04-27T02:59:02Z'  # 418e
+  by: human  # 418e
+  actor: jgstern  # 418e
+  clock: 4  # 418e
+  nonce: 418e  # 418e
+  set:  # 418e
+    status: deleted  # 418e

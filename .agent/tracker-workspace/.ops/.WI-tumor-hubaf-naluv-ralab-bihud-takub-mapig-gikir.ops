@@ -33,3 +33,11 @@
   clock: 3  # 1a0e
   nonce: 1a0e  # 1a0e
   message: "Closed wont_do per human direction 2026-04-27. Superseded by umbrella WI-tukif-fuhug-tisiv-judor-pobat-fisat-hadap-zojol which consolidates the 12 nearly-identical stdlib-provenance items (all created 2026-04-24, all zero discussion, all the same template) into a single tracking item with a per-language checklist. The work itself is preserved on the umbrella; this individual item is closed because discrete per-language tracking made the queue noisy without conveying useful priority information."  # 1a0e
+- op: update  # e98c
+  at: '2026-04-27T02:59:22Z'  # e98c
+  by: human  # e98c
+  actor: jgstern  # e98c
+  clock: 4  # e98c
+  nonce: e98c  # e98c
+  set:  # e98c
+    status: deleted  # e98c

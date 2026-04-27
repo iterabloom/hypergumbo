@@ -33,3 +33,11 @@
   clock: 3  # c9de
   nonce: c9de  # c9de
   message: "Closed wont_do per human direction 2026-04-27. Superseded by umbrella WI-tukif-fuhug-tisiv-judor-pobat-fisat-hadap-zojol which consolidates the 12 nearly-identical stdlib-provenance items (all created 2026-04-24, all zero discussion, all the same template) into a single tracking item with a per-language checklist. The work itself is preserved on the umbrella; this individual item is closed because discrete per-language tracking made the queue noisy without conveying useful priority information."  # c9de
+- op: update  # cc2e
+  at: '2026-04-27T02:58:51Z'  # cc2e
+  by: human  # cc2e
+  actor: jgstern  # cc2e
+  clock: 4  # cc2e
+  nonce: cc2e  # cc2e
+  set:  # cc2e
+    status: deleted  # cc2e
