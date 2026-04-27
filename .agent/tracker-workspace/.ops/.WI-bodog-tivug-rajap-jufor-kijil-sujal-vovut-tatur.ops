@@ -35,3 +35,11 @@
   clock: 3  # a8c0
   nonce: a8c0  # a8c0
   message: "Bumped P4 → P2 (sequencing decision, 2026-04-26 conversation with jgstern). Pairs with WI-zitiv (mechanical Bash hook for output-capture enforcement, just demoted P1 → P3). The decision: try the cheaper, lower-risk format/recognition fix first before reaching for hard-blocking PreToolUse enforcement. Three reasons: (1) WI-bodog and WI-zitiv target the same root cause (agent doesn't internalize injected playbook content as authoritative reference, so the rule doesn't shape next-turn command composition). (2) WI-bodog is low-LOC, low-risk (4 changes inside .agent/hooks/_shared/on_transcript_change.py output block) and is a prerequisite for fairly evaluating whether ANY text-based intervention works — if the agent doesn't recognize injected content as a document, no rephrasing of that document will land. (3) WI-zitiv's own write-up concedes 'Once mechanical enforcement exists, the playbook can be downgraded from always-inject to context-only' — that's a hypothesis (text won't work) that hasn't been tested under the better recognition format. Pairing this PR (the playbook+AGENTS.md phrasing pass landed on this same branch) with the WI-bodog format change (next branch, separate PR because it touches .agent/hooks/) gives us a clean before/after measurement: re-run scripts/measure-playbook-overlap.py one or two sessions later. If output-capture compliance climbs from ~7% (per session_retrospective_04262026_1736.md Finding 2) to >40%, WI-zitiv stays at P3 or closes wont_do. If it stays flat near 7%, WI-zitiv re-bumps and the hard-block ships."  # a8c0
+- op: update  # 3c7f
+  at: '2026-04-27T03:05:24Z'  # 3c7f
+  by: human  # 3c7f
+  actor: jgstern  # 3c7f
+  clock: 4  # 3c7f
+  nonce: 3c7f  # 3c7f
+  set:  # 3c7f
+    status: todo_soft  # 3c7f

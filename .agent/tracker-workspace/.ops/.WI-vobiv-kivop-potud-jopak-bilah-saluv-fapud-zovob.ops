@@ -42,3 +42,25 @@
   clock: 4  # 9e33
   nonce: '9e33'  # 9e33
   message: "Bakeoff validation: MOVED (cohort cohort-001/iter-002). Plurality verdict across repos: moved=5 no_move=0 inconclusive=0. Evidence: airflow=moved: Effective elimination of RST false flags + tiny residual (2 edges) of a different shape.; alertmanager=moved: alertmanager has no Vue/RST/jsonnet/kafka-properties-style leaks. The 50 jsonnet nodes from iter-001 are now legitimate…; chatwoot=moved: Cleanest single-producer fix in the session: 871 → 0 language-slot leaks via PR #3385.; +2 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 9e33
+- op: discuss  # f5b5
+  at: '2026-04-27T03:13:34Z'  # f5b5
+  by: human  # f5b5
+  actor: jgstern  # f5b5
+  clock: 5  # f5b5
+  nonce: f5b5  # f5b5
+  message: "is there anything on this left to be done?"  # f5b5
+- op: update  # baf4
+  at: '2026-04-27T03:59:00Z'  # baf4
+  by: agent  # baf4
+  actor: jgstern_agent  # baf4
+  clock: 6  # baf4
+  nonce: baf4  # baf4
+  set:  # baf4
+    status: done  # baf4
+- op: discuss  # a43d
+  at: '2026-04-27T03:59:00Z'  # a43d
+  by: agent  # a43d
+  actor: jgstern_agent  # a43d
+  clock: 7  # a43d
+  nonce: a43d  # a43d
+  message: "Closing as done. Direct answer to the question 'is there anything left to be done?': no. The umbrella's bakeoff verdict went MOVED on iter-002 (moved=5 no_move=0 inconclusive=0, awaits_bakeoff_validation tag stripped). All four sub-producer leaks the 2026-04-26T02:56 audit filed are resolved: WI-gijot (jsonnet, done), WI-hugom (kafka properties/manifest, done), WI-bagon ('unresolved' sentinel, done), WI-jatig (RST/Sphinx, wont_do — by-design rationale recorded on that item). Parent INV-nodij itself is satisfied. Nothing further owed on this regression umbrella."  # a43d
