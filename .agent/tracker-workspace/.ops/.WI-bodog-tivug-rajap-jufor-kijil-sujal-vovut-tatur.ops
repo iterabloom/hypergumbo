@@ -43,3 +43,26 @@
   nonce: 3c7f  # 3c7f
   set:  # 3c7f
     status: todo_soft  # 3c7f
+- op: discuss  # 086c
+  at: '2026-04-27T14:16:15Z'  # 086c
+  by: agent  # 086c
+  actor: jgstern_agent  # 086c
+  clock: 5  # 086c
+  nonce: 086c  # 086c
+  message: "Merged as PR #3430, dev SHA cd7b09eb0696."  # 086c
+- op: discuss  # 0d0f
+  at: '2026-04-27T14:18:26Z'  # 0d0f
+  by: agent  # 0d0f
+  actor: jgstern_agent  # 0d0f
+  clock: 6  # 0d0f
+  nonce: 0d0f  # 0d0f
+  message: "Merged via PR #3430 (commit cd7b09eb). Implementation: three pure helpers in .agent/hooks/_shared/on_transcript_change.py — strip_spdx_header (regex-strips leading SPDX HTML comment + trailing blank line), extract_natural_title (parses first H1/H2/H3 heading, falls back to id), format_playbook_block (renders divider + framing hint + body). Wrapper header: 'relevant playbook(s)' → 'relevant document(s)'. Divider: '--- <id> ---' → '--- <natural title> — <repo-relative path> ---'. Framing hint: 'If the task below matches, consult this instead of re-reading the file.' added on the line after the divider. 17 focused tests cover all three helpers (SPDX strip variants, heading H1/H2/H3, no-heading-fallback, full block assembly, em-dash separator). All 75 transcript-related tests pass post-change. Live verification this session: subsequent transcript-change injections in this conversation rendered with the new format (e.g. '--- Pre-Commit Playbook — .agent/agent_playbooks_protocols_sops_skills/pre-commit-playbook.md ---'). Approved by jgstern 2026-04-27 for auto-pr without --gov."  # 0d0f
+- op: update  # 18ef
+  at: '2026-04-27T14:18:43Z'  # 18ef
+  by: agent  # 18ef
+  actor: jgstern_agent  # 18ef
+  clock: 7  # 18ef
+  nonce: 18ef  # 18ef
+  set:  # 18ef
+    status: done  # 18ef
+    pr_ref: '3430'  # 18ef

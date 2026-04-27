@@ -41,3 +41,10 @@
   clock: 4  # 6fe9
   nonce: 6fe9  # 6fe9
   message: "Shipped in PR #3424 (commit 145377532). Added 'Session-end agent-notes refresh (write side of the recovery loop)' sub-section to recover-state-playbook.md, naming the symmetry obligation explicitly: the existing 'Keep notes fresh' bullet list covers *during*-session updates; this one covers the sign-off step. Cites the retrospective findings (session_retrospective_04262026_1911.md Finding 7, session_retrospective_04262026_1736.md Finding 3). Provides four-priority list of what to record + ~5-line length budget. Deferred follow-ups remain: (a) hook summary in .agent/hooks/_shared/on_transcript_change.py:PLAYBOOKS (governance, separate review), (b) stop hook nudge that fires when agent_notes.json mtime is stale (governance + needs evidence first that the playbook addition alone isn't enough). Per AGENTS.md 'Creating a New Playbook' note, the playbook .md is not itself a governance file."  # 6fe9
+- op: discuss  # aa7f
+  at: '2026-04-27T14:03:49Z'  # aa7f
+  by: human  # aa7f
+  actor: jgstern  # aa7f
+  clock: 5  # aa7f
+  nonce: aa7f  # aa7f
+  message: "are those deferred followups (a) and (b) trackerized?"  # aa7f

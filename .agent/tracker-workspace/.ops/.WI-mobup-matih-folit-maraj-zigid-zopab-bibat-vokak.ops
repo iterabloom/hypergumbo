@@ -41,3 +41,18 @@
   clock: 4  # f131
   nonce: f131  # f131
   message: "Shipped in PR #3425. Added 'When NOT to file a new tracker item' section to structural-fix-scope-expansion-protocol.md plus a cross-reference paragraph at the end of the existing Commitment Protocol section. Names three failure modes (existing-coverage check / conversation-in-progress check / property-of-existing-invariant check) that empirically produce cargo-cult filings. Default 'when in doubt use todo_hard' is retained — addition only narrows it for those three shapes. Hook summary update in .agent/hooks/_shared/on_transcript_change.py:PLAYBOOKS deferred (governance, separate review). Per AGENTS.md 'Creating a New Playbook' note, the playbook .md is not a governance file."  # f131
+- op: update  # eaa0
+  at: '2026-04-27T14:17:22Z'  # eaa0
+  by: human  # eaa0
+  actor: jgstern  # eaa0
+  clock: 5  # eaa0
+  nonce: eaa0  # eaa0
+  set:  # eaa0
+    status: todo_soft  # eaa0
+- op: discuss  # 7a25
+  at: '2026-04-27T14:17:40Z'  # 7a25
+  by: human  # 7a25
+  actor: jgstern  # 7a25
+  clock: 6  # 7a25
+  nonce: 7a25  # 7a25
+  message: "In this playbook, \"(Motivating incident: session_retrospective_04262026_1911.md Finding 6 — the agent filed a fresh INV item for what turned out to be...\"\n\nshould instead read\n\n\"(We discovered these failure modes when the agent filed a fresh INV item for what turned out to be...\"\n\n\nAlso: does `scripts/tracker` have a way to enumerate all tags? If not, we should make a WI for that and make that WI block the present one (which I am re-opening)."  # 7a25
