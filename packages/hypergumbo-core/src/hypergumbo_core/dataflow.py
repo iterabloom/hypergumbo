@@ -232,13 +232,25 @@ def _build_line_index(root_node: Any) -> Dict[int, Any]:
     For a file with N edges, this reduces total work from O(N * depth) to
     O(tree_size + N). Profiling shows _find_node_at_line accounts for ~15%
     of Java analysis time on large codebases (37K calls for killbill).
+
+    Comment nodes are skipped (WI-likab): when a real-code node and a
+    trailing comment both start on the same line — `v := compute(x)
+    // godoc` — the comment is a sibling that, in DFS order, would
+    overwrite the real-code entry. The dataflow positional walk would
+    then run from the comment leaf, find no matching ancestor, and the
+    edge would be left unannotated. Tree-sitter grammars name comment
+    node types with "comment" in them (``comment``, ``line_comment``,
+    ``block_comment``, ``doc_comment``), so the substring check covers
+    every grammar without per-language hardcoding.
     """
     index: Dict[int, Any] = {}
     stack = [root_node]
     while stack:
         node = stack.pop()
-        # Record this node for its start line (deeper nodes overwrite shallower)
-        index[node.start_point[0]] = node
+        # Record this node for its start line (deeper nodes overwrite shallower).
+        # Skip comments so they don't shadow the real-code node on the same line.
+        if "comment" not in node.type:
+            index[node.start_point[0]] = node
         # Push children in reverse order so left-to-right processing
         # means later (deeper) children overwrite earlier ones
         for child in reversed(node.children):

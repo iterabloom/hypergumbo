@@ -802,6 +802,132 @@ library_patterns:
         assert result[0].meta is not None
         assert result[0].meta.get("access_mode") == "read"  # AST wins
 
+    def test_trailing_comment_does_not_shadow_positional_ancestor(
+        self, tmp_path: Path
+    ) -> None:
+        """Trailing comments on the same line as an assignment must not
+        prevent positional classification (WI-likab).
+
+        Tree shape mirrors what tree-sitter Go produces for::
+
+            v := compute(x)  // trailing godoc-style comment
+
+        The ``short_var_declaration`` and the ``comment`` are siblings
+        in the parent ``statement_list``, both starting on the same line.
+        A naive line→deepest-node index lets the comment overwrite the
+        short_var_declaration's deep node, after which the dataflow
+        positional walk runs from the comment leaf and finds no matching
+        ancestor.  The walk must instead skip the comment and resolve
+        through the short_var_declaration's ``right`` field.
+        """
+        yaml_content = """\
+language: go
+
+assignments:
+  - node_type: short_var_declaration
+    write: left
+    read: right
+"""
+        yaml_file = tmp_path / "go.yaml"
+        yaml_file.write_text(yaml_content)
+        config = load_dataflow_config(yaml_file)
+
+        edge = Edge.create(
+            src="go:a.go:5:caller:function",
+            dst="go:a.go:5:compute:function",
+            edge_type="calls",
+            line=5,
+        )
+
+        # Build a tree where a `short_var_declaration` and a trailing
+        # `comment` are siblings of `statement_list`, both at line 5.
+        tree = MagicMock(spec=[])
+        root = MagicMock(spec=[])
+        tree.root_node = root
+
+        line0 = 4  # 0-indexed line 5
+        base = line0 * 100
+
+        parent = MagicMock(spec=[])
+        parent.type = "short_var_declaration"
+        parent.start_point = (line0, 0)
+        parent.end_point = (line0, 15)
+        parent.start_byte = base + 0
+        parent.end_byte = base + 15
+
+        left = MagicMock(spec=[])
+        left.type = "expression_list"
+        left.start_point = (line0, 0)
+        left.end_point = (line0, 1)
+        left.start_byte = base + 0
+        left.end_byte = base + 1
+        left.children = []
+        left.parent = parent
+
+        right = MagicMock(spec=[])
+        right.type = "expression_list"
+        right.start_point = (line0, 5)
+        right.end_point = (line0, 15)
+        right.start_byte = base + 5
+        right.end_byte = base + 15
+        right.parent = parent
+
+        # Deep RHS leaf — the closing ')' of compute(x).
+        rhs_deep = MagicMock(spec=[])
+        rhs_deep.type = ")"
+        rhs_deep.start_point = (line0, 14)
+        rhs_deep.end_point = (line0, 15)
+        rhs_deep.start_byte = base + 14
+        rhs_deep.end_byte = base + 15
+        rhs_deep.children = []
+        rhs_deep.parent = right
+        right.children = [rhs_deep]
+
+        parent.children = [left, right]
+        parent.child_by_field_name = lambda name: {"left": left, "right": right}.get(name)
+
+        # SIBLING comment on the same line. Its byte range is to the right
+        # of the short_var_declaration. Without the fix, this comment
+        # overwrites the line index and the positional walk fails.
+        comment = MagicMock(spec=[])
+        comment.type = "comment"
+        comment.start_point = (line0, 17)
+        comment.end_point = (line0, 50)
+        comment.start_byte = base + 17
+        comment.end_byte = base + 50
+        comment.children = []
+
+        statement_list = MagicMock(spec=[])
+        statement_list.type = "statement_list"
+        statement_list.start_point = (line0, 0)
+        statement_list.end_point = (line0, 50)
+        statement_list.start_byte = base + 0
+        statement_list.end_byte = base + 50
+        statement_list.children = [parent, comment]
+        statement_list.parent = root
+        parent.parent = statement_list
+        comment.parent = statement_list
+
+        root.type = "module"
+        root.start_point = (0, 0)
+        root.end_point = (line0 + 1, 0)
+        root.start_byte = 0
+        root.end_byte = (line0 + 1) * 100
+        root.children = [statement_list]
+        root.parent = None
+
+        source = b"\n\n\n\nv := compute(x)  // trailing comment\n"
+        result = annotate_dataflow([edge], tree, source, config)
+
+        assert len(result) == 1
+        assert result[0].meta is not None, (
+            "edge meta is None — trailing comment shadowed positional walk"
+        )
+        assert result[0].meta.get("access_mode") == "read", (
+            f"expected 'read' from short_var_declaration's right field, "
+            f"got {result[0].meta.get('access_mode')!r}"
+        )
+
     def test_no_annotation_when_position_unresolvable(self, tmp_path: Path) -> None:
         """Flat mock without child_by_field_name leaves edge unannotated."""
         yaml_content = """\
@@ -978,9 +1104,12 @@ assignments:
         right.children = []
         right.parent = parent
 
-        # Deepest node at bytes 410-415, outside both left [400-401] and right [404-407]
+        # Deepest node at bytes 410-415, outside both left [400-401] and right [404-407].
+        # Uses a non-comment type because _build_line_index intentionally
+        # skips comments (so the test exercises the geometric mismatch path,
+        # not the comment-skip path).
         deep = MagicMock(spec=[])
-        deep.type = "comment"
+        deep.type = "punctuation"
         deep.start_point = (4, 10)
         deep.end_point = (4, 15)
         deep.start_byte = 410
