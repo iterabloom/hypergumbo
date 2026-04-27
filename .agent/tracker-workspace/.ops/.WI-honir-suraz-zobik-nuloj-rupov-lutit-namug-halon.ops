@@ -18,3 +18,18 @@
     pr_ref:  # 6609
     description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/go.yaml from status=in_progress to status=complete by: (1) auditing the catalog against Go's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing pkg.go.dev or go.dev, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # 6609
     fields: {}  # 6609
+- op: update  # e51d
+  at: '2026-04-27T02:53:59Z'  # e51d
+  by: agent  # e51d
+  actor: jgstern_agent  # e51d
+  clock: 2  # e51d
+  nonce: e51d  # e51d
+  set:  # e51d
+    status: wont_do  # e51d
+- op: discuss  # 047d
+  at: '2026-04-27T02:53:59Z'  # 047d
+  by: agent  # 047d
+  actor: jgstern_agent  # 047d
+  clock: 3  # 047d
+  nonce: 047d  # 047d
+  message: "Closed wont_do per human direction 2026-04-27. Superseded by umbrella WI-tukif-fuhug-tisiv-judor-pobat-fisat-hadap-zojol which consolidates the 12 nearly-identical stdlib-provenance items (all created 2026-04-24, all zero discussion, all the same template) into a single tracking item with a per-language checklist. The work itself is preserved on the umbrella; this individual item is closed because discrete per-language tracking made the queue noisy without conveying useful priority information."  # 047d
