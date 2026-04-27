@@ -18,3 +18,18 @@
     pr_ref:  # 6a49
     description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/rust.yaml from status=in_progress to status=complete by: (1) auditing the catalog against Rust's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing doc.rust-lang.org/std/, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # 6a49
     fields: {}  # 6a49
+- op: update  # 0115
+  at: '2026-04-27T02:55:59Z'  # 0115
+  by: agent  # 0115
+  actor: jgstern_agent  # 0115
+  clock: 2  # 0115
+  nonce: '0115'  # 0115
+  set:  # 0115
+    status: wont_do  # 0115
+- op: discuss  # 4ff7
+  at: '2026-04-27T02:55:59Z'  # 4ff7
+  by: agent  # 4ff7
+  actor: jgstern_agent  # 4ff7
+  clock: 3  # 4ff7
+  nonce: 4ff7  # 4ff7
+  message: "Closed wont_do per human direction 2026-04-27. Superseded by umbrella WI-tukif-fuhug-tisiv-judor-pobat-fisat-hadap-zojol which consolidates the 12 nearly-identical stdlib-provenance items (all created 2026-04-24, all zero discussion, all the same template) into a single tracking item with a per-language checklist. The work itself is preserved on the umbrella; this individual item is closed because discrete per-language tracking made the queue noisy without conveying useful priority information."  # 4ff7
