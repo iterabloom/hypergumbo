@@ -101,3 +101,18 @@
   clock: 12  # 2fd9
   nonce: 2fd9  # 2fd9
   message: "awaits_bakeoff_validation tag stripped. This item IS the wiring task that implements the tag's reflect-aggregate enforcement — tagging it with the tag it defines is a self-referential process artifact, not a meaningful claim awaiting cohort validation. The item's quantitative axis is whether the wiring works (per-claim moved/no_move/inconclusive prompt injection lands in the reflect pass), which is verified by code review and a smoke test, not by a bakeoff cohort."  # 2fd9
+- op: update  # 5066
+  at: '2026-04-27T02:45:56Z'  # 5066
+  by: agent  # 5066
+  actor: jgstern_agent  # 5066
+  clock: 13  # 5066
+  nonce: '5066'  # 5066
+  set:  # 5066
+    status: done  # 5066
+- op: discuss  # c4ac
+  at: '2026-04-27T02:45:56Z'  # c4ac
+  by: agent  # c4ac
+  actor: jgstern_agent  # c4ac
+  clock: 14  # c4ac
+  nonce: c4ac  # c4ac
+  message: "Closed done per human confirmation 2026-04-27. All four implementation slices shipped: Slice 1 (AGENTS.md Bakeoff Validation Discipline section, commit 5895000b0), Slice 2 (bakeoff-deep-reflect aggregate cross-references + per-claim verdict prompts + awaits_bakeoff_validation_verdicts YAML schema, PR #3219 commit bcc38ef28, 20 tests), Slice 2b (--apply-verdicts mutating actions: auto-strip on plurality=moved, auto-spawn regression sub-item on plurality=no_move, PR #3220 commit 436816d90, 19 tests), Slice 3 (stop-hook nudge when ≥threshold tag-bearing items in blocking status AND latest DEEP cycle older than stale_cycle_hours, PR #3209 commit f572cd27b, 25 tests). Slice 4 (acceptance demo) was effectively exercised in-the-wild during the 2026-04-25→26 session via the INV-nodij / WI-vobiv round-trip: iter-001 produced plurality NO_MOVE which auto-spawned regression sub-item WI-vobiv; the Vue analyzer fix shipped in PR #3385; iter-002 produced plurality MOVED across 5/5 repos. Caveat on the round-trip: the actual tag strip on INV-nodij was human-directed rather than fully automatic — the validation queue exercise also surfaced enough procedural complexity to warrant a dedicated playbook, which was authored as .agent/agent_playbooks_protocols_sops_skills/process-validation-queue-with-bakeoffs-and-uat.md (the seven-phase routine: audit-and-classify → strip anomalies → design minimum-target cohort → run-and-verify per-claim → write substantive YAML assessments → hand-correct inconclusive plurality → tackle regressions). The mechanism's tooling (this item's deliverable) is fully in place and operating as designed; the human-in-the-loop steps that the playbook codifies live alongside the auto-strip / auto-spawn pathway rather than in place of it."  # c4ac

@@ -36,3 +36,18 @@
   set: {}  # 57be
   add:  # 57be
     tags: [kind-of-redundant]  # 57be
+- op: update  # 7910
+  at: '2026-04-27T02:47:44Z'  # 7910
+  by: agent  # 7910
+  actor: jgstern_agent  # 7910
+  clock: 4  # 7910
+  nonce: '7910'  # 7910
+  set:  # 7910
+    status: wont_do  # 7910
+- op: discuss  # f903
+  at: '2026-04-27T02:47:44Z'  # f903
+  by: agent  # f903
+  actor: jgstern_agent  # f903
+  clock: 5  # f903
+  nonce: f903  # f903
+  message: "Closed wont_do per human confirmation 2026-04-27. Two reasons: (1) The current AGENTS.md text already says 'Changes to [governance files] require human approval. Do NOT self-merge PRs touching these files.' and the approval-workflow steps don't carve out a bug-severity exception. Adding explicit 'yes this includes bug fixes' language would be belt-and-suspenders rather than a substantive rule change — which is exactly what the filer's own 'kind-of-redundant' tag indicated. (2) The discipline is being reinforced by use rather than by tighter AGENTS.md prose. The 'I approve using WITHOUT --gov' pattern from the 2026-04-27 playbook-injection-phrasing-pass PR is an example of the human-approval ritual working as currently specified for governance-file edits, regardless of whether the change is a bug fix or a feature. If the WI-buhov-shape failure mode (implicit pre-approval via bug-severity framing) recurs, file a fresh observation with concrete evidence rather than a preemptive prose tightening."  # f903

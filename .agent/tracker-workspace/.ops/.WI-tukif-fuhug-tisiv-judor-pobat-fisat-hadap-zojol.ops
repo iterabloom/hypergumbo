@@ -1,0 +1,20 @@
+- op: create  # 3bb8
+  at: '2026-04-27T02:51:51Z'  # 3bb8
+  by: agent  # 3bb8
+  actor: jgstern_agent  # 3bb8
+  clock: 1  # 3bb8
+  nonce: 3bb8  # 3bb8
+  data:  # 3bb8
+    kind: work_item  # 3bb8
+    title: "Plan C, PR B: promote remaining 12 language catalogs to status=complete with stdlib_provenance (umbrella)"  # 3bb8
+    status: todo_soft  # 3bb8
+    priority: 4  # 3bb8
+    parent: INV-pomir-tahap-kizob-fumus-bufog-pubis-narah-napim  # 3bb8
+    tags:  # 3bb8
+    - analysis_quality  # 3bb8
+    isbefore: []  # 3bb8
+    duplicate_of: []  # 3bb8
+    not_duplicate_of: []  # 3bb8
+    pr_ref:  # 3bb8
+    description: "Plan C, PR B catalog-completion umbrella. Promote the 12 remaining language YAML catalogs from status=in_progress to status=complete with stdlib_provenance. Per INV-pomir (parent), every catalog with status=complete must declare stdlib_provenance whose source_url hostname suffix-matches ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py.\n\nFor each catalog: (1) audit against official stdlib documentation to confirm complete IO-primitive coverage; (2) optionally enumerate non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declare stdlib_provenance with source_url, version, and retrieved date. Hostnames absent from ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES need to be added to that allowlist via PR review with justification.\n\nChecklist with source-URL candidates per language (carried forward from the 12 individual items, all closed wont_do as superseded by this umbrella on 2026-04-27):\n\n  [ ] c        — cppreference.com or open-group POSIX docs\n  [ ] elixir   — hexdocs.pm/elixir or elixir-lang.org\n  [ ] erlang   — erlang.org\n  [ ] go       — pkg.go.dev or go.dev\n  [ ] haskell  — haskell.org or hackage (base/network/etc.)\n  [ ] java     — docs.oracle.com (java.se) or openjdk.org\n  [ ] javascript — nodejs.org and developer.mozilla.org\n  [ ] kotlin   — kotlinlang.org\n  [ ] objc     — developer.apple.com\n  [ ] rust     — doc.rust-lang.org/std/\n  [ ] scala    — scala-lang.org\n  [ ] swift    — swift.org or developer.apple.com\n\nSuggested execution: ship as 1-3 PRs, batched by per-language audit effort. The audit step is the bulk of the work; the YAML declaration itself is a few lines per catalog. As each language ships, append a discussion entry checking it off.\n\nThis umbrella replaces 12 individual P3 items (WI-ganid c, WI-tumor elixir, WI-gunur erlang, WI-honir go, WI-tusof haskell, WI-vikop java, WI-fobus javascript, WI-labiz kotlin, WI-pitot objc, WI-galaz rust, WI-puzoj swift, WI-vubil scala) all created 2026-04-24 from the same template with zero discussion entries each. Discrete tracking made tracker ready noisy with 11 misleading 'P3 ready' entries that conveyed no per-item priority information. Consolidated 2026-04-27 per human direction."  # 3bb8
+    fields: {}  # 3bb8
