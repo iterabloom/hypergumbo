@@ -460,6 +460,11 @@ def _cmd_add(args: argparse.Namespace, ts: TrackerSet) -> int:
         kwargs["parent"] = _resolve_ref(ts, args.parent, "--parent", writer_tier=tier)
     if args.tag:
         kwargs["tags"] = args.tag
+        # Surface deprecation warnings before the mutation runs so the
+        # signal lands even if the user is grepping stderr — see
+        # ``_warn_deprecated_tags`` for the rationale (non-blocking,
+        # mirrors ``deprecated_statuses`` for kind statuses).
+        _warn_deprecated_tags(ts._tracker_root, args.tag)
     if args.isbefore:
         kwargs["isbefore"] = [
             _resolve_ref(ts, b, "--isbefore", writer_tier=tier)
@@ -484,6 +489,14 @@ def _cmd_add(args: argparse.Namespace, ts: TrackerSet) -> int:
         kwargs["fields"] = fields
 
     item_id = ts.add(kind=args.kind, title=args.title, tier=tier, **kwargs)
+    # Catalog maintenance: stamp last_used (and seed created_on for first
+    # sight) on every tag this op affixed. Failure mode this guards
+    # against: if we don't update last_used here, the catalog drifts from
+    # reality and the inactive-vs-active classification becomes
+    # meaningless.
+    if args.tag:
+        from hypergumbo_tracker import tag_catalog
+        tag_catalog.touch_tags(ts._tracker_root, args.tag)
     if args.json:
         print(json.dumps({"id": item_id}))
     else:
@@ -648,6 +661,11 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
 
     if args.add_tag:
         add_fields["tags"] = args.add_tag
+        # Surface deprecation warnings before the mutation runs, same
+        # rationale as in _cmd_add. Removal of a deprecated tag is fine
+        # and never warns — the warning is a "don't apply this" signal,
+        # not a "don't touch this" signal.
+        _warn_deprecated_tags(ts._tracker_root, args.add_tag)
     if args.remove_tag:
         remove_fields["tags"] = args.remove_tag
     if args.add_isbefore:
@@ -726,6 +744,18 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
             add_fields=add_fields or None,
             remove_fields=remove_fields or None,
         )
+
+    # Catalog maintenance: stamp last_used on every tag this op
+    # touched (added or removed). Same failure-mode reasoning as in
+    # _cmd_add — the catalog drifts silently if we skip this.
+    touched_tags: list[str] = []
+    if args.add_tag:
+        touched_tags.extend(args.add_tag)
+    if args.remove_tag:
+        touched_tags.extend(args.remove_tag)
+    if touched_tags:
+        from hypergumbo_tracker import tag_catalog
+        tag_catalog.touch_tags(ts._tracker_root, touched_tags)
 
     # --note is shorthand for a follow-up discuss call
     if args.note:
@@ -1125,6 +1155,339 @@ def _cmd_validate(args: argparse.Namespace, ts: TrackerSet) -> int:
             print("validation passed")
 
     return EXIT_SUCCESS if result.ok else EXIT_USER_ERROR
+
+
+def _cmd_tags(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle the 'tags' subcommand and its sub-verbs.
+
+    Dispatches to the read-only enumeration form (default), or to one of
+    three editorial verbs: ``rename``, ``describe``, ``deprecate``. The
+    enumeration form respects the parent parser's ``--json`` flag and the
+    local ``--count`` flag; the editorial verbs touch the catalog file at
+    ``<tracker_root>/tracker/tag_catalog.yaml`` and update
+    ``last_modified`` on every affected entry.
+
+    The first time this runs after the catalog file is introduced, it
+    walks the op log to backfill ``created_on`` / ``last_used`` for every
+    tag currently in use — see ``tag_catalog.ensure_catalog``. Migration
+    cost paid once.
+    """
+    from hypergumbo_tracker import tag_catalog
+
+    tracker_root = ts._tracker_root
+    action = getattr(args, "tags_action", None)
+    if action == "rename":
+        return _cmd_tags_rename(args, ts)
+    if action == "describe":
+        return _cmd_tags_describe(args, ts)
+    if action == "deprecate":
+        return _cmd_tags_deprecate(args, ts)
+
+    # Default: enumerate. Backfill on first invocation.
+    catalog = tag_catalog.ensure_catalog(tracker_root)
+
+    # Build counts from the same tier set the design specifies (canonical
+    # union workspace). Stealth is excluded from default enumeration.
+    enum_tier_strs = tag_catalog.DEFAULT_ENUM_TIERS
+    items = []
+    for tier_str in enum_tier_strs:
+        items.extend(ts.list_items(tier=Tier(tier_str)))
+    counts = tag_catalog.count_tags(items)
+
+    # Tags considered "in use" merge the count keyset with the catalog
+    # keyset so that catalog-only tags (described but never affixed, or
+    # deprecated after their last use) still surface in --json /
+    # --count output. Plain ``tracker tags`` (no flags) lists only
+    # currently-used tags per the locked design.
+    catalog_only = set(catalog.keys()) - set(counts.keys())
+
+    if args.json:
+        return _emit_tags_json(counts, catalog, catalog_only)
+
+    if getattr(args, "count", False):
+        return _emit_tags_count(counts, catalog)
+
+    # Plain enumeration: only tags currently in use, alphabetical, one per
+    # line. Catalog-only entries are intentionally hidden — they're
+    # surfaced by --count and --json instead.
+    for name in sorted(counts.keys()):
+        print(name)
+    return EXIT_SUCCESS
+
+
+def _emit_tags_count(
+    counts: dict[str, int],
+    catalog: dict[str, Any],
+) -> int:
+    """Print the ``--count`` output: tag<TAB>count<TAB>status, one per line.
+
+    Sorted by count desc then alpha (locked design). Catalog-only tags
+    (count == 0) are included so deprecated-but-cleaned-up tags remain
+    visible to the agent's existing-coverage check.
+    """
+    from hypergumbo_tracker import tag_catalog
+
+    rows: list[tuple[str, int, str]] = []
+    seen: set[str] = set()
+    for name, count in counts.items():
+        deprecated = bool(catalog.get(name) and catalog[name].deprecated)
+        rows.append((name, count, tag_catalog.tag_status(count, deprecated)))
+        seen.add(name)
+    for name, entry in catalog.items():
+        if name in seen:
+            continue
+        rows.append((name, 0, tag_catalog.tag_status(0, entry.deprecated)))
+    rows.sort(key=lambda r: (-r[1], r[0]))
+    for name, count, status in rows:
+        print(f"{name}\t{count}\t{status}")
+    return EXIT_SUCCESS
+
+
+def _emit_tags_json(
+    counts: dict[str, int],
+    catalog: dict[str, Any],
+    catalog_only: set[str],
+) -> int:
+    """Emit JSON: { "<tag>": { count, status, description, ... } }.
+
+    Includes both currently-used tags (from counts) and catalog-only tags
+    so deprecated-with-zero-uses entries are still visible to consumers
+    that grep this output for ``deprecated`` status.
+    """
+    from hypergumbo_tracker import tag_catalog
+
+    out: dict[str, dict[str, Any]] = {}
+    for name in set(counts.keys()) | set(catalog.keys()):
+        count = counts.get(name, 0)
+        entry = catalog.get(name)
+        deprecated = bool(entry and entry.deprecated)
+        row: dict[str, Any] = {
+            "count": count,
+            "status": tag_catalog.tag_status(count, deprecated),
+            "description": entry.description if entry else "",
+            "created_on": entry.created_on if entry else None,
+            "last_modified": entry.last_modified if entry else None,
+            "last_used": entry.last_used if entry else None,
+            "deprecated": deprecated,
+            "in_favor_of": (
+                entry.in_favor_of if (entry and entry.deprecated) else None
+            ),
+        }
+        out[name] = row
+    print(json.dumps(out, indent=2, sort_keys=True))
+    _ = catalog_only  # currently merged via the union above; kept as
+    # an explicit parameter to make the data-flow obvious to readers.
+    return EXIT_SUCCESS
+
+
+def _cmd_tags_rename(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Rewrite every item's tags list, replacing OLD with NEW.
+
+    Idempotent (re-running after every item is migrated is a no-op) and
+    de-duplicates when both names already coexist on the same item. The
+    catalog gets a ``last_modified`` bump on both entries so the audit
+    trail records both endpoints of the rename.
+    """
+    from hypergumbo_tracker import tag_catalog
+
+    old, new = args.old, args.new
+    if not tag_catalog._TAG_NAME_RE.match(new):
+        print(
+            f"error: --new tag {new!r} does not match "
+            f"{tag_catalog._TAG_NAME_RE.pattern}",
+            file=sys.stderr,
+        )
+        return EXIT_USER_ERROR
+    if old == new:
+        # Idempotent no-op rather than an error: the user-visible
+        # postcondition (tags renamed) holds trivially.
+        return EXIT_SUCCESS
+
+    items_changed = 0
+    for tier_str in tag_catalog.DEFAULT_ENUM_TIERS:
+        tier = Tier(tier_str)
+        for item in ts.list_items(tier=tier):
+            if old not in item.tags:
+                continue
+            add_tags = [new] if new not in item.tags else []
+            ts.update(
+                item.id,
+                add_fields={"tags": add_tags} if add_tags else None,
+                remove_fields={"tags": [old]},
+            )
+            items_changed += 1
+
+    # Catalog edit: bump last_modified on both endpoints. Always record
+    # the old endpoint in the catalog (even if it wasn't catalogued
+    # before) so the audit trail captures both halves of the rename;
+    # without this, a rename of an uncatalogued tag would silently leave
+    # the old name out of the post-rename catalog dump. Don't carry
+    # description / deprecated forward by default — that's the user's
+    # call via subsequent describe / deprecate verbs.
+    catalog = tag_catalog.load_catalog(tag_catalog.catalog_path(ts._tracker_root))
+    when = tag_catalog.now_utc()
+    old_entry = catalog.setdefault(
+        old, tag_catalog.TagCatalogEntry(created_on=when),
+    )
+    old_entry.last_modified = when
+    old_entry.last_used = when
+    new_entry = catalog.setdefault(
+        new, tag_catalog.TagCatalogEntry(created_on=when),
+    )
+    new_entry.last_modified = when
+    new_entry.last_used = when
+    tag_catalog.save_catalog(
+        tag_catalog.catalog_path(ts._tracker_root), catalog,
+    )
+
+    if args.json:
+        print(json.dumps({"renamed": items_changed, "old": old, "new": new}))
+    else:
+        print(f"renamed {old} → {new} on {items_changed} item(s)")
+    return EXIT_SUCCESS
+
+
+def _cmd_tags_describe(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Set or read the description for a tag.
+
+    With no TEXT, prints the current description (empty string if none).
+    With TEXT, writes it and bumps ``last_modified``.
+    """
+    from hypergumbo_tracker import tag_catalog
+
+    name = args.tag
+    if not tag_catalog._TAG_NAME_RE.match(name):
+        print(
+            f"error: tag name {name!r} does not match "
+            f"{tag_catalog._TAG_NAME_RE.pattern}",
+            file=sys.stderr,
+        )
+        return EXIT_USER_ERROR
+
+    catalog = tag_catalog.load_catalog(tag_catalog.catalog_path(ts._tracker_root))
+    if args.text is None:
+        entry = catalog.get(name)
+        if entry is None:
+            if args.json:
+                print(json.dumps({"tag": name, "description": ""}))
+            else:
+                print("")
+            return EXIT_SUCCESS
+        if args.json:
+            print(json.dumps({"tag": name, "description": entry.description}))
+        else:
+            print(entry.description)
+        return EXIT_SUCCESS
+
+    if "\n" in args.text:
+        print(
+            "error: description must be single-line",
+            file=sys.stderr,
+        )
+        return EXIT_USER_ERROR
+
+    when = tag_catalog.now_utc()
+    entry = catalog.setdefault(
+        name, tag_catalog.TagCatalogEntry(created_on=when),
+    )
+    entry.description = args.text
+    entry.last_modified = when
+    tag_catalog.save_catalog(
+        tag_catalog.catalog_path(ts._tracker_root), catalog,
+    )
+
+    if args.json:
+        print(json.dumps({"tag": name, "description": entry.description}))
+    else:
+        print(f"described {name}")
+    return EXIT_SUCCESS
+
+
+def _cmd_tags_deprecate(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Set the deprecated flag on a tag, optionally with a canonical replacement.
+
+    Future ``tracker add --tag <deprecated>`` invocations emit a
+    non-blocking warning that mentions the replacement (see
+    ``_warn_deprecated_tags``). Existing usages are not auto-rewritten —
+    cleanup is a separate ``tags rename`` operation on the human's
+    schedule. This mirrors how ``DeprecationWarning`` behaves in Python:
+    the deprecated thing keeps working while you migrate.
+    """
+    from hypergumbo_tracker import tag_catalog
+
+    name = args.tag
+    if not tag_catalog._TAG_NAME_RE.match(name):
+        print(
+            f"error: tag name {name!r} does not match "
+            f"{tag_catalog._TAG_NAME_RE.pattern}",
+            file=sys.stderr,
+        )
+        return EXIT_USER_ERROR
+    in_favor_of = getattr(args, "in_favor_of", None)
+    if in_favor_of and not tag_catalog._TAG_NAME_RE.match(in_favor_of):
+        print(
+            f"error: --in-favor-of {in_favor_of!r} does not match "
+            f"{tag_catalog._TAG_NAME_RE.pattern}",
+            file=sys.stderr,
+        )
+        return EXIT_USER_ERROR
+
+    catalog = tag_catalog.load_catalog(tag_catalog.catalog_path(ts._tracker_root))
+    when = tag_catalog.now_utc()
+    entry = catalog.setdefault(
+        name, tag_catalog.TagCatalogEntry(created_on=when),
+    )
+    entry.deprecated = True
+    if in_favor_of is not None:
+        entry.in_favor_of = in_favor_of
+    entry.last_modified = when
+    tag_catalog.save_catalog(
+        tag_catalog.catalog_path(ts._tracker_root), catalog,
+    )
+
+    if args.json:
+        print(json.dumps({"tag": name, "deprecated": True,
+                          "in_favor_of": entry.in_favor_of}))
+    else:
+        suffix = (
+            f" (in favor of {entry.in_favor_of})"
+            if entry.in_favor_of else ""
+        )
+        print(f"deprecated {name}{suffix}")
+    return EXIT_SUCCESS
+
+
+def _warn_deprecated_tags(
+    tracker_root: "Path",  # type: ignore[name-defined]
+    tags: list[str],
+) -> None:
+    """Emit one stderr warning per deprecated tag being applied.
+
+    Called from ``_cmd_add`` and the ``--add-tag`` branch of
+    ``_cmd_update`` before the underlying mutation runs. Warnings are
+    non-blocking — the deprecation lifecycle is a *signal*, not a hard
+    rejection, mirroring the ``deprecated_statuses`` precedent for kind
+    statuses (see ``validation.py`` and the ``holding`` example in
+    ``AGENTS.md``). A blocking gate would force migration churn at the
+    moment a tag is deprecated, which is the wrong cost shape.
+    """
+    from hypergumbo_tracker import tag_catalog
+
+    if not tags:
+        return
+    catalog = tag_catalog.load_catalog(tag_catalog.catalog_path(tracker_root))
+    for t in tags:
+        entry = catalog.get(t)
+        if entry is None or not entry.deprecated:
+            continue
+        suffix = (
+            f"; use {entry.in_favor_of} instead"
+            if entry.in_favor_of else ""
+        )
+        print(
+            f"warning: tag {t!r} is deprecated{suffix}",
+            file=sys.stderr,
+        )
 
 
 def _cmd_count_todos(args: argparse.Namespace, ts: TrackerSet) -> int:
@@ -1973,6 +2336,44 @@ def _build_parser() -> argparse.ArgumentParser:
     p_deps = sub.add_parser("deps", help="Show dependency graph for an item")
     p_deps.add_argument("item_id", help="Item ID or prefix")
 
+    # --- tags ---
+    # Tag catalog enumeration + lifecycle verbs (rename/describe/deprecate).
+    # Why nested subparsers: the read-only forms (`tags`, `tags --count`,
+    # `tags --json`) and the editorial verbs (`tags rename OLD NEW`, etc.)
+    # share a tag namespace but have different argument shapes; nested
+    # subparsers let argparse validate each shape without conditional
+    # parsing in the handler.
+    p_tags = sub.add_parser(
+        "tags", help="Enumerate / rename / describe / deprecate tags",
+    )
+    p_tags.add_argument(
+        "--count", action="store_true",
+        help="Show tag counts and statuses (sorted by count desc then alpha)",
+    )
+    tags_sub = p_tags.add_subparsers(dest="tags_action")
+    p_tags_rename = tags_sub.add_parser(
+        "rename", help="Rewrite every item's tags list, replacing OLD with NEW",
+    )
+    p_tags_rename.add_argument("old", help="Existing tag name")
+    p_tags_rename.add_argument("new", help="Replacement tag name")
+    p_tags_describe = tags_sub.add_parser(
+        "describe", help="Set or read the description for a tag",
+    )
+    p_tags_describe.add_argument("tag", help="Tag name")
+    p_tags_describe.add_argument(
+        "text", nargs="?", default=None,
+        help="Description text; omit to print the current description",
+    )
+    p_tags_deprecate = tags_sub.add_parser(
+        "deprecate",
+        help="Mark a tag deprecated; optionally point to a canonical replacement",
+    )
+    p_tags_deprecate.add_argument("tag", help="Tag name to deprecate")
+    p_tags_deprecate.add_argument(
+        "--in-favor-of", dest="in_favor_of", default=None,
+        help="Canonical replacement tag (mentioned in deprecation warnings)",
+    )
+
     # --- batch ---
     p_batch = sub.add_parser(
         "batch",
@@ -2589,6 +2990,7 @@ def main(argv: list[str] | None = None) -> None:
         "tui": _cmd_tui,
         "batch": _cmd_batch,
         "serve": _cmd_serve,
+        "tags": _cmd_tags,
     }
 
     handler = handler_map.get(args.command)
@@ -2613,9 +3015,18 @@ def main(argv: list[str] | None = None) -> None:
         print(f"error: {e}", file=sys.stderr)
         raise SystemExit(EXIT_INTERNAL_ERROR) from e
 
+    # `tags` is a hybrid command: bare `tags` (or `tags --count` / `--json`)
+    # is read-only enumeration and must not trigger auto-sync, while
+    # `tags rename`, `tags describe`, and `tags deprecate` write to the
+    # catalog (and rename writes item ops too) and should sync. Gate on
+    # the presence of a tags_action.
+    is_mutation_tags = (
+        args.command == "tags"
+        and getattr(args, "tags_action", None) is not None
+    )
     if (
         exit_code == EXIT_SUCCESS
-        and args.command in _MUTATION_COMMANDS
+        and (args.command in _MUTATION_COMMANDS or is_mutation_tags)
         and not args.no_auto_sync
     ):
         _maybe_auto_sync(tracker_root)
