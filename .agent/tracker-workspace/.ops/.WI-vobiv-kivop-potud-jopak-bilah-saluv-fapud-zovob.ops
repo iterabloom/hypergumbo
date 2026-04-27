@@ -64,3 +64,10 @@
   clock: 7  # a43d
   nonce: a43d  # a43d
   message: "Closing as done. Direct answer to the question 'is there anything left to be done?': no. The umbrella's bakeoff verdict went MOVED on iter-002 (moved=5 no_move=0 inconclusive=0, awaits_bakeoff_validation tag stripped). All four sub-producer leaks the 2026-04-26T02:56 audit filed are resolved: WI-gijot (jsonnet, done), WI-hugom (kafka properties/manifest, done), WI-bagon ('unresolved' sentinel, done), WI-jatig (RST/Sphinx, wont_do — by-design rationale recorded on that item). Parent INV-nodij itself is satisfied. Nothing further owed on this regression umbrella."  # a43d
+- op: discuss  # 68d0
+  at: '2026-04-27T04:00:28Z'  # 68d0
+  by: agent  # 68d0
+  actor: jgstern_agent  # 68d0
+  clock: 8  # 68d0
+  nonce: 68d0  # 68d0
+  message: "Direct answer: nothing remains. Bakeoff verdict went MOVED on iter-002 (moved=5 no_move=0 inconclusive=0, awaits_bakeoff_validation auto-stripped). All four sub-producer leaks are resolved: WI-gijot (jsonnet) done, WI-hugom (kafka properties/manifest) done, WI-bagon (unresolved sentinel) done, WI-jatig (RST/Sphinx) wont_do. Parent INV-nodij is satisfied. Closing as done."  # 68d0

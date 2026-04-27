@@ -155,3 +155,40 @@
   nonce: '8661'  # 8661
   set:  # 8661
     status: violated  # 8661
+- op: discuss  # fde5
+  at: '2026-04-27T04:01:38Z'  # fde5
+  by: agent  # fde5
+  actor: jgstern_agent  # fde5
+  clock: 20  # fde5
+  nonce: fde5  # fde5
+  message: "Acknowledged all three decisions; proceeding with implementation on a feature branch. Concrete plan locked from your decisions:\n\n(1) Verification gate at the close-and-repush boundary in scripts/auto-pr Scenario B path — both checks: _check_pr_merged for the merged-during-timeout sub-case, AND a small wrapper composing api_get on /pulls/<n> with a single retry of poll_ci+backoff for the about-to-merge poll-flake sub-case. ~10-20 lines, no new helpers, no gh dependency. Existing primitives in forgejo-api.sh.\n\n(2) Post-rebase poll-and-merge as a labeled while-loop with continue and a max-iter cap (2-3) inside do_merge() in scripts/lib/forgejo-api.sh. NOT recursion — that creates the AUTOPR_FROM_REBASE re-entry hazard you flagged. Greppable shape: while [ \"$attempts\" -lt 3 ]; do ...; rebase+force-push; continue; done. After force-push of the rebased SHA, re-enter poll_ci on the new SHA before re-attempting merge.\n\n(3) On ship, status will move to pending_validation with the validation criterion verbatim: 'the next auto-pr invocation that traverses the rebase-then-merge path completes without emitting Recovery: and merges to dev.' Naturally exercised; no synthetic reproducer.\n\nStatus flip now: needs_human_review → violated (active-fix). Will report PR # in a follow-up entry once auto-pr lands the change. Both files touched (scripts/auto-pr, scripts/lib/forgejo-api.sh) are governance-listed; the explicit decisions in the prior message constitute the human approval the governance protocol requires."  # fde5
+- op: update  # fc66
+  at: '2026-04-27T04:01:55Z'  # fc66
+  by: agent  # fc66
+  actor: jgstern_agent  # fc66
+  clock: 21  # fc66
+  nonce: fc66  # fc66
+  set:  # fc66
+    status: violated  # fc66
+- op: discuss  # ae81
+  at: '2026-04-27T04:03:31Z'  # ae81
+  by: human  # ae81
+  actor: jgstern  # ae81
+  clock: 22  # ae81
+  nonce: ae81  # ae81
+  message: "yes I approve using auto-pr WITHOUT --gov"  # ae81
+- op: update  # 5050
+  at: '2026-04-27T04:50:51Z'  # 5050
+  by: agent  # 5050
+  actor: jgstern_agent  # 5050
+  clock: 23  # 5050
+  nonce: '5050'  # 5050
+  set:  # 5050
+    status: pending_validation  # 5050
+- op: discuss  # fe93
+  at: '2026-04-27T04:50:51Z'  # fe93
+  by: agent  # fe93
+  actor: jgstern_agent  # fe93
+  clock: 24  # fe93
+  nonce: fe93  # fe93
+  message: "Shipped in PR #3419 (commit da94238c9) per the locked plan. Both surfaces addressed: (1) Surface 1 pre-Scenario-B verification gate (_pre_scenario_b_gate in forgejo-api.sh) catches merged-during-timeout via _check_pr_merged and about-to-merge-poll-flake via mergeable+single poll_ci retry with 120s backoff, before close-and-repush. (2) Surface 2 post-rebase poll-and-merge as a labeled while-loop with rebase_max iter cap (replacing the previous one-shot + Recovery: hint). No new external CLI deps — internal composition of existing forgejo-api.sh helpers. Validation criterion (verbatim from human): 'the next auto-pr invocation that traverses the rebase-then-merge path completes without emitting Recovery: and merges to dev.' Will be exercised organically by the next concurrent-tracker-sync ship; flip to satisfied at that point."  # fe93
