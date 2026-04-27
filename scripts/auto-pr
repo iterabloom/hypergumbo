@@ -1266,34 +1266,62 @@ do_pr() {
 		fi
 
 		if [[ $poll_result -eq 2 ]]; then
-			echo ""
-			echo "🔄 Timeout recovery: closing PR #$PR_NUM and re-pushing to trigger fresh CI..."
-			api_patch "$API_BASE/pulls/$PR_NUM" '{"state": "closed"}' >/dev/null 2>&1 || true
-			sleep 60
-			echo "📤 Re-pushing..."
-			if ! git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o "topic=$BRANCH" 2>/dev/null; then
-				git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" 2>/dev/null || {
-					echo "❌ Re-push failed"
-					exit 1
-				}
-			fi
-			if find_open_pr "branch" "$BRANCH"; then
-				PR_NUM="$FOUND_PR_NUM"
-			elif find_open_pr "sha" "$HEAD_SHA"; then
-				PR_NUM="$FOUND_PR_NUM"
+			# WI-rahib Surface 1: verification gate before close-and-repush.
+			# If the PR is already merged (poll-endpoint flake hid the merge)
+			# or about to merge (mergeable + CI green on a short re-poll), skip
+			# the close. Falls through to the merge cascade below either way.
+			if _pre_scenario_b_gate "$PR_NUM" "$HEAD_SHA"; then
+				if [[ "$AUTOPR_GATE_MERGED" == "true" ]]; then
+					_autopr_state_final="merged"
+					poll_result=0
+				else
+					poll_result=0
+				fi
 			else
-				echo "❌ Could not find new PR after re-push"
-				exit 1
+				echo ""
+				echo "🔄 Timeout recovery: closing PR #$PR_NUM and re-pushing to trigger fresh CI..."
+				api_patch "$API_BASE/pulls/$PR_NUM" '{"state": "closed"}' >/dev/null 2>&1 || true
+				sleep 60
+				echo "📤 Re-pushing..."
+				if ! git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o "topic=$BRANCH" 2>/dev/null; then
+					git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" 2>/dev/null || {
+						echo "❌ Re-push failed"
+						exit 1
+					}
+				fi
+				if find_open_pr "branch" "$BRANCH"; then
+					PR_NUM="$FOUND_PR_NUM"
+				elif find_open_pr "sha" "$HEAD_SHA"; then
+					PR_NUM="$FOUND_PR_NUM"
+				else
+					echo "❌ Could not find new PR after re-push"
+					exit 1
+				fi
+				echo "✅ New PR #$PR_NUM"
+				poll_result=0
+				poll_ci "$HEAD_SHA" || poll_result=$?
 			fi
-			echo "✅ New PR #$PR_NUM"
-			poll_result=0
-			poll_ci "$HEAD_SHA" || poll_result=$?
 		fi
 	fi
 
 	# Hung-run retry loop: if no CI jobs started (exit 3), close PR,
 	# wait with exponential backoff, and repush to trigger a fresh run.
 	while [[ $poll_result -eq 3 && $hung_retries -lt 4 ]]; do
+		# WI-rahib Surface 1: verification gate before close-and-repush.
+		# Same two sub-cases as the timeout path — the hung-run signal
+		# can also be a poll-endpoint flake masquerading as "no jobs
+		# started" while the PR is actually merged or merge-ready.
+		if _pre_scenario_b_gate "$PR_NUM" "$HEAD_SHA"; then
+			if [[ "$AUTOPR_GATE_MERGED" == "true" ]]; then
+				_autopr_state_final="merged"
+				poll_result=0
+				break
+			fi
+			poll_result=0
+			poll_ci "$HEAD_SHA" || poll_result=$?
+			continue
+		fi
+
 		hung_retries=$((hung_retries + 1))
 		echo ""
 		echo "🔄 Hung-run retry $hung_retries/4: closing PR #$PR_NUM, waiting ${hung_backoff}s..."

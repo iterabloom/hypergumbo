@@ -1103,17 +1103,64 @@ do_merge() {
 				# Pushing to the named branch alone doesn't update PRs created
 				# via refs/for/dev/branch.
 				if git push origin "HEAD:refs/for/$base_branch/$cur_branch" -o force-push=true --quiet 2>/dev/null; then
-					echo "   Force-push succeeded — retrying merge..."
-					sleep 3  # Give Forgejo a moment to update PR head
-					# Retry fast-forward merge after rebase
-					if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
-						if _check_pr_merged "$pr_num"; then
-							echo "✅ Fast-forward merged after local rebase!"
-							rm -f "$tmp_file"
-							return 0
+					echo "   Force-push succeeded — entering post-rebase poll-and-merge loop..."
+					# WI-rahib Surface 2 (post-rebase poll-and-merge loop):
+					# After force-push of the rebased SHA, do not attempt the
+					# merge once and exit. Re-enter poll_ci on the new SHA and
+					# retry the merge until convergence. Bounded at
+					# rebase_max iterations to prevent runaway in pathological
+					# states (e.g., dev advancing faster than we can rebase).
+					# Greppable shape: `while [ ... -lt $rebase_max ]; do ...
+					# continue; done` — explicit continue after re-rebase.
+					local rebase_attempts=0
+					local rebase_max=3
+					local rebase_merged=false
+					while [ "$rebase_attempts" -lt "$rebase_max" ]; do
+						rebase_attempts=$((rebase_attempts + 1))
+						local new_sha
+						new_sha=$(git rev-parse HEAD)
+						echo "   Post-rebase iteration $rebase_attempts/$rebase_max: polling CI on $new_sha..."
+						local rebase_poll_rc=0
+						poll_ci "$new_sha" || rebase_poll_rc=$?
+
+						local rebase_merge_response=""
+						if [ "$rebase_poll_rc" -eq 0 ]; then
+							if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
+								if _check_pr_merged "$pr_num"; then
+									echo "✅ Fast-forward merged after local rebase (iteration $rebase_attempts/$rebase_max)!"
+									rebase_merged=true
+									break
+								fi
+							fi
+							rebase_merge_response="$API_RESPONSE"
 						fi
+
+						# Did base advance again under us during the poll?
+						# If so, re-rebase + force-push and continue the loop.
+						if echo "$rebase_merge_response" | grep -qi "head behind base branch\|is behind"; then
+							echo "   ⚠️  Base advanced during post-rebase poll — re-rebasing..."
+							if git fetch origin "$base_branch" --quiet 2>/dev/null \
+							   && git rebase "origin/$base_branch" --quiet 2>/dev/null \
+							   && git push origin "HEAD:refs/for/$base_branch/$cur_branch" -o force-push=true --quiet 2>/dev/null; then
+								continue
+							fi
+							echo "❌ Re-rebase or force-push failed during post-rebase loop"
+							break
+						fi
+
+						# CI may not have caught up yet on the new SHA.
+						# Brief wait and re-enter the loop with the same SHA.
+						if [ "$rebase_attempts" -lt "$rebase_max" ]; then
+							echo "   Merge not yet accepted (iteration $rebase_attempts/$rebase_max) — waiting 10s and re-polling..."
+							sleep 10
+						fi
+					done
+
+					if [ "$rebase_merged" = "true" ]; then
+						rm -f "$tmp_file"
+						return 0
 					fi
-					echo "⚠️  Merge not accepted after rebase (CI may need to re-run on new SHA)"
+					echo "⚠️  Merge not accepted after $rebase_attempts post-rebase iterations"
 					echo ""
 					echo "Recovery: ./scripts/merge-pr $pr_num --wait-for-ci"
 				else
@@ -1180,6 +1227,63 @@ _check_pr_merged() {
 	else
 		return 1
 	fi
+}
+
+# ------------------------------------------------------------------
+# _pre_scenario_b_gate PR_NUM HEAD_SHA  (WI-rahib Surface 1)
+#
+#   Verification gate at the close-and-repush boundary in Scenario B
+#   (timeout-recovery and hung-run paths). Two sub-cases caught:
+#
+#     (1) Merged-during-timeout: PR actually merged but the timed-out
+#         poller didn't see it. _check_pr_merged catches this; gate
+#         sets AUTOPR_GATE_MERGED=true and returns 0.
+#
+#     (2) About-to-merge with poll-endpoint flake: CI green, PR
+#         mergeable, but /pulls/<n>/statuses was 502'ing intermittently.
+#         Gate fetches /pulls/<n>, checks mergeable=true, then retries
+#         poll_ci once with a short timeout. If both pass, returns 0
+#         with AUTOPR_GATE_MERGED=false (caller falls through to merge
+#         instead of close-and-repush).
+#
+#   Returns:
+#     0 = "skip the close" (caller checks AUTOPR_GATE_MERGED to know
+#         whether to exit success or fall through to a merge attempt)
+#     1 = "proceed with close-and-repush as today"
+# ------------------------------------------------------------------
+_pre_scenario_b_gate() {
+	local pr_num="$1"
+	local head_sha="$2"
+	AUTOPR_GATE_MERGED=false
+
+	if _check_pr_merged "$pr_num"; then
+		echo "   ✅ Verified: PR #$pr_num was already merged (poll endpoint flake hid the merge)"
+		AUTOPR_GATE_MERGED=true
+		return 0
+	fi
+
+	if api_get "$API_BASE/pulls/$pr_num"; then
+		local mergeable
+		mergeable=$(echo "$API_RESPONSE" | json_field "mergeable")
+		if [[ "$mergeable" == "True" || "$mergeable" == "true" ]]; then
+			echo "   ℹ️  PR #$pr_num mergeable=true; retrying CI poll once with short timeout..."
+			local _saved_timeout="${CI_TIMEOUT_SECONDS:-}"
+			export CI_TIMEOUT_SECONDS=120
+			local _gate_poll_rc=0
+			poll_ci "$head_sha" || _gate_poll_rc=$?
+			if [[ -n "$_saved_timeout" ]]; then
+				export CI_TIMEOUT_SECONDS="$_saved_timeout"
+			else
+				unset CI_TIMEOUT_SECONDS
+			fi
+			if [[ $_gate_poll_rc -eq 0 ]]; then
+				echo "   ✅ CI green on retry; skipping close-and-repush in favor of merge attempt"
+				return 0
+			fi
+		fi
+	fi
+
+	return 1
 }
 
 # ------------------------------------------------------------------
