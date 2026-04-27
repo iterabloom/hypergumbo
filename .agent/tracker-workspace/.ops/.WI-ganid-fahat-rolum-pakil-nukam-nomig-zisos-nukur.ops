@@ -18,3 +18,18 @@
     pr_ref:  # 44b2
     description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/c.yaml from status=in_progress to status=complete by: (1) auditing the catalog against C ISO C / POSIX's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing cppreference.com or the open-group POSIX docs, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # 44b2
     fields: {}  # 44b2
+- op: update  # edd8
+  at: '2026-04-27T02:53:22Z'  # edd8
+  by: agent  # edd8
+  actor: jgstern_agent  # edd8
+  clock: 2  # edd8
+  nonce: edd8  # edd8
+  set:  # edd8
+    status: wont_do  # edd8
+- op: discuss  # 2101
+  at: '2026-04-27T02:53:22Z'  # 2101
+  by: agent  # 2101
+  actor: jgstern_agent  # 2101
+  clock: 3  # 2101
+  nonce: '2101'  # 2101
+  message: "Closed wont_do per human direction 2026-04-27. Superseded by umbrella WI-tukif-fuhug-tisiv-judor-pobat-fisat-hadap-zojol which consolidates the 12 nearly-identical stdlib-provenance items (all created 2026-04-24, all zero discussion, all the same template) into a single tracking item with a per-language checklist. The work itself is preserved on the umbrella; this individual item is closed because discrete per-language tracking made the queue noisy without conveying useful priority information."  # 2101
