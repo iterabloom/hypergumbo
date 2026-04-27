@@ -484,7 +484,6 @@ _CATALOG_DIR = Path(__file__).parent / "io_primitives"
 # functions (fopen, fread, fwrite, popen, etc.) so it falls back to the
 # C catalog.  TypeScript shares the JavaScript catalog.
 _CATALOG_ALIASES: dict[str, str] = {
-    "cpp": "c",
     "typescript": "javascript",
     # JVM languages that lack their own catalog share the Java IO catalog
     "groovy": "java",
@@ -503,6 +502,12 @@ _CATALOG_PARENTS: dict[str, str] = {
     # Elixir inherits Erlang stdlib — `:gen_tcp.send` / `:file.read` /
     # `:ets.lookup` all call the Erlang modules directly (WI-vibur).
     "elixir": "erlang",
+    # C++ inherits the C catalog (libc, POSIX) and the cpp.yaml child
+    # adds the iostream surface (``std::cout`` / ``cerr`` / ``cin``).
+    # Was a plain alias prior to WI-zojid — the alias form would have
+    # required the C++-only ``module: std`` entries to live in c.yaml,
+    # polluting the C-only catalog.
+    "cpp": "c",
 }
 
 

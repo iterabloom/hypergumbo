@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0016: I/O primitive catalog for C++
+#
+# C++ inherits the C catalog (via _CATALOG_PARENTS['cpp']='c' in
+# io_boundary.py) for everything that comes from <stdio.h>, <unistd.h>,
+# <sys/socket.h>, etc. — those entries map directly to the libc symbols a
+# C++ program reaches through its C-compatible interface (``::printf``,
+# ``::open``, ``::socket`` and friends).
+#
+# What this catalog adds is the *iostream* surface — the C++-idiomatic
+# attribute reads on the ``std::`` namespace that emit_module_attribute_refs
+# (with scoped_path=True over the ``qualified_identifier`` grammar node)
+# produces on tree-sitter parses (WI-zojid; the cross-language helper is
+# WI-vipur, originally landed for Rust's ``scoped_identifier``).
+#
+# Without these entries the C++ analyzer's emitted module_attr_ref edges
+# would land on a catalog miss and the iostream IO would silently drop out
+# of ``hypergumbo io-boundaries`` for every C++ repo. The C parent catalog
+# does not cover ``std::cout``/``std::cerr``/``std::cin`` — those are
+# C++-only, and bare ``cout``/``cerr``/``cin`` (after ``using namespace
+# std;``) are tracked separately because they need the ``using``
+# declaration to be modeled before they can be safely resolved here.
+language: cpp
+
+# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
+# requires enumerating the full <iostream> / <fstream> / <sstream> surface
+# and adding ``stdlib_provenance`` per INV-pomir.
+status: in_progress
+
+ipc_send:
+  - module: std
+    attributes: [cout, cerr]
+    notes: "iostream stdout/stderr — the C++-idiomatic counterpart of c.yaml's stdio.stdout/stderr"
+
+ipc_recv:
+  - module: std
+    attributes: [cin]
+    notes: "iostream stdin — the C++-idiomatic counterpart of c.yaml's stdio.stdin"

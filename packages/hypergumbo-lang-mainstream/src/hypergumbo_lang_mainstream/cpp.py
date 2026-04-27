@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    emit_module_attribute_refs,
     find_child_by_type as _find_child_by_type,
     iter_tree,
     make_file_id as _base_make_file_id,
@@ -1163,6 +1164,46 @@ def _extract_edges_from_tree(
                         origin_run_id=run.execution_id,
                         evidence_type="dispatch_table_reference",
                     ))
+
+    # WI-zojid: emit module_attr_ref edges for scoped attribute reads on
+    # ``std::``-prefixed iostream symbols (``std::cout`` / ``std::cerr`` /
+    # ``std::cin``) and any other namespace alias the analyser tracks.
+    # Pairs with ``attributes:`` entries in io_primitives/cpp.yaml; without
+    # this wire-up the iostream IO would never reach
+    # ``hypergumbo io-boundaries`` on tree-sitter parses.  Cross-language
+    # helper added by WI-vipur (originally for Rust's ``scoped_identifier``);
+    # C++'s ``qualified_identifier`` has the same left-recursive ``scope``
+    # / ``name`` shape so the same helper applies with ``scoped_path=True``.
+    # ``std`` is injected as an implicit import — the C++ standard library
+    # is in scope without an explicit ``using`` declaration.  Namespace
+    # aliases declared with ``namespace fs = std::filesystem;`` are merged
+    # in so attribute reads through the alias also resolve.
+    attr_imports = dict(namespace_aliases)
+    attr_imports.setdefault("std", "std")
+    file_pseudo_symbol = Symbol(
+        id=file_id,
+        name=Path(_caller_path).name,
+        kind="module",
+        language="cpp",
+        path=_caller_path,
+        span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+    )
+    emit_module_attribute_refs(
+        tree.root_node,
+        source,
+        attr_imports,
+        file_pseudo_symbol,
+        "cpp",
+        edges,
+        node_kinds=("qualified_identifier",),
+        object_field_names=("scope",),
+        property_field_names=("name",),
+        call_node_kinds=("call_expression",),
+        call_function_field_names=("function",),
+        scoped_path=True,
+    )
 
     return edges
 

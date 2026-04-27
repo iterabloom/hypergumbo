@@ -703,6 +703,150 @@ void caller() {
         assert any(s.name == "caller" for s in funcs)
 
 
+class TestCppScopedAttributeRefs:
+    """Tests for WI-zojid: emit module_attr_ref edges for scoped
+    attribute reads on C++'s ``qualified_identifier`` (``std::cout``,
+    ``std::cerr``, ``std::cin``, and nested forms like
+    ``std::numbers::pi``).  Pairs with cpp.yaml's ``module: std,
+    attributes: [cout, cerr, cin]`` entries."""
+
+    def _write_iostream_repo(self, tmp_path: Path) -> Path:
+        repo = tmp_path
+        (repo / "main.cpp").write_text(
+            """#include <iostream>
+#include <numbers>
+
+void emit_messages() {
+    std::cout << "stdout";
+    std::cerr << "stderr";
+    int x;
+    std::cin >> x;
+}
+
+double get_pi() {
+    return std::numbers::pi;
+}
+"""
+        )
+        return repo
+
+    def test_std_cout_cerr_cin_emit_module_attr_ref(self, tmp_path: Path) -> None:
+        """Each of ``std::cout`` / ``std::cerr`` / ``std::cin`` should
+        produce a ``module_attr_ref`` edge whose dst lands on the cpp
+        catalog's ``std.cout`` / ``std.cerr`` / ``std.cin`` attributes."""
+        repo = self._write_iostream_repo(tmp_path)
+        result = analyze_cpp(repo)
+        assert not result.skipped
+
+        attr_edges = [e for e in result.edges if e.edge_type == "module_attr_ref"]
+        dsts = {e.dst for e in attr_edges}
+
+        assert "cpp:std:0-0:std.cout:attribute" in dsts, (
+            f"std::cout missing — emitted dsts: {sorted(dsts)}"
+        )
+        assert "cpp:std:0-0:std.cerr:attribute" in dsts
+        assert "cpp:std:0-0:std.cin:attribute" in dsts
+
+    def test_nested_qualified_identifier_resolves_to_leftmost_std(
+        self, tmp_path: Path
+    ) -> None:
+        """``std::numbers::pi`` parses as a nested ``qualified_identifier``
+        (outer ``scope=std`` / ``name=qualified_identifier(numbers::pi)``).
+        The scoped_path walker must resolve the leftmost identifier
+        (``std``) against the implicit-import map and emit one edge for
+        the outer node — not double-emit for the inner one (the inner's
+        leftmost is ``numbers`` which is not in the imports map)."""
+        repo = self._write_iostream_repo(tmp_path)
+        result = analyze_cpp(repo)
+        assert not result.skipped
+
+        attr_edges = [
+            e for e in result.edges
+            if e.edge_type == "module_attr_ref"
+            and "numbers" in e.dst
+        ]
+        # Exactly one edge for std::numbers::pi; the inner node's
+        # leftmost ('numbers') is not in the imports map so the inner
+        # qualified_identifier is correctly skipped.  The leftmost-
+        # alias replacement dot-normalises the *module* path (``std::``
+        # → ``std.``) but the attribute-name slot keeps its original
+        # ``::`` separators because emit_module_attribute_refs only
+        # rewrites the path that came from the imports map; the inner
+        # qualified_identifier text passes through verbatim. Catalog
+        # matching for the iostream entries (``std.cout``/``std.cerr``/
+        # ``std.cin``) is unaffected — those are flat ``module.attr``
+        # forms — and a future ``std::numbers::*`` catalog entry can
+        # rely on the ``_by_qualified`` map's automatic ``::``↔``.``
+        # double-registration.
+        assert len(attr_edges) == 1
+        assert attr_edges[0].dst == "cpp:std:0-0:std.numbers::pi:attribute"
+
+    def test_call_site_qualified_identifier_does_not_double_emit(
+        self, tmp_path: Path
+    ) -> None:
+        """A ``qualified_identifier`` that is the callee of a
+        ``call_expression`` (``std::printf("x")``) is already covered
+        by the ``calls`` pipeline and must NOT also produce a
+        ``module_attr_ref`` edge."""
+        repo = tmp_path
+        (repo / "main.cpp").write_text(
+            """#include <cstdio>
+
+void use_printf() {
+    std::printf("hello");
+}
+"""
+        )
+        result = analyze_cpp(repo)
+        assert not result.skipped
+
+        # The std::printf qualified_identifier is the callee — should be
+        # excluded from module_attr_ref emission.
+        bad = [
+            e for e in result.edges
+            if e.edge_type == "module_attr_ref"
+            and "printf" in e.dst
+        ]
+        assert bad == [], (
+            f"std::printf as callee was double-emitted as module_attr_ref: {bad}"
+        )
+
+    def test_namespace_alias_routes_to_real_module(self, tmp_path: Path) -> None:
+        """``namespace fs = std::filesystem;`` followed by an attribute
+        read through the alias must resolve to the underlying module
+        per the namespace_aliases mapping the analyzer already extracts.
+        The aliased module path is ``std::filesystem`` (dot-normalized
+        to ``std.filesystem`` in the dst id)."""
+        repo = tmp_path
+        (repo / "main.cpp").write_text(
+            """#include <filesystem>
+
+namespace fs = std::filesystem;
+
+void use_alias() {
+    auto sep = fs::path::preferred_separator;
+}
+"""
+        )
+        result = analyze_cpp(repo)
+        assert not result.skipped
+
+        # The path alias should resolve through namespace_aliases. We
+        # only assert that an attr edge naming the real module landed
+        # — exact qname depends on grammar parse depth but the leftmost
+        # alias must have been replaced with std.filesystem.
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "module_attr_ref"
+            and e.dst.startswith("cpp:std.filesystem:0-0:")
+        ]
+        assert edges, (
+            "namespace fs = std::filesystem alias did not resolve attribute dst — "
+            f"all module_attr_ref dsts: "
+            f"{[e.dst for e in result.edges if e.edge_type == 'module_attr_ref']}"
+        )
+
+
 class TestCppInheritanceExtraction:
     """Tests for C++ inheritance extraction (base_classes metadata).
 
