@@ -18,3 +18,18 @@
     pr_ref:  # 0d34
     description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/javascript.yaml from status=in_progress to status=complete by: (1) auditing the catalog against JavaScript / Node + browser's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing nodejs.org and developer.mozilla.org, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # 0d34
     fields: {}  # 0d34
+- op: update  # 9448
+  at: '2026-04-27T02:54:59Z'  # 9448
+  by: agent  # 9448
+  actor: jgstern_agent  # 9448
+  clock: 2  # 9448
+  nonce: '9448'  # 9448
+  set:  # 9448
+    status: wont_do  # 9448
+- op: discuss  # 6c62
+  at: '2026-04-27T02:54:59Z'  # 6c62
+  by: agent  # 6c62
+  actor: jgstern_agent  # 6c62
+  clock: 3  # 6c62
+  nonce: 6c62  # 6c62
+  message: "Closed wont_do per human direction 2026-04-27. Superseded by umbrella WI-tukif-fuhug-tisiv-judor-pobat-fisat-hadap-zojol which consolidates the 12 nearly-identical stdlib-provenance items (all created 2026-04-24, all zero discussion, all the same template) into a single tracking item with a per-language checklist. The work itself is preserved on the umbrella; this individual item is closed because discrete per-language tracking made the queue noisy without conveying useful priority information."  # 6c62

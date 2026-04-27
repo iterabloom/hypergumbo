@@ -18,3 +18,18 @@
     pr_ref:  # dc58
     description: "Plan C, PR B catalog-completion backlog. Promote io_primitives/objc.yaml from status=in_progress to status=complete by: (1) auditing the catalog against Objective-C / Foundation's official stdlib documentation index to confirm complete IO-primitive coverage; (2) optionally enumerating non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declaring stdlib_provenance with source_url citing developer.apple.com, version (whatever stdlib release the audit covered), and retrieved date. Source URL hostname must suffix-match ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py — add a hostname suffix to that allowlist via PR review if the official source isn't yet covered."  # dc58
     fields: {}  # dc58
+- op: update  # b301
+  at: '2026-04-27T02:54:59Z'  # b301
+  by: agent  # b301
+  actor: jgstern_agent  # b301
+  clock: 2  # b301
+  nonce: b301  # b301
+  set:  # b301
+    status: wont_do  # b301
+- op: discuss  # 36f8
+  at: '2026-04-27T02:54:59Z'  # 36f8
+  by: agent  # 36f8
+  actor: jgstern_agent  # 36f8
+  clock: 3  # 36f8
+  nonce: 36f8  # 36f8
+  message: "Closed wont_do per human direction 2026-04-27. Superseded by umbrella WI-tukif-fuhug-tisiv-judor-pobat-fisat-hadap-zojol which consolidates the 12 nearly-identical stdlib-provenance items (all created 2026-04-24, all zero discussion, all the same template) into a single tracking item with a per-language checklist. The work itself is preserved on the umbrella; this individual item is closed because discrete per-language tracking made the queue noisy without conveying useful priority information."  # 36f8
