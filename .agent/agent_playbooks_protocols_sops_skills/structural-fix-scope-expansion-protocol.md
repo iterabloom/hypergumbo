@@ -22,7 +22,7 @@
 
 The Scope Expansion Commitment Protocol pushes hard toward filing items for analogous issues across languages / constructs / pipeline stages. That bias is correct *as a default*, but it has three failure modes you should recognize and route around. (We discovered these failure modes after an agent filed a fresh INV item for what turned out to be a regression of an already-tracked invariant, fragmenting the discussion thread the human was actively reading.)
 
-1. **Existing-coverage check.** Before filing, run `scripts/tracker list --tag <plausible-tag>` or `tracker list --kind <invariant|work_item>` and spot-check titles. If an existing item already covers the surface, prefer `tracker discuss <ID>` with a regression note rather than a new item. New items fragment the discussion thread the human is reading.
+1. **Existing-coverage check.** Before filing, run `scripts/tracker tags` to see the current tag vocabulary, then `scripts/tracker list --tag <tag>` or `scripts/tracker list --kind <invariant|work_item>` and spot-check titles. If an existing item already covers the surface, prefer `tracker discuss <ID>` with a regression note rather than a new item. New items fragment the discussion thread the human is reading.
 
 2. **Conversation-in-progress check.** If the human is actively engaged in the conversation that surfaced the concern, ask before filing. The default response shape "I'll file a tracker item for that" can be exactly wrong when the human's intent was "let's discuss this and decide together what to do." Cheap fix: surface the proposed item title plus a one-line rationale and ask "file this as `<ID-class>`?" before invoking `tracker add`.
 

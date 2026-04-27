@@ -194,7 +194,13 @@ PLAYBOOKS = [
      "analogues across languages/constructs/pipeline stages. Create tracker items immediately "
      "(violated, todo_hard, todo_soft, or needs_human_review). Distinguish root-cause fixes "
      "from workarounds. When in doubt, use todo_hard — the circuit breaker prevents death "
-     "spirals."),
+     "spirals. The playbook also names three shapes where you should NOT file a new item: "
+     "existing-coverage (an item already covers the surface — use `tracker discuss <ID>` "
+     "with a regression note instead; run `scripts/tracker tags` to enumerate the vocabulary "
+     "before searching), conversation-in-progress (the human is actively discussing the "
+     "concern — ask before filing), and property-of-existing-invariant (the new failure mode "
+     "is structurally a property of a tracked invariant — file as a regression note on the "
+     "parent INV, not a sibling item)."),
     ("smart-test-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/smart-test-playbook.md",
      "Always use the pytest alias (which invokes smart-test) instead of python -m pytest or "
