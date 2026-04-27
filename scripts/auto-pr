@@ -111,6 +111,76 @@ _autopr_sync_gate_friendly_message() {
 	echo "$msg"
 }
 
+# ------------------------------------------------------------------
+# Orphan tracker-sync PR warning (WI-dofaz)
+#
+# After a successful feature-PR merge, surface any tracker-sync PR
+# whose head ref starts with "tracker-sync/" AND that was created
+# before this auto-pr run started.  An orphan in that shape means a
+# prior tracker-sync cycle pushed but never merged; it would otherwise
+# sit unnoticed for hours, leaving local tracker state ahead of origin
+# and seeding conflicts on the next mutation.
+#
+# Does NOT auto-merge.  The warning is just a surfacing — the
+# per-invocation contract "one auto-pr run = one PR" is preserved.
+#
+# Reads: $REPO_ROOT, $_autopr_run_started_epoch, find_open_tracker_sync_prs
+# Writes: stderr (the warning text)
+# Returns: always 0 — a check failure must not block the parent's
+#          successful exit code.
+# ------------------------------------------------------------------
+_autopr_warn_orphan_tracker_sync_prs() {
+	local cutoff="${_autopr_run_started_epoch:-0}"
+	if [[ -z "$cutoff" || "$cutoff" -le 0 ]]; then
+		return 0
+	fi
+
+	local rows
+	if ! rows=$(find_open_tracker_sync_prs 2>/dev/null); then
+		return 0
+	fi
+	if [[ -z "$rows" ]]; then
+		return 0
+	fi
+
+	local warned=0
+	while IFS=$'\t' read -r pr_num branch created_epoch age_secs; do
+		[[ -z "$pr_num" ]] && continue
+		# Filter to orphans that existed BEFORE this auto-pr started.
+		# Sync PRs created mid-cycle are normal — the next auto-sync
+		# threshold-cross will pick them up.
+		if [[ -z "$created_epoch" || "$created_epoch" -le 0 ]]; then
+			continue
+		fi
+		if (( created_epoch >= cutoff )); then
+			continue
+		fi
+
+		local age_str
+		if (( age_secs < 60 )); then
+			age_str="${age_secs}s"
+		elif (( age_secs < 3600 )); then
+			age_str="$((age_secs / 60))m"
+		else
+			age_str="$((age_secs / 3600))h$(printf '%02d' $(( (age_secs % 3600) / 60 )))m"
+		fi
+
+		if (( warned == 0 )); then
+			echo "" >&2
+			echo "⚠️  Orphaned tracker-sync PR detected:" >&2
+		fi
+		warned=$((warned + 1))
+		echo "     PR #${pr_num} (branch ${branch}, ${age_str} old)" >&2
+		echo "   Run: ./scripts/merge-pr ${pr_num} --wait-for-ci" >&2
+	done <<<"$rows"
+
+	if (( warned > 0 )); then
+		echo "   (This PR was open before this auto-pr started — it should have merged" >&2
+		echo "    on its own auto-sync cycle but appears stuck.)" >&2
+	fi
+	return 0
+}
+
 _autopr_sync_gate_held() {
 	local gate_file="$REPO_ROOT/.git/TRACKER_SYNC_PENDING"
 	if [[ ! -f "$gate_file" ]]; then
@@ -670,6 +740,9 @@ flush_queue() {
 	# the earliest exits (auth) capture a final state.
 	trap _autopr_finalize EXIT
 
+	# WI-dofaz: capture the run-start epoch before any Forgejo work.
+	_autopr_run_started_epoch=$(date +%s)
+
 	local count
 	count=$(queue_count)
 
@@ -954,6 +1027,10 @@ Individual commits are preserved in the history."
 	_autopr_state_final="merged"
 	_autopr_state_merged_sha="$tip_sha"
 
+	# WI-dofaz: surface any tracker-sync PR that existed before this
+	# flush run and is still open.  Best-effort warning only.
+	_autopr_warn_orphan_tracker_sync_prs
+
 	# WI-mokak: append durable post-merge discussion entry to the
 	# tracker item, if one was referenced by --tracker-id.
 	_autopr_append_tracker_discussion "$TRACKER_ID" "$PR_NUM" "$tip_sha"
@@ -1025,6 +1102,13 @@ do_pr() {
 	# WI-miriz: install sentinel trap as the very first action so even
 	# the earliest exits (auth, branch check) capture a final state.
 	trap _autopr_finalize EXIT
+
+	# WI-dofaz: capture the run-start epoch before any Forgejo work.
+	# The post-success orphan-tracker-sync check uses this as the cutoff
+	# between "this auto-pr created the orphan" and "the orphan was
+	# already alive when this run started" — only the latter is worth
+	# warning about.
+	_autopr_run_started_epoch=$(date +%s)
 
 	USER="${FORGEJO_USER:-}"
 	TOKEN="${FORGEJO_TOKEN:-}"
@@ -1545,6 +1629,11 @@ do_pr() {
 	# below also rm's PR_PENDING explicitly (idempotent with the trap).
 	_autopr_state_final="merged"
 	_autopr_state_merged_sha="$LOCAL_SHA"
+
+	# WI-dofaz: surface any tracker-sync PR that existed before this
+	# auto-pr run and is still open.  Best-effort warning only — does
+	# not affect exit code.
+	_autopr_warn_orphan_tracker_sync_prs
 
 	# WI-mokak: append durable post-merge discussion entry to the
 	# tracker item, if one was referenced by --tracker-id.

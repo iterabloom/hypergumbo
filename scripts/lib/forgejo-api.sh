@@ -276,6 +276,77 @@ sys.exit(1)
 }
 
 # ------------------------------------------------------------------
+# find_open_tracker_sync_prs
+#   Enumerate every currently-open PR whose head ref begins with
+#   "tracker-sync/" — the deterministic shape produced by
+#   ``packages/hypergumbo-tracker/src/hypergumbo_tracker/sync.py`` (the
+#   sync branch is built as ``f"tracker-sync/{timestamp}"`` at sync.py
+#   line 854 and the PR title as ``f"tracker: sync N file(s)"`` at
+#   sync.py line 963; the helper identifies by ``head.ref`` because
+#   that's stable even if title formatting drifts).
+#
+#   Uses API_BASE and FORGEJO_TOKEN from environment.  Reuses the
+#   existing ``api_get`` plumbing — no new auth path, no new vendor
+#   dependency.
+#
+#   Each result is emitted on stdout as a tab-separated row:
+#       PR_NUM<TAB>BRANCH<TAB>CREATED_EPOCH<TAB>AGE_SECONDS
+#   where ``CREATED_EPOCH`` is the PR's ``created_at`` parsed to Unix
+#   seconds and ``AGE_SECONDS`` is computed against the caller's clock.
+#   No stdout output if there are zero open tracker-sync PRs.
+#
+#   Return codes:
+#       0 — call succeeded; zero or more rows emitted (silence is OK).
+#       1 — API call failed or json parsing errored; nothing emitted.
+#
+#   Motivating incident: WI-dofaz / session_retrospective_04262026_1911
+#   Finding 4 — sync PR #3376 was created mid-cycle but never picked up;
+#   it sat open for ~3 hours until the user noticed.  This helper lets
+#   ``auto-pr``'s post-success path detect orphans and surface them
+#   before the local view diverges further from origin.
+# ------------------------------------------------------------------
+find_open_tracker_sync_prs() {
+	if ! api_get "$API_BASE/pulls?state=open&sort=recentupdate"; then
+		return 1
+	fi
+
+	echo "$API_RESPONSE" | python3 -c "
+import json
+import sys
+import time
+from datetime import datetime, timezone
+
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+
+now = int(time.time())
+for item in data:
+    head = item.get('head') or {}
+    ref = head.get('ref') or ''
+    if not ref.startswith('tracker-sync/'):
+        continue
+    pr_num = item.get('number')
+    if not pr_num:
+        continue
+    created_at = item.get('created_at') or ''
+    created_epoch = 0
+    if created_at:
+        try:
+            # Forgejo emits RFC 3339 with 'Z' suffix or '+00:00'.
+            iso = created_at.replace('Z', '+00:00')
+            created_epoch = int(
+                datetime.fromisoformat(iso).astimezone(timezone.utc).timestamp()
+            )
+        except (TypeError, ValueError):
+            created_epoch = 0
+    age = max(0, now - created_epoch) if created_epoch else 0
+    print(f'{pr_num}\t{ref}\t{created_epoch}\t{age}')
+" 2>/dev/null
+}
+
+# ------------------------------------------------------------------
 # poll_ci HEAD_SHA
 #   CI polling with timeout and ci-complete bypass (Scenario A/B).
 #   Uses API_BASE and FORGEJO_TOKEN from environment.
