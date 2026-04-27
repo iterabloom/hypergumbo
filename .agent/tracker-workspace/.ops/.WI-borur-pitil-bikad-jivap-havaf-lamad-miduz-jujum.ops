@@ -48,3 +48,10 @@
   clock: 5  # aa7f
   nonce: aa7f  # aa7f
   message: "are those deferred followups (a) and (b) trackerized?"  # aa7f
+- op: discuss  # 5247
+  at: '2026-04-27T14:31:47Z'  # 5247
+  by: agent  # 5247
+  actor: jgstern_agent  # 5247
+  clock: 6  # 5247
+  nonce: '5247'  # 5247
+  message: "No, neither is trackerized. I checked the tracker (search across tags / titles for 'PLAYBOOKS', 'hook summary', 'agent_notes', 'nudge', 'mtime', 'stale') — no matches.\n\nStatus of the two follow-ups from PR #3424's discussion:\n\n(a) Hook summary update in .agent/hooks/_shared/on_transcript_change.py:PLAYBOOKS for the recover-state-playbook entry, so the in-context hook description mentions the new write-side step. Governance file (touches .agent/hooks/), would need either auto-pr --gov or your explicit auto-merge approval. Small change: one summary string update.\n\n(b) Stop hook nudge that fires when agent_notes.json mtime predates the current session's start time. Surfaces 'agent_notes.json is stale; consider scripts/agent-notes --append <one-liner> before stopping.' in stop guidance. Touches .agent/hooks/_shared/stop_logic.sh + a new worker script — also governance. The original WI-borur description noted this should wait for evidence the playbook addition alone isn't sufficient; that evidence isn't in yet (one session of data since PR #3424).\n\nRecommendation: file (a) now since it's a small mechanical follow-up to a merged change. Defer (b) until we have evidence the playbook-only nudge isn't producing notes refreshes — measure by spot-checking agent_notes.json mtime across the next 5–10 sessions.\n\nWant me to file (a) and (b) (or just (a))? Per the 'Conversation-in-progress check' I'm asking before filing rather than reflexively creating items."  # 5247
