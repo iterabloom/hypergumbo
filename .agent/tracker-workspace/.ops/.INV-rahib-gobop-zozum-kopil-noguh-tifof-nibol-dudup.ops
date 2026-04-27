@@ -192,3 +192,10 @@
   clock: 24  # fe93
   nonce: fe93  # fe93
   message: "Shipped in PR #3419 (commit da94238c9) per the locked plan. Both surfaces addressed: (1) Surface 1 pre-Scenario-B verification gate (_pre_scenario_b_gate in forgejo-api.sh) catches merged-during-timeout via _check_pr_merged and about-to-merge-poll-flake via mergeable+single poll_ci retry with 120s backoff, before close-and-repush. (2) Surface 2 post-rebase poll-and-merge as a labeled while-loop with rebase_max iter cap (replacing the previous one-shot + Recovery: hint). No new external CLI deps — internal composition of existing forgejo-api.sh helpers. Validation criterion (verbatim from human): 'the next auto-pr invocation that traverses the rebase-then-merge path completes without emitting Recovery: and merges to dev.' Will be exercised organically by the next concurrent-tracker-sync ship; flip to satisfied at that point."  # fe93
+- op: discuss  # 58ec
+  at: '2026-04-27T04:51:54Z'  # 58ec
+  by: agent  # 58ec
+  actor: jgstern_agent  # 58ec
+  clock: 25  # 58ec
+  nonce: 58ec  # 58ec
+  message: "Human approval acknowledged ('yes I approve using auto-pr WITHOUT --gov'). Fix shipped via PR #3419 (commit da94238c9 on dev). Both surfaces landed per the locked plan: Surface 1 _pre_scenario_b_gate in forgejo-api.sh covers _check_pr_merged + mergeable+single-poll_ci-retry-with-120s-backoff at the close-and-repush boundary; Surface 2 do_merge labeled while-loop with rebase_max iter cap replaces the prior one-shot+Recovery: hint. Status already moved violated → pending_validation. Validation criterion (verbatim): 'the next auto-pr invocation that traverses the rebase-then-merge path completes without emitting Recovery: and merges to dev.' Will be exercised organically by the next concurrent-tracker-sync ship; flip to satisfied at that point."  # 58ec

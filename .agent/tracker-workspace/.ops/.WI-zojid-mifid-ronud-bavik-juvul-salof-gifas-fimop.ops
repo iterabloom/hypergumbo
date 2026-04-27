@@ -18,3 +18,27 @@
     pr_ref:  # 5d83
     description: "Follow-up deferred from WI-vipur (see CHANGELOG.md [Unreleased] 'WI-vipur: cross-language scoped-path mode'). WI-vipur landed the scoped_path=True mode on emit_module_attribute_refs and wired it to Rust's scoped_identifier. C++'s qualified_identifier has the same left-recursive path/name shape and would work with the same helper (node_kinds=('qualified_identifier',)), but C++ currently aliases to the C catalog (_CATALOG_ALIASES['cpp']='c' in io_boundary.py:319), and c.yaml's stdio attributes are bare C identifiers (stdout/stderr/stdin under module: stdio) — not the C++ std:: forms. Work needed: (a) create packages/hypergumbo-core/src/hypergumbo_core/io_primitives/cpp.yaml with ipc_send entries for module: std, attributes: [cout, cerr] and ipc_recv module: std, attributes: [cin], inheriting the rest from c.yaml via _CATALOG_PARENTS['cpp']='c' (the io_boundary.py already has the parent-inheritance mechanism used by kotlin/scala/elixir); (b) wire the helper into cpp.py's Pass-2 loop with scoped_path=True, node_kinds=('qualified_identifier',), object_field_names and property_field_names matching the tree-sitter-cpp grammar fields (verify with a sandbox parse first — they may be 'scope' / 'name' or similar), and inject 'std' as an implicit import; (c) unit tests following WI-vipur's pattern in test_cpp.py. Real-repo validation candidates under 50MB: any C++ CLI using std::cout/cerr heavily. Pairs with the other WI-vipur-adjacent language follow-up, which was noted but not tracked: Groovy and Kotlin scoped_identifier in package-qualified references — but those only matter if the respective YAML catalogs gain attributes entries (they don't today), so Groovy/Kotlin remain out of scope until someone adds catalog entries that would benefit from scoped-path mode."  # 5d83
     fields: {}  # 5d83
+- op: discuss  # 3dae
+  at: '2026-04-27T06:33:43Z'  # 3dae
+  by: agent  # 3dae
+  actor: jgstern_agent  # 3dae
+  clock: 2  # 3dae
+  nonce: 3dae  # 3dae
+  message: "Merged as PR #3422, dev SHA a04ad5f93ca2."  # 3dae
+- op: update  # 3bae
+  at: '2026-04-27T06:49:36Z'  # 3bae
+  by: agent  # 3bae
+  actor: jgstern_agent  # 3bae
+  clock: 3  # 3bae
+  nonce: 3bae  # 3bae
+  set:  # 3bae
+    status: done  # 3bae
+  add:  # 3bae
+    tags: [awaits_bakeoff_validation]  # 3bae
+- op: discuss  # ae3e
+  at: '2026-04-27T06:49:36Z'  # ae3e
+  by: agent  # ae3e
+  actor: jgstern_agent  # ae3e
+  clock: 4  # ae3e
+  nonce: ae3e  # ae3e
+  message: "Shipped in PR #3422 (commit a04ad5f93). Wired emit_module_attribute_refs (WI-vipur cross-language helper) into cpp.py with scoped_path=True over qualified_identifier (fields scope/name), injecting 'std' as implicit import and merging the namespace_aliases the analyzer already extracts. New cpp.yaml declares ipc_send/ipc_recv std attribute entries (cout/cerr/cin); cpp moved from _CATALOG_ALIASES to _CATALOG_PARENTS pointing at c so the cpp child catalog adds the iostream surface while still inheriting libc/POSIX from c.yaml. Bare cout/cerr/cin after 'using namespace std;' is intentionally out of scope (needs a using-declaration model first). Catalog status: in_progress per Plan C, PR B; promotion to complete requires <iostream>/<fstream>/<sstream> enumeration + stdlib_provenance per INV-pomir. Four real tree-sitter tests cover: std::cout/cerr/cin emission, nested qualified_identifier (std::numbers::pi) leftmost-resolution, callee-qualified-identifier exclusion (no double-emit for std::printf), and namespace alias resolution (fs = std::filesystem → std.filesystem). Tagged awaits_bakeoff_validation: a C++ cohort run on iostream-heavy CLIs should observe non-empty ipc_send/ipc_recv boundaries that previously fell off the C-alias path."  # ae3e

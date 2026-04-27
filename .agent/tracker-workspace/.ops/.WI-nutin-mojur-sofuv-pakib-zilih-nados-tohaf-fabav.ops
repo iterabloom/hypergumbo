@@ -27,3 +27,10 @@
   clock: 2  # f8d5
   nonce: f8d5  # f8d5
   message: "Augmenting design properties (per user 2026-04-26 follow-up): the error messaging itself is part of the structural failure surface. (4) The message MUST remind the reader how to use it: 'tracker sync gate locked by PID 12345 (alive, started 2 min ago) — your operation will be retried automatically when the sync completes' (auto-recovery), or 'tracker sync gate locked by PID 12345 (DEAD, marker 1h17m old) — auto-cleared and retrying' (stale-marker self-recovery). NOT 'Error: tracker sync in progress. Wait for htrac sync to complete.' which gives the reader nothing actionable. (5) The message should inspire you to the better angels of your nature: friendly framing, no shouting (no all-caps ERROR), no jargon ('htrac' is opaque). Aim for the 'oh, the system noticed and handled it' tone, not the 'something is broken, you figure it out' tone. (6) The message should give you hope: convey that the system has self-recovery built in and that the user / agent does not need to manually intervene. The current message produces despair: a person hits this, has no idea what to do, eventually learns to manually 'rm .git/TRACKER_SYNC_PENDING' as cargo-cult ritual, and fears it forever. The right message produces relief — 'oh, this is a known transient state, the system handles it.' Together with properties (1)-(3) from the original description, this defines a fully self-recovering, self-explaining lock-file pattern. The implementation work is small (adopt fcntl.flock + record holder PID + self-recover on stale + improve all four user-facing message strings); the user-experience and trust delta is large."  # f8d5
+- op: discuss  # 0fd1
+  at: '2026-04-27T04:54:20Z'  # 0fd1
+  by: human  # 0fd1
+  actor: jgstern  # 0fd1
+  clock: 3  # 0fd1
+  nonce: 0fd1  # 0fd1
+  message: "I approve and I approve using auto-pr WITHOUT --gov"  # 0fd1
