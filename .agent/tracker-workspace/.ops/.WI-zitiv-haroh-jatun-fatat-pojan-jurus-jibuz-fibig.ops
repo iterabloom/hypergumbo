@@ -1,0 +1,22 @@
+- op: create  # 0810
+  at: '2026-04-27T01:14:29Z'  # 0810
+  by: agent  # 0810
+  actor: jgstern_agent  # 0810
+  clock: 1  # 0810
+  nonce: '0810'  # 0810
+  data:  # 0810
+    kind: work_item  # 0810
+    title: "PreToolUse Bash hook to mechanically enforce output-capture pattern (long-running commands)"  # 0810
+    status: needs_human_review  # 0810
+    priority: 1  # 0810
+    parent:  # 0810
+    tags:  # 0810
+    - agent_infrastructure  # 0810
+    - developer_experience  # 0810
+    - injection_pipeline  # 0810
+    isbefore: []  # 0810
+    duplicate_of: []  # 0810
+    not_duplicate_of: []  # 0810
+    pr_ref:  # 0810
+    description: "PreToolUse Bash hook that mechanically enforces the output-capture pattern from `.agent/agent_playbooks_protocols_sops_skills/output-capture-long-running-playbook.md`.\n\n**Motivating data (session_retrospective_04262026_1736.md, Finding 2):** of 892 Bash invocations in one 13.5-hour session, 513 used `| tail -N` or `| head -N` as the primary capture method; only 41 used the prescribed `> /tmp/foo.log 2>&1` pattern. Compliance ~7%. The output-capture playbook was both the most-selected (115 polls) AND the most-injected (11 firings) playbook in the same session. Injection-as-text doesn't change the agent's reflexive command-composition shape — the LLM acknowledges the rule and composes the next command the old way three turns later. The rule needs mechanical enforcement, not more text.\n\n**Implementation surface:** A new PreToolUse hook under `.agent/hooks/<vendor>/` (or shared in `.agent/hooks/_shared/`). Pattern check on the Bash command:\n\n```\n^.*\\b(auto-pr|merge-pr|bakeoff-(broad|deep|deep-reflect)|pytest|smart-test|ci-debug|release-check|prepare-release)\\b.*\\|\\s*(tail|head)\\s+-(?:n\\s+)?[0-9]+\n```\n\nWhen matched, **block the call** with a structured error message that:\n1. Explains why (output-capture rule, lost error messages, lost coverage gaps).\n2. Shows the corrected form: `<original-cmd> > /tmp/<cmd-name>.log 2>&1` followed by Read on the file.\n3. Cites the playbook path so the agent can read more if needed.\n\nEither hard-block (preferred) or rewrite. Hard-block is simpler and forces the agent to compose correctly the second time, which is what reshapes the reflex.\n\n**Scope deliberately includes only the listed long-running commands.** A blanket ban on `| tail -N` would over-fire on cheap commands where truncation is fine (e.g. `git log --oneline | tail -5`). The playbook's exhaustive list is the right pattern surface.\n\n**Once mechanical enforcement exists,** the playbook can be downgraded from \"always inject\" to \"context-only\" in `.agent/hooks/_shared/on_transcript_change.py:PLAYBOOKS`, freeing one of the top-3 inject slots for a less-frequently-violated playbook.\n\n**Governance:** `.agent/hooks/` is in the AGENTS.md governance file list. This item must stay `needs_human_review` until the human approves the design (especially the hard-block-vs-rewrite choice and the regex's exact command list). Implementation PR must be authorized.\n\n**Tests:**\n- Property: every command in the regex's allowlist that ends with `| tail -N` or `| head -N` is rejected.\n- Property: same commands ending with `> /tmp/foo.log 2>&1` are accepted.\n- Negative: cheap commands (`git log | tail -5`, `cat foo | head`) are NOT rejected.\n- Negative: the long-running commands without piping ARE accepted.\n\n**Cross-references:**\n- `~/hypergumbo_lab_notebook/session_retrospective_04262026_1736.md` Finding 2 (motivating data).\n- `.agent/agent_playbooks_protocols_sops_skills/output-capture-long-running-playbook.md` (the rule the hook enforces).\n- AGENTS.md \"Output Capture for Long-Running Commands\" (the in-AGENTS essentialization)."  # 0810
+    fields: {}  # 0810

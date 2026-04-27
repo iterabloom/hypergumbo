@@ -1,0 +1,22 @@
+- op: create  # 6dd3
+  at: '2026-04-26T23:30:15Z'  # 6dd3
+  by: agent  # 6dd3
+  actor: jgstern_agent  # 6dd3
+  clock: 1  # 6dd3
+  nonce: 6dd3  # 6dd3
+  data:  # 6dd3
+    kind: invariant  # 6dd3
+    title: "At most one sync-transcript.sh watcher per (repo, SESSION_ID), regardless of SessionStart firing count"  # 6dd3
+    status: pending_validation  # 6dd3
+    priority: 1  # 6dd3
+    parent:  # 6dd3
+    tags:  # 6dd3
+    - developer_experience  # 6dd3
+    isbefore: []  # 6dd3
+    duplicate_of: []  # 6dd3
+    not_duplicate_of: []  # 6dd3
+    pr_ref:  # 6dd3
+    description: "PR #3403 (commit afcaca625) lands a two-layer fix: (1) same-SID idempotence guard in launch-transcript-sync.sh (PID file + pgrep fallback, mirroring kill-transcript-sync.sh); (2) fcntl.flock around filter-transcript.py's load_state -> filter_new_lines -> save_state critical section. Tests added: TestLaunchScript::test_launch_kills_prior_watcher_for_same_session_id, ::test_launch_kills_prior_via_pgrep_when_pid_file_missing; TestConcurrentInvocationSafety::test_concurrent_subprocess_invocations_no_duplicates (this reproduced the exact 2x pattern on unfixed code: 50 source rows -> 100 dest rows), ::test_state_file_lock_serializes_concurrent_writers. To advance pending_validation -> satisfied: confirm that 5+ post-fix sessions containing isCompactSummary events show no 2x pattern in their archived/rotated transcripts. Cross-references: ~/hypergumbo_lab_notebook/transcript_dup_investigation/PLAN.md (Resolution section), session_retrospective_04262026_1736.md (Finding 6 update)."  # 6dd3
+    fields:  # 6dd3
+      statement: "At most one sync-transcript.sh watcher process exists per (repo, SESSION_ID), regardless of how many times the vendor's SessionStart hook fires (startup, resume, /clear, /compact). Equivalently: launch-transcript-sync.sh must kill any prior watcher for the same SESSION_ID before launching a new one, and filter-transcript.py must serialize concurrent invocations via fcntl.flock(LOCK_EX) on the state file."  # 6dd3
+      root_cause: "launch-transcript-sync.sh's orphan sweep explicitly skipped its own SESSION_ID (line 89 'continue'), so a prior live watcher for the same session was always left alone. The vendor session-start hooks (claude-code/cursor/codex-cli/gemini-cli) never inspected the SessionStart 'source' field — they unconditionally re-launched on any of {startup, resume, clear, compact}. A second watcher launched on /compact tailed the same vendor source as the first; both raced on the unlocked filter-transcript.py state file, both filtered+appended the same N bytes per close_write event, producing uniform 2x consecutive-block duplication of every event in the per-session DEST file. Rotation (mv -f) preserved the doubling into .last_*. Observed in 4 of 132 archived sessions (~3% HIT rate), exclusively in sessions containing isCompactSummary events."  # 6dd3
