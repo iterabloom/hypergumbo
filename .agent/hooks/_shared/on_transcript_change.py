@@ -246,7 +246,14 @@ PLAYBOOKS = [
      "scripts/agent-notes --set/--append). Also check guidance_file for recent "
      "stop hook output and run tracker ready for pending work items. Keep notes "
      "fresh after key milestones via the scripts/agent-notes tool only — the "
-     "stop_hook_state.json file is hook-owned and must not be edited directly."),
+     "stop_hook_state.json file is hook-owned and must not be edited directly. "
+     "Before signing off (no in-flight work, no auto-pr pending), append a "
+     "one-paragraph summary of what the next session needs to know — open "
+     "invariant violations, P1+ defects discovered, status changes on tracked "
+     "invariants, cross-cutting context — via scripts/agent-notes --append. "
+     "The during-session 'keep notes fresh' rule covers updates as you go; the "
+     "session-end refresh is the symmetric write obligation that closes the "
+     "recovery loop."),
     ("pre-commit-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/pre-commit-playbook.md",
      "Before every commit: verify git identity (user.name/user.email), run tests with "
