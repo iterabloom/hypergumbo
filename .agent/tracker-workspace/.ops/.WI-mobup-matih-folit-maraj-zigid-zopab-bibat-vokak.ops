@@ -63,3 +63,17 @@
   clock: 7  # 49aa
   nonce: 49aa  # 49aa
   message: "Confirmed and re-opened. Two follow-up actions taken in this turn:\n\n(1) Verified `scripts/tracker` has no tag-enumeration command. The subcommand list — show/list/ready/log/add/update/discuss/lock/unlock/freeze/unfreeze/repair-drift/promote/demote/stealth/unstealth/delete/validate/count-todos/hash-todos/guidance/check-messages/init/setup/cache-rebuild/reconcile-reset/fork-setup/migrate/sync/tui/serve/deps/batch — has nothing for it; `list --tag` filters by an already-known value but cannot enumerate; `batch` is unrelated. So the playbook's 'spot-check titles' step at point 1 ('run scripts/tracker list --tag <plausible-tag>') currently relies on the agent guessing tag names from memory.\n\n(2) Filed WI-lifal-tadah-nabup-soriv-sofan-tomiz-sagor-jimaz (P3, todo_soft) and added an isbefore edge from it to WI-mobup, so WI-lifal blocks resumption of WI-mobup per your directive. Status of WI-mobup left at todo_soft (it was already there); flipping it to a more blocked-looking state would be redundant since the isbefore edge already encodes the dependency.\n\n(3) On the wording fix ('Motivating incident: …' → 'We discovered these failure modes when …'): I have NOT applied it yet. Two paths:\n\n  (a) Land it as a small standalone PR right now while WI-mobup awaits WI-lifal — pure prose change, 1 line, doesn't touch the call-site that needs tag enumeration.\n  (b) Hold it inside the resumed WI-mobup PR after WI-lifal lands — keeps the WI-mobup branch a single coherent diff.\n\nI lean (a) since the wording change is independent of tag enumeration and waiting on it leaves stale text in the file that's already injected into agents' context every session. But your call. Awaiting your direction."  # 49aa
+- op: discuss  # 7715
+  at: '2026-04-27T14:53:36Z'  # 7715
+  by: human  # 7715
+  actor: jgstern  # 7715
+  clock: 8  # 7715
+  nonce: '7715'  # 7715
+  message: "let's go with (b) on that"  # 7715
+- op: discuss  # f408
+  at: '2026-04-27T14:54:59Z'  # f408
+  by: agent  # f408
+  actor: jgstern_agent  # f408
+  clock: 9  # f408
+  nonce: f408  # f408
+  message: "Acknowledged — going with (b). The wording fix ('Motivating incident: …' → 'We discovered these failure modes when …') stays queued, will land as part of the resumed WI-mobup PR after WI-lifal merges. WI-mobup remains todo_soft, blocked by WI-lifal via the existing isbefore edge."  # f408
