@@ -160,3 +160,155 @@ class TestInjectionStateLock:
         assert not (tmp_path / ".agent").exists()
         with hook_mod.injection_state_lock(str(tmp_path), "sess"):
             assert (tmp_path / ".agent").is_dir()
+
+
+# ---------------------------------------------------------------------------
+# WI-bodog: presentation helpers
+# ---------------------------------------------------------------------------
+
+class TestStripSpdxHeader:
+    """Tests for ``strip_spdx_header``."""
+
+    def test_strips_leading_spdx_html_comment(self, hook_mod) -> None:
+        content = (
+            "<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->\n"
+            "\n"
+            "## Real Heading\n"
+            "Body text.\n"
+        )
+        out = hook_mod.strip_spdx_header(content)
+        assert out.startswith("## Real Heading")
+        assert "SPDX" not in out
+
+    def test_no_spdx_left_unchanged(self, hook_mod) -> None:
+        content = "## Real Heading\nBody text.\n"
+        assert hook_mod.strip_spdx_header(content) == content
+
+    def test_empty_content_returns_empty(self, hook_mod) -> None:
+        assert hook_mod.strip_spdx_header("") == ""
+
+    def test_spdx_with_no_blank_line_after(self, hook_mod) -> None:
+        content = (
+            "<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->\n"
+            "## Heading\n"
+        )
+        out = hook_mod.strip_spdx_header(content)
+        assert out.startswith("## Heading")
+
+    def test_only_strips_when_first_line(self, hook_mod) -> None:
+        # SPDX comment NOT at the very start of the document — leave it.
+        content = (
+            "## Heading\n"
+            "<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->\n"
+        )
+        out = hook_mod.strip_spdx_header(content)
+        assert "SPDX" in out
+
+
+class TestExtractNaturalTitle:
+    """Tests for ``extract_natural_title``."""
+
+    def test_h1_heading(self, hook_mod) -> None:
+        content = "# Long-Running Output Capture Playbook\n\nBody."
+        assert (
+            hook_mod.extract_natural_title(content)
+            == "Long-Running Output Capture Playbook"
+        )
+
+    def test_h2_heading(self, hook_mod) -> None:
+        content = "## Post-Compaction State Recovery\n\nBody."
+        assert (
+            hook_mod.extract_natural_title(content)
+            == "Post-Compaction State Recovery"
+        )
+
+    def test_h3_heading(self, hook_mod) -> None:
+        content = "### DEEP Mode Priority Queue:\n\nBody."
+        assert (
+            hook_mod.extract_natural_title(content)
+            == "DEEP Mode Priority Queue:"
+        )
+
+    def test_skips_html_comment_lines(self, hook_mod) -> None:
+        content = (
+            "<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->\n"
+            "\n"
+            "## Real Heading\n"
+        )
+        assert (
+            hook_mod.extract_natural_title(content) == "Real Heading"
+        )
+
+    def test_returns_empty_when_no_heading(self, hook_mod) -> None:
+        content = "Just a paragraph, no heading.\n"
+        assert hook_mod.extract_natural_title(content) == ""
+
+    def test_returns_empty_for_empty(self, hook_mod) -> None:
+        assert hook_mod.extract_natural_title("") == ""
+
+    def test_strips_trailing_pound_signs(self, hook_mod) -> None:
+        # Setext-style atx with closing #s — shouldn't break parser.
+        content = "## Trim Me ##\nBody."
+        assert hook_mod.extract_natural_title(content) == "Trim Me"
+
+    def test_does_not_scan_past_first_non_heading(self, hook_mod) -> None:
+        # If the first non-blank, non-comment line isn't a heading,
+        # bail rather than scan deeper — we don't want to match a
+        # heading buried inside the body.
+        content = "Lead paragraph.\n\n## Buried Heading\n"
+        assert hook_mod.extract_natural_title(content) == ""
+
+
+class TestFormatPlaybookBlock:
+    """Tests for ``format_playbook_block`` — the per-block renderer."""
+
+    def test_block_includes_title_path_hint_and_body(self, hook_mod) -> None:
+        content = (
+            "<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->\n"
+            "\n"
+            "## Recover State Playbook\n"
+            "Body content here.\n"
+        )
+        out = hook_mod.format_playbook_block(
+            "recover-state-playbook",
+            ".agent/agent_playbooks_protocols_sops_skills/recover-state-playbook.md",
+            content,
+        )
+        # Divider: title + path
+        assert "Recover State Playbook" in out
+        assert (
+            ".agent/agent_playbooks_protocols_sops_skills/recover-state-playbook.md"
+            in out
+        )
+        # Framing hint
+        assert "consult this instead of re-reading the file" in out
+        # Body present
+        assert "Body content here." in out
+        # SPDX stripped from body
+        assert "SPDX" not in out
+
+    def test_block_falls_back_to_id_when_no_heading(self, hook_mod) -> None:
+        content = "Just a body paragraph."
+        out = hook_mod.format_playbook_block(
+            "some-id",
+            ".agent/path/to.md",
+            content,
+        )
+        assert "some-id" in out
+        assert ".agent/path/to.md" in out
+
+    def test_block_starts_with_divider(self, hook_mod) -> None:
+        content = "## Title\nBody."
+        out = hook_mod.format_playbook_block(
+            "some-id", ".agent/path/to.md", content
+        )
+        assert out.startswith("--- ")
+
+    def test_em_dash_in_divider(self, hook_mod) -> None:
+        # The divider uses an em dash between title and path so the
+        # agent's pattern-matching for "title — path" is unambiguous.
+        content = "## My Title\nBody."
+        out = hook_mod.format_playbook_block(
+            "id", ".agent/p.md", content
+        )
+        assert "My Title — .agent/p.md" in out

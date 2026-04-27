@@ -636,6 +636,96 @@ def read_playbook(repo_root: str, rel_path: str) -> str:
     return ""
 
 
+# WI-bodog: presentation helpers for the injection output block.
+#
+# Pre-WI-bodog format used a bare-id divider (``--- <pb_id> ---``)
+# wrapped under ``[Transcript Analysis — N relevant playbook(s)]`` with
+# raw file content immediately after.  Empirical signal from
+# scripts/measure-playbook-overlap.py (WI-fusak) showed the agent
+# re-Read injected playbooks within a few turns of receiving them — the
+# block didn't *look* like a reference document, so the agent didn't
+# recognize it as one.  These helpers reshape the output so each entry
+# leads with a natural-language title plus a repo-relative path
+# (matching the surfaces the agent actually grepped/spoke about) and so
+# the leading SPDX HTML comment doesn't dominate the first visual line.
+
+_SPDX_HEADER_RE = re.compile(
+    r"^<!--\s*SPDX-License-Identifier:[^>]*-->\s*\n", re.IGNORECASE,
+)
+# Markdown headings — H1 / H2 / H3.  HTML comments are not headings.
+_HEADING_RE = re.compile(r"^(#{1,3})\s+(.+?)\s*#*\s*$")
+
+
+def strip_spdx_header(content: str) -> str:
+    """Strip a leading ``<!-- SPDX-License-Identifier: ... -->`` HTML
+    comment and the trailing blank line that follows it.
+
+    Conditional — applies only when the comment is on line 1.  Files
+    that already have a heading on line 1 (9 of 21 playbooks) are
+    unaffected.  Returns the stripped content with no leading
+    whitespace; ``read_playbook`` already produces a stripped body, so
+    skipping the strip here would still leave the SPDX marker as the
+    first visible line.
+    """
+    if not content:
+        return content
+    match = _SPDX_HEADER_RE.match(content)
+    if not match:
+        return content
+    return content[match.end():].lstrip("\n")
+
+
+def extract_natural_title(content: str) -> str:
+    """Return the first H1/H2/H3 heading text, or "" if none found.
+
+    Scans the content (post-SPDX-strip) line by line, skipping blank
+    lines and HTML comments, returning the first markdown heading
+    text.  Used to give injected playbooks a human-recognizable label
+    in the divider — sampling of the WI-fusak overlap data showed the
+    agent referred to playbooks by their natural-language title (e.g.
+    "the priorities playbook"), never by the bare kebab-case id.
+    """
+    if not content:
+        return ""
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("<!--"):
+            continue
+        m = _HEADING_RE.match(stripped)
+        if m:
+            return m.group(2).strip()
+        # First non-blank, non-comment line is not a heading — bail
+        # rather than scanning the whole document looking for one.
+        return ""
+    return ""
+
+
+def format_playbook_block(pb_id: str, pb_path: str, content: str) -> str:
+    """Render a single playbook block for injection.
+
+    Output shape::
+
+        --- <natural title> — <repo-relative path> ---
+        If the task below matches, consult this instead of re-reading the file.
+
+        <content (with SPDX header stripped)>
+
+    Falls back to ``pb_id`` for the title when no heading is found.
+    The framing hint is on a fresh line so the divider stays visually
+    distinct.
+    """
+    body = strip_spdx_header(content)
+    title = extract_natural_title(body) or pb_id
+    divider = f"--- {title} — {pb_path} ---"
+    hint = (
+        "If the task below matches, consult this instead of re-reading "
+        "the file."
+    )
+    return f"{divider}\n{hint}\n\n{body}"
+
+
 def _state_path(repo_root: str, session_id: str) -> str:
     """Return the per-session injection-state file path.
 
@@ -1061,14 +1151,21 @@ def _run_injection_pipeline(
             session_id=session_id,
         )
 
-    # Output: injected into the agent's conversation
-    print(f"[Transcript Analysis — {len(relevant)} relevant playbook(s)]")
+    # Output: injected into the agent's conversation.
+    # WI-bodog: header uses a neutral noun ("document(s)") rather than
+    # "playbook(s)" because 9 of 21 entries are protocols/guides/SOPs.
+    # Each block is rendered via ``format_playbook_block`` so the
+    # divider leads with a natural title + repo-relative path and a
+    # one-line framing hint, and the leading SPDX HTML comment is
+    # stripped so it doesn't dominate the first visual line.
+    pb_paths = {pb_id: pb_path for pb_id, pb_path, _ in PLAYBOOKS}
+    print(f"[Transcript Analysis — {len(relevant)} relevant document(s)]")
     if dry_run:
         print(f"Agent goals: {agent_goals}")
     print()
     for pb_id, content in relevant:
-        print(f"--- {pb_id} ---")
-        print(content)
+        pb_path = pb_paths.get(pb_id, "")
+        print(format_playbook_block(pb_id, pb_path, content))
         print()
 
 
