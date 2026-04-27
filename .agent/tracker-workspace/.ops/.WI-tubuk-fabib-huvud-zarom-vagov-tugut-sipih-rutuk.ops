@@ -43,3 +43,18 @@
   clock: 4  # 7d92
   nonce: 7d92  # 7d92
   message: "Agree. Two reasons to close as wont_do:\n\n1. The specific failure mode (bf4oxh91w duplicate smart-test launch) is now structurally prevented by the smart-test flock fix. The remaining failure mode is a hypothetical — premature action on any other long-running background command — and we don't have evidence it's recurring.\n2. Vendor-agnostic detection is the harder problem. The harness's TaskList is Claude Code-specific; falling back to \"any background process for this user\" introduces false positives (noise from cron, other agents, background tracker auto-sync) and the guidance becomes unreliable. An unreliable warning is worse than no warning — the agent learns to ignore it.\n\nIf the failure mode recurs in a different shape, we can revisit with concrete evidence and a clearer specification. For now: closing as wont_do unless you object."  # 7d92
+- op: update  # c571
+  at: '2026-04-27T02:33:44Z'  # c571
+  by: agent  # c571
+  actor: jgstern_agent  # c571
+  clock: 5  # c571
+  nonce: c571  # c571
+  set:  # c571
+    status: wont_do  # c571
+- op: discuss  # 38ff
+  at: '2026-04-27T02:33:44Z'  # 38ff
+  by: agent  # 38ff
+  actor: jgstern_agent  # 38ff
+  clock: 6  # 38ff
+  nonce: 38ff  # 38ff
+  message: "Closed wont_do per human confirmation 2026-04-27. Rationale per 2026-04-15 agent entry (uncontested for 12 days): (a) the specific motivating failure mode (bf4oxh91w duplicate smart-test) is now structurally prevented by the smart-test flock fix; (b) vendor-agnostic detection of in-flight background tasks would have to fall back to 'any background process for this user', which produces false positives (cron, other agents, tracker auto-sync) and an unreliable warning is worse than no warning. If a different shape of premature-action-under-stop-hook-pressure recurs with concrete evidence, file a fresh item with the new failure shape."  # 38ff
