@@ -97,8 +97,22 @@ class TestItemExists:
         def _raise(_id: str) -> Any:
             raise AmbiguousPrefixError("ambiguous", [])
 
-        app._tracker_set.get = _raise  # type: ignore[assignment]
+        app._tracker_set._resolve_id = _raise  # type: ignore[assignment]
         assert app._item_exists("WI-prefix") is False
+
+    def test_returns_false_on_oserror(self, tmp_path: Path) -> None:
+        """A transient filesystem race during hotspot resolution must
+        not crash the TUI — 2026-04-26 regression: a PermissionError
+        from ``_parse_ops_file`` propagated through the row-highlighted
+        handler and killed the app."""
+        ts = _make_tracker_with_cross_refs(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+
+        def _raise(_id: str) -> Any:
+            raise PermissionError(13, "transient EACCES during atomic rename")
+
+        app._tracker_set._resolve_id = _raise  # type: ignore[assignment]
+        assert app._item_exists("INV-rahib-anything") is False
 
 
 class TestApplyNavHotspots:

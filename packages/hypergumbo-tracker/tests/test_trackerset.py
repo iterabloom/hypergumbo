@@ -277,6 +277,50 @@ class TestGet:
             tracker_set.get("INV-nonexistent")
 
 
+class TestExists:
+    """Lightweight stat-only existence check used by the TUI hotspot resolver.
+
+    Must not raise on transient filesystem errors (PermissionError /
+    FileNotFoundError) — the resolver runs on every cursor move and a
+    single race against an atomic-rename writer crashed the TUI on
+    2026-04-26 before this method existed.
+    """
+
+    def test_returns_true_for_known_id(
+        self, tracker_set: TrackerSet, mock_agent_uid: None,
+    ) -> None:
+        item_id = tracker_set.add(
+            "invariant", "Known", fields=_INV_FIELDS, tier=Tier.WORKSPACE,
+        )
+        assert tracker_set.exists(item_id) is True
+
+    def test_returns_false_for_unknown_id(
+        self, tracker_set: TrackerSet, mock_agent_uid: None,
+    ) -> None:
+        assert tracker_set.exists("INV-nunun-nunun-nunun-nunun") is False
+
+    def test_returns_false_on_ambiguous_prefix(
+        self, tracker_set: TrackerSet, mock_agent_uid: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def _raise(_id: str) -> Any:
+            raise AmbiguousPrefixError("ambiguous", [])
+
+        monkeypatch.setattr(tracker_set, "_resolve_id", _raise)
+        assert tracker_set.exists("WI-prefix") is False
+
+    def test_returns_false_on_oserror(
+        self, tracker_set: TrackerSet, mock_agent_uid: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A racy filesystem error must surface as 'absent', not crash."""
+        def _raise(_id: str) -> Any:
+            raise PermissionError(13, "transient EACCES during atomic rename")
+
+        monkeypatch.setattr(tracker_set, "_resolve_id", _raise)
+        assert tracker_set.exists("INV-rahib-anything") is False
+
+
 # ---------------------------------------------------------------------------
 # Cross-tier children() and ancestors()
 # ---------------------------------------------------------------------------

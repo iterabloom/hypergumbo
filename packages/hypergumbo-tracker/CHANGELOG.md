@@ -22,9 +22,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 #### Transient `.ops` read-race hardening
 
-- **`_parse_ops_file` retries transient read races** (observed 2026-04-22): a long-running `htrac tui` crashed with `PermissionError [Errno 13]` on a mode-0o664 ops file owned by the reader — narrow window where `stat()` saw the old inode but `open()` landed on a new one written by a concurrent atomic-rename writer. Now retries up to 3 times with 20 ms / 40 ms linear backoff on `PermissionError` / `FileNotFoundError`; every retry and final re-raise logged to the race log.
+- **`_parse_ops_file` retries transient read races** (observed 2026-04-22): a long-running `htrac tui` crashed with `PermissionError [Errno 13]` on a mode-0o664 ops file owned by the reader — narrow window where `stat()` saw the old inode but `open()` landed on a new one written by a concurrent atomic-rename writer. Retries on `PermissionError` / `FileNotFoundError` with capped exponential backoff (`_OPS_READ_BASE_BACKOFF_S * 2**(attempt-1)`, clamped by `_OPS_READ_BACKOFF_CAP_S`); every retry and final re-raise logged to the race log. Budget bumped 2026-04-26 from 3 attempts × ~0.06 s linear → 6 attempts × ~0.55 s exponential after a `git checkout` during auto-sync outlasted the original window and re-crashed the TUI.
 - **`_compile_all` / `_compile_all_cached` widen except to `(CorruptFileError, OSError)`**: a single unreadable ops file no longer poisons the entire compile — the bad file is skipped and the rest of the tier still renders.
 - **TUI `_check_external_writes` catches `OSError`**: the periodic background refresh in `htrac tui` no longer lets a transient FS hiccup kill the Textual event loop. Persistent errors surface on the next user action; the race log retains the detail.
+- **`TrackerSet.exists(item_id)`**: lightweight stat-only existence check that bypasses the `.ops`-content read path entirely. Used by `TrackerApp._item_exists` (the per-cursor-move hotspot resolver), which previously called `.get()` and parsed the full ops file on every cursor move. The new path can't race an atomic-rename writer's brief 600-mode tmpfile window because it only stats `item_path`. Swallows `(ItemNotFoundError, AmbiguousPrefixError, OSError)` — UI helpers want a boolean, not a crash.
 
 ## [0.4.0] - 2026-04-21
 

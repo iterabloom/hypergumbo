@@ -328,8 +328,9 @@ def _serialize_op(op_dict: dict[str, Any]) -> str:
     return result
 
 
-_OPS_READ_MAX_ATTEMPTS = 3
+_OPS_READ_MAX_ATTEMPTS = 6
 _OPS_READ_BASE_BACKOFF_S = 0.02
+_OPS_READ_BACKOFF_CAP_S = 0.25
 
 
 def _parse_ops_file(filepath: Path) -> list[dict[str, Any]]:
@@ -338,14 +339,18 @@ def _parse_ops_file(filepath: Path) -> list[dict[str, Any]]:
     Returns a list of op dicts. Raises CorruptFileError if the file
     cannot be parsed as valid YAML.
 
-    Transient ``PermissionError`` and ``FileNotFoundError`` are
-    retried up to ``_OPS_READ_MAX_ATTEMPTS`` times with short linear
-    backoff. These occur when a concurrent writer atomically replaces
-    the file (``mkstemp + fchmod + rename``) and the reader lands in
-    the brief window between the old inode vanishing and the new
-    inode being visible — observed 2026-04-22 on a long-running
-    ``htrac tui`` session. Every retry (and the final re-raise) is
-    recorded in the race log; see ``race_log.py``.
+    Transient ``PermissionError`` and ``FileNotFoundError`` are retried
+    up to ``_OPS_READ_MAX_ATTEMPTS`` times with capped exponential
+    backoff (``_OPS_READ_BASE_BACKOFF_S * 2**(attempt-1)``, clamped
+    by ``_OPS_READ_BACKOFF_CAP_S``). These occur when a concurrent
+    writer atomically replaces the file (``mkstemp + fchmod + rename``)
+    and the reader lands in the brief window between the old inode
+    vanishing and the new inode being visible — observed 2026-04-22
+    on a long-running ``htrac tui`` session, and again 2026-04-26
+    when the original 3-attempt linear-backoff budget (~0.06 s total)
+    proved too short to absorb a ``git checkout`` during auto-sync;
+    the budget now sums to ~0.55 s before re-raise. Every retry (and
+    the final re-raise) is recorded in the race log; see ``race_log.py``.
     """
     from . import race_log
 
@@ -370,7 +375,11 @@ def _parse_ops_file(filepath: Path) -> list[dict[str, Any]]:
             )
             if final:
                 raise
-            time.sleep(_OPS_READ_BASE_BACKOFF_S * attempt)
+            backoff = min(
+                _OPS_READ_BASE_BACKOFF_S * (2 ** (attempt - 1)),
+                _OPS_READ_BACKOFF_CAP_S,
+            )
+            time.sleep(backoff)
         except yaml.YAMLError as e:
             raise CorruptFileError(f"{filepath}: {e}") from e
     raise AssertionError("unreachable")  # pragma: no cover — loop always returns or raises

@@ -1288,10 +1288,16 @@ class TestParseOpsReadRace:
             race_log.configure_race_log(None)
 
         lines = log_path.read_text().splitlines()
-        assert len(lines) == 3  # one per attempt
+        from hypergumbo_tracker.store import _OPS_READ_MAX_ATTEMPTS
+
+        assert len(lines) == _OPS_READ_MAX_ATTEMPTS  # one per attempt
         records = [__import__("json").loads(line) for line in lines]
-        assert [r["attempt"] for r in records] == [1, 2, 3]
-        assert [r["final"] for r in records] == [False, False, True]
+        assert [r["attempt"] for r in records] == list(
+            range(1, _OPS_READ_MAX_ATTEMPTS + 1),
+        )
+        assert [r["final"] for r in records] == (
+            [False] * (_OPS_READ_MAX_ATTEMPTS - 1) + [True]
+        )
         assert all(r["errno"] == 13 for r in records)
         assert all(r["path"] == str(path) for r in records)
 
@@ -1333,13 +1339,15 @@ class TestParseOpsReadRace:
         finally:
             race_log.configure_race_log(None)
 
-        # Three read_retry records (one per attempt, final=True on last)
+        # One read_retry record per attempt (final=True on the last)
         # plus one compile_suppressed record from _compile_all when the
         # re-raised PermissionError is caught.
         import json as _json
+        from hypergumbo_tracker.store import _OPS_READ_MAX_ATTEMPTS
+
         records = [_json.loads(line) for line in log_path.read_text().splitlines()]
         events = [r["event"] for r in records]
-        assert events.count("read_retry") == 3
+        assert events.count("read_retry") == _OPS_READ_MAX_ATTEMPTS
         assert events.count("compile_suppressed") == 1
         suppression = next(r for r in records if r["event"] == "compile_suppressed")
         assert suppression["path"] == str(bad_path)

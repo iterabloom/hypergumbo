@@ -2771,15 +2771,17 @@ class TrackerApp(App):
         """Return True if *item_id* resolves to a tracker item.
 
         Used as the resolver for hotspot markup and the ``exists``
-        callable for :class:`ItemNavModal`. Treats any lookup failure
-        (not-found, ambiguous prefix) as absence so a dead hotspot
-        renders as plain text per WI-sulij constraint 2.
+        callable for :class:`ItemNavModal`. Delegates to
+        :meth:`TrackerSet.exists`, which performs a stat-only lookup
+        and swallows the expected lookup failures (not-found,
+        ambiguous prefix) plus transient filesystem races. That keeps
+        the per-cursor-move hotspot-resolver path off the
+        ``.ops``-content read path that crashed the TUI 2026-04-26
+        when it raced an atomic rename mid-write.
+
+        Per WI-sulij constraint 2, a dead hotspot renders as plain text.
         """
-        try:
-            self._tracker_set.get(item_id)
-        except (ItemNotFoundError, AmbiguousPrefixError):
-            return False
-        return True
+        return self._tracker_set.exists(item_id)
 
     def _apply_nav_hotspots(self, text: str) -> str:
         """Wrap item-ID substrings in ``[@click=jump_to_item(...)]`` spans.

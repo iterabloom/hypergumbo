@@ -292,6 +292,28 @@ class TrackerSet:
         item.tier = t
         return item
 
+    def exists(self, item_id: str) -> bool:
+        """Return True if *item_id* resolves to a tracker item in any tier.
+
+        Lightweight existence check: for full IDs, ``_resolve_id`` calls
+        ``Store._resolve_id`` which returns on a single ``Path.exists()``
+        per tier without parsing ``.ops`` content. That matters for
+        callers like the TUI hotspot resolver, which probes every ID
+        substring on every cursor move — using ``get`` instead would
+        race concurrent writers' brief 600-mode tmpfile window during
+        atomic rename and crash the UI on ``PermissionError``.
+
+        Treats every lookup failure (not-found, ambiguous prefix,
+        transient filesystem error) as absence. The callers are UI
+        helpers deciding whether to render an ID as clickable text;
+        a False answer costs a missing underline, not correctness.
+        """
+        try:
+            self._resolve_id(item_id)
+        except (ItemNotFoundError, AmbiguousPrefixError, OSError):
+            return False
+        return True
+
     def children(self, item_id: str) -> list[CompiledItem]:
         """Return children across all tiers."""
         # Resolve to full ID first
