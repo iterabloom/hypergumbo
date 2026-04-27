@@ -78,3 +78,10 @@
   clock: 9  # 456a
   nonce: 456a  # 456a
   message: "Locked in. Updated the description to capture everything we concurred on:\n\n- **Three-state model**: stored `deprecated: bool` + observed `count` → external `status` ∈ {active, inactive, deprecated}.\n- **Catalog file**: `.agent/tracker/tag_catalog.yaml` (sibling of config.yaml).\n- **Stored fields**: description, created_on, last_modified, last_used, deprecated, in_favor_of (optional, only meaningful when deprecated=true).\n- **Derived fields**: count, status. Computed at read time from the compiled tier index + the stored deprecated flag.\n- **Op-log backfill**: first `tracker tags` invocation walks the op log to populate `created_on` / `last_used` for every existing tag. Migration cost paid once.\n- **Subcommand surface**: `tags`, `tags --count`, `tags --json`, `tags rename`, `tags describe`, `tags deprecate [--in-favor-of NEW]`. `tags merge` and the `tracker add --tag <deprecated>` warning hook are stretch (file as child item if main lift is bigger than expected).\n- **Out of scope**: hierarchies, filter-time aliases, per-tier visibility.\n- **Docstring requirements**: every module / function added must explain *why* it exists per AGENTS.md Module Docstrings rule. Added a four-bullet list naming what each docstring should cover (the three-state model rationale, catalog schema invariants, last_used drift failure mode, deprecation-warning-not-block precedent from `holding`).\n\nWI-lifal stays todo_soft pending implementation pickup. WI-mobup remains blocked by the isbefore edge; the wording fix lands as part of the resumed WI-mobup PR after WI-lifal merges per your (b) decision earlier in the WI-mobup thread."  # 456a
+- op: discuss  # 75b2
+  at: '2026-04-27T19:17:32Z'  # 75b2
+  by: human  # 75b2
+  actor: jgstern  # 75b2
+  clock: 10  # 75b2
+  nonce: 75b2  # 75b2
+  message: "does commit 7ef3cb723d on dev implement WI-lifal?"  # 75b2

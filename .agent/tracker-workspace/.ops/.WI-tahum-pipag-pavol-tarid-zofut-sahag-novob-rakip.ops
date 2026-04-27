@@ -1,0 +1,21 @@
+- op: create  # 34ad
+  at: '2026-04-27T19:33:17Z'  # 34ad
+  by: agent  # 34ad
+  actor: jgstern_agent  # 34ad
+  clock: 1  # 34ad
+  nonce: 34ad  # 34ad
+  data:  # 34ad
+    kind: work_item  # 34ad
+    title: "Extract compute_dampened_centrality helper once audit findings shape its interface"  # 34ad
+    status: todo_soft  # 34ad
+    priority: 3  # 34ad
+    parent:  # 34ad
+    tags:  # 34ad
+    - analysis_quality  # 34ad
+    - developer_experience  # 34ad
+    isbefore: []  # 34ad
+    duplicate_of: []  # 34ad
+    not_duplicate_of: []  # 34ad
+    pr_ref:  # 34ad
+    description: "Sibling/follow-up to the dampener-audit item. Once the 8x4 dampener-by-surface matrix is populated, evaluate whether a shared compute_dampened_centrality(symbols, edges, surface_profile) helper is the right abstraction. The audit's findings determine the helper's interface - specifically, which dampeners are core vs. surface-conditional, and whether edge-type weighting belongs as a helper parameter or stays in compute_centrality. Do not start until the audit deliverable exists.\n\nReferences:\n- ~/hypergumbo_lab_notebook/notebookjournal_04272026_1620.md (architectural finding + audit/extraction relationship)\n- ~/hypergumbo_lab_notebook/notebookjournal_04272026_1545.md Q5 (\"timeline / build-vs-refactor\") - where compute_dampened_centrality was first proposed\n- Half-finished prior unification: commit 7923615524 (file-level scoring only; symbol-selection layer is what this audit/extraction pair addresses)"  # 34ad
+    fields: {}  # 34ad

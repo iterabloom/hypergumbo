@@ -77,3 +77,33 @@
   clock: 9  # f408
   nonce: f408  # f408
   message: "Acknowledged — going with (b). The wording fix ('Motivating incident: …' → 'We discovered these failure modes when …') stays queued, will land as part of the resumed WI-mobup PR after WI-lifal merges. WI-mobup remains todo_soft, blocked by WI-lifal via the existing isbefore edge."  # f408
+- op: update  # 907f
+  at: '2026-04-27T18:50:38Z'  # 907f
+  by: agent  # 907f
+  actor: jgstern_agent  # 907f
+  clock: 10  # 907f
+  nonce: 907f  # 907f
+  set:  # 907f
+    status: done  # 907f
+- op: discuss  # afd8
+  at: '2026-04-27T18:50:38Z'  # afd8
+  by: agent  # afd8
+  actor: jgstern_agent  # afd8
+  clock: 11  # afd8
+  nonce: afd8  # afd8
+  message: "Wording fix shipped in PR #147 on self-hosted Forgejo (commit caba9e408) during Codeberg outage / failover. Replaced 'Motivating incident: session_retrospective_04262026_1911.md Finding 6 — …' with '(We discovered these failure modes after an agent filed a fresh INV item for what turned out to be a regression of an already-tracked invariant, fragmenting the discussion thread the human was actively reading.)'. Hook summary in on_transcript_change.py PLAYBOOKS list does not quote the playbook intro paragraph, so no governance-file edit was needed in this PR. The 'needs_human_review' hook-summary update originally listed in WI-mobup item 2 remains deferred."  # afd8
+- op: update  # de96
+  at: '2026-04-27T19:18:32Z'  # de96
+  by: human  # de96
+  actor: jgstern  # de96
+  clock: 12  # de96
+  nonce: de96  # de96
+  set:  # de96
+    status: todo_soft  # de96
+- op: discuss  # dfde
+  at: '2026-04-27T19:22:05Z'  # dfde
+  by: human  # dfde
+  actor: jgstern  # dfde
+  clock: 13  # dfde
+  nonce: dfde  # dfde
+  message: "Above you wrote \"So the playbook's 'spot-check titles' step at point 1 ('run scripts/tracker list --tag <plausible-tag>') currently relies on the agent guessing tag names from memory\" -- but I think WI-lifal has been implemented now, so maybe there is a language tweak to make?"  # dfde
