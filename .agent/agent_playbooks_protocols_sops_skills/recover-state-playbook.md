@@ -47,6 +47,25 @@ scripts/agent-notes --show
 scripts/agent-notes --clear
 ```
 
+### Session-end agent-notes refresh (write side of the recovery loop)
+
+The bullet list above gives the rule for *during* a session. This sub-section names the symmetric obligation at *session end* — the asymmetric absence of which was the root cause filed as WI-borur (write-side gap surfaced in session_retrospective_04262026_1911.md Finding 7 and session_retrospective_04262026_1736.md Finding 3).
+
+Before signing off — i.e., when you have completed all in-flight work, no todos remain, and no auto-pr is pending — append a one-paragraph summary to `agent_notes.json` capturing what the next session needs to know:
+
+```bash
+scripts/agent-notes --append "<one or two sentences>"
+```
+
+What to include (in priority order):
+
+1. **Open invariant violations or P1+ defects you discovered.** Reference the tracker ID. Example: `"WI-nutin filed P1 — TRACKER_SYNC_PENDING marker leaks on SIGKILL; needs flock(2) refactor."`
+2. **Status changes on previously-tracked invariants.** Example: `"INV-rahib re-opened from satisfied → needs_human_review after PR #3392/#3393 regression."`
+3. **Cross-cutting context the tracker doesn't capture cleanly.** Example: `"Bakeoff workdir is now deep-20260425-210357; prior pointer in stop_hook_state.json was stale by 17 days."`
+4. **Any ad-hoc shell state the next session would otherwise re-derive.** Example: `"TRACKER_SYNC_PENDING removed manually at 05:52; root cause filed as WI-nutin."`
+
+Keep it under ~5 lines. The notes file is a working hand-off, not a log; verbose entries dilute signal. The retro file (lab notebook) is where detailed analysis goes. Treat this step as part of "stopping" — the *during*-session bullet list above stays useful, but a fresh notes write at sign-off is what makes the next session's `cat agent_notes.json` actually informative rather than n-hours-stale.
+
 DO NOT write to stop_hook_state.json directly. That file is hook-owned — last_completed_utc, guidance_file, and bakeoff fields are maintained by stop_logic.sh automatically. Writing to it manually would reintroduce the facet-1 failure mode where agent-edited timestamps drift from reality.
 
 Also check for pending work items:
