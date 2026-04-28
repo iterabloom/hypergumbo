@@ -26,9 +26,11 @@ url="$2"
 # Failover remote verification (INV-bifud)
 # During CI failover, selfh is the authoritative remote. Pushing to origin
 # would target a stale Codeberg mirror, wasting CI cycles and causing
-# divergence. Block all pushes to origin when failover is active.
+# divergence. Block pushes to origin when failover is active, except for
+# the disengage script's repatriation push (announced via CI_FAILOVER_DISENGAGING=1).
 git_dir="${GIT_DIR:-$(git rev-parse --git-dir 2>/dev/null || true)}"
-if [[ -n "$git_dir" && -f "$git_dir/CI_FAILOVER_ACTIVE" && "$remote" == "origin" ]]; then
+if [[ -n "$git_dir" && -f "$git_dir/CI_FAILOVER_ACTIVE" && "$remote" == "origin" \
+        && -z "${CI_FAILOVER_DISENGAGING:-}" ]]; then
     echo ""
     echo -e "${RED}========================================================${NC}"
     echo -e "${RED}  BLOCKED: Push to 'origin' during CI failover${NC}"

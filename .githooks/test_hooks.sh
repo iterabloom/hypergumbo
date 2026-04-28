@@ -371,6 +371,7 @@ if [[ -f "$PRE_PUSH_HOOK" ]]; then
     local remote_ref="$3"
     local failover_active="$4"  # "true" or "false"
     local expect_result="$5"    # "block" or "allow"
+    local disengaging="${6:-}"  # "1" to set CI_FAILOVER_DISENGAGING, empty otherwise
 
     local stdin_line="refs/heads/test abc123 $remote_ref def456"
 
@@ -385,7 +386,7 @@ if [[ -f "$PRE_PUSH_HOOK" ]]; then
     fi
 
     # Run the hook with GIT_DIR pointing to our sandbox .git
-    if echo "$stdin_line" | GIT_DIR="$FAILOVER_SANDBOX/.git" "$PRE_PUSH_HOOK" "$remote_name" "https://example.com" >/dev/null 2>&1; then
+    if echo "$stdin_line" | CI_FAILOVER_DISENGAGING="$disengaging" GIT_DIR="$FAILOVER_SANDBOX/.git" "$PRE_PUSH_HOOK" "$remote_name" "https://example.com" >/dev/null 2>&1; then
       if [[ "$expect_result" == "allow" ]]; then
         echo "  ✅ PASS (push allowed as expected)"
         ((PASS_COUNT++))
@@ -419,6 +420,14 @@ if [[ -f "$PRE_PUSH_HOOK" ]]; then
   # During failover: push to selfh on protected branch still BLOCKED
   run_failover_push_test "Failover: block push to selfh/dev (protected)" \
     "selfh" "refs/heads/dev" "true" "block"
+
+  # Disengage carve-out: with CI_FAILOVER_DISENGAGING=1, AGit push to origin is ALLOWED
+  run_failover_push_test "Failover + disengaging: allow AGit push to origin" \
+    "origin" "refs/for/dev/repatriation" "true" "allow" "1"
+
+  # Disengage carve-out: even with the env var, direct push to origin/dev still BLOCKED by protected-branch rule
+  run_failover_push_test "Failover + disengaging: still block direct push to origin/dev" \
+    "origin" "refs/heads/dev" "true" "block" "1"
 
   rm -rf "$FAILOVER_SANDBOX"
 fi

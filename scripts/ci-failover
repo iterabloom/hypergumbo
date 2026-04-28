@@ -480,7 +480,7 @@ print('\n'.join(lines))
 
 	local push_success=false
 	local PUSH_OUTPUT=""
-	PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
+	PUSH_OUTPUT=$(CI_FAILOVER_DISENGAGING=1 git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
 		push origin "HEAD:refs/for/dev/$repatriation_branch" \
 		-o title="$push_title" \
 		-o description="$push_desc_flat" \
