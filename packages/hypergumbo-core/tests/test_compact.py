@@ -351,6 +351,182 @@ class TestSelectByCoverage:
         # Should stop at max_symbols even though coverage not met
         assert result.included.count == 5
 
+    def test_utility_dampener_demotes_logger(self):
+        """select_by_coverage applies apply_utility_symbol_weights (WI-lidum).
+
+        A high-centrality `Logger.error` symbol with many callers should
+        not displace a less-central first-party domain function once
+        utility-name dampening (0.1x) is applied.
+        """
+        # Long span so trivial_sink doesn't also fire and confound the test
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        logger_sym = Symbol(
+            id="logger", name="Logger.error", kind="method", language="python",
+            path="src/observability/logger.py", span=long_span,
+        )
+        logger_sym.supply_chain_tier = 1
+        domain_sym = Symbol(
+            id="domain", name="process_payment", kind="function", language="python",
+            path="src/payments/processor.py", span=long_span,
+        )
+        domain_sym.supply_chain_tier = 1
+        edges = [
+            make_edge(f"caller{i}", "logger") for i in range(20)
+        ] + [
+            make_edge(f"d_caller{i}", "domain") for i in range(3)
+        ]
+        config = CompactConfig(
+            language_proportional=False, max_symbols=1, min_symbols=1,
+            target_coverage=0.0,
+        )
+        result = select_by_coverage([logger_sym, domain_sym], edges, config)
+        included_ids = {s.id for s in result.included.symbols}
+        assert "domain" in included_ids, (
+            "Expected process_payment to outrank Logger.error after utility "
+            f"dampening; got included={included_ids}"
+        )
+
+    def test_trivial_sink_dampener_demotes_short_pure_sinks(self):
+        """select_by_coverage applies apply_trivial_sink_weights (WI-lidum).
+
+        A short-bodied pure sink (out_degree=0, loc<=20) with high in-degree
+        gets multiplied by 0.1x and should fall behind a longer-bodied
+        domain function with lower in-degree.
+        """
+        short_span = Span(start_line=1, end_line=5, start_col=0, end_col=0)
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        sink_sym = Symbol(
+            id="sink", name="get_status", kind="function", language="python",
+            path="src/util/status.py", span=short_span,
+        )
+        sink_sym.supply_chain_tier = 1
+        domain_sym = Symbol(
+            id="domain", name="reconcile_ledger", kind="function",
+            language="python", path="src/finance/reconcile.py", span=long_span,
+        )
+        domain_sym.supply_chain_tier = 1
+        edges = [
+            make_edge(f"caller{i}", "sink") for i in range(20)
+        ] + [
+            make_edge(f"d_caller{i}", "domain") for i in range(3)
+        ]
+        config = CompactConfig(
+            language_proportional=False, max_symbols=1, min_symbols=1,
+            target_coverage=0.0,
+        )
+        result = select_by_coverage([sink_sym, domain_sym], edges, config)
+        included_ids = {s.id for s in result.included.symbols}
+        assert "domain" in included_ids, (
+            "Expected reconcile_ledger to outrank get_status after trivial-"
+            f"sink dampening; got included={included_ids}"
+        )
+
+    def test_generated_dampener_demotes_openapi_models(self):
+        """select_by_coverage applies apply_generated_code_weights (WI-lidum).
+
+        kserve's V1beta1 OpenAPI model classes — flagged is_generated_file —
+        accounted for 22 of the top-100 select_by_coverage entries before
+        this dampener was applied. This test pins the fix.
+        """
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        generated_sym = Symbol(
+            id="generated", name="V1beta1InferenceService", kind="class",
+            language="python",
+            path="kserve/models/v1beta1_inference_service.py",
+            span=long_span,
+        )
+        generated_sym.supply_chain_tier = 1
+        generated_sym.is_generated_file = True
+        domain_sym = Symbol(
+            id="domain", name="InferenceService", kind="class", language="python",
+            path="kserve/api/inference_service.py", span=long_span,
+        )
+        domain_sym.supply_chain_tier = 1
+        edges = [
+            make_edge(f"caller{i}", "generated") for i in range(20)
+        ] + [
+            make_edge(f"d_caller{i}", "domain") for i in range(3)
+        ]
+        config = CompactConfig(
+            language_proportional=False, max_symbols=1, min_symbols=1,
+            target_coverage=0.0,
+        )
+        result = select_by_coverage([generated_sym, domain_sym], edges, config)
+        included_ids = {s.id for s in result.included.symbols}
+        assert "domain" in included_ids, (
+            "Expected InferenceService to outrank V1beta1InferenceService "
+            f"after generated dampening; got included={included_ids}"
+        )
+
+    def test_file_kind_dampener_suppresses_file_symbols(self):
+        """select_by_coverage applies apply_file_kind_weights (WI-lidum).
+
+        kind="file" symbols (synthesized one per analyzed source file by
+        the orchestrator post-process) accumulate in-degree from each
+        file's import count and would otherwise displace real functions.
+        Dampener multiplies them by 0.0 (full suppression).
+        """
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        file_sym = Symbol(
+            id="file_sym", name="cmd/main.go", kind="file", language="go",
+            path="cmd/main.go", span=long_span,
+        )
+        file_sym.supply_chain_tier = 1
+        domain_sym = Symbol(
+            id="domain", name="ServeRequest", kind="function", language="go",
+            path="server/server.go", span=long_span,
+        )
+        domain_sym.supply_chain_tier = 1
+        edges = [
+            make_edge(f"caller{i}", "file_sym") for i in range(20)
+        ] + [
+            make_edge(f"d_caller{i}", "domain") for i in range(3)
+        ]
+        config = CompactConfig(
+            language_proportional=False, max_symbols=1, min_symbols=1,
+            target_coverage=0.0,
+        )
+        result = select_by_coverage([file_sym, domain_sym], edges, config)
+        included_ids = {s.id for s in result.included.symbols}
+        assert "domain" in included_ids, (
+            "Expected ServeRequest to outrank kind=file symbol after "
+            f"file-kind suppression; got included={included_ids}"
+        )
+
+    def test_noise_dampener_demotes_migrations(self):
+        """select_by_coverage applies apply_noise_weights (WI-lidum).
+
+        django's ProjectState / ModelState from db/migrations/ accounted
+        for 8 of the top-100 select_by_coverage entries before this
+        dampener was applied.
+        """
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        migration_sym = Symbol(
+            id="migration", name="ModelState", kind="class", language="python",
+            path="django/db/migrations/state.py", span=long_span,
+        )
+        migration_sym.supply_chain_tier = 1
+        domain_sym = Symbol(
+            id="domain", name="DomainModel", kind="class", language="python",
+            path="app/domain.py", span=long_span,
+        )
+        domain_sym.supply_chain_tier = 1
+        edges = [
+            make_edge(f"caller{i}", "migration") for i in range(15)
+        ] + [
+            make_edge(f"d_caller{i}", "domain") for i in range(3)
+        ]
+        config = CompactConfig(
+            language_proportional=False, max_symbols=1, min_symbols=1,
+            target_coverage=0.0,
+        )
+        result = select_by_coverage([migration_sym, domain_sym], edges, config)
+        included_ids = {s.id for s in result.included.symbols}
+        assert "domain" in included_ids, (
+            "Expected DomainModel to outrank ModelState after noise dampening; "
+            f"got included={included_ids}"
+        )
+
 
 class TestCompactConfig:
     """Tests for CompactConfig dataclass."""

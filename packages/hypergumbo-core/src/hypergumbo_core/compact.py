@@ -51,7 +51,17 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
 from .ir import Symbol, Edge, is_external_boundary
-from .ranking import compute_centrality, apply_tier_weights
+from .ranking import (
+    compute_centrality,
+    apply_tier_weights,
+    apply_noise_weights,
+    apply_utility_symbol_weights,
+    apply_common_method_name_weights,
+    apply_sibling_impl_weights,
+    apply_trivial_sink_weights,
+    apply_generated_code_weights,
+    apply_file_kind_weights,
+)
 from .selection.filters import (
     EXAMPLE_PATH_PATTERNS,  # re-export for backwards compatibility
     EXCLUDED_KINDS,
@@ -768,13 +778,23 @@ def select_by_coverage(
             config=config,
         )
 
-    # Compute centrality
+    # Compute centrality, then apply the same dampener stack rank_symbols
+    # uses (WI-lidum). Order mirrors ranking.py: tier → noise → utility →
+    # common-method → sibling-impl → trivial-sink → generated → file-kind.
     raw_centrality = compute_centrality(symbols, edges)
 
     if config.first_party_priority:
         centrality = apply_tier_weights(raw_centrality, symbols)
     else:
         centrality = raw_centrality
+
+    centrality = apply_noise_weights(centrality, symbols)
+    centrality = apply_utility_symbol_weights(centrality, symbols)
+    centrality = apply_common_method_name_weights(centrality, symbols)
+    centrality = apply_sibling_impl_weights(centrality, symbols)
+    centrality = apply_trivial_sink_weights(centrality, symbols, edges)
+    centrality = apply_generated_code_weights(centrality, symbols)
+    centrality = apply_file_kind_weights(centrality, symbols)
 
     # Compute total centrality
     total_centrality = sum(centrality.values())
