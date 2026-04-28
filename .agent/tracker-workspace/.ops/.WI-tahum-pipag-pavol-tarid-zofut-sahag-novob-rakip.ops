@@ -19,3 +19,19 @@
     pr_ref:  # 34ad
     description: "Sibling/follow-up to the dampener-audit item. Once the 8x4 dampener-by-surface matrix is populated, evaluate whether a shared compute_dampened_centrality(symbols, edges, surface_profile) helper is the right abstraction. The audit's findings determine the helper's interface - specifically, which dampeners are core vs. surface-conditional, and whether edge-type weighting belongs as a helper parameter or stays in compute_centrality. Do not start until the audit deliverable exists.\n\nReferences:\n- ~/hypergumbo_lab_notebook/notebookjournal_04272026_1620.md (architectural finding + audit/extraction relationship)\n- ~/hypergumbo_lab_notebook/notebookjournal_04272026_1545.md Q5 (\"timeline / build-vs-refactor\") - where compute_dampened_centrality was first proposed\n- Half-finished prior unification: commit 7923615524 (file-level scoring only; symbol-selection layer is what this audit/extraction pair addresses)"  # 34ad
     fields: {}  # 34ad
+- op: update  # 3f50
+  at: '2026-04-28T04:03:15Z'  # 3f50
+  by: agent  # 3f50
+  actor: jgstern_agent  # 3f50
+  clock: 2  # 3f50
+  nonce: 3f50  # 3f50
+  set:  # 3f50
+    status: todo_hard  # 3f50
+    priority: 2  # 3f50
+- op: discuss  # 6605
+  at: '2026-04-28T04:03:15Z'  # 6605
+  by: agent  # 6605
+  actor: jgstern_agent  # 6605
+  clock: 3  # 6605
+  nonce: '6605'  # 6605
+  message: "WI-lidum Phase B is now merged (4 PRs: #152, #153, #154, #155). The duplicated dampener-stack-plus-tuned-compute-centrality-call code that motivated this item now exists across three locations — sketch._format_symbols (sketch.py:5529-5560), compact.select_by_coverage (compact.py:780-810), and compact.select_by_connectivity (compact.py:614-635) — plus the format_tiered_behavior_map post-selection victim-removal call (compact.py:1393).\n\nStatus flipped todo_soft P3 → todo_hard P2 per the audit recommendation in ~/hypergumbo_lab_notebook/notebookjournal_04272026_2159.md. Audit confirms the helper interface:\n\n  def compute_dampened_centrality(\n      symbols, edges, *,\n      first_party_priority=True,\n      edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,\n      hub_threshold=100,\n      within_file_weight=0.3,\n      max_per_file_in=5,\n      exclude_test_edges=True,\n      exclude_dampeners=(),  # e.g., ('file_kind',) for sketch surface\n  ) -> dict[str, float]\n\nDefaults match rank_symbols. The four selection surfaces collapse to one-liners. Only sketch needs exclude_dampeners=('file_kind',) because KEY_SYMBOL_KINDS already excludes 'file' symbols (skip-noop).\n\nImplementation is straightforward refactor at this point — extract helper, replace 4 call sites with helper invocation, no behavior change expected."  # 6605

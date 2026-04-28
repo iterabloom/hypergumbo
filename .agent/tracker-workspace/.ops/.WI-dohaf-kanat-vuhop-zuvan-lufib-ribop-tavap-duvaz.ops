@@ -20,3 +20,35 @@
     pr_ref:  # fe77
     description: "Sibling/follow-up to WI-lidum-rubin (dampener-stack audit). Discovered while reading the four selection surfaces: they don't just diverge from rank_symbols on which dampener passes they call; they also diverge on the parameters they pass to compute_centrality.\n\nConcretely, rank_symbols calls:\n  compute_centrality(symbols, edges,\n      hub_threshold=100,\n      within_file_weight=0.3,\n      max_per_file_in=5,\n      edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,\n  )\n\nwhile these four surfaces all call compute_centrality(symbols, edges) with bare defaults (hub_threshold=None, within_file_weight=1.0, max_per_file_in=None, edge_type_weights=None):\n  - sketch._format_symbols (sketch.py:5529)\n  - compact.select_by_coverage (compact.py:772)\n  - compact.select_by_connectivity (compact.py:606-607, when caller does not supply centrality)\n  - compact.format_tiered_behavior_map (compact.py:1393, post-selection victim-removal step)\n\nWhat each parameter dampens (all motivated by prior bakeoffs that showed >0 FP movement):\n  - hub_threshold=100 — dampens infrastructure utility hubs (loggers, error sentinels)\n  - max_per_file_in=5 — caps per-source-file in-degree contribution; this is the parameter that fixes the 'createYAMLNode called 46 times from 1 file' case the WI-lidum description cites\n  - within_file_weight=0.3 — dampens local-variable inflation\n  - edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS — makes import edges count less than call edges\n\nOut of scope for WI-lidum per its 'Out of scope' section ('Moving edge-type weighting out of compute_centrality'); filing as a separate item rather than expanding WI-lidum because the fix shape differs (parameter wiring, not function-call insertion) and the FP class differs (graph-structural vs name/path).\n\nProposed fix: one-line update per surface to pass the rank_symbols parameter set. The rank_symbols defaults are already documented and bakeoff-validated, so re-derivation should not be necessary; if a surface has a reason to deviate from a parameter (e.g., sketch's centrality-on-key-symbols-only context), document the deviation in the surface's module docstring.\n\nValidation: the WI-lidum 3-repo measurement run (alertmanager, prometheus, kserve) will produce FP-evidence for these parameters as a side effect of comparing top-N selection on each surface — if a parameter does not move FPs on any of the three repos, downgrade or wont_do this item with the evidence. Otherwise tag awaits_bakeoff_validation at PR time per the discipline.\n\nReferences:\n  - ~/hypergumbo_lab_notebook/notebookjournal_04272026_2159.md (Finding 2)\n  - WI-lidum-rubin (parent audit context)\n  - rank_symbols call site at packages/hypergumbo-core/src/hypergumbo_core/ranking.py:1152"  # fe77
     fields: {}  # fe77
+- op: discuss  # f164
+  at: '2026-04-28T01:19:00Z'  # f164
+  by: agent  # f164
+  actor: jgstern_agent  # f164
+  clock: 2  # f164
+  nonce: f164  # f164
+  message: "Audit findings warrant priority bump P3 → P2.\n\nEmpirical evidence from 6-repo measurement (lab journal: ~/hypergumbo_lab_notebook/notebookjournal_04272026_2159.md): aligning the 4 selection surfaces' compute_centrality parameters with rank_symbols' tuned values changes 19-71 of top-100 selected symbols on every repo × every surface (24 cells). Magnitude:\n\n| Surface | A | P | K | C | D | J |\n|---|---|---|---|---|---|---|\n| sketch._format_symbols | 48 | 48 | 54 | 19 | 44 | 64 |\n| select_by_coverage | 51 | 57 | 70 | 38 | 63 | 63 |\n| select_by_connectivity | 54 | 55 | 71 | 42 | 66 | 70 |\n| format_tiered.victim_removal | 52 | 54 | 65 | 23 | 60 | 60 |\n\nLowest churn is chatwoot (Vue/JS) — plausibly because the rank_symbols parameters were tuned against Go/Java/Python centrality patterns; the import-edge weighting and per-file cap have less bite on JS module-graph-dominated callgraphs. All other repos sit at 50%+ top-100 churn.\n\nHistorical investigation supports treating this as a structural bug, not a design choice: none of the dampener-introduction commits (2026-01-30 → 2026-04-25) touched sketch.py or compact.py, and no ADR documents intentional divergence. The compute_centrality parameter divergence is the same shape as the dampener-stack divergence WI-lidum is fixing — same accidental drift, different code path.\n\nBumping P3 → P2 to match WI-lidum, since the magnitude (50%+ top-100 churn) is at least comparable to (likely larger than) the dampener-stack effects WI-lidum addresses. Bakeoff-validation modality at PR time stays the same — tag awaits_bakeoff_validation, let DEEP cycle aggregate verdict per claim.\n\nImplementation can run after WI-lidum's three surface PRs land (cleaner diffs that way), or in parallel with no risk."  # f164
+- op: update  # 802d
+  at: '2026-04-28T01:19:00Z'  # 802d
+  by: agent  # 802d
+  actor: jgstern_agent  # 802d
+  clock: 3  # 802d
+  nonce: 802d  # 802d
+  set:  # 802d
+    priority: 2  # 802d
+- op: update  # 2d44
+  at: '2026-04-28T04:02:26Z'  # 2d44
+  by: agent  # 2d44
+  actor: jgstern_agent  # 2d44
+  clock: 4  # 2d44
+  nonce: 2d44  # 2d44
+  set:  # 2d44
+    status: done  # 2d44
+  add:  # 2d44
+    tags: [awaits_bakeoff_validation]  # 2d44
+- op: discuss  # 9470
+  at: '2026-04-28T04:02:26Z'  # 9470
+  by: agent  # 9470
+  actor: jgstern_agent  # 9470
+  clock: 5  # 9470
+  nonce: '9470'  # 9470
+  message: "Done. PR #155 (commit 1819d8bb8). All 4 selection surfaces — sketch._format_symbols, compact.select_by_coverage, compact.select_by_connectivity, format_tiered_behavior_map's post-selection victim removal — now pass rank_symbols' tuned compute_centrality kwargs (hub_threshold=100, within_file_weight=0.3, max_per_file_in=5, edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS) via the shared _RANK_CENTRALITY_KWARGS constant in compact.py (sketch reuses inline). Tagged awaits_bakeoff_validation; next DEEP cycle confirms the 50-70% top-100 churn hypothesis is real FP reduction not real-symbol demotion."  # 9470

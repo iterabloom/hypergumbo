@@ -1,0 +1,20 @@
+- op: create  # cc39
+  at: '2026-04-28T04:04:21Z'  # cc39
+  by: agent  # cc39
+  actor: jgstern_agent  # cc39
+  clock: 1  # cc39
+  nonce: cc39  # cc39
+  data:  # cc39
+    kind: work_item  # cc39
+    title: "Investigate why apply_sibling_impl_weights produces 0 movement on the 6-repo audit corpus"  # cc39
+    status: todo_soft  # cc39
+    priority: 4  # cc39
+    parent:  # cc39
+    tags:  # cc39
+    - analysis_quality  # cc39
+    isbefore: []  # cc39
+    duplicate_of: []  # cc39
+    not_duplicate_of: []  # cc39
+    pr_ref:  # cc39
+    description: "WI-lidum's 6-repo audit (alertmanager + prometheus + kserve + chatwoot + detekt + django; 4 surfaces × 6 repos = 24 cells) found that adding apply_sibling_impl_weights to the previously-missing surfaces produced exactly 0 top-100 movement across all 24 cells. Including alertmanager, the original test case from WI-luvaj (19 Notifier.Notify variants).\n\nThree hypotheses worth disambiguating:\n\n1. Order-of-application effect: apply_utility_symbol_weights and apply_trivial_sink_weights run before apply_sibling_impl_weights and may already pull the same-name siblings out of top-N before sibling_impl gets a chance to fire.\n\n2. min_group_size=6 threshold doesn't trigger: post-baseline-stack centrality distribution makes the effective group sizes smaller than 6 because most siblings have already been demoted by other dampeners.\n\n3. Render-time dedup masks the effect on sketch (already known): sketch._format_symbols deduplicates same-name symbols at render time, and apply_sibling_impl_weights only touches the bottom-(N-3) members of each name group while leaving the top-3 at full weight. The dedup winner is by definition the top-1 member, so the rendered output never changes. This is documented in test_sketch.py via NOTE comment after WI-lidum patch 1. Does NOT explain why compact surfaces (no dedup) also show 0 movement.\n\nDiagnostic plan: instrument apply_sibling_impl_weights to log group sizes and which symbols hit the dampener, run on alertmanager and one other repo with same-name OOP fan-out (cassandra would be a good candidate). If groups are correctly identified but the dampener output is still in top-N, hypothesis 1 is correct. If groups are below threshold, hypothesis 2.\n\nOutcome paths:\n- If dampener is genuinely effective in some scenarios: lower min_group_size or document the conditions under which it fires.\n- If dampener is dead code: remove from rank_symbols + the four backfilled surfaces in one stroke. (Not done in WI-lidum because surface uniformity was the goal there.)\n\nFiling P4 todo_soft because (a) cost of dampener is essentially free per Finding 1 in the audit, (b) historical bakeoff (WI-luvaj) provides some justification for keeping it, (c) no FP harm observed.\n\nReferences:\n- ~/hypergumbo_lab_notebook/notebookjournal_04272026_2159.md (sibling_impl section + Open question)\n- WI-luvaj (original alertmanager Notifier.Notify case)\n- packages/hypergumbo-core/src/hypergumbo_core/ranking.py:913-977 (apply_sibling_impl_weights)"  # cc39
+    fields: {}  # cc39
