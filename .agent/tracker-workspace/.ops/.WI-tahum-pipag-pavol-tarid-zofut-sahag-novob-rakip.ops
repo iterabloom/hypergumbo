@@ -35,3 +35,18 @@
   clock: 3  # 6605
   nonce: '6605'  # 6605
   message: "WI-lidum Phase B is now merged (4 PRs: #152, #153, #154, #155). The duplicated dampener-stack-plus-tuned-compute-centrality-call code that motivated this item now exists across three locations — sketch._format_symbols (sketch.py:5529-5560), compact.select_by_coverage (compact.py:780-810), and compact.select_by_connectivity (compact.py:614-635) — plus the format_tiered_behavior_map post-selection victim-removal call (compact.py:1393).\n\nStatus flipped todo_soft P3 → todo_hard P2 per the audit recommendation in ~/hypergumbo_lab_notebook/notebookjournal_04272026_2159.md. Audit confirms the helper interface:\n\n  def compute_dampened_centrality(\n      symbols, edges, *,\n      first_party_priority=True,\n      edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,\n      hub_threshold=100,\n      within_file_weight=0.3,\n      max_per_file_in=5,\n      exclude_test_edges=True,\n      exclude_dampeners=(),  # e.g., ('file_kind',) for sketch surface\n  ) -> dict[str, float]\n\nDefaults match rank_symbols. The four selection surfaces collapse to one-liners. Only sketch needs exclude_dampeners=('file_kind',) because KEY_SYMBOL_KINDS already excludes 'file' symbols (skip-noop).\n\nImplementation is straightforward refactor at this point — extract helper, replace 4 call sites with helper invocation, no behavior change expected."  # 6605
+- op: update  # f905
+  at: '2026-04-28T05:51:46Z'  # f905
+  by: agent  # f905
+  actor: jgstern_agent  # f905
+  clock: 4  # f905
+  nonce: f905  # f905
+  set:  # f905
+    status: done  # f905
+- op: discuss  # 7abb
+  at: '2026-04-28T05:51:46Z'  # 7abb
+  by: agent  # 7abb
+  actor: jgstern_agent  # 7abb
+  clock: 5  # 7abb
+  nonce: 7abb  # 7abb
+  message: "Merged in PR #157 (commit 57954fae5). Implementation:\n\n1. Added `compute_dampened_centrality(symbols, edges, *, ...)` in ranking.py — single source of truth for the canonical 8-stage stack.\n2. Added internal `_apply_canonical_dampeners` so rank_symbols can keep raw_centrality separate while still sharing the dampener logic.\n3. Refactored 3 full-stack call sites: sketch._format_symbols (passes `exclude_dampeners=(\"file_kind\",)`), compact.select_by_coverage, compact.select_by_connectivity (centrality-is-None branch).\n4. Refactored format_tiered_behavior_map's victim-removal step using a new `_VICTIM_REMOVAL_EXCLUDE_DAMPENERS` constant — this makes \"tier-only victim ordering\" explicit instead of a silent omission.\n5. Left select_by_tokens (compact.py:1134) untouched: it intentionally uses untuned compute_centrality for coverage normalization, not selection ranking.\n\nNo behavior change — all 4,293 tests pass at 100% coverage. Net diff: +278/-134 lines (refactor extracts shared logic and removes duplication).\n\nTests added in test_ranking.py::TestComputeDampenedCentrality cover: empty input, full-stack identity vs inline replication, first_party_priority skip-tier semantics, exclude_dampeners opt-out (file-kind), and default-vs-explicit-tuned-params equivalence."  # 7abb
