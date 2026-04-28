@@ -70,14 +70,14 @@ def _load_pyproject(pyproject_path: Path) -> dict | None:
         return None
     try:
         import tomllib
-        return tomllib.loads(content)
-    except ImportError:  # pragma: no cover  # Python 3.10 path; no tomli on this runner
-        try:  # pragma: no cover
-            import tomli  # pragma: no cover
-            return tomli.loads(content)  # pragma: no cover
-        except ImportError:  # pragma: no cover
+    except ImportError:  # pragma: no cover  # Python 3.10 fallback path
+        try:
+            import tomli as tomllib  # type: ignore[no-redef]
+        except ImportError:
             return None
-    except (ValueError, OSError):  # malformed TOML
+    try:
+        return tomllib.loads(content)
+    except (ValueError, OSError):  # malformed TOML (TOMLDecodeError is a ValueError subclass)
         return None
 
 

@@ -144,17 +144,21 @@ def _detect_project_cli_name(repo_root: Path) -> set[str]:
     try:
         content = pyproject_path.read_text(encoding="utf-8")
 
-        # Try to parse with tomllib (Python 3.11+) or tomli
+        # Resolve a TOML loader: tomllib (Python 3.11+) preferred, tomli as fallback.
         try:
             import tomllib  # pragma: no cover
-            data = tomllib.loads(content)  # pragma: no cover
         except ImportError:  # pragma: no cover
-            try:  # pragma: no cover
-                import tomli  # pragma: no cover
-                data = tomli.loads(content)  # pragma: no cover
-            except ImportError:  # pragma: no cover
-                # Fall back to regex parsing
-                data = None  # pragma: no cover
+            try:
+                import tomli as tomllib  # type: ignore[no-redef]
+            except ImportError:
+                tomllib = None  # type: ignore[assignment]
+
+        data: dict | None = None
+        if tomllib is not None:
+            try:
+                data = tomllib.loads(content)  # pragma: no cover
+            except (ValueError, OSError):  # pragma: no cover  # malformed TOML
+                data = None
 
         if data:
             # Get project name
