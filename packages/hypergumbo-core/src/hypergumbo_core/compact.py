@@ -611,10 +611,20 @@ def select_by_connectivity(
     # Build adjacency lists
     outgoing, incoming = _build_adjacency_list(edges)
 
-    # Compute centrality if not provided
+    # Compute centrality if not provided. Apply the same dampener stack
+    # rank_symbols uses (WI-lidum). Order mirrors ranking.py: tier → noise
+    # → utility → common-method → sibling-impl → trivial-sink → generated
+    # → file-kind. When the caller supplies centrality, it is trusted as-is.
     if centrality is None:
-        from .ranking import compute_centrality as _compute_centrality
-        centrality = _compute_centrality(symbols, edges)
+        centrality = compute_centrality(symbols, edges)
+        centrality = apply_tier_weights(centrality, symbols)
+        centrality = apply_noise_weights(centrality, symbols)
+        centrality = apply_utility_symbol_weights(centrality, symbols)
+        centrality = apply_common_method_name_weights(centrality, symbols)
+        centrality = apply_sibling_impl_weights(centrality, symbols)
+        centrality = apply_trivial_sink_weights(centrality, symbols, edges)
+        centrality = apply_generated_code_weights(centrality, symbols)
+        centrality = apply_file_kind_weights(centrality, symbols)
 
     # Initialize selected set with seeds
     selected_ids: set = set()

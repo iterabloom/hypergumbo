@@ -2128,6 +2128,201 @@ class TestConnectivityAwareSelection:
             )
 
 
+class TestSelectByConnectivityDampening:
+    """Tests for the WI-lidum dampener-stack backfill in select_by_connectivity.
+
+    With empty seed_ids, the function selects the highest-centrality
+    symbol as the starting node (compact.py line ~620 fallback). Its
+    internally-computed centrality previously skipped all 8 dampeners
+    that rank_symbols applies — so a high-raw-centrality logger / file-
+    kind / generated symbol would dominate the seed pick, propagating
+    into the connectivity expansion. Patch wires the full dampener
+    stack into the centrality-is-None branch.
+    """
+
+    def test_utility_dampener_applied_to_internal_centrality(self):
+        """Empty-seeds seed pick uses utility-dampened centrality."""
+        from hypergumbo_core.compact import select_by_connectivity
+
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        logger_sym = Symbol(
+            id="logger", name="Logger.error", kind="method", language="python",
+            path="src/observability/logger.py", span=long_span,
+        )
+        logger_sym.supply_chain_tier = 1
+        domain_sym = Symbol(
+            id="domain", name="process_payment", kind="function", language="python",
+            path="src/payments/processor.py", span=long_span,
+        )
+        domain_sym.supply_chain_tier = 1
+        edges = [
+            make_edge(f"caller{i}", "logger") for i in range(20)
+        ] + [
+            make_edge(f"d_caller{i}", "domain") for i in range(3)
+        ]
+        result = select_by_connectivity(
+            [logger_sym, domain_sym], edges, seed_ids=set(), max_additional=0,
+        )
+        included_ids = {s.id for s in result.included.symbols}
+        assert "domain" in included_ids and "logger" not in included_ids, (
+            "Expected process_payment as seed pick after utility dampening; "
+            f"got included={included_ids}"
+        )
+
+    def test_trivial_sink_dampener_applied_to_internal_centrality(self):
+        """Empty-seeds seed pick uses trivial-sink-dampened centrality."""
+        from hypergumbo_core.compact import select_by_connectivity
+
+        short_span = Span(start_line=1, end_line=5, start_col=0, end_col=0)
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        sink_sym = Symbol(
+            id="sink", name="get_status", kind="function", language="python",
+            path="src/util/status.py", span=short_span,
+        )
+        sink_sym.supply_chain_tier = 1
+        domain_sym = Symbol(
+            id="domain", name="reconcile_ledger", kind="function",
+            language="python", path="src/finance/reconcile.py", span=long_span,
+        )
+        domain_sym.supply_chain_tier = 1
+        edges = [
+            make_edge(f"caller{i}", "sink") for i in range(20)
+        ] + [
+            make_edge(f"d_caller{i}", "domain") for i in range(3)
+        ]
+        result = select_by_connectivity(
+            [sink_sym, domain_sym], edges, seed_ids=set(), max_additional=0,
+        )
+        included_ids = {s.id for s in result.included.symbols}
+        assert "domain" in included_ids and "sink" not in included_ids, (
+            f"Expected reconcile_ledger; got included={included_ids}"
+        )
+
+    def test_generated_dampener_applied_to_internal_centrality(self):
+        """Empty-seeds seed pick uses generated-code-dampened centrality."""
+        from hypergumbo_core.compact import select_by_connectivity
+
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        generated_sym = Symbol(
+            id="generated", name="V1beta1InferenceService", kind="class",
+            language="python",
+            path="kserve/models/v1beta1_inference_service.py", span=long_span,
+        )
+        generated_sym.supply_chain_tier = 1
+        generated_sym.is_generated_file = True
+        domain_sym = Symbol(
+            id="domain", name="InferenceService", kind="class", language="python",
+            path="kserve/api/inference_service.py", span=long_span,
+        )
+        domain_sym.supply_chain_tier = 1
+        edges = [
+            make_edge(f"caller{i}", "generated") for i in range(20)
+        ] + [
+            make_edge(f"d_caller{i}", "domain") for i in range(3)
+        ]
+        result = select_by_connectivity(
+            [generated_sym, domain_sym], edges, seed_ids=set(), max_additional=0,
+        )
+        included_ids = {s.id for s in result.included.symbols}
+        assert "domain" in included_ids and "generated" not in included_ids, (
+            f"Expected InferenceService; got included={included_ids}"
+        )
+
+    def test_file_kind_dampener_applied_to_internal_centrality(self):
+        """Empty-seeds seed pick uses file-kind-suppressed centrality."""
+        from hypergumbo_core.compact import select_by_connectivity
+
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        file_sym = Symbol(
+            id="file_sym", name="cmd/main.go", kind="file", language="go",
+            path="cmd/main.go", span=long_span,
+        )
+        file_sym.supply_chain_tier = 1
+        domain_sym = Symbol(
+            id="domain", name="ServeRequest", kind="function", language="go",
+            path="server/server.go", span=long_span,
+        )
+        domain_sym.supply_chain_tier = 1
+        edges = [
+            make_edge(f"caller{i}", "file_sym") for i in range(20)
+        ] + [
+            make_edge(f"d_caller{i}", "domain") for i in range(3)
+        ]
+        result = select_by_connectivity(
+            [file_sym, domain_sym], edges, seed_ids=set(), max_additional=0,
+        )
+        included_ids = {s.id for s in result.included.symbols}
+        assert "domain" in included_ids and "file_sym" not in included_ids, (
+            f"Expected ServeRequest; got included={included_ids}"
+        )
+
+    def test_noise_dampener_applied_to_internal_centrality(self):
+        """Empty-seeds seed pick uses noise-dampened centrality."""
+        from hypergumbo_core.compact import select_by_connectivity
+
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        migration_sym = Symbol(
+            id="migration", name="ModelState", kind="class", language="python",
+            path="django/db/migrations/state.py", span=long_span,
+        )
+        migration_sym.supply_chain_tier = 1
+        domain_sym = Symbol(
+            id="domain", name="DomainModel", kind="class", language="python",
+            path="app/domain.py", span=long_span,
+        )
+        domain_sym.supply_chain_tier = 1
+        edges = [
+            make_edge(f"caller{i}", "migration") for i in range(15)
+        ] + [
+            make_edge(f"d_caller{i}", "domain") for i in range(3)
+        ]
+        result = select_by_connectivity(
+            [migration_sym, domain_sym], edges, seed_ids=set(), max_additional=0,
+        )
+        included_ids = {s.id for s in result.included.symbols}
+        assert "domain" in included_ids and "migration" not in included_ids, (
+            f"Expected DomainModel; got included={included_ids}"
+        )
+
+    def test_tier_dampener_applied_to_internal_centrality(self):
+        """Empty-seeds seed pick uses tier-weighted centrality.
+
+        WI-lidum's 6-repo audit found tier-by-select_by_connectivity is
+        the largest-evidence dampener cell at this surface (7-22 of
+        top-100 across all 6 repos): without tier weighting, external/
+        tier-3 symbols leak into the seed pick.
+        """
+        from hypergumbo_core.compact import select_by_connectivity
+
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        external_sym = Symbol(
+            id="external", name="Sprintf", kind="function", language="go",
+            path="<external>", span=long_span,
+        )
+        external_sym.supply_chain_tier = 3  # external dep
+        first_party_sym = Symbol(
+            id="first_party", name="ServeRequest", kind="function", language="go",
+            path="server/server.go", span=long_span,
+        )
+        first_party_sym.supply_chain_tier = 1
+        # External has 5 callers; first-party has 3. Tier weights
+        # (1.0x external, 2.0x first-party) flip the order.
+        edges = [
+            make_edge(f"caller{i}", "external") for i in range(5)
+        ] + [
+            make_edge(f"fp_caller{i}", "first_party") for i in range(3)
+        ]
+        result = select_by_connectivity(
+            [external_sym, first_party_sym], edges, seed_ids=set(),
+            max_additional=0,
+        )
+        included_ids = {s.id for s in result.included.symbols}
+        assert "first_party" in included_ids, (
+            "Expected first-party ServeRequest after tier weighting; "
+            f"got included={included_ids}"
+        )
+
+
 class TestSelectByConnectivityIntegration:
     """Integration tests for connectivity selection with format functions."""
 
