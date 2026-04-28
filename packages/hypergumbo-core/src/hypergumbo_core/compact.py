@@ -52,16 +52,9 @@ from typing import Dict, List, Tuple
 
 from .ir import Symbol, Edge, is_external_boundary
 from .ranking import (
-    DEFAULT_EDGE_TYPE_WEIGHTS,
     compute_centrality,
+    compute_dampened_centrality,
     apply_tier_weights,
-    apply_noise_weights,
-    apply_utility_symbol_weights,
-    apply_common_method_name_weights,
-    apply_sibling_impl_weights,
-    apply_trivial_sink_weights,
-    apply_generated_code_weights,
-    apply_file_kind_weights,
 )
 from .selection.filters import (
     EXAMPLE_PATH_PATTERNS,  # re-export for backwards compatibility
@@ -91,16 +84,20 @@ __all__ = [
     "parse_tier_spec",
 ]
 
-# Centrality parameters that match rank_symbols' tuned values (WI-dohaf).
-# Used by select_by_coverage, select_by_connectivity (centrality-is-None
-# branch), and format_tiered_behavior_map's post-selection victim-removal
-# tiebreaker. Keep in sync with the call in ranking.rank_symbols.
-_RANK_CENTRALITY_KWARGS = {
-    "hub_threshold": 100,
-    "within_file_weight": 0.3,
-    "max_per_file_in": 5,
-    "edge_type_weights": DEFAULT_EDGE_TYPE_WEIGHTS,
-}
+# Dampeners to exclude when computing victim-removal ordering in
+# format_tiered_behavior_map. Victim selection deliberately uses
+# tier-weighted centrality only (no noise/utility/etc. dampening), so
+# that selection-time signals don't propagate into post-budget pruning.
+# See compact.py:format_tiered_behavior_map for rationale.
+_VICTIM_REMOVAL_EXCLUDE_DAMPENERS = (
+    "noise",
+    "utility",
+    "common_method",
+    "sibling_impl",
+    "trivial_sink",
+    "generated",
+    "file_kind",
+)
 
 # Edge types that represent cross-cutting concerns (linker-produced edges that
 # connect nodes across language, service, or abstraction boundaries).  These are
@@ -623,21 +620,13 @@ def select_by_connectivity(
     # Build adjacency lists
     outgoing, incoming = _build_adjacency_list(edges)
 
-    # Compute centrality if not provided. Pass rank_symbols' tuned
-    # parameters (WI-dohaf), then apply the same dampener stack
-    # rank_symbols uses (WI-lidum). Order mirrors ranking.py: tier → noise
-    # → utility → common-method → sibling-impl → trivial-sink → generated
-    # → file-kind. When the caller supplies centrality, it is trusted as-is.
+    # Compute centrality if not provided. WI-tahum: shared helper applies
+    # rank_symbols' tuned compute_centrality params plus the canonical
+    # 8-stage dampener stack (tier → noise → utility → common-method →
+    # sibling-impl → trivial-sink → generated → file-kind). When the
+    # caller supplies centrality, it is trusted as-is.
     if centrality is None:
-        centrality = compute_centrality(symbols, edges, **_RANK_CENTRALITY_KWARGS)
-        centrality = apply_tier_weights(centrality, symbols)
-        centrality = apply_noise_weights(centrality, symbols)
-        centrality = apply_utility_symbol_weights(centrality, symbols)
-        centrality = apply_common_method_name_weights(centrality, symbols)
-        centrality = apply_sibling_impl_weights(centrality, symbols)
-        centrality = apply_trivial_sink_weights(centrality, symbols, edges)
-        centrality = apply_generated_code_weights(centrality, symbols)
-        centrality = apply_file_kind_weights(centrality, symbols)
+        centrality = compute_dampened_centrality(symbols, edges)
 
     # Initialize selected set with seeds
     selected_ids: set = set()
@@ -801,24 +790,14 @@ def select_by_coverage(
             config=config,
         )
 
-    # Compute centrality with rank_symbols' tuned parameters (WI-dohaf),
-    # then apply the same dampener stack rank_symbols uses (WI-lidum).
-    # Order mirrors ranking.py: tier → noise → utility → common-method →
-    # sibling-impl → trivial-sink → generated → file-kind.
-    raw_centrality = compute_centrality(symbols, edges, **_RANK_CENTRALITY_KWARGS)
-
-    if config.first_party_priority:
-        centrality = apply_tier_weights(raw_centrality, symbols)
-    else:
-        centrality = raw_centrality
-
-    centrality = apply_noise_weights(centrality, symbols)
-    centrality = apply_utility_symbol_weights(centrality, symbols)
-    centrality = apply_common_method_name_weights(centrality, symbols)
-    centrality = apply_sibling_impl_weights(centrality, symbols)
-    centrality = apply_trivial_sink_weights(centrality, symbols, edges)
-    centrality = apply_generated_code_weights(centrality, symbols)
-    centrality = apply_file_kind_weights(centrality, symbols)
+    # WI-tahum: shared helper applies rank_symbols' tuned
+    # compute_centrality params plus the canonical 8-stage dampener
+    # stack (tier → noise → utility → common-method → sibling-impl →
+    # trivial-sink → generated → file-kind).
+    centrality = compute_dampened_centrality(
+        symbols, edges,
+        first_party_priority=config.first_party_priority,
+    )
 
     # Compute total centrality
     total_centrality = sum(centrality.values())
@@ -1433,13 +1412,17 @@ def format_tiered_behavior_map(
     actual_tokens = estimate_behavior_map_tokens(tiered_map)
 
     if actual_tokens > target_tokens and len(included_symbols) > 1:
-        # Compute centrality for removal ordering. Use rank_symbols' tuned
-        # parameters (WI-dohaf) so victim selection reflects the same
-        # graph-structural dampening as the upstream connectivity selection.
-        raw_centrality = compute_centrality(
-            symbols, edges, **_RANK_CENTRALITY_KWARGS,
+        # Compute centrality for removal ordering. WI-tahum: shared
+        # helper applies rank_symbols' tuned compute_centrality params
+        # so victim selection reflects the same graph-structural
+        # dampening as the upstream connectivity selection. Only tier
+        # weighting is applied here — non-tier dampeners are excluded
+        # so selection-time signals don't propagate into post-budget
+        # pruning.
+        centrality = compute_dampened_centrality(
+            symbols, edges,
+            exclude_dampeners=_VICTIM_REMOVAL_EXCLUDE_DAMPENERS,
         )
-        centrality = apply_tier_weights(raw_centrality, symbols)
 
         while actual_tokens > target_tokens and len(included_symbols) > 1:
             # Compute local edge degree from CURRENT induced edges.

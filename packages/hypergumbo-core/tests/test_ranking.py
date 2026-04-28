@@ -9,6 +9,7 @@ import pytest
 from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.ranking import (
     compute_centrality,
+    compute_dampened_centrality,
     apply_tier_weights,
     apply_test_weights,
     apply_utility_symbol_weights,
@@ -22,6 +23,7 @@ from hypergumbo_core.ranking import (
     get_importance_threshold,
     _is_test_path,
     is_utility_symbol,
+    DEFAULT_EDGE_TYPE_WEIGHTS,
     TIER_WEIGHTS,
     RankedSymbol,
     RankedFile,
@@ -3975,3 +3977,106 @@ class TestOrchestrationHubRanking:
             f"run rank={rank_by_name['run']} should be < "
             f"NewClient rank={rank_by_name['NewClient']}"
         )
+
+
+class TestComputeDampenedCentrality:
+    """Tests for compute_dampened_centrality (WI-tahum helper)."""
+
+    def test_empty(self):
+        result = compute_dampened_centrality([], [])
+        assert result == {}
+
+    def test_matches_inline_full_stack(self):
+        """Helper produces identical scores to the inline full stack."""
+        from hypergumbo_core.ranking import (
+            apply_noise_weights,
+            apply_trivial_sink_weights,
+            apply_generated_code_weights,
+            apply_file_kind_weights,
+        )
+
+        core = make_symbol("core")
+        callers = [make_symbol(f"caller{i}") for i in range(5)]
+        edges = [make_edge(c.id, core.id) for c in callers]
+        all_symbols = [core] + callers
+
+        # Inline replication of the canonical 8-stage stack with tuned params.
+        inline = compute_centrality(
+            all_symbols, edges,
+            hub_threshold=100, within_file_weight=0.3,
+            max_per_file_in=5, edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,
+        )
+        inline = apply_tier_weights(inline, all_symbols)
+        inline = apply_noise_weights(inline, all_symbols)
+        inline = apply_utility_symbol_weights(inline, all_symbols)
+        inline = apply_common_method_name_weights(inline, all_symbols)
+        inline = apply_sibling_impl_weights(inline, all_symbols)
+        inline = apply_trivial_sink_weights(inline, all_symbols, edges)
+        inline = apply_generated_code_weights(inline, all_symbols)
+        inline = apply_file_kind_weights(inline, all_symbols)
+
+        helper = compute_dampened_centrality(all_symbols, edges)
+
+        assert helper == inline
+
+    def test_first_party_priority_skips_tier(self):
+        """first_party_priority=False skips the tier dampener only."""
+        target = make_symbol("widget_target", tier=1)
+        caller = make_symbol("widget_caller", tier=1)
+        edges = [make_edge(caller.id, target.id)]
+        symbols = [target, caller]
+
+        with_tier = compute_dampened_centrality(
+            symbols, edges, first_party_priority=True,
+        )
+        without_tier = compute_dampened_centrality(
+            symbols, edges, first_party_priority=False,
+        )
+
+        # tier=1 gets a 2x boost from apply_tier_weights; with priority
+        # off the boost is skipped, so the score is exactly half.
+        assert with_tier[target.id] == without_tier[target.id] * TIER_WEIGHTS[1]
+
+    def test_exclude_dampeners_skips_named_dampener(self):
+        """exclude_dampeners=('file_kind',) skips that dampener."""
+        # File-kind symbol that would be zeroed by apply_file_kind_weights.
+        file_sym = Symbol(
+            id="python:src/main.py:1-10:file:main.py",
+            name="main.py",
+            kind="file",
+            language="python",
+            path="src/main.py",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+        )
+        file_sym.supply_chain_tier = 1
+
+        callers = [make_symbol(f"c{i}") for i in range(3)]
+        edges = [make_edge(c.id, file_sym.id) for c in callers]
+        symbols = [file_sym] + callers
+
+        with_fk = compute_dampened_centrality(symbols, edges)
+        without_fk = compute_dampened_centrality(
+            symbols, edges, exclude_dampeners=("file_kind",),
+        )
+
+        # apply_file_kind_weights zeroes file-kind symbols; excluding it
+        # leaves the score positive.
+        assert with_fk[file_sym.id] == 0.0
+        assert without_fk[file_sym.id] > 0.0
+
+    def test_defaults_match_rank_symbols_tuned_params(self):
+        """Helper defaults match the tuned params rank_symbols uses."""
+        # Build a graph where hub_threshold=100 vs no threshold differs.
+        hub = make_symbol("hub")
+        callers = [make_symbol(f"c{i}", path=f"src/{i}.py") for i in range(150)]
+        edges = [make_edge(c.id, hub.id) for c in callers]
+        symbols = [hub] + callers
+
+        helper_default = compute_dampened_centrality(symbols, edges)
+        helper_explicit = compute_dampened_centrality(
+            symbols, edges,
+            hub_threshold=100, within_file_weight=0.3,
+            max_per_file_in=5, edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,
+        )
+
+        assert helper_default == helper_explicit

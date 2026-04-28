@@ -1094,6 +1094,118 @@ def filter_edges_for_ranking(
     return filtered
 
 
+# Canonical 8-stage dampener stack applied by rank_symbols and the four
+# selection surfaces (sketch._format_symbols, compact.select_by_coverage,
+# compact.select_by_connectivity, compact.format_tiered_behavior_map's
+# victim-removal step). Order is load-bearing — see ranking.py for
+# rationale on why tier comes first and file_kind comes last.
+_CANONICAL_DAMPENERS: tuple[str, ...] = (
+    "tier",
+    "noise",
+    "utility",
+    "common_method",
+    "sibling_impl",
+    "trivial_sink",
+    "generated",
+    "file_kind",
+)
+
+
+def _apply_canonical_dampeners(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    edges: List[Edge],
+    *,
+    first_party_priority: bool = True,
+    exclude_dampeners: tuple[str, ...] = (),
+) -> Dict[str, float]:
+    """Apply the canonical 8-stage dampener stack to pre-computed scores.
+
+    Internal helper shared by ``compute_dampened_centrality`` (which
+    bundles compute_centrality + this stack) and ``rank_symbols``
+    (which keeps raw centrality separate so RankedSymbol can expose
+    both raw and weighted values).
+    """
+    if first_party_priority and "tier" not in exclude_dampeners:
+        centrality = apply_tier_weights(centrality, symbols)
+    if "noise" not in exclude_dampeners:
+        centrality = apply_noise_weights(centrality, symbols)
+    if "utility" not in exclude_dampeners:
+        centrality = apply_utility_symbol_weights(centrality, symbols)
+    if "common_method" not in exclude_dampeners:
+        centrality = apply_common_method_name_weights(centrality, symbols)
+    if "sibling_impl" not in exclude_dampeners:
+        centrality = apply_sibling_impl_weights(centrality, symbols)
+    if "trivial_sink" not in exclude_dampeners:
+        centrality = apply_trivial_sink_weights(centrality, symbols, edges)
+    if "generated" not in exclude_dampeners:
+        centrality = apply_generated_code_weights(centrality, symbols)
+    if "file_kind" not in exclude_dampeners:
+        centrality = apply_file_kind_weights(centrality, symbols)
+    return centrality
+
+
+def compute_dampened_centrality(
+    symbols: List[Symbol],
+    edges: List[Edge],
+    *,
+    first_party_priority: bool = True,
+    edge_type_weights: Dict[str, float] | None = None,
+    hub_threshold: int | None = 100,
+    within_file_weight: float = 0.3,
+    max_per_file_in: int | None = 5,
+    exclude_dampeners: tuple[str, ...] = (),
+) -> Dict[str, float]:
+    """Compute centrality and apply the canonical dampener stack.
+
+    Single source of truth for the "compute_centrality + 8-dampener
+    stack" pipeline shared across the four selection surfaces (sketch
+    and three compact entry points). Defaults match rank_symbols'
+    tuned values (hub_threshold=100, within_file_weight=0.3,
+    max_per_file_in=5, edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS).
+
+    Dampeners are applied in canonical order:
+    tier → noise → utility → common_method → sibling_impl →
+    trivial_sink → generated → file_kind.
+
+    Args:
+        symbols: Symbols to score.
+        edges: Edges between symbols. Caller is responsible for any
+            test-edge / import-edge / confidence filtering — this
+            helper applies dampeners to whatever edges it receives.
+        first_party_priority: If True (default), apply tier_weights as
+            the first dampener. Set False to skip tier weighting.
+        edge_type_weights: Per-edge-type multipliers passed to
+            compute_centrality. Defaults to DEFAULT_EDGE_TYPE_WEIGHTS.
+        hub_threshold: In-degree saturation threshold. Default 100.
+        within_file_weight: Same-file edge weight. Default 0.3.
+        max_per_file_in: Per-source-file in-degree cap. Default 5.
+        exclude_dampeners: Names of dampeners to skip. For example,
+            sketch._format_symbols passes ('file_kind',) because
+            KEY_SYMBOL_KINDS already excludes "file" symbols, making
+            apply_file_kind_weights a no-op. Names must come from
+            _CANONICAL_DAMPENERS.
+
+    Returns:
+        Mapping from symbol id to dampened centrality score.
+    """
+    if edge_type_weights is None:
+        edge_type_weights = DEFAULT_EDGE_TYPE_WEIGHTS
+
+    centrality = compute_centrality(
+        symbols, edges,
+        hub_threshold=hub_threshold,
+        within_file_weight=within_file_weight,
+        max_per_file_in=max_per_file_in,
+        edge_type_weights=edge_type_weights,
+    )
+    return _apply_canonical_dampeners(
+        centrality, symbols, edges,
+        first_party_priority=first_party_priority,
+        exclude_dampeners=exclude_dampeners,
+    )
+
+
 def rank_symbols(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -1155,44 +1267,12 @@ def rank_symbols(
         edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,
     )
 
-    # Apply tier weighting if enabled
-    if first_party_priority:
-        weighted_centrality = apply_tier_weights(raw_centrality, symbols)
-    else:
-        weighted_centrality = raw_centrality
-
-    # De-weight noise paths (database migrations, etc.)
-    weighted_centrality = apply_noise_weights(weighted_centrality, symbols)
-
-    # De-weight utility symbols (loggers, clocks, STL accessors, etc.)
-    weighted_centrality = apply_utility_symbol_weights(weighted_centrality, symbols)
-
-    # De-weight common method names (execute, call, perform, etc.)
-    weighted_centrality = apply_common_method_name_weights(
-        weighted_centrality, symbols,
-    )
-
-    # De-weight excess interface implementation siblings (e.g., 19
-    # Notifier.Notify variants — keep top 3, dampen the rest)
-    weighted_centrality = apply_sibling_impl_weights(
-        weighted_centrality, symbols,
-    )
-
-    # De-weight trivial sinks (short-bodied pure sinks like accessors/stubs)
-    weighted_centrality = apply_trivial_sink_weights(
-        weighted_centrality, symbols, filtered_edges,
-    )
-
-    # WI-tizij: de-weight generated code (OpenAPI models, protobuf stubs, etc.)
-    weighted_centrality = apply_generated_code_weights(
-        weighted_centrality, symbols,
-    )
-
-    # WI-ramuv: suppress kind="file" Symbols from ranking. They stay in the
-    # graph (containment / slice / per-file metrics) but never displace
-    # real functions/classes in the ranked output.
-    weighted_centrality = apply_file_kind_weights(
-        weighted_centrality, symbols,
+    # WI-tahum: dampener stack via shared internal helper. Order:
+    # tier → noise → utility → common-method → sibling-impl →
+    # trivial-sink → generated → file-kind.
+    weighted_centrality = _apply_canonical_dampeners(
+        raw_centrality, symbols, filtered_edges,
+        first_party_priority=first_party_priority,
     )
 
     # Sort by weighted centrality (highest first), then by name for stability

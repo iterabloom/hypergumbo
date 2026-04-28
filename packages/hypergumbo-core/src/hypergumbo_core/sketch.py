@@ -37,15 +37,7 @@ from .ir import Symbol, Edge
 from .entrypoints import detect_entrypoints, Entrypoint, EntrypointKind
 from .datamodels import detect_datamodels, DataModel
 from .ranking import (
-    DEFAULT_EDGE_TYPE_WEIGHTS,
-    compute_centrality,
-    apply_tier_weights,
-    apply_noise_weights,
-    apply_utility_symbol_weights,
-    apply_common_method_name_weights,
-    apply_sibling_impl_weights,
-    apply_trivial_sink_weights,
-    apply_generated_code_weights,
+    compute_dampened_centrality,
     compute_file_scores,
     _is_test_path,
     compute_transitive_test_coverage,
@@ -5530,35 +5522,15 @@ def _format_symbols(
     if not key_symbols:
         return ""
 
-    # Compute centrality scores using only production edges. Pass the same
-    # tuned parameters rank_symbols uses (WI-dohaf): hub_threshold=100
-    # saturates infrastructure hubs; within_file_weight=0.3 dampens local-
-    # variable inflation; max_per_file_in=5 caps per-source-file in-degree
-    # contribution; edge_type_weights makes import edges count less than
-    # call edges.
-    raw_centrality = compute_centrality(
+    # Compute centrality + canonical 8-stage dampener stack via the
+    # shared helper (WI-tahum). file_kind is excluded because
+    # KEY_SYMBOL_KINDS already filters out kind="file" symbols, making
+    # apply_file_kind_weights a no-op for this surface.
+    centrality = compute_dampened_centrality(
         key_symbols, production_edges,
-        hub_threshold=100, within_file_weight=0.3, max_per_file_in=5,
-        edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,
+        first_party_priority=first_party_priority,
+        exclude_dampeners=("file_kind",),
     )
-
-    # Apply the same dampener stack rank_symbols uses (WI-lidum). Order
-    # mirrors ranking.py: tier → noise → utility → common-method →
-    # sibling-impl → trivial-sink → generated. apply_file_kind_weights is
-    # skipped because KEY_SYMBOL_KINDS already excludes "file" symbols.
-    if first_party_priority:
-        centrality = apply_tier_weights(raw_centrality, key_symbols)
-    else:
-        centrality = raw_centrality
-
-    centrality = apply_noise_weights(centrality, key_symbols)
-    centrality = apply_utility_symbol_weights(centrality, key_symbols)
-    centrality = apply_common_method_name_weights(centrality, key_symbols)
-    centrality = apply_sibling_impl_weights(centrality, key_symbols)
-    centrality = apply_trivial_sink_weights(
-        centrality, key_symbols, production_edges,
-    )
-    centrality = apply_generated_code_weights(centrality, key_symbols)
 
     # Sort by weighted centrality (most called first), then by name for stability
     key_symbols.sort(key=lambda s: (-centrality.get(s.id, 0), s.name))
