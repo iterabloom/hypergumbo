@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Changed
+
+- **Auto-sync line threshold doubled from 40 to 80**: `_maybe_auto_sync` was firing too frequently in dense work sessions, creating a tracker-sync PR every ~5 mutations and adding queue churn. Lifting the threshold reduces the syncs-per-session count without delaying push-to-origin meaningfully (every `auto-pr` run flushes the queue regardless). AGENTS.md and `tracker test_cli` updated to match.
+
 ### Added
 
 - **`tracker tags` enumeration / lifecycle subcommand (WI-lifal)**: catalog-backed tag management. `tracker tags` lists every tag in use (alphabetical), `tracker tags --count` shows `tag<TAB>count<TAB>status` rows sorted by count desc then alpha, `tracker tags --json` emits the full per-tag record (count, status, description, created_on, last_modified, last_used, deprecated, in_favor_of). Three editorial verbs: `tags rename OLD NEW` rewrites every item's tags list (idempotent, de-duplicates when both names coexist), `tags describe TAG [TEXT]` round-trips a single-line description, `tags deprecate TAG [--in-favor-of NEW]` flips the deprecation flag and records the canonical replacement. Three external statuses (`active` / `inactive` / `deprecated`) computed at read time from `(count, deprecated_flag)` — derived rather than stored, so `add` / `update` / `rename` paths never have to keep a status field in sync. `tracker add --tag <deprecated>` and `update --add-tag <deprecated>` emit a non-blocking stderr warning that mentions `in_favor_of` (mirrors the existing `deprecated_statuses` precedent for kind statuses; see the `holding` example in `AGENTS.md`). Catalog file is `.agent/tracker/tag_catalog.yaml` (sibling of `config.yaml`), populated lazily on first `tracker tags` invocation by walking the op log to backfill `created_on` / `last_used` for every tag currently in use — migration cost paid once. Maintenance hooks in `_cmd_add` and `_cmd_update` keep `last_used` current on every tag-touching mutation.
