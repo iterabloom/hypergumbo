@@ -3170,6 +3170,145 @@ class TestFormatSymbols:
         # Bundled/derived should be excluded entirely
         assert "__webpack_require__" not in result
 
+    def test_noise_dampener_demotes_migration_paths(self) -> None:
+        """Symbols on /db/migrate/ or /migrations/ paths are dampened (WI-lidum).
+
+        Aligns sketch._format_symbols' dampener stack with rank_symbols.
+        Without noise dampening, a high-centrality migration class can
+        outrank a less-central first-party class — django's ModelState
+        produced this exact failure mode in the WI-lidum 6-repo audit.
+        """
+        repo_root = Path("/fake/repo")
+        # High-raw-centrality migration class
+        migration_sym = Symbol(
+            id="migration", name="ModelState", kind="class", language="python",
+            path="/fake/repo/django/db/migrations/state.py",
+            span=Span(1, 1, 100, 1), supply_chain_tier=1,
+        )
+        # Lower-raw-centrality first-party class
+        domain_sym = Symbol(
+            id="domain", name="DomainModel", kind="class", language="python",
+            path="/fake/repo/app/domain.py",
+            span=Span(1, 1, 100, 1), supply_chain_tier=1,
+        )
+        # Migration has 10 callers, domain has 3 — noise dampener (0.1x)
+        # multiplies migration's score down enough that domain wins.
+        edges = [
+            Edge.create(src=f"caller{i}", dst="migration", edge_type="calls",
+                        line=i, confidence=1.0)
+            for i in range(10)
+        ] + [
+            Edge.create(src=f"d_caller{i}", dst="domain", edge_type="calls",
+                        line=i, confidence=1.0)
+            for i in range(3)
+        ]
+        result = _format_symbols([migration_sym, domain_sym], edges, repo_root)
+        lines = result.split('\n')
+        domain_pos = next((i for i, l in enumerate(lines) if "DomainModel" in l), -1)
+        migration_pos = next((i for i, l in enumerate(lines) if "ModelState" in l), -1)
+        assert domain_pos > 0, "domain symbol not found"
+        assert migration_pos > 0, "migration symbol not found"
+        assert domain_pos < migration_pos, (
+            f"Expected DomainModel (line {domain_pos}) to outrank "
+            f"ModelState (line {migration_pos}) after noise dampening"
+        )
+
+    def test_generated_code_dampener_demotes_openapi_models(self) -> None:
+        """Symbols flagged is_generated_file are dampened (WI-lidum).
+
+        kserve's V1beta1 OpenAPI model classes produced 42 of the top-100
+        sketch entries before this dampener was applied; this test pins
+        the fix.
+        """
+        repo_root = Path("/fake/repo")
+        # High-raw-centrality generated class
+        generated_sym = Symbol(
+            id="generated", name="V1beta1InferenceService", kind="class",
+            language="python",
+            path="/fake/repo/kserve/models/v1beta1_inference_service.py",
+            span=Span(1, 1, 100, 1), supply_chain_tier=1,
+            is_generated_file=True,
+        )
+        # Lower-raw-centrality hand-written class
+        domain_sym = Symbol(
+            id="domain", name="InferenceService", kind="class", language="python",
+            path="/fake/repo/kserve/api/inference_service.py",
+            span=Span(1, 1, 100, 1), supply_chain_tier=1,
+        )
+        edges = [
+            Edge.create(src=f"caller{i}", dst="generated", edge_type="calls",
+                        line=i, confidence=1.0)
+            for i in range(20)
+        ] + [
+            Edge.create(src=f"d_caller{i}", dst="domain", edge_type="calls",
+                        line=i, confidence=1.0)
+            for i in range(3)
+        ]
+        result = _format_symbols([generated_sym, domain_sym], edges, repo_root)
+        lines = result.split('\n')
+        domain_pos = next((i for i, l in enumerate(lines) if "`InferenceService`" in l), -1)
+        generated_pos = next((i for i, l in enumerate(lines) if "V1beta1InferenceService" in l), -1)
+        assert domain_pos > 0, "hand-written symbol not found"
+        assert generated_pos > 0, "generated symbol not found"
+        assert domain_pos < generated_pos, (
+            f"Expected InferenceService (line {domain_pos}) to outrank "
+            f"V1beta1InferenceService (line {generated_pos}) after generated dampening"
+        )
+
+    def test_common_method_dampener_demotes_overloaded_names(self) -> None:
+        """Symbols whose name is shared by many definitions are dampened (WI-lidum).
+
+        Coverage test: 25 symbols sharing the name `execute` (well above
+        name_threshold=10, so factor = max(0.1, 10/25) = 0.4x). exec0
+        starts with 4 callers vs the unique-name symbol's 2; dampening
+        flips the order. Spans are 100 lines so trivial_sink (the existing
+        sketch dampener) does not fire and confound the assertion.
+        """
+        repo_root = Path("/fake/repo")
+        execute_syms = [
+            Symbol(id=f"exec{i}", name="execute", kind="method", language="python",
+                   path=f"/fake/repo/handlers/h{i}.py", span=Span(1, 1, 100, 1),
+                   supply_chain_tier=1)
+            for i in range(25)
+        ]
+        edges = [
+            Edge.create(src=f"caller{i}", dst="exec0", edge_type="calls",
+                        line=i, confidence=1.0)
+            for i in range(4)
+        ]
+        unique_sym = Symbol(
+            id="unique", name="run_workflow", kind="method", language="python",
+            path="/fake/repo/orchestrator.py", span=Span(1, 1, 100, 1),
+            supply_chain_tier=1,
+        )
+        edges += [
+            Edge.create(src=f"u_caller{i}", dst="unique", edge_type="calls",
+                        line=i, confidence=1.0)
+            for i in range(2)
+        ]
+        result = _format_symbols(execute_syms + [unique_sym], edges, repo_root)
+        lines = result.split('\n')
+        unique_pos = next((i for i, l in enumerate(lines) if "run_workflow" in l), -1)
+        exec0_pos = next((i for i, l in enumerate(lines) if "h0.py" in l), -1)
+        assert unique_pos > 0 and exec0_pos > 0
+        assert unique_pos < exec0_pos, (
+            f"Expected run_workflow (line {unique_pos}) to outrank "
+            f"execute@h0.py (line {exec0_pos}) after common-method dampening"
+        )
+
+    # NOTE on apply_sibling_impl_weights: WI-lidum's 6-repo audit found 0
+    # behavior change on the sketch surface for this dampener (24 of 24
+    # surface-by-repo combinations including alertmanager, the original
+    # WI-luvaj test case). The reason emerged during test design: sketch
+    # deduplicates same-name symbols at render time, and the dampener only
+    # touches the bottom-(N-3) members of each name group while leaving the
+    # top-3 at full weight. The dedup winner is by definition the top-1
+    # member, which the dampener never modifies — so the rendered output
+    # never changes. The call is still wired into _format_symbols below
+    # for surface uniformity with rank_symbols, but no behavioral test is
+    # possible at this layer; the call-site coverage is exercised by every
+    # test that calls _format_symbols.
+
     def test_deduplicates_utility_functions_across_files(self) -> None:
         """Utility functions with same name across files are deduplicated.
 

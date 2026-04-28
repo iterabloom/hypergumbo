@@ -39,8 +39,12 @@ from .datamodels import detect_datamodels, DataModel
 from .ranking import (
     compute_centrality,
     apply_tier_weights,
+    apply_noise_weights,
     apply_utility_symbol_weights,
+    apply_common_method_name_weights,
+    apply_sibling_impl_weights,
     apply_trivial_sink_weights,
+    apply_generated_code_weights,
     compute_file_scores,
     _is_test_path,
     compute_transitive_test_coverage,
@@ -5528,19 +5532,23 @@ def _format_symbols(
     # Compute centrality scores using only production edges
     raw_centrality = compute_centrality(key_symbols, production_edges)
 
-    # Apply tier-based weighting (first-party symbols boosted) if enabled
+    # Apply the same dampener stack rank_symbols uses (WI-lidum). Order
+    # mirrors ranking.py: tier → noise → utility → common-method →
+    # sibling-impl → trivial-sink → generated. apply_file_kind_weights is
+    # skipped because KEY_SYMBOL_KINDS already excludes "file" symbols.
     if first_party_priority:
         centrality = apply_tier_weights(raw_centrality, key_symbols)
     else:
         centrality = raw_centrality
 
-    # De-weight utility symbols (loggers, clocks, STL accessors)
+    centrality = apply_noise_weights(centrality, key_symbols)
     centrality = apply_utility_symbol_weights(centrality, key_symbols)
-
-    # De-weight trivial sinks (short-bodied pure sinks like accessors/stubs)
+    centrality = apply_common_method_name_weights(centrality, key_symbols)
+    centrality = apply_sibling_impl_weights(centrality, key_symbols)
     centrality = apply_trivial_sink_weights(
         centrality, key_symbols, production_edges,
     )
+    centrality = apply_generated_code_weights(centrality, key_symbols)
 
     # Sort by weighted centrality (most called first), then by name for stability
     key_symbols.sort(key=lambda s: (-centrality.get(s.id, 0), s.name))
