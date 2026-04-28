@@ -3125,8 +3125,10 @@ class TestFormatSymbols:
         ]
         # Create edges making the tier-3 symbol more central
         edges = [
-            type("Edge", (), {"src": "x", "dst": "tier3"})(),
-            type("Edge", (), {"src": "y", "dst": "tier3"})(),
+            Edge.create(src="x", dst="tier3", edge_type="calls",
+                        line=1, confidence=1.0),
+            Edge.create(src="y", dst="tier3", edge_type="calls",
+                        line=2, confidence=1.0),
         ]
 
         result = _format_symbols(symbols, edges, repo_root, first_party_priority=False)
@@ -3294,6 +3296,65 @@ class TestFormatSymbols:
         assert unique_pos < exec0_pos, (
             f"Expected run_workflow (line {unique_pos}) to outrank "
             f"execute@h0.py (line {exec0_pos}) after common-method dampening"
+        )
+
+    def test_centrality_params_match_rank_symbols(self) -> None:
+        """sketch._format_symbols computes centrality with rank_symbols' tuned
+        parameters (WI-dohaf): hub_threshold=100, within_file_weight=0.3,
+        max_per_file_in=5, edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS.
+
+        Tests max_per_file_in=5 specifically: target_A gets 30 callers all
+        from the same file (capped to 5), target_B gets 6 callers from 6
+        distinct files (uncapped at 6 each = 6). Without the parameter,
+        A wins on raw in-degree; with the parameter, B wins.
+
+        This is the parameter that fixes the WI-lidum-cited 'createYAMLNode
+        called 46 times from 1 file' inflation pattern.
+        """
+        repo_root = Path("/fake/repo")
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        target_a = Symbol(
+            id="target_a", name="hot_helper", kind="function", language="python",
+            path="/fake/repo/src/helper.py", span=long_span, supply_chain_tier=1,
+        )
+        target_b = Symbol(
+            id="target_b", name="distributed_callee", kind="function",
+            language="python", path="/fake/repo/src/callee.py", span=long_span,
+            supply_chain_tier=1,
+        )
+        # 30 callers all in src/single_caller.py (one source file)
+        a_callers = [
+            Symbol(id=f"a_caller{i}", name=f"call_a_{i}", kind="function",
+                   language="python", path="/fake/repo/src/single_caller.py",
+                   span=long_span, supply_chain_tier=1)
+            for i in range(30)
+        ]
+        # 6 callers in 6 distinct files
+        b_callers = [
+            Symbol(id=f"b_caller{i}", name=f"call_b_{i}", kind="function",
+                   language="python", path=f"/fake/repo/src/file_b_{i}.py",
+                   span=long_span, supply_chain_tier=1)
+            for i in range(6)
+        ]
+        edges = [
+            Edge.create(src=c.id, dst="target_a", edge_type="calls",
+                        line=i, confidence=1.0)
+            for i, c in enumerate(a_callers)
+        ] + [
+            Edge.create(src=c.id, dst="target_b", edge_type="calls",
+                        line=i, confidence=1.0)
+            for i, c in enumerate(b_callers)
+        ]
+        result = _format_symbols(
+            [target_a, target_b] + a_callers + b_callers, edges, repo_root,
+        )
+        lines = result.split('\n')
+        b_pos = next((i for i, l in enumerate(lines) if "distributed_callee" in l), -1)
+        a_pos = next((i for i, l in enumerate(lines) if "hot_helper" in l), -1)
+        assert b_pos > 0 and a_pos > 0
+        assert b_pos < a_pos, (
+            f"Expected distributed_callee (line {b_pos}) to outrank "
+            f"hot_helper (line {a_pos}) after max_per_file_in=5 capping"
         )
 
     # NOTE on apply_sibling_impl_weights: WI-lidum's 6-repo audit found 0

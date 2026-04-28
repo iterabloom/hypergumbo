@@ -52,6 +52,7 @@ from typing import Dict, List, Tuple
 
 from .ir import Symbol, Edge, is_external_boundary
 from .ranking import (
+    DEFAULT_EDGE_TYPE_WEIGHTS,
     compute_centrality,
     apply_tier_weights,
     apply_noise_weights,
@@ -89,6 +90,17 @@ __all__ = [
     "EXAMPLE_PATH_PATTERNS",
     "parse_tier_spec",
 ]
+
+# Centrality parameters that match rank_symbols' tuned values (WI-dohaf).
+# Used by select_by_coverage, select_by_connectivity (centrality-is-None
+# branch), and format_tiered_behavior_map's post-selection victim-removal
+# tiebreaker. Keep in sync with the call in ranking.rank_symbols.
+_RANK_CENTRALITY_KWARGS = {
+    "hub_threshold": 100,
+    "within_file_weight": 0.3,
+    "max_per_file_in": 5,
+    "edge_type_weights": DEFAULT_EDGE_TYPE_WEIGHTS,
+}
 
 # Edge types that represent cross-cutting concerns (linker-produced edges that
 # connect nodes across language, service, or abstraction boundaries).  These are
@@ -611,12 +623,13 @@ def select_by_connectivity(
     # Build adjacency lists
     outgoing, incoming = _build_adjacency_list(edges)
 
-    # Compute centrality if not provided. Apply the same dampener stack
+    # Compute centrality if not provided. Pass rank_symbols' tuned
+    # parameters (WI-dohaf), then apply the same dampener stack
     # rank_symbols uses (WI-lidum). Order mirrors ranking.py: tier → noise
     # → utility → common-method → sibling-impl → trivial-sink → generated
     # → file-kind. When the caller supplies centrality, it is trusted as-is.
     if centrality is None:
-        centrality = compute_centrality(symbols, edges)
+        centrality = compute_centrality(symbols, edges, **_RANK_CENTRALITY_KWARGS)
         centrality = apply_tier_weights(centrality, symbols)
         centrality = apply_noise_weights(centrality, symbols)
         centrality = apply_utility_symbol_weights(centrality, symbols)
@@ -788,10 +801,11 @@ def select_by_coverage(
             config=config,
         )
 
-    # Compute centrality, then apply the same dampener stack rank_symbols
-    # uses (WI-lidum). Order mirrors ranking.py: tier → noise → utility →
-    # common-method → sibling-impl → trivial-sink → generated → file-kind.
-    raw_centrality = compute_centrality(symbols, edges)
+    # Compute centrality with rank_symbols' tuned parameters (WI-dohaf),
+    # then apply the same dampener stack rank_symbols uses (WI-lidum).
+    # Order mirrors ranking.py: tier → noise → utility → common-method →
+    # sibling-impl → trivial-sink → generated → file-kind.
+    raw_centrality = compute_centrality(symbols, edges, **_RANK_CENTRALITY_KWARGS)
 
     if config.first_party_priority:
         centrality = apply_tier_weights(raw_centrality, symbols)
@@ -1419,8 +1433,12 @@ def format_tiered_behavior_map(
     actual_tokens = estimate_behavior_map_tokens(tiered_map)
 
     if actual_tokens > target_tokens and len(included_symbols) > 1:
-        # Compute centrality for removal ordering
-        raw_centrality = compute_centrality(symbols, edges)
+        # Compute centrality for removal ordering. Use rank_symbols' tuned
+        # parameters (WI-dohaf) so victim selection reflects the same
+        # graph-structural dampening as the upstream connectivity selection.
+        raw_centrality = compute_centrality(
+            symbols, edges, **_RANK_CENTRALITY_KWARGS,
+        )
         centrality = apply_tier_weights(raw_centrality, symbols)
 
         while actual_tokens > target_tokens and len(included_symbols) > 1:

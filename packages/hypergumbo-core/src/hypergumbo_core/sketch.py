@@ -37,6 +37,7 @@ from .ir import Symbol, Edge
 from .entrypoints import detect_entrypoints, Entrypoint, EntrypointKind
 from .datamodels import detect_datamodels, DataModel
 from .ranking import (
+    DEFAULT_EDGE_TYPE_WEIGHTS,
     compute_centrality,
     apply_tier_weights,
     apply_noise_weights,
@@ -5529,8 +5530,17 @@ def _format_symbols(
     if not key_symbols:
         return ""
 
-    # Compute centrality scores using only production edges
-    raw_centrality = compute_centrality(key_symbols, production_edges)
+    # Compute centrality scores using only production edges. Pass the same
+    # tuned parameters rank_symbols uses (WI-dohaf): hub_threshold=100
+    # saturates infrastructure hubs; within_file_weight=0.3 dampens local-
+    # variable inflation; max_per_file_in=5 caps per-source-file in-degree
+    # contribution; edge_type_weights makes import edges count less than
+    # call edges.
+    raw_centrality = compute_centrality(
+        key_symbols, production_edges,
+        hub_threshold=100, within_file_weight=0.3, max_per_file_in=5,
+        edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS,
+    )
 
     # Apply the same dampener stack rank_symbols uses (WI-lidum). Order
     # mirrors ranking.py: tier → noise → utility → common-method →

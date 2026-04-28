@@ -493,6 +493,63 @@ class TestSelectByCoverage:
             f"file-kind suppression; got included={included_ids}"
         )
 
+    def test_centrality_params_match_rank_symbols(self):
+        """select_by_coverage's compute_centrality call passes rank_symbols'
+        tuned parameters (WI-dohaf): hub_threshold=100, within_file_weight=0.3,
+        max_per_file_in=5, edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS.
+
+        Tests max_per_file_in=5: target_A gets 30 callers all from the same
+        file (capped to 5), target_B gets 6 callers from 6 distinct files
+        (uncapped, total 6). Without the parameter, A wins on raw in-degree;
+        with the parameter, B wins.
+        """
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        target_a = Symbol(
+            id="target_a", name="hot_helper", kind="function", language="python",
+            path="src/helper.py", span=long_span,
+        )
+        target_a.supply_chain_tier = 1
+        target_b = Symbol(
+            id="target_b", name="distributed_callee", kind="function",
+            language="python", path="src/callee.py", span=long_span,
+        )
+        target_b.supply_chain_tier = 1
+        a_callers = []
+        for i in range(30):
+            c = Symbol(
+                id=f"a_caller{i}", name=f"call_a_{i}", kind="function",
+                language="python", path="src/single_caller.py",
+                span=long_span,
+            )
+            c.supply_chain_tier = 1
+            a_callers.append(c)
+        b_callers = []
+        for i in range(6):
+            c = Symbol(
+                id=f"b_caller{i}", name=f"call_b_{i}", kind="function",
+                language="python", path=f"src/file_b_{i}.py",
+                span=long_span,
+            )
+            c.supply_chain_tier = 1
+            b_callers.append(c)
+        edges = [
+            make_edge(c.id, "target_a") for c in a_callers
+        ] + [
+            make_edge(c.id, "target_b") for c in b_callers
+        ]
+        config = CompactConfig(
+            language_proportional=False, max_symbols=1, min_symbols=1,
+            target_coverage=0.0,
+        )
+        result = select_by_coverage(
+            [target_a, target_b] + a_callers + b_callers, edges, config,
+        )
+        included_ids = {s.id for s in result.included.symbols}
+        assert "target_b" in included_ids and "target_a" not in included_ids, (
+            "Expected distributed_callee to outrank hot_helper after "
+            f"max_per_file_in=5 capping; got included={included_ids}"
+        )
+
     def test_noise_dampener_demotes_migrations(self):
         """select_by_coverage applies apply_noise_weights (WI-lidum).
 
@@ -2282,6 +2339,60 @@ class TestSelectByConnectivityDampening:
         included_ids = {s.id for s in result.included.symbols}
         assert "domain" in included_ids and "migration" not in included_ids, (
             f"Expected DomainModel; got included={included_ids}"
+        )
+
+    def test_centrality_params_match_rank_symbols(self):
+        """select_by_connectivity's internal compute_centrality passes
+        rank_symbols' tuned parameters (WI-dohaf): hub_threshold=100,
+        within_file_weight=0.3, max_per_file_in=5,
+        edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS.
+
+        Tests max_per_file_in=5 effect on the empty-seeds seed pick.
+        """
+        from hypergumbo_core.compact import select_by_connectivity
+
+        long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
+        target_a = Symbol(
+            id="target_a", name="hot_helper", kind="function", language="python",
+            path="src/helper.py", span=long_span,
+        )
+        target_a.supply_chain_tier = 1
+        target_b = Symbol(
+            id="target_b", name="distributed_callee", kind="function",
+            language="python", path="src/callee.py", span=long_span,
+        )
+        target_b.supply_chain_tier = 1
+        a_callers = []
+        for i in range(30):
+            c = Symbol(
+                id=f"a_caller{i}", name=f"call_a_{i}", kind="function",
+                language="python", path="src/single_caller.py",
+                span=long_span,
+            )
+            c.supply_chain_tier = 1
+            a_callers.append(c)
+        b_callers = []
+        for i in range(6):
+            c = Symbol(
+                id=f"b_caller{i}", name=f"call_b_{i}", kind="function",
+                language="python", path=f"src/file_b_{i}.py",
+                span=long_span,
+            )
+            c.supply_chain_tier = 1
+            b_callers.append(c)
+        edges = [
+            make_edge(c.id, "target_a") for c in a_callers
+        ] + [
+            make_edge(c.id, "target_b") for c in b_callers
+        ]
+        result = select_by_connectivity(
+            [target_a, target_b] + a_callers + b_callers, edges,
+            seed_ids=set(), max_additional=0,
+        )
+        included_ids = {s.id for s in result.included.symbols}
+        assert "target_b" in included_ids and "target_a" not in included_ids, (
+            "Expected distributed_callee as seed pick after max_per_file_in=5 "
+            f"capping; got included={included_ids}"
         )
 
     def test_tier_dampener_applied_to_internal_centrality(self):
