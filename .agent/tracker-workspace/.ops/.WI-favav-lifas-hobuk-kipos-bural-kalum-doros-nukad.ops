@@ -1,0 +1,43 @@
+- op: create  # 79e9
+  at: '2026-04-29T05:14:19Z'  # 79e9
+  by: agent  # 79e9
+  actor: jgstern_agent  # 79e9
+  clock: 1  # 79e9
+  nonce: '79e9'  # 79e9
+  data:  # 79e9
+    kind: work_item  # 79e9
+    title: "bakeoff-{broad,deep} and dead-code-prospector-run.py: --pool should recurse into collection directories"  # 79e9
+    status: todo_soft  # 79e9
+    priority: 3  # 79e9
+    parent:  # 79e9
+    tags:  # 79e9
+    - bakeoff_infrastructure  # 79e9
+    - developer_experience  # 79e9
+    isbefore: []  # 79e9
+    duplicate_of: []  # 79e9
+    not_duplicate_of: []  # 79e9
+    pr_ref:  # 79e9
+    description: "`~/ALL_REPOS/` is structured as collections-of-repos: most top-level entries (`whole_bunch_of_repos`, `repos`, `special_repos`, `plazaflow_*`, `examples`, `repos_Apr12_2026`, `curriculum_repos`, `optattest_repos`) are themselves directories of repos, and several are symlinks. The pool walkers in `scripts/bakeoff-deep` (lines 1649, 1687), `scripts/bakeoff-broad` (analogous), and `scripts/dead-code-prospector-run.py` (line 656 default) only enumerate one level deep, so passing `--pool ~/ALL_REPOS` with auto-selection (`cohort --count`) silently misclassifies the curated sub-collections as single mega-repos: `get_dir_size` aggregates the whole collection, `detect_languages` mixes everything together, and one bogus mega-'repo' lands in the cohort. Symlinks themselves are fine — `os.scandir`/`os.path.isdir` follow them by default — the missing capability is recursion into collection directories.\n\n## Fix\n\nAdd bounded recursion (depth=1) to the pool walkers when a top-level entry doesn't look like a single repo. Heuristic for 'this is a repo' vs 'this is a collection': has a `.git/` directory OR has source-shaped files at its top level (heuristic same as elsewhere in the codebase — import from canonical helpers rather than hand-rolling). When the entry doesn't match the repo heuristic, descend one level and treat each child as a candidate. Cache the recursion result on session init so the per-cohort cost is paid once.\n\n## Touch points\n\n- `scripts/bakeoff-deep`: cohort auto-selection at line 1687 (`os.scandir(pool_path)`); also adjust the explicit-repos resolution at line 1649 if necessary so explicit names without a collection prefix still work.\n- `scripts/bakeoff-broad`: same shape as bakeoff-deep.\n- `scripts/dead-code-prospector-run.py`: change default pool from `~/ALL_REPOS/whole_bunch_of_repos` to `~/ALL_REPOS` once recursion lands; built-in `_DEFAULT_REPOS` names should resolve transparently.\n- Doc updates after script changes: `.agent/agent_playbooks_protocols_sops_skills/bakeoff-artifacts-guide.md`, `.agent/agent_playbooks_protocols_sops_skills/bakeoff-broad-priorities.md`, `.agent/agent_playbooks_protocols_sops_skills/bakeoff-deep-priorities.md` — replace `~/whole_bunch_of_repos` references with `~/ALL_REPOS`.\n\n## Why now\n\nConsumed by the directed-UAT-bakeoff section of `.agent/agent_playbooks_protocols_sops_skills/process-validation-queue-with-bakeoffs-and-uat.md`, which references `--pool ~/ALL_REPOS` as canonical. Until this fix lands, the playbook's auto-selection guidance has a foot-gun that only the explicit-repos path avoids. Surfaced during the playbook restructuring conversation 2026-04-29."  # 79e9
+    fields: {}  # 79e9
+- op: discuss  # 07c2
+  at: '2026-04-29T07:06:23Z'  # 07c2
+  by: agent  # 07c2
+  actor: jgstern_agent  # 07c2
+  clock: 2  # 07c2
+  nonce: 07c2  # 07c2
+  message: "## Pre-commit hook self-match (follow-up landed in c1c727307)\n\nDuring the WI-favav commit/auto-pr flow, the .githooks/pre-commit bakeoff-running detection at line 47 fired phantom 'bakeoff is running' blocks because pgrep -f matched bash subshells whose argv merely *mentioned* the literal substring scripts/bakeoff (e.g., 'git add scripts/bakeoff-broad scripts/bakeoff-deep' or a heredoc commit message naming the scripts). The character-class trick [s]cripts/bakeoff prevents pgrep from matching its own command but does not suppress matches against unrelated processes that legitimately contain the substring in their cmdline.\n\nWorkaround used during the WI-favav commit: write the commit message to a file (-F instead of -m), and stage in a separate command from the commit, so no single bash subshell argv contains the literal script path.\n\nPermanent fix: tighten the detection to a two-stage check. Stage 1: pgrep -f 'bakeoff-(broad|deep)' for candidates (same broad gate). Stage 2: per-PID iterate /proc/<pid>/cmdline NUL-delimited and only count the process if some argv element matches the path-shape regex ^/?([^[:space:]/]+/)*bakeoff-(broad|deep)$. The regex requires no whitespace and a path-component-shaped prefix, so a bash -c script string containing the substring (one argv element with embedded spaces) is rejected, while the actual python3 /path/to/scripts/bakeoff-broad shape (the kernel's argv after the #!/usr/bin/env python3 shebang resolves) matches at argv[1].\n\nVerified against three scenarios:\n- Real bakeoff invocation: detected.\n- Decoy with substring in -c script: rejected.\n- Original git-add-style false positive: rejected.\n\nAlso captures the kernel-argv quirk: with #!/usr/bin/env python3, argv[0] is the interpreter (python3), and the script path lives at argv[1]. Hence the loop checks every argv element rather than only argv[0]."  # 07c2
+- op: update  # fea9
+  at: '2026-04-29T07:06:36Z'  # fea9
+  by: agent  # fea9
+  actor: jgstern_agent  # fea9
+  clock: 3  # fea9
+  nonce: fea9  # fea9
+  set:  # fea9
+    status: done  # fea9
+- op: discuss  # 5700
+  at: '2026-04-29T07:06:36Z'  # 5700
+  by: agent  # 5700
+  actor: jgstern_agent  # 5700
+  clock: 4  # 5700
+  nonce: '5700'  # 5700
+  message: "Pool-recursion fix landed in PR #3442 (commit b6ba05735, merged 2026-04-29). bakeoff-{broad,deep} and dead-code-prospector-run.py now accept --pool ~/ALL_REPOS, recursing one or two levels into collection directories with realpath-based dedup. Companion pre-commit-hook-self-match fix landed in PR #3443 (commit c1c727307, merged 2026-04-29) — see prior discussion entry for details. Three priority/artifacts docs updated to reference ~/ALL_REPOS."  # 5700

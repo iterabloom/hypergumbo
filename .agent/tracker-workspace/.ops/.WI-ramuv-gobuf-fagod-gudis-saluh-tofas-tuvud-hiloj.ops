@@ -74,3 +74,10 @@
   clock: 8  # 15aa
   nonce: 15aa  # 15aa
   message: "Bakeoff validation: MOVED (cohort cohort-001/iter-001). Plurality verdict across repos: moved=5 no_move=0 inconclusive=0. Evidence: airflow=moved: 4743 kind=file Symbols; 58635 imports edges; canonical <external>:file:file count=0; alertmanager=moved: 270 kind=file Symbols; 2785 imports edges; canonical <external>:file:file count=0; chatwoot=moved: 95 kind=file Symbols; 6584 imports edges; canonical <external>:file:file count=1; +2 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 15aa
+- op: discuss  # 1813
+  at: '2026-04-29T00:09:37Z'  # 1813
+  by: agent  # 1813
+  actor: jgstern_agent  # 1813
+  clock: 9  # 1813
+  nonce: '1813'  # 1813
+  message: "Cross-reference: see the 2026-04-28 backfill discussion entry on WI-fozoh-bahos for the original 2026-04-24 root-cause drill-down — it captured the make_file_id emission-site enumeration (14 analyzers + linkers), the per-language mis-tiering breakdown (2,331 Py + 24 TS + 1 JS file-id placeholders mis-tiered as externals on hypergumbo self-analysis), and the three-candidate framing (a/b/c) that produced this item's Plan A vs Plan B carve-out. The drill-down also flagged WI-diruj's 9 markdown-doc-link orphans as sharing the same downstream chokepoint."  # 1813
