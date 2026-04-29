@@ -51,6 +51,29 @@ def test_message_queue_pattern_in_python_comment_is_not_emitted(tmp_path: Path) 
     )
 
 
+def test_pattern_in_module_docstring_after_spdx_header_is_not_emitted(
+    tmp_path: Path,
+) -> None:
+    # Regression for the leading-comment-displaces-docstring bug found via
+    # self-analysis dogfooding: every file in this repo starts with an SPDX
+    # comment, and tree-sitter Python lists comments as named children, so
+    # the original "first named child" rule rejected the actual docstring.
+    body = (
+        "# SPDX-License-Identifier: AGPL-3.0-or-later\n"
+        '"""Linker module documentation.\n\n'
+        "We detect these patterns:\n"
+        "- producer.send('topic', msg)\n"
+        "- consumer.subscribe(['topic'])\n"
+        '"""\n'
+        "x = 1\n"
+    )
+    _write(tmp_path / "lib.py", body)
+    result = link_message_queues(tmp_path)
+    assert all(
+        s.path != str(tmp_path / "lib.py") for s in result.symbols
+    ), [s for s in result.symbols if s.path == str(tmp_path / "lib.py")]
+
+
 def test_message_queue_real_pattern_in_code_still_detected(tmp_path: Path) -> None:
     body = (
         "import kafka\n"

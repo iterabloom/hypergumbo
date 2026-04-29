@@ -142,9 +142,23 @@ def _collect_mask_ranges(
         if language == "python" and ntype == "string":
             parent = node.parent
             if parent is not None and parent.type in _PYTHON_BLOCK_PARENTS:
-                first_named = parent.named_child(0)
-                if first_named is not None and first_named.id == node.id:
-                    ranges.append((node.start_byte, node.end_byte))
+                # Tree-sitter Python lists comments as named children,
+                # so a leading SPDX/license header (the convention in this
+                # repo) would otherwise displace the docstring out of the
+                # "first named child" slot. Skip leading comments when
+                # locating the docstring position.
+                matched = False
+                for i in range(parent.named_child_count):
+                    sibling = parent.named_child(i)
+                    if sibling is None:  # pragma: no cover - defensive
+                        continue
+                    if sibling.type in _DOC_COMMENT_TYPES:
+                        continue
+                    if sibling.id == node.id:
+                        ranges.append((node.start_byte, node.end_byte))
+                        matched = True
+                    break
+                if matched:
                     continue
         if mask_string_literals_too and ntype == "string":
             ranges.append((node.start_byte, node.end_byte))

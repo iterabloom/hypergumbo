@@ -69,6 +69,46 @@ def test_python_non_first_string_is_not_treated_as_docstring():
     assert _has_pattern(out, "producer.send")
 
 
+def test_python_module_docstring_after_spdx_comment_is_masked():
+    # Tree-sitter Python lists comments as named children, so a leading
+    # SPDX/license header would otherwise displace the docstring out of
+    # the "first named child" position. The rule must skip leading
+    # comments — every file in this repo starts this way.
+    src = (
+        "# SPDX-License-Identifier: AGPL-3.0-or-later\n"
+        '"""Module that documents producer.send(\'topic\') in prose."""\n'
+        "x = 1\n"
+    )
+    out = mask_doc_regions(src, "python")
+    assert not _has_pattern(out, "producer.send")
+    assert _has_pattern(out, "x = 1")
+
+
+def test_python_module_docstring_after_multiple_leading_comments_is_masked():
+    src = (
+        "# SPDX-License-Identifier: AGPL-3.0-or-later\n"
+        "# Copyright 2026 Iterabloom\n"
+        "# Author: nobody\n"
+        '"""Calls consumer.subscribe([\'topic\']) at startup."""\n'
+        "y = 2\n"
+    )
+    out = mask_doc_regions(src, "python")
+    assert not _has_pattern(out, "consumer.subscribe")
+    assert _has_pattern(out, "y = 2")
+
+
+def test_python_string_after_leading_comment_and_statement_is_not_docstring():
+    # If a real statement appears before the string, the string is no
+    # longer a positional docstring even with a leading comment.
+    src = (
+        "# header\n"
+        "x = 1\n"
+        "\"producer.send('y')\"\n"
+    )
+    out = mask_doc_regions(src, "python")
+    assert _has_pattern(out, "producer.send")
+
+
 def test_python_comment_is_masked():
     src = "x = 1  # producer.send('topic')\n"
     out = mask_doc_regions(src, "python")
