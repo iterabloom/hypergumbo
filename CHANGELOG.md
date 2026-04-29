@@ -12,6 +12,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **`hypergumbo routes` empty-result hint**: when no HTTP routes are found, the command now scans the behavior map for related endpoint-shaped node kinds (`websocket_endpoint`, `graphql_resolver`, `db_query`, `event_publisher`, `event_subscriber`, `mq_publisher`, `mq_subscriber`, `http_client`, `subprocess_call`) and prints their counts, plus a pointer to `hypergumbo run` JSON output and `hypergumbo explain <name>` for inspection. Existing single-line "No API routes found" message is preserved exactly when no related kinds are present (back-compat for any consumer that greps for it).
+
 - **Starlette route extraction**: HTTP `Route("/path", handler, methods=[...])` and `WebSocketRoute("/ws", handler)` constructor calls from `starlette.routing` are now detected and emitted as `kind="route"` symbols. Matching is **import-scoped** — only `Route` / `WebSocketRoute` names that resolve to imports from `starlette.routing` are matched, avoiding false positives from any other `Route` class a repo defines locally. Handles aliased imports (`from starlette.routing import Route as R`). WebSocketRoute synthesizes `methods=["WS"]`. New `frameworks/starlette.yaml` attaches `concept=route` to handler functions when the project's manifest declares `starlette`. Validated on hypergumbo's own tracker package's `serve.py`: 0 → 8 route nodes (7 HTTP + 1 WebSocket).
 
 ### Performance

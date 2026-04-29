@@ -1582,6 +1582,42 @@ def cmd_search(args: argparse.Namespace) -> int:
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
 
+# Endpoint-shaped node kinds that aren't HTTP routes but live in the same
+# "entrypoint to the codebase" mental space. Used by ``cmd_routes`` to hint
+# at related kinds when the routes list is empty — without this, a repo with
+# 28 websocket_endpoint and 63 mq_subscriber nodes would print "No API routes
+# found" with no signal that any endpoints were detected at all. WI-tidip.
+_RELATED_ENDPOINT_KINDS: tuple[str, ...] = (
+    "websocket_endpoint",
+    "graphql_resolver",
+    "db_query",
+    "event_publisher",
+    "event_subscriber",
+    "mq_publisher",
+    "mq_subscriber",
+    "http_client",
+    "subprocess_call",
+)
+
+
+def _count_related_endpoint_kinds(
+    nodes: list[dict],
+) -> list[tuple[str, int]]:
+    """Count nodes by kind for the endpoint-shaped fallback hint.
+
+    Returns a list of ``(kind, count)`` tuples in the canonical order
+    declared in ``_RELATED_ENDPOINT_KINDS``, omitting kinds with zero
+    matches. Returns an empty list when no related nodes are present so
+    callers can leave the existing single-line message unchanged.
+    """
+    counts: dict[str, int] = dict.fromkeys(_RELATED_ENDPOINT_KINDS, 0)
+    for node in nodes:
+        kind = node.get("kind")
+        if kind in counts:
+            counts[kind] += 1
+    return [(k, c) for k in _RELATED_ENDPOINT_KINDS if (c := counts[k]) > 0]
+
+
 def cmd_routes(args: argparse.Namespace) -> int:
     """Display API routes/endpoints from the behavior map."""
     repo_root = Path(args.path).resolve()
@@ -1670,6 +1706,17 @@ def cmd_routes(args: argparse.Namespace) -> int:
 
     if not routes:
         print("No API routes found in the behavior map.")
+        related_counts = _count_related_endpoint_kinds(nodes)
+        if related_counts:
+            print()
+            print("The behavior map contains other endpoint-shaped symbols:")
+            for kind, count in related_counts:
+                print(f"  - {count} {kind} node(s)")
+            print()
+            print(
+                "To inspect them, view the JSON output (`hypergumbo run`) "
+                "or use `hypergumbo explain <name>`."
+            )
         cached_set = {input_path} if was_cached else set()
         artifacts = generated_files + [input_path] if not was_cached else [input_path]
         _print_output_summary(

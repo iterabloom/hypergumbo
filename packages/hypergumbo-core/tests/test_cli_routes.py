@@ -157,6 +157,84 @@ def test_cmd_routes_no_routes_found(tmp_path: Path, capsys) -> None:
 
     out, _ = capsys.readouterr()
     assert "No API routes" in out
+    # No related endpoint kinds present → no hint emitted (back-compat).
+    assert "endpoint-shaped symbols" not in out
+
+
+def test_cmd_routes_empty_emits_hint_when_related_kinds_present(
+    tmp_path: Path, capsys
+) -> None:
+    """When there are no routes but related endpoint-shaped nodes exist,
+    cmd_routes should hint at their kinds and counts."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/ws.py:1-5:ws:websocket_endpoint",
+                "name": "ws",
+                "kind": "websocket_endpoint",
+                "language": "python",
+                "path": "src/ws.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/ws.py:7-10:ws2:websocket_endpoint",
+                "name": "ws2",
+                "kind": "websocket_endpoint",
+                "language": "python",
+                "path": "src/ws.py",
+                "span": {"start_line": 7, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/q.py:1-3:pub:mq_publisher",
+                "name": "pub",
+                "kind": "mq_publisher",
+                "language": "python",
+                "path": "src/q.py",
+                "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+
+    result = cmd_routes(args)
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "No API routes" in out
+    assert "endpoint-shaped symbols" in out
+    assert "2 websocket_endpoint" in out
+    assert "1 mq_publisher" in out
+    # Inspection guidance.
+    assert "hypergumbo explain" in out
+
+
+def test_count_related_endpoint_kinds_returns_canonical_order(tmp_path: Path) -> None:
+    """The helper preserves the declared kind order so output is stable."""
+    from hypergumbo_core.cli import _count_related_endpoint_kinds
+
+    nodes = [
+        {"kind": "mq_publisher"},
+        {"kind": "websocket_endpoint"},
+        {"kind": "function"},  # Not in the related set, ignored.
+        {"kind": "websocket_endpoint"},
+    ]
+    counts = _count_related_endpoint_kinds(nodes)
+    # websocket_endpoint comes before mq_publisher in the canonical tuple.
+    assert counts == [("websocket_endpoint", 2), ("mq_publisher", 1)]
+
+
+def test_count_related_endpoint_kinds_empty_when_no_related(tmp_path: Path) -> None:
+    from hypergumbo_core.cli import _count_related_endpoint_kinds
+
+    assert _count_related_endpoint_kinds([{"kind": "function"}]) == []
+    assert _count_related_endpoint_kinds([]) == []
 
 
 def test_cmd_routes_with_input_file(tmp_path: Path, capsys) -> None:
