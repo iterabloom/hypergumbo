@@ -1,2 +1,6 @@
 # CI artifacts - logs are ignored, manifests are committed
 full-suite.log
+
+# smart-test runtime locks (process-local, never committed)
+.smart-test.lock
+.smart-test.lock.pid
