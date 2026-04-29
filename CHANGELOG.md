@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Performance
+
+- **Cross-linker tree-sitter parse cache**: linkers running on the same file now share a single tree-sitter parse via `LinkerContext.parsed_trees` (key: `(path, language)`). Previously each of the 23 docstring-masking linkers parsed the same file independently — ~18,000 redundant parses per `hypergumbo run` on a 750-Python-file repo. The cache is bound by the dispatch loop through a `contextvars.ContextVar`, so the existing 23 linker call sites need no changes. Trees are populated lazily on the first masker call per `(path, language)` and shared by reference across the priority group's parallel workers (atomic `dict.get`/`__setitem__` under the GIL). Forward-compat for an analyze-pass-driven population step.
+
 ### Fixed
 
 - **Linker docstring/comment false positives**: 23 protocol/framework linkers (`crypto_flow`, `database_query`, `di_resolution`, `event_sourcing`, `graphql`, `graphql_resolver`, `grpc`, `http`, `lua_ffi`, `message_dispatch`, `message_queue`, `napi`, `openapi`, `orm`, `pyffi`, `react_component`, `ruby_ffi`, `subprocess_cli`, `swift_objc`, `tauri_ipc`, `wasm_bindgen`, `websocket`, `yjs_crdt`) ran their regex pattern detectors directly against raw file bytes, matching their own module docstrings that documented the very patterns they detect. A new shared masker `linkers/_text_filters.mask_doc_regions` parses the file with tree-sitter and replaces comment ranges and Python positional docstrings with spaces (newlines preserved for line-number stability) before regex matching. String-literal matches (used by `database_query`, `graphql`, `openapi`) are preserved. Failure modes (missing grammar, parse error, unknown extension) bias to fail-closed — content is returned unchanged so the masker can only remove false positives, never real detections. `annotation_convention` is intentionally exempt because it scans `@hg:` directives inside comments.

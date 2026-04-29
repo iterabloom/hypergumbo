@@ -52,7 +52,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from itertools import groupby
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Iterator
 
 if TYPE_CHECKING:
     from ..ir import AnalysisRun, Edge, Symbol
@@ -95,6 +95,13 @@ class LinkerContext:
     # Framework and language detection results (for linker filtering)
     detected_frameworks: set[str] = field(default_factory=set)
     detected_languages: set[str] = field(default_factory=set)
+
+    # Cross-linker tree-sitter parse cache. Populated lazily by the linker
+    # docstring/comment masker (linkers/_text_filters) so the second linker
+    # to scan a given file reuses the first linker's parse. Forward-compat
+    # entry point for the analyze pass to pre-populate trees.
+    # Key: (absolute_path_str, language). Value: tree_sitter.Tree.
+    parsed_trees: dict[tuple[str, str], Any] = field(default_factory=dict)
 
     # Cached indexes, built lazily
     _symbol_by_id: dict[str, "Symbol"] | None = field(
@@ -485,6 +492,25 @@ def get_all_linkers() -> Iterator[RegisteredLinker]:
         yield linker
 
 
+def _run_linker_with_cache(
+    func: "Callable[[LinkerContext], LinkerResult]",
+    ctx: LinkerContext,
+) -> "LinkerResult":
+    """Invoke ``func(ctx)`` with the parse cache contextvar bound.
+
+    Centralizes the contextvar plumbing so the masker in
+    ``linkers/_text_filters`` can read/write ``ctx.parsed_trees`` without
+    every linker passing the cache explicitly.
+    """
+    from ._text_filters import reset_active_parse_cache, set_active_parse_cache
+
+    token = set_active_parse_cache(ctx.parsed_trees)
+    try:
+        return func(ctx)
+    finally:
+        reset_active_parse_cache(token)
+
+
 def run_linker(
     name: str,
     ctx: LinkerContext,
@@ -504,7 +530,7 @@ def run_linker(
     linker = _LINKER_REGISTRY.get(name)
     if linker is None:
         raise KeyError(f"Unknown linker: {name}")
-    return linker.func(ctx)
+    return _run_linker_with_cache(linker.func, ctx)
 
 
 def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
@@ -548,7 +574,9 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
     for _priority, group_iter in groupby(active_linkers, key=lambda lnk: lnk.priority):
         group = list(group_iter)
 
-        # Snapshot accumulated state for this priority group
+        # Snapshot accumulated state for this priority group. The
+        # parsed_trees dict is shared by reference across all per-linker
+        # contexts so trees parsed by one linker are reused by the next.
         running_ctx = LinkerContext(
             repo_root=ctx.repo_root,
             symbols=accum_symbols,
@@ -556,12 +584,13 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
             captured_symbols=ctx.captured_symbols,
             detected_frameworks=ctx.detected_frameworks,
             detected_languages=ctx.detected_languages,
+            parsed_trees=ctx.parsed_trees,
         )
 
         if len(group) == 1:
             # Single linker — run directly (avoids thread pool overhead)
             linker = group[0]
-            result = linker.func(running_ctx)
+            result = _run_linker_with_cache(linker.func, running_ctx)
             results.append((linker.name, result))
             all_linker_symbols.extend(result.symbols)
             if result.edges:
@@ -572,6 +601,8 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
             # Multiple linkers at same priority — run in parallel.
             # Each gets its own LinkerContext to avoid index-building
             # race conditions (lazy _ensure_indexes is not thread-safe).
+            # parsed_trees is shared (dict.get/__setitem__ are atomic in
+            # CPython, and the cache is content-stable per file).
             worker_count = min(len(group), os.cpu_count() or 1)
             with ThreadPoolExecutor(max_workers=worker_count) as pool:
                 future_to_linker = {}
@@ -583,8 +614,11 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
                         captured_symbols=ctx.captured_symbols,
                         detected_frameworks=ctx.detected_frameworks,
                         detected_languages=ctx.detected_languages,
+                        parsed_trees=ctx.parsed_trees,
                     )
-                    future_to_linker[pool.submit(linker.func, lctx)] = linker
+                    future_to_linker[
+                        pool.submit(_run_linker_with_cache, linker.func, lctx)
+                    ] = linker
                 for future in as_completed(future_to_linker):
                     linker = future_to_linker[future]
                     result = future.result()

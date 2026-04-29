@@ -22,12 +22,39 @@ rely on matching inside literals.
 """
 from __future__ import annotations
 
+import contextvars
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+# When set, the masker reads/writes parsed trees through this dict instead of
+# re-parsing. Populated by ``run_all_linkers`` so multiple linkers running on
+# the same file share one parse. ``LinkerContext.parsed_trees`` is the same
+# object this var points at — see ``linkers/registry.py``.
+#
+# Key: ``(absolute_path_str, language)``. Value: ``tree_sitter.Tree``.
+_active_parse_cache: contextvars.ContextVar[
+    Optional[dict[tuple[str, str], Any]]
+] = contextvars.ContextVar("_active_parse_cache", default=None)
+
+
+def set_active_parse_cache(
+    cache: Optional[dict[tuple[str, str], Any]],
+) -> contextvars.Token:
+    """Bind ``cache`` as the active parse cache for masker calls in scope.
+
+    Returns the contextvar token; call ``reset_active_parse_cache(token)``
+    to restore the previous binding.
+    """
+    return _active_parse_cache.set(cache)
+
+
+def reset_active_parse_cache(token: contextvars.Token) -> None:
+    """Restore the previous parse cache binding."""
+    _active_parse_cache.reset(token)
 
 # Extension → tree-sitter-language-pack language name. Covers extensions that
 # appear in the 24 linkers' file-discovery patterns. Unknown extensions return
@@ -132,6 +159,7 @@ def mask_doc_regions(
     language: Optional[str],
     *,
     mask_string_literals_too: bool = False,
+    cache_key: Optional[tuple[str, str]] = None,
 ) -> str:
     """Return ``content`` with comments (and Python docstrings) masked to spaces.
 
@@ -142,6 +170,10 @@ def mask_doc_regions(
             returns the input unchanged (fail-closed).
         mask_string_literals_too: When True, every ``string`` node is masked.
             Default False to preserve linkers that match inside literals.
+        cache_key: Optional ``(path, language)`` key for the active parse cache
+            (see ``set_active_parse_cache``). When provided, the masker reuses
+            an already-parsed tree if one is registered, and stores its own
+            parse result for later linkers in the same run.
 
     The mask never reduces detections. All failure modes return the original
     content; only successfully-identified comment/docstring ranges are removed.
@@ -156,11 +188,19 @@ def mask_doc_regions(
                 language,
             )
         return content
-    try:
-        source_bytes = content.encode("utf-8", errors="replace")
-        tree = parser.parse(source_bytes)
-    except Exception:  # pragma: no cover - defensive; parse rarely raises
-        return content
+
+    source_bytes = content.encode("utf-8", errors="replace")
+    cache = _active_parse_cache.get()
+    tree = None
+    if cache is not None and cache_key is not None:
+        tree = cache.get(cache_key)
+    if tree is None:
+        try:
+            tree = parser.parse(source_bytes)
+        except Exception:  # pragma: no cover - defensive; parse rarely raises
+            return content
+        if cache is not None and cache_key is not None:
+            cache[cache_key] = tree
 
     ranges = _collect_mask_ranges(tree.root_node, language, mask_string_literals_too)
     if not ranges:
@@ -187,9 +227,12 @@ def read_masked_source(
     """Read ``file_path`` and return its content with doc regions masked.
 
     Drop-in replacement for ``file_path.read_text(...)`` in linkers. When
-    ``language`` is omitted, it's inferred from the file extension.
+    ``language`` is omitted, it's inferred from the file extension. Reuses
+    a previously-parsed tree from the active parse cache if one is available,
+    keyed by ``(str(file_path), language)``.
     """
     content = file_path.read_text(encoding=encoding, errors=errors)
     if language is None:
         language = language_from_path(file_path)
-    return mask_doc_regions(content, language)
+    cache_key = (str(file_path), language) if language else None
+    return mask_doc_regions(content, language, cache_key=cache_key)
