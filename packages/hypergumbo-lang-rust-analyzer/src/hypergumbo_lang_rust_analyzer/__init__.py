@@ -27,7 +27,7 @@ from hypergumbo_lang_rust_analyzer.translate import (
     translate_scip_to_hg,
 )
 
-__version__ = "2.7.0"
+__version__ = "3.0.0"
 
 # Module paths for analyzer discovery via entry-points (ADR-0012 Step 1).
 # Importing the listed module triggers the @register_analyzer decorator.

@@ -7,6 +7,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-29
+
 ### Added
 
 - **`tracker tags` enumeration and lifecycle subcommand**: catalog-backed tag management. `tracker tags` lists every tag in use; `--count` shows `tag<TAB>count<TAB>status` rows sorted by count desc then alpha; `--json` emits per-tag records (count, status, description, created_on, last_modified, last_used, deprecated, in_favor_of). Three editorial verbs: `tags rename OLD NEW` rewrites every item's tags list (idempotent, de-duplicates when both names coexist); `tags describe TAG [TEXT]` round-trips a single-line description; `tags deprecate TAG [--in-favor-of NEW]` flips the deprecation flag and records the canonical replacement. External statuses (`active` / `inactive` / `deprecated`) are computed at read time from `(count, deprecated_flag)`, so write paths never have to keep a status field in sync. `tracker add --tag <deprecated>` / `update --add-tag <deprecated>` emit a non-blocking stderr warning that mentions `in_favor_of`. Catalog file is `.agent/tracker/tag_catalog.yaml`, populated lazily on first invocation by walking the op log to backfill `created_on` / `last_used` for every tag currently in use.
