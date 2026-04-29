@@ -1,0 +1,21 @@
+- op: create  # 67e3
+  at: '2026-04-29T07:43:09Z'  # 67e3
+  by: agent  # 67e3
+  actor: jgstern_agent  # 67e3
+  clock: 1  # 67e3
+  nonce: '67e3'  # 67e3
+  data:  # 67e3
+    kind: work_item  # 67e3
+    title: "tag_catalog.yaml: split editorial state from cache state"  # 67e3
+    status: todo_soft  # 67e3
+    priority: 3  # 67e3
+    parent:  # 67e3
+    tags:  # 67e3
+    - developer_experience  # 67e3
+    - tracker  # 67e3
+    isbefore: []  # 67e3
+    duplicate_of: []  # 67e3
+    not_duplicate_of: []  # 67e3
+    pr_ref:  # 67e3
+    description: "WI-lifal added `tracker tags` with a catalog at `.agent/tracker/tag_catalog.yaml` containing two distinct concerns:\n\n- **Cache fields** (derivable from op log): tag set membership, `created_on`, `last_used`, count.\n- **Editorial fields** (only present when a human/agent explicitly sets them): `description`, `deprecated`, `in_favor_of`, `last_modified`.\n\nRight now the file is gitignored (sibling to `tui_preferences.json`) because (a) it's pure cache as long as nobody uses `tags describe` / `tags deprecate`, and (b) committing it would create merge-conflict churn on `last_used` timestamps every time any agent ran the subcommand.\n\nOnce someone actually uses the editorial verbs, that intent needs to persist project-wide — but the current file shape mixes per-user telemetry with project-wide editorial decisions in the same YAML. Two plausible designs:\n\n1. Split into two files: `tag_descriptions.yaml` (committed, editorial fields only) + `tag_catalog.yaml` (gitignored cache).\n2. Keep one file, but write a normalization layer that strips telemetry fields when persisting and recomputes them on read. Then commit the whole thing.\n\nDefer until the first time someone actually invokes `tags describe` or `tags deprecate`. Until then, the gitignored-cache state is correct and stable.\n\nSurfaced 2026-04-29 during release prep for hypergumbo 3.0.0 / tracker 0.5.0 — the catalog showed up as a release-blocking untracked file with all-empty editorial fields."  # 67e3
+    fields: {}  # 67e3
