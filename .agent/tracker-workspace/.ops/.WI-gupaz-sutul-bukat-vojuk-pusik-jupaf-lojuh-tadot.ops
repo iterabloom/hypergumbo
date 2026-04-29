@@ -1,0 +1,20 @@
+- op: create  # f0e3
+  at: '2026-04-29T16:45:05Z'  # f0e3
+  by: agent  # f0e3
+  actor: jgstern_agent  # f0e3
+  clock: 1  # f0e3
+  nonce: f0e3  # f0e3
+  data:  # f0e3
+    kind: work_item  # f0e3
+    title: "hypergumbo routes --include-protocols flag (or separate endpoints command)"  # f0e3
+    status: needs_human_review  # f0e3
+    priority: 4  # f0e3
+    parent:  # f0e3
+    tags:  # f0e3
+    - developer_experience  # f0e3
+    isbefore: []  # f0e3
+    duplicate_of: []  # f0e3
+    not_duplicate_of: []  # f0e3
+    pr_ref:  # f0e3
+    description: "## Proposal\n\nAdd a `--include-protocols` flag to `hypergumbo routes` that, when set, broadens the routes view to also display `kind in {websocket_endpoint, graphql_resolver, mq_publisher, mq_subscriber, event_publisher, event_subscriber, http_client, db_query}` symbols, grouped under a \"Protocol endpoints\" heading after the HTTP routes section.\n\n## Status: needs_human_review\n\nThis is a UX scope-expansion question, not a defect. The current narrow definition of `hypergumbo routes` (HTTP-only) has clarity going for it, and the empty-result hint (sibling `todo_soft` item) covers the worst of the discoverability problem without expanding the command's scope.\n\nThe questions for human triage:\n\n1. **Is the user mental model \"show me everything that looks like an entrypoint to this codebase\" stronger than \"show me HTTP routes specifically\"?** If yes, this flag (or a separate `hypergumbo endpoints` command) is correct. If no, the empty-result hint is sufficient and this can be closed `wont_do`.\n2. **If yes, is `--include-protocols` the right surface?** Alternatives:\n   - Separate `hypergumbo endpoints` command with strictly broader semantics (no flag on `routes`).\n   - Per-protocol flags: `--include-websockets`, `--include-graphql`, etc.\n   - Behavior map view configuration: `hypergumbo run --views routes,endpoints`.\n3. **What's the right grouping in the output?** Single \"Protocol endpoints\" section with all kinds intermixed, or one section per kind?\n\nUntil a user either explicitly asks for this surface or surfaces a workflow where the empty-result hint is insufficient, this item should sit in `needs_human_review`.\n\n## Why filed at all\n\nTwo reasons to keep it in the tracker rather than discard:\n\n1. The investigation that produced the sibling items surfaced this as a real downstream UX choice. If it isn't filed, the rationale and the alternatives above will be lost when the parent items resolve.\n2. If a future bakeoff or user report shows the empty-result hint is insufficient, this is the natural next step — having it pre-articulated saves rediscovery cost.\n\n## Source\n\nSelf-analysis dogfooding session, hypergumbo 3.0.0 @ d5e3941c6, 2026-04-29. Identified during the investigation of gap (3) \"hypergumbo routes ignores detected endpoints.\""  # f0e3
+    fields: {}  # f0e3
