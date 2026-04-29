@@ -27,11 +27,16 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0016](0016-io-boundary-analysis.md) | I/O Boundary Analysis and Security Claim Verification | Accepted | 2026-03-18 |
 | [0017](0017-taint-zone-dataflow.md) | Taint-Zone Dataflow Analysis | Accepted | 2026-03-22 |
 | [0018](0018-transcript-sync-and-playbook-injection.md) | Vendor-Agnostic Transcript Sync and LLM-Driven Playbook Injection | Accepted | 2026-03-29 |
+| [0019](0019-remote-access-transport.md) | Remote Access Transport | Proposed | 2026-03-30 |
+| [0020](0020-tui-screenshot-annotation-and-inline-preview.md) | TUI Screenshot Annotation and Inline Preview | Proposed | 2026-03-30 |
+| [0021](0021-tracker-federation.md) | Tracker Federation | Proposed | 2026-03-30 |
+| [0022](0022-language-profile-registry.md) | Per-Language Configuration Surface and Language Profile Registry | Proposed (exploratory) | 2026-04-10 |
+| [0023](0023-edge-type-relationship-not-endpoints.md) | Edge Type Names the Relationship, Not the Endpoints | Draft | 2026-04-29 |
 
 ## Thematic grouping
 
-**Analysis pipeline:** 0003, 0004, 0005, 0006, 0007, 0012, 0014, 0015, 0016, 0017
+**Analysis pipeline:** 0003, 0004, 0005, 0006, 0007, 0012, 0014, 0015, 0016, 0017, 0022, 0023
 
-**Agent infrastructure and governance:** 0001, 0008, 0009, 0013, 0018
+**Agent infrastructure and governance:** 0001, 0008, 0009, 0013, 0018, 0019, 0020, 0021
 
 **Testing and packaging:** 0002, 0010, 0011
