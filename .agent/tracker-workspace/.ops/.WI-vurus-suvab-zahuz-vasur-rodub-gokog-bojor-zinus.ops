@@ -1,0 +1,20 @@
+- op: create  # 04be
+  at: '2026-04-29T08:26:59Z'  # 04be
+  by: agent  # 04be
+  actor: jgstern_agent  # 04be
+  clock: 1  # 04be
+  nonce: 04be  # 04be
+  data:  # 04be
+    kind: work_item  # 04be
+    title: "prepare-release: dev→main PR push fails silently due to multi-line description"  # 04be
+    status: todo_soft  # 04be
+    priority: 2  # 04be
+    parent:  # 04be
+    tags:  # 04be
+    - developer_experience  # 04be
+    isbefore: []  # 04be
+    duplicate_of: []  # 04be
+    not_duplicate_of: []  # 04be
+    pr_ref:  # 04be
+    description: "**Symptom:** Step 7 of `scripts/prepare-release` (\"Create PR to main\") prints the fallback `✓ PR branch pushed (check Codeberg for PR)` message but no PR is actually created on Codeberg. Every release run hits this; it just looks like a successful prep.\n\n**Root cause:** Step 7 builds a multi-line PR description and passes it via `git push -o description=\"...\"`. Codeberg/Forgejo's pre-receive validation rejects newlines in push options:\n```\nfatal: push options must not have new line characters\n```\nThe push is wrapped in `|| true`, so the error is swallowed. The URL-extraction grep finds no `https://...pulls/N` in the empty output and falls through to the \"(check Codeberg for PR)\" fallback.\n\n**Reproduction:**\n```bash\n# Reproduces the failure\ngit push origin \"dev:refs/for/main/release-X.Y.Z\" \\\n  -o title=\"Release vX.Y.Z\" \\\n  -o description=\"line1\n\nline2\"\n# → fatal: push options must not have new line characters\n```\n\n**Fix sketch (one of):**\n1. Collapse newlines in the description before passing to `-o`: `PR_DESCRIPTION_FLAT=\"${PR_DESCRIPTION//$'\\n'/. }\"` then pass `-o description=\"$PR_DESCRIPTION_FLAT\"`.\n2. Drop the `## Checklist for reviewer` block from the push-time description and instead post it as a PR comment via the Forgejo API after the PR is created (richer, no flattening loss).\n3. Drop `|| true` from the push (so the error is visible) AND check `git push --porcelain` exit status. The current `|| true` masking is what makes the failure invisible.\n\nOption 1 is the smallest change. Option 2 preserves Markdown checkboxes but adds API plumbing.\n\n**Surfaced 2026-04-29** during prepare-release for hypergumbo 3.0.0 / tracker 0.5.0. Manual recovery: `git push origin \"dev:refs/for/main/release-3.0.0\" -o title=\"Release v3.0.0 (tracker 0.5.0)\" -o description=\"<single line>\"` opened PR #3449.\n\n**Related:** the swallowed-error pattern also lives in the URL-extraction logic (lines ~340-356 of `scripts/prepare-release`). Fixing should also remove `|| true` so future regression modes are visible."  # 04be
+    fields: {}  # 04be

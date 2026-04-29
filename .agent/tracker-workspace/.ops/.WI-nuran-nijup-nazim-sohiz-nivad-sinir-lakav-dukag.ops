@@ -1,0 +1,21 @@
+- op: create  # bfcf
+  at: '2026-04-29T16:20:39Z'  # bfcf
+  by: agent  # bfcf
+  actor: jgstern_agent  # bfcf
+  clock: 1  # bfcf
+  nonce: bfcf  # bfcf
+  data:  # bfcf
+    kind: work_item  # bfcf
+    title: "Cross-linker tree-sitter parse cache via LinkerContext.parsed_trees"  # bfcf
+    status: todo_soft  # bfcf
+    priority: 3  # bfcf
+    parent:  # bfcf
+    tags:  # bfcf
+    - analysis_quality  # bfcf
+    - protocol_linkers  # bfcf
+    isbefore: []  # bfcf
+    duplicate_of: []  # bfcf
+    not_duplicate_of: []  # bfcf
+    pr_ref:  # bfcf
+    description: "## Problem\n\nAfter the linker docstring/comment masker lands (parent item), each of 24 linkers calls `mask_doc_regions(content, language)`, which itself parses the file with tree-sitter. On hypergumbo's repo (~750 Python files × 24 linkers) that's ~18,000 redundant parses per `hypergumbo run` — even though the language analyzers in the analyze pass already parsed every one of those files moments earlier and threw the trees away.\n\n## Fix shape\n\nExtend `LinkerContext` with a tree cache populated by the analyze pass:\n\n```python\n@dataclass\nclass LinkerContext:\n    ...\n    parsed_trees: dict[tuple[str, str], \"tree_sitter.Tree\"] = field(default_factory=dict)\n    # key: (path, language). Populated by analyze pass before linkers run.\n```\n\nThe masker (and any future linker that wants AST access) checks `ctx.parsed_trees.get((path, language))` first and falls back to its own parse only if the entry is missing (e.g., when the analyze pass didn't visit the file because no language analyzer claimed it, but a linker's `_find_source_files` did).\n\n## Why follow-up rather than parent\n\nThe parent item's correctness fix doesn't require this. Bundling parse-caching with the masker fix would mix a structural FP correctness concern with a performance optimization, complicate review, and risk a more conservative reviewer pulling out the cache plumbing and letting the FP fix slip.\n\n## Test plan\n\n- Cache hit path: linker calls masker → masker uses cached tree → no new parse → same masked output as the no-cache path.\n- Cache miss path: linker calls masker on a path not visited by analyze → masker parses freshly → same masked output.\n- Stale-cache safety: parse trees are immutable per file content; cache key includes path+language. No invalidation needed within a single `hypergumbo run`.\n- Performance: measure `hypergumbo run .` self-analysis wall-clock before and after; expect 5-15s reduction (~24-fold deduplication of parse work).\n\n## Out of scope\n\nThe cache is per-`hypergumbo run` only. Cross-run persistence (disk cache) is a separate concern. The existing results-cache layer in `~/.cache/hypergumbo/` already handles run-level reuse via fingerprint matching.\n\n## Source\n\nIdentified during fix-shape investigation for the parent linker docstring FP item."  # bfcf
+    fields: {}  # bfcf
