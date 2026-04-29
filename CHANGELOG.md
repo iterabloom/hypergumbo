@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **Starlette route extraction**: HTTP `Route("/path", handler, methods=[...])` and `WebSocketRoute("/ws", handler)` constructor calls from `starlette.routing` are now detected and emitted as `kind="route"` symbols. Matching is **import-scoped** — only `Route` / `WebSocketRoute` names that resolve to imports from `starlette.routing` are matched, avoiding false positives from any other `Route` class a repo defines locally. Handles aliased imports (`from starlette.routing import Route as R`). WebSocketRoute synthesizes `methods=["WS"]`. New `frameworks/starlette.yaml` attaches `concept=route` to handler functions when the project's manifest declares `starlette`. Validated on hypergumbo's own tracker package's `serve.py`: 0 → 8 route nodes (7 HTTP + 1 WebSocket).
+
 ### Performance
 
 - **Cross-linker tree-sitter parse cache**: linkers running on the same file now share a single tree-sitter parse via `LinkerContext.parsed_trees` (key: `(path, language)`). Previously each of the 23 docstring-masking linkers parsed the same file independently — ~18,000 redundant parses per `hypergumbo run` on a 750-Python-file repo. The cache is bound by the dispatch loop through a `contextvars.ContextVar`, so the existing 23 linker call sites need no changes. Trees are populated lazily on the first masker call per `(path, language)` and shared by reference across the priority group's parallel workers (atomic `dict.get`/`__setitem__` under the GIL). Forward-compat for an analyze-pass-driven population step.

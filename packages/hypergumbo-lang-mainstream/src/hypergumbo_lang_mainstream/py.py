@@ -421,6 +421,14 @@ DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
 # argument and URL path(s) as subsequent arguments.
 FLASK_URL_FUNCTIONS = {"add_url_rule", "add_api_route", "add_resource"}
 
+# Starlette routing classes. Unlike Flask's call-based functions,
+# Starlette's Route(...) and WebSocketRoute(...) are bare constructor calls,
+# not method calls on an app or router. We require import-scoped matching
+# (the name must be imported from starlette.routing) to avoid false positives
+# from any other Route class a repo defines locally.
+STARLETTE_ROUTE_FUNCTIONS = {"Route", "WebSocketRoute"}
+_STARLETTE_ROUTING_MODULE = "starlette.routing"
+
 
 def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | dict | None:
     """Convert an AST expression to a Python value representation.
@@ -1354,6 +1362,145 @@ def _extract_flask_usage_contexts(
     return contexts
 
 
+def _extract_starlette_usage_contexts(
+    tree: ast.Module,
+    file_path: str,
+    symbol_by_name: dict[str, Symbol],
+    imports: dict[str, tuple[str, str]] | None = None,
+) -> list[UsageContext]:
+    """Extract UsageContext records for Starlette ``Route`` / ``WebSocketRoute``.
+
+    Starlette routes are constructor calls — ``Route("/path", handler, methods=[...])``
+    and ``WebSocketRoute("/ws", handler)`` — typically passed as a list to a
+    ``Starlette(routes=[...])`` constructor or to ``Mount(...)``. We treat both
+    classes as route-registration points.
+
+    The match is **import-scoped**: we only emit a UsageContext when the bare
+    name (``Route`` / ``WebSocketRoute``) was imported from
+    ``starlette.routing`` in this file. ``Route`` is a common class name and
+    a global match would cause false positives.
+
+    Args:
+        tree: Parsed module AST.
+        file_path: Path to the source file.
+        symbol_by_name: Lookup table for symbols defined in this file.
+        imports: ``{local_name: (module_path, original_name)}`` from
+            ``_collect_module_constants``. When None, no contexts are emitted.
+
+    Returns:
+        UsageContext records with ``position="view_func"`` and metadata
+        ``route_path`` / ``methods`` / ``view_name`` / ``args`` / ``receiver``
+        (the imported class name, e.g., ``"Route"`` or ``"WebSocketRoute"``).
+    """
+    contexts: list[UsageContext] = []
+    if not imports:
+        return contexts
+
+    # Build the set of locally-bound names that resolve to the Starlette
+    # routing classes. Honors aliasing (``from starlette.routing import Route as R``).
+    starlette_names: dict[str, str] = {}  # local_name → original_class_name
+    for local_name, (module_path, original_name) in imports.items():
+        if module_path != _STARLETTE_ROUTING_MODULE:
+            continue
+        if original_name not in STARLETTE_ROUTE_FUNCTIONS:
+            continue
+        starlette_names[local_name] = original_name
+
+    if not starlette_names:
+        return contexts
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Name):
+            continue
+        local_name = node.func.id
+        if local_name not in starlette_names:
+            continue
+        original_name = starlette_names[local_name]
+
+        if not node.args:  # pragma: no cover - constructor with zero args is invalid
+            continue
+
+        # First arg: route path (string literal).
+        first_arg = node.args[0]
+        if not (isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str)):
+            # Skip dynamic patterns; static analysis can't recover the path.
+            continue
+        route_path = first_arg.value
+        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+
+        # Second arg: handler function.
+        view_ref = None
+        view_name = None
+        if len(node.args) >= 2:
+            handler_arg = node.args[1]
+            if isinstance(handler_arg, ast.Name):
+                view_name = handler_arg.id
+                if view_name in symbol_by_name:
+                    view_ref = symbol_by_name[view_name].id
+            elif isinstance(handler_arg, ast.Attribute):
+                view_name = handler_arg.attr
+
+        # Methods: kwarg for Route; synthetic ["WS"] for WebSocketRoute.
+        methods: list[str] | None = None
+        if original_name == "WebSocketRoute":
+            methods = ["WS"]
+        else:
+            for kw in node.keywords:
+                if kw.arg == "methods" and isinstance(kw.value, ast.List):
+                    extracted: list[str] = []
+                    for elt in kw.value.elts:
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                            extracted.append(elt.value.upper())
+                    if extracted:
+                        methods = extracted
+
+        # Build args metadata mirroring Flask's shape.
+        args_values: list[str | int | float | bool | None] = []
+        for arg in node.args:
+            if isinstance(arg, ast.Constant):
+                args_values.append(arg.value)
+            elif isinstance(arg, ast.Name):
+                args_values.append(arg.id)
+            elif isinstance(arg, ast.Attribute):
+                parts: list[str] = []
+                current: ast.expr = arg
+                while isinstance(current, ast.Attribute):
+                    parts.append(current.attr)
+                    current = current.value
+                if isinstance(current, ast.Name):
+                    parts.append(current.id)
+                args_values.append(".".join(reversed(parts)))
+            else:  # pragma: no cover - other expr forms (e.g. lambdas)
+                args_values.append("<expr>")
+
+        span = Span(
+            start_line=node.lineno,
+            end_line=getattr(node, "end_lineno", node.lineno),
+            start_col=getattr(node, "col_offset", 0),
+            end_col=getattr(node, "end_col_offset", 0),
+        )
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=original_name,
+            position="view_func",
+            path=file_path,
+            span=span,
+            symbol_ref=view_ref,
+            metadata={
+                "args": args_values,
+                "route_path": normalized_path,
+                "view_name": view_name,
+                "methods": methods or ["GET"],
+                "receiver": original_name,
+            },
+        )
+        contexts.append(ctx)
+
+    return contexts
+
+
 def _extract_py_decorator_names(node: ast.FunctionDef | ast.ClassDef) -> str:
     """Extract sorted, comma-joined decorator names from an AST node.
 
@@ -2246,6 +2393,11 @@ def _extract_file_analysis(
         repo_root=repo_root,
     )
     usage_contexts.extend(flask_contexts)
+    starlette_contexts = _extract_starlette_usage_contexts(
+        tree, str(py_file), symbol_by_name,
+        imports=route_imports,
+    )
+    usage_contexts.extend(starlette_contexts)
 
     # Create route symbols from Django usage contexts.
     #
@@ -2280,6 +2432,40 @@ def _extract_file_analysis(
             meta=meta,
         )
         symbols.append(symbol)
+
+    # Create route symbols from Starlette Route/WebSocketRoute usage contexts.
+    # Starlette routes are constructor calls, not method calls on app/router,
+    # so emitting kind="route" here mirrors the Django path rather than the
+    # YAML-only path used for Flask add_url_rule / FastAPI add_api_route.
+    for ctx in starlette_contexts:
+        route_path = ctx.metadata.get("route_path", "")
+        view_name = ctx.metadata.get("view_name")
+        methods = ctx.metadata.get("methods") or ["GET"]
+        receiver = ctx.metadata.get("receiver", "Route")
+        # Multiple methods → one route symbol per method, matching the
+        # convention used elsewhere in this codebase.
+        for method in methods:
+            symbol = Symbol(
+                id=_make_symbol_id(
+                    str(py_file), ctx.span.start_line, ctx.span.end_line,
+                    f"{method}:{route_path}", "route",
+                ),
+                name=f"starlette:{view_name or 'unknown'}",
+                kind="route",
+                language="python",
+                path=str(py_file),
+                span=ctx.span,
+                stable_id=make_route_stable_id(method, route_path),
+                meta={
+                    "route_path": route_path,
+                    "http_method": method,
+                    "view_name": view_name,
+                    "handler_ref": ctx.symbol_ref,
+                    "framework": "starlette",
+                    "route_class": receiver,
+                },
+            )
+            symbols.append(symbol)
 
     # Create route symbols from Flask-RESTful add_resource usage contexts.
     # add_resource registers all HTTP methods the Resource class defines,

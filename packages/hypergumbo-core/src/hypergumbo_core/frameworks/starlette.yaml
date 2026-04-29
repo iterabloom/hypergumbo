@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Starlette framework patterns (WI-sulaz)
+#
+# Starlette routes are bare constructor calls — Route("/path", handler, ...)
+# and WebSocketRoute("/ws", handler) — typically passed as a list to a
+# Starlette(routes=[...]) constructor or to Mount(...). The Python analyzer
+# emits UsageContext records for these calls (with import-scoped strict
+# matching against starlette.routing) so this YAML can attach concept=route
+# to handler symbols, complementing the kind="route" symbols emitted directly.
+
+id: starlette
+language: python
+
+patterns:
+  # Route("/path", handler, methods=["GET", "POST"])
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^Route$"
+      position: "^view_func$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.methods"
+
+  # WebSocketRoute("/ws", handler) → method "WS" set synthetically by the extractor
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^WebSocketRoute$"
+      position: "^view_func$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.methods"
+
+linkers:
+  - http
