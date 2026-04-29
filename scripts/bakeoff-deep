@@ -87,6 +87,11 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
+# Shared pool-walking helpers (WI-favav). scripts/lib/ is not a Python
+# package; inject it onto sys.path and import the module.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import pool_utils  # noqa: E402
+
 
 # =============================================================================
 # Configuration
@@ -1646,8 +1651,12 @@ def cmd_cohort(args):
         cohort = []
         missing = []
         for name in repo_names:
-            repo_path = os.path.join(pool_path, name)
-            if not os.path.isdir(repo_path):
+            # WI-favav: resolve through pool_utils so explicit names without
+            # a collection prefix work when --pool points at a catalog like
+            # ~/ALL_REPOS/. Falls back to direct join for names containing a
+            # slash or for flat pools.
+            repo_path = pool_utils.resolve_repo_path(pool_path, name)
+            if repo_path is None:
                 missing.append(name)
                 continue
             size_bytes = get_dir_size(repo_path)
@@ -1684,11 +1693,10 @@ def cmd_cohort(args):
 
         available = []
 
-        for entry in os.scandir(pool_path):
-            if not entry.is_dir():
-                continue
-            if entry.name.startswith("."):
-                continue
+        # WI-favav: pool_utils.iter_pool_repos descends one level into
+        # collection directories (entries that don't look like a single
+        # repo), so --pool ~/ALL_REPOS works without flattening.
+        for entry in pool_utils.iter_pool_repos(pool_path):
             if entry.name in state.tested_repos:
                 continue
 

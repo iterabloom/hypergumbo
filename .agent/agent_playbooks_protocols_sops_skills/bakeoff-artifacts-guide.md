@@ -58,7 +58,7 @@ classic fix-iterate loop:
 
 ```bash
 # Day starts: investigate with a fresh session
-./scripts/bakeoff-deep init --pool ~/repos
+./scripts/bakeoff-deep init --pool ~/ALL_REPOS
 ./scripts/bakeoff-deep cohort --repos repo-a,repo-b,repo-c
 ./scripts/bakeoff-deep cycle                  # produces iter-001
 # ... fix something ...

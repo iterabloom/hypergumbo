@@ -30,6 +30,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Shared pool-walking helpers (WI-favav). scripts/lib/ is not a Python
+# package; inject it onto sys.path and import the module.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import pool_utils  # noqa: E402
+
 # Default polyglot subset — spans multiple languages to maximize
 # cross-language linker gap detection.  User may override with --repos.
 _DEFAULT_REPOS = [
@@ -558,11 +563,15 @@ def run_prospecting(
     skipped_monoglot: list[dict] = []
 
     for repo_name in repos:
-        repo_path = pool / repo_name
-        if not repo_path.exists():
+        # WI-favav: resolve through pool_utils so repo names without a
+        # collection prefix work when --pool points at a catalog like
+        # ~/ALL_REPOS/.
+        resolved = pool_utils.resolve_repo_path(str(pool), repo_name)
+        if resolved is None:
             print(f"  [{repo_name}] SKIP (not in pool)", file=sys.stderr)
             failed.append(repo_name)
             continue
+        repo_path = Path(resolved)
         # WI-zafab filter 1: polyglot-only check at the harness level.
         # Skip monoglot repos because dead-code in a single-language
         # codebase is almost never a missed cross-language linker.
@@ -653,8 +662,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--pool", type=Path,
-        default=Path.home() / "ALL_REPOS" / "whole_bunch_of_repos",
-        help="Pool directory containing repos",
+        default=Path.home() / "ALL_REPOS",
+        help="Pool directory containing repos. WI-favav: a catalog of "
+             "collections (e.g., ~/ALL_REPOS/) is descended one level "
+             "transparently by pool_utils.",
     )
     parser.add_argument(
         "--repos", type=str, default=None,

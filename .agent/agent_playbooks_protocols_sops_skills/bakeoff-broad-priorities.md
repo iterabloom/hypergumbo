@@ -23,7 +23,7 @@ the full rule and the anti-pattern history.
 BROAD mode scripts:
 ```bash
 # Initialize a new bakeoff session (creates timestamped dir in canonical default)
-./scripts/bakeoff-broad init --pool ~/repos
+./scripts/bakeoff-broad init --pool ~/ALL_REPOS
 
 # Select next cohort (5 smallest unused repos)
 ./scripts/bakeoff-broad cohort --count 5

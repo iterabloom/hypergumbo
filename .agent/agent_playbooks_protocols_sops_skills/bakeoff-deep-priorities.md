@@ -24,7 +24,7 @@ the full rule and the anti-pattern history.
 DEEP mode scripts:
 ```bash
 # Initialize and run feature bakeoff (no --workdir needed — uses canonical default)
-./scripts/bakeoff-deep init --pool ~/repos
+./scripts/bakeoff-deep init --pool ~/ALL_REPOS
 # → Creates ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-YYYYMMDD-HHMMSS/
 
 # Auto-select cohort by size/complexity
