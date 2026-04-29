@@ -43,8 +43,39 @@ fi
 #
 # "Production code" = packages/*/src/**/*.py and scripts/*.
 # Non-production (docs, tests, tracker, .ci, configs) is always allowed.
-# Character class trick prevents pgrep from matching itself.
-_bakeoff_pids=$(pgrep -f '[s]cripts/bakeoff' 2>/dev/null || true)
+#
+# Detection runs in two stages so that bash subshells whose argv merely
+# *mentions* the literal string "scripts/bakeoff-..." (e.g., a
+# `git add scripts/bakeoff-broad ...` invocation, or a heredoc commit
+# message that names the script) don't false-positive as "bakeoff
+# running". The character-class trick `[s]cripts/bakeoff` is sufficient
+# only against pgrep matching itself; it doesn't suppress matches
+# against unrelated processes that legitimately have the substring in
+# their cmdline. So: get candidate PIDs from pgrep, then keep only those
+# whose argv contains an element that IS the bakeoff script path —
+# verified by reading /proc/<pid>/cmdline NUL-delimited and checking
+# each arg against a path-shaped regex. The path must (a) have no
+# whitespace and (b) end in bakeoff-broad or bakeoff-deep. This
+# excludes bash subshells whose `-c` script string happens to contain
+# the literal substring (the entire script string is a single argv
+# element with spaces, so the path-shape check fails). WI-favav
+# follow-up.
+#
+# Note: the kernel's shebang handling for `#!/usr/bin/env python3` puts
+# the script path at argv[1] (after the interpreter), not argv[0], so
+# we have to iterate every argv element rather than checking only the
+# first.
+_bakeoff_pids=""
+for _pid in $(pgrep -f 'bakeoff-(broad|deep)' 2>/dev/null); do
+    [[ -r "/proc/$_pid/cmdline" ]] || continue
+    while IFS= read -r -d '' _arg; do
+        if [[ "$_arg" =~ ^/?([^[:space:]/]+/)*bakeoff-(broad|deep)$ ]]; then
+            _bakeoff_pids="${_bakeoff_pids:+$_bakeoff_pids$'\n'}$_pid"
+            break
+        fi
+    done < "/proc/$_pid/cmdline"
+done
+unset _pid _arg
 if [[ -n "$_bakeoff_pids" ]]; then
     # Check if any staged files are production code
     _staged_prod=$(git diff --cached --name-only | grep -E '^(packages/[^/]+/src/|scripts/)' | grep -v -E '^scripts/(tracker|bakeoff)' || true)
