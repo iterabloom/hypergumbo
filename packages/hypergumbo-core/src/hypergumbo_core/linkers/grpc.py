@@ -71,6 +71,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("grpc-linker")
 
@@ -623,7 +624,7 @@ def link_grpc(
     # Scan all relevant files
     for file_path in _find_grpc_files(root):
         try:
-            content = file_path.read_text(encoding="utf-8", errors="replace")
+            content = read_masked_source(file_path, encoding="utf-8", errors="replace")
         except (OSError, IOError):  # pragma: no cover
             continue
 

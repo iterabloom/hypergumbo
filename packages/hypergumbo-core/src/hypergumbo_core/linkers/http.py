@@ -96,6 +96,7 @@ from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._concept_utils import get_concept, has_concept
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
+from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("http-linker")
 
@@ -1364,7 +1365,7 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
 
     for file_path in _find_source_files(root):
         try:
-            content = file_path.read_text(encoding="utf-8", errors="ignore")
+            content = read_masked_source(file_path, encoding="utf-8", errors="ignore")
             files_scanned += 1
 
             if file_path.suffix == ".py":

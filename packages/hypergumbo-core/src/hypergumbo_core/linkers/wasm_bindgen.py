@@ -52,6 +52,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("wasm-bindgen-linker")
 
@@ -155,7 +156,7 @@ def _scan_js_ts_for_wasm_imports(
     Returns a list of imported function names from wasm-related modules.
     """
     try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except OSError:  # pragma: no cover - defensive for I/O errors
         return []
 
@@ -328,7 +329,7 @@ def _scan_js_ts_for_wasm_loading(
     Returns a list of .wasm file references found.
     """
     try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except OSError:  # pragma: no cover - defensive for I/O errors
         return []
 

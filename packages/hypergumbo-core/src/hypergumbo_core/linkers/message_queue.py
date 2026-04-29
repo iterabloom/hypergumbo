@@ -61,6 +61,7 @@ from typing import Iterator
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("message-queue-linker")
 
@@ -448,7 +449,7 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
     # Collect all patterns
     for file_path in _find_source_files(root):
         try:
-            content = file_path.read_text(encoding="utf-8", errors="ignore")
+            content = read_masked_source(file_path, encoding="utf-8", errors="ignore")
             files_scanned += 1
             patterns = _scan_file(file_path, content)
             all_patterns.extend(patterns)

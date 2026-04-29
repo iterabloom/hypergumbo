@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+
+- **Linker docstring/comment false positives**: 23 protocol/framework linkers (`crypto_flow`, `database_query`, `di_resolution`, `event_sourcing`, `graphql`, `graphql_resolver`, `grpc`, `http`, `lua_ffi`, `message_dispatch`, `message_queue`, `napi`, `openapi`, `orm`, `pyffi`, `react_component`, `ruby_ffi`, `subprocess_cli`, `swift_objc`, `tauri_ipc`, `wasm_bindgen`, `websocket`, `yjs_crdt`) ran their regex pattern detectors directly against raw file bytes, matching their own module docstrings that documented the very patterns they detect. A new shared masker `linkers/_text_filters.mask_doc_regions` parses the file with tree-sitter and replaces comment ranges and Python positional docstrings with spaces (newlines preserved for line-number stability) before regex matching. String-literal matches (used by `database_query`, `graphql`, `openapi`) are preserved. Failure modes (missing grammar, parse error, unknown extension) bias to fail-closed — content is returned unchanged so the masker can only remove false positives, never real detections. `annotation_convention` is intentionally exempt because it scans `@hg:` directives inside comments.
+
 ## [3.0.0] - 2026-04-29
 
 ### Summary

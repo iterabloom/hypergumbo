@@ -54,6 +54,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ._text_filters import read_masked_source
 
 if TYPE_CHECKING:
     pass
@@ -187,7 +188,7 @@ def _scan_file_for_yjs_patterns(
     Returns a list of YjsSite objects for each detected pattern.
     """
     try:
-        content = file_path.read_text(errors="replace")
+        content = read_masked_source(file_path, errors="replace")
     except OSError:  # pragma: no cover
         return []
 

@@ -53,6 +53,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("pyffi-linker")
 
@@ -120,7 +121,7 @@ def _scan_python_file_for_ffi_calls(
     rather than a repo-local shared object.
     """
     try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except (OSError, UnicodeDecodeError):  # pragma: no cover - defensive for I/O errors
         return []
 

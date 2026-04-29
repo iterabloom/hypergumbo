@@ -61,6 +61,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("openapi-linker")
 
@@ -162,7 +163,7 @@ def _parse_openapi_spec(file_path: Path) -> list[OpenApiOperation]:
     operations: list[OpenApiOperation] = []
 
     try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except (OSError, IOError):  # pragma: no cover
         return operations
 

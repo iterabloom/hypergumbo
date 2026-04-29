@@ -46,6 +46,7 @@ from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("orm-linker")
 
@@ -199,7 +200,7 @@ def link_orm_queries(
 
     for file_path in _find_python_files(root):
         try:
-            content = file_path.read_text(encoding="utf-8", errors="ignore")
+            content = read_masked_source(file_path, encoding="utf-8", errors="ignore")
             files_scanned += 1
             refs = _scan_orm_references(file_path, content, pattern)
             all_refs.extend(refs)

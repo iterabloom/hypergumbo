@@ -23,6 +23,7 @@ from pathlib import Path
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("swift-objc-linker")
 
@@ -99,7 +100,7 @@ def _extract_swift_objc_patterns(
     rel_path = str(file_path)
 
     try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except (OSError, IOError):  # pragma: no cover
         return symbols, edges
 
@@ -172,7 +173,7 @@ def _extract_bridging_header_imports(
     file_id = f"swift-objc:{rel_path}:1:file:file"
 
     try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except (OSError, IOError):  # pragma: no cover
         return symbols, edges
 

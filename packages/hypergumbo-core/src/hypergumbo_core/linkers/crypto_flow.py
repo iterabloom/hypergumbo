@@ -42,6 +42,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ._text_filters import read_masked_source
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -136,7 +137,7 @@ def _scan_file_for_crypto_patterns(
     in .rs files. Returns CryptoSite objects for each detected pattern.
     """
     try:
-        content = file_path.read_text(errors="replace")
+        content = read_masked_source(file_path, errors="replace", language=language)
     except OSError:  # pragma: no cover
         return []
 

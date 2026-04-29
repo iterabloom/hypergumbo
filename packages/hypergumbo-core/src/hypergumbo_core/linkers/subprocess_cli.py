@@ -53,6 +53,7 @@ from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
+from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("subprocess-linker")
 
@@ -142,7 +143,7 @@ def _detect_project_cli_name(repo_root: Path) -> set[str]:
         return names
 
     try:
-        content = pyproject_path.read_text(encoding="utf-8")
+        content = read_masked_source(pyproject_path, encoding="utf-8")
 
         # Resolve a TOML loader: tomllib (Python 3.11+) preferred, tomli as fallback.
         try:
@@ -371,7 +372,7 @@ def link_subprocess(root: Path, cli_symbols: list[Symbol]) -> SubprocessLinkResu
 
     for file_path in _find_python_files(root):
         try:
-            content = file_path.read_text(encoding="utf-8", errors="ignore")
+            content = read_masked_source(file_path, encoding="utf-8", errors="ignore")
             files_scanned += 1
             calls = _scan_python_file(file_path, content)
             all_calls.extend(calls)

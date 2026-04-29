@@ -65,6 +65,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("tauri-ipc-linker")
 
@@ -259,7 +260,7 @@ def _scan_ts_js_file_for_invoke(
     command portion after the pipe.
     """
     try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except OSError:  # pragma: no cover - defensive for I/O errors
         return []
 
@@ -357,7 +358,7 @@ def _scan_specta_wrappers(
         - obj_wrappers: {obj_name: {method_name: cmd_name}} for object exports
     """
     try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except OSError:  # pragma: no cover - defensive for I/O errors
         return {}, {}
 
@@ -455,7 +456,7 @@ def _scan_imports_from_wrapper(
         List of (wrapper_func_name, command_name) pairs imported in this file.
     """
     try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except OSError:  # pragma: no cover - defensive for I/O errors
         return []
 
@@ -518,7 +519,7 @@ def _scan_rust_file_for_emit(file_path: Path) -> list[str]:
     Returns a list of event name strings found in the file.
     """
     try:
-        content = file_path.read_text(errors="replace")
+        content = read_masked_source(file_path, errors="replace")
     except OSError:  # pragma: no cover
         return []
 
@@ -537,7 +538,7 @@ def _scan_ts_js_file_for_listen(file_path: Path) -> list[str]:
     Returns a list of event name strings found in the file.
     """
     try:
-        content = file_path.read_text(errors="replace")
+        content = read_masked_source(file_path, errors="replace")
     except OSError:  # pragma: no cover
         return []
 

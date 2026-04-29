@@ -56,6 +56,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ._text_filters import read_masked_source
 
 if TYPE_CHECKING:
     pass
@@ -250,7 +251,7 @@ def _scan_spi_files(root: Path) -> list[DIBinding]:
             iface_fqn = candidate.name
             iface_short = iface_fqn.rsplit(".", 1)[-1]
             try:
-                for line in candidate.read_text(errors="replace").splitlines():
+                for line in read_masked_source(candidate, errors="replace").splitlines():
                     line = line.strip()
                     if line and not line.startswith("#"):
                         impl_short = line.rsplit(".", 1)[-1]
@@ -271,7 +272,7 @@ def _scan_spi_files(root: Path) -> list[DIBinding]:
         iface_fqn = spi_file.name
         iface_short = iface_fqn.rsplit(".", 1)[-1]
         try:
-            for line in spi_file.read_text(errors="replace").splitlines():
+            for line in read_masked_source(spi_file, errors="replace").splitlines():
                 line = line.strip()
                 if line and not line.startswith("#"):
                     impl_short = line.rsplit(".", 1)[-1]
@@ -372,7 +373,7 @@ def extract_bindings_from_source(root: Path) -> list[DIBinding]:
             continue  # pragma: no cover - defensive
 
         try:
-            content = file_path.read_text(errors="replace")
+            content = read_masked_source(file_path, errors="replace")
         except OSError:  # pragma: no cover - defensive filesystem
             continue
 

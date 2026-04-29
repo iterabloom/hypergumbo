@@ -73,6 +73,7 @@ from typing import Iterator
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("websocket-linker")
 
@@ -247,7 +248,7 @@ def _make_file_id(path: str) -> str:
 def _detect_patterns(file_path: Path) -> list[WebSocketPattern]:
     """Detect WebSocket patterns in a JavaScript/TypeScript file."""
     try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except (OSError, IOError):
         return []
 
@@ -336,7 +337,7 @@ def _detect_patterns(file_path: Path) -> list[WebSocketPattern]:
 def _detect_python_patterns(file_path: Path) -> list[WebSocketPattern]:
     """Detect WebSocket patterns in a Python file (Django Channels, FastAPI)."""
     try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except (OSError, IOError):
         return []
 

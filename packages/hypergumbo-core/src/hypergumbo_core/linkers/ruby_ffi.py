@@ -47,6 +47,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("ruby-ffi-linker")
 
@@ -97,7 +98,7 @@ def _scan_ruby_file_for_ffi(
     Returns a list of (c_func_name, line_number) tuples.
     """
     try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except (OSError, UnicodeDecodeError):  # pragma: no cover - defensive for I/O errors
         return []
 
@@ -125,7 +126,7 @@ def _scan_c_file_for_rb_define(
     Returns a list of (c_symbol, line_number) tuples for matched functions.
     """
     try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except (OSError, UnicodeDecodeError):  # pragma: no cover - defensive for I/O errors
         return []
 
