@@ -17,7 +17,7 @@ The playbook treats validation as a **queue-processing pipeline**, not a per-ite
 6. **Hand-correct inconclusive plurality.** Where one repo cleanly moved and the rest were inconclusive (niche-language target), strip with rationale.
 7. **Tackle regressions, then re-iterate.** Investigate `no_move` parents; either fix structurally or close `wont_do` with a documented reason. After fixes ship, run `cycle --workdir <existing-session>` to produce iter-002 in the **same** session — not a fresh `init` — so convergence is visible in the session's iteration counter.
 
-For items that don't fit a cohort (Bucket B: prospector-pipeline-dependent or shape claims), phase 8 is **UAT-style spot-check** — see the dedicated section below.
+Phases 1–7 are the cohort path. The **Directed UAT-bakeoff path** (see dedicated section below) and **phase 8** (B-prospector and B-shape spot-checks) are peer modalities, not residue. Items route to UAT when (a) the human surfaces a specific item list and asks for ground-truth validation, (b) the item's discussion thread explicitly requests UAT / spot-check / ground-truth, or (c) the claim is edge-existence-shaped where cohort metrics could move for the wrong reason and only sampled ground-truthing is persuasive.
 
 ## Phase 1: Audit and classify
 
@@ -33,6 +33,8 @@ Run `scripts/tracker list --tag awaits_bakeoff_validation` and count. Then for e
 | **F-reverted** | The shipped fix was undone; original quantitative claim no longer applies | Strip + mark `wont_do` immediately in phase 2 |
 
 The classification is done by reading the item, not by reading the tag. A tag's presence is necessary but not sufficient — the queue accumulates anomalies precisely because nobody re-classifies on tag application.
+
+**Also read the discussion thread for explicit modality requests.** While reading each item, look for explicit instructions about how the validation should be performed: "validate via UAT," "spot-check on a real Airflow repo," "ground-truth required," "cohort metric only — no spot-check needed," etc. The author closest to the fix usually knows what evidence will be persuasive. When the discussion explicitly asks for UAT, route the item to the **Directed UAT-bakeoff path** below regardless of bucket. When it explicitly asks for cohort, keep it on the cohort path. When silent, decide by claim shape — edge-existence claims default to UAT, aggregate-metric claims default to cohort. Record the modality choice (and the reason) alongside the bucket classification in the lab notebook entry from phase 3.
 
 ## Phase 2: Strip anomalies first
 
@@ -59,14 +61,14 @@ Then build a cohort matrix: rows are claims, columns are candidate repos. Pick t
 - **Match canonical-cohort conditions when possible.** For regression items (e.g., a no-move verdict on a specific cohort), include the same repos so the validation is directly comparable to the original failure.
 - **Niche claims often only need one repo.** A monorepo-Python claim only needs one monorepo Python repo. The cohort plurality logic will call this "inconclusive" because the other repos can't test it; that's fine — phase 6 handles it.
 - **Don't add repos for breadth.** This is a targeted validation cohort, not a coverage-survey cohort. Every repo costs minutes of analysis time.
-- **All repos must be in the standard pool** (`~/whole_bunch_of_repos/` by default). Symlinking is possible but adds session friction.
+- **All repos must be reachable under `~/ALL_REPOS/`** (the canonical catalog both cohort and UAT paths draw from). Symlinking is possible but adds session friction.
 
 Document the cohort in a lab notebook entry before running, with a coverage matrix mapping each Bucket A item to which repos are strong targets vs incidental coverage.
 
 ## Phase 4: Run the cohort and verify per-claim
 
 ```bash
-./scripts/bakeoff-deep init --pool ~/whole_bunch_of_repos
+./scripts/bakeoff-deep init --pool ~/ALL_REPOS
 ./scripts/bakeoff-deep cohort --repos repo1,repo2,...,repoN --count N
 ./scripts/bakeoff-deep cycle > /tmp/cycle.log 2>&1   # 'run + diagnose + reflect' (creates prompts only)
 ```
@@ -175,6 +177,190 @@ These claims (e.g., `WI-davan` — no symbol IDs carry `packages.<pkg>.src.<mod>
 
 If the shape claim corresponds to an existing invariant that's marked `satisfied`, also surface that as the canonical home for the claim and consider closing the regression sub-item.
 
+## Directed UAT-bakeoff path
+
+This is the front door for human-curated item lists and for items routed to UAT by the modality check in phase 1. UAT-bakeoff is intentionally less automated than the cohort path — kickoff is a human action, the agent is in advisory-only mode for campaign-creation steps. The deliberate friction is a pacing mechanism: UAT is the less battle-tested validation modality, and human gating prevents the agent from running ahead of judgment that hasn't been formed yet.
+
+### Human-only kickoff steps
+
+A UAT-bakeoff lives in `~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-vX.Y.Z/`, created by the human copying `~/hypergumbo_lab_notebook/hg-uat-template/`. The agent **must not**:
+
+- Create or rename the campaign directory itself.
+- Refresh `hg-docs/` even if the snapshots look stale (flag staleness in the conversation instead).
+- Edit `<VERSION>` / `<ENVIRONMENT>` placeholders in `lab-notebook/index.md`.
+- Run `./bin/status --set` or `--sync` for the initial `UNCONFIGURED → READY` flip.
+
+If the campaign directory does not exist when this path is taken, the agent surfaces the suggested kickoff sequence and **stops** until the human reports `STATUS=READY`:
+
+```bash
+# Human runs:
+cp -r ~/hypergumbo_lab_notebook/hg-uat-template ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v<release>
+cd ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v<release>
+# Refresh hg-docs/ from the upstream hypergumbo repo
+# Edit lab-notebook/index.md to fill <VERSION> / <ENVIRONMENT>
+./bin/status --sync   # flips STATUS to READY
+```
+
+Once `STATUS=READY`, the directed-UAT-bakeoff path proceeds through phases U1–U5 below. The phases are explicit about which actor — orchestrator agent, UAT agent, or human — performs each step, because the role boundaries are part of the validation discipline.
+
+### Roles in the directed UAT-bakeoff path
+
+Three actors with distinct boundaries:
+
+| Actor | Where it runs | Source / tracker access | What it does |
+|---|---|---|---|
+| **Orchestrator agent** (the agent following this playbook) | hypergumbo repo | yes | Phase 1 audit, plan.md drafting from tracker (U1), tag management post-campaign (U4), cross-campaign housekeeping (U5). |
+| **UAT agent** (a separate naive agent following the campaign's own AGENTS.md) | inside the campaign dir | **no** | Round execution (U3) — runs hypergumbo, ground-truths samples, writes report.md. |
+| **Human** | — | — | Campaign kickoff (cp template, refresh hg-docs, fill placeholders, initial `--sync`); plan.md approval (U1); **starting the UAT agent** in the campaign dir (U2); signaling round/campaign completion. |
+
+The deliberate firewall between orchestrator and UAT agent is the validation discipline. The UAT agent cannot cheat by knowing what hypergumbo's source "wants" the linker to do — it derives expected behavior from the plan.md's quoted claim text and the campaign's `hg-docs/` alone. This is a stronger validation stance than a source-aware agent could provide. **The orchestrator must not relay hypergumbo internals to the UAT agent through the human, the plan.md, or any other channel.** The plan.md transcribes only the public-facing claim text and concrete observable thresholds; it does not name internal linker classes, reference module paths, or quote source code.
+
+### Phase U1 — Orchestrator agent: draft plan, get human approval, write to round directory
+
+For each item routed to this round, the **orchestrator agent** reads the tracker discussion thread (`scripts/tracker show <ID>`) and drafts a per-item plan section. **The discussion-read step is mandatory** — it surfaces explicit modality requests, repo suggestions, and verdict criteria the original author may have left for the validator.
+
+The plan must be **self-contained** because the UAT agent cannot read the tracker. Quoted claim text, target repo paths under `~/ALL_REPOS/`, expected observable signals, and verdict criteria as concrete thresholds all go in the plan. Use this template:
+
+```markdown
+## Item: <ID> — <abbreviated title>
+
+**Claim** (transcribed by the orchestrator from the PR description or tracker discussion, so the UAT agent does not need tracker access): "<one-sentence quantitative claim>".
+**Explicit modality request** (transcribed from discussion): yes / no — if yes, quote the discussion entry.
+**Target repo**: <full path under ~/ALL_REPOS/>.
+**Alternate targets**: <fallbacks if the primary doesn't exercise the construct cleanly>.
+**Expected signal**: <observable JSON / sketch terms — provenance string, edge-count threshold, attribute presence — written so the UAT agent can evaluate from `hg.json` output alone, with no internal hypergumbo knowledge required>.
+**Verdict criteria** (pre-committed by orchestrator, evaluated by UAT agent):
+  - `moved` if <concrete threshold, e.g., "≥5 edges from <construct> to <impl> in `hg.json`, AND ≥4/5 ground-truthed correct against target source">.
+  - `no_move` if <concrete failure threshold, e.g., "0 edges of the expected shape despite ≥3 instances of the construct in target source">.
+  - `inconclusive` if <ambiguous-result threshold, e.g., "edges present but no clean ground-truth target found in this repo — re-route to <alternate>">.
+**Ground-truth sample size**: N candidates, sampled by <strategy: e.g., "first N edges of the expected shape" or "N random calls of the dispatch construct in target source">.
+**Ground-truth instructions for the UAT agent**: For each sampled candidate, open the target repo's source at the `file:line` reported by hypergumbo and confirm that the relationship hypergumbo claims (call edge / dispatch / boundary / etc.) actually exists. Verdict per candidate: pass / fail / ambiguous. Roll up to the per-item verdict per the criteria above.
+```
+
+After drafting all per-item sections, the orchestrator presents the assembled plan to the human for approval **inline in the conversation, before writing anything to disk**. Once approved, the orchestrator creates the round directory and writes plan.md:
+
+```bash
+# Orchestrator commands:
+cd ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v<release>/lab-notebook
+cp -r round-template round-NN-validation-<batch>
+# Then write plan.md inside round-NN-validation-<batch>/ with the approved content.
+```
+
+The orchestrator does NOT run `./bin/status --sync` after writing plan.md — STATUS stays at `READY`. Phase U2 is the next gate.
+
+### Phase U2 — Human: kick off the UAT agent
+
+After plan.md is on disk and the human has reviewed it at the file path:
+
+```bash
+cd ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v<release>
+./bin/status --sync   # flips STATUS to IN_PROGRESS now that round-NN-*/ exists
+# Start the UAT agent (vendor-specific):
+#   claude        # or:  codex    cursor    gemini
+```
+
+**Only the human starts the UAT agent.** The orchestrator can suggest the command but does not run it. Once the UAT agent is running, **the orchestrator is unavailable for the duration of the round** — interfering across the firewall would defeat the validation. If the UAT agent surfaces a question that genuinely requires orchestrator-side knowledge (e.g., a malformed plan.md), the human relays it; the orchestrator's answer is recorded in the round's report.md so the verdict remains reproducible from the campaign artifacts alone.
+
+### Phase U3 — UAT agent: execute the round (described from the orchestrator's POV)
+
+This phase is the UAT agent's responsibility, executed per the campaign's `AGENTS.md`. The orchestrator does not run any of these steps. The description here is what the orchestrator can expect to land in `round-NN-*/data/` and `round-NN-*/report.md` when the round concludes:
+
+- The UAT agent runs hypergumbo against the target repos named in plan.md, redirecting outputs per the campaign's output-capture conventions.
+- It archives raw outputs into `round-NN-*/data/`, keyed by item ID.
+- It evaluates each item's `Expected signal` against the `Verdict criteria` from plan.md, exactly — without softening, expanding, or substituting different criteria.
+- For each item, it ground-truths the documented sample size by reading the target repo's source at the file:line reported by hypergumbo. UAT validation has no privileged source-of-truth — direct source reading at the target repo is the compensating discipline, and it's a stronger validation stance for output-shaped claims than importing canonical hypergumbo modules would be.
+- It writes `round-NN-*/report.md` opening with a verdict matrix and continuing with per-item ground-truth narratives.
+- Incidental findings (bugs / DQs / UX issues observed but not directly tested by plan.md) go into a separate "Incidental findings" subsection at the bottom of report.md, following the campaign's findings-distinction discipline (observation vs confirmed bug vs design question).
+
+Expected report.md shape:
+
+```markdown
+# Round NN — Validation Verdicts
+
+| Item | Verdict | Evidence |
+|---|---|---|
+| WI-... | moved | data/<artifact>: 12 edges of expected shape, ground-truth 5/5 correct (file:line refs in subsection). |
+| WI-... | no_move | data/<artifact>: 0 expected edges despite 3 dispatch sites observed in target source. |
+| WI-... | inconclusive | data/<artifact>: edges present but target lacks the construct cleanly; suggest re-target on <alternate>. |
+
+## WI-... — <title>
+<ground-truth narrative: file:line references in target repo, observed-vs-expected delta, incidental observations>
+
+## Incidental findings
+<bugs / DQs / UX issues surfaced during validation, classified per the campaign's standards>
+```
+
+When the round concludes, the human signals to the orchestrator (typically by ending the UAT agent session and saying so explicitly).
+
+### Phase U4 — Orchestrator agent: tag management (post-round)
+
+After the human signals the round complete, the orchestrator reads `~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v<release>/lab-notebook/round-NN-<batch>/report.md` and applies tracker mutations per the verdict matrix. **The discipline mirrors the cohort aggregator, applied manually:**
+
+- **`moved` verdict** — strip the tag and add a resolution discussion entry:
+  ```bash
+  scripts/tracker update <ID> --remove-tag awaits_bakeoff_validation \
+    --note "Validated via UAT round ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v<release>/lab-notebook/round-NN-<batch>/. <one-sentence evidence pointer>. Verdict: moved."
+  ```
+  (The `--note` shorthand combines the update with a discussion entry. Either form works.)
+
+- **`no_move` verdict** — keep the parent tagged. File a P1 regression sub-item with `--parent <ID>`, `--status todo_soft`, **without** the `awaits_bakeoff_validation` tag (regression items earn the tag only when their own fix produces a fresh quantitative claim). Add a discussion entry on the parent pointing at the regression item:
+  ```bash
+  REGRESSION_ID=$(scripts/tracker add \
+    --kind work_item \
+    --title "Regression from UAT round-NN: <parent title abbreviated>" \
+    --priority 1 \
+    --status todo_soft \
+    --parent <ID> \
+    --description "UAT validation in ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v<release>/lab-notebook/round-NN-<batch>/ verdicted no_move. <evidence summary>. Investigate per the structural-fix protocol.")
+  scripts/tracker discuss <ID> "Regression sub-item filed: $REGRESSION_ID. UAT verdict: no_move. See ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v<release>/lab-notebook/round-NN-<batch>/report.md."
+  ```
+
+- **`inconclusive` verdict** — keep the parent tagged. Add a discussion entry recording the round, the verdict, and what would need to be different (different target repo, additional construct in target, fresh release with the dependent fix shipped) for a clean verdict next time:
+  ```bash
+  scripts/tracker discuss <ID> "UAT round-NN verdict: inconclusive. <reason>. Re-route to <suggested alternate target> in next round, or wait for <dependent change>."
+  ```
+
+The orchestrator also files tracker items for any incidental findings the UAT agent recorded under "Incidental findings" — bugs as `kind=work_item` `status=todo_hard` (or `todo_soft` if minor), DQs and UX issues per their normal classification.
+
+**Anti-patterns specific to UAT tag management:**
+
+- *Stripping a tag on `inconclusive`* to "clear the queue" — the residual tag is the queue's signal that more work is needed. Same shape as the cohort-path anti-pattern in phase 6 but inverted: there, the aggregator's plurality is too conservative and the agent corrects with rationale; here, the orchestrator's first instinct may be too aggressive and must be checked.
+- *Inheriting the tag onto regression sub-items*. Regression items track a fresh problem; they earn `awaits_bakeoff_validation` only after their own fix ships with a fresh quantitative claim. Tagging them at filing time pollutes the queue.
+- *Using `tracker update --remove-tag` without a paired discussion entry*. The audit trail is the entire point of the tag discipline — the resolution rationale must be reconstructable without context-window archaeology. `--note` collapses the two operations and is preferred.
+- *Re-running plan.md verdict criteria post-hoc when the report.md verdict feels wrong.* If the orchestrator disagrees with a UAT verdict, the right path is to file a tracker observation and let the next round re-validate — not to override the UAT agent's verdict from outside the firewall. Override-from-outside is exactly the cheating modality the firewall prevents.
+
+### Phase U5 — Orchestrator agent: round close-out and master-report synthesis
+
+After tag mutations land, the orchestrator updates `lab-notebook/index.md` with a one-row summary of the round (status, items validated, items filed as regressions, items left inconclusive, link to the round's report.md).
+
+When all planned rounds for the campaign are complete, the orchestrator writes `lab-notebook/master-report.md` — synthesizing per-round findings into unified bug/issue numbers (`BUG-NN`, `DQ-NN`, `UX-NN`) for incidental findings cross-referenced from per-round reports, with validation verdicts in their own section. Use the prior UAT's structure (`~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v2.6.0/lab-notebook/master-report.md`) as a reference. The orchestrator can author master-report.md because it summarizes already-public report.md contents — it does not require the firewall.
+
+`./bin/status --sync` (run by the human or orchestrator) advances `STATUS` to `CONCLUDING` once `master-report.md` exists, and to `CONCLUDED` after the 2-day mtime window.
+
+### Multi-campaign discipline
+
+Each release with validation work gets its own campaign directory:
+
+```
+~/hypergumbo_lab_notebook/bakeoff_artifacts/
+├── broad-...                         # BROAD bakeoff sessions
+├── deep-...                          # DEEP bakeoff sessions
+├── hg-uat-v2.6.0/                    # historical — first UAT, do not modify
+├── hg-uat-v2.7.0/                    # next campaign, when v2.7.0 ships
+└── hg-uat-v2.7.1/                    # subsequent, etc.
+```
+
+Per-campaign rules:
+
+- **Don't delete prior campaigns.** They're the convergence record across releases. The lab-notebook/master-report.md of each is the authoritative narrative for what was validated when.
+- **Open each new campaign's `lab-notebook/index.md` with a prelude** pointing at the prior campaign's `master-report.md` and noting: items the prior campaign cleanly stripped (now resolved), items the prior campaign filed regressions for and what's known to have shipped since, items rolling into this campaign for first-time validation (newly-tagged since the prior cutoff).
+- **Don't re-validate items the prior campaign cleanly stripped** unless evidence suggests regression. Re-tagging a regressed item is the right path — it re-enters the queue and gets a fresh round in the new campaign.
+- **One UAT-bakeoff per release, not per item batch.** Successive item batches within a release become additional rounds in the same campaign, not new campaigns. The campaign directory's `STATUS` (`READY`/`IN_PROGRESS`/`CONCLUDING`) tracks that.
+
+### When the queue has both UAT-routed and cohort-routed items
+
+A single processing session can use both paths in parallel. The cohort path lives in `~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-<timestamp>/`; the UAT path lives in `~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v<release>/`. Tag management converges on the same tracker — items get the same `--remove-tag awaits_bakeoff_validation` mutation regardless of which path validated them, with discussion entries citing whichever artifact (bakeoff session or UAT round) produced the verdict. Don't duplicate validation across modalities for a single item — pick one path per item per processing session and record the choice in phase 1's classification table.
+
 ## Process anti-patterns to avoid
 
 - **Trusting auto-pr / merge-pr state announcements without cross-check.** When the API was returning 5xx during polling, the script's "🔄 Closing PR" message can be wrong. Always confirm with `./scripts/ci-debug pr-status <num>` before reporting up. Existing INV-rahib invariant covers this on the tool side; agent-side discipline is to not parrot the script's state-changes verbatim.
@@ -195,10 +381,12 @@ If the shape claim corresponds to an existing invariant that's marked `satisfied
 
 ## What "done" looks like
 
-The session is done when one of the following holds:
+A processing session is done when one of the following holds:
 
 1. **Queue is empty.** Tag count = 0.
-2. **Queue is residue.** All remaining items are documented Bucket B (prospector-dependent or shape-claim) entries waiting on a specific external trigger (next prospector run / a spot-check session).
-3. **Time-budget exhausted.** Document where the session stopped, what items remain in which bucket, and what the next session should pick up. Update the lab notebook entry started in phase 3 with the final state.
+2. **Queue is residue.** All remaining items are documented Bucket B (prospector-dependent or shape-claim) entries waiting on a specific external trigger (next prospector run / a UAT-bakeoff spot-check round in the next campaign).
+3. **Time-budget exhausted.** Document where the session stopped, what items remain in which bucket, what modality each is routed to, and what the next session should pick up. Update the lab notebook entry started in phase 3 with the final state.
 
-A clean session report includes: starting tag count → ending tag count, list of PRs landed (with item IDs), regression sub-items spawned and how they were resolved, structural infrastructure issues surfaced (filed as new tracker items), and the final composition of the residual queue.
+A clean session report includes: starting tag count → ending tag count, modality breakdown of items processed (cohort vs UAT-bakeoff vs prospector), list of PRs landed (with item IDs), regression sub-items spawned and how they were resolved, structural infrastructure issues surfaced (filed as new tracker items), and the final composition of the residual queue.
+
+For UAT-bakeoff rounds specifically, the per-campaign report (`~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v<release>/lab-notebook/master-report.md`) is the durable artifact — the processing-session lab notebook entry references it but doesn't duplicate it. A UAT campaign isn't "done" in the same sense as a session: campaigns persist across releases as the convergence record. The campaign's `STATUS` lifecycle (`UNCONFIGURED` → `READY` → `IN_PROGRESS` → `CONCLUDING` → `CONCLUDED`) tracks per-campaign progress; the validation queue (`scripts/tracker list --tag awaits_bakeoff_validation`) tracks cross-campaign convergence.
