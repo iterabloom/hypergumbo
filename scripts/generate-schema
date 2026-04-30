@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional, get_args, get_origin
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
+from hypergumbo_core.edge_types import EDGE_TYPES
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.schema import SCHEMA_VERSION
 
@@ -395,19 +396,10 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             "type": {
                 "type": "string",
                 "description": "Relationship type",
-                "enum": [
-                    "calls", "imports", "instantiates", "extends", "implements",
-                    "contains", "dispatches_to", "uses",
-                    "references", "depends_on", "depends_on_manifest",
-                    "links", "sources", "routes_to",
-                    "script_src", "base_image", "kernel_launch",
-                    "native_bridge", "message_send", "message_receive",
-                    "websocket_message", "websocket_connection",
-                    "grpc_calls", "http_calls", "graphql_calls",
-                    "message_queue", "query_references", "event_publishes",
-                    "resolver_implements", "resolver_for_type",
-                    "openapi_implements", "subprocess_calls"
-                ]
+                "enum": [spec.name for spec in EDGE_TYPES],
+                "x-axis-of-values": {
+                    spec.name: spec.axis for spec in EDGE_TYPES
+                }
             },
             "line": {
                 "type": "integer",

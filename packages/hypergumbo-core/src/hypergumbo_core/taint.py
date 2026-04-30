@@ -734,7 +734,7 @@ def _extract_callee_name(symbol_id: str) -> str:
 # Edge types that represent call-like relationships for taint propagation.
 # Includes direct calls and cross-language linker bridge edges (ADR-0017 §5).
 TAINT_CALL_EDGE_TYPES = frozenset({
-    "calls", "unresolved_external_call",
+    "calls",
     # WI-lokuv: attribute-read edges for IO primitives declared under
     # ``attributes:`` in io_primitives YAML (os.environ, sys.argv, ...).
     # Emitted by the Python analyzer per WI-guhok; extending to the

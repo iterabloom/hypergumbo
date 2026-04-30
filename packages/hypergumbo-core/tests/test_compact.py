@@ -3291,8 +3291,8 @@ class TestCrossCuttingEdgeSeeding:
     """Tests for cross-cutting edge endpoint seeding (INV-posun).
 
     Compact mode must retain cross-cutting edge types (routes_to, http_calls,
-    dispatches_to, di_resolves, ffi_calls) by pre-seeding their endpoints
-    into the node selection.
+    dispatches_to, di_resolves) by pre-seeding their endpoints into the node
+    selection.
     """
 
     def test_routes_to_edges_preserved(self):
@@ -3434,7 +3434,7 @@ class TestCrossCuttingEdgeSeeding:
         edges_list = [
             make_edge(hub.id, real.id),
             # Edge pointing to non-existent symbol
-            make_edge("phantom::nonexistent", real.id, edge_type="ffi_calls"),
+            make_edge("phantom::nonexistent", real.id, edge_type="di_resolves"),
         ]
 
         all_symbols = [hub, real]
@@ -3462,7 +3462,9 @@ class TestCrossCuttingEdgeSeeding:
         assert "http_calls" in CROSS_CUTTING_EDGE_TYPES
         assert "dispatches_to" in CROSS_CUTTING_EDGE_TYPES
         assert "di_resolves" in CROSS_CUTTING_EDGE_TYPES
-        assert "ffi_calls" in CROSS_CUTTING_EDGE_TYPES
+        # "ffi_calls" was removed: it's the name of a Python local variable
+        # in the FFI linkers, not an emitted Edge.edge_type value.
+        assert "ffi_calls" not in CROSS_CUTTING_EDGE_TYPES
         # Regular edges should NOT be in the set
         assert "calls" not in CROSS_CUTTING_EDGE_TYPES
         assert "imports" not in CROSS_CUTTING_EDGE_TYPES

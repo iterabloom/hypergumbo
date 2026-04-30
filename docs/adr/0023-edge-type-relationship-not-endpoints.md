@@ -152,9 +152,39 @@ The lack of a typing principle has shipped bugs:
    `scip/calls.py:48` does not exist. The same logical edge can appear twice
    with different `edge_type` values depending on which analyzer found it.
 
-The pattern of the bugs is structural: any consumer that filters by
-`edge_type` must know the entire proliferation set, and inevitably gets
-out of sync as new specialized types ship.
+4. **`packages/hypergumbo-core/src/hypergumbo_core/taint.py:736`** —
+   surfaced when the canonical-registry property test (PR (a)) AST-walked
+   the package tree:
+
+   ```python
+   TAINT_CALL_EDGE_TYPES = frozenset({"calls", "unresolved_external_call", ...})
+   ```
+
+   `unresolved_external_call` is an `Edge.evidence_type` value, not an
+   `Edge.edge_type` value (see `analyze/base.py:410`); this membership test
+   would never match at runtime. Removed alongside the registry landing.
+
+5. **`packages/hypergumbo-core/src/hypergumbo_core/compact.py:108`** —
+   surfaced by the same property test:
+
+   ```python
+   CROSS_CUTTING_EDGE_TYPES = frozenset({
+       "routes_to", "http_calls", "dispatches_to", "di_resolves", "ffi_calls",
+   })
+   ```
+
+   `ffi_calls` is the name of a Python local variable in the FFI linkers
+   (`linkers/lua_ffi.py`, `linkers/pyffi.py`, `linkers/ruby_ffi.py`), never
+   an emitted edge type. Removed alongside the registry landing.
+
+The pattern of the bugs is structural — and broader than the first cut
+of this ADR documented. Hardcoded edge-type sets drift in *both*
+directions: they can miss values that are emitted (cases 1–2) AND
+include values that are never emitted (cases 4–5). Both shapes are
+silent because the membership test never fires the way the author
+expected. Any consumer that filters by `edge_type` must know the
+entire proliferation set, and inevitably gets out of sync as new
+specialized types ship.
 
 ### Why this matters now
 
@@ -232,7 +262,24 @@ distinction is a property of the use site (axis 1), not the dst (axis 2).
 
 ### Property test (the enforcement mechanism)
 
-Add a parameterized invariant test that auto-discovers new offenders:
+Two complementary tests, runtime and static:
+
+**Static (PR (a), landed):** the canonical registry at
+`packages/hypergumbo-core/src/hypergumbo_core/edge_types.py` is the
+single source of truth for valid `edge_type` values. Each entry
+carries an `axis` annotation (`relationship`, `endpoint_shape`, or
+`pending_classification`). `scripts/generate-schema` imports
+`EDGE_TYPES` and emits both the JSON Schema enum and an
+`x-axis-of-values` extension keyword. A pytest fixture
+(`test_edge_types::test_every_edge_type_named_set_is_a_subset_of_registry`)
+AST-walks the package source tree and fails CI if any module-level
+`*EDGE_TYPE*` set contains a value absent from the registry — the
+class of bug from §1 (cases 1–2 and 4–5) cannot recur silently.
+Consumer-side sets that need a subset of edge types should call
+`edge_types_on_axis(...)` instead of maintaining their own list.
+
+**Runtime (corpus-based, planned):** parameterized invariant that
+auto-discovers new offenders by inspecting actual emitted edges:
 
 ```
 test_edge_type_does_not_encode_endpoint_metadata:

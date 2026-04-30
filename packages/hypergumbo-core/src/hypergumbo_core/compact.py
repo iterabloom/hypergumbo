@@ -110,7 +110,6 @@ CROSS_CUTTING_EDGE_TYPES = frozenset({
     "http_calls",      # HTTP client call → server endpoint
     "dispatches_to",   # Interface/abstract method → concrete implementation
     "di_resolves",     # DI interface → bound implementation
-    "ffi_calls",       # Code → foreign language function
 })
 
 
