@@ -31,8 +31,10 @@ Axis taxonomy:
 
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass
-from typing import Final
+from pathlib import Path
+from typing import Final, Iterator
 
 
 AXIS_RELATIONSHIP: Final[str] = "relationship"
@@ -269,3 +271,129 @@ def find_edge_type(name: str) -> EdgeTypeSpec | None:
         if spec.name == name:
             return spec
     return None
+
+
+# ---------------------------------------------------------------------------
+# Axis-coherence drift detection
+# ---------------------------------------------------------------------------
+#
+# AST-walk helpers that catch the silent-bug shape from ADR-0023: consumer-
+# side hardcoded sets of edge_type values that drift from the canonical
+# registry (either by missing values that runtime emits, or by including
+# values that runtime never emits — see the audit playbook's Step 4).
+#
+# Used by the property test in ``tests/test_edge_types.py`` and by the
+# pre-commit linter at ``scripts/check-edge-type-drift``.
+
+
+def _iter_edge_type_set_assignments(
+    path: Path,
+) -> Iterator[tuple[int, str, frozenset[str]]]:
+    """Yield ``(lineno, target_name, frozenset_of_string_elements)`` for
+    every module-level ``<NAME> = {...}`` or
+    ``<NAME> = frozenset({...})`` assignment in *path* where ``NAME``
+    contains the substring ``EDGE_TYPE`` and every element is a string
+    literal.
+
+    The name-substring filter prevents false positives from unrelated
+    string sets (programming-language keyword vocabularies, language
+    stdlib method-name catalogs, etc.) that happen to share an element
+    with the registry by coincidence.
+
+    Files that fail to read (binary garbage, permission errors) or to
+    parse (syntax errors mid-edit) are silently skipped — this helper
+    is best-effort and treats unreadable files as "no offenders found
+    here."
+    """
+    try:
+        source = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):  # pragma: no cover
+        return
+    try:
+        tree = ast.parse(source, filename=str(path))
+    except SyntaxError:  # pragma: no cover
+        return
+
+    for node in ast.walk(tree):
+        target_name: str | None = None
+        value: ast.expr | None = None
+        if isinstance(node, ast.Assign):
+            if len(node.targets) == 1 and isinstance(
+                node.targets[0], ast.Name,
+            ):
+                target_name = node.targets[0].id
+                value = node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(
+            node.target, ast.Name,
+        ):
+            target_name = node.target.id
+            value = node.value
+        if target_name is None or "EDGE_TYPE" not in target_name:
+            continue
+        if value is None:
+            continue
+
+        elements: list[ast.expr] | None = None
+        if isinstance(value, ast.Set):
+            elements = list(value.elts)
+        elif (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id == "frozenset"
+            and len(value.args) == 1
+            and isinstance(value.args[0], (ast.Set, ast.List, ast.Tuple))
+        ):
+            elements = list(value.args[0].elts)
+        if not elements:
+            continue
+
+        values: list[str] = []
+        all_strings = True
+        for elt in elements:
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                values.append(elt.value)
+            else:
+                all_strings = False
+                break
+        if all_strings and values:
+            yield node.lineno, target_name, frozenset(values)
+
+
+def find_axis_drift(repo_root: Path) -> list[str]:
+    """Return human-readable drift offenders found under
+    ``repo_root/packages/``.
+
+    AST-walks every ``.py`` file under ``packages/`` (excluding
+    ``tests/`` directories — fixture data legitimately uses arbitrary
+    string sets), looking for module-level assignments whose target
+    name contains ``EDGE_TYPE``. Asserts every value in those sets is
+    in the canonical registry (``EDGE_TYPES``); emits one offender
+    line per drifted set.
+
+    Returns an empty list if no drift is detected. Files outside
+    ``packages/`` are not scanned (no edge-type sets live there in
+    practice; the search scope is intentionally narrow to keep the
+    pre-commit lint fast).
+    """
+    known_names = all_edge_type_names()
+    offenders: list[str] = []
+    packages_dir = repo_root / "packages"
+    if not packages_dir.is_dir():
+        return offenders
+    for py_file in packages_dir.rglob("*.py"):
+        if "/tests/" in str(py_file):
+            continue
+        for lineno, target_name, values in _iter_edge_type_set_assignments(
+            py_file,
+        ):
+            drift = values - known_names
+            if drift:
+                try:
+                    rel = py_file.relative_to(repo_root)
+                except ValueError:  # pragma: no cover
+                    rel = py_file
+                offenders.append(
+                    f"{rel}:{lineno} ({target_name}): "
+                    f"contains {sorted(drift)} not in canonical registry"
+                )
+    return offenders

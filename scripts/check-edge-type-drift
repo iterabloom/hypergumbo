@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Pre-commit lint: ``*EDGE_TYPE*`` sets in packages/ must be subsets
+of the canonical ``hypergumbo_core.edge_types.EDGE_TYPES`` registry.
+
+Mirrors the property test
+``packages/hypergumbo-core/tests/test_edge_types.py
+::test_every_edge_type_named_set_is_a_subset_of_registry`` and shares
+its drift-detection function (``edge_types.find_axis_drift``) so the
+check at pre-commit time matches what CI enforces. Catches the silent-
+bug shape from ADR-0023 (consumer-side hardcoded sets that drift from
+the canonical list — both *missing values* runtime emits and *phantom
+values* runtime never emits).
+
+Exit codes:
+    0 — no drift detected.
+    1 — drift detected; offenders printed to stdout, fix instructions
+        printed to stderr.
+    2 — could not import the canonical registry (likely a packaging /
+        editable-install problem; do not block commits on this).
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Add the core package's src to sys.path so we can import the registry
+# without requiring an editable install. This script must run in
+# pre-commit hooks where the venv may not be activated.
+sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
+
+try:
+    from hypergumbo_core.edge_types import find_axis_drift
+except ImportError as exc:  # pragma: no cover — defensive
+    print(
+        f"check-edge-type-drift: cannot import canonical registry: {exc}",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+def main() -> int:
+    offenders = find_axis_drift(REPO_ROOT)
+    if not offenders:
+        return 0
+
+    print("Edge-type axis-coherence check failed:")
+    for line in offenders:
+        print(f"  {line}")
+    print()
+    print(
+        "Either add the missing values to the canonical registry at\n"
+        "  packages/hypergumbo-core/src/hypergumbo_core/edge_types.py\n"
+        "with an axis classification per ADR-0023, or remove them from\n"
+        "the consumer set. See the Fundamental Concept Audit playbook\n"
+        "Step 4 (phantom-value bug shape) for context.",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())

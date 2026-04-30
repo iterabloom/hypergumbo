@@ -11,7 +11,6 @@ in the canonical schema (or miss values that should be in the set).
 
 from __future__ import annotations
 
-import ast
 import dataclasses
 from pathlib import Path
 
@@ -106,89 +105,19 @@ def test_edge_type_spec_is_dataclass():
 
 # --- Drift detection ---
 
-def _edge_type_set_assignments_in_file(path: Path):
-    """Yield (lineno, target_name, frozenset_of_string_elements) for
-    every module-level assignment ``<NAME> = {...}`` or
-    ``<NAME> = frozenset({...})`` where ``NAME`` contains ``EDGE_TYPE``
-    and every element is a string literal.
-
-    The name-substring filter avoids false positives from unrelated
-    string sets (programming-language keyword vocabularies, stdlib
-    method-name catalogs, etc.) that happen to share an element with
-    the registry by coincidence."""
-    try:
-        source = path.read_text(encoding="utf-8")
-    except (UnicodeDecodeError, OSError):  # pragma: no cover
-        return
-    try:
-        tree = ast.parse(source, filename=str(path))
-    except SyntaxError:  # pragma: no cover
-        return
-
-    for node in ast.walk(tree):
-        target_name: str | None = None
-        value: ast.expr | None = None
-        if isinstance(node, ast.Assign):
-            if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-                target_name = node.targets[0].id
-                value = node.value
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            target_name = node.target.id
-            value = node.value
-        if target_name is None or "EDGE_TYPE" not in target_name:
-            continue
-        if value is None:
-            continue
-
-        elements: list[ast.expr] | None = None
-        if isinstance(value, ast.Set):
-            elements = list(value.elts)
-        elif (
-            isinstance(value, ast.Call)
-            and isinstance(value.func, ast.Name)
-            and value.func.id == "frozenset"
-            and len(value.args) == 1
-            and isinstance(value.args[0], (ast.Set, ast.List, ast.Tuple))
-        ):
-            elements = list(value.args[0].elts)
-        if not elements:
-            continue
-
-        values: list[str] = []
-        all_strings = True
-        for elt in elements:
-            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                values.append(elt.value)
-            else:
-                all_strings = False
-                break
-        if all_strings and values:
-            yield node.lineno, target_name, frozenset(values)
-
-
 def test_every_edge_type_named_set_is_a_subset_of_registry():
     """Every set whose target name contains ``EDGE_TYPE`` must contain
     only values from the canonical registry. Catches the silent-bug
     pattern from ADR-0023 — consumer-side hardcoded sets that drift
-    from what the analyzers actually emit. Test files are skipped
-    because fixture data legitimately uses arbitrary string sets."""
-    known_names = all_edge_type_names()
-    repo_root = Path(__file__).resolve().parents[3]
-    offenders: list[str] = []
+    from what the analyzers actually emit.
 
-    for py_file in (repo_root / "packages").rglob("*.py"):
-        if "/tests/" in str(py_file):
-            continue
-        for lineno, target_name, values in _edge_type_set_assignments_in_file(
-            py_file,
-        ):
-            drift = values - known_names
-            if drift:
-                rel = py_file.relative_to(repo_root)
-                offenders.append(
-                    f"{rel}:{lineno} ({target_name}): "
-                    f"contains {sorted(drift)} not in canonical registry"
-                )
+    Delegates to ``edge_types.find_axis_drift`` so the same logic
+    powers the pre-commit linter at ``scripts/check-edge-type-drift``.
+    """
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    repo_root = Path(__file__).resolve().parents[3]
+    offenders = find_axis_drift(repo_root)
 
     assert not offenders, (
         "Hardcoded edge-type sets contain values absent from the "
@@ -198,3 +127,141 @@ def test_every_edge_type_named_set_is_a_subset_of_registry():
         "classification) or remove them from the consumer set:\n"
         + "\n".join(offenders)
     )
+
+
+# --- Unit tests for find_axis_drift / _iter_edge_type_set_assignments ---
+
+def _write(p: Path, content: str) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content)
+
+
+def test_find_axis_drift_returns_empty_when_no_packages_dir(tmp_path: Path):
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    assert find_axis_drift(tmp_path) == []
+
+
+def test_find_axis_drift_finds_drift_in_set_literal(tmp_path: Path):
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_DRIFT_EDGE_TYPES = {"calls", "not-a-real-edge-type"}\n',
+    )
+    offenders = find_axis_drift(tmp_path)
+    assert len(offenders) == 1
+    assert "_DRIFT_EDGE_TYPES" in offenders[0]
+    assert "not-a-real-edge-type" in offenders[0]
+
+
+def test_find_axis_drift_finds_drift_in_frozenset_literal(tmp_path: Path):
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_DRIFT_EDGE_TYPES = frozenset({"calls", "phantom-value"})\n',
+    )
+    offenders = find_axis_drift(tmp_path)
+    assert len(offenders) == 1
+    assert "phantom-value" in offenders[0]
+
+
+def test_find_axis_drift_clean_set_is_not_flagged(tmp_path: Path):
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_CLEAN_EDGE_TYPES = {"calls", "extends", "implements"}\n',
+    )
+    assert find_axis_drift(tmp_path) == []
+
+
+def test_find_axis_drift_skips_test_directories(tmp_path: Path):
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "tests" / "test_x.py",
+        '_DRIFT_EDGE_TYPES = {"calls", "fixture-only-value"}\n',
+    )
+    assert find_axis_drift(tmp_path) == []
+
+
+def test_find_axis_drift_ignores_unrelated_set_names(tmp_path: Path):
+    """Programming-language keyword sets coincidentally sharing an
+    element with the registry must not trigger drift detection."""
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_KEYWORDS = {"extends", "implements", "class", "interface"}\n',
+    )
+    assert find_axis_drift(tmp_path) == []
+
+
+def test_find_axis_drift_handles_annotated_assignment(tmp_path: Path):
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_X_EDGE_TYPES: frozenset[str] = frozenset({"calls", "bogus"})\n',
+    )
+    offenders = find_axis_drift(tmp_path)
+    assert len(offenders) == 1
+    assert "bogus" in offenders[0]
+
+
+def test_find_axis_drift_skips_non_string_elements(tmp_path: Path):
+    """Sets with non-string elements (numeric literals, expressions)
+    are not treated as edge-type sets."""
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_EDGE_TYPE_BUDGETS = {1, 2, 3}\n',
+    )
+    assert find_axis_drift(tmp_path) == []
+
+
+def test_find_axis_drift_skips_empty_set(tmp_path: Path):
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_EDGE_TYPES_EMPTY = frozenset()\n',
+    )
+    assert find_axis_drift(tmp_path) == []
+
+
+def test_find_axis_drift_skips_multi_target_assignments(tmp_path: Path):
+    """``a = b = {...}`` shouldn't be matched — too unusual to handle."""
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'A_EDGE_TYPES = B_EDGE_TYPES = {"calls", "bogus"}\n',
+    )
+    # Multi-target assignment doesn't match the single-target rule.
+    assert find_axis_drift(tmp_path) == []
+
+
+def test_find_axis_drift_ignores_sets_without_edge_type_in_name(tmp_path: Path):
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_RANDOM_NAME = {"calls", "bogus-value"}\n',
+    )
+    assert find_axis_drift(tmp_path) == []
+
+
+def test_find_axis_drift_handles_frozenset_with_list_arg(tmp_path: Path):
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_X_EDGE_TYPES = frozenset(["calls", "bogus"])\n',
+    )
+    offenders = find_axis_drift(tmp_path)
+    assert len(offenders) == 1
+    assert "bogus" in offenders[0]

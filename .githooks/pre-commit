@@ -239,6 +239,30 @@ else
     echo -e "${YELLOW}skipped (files not found)${NC}"
 fi
 
+# Edge-type axis coherence — only fires when packages/*.py files are
+# staged. Catches the silent-bug shape from ADR-0023 (consumer-side
+# hardcoded *EDGE_TYPE* sets that drift from the canonical
+# hypergumbo_core.edge_types.EDGE_TYPES registry) before push, not at
+# CI time. Companion to the property test in
+# packages/hypergumbo-core/tests/test_edge_types.py — both call
+# edge_types.find_axis_drift so the pre-commit gate matches CI exactly.
+echo -n "  Edge-type axis coherence... "
+if git diff --cached --name-only | grep -qE "^packages/.*\.py$"; then
+    DRIFT_LOG="/tmp/.axis-drift.$$"
+    if scripts/check-edge-type-drift > "$DRIFT_LOG" 2>&1; then
+        echo -e "${GREEN}✓${NC}"
+        rm -f "$DRIFT_LOG"
+    else
+        echo -e "${RED}✗${NC}"
+        echo ""
+        cat "$DRIFT_LOG"
+        rm -f "$DRIFT_LOG"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}skipped (no packages/*.py staged)${NC}"
+fi
+
 # Check affected-tests.txt manifest mode (must not be full-suite for CI)
 echo -n "  Test manifest... "
 MANIFEST=".ci/affected-tests.txt"
