@@ -1,0 +1,20 @@
+- op: create  # 2a73
+  at: '2026-04-30T21:33:14Z'  # 2a73
+  by: agent  # 2a73
+  actor: jgstern_agent  # 2a73
+  clock: 1  # 2a73
+  nonce: 2a73  # 2a73
+  data:  # 2a73
+    kind: work_item  # 2a73
+    title: "Deep audit: DataModelKind enum — three-axis conflation (Adjacent Concept Sweep follow-up)"  # 2a73
+    status: todo_soft  # 2a73
+    priority: 3  # 2a73
+    parent:  # 2a73
+    tags:  # 2a73
+    - concept_audit  # 2a73
+    isbefore: []  # 2a73
+    duplicate_of: []  # 2a73
+    not_duplicate_of: []  # 2a73
+    pr_ref:  # 2a73
+    description: "Surfaced by the 2026-04-30 Adjacent Concept Sweep at suspect verdict. Field at packages/hypergumbo-core/src/hypergumbo_core/datamodels.py:50 (class DataModelKind(Enum)). Cardinality 7: DATACLASS, DOMAIN_MODEL, DTO, ENTITY, ORM_MODEL, PYDANTIC_MODEL, SCHEMA. Test 3 (construct vs. relationship) and Test 4 (mechanism vs. category) both fire. Three axes mixed in 7 values: (1) language-construct (DATACLASS = Python @dataclass decorator); (2) library/framework-specific (ORM_MODEL, PYDANTIC_MODEL, SCHEMA = Marshmallow per the regex table at datamodels.py:94-102); (3) architectural pattern (DTO, DOMAIN_MODEL, ENTITY = DDD/architectural concepts). DATACLASS is 'how it's expressed'; ENTITY is 'what it is.' Deep audit should decide whether to split the field into multiple fields (one per axis) or document the boundary explicitly with a registry. Findings doc: ~/hypergumbo_lab_notebook/concept-audit-sweep_2026-04-30.md."  # 2a73
+    fields: {}  # 2a73

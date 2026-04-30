@@ -1,0 +1,20 @@
+- op: create  # ac9d
+  at: '2026-04-30T21:33:40Z'  # ac9d
+  by: agent  # ac9d
+  actor: jgstern_agent  # ac9d
+  clock: 1  # ac9d
+  nonce: ac9d  # ac9d
+  data:  # ac9d
+    kind: work_item  # ac9d
+    title: "Deep audit: UsageContext.kind — small-but-mixed-axes Literal (Adjacent Concept Sweep follow-up)"  # ac9d
+    status: todo_soft  # ac9d
+    priority: 4  # ac9d
+    parent:  # ac9d
+    tags:  # ac9d
+    - concept_audit  # ac9d
+    isbefore: []  # ac9d
+    duplicate_of: []  # ac9d
+    not_duplicate_of: []  # ac9d
+    pr_ref:  # ac9d
+    description: "Surfaced by the 2026-04-30 Adjacent Concept Sweep at suspect verdict. Field at packages/hypergumbo-core/src/hypergumbo_core/ir.py:569 (UsageContext.kind: Literal['call', 'data_value', 'export', 'macro']). Type-enforced cardinality 4. Test 3 (construct vs. relationship) fires: 'call' is a construct (function call); 'macro' is a construct (macro invocation); 'data_value' is a semantic role (this thing carries data); 'export' is a relationship (this thing is exported). Three different axes for four values. Small enough that a 'document' verdict — clarifying what question this field answers — may be sufficient. If the field is meant to answer 'what kind of usage' the values should be co-axial; the current shape suggests two or three axes. P4 because the cardinality is small and the runtime impact is bounded compared to Symbol.kind / evidence_type. Findings doc: ~/hypergumbo_lab_notebook/concept-audit-sweep_2026-04-30.md."  # ac9d
+    fields: {}  # ac9d
