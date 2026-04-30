@@ -2,7 +2,14 @@
 # ADR-0023: Edge Type Names the Relationship, Not the Endpoints
 
 Date: 2026-04-29
-Status: Draft
+Status: Accepted (§6 migration in progress)
+
+> The decision is in force as of the canonical-registry landing
+> (commit `3b60ba3dd` — `EDGE_TYPES` is the source of truth) and the
+> drift-linter landing (commit `f722374da` — `scripts/check-edge-type-drift`
+> blocks new violations in pre-commit). Phase 1 of §6 is complete.
+> Phases 2-4 are tracked as `WI-sahab-fatoz`, `WI-mokam-jalig`, and
+> `WI-vomoj-suhaz` and proceed independently of this status flip.
 
 ## Context
 
@@ -186,6 +193,16 @@ expected. Any consumer that filters by `edge_type` must know the
 entire proliferation set, and inevitably gets out of sync as new
 specialized types ship.
 
+### Generalization to other multi-value fields
+
+The four-part shape this ADR uses (axis name / axiom / consumer
+pattern / enforcement) was abstracted into
+[ADR-0024](0024-axis-declaration-template.md) once the
+`Edge.edge_type` worked example landed. Future axis-bearing fields
+(e.g., `Symbol.kind`) follow ADR-0024's seven-step workflow and
+declare their canonical registry, drift linter, property test, and
+by-axis view using ADR-0023's artifact set as the reference shape.
+
 ### Why this matters now
 
 The proximate cause of this ADR is the WI-jagus-bufip Deliverable A debate:
@@ -228,7 +245,14 @@ Three operational corollaries:
    (see "Migration" below). The deprecation set is enumerated below as a
    *first cut* and will be refined during the property-test audit.
 
-### Likely-deprecate list (first cut, to be confirmed by audit)
+### Deprecation candidates (reconciled with the canonical registry)
+
+The table below was the first cut at status-Draft time. As of commit
+`50e3a7303` it is reconciled with the canonical registry — the
+authoritative axis classification for every emitted edge type lives
+in `EDGE_TYPES`, and the by-axis view is at
+[`docs/concept-axes.md`](../concept-axes.md). Any divergence between
+this table and the registry is resolved in favor of the registry.
 
 | Edge type | Replacement | Rationale |
 |---|---|---|
@@ -260,11 +284,10 @@ Notably `module_attr_ref` survives because `imported_module.X` is a
 syntactically different construct from a bare-name `X` reference, and the
 distinction is a property of the use site (axis 1), not the dst (axis 2).
 
-### Property test (the enforcement mechanism)
+### Enforcement (three complementary defenses)
 
-Two complementary tests, runtime and static:
-
-**Static (PR (a), landed):** the canonical registry at
+**1. Static — landed (commits `3b60ba3dd`, `f722374da`).** The
+canonical registry at
 `packages/hypergumbo-core/src/hypergumbo_core/edge_types.py` is the
 single source of truth for valid `edge_type` values. Each entry
 carries an `axis` annotation (`relationship`, `endpoint_shape`, or
@@ -275,11 +298,26 @@ carries an `axis` annotation (`relationship`, `endpoint_shape`, or
 AST-walks the package source tree and fails CI if any module-level
 `*EDGE_TYPE*` set contains a value absent from the registry — the
 class of bug from §1 (cases 1–2 and 4–5) cannot recur silently.
+`scripts/check-edge-type-drift` runs the same check in pre-commit.
 Consumer-side sets that need a subset of edge types should call
 `edge_types_on_axis(...)` instead of maintaining their own list.
 
-**Runtime (corpus-based, planned):** parameterized invariant that
-auto-discovers new offenders by inspecting actual emitted edges:
+Three follow-ons sharpen the static check incrementally:
+- `WI-zisit-hagud` — broaden `find_axis_drift` scope from `packages/`
+  to also cover `scripts/` and `.agent/`.
+- `WI-pilam-jukus` — generalize `find_axis_drift` from the
+  `*EDGE_TYPE*` name-substring filter to the multi-field axis pattern
+  (so `Symbol.kind`, `evidence_type`, etc. inherit the same
+  enforcement once their registries land).
+- `WI-variv-lujug` — tighten the linter from "value is in registry"
+  to "value matches the canonical axis principle." This step is
+  gated on Phase 2/3/4 completion: it cannot ship until the
+  endpoint-shape and pending-classification values have been migrated
+  out of producers.
+
+**2. Runtime corpus-based — planned (`WI-funis-funam`).**
+Parameterized invariant that auto-discovers new offenders by
+inspecting actual emitted edges:
 
 ```
 test_edge_type_does_not_encode_endpoint_metadata:
@@ -296,6 +334,21 @@ representative corpus, partition emitted edges by
 and assert that within each partition, `edge_type` is constant up to a
 short allow-list. Allow-list growth requires a corresponding ADR amendment.
 
+**3. Cadence — landed.** Static and runtime checks catch known
+offender shapes; the fundamental-concept audit playbook
+(`.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md`)
+plus the session-start cadence hook
+(`.agent/hooks/_shared/check_audit_cadence.py`, ~72-commit threshold)
+catch the leaks the linters can't — new conceptual axes, semantic
+drift, and adjacent-domain confusions that don't violate any current
+membership rule. Each release cycle nominates one axis from
+`docs/concept-axes.md` for re-audit.
+
+These three layers are complementary, not redundant: static blocks
+known-shape recurrences, runtime catches partition-level violations
+the static check can't see, and cadence catches the kind of leak
+that doesn't yet have a check at all.
+
 This makes the principle empirically enforceable rather than reliant on
 reviewer vigilance.
 
@@ -305,16 +358,19 @@ The migration is staged so consumers can keep working throughout. JSON
 output stability is treated as an additive deprecation rather than a hard
 rename in the first phase.
 
-### Phase 1 — ADR + property test (1 day)
+### Phase 1 — ADR + property test (complete)
 
-- Land this ADR (Status: Draft → Proposed → Accepted as discussion progresses).
-- Add the property-test scaffold described above. Initially configured to
-  print a warning rather than fail, so the existing offender set is visible
-  but not blocking.
-- Confirm or revise the deprecation list against the property test's actual
-  output.
+- ADR landed (Status: Draft → Accepted (§6 migration in progress)).
+- Canonical registry landed (commit `3b60ba3dd`).
+- Static drift linter landed (commit `f722374da`) — pre-commit blocks new
+  violations; deprecation list reconciled against registry output (commit
+  `50e3a7303`).
+- By-axis view generated (commit `6c4e7f7f1`).
+- ADR-0024 axis-declaration template generalized this ADR's pattern
+  (commit `77c3b8270`).
+- Cadence hook + audit playbook landed for the third defense layer.
 
-### Phase 2 — Migrate consumers (2-3 days)
+### Phase 2 — Migrate consumers (`WI-sahab-fatoz`, 2-3 days)
 
 Update the ~10 consumer files to query by `(edge_type, dst.kind)` rather
 than by hardcoded edge-type sets. Known consumers:
@@ -335,7 +391,7 @@ Each consumer migration is a reversible refactor — the old edge-type
 semantics still produce the right answer with the new query shape, so this
 phase can land before producers change.
 
-### Phase 3 — Unify producers (3-5 days)
+### Phase 3 — Unify producers (`WI-mokam-jalig`, 3-5 days)
 
 Sweep the ~20-30 producer sites that emit deprecation-list edge types.
 For each:
@@ -350,11 +406,12 @@ Producer migration order: start with the dst-kind leakage cases (lowest
 risk, purely additive on the consumer side), then bridge / FFI, then the
 publish / dispatch families after their per-family audits.
 
-### Phase 4 — Schema bump and deprecation removal (1-2 days)
+### Phase 4 — Schema bump and deprecation removal (`WI-vomoj-suhaz`, 1-2 days)
 
-- Bump `docs/schema.json` per ADR-0014's schema-change protocol. The
-  deprecated edge-type strings remain valid for one minor version (so
-  external consumers can adapt), then hard-fail in the version after.
+- Bump `docs/schema.json` per ADR-0014's schema-change protocol.
+  **Deprecation window:** deprecated edge-type strings remain valid for
+  one minor version (so external consumers can adapt), then hard-fail
+  in the next minor version. (Resolves Open Question #3.)
 - Remove dead code paths in producers and consumers.
 - Bakeoff revalidation: any centrality-weight or sketch-section change
   needs an `awaits_bakeoff_validation` tag on the migration tracker
@@ -406,47 +463,47 @@ linker changes to prevent further accumulation.
   analyzers will reintroduce the same pattern under different names. The
   property test is the load-bearing piece, not the deprecation list.
 
-## Open questions (Draft status)
+## Open questions — resolved at status advancement
 
-The following are explicitly unresolved at draft time and should be
-settled before this ADR moves to Proposed or Accepted.
+The following were unresolved at draft time. Each is now settled, in
+flight as a tracker item, or explicitly deferred to a follow-on ADR.
 
-1. **Exact canonical set of edge types.** The "Edge types that stay" list
-   above is provisional. A full audit may surface candidates for further
-   consolidation (e.g., `extends` vs. `inherits` — are these genuinely
-   different in this IR?).
+1. **Exact canonical set of edge types.** *Resolved → in flight.* The
+   first-cut "Edge types that stay" list is provisional; the
+   authoritative classification lives in `EDGE_TYPES`. A
+   tracker-driven triage of the ~45 emitted-but-unregistered values
+   (including the `extends` vs. `inherits` question) is queued as
+   `WI-tavas-voror`. Outcomes flow back into the registry, not into
+   this ADR.
 
-2. **Boundary between `edge_type` and `evidence_type`.** Today,
-   `evidence_type` carries values like `ast_call_direct`,
-   `scip_occurrence_ref`, `middleware_chain`, which are about the
-   inference pathway. After this ADR, `evidence_type` is doing more work
-   (it's the field that distinguishes "same relationship, different
-   inference"). Does this need its own ADR? Probably yes.
+2. **Boundary between `edge_type` and `evidence_type`.** *Deferred to
+   a follow-on ADR.* After this ADR, `evidence_type` is doing more
+   work (it distinguishes "same relationship, different inference").
+   The boundary deserves its own ADR rather than being settled here;
+   the cadence-hook audit is the natural surface for queuing it.
 
-3. **Schema bump strategy.** Patch (additive deprecation only, deprecated
-   types remain valid) vs. minor (eventual hard removal). The migration
-   plan assumes additive, but the time-to-removal window needs to be
-   stated explicitly. Recommend: deprecated edge types are accepted for
-   one minor version, removed in the next.
+3. **Schema bump strategy.** *Settled.* Deprecated edge types are
+   accepted for one minor version and removed in the next. The
+   concrete schema-bump work lives in Phase 4 (`WI-vomoj-suhaz`).
 
-4. **Per-family audits**: the publish family
-   (`event_publishes` / `crdt_publishes` / `annotated_publishes` /
-   `message_send` / `enqueues`) and the dispatch family
-   (`dispatches_to` / `routes_to` / `delegates_to` /
-   `message_dispatch` / `uses_dispatch_table`) need case-by-case review.
-   Some of these likely name genuinely distinct relationships and should
-   stay; others are protocol leakage. The audit is deferred to Phase 3.
+4. **Per-family audits.** *Resolved → in flight.* Case-by-case review
+   of the dispatch family (`WI-kofuh-fovar`) and publish family
+   (`WI-kusif-gamup`) precedes their migration in Phase 3. Both
+   families currently sit at `pending_classification` in the registry
+   pending these audits.
 
-5. **Property-graph "label" concept.** Some graph databases distinguish
-   `edge_type` (the relationship) from `edge_label` (a free-form tag).
-   Worth considering whether hypergumbo wants a similar split, or whether
-   `meta` is sufficient. Recommend: stick with `meta` unless a concrete
-   use case forces the split.
+5. **Property-graph "label" concept.** *Settled.* Stick with `meta`.
+   ADR-0015 already establishes the pattern of putting per-edge
+   relationship metadata in `meta`; introducing a parallel
+   `edge_label` field would duplicate that surface without a concrete
+   use case forcing the split.
 
-6. **Symbol `kind` audit.** This ADR is scoped to edges, but the same
-   conflation pattern likely affects `Symbol.kind` (see "patient is
-   healthy" prognosis discussion). A follow-up ADR (separate scope) should
-   apply the same lens to node-type vocabulary.
+6. **`Symbol.kind` audit.** *Deferred to a follow-on ADR.* The same
+   conflation lens applies to node-kind vocabulary, but the audit is
+   out of scope here. Tooling generalization for the audit (drift
+   linter for arbitrary axis-bearing fields) is tracked as
+   `WI-pilam-jukus`; the `Symbol.kind` audit itself will be queued
+   under the broader Adjacent Concept Sweep (audit playbook Step 5).
 
 ## Alternatives considered
 
@@ -473,10 +530,15 @@ ADR-0015 metadata pattern. **Recommended.**
 
 - **Surfaced by**: WI-jagus-bufip-mogah-fifom-dalug-sobip-hilom-rogoz
   (Deliverable A debate — `from X import BAR` edge labeling).
+- **Generalized by**: [ADR-0024](0024-axis-declaration-template.md) — the
+  four-part shape (axis name / axiom / consumer pattern / enforcement)
+  and seven-step workflow used here are abstracted as the template for
+  any future multi-value field's axis declaration.
 - **Pattern precedent**: ADR-0015 (Dataflow Access Modes) — `meta` field
   for relationship metadata rather than edge-type proliferation.
 - **Schema mechanics**: ADR-0014 (Generalized Symbol Identity) — schema
   bump protocol applicable here.
-- **Likely follow-up**: `Symbol.kind` taxonomy audit (separate ADR).
+- **Likely follow-up**: `Symbol.kind` taxonomy audit (separate ADR);
+  `evidence_type` boundary ADR (Open Question #2).
 - **Bug references**: silent miscategorization at `ranking.py:1053`,
   `slice.py:640`; SCIP merger non-existence at `scip/calls.py:48`.

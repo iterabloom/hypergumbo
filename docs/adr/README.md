@@ -31,7 +31,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0020](0020-tui-screenshot-annotation-and-inline-preview.md) | TUI Screenshot Annotation and Inline Preview | Proposed | 2026-03-30 |
 | [0021](0021-tracker-federation.md) | Tracker Federation | Proposed | 2026-03-30 |
 | [0022](0022-language-profile-registry.md) | Per-Language Configuration Surface and Language Profile Registry | Proposed (exploratory) | 2026-04-10 |
-| [0023](0023-edge-type-relationship-not-endpoints.md) | Edge Type Names the Relationship, Not the Endpoints | Draft | 2026-04-29 |
+| [0023](0023-edge-type-relationship-not-endpoints.md) | Edge Type Names the Relationship, Not the Endpoints | Accepted (§6 migration in progress) | 2026-04-29 |
 | [0024](0024-axis-declaration-template.md) | Axis Declaration Template for Multi-Value Fields | Draft | 2026-04-30 |
 
 ## Thematic grouping
