@@ -325,9 +325,33 @@ runs can find prior work:
   PR #3459 surfaced 3 more (`taint.py:736`, `compact.py:108`,
   `io_boundary.py:704`), one of which exposed the phantom-value bug
   shape — a value from a different field smuggled into the membership
-  check. Outcome: ADR-0023 (Draft); canonical registry +
-  drift property test landed in PR #3459. Follow-on: axis-validation
-  linter (PR (b)), by-axis view (PR (c)).
+  check. Outcome: ADR-0023 (Accepted (§6 migration in progress) as of
+  PR #3472); canonical registry + drift property test landed in
+  PR #3459. Follow-on: axis-validation linter (PR (b)), by-axis view
+  (PR (c)).
+
+- **2026-04-30 — Adjacent Concept Sweep (Step 5) at triage level.**
+  Triage pass over the multi-value fields adjacent to `Edge.edge_type`,
+  per the user's prompt after ADR-0023 advanced. Five named fields
+  audited (`Symbol.kind`, `Edge.evidence_type`, `Edge.access_mode`,
+  `Edge.dest_access_mode`, `Symbol.supply_chain_tier`), three more
+  encountered along the way (`Symbol.origin`, `DataModel.kind`,
+  `UsageContext.kind`). Outcome: 2 confirmed-leaks
+  (`Symbol.kind` 187 values, all four tests fire — already flagged by
+  ADR-0023 OQ#6; `Edge.evidence_type` ~200 values, three axes
+  conflated — already flagged by ADR-0023 OQ#2), 4 suspects
+  (`supply_chain_tier` tier-2 plurality; `Symbol.origin`
+  analyzer-vs-synthesis mixing; `DataModelKind` 3-axis enum;
+  `UsageContext.kind` mixed 4-value Literal), 2 clean
+  (`access_mode` + `dest_access_mode`, ADR-0015-canonized).
+  Findings doc:
+  `~/hypergumbo_lab_notebook/concept-audit-sweep_2026-04-30.md`.
+  Six tracker items filed for follow-up deep audits
+  (`WI-dumiz...`, `WI-turin...`, `WI-gumoz...`, `WI-nusum...`,
+  `WI-juvag...`, `WI-gatuh...`); no migration or ADR work in this
+  triage pass. The sweep validates the playbook's "audit the
+  surrounding territory after one leak" heuristic — the same
+  cognitive habit produced multiple instances.
 
 (Future audits append here.)
 
