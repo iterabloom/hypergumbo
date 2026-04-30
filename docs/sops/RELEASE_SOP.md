@@ -36,7 +36,7 @@ The release workflow starts under two conditions:
 
 The workflow runs in two phases: pre-publish (hard gates) and post-publish (verification).
 
-Multi-Python matrix testing and integration tests now run nightly (`nightly.yml` at 11 PM UTC).
+Multi-Python matrix testing and integration tests now run nightly (`nightly.yml` at 5:30 AM UTC).
 The release workflow checks whether nightly already covered the release SHA. If so, those jobs
 are skipped entirely, making releases fast (security-audit + build-and-publish only). If not,
 they run post-publish as verification.
