@@ -265,3 +265,16 @@ def test_find_axis_drift_handles_frozenset_with_list_arg(tmp_path: Path):
     offenders = find_axis_drift(tmp_path)
     assert len(offenders) == 1
     assert "bogus" in offenders[0]
+
+
+def test_find_axis_drift_skips_annotated_assignment_without_value(tmp_path: Path):
+    """``_X_EDGE_TYPES: frozenset[str]`` with no right-hand side parses
+    as ``AnnAssign`` with ``value=None``; the walker must skip these
+    cleanly rather than crashing on the missing value."""
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_X_EDGE_TYPES: frozenset[str]\n',
+    )
+    assert find_axis_drift(tmp_path) == []
