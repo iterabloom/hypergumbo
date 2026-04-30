@@ -64,13 +64,24 @@ The accessor signature should be predictable across axes:
 
 A drift-detection mechanism, mandatory. Without enforcement, the axiom decays into folklore. ADR-0023's enforcement is two-layered:
 
-- **Static (in-tree)**: an AST walker (`find_axis_drift`) finds module-level `*EDGE_TYPE*`-named sets in `packages/` and asserts their values are subsets of the canonical registry. Surfaces in two places: a property test in `test_edge_types.py` (CI gate) and a CLI script `scripts/check-edge-type-drift` (pre-commit gate).
+- **Static (in-tree)**: an AST walker (`hypergumbo_core.axis_drift.find_drift`) finds module-level sets whose target name contains a configurable substring filter and asserts their values are subsets of the canonical registry. The `Edge.edge_type` instantiation uses `name_filter="EDGE_TYPE"` plus `EDGE_TYPES` and surfaces in two places: a property test in `test_edge_types.py` (CI gate) and a CLI script `scripts/check-edge-type-drift` (pre-commit gate).
 - **Runtime (planned)**: ADR-0023 §3 reserves a corpus-based test that asserts the axis holds against actual emitted edges from a representative analysis run. Not yet built; counts as a known gap.
 
-The enforcement pattern transfers cleanly:
-- Static walker — adapt the name-substring filter (`EDGE_TYPE` → `KIND` for `Symbol.kind`, etc.).
-- Pre-commit hook entry — copy the existing one.
-- Property test — copy and rename.
+The enforcement pattern transfers cleanly. Each new axis-bearing field calls the shared helper:
+
+```python
+from hypergumbo_core.axis_drift import find_drift
+from <pkg>.<field>_types import all_<field>_names
+
+def find_<field>_drift(repo_root: Path) -> list[str]:
+    return find_drift(
+        repo_root,
+        name_filter="<UPPERCASE-FIELD-NAME>",
+        registry_names=all_<field>_names(),
+    )
+```
+
+The helper accepts `search_roots` and `excluded_path_substrings` parameters so an axis with a different layout (e.g., a registry that lives in `tools/` rather than `packages/`) can override the defaults. Default scope is `packages/`, `scripts/`, and `.agent/`; default exclusion is `/tests/`. The two layers above the helper — pre-commit hook entry and property test — are still copy-and-rename. Single registry source of truth, single AST walker, per-field one-line wrapper.
 
 For very small axes (single-digit-value enums), the static linter may be overkill and a single property test is enough. Use judgment.
 

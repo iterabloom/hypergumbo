@@ -2664,9 +2664,18 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         # 0% because there are no direct cross-language function calls.
         # Gate: require (1) meaningful polyglot, (2) IO boundaries found,
         # and (3) at least one FFI bridge edge in the graph.
+        # Subset of endpoint_shape edge_types that name a same-process
+        # cross-language function call. JNI, ctypes, and pyffi bridges
+        # are emitted with edge_type="native_bridge" by linkers/jni.py
+        # and friends — earlier versions of this set named jni_bridge /
+        # pyffi_bridge as separate values, but those are phantoms (no
+        # analyzer ever emitted them; the membership test silently
+        # missed every JNI/pyffi edge). Same shape as ADR-0023 §1
+        # cases 4-5; reconciled with the canonical registry per
+        # WI-zisit-hagud's broader-scope drift detection.
         _FFI_EDGE_TYPES = frozenset({
             "cgo_bridge", "ffi_bridge", "napi_bridge",
-            "jni_bridge", "wasm_bridge", "pyffi_bridge",
+            "native_bridge", "wasm_bridge",
         })
         has_ffi_edges = any(
             e.get("type") in _FFI_EDGE_TYPES for e in edges
