@@ -201,6 +201,24 @@ PLAYBOOKS = [
      "concern — ask before filing), and property-of-existing-invariant (the new failure mode "
      "is structurally a property of a tracked invariant — file as a regression note on the "
      "parent INV, not a sibling item)."),
+    ("fundamental-concept-audit",
+     ".agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md",
+     "Run when you suspect a single field, type, category, or vocabulary is silently "
+     "smuggling unrelated information through one name (a 'conceptual leak'). Triggers: "
+     "just identified one leak (most aren't alone — same cognitive habit produces others), "
+     "a new component reveals 'yet another flavor' of an existing thing, hardcoded sets of "
+     "variants keep going stale, a refactor reveals N similar-but-different somethings "
+     "where 1 was expected, or you're about to ship a 'thing' that feels like relabeling "
+     "existing stuff. Seven steps: name a one-sentence suspicion (no sentence → not "
+     "ready), inventory every value the suspect field takes, apply four leakage tests "
+     "per pair (property derivability, apex/peer overloading, construct vs. relationship, "
+     "mechanism vs. category — Test 2 alone is sufficient grounds to deprecate), find "
+     "silent bugs the leak has produced (hardcoded sets, if/elif chains, reconciliation "
+     "TODOs), sweep adjacent concepts, decide deprecate/document/keep per-pair (Keep "
+     "needs a written re-evaluation trigger), record findings. Falsifiability self-test: "
+     "if the audit couldn't have come back showing no leakage, it was confirmation "
+     "theater. When NOT to run: active incident, mid-feature on a deadline, no "
+     "one-sentence suspicion."),
     ("smart-test-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/smart-test-playbook.md",
      "Always use the pytest alias (which invokes smart-test) instead of python -m pytest or "
