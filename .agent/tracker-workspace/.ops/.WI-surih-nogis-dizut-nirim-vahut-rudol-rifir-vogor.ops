@@ -20,3 +20,18 @@
     pr_ref:  # 0c9c
     description: "When a new typing axis is introduced (a new dimension along which a multi-value field's values must be classified), there should be a concrete ADR template for declaring it. ADR-0023 established the pattern for Edge.type's relationship/endpoint_shape/pending_classification axis; future axes should reuse the same shape rather than reinventing one. Deliverable: a meta-ADR (or addendum to ADR-0023) defining the template — axis name, axiom (what every value on this axis must satisfy), consumer pattern (how to query 'values on this axis X'), enforcement (linter / property test / runtime check). Plus a creation practice: any PR adding a multi-value field to an Edge/Symbol/etc. dataclass should answer 'what axis does this occupy?' — surfaced via PR template or pre-commit prompt. Cross-references the concept-axes registry (sibling item WI-bofub-tudik-vajig-hadib-jodin-gosig-raniz-rudoj) which catalogs the declared axes."  # 0c9c
     fields: {}  # 0c9c
+- op: update  # e0a7
+  at: '2026-04-30T19:35:28Z'  # e0a7
+  by: agent  # e0a7
+  actor: jgstern_agent  # e0a7
+  clock: 2  # e0a7
+  nonce: e0a7  # e0a7
+  set:  # e0a7
+    status: done  # e0a7
+- op: discuss  # 8537
+  at: '2026-04-30T19:35:28Z'  # 8537
+  by: agent  # 8537
+  actor: jgstern_agent  # 8537
+  clock: 3  # 8537
+  nonce: '8537'  # 8537
+  message: "Closed by PR #3468 (commit 77c3b8270). Landed: ADR-0024 (Axis Declaration Template for Multi-Value Fields), four-part template (axis name / axiom / consumer pattern / enforcement) + seven-step declaration workflow. Wiring: AGENTS.md essentialization in Required Checks naming the practice for any PR adding a multi-value field to a core dataclass; audit playbook Step 5 + Step 6 (both Deprecate and Document outcomes) forward-reference ADR-0024; docs/concept-axes.md preamble points at ADR-0024 as the template (regenerated). ADR-0023 retained as the worked example; ADR-0024 is the abstract template future axes (Symbol.kind, evidence_type, etc.) instantiate. Three open questions in Draft status: retroactive ADR-0015 (dataflow access modes) registry-ization; pre-commit detection of new multi-value field additions; section vocabulary normalization. Pre-commit detection sub-question is mentioned in ADR-0024 §Decision as a future tracker-able if documentation channel proves insufficient — not filed as a separate item now since it's premature."  # 8537

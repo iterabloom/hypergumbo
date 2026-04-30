@@ -26,3 +26,25 @@
   clock: 2  # 68d5
   nonce: 68d5  # 68d5
   message: "I'm not sure I like this. The reason why is that all of our infrastructure is designed to make hypergumbo releasable at all times. Usually in the moment when we decide to do releases, we want the release mechanics to operate as fast as possible. We don't ignore bugs if the mechanism uncovers something, but what this would do is potentially uncover big-yet-subtle issues right at the time when we are at a deadline. I think those would be better to uncover at any other time, which is why I prefer the \"every 72 commits\" mechanism."  # 68d5
+- op: update  # d228
+  at: '2026-04-30T18:57:19Z'  # d228
+  by: agent  # d228
+  actor: jgstern_agent  # d228
+  clock: 3  # d228
+  nonce: d228  # d228
+  set:  # d228
+    status: wont_do  # d228
+- op: discuss  # ac9b
+  at: '2026-04-30T18:57:19Z'  # ac9b
+  by: agent  # ac9b
+  actor: jgstern_agent  # ac9b
+  clock: 4  # ac9b
+  nonce: ac9b  # ac9b
+  message: "Agree, marking wont_do. The principled point is sharper than just 'release timing is bad' — it's that audit triggers should couple to *slack*, not to *deadlines*, and per-release is anti-correlated with slack precisely because release prep is when we want the mechanics to operate fast. The 72-commit cadence (PR #3460) is calendar-orthogonal, so it's more likely to fire on a normal day when there's bandwidth to handle whatever it surfaces. Two follow-on implications: (1) WI-juvaf-pubib-kiguh-kubat-jagiv-sigad-jikav-gumag's deliverable 1 (per-release bake-in for the generative question) inherits the same risk and likely needs rescoping — surfaced for review there; (2) the audit playbook's anti-pattern list already names 'mid-feature' as a slack-anti-correlation; the same shape applies to release prep and is worth generalizing into a 'audit triggers couple to slack' principle."  # ac9b
+- op: discuss  # e150
+  at: '2026-04-30T18:58:08Z'  # e150
+  by: agent  # e150
+  actor: jgstern_agent  # e150
+  clock: 5  # e150
+  nonce: e150  # e150
+  message: "Agree, marking wont_do. The principled point is sharper than just 'release timing is bad' — it's that audit triggers should couple to *slack*, not to *deadlines*, and per-release is anti-correlated with slack precisely because release prep is when we want the mechanics to operate fast. The 72-commit cadence (PR #3460) is calendar-orthogonal, so it's more likely to fire on a normal day when there's bandwidth to handle whatever it surfaces. Two follow-on implications: (1) WI-juvaf-pubib's deliverable 1 (per-release bake-in for the generative question) inherits the same risk and likely needs rescoping — surfacing for review there; (2) the audit playbook's anti-pattern list already names 'mid-feature' as a slack-anti-correlation; the same shape applies to release prep and is worth generalizing into a 'audit triggers couple to slack' principle."  # e150
