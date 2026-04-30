@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **ADR-0024 — Axis Declaration Template for Multi-Value Fields** (closes WI-surih-nogis): formalizes the four-part template (axis name, axiom, consumer pattern, enforcement) and the seven-step declaration workflow that ADR-0023's Edge.type axis demonstrates concretely. ADR-0023 is reframed as the worked example; ADR-0024 is the abstract template that future axis-shaped fields (Symbol.kind, evidence_type, etc.) instantiate. The audit playbook's Step 5 (adjacent concept sweep) and Step 6 (Document outcome) now forward-reference ADR-0024 as the recipe for treating sweep findings that warrant a full axis declaration. AGENTS.md gains an "Axis declaration for multi-value fields" essentialization in Required Checks naming the practice for any PR adding a multi-value field to a core dataclass. The concept-axes.md preamble points at ADR-0024 as the template (with ADR-0023 retained as the worked example).
+
 ### Changed
 
 - **Audit playbook anti-pattern generalized**: `Running the audit while you're mid-feature` was the original Step 4 anti-pattern; per the WI-gusam-faful resolution it is now `Coupling the audit to a deadline`, with mid-feature, mid-release-prep, and mid-incident named as instances of the same shape. The principle — *audit triggers should couple to slack, not to deadlines* — is recorded explicitly. Cadence-mechanism subsection and "When NOT to run" section updated to match.

@@ -205,7 +205,11 @@ the adjacent fields and audit them too:
 
 Adjacent fields don't have to all be confused — but they almost always
 share design history with the confused one, so they're the cheapest
-places to find the next instance.
+places to find the next instance. When a sweep surfaces a field that
+warrants a full axis declaration (rather than a single-pair verdict),
+ADR-0024 specifies the four-part declaration template (axis name,
+axiom, consumer pattern, enforcement) and the seven-step workflow for
+landing the artifacts.
 
 ### Step 6 — Decide: deprecate, document, or keep
 
@@ -214,15 +218,18 @@ own verdict, and a single audit can produce a mix of all three
 outcomes below:
 
 - **Deprecate** — the distinction is leakage; open an ADR with a typing
-  principle and a migration plan. ADR-0023 is the template.
+  principle and a migration plan. ADR-0023 is the worked example;
+  ADR-0024 is the abstract template (axis name, axiom, consumer
+  pattern, enforcement) for declaring the new axis the deprecation
+  reorganizes around.
 - **Document** — the distinction is genuine but undocumented. The
   artifact ranges from a short ADR addendum or module docstring (when
   the suspect domain is conceptual) up to a structured registry module
   with per-value metadata and a property test enforcing the boundary
-  going forward (when the suspect domain is a value-set in code — the
-  ADR-0023 / `edge_types.py` shape). Either way, the artifact must
-  state WHY the variants are distinct and what query each is meant to
-  answer.
+  going forward (when the suspect domain is a value-set in code — see
+  ADR-0024 for the template, ADR-0023 / `edge_types.py` for the worked
+  example). Either way, the artifact must state WHY the variants are
+  distinct and what query each is meant to answer.
 - **Keep without action** — explicitly accept the apparent overlap
   as "not actually a problem at the scale we care about". This
   outcome is fine but must be **written down with rationale and a

@@ -84,9 +84,9 @@ _HEADER = """\
 
 Typing axes maintained in hypergumbo's behavior map. Each axis names a
 dimension along which a multi-value field's values must be classified.
-New axes are introduced via ADR; ADR-0023 is the template (see also the
-sibling tracker items for the axis-declaration ADR template and the
-per-release axis audit cadence).
+New axes are introduced via ADR following ADR-0024's four-part
+declaration template (axis name, axiom, consumer pattern, enforcement);
+ADR-0023 (Edge.type) is the worked example.
 
 The current axes apply to `Edge.type`. Other multi-value fields
 (`Symbol.kind`, `supply_chain.tier`, etc.) will be added here as their
