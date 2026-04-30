@@ -315,7 +315,7 @@ Three follow-ons sharpen the static check incrementally:
   endpoint-shape and pending-classification values have been migrated
   out of producers.
 
-**2. Runtime corpus-based — planned (`WI-funis-funam`).**
+**2. Runtime corpus-based — landed (WI-funis-funam).**
 Parameterized invariant that auto-discovers new offenders by
 inspecting actual emitted edges:
 
@@ -333,6 +333,24 @@ representative corpus, partition emitted edges by
 `(src.kind, src.language, src.framework, dst.kind, dst.language, dst.framework)`
 and assert that within each partition, `edge_type` is constant up to a
 short allow-list. Allow-list growth requires a corresponding ADR amendment.
+
+The shipped implementation lives in
+[`hypergumbo_core.runtime_coherence`](../../packages/hypergumbo-core/src/hypergumbo_core/runtime_coherence.py)
+with a thin CLI at
+[`scripts/check-edge-type-runtime-coherence`](../../scripts/check-edge-type-runtime-coherence)
+and an empty allow-list at
+[`docs/edge-type-runtime-allowlist.yaml`](../edge-type-runtime-allowlist.yaml).
+The deployment posture is warn-only — the CLI exits 1 on un-allow-listed
+offenders for human invocation during Phase 2/3 migration, but is
+not (yet) wired into pre-commit / CI; Phase 4's expectation is that
+the offender set goes empty modulo the allow-list. The shipped
+implementation uses a four-field partition key
+`(src.kind, src.language, dst.kind, dst.language)` rather than the six-field
+key the ADR specifies above; hypergumbo doesn't store `framework` as
+a top-level Symbol field today (it lives in `meta.concepts[*].framework`,
+a list awkward to use as a partition key), and a coarser key still
+catches every leak the finer key would. Expand to six fields if a
+top-level `Symbol.framework` registry lands.
 
 **3. Cadence — landed.** Static and runtime checks catch known
 offender shapes; the fundamental-concept audit playbook

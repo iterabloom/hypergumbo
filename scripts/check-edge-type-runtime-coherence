@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Runtime coherence check for the ADR-0023 edge-type axis.
+
+Reads a behavior-map JSON (output of ``hypergumbo run``) and reports
+partitions where ``edge_type`` varies within a single
+``(src.kind, src.language, dst.kind, dst.language)`` partition. This
+is the producer-side complement to ``scripts/check-edge-type-drift``,
+which catches consumer-side hardcoded set drift via AST walk.
+
+The logic lives in ``hypergumbo_core.runtime_coherence``; this script
+is a thin entry point that delegates to ``main()`` so coverage works
+through direct unit tests on the module rather than through subprocess
+invocations.
+
+Usage:
+    scripts/check-edge-type-runtime-coherence path/to/behavior_map.json
+    scripts/check-edge-type-runtime-coherence --allowlist FILE PATH
+
+Exit codes:
+    0 — no un-allow-listed offenders
+    1 — un-allow-listed offenders detected
+    2 — input read / parse error
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
+
+from hypergumbo_core.runtime_coherence import main  # noqa: E402
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())

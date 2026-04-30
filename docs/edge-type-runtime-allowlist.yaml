@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Allow-list for edge-type runtime coherence per ADR-0023 §3.
+#
+# Each entry permits multiple `edge_type` values within a single
+# (src_kind, src_language, dst_kind, dst_language) partition.
+#
+# ADR-0023 §3 mandates that allow-list growth requires an ADR
+# amendment. The intended deployment trajectory is:
+#
+#   - Phase 1 (now): warn-only. This file starts empty;
+#     scripts/check-edge-type-runtime-coherence reports every
+#     partition variance for human review during the §6 Phase 2/3
+#     migration. The shrinking offender count is a progress meter
+#     for producer-side cleanup.
+#
+#   - Phase 4 expectation: offender set goes empty modulo any
+#     legitimate variance documented here with an ADR amendment.
+#
+# Schema (per entry):
+#   src_kind: <string>             # required
+#   src_language: <string>         # required (empty string OK)
+#   dst_kind: <string>             # required
+#   dst_language: <string>         # required (empty string OK)
+#   permitted_edge_types: [<str>]  # required, non-empty
+#   rationale: <string>            # what makes the variance legitimate
+#   adr_reference: <string>        # ADR amendment that admitted this entry
+
+allowlist: []
