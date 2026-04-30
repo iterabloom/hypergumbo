@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Changed
+
+- **Audit playbook anti-pattern generalized**: `Running the audit while you're mid-feature` was the original Step 4 anti-pattern; per the WI-gusam-faful resolution it is now `Coupling the audit to a deadline`, with mid-feature, mid-release-prep, and mid-incident named as instances of the same shape. The principle — *audit triggers should couple to slack, not to deadlines* — is recorded explicitly. Cadence-mechanism subsection and "When NOT to run" section updated to match.
+
 ### Fixed
 
 - **ADR-0023 ↔ canonical registry discrepancies** (closes loose-ends #8 and #9 from the audit-lifecycle session): `query_references` was classified `relationship` in `hypergumbo_core.edge_types.EDGE_TYPES` but ADR-0023 §6 explicitly lists it as pure dst-kind leakage; reclassified to `endpoint_shape` to match. Four edge types named in ADR-0023's deprecation list — `imports_component`, `model_reference`, `type_ref`, `renders_component` — were emitted by analyzers (Vue/Svelte/React component imports, ORM model references, TypeScript type references, JSX render expressions) but absent from the registry; added with `endpoint_shape` axis and migration notes pointing back at ADR-0023 §6. `SCHEMA_VERSION` 0.2.5 → 0.2.6 (additive: 4 new enum values + 1 axis reclassification). `docs/concept-axes.md` regenerated to match.

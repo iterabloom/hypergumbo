@@ -266,9 +266,15 @@ prevents the next agent from redoing the same investigation.
 - **Treating the audit as code review.** Code review asks "is this
   line correct?" Conceptual audit asks "is this CATEGORY correct?".
   Different question, different mode.
-- **Running the audit while you're mid-feature.** You will rationalize
-  away the smell to keep moving. Audit on a clean tree, between
-  features.
+- **Coupling the audit to a deadline.** Mid-feature, mid-release-prep,
+  mid-incident — any moment when you're racing toward a deliverable —
+  you will rationalize away the smell to keep moving. Audit triggers
+  should couple to *slack*, not to deadlines. The cadence hook below
+  is calendar-orthogonal precisely so it's more likely to fire on a
+  normal day when there's bandwidth to act on whatever it surfaces.
+  Mid-feature is one slack-anti-correlation; release prep is another;
+  triage during an active incident is a third. None of them are good
+  audit moments.
 - **N=1 audits.** "I found one example; the field is fine." One
   example is a fluke. Run the inventory step. The pattern is in the
   long tail, not the head.
@@ -337,9 +343,11 @@ runs can find prior work:
   state (CI down, bakeoff stuck, agent looping), fix the incident
   first. The audit is upstream-of-future-bugs, not response-to-current-
   bugs.
-- **Mid-feature on a deadline.** Audit produces real follow-on work
-  (ADRs, migrations). Don't start something with a multi-week tail
-  while a feature is half-shipped.
+- **Anytime you're under a deadline** — mid-feature, release prep,
+  active incident. Audit produces real follow-on work (ADRs,
+  migrations). Don't start something with a multi-week tail while
+  you're racing toward a deliverable. Audit triggers couple to slack,
+  not to deadlines.
 - **You don't have a one-sentence suspicion.** "Just looking around"
   produces noise. Wait until you can name the suspected confusion;
   then the audit has a signal to chase.
@@ -361,8 +369,8 @@ check at `.agent/hooks/_shared/check_audit_cadence.py` that:
    prints a soft reminder. The session-start hook injects the reminder
    into the agent's context.
 4. Softens the message to "defer until clean tree" when the working
-   tree has uncommitted changes — running an audit mid-feature is in
-   the anti-patterns list above.
+   tree has uncommitted changes — running an audit while mid-feature
+   is one face of the deadline-coupling anti-pattern above.
 
 Threshold derivation (calibrate to your repo if it differs):
 
