@@ -13,7 +13,7 @@ different words." Both are confusions; they need different fixes.
 
 ## When to run
 
-Five signals, any of which is sufficient:
+Six signals, any of which is sufficient:
 
 1. **You just identified ONE conceptual leak.** Most leaks are not
    alone. The cognitive habits and pattern-matching that produced one
@@ -36,6 +36,14 @@ Five signals, any of which is sufficient:
 5. **You're about to ship a new "thing" that feels like it's relabeling
    existing stuff.** Stop and audit. Shipping the relabel cements the
    confusion at one greater scale.
+6. **The cadence hook fired.** A session-start check at
+   `.agent/hooks/_shared/check_audit_cadence.py` emits a "time for the
+   audit" reminder when more than the configured threshold of
+   development commits have accumulated since the last recorded audit.
+   The hook is a calibration nudge, not a directive — when it fires,
+   ask the user whether to run an audit now and which suspect domain
+   to pick (or which to defer to the next cycle). See "Cadence
+   mechanism" below.
 
 ## The audit, step by step
 
@@ -88,6 +96,13 @@ Tests 1 and 4 can both fire on the same pair with different
 verdicts. Test 1 asks whether A and B should be collapsed; Test 4
 asks whether either belongs in this field at all. A pair can pass
 one and fail the other.
+
+The four tests address axis-correctness — whether each value
+*belongs* in the field. They do not address enumeration-completeness:
+a clean axis can still have schema-vs-runtime drift in either
+direction (missing values that runtime emits, phantom values that
+runtime never emits — see Step 4). Pair the tests with a value-set
+property test where the suspect domain is itself a value-set in code.
 
 1. **Property derivability.** Is the distinction between A and B
    derivable from properties of the things they connect or describe?
@@ -148,9 +163,28 @@ papering over it. Symptoms:
 - **Reconciliation code with TODOs.** "We need a downstream
   specialization pass to handle these uniformly" — that pass usually
   doesn't exist; the comment is the bug.
+- **Phantom values.** A set that contains values nothing actually
+  emits. Two shapes: (a) the value belongs to a *different field* on
+  the same type and was smuggled into a membership test against the
+  wrong field (e.g., an ``evidence_type`` placed in a set checked
+  against ``edge_type``); (b) the value once existed but was renamed,
+  and the set didn't follow. Both fail silently because the membership
+  test never fires the way the author expected. This is the mirror
+  image of the "missing values" shape above.
 
 Each silent bug becomes a concrete file:line reference for the audit
 write-up. Without these, the audit is just opinion.
+
+**Pair manual audit with automated detection where possible.** When
+the suspect domain is itself a value-set in code, an AST-walk
+property test asserting "every named ``*_TYPES``-shaped set is a
+subset of the canonical registry" catches shapes the manual sweep
+misses — almost always more than the manual count. The first run
+surfaces existing offenders; subsequent runs prevent regression at
+CI time. The 2026-04-29 ``Edge.edge_type`` audit illustrates this:
+the manual sweep found 2 silent bugs, the property test added
+afterwards surfaced 3 more, one of which exposed the phantom-value
+shape.
 
 ### Step 5 — Adjacent concept sweep
 
@@ -181,10 +215,14 @@ outcomes below:
 
 - **Deprecate** — the distinction is leakage; open an ADR with a typing
   principle and a migration plan. ADR-0023 is the template.
-- **Document** — the distinction is genuine but undocumented. Write a
-  module docstring or short ADR addendum stating WHY the variants are
-  distinct, what query each is meant to answer, and a property test
-  enforcing the boundary going forward.
+- **Document** — the distinction is genuine but undocumented. The
+  artifact ranges from a short ADR addendum or module docstring (when
+  the suspect domain is conceptual) up to a structured registry module
+  with per-value metadata and a property test enforcing the boundary
+  going forward (when the suspect domain is a value-set in code — the
+  ADR-0023 / `edge_types.py` shape). Either way, the artifact must
+  state WHY the variants are distinct and what query each is meant to
+  answer.
 - **Keep without action** — explicitly accept the apparent overlap
   as "not actually a problem at the scale we care about". This
   outcome is fine but must be **written down with rationale and a
@@ -269,8 +307,14 @@ runs can find prior work:
 
 - **2026-04-29 — `Edge.edge_type`.** Confirmed structural leak: ~80
   edge types, four leakage families (imports, references, FFI bridges,
-  publish/dispatch). Two silent bugs found (`ranking.py:1053`,
-  `slice.py:640`). Outcome: ADR-0023 (Draft).
+  publish/dispatch). Manual audit identified 2 silent bugs
+  (`ranking.py:1053`, `slice.py:640`); the property test added in
+  PR #3459 surfaced 3 more (`taint.py:736`, `compact.py:108`,
+  `io_boundary.py:704`), one of which exposed the phantom-value bug
+  shape — a value from a different field smuggled into the membership
+  check. Outcome: ADR-0023 (Draft); canonical registry +
+  drift property test landed in PR #3459. Follow-on: axis-validation
+  linter (PR (b)), by-axis view (PR (c)).
 
 (Future audits append here.)
 
@@ -299,3 +343,52 @@ runs can find prior work:
 - **You don't have a one-sentence suspicion.** "Just looking around"
   produces noise. Wait until you can name the suspected confusion;
   then the audit has a signal to chase.
+
+## Cadence mechanism
+
+Even when no specific signal triggers, conceptual leaks accumulate
+silently over development. The audit being purely reactive — "wait
+until you notice" — is itself a failure mode (the original failure
+mode that produced ADR-0023). The repo ships a session-start cadence
+check at `.agent/hooks/_shared/check_audit_cadence.py` that:
+
+1. Reads `.agent/.last_concept_audit.json` for the SHA + timestamp of
+   the most recent recorded audit.
+2. Counts development commits between that SHA and `HEAD`, excluding
+   tracker auto-syncs.
+3. If the count exceeds the threshold (default 72, configurable under
+   `concept_audit.commit_threshold` in `.agent/tracker/config.yaml`),
+   prints a soft reminder. The session-start hook injects the reminder
+   into the agent's context.
+4. Softens the message to "defer until clean tree" when the working
+   tree has uncommitted changes — running an audit mid-feature is in
+   the anti-patterns list above.
+
+Threshold derivation (calibrate to your repo if it differs):
+
+- Median ADR-to-ADR cadence on this repo: ≈ 4.5 calendar days.
+- Audit-cadence target: ≈ 2× ADR cadence (≈ 3 calendar days).
+- Empirical commits/calendar-day on this repo: ≈ 22.
+- 3 days × 22 commits/day ≈ 66, rounded up to **72** for a small
+  margin.
+
+Tune the knob upward if the prompt fatigues; tune downward if
+conceptual leaks slip through unaudited.
+
+When you complete an audit, run::
+
+    scripts/concept-audit-record <suspect-domain>
+
+This updates the state file with the current `HEAD` SHA, the local-
+zone timestamp, and the suspect name. Append the outcome prose to
+the Examples section above by hand — each entry is a unique
+narrative of what was found, classified, deprecated, kept, etc.,
+and that prose belongs to the human who ran the audit, not to the
+bookkeeping script.
+
+The cadence mechanism is complementary to the static drift detection
+described in Step 4: the property test catches drift in *known*
+value-sets ("did the canonical list and consumer sets diverge?"); the
+cadence hook catches *new* conceptual leaks we haven't named yet
+("when did we last look across the codebase for this class of bug?").
+Both belong; neither replaces the other.

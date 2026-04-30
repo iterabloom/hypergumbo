@@ -122,6 +122,19 @@ stop_hook:
   awaits_bakeoff_validation_nudge:
     threshold: 5
     stale_cycle_hours: 72
+# Fundamental Concept Audit cadence: the session-start hook
+# (.agent/hooks/_shared/check_audit_cadence.py) reads this to decide
+# whether to surface a "time for a conceptual audit" reminder. When
+# development commits since the last recorded audit (excluding tracker
+# auto-syncs) exceed `commit_threshold`, the hook prints a soft nudge
+# the agent forwards to the human. Threshold default of 72 derives from
+# median ADR-to-ADR cadence (~4.5 calendar days) × audit-target-cadence
+# (~2× ADR rate ⇒ ~3 days) × empirical commits/calendar-day (~22) ≈ 66,
+# rounded up. Tune up if the prompt fatigues; tune down if conceptual
+# leaks slip through unaudited. Missing key falls back to the same
+# default in the hook itself.
+concept_audit:
+  commit_threshold: 72
 well_known_tags:
   - developer_experience
   - bakeoff_infrastructure

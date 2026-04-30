@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Record the completion of a Fundamental Concept Audit.
+
+Usage:
+    scripts/concept-audit-record <suspect-domain>
+
+Updates ``.agent/.last_concept_audit.json`` with the current ``HEAD``
+SHA, an ISO-8601 timestamp (local zone), and the suspect-domain name.
+The cadence hook (``.agent/hooks/_shared/check_audit_cadence.py``)
+reads this state to decide whether to surface a reminder on session
+start.
+
+Does NOT update the playbook's Examples section — that prose belongs
+to the human who ran the audit (each entry is a unique narrative of
+what was found, classified, deprecated, kept, etc.). Edit the playbook
+by hand to record the outcome; this script's job is purely the
+machine-readable bookkeeping that powers cadence detection.
+"""
+
+from __future__ import annotations
+
+import datetime
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+STATE_FILE = REPO_ROOT / ".agent" / ".last_concept_audit.json"
+
+
+def head_sha(repo_root: Path = REPO_ROOT) -> str:
+    """Return the current HEAD SHA. Raises CalledProcessError on git failure."""
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(repo_root),
+        capture_output=True, text=True, timeout=10,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
+def now_iso_local() -> str:
+    """Return the current local-zone ISO-8601 timestamp."""
+    return (
+        datetime.datetime.now(datetime.timezone.utc)
+        .astimezone()
+        .isoformat()
+    )
+
+
+def record(
+    suspect: str,
+    *,
+    state_path: Path | None = None,
+    repo_root: Path | None = None,
+) -> dict:
+    """Update ``state_path`` with a fresh audit record and return the new state.
+
+    Increments ``audits_run`` (starting from any prior count) so the
+    running total survives across recordings.
+
+    Defaults are resolved at call time (rather than at function-def
+    time) so tests can patch the module-level ``STATE_FILE`` /
+    ``REPO_ROOT`` constants and have the patches take effect.
+    """
+    if state_path is None:
+        state_path = STATE_FILE
+    if repo_root is None:
+        repo_root = REPO_ROOT
+    sha = head_sha(repo_root)
+    iso = now_iso_local()
+
+    prior: dict = {}
+    if state_path.exists():
+        try:
+            prior = json.loads(state_path.read_text()) or {}
+        except (OSError, json.JSONDecodeError):
+            prior = {}
+
+    state = {
+        "last_audit_sha": sha,
+        "last_audit_iso_date": iso,
+        "suspect_domain": suspect,
+        "audits_run": int(prior.get("audits_run", 0)) + 1,
+    }
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(state, indent=2) + "\n")
+    return state
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 2:
+        print(
+            f"usage: {argv[0]} <suspect-domain>",
+            file=sys.stderr,
+        )
+        return 2
+    suspect = argv[1].strip()
+    if not suspect:
+        print(
+            "error: suspect-domain must be non-empty",
+            file=sys.stderr,
+        )
+        return 2
+
+    state = record(suspect)
+    sha_short = state["last_audit_sha"][:8]
+    print(
+        f"Recorded audit of {suspect!r} at {sha_short}.\n"
+        "Append the outcome to the playbook's Examples section by hand "
+        "(prose is per-audit and lives there)."
+    )
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main(sys.argv))

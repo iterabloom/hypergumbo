@@ -15,6 +15,32 @@
 SESSION_START_MESSAGE=""
 SESSION_START_NEEDS_PROMPT=false
 
+# Helper: append the Fundamental Concept Audit cadence reminder to
+# SESSION_START_MESSAGE when the audit-cadence script emits one. The
+# cadence check is a soft nudge — running it through this helper means
+# every code path below picks it up regardless of which mode-state
+# branch fires. Skipped when another session already owns autonomous
+# mode (Case 3) so we don't double-prompt while another session is alive.
+_append_concept_audit_cadence() {
+    local _cadence_script="$REPO_ROOT/.agent/hooks/_shared/check_audit_cadence.py"
+    if [[ ! -x "$_cadence_script" ]]; then
+        return 0
+    fi
+    local _cadence_msg
+    _cadence_msg=$("$_cadence_script" 2>/dev/null || true)
+    if [[ -z "$_cadence_msg" ]]; then
+        return 0
+    fi
+    if [[ -n "$SESSION_START_MESSAGE" ]]; then
+        SESSION_START_MESSAGE="${SESSION_START_MESSAGE}
+
+${_cadence_msg}"
+    else
+        SESSION_START_MESSAGE="$_cadence_msg"
+        SESSION_START_NEEDS_PROMPT=true
+    fi
+}
+
 # Case 0: respawn from the agent-supervisor daemon (WI-sakod / WI-razub).
 # When HYPERGUMBO_RESPAWN=1, the supervisor just spawned this CLI because
 # the prior session was stuck or dead. Instead of pausing to ask the human
@@ -43,6 +69,7 @@ if [[ "${HYPERGUMBO_RESPAWN:-}" == "1" ]]; then
         "$REPO_ROOT/scripts/loop-toggle" --set-session-mode "$_INTENT" >/dev/null 2>&1 || true
         SESSION_START_NEEDS_PROMPT=true
         SESSION_START_MESSAGE="Please familiarize yourself with this repo. Once you have done so, please set autonomous mode to DEEP."
+        _append_concept_audit_cadence
         return 0 2>/dev/null || true
     fi
     # Intent=OFF while supervisor-spawned: fall through to the normal
@@ -59,6 +86,7 @@ _STORED_PID=$(echo "$_RAW_MODE" | grep -oP 'pid=\K[0-9]+' 2>/dev/null || true)
 if [[ -z "$_MODE" || "$_MODE" == "off" || "$_MODE" == "false" ]]; then
     SESSION_START_NEEDS_PROMPT=true
     SESSION_START_MESSAGE="Autonomous mode is OFF. Before starting work, ask the user which mode to use: BROAD, DEEP, or OFF. Then run: ./scripts/loop-toggle <choice>"
+    _append_concept_audit_cadence
     return 0 2>/dev/null || true
 fi
 
@@ -66,6 +94,7 @@ fi
 if [[ -n "$_STORED_PID" && ! -d "/proc/$_STORED_PID" ]]; then
     SESSION_START_NEEDS_PROMPT=true
     SESSION_START_MESSAGE="Autonomous mode was ${_MODE^^} but the previous session (pid=$_STORED_PID) has ended. Before starting work, ask the user which mode to use: BROAD, DEEP, or OFF. Then run: ./scripts/loop-toggle <choice>"
+    _append_concept_audit_cadence
     return 0 2>/dev/null || true
 fi
 
@@ -94,3 +123,4 @@ fi
 # Case 4: Mode is active, PID matches or was just set — all good
 SESSION_START_NEEDS_PROMPT=false
 SESSION_START_MESSAGE=""
+_append_concept_audit_cadence
