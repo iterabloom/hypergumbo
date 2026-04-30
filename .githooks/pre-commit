@@ -223,6 +223,19 @@ else
     exit 1
 fi
 
+# Check concept-axes.md freshness — companion to schema, but the
+# human-readable by-axis view of the canonical edge-type registry.
+echo -n "  Concept axes (freshness)... "
+if ./scripts/generate-concept-axes --check >/dev/null 2>&1; then
+    echo -e "${GREEN}✓${NC}"
+else
+    echo -e "${RED}✗${NC}"
+    echo ""
+    echo -e "${RED}docs/concept-axes.md is out of date. Run:${NC}"
+    echo "  ./scripts/generate-concept-axes"
+    exit 1
+fi
+
 # Check README sync (meta-package must match root)
 echo -n "  README sync... "
 if [ -f "packages/hypergumbo/README.md" ] && [ -f "README.md" ]; then

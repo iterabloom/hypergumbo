@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Generate ``docs/concept-axes.md`` — a human-readable by-axis view
+of the canonical edge-type registry.
+
+The schema (``docs/schema.json``) carries axis annotations under the
+``x-axis-of-values`` extension keyword on ``Edge.type``, but reading
+schema.json by eye doesn't surface the axis structure — the values
+appear in registry order, not grouped by axis. This script reads
+``hypergumbo_core.edge_types.EDGE_TYPES`` directly and emits a
+markdown doc grouped by axis (relationship / endpoint_shape /
+pending_classification per ADR-0023), so a human skimming the
+codebase's typing ontology can see what each axis contains at a
+glance.
+
+Companion to ``scripts/generate-schema``. Both are auto-generated;
+both have a ``--check`` mode for CI/pre-commit freshness gating.
+
+Usage:
+    ./scripts/generate-concept-axes              # Write docs/concept-axes.md
+    ./scripts/generate-concept-axes --check      # Verify the doc is current
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Iterable
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Add hypergumbo-core src to sys.path so we can import the registry
+# without requiring an editable install.
+sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
+
+from hypergumbo_core.edge_types import (  # noqa: E402
+    AXIS_ENDPOINT_SHAPE,
+    AXIS_PENDING,
+    AXIS_RELATIONSHIP,
+    EDGE_TYPES,
+    EdgeTypeSpec,
+)
+
+
+# Section ordering (most-canonical first). Each entry: axis-id, heading,
+# preamble paragraph.
+_SECTIONS: tuple[tuple[str, str, str], ...] = (
+    (
+        AXIS_RELATIONSHIP,
+        "`relationship` — ADR-0023 compliant",
+        "Values that name the relationship the edge expresses between "
+        "src and dst. Per ADR-0023, this is the only axis a new "
+        "`edge_type` value should occupy.",
+    ),
+    (
+        AXIS_ENDPOINT_SHAPE,
+        "`endpoint_shape` — deprecation candidates per ADR-0023 §6",
+        "Values whose meaning is leaked into the type label even though "
+        "it is captured by `src.kind` / `dst.kind` / language metadata. "
+        "Migration plan in ADR-0023 §6 folds these back into "
+        "relationship-shaped names with kind/language metadata on the "
+        "endpoint nodes.",
+    ),
+    (
+        AXIS_PENDING,
+        "`pending_classification` — per-family audit pending per ADR-0023 §5",
+        "Values deferred to per-family audit. Some may be genuinely "
+        "distinct relationships; others are protocol-conditional "
+        "duplicates of a more general relationship. Verdicts arrive with "
+        "each family's audit.",
+    ),
+)
+
+
+_HEADER = """\
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- AUTO-GENERATED — do not edit manually.
+     Regenerate with: ./scripts/generate-concept-axes
+     Source of truth: packages/hypergumbo-core/src/hypergumbo_core/edge_types.py -->
+
+# Concept Axes
+
+Typing axes maintained in hypergumbo's behavior map. Each axis names a
+dimension along which a multi-value field's values must be classified.
+New axes are introduced via ADR; ADR-0023 is the template (see also the
+sibling tracker items for the axis-declaration ADR template and the
+per-release axis audit cadence).
+
+The current axes apply to `Edge.type`. Other multi-value fields
+(`Symbol.kind`, `supply_chain.tier`, etc.) will be added here as their
+axes are formally declared.
+
+## Why this doc exists
+
+`docs/schema.json` carries the same axis information under the
+`x-axis-of-values` extension keyword, but reading the schema by eye
+doesn't surface the axis structure — values appear in registry order,
+not grouped by axis. This doc is the human-readable view; the schema
+remains the machine-readable source of truth for downstream consumers.
+
+The Fundamental Concept Audit playbook
+(`.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md`)
+nominates an axis from this list each release cycle for a deliberate
+re-audit, complementing the commit-count cadence hook.
+
+## `Edge.type` axes
+"""
+
+
+def _format_axis_section(
+    heading: str, preamble: str, specs: Iterable[EdgeTypeSpec],
+) -> str:
+    lines = [f"### {heading}", "", preamble, ""]
+    bullets = sorted(specs, key=lambda s: s.name)
+    if not bullets:
+        lines.append("_(empty — no values currently classified on this axis)_")
+        lines.append("")
+        return "\n".join(lines)
+    for spec in bullets:
+        lines.append(f"- **`{spec.name}`** — {spec.description}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render() -> str:
+    """Render the markdown body from ``EDGE_TYPES``."""
+    by_axis: dict[str, list[EdgeTypeSpec]] = {}
+    for spec in EDGE_TYPES:
+        by_axis.setdefault(spec.axis, []).append(spec)
+
+    sections: list[str] = [_HEADER]
+    for axis_id, heading, preamble in _SECTIONS:
+        sections.append(
+            _format_axis_section(heading, preamble, by_axis.get(axis_id, [])),
+        )
+
+    # Surface any axis values that are NOT in _SECTIONS — guards
+    # against future axis additions silently dropping out of the doc.
+    known_axes = {axis_id for axis_id, _, _ in _SECTIONS}
+    for axis_id, specs in sorted(by_axis.items()):
+        if axis_id in known_axes:
+            continue
+        sections.append(  # pragma: no cover — defensive
+            _format_axis_section(
+                f"`{axis_id}` — undocumented axis",
+                "This axis appears in the registry but has no documented "
+                "section in scripts/generate-concept-axes. Add an entry "
+                "to `_SECTIONS` describing the axis and its rationale.",
+                specs,
+            ),
+        )
+    return "\n".join(sections).rstrip() + "\n"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Generate or check docs/concept-axes.md (a human-readable "
+            "by-axis view of the canonical edge-type registry)."
+        ),
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Verify the on-disk doc matches what the generator would "
+            "produce; exit 1 if stale. Used in pre-commit / CI."
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    output_path = REPO_ROOT / "docs" / "concept-axes.md"
+    rendered = render()
+
+    if args.check:
+        if not output_path.exists():
+            print(
+                f"ERROR: {output_path.relative_to(REPO_ROOT)} does not exist",
+                file=sys.stderr,
+            )
+            print(
+                "Run: ./scripts/generate-concept-axes",
+                file=sys.stderr,
+            )
+            return 1
+        on_disk = output_path.read_text()
+        if on_disk != rendered:
+            print(
+                f"ERROR: {output_path.relative_to(REPO_ROOT)} is out of date",
+                file=sys.stderr,
+            )
+            print(
+                "Run: ./scripts/generate-concept-axes",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"OK: {output_path.relative_to(REPO_ROOT)} is up-to-date")
+        return 0
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(rendered)
+    print(f"Generated {output_path.relative_to(REPO_ROOT)}")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())
