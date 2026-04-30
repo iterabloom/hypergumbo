@@ -1,0 +1,20 @@
+- op: create  # 2bb9
+  at: '2026-04-30T21:28:41Z'  # 2bb9
+  by: agent  # 2bb9
+  actor: jgstern_agent  # 2bb9
+  clock: 1  # 2bb9
+  nonce: 2bb9  # 2bb9
+  data:  # 2bb9
+    kind: work_item  # 2bb9
+    title: "Deep audit: Symbol.supply_chain_tier — tier-2 plurality (Adjacent Concept Sweep follow-up)"  # 2bb9
+    status: todo_soft  # 2bb9
+    priority: 3  # 2bb9
+    parent:  # 2bb9
+    tags:  # 2bb9
+    - concept_audit  # 2bb9
+    isbefore: []  # 2bb9
+    duplicate_of: []  # 2bb9
+    not_duplicate_of: []  # 2bb9
+    pr_ref:  # 2bb9
+    description: "Surfaced by the 2026-04-30 Adjacent Concept Sweep at suspect verdict. Field at packages/hypergumbo-core/src/hypergumbo_core/ir.py:243 (Symbol.supply_chain_tier: int, default 1). Cardinality 4 (1=first_party, 2=internal_dep, 3=external_dep, 4=derived_artifact). Most of the field is clean — it's a genuinely ordinal axis. The smell is localized to tier 2: per supply_chain.py:20-26 it covers FOUR distinct categories — internal dependencies, examples/demos/samples/tutorials, configs, and tests — sharing a numeric tier because they all weight 'between first-party and external.' Test 1 (property derivability) fires: a consumer asking 'is this an example code?' or 'is this a test?' cannot answer from tier=2 alone; the information lives in supply_chain.py's classification logic but is collapsed away in the value. Deep audit should decide: (a) split tier 2 into multiple tiers, or (b) keep tier as the pure ordinal and add a sibling supply_chain_role field carrying the four-way distinction. Lighter than Symbol.kind / evidence_type — could land on document-or-keep rather than deprecate. Findings doc: ~/hypergumbo_lab_notebook/concept-audit-sweep_2026-04-30.md."  # 2bb9
+    fields: {}  # 2bb9

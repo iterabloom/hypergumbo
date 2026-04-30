@@ -1,0 +1,20 @@
+- op: create  # 951a
+  at: '2026-04-30T21:28:26Z'  # 951a
+  by: agent  # 951a
+  actor: jgstern_agent  # 951a
+  clock: 1  # 951a
+  nonce: 951a  # 951a
+  data:  # 951a
+    kind: work_item  # 951a
+    title: "Deep audit: Edge.evidence_type axis confusion (Adjacent Concept Sweep follow-up)"  # 951a
+    status: todo_hard  # 951a
+    priority: 2  # 951a
+    parent:  # 951a
+    tags:  # 951a
+    - concept_audit  # 951a
+    isbefore: []  # 951a
+    duplicate_of: []  # 951a
+    not_duplicate_of: []  # 951a
+    pr_ref:  # 951a
+    description: "Surfaced by the 2026-04-30 Adjacent Concept Sweep at confirmed-leak verdict. Field at packages/hypergumbo-core/src/hypergumbo_core/ir.py:368 (Edge.evidence_type: str, free-form, default 'ast_call_direct'). Cardinality ~200 distinct values. Documented purpose: 'inference pathway' that produced the edge. Triage finds three axes conflated: (a) inference-pathway (the documented purpose: ast_call_direct, scip_occurrence_ref, tree_sitter, naming_convention); (b) resolution-status smuggled in (every *_unresolved / unresolved_* value encodes 'we couldn't resolve this' alongside the inference label — ast_call_unresolved_import, ast_method_unresolved_global, etc.); (c) framework-specific dispatch convention (django_signal_receiver, airflow_framework_dispatch, jackson_bean_dispatch, kafka_streams_dispatch, otp_genserver_dispatch, rust_trait_dispatch). Apex/peer overloading also fires: call/function_call/method_call/function_application/local_call/remote_call all coexist. Already flagged by ADR-0023 Open Question #2 ('Probably needs its own ADR'). Deep audit should produce a follow-on ADR instantiating ADR-0024's template — likely with resolution-status moving to a sibling field and framework-convention moving to meta. Findings doc: ~/hypergumbo_lab_notebook/concept-audit-sweep_2026-04-30.md."  # 951a
+    fields: {}  # 951a

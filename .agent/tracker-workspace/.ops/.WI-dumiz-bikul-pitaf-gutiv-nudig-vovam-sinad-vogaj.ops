@@ -1,0 +1,20 @@
+- op: create  # 46c2
+  at: '2026-04-30T21:27:46Z'  # 46c2
+  by: agent  # 46c2
+  actor: jgstern_agent  # 46c2
+  clock: 1  # 46c2
+  nonce: 46c2  # 46c2
+  data:  # 46c2
+    kind: work_item  # 46c2
+    title: "Deep audit: Symbol.kind axis confusion (Adjacent Concept Sweep follow-up)"  # 46c2
+    status: todo_hard  # 46c2
+    priority: 2  # 46c2
+    parent:  # 46c2
+    tags:  # 46c2
+    - concept_audit  # 46c2
+    isbefore: []  # 46c2
+    duplicate_of: []  # 46c2
+    not_duplicate_of: []  # 46c2
+    pr_ref:  # 46c2
+    description: "Surfaced by the 2026-04-30 Adjacent Concept Sweep (audit playbook Step 5) at confirmed-leak verdict. Field at packages/hypergumbo-core/src/hypergumbo_core/ir.py:230 (Symbol.kind: str, free-form, no registry). Cardinality 187 distinct values. All four leakage tests fire: (1) framework/role fanout derivable from path/edges (component, component_file, component_ref; graphql_resolver vs graphql_client; crypto_consumer vs crypto_producer) — same shape ADR-0023 deprecated for Edge.edge_type. (2) Apex/peer overloading: call vs function_call; struct vs structure; var vs variable. (3) Construct/relationship axis mixing: pure constructs (function, class, method) sit alongside file-shape (file, executable, library), framework roles (event_publisher, http_client, dispatcher, handler), and edge labels (call, import, inherit, reference, route_mount). (4) Mechanism/category leakage: protocol/role suffixes (_publisher, _subscriber, _caller, _dispatcher) encode the symbol's participation in a pattern, not what the symbol is. Already flagged by ADR-0023 Open Question #6. Deep audit should run the inventory + per-pair four-tests pass per the playbook and produce a follow-on ADR instantiating ADR-0024's axis-declaration template. Findings doc: ~/hypergumbo_lab_notebook/concept-audit-sweep_2026-04-30.md."  # 46c2
+    fields: {}  # 46c2

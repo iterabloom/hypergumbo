@@ -1,0 +1,20 @@
+- op: create  # b494
+  at: '2026-04-30T21:29:10Z'  # b494
+  by: agent  # b494
+  actor: jgstern_agent  # b494
+  clock: 1  # b494
+  nonce: b494  # b494
+  data:  # b494
+    kind: work_item  # b494
+    title: "Deep audit: Symbol.origin — analyzer-ID vs synthesis-mechanism mixing (Adjacent Concept Sweep follow-up)"  # b494
+    status: todo_soft  # b494
+    priority: 3  # b494
+    parent:  # b494
+    tags:  # b494
+    - concept_audit  # b494
+    isbefore: []  # b494
+    duplicate_of: []  # b494
+    not_duplicate_of: []  # b494
+    pr_ref:  # b494
+    description: "Surfaced by the 2026-04-30 Adjacent Concept Sweep at suspect verdict (light). Field at packages/hypergumbo-core/src/hypergumbo_core/ir.py:234 (Symbol.origin: str, default ''). Production values are mostly versioned analyzer IDs (~12: python-v1, go-v1, java-v1, ruby-v1, js-ts-v1, rust-v1, elixir-v1, etc.) — those are clean 'which analyzer produced this' labels. The smell is in the non-analyzer origins that have crept in: 'inheritance' (a relationship), 'orchestrator_file_symbol_synthesis' (a process/mechanism), 'scip' (a tool, not a language version). Test 2 (apex/peer) fires lightly — these aren't analyzers but coexist with analyzer IDs. Test 4 (mechanism/category) fires lightly — synthesis mechanism mixed with analyzer category. Deep audit should decide: (a) reserve origin strictly for analyzer IDs and move synthesis-origin to a sibling field, or (b) document the broader semantics with a registry. Likely a document-or-keep verdict rather than deprecate — the field is mostly clean. Findings doc: ~/hypergumbo_lab_notebook/concept-audit-sweep_2026-04-30.md."  # b494
+    fields: {}  # b494
