@@ -1,0 +1,22 @@
+- op: create  # 630b
+  at: '2026-04-30T05:39:46Z'  # 630b
+  by: agent  # 630b
+  actor: jgstern_agent  # 630b
+  clock: 1  # 630b
+  nonce: 630b  # 630b
+  data:  # 630b
+    kind: work_item  # 630b
+    title: "Concept-axes registry doc + axis catalog automation"  # 630b
+    status: todo_soft  # 630b
+    priority: 3  # 630b
+    parent:  # 630b
+    tags:  # 630b
+    - concept_audit  # 630b
+    - agent_infrastructure  # 630b
+    - developer_experience  # 630b
+    isbefore: []  # 630b
+    duplicate_of: []  # 630b
+    not_duplicate_of: []  # 630b
+    pr_ref:  # 630b
+    description: "Build out a maintained doc enumerating the typing axes in the codebase (with examples and the canonical query each answers). The first axis landed in PR #3459 — Edge.type carries axis annotations (relationship / endpoint_shape / pending_classification) per ADR-0023 in packages/hypergumbo-core/src/hypergumbo_core/edge_types.py and surfaces under x-axis-of-values in docs/schema.json. Other implicit axes likely exist (Symbol.kind, supply_chain.tier, confidence_band, evidence_type). Deliverable: docs/concept-axes.md (or similar) cataloguing known axes; a script or generate-schema extension that auto-generates the catalog from x-axis-of-values keys across schema.json so the doc never goes stale; a process for declaring a new axis (extends ADR-0023's pattern). Substrate for the axis-declaration ADR template (sibling item) and the per-release audit cadence (sibling item)."  # 630b
+    fields: {}  # 630b

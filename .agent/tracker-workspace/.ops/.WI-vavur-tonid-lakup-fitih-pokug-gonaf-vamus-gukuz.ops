@@ -36,3 +36,19 @@
   clock: 3  # 0f2f
   nonce: 0f2f  # 0f2f
   message: "Merged in PR #3451 (commit dc243036d). Implemented mask_doc_regions in linkers/_text_filters.py; applied to 23 affected linkers; annotation_convention exempt by design."  # 0f2f
+- op: discuss  # 60d8
+  at: '2026-04-29T22:21:19Z'  # 60d8
+  by: agent  # 60d8
+  actor: jgstern_agent  # 60d8
+  clock: 4  # 60d8
+  nonce: 60d8  # 60d8
+  message: "Regression note (post-merge of PR #3456 / 356c401d8): the original WI-vavur masker rule used 'first named child' to detect Python module docstrings, but tree-sitter Python lists comments as named children, so a leading SPDX header displaced the docstring out of named_child(0). Affected 740 of 765 .py files in this repo (every file with the SPDX header). Discovered via self-analysis dogfooding: linkers/websocket.py lines 34 and 37 produced 2 phantom websocket_endpoint nodes from FastAPI patterns documented in its own module docstring. Fix: skip leading comments when locating the docstring position. Self-analysis FP impact: -45 nodes across 9 kinds (event_publisher -15, mq_subscriber -6, mq_publisher -5, subprocess_call -4, db_query -4, event_subscriber -4, http_client -3, websocket_endpoint -2, graphql_resolver -2)."  # 60d8
+- op: update  # 9d4a
+  at: '2026-04-29T22:21:20Z'  # 9d4a
+  by: agent  # 9d4a
+  actor: jgstern_agent  # 9d4a
+  clock: 5  # 9d4a
+  nonce: 9d4a  # 9d4a
+  set: {}  # 9d4a
+  add:  # 9d4a
+    tags: [awaits_bakeoff_validation]  # 9d4a

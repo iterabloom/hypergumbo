@@ -18,3 +18,18 @@
     pr_ref:  # 7451
     description: "Dogfood round 2 (post-WI-zigah, 2026-04-23): all 19 graphql_resolver symbols on hypergumbo self-analysis are orphan. Root cause is that _scan_python_resolvers in packages/hypergumbo-core/src/hypergumbo_core/linkers/graphql_resolver.py regex-scans raw file text and matches patterns embedded in its OWN source code (docstring examples at line 15-20, regex alternations at line 82/156/160 containing 'Query|Mutation|Subscription', substring tests at line 191). Every match creates a 'Mutation.createUser' / 'Query.users' symbol; when no real GraphQL schema symbols exist in the repo (as is the case for hypergumbo itself), none of these can be linked, so the symbols are 100% orphan.\n\nNot a user-impact bug: on repos with actual GraphQL schemas the linker works as intended. It's a self-analysis noise issue — the regex scanner can't distinguish code from strings-inside-code.\n\nProper fix: switch from regex-on-raw-text to AST-aware scanning that skips string literals / comments / docstrings. Or exclude hypergumbo's own linker source directory from analysis.\n\nLow priority — filing for visibility; address during a linker-cleanup pass rather than reactively."  # 7451
     fields: {}  # 7451
+- op: update  # 695c
+  at: '2026-04-29T22:21:20Z'  # 695c
+  by: agent  # 695c
+  actor: jgstern_agent  # 695c
+  clock: 2  # 695c
+  nonce: 695c  # 695c
+  set:  # 695c
+    status: done  # 695c
+- op: discuss  # 2f2a
+  at: '2026-04-29T22:21:20Z'  # 2f2a
+  by: agent  # 2f2a
+  actor: jgstern_agent  # 2f2a
+  clock: 3  # 2f2a
+  nonce: 2f2a  # 2f2a
+  message: "Resolved by PR #3456 / 356c401d8 (masker fix for leading-comment-then-docstring case). The originally-reported issue — the linker matching its OWN source file — is gone: graphql_resolver.py docstring at lines 15-20 was being unmasked due to the SPDX-header bug fixed in WI-vavur's follow-up. Self-analysis confirms: linker source contributed 2 FPs before, 0 after. The 11 remaining graphql_resolver nodes on self-analysis are all in test fixture files (tests/test_graphql_resolver_linker.py and BRANCHES_test_graphql_resolver.py) — those are intentional GraphQL-shaped strings inside test bodies, which the masker correctly preserves (string literals are kept). Test-fixture FPs are a different (less concerning) issue and not what this item described."  # 2f2a

@@ -1,0 +1,22 @@
+- op: create  # 0c9c
+  at: '2026-04-30T05:40:46Z'  # 0c9c
+  by: agent  # 0c9c
+  actor: jgstern_agent  # 0c9c
+  clock: 1  # 0c9c
+  nonce: 0c9c  # 0c9c
+  data:  # 0c9c
+    kind: work_item  # 0c9c
+    title: "Axis-declaration ADR template + creation practice"  # 0c9c
+    status: todo_soft  # 0c9c
+    priority: 3  # 0c9c
+    parent:  # 0c9c
+    tags:  # 0c9c
+    - concept_audit  # 0c9c
+    - agent_infrastructure  # 0c9c
+    - developer_experience  # 0c9c
+    isbefore: []  # 0c9c
+    duplicate_of: []  # 0c9c
+    not_duplicate_of: []  # 0c9c
+    pr_ref:  # 0c9c
+    description: "When a new typing axis is introduced (a new dimension along which a multi-value field's values must be classified), there should be a concrete ADR template for declaring it. ADR-0023 established the pattern for Edge.type's relationship/endpoint_shape/pending_classification axis; future axes should reuse the same shape rather than reinventing one. Deliverable: a meta-ADR (or addendum to ADR-0023) defining the template — axis name, axiom (what every value on this axis must satisfy), consumer pattern (how to query 'values on this axis X'), enforcement (linter / property test / runtime check). Plus a creation practice: any PR adding a multi-value field to an Edge/Symbol/etc. dataclass should answer 'what axis does this occupy?' — surfaced via PR template or pre-commit prompt. Cross-references the concept-axes registry (sibling item WI-bofub-tudik-vajig-hadib-jodin-gosig-raniz-rudoj) which catalogs the declared axes."  # 0c9c
+    fields: {}  # 0c9c
