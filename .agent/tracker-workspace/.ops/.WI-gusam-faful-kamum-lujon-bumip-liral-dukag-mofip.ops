@@ -1,0 +1,28 @@
+- op: create  # 8a41
+  at: '2026-04-30T05:41:54Z'  # 8a41
+  by: agent  # 8a41
+  actor: jgstern_agent  # 8a41
+  clock: 1  # 8a41
+  nonce: 8a41  # 8a41
+  data:  # 8a41
+    kind: work_item  # 8a41
+    title: "Per-release axis audit cadence: nominate one axis per release for audit"  # 8a41
+    status: todo_soft  # 8a41
+    priority: 4  # 8a41
+    parent:  # 8a41
+    tags:  # 8a41
+    - concept_audit  # 8a41
+    - agent_infrastructure  # 8a41
+    isbefore: []  # 8a41
+    duplicate_of: []  # 8a41
+    not_duplicate_of: []  # 8a41
+    pr_ref:  # 8a41
+    description: "Wire a per-release axis audit nomination into the release ritual so the Fundamental Concept Audit runs against at least one axis per release cycle, complementing the commit-count cadence hook (.agent/hooks/_shared/check_audit_cadence.py) that fires between releases. Deliverable: extend scripts/prepare-release with a step that picks one axis from the concept-axes registry, emits a reminder in the release notes / handoff, and (optionally) opens a follow-up tracker item for the audit. Once the audit is run, the recording script (scripts/concept-audit-record) updates the cadence state. Depends on the concept-axes registry doc landing first (WI-bofub-tudik-vajig-hadib-jodin-gosig-raniz-rudoj) so there is a registry to nominate from. Documentation update: release-workflow playbook gets a 'per-release axis audit' subsection."  # 8a41
+    fields: {}  # 8a41
+- op: discuss  # 68d5
+  at: '2026-04-30T18:18:13Z'  # 68d5
+  by: human  # 68d5
+  actor: jgstern  # 68d5
+  clock: 2  # 68d5
+  nonce: 68d5  # 68d5
+  message: "I'm not sure I like this. The reason why is that all of our infrastructure is designed to make hypergumbo releasable at all times. Usually in the moment when we decide to do releases, we want the release mechanics to operate as fast as possible. We don't ignore bugs if the mechanism uncovers something, but what this would do is potentially uncover big-yet-subtle issues right at the time when we are at a deadline. I think those would be better to uncover at any other time, which is why I prefer the \"every 72 commits\" mechanism."  # 68d5

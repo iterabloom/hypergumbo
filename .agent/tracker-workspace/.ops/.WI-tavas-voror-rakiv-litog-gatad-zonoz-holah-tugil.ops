@@ -1,0 +1,21 @@
+- op: create  # 7a1d
+  at: '2026-04-30T18:41:48Z'  # 7a1d
+  by: agent  # 7a1d
+  actor: jgstern_agent  # 7a1d
+  clock: 1  # 7a1d
+  nonce: 7a1d  # 7a1d
+  data:  # 7a1d
+    kind: work_item  # 7a1d
+    title: "Triage 45 emitted edge_type values absent from canonical registry"  # 7a1d
+    status: todo_soft  # 7a1d
+    priority: 3  # 7a1d
+    parent:  # 7a1d
+    tags:  # 7a1d
+    - concept_audit  # 7a1d
+    - analysis_quality  # 7a1d
+    isbefore: []  # 7a1d
+    duplicate_of: []  # 7a1d
+    not_duplicate_of: []  # 7a1d
+    pr_ref:  # 7a1d
+    description: "Triage all 45 edge_type values emitted by analyzers under packages/ that are absent from the canonical registry at hypergumbo_core.edge_types.EDGE_TYPES. Discovered during the close-out of discrepancies #8 and #9 from the audit-lifecycle session (PR #3464) when a comprehensive sweep — grep -rEh 'edge_type=[\"'][a-z_]+[\"']' packages/ --include='*.py' | grep -v /tests/ — surfaced significantly more drift than ADR-0023's 'Likely-deprecate list' had named.\n\nThe 45 values: abi_call, always, annotated_dispatches, annotated_publishes, assigns, association, build_tag_alternative_of, call, caller_invokes, case, contains_routes, crdt_publishes, crypto_flow, data_flows_to, decorated_by, defines_target, delegates_to, depends, di_registers, emits, enqueues, event_subscribes, exception, extends_template, false, grpc, includes, includes_class, includes_template, inherits, invokes_callback, links_to, message_dispatch, module_exports, notifies_resource, overrides, registers_routes, renders, requires_resource, signal_receiver, template_calls, true, uses_dispatch_table, uses_mixin, uses_vocabulary.\n\nEach value needs:\n1. Verification of the emit site shape — literal edge_type='X' assignment in an analyzer (real emit), or parameter default in a method signature (def add_edge(..., edge_type='X')), or a YAML string fixture, or grep noise from .add_edge(edge_type=foo) where foo is itself a variable. Distinguish via: grep -n 'edge_type=\"<v>\"' packages/ --include='*.py' for each candidate, then inspect each hit.\n2. If real emit: classify by axis (relationship for ADR-0023 retentions; endpoint_shape for deprecation candidates per ADR-0023 §6; pending_classification for dispatch/publish/resolver families per ADR-0023 §5) and add an entry to EDGE_TYPES with a descriptive one-liner.\n3. If grep noise: document in this item's discussion thread so a future sweep can ignore.\n\nLikely real edge types from ADR-0023's 'Edge types that stay' list (line 254) — these probably need relationship-axis registration: decorated_by, inherits, overrides, includes, defines_target, data_flows_to (ADR-0015).\n\nLikely-noise candidates worth verifying first: true, false, case, always, call, depends — these singular/generic forms are unlikely to be real emit sites; probably matching parameter defaults or fixture data.\n\nSibling items: WI-surih-nogis-dizut-nirim-vahut-rudol-rifir-vogor (axis-declaration ADR template) provides the creation practice for new axes; WI-gusam-faful-kamum-lujon-bumip-liral-dukag-mofip (per-release audit cadence) provides the maintenance loop. This item is the one-time cleanup of accumulated drift up to PR #3464; the registry-completeness invariant going forward is enforced by check-edge-type-drift and the corpus-based runtime test still pending in ADR-0023 §3.\n\nAcceptance: every value in the list above either gets an EDGE_TYPES entry with axis annotation, or a discussion-thread entry explaining why it's noise. Re-running the sweep should return 0 unregistered emit sites (or close to 0, with documented exceptions)."  # 7a1d
+    fields: {}  # 7a1d
