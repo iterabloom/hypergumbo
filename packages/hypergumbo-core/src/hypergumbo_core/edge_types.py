@@ -108,10 +108,6 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "Symbol invokes another symbol via a subprocess.",
     ),
     EdgeTypeSpec(
-        "query_references", AXIS_RELATIONSHIP,
-        "Query references a database object (table, column, view).",
-    ),
-    EdgeTypeSpec(
         "links", AXIS_RELATIONSHIP,
         "Generic linkage relationship.",
     ),
@@ -131,6 +127,31 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     EdgeTypeSpec(
         "imports_module", AXIS_ENDPOINT_SHAPE,
         "Imports targeting a module/file specifically (use 'imports').",
+    ),
+    EdgeTypeSpec(
+        "imports_component", AXIS_ENDPOINT_SHAPE,
+        "Imports targeting a UI component (Vue/Svelte/React); per "
+        "ADR-0023 §6, fold into 'imports' + dst.kind == 'component'.",
+    ),
+    EdgeTypeSpec(
+        "model_reference", AXIS_ENDPOINT_SHAPE,
+        "ORM reference to a model class; per ADR-0023 §6, fold into "
+        "'references' + dst.kind == 'model'.",
+    ),
+    EdgeTypeSpec(
+        "type_ref", AXIS_ENDPOINT_SHAPE,
+        "TypeScript reference to a type symbol; per ADR-0023 §6, fold "
+        "into 'references' + dst.kind == 'type'.",
+    ),
+    EdgeTypeSpec(
+        "renders_component", AXIS_ENDPOINT_SHAPE,
+        "JSX/template render of a UI component; per ADR-0023 §6 review, "
+        "likely 'references' with meta['construct'] == 'jsx'.",
+    ),
+    EdgeTypeSpec(
+        "query_references", AXIS_ENDPOINT_SHAPE,
+        "Query reference to a database object (table, column, view); "
+        "per ADR-0023 §6, fold into 'references' + dst.kind == 'query'.",
     ),
     EdgeTypeSpec(
         "script_src", AXIS_ENDPOINT_SHAPE,

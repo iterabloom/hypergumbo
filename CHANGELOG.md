@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+
+- **ADR-0023 ↔ canonical registry discrepancies** (closes loose-ends #8 and #9 from the audit-lifecycle session): `query_references` was classified `relationship` in `hypergumbo_core.edge_types.EDGE_TYPES` but ADR-0023 §6 explicitly lists it as pure dst-kind leakage; reclassified to `endpoint_shape` to match. Four edge types named in ADR-0023's deprecation list — `imports_component`, `model_reference`, `type_ref`, `renders_component` — were emitted by analyzers (Vue/Svelte/React component imports, ORM model references, TypeScript type references, JSX render expressions) but absent from the registry; added with `endpoint_shape` axis and migration notes pointing back at ADR-0023 §6. `SCHEMA_VERSION` 0.2.5 → 0.2.6 (additive: 4 new enum values + 1 axis reclassification). `docs/concept-axes.md` regenerated to match.
+
 ### Added
 
 - **Generated concept-axes view at `docs/concept-axes.md`** (`scripts/generate-concept-axes`): human-readable by-axis grouping of the canonical edge-type registry. The schema's `x-axis-of-values` extension keyword is the machine-readable source of truth; this doc is the eye-friendly companion that surfaces the axis structure without making readers reconstruct it from the registry-order enum dump in `docs/schema.json`. Pre-commit freshness check wired into `.githooks/pre-commit` (mirrors the existing schema-freshness gate). Substantially fulfills `WI-bofub-tudik` (concept-axes registry doc) — the auto-generation from the canonical registry means the doc never goes stale by hand.

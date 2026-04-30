@@ -68,7 +68,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.2.5"
+SCHEMA_VERSION = "0.2.6"
 CONFIDENCE_MODEL = "hypergumbo-evidence-v1"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v2"
 SHAPE_ID_SCHEME = "hypergumbo-shapeid-v1"

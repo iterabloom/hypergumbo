@@ -44,7 +44,6 @@ Values that name the relationship the edge expresses between src and dst. Per AD
 - **`instantiates`** — Constructor or factory creates an instance.
 - **`links`** — Generic linkage relationship.
 - **`module_attr_ref`** — Reads an attribute on an imported module (e.g., os.environ).
-- **`query_references`** — Query references a database object (table, column, view).
 - **`references`** — Symbol references another by name without invocation.
 - **`sources`** — Sources another file (e.g., shell ``source``).
 - **`subprocess_calls`** — Symbol invokes another symbol via a subprocess.
@@ -62,6 +61,7 @@ Values whose meaning is leaked into the type label even though it is captured by
 - **`graphql_calls`** — GraphQL call (use 'calls' + protocol meta).
 - **`grpc_calls`** — gRPC call (use 'calls' + protocol meta).
 - **`http_calls`** — HTTP call (use 'calls' + protocol meta).
+- **`imports_component`** — Imports targeting a UI component (Vue/Svelte/React); per ADR-0023 §6, fold into 'imports' + dst.kind == 'component'.
 - **`imports_module`** — Imports targeting a module/file specifically (use 'imports').
 - **`ipc_calls`** — Inter-process call (use 'calls' + protocol meta).
 - **`ipc_event`** — Inter-process event dispatch.
@@ -69,9 +69,13 @@ Values whose meaning is leaked into the type label even though it is captured by
 - **`message_queue`** — Message queue endpoint reference.
 - **`message_receive`** — Message consumed from a queue/topic.
 - **`message_send`** — Message produced to a queue/topic.
+- **`model_reference`** — ORM reference to a model class; per ADR-0023 §6, fold into 'references' + dst.kind == 'model'.
 - **`napi_bridge`** — Node-API native bridge (use 'calls' + bridge meta).
 - **`native_bridge`** — JNI/FFI bridge to native code (use 'calls' + bridge meta).
+- **`query_references`** — Query reference to a database object (table, column, view); per ADR-0023 §6, fold into 'references' + dst.kind == 'query'.
+- **`renders_component`** — JSX/template render of a UI component; per ADR-0023 §6 review, likely 'references' with meta['construct'] == 'jsx'.
 - **`script_src`** — HTML ``<script src=...>`` reference.
+- **`type_ref`** — TypeScript reference to a type symbol; per ADR-0023 §6, fold into 'references' + dst.kind == 'type'.
 - **`wasm_bridge`** — WebAssembly bridge invocation (use 'calls' + bridge meta).
 - **`wasm_load`** — WebAssembly module load.
 - **`websocket_connection`** — WebSocket connection establishment.
