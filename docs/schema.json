@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.2.6"
+      "const": "0.2.7"
     },
     "confidence_model": {
       "type": "string",
@@ -493,6 +493,8 @@
             "links",
             "wraps",
             "module_attr_ref",
+            "dispatches_to",
+            "event_publishes",
             "imports_module",
             "imports_component",
             "model_reference",
@@ -519,14 +521,23 @@
             "bridge_invokes",
             "ipc_calls",
             "ipc_event",
-            "dispatches_to",
             "routes_to",
-            "event_publishes",
+            "delegates_to",
+            "annotated_dispatches",
+            "uses_dispatch_table",
+            "di_registers",
+            "di_resolves",
+            "registers_routes",
+            "message_dispatch",
+            "event_subscribes",
+            "crdt_publishes",
+            "annotated_publishes",
+            "emits",
+            "enqueues",
             "resolver_implements",
             "resolver_for_type",
             "openapi_implements",
-            "implements_rpc",
-            "di_resolves"
+            "implements_rpc"
           ],
           "x-axis-of-values": {
             "calls": "relationship",
@@ -544,6 +555,8 @@
             "links": "relationship",
             "wraps": "relationship",
             "module_attr_ref": "relationship",
+            "dispatches_to": "relationship",
+            "event_publishes": "relationship",
             "imports_module": "endpoint_shape",
             "imports_component": "endpoint_shape",
             "model_reference": "endpoint_shape",
@@ -570,14 +583,23 @@
             "bridge_invokes": "endpoint_shape",
             "ipc_calls": "endpoint_shape",
             "ipc_event": "endpoint_shape",
-            "dispatches_to": "pending_classification",
-            "routes_to": "pending_classification",
-            "event_publishes": "pending_classification",
+            "routes_to": "endpoint_shape",
+            "delegates_to": "endpoint_shape",
+            "annotated_dispatches": "endpoint_shape",
+            "uses_dispatch_table": "endpoint_shape",
+            "di_registers": "endpoint_shape",
+            "di_resolves": "endpoint_shape",
+            "registers_routes": "endpoint_shape",
+            "message_dispatch": "endpoint_shape",
+            "event_subscribes": "endpoint_shape",
+            "crdt_publishes": "endpoint_shape",
+            "annotated_publishes": "endpoint_shape",
+            "emits": "endpoint_shape",
+            "enqueues": "endpoint_shape",
             "resolver_implements": "pending_classification",
             "resolver_for_type": "pending_classification",
             "openapi_implements": "pending_classification",
-            "implements_rpc": "pending_classification",
-            "di_resolves": "pending_classification"
+            "implements_rpc": "pending_classification"
           }
         },
         "line": {

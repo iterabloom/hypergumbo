@@ -38,6 +38,8 @@ Values that name the relationship the edge expresses between src and dst. Per AD
 - **`contains`** — Container symbol holds member symbol.
 - **`depends_on`** — Generic dependency relationship.
 - **`depends_on_manifest`** — Dependency declared in a package or build manifest.
+- **`dispatches_to`** — Caller dispatches to callee via runtime indirection (virtual method, function pointer, DI resolution, etc.).
+- **`event_publishes`** — Producer publishes an event/message that the consumer receives via an async channel (event bus, queue, CRDT, etc.).
 - **`extends`** — Class extends a superclass.
 - **`implements`** — Class implements an interface.
 - **`imports`** — Module imports another module or symbol.
@@ -54,9 +56,18 @@ Values that name the relationship the edge expresses between src and dst. Per AD
 
 Values whose meaning is leaked into the type label even though it is captured by `src.kind` / `dst.kind` / language metadata. Migration plan in ADR-0023 §6 folds these back into relationship-shaped names with kind/language metadata on the endpoint nodes.
 
+- **`annotated_dispatches`** — Annotation-driven dispatch; per ADR-0025 fold to 'dispatches_to' + meta['mechanism']='annotation'.
+- **`annotated_publishes`** — Annotation-driven publish; per ADR-0025 fold to 'event_publishes' + meta['mechanism']='annotation'.
 - **`base_image`** — Dockerfile ``FROM`` base image reference.
 - **`bridge_invokes`** — Generic bridge-mediated invocation (use 'calls' + bridge meta).
 - **`cgo_bridge`** — Go cgo FFI bridge (use 'calls' + bridge meta).
+- **`crdt_publishes`** — CRDT-backed event log publish; per ADR-0025 fold to 'event_publishes' + meta['channel_kind']='crdt'.
+- **`delegates_to`** — Class-level method delegation declaration (e.g., Ruby delegate); per ADR-0025 fold to 'references' + meta['mechanism']='delegate' (declaration-time, not dispatch).
+- **`di_registers`** — DI container registration declaration; per ADR-0025 fold to 'references' + meta['mechanism']='di_registration' (declaration-time, not runtime dispatch).
+- **`di_resolves`** — DI container runtime resolution; per ADR-0025 fold to 'dispatches_to' + meta['mechanism']='di'.
+- **`emits`** — Function references an event symbol it emits; per ADR-0025 fold to 'references' + meta['construct']='event_emit' (emit shape is function→event_symbol, not pub→sub).
+- **`enqueues`** — Producer pushes a job to a queue (e.g., Ruby ActiveJob perform_later); per ADR-0025 fold to 'event_publishes' + meta['channel_kind']='queue'.
+- **`event_subscribes`** — DEPRECATE-NO-FOLD per ADR-0025: production emit shape is subscriber→enclosing-function (structural containment) while the name suggests pub-sub. Phase 3 producer rewrite decides the canonical replacement (likely 'references' or 'contains' with reversed direction).
 - **`ffi_bridge`** — Generic FFI bridge (use 'calls' + bridge meta).
 - **`graphql_calls`** — GraphQL call (use 'calls' + protocol meta).
 - **`grpc_calls`** — gRPC call (use 'calls' + protocol meta).
@@ -66,6 +77,7 @@ Values whose meaning is leaked into the type label even though it is captured by
 - **`ipc_calls`** — Inter-process call (use 'calls' + protocol meta).
 - **`ipc_event`** — Inter-process event dispatch.
 - **`kernel_launch`** — GPU kernel invocation.
+- **`message_dispatch`** — Misnamed: emit shape is publisher→subscriber, not dispatcher→target. Per ADR-0025 fold to 'event_publishes' + meta['channel_kind']='message_bus' (cross-family fold).
 - **`message_queue`** — Message queue endpoint reference.
 - **`message_receive`** — Message consumed from a queue/topic.
 - **`message_send`** — Message produced to a queue/topic.
@@ -73,9 +85,12 @@ Values whose meaning is leaked into the type label even though it is captured by
 - **`napi_bridge`** — Node-API native bridge (use 'calls' + bridge meta).
 - **`native_bridge`** — JNI/FFI bridge to native code (use 'calls' + bridge meta).
 - **`query_references`** — Query reference to a database object (table, column, view); per ADR-0023 §6, fold into 'references' + dst.kind == 'query'.
+- **`registers_routes`** — Router declares a route; per ADR-0025 fold to 'references' + meta['mechanism']='route_registration' (parallel to di_registers).
 - **`renders_component`** — JSX/template render of a UI component; per ADR-0023 §6 review, likely 'references' with meta['construct'] == 'jsx'.
+- **`routes_to`** — HTTP/router route to handler; per ADR-0025 fold to 'dispatches_to' + meta['dispatch_kind']='route'.
 - **`script_src`** — HTML ``<script src=...>`` reference.
 - **`type_ref`** — TypeScript reference to a type symbol; per ADR-0023 §6, fold into 'references' + dst.kind == 'type'.
+- **`uses_dispatch_table`** — Function references a dispatch-table data symbol; per ADR-0025 fold to 'references' + meta['construct']='dispatch_table'.
 - **`wasm_bridge`** — WebAssembly bridge invocation (use 'calls' + bridge meta).
 - **`wasm_load`** — WebAssembly module load.
 - **`websocket_connection`** — WebSocket connection establishment.
@@ -85,11 +100,7 @@ Values whose meaning is leaked into the type label even though it is captured by
 
 Values deferred to per-family audit. Some may be genuinely distinct relationships; others are protocol-conditional duplicates of a more general relationship. Verdicts arrive with each family's audit.
 
-- **`di_resolves`** — DI container resolution — pending per-family audit.
-- **`dispatches_to`** — Dispatch family — pending per-family audit.
-- **`event_publishes`** — Publish family — pending per-family audit.
 - **`implements_rpc`** — RPC implementation binding — pending per-family audit.
 - **`openapi_implements`** — OpenAPI handler pattern — pending per-family audit.
 - **`resolver_for_type`** — GraphQL resolver-type binding — pending per-family audit.
 - **`resolver_implements`** — GraphQL resolver pattern — pending per-family audit.
-- **`routes_to`** — Dispatch family — pending per-family audit.

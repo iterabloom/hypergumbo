@@ -118,6 +118,20 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "module_attr_ref", AXIS_RELATIONSHIP,
         "Reads an attribute on an imported module (e.g., os.environ).",
     ),
+    # Promoted from pending_classification by ADR-0025 (dispatch family
+    # audit): apex of single-target dispatch via runtime indirection.
+    EdgeTypeSpec(
+        "dispatches_to", AXIS_RELATIONSHIP,
+        "Caller dispatches to callee via runtime indirection "
+        "(virtual method, function pointer, DI resolution, etc.).",
+    ),
+    # Promoted from pending_classification by ADR-0025 (publish family
+    # audit): apex of producer→consumer over an async channel.
+    EdgeTypeSpec(
+        "event_publishes", AXIS_RELATIONSHIP,
+        "Producer publishes an event/message that the consumer "
+        "receives via an async channel (event bus, queue, CRDT, etc.).",
+    ),
 
     # Deprecation candidates per ADR-0023 §6. Endpoint properties
     # leaked into the edge_type label; migration folds these back into
@@ -233,19 +247,91 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "Inter-process event dispatch.",
     ),
 
-    # Per-family audit pending per ADR-0023 §5.
+    # Dispatch-family fold targets per ADR-0025. Each was a deprecation
+    # candidate where the family-specific name encoded a mechanism /
+    # protocol / declaration-vs-runtime distinction, not a separate
+    # relationship. Phase 3 producer migration renames these to the
+    # canonical fold target with the differentiating fact in edge.meta.
     EdgeTypeSpec(
-        "dispatches_to", AXIS_PENDING,
-        "Dispatch family — pending per-family audit.",
+        "routes_to", AXIS_ENDPOINT_SHAPE,
+        "HTTP/router route to handler; per ADR-0025 fold to "
+        "'dispatches_to' + meta['dispatch_kind']='route'.",
     ),
     EdgeTypeSpec(
-        "routes_to", AXIS_PENDING,
-        "Dispatch family — pending per-family audit.",
+        "delegates_to", AXIS_ENDPOINT_SHAPE,
+        "Class-level method delegation declaration (e.g., Ruby "
+        "delegate); per ADR-0025 fold to 'references' + "
+        "meta['mechanism']='delegate' (declaration-time, not dispatch).",
     ),
     EdgeTypeSpec(
-        "event_publishes", AXIS_PENDING,
-        "Publish family — pending per-family audit.",
+        "annotated_dispatches", AXIS_ENDPOINT_SHAPE,
+        "Annotation-driven dispatch; per ADR-0025 fold to "
+        "'dispatches_to' + meta['mechanism']='annotation'.",
     ),
+    EdgeTypeSpec(
+        "uses_dispatch_table", AXIS_ENDPOINT_SHAPE,
+        "Function references a dispatch-table data symbol; per "
+        "ADR-0025 fold to 'references' + meta['construct']='dispatch_table'.",
+    ),
+    EdgeTypeSpec(
+        "di_registers", AXIS_ENDPOINT_SHAPE,
+        "DI container registration declaration; per ADR-0025 fold "
+        "to 'references' + meta['mechanism']='di_registration' "
+        "(declaration-time, not runtime dispatch).",
+    ),
+    EdgeTypeSpec(
+        "di_resolves", AXIS_ENDPOINT_SHAPE,
+        "DI container runtime resolution; per ADR-0025 fold to "
+        "'dispatches_to' + meta['mechanism']='di'.",
+    ),
+    EdgeTypeSpec(
+        "registers_routes", AXIS_ENDPOINT_SHAPE,
+        "Router declares a route; per ADR-0025 fold to "
+        "'references' + meta['mechanism']='route_registration' "
+        "(parallel to di_registers).",
+    ),
+    EdgeTypeSpec(
+        "message_dispatch", AXIS_ENDPOINT_SHAPE,
+        "Misnamed: emit shape is publisher→subscriber, not "
+        "dispatcher→target. Per ADR-0025 fold to 'event_publishes' "
+        "+ meta['channel_kind']='message_bus' (cross-family fold).",
+    ),
+
+    # Publish-family fold targets per ADR-0025.
+    EdgeTypeSpec(
+        "event_subscribes", AXIS_ENDPOINT_SHAPE,
+        "DEPRECATE-NO-FOLD per ADR-0025: production emit shape is "
+        "subscriber→enclosing-function (structural containment) "
+        "while the name suggests pub-sub. Phase 3 producer rewrite "
+        "decides the canonical replacement (likely 'references' "
+        "or 'contains' with reversed direction).",
+    ),
+    EdgeTypeSpec(
+        "crdt_publishes", AXIS_ENDPOINT_SHAPE,
+        "CRDT-backed event log publish; per ADR-0025 fold to "
+        "'event_publishes' + meta['channel_kind']='crdt'.",
+    ),
+    EdgeTypeSpec(
+        "annotated_publishes", AXIS_ENDPOINT_SHAPE,
+        "Annotation-driven publish; per ADR-0025 fold to "
+        "'event_publishes' + meta['mechanism']='annotation'.",
+    ),
+    EdgeTypeSpec(
+        "emits", AXIS_ENDPOINT_SHAPE,
+        "Function references an event symbol it emits; per "
+        "ADR-0025 fold to 'references' + meta['construct']='event_emit' "
+        "(emit shape is function→event_symbol, not pub→sub).",
+    ),
+    EdgeTypeSpec(
+        "enqueues", AXIS_ENDPOINT_SHAPE,
+        "Producer pushes a job to a queue (e.g., Ruby ActiveJob "
+        "perform_later); per ADR-0025 fold to 'event_publishes' + "
+        "meta['channel_kind']='queue'.",
+    ),
+
+    # Per-family audit pending per ADR-0023 §5. The dispatch and
+    # publish families were resolved by ADR-0025; the resolver /
+    # OpenAPI / RPC family awaits its own audit.
     EdgeTypeSpec(
         "resolver_implements", AXIS_PENDING,
         "GraphQL resolver pattern — pending per-family audit.",
@@ -261,10 +347,6 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     EdgeTypeSpec(
         "implements_rpc", AXIS_PENDING,
         "RPC implementation binding — pending per-family audit.",
-    ),
-    EdgeTypeSpec(
-        "di_resolves", AXIS_PENDING,
-        "DI container resolution — pending per-family audit.",
     ),
 )
 
