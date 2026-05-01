@@ -1,0 +1,21 @@
+- op: create  # 26e1
+  at: '2026-05-01T19:40:52Z'  # 26e1
+  by: agent  # 26e1
+  actor: jgstern_agent  # 26e1
+  clock: 1  # 26e1
+  nonce: '26e1'  # 26e1
+  data:  # 26e1
+    kind: work_item  # 26e1
+    title: "ADR-0028 draft: Edge.evidence_type axis declaration (per WI-turin-pajuk audit)"  # 26e1
+    status: todo_soft  # 26e1
+    priority: 3  # 26e1
+    parent:  # 26e1
+    tags:  # 26e1
+    - concept_audit  # 26e1
+    - analysis_quality  # 26e1
+    isbefore: []  # 26e1
+    duplicate_of: []  # 26e1
+    not_duplicate_of: []  # 26e1
+    pr_ref:  # 26e1
+    description: "Per the WI-turin-pajuk audit verdict (DEPRECATE — full ADR-0023-shape migration), draft ADR-0028 instantiating ADR-0024's four-part axis-declaration template for Edge.evidence_type. The audit's cluster taxonomy (in WI-turin-pajuk's discussion thread) is the input to §1 Context and §3 Detailed analysis.\n\nADR-0028 SCOPE:\n- §1 Context: 210 distinct values across 4 axes (inference pathway, resolution status smuggled in, framework convention, apex/peer overloads).\n- §2 Decision: Edge.evidence_type names the INFERENCE PATHWAY only. Cluster A from the audit (~75 values) is the canonical seed; resolution status moves to a new sibling Edge.is_resolved boolean (or resolution_status enum); framework conventions move to meta keys; apex/peer variants collapse to a canonical 'ast_call' + meta['call_construct'].\n- §3 Detailed analysis: per-cluster fold targets (cluster B → sibling field; cluster C → meta['framework_dispatch']; cluster D → canonical + meta['call_construct']).\n- §4 Consumer pattern: consumers query (evidence_type, is_resolved, meta) per ADR-0023 §6 Phase 2 shape.\n- §5 Enforcement: axis_drift.find_drift parameterized on name_filter='EVIDENCE_TYPE' with the new registry; per-axis property test; pre-commit linter via scripts/check-evidence-type-drift.\n- §6 Migration plan: four phases mirroring ADR-0023 §6.\n\nESTIMATED EFFORT: ADR-0028 draft itself: ~1-1.5 days. Migration phases: ~7-12 days plus bakeoff validation per phase. This is the largest concept-axis migration on the roadmap (~140 production files have evidence_type literals).\n\nFOLLOW-UP ITEMS: After ADR-0028 lands, file separate items for each phase (registry, drift linter, sibling field design, consumer migration, producer migration, schema bump).\n\nDEPENDENCIES: SOFT dependency on ADR-0024 (axis-declaration template) and ADR-0023 (worked-example reference). Not blocked by ADR-0027 (Symbol.kind audit) — they're independent axes; could be drafted in parallel."  # 26e1
+    fields: {}  # 26e1
