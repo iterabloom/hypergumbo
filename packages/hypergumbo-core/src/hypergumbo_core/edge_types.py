@@ -132,6 +132,47 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "Producer publishes an event/message that the consumer "
         "receives via an async channel (event bus, queue, CRDT, etc.).",
     ),
+    # Registry-completeness fills per WI-tavas-voror sweep —
+    # canonical relationship-axis values per ADR-0023's
+    # 'Edge types that stay' list (and a couple of obvious-canonical
+    # additions the original list didn't enumerate). Producers
+    # already emitted these; the registry was just missing entries.
+    EdgeTypeSpec(
+        "inherits", AXIS_RELATIONSHIP,
+        "Class/contract inherits from a parent (used by languages "
+        "where 'inherits' reads more naturally than 'extends').",
+    ),
+    EdgeTypeSpec(
+        "decorated_by", AXIS_RELATIONSHIP,
+        "Symbol is decorated/annotated by another (e.g., Python "
+        "decorator, Java annotation, C# attribute, Rust derive).",
+    ),
+    EdgeTypeSpec(
+        "includes", AXIS_RELATIONSHIP,
+        "File includes / sources / mixes-in another file's content "
+        "(LaTeX \\include, RST .. include::, Meson subdir, etc.).",
+    ),
+    EdgeTypeSpec(
+        "defines_target", AXIS_RELATIONSHIP,
+        "Config file defines a build/run/deploy target (Makefile "
+        "rule, package.json script, pyproject entry point, "
+        "Compose service, etc.).",
+    ),
+    EdgeTypeSpec(
+        "data_flows_to", AXIS_RELATIONSHIP,
+        "Data flow edge per ADR-0015 — value computed at src "
+        "reaches dst.",
+    ),
+    EdgeTypeSpec(
+        "module_exports", AXIS_RELATIONSHIP,
+        "Module exposes a symbol as part of its public surface "
+        "(JS export, Python __all__, Rust pub, etc.).",
+    ),
+    EdgeTypeSpec(
+        "overrides", AXIS_RELATIONSHIP,
+        "Method overrides a parent's same-named method (parallel "
+        "to extends/implements; the override declaration itself).",
+    ),
 
     # Deprecation candidates per ADR-0023 §6. Endpoint properties
     # leaked into the edge_type label; migration folds these back into
@@ -338,6 +379,118 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "Producer pushes a job to a queue (e.g., Ruby ActiveJob "
         "perform_later); per ADR-0025 fold to 'event_publishes' + "
         "meta['channel_kind']='queue'.",
+    ),
+
+    # Registry-completeness fills per WI-tavas-voror sweep —
+    # endpoint_shape values producers were already emitting that
+    # the original ADR-0023 deprecation list missed. Each carries a
+    # plausible canonical fold target to seed a future per-language
+    # or per-pattern audit; the actual Phase-3-style migration is
+    # deferred until that audit picks the meta-key shape.
+    EdgeTypeSpec(
+        "abi_call", AXIS_ENDPOINT_SHAPE,
+        "Solidity contract ABI call (cross-contract method invocation); "
+        "likely fold to 'calls' + meta['protocol']='abi'.",
+    ),
+    EdgeTypeSpec(
+        "association", AXIS_ENDPOINT_SHAPE,
+        "Ruby ActiveRecord association declaration (has_many, belongs_to, "
+        "etc.); likely fold to 'references' + meta['construct']='association'.",
+    ),
+    EdgeTypeSpec(
+        "build_tag_alternative_of", AXIS_ENDPOINT_SHAPE,
+        "Go build-tag-conditional alternative implementation of a symbol; "
+        "likely fold to 'references' + meta['construct']='build_tag_alternative'.",
+    ),
+    EdgeTypeSpec(
+        "caller_invokes", AXIS_ENDPOINT_SHAPE,
+        "Tauri-style cross-language invoke (caller → bound command); "
+        "likely fold to 'calls' + meta['protocol']='ipc' (parallel to "
+        "ipc_calls per ADR-0026).",
+    ),
+    EdgeTypeSpec(
+        "contains_routes", AXIS_ENDPOINT_SHAPE,
+        "Controller / module containing route handlers; likely fold "
+        "to 'contains' (already canonical) — pure dst-kind leakage.",
+    ),
+    EdgeTypeSpec(
+        "crypto_flow", AXIS_ENDPOINT_SHAPE,
+        "Crypto-related dataflow (key/secret reaches sink); likely fold "
+        "to 'data_flows_to' + meta['construct']='crypto'.",
+    ),
+    EdgeTypeSpec(
+        "depends", AXIS_ENDPOINT_SHAPE,
+        "Package depends on another (Bitbake, requirements.txt); likely "
+        "fold to 'depends_on' (already canonical) or 'depends_on_manifest' "
+        "depending on declaration site.",
+    ),
+    EdgeTypeSpec(
+        "extends_template", AXIS_ENDPOINT_SHAPE,
+        "Twig/Jinja template extends a parent template; likely fold to "
+        "'extends' + meta['construct']='template' or stay as canonical "
+        "if templates' extension semantics differ enough.",
+    ),
+    EdgeTypeSpec(
+        "includes_class", AXIS_ENDPOINT_SHAPE,
+        "Puppet manifest includes a class declaration; likely fold to "
+        "'includes' (now canonical) + meta['construct']='puppet_class'.",
+    ),
+    EdgeTypeSpec(
+        "includes_template", AXIS_ENDPOINT_SHAPE,
+        "Twig/Jinja template includes a partial; likely fold to "
+        "'includes' (now canonical) + meta['construct']='template'.",
+    ),
+    EdgeTypeSpec(
+        "invokes_callback", AXIS_ENDPOINT_SHAPE,
+        "Erlang/Elixir/Ruby callback invocation (gen_server callback, "
+        "framework lifecycle hook); likely fold to 'dispatches_to' or "
+        "'calls' + meta['mechanism']='callback'.",
+    ),
+    EdgeTypeSpec(
+        "links_to", AXIS_ENDPOINT_SHAPE,
+        "Markdown link from one document to another; likely fold to "
+        "'references' + meta['construct']='markdown_link'.",
+    ),
+    EdgeTypeSpec(
+        "notifies_resource", AXIS_ENDPOINT_SHAPE,
+        "Puppet/Chef resource notify directive (trigger another resource "
+        "on change); likely fold to 'event_publishes' + "
+        "meta['channel_kind']='puppet_notify' (configuration-management "
+        "pub-sub shape).",
+    ),
+    EdgeTypeSpec(
+        "renders", AXIS_ENDPOINT_SHAPE,
+        "Controller renders a view template; likely fold to 'references' "
+        "+ meta['construct']='view_render' (parallel to renders_component "
+        "for JSX).",
+    ),
+    EdgeTypeSpec(
+        "requires_resource", AXIS_ENDPOINT_SHAPE,
+        "Puppet/Chef resource require directive (this resource depends "
+        "on another); likely fold to 'depends_on' + "
+        "meta['construct']='puppet_require'.",
+    ),
+    EdgeTypeSpec(
+        "signal_receiver", AXIS_ENDPOINT_SHAPE,
+        "Django signal receiver registration; likely fold to "
+        "'event_publishes' + meta['channel_kind']='django_signal' (signals "
+        "are pub-sub via Django's dispatch module).",
+    ),
+    EdgeTypeSpec(
+        "template_calls", AXIS_ENDPOINT_SHAPE,
+        "Vue / template-engine method call from template into "
+        "component logic; likely fold to 'calls' + "
+        "meta['mechanism']='template'.",
+    ),
+    EdgeTypeSpec(
+        "uses_mixin", AXIS_ENDPOINT_SHAPE,
+        "Sass/SCSS @include of a mixin; likely fold to 'references' + "
+        "meta['construct']='sass_mixin'.",
+    ),
+    EdgeTypeSpec(
+        "uses_vocabulary", AXIS_ENDPOINT_SHAPE,
+        "SPARQL/RDF query references a vocabulary/ontology; likely "
+        "fold to 'references' + meta['construct']='rdf_vocabulary'.",
     ),
 
     # Per-family audit pending per ADR-0023 §5. The dispatch and
