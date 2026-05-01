@@ -102,6 +102,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List
 
+from .edge_types import IMPORT_EDGE_TYPES
 from .ir import Symbol, Edge
 from .paths import is_test_file, is_test_node
 from .selection.filters import is_test_path
@@ -1039,18 +1040,21 @@ def filter_edges_for_ranking(
         symbols: List of symbols (used to look up source paths for test filtering).
         exclude_test_edges: If True, ignore edges originating from test
             files. Default True.
-        exclude_import_edges: If True, ignore import/imports_module edges
-            entirely. If False (default), import edges are kept and
-            weighted by edge_type_weights in compute_centrality (imports
-            get 0.3x weight, imports_module gets 0.2x). Default False.
+        exclude_import_edges: If True, ignore every member of
+            ``hypergumbo_core.edge_types.IMPORT_EDGE_TYPES``
+            (``imports``, ``imports_module``, ``imports_component``).
+            If False (default), import edges are kept and weighted by
+            edge_type_weights in compute_centrality (imports get 0.3x
+            weight, imports_module gets 0.2x). Default False.
         min_edge_confidence: Minimum edge confidence to include. Edges below
             this threshold are excluded. Default 0.0 (include all).
 
     Returns:
         Filtered list of edges.
     """
+    # Both extends and implements live on the relationship axis (ADR-0023);
+    # this set was audited as already-canonical at Phase 2 (WI-sahab-fatoz).
     _STRUCTURAL_EDGE_TYPES = {"extends", "implements"}
-    _IMPORT_EDGE_TYPES = {"imports", "imports_module"}
 
     if exclude_test_edges:
         symbol_by_id = {s.id: s for s in symbols}
@@ -1082,7 +1086,7 @@ def filter_edges_for_ranking(
     if exclude_import_edges:
         filtered = [
             e for e in filtered
-            if e.edge_type not in _IMPORT_EDGE_TYPES
+            if e.edge_type not in IMPORT_EDGE_TYPES
         ]
 
     if min_edge_confidence > 0:
@@ -1226,12 +1230,14 @@ def rank_symbols(
             first-party code. Default True.
         exclude_test_edges: If True, ignore edges originating from test
             files when computing centrality. Default True.
-        exclude_import_edges: If True, ignore import/imports_module edges
-            when computing centrality. If False (default), import edges
-            are included but weighted via edge_type_weights (imports=0.3,
-            imports_module=0.2) rather than excluded entirely. This gives
-            imported-but-not-called symbols a small centrality signal
-            without overwhelming call-based rankings. Default False.
+        exclude_import_edges: If True, ignore every member of
+            ``hypergumbo_core.edge_types.IMPORT_EDGE_TYPES`` when
+            computing centrality. If False (default), import edges are
+            included but weighted via edge_type_weights (imports=0.3,
+            imports_module=0.2) rather than excluded entirely. This
+            gives imported-but-not-called symbols a small centrality
+            signal without overwhelming call-based rankings. Default
+            False.
         min_edge_confidence: Minimum edge confidence to include in
             centrality computation. Edges below this threshold are
             excluded. Default 0.0 (include all). Set to 0.5 to exclude

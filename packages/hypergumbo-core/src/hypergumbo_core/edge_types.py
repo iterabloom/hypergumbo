@@ -294,6 +294,41 @@ def find_edge_type(name: str) -> EdgeTypeSpec | None:
 
 
 # ---------------------------------------------------------------------------
+# Phase-2 migration helpers (per ADR-0023 §6 Phase 2)
+# ---------------------------------------------------------------------------
+#
+# Centralized constants that consumers use in place of hand-rolled
+# ``*_EDGE_TYPES`` literals. Each covers (a) the canonical
+# relationship-axis name(s) the registry keeps through Phase 4, plus
+# (b) the deprecated endpoint_shape variants Phase 3 will fold back.
+# After Phase 4's deprecation removal, the deprecated entries vanish
+# and the constant simplifies; consumer call sites stay correct
+# throughout the migration.
+#
+# The drift linter catches future analyzers that introduce
+# ``imports_widget`` without registering it (subset coherence with
+# ``EDGE_TYPES``); WI-tavas-voror's triage of emitted-but-unregistered
+# values is the complementary completeness check that catches
+# additions to the registry which should also enter these sets.
+
+IMPORT_EDGE_TYPES: Final[frozenset[str]] = frozenset({
+    "imports",
+    "imports_module",
+    "imports_component",
+})
+"""Edges representing import-shaped relationships, regardless of dst.kind.
+
+Per ADR-0023 §6 Phase 2: replaces ad-hoc consumer-side sets like
+``_IMPORT_EDGE_TYPES = {"imports", "imports_module"}`` (the silent
+bug from ADR-0023 §1 case 1 — Vue/Svelte/Astro/React component
+imports were silently miscategorized because ``imports_component``
+was missing). Centralizing here closes that gap; Phase 3 then
+folds the endpoint-shape variants into ``imports`` plus
+``dst.kind`` metadata, and Phase 4 removes the deprecated entries
+from this set."""
+
+
+# ---------------------------------------------------------------------------
 # Axis-coherence drift detection (Edge.edge_type wrapper)
 # ---------------------------------------------------------------------------
 #

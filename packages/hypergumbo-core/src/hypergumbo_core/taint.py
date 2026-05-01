@@ -733,6 +733,14 @@ def _extract_callee_name(symbol_id: str) -> str:
 
 # Edge types that represent call-like relationships for taint propagation.
 # Includes direct calls and cross-language linker bridge edges (ADR-0017 §5).
+#
+# ADR-0023 §6 Phase 2 audit (WI-sahab-fatoz): mixes relationship-axis
+# (``calls``, ``module_attr_ref``), pending_classification
+# (``implements_rpc``), and endpoint_shape bridge values. Forward-
+# compatible through Phase 3 because ``calls`` is already a member, so
+# bridges folding into ``calls`` + ``meta["bridge_kind"]`` continue to
+# match; bridge entries become dead-but-harmless and get pruned in
+# Phase 4.
 TAINT_CALL_EDGE_TYPES = frozenset({
     "calls",
     # WI-lokuv: attribute-read edges for IO primitives declared under

@@ -99,6 +99,7 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Dict, List, Set
 
+from .edge_types import IMPORT_EDGE_TYPES
 from .ir import Symbol, Edge
 from .paths import normalize_path, path_ends_with, is_test_node, is_utility_file
 from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
@@ -117,6 +118,9 @@ from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
 # from this?" and "which interface does this implement?").
 # When the entry point IS a container type, forward slice class expansion
 # seeds the BFS with member methods so they are still reachable.
+# All three live on the relationship axis (ADR-0023); audited as
+# already-canonical at Phase 2 (WI-sahab-fatoz). Forward-compatible
+# through Phase 4 without change.
 _STRUCTURAL_EDGE_TYPES = frozenset({
     "extends", "implements", "contains",
 })
@@ -637,7 +641,7 @@ def slice_graph(
             # Skip import edges when exclude_imports is set.
             # Import edges are file-level package dependencies, not
             # function-level call relationships.
-            if query.exclude_imports and edge.edge_type in ("imports", "imports_module"):
+            if query.exclude_imports and edge.edge_type in IMPORT_EDGE_TYPES:
                 continue
 
             # ADR-0015: dataflow mode — only follow data-dependency chains.

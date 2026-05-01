@@ -701,6 +701,14 @@ class BoundaryMap:
         }
 
 
+# ADR-0023 §6 Phase 2 audit (WI-sahab-fatoz): this set mixes axes —
+# relationship-axis values (``calls``, ``instantiates``, ``references``,
+# ``module_attr_ref``), pending_classification values (``dispatches_to``,
+# ``implements_rpc``), and endpoint_shape FFI/IPC bridges. Forward-
+# compatible through Phase 3 because ``calls`` is already a member, so
+# when bridges fold into ``calls`` + ``meta["bridge_kind"]`` the set
+# still matches; the bridge entries become dead-but-harmless and get
+# pruned in Phase 4.
 _TRACEABLE_EDGE_TYPES = frozenset({
     "calls", "instantiates", "dispatches_to", "references",
     # WI-guhok: attribute reads of imported modules (e.g. os.environ, sys.argv)
