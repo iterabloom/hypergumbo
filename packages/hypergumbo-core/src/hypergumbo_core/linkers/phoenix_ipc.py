@@ -302,39 +302,31 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
             src_id = _ensure_symbol(sender, event)
             for receiver in receivers:
                 dst_id = _ensure_symbol(receiver, event)
-                # Create edge from sender to receiver
+                # ADR-0023 §6 Phase 3 / ADR-0026 (WI-hahap-farid):
+                # Phoenix Channels event match is publish-family
+                # shape; "ipc" is the channel kind. Canonical
+                # 'event_publishes' + meta['channel_kind']='ipc'.
                 edge = Edge.create(
                     src=src_id,
                     dst=dst_id,
-                    edge_type="message_send",
+                    edge_type="event_publishes",
                     line=sender.line,
                     confidence=0.85,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="phoenix_event_match",
                 )
-                edge.meta = {"event": event, "topic": sender.topic}
+                edge.meta = {
+                    "channel_kind": "ipc",
+                    "event": event,
+                    "topic": sender.topic,
+                }
                 edges.append(edge)
 
-    # Also create edges for the receive side
-    for event, receivers in receive_by_event.items():
-        senders = send_by_event.get(event, [])
-        for receiver in receivers:
-            src_id = _ensure_symbol(receiver, event)
-            for sender in senders:
-                dst_id = _ensure_symbol(sender, event)
-                edge = Edge.create(
-                    src=src_id,
-                    dst=dst_id,
-                    edge_type="message_receive",
-                    line=receiver.line,
-                    confidence=0.85,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    evidence_type="phoenix_event_match",
-                )
-                edge.meta = {"event": event}
-                edges.append(edge)
+    # ADR-0026 (WI-hahap-farid): converse-direction
+    # message_receive edges dropped — same verdict as ADR-0025's
+    # event_subscribes shape problem; the forward
+    # event_publishes edges already capture the relationship.
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped

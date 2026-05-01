@@ -572,12 +572,18 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
                     evidence_type = "variable_match" if is_variable_match else f"{send_pat.pattern_type}_emit"
                     # Pass linker-specific meta via Edge.create's meta= kwarg
                     # so Edge.create merges it with the dataflow fields —
-                    # assigning edge.meta afterward would wipe access_mode
-                    # and dest_access_mode set above (INV-forim).
+                    # ADR-0023 §6 Phase 3 / ADR-0026 (WI-hahap-farid):
+                    # WebSocket sender→receiver via channel is publish-
+                    # family shape; "websocket" is the channel kind.
+                    # Canonical 'event_publishes' +
+                    # meta['channel_kind']='websocket'. Pass meta via
+                    # Edge.create's meta= kwarg so it merges with
+                    # dataflow fields (assigning edge.meta afterward
+                    # would wipe access_mode/dest_access_mode — INV-forim).
                     edge = Edge.create(
                         src=_make_file_id(send_pat.file_path),
                         dst=_make_file_id(recv_pat.file_path),
-                        edge_type="websocket_message",
+                        edge_type="event_publishes",
                         line=send_pat.line,
                         evidence_type=evidence_type,
                         confidence=confidence,
@@ -587,18 +593,22 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
                         dest_access_mode="read",
                         channel=event,
                         meta={
+                            "channel_kind": "websocket",
                             "event": event,
                             "event_type": "variable" if is_variable_match else "literal",
                         },
                     )
                     edges.append(edge)
 
-    # Create edges for endpoint connections
+    # ADR-0023 §6 Phase 3 / ADR-0026 (WI-hahap-farid): WebSocket
+    # endpoint connections declare connectivity (file → endpoint
+    # symbol), they don't carry messages. Canonical 'references' +
+    # meta['construct']='websocket_endpoint'.
     for ep in endpoints:
         edges.append(Edge.create(
             src=_make_file_id(ep.file_path),
             dst=_make_symbol_id(ep.file_path, ep.line, ep.event, "endpoint"),
-            edge_type="websocket_connection",
+            edge_type="references",
             line=ep.line,
             evidence_type=f"{ep.pattern_type}_endpoint",
             confidence=0.90,
@@ -606,6 +616,7 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
             origin_run_id=run.execution_id,
             access_mode="write",
             channel=ep.event,
+            meta={"construct": "websocket_endpoint"},
         ))
 
     run.files_analyzed = files_analyzed

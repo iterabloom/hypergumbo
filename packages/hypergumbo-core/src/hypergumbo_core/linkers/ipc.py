@@ -525,14 +525,17 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     sender.channel_type == "variable" or receiver.channel_type == "variable"
                 )
                 confidence = 0.65 if is_variable_match else 0.85
-                # Create edge from sender to receiver. Pass channel_type via
-                # meta= kwarg so Edge.create merges it with the dataflow
+                # ADR-0023 §6 Phase 3 / ADR-0026 (WI-hahap-farid):
+                # Electron renderer→main message exchange is the
+                # publish-family shape; "ipc" is the channel kind.
+                # Canonical 'event_publishes' + meta['channel_kind']='ipc'.
+                # Pass meta via kwarg so Edge.create merges with dataflow
                 # fields — assigning edge.meta afterward would wipe out
-                # access_mode and dest_access_mode (INV-forim).
+                # access_mode/dest_access_mode (INV-forim).
                 edge = Edge.create(
                     src=src_id,
                     dst=dst_id,
-                    edge_type="message_send",
+                    edge_type="event_publishes",
                     line=sender.line,
                     confidence=confidence,
                     origin=PASS_ID,
@@ -542,42 +545,18 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     dest_access_mode="read",
                     channel=channel,
                     meta={
+                        "channel_kind": "ipc",
                         "channel_type": "variable" if is_variable_match else "literal",
                     },
                 )
                 edges.append(edge)
 
-    # Also create edges for the receive side
-    for channel, receivers in receive_by_channel.items():
-        if not channel:
-            continue
-
-        senders = send_by_channel.get(channel, [])
-        for receiver in receivers:
-            src_id = _ensure_symbol(receiver, channel)
-            for sender in senders:
-                dst_id = _ensure_symbol(sender, channel)
-                is_variable_match = (
-                    sender.channel_type == "variable" or receiver.channel_type == "variable"
-                )
-                confidence = 0.65 if is_variable_match else 0.85
-                edge = Edge.create(
-                    src=src_id,
-                    dst=dst_id,
-                    edge_type="message_receive",
-                    line=receiver.line,
-                    confidence=confidence,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    evidence_type="variable_match" if is_variable_match else "ipc_channel_match",
-                    access_mode="read",
-                    dest_access_mode="write",
-                    channel=channel,
-                    meta={
-                        "channel_type": "variable" if is_variable_match else "literal",
-                    },
-                )
-                edges.append(edge)
+    # ADR-0026 (WI-hahap-farid): the converse-direction
+    # message_receive edges are dropped — the forward
+    # event_publishes edges above already capture the relationship,
+    # and hypergumbo's slice handles reverse traversal natively
+    # (no per-edge converse-direction emit needed). Same verdict
+    # as ADR-0025's event_subscribes shape problem.
 
     # ---- Phase 3: contextBridge.exposeInMainWorld wrapper resolution ----
     # For each preload file with bridge definitions, scan other files for

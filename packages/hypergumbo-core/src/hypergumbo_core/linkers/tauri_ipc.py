@@ -651,10 +651,13 @@ def link_tauri_ipc(
                     supply_chain_reason="synthetic IPC bridge node",
                 ))
 
+            # ADR-0023 §6 Phase 3 / ADR-0026 (WI-hahap-farid):
+            # Tauri's invoke IS a call; "ipc" is the mechanism.
+            # Canonical 'calls' + meta['protocol']='ipc'.
             result_edges.append(Edge.create(
                 src=src_id,
                 dst=target_sym.id,
-                edge_type="ipc_calls",
+                edge_type="calls",
                 line=0,
                 confidence=0.90,
                 origin=PASS_ID,
@@ -662,6 +665,7 @@ def link_tauri_ipc(
                 evidence_type="tauri_invoke",
                 access_mode="write",
                 dest_access_mode="read",
+                meta={"protocol": "ipc"},
             ))
 
     # Phase 4: Specta wrapper resolution
@@ -857,10 +861,14 @@ def link_tauri_ipc(
                             supply_chain_reason="synthetic Tauri event listener",
                         ))
 
+                    # ADR-0023 §6 Phase 3 / ADR-0026 (WI-hahap-farid):
+                    # Tauri emit/listen IS publish; "ipc" is the
+                    # channel kind. Canonical 'event_publishes' +
+                    # meta['channel_kind']='ipc'.
                     result_edges.append(Edge.create(
                         src=src_id,
                         dst=dst_id,
-                        edge_type="ipc_event",
+                        edge_type="event_publishes",
                         line=0,
                         confidence=0.85,
                         origin=PASS_ID,
@@ -869,6 +877,7 @@ def link_tauri_ipc(
                         access_mode="write",
                         dest_access_mode="read",
                         channel=event_name,
+                        meta={"channel_kind": "ipc"},
                     ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

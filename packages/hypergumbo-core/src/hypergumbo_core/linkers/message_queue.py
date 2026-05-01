@@ -502,10 +502,16 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
                     # so Edge.create merges it with the dataflow fields —
                     # assigning edge.meta afterward would wipe access_mode
                     # and dest_access_mode set above (INV-forim).
+                    # ADR-0023 §6 Phase 3 / ADR-0026 (WI-hahap-farid):
+                    # MQ publisher→subscriber via topic is publish-
+                    # family shape; "queue" is the channel kind.
+                    # Canonical 'event_publishes' +
+                    # meta['channel_kind']='queue'. Same fold target
+                    # as ADR-0025's 'enqueues'.
                     edge = Edge.create(
                         src=pub_symbol.id,
                         dst=sub_symbol.id,
-                        edge_type="message_queue",
+                        edge_type="event_publishes",
                         line=pub.line,
                         confidence=confidence,
                         origin=PASS_ID,
@@ -515,6 +521,7 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
                         dest_access_mode="read",
                         channel=key[1],
                         meta={
+                            "channel_kind": "queue",
                             "queue_type": key[0],
                             "topic": key[1],
                             "topic_type": "variable" if is_variable_match else "literal",

@@ -350,7 +350,7 @@ class TestLinkWebSocket:
         (tmp_path / "receiver.js").write_text("socket.on('chat', (msg) => {});")
         result = link_websocket(tmp_path)
         # Should have edge from sender to receiver
-        message_edges = [e for e in result.edges if e.edge_type == "websocket_message"]
+        message_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(message_edges) == 1
         assert "sender.js" in message_edges[0].src
         assert "receiver.js" in message_edges[0].dst
@@ -371,7 +371,7 @@ socket.on('event', handler);
 """)
         result = link_websocket(tmp_path)
         # Should not have message edges (both patterns in same file)
-        message_edges = [e for e in result.edges if e.edge_type == "websocket_message"]
+        message_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(message_edges) == 0
 
     def test_creates_connection_edges(self, tmp_path: Path) -> None:
@@ -379,7 +379,7 @@ socket.on('event', handler);
         file = tmp_path / "server.js"
         file.write_text("wss.on('connection', (ws) => {});")
         result = link_websocket(tmp_path)
-        connection_edges = [e for e in result.edges if e.edge_type == "websocket_connection"]
+        connection_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(connection_edges) == 1
 
     def test_multiple_event_matching(self, tmp_path: Path) -> None:
@@ -393,7 +393,7 @@ socket.on('login', handleLogin);
 socket.on('message', handleMessage);
 """)
         result = link_websocket(tmp_path)
-        message_edges = [e for e in result.edges if e.edge_type == "websocket_message"]
+        message_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(message_edges) == 2
 
     def test_run_metadata(self, tmp_path: Path) -> None:
@@ -413,9 +413,9 @@ socket.on('message', handleMessage);
         result = link_websocket(tmp_path)
 
         for edge in result.edges:
-            if edge.edge_type == "websocket_message":
+            if edge.edge_type == "event_publishes":
                 assert edge.confidence == 0.85
-            elif edge.edge_type == "websocket_connection":
+            elif edge.edge_type == "references":
                 assert edge.confidence == 0.90
 
     def test_symbol_origin(self, tmp_path: Path) -> None:
@@ -468,7 +468,7 @@ class TestFileNodesForSliceIntegration:
 
         # Every edge endpoint should be in the symbol list
         for edge in result.edges:
-            if edge.edge_type == "websocket_message":
+            if edge.edge_type == "event_publishes":
                 assert edge.src in symbol_ids, f"Edge src {edge.src} not in symbols"
                 assert edge.dst in symbol_ids, f"Edge dst {edge.dst} not in symbols"
 
@@ -525,7 +525,7 @@ function sendMessage(text) {
         assert any(s.kind == "websocket_endpoint" for s in result.symbols)
 
         # Should find message edges for 'chat message' event
-        message_edges = [e for e in result.edges if e.edge_type == "websocket_message"]
+        message_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(message_edges) >= 1
 
     def test_native_websocket_client(self, tmp_path: Path) -> None:
@@ -1090,7 +1090,7 @@ socket.on(EVENT, (data) => {
 
         assert len(result.edges) >= 1
         # Find message edges (not connection edges)
-        msg_edges = [e for e in result.edges if e.edge_type == "websocket_message"]
+        msg_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(msg_edges) >= 1
         # Variable matches have lower confidence
         assert msg_edges[0].confidence == 0.65
@@ -1143,7 +1143,7 @@ socket.on(EVENT, handler);
         result = link_websocket(tmp_path)
 
         # No message edges: literal 'user-login' != variable 'EVENT'
-        msg_edges = [e for e in result.edges if e.edge_type == "websocket_message"]
+        msg_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(msg_edges) == 0
 
     def test_generic_send_receive_no_interfile_edges(self, tmp_path: Path) -> None:
@@ -1173,7 +1173,7 @@ socket.on(EVENT, handler);
         )
         result = link_websocket(tmp_path)
         # Should NOT have websocket_message edges between the files
-        msg_edges = [e for e in result.edges if e.edge_type == "websocket_message"]
+        msg_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(msg_edges) == 0, (
             f"Generic send/receive should not create inter-file edges, "
             f"got {len(msg_edges)}"

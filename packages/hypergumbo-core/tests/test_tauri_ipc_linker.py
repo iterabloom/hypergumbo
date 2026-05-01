@@ -104,7 +104,7 @@ class TestTauriIPCLinkerBasic:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "ipc_calls"
+        assert edge.edge_type == "calls"
         assert edge.dst == rust_sym.id
         assert edge.confidence >= 0.85
 
@@ -983,7 +983,7 @@ class TestTauriSpectaWrapperResolution:
         )
 
         # Should have: ipc_calls edge from bindings, caller_invokes from editor
-        ipc_edges = [e for e in result.edges if e.edge_type == "ipc_calls"]
+        ipc_edges = [e for e in result.edges if e.edge_type == "calls"]
         caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
 
         assert len(ipc_edges) == 1
@@ -1494,7 +1494,7 @@ class TestTauriSpectaWrapperResolution:
             rust_symbols=[rust_sym],
         )
 
-        ipc_edges = [e for e in result.edges if e.edge_type == "ipc_calls"]
+        ipc_edges = [e for e in result.edges if e.edge_type == "calls"]
         caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
         assert len(ipc_edges) == 1
         assert len(caller_edges) == 0
@@ -1877,7 +1877,7 @@ class TestTauriIPCLinkerRegistry:
         result = run_linker("tauri_ipc", ctx)
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "ipc_calls"
+        assert result.edges[0].edge_type == "calls"
 
 
 class TestSpectaObjectMethodWrappers:
@@ -2001,7 +2001,7 @@ commands.stopRecording();
         )
 
         # Should have ipc_calls edges (from Phase 3 direct detection)
-        ipc_edges = [e for e in result.edges if e.edge_type == "ipc_calls"]
+        ipc_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(ipc_edges) >= 2
 
         # Should have caller_invokes edges from the named import
@@ -2145,7 +2145,7 @@ listen('relay-status', (event) => {
 
         result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym])
 
-        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        event_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(event_edges) >= 1
         edge = event_edges[0]
         assert edge.meta is not None
@@ -2178,7 +2178,7 @@ listen('vm-state-changed', (e) => update(e.payload));
         ts_sym = _make_ts_symbol("App", path="src/app.ts")
 
         result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym])
-        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        event_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(event_edges) >= 1
         assert event_edges[0].meta["channel"] == "vm-state-changed"
 
@@ -2200,7 +2200,7 @@ listen('vm-state-changed', (e) => update(e.payload));
         ts_sym = _make_ts_symbol("App", path="src/app.ts")
 
         result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym])
-        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        event_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(event_edges) >= 1
 
     def test_no_event_edge_without_matching_listener(self, tmp_path: Path) -> None:
@@ -2221,7 +2221,7 @@ listen('vm-state-changed', (e) => update(e.payload));
         ts_sym = _make_ts_symbol("App", path="src/app.ts")
 
         result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym])
-        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        event_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(event_edges) == 0
 
     def test_appwindow_listen_detected(self, tmp_path: Path) -> None:
@@ -2242,7 +2242,7 @@ listen('vm-state-changed', (e) => update(e.payload));
         ts_sym = _make_ts_symbol("App", path="src/app.ts")
 
         result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym])
-        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        event_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(event_edges) >= 1
 
     def test_non_rust_symbols_skipped_in_phase5(self, tmp_path: Path) -> None:
@@ -2272,7 +2272,7 @@ listen('vm-state-changed', (e) => update(e.payload));
         ts_sym = _make_ts_symbol("App", path="src/app.ts")
 
         result = link_tauri_ipc(tmp_path, [ts_sym], [py_sym, rust_sym])
-        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        event_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(event_edges) >= 1
 
     def test_duplicate_rust_path_scanned_once(self, tmp_path: Path) -> None:
@@ -2299,7 +2299,7 @@ listen('vm-state-changed', (e) => update(e.payload));
         ts_sym = _make_ts_symbol("App", path="src/app.ts")
 
         result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym1, rust_sym2])
-        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        event_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         # Should produce exactly 1 edge (not duplicated)
         assert len(event_edges) == 1
 
@@ -2325,6 +2325,6 @@ fn notify(app: &AppHandle) {
         ts_sym = _make_ts_symbol("App", path="src/app.ts")
 
         result = link_tauri_ipc(tmp_path, [ts_sym], [rust_sym])
-        event_edges = [e for e in result.edges if e.edge_type == "ipc_event"]
+        event_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(event_edges) >= 1
         assert event_edges[0].meta["channel"] == "update-available"

@@ -185,7 +185,7 @@ ipcMain.on('user-login', (event, data) => {
 
         assert result.run is not None
         # Should have edges for the IPC communication
-        send_edges = [e for e in result.edges if e.edge_type == "message_send"]
+        send_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         receive_edges = [e for e in result.edges if e.edge_type == "message_receive"]
         # At minimum, verify the linker runs without error
 
@@ -381,7 +381,7 @@ ipcRenderer.send('test-channel', data);
 ipcMain.on('test-channel', handler);
 """)
         result = link_ipc(tmp_path)
-        send_edges = [e for e in result.edges if e.edge_type == "message_send"]
+        send_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(send_edges) >= 1
         for edge in send_edges:
             assert edge.meta["access_mode"] == "write"
@@ -389,9 +389,14 @@ ipcMain.on('test-channel', handler);
             assert edge.meta["channel"] == "test-channel"
             assert "channel_type" in edge.meta
 
-    def test_edge_preserves_dataflow_annotations_receive(self, tmp_path: Path) -> None:
-        """INV-forim: message_receive edges have access_mode=read and
-        dest_access_mode=write preserved through the linker."""
+    def test_no_message_receive_edges_emitted(self, tmp_path: Path) -> None:
+        """ADR-0026 (WI-hahap-farid): the converse-direction
+        message_receive edges are dropped — the forward
+        event_publishes edges already capture the relationship and
+        hypergumbo's slice handles reverse traversal natively. This
+        test (formerly test_edge_preserves_dataflow_annotations_receive)
+        asserts the producer-side decision sticks: no message_receive
+        emits at all."""
         from hypergumbo_core.linkers.ipc import link_ipc
 
         (tmp_path / "app.js").write_text("""
@@ -400,10 +405,7 @@ ipcMain.on('test-channel', handler);
 """)
         result = link_ipc(tmp_path)
         recv_edges = [e for e in result.edges if e.edge_type == "message_receive"]
-        assert len(recv_edges) >= 1
-        for edge in recv_edges:
-            assert edge.meta["access_mode"] == "read"
-            assert edge.meta["dest_access_mode"] == "write"
+        assert recv_edges == []
 
 
 class TestIpcRunMetadata:

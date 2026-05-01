@@ -203,7 +203,7 @@ end
 
         assert result.run is not None
         # Should have edges linking broadcast to handler
-        send_edges = [e for e in result.edges if e.edge_type == "message_send"]
+        send_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(send_edges) >= 1
 
     def test_links_push_to_client(self, tmp_path: Path) -> None:

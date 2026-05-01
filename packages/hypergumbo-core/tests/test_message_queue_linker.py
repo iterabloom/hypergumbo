@@ -586,7 +586,7 @@ class TestMessageQueueLinker:
 
         assert len(result.symbols) == 2
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "message_queue"
+        assert result.edges[0].edge_type == "event_publishes"
         assert result.edges[0].meta["topic"] == "user-events"
         assert result.edges[0].meta["queue_type"] == "kafka"
 
