@@ -105,6 +105,17 @@ The Fundamental Concept Audit playbook
 nominates an axis from this list each release cycle for a deliberate
 re-audit, complementing the commit-count cadence hook.
 
+## Downstream consumers
+
+If you consume hypergumbo's behavior-map JSON output and your code
+filters or weights edges by `edge_type`, see
+[`docs/migrating-edge-types.md`](migrating-edge-types.md) for the
+rename table, the meta-key vocabulary, and migration patterns.
+Producers no longer emit any of the values currently in the
+`endpoint_shape` section below; those values stay in the schema's
+enum during the dual-validity window so existing consumers don't
+break, but they are scheduled for removal.
+
 ## `Edge.type` axes
 """
 
