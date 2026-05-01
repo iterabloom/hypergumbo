@@ -1,0 +1,20 @@
+- op: create  # 3883
+  at: '2026-05-01T19:31:48Z'  # 3883
+  by: agent  # 3883
+  actor: jgstern_agent  # 3883
+  clock: 1  # 3883
+  nonce: '3883'  # 3883
+  data:  # 3883
+    kind: work_item  # 3883
+    title: "Document DataModelKind three-axis confusion + re-eval triggers (per WI-juvag-numud audit)"  # 3883
+    status: todo_soft  # 3883
+    priority: 4  # 3883
+    parent:  # 3883
+    tags:  # 3883
+    - concept_audit  # 3883
+    isbefore: []  # 3883
+    duplicate_of: []  # 3883
+    not_duplicate_of: []  # 3883
+    pr_ref:  # 3883
+    description: "Per the WI-juvag-numud audit verdict (DOCUMENT with re-eval trigger), update the docstring on DataModelKind in packages/hypergumbo-core/src/hypergumbo_core/datamodels.py to surface the three-axis confusion explicitly:\n\nDOCSTRING TO ADD (verbatim or close):\n'This enum currently mixes three axes:\n  (1) language construct: DATACLASS (Python @dataclass decorator)\n  (2) library/framework: ORM_MODEL (Django/SQLAlchemy/TypeORM/GORM), PYDANTIC_MODEL, SCHEMA (Marshmallow / GraphQL types)\n  (3) architectural role: DTO, DOMAIN_MODEL, ENTITY (DDD-style)\n\nA class may legitimately satisfy values across multiple axes (e.g., a @dataclass that is also a Pydantic-style validator and is also a DTO). The current detection table at MODEL_BASE_CLASSES picks one verdict per class via regex priority order, losing the cross-axis information. Re-evaluation triggers (any one is sufficient): (a) a consumer needs to filter by axis independently; (b) the detection table grows past ~12 values; (c) a class is observed where the picked value visibly hides a cross-axis signal a consumer needs. See WI-juvag-numud audit thread.'\n\nPure docstring update; no behavior change.\n\nACCEPTANCE: docstring lands on the DataModelKind class definition; no test changes needed (no behavior change)."  # 3883
+    fields: {}  # 3883

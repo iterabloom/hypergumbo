@@ -1,0 +1,20 @@
+- op: create  # c97f
+  at: '2026-05-01T19:30:04Z'  # c97f
+  by: agent  # c97f
+  actor: jgstern_agent  # c97f
+  clock: 1  # c97f
+  nonce: c97f  # c97f
+  data:  # c97f
+    kind: work_item  # c97f
+    title: "Document Symbol.origin semantics + re-eval trigger (per WI-nusum-nukol audit)"  # c97f
+    status: todo_soft  # c97f
+    priority: 4  # c97f
+    parent:  # c97f
+    tags:  # c97f
+    - concept_audit  # c97f
+    isbefore: []  # c97f
+    duplicate_of: []  # c97f
+    not_duplicate_of: []  # c97f
+    pr_ref:  # c97f
+    description: "Per the WI-nusum-nukol audit verdict (DOCUMENT with re-eval trigger), update the docstring at packages/hypergumbo-core/src/hypergumbo_core/ir.py near Symbol.origin to clarify the field's intended semantics and the current exception:\n\nDOCSTRING TO ADD (verbatim or close):\n'origin: provenance string. For analyzer-emitted symbols, this SHOULD be a versioned analyzer ID such as python-v1, go-v1, etc. (see the analyzer registry for the canonical list). A small set of synthesis-origin values (inheritance, orchestrator_file_symbol_synthesis, scip) currently coexist in this field as a documented exception pending a future split into a sibling synthesis_mechanism field — see WI-nusum-nukol audit verdict. Do not extend the synthesis-shaped value set without updating the audit thread.'\n\nPure docstring update; no code change. The WI-nusum-nukol audit thread tracks the re-eval trigger: when any consumer files a hardcoded set mixing analyzer IDs and synthesis values, OR a fourth synthesis value appears, ship the split (origin reserved for analyzer IDs; new synthesis_mechanism sibling).\n\nACCEPTANCE: docstring lands in ir.py; no test changes needed (no behavior change)."  # c97f
+    fields: {}  # c97f

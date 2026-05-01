@@ -25,3 +25,18 @@
   clock: 2  # bea7
   nonce: bea7  # bea7
   message: "AUDIT VERDICT: DOCUMENT (with re-eval trigger) — light leak, low blast radius.\n\nFOUR LEAKAGE TESTS — Symbol.origin string field:\n\nSurveyed values in production: ~12 versioned analyzer IDs (python-v1, go-v1, java-v1, ruby-v1, js-ts-v1, rust-v1, elixir-v1, etc.) + a few non-analyzer values (inheritance, orchestrator_file_symbol_synthesis, scip).\n\n- Test 1 (Property derivability): A consumer asking 'which analyzer produced this?' can answer cleanly from origin when origin is an analyzer ID. The same consumer asking the same question against origin='inheritance' gets a non-answer. The non-analyzer values answer a *different* question ('how was this symbol synthesized?') in the same field. **LIGHT LEAKAGE.**\n- Test 2 (Apex/peer): No single value plays both 'top type' and 'peer subtype'. **PASSES.**\n- Test 3 (Construct vs relationship): 'python-v1' is provenance (which analyzer); 'inheritance' is a relationship (between symbols); 'orchestrator_file_symbol_synthesis' is a process/mechanism. **FIRES — three question-categories sharing one field.**\n- Test 4 (Mechanism vs category): analyzer IDs are categories ('which producer'); 'orchestrator_file_symbol_synthesis' is a mechanism ('how the symbol came about'). **FIRES.**\n\nVERDICT: real leak, but small. The non-analyzer origins are a minority (3-4 specific strings) and the field is mostly clean. The classical fix (reserve origin for analyzer IDs + sibling synthesis_mechanism field) is correct architecturally but invasive: every emit site of the synthesis-shaped origins (orchestrator + scip merger + inheritance synth) plus every consumer reading those values (likely a small set, but not enumerated).\n\nNOT-NOW because:\n- The leak doesn't currently produce a reported bug (no known consumer has been silently miscategorized).\n- The pattern that MIGHT have produced a bug (a 'which analyzer?' filter set) doesn't exist today; the strict-mode drift linter (WI-variv-lujug) would catch it if one appeared.\n- The migration cost (touch every synthesis-origin emit site, plus consumers) outweighs the current marginal benefit.\n\nDOCUMENT NOW: at the field declaration in ir.Symbol, document that origin SHOULD be a versioned analyzer ID for analyzer-emitted symbols, AND that synthesis-origin values are a current exception pending future split. This is purely a docstring update.\n\nRE-EVALUATION TRIGGER: when ANY consumer files a hardcoded set referencing both analyzer IDs and synthesis values together (the canonical leak signal), or when a fourth synthesis value appears in production, ship the split. The strict-mode drift linter (WI-variv-lujug) plus the property test will surface the first signal automatically.\n\nFOLLOW-UP: filing WI-(new) for the docstring clarification at ir.Symbol.origin. Lower priority than the gumoz follow-up; pure documentation, no code change."  # bea7
+- op: update  # a4b2
+  at: '2026-05-01T19:30:05Z'  # a4b2
+  by: agent  # a4b2
+  actor: jgstern_agent  # a4b2
+  clock: 3  # a4b2
+  nonce: a4b2  # a4b2
+  set:  # a4b2
+    status: done  # a4b2
+- op: discuss  # c898
+  at: '2026-05-01T19:30:05Z'  # c898
+  by: agent  # c898
+  actor: jgstern_agent  # c898
+  clock: 4  # c898
+  nonce: c898  # c898
+  message: "Audit complete; verdict DOCUMENT (with re-eval trigger). Follow-up filed for docstring update: WI-kiriz-danaz-nirog-ganot-fajid-manas-datud-tiluh. Trigger to ship the split: any consumer mixing analyzer IDs and synthesis values in a hardcoded set, OR a fourth synthesis value appearing in production."  # c898
