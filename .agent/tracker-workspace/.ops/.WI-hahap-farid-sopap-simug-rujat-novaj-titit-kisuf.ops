@@ -58,3 +58,19 @@
   clock: 6  # 7526
   nonce: '7526'  # 7526
   message: "Done in PR #3486. Per the (a)-option scope expansion: full IPC family producer migration in one PR. 9 production emit sites across 6 linkers folded per ADR-0026's rename table (ipc_calls→calls+protocol=ipc; ipc_event/message_send/websocket_message/message_queue→event_publishes+channel_kind in {ipc,websocket,queue}; websocket_connection→references+construct=websocket_endpoint). message_receive emits dropped per the DEPRECATE-NO-FOLD verdict (forward event_publishes captures the relationship; slice handles reverse traversal natively). Consumer-side update: io_boundary._TRACEABLE_EDGE_TYPES + tag_io_boundaries call_types both add 'event_publishes' so I/O-boundary tracing keeps crossing async-channel boundaries. 3353 tests passing, 100% coverage on all 6 changed source files. Tagged awaits_bakeoff_validation: IPC/WebSocket/MQ-heavy repos (Tauri, Electron, Phoenix LiveView, RabbitMQ, Kafka) should see the centrality/slice/sketch implications confirmed by a DEEP cycle."  # 7526
+- op: update  # 962f
+  at: '2026-05-01T17:30:36Z'  # 962f
+  by: agent  # 962f
+  actor: jgstern_agent  # 962f
+  clock: 7  # 962f
+  nonce: 962f  # 962f
+  set: {}  # 962f
+  remove:  # 962f
+    tags: [awaits_bakeoff_validation]  # 962f
+- op: discuss  # 57c6
+  at: '2026-05-01T17:30:37Z'  # 57c6
+  by: agent  # 57c6
+  actor: jgstern_agent  # 57c6
+  clock: 8  # 57c6
+  nonce: 57c6  # 57c6
+  message: "Bakeoff validation: hand-stripped per playbook §Phase 6. Cohort: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260501-125217 (cohort-002, iter-001). Plurality across 7 repos: 3 moved, 0 no_move, 4 inconclusive. Targeted-repo verdicts MOVED on all three IPC-family targets — phoenix (Phoenix Channels: 67 edges with channel_kind=ipc), chatwoot (ActionCable + Sidekiq: 120 edges with channel_kind=queue), nestjs (websocket: 4 edges with channel_kind=websocket + 10 with construct=websocket_endpoint). Three of three IPC family fold targets exercised across the cohort. Zero deprecated IPC edge_types (ipc_calls/ipc_event/message_send/message_receive/websocket_message/websocket_connection/message_queue) emitted. The 4 inconclusive repos (better-sqlite3, go-sqlite3, kafka, yjs) are non-IPC-application targets — kafka is the broker codebase itself (no application-side publish/subscribe), the SQLite bindings exercise FFI not IPC, and yjs is a CRDT library that uses event_publishes for pub-sub (validated under WI-vasik-jofiv) but no IPC mechanism. ADR-0026 fold table per WI-fugun-butil confirmed working."  # 57c6

@@ -27,3 +27,25 @@
   clock: 2  # e09b
   nonce: e09b  # e09b
   message: "Phase 4a landed in PR #3488 (additive deprecation annotation + SCHEMA_VERSION 0.2.7 → 0.3.0). docs/schema.json's Edge.type field now carries an x-deprecated extension key listing all 29 endpoint_shape values. Producers no longer emit any of these (Phase 3 / WI-mokam-jalig complete via PRs #3481, #3483, #3486, #3487); the values stay valid in the enum during the dual-validity window so external consumers can adapt.\n\nPhase 4b (the actual removal + cleanup of dead-but-harmless consumer-side enumeration entries in compact.CROSS_CUTTING_EDGE_TYPES, bakeoff-deep _CALL_FLOW_EDGE_TYPES, ranking.DEFAULT_EDGE_TYPE_WEIGHTS, io_boundary._TRACEABLE_EDGE_TYPES, taint.TAINT_CALL_EDGE_TYPES) is GATED on the awaits_bakeoff_validation tags clearing on:\n\n- WI-sahab-fatoz (Phase 2 dst-kind consumers)\n- WI-mokam-jalig (Phase 3 parent — the rolled-up confirmation)\n- WI-mifor-vabul (Phase 3 bridge/FFI)\n- WI-hahap-farid (Phase 3 IPC family)\n- WI-vasik-jofiv (Phase 3 publish/dispatch family)\n\nThe dual-validity window is the safety net for any centrality / slice / sketch regression the migration introduced. Pulling the rug before bakeoff validation finishes turns a recoverable regression into a hard schema contract break (per ADR-0023 §6 Phase 4 description).\n\nIntended Phase 4b removal target: SCHEMA_VERSION 0.4.0 (one minor version after this announcement).\n\nKeeping this item open until 4b ships. ADR-0023 §6 Phase 4 description rewritten in the same PR to document the 4a / 4b split and the gating."  # e09b
+- op: discuss  # b32c
+  at: '2026-05-01T17:31:57Z'  # b32c
+  by: agent  # b32c
+  actor: jgstern_agent  # b32c
+  clock: 3  # b32c
+  nonce: b32c  # b32c
+  message: "Phase 4b unblocked: all 5 session-related awaits_bakeoff_validation tags cleared in DEEP cohort ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260501-125217 (cohort-002, 7 repos covering Vue/Rails+ActionCable, Phoenix Channels, Kafka MQ, NestJS dispatch, cgo bridges, NAPI bindings, CRDT publishes). Verification matrix in <workdir>/verdicts.json. Per-claim outcome: WI-mokam-jalig (rolled-up Phase 3) and WI-vasik-jofiv (publish/dispatch) plurality-moved 7/7 → aggregator auto-stripped. WI-sahab-fatoz (component imports), WI-mifor-vabul (bridge family), WI-hahap-farid (IPC family) plurality-inconclusive 1-3 moved + remaining repos non-targets → hand-stripped per playbook §Phase 6 with rationale. Zero no_move verdicts across the entire cohort. Phase 4b (registry pruning of the 58 endpoint_shape values + dead consumer-side enumeration entries) can ship without risking a hard schema break."  # b32c
+- op: update  # fac7
+  at: '2026-05-01T18:41:41Z'  # fac7
+  by: agent  # fac7
+  actor: jgstern_agent  # fac7
+  clock: 4  # fac7
+  nonce: fac7  # fac7
+  set:  # fac7
+    status: done  # fac7
+- op: discuss  # 69d8
+  at: '2026-05-01T18:41:42Z'  # 69d8
+  by: agent  # 69d8
+  actor: jgstern_agent  # 69d8
+  clock: 5  # 69d8
+  nonce: 69d8  # 69d8
+  message: "Phase 4b shipped in PR #3494. SCHEMA_VERSION 0.3.1 → 0.4.0. 33 endpoint_shape values pruned from EDGE_TYPES (the dst-kind leakage 6 + bridge family 7 + IPC family 7 + dispatch/publish family 13 — exactly the cohort cleared by the deep-20260501-125217 bakeoff validation). 25 endpoint_shape values from the WI-tavas-voror sweep stay in the registry (their producers haven't been migrated yet). Consumer-side dead enumerations cleaned up across IMPORT_EDGE_TYPES / CROSS_CUTTING_EDGE_TYPES / DEFAULT_EDGE_TYPE_WEIGHTS / _TRACEABLE_EDGE_TYPES / TAINT_CALL_EDGE_TYPES / _REACHABILITY_EDGE_TYPES / bakeoff-deep _CALL_FLOW_EDGE_TYPES. Test fixtures using deprecated edge_types migrated to canonical 'calls' + meta['bridge_kind'] / meta['protocol'] / meta['dispatch_kind']. 3573 tests pass, 100% coverage on all changed source files. ADR-0023 §6 fully complete; the next gating item is WI-variv-lujug (drift-linter axis-principle tightening) which is now actionable."  # 69d8

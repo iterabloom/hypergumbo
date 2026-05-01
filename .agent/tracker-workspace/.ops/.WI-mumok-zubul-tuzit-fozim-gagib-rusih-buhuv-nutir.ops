@@ -1,0 +1,21 @@
+- op: create  # e690
+  at: '2026-05-01T19:07:11Z'  # e690
+  by: agent  # e690
+  actor: jgstern_agent  # e690
+  clock: 1  # e690
+  nonce: e690  # e690
+  data:  # e690
+    kind: work_item  # e690
+    title: "Governance: flip pre-commit edge-type drift hook to --strict mode"  # e690
+    status: needs_human_review  # e690
+    priority: 4  # e690
+    parent:  # e690
+    tags:  # e690
+    - concept_audit  # e690
+    - agent_governance  # e690
+    isbefore: []  # e690
+    duplicate_of: []  # e690
+    not_duplicate_of: []  # e690
+    pr_ref:  # e690
+    description: "Per the design discussion in WI-variv-lujug (Option A + permissive pending), once strict-mode drift linting was implemented (PR aa5ed053d), the design called for flipping the pre-commit gate's default to --strict so future endpoint_shape regressions are caught at commit time rather than silently accepted.\n\nThe flip is a single-line change in .githooks/pre-commit (line 265):\n\n    OLD: if scripts/check-edge-type-drift > \"$DRIFT_LOG\" 2>&1; then\n    NEW: if scripts/check-edge-type-drift --strict > \"$DRIFT_LOG\" 2>&1; then\n\nWHY THIS REQUIRES HUMAN APPROVAL: .githooks/** is in AGENTS.md's governance-files list — changes require explicit human review per the approval workflow.\n\nWHY NOT YET: Although the strict-mode IMPLEMENTATION is clean, flipping the gate would currently fire on 3 load-bearing consumer references that exist in production code (http_calls in compact.CROSS_CUTTING_EDGE_TYPES; grpc_calls in taint.TAINT_CALL_EDGE_TYPES and io_boundary._TRACEABLE_EDGE_TYPES). These references are NOT bugs — they're necessary because http.py and grpc.py linkers still emit endpoint_shape values awaiting future Phase-3-style migrations. Flipping the pre-commit gate today would block ANY commit until those producers migrate, which would gate routine work on unrelated infrastructure timing.\n\nWHEN TO FLIP: After the http.py + grpc.py + graphql.py linkers ship their Phase-3-style producer migrations (folding to canonical 'calls' + meta['protocol']), AND after the consumer-side references in compact / taint / io_boundary are removed.\n\nALTERNATIVE: flip earlier, accept the 3 known violations by removing http_calls / grpc_calls from those consumer sets (which would cause their edges to go uncovered by cross-cutting / taint / I/O boundary tracing until the producer migration ships). This trades correctness now for stricter linting now. Recommendation: don't flip until the migration shipped — the strict-mode CLI is available for opt-in checks now (via --strict on the CLI) without enforcement.\n\nACCEPTANCE: human approves; one-line change in .githooks/pre-commit; the test_find_axis_drift_strict_known_off_axis_consumers test (which currently pins the 3 violations) is updated to assert ZERO violations and renamed accordingly."  # e690
+    fields: {}  # e690
