@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional, get_args, get_origin
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from hypergumbo_core.edge_types import EDGE_TYPES
+from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EDGE_TYPES
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.schema import SCHEMA_VERSION
 
@@ -399,7 +399,20 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "enum": [spec.name for spec in EDGE_TYPES],
                 "x-axis-of-values": {
                     spec.name: spec.axis for spec in EDGE_TYPES
-                }
+                },
+                # ADR-0023 §6 Phase 4a: every endpoint_shape value is
+                # a deprecation candidate scheduled for removal in a
+                # future SCHEMA_VERSION minor bump. Producers no
+                # longer emit these (Phase 3 / WI-mokam-jalig
+                # complete); the values stay in the enum for the
+                # one-minor-version dual-validity window so external
+                # consumers can adapt. Per-value migration guidance
+                # lives in the registry's spec.description (cited as
+                # "per ADR-0023 §6 fold to <canonical> + meta[...]").
+                "x-deprecated": [
+                    spec.name for spec in EDGE_TYPES
+                    if spec.axis == AXIS_ENDPOINT_SHAPE
+                ],
             },
             "line": {
                 "type": "integer",

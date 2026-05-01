@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.2.7"
+      "const": "0.3.0"
     },
     "confidence_model": {
       "type": "string",
@@ -600,7 +600,48 @@
             "resolver_for_type": "pending_classification",
             "openapi_implements": "pending_classification",
             "implements_rpc": "pending_classification"
-          }
+          },
+          "x-deprecated": [
+            "imports_module",
+            "imports_component",
+            "model_reference",
+            "type_ref",
+            "renders_component",
+            "query_references",
+            "script_src",
+            "base_image",
+            "kernel_launch",
+            "native_bridge",
+            "message_send",
+            "message_receive",
+            "websocket_message",
+            "websocket_connection",
+            "grpc_calls",
+            "http_calls",
+            "graphql_calls",
+            "message_queue",
+            "cgo_bridge",
+            "ffi_bridge",
+            "napi_bridge",
+            "wasm_bridge",
+            "wasm_load",
+            "bridge_invokes",
+            "ipc_calls",
+            "ipc_event",
+            "routes_to",
+            "delegates_to",
+            "annotated_dispatches",
+            "uses_dispatch_table",
+            "di_registers",
+            "di_resolves",
+            "registers_routes",
+            "message_dispatch",
+            "event_subscribes",
+            "crdt_publishes",
+            "annotated_publishes",
+            "emits",
+            "enqueues"
+          ]
         },
         "line": {
           "type": "integer",

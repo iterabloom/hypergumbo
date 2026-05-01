@@ -426,14 +426,36 @@ publish / dispatch families after their per-family audits.
 
 ### Phase 4 — Schema bump and deprecation removal (`WI-vomoj-suhaz`, 1-2 days)
 
-- Bump `docs/schema.json` per ADR-0014's schema-change protocol.
-  **Deprecation window:** deprecated edge-type strings remain valid for
-  one minor version (so external consumers can adapt), then hard-fail
-  in the next minor version. (Resolves Open Question #3.)
-- Remove dead code paths in producers and consumers.
-- Bakeoff revalidation: any centrality-weight or sketch-section change
-  needs an `awaits_bakeoff_validation` tag on the migration tracker
-  items.
+Phase 4 splits into two sub-phases that ship at least one minor
+release apart so external consumers get a deprecation grace window.
+
+**Phase 4a — annotate as deprecated (additive, landed).** Each
+endpoint_shape value gets an `x-deprecated` annotation in
+`docs/schema.json` (a JSON Schema extension key listing every
+deprecated value name). The values stay valid in the enum during
+this window. `SCHEMA_VERSION` minor bump (0.2.7 → 0.3.0) marks the
+deprecation announcement. Per-value migration guidance lives in the
+registry's `EdgeTypeSpec.description` (the canonical fold target +
+meta key, citing the relevant ADR — 0023 / 0025 / 0026).
+
+**Phase 4b — hard-fail (gated on bakeoff validation).** Remove the
+deprecated values from `EDGE_TYPES`. Schema enum values disappear.
+Concept-axes view's `endpoint_shape` section becomes empty (or its
+preamble notes "all values migrated"). Drift property test now
+treats any remaining consumer-side reference as drift. Second
+`SCHEMA_VERSION` minor bump (0.3.0 → 0.4.0). Cleanup of
+dead-but-harmless consumer-side enumeration entries (the
+deprecated entries kept in `compact.CROSS_CUTTING_EDGE_TYPES`,
+`bakeoff-deep _CALL_FLOW_EDGE_TYPES`, `ranking.DEFAULT_EDGE_TYPE_WEIGHTS`,
+`io_boundary._TRACEABLE_EDGE_TYPES`, `taint.TAINT_CALL_EDGE_TYPES`,
+etc.) lands in the same PR.
+
+**Phase 4b prerequisites:** the `awaits_bakeoff_validation` tags
+on the Phase 2 / Phase 3 tracker items must clear before 4b ships.
+The dual-validity window is the safety net for any centrality /
+slice / sketch regression the migration introduced; pulling the
+rug before bakeoff validation finishes turns a recoverable
+regression into a hard schema contract break.
 
 ### Total
 
