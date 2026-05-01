@@ -1,0 +1,21 @@
+- op: create  # c5fb
+  at: '2026-05-01T02:31:24Z'  # c5fb
+  by: agent  # c5fb
+  actor: jgstern_agent  # c5fb
+  clock: 1  # c5fb
+  nonce: c5fb  # c5fb
+  data:  # c5fb
+    kind: work_item  # c5fb
+    title: "IPC family audit (analogous to ADR-0025): resolve canonical for ipc_calls, ipc_event"  # c5fb
+    status: todo_soft  # c5fb
+    priority: 3  # c5fb
+    parent:  # c5fb
+    tags:  # c5fb
+    - concept_audit  # c5fb
+    - protocol_linkers  # c5fb
+    isbefore: []  # c5fb
+    duplicate_of: []  # c5fb
+    not_duplicate_of: []  # c5fb
+    pr_ref:  # c5fb
+    description: "ADR-0023 §6 Phase 3 producer migration for the IPC subset gates on a per-family audit (ADR-0025 is the worked example for dispatch and publish; this item is the IPC analogue). Currently ipc_calls and ipc_event sit at endpoint_shape in the canonical registry per ADR-0023 §6's first cut, but the deprecation/fold rationale isn't fully settled and producer migration shouldn't proceed until the audit picks canonical names + meta keys.\n\nVALUES TO AUDIT:\n- ipc_calls (registered, endpoint_shape) — inter-process call. Likely fold to 'calls' + meta['protocol']='ipc' or similar.\n- ipc_event (registered, endpoint_shape) — inter-process event dispatch. Likely fold to 'event_publishes' (per ADR-0025's publish family) + meta['channel_kind']='ipc'.\n\nTHE AUDIT QUESTIONS (from ADR-0025's methodology):\nFor each family member, decide CANONICAL / FOLD / DEPRECATE-NO-FOLD. Apply the four leakage tests at per-pair level. Produce a verdict table; commit verdicts to an ADR (could be an amendment to ADR-0025 or a new ADR-0026 — judgment call, but probably an amendment since IPC is a small family and ADR-0025 already has the methodology section).\n\nEMIT-SITE INVENTORY (from emit-site grep):\n- ipc_calls — packages/hypergumbo-core/src/hypergumbo_core/linkers/ipc.py, phoenix_ipc.py\n- ipc_event — same\n(Run an emit-site grep at audit time to confirm; the canonical inventory is whichever sites currently emit, not the description above.)\n\nDELIVERABLES (mirroring ADR-0025):\n1. Per-value verdict table in this item's discussion thread.\n2. ADR amendment or new ADR capturing verdicts.\n3. Registry updates per the verdicts.\n4. Once verdicts land, file a Phase 3 producer-migration item for IPC (analogous to PR #3481 for dst-kind).\n\nDEPENDENCIES:\n- HARD: ADR-0023 advancement (done, PR #3472).\n- SOFT: this item should not block on bridge/FFI Phase 3 — they're independent subsets.\n\nACCEPTANCE:\n- Every IPC family member has a documented verdict.\n- An ADR captures the verdicts as durable governance.\n- Registry reflects the verdicts (axis classifications updated)."  # c5fb
+    fields: {}  # c5fb

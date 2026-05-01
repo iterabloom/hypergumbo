@@ -1,0 +1,21 @@
+- op: create  # 1eb6
+  at: '2026-05-01T02:30:31Z'  # 1eb6
+  by: agent  # 1eb6
+  actor: jgstern_agent  # 1eb6
+  clock: 1  # 1eb6
+  nonce: 1eb6  # 1eb6
+  data:  # 1eb6
+    kind: work_item  # 1eb6
+    title: "ADR-0023 §6 Phase 3 (bridge/FFI subset): migrate bridge edge_types to calls + meta['bridge_kind']"  # 1eb6
+    status: todo_soft  # 1eb6
+    priority: 3  # 1eb6
+    parent:  # 1eb6
+    tags:  # 1eb6
+    - concept_audit  # 1eb6
+    - cross_language_linkers  # 1eb6
+    isbefore: []  # 1eb6
+    duplicate_of: []  # 1eb6
+    not_duplicate_of: []  # 1eb6
+    pr_ref:  # 1eb6
+    description: "Phase 3 producer-rename for the bridge/FFI subset of endpoint_shape values. Per ADR-0023 §6 Phase 3 ordering directive: this subset comes after dst-kind leakage (done in PR #3481, WI-mokam-jalig progress) and before the IPC and publish/dispatch subsets.\n\nVALUES TO MIGRATE (all currently endpoint_shape per the canonical registry):\n- cgo_bridge → calls + meta['bridge_kind']='cgo'\n- ffi_bridge → calls + meta['bridge_kind']='ffi'\n- napi_bridge → calls + meta['bridge_kind']='napi'\n- wasm_bridge → calls + meta['bridge_kind']='wasm'\n- wasm_load → references + meta['construct']='wasm_load' (probably; needs case-by-case review since 'load' isn't a call)\n- bridge_invokes → calls + meta['bridge_kind']='generic'\n- native_bridge → calls + meta['bridge_kind']='native'\n\nDESIGN QUESTION (must settle before migration):\nShould meta['bridge_kind'] use a closed enumeration (cgo / ffi / napi / wasm / native) or be free-form? Closed is cleaner for downstream filtering but costs governance overhead. Suggest closed; document the enumeration in ADR-0023 §6 amendment or a sibling ADR.\n\nPRODUCER SITES (from emit-site grep at WI-tavas-voror close-out):\n- linkers/cgo.py — cgo_bridge\n- linkers/ffi_*.py family (lua_ffi.py, pyffi.py, ruby_ffi.py, etc.) — ffi_bridge / pyffi-flavor\n- linkers/napi.py — napi_bridge\n- linkers/wasm_bindgen.py — wasm_bridge / wasm_load\n- linkers/jni.py — native_bridge\n- linkers/swift_objc.py — bridge_invokes (cross-language Obj-C / Swift)\n\nCONSUMER-SIDE DEPENDENCIES (Phase 2 forward-compat shape):\n- io_boundary._TRACEABLE_EDGE_TYPES, taint.TAINT_CALL_EDGE_TYPES — already include 'calls'; will continue to match after rename. Audited at Phase 2 (WI-sahab-fatoz).\n- bakeoff-deep _FFI_EDGE_TYPES — currently filters on the old bridge names. After Phase 3 rename, this set should switch to a meta-based query: edge_type == 'calls' AND meta.get('bridge_kind') in {known}. Update concurrent with this PR.\n\nACCEPTANCE:\n- All seven endpoint_shape bridge values have zero production emit sites (drift linter confirms).\n- meta['bridge_kind'] enumeration documented in an ADR amendment or sibling.\n- bakeoff-deep _FFI_EDGE_TYPES (or its replacement) updated.\n- Tag awaits_bakeoff_validation per AGENTS.md §Bakeoff Validation Discipline.\n\nDEPENDENCIES:\n- HARD: WI-mokam-jalig dst-kind subset (done, PR #3481).\n- SOFT: ADR-0023 advancement to Accepted (already done in PR #3472).\n\nThis item is a natural next slice of WI-mokam-jalig and counts as progress toward its acceptance ('every endpoint_shape value has zero production emit sites')."  # 1eb6
+    fields: {}  # 1eb6
