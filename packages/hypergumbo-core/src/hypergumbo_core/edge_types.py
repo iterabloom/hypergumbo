@@ -410,6 +410,40 @@ folds the endpoint-shape variants into ``imports`` plus
 from this set."""
 
 
+BRIDGE_KINDS: Final[frozenset[str]] = frozenset({
+    "cgo",            # Go's cgo FFI
+    "ffi",            # generic FFI (Python ctypes, Lua FFI, Ruby FFI, etc.)
+    "napi",           # Node-API (N-API)
+    "wasm",           # WebAssembly bridge
+    "native",         # JNI and other native interfaces
+    "context_bridge", # Electron contextBridge
+})
+"""Closed enumeration of values for ``edge.meta['bridge_kind']``.
+
+Per ADR-0023 §6 Phase 3 (WI-mifor-vabul): Phase 3 folds the
+bridge-family endpoint_shape values (``cgo_bridge``, ``ffi_bridge``,
+``napi_bridge``, ``wasm_bridge``, ``native_bridge``,
+``bridge_invokes``) into the canonical ``calls`` relationship plus
+``meta['bridge_kind']`` carrying the bridge mechanism. The
+enumeration is closed: adding a new bridge mechanism requires an
+ADR amendment plus an entry here.
+
+The choice of *closed* enumeration is the same shape ADR-0015 used
+for ``access_mode``: a small finite vocabulary keeps consumers'
+filter logic stable, and any analyzer wanting a new value has a
+forced governance moment (a property test enforces the closure once
+the value-set property test for `meta['bridge_kind']` lands;
+currently the closure is documented-but-unenforced because the
+existing static drift linter only walks set literals, not nested
+dict-literal kwargs).
+
+The mechanism is genuinely orthogonal to ``src.language`` /
+``dst.language`` — multiple language pairs can use the same bridge
+mechanism (e.g., both Lua FFI and Python ctypes use ``ffi``), and
+the language-pair information is recoverable from
+``src.language``/``dst.language``."""
+
+
 # ---------------------------------------------------------------------------
 # Axis-coherence drift detection (Edge.edge_type wrapper)
 # ---------------------------------------------------------------------------

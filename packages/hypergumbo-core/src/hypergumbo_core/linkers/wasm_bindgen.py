@@ -277,10 +277,12 @@ def link_wasm_bindgen(
                     supply_chain_reason="synthetic WASM bridge node",
                 ))
 
+            # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
+            # + meta['bridge_kind']='wasm'.
             result_edges.append(Edge.create(
                 src=src_id,
                 dst=target_sym.id,
-                edge_type="wasm_bridge",
+                edge_type="calls",
                 line=0,
                 confidence=0.85,
                 origin=PASS_ID,
@@ -288,6 +290,7 @@ def link_wasm_bindgen(
                 evidence_type="wasm_bindgen_import",
                 access_mode="write",
                 dest_access_mode="read",
+                meta={"bridge_kind": "wasm"},
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
@@ -412,10 +415,14 @@ def _create_wasm_load_edges(
                 pass
 
             src_id = f"{sym.language}:{rel_path}:0-0:file:file"
+            # ADR-0023 §6 Phase 3 (WI-mifor-vabul): wasm_load is a
+            # file→module relationship (not a call), parallel to module
+            # imports. Fold to canonical 'imports'; the dst's
+            # ``kind == 'wasm_module'`` carries the WASM-specificity.
             edges.append(Edge.create(
                 src=src_id,
                 dst=wasm_module_id,
-                edge_type="wasm_load",
+                edge_type="imports",
                 line=0,
                 confidence=0.80,
                 origin=PASS_ID,

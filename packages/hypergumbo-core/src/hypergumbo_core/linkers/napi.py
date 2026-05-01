@@ -210,10 +210,12 @@ def link_napi(
             continue
         seen_edges.add(dedup_key)
 
+        # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
+        # + meta['bridge_kind']='napi'.
         result_edges.append(Edge.create(
             src=edge.src,
             dst=target_sym.id,
-            edge_type="napi_bridge",
+            edge_type="calls",
             line=edge.line,
             confidence=0.85,
             origin=PASS_ID,
@@ -221,6 +223,7 @@ def link_napi(
             evidence_type=evidence_type,
             access_mode="write",
             dest_access_mode="read",
+            meta={"bridge_kind": "napi"},
         ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

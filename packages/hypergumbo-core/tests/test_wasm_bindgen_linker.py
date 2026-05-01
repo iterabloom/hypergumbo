@@ -313,7 +313,7 @@ class TestLinkWasmBindgen:
         result = link_wasm_bindgen(tmp_path, [js_sym], [rust_sym])
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "wasm_bridge"
+        assert edge.edge_type == "calls"
         assert edge.dst == rust_sym.id
         assert edge.confidence == 0.85
         assert edge.evidence_type == "wasm_bindgen_import"
@@ -683,7 +683,7 @@ class TestWasmBindgenRegistry:
         )
         result = run_linker("wasm_bindgen", ctx)
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "wasm_bridge"
+        assert result.edges[0].edge_type == "calls"
 
 
 # ---------------------------------------------------------------------------
@@ -732,7 +732,7 @@ class TestWasmDynamicLoading:
         edges, symbols = _create_wasm_load_edges(tmp_path, [js_sym], run)
 
         assert len(edges) == 1
-        assert edges[0].edge_type == "wasm_load"
+        assert edges[0].edge_type == "imports"
         assert len(symbols) == 1
         assert symbols[0].kind == "wasm_module"
         assert "rotate.wasm" in symbols[0].name
@@ -756,7 +756,7 @@ class TestWasmDynamicLoading:
         edges, symbols = _create_wasm_load_edges(tmp_path, [js_sym], run)
 
         assert len(edges) == 1
-        assert edges[0].edge_type == "wasm_load"
+        assert edges[0].edge_type == "imports"
         assert symbols[0].name == "__emscripten_module__"
 
     def test_no_wasm_loading(self, tmp_path: Path) -> None:
@@ -897,7 +897,7 @@ class TestWasmDynamicLoading:
         )
         result = run_linker("wasm_bindgen", ctx)
 
-        wasm_load_edges = [e for e in result.edges if e.edge_type == "wasm_load"]
+        wasm_load_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(wasm_load_edges) == 1
         wasm_module_syms = [s for s in result.symbols if s.kind == "wasm_module"]
         assert len(wasm_module_syms) == 1

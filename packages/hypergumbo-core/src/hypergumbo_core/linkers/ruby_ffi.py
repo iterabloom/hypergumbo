@@ -216,7 +216,7 @@ def link_ruby_ffi(
                 result_edges.append(Edge.create(
                     src=src_sym.id,
                     dst=c_sym.id,
-                    edge_type="ffi_bridge",
+                    edge_type="calls",
                     line=line_num,
                     confidence=0.90,
                     origin=PASS_ID,
@@ -224,6 +224,7 @@ def link_ruby_ffi(
                     evidence_type="ruby_ffi_attach",
                     access_mode="write",
                     dest_access_mode="read",
+                    meta={"bridge_kind": "ffi"},
                 ))
             else:
                 # Unresolved: external library (e.g., libzmq, libc)
@@ -231,7 +232,7 @@ def link_ruby_ffi(
                 result_edges.append(Edge.create(
                     src=src_sym.id,
                     dst=dst,
-                    edge_type="ffi_bridge",
+                    edge_type="calls",
                     line=line_num,
                     confidence=0.75,
                     origin=PASS_ID,
@@ -239,6 +240,7 @@ def link_ruby_ffi(
                     evidence_type="ruby_ffi_attach_unresolved",
                     access_mode="write",
                     dest_access_mode="read",
+                    meta={"bridge_kind": "ffi"},
                 ))
 
     # --- Phase 2: Scan C files for rb_define_method patterns ---
@@ -271,7 +273,7 @@ def link_ruby_ffi(
             result_edges.append(Edge.create(
                 src=c_sym.id,
                 dst=c_sym.id,
-                edge_type="ffi_bridge",
+                edge_type="calls",
                 line=line_num,
                 confidence=0.85,
                 origin=PASS_ID,
@@ -279,6 +281,7 @@ def link_ruby_ffi(
                 evidence_type="ruby_c_extension",
                 access_mode="write",
                 dest_access_mode="read",
+                meta={"bridge_kind": "ffi"},
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

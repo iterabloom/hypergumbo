@@ -986,7 +986,7 @@ ipcMain.handle('open-file', async (event, path) => {
         result = link_ipc(tmp_path)
 
         # Should have bridge_invokes edge from renderer call to preload bridge
-        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        bridge_edges = [e for e in result.edges if (e.edge_type == "calls" and (e.meta or {}).get("bridge_kind") == "context_bridge")]
         assert len(bridge_edges) >= 1
 
         # The bridge edge should reference the open-file channel
@@ -1016,7 +1016,7 @@ window.api.getConfig();
 
         result = link_ipc(tmp_path)
 
-        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        bridge_edges = [e for e in result.edges if (e.edge_type == "calls" and (e.meta or {}).get("bridge_kind") == "context_bridge")]
         channels = {e.meta.get("channel") for e in bridge_edges}
         assert "open-file" in channels
         assert "save-file" in channels
@@ -1062,7 +1062,7 @@ console.log('no bridge calls here');
 
         result = link_ipc(tmp_path)
 
-        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        bridge_edges = [e for e in result.edges if (e.edge_type == "calls" and (e.meta or {}).get("bridge_kind") == "context_bridge")]
         assert len(bridge_edges) == 0
 
     def test_bridge_unknown_method_no_edge(self, tmp_path: Path) -> None:
@@ -1082,7 +1082,7 @@ window.api.unknownMethod();
 
         result = link_ipc(tmp_path)
 
-        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        bridge_edges = [e for e in result.edges if (e.edge_type == "calls" and (e.meta or {}).get("bridge_kind") == "context_bridge")]
         assert len(bridge_edges) == 0
 
     def test_bridge_different_namespace_no_match(self, tmp_path: Path) -> None:
@@ -1102,7 +1102,7 @@ window.other.openFile('/path');
 
         result = link_ipc(tmp_path)
 
-        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        bridge_edges = [e for e in result.edges if (e.edge_type == "calls" and (e.meta or {}).get("bridge_kind") == "context_bridge")]
         assert len(bridge_edges) == 0
 
     def test_bridge_dedup_same_call_same_file(self, tmp_path: Path) -> None:
@@ -1123,7 +1123,7 @@ window.api.getData();
 
         result = link_ipc(tmp_path)
 
-        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        bridge_edges = [e for e in result.edges if (e.edge_type == "calls" and (e.meta or {}).get("bridge_kind") == "context_bridge")]
         # Only one edge per (file, namespace, method) tuple
         assert len(bridge_edges) == 1
 
@@ -1144,7 +1144,7 @@ window.api.openFile('/path');
 
         result = link_ipc(tmp_path)
 
-        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        bridge_edges = [e for e in result.edges if (e.edge_type == "calls" and (e.meta or {}).get("bridge_kind") == "context_bridge")]
         assert len(bridge_edges) == 1
 
         # The dst should be the ipc_send symbol created for the invoke in preload
@@ -1170,7 +1170,7 @@ window.api.getData();
 
         result = link_ipc(tmp_path)
 
-        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        bridge_edges = [e for e in result.edges if (e.edge_type == "calls" and (e.meta or {}).get("bridge_kind") == "context_bridge")]
         assert len(bridge_edges) == 1
         assert bridge_edges[0].confidence == 0.80
 
@@ -1193,7 +1193,7 @@ window.api.getData();
         ctx = LinkerContext(repo_root=tmp_path)
         result = ipc_linker(ctx)
 
-        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        bridge_edges = [e for e in result.edges if (e.edge_type == "calls" and (e.meta or {}).get("bridge_kind") == "context_bridge")]
         assert len(bridge_edges) >= 1
 
     def test_bridge_multiline_object(self) -> None:
@@ -1343,7 +1343,7 @@ const v2 = await window.getVersion();
 
         result = link_ipc(tmp_path)
 
-        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        bridge_edges = [e for e in result.edges if (e.edge_type == "calls" and (e.meta or {}).get("bridge_kind") == "context_bridge")]
         # Only one bridge edge despite two calls (dedup by file + func_name)
         assert len(bridge_edges) == 1
 
@@ -1376,7 +1376,7 @@ ipcMain.handle('container-provider-registry:listContainers', async () => {
         result = link_ipc(tmp_path)
 
         # Should have edges: bridge_invokes (renderer→preload) + message_send/receive (preload↔main)
-        bridge_edges = [e for e in result.edges if e.edge_type == "bridge_invokes"]
+        bridge_edges = [e for e in result.edges if (e.edge_type == "calls" and (e.meta or {}).get("bridge_kind") == "context_bridge")]
         assert len(bridge_edges) >= 1
         # The bridge edge should reference the channel
         assert any(

@@ -136,7 +136,7 @@ class TestPyFFILinkerCtypes:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "ffi_bridge"
+        assert edge.edge_type == "calls"
         assert edge.dst == c_func.id
         assert edge.evidence_type == "ctypes_call"
         assert edge.meta is not None
@@ -258,7 +258,7 @@ class TestPyFFILinkerCffi:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "ffi_bridge"
+        assert edge.edge_type == "calls"
         assert edge.dst == c_func.id
         assert edge.evidence_type == "cffi_call"
 
@@ -347,7 +347,7 @@ class TestPyFFILinkerPyO3:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "ffi_bridge"
+        assert edge.edge_type == "calls"
         assert edge.dst == rust_func.id
         assert edge.evidence_type == "pyo3_bridge"
 
@@ -1049,7 +1049,7 @@ class TestPyFFILinkerRegistry:
         result = run_linker("pyffi", ctx)
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "ffi_bridge"
+        assert result.edges[0].edge_type == "calls"
 
 
 class TestPyO3PythonStyleNameMatching:
@@ -1086,7 +1086,7 @@ class TestPyO3PythonStyleNameMatching:
         result = link_pyffi(tmp_path, [py_func], [], [rust_func], [call_edge])
 
         assert len(result.edges) >= 1
-        ffi_edge = next(e for e in result.edges if e.edge_type == "ffi_bridge")
+        ffi_edge = next(e for e in result.edges if e.edge_type == "calls")
         assert "encode" in ffi_edge.dst
 
 
@@ -1129,7 +1129,7 @@ class TestPyFFIStdlibUnresolvedEdges:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "ffi_bridge"
+        assert edge.edge_type == "calls"
         assert edge.dst == f"{PYFFI_STDLIB_PREFIX}fopen:unresolved"
         assert edge.evidence_type == "cffi_stdlib_call"
         assert edge.meta is not None
@@ -1164,7 +1164,7 @@ class TestPyFFIStdlibUnresolvedEdges:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "ffi_bridge"
+        assert edge.edge_type == "calls"
         assert edge.dst == f"{PYFFI_STDLIB_PREFIX}popen:unresolved"
         assert edge.evidence_type == "ctypes_stdlib_call"
 
@@ -1353,5 +1353,5 @@ class TestPyO3CrateNameAnnotation:
         result = link_pyffi(tmp_path, [py_func], [], [rust_func], [call_edge])
 
         assert len(result.edges) >= 1
-        ffi_edge = next(e for e in result.edges if e.edge_type == "ffi_bridge")
+        ffi_edge = next(e for e in result.edges if e.edge_type == "calls")
         assert "process" in ffi_edge.dst

@@ -111,7 +111,7 @@ class TestLuaFFILinkerFfiC:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "ffi_bridge"
+        assert edge.edge_type == "calls"
         assert edge.dst == c_sym.id
         assert edge.src == lua_sym.id
         assert edge.meta is not None
@@ -197,7 +197,7 @@ class TestLuaFFILinkerFfiLoad:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "ffi_bridge"
+        assert edge.edge_type == "calls"
         assert edge.dst == c_sym.id
 
     def test_ffi_load_with_global_assignment(self, tmp_path: Path) -> None:
@@ -431,7 +431,7 @@ class TestLuaFFILinkerEdgeCases:
         )
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "ffi_bridge"
+        assert result.edges[0].edge_type == "calls"
         assert result.edges[0].dst == c_sym.id
 
     def test_resolved_edges_ignored(self, tmp_path: Path) -> None:
@@ -711,7 +711,7 @@ class TestLuaFFILinkerRegistry:
 
         result = linker.func(ctx)
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "ffi_bridge"
+        assert result.edges[0].edge_type == "calls"
 
     def test_requirements_count_lua_files(self) -> None:
         """Lua file requirement should count unique Lua file paths."""

@@ -130,7 +130,7 @@ class TestNAPILinkerCAPI:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "napi_bridge"
+        assert edge.edge_type == "calls"
         assert edge.dst == c_func.id
         assert edge.evidence_type == "napi_create_function"
         assert edge.meta is not None
@@ -176,7 +176,7 @@ class TestNAPILinkerCAPI:
         )
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "napi_bridge"
+        assert result.edges[0].edge_type == "calls"
 
 
 class TestNAPILinkerNodeAddonAPI:
@@ -222,7 +222,7 @@ class TestNAPILinkerNodeAddonAPI:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "napi_bridge"
+        assert edge.edge_type == "calls"
         assert edge.dst == cpp_func.id
         assert edge.evidence_type == "napi_addon_api"
 
@@ -737,7 +737,7 @@ class TestNAPILinkerEdgeCases:
         )
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "napi_bridge"
+        assert result.edges[0].edge_type == "calls"
 
 
 class TestNAPILinkerRegistry:
@@ -855,4 +855,4 @@ class TestNAPILinkerRegistry:
         result = run_linker("napi", ctx)
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "napi_bridge"
+        assert result.edges[0].edge_type == "calls"

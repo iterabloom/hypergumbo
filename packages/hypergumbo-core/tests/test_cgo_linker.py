@@ -97,7 +97,7 @@ class TestCgoLinkerBasic:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "cgo_bridge"
+        assert edge.edge_type == "calls"
         assert edge.src == go_func.id
         assert edge.dst == c_func.id
 
@@ -418,7 +418,7 @@ class TestCgoLinkerRegistry:
         result = run_linker("cgo", ctx)
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "cgo_bridge"
+        assert result.edges[0].edge_type == "calls"
 
     def test_cgo_requirements_met(self) -> None:
         """Cgo requirements report as met when matching data exists."""

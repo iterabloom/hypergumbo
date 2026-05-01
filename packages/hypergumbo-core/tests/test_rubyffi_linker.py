@@ -93,7 +93,7 @@ class TestRubyFFIGem:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "ffi_bridge"
+        assert edge.edge_type == "calls"
         assert edge.dst == c_func.id
         assert edge.evidence_type == "ruby_ffi_attach"
         assert edge.meta is not None
@@ -254,7 +254,7 @@ class TestRubyFFIUnresolvedEdges:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "ffi_bridge"
+        assert edge.edge_type == "calls"
         assert edge.dst == f"{RUBY_FFI_STDLIB_PREFIX}zmq_send:unresolved"
         assert edge.evidence_type == "ruby_ffi_attach_unresolved"
         assert edge.confidence == 0.75
@@ -368,7 +368,7 @@ class TestRubyCExtension:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "ffi_bridge"
+        assert edge.edge_type == "calls"
         assert edge.evidence_type == "ruby_c_extension"
         assert edge.dst == c_func.id
 
@@ -779,7 +779,7 @@ class TestRubyFFIRegistry:
         result = run_linker("ruby_ffi", ctx)
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "ffi_bridge"
+        assert result.edges[0].edge_type == "calls"
 
     def test_requirements_met(self) -> None:
         """Requirements report as met when matching data exists."""

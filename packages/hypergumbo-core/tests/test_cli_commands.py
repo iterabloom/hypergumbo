@@ -592,8 +592,13 @@ JNIEXPORT void JNICALL Java_NativeLib_sayHello(JNIEnv *env, jobject obj) {
     runs = [r["pass"] for r in data["analysis_runs"]]
     assert "jni-linker-v1" in runs
 
-    # Should have native_bridge edge
-    native_edges = [e for e in data["edges"] if e["type"] == "native_bridge"]
+    # Should have native bridge edge — post-ADR-0023 §6 Phase 3 the
+    # JNI linker emits 'calls' + meta['bridge_kind']='native'.
+    native_edges = [
+        e for e in data["edges"]
+        if e["type"] == "calls"
+        and (e.get("meta") or {}).get("bridge_kind") == "native"
+    ]
     assert len(native_edges) >= 1
 
 

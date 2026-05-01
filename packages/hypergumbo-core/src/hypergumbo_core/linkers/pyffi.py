@@ -318,7 +318,7 @@ def link_pyffi(
                 result_edges.append(Edge.create(
                     src=src_sym.id,
                     dst=dst,
-                    edge_type="ffi_bridge",
+                    edge_type="calls",
                     line=line_num,
                     confidence=0.85,
                     origin=PASS_ID,
@@ -326,6 +326,7 @@ def link_pyffi(
                     evidence_type=resolved_evidence,
                     access_mode="write",
                     dest_access_mode="read",
+                    meta={"bridge_kind": "ffi"},
                 ))
             elif is_stdlib:
                 # Stdlib call with no repo-local match — emit unresolved edge
@@ -333,7 +334,7 @@ def link_pyffi(
                 result_edges.append(Edge.create(
                     src=src_sym.id,
                     dst=dst,
-                    edge_type="ffi_bridge",
+                    edge_type="calls",
                     line=line_num,
                     confidence=0.75,
                     origin=PASS_ID,
@@ -341,6 +342,7 @@ def link_pyffi(
                     evidence_type=evidence_type,
                     access_mode="write",
                     dest_access_mode="read",
+                    meta={"bridge_kind": "ffi"},
                 ))
             else:
                 # Non-stdlib call with repo-local C symbol
@@ -348,7 +350,7 @@ def link_pyffi(
                 result_edges.append(Edge.create(
                     src=src_sym.id,
                     dst=c_sym.id,
-                    edge_type="ffi_bridge",
+                    edge_type="calls",
                     line=line_num,
                     confidence=0.85,
                     origin=PASS_ID,
@@ -356,6 +358,7 @@ def link_pyffi(
                     evidence_type=evidence_type,
                     access_mode="write",
                     dest_access_mode="read",
+                    meta={"bridge_kind": "ffi"},
                 ))
 
     # --- Phase 2: Match PyO3 Rust symbols to Python unresolved calls ---
@@ -387,7 +390,7 @@ def link_pyffi(
             result_edges.append(Edge.create(
                 src=edge.src,
                 dst=rust_sym.id,
-                edge_type="ffi_bridge",
+                edge_type="calls",
                 line=edge.line,
                 confidence=0.85,
                 origin=PASS_ID,
@@ -395,6 +398,7 @@ def link_pyffi(
                 evidence_type="pyo3_bridge",
                 access_mode="write",
                 dest_access_mode="read",
+                meta={"bridge_kind": "ffi"},
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

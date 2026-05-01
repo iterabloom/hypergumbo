@@ -2664,22 +2664,26 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         # 0% because there are no direct cross-language function calls.
         # Gate: require (1) meaningful polyglot, (2) IO boundaries found,
         # and (3) at least one FFI bridge edge in the graph.
-        # Subset of endpoint_shape edge_types that name a same-process
-        # cross-language function call. JNI, ctypes, and pyffi bridges
-        # are emitted with edge_type="native_bridge" by linkers/jni.py
-        # and friends — earlier versions of this set named jni_bridge /
-        # pyffi_bridge as separate values, but those are phantoms (no
-        # analyzer ever emitted them; the membership test silently
-        # missed every JNI/pyffi edge). Same shape as ADR-0023 §1
-        # cases 4-5; reconciled with the canonical registry per
-        # WI-zisit-hagud's broader-scope drift detection.
-        _FFI_EDGE_TYPES = frozenset({
-            "cgo_bridge", "ffi_bridge", "napi_bridge",
-            "native_bridge", "wasm_bridge",
+        # Same-process cross-language function calls (Go→C via cgo,
+        # Java→C via JNI, ctypes, NAPI, WASM bridges, etc.). Per
+        # ADR-0023 §6 Phase 3 (WI-mifor-vabul), bridges now emit as
+        # 'calls' with the bridge mechanism in meta['bridge_kind'].
+        # The query is the canonical relationship plus the meta
+        # discriminator — Phase-2-shape consumer pattern. The
+        # discriminator set is closed (see edge_types.BRIDGE_KINDS)
+        # but inlined here to keep this script self-contained when
+        # invoked outside the package install.
+        _BRIDGE_KIND_DISCRIMINATORS = frozenset({
+            "cgo", "ffi", "napi", "wasm", "native", "context_bridge",
         })
-        has_ffi_edges = any(
-            e.get("type") in _FFI_EDGE_TYPES for e in edges
-        )
+
+        def _is_bridge_call(e: dict) -> bool:
+            if e.get("type") != "calls":
+                return False
+            meta = e.get("meta") or {}
+            return meta.get("bridge_kind") in _BRIDGE_KIND_DISCRIMINATORS
+
+        has_ffi_edges = any(_is_bridge_call(e) for e in edges)
         lang_count = {}
         for n in nodes:
             lang = n.get("language", "")

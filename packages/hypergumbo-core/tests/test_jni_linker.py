@@ -133,7 +133,7 @@ class TestJniLinker:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "native_bridge"
+        assert edge.edge_type == "calls"
         assert "MyClass.processData" in edge.src
         assert "Java_MyClass_processData" in edge.dst
         assert edge.meta is not None
@@ -160,7 +160,7 @@ class TestJniLinker:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "native_bridge"
+        assert edge.edge_type == "calls"
 
     def test_links_via_modifiers_field(self) -> None:
         """Links Java native method detected via modifiers field (not meta.is_native)."""
@@ -182,7 +182,7 @@ class TestJniLinker:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "native_bridge"
+        assert edge.edge_type == "calls"
         assert "MyClass.nativeMethod" in edge.src
         assert "Java_MyClass_nativeMethod" in edge.dst
 
@@ -399,7 +399,7 @@ class TestJniLinkerRegistry:
         result = run_linker("jni", ctx)
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "native_bridge"
+        assert result.edges[0].edge_type == "calls"
 
     def test_jni_requirements_check_with_matching_symbols(self) -> None:
         """JNI requirements report as met when matching symbols exist."""
@@ -775,7 +775,7 @@ class TestJniLinkerEdgeCases:
 
         # Should link C++ JNI function to Java native method
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "native_bridge"
+        assert result.edges[0].edge_type == "calls"
         assert result.edges[0].src == java_symbols[0].id
         assert result.edges[0].dst == cpp_symbols[0].id
 
@@ -820,7 +820,7 @@ class TestJniLinkerEdgeCases:
         result = link_jni(java_symbols, rust_symbols)
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "native_bridge"
+        assert result.edges[0].edge_type == "calls"
         assert result.edges[0].src == java_symbols[0].id
         assert result.edges[0].dst == rust_symbols[0].id
 
@@ -860,7 +860,7 @@ class TestJniLinkerEdgeCases:
         result = link_jni(java_symbols, rust_symbols)
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "native_bridge"
+        assert result.edges[0].edge_type == "calls"
 
     def test_rust_jni_requirement_count(self) -> None:
         """Rust JNI functions are counted in the requirements check."""

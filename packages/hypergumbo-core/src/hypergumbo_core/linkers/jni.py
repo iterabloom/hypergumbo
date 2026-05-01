@@ -247,10 +247,12 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
         # sym.name is like "MyClass.processData" or "com.example.MyClass.processData"
         if sym.name in jni_lookup:
             native_sym = jni_lookup[sym.name]
+            # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
+            # + meta['bridge_kind']='native'.
             edge = Edge.create(
                 src=sym.id,
                 dst=native_sym.id,
-                edge_type="native_bridge",
+                edge_type="calls",
                 line=sym.span.start_line if sym.span else 0,
                 confidence=0.95,
                 origin=PASS_ID,
@@ -258,6 +260,7 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
                 evidence_type="jni_naming_convention",
                 access_mode="write",
                 dest_access_mode="read",
+                meta={"bridge_kind": "native"},
             )
             edges.append(edge)
 

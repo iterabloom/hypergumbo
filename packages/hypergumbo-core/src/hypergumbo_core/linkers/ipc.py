@@ -695,10 +695,13 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     channel,
                 )
 
+                # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical
+                # 'calls' + meta['bridge_kind']='context_bridge' for
+                # Electron's contextBridge mediation.
                 edge = Edge.create(
                     src=caller_id,
                     dst=preload_send_id,
-                    edge_type="bridge_invokes",
+                    edge_type="calls",
                     line=call_line,
                     confidence=0.80,
                     origin=PASS_ID,
@@ -707,6 +710,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     access_mode="write",
                     channel=channel,
                     meta={
+                        "bridge_kind": "context_bridge",
                         "method": method_name,
                         "namespace": namespace,
                     },
@@ -784,10 +788,12 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     channel,
                 )
 
+                # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical
+                # 'calls' + meta['bridge_kind']='context_bridge'.
                 edge = Edge.create(
                     src=caller_id,
                     dst=preload_send_id,
-                    edge_type="bridge_invokes",
+                    edge_type="calls",
                     line=call_line,
                     confidence=0.80,
                     origin=PASS_ID,
@@ -796,6 +802,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     access_mode="write",
                     channel=channel,
                     meta={
+                        "bridge_kind": "context_bridge",
                         "function": func_name,
                     },
                 )

@@ -172,10 +172,14 @@ def link_cgo(
         # Match to C/C++ function
         if func_name in c_lookup:
             c_sym = c_lookup[func_name]
+            # ADR-0023 §6 Phase 3 (WI-mifor-vabul): emit canonical
+            # 'calls' + meta['bridge_kind']='cgo'. The bridge mechanism
+            # is meta information; the language pair is recoverable
+            # from src.language='go' + dst.language='c'.
             result_edges.append(Edge.create(
                 src=edge.src,
                 dst=c_sym.id,
-                edge_type="cgo_bridge",
+                edge_type="calls",
                 line=edge.line,
                 confidence=0.90,
                 origin=PASS_ID,
@@ -183,6 +187,7 @@ def link_cgo(
                 evidence_type="cgo_call",
                 access_mode="write",
                 dest_access_mode="read",
+                meta={"bridge_kind": "cgo"},
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

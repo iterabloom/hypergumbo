@@ -195,10 +195,12 @@ def link_lua_ffi(
             seen_edges.add(dedup_key)
 
             c_sym = c_lookup[func_name]
+            # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
+            # + meta['bridge_kind']='ffi'.
             result_edges.append(Edge.create(
                 src=src_sym.id,
                 dst=c_sym.id,
-                edge_type="ffi_bridge",
+                edge_type="calls",
                 line=line_num,
                 confidence=0.85,
                 origin=PASS_ID,
@@ -206,6 +208,7 @@ def link_lua_ffi(
                 evidence_type=evidence_type,
                 access_mode="write",
                 dest_access_mode="read",
+                meta={"bridge_kind": "ffi"},
             ))
 
     # --- Phase 2: Match unresolved Lua call edges against C symbols ---
@@ -227,10 +230,12 @@ def link_lua_ffi(
         seen_edges.add(dedup_key)
 
         c_sym = c_lookup[call_name]
+        # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
+        # + meta['bridge_kind']='ffi'.
         result_edges.append(Edge.create(
             src=edge.src,
             dst=c_sym.id,
-            edge_type="ffi_bridge",
+            edge_type="calls",
             line=edge.line,
             confidence=0.85,
             origin=PASS_ID,
@@ -238,6 +243,7 @@ def link_lua_ffi(
             evidence_type="luajit_ffi_unresolved",
             access_mode="write",
             dest_access_mode="read",
+            meta={"bridge_kind": "ffi"},
         ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
