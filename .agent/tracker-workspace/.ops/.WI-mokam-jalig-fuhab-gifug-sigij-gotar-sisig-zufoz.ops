@@ -34,3 +34,27 @@
   clock: 3  # bdb7
   nonce: bdb7  # bdb7
   message: "Bridge/FFI subset done in PR #3483 (closes WI-mifor-vabul). Phase 3 progress now covers two of three deferred subsets:\n- dst-kind leakage (PR #3481)\n- bridge/FFI (PR #3483) — bonus fold of wasm_load → imports\n\nRemaining open subsets blocking 'every endpoint_shape value has zero production emit sites' acceptance:\n- WI-fugun-butil — IPC family audit (analogous to ADR-0025); this has to land before IPC family producer migration since canonical names aren't settled yet (ipc_calls, ipc_event, message_send/receive, websocket_*, message_queue, base_image, kernel_launch, script_src — wider than just 'IPC' depending on the audit's scope decision).\n- WI-vasik-jofiv — publish/dispatch family producer migration per ADR-0025.\n\nOnce both land, this item closes."  # bdb7
+- op: discuss  # fad0
+  at: '2026-05-01T05:11:50Z'  # fad0
+  by: agent  # fad0
+  actor: jgstern_agent  # fad0
+  clock: 4  # fad0
+  nonce: fad0  # fad0
+  message: "IPC family subset done in PR #3486 (closes WI-hahap-farid). Phase 3 progress now covers three of three deferred subsets, plus the bonus wasm_load → imports fold from WI-mifor-vabul:\n\n- dst-kind leakage (PR #3481)\n- bridge/FFI (PR #3483) + wasm_load bonus\n- IPC family (PR #3486) — including DEPRECATE-NO-FOLD of message_receive emits\n\nRemaining open subset blocking 'every endpoint_shape value has zero production emit sites':\n- WI-vasik-jofiv — publish/dispatch family producer migration per ADR-0025\n\nOnce that lands, this item closes and Phase 4 (WI-vomoj-suhaz) becomes actionable: prune the deprecated entries from the registry, prune dead consumer-side enumeration entries (ranking weight table, io_boundary/taint sets), and bump SCHEMA_VERSION."  # fad0
+- op: update  # 0f4a
+  at: '2026-05-01T06:55:56Z'  # 0f4a
+  by: agent  # 0f4a
+  actor: jgstern_agent  # 0f4a
+  clock: 5  # 0f4a
+  nonce: 0f4a  # 0f4a
+  set:  # 0f4a
+    status: done  # 0f4a
+  add:  # 0f4a
+    tags: [awaits_bakeoff_validation]  # 0f4a
+- op: discuss  # bc36
+  at: '2026-05-01T06:55:56Z'  # bc36
+  by: agent  # bc36
+  actor: jgstern_agent  # bc36
+  clock: 6  # bc36
+  nonce: bc36  # bc36
+  message: "All four Phase 3 subsets done. Acceptance ('every endpoint_shape value has zero production emit sites') is met:\n\n- dst-kind leakage subset (PR #3481, WI-mokam-jalig itself initially)\n- bridge/FFI subset (PR #3483, WI-mifor-vabul) — also folded wasm_load → imports\n- IPC family subset (PR #3486, WI-hahap-farid) — included message_receive DEPRECATE-NO-FOLD drop\n- publish/dispatch family subset (PR #3487, WI-vasik-jofiv) — included event_subscribes DEPRECATE-NO-FOLD drop\n\nThe endpoint_shape entries remain in the canonical registry as deprecated-but-unemitted; Phase 4 (WI-vomoj-suhaz) prunes them after a minor-version deprecation window per ADR-0023 §6 Phase 4. Resolver/openapi/RPC pending_classification entries (resolver_implements, resolver_for_type, openapi_implements, implements_rpc) remain — they're a separate family that needs its own audit before Phase 3 reaches them; out of scope for this milestone. Tagged awaits_bakeoff_validation by composition (each subset PR carries the tag for its own bakeoff validation; this rolled-up confirmation provides the full-Phase-3 completion view)."  # bc36

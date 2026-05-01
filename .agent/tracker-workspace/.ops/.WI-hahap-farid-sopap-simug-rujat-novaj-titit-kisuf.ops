@@ -20,3 +20,41 @@
     pr_ref:  # 02cf
     description: "Phase 3 producer-rename for the IPC subset. Mirrors the dst-kind subset PR (#3481, WI-mokam-jalig progress) and the publish/dispatch subset (WI-vasik-jofiv) — mechanical rename of producer emits with meta payloads carrying the differentiating fact.\n\nVALUES TO MIGRATE (currently endpoint_shape per the canonical registry):\n- ipc_calls (registered, endpoint_shape) — inter-process call\n- ipc_event (registered, endpoint_shape) — inter-process event dispatch\n\nCANONICAL FOLD TARGETS — TBD by WI-fugun-butil (IPC family audit).\n\nLikely landings (preview, subject to the audit's verdict):\n- ipc_calls → calls + meta['protocol']='ipc' (or meta['transport']=specific transport)\n- ipc_event → event_publishes + meta['channel_kind']='ipc' (cross-family fold per ADR-0025's pattern; same shape as message_dispatch's cross-family fold)\n\nThe audit may settle on different verdicts — possibly subdividing by IPC mechanism (DBus, ZMQ, named pipes, Phoenix LiveView, Tauri, etc.) into protocol-specific meta keys, or possibly preserving ipc_event as a CANONICAL distinct relationship if the audit decides IPC events differ enough from event-bus pub-sub.\n\nPRODUCER SITES (from emit-site grep at WI-tavas-voror close-out):\n- linkers/ipc.py (or similar — confirm at migration time)\n- linkers/phoenix_ipc.py\n- linkers/tauri_ipc.py\n- (Run an emit-site grep at migration time to confirm the canonical inventory.)\n\nEXPECTED CASCADE (informed by PR #3481 dst-kind subset):\n- ~2 producer-line edits.\n- Test assertion updates per producer; replace_all-friendly given small scope.\n- Consumer-side check: any linker filtering by edge_type == 'ipc_calls' or 'ipc_event' needs Phase 2-shape rewrite. The bakeoff-deep _CALL_FLOW_EDGE_TYPES set currently includes 'ipc_calls' — after the rename it'll need to switch to canonical edge_type + meta query.\n\nACCEPTANCE:\n- ipc_calls and ipc_event have zero production emit sites (drift linter confirms).\n- meta key naming follows whatever verdict WI-fugun-butil settles on; documented in the audit's resolution and reflected in the canonical registry.\n- Tag awaits_bakeoff_validation per AGENTS.md §Bakeoff Validation Discipline — the rename affects how slice/ranking/sketch see IPC edges.\n\nDEPENDENCIES:\n- HARD: WI-fugun-butil (IPC family audit) must land first — this item's fold targets and meta keys come from that audit's verdicts.\n- HARD: WI-mokam-jalig dst-kind subset (done, PR #3481) — establishes the migration pattern.\n- SOFT: Independent of bridge/FFI (WI-mifor-vabul) and publish/dispatch (WI-vasik-jofiv) subsets; can land in parallel with either.\n\nThis item closes one of the three remaining preconditions for WI-mokam-jalig's full acceptance ('every endpoint_shape value has zero production emit sites'); the other two are WI-mifor-vabul and WI-vasik-jofiv. Phase 4 (WI-vomoj-suhaz) waits on all four (this + the three already filed) to close."  # 02cf
     fields: {}  # 02cf
+- op: discuss  # da4b
+  at: '2026-05-01T04:25:15Z'  # da4b
+  by: agent  # da4b
+  actor: jgstern_agent  # da4b
+  clock: 2  # da4b
+  nonce: da4b  # da4b
+  message: "ADR-0026 (PR #3484) just landed the IPC family audit verdicts. Two scope-related notes for this item:\n\n1. **Audit went broader than this item's named scope.** WI-hahap-farid covers ipc_calls + ipc_event (Tauri, ~2 production sites). The audit covered seven IPC-shaped values across Tauri / Electron / Phoenix / WebSocket / message-queue producers — verdict matrix in ADR-0026 §Decision. The other five values (message_send, message_receive, websocket_message, websocket_connection, message_queue) have settled fold targets but no producer-migration item yet.\n\n2. **Suggested resolution paths** (please pick):\n   a. **Expand this item's scope** to all seven values audited. Pro: single PR shipping the whole IPC-family producer rename; consistent with how the dst-kind subset (PR #3481) and bridge/FFI subset (PR #3483) were done as 'one subset = one PR'. Con: PR is larger (likely ~25-30 production sites + ~30-40 test assertion updates given ipc.py / phoenix_ipc.py / tauri_ipc.py / websocket.py / message_queue.py emit-site counts).\n   b. **File a sibling item** for the five additional values; keep this item narrow to ipc_calls + ipc_event. Pro: incremental landings; matches the existing 'narrow Tauri-only' framing of this item. Con: two PRs to land what's conceptually one family migration.\n   c. **Defer the broader migration** entirely; ship just ipc_calls + ipc_event under this item; file the broader work as a separate item to schedule later.\n\nRecommendation (a) — single PR for the whole audited family. The mechanical pattern is the same per value (rename edge_type, add meta key, update tests via replace_all, fix any consumer-side filter). Bigger PR but conceptually contained: one fold table = one migration.\n\nEither way, the canonical fold targets and meta keys come from ADR-0026 §Migration impact (transcribed there for the rename table)."  # da4b
+- op: discuss  # 769b
+  at: '2026-05-01T04:28:32Z'  # 769b
+  by: human  # 769b
+  actor: jgstern  # 769b
+  clock: 3  # 769b
+  nonce: 769b  # 769b
+  message: "I agree with (a) single PR for the whole audited family"  # 769b
+- op: discuss  # 624d
+  at: '2026-05-01T04:30:40Z'  # 624d
+  by: agent  # 624d
+  actor: jgstern_agent  # 624d
+  clock: 4  # 624d
+  nonce: 624d  # 624d
+  message: "Going with option (a) per user approval. Scope expands to all seven IPC family values audited in ADR-0026:\n\n- ipc_calls (tauri_ipc.py:657)\n- ipc_event (tauri_ipc.py:863)\n- message_send (ipc.py:535, phoenix_ipc.py:309)\n- message_receive (ipc.py:567, phoenix_ipc.py:329) — DEPRECATE-NO-FOLD; Phase 3 picks drop (forward event_publishes captures the relationship; hypergumbo slice handles reverse traversal natively)\n- websocket_message (websocket.py:580)\n- websocket_connection (websocket.py:601)\n- message_queue (message_queue.py:508)\n\nMigration table per ADR-0026 §Migration impact."  # 624d
+- op: update  # 6f2d
+  at: '2026-05-01T05:11:25Z'  # 6f2d
+  by: agent  # 6f2d
+  actor: jgstern_agent  # 6f2d
+  clock: 5  # 6f2d
+  nonce: 6f2d  # 6f2d
+  set:  # 6f2d
+    status: done  # 6f2d
+  add:  # 6f2d
+    tags: [awaits_bakeoff_validation]  # 6f2d
+- op: discuss  # 7526
+  at: '2026-05-01T05:11:25Z'  # 7526
+  by: agent  # 7526
+  actor: jgstern_agent  # 7526
+  clock: 6  # 7526
+  nonce: '7526'  # 7526
+  message: "Done in PR #3486. Per the (a)-option scope expansion: full IPC family producer migration in one PR. 9 production emit sites across 6 linkers folded per ADR-0026's rename table (ipc_calls→calls+protocol=ipc; ipc_event/message_send/websocket_message/message_queue→event_publishes+channel_kind in {ipc,websocket,queue}; websocket_connection→references+construct=websocket_endpoint). message_receive emits dropped per the DEPRECATE-NO-FOLD verdict (forward event_publishes captures the relationship; slice handles reverse traversal natively). Consumer-side update: io_boundary._TRACEABLE_EDGE_TYPES + tag_io_boundaries call_types both add 'event_publishes' so I/O-boundary tracing keeps crossing async-channel boundaries. 3353 tests passing, 100% coverage on all 6 changed source files. Tagged awaits_bakeoff_validation: IPC/WebSocket/MQ-heavy repos (Tauri, Electron, Phoenix LiveView, RabbitMQ, Kafka) should see the centrality/slice/sketch implications confirmed by a DEEP cycle."  # 7526
