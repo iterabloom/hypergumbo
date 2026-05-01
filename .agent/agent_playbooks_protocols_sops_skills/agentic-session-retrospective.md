@@ -218,6 +218,21 @@ For each finding, use this template:
 
 Aim for 5-10 findings per session. Prioritize by impact. Not every finding needs a proposed improvement — some are just observations worth recording.
 
+**Generative-question check (5-minute prompt).** Before moving to Phase 5,
+spend 5 minutes asking: *what question did we forget to ask?* An incident
+or surprise in the session is direct evidence of an unasked question — the
+narrow lesson ("fix this specific thing") is what Phases 1–4 surface, but
+the broader lesson ("what other unasked questions of this shape exist?")
+needs an explicit prompt or it gets lost. Skim
+[`docs/blind-spots.md`](../../docs/blind-spots.md) and ask whether any of
+its recurring question-shapes resonate with the session's findings; if
+yes, add a finding under Phase 4 with the shape's name in the title and
+propose adding the new instance to `docs/blind-spots.md` as part of the
+improvement. If `docs/blind-spots.md` does not yet exist, log the
+candidate shape directly in the retrospective under a "Candidate
+blind-spot shapes" subsection so it can be promoted to the doc when it
+lands.
+
 ### Phase 5: Record and Route
 
 **Step 1 — Write the lab notebook entry.**

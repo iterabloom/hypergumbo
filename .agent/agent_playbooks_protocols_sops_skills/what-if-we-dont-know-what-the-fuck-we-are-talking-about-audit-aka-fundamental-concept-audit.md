@@ -431,3 +431,14 @@ value-sets ("did the canonical list and consumer sets diverge?"); the
 cadence hook catches *new* conceptual leaks we haven't named yet
 ("when did we last look across the codebase for this class of bug?").
 Both belong; neither replaces the other.
+
+When the cadence hook fires (or any of the six "When to run" signals
+above triggers), the next question is *which* domain to audit. That
+generative question — "what question have we not asked yet?" — is
+what `docs/blind-spots.md` exists for. The blind-spots doc catalogs
+recurring question-shapes that empirically go unasked in this
+codebase; pick a shape that resonates with recent work and run the
+audit's diagnostic procedure against the suspect domain that shape
+nominates. Skim the doc when the cadence hook fires; if a shape
+matches, you've got your suspect. If none match, broaden the survey
+or defer until a signal arrives.

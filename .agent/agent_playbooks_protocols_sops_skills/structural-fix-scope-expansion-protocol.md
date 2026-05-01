@@ -6,6 +6,22 @@
   4. **Distinguish fix from workaround:** Does your change bypass a problematic code path, or fix/remove it?
   5. **If workaround:** Create a tracker item (`scripts/tracker add --kind invariant ...`) with status `violated`, then fix the root cause
 (Background: ADR-0008)
+
+- **Pre-refactor blind-spots check (5 minutes, before locking in the new frame):**
+  Before declaring the new structural shape final — i.e., before the
+  refactor PR's design solidifies into specific edits — spend 5 minutes
+  asking *what frame-level question this refactor might foreclose*. A
+  refactor is one of the cheapest moments to catch a frame-level bug
+  (changing the frame later is an order of magnitude more expensive).
+  Skim [`docs/blind-spots.md`](../../docs/blind-spots.md) for
+  recurring question-shapes that empirically go unasked in this
+  codebase; if a shape resonates with the current refactor, run that
+  shape's question against the proposed design before committing to it.
+  If `docs/blind-spots.md` does not yet exist, take 5 minutes to
+  consider what the new frame *almost* assumes — what edge cases or
+  alternative shapes the new structure makes harder to express. The
+  goal is recognition, not exhaustive review; if no shape fires after
+  5 minutes, proceed.
 - **Scope Expansion Commitment Protocol:** When a structural fix identifies analogous issues in other languages, constructs, or pipeline stages:
   1. **Create tracker items immediately** using `scripts/tracker add`:
      - `violated` — invariant violations, anything structural; use for items of kind `invariant` or `meta_invariant`. Investigate deeply, assume structural.
