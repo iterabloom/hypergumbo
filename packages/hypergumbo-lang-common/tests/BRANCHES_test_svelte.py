@@ -79,7 +79,7 @@ class TestComponentRefExtraction:
 <Footer />
 """)
         result = analyze_svelte(tmp_path)
-        import_edges = [e for e in result.edges if e.edge_type == "imports_component"]
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 1
 
 

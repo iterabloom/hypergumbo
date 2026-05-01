@@ -8328,7 +8328,7 @@ type UserList = User[];
         (tmp_path / "types.ts").write_text(code)
         result = analyze_javascript(tmp_path)
 
-        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        type_ref_edges = [e for e in result.edges if e.edge_type == "references"]
         # UserList should reference User
         assert any(
             "UserList" in e.src and "User" in e.dst
@@ -8354,7 +8354,7 @@ type Combined = Serializable & Loggable;
         (tmp_path / "types.ts").write_text(code)
         result = analyze_javascript(tmp_path)
 
-        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        type_ref_edges = [e for e in result.edges if e.edge_type == "references"]
         # Combined should reference both Serializable and Loggable
         combined_refs = [e for e in type_ref_edges if "Combined" in e.src]
         ref_dsts = {e.dst for e in combined_refs}
@@ -8384,7 +8384,7 @@ interface UserService {
         (tmp_path / "types.ts").write_text(code)
         result = analyze_javascript(tmp_path)
 
-        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        type_ref_edges = [e for e in result.edges if e.edge_type == "references"]
         # UserService should reference User (from method signatures)
         service_refs = [e for e in type_ref_edges if "UserService" in e.src]
         assert any(
@@ -8404,7 +8404,7 @@ type Flag = boolean;
         (tmp_path / "types.ts").write_text(code)
         result = analyze_javascript(tmp_path)
 
-        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        type_ref_edges = [e for e in result.edges if e.edge_type == "references"]
         # No edges to built-in types
         assert len(type_ref_edges) == 0, (
             f"Expected no type_ref edges to builtins, got: {type_ref_edges}"
@@ -8425,7 +8425,7 @@ type TreeNode = Node & { children: TreeNode[] };
         (tmp_path / "types.ts").write_text(code)
         result = analyze_javascript(tmp_path)
 
-        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        type_ref_edges = [e for e in result.edges if e.edge_type == "references"]
         # TreeNode references Node (not itself)
         tree_refs = [e for e in type_ref_edges if "TreeNode" in e.src]
         assert len(tree_refs) == 1, (
@@ -8448,7 +8448,7 @@ type UserOrNull = User | null;
         (tmp_path / "types.ts").write_text(code)
         result = analyze_javascript(tmp_path)
 
-        type_ref_edges = [e for e in result.edges if e.edge_type == "type_ref"]
+        type_ref_edges = [e for e in result.edges if e.edge_type == "references"]
         for edge in type_ref_edges:
             assert edge.confidence == 0.85, (
                 f"Expected confidence 0.85, got {edge.confidence}"

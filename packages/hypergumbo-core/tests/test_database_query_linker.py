@@ -414,7 +414,7 @@ class TestDatabaseQueryLinker:
 
         # Should have query_references edge
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "query_references"
+        assert result.edges[0].edge_type == "references"
         assert result.edges[0].meta["table_name"] == "users"
 
     def test_links_multiple_tables(self, tmp_path: Path):

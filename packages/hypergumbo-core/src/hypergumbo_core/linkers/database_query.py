@@ -419,7 +419,7 @@ def link_database_queries(root: Path, table_symbols: list[Symbol]) -> DatabaseQu
                 edge = Edge.create(
                     src=query_symbol.id,
                     dst=table_sym.id,
-                    edge_type="query_references",
+                    edge_type="references",
                     line=pattern.line,
                     confidence=0.85,
                     origin=PASS_ID,

@@ -581,7 +581,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
                 edge = Edge.create(
                     src=symbol_id,
                     dst=formatted_dst,
-                    edge_type="imports_component",
+                    edge_type="imports",
                     line=line,
                     origin=PASS_ID,
                     origin_run_id=execution_id,

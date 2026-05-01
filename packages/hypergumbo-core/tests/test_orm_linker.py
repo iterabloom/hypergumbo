@@ -259,7 +259,7 @@ class TestLinkOrmQueries:
         edge = result.edges[0]
         assert edge.src == view_func.id
         assert edge.dst == user_model.id
-        assert edge.edge_type == "model_reference"
+        assert edge.edge_type == "references"
         assert edge.confidence == 0.85
         assert edge.meta["accessor"] == "objects"
         assert edge.meta["model_name"] == "User"
@@ -442,4 +442,4 @@ class TestLinkerRegistration:
         )
         result = run_linker("orm", ctx)
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "model_reference"
+        assert result.edges[0].edge_type == "references"

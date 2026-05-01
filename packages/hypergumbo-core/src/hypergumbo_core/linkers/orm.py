@@ -234,7 +234,7 @@ def link_orm_queries(
         edge = Edge.create(
             src=enclosing.id,
             dst=model_sym.id,
-            edge_type="model_reference",
+            edge_type="references",
             line=ref.line,
             confidence=0.85,
             origin=PASS_ID,

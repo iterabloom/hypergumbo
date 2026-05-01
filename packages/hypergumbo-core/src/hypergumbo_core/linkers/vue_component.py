@@ -154,8 +154,15 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
     new_symbols: list[Symbol] = []
     new_edges: list[Edge] = []
 
-    # Find all imports_component edges with raw paths
-    import_edges = [e for e in ctx.edges if e.edge_type == "imports_component"]
+    # ADR-0023 §6 Phase 3 (WI-mokam-jalig): the Vue analyzer now emits
+    # canonical 'imports' edges with the raw component path stored in
+    # meta['import_path']. The presence of that key marks an
+    # unresolved-import edge this linker is responsible for resolving.
+    import_edges = [
+        e for e in ctx.edges
+        if e.edge_type == "imports"
+        and (e.meta or {}).get("import_path") is not None
+    ]
     if not import_edges:
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(symbols=[], edges=[], run=run)
@@ -232,7 +239,7 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
         resolved_edge = Edge.create(
             src=edge.src,
             dst=target_file_sym.id,
-            edge_type="imports_component",
+            edge_type="imports",
             line=edge.line,
             origin=PASS_ID,
             origin_run_id=run.execution_id,

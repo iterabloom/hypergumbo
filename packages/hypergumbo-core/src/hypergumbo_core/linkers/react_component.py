@@ -204,15 +204,19 @@ def link_react_components(
 
             src_id = f"typescript:{rel_path}:0-0:{comp_name}:jsx_usage"
 
+            # ADR-0023 §6 Phase 3 (WI-mokam-jalig): JSX renders fold to
+            # 'references' + meta['construct']='jsx' — the construct
+            # is the differentiating fact, not a separate relationship.
             result_edges.append(Edge.create(
                 src=src_id,
                 dst=target_sym.id,
-                edge_type="renders_component",
+                edge_type="references",
                 line=0,
                 confidence=0.80,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="jsx_element",
+                meta={"construct": "jsx"},
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

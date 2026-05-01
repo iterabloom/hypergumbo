@@ -8,7 +8,7 @@ to actual files, creates module_file symbols, and creates module_exports edges
 from module_file to the functions/methods/classes defined in the target file.
 
 This enables cross-file graph traversal through imports:
-  file_A --imports_module--> module_file_B --module_exports--> functionInB
+  file_A --module_imports--> module_file_B --module_exports--> functionInB
 
 Path alias resolution (tsconfig.json paths, Vite resolve.alias) expands
 non-relative imports like '@/utils' or 'dashboard/Header' to actual file paths
@@ -271,19 +271,19 @@ class TestLinkJsModules:
             edges=[import_edge],
         )
 
-        # Should create: module_file symbol + imports_module edge + module_exports edge
+        # Should create: module_file symbol + module_imports edge + module_exports edge
         assert len(result.symbols) >= 1
         module_file = result.symbols[0]
         assert module_file.kind == "module_file"
         assert "utils.js" in module_file.path
 
-        # Should have imports_module edge (file -> module_file)
-        imports_module_edges = [
-            e for e in result.edges if e.edge_type == "imports_module"
+        # Should have module_imports edge (file -> module_file)
+        module_imports_edges = [
+            e for e in result.edges if e.edge_type == "imports"
         ]
-        assert len(imports_module_edges) == 1
-        assert imports_module_edges[0].src == file_sym.id
-        assert imports_module_edges[0].dst == module_file.id
+        assert len(module_imports_edges) == 1
+        assert module_imports_edges[0].src == file_sym.id
+        assert module_imports_edges[0].dst == module_file.id
 
         # Should have module_exports edge (module_file -> helper function)
         exports_edges = [e for e in result.edges if e.edge_type == "module_exports"]
@@ -327,8 +327,8 @@ class TestLinkJsModules:
             edges=[import_edge],
         )
 
-        imports_module = [e for e in result.edges if e.edge_type == "imports_module"]
-        assert len(imports_module) == 1
+        module_imports = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(module_imports) == 1
 
     def test_bare_module_creates_npm_package(self, repo_root: Path) -> None:
         """Bare module 'lodash' creates npm_package symbol."""
@@ -348,9 +348,9 @@ class TestLinkJsModules:
         assert npm_packages[0].supply_chain_tier == 3
         assert npm_packages[0].supply_chain_reason == "npm_package (third-party dependency)"
 
-        imports_module = [e for e in result.edges if e.edge_type == "imports_module"]
-        assert len(imports_module) == 1
-        assert imports_module[0].dst == npm_packages[0].id
+        module_imports = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(module_imports) == 1
+        assert module_imports[0].dst == npm_packages[0].id
 
     def test_scoped_npm_package(self, repo_root: Path) -> None:
         """Scoped @vue/test-utils creates npm_package symbol."""
@@ -447,9 +447,9 @@ class TestLinkJsModules:
         module_files = [s for s in result.symbols if s.kind == "module_file"]
         assert len(module_files) == 1
 
-        # Two imports_module edges (one from each importing file)
-        imports_module = [e for e in result.edges if e.edge_type == "imports_module"]
-        assert len(imports_module) == 2
+        # Two module_imports edges (one from each importing file)
+        module_imports = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(module_imports) == 2
 
         # Only one module_exports edge (helper -> module_file, not duplicated)
         exports_edges = [e for e in result.edges if e.edge_type == "module_exports"]
@@ -519,8 +519,8 @@ class TestLinkJsModules:
         # Should still resolve via ID parsing fallback
         module_files = [s for s in result.symbols if s.kind == "module_file"]
         assert len(module_files) == 1
-        imports_module = [e for e in result.edges if e.edge_type == "imports_module"]
-        assert len(imports_module) == 1
+        module_imports = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(module_imports) == 1
 
     def test_vue_file_import(self, repo_root: Path) -> None:
         """Import of .vue file resolves correctly."""
@@ -1244,8 +1244,8 @@ class TestAliasIntegration:
         assert len(module_files) == 1
         assert "utils.ts" in module_files[0].path
 
-        imports_module = [e for e in result.edges if e.edge_type == "imports_module"]
-        assert len(imports_module) == 1
+        module_imports = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(module_imports) == 1
 
         exports_edges = [e for e in result.edges if e.edge_type == "module_exports"]
         assert len(exports_edges) == 1
@@ -1325,9 +1325,9 @@ class TestAliasIntegration:
             edges=[import_edge],
         )
 
-        imports_module = [e for e in result.edges if e.edge_type == "imports_module"]
-        assert len(imports_module) == 1
-        assert imports_module[0].evidence_type == "alias_resolution"
+        module_imports = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(module_imports) == 1
+        assert module_imports[0].evidence_type == "alias_resolution"
 
 
 class TestParseTsconfigPaths:
@@ -1596,9 +1596,9 @@ class TestMonorepoIntegration:
         npm = [s for s in result.symbols if s.kind == "npm_package"]
         assert len(npm) == 0
 
-        imports_module = [e for e in result.edges if e.edge_type == "imports_module"]
-        assert len(imports_module) == 1
-        assert imports_module[0].evidence_type == "alias_resolution"
+        module_imports = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(module_imports) == 1
+        assert module_imports[0].evidence_type == "alias_resolution"
 
         exports = [e for e in result.edges if e.edge_type == "module_exports"]
         assert len(exports) == 1

@@ -38,8 +38,13 @@ def _sym(
     )
 
 
-def _edge(src: str, dst: str, edge_type: str = "imports_component") -> Edge:
-    """Helper to create an Edge with minimal boilerplate."""
+def _edge(src: str, dst: str, edge_type: str = "imports") -> Edge:
+    """Helper to create an Edge with minimal boilerplate.
+
+    Mirrors the post-ADR-0023-§6-Phase-3 Vue analyzer shape: edge_type
+    is the canonical 'imports'; the raw component path (the linker's
+    resolution input) lives in meta['import_path'].
+    """
     return Edge.create(
         src=src,
         dst=dst,
@@ -49,6 +54,7 @@ def _edge(src: str, dst: str, edge_type: str = "imports_component") -> Edge:
         origin_run_id="test-run",
         evidence_type="import",
         confidence=0.95,
+        meta={"import_path": dst},
     )
 
 
@@ -89,7 +95,7 @@ class TestVueComponentLinker:
         assert header_file is not None
 
         # Should create a resolved edge from component_ref to component_file
-        resolved = [e for e in result.edges if e.edge_type == "imports_component"]
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 1
         assert resolved[0].src == app_ref.id
         assert resolved[0].dst == header_file.id
@@ -119,7 +125,7 @@ class TestVueComponentLinker:
         btn_file = next((s for s in file_symbols if "Button.vue" in s.path), None)
         assert btn_file is not None
 
-        resolved = [e for e in result.edges if e.edge_type == "imports_component"]
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 1
         assert resolved[0].dst == btn_file.id
 
@@ -147,7 +153,7 @@ class TestVueComponentLinker:
         modal_file = next((s for s in file_symbols if "Modal.vue" in s.path), None)
         assert modal_file is not None
 
-        resolved = [e for e in result.edges if e.edge_type == "imports_component"]
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 1
         assert resolved[0].dst == modal_file.id
 
@@ -179,7 +185,7 @@ class TestVueComponentLinker:
         header_files = [s for s in file_symbols if "Header.vue" in s.path]
         assert len(header_files) == 1
 
-        resolved = [e for e in result.edges if e.edge_type == "imports_component"]
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 2
         assert all(e.dst == header_files[0].id for e in resolved)
 
@@ -200,7 +206,7 @@ class TestVueComponentLinker:
         )
         result = link_vue_components(ctx)
 
-        resolved = [e for e in result.edges if e.edge_type == "imports_component"]
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 0
 
     def test_non_vue_edges_ignored(self, tmp_path: Path) -> None:
@@ -261,7 +267,7 @@ class TestVueComponentLinker:
         )
         result = link_vue_components(ctx)
 
-        resolved = [e for e in result.edges if e.edge_type == "imports_component"]
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 1
 
     def test_at_alias_unresolvable(self, tmp_path: Path) -> None:
@@ -281,7 +287,7 @@ class TestVueComponentLinker:
         )
         result = link_vue_components(ctx)
 
-        resolved = [e for e in result.edges if e.edge_type == "imports_component"]
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 0
 
     def test_relative_import_without_extension(self, tmp_path: Path) -> None:
@@ -302,7 +308,7 @@ class TestVueComponentLinker:
         )
         result = link_vue_components(ctx)
 
-        resolved = [e for e in result.edges if e.edge_type == "imports_component"]
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 1
 
     def test_bare_import_path(self, tmp_path: Path) -> None:
@@ -326,7 +332,7 @@ class TestVueComponentLinker:
         )
         result = link_vue_components(ctx)
 
-        resolved = [e for e in result.edges if e.edge_type == "imports_component"]
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 1
 
     def test_bare_import_without_extension(self, tmp_path: Path) -> None:
@@ -347,7 +353,7 @@ class TestVueComponentLinker:
         )
         result = link_vue_components(ctx)
 
-        resolved = [e for e in result.edges if e.edge_type == "imports_component"]
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 1
 
     def test_bare_import_unresolvable(self, tmp_path: Path) -> None:
@@ -367,7 +373,7 @@ class TestVueComponentLinker:
         )
         result = link_vue_components(ctx)
 
-        resolved = [e for e in result.edges if e.edge_type == "imports_component"]
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 0
 
     def test_edge_without_source_symbol_skipped(self, tmp_path: Path) -> None:
@@ -384,7 +390,7 @@ class TestVueComponentLinker:
         )
         result = link_vue_components(ctx)
 
-        resolved = [e for e in result.edges if e.edge_type == "imports_component"]
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 0
 
     def test_activation_requires_vue(self) -> None:

@@ -202,7 +202,7 @@ import Widget from './Widget.astro'
 <Widget />
 """)
         result = analyze_astro(tmp_path)
-        edges = [e for e in result.edges if e.edge_type == "imports_component"]
+        edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(edges) >= 1
 
 

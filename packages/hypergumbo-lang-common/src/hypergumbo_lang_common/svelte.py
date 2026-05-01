@@ -261,7 +261,7 @@ def _process_tag(
             edge = Edge.create(
                 src=symbol_id,
                 dst=import_path,
-                edge_type="imports_component",
+                edge_type="imports",
                 line=line,
                 origin=PASS_ID,
                 origin_run_id=execution_id,

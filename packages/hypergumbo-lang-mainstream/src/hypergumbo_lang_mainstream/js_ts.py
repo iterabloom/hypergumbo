@@ -2341,7 +2341,7 @@ def _extract_type_reference_edges(
                         edges.append(Edge.create(
                             src=src_sym.id,
                             dst=dst_sym.id,
-                            edge_type="type_ref",
+                            edge_type="references",
                             line=src_sym.span.start_line if src_sym.span else 0,
                             confidence=0.85,
                             origin=PASS_ID,
@@ -2381,7 +2381,7 @@ def _extract_type_reference_edges(
                         edges.append(Edge.create(
                             src=src_sym.id,
                             dst=dst_sym.id,
-                            edge_type="type_ref",
+                            edge_type="references",
                             line=src_sym.span.start_line if src_sym.span else 0,
                             confidence=0.85,
                             origin=PASS_ID,

@@ -217,7 +217,8 @@ class TestLinkReactComponents:
         result = link_react_components(tmp_path, [app_sym, button_sym])
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "renders_component"
+        assert edge.edge_type == "references"
+        assert edge.meta.get("construct") == "jsx"
         assert edge.dst == button_sym.id
         assert edge.confidence == 0.80
         assert edge.evidence_type == "jsx_element"
@@ -487,4 +488,5 @@ class TestReactComponentRegistry:
         )
         result = run_linker("react_component", ctx)
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "renders_component"
+        assert result.edges[0].edge_type == "references"
+        assert result.edges[0].meta.get("construct") == "jsx"

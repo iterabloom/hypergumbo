@@ -211,7 +211,7 @@ import Header from './Header.astro';
 <Header/>
 """)
         result = analyze_astro(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "imports_component"), None)
+        edge = next((e for e in result.edges if e.edge_type == "imports"), None)
         assert edge is not None
         assert edge.dst == "./Header.astro"
 
@@ -386,5 +386,5 @@ const description = 'A test page';
         assert directives[0].name == "client:load"
 
         # Check edges
-        edges = [e for e in result.edges if e.edge_type == "imports_component"]
+        edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(edges) == 3

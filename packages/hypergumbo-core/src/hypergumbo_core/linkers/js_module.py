@@ -765,11 +765,13 @@ def link_js_modules(
 
             mod_sym = module_file_cache[rel_path]
 
-            # Create imports_module edge: importing file -> module_file
+            # ADR-0023 §6 Phase 3 (WI-mokam-jalig): emit canonical
+            # 'imports'; consumers query dst.kind in {module_file, file}
+            # to recover the prior 'imports_module' specialization.
             new_edges.append(Edge.create(
                 src=edge.src,
                 dst=mod_sym.id,
-                edge_type="imports_module",
+                edge_type="imports",
                 line=edge.line,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
@@ -821,10 +823,13 @@ def link_js_modules(
 
             pkg_sym = npm_package_cache[pkg_name]
 
+            # ADR-0023 §6 Phase 3 (WI-mokam-jalig): emit canonical
+            # 'imports'; consumers query dst.kind == 'npm_package' to
+            # recover the prior 'imports_module' specialization.
             new_edges.append(Edge.create(
                 src=edge.src,
                 dst=pkg_sym.id,
-                edge_type="imports_module",
+                edge_type="imports",
                 line=edge.line,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,

@@ -356,7 +356,7 @@ export default {
 </script>
 """)
         result = analyze_vue(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "imports_component"), None)
+        edge = next((e for e in result.edges if e.edge_type == "imports"), None)
         assert edge is not None
         # WI-vobiv: dst is now a properly-formed 5-part id (lang:path:span:name:kind)
         # so when the import target isn't analyzed (no resolved Symbol), the
@@ -540,7 +540,7 @@ export default {
         assert style.meta.get("lang") == "scss"
 
         # Check edges
-        edges = [e for e in result.edges if e.edge_type == "imports_component"]
+        edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(edges) == 1
         # WI-vobiv: well-formed 5-part dst id; raw path in meta.
         assert edges[0].dst == "vue:./Avatar.vue:0-0:Avatar:component"
@@ -695,7 +695,7 @@ import SettingsPanel from '@/components/widgets/SettingsPanel.vue';
 </script>
 """)
         result = analyze_vue(tmp_path)
-        edges = [e for e in result.edges if e.edge_type == "imports_component"]
+        edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(edges) == 2
         for edge in edges:
             parts = edge.dst.split(":")
@@ -733,7 +733,7 @@ import Header from '../shared/Header.vue';
 """)
         result = analyze_vue(tmp_path)
         edge = next(
-            (e for e in result.edges if e.edge_type == "imports_component"), None
+            (e for e in result.edges if e.edge_type == "imports"), None
         )
         assert edge is not None
         assert edge.dst == "vue:../shared/Header.vue:0-0:Header:component"
@@ -753,7 +753,7 @@ import Modal from '@/components/Modal.vue';
 """)
         result = analyze_vue(tmp_path)
         edge = next(
-            (e for e in result.edges if e.edge_type == "imports_component"), None
+            (e for e in result.edges if e.edge_type == "imports"), None
         )
         assert edge is not None
         assert edge.dst == "vue:@/components/Modal.vue:0-0:Modal:component"

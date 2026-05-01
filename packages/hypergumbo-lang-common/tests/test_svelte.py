@@ -75,10 +75,10 @@ class TestAnalyzeSvelte:
 <Button />
 """)
         result = analyze_svelte(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "imports_component"), None)
+        edge = next((e for e in result.edges if e.edge_type == "imports"), None)
         assert edge is not None
         assert edge.dst == "./Button.svelte"
-        assert edge.edge_type == "imports_component"
+        assert edge.edge_type == "imports"
 
     def test_extracts_default_slot(self, tmp_path: Path) -> None:
         make_svelte_file(tmp_path, "Card.svelte", """<div class="card">
@@ -254,7 +254,7 @@ class TestAnalyzeSvelte:
         assert comp.name == "MyComponent"
         assert comp.meta.get("import_path") == ""
         # No edge created for unimported component
-        edges = [e for e in result.edges if e.edge_type == "imports_component"]
+        edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(edges) == 0
 
     def test_component_with_events_and_slot(self, tmp_path: Path) -> None:
@@ -320,7 +320,7 @@ class TestAnalyzeSvelte:
         assert events[0].name == "click"
 
         # Import edges
-        edges = [e for e in result.edges if e.edge_type == "imports_component"]
+        edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(edges) == 2
 
     def test_named_import_component(self, tmp_path: Path) -> None:
@@ -348,7 +348,7 @@ class TestAnalyzeSvelte:
 <h1>Hello</h1>
 """)
         result = analyze_svelte(tmp_path)
-        edges = [e for e in result.edges if e.edge_type == "imports_component"]
+        edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(edges) == 0
 
     def test_nested_control_blocks(self, tmp_path: Path) -> None:

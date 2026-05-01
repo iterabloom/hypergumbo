@@ -98,7 +98,7 @@ export default {
 </script>
 """)
         result = analyze_vue(tmp_path)
-        import_edges = [e for e in result.edges if e.edge_type == "imports_component"]
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 1
 
     def test_kebab_case_component(self, tmp_path: Path) -> None:
