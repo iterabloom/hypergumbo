@@ -34,10 +34,18 @@ If you consume hypergumbo's behavior-map JSON output and your code
 filters or weights edges by `edge_type`, see
 [`docs/migrating-edge-types.md`](migrating-edge-types.md) for the
 rename table, the meta-key vocabulary, and migration patterns.
-Producers no longer emit any of the values currently in the
-`endpoint_shape` section below; those values stay in the schema's
-enum during the dual-validity window so existing consumers don't
-break, but they are scheduled for removal.
+
+The values currently in the `endpoint_shape` section below are
+deprecation candidates whose producers still emit them. Each is
+scheduled for migration to a canonical relationship-axis name plus
+an `edge.meta` payload (see the migration guide for the per-value
+fold targets). Each value's producer-side migration ships as its
+own per-family subset, with bakeoff validation, then a
+`SCHEMA_VERSION` minor bump removes the value from the registry —
+the pattern the original four subsets (dst-kind, bridge,
+publish/dispatch, IPC) followed at `SCHEMA_VERSION` 0.4.0. Values
+already removed at 0.4.0 do NOT appear here; this section is the
+remaining backlog.
 
 ## `Edge.type` axes
 

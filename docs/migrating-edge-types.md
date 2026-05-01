@@ -242,13 +242,20 @@ delegates = [
 
 ## What's NOT migrated yet
 
-Four `edge_type` values are still classified `pending_classification`
-in the registry — the registry's deliberate "we haven't decided yet"
-state. Producers still emit them under their current names. They will
-be folded once their per-family audit completes (analogous to ADR-0025
-for dispatch/publish and ADR-0026 for IPC). Consumer queries that
-filter on these values still work today; the names may rename in a
-future minor version.
+After the 0.4.0 ship, **29 values still emit** under their current
+names — 25 in the `endpoint_shape` axis (deprecation candidates with
+fold targets named) and 4 in the `pending_classification` axis
+(awaiting per-family audit). They split into three groups by what
+clears the next ship.
+
+### Pending-classification (awaits per-family audit)
+
+Four `edge_type` values are classified `pending_classification` in
+the registry — the registry's deliberate "we haven't decided yet"
+state. They will be folded once their per-family audit completes
+(analogous to ADR-0025 for dispatch/publish and ADR-0026 for IPC).
+Consumer queries that filter on these values still work today; the
+names may rename in a future minor version.
 
 | Current name           | Family awaiting audit                            |
 |------------------------|--------------------------------------------------|
@@ -257,16 +264,43 @@ future minor version.
 | `openapi_implements`   | OpenAPI handler pattern                          |
 | `implements_rpc`       | RPC implementation binding                       |
 
-A second group — 18 endpoint_shape values added during the registry-
-completeness sweep — also still emits under its current names, with
-plausible canonical fold targets in each entry's description in
-`hypergumbo_core.edge_types.EDGE_TYPES`. These are: `abi_call`,
-`association`, `build_tag_alternative_of`, `caller_invokes`,
-`contains_routes`, `crypto_flow`, `depends`, `extends_template`,
-`includes_class`, `includes_template`, `invokes_callback`, `links_to`,
-`notifies_resource`, `renders`, `requires_resource`, `signal_receiver`,
-`template_calls`, `uses_mixin`, `uses_vocabulary`. Treat them as
-working-but-may-rename — same posture as the pending values above.
+### Protocol-call family (next planned migration)
+
+Three values follow the same uniform fold pattern (`calls` +
+`meta["protocol"]`). The migration is the natural-next subset after
+the 0.4.0 ship; expect it in a subsequent minor version. Consumers
+who want to be early-mover-safe can switch to the post-migration
+query shape today — both forms produce the right answer during the
+dual-validity window.
+
+| Current `edge_type` | Next-version query                                                |
+|---------------------|-------------------------------------------------------------------|
+| `http_calls`        | `edge_type == "calls"` and `meta["protocol"] == "http"`           |
+| `grpc_calls`        | `edge_type == "calls"` and `meta["protocol"] == "grpc"`           |
+| `graphql_calls`     | `edge_type == "calls"` and `meta["protocol"] == "graphql"`        |
+
+### Long-tail individual values (smaller subsequent migrations)
+
+Eighteen endpoint_shape values added during the registry-completeness
+sweep have heterogeneous fold targets (some to `calls` + meta, some
+to `references` + dst.kind, some to `event_publishes` + channel_kind,
+some to `depends_on` + construct). Each entry's plausible fold target
+lives in its description in
+`hypergumbo_core.edge_types.EDGE_TYPES`. They will ship in smaller
+subsequent micro-phases — likely per-language or per-pattern.
+
+These are: `abi_call`, `association`, `base_image`,
+`build_tag_alternative_of`, `caller_invokes`, `contains_routes`,
+`crypto_flow`, `depends`, `extends_template`, `includes_class`,
+`includes_template`, `invokes_callback`, `kernel_launch`, `links_to`,
+`notifies_resource`, `renders`, `requires_resource`, `script_src`,
+`signal_receiver`, `template_calls`, `uses_mixin`, `uses_vocabulary`.
+
+Treat them all as working-but-may-rename — same posture as the
+pending-classification values above. The deprecation timeline at the
+top of this doc applies to each group: `x-deprecated` annotation
+present today; eventual removal in a future `SCHEMA_VERSION` minor
+bump after that group's bakeoff validation clears.
 
 ## Companion docs
 
