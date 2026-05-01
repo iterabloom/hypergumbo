@@ -263,6 +263,7 @@ this table and the registry is resolved in favor of the registry.
 | `imports_module` | `imports` (query via `dst.kind == "module"` or `dst.kind == "file"`) | dst.kind leakage; also collides with Python's plain `imports` for the same relationship |
 | `renders_component` | TBD — possibly `references` with `meta["construct"] = "jsx"` | Both src.framework and dst.kind leakage; needs case-by-case review |
 | `cgo_bridge`, `napi_bridge`, `wasm_bridge`, `native_bridge`, `ffi_bridge`, `bridge_invokes`, `caller_invokes` | Single canonical `bridges_to` (or fold into `calls`), plus `meta["bridge_kind"]` for the mechanism | Language-pair derivable from endpoints; mechanism is meta |
+| `http_calls`, `grpc_calls`, `graphql_calls` | `calls` + `meta["protocol"]` in `{"http", "grpc", "graphql"}` | Protocol mediating the call is meta, not a category of relationship |
 
 The publish / dispatch zoos (`event_publishes`, `crdt_publishes`,
 `message_dispatch`, `uses_dispatch_table`, etc.) are deferred to a per-family
@@ -422,7 +423,15 @@ For each:
 
 Producer migration order: start with the dst-kind leakage cases (lowest
 risk, purely additive on the consumer side), then bridge / FFI, then the
-publish / dispatch families after their per-family audits.
+publish / dispatch families after their per-family audits, then the IPC
+family (after ADR-0026), then the protocol-call family
+(`http_calls` / `grpc_calls` / `graphql_calls` → `calls` +
+`meta["protocol"]`). Each subset can ship as its own PR with its own
+`awaits_bakeoff_validation` tag, which is what the migration log
+actually shows: WI-mokam-jalig (dst-kind), WI-mifor-vabul (bridge),
+WI-vasik-jofiv (publish/dispatch), WI-hahap-farid (IPC), and the
+protocol-call subset (`WI-vumum`, filed as a sibling tracker item alongside this
+ADR revision).
 
 ### Phase 4 — Schema bump and deprecation removal (`WI-vomoj-suhaz`, 1-2 days)
 
@@ -438,24 +447,83 @@ deprecation announcement. Per-value migration guidance lives in the
 registry's `EdgeTypeSpec.description` (the canonical fold target +
 meta key, citing the relevant ADR — 0023 / 0025 / 0026).
 
-**Phase 4b — hard-fail (gated on bakeoff validation).** Remove the
-deprecated values from `EDGE_TYPES`. Schema enum values disappear.
-Concept-axes view's `endpoint_shape` section becomes empty (or its
-preamble notes "all values migrated"). Drift property test now
-treats any remaining consumer-side reference as drift. Second
-`SCHEMA_VERSION` minor bump (0.3.0 → 0.4.0). Cleanup of
-dead-but-harmless consumer-side enumeration entries (the
+**Phase 4b — hard-fail (gated on bakeoff validation, partial first
+ship).** Remove the deprecated values from `EDGE_TYPES`. Schema enum
+values disappear for the removed entries. Drift property test treats
+any remaining consumer-side reference as drift for the removed
+entries. Second `SCHEMA_VERSION` minor bump (0.3.0 → 0.4.0). Cleanup
+of dead-but-harmless consumer-side enumeration entries (the
 deprecated entries kept in `compact.CROSS_CUTTING_EDGE_TYPES`,
 `bakeoff-deep _CALL_FLOW_EDGE_TYPES`, `ranking.DEFAULT_EDGE_TYPE_WEIGHTS`,
 `io_boundary._TRACEABLE_EDGE_TYPES`, `taint.TAINT_CALL_EDGE_TYPES`,
-etc.) lands in the same PR.
+etc.) lands in the same PR for the removed entries.
 
 **Phase 4b prerequisites:** the `awaits_bakeoff_validation` tags
-on the Phase 2 / Phase 3 tracker items must clear before 4b ships.
-The dual-validity window is the safety net for any centrality /
-slice / sketch regression the migration introduced; pulling the
-rug before bakeoff validation finishes turns a recoverable
-regression into a hard schema contract break.
+on the corresponding Phase 2 / Phase 3 subsets must clear before
+those values' 4b ships. The dual-validity window is the safety net
+for any centrality / slice / sketch regression the migration
+introduced; pulling the rug before bakeoff validation finishes
+turns a recoverable regression into a hard schema contract break.
+
+**Phase 4b first ship status (WI-vomoj-suhaz, landed at 0.4.0).**
+The first 4b PR removed 33 endpoint_shape values whose Phase 3
+producer migrations bakeoff-validated cleanly (DEEP cohort
+deep-20260501-125217, 8 repos, zero `no_move` verdicts): the 6
+dst-kind leakage values (`imports_module`, `imports_component`,
+`model_reference`, `type_ref`, `query_references`,
+`renders_component`); the 7 bridge family values (`cgo_bridge`,
+`ffi_bridge`, `napi_bridge`, `wasm_bridge`, `wasm_load`,
+`bridge_invokes`, `native_bridge`); the 7 IPC family values
+(`ipc_calls`, `ipc_event`, `message_send`, `message_receive`,
+`websocket_message`, `websocket_connection`, `message_queue`);
+and the 13 publish/dispatch family values (`routes_to`,
+`delegates_to`, `annotated_dispatches`, `uses_dispatch_table`,
+`di_registers`, `di_resolves`, `registers_routes`,
+`message_dispatch`, `crdt_publishes`, `annotated_publishes`,
+`emits`, `enqueues`, `event_subscribes`).
+
+**Remaining endpoint_shape values: 25, pending future per-family
+Phase 3.** The first 4b ship is partial because 25 endpoint_shape
+values still have producer emissions that haven't been
+Phase-3-migrated yet. They split into two groups:
+
+1. **Protocol-call family** (`http_calls`, `grpc_calls`,
+   `graphql_calls`): the natural next subset, since their fold
+   pattern is uniform (`calls` + `meta["protocol"]`). Filed as
+   `WI-vumum` (sibling tracker item to this ADR revision). After
+   that Phase 3 ships and bakeoff validates, a second 4b ship
+   prunes them and removes the corresponding consumer references
+   in `compact.CROSS_CUTTING_EDGE_TYPES`,
+   `taint.TAINT_CALL_EDGE_TYPES`, and
+   `io_boundary._TRACEABLE_EDGE_TYPES` (currently the only
+   load-bearing consumer references to these three values, and the
+   reason the strict-mode pre-commit gate from `WI-variv-lujug`
+   cannot yet flip — see WI-mumok).
+
+2. **Long-tail individual values** (~22 values from the
+   WI-tavas-voror sweep: `abi_call`, `association`, `base_image`,
+   `build_tag_alternative_of`, `caller_invokes`, `contains_routes`,
+   `crypto_flow`, `depends`, `extends_template`, `includes_class`,
+   `includes_template`, `invokes_callback`, `kernel_launch`,
+   `links_to`, `notifies_resource`, `renders`, `requires_resource`,
+   `script_src`, `signal_receiver`, `template_calls`, `uses_mixin`,
+   `uses_vocabulary`): each carries a fold target in its registry
+   description but the fold targets are heterogeneous (some to
+   `calls` + meta, some to `references` + dst.kind, some to
+   `event_publishes` + channel_kind, some to `depends_on` +
+   construct). These will be folded in smaller subsets — likely
+   per-language or per-pattern — in subsequent micro-phases. Each
+   such subset gets its own Phase 3 / 4b cycle with its own
+   bakeoff validation. The `endpoint_shape` axis of the registry
+   stays populated (and `x-deprecated` annotations stay on the
+   schema for these values) until that long-tail work completes.
+
+The shape of "first 4b ships the cohort that bakeoff-validates,
+subsequent micro-4b's ship the remaining subsets one family at a
+time" is the post-shipping correction to the original Phase 4
+plan, which assumed a single big-bang 4b. The single-ship
+assumption was incompatible with how producers actually clustered
+once the Phase 3 audits resolved their per-family fold targets.
 
 ### Total
 
