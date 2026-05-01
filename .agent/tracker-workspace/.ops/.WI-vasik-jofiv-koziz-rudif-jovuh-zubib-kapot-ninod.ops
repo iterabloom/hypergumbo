@@ -37,3 +37,19 @@
   clock: 3  # 5c8a
   nonce: 5c8a  # 5c8a
   message: "Done in PR #3487. 17 production emit sites across 12 linkers/analyzers folded per ADR-0025's rename table (routes_to/delegates_to/annotated_dispatches/uses_dispatch_table/di_registers/di_resolves/registers_routes/message_dispatch/crdt_publishes/annotated_publishes/emits/enqueues). The event_subscribes producer in event_sourcing.py is dropped entirely per the DEPRECATE-NO-FOLD verdict (subscriber-is-enclosed-by-method information is recoverable from Symbol.span; same verdict pattern as message_receive in ADR-0026). Consumer-side updates: compact.CROSS_CUTTING_EDGE_TYPES adds 'calls' + 'event_publishes'; bakeoff-deep _CALL_FLOW_EDGE_TYPES + routes_to filter rewritten to canonical+meta query; bakeoff-broad route-edge detection rewritten; hypergumbo_diag.py routes_to filter rewritten. 12 linker test files updated via replace_all; TestEventSubscriberToMethodEdges class rewritten to assert the producer-drop sticks. 3512 tests passing, 100% coverage on all 13 changed source files. Tagged awaits_bakeoff_validation: dispatch-heavy / route-heavy / pub-sub-heavy repos (Spring, Express, Rails ActiveJob, NestJS, Yjs, gRPC, Solidity) should see the canonical-fold's centrality/slice/sketch implications confirmed by a DEEP cycle."  # 5c8a
+- op: update  # 707d
+  at: '2026-05-01T17:27:41Z'  # 707d
+  by: agent  # 707d
+  actor: jgstern_agent  # 707d
+  clock: 4  # 707d
+  nonce: 707d  # 707d
+  set: {}  # 707d
+  remove:  # 707d
+    tags: [awaits_bakeoff_validation]  # 707d
+- op: discuss  # 94de
+  at: '2026-05-01T17:27:41Z'  # 94de
+  by: agent  # 94de
+  actor: jgstern_agent  # 94de
+  clock: 5  # 94de
+  nonce: 94de  # 94de
+  message: "Bakeoff validation: MOVED (cohort cohort-002/iter-001). Plurality verdict across repos: moved=7 no_move=0 inconclusive=0. Evidence: better-sqlite3=moved: dispatch_kind={}, channel_kind(pub)={}, mechanism={}, construct={'dispatch_table': 19}; chatwoot=moved: dispatch_kind={'route': 462}, channel_kind(pub)={'queue': 120, 'crdt': 68, 'message_bus': 1234}, mechanism={'delegate':…; go-sqlite3=moved: dispatch_kind={}, channel_kind(pub)={}, mechanism={}, construct={'dispatch_table': 18}; +4 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 94de

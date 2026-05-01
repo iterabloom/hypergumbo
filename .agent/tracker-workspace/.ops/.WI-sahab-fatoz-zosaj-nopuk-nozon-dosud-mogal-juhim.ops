@@ -37,3 +37,19 @@
   clock: 3  # c5f5
   nonce: c5f5  # c5f5
   message: "Done in PR #3479. New IMPORT_EDGE_TYPES constant in hypergumbo_core.edge_types (imports + imports_module + imports_component); ranking and slice migrated to use it. Fixes ADR-0023 §1 case 1 silent bug (imports_component was missing from both consumer sets). Audited and unchanged: ranking._STRUCTURAL_EDGE_TYPES, slice._STRUCTURAL_EDGE_TYPES (both pure relationship-axis), io_boundary._TRACEABLE_EDGE_TYPES, taint.TAINT_CALL_EDGE_TYPES (mix axes but include 'calls', so forward-compatible through Phase 3 bridge folding). Deferrals: sketch.py has no edge-type filter (description was speculative); SCIP merger doesn't exist (the pass scip/calls.py:48 promises was never built); slice.py:612's dispatches_to compare gates on WI-kofuh-fovar dispatch-family audit. Adjacent finding for WI-tavas-voror: DEFAULT_EDGE_TYPE_WEIGHTS contains 5 emit-but-unregistered values (event_subscribes:8, crdt_publishes:3, crypto_flow:1, module_exports:1, message_dispatch:1) — same shape as the 45-triage. Tagged awaits_bakeoff_validation: behavior change is real (Vue/Svelte/Astro/React component imports now ranked/sliced as import edges) but visible only on framework-component-importing repos; DEEP cycle should confirm centrality and slice-exclusion deltas are net-positive."  # c5f5
+- op: update  # b451
+  at: '2026-05-01T17:29:03Z'  # b451
+  by: agent  # b451
+  actor: jgstern_agent  # b451
+  clock: 4  # b451
+  nonce: b451  # b451
+  set: {}  # b451
+  remove:  # b451
+    tags: [awaits_bakeoff_validation]  # b451
+- op: discuss  # a767
+  at: '2026-05-01T17:29:03Z'  # a767
+  by: agent  # a767
+  actor: jgstern_agent  # a767
+  clock: 5  # a767
+  nonce: a767  # a767
+  message: "Bakeoff validation: hand-stripped per playbook §Phase 6. Cohort: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260501-125217 (cohort-002, iter-001). Plurality across 7 repos: 1 moved (chatwoot), 0 no_move, 6 inconclusive — Vue/Svelte/Astro/JSX/TSX component imports lacking on the 6 inconclusive repos because they aren't framework-component-import targets. Targeted-repo verdict on chatwoot is unambiguously MOVED: 3,610 imports edges with dst.language='vue' (framework-component shape) + 0 deprecated imports_component / imports_module emitted. Phase 2 IMPORT_EDGE_TYPES centralization + Phase 3 imports_component → imports fold both confirmed working."  # a767

@@ -36,3 +36,19 @@
   clock: 3  # 493a
   nonce: 493a  # 493a
   message: "Done in PR #3483. Bridge/FFI subset of ADR-0023 §6 Phase 3 complete. 16 production emit sites across 8 linkers (cgo, lua_ffi, pyffi, ruby_ffi, napi, wasm_bindgen×2, jni, ipc) folded to canonical 'calls' + meta['bridge_kind']; wasm_load folded to 'imports' (file→wasm_module is import-shaped, not a call). New BRIDGE_KINDS frozenset in hypergumbo_core.edge_types: closed enumeration of cgo/ffi/napi/wasm/native/context_bridge — choice of closed (vs free-form) matches ADR-0015's access_mode pattern. Consumer-side updates in scripts/bakeoff-deep (switched _FFI_EDGE_TYPES set membership to canonical-relationship + meta query) and tests/test_ipc_linker.py (18 filters rewritten). 2468 tests passing, 100% coverage on all 9 changed source files. Tagged awaits_bakeoff_validation: centrality/slice/sketch implications of bridges-being-calls should be confirmed by a DEEP cycle on FFI-polyglot repos. Out-of-scope per Phase 4 (WI-vomoj-suhaz): io_boundary._TRACEABLE_EDGE_TYPES and taint.TAINT_CALL_EDGE_TYPES still enumerate the deprecated bridge values (dead-but-harmless because both already include 'calls'); test_io_boundary fixtures still use old bridge names (the deprecated entries remain in _TRACEABLE_EDGE_TYPES so synthetic edges still trace)."  # 493a
+- op: update  # fad4
+  at: '2026-05-01T17:29:15Z'  # fad4
+  by: agent  # fad4
+  actor: jgstern_agent  # fad4
+  clock: 4  # fad4
+  nonce: fad4  # fad4
+  set: {}  # fad4
+  remove:  # fad4
+    tags: [awaits_bakeoff_validation]  # fad4
+- op: discuss  # 7d3d
+  at: '2026-05-01T17:29:15Z'  # 7d3d
+  by: agent  # 7d3d
+  actor: jgstern_agent  # 7d3d
+  clock: 5  # 7d3d
+  nonce: 7d3d  # 7d3d
+  message: "Bakeoff validation: hand-stripped per playbook §Phase 6. Cohort: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260501-125217 (cohort-002, iter-001). Plurality across 7 repos: 1 moved (go-sqlite3), 0 no_move, 6 inconclusive. Targeted-repo verdict on go-sqlite3 is unambiguously MOVED: 116 edges of edge_type='calls' + meta['bridge_kind']='cgo' + zero deprecated bridge edge_types (cgo_bridge/ffi_bridge/napi_bridge/wasm_bridge/native_bridge/bridge_invokes/wasm_load) emitted. Phase 3 bridge fold to canonical 'calls' + meta['bridge_kind'] confirmed working. Coverage caveat: better-sqlite3 (NAPI target) showed inconclusive — the NAPI linker doesn't recognize node-gyp-style bindings.gyp + manual N-API C++ bindings (better-sqlite3's pattern). Pre-existing analyzer-coverage gap, not a Phase-3 regression. Worth a separate work item if NAPI coverage matters."  # 7d3d

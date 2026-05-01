@@ -58,3 +58,19 @@
   clock: 6  # bc36
   nonce: bc36  # bc36
   message: "All four Phase 3 subsets done. Acceptance ('every endpoint_shape value has zero production emit sites') is met:\n\n- dst-kind leakage subset (PR #3481, WI-mokam-jalig itself initially)\n- bridge/FFI subset (PR #3483, WI-mifor-vabul) — also folded wasm_load → imports\n- IPC family subset (PR #3486, WI-hahap-farid) — included message_receive DEPRECATE-NO-FOLD drop\n- publish/dispatch family subset (PR #3487, WI-vasik-jofiv) — included event_subscribes DEPRECATE-NO-FOLD drop\n\nThe endpoint_shape entries remain in the canonical registry as deprecated-but-unemitted; Phase 4 (WI-vomoj-suhaz) prunes them after a minor-version deprecation window per ADR-0023 §6 Phase 4. Resolver/openapi/RPC pending_classification entries (resolver_implements, resolver_for_type, openapi_implements, implements_rpc) remain — they're a separate family that needs its own audit before Phase 3 reaches them; out of scope for this milestone. Tagged awaits_bakeoff_validation by composition (each subset PR carries the tag for its own bakeoff validation; this rolled-up confirmation provides the full-Phase-3 completion view)."  # bc36
+- op: update  # bb19
+  at: '2026-05-01T17:27:40Z'  # bb19
+  by: agent  # bb19
+  actor: jgstern_agent  # bb19
+  clock: 7  # bb19
+  nonce: bb19  # bb19
+  set: {}  # bb19
+  remove:  # bb19
+    tags: [awaits_bakeoff_validation]  # bb19
+- op: discuss  # e279
+  at: '2026-05-01T17:27:41Z'  # e279
+  by: agent  # e279
+  actor: jgstern_agent  # e279
+  clock: 8  # e279
+  nonce: e279  # e279
+  message: "Bakeoff validation: MOVED (cohort cohort-002/iter-001). Plurality verdict across repos: moved=7 no_move=0 inconclusive=0. Evidence: better-sqlite3=moved: subset verdicts: bridge=inconclusive, ipc=inconclusive, dispatch_publish=moved (moved=1, no_move=0, inconclusive=2); chatwoot=moved: subset verdicts: bridge=inconclusive, ipc=moved, dispatch_publish=moved (moved=2, no_move=0, inconclusive=1); go-sqlite3=moved: subset verdicts: bridge=moved, ipc=inconclusive, dispatch_publish=moved (moved=2, no_move=0, inconclusive=1); +4 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # e279
