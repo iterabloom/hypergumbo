@@ -1,0 +1,20 @@
+- op: create  # 8762
+  at: '2026-05-01T22:14:23Z'  # 8762
+  by: agent  # 8762
+  actor: jgstern_agent  # 8762
+  clock: 1  # 8762
+  nonce: '8762'  # 8762
+  data:  # 8762
+    kind: work_item  # 8762
+    title: "Rewrite trackerize hook summary to lead with literal trigger"  # 8762
+    status: needs_human_review  # 8762
+    priority: 3  # 8762
+    parent:  # 8762
+    tags:  # 8762
+    - retrospective  # 8762
+    isbefore: []  # 8762
+    duplicate_of: []  # 8762
+    not_duplicate_of: []  # 8762
+    pr_ref:  # 8762
+    description: "Per session_retrospective_05012026_1810.md Finding 1: across the 2026-04-29 → 2026-05-01 session, trackerize was injected 38 times but the user typed the literal word 'trackerize' only ~6 times. The other 32 injections fired in contexts like 'Conduct a Conceptual Audit', 'Domain Recasting', 'Complete WI-vasik-jofiv', 'Disable Autonomous Mode'. The trackerize playbook itself defines the trigger as the literal word. Proposed fix: rewrite the trackerize hook summary in .agent/hooks/_shared/on_transcript_change.py:PLAYBOOKS to lead with 'Only inject when the user message contains the literal word trackerize' and remove softer co-occurring phrasing. Verify against a sample of the 32 false-positive contexts (in .agent/.last_injection_history.jsonl) that the rewritten summary no longer fires. The agentic-session-retrospective playbook itself flags this exact failure pattern as the canonical example of a precision miss."  # 8762
+    fields: {}  # 8762

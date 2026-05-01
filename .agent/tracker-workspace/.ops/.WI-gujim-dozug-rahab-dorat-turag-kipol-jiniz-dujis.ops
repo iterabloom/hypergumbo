@@ -1,0 +1,20 @@
+- op: create  # 6a94
+  at: '2026-05-01T22:15:33Z'  # 6a94
+  by: agent  # 6a94
+  actor: jgstern_agent  # 6a94
+  clock: 1  # 6a94
+  nonce: 6a94  # 6a94
+  data:  # 6a94
+    kind: work_item  # 6a94
+    title: "Document de-facto rule for trackerize-approved governance changes vs explicit-approval gate"  # 6a94
+    status: needs_human_review  # 6a94
+    priority: 4  # 6a94
+    parent:  # 6a94
+    tags:  # 6a94
+    - retrospective  # 6a94
+    isbefore: []  # 6a94
+    duplicate_of: []  # 6a94
+    not_duplicate_of: []  # 6a94
+    pr_ref:  # 6a94
+    description: "Per session_retrospective_05012026_1810.md Finding 3: PR d8d214205 (blind-spots catalog + retro/refactor bake-ins) modified two files under .agent/agent_playbooks_protocols_sops_skills/. AGENTS.md §Governance-Files lists '.agent/**' broadly and requires the explicit needs_human_review + discussion-message workflow. The change *was* aligned with prior trackerize approvals (WI-mivir-motom, WI-juvaf-pubib), but the gate's text mandates an explicit pre-implementation approval message, not implicit prior approval. This is latent — no actual violation, because the user *had* approved the work — but the gate provides weaker guarantees than its text claims. Proposed: either (a) tighten AGENTS.md to require an explicit approval message on the tracker item before auto-pr regardless of trackerize provenance, or (b) document the de-facto rule that 'trackerize-approved items inherit the approval; agent-self-filed items require the explicit gate.' Option (b) matches observed practice; just needs to be written down."  # 6a94
+    fields: {}  # 6a94

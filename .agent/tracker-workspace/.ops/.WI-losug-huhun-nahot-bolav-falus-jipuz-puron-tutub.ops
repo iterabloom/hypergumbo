@@ -1,0 +1,20 @@
+- op: create  # c4e7
+  at: '2026-05-01T22:15:09Z'  # c4e7
+  by: agent  # c4e7
+  actor: jgstern_agent  # c4e7
+  clock: 1  # c4e7
+  nonce: c4e7  # c4e7
+  data:  # c4e7
+    kind: work_item  # c4e7
+    title: "Add doc-type routing playbook (ADR vs audit-findings vs playbook vs lab-notebook vs tracker-item)"  # c4e7
+    status: needs_human_review  # c4e7
+    priority: 3  # c4e7
+    parent:  # c4e7
+    tags:  # c4e7
+    - retrospective  # c4e7
+    isbefore: []  # c4e7
+    duplicate_of: []  # c4e7
+    not_duplicate_of: []  # c4e7
+    pr_ref:  # c4e7
+    description: "Per session_retrospective_05012026_1810.md Finding 2: on May 1 the user asked 'Are ADR 25 and 26 playbooks masquerading as ADRs?' and 'are there any other (older) ADRs masquerading as audit-findings documents?'. There is currently no playbook that routes between document types — ADR vs audit-findings vs lab-notebook vs playbook vs tracker-item. The Fundamental Concept Audit playbook produces *findings* but doesn't say where to file them; the ADR README is the only doc-type spec and doesn't define neighbors. Proposed: add a doc-type routing playbook (or a §Doc-types section in docs/adr/README.md) enumerating each type's purpose, distinguishing markers, and lifecycle. Reference it from the Fundamental Concept Audit playbook §Step 6 and from AGENTS.md §Required-Checks → Fundamental Concept Audit. Note: the user separately filed an item to 'auditize' ADRs 25 and 26 and revise prompting around ADR-vs-audit-findings — that work and this work are complementary; consider parenting or sequencing."  # c4e7
+    fields: {}  # c4e7
