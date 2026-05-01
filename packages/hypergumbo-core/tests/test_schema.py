@@ -297,23 +297,25 @@ class TestSchemaUpToDate:
         schema = load_schema()
         edge_types_in_schema = set(schema["$defs"]["Edge"]["properties"]["type"]["enum"])
 
-        # Known edge types from linkers and analyzers
+        # Known edge types from linkers and analyzers (post Phase 4b —
+        # WI-vomoj-suhaz removed bridge / IPC / route / DI / publish-family
+        # endpoint_shape values whose producers Phase 3 migrated to
+        # canonical 'calls' / 'dispatches_to' / 'event_publishes' edges).
         known_edge_types = {
             # From analyzers
             "calls", "imports", "instantiates", "extends", "implements",
             "references", "depends_on", "links", "sources",
             "script_src", "base_image", "kernel_launch",
-            # From linkers
-            "native_bridge",  # JNI
-            "message_send", "message_receive",  # IPC, Phoenix
-            "websocket_message", "websocket_connection",  # WebSocket
+            # From linkers (still endpoint_shape — pending future Phase-3-style
+            # migrations of their respective protocol-specialized linkers)
             "grpc_calls",  # gRPC
             "http_calls",  # HTTP
             "graphql_calls",  # GraphQL
-            "message_queue",  # Message Queue
-            "query_references",  # Database Query
-            "event_publishes",  # Event Sourcing
-            "resolver_implements", "resolver_for_type",  # GraphQL Resolver
+            # Canonical Phase-3 fold targets
+            "event_publishes",  # async producer→consumer
+            "dispatches_to",   # runtime dispatch indirection
+            # GraphQL Resolver — pending_classification per-family audit
+            "resolver_implements", "resolver_for_type",
         }
 
         missing = known_edge_types - edge_types_in_schema

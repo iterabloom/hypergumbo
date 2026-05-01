@@ -32,7 +32,7 @@ external consumers can adapt; they hard-fail in the version after.
 |----------------|-------------------------------------------------------|
 | 0.3.0          | Deprecation announcement: `x-deprecated` annotation lists every deprecation candidate; values still valid in the enum. Production analyzers no longer emit any of them. |
 | 0.3.1          | Registry-completeness sweep: 25 previously-emitted-but-unregistered values added to the schema enum (7 canonical, 18 endpoint_shape candidates). Same dual-validity rules apply. |
-| 0.4.0 (target) | Removal: deprecation candidates removed from the schema enum. Behavior maps containing them stop validating against the schema. |
+| **0.4.0**      | **Phase 4b shipped — removal**: 33 deprecation candidates removed from the schema enum (the rename-table values listed below). Behavior maps emitted at 0.4.0+ never contain these; behavior maps containing them stop validating against the 0.4.0 schema. The 25 endpoint_shape values added in 0.3.1 stay in the schema (under `x-deprecated`) until their producers migrate. |
 
 If you read your behavior maps with a permissive parser (one that
 ignores the schema), nothing breaks at 0.4.0 — but your filters

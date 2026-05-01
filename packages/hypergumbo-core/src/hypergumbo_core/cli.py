@@ -4482,11 +4482,13 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         seed_ids.update(exported_symbols)
 
     # BFS from seeds through call-flow edges.
-    # calls:          direct function/method calls
+    # calls:          direct function/method calls (post-Phase-3, also covers
+    #                 FFI/IPC/RPC bridges via meta['bridge_kind']/['protocol'])
     # dispatches_to:  interface/abstract method → concrete implementation
-    # routes_to:      HTTP route registration → handler function
+    #                 (post-Phase-3, also covers HTTP routes via
+    #                 meta['dispatch_kind']='route')
     # wraps:          middleware wrapper → inner handler
-    _REACHABILITY_EDGE_TYPES = {"calls", "dispatches_to", "routes_to", "wraps"}
+    _REACHABILITY_EDGE_TYPES = {"calls", "dispatches_to", "wraps"}
     call_graph: dict[str, list[str]] = {}
     for edge in edges:
         if edge.get("type") in _REACHABILITY_EDGE_TYPES:

@@ -1852,12 +1852,18 @@ class TestEntryPointTracing:
         assert "main" in fs_entry.entry_points
 
     def test_native_bridge_edge_traced_to_entrypoint(self) -> None:
-        """Entry-point trace crosses native_bridge edges (Java→C JNI)."""
+        """Entry-point trace crosses native (JNI) bridge edges (Java→C).
+
+        Post Phase-3 (WI-mifor-vabul): bridges fold to canonical 'calls'
+        + meta['bridge_kind']='native'. The reverse-graph traversal
+        crosses bridges via the 'calls' membership in
+        _TRACEABLE_EDGE_TYPES.
+        """
         catalog = load_catalog("c")
         edges = [
-            # Java side: main → nativeRead (native_bridge) → C_impl → fopen
+            # Java side: main → nativeRead → C_impl → fopen
             self._make_edge(src="java_main", dst="native_method"),
-            self._make_edge(src="native_method", dst="c_jni_impl", edge_type="native_bridge"),
+            self._make_edge(src="native_method", dst="c_jni_impl", edge_type="calls"),
             self._make_edge(src="c_jni_impl", dst="c:external:0-0:fopen:unresolved"),
         ]
         entrypoint_ids = {"java_main"}
@@ -1869,11 +1875,14 @@ class TestEntryPointTracing:
         assert "java_main" in fs_entry.entry_points
 
     def test_cgo_bridge_edge_traced_to_entrypoint(self) -> None:
-        """Entry-point trace crosses cgo_bridge edges (Go→C)."""
+        """Entry-point trace crosses cgo bridge edges (Go→C).
+
+        Post Phase-3 (WI-mifor-vabul): folded to 'calls' + meta['bridge_kind']='cgo'.
+        """
         catalog = load_catalog("c")
         edges = [
             self._make_edge(src="go_main", dst="go_wrapper"),
-            self._make_edge(src="go_wrapper", dst="c_impl", edge_type="cgo_bridge"),
+            self._make_edge(src="go_wrapper", dst="c_impl", edge_type="calls"),
             self._make_edge(src="c_impl", dst="c:external:0-0:fopen:unresolved"),
         ]
         entrypoint_ids = {"go_main"}
@@ -1885,11 +1894,14 @@ class TestEntryPointTracing:
         assert "go_main" in fs_entry.entry_points
 
     def test_ffi_bridge_edge_traced_to_entrypoint(self) -> None:
-        """Entry-point trace crosses ffi_bridge edges (Python→Rust)."""
+        """Entry-point trace crosses ffi bridge edges (Python→Rust).
+
+        Post Phase-3 (WI-mifor-vabul): folded to 'calls' + meta['bridge_kind']='ffi'.
+        """
         catalog = load_catalog("python")
         edges = [
             self._make_edge(src="py_main", dst="py_wrapper"),
-            self._make_edge(src="py_wrapper", dst="rust_impl", edge_type="ffi_bridge"),
+            self._make_edge(src="py_wrapper", dst="rust_impl", edge_type="calls"),
             self._make_edge(src="rust_impl", dst="python:os:0-0:listdir:function"),
         ]
         entrypoint_ids = {"py_main"}

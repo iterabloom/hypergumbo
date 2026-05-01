@@ -1034,9 +1034,9 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # cover them).
     _CALL_FLOW_EDGE_TYPES = {
         "calls", "dispatches_to", "wraps",
-        # Deprecated post-Phase-3 (kept until WI-vomoj-suhaz Phase 4):
-        "routes_to", "ipc_calls", "implements_rpc",
-        "grpc_calls", "wasm_bridge",
+        # Still-emitted endpoint_shape (grpc_calls) plus
+        # pending_classification awaiting per-family audit (implements_rpc).
+        "grpc_calls", "implements_rpc",
     }
 
     in_degree: dict = {}

@@ -3900,17 +3900,18 @@ class TestApplyFileKindWeights:
 
 
 class TestEventSubscribesEdgeWeight:
-    """event_subscribes edges should be weighted as call-flow edges, not defaults."""
+    """Phase 4b removed event_subscribes from the registry per ADR-0025
+    DEPRECATE-NO-FOLD verdict; the canonical event_publishes carries the
+    full pub-sub weighting (slice handles reverse traversal natively)."""
 
-    def test_event_subscribes_in_default_weights(self):
-        """event_subscribes should be in DEFAULT_EDGE_TYPE_WEIGHTS at >= 0.8."""
+    def test_event_subscribes_not_in_default_weights(self):
+        """event_subscribes is removed from DEFAULT_EDGE_TYPE_WEIGHTS post Phase 4b."""
         from hypergumbo_core.ranking import DEFAULT_EDGE_TYPE_WEIGHTS
 
-        assert "event_subscribes" in DEFAULT_EDGE_TYPE_WEIGHTS
-        assert DEFAULT_EDGE_TYPE_WEIGHTS["event_subscribes"] >= 0.8
+        assert "event_subscribes" not in DEFAULT_EDGE_TYPE_WEIGHTS
 
     def test_event_publishes_in_default_weights(self):
-        """event_publishes should also be weighted."""
+        """event_publishes carries the canonical pub-sub weight."""
         from hypergumbo_core.ranking import DEFAULT_EDGE_TYPE_WEIGHTS
 
         assert "event_publishes" in DEFAULT_EDGE_TYPE_WEIGHTS

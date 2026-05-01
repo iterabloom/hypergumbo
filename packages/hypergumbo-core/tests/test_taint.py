@@ -1093,19 +1093,25 @@ class TestFieldSensitivity:
 class TestCrossLanguageTaint:
     """Test taint propagation across language boundaries via linker edges."""
 
-    def test_taint_call_edge_types_includes_bridges(self) -> None:
-        """Verify all linker bridge edge types are in TAINT_CALL_EDGE_TYPES."""
-        assert "ffi_bridge" in TAINT_CALL_EDGE_TYPES
-        assert "wasm_bridge" in TAINT_CALL_EDGE_TYPES
-        assert "napi_bridge" in TAINT_CALL_EDGE_TYPES
-        assert "ipc_calls" in TAINT_CALL_EDGE_TYPES
-        assert "native_bridge" in TAINT_CALL_EDGE_TYPES
-        assert "cgo_bridge" in TAINT_CALL_EDGE_TYPES
+    def test_taint_call_edge_types_post_phase4b(self) -> None:
+        """Post Phase 4b (WI-vomoj-suhaz): bridge / IPC endpoint_shape values
+        are no longer enumerated explicitly in TAINT_CALL_EDGE_TYPES. Bridges
+        fold to canonical 'calls' + meta['bridge_kind']; IPC folds to 'calls'
+        + meta['protocol']='ipc'. The set keeps only canonicals plus
+        still-emitted endpoint_shape (grpc_calls) and pending_classification
+        (implements_rpc)."""
+        assert "calls" in TAINT_CALL_EDGE_TYPES
+        assert "module_attr_ref" in TAINT_CALL_EDGE_TYPES
         assert "grpc_calls" in TAINT_CALL_EDGE_TYPES
-        assert "bridge_invokes" in TAINT_CALL_EDGE_TYPES
+        assert "implements_rpc" in TAINT_CALL_EDGE_TYPES
+        # Removed in Phase 4b — folded to 'calls' + meta:
+        for removed in ("ffi_bridge", "wasm_bridge", "napi_bridge", "ipc_calls",
+                        "native_bridge", "cgo_bridge", "bridge_invokes"):
+            assert removed not in TAINT_CALL_EDGE_TYPES
 
     def test_structural_taint_via_wasm_bridge(self) -> None:
-        """Taint should propagate through wasm_bridge edges."""
+        """Taint propagates through wasm bridge edges. Post-Phase-3 these
+        emit as canonical 'calls' + meta['bridge_kind']='wasm'."""
         sources = [TaintSource(
             taint_label="plaintext", module="crypto", name="decrypt",
             kind="function",
@@ -1116,7 +1122,8 @@ class TestCrossLanguageTaint:
         )]
         edges = [
             {"src": "ts_caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
-            {"src": "ts_caller", "dst": "wasm_func", "type": "wasm_bridge"},
+            {"src": "ts_caller", "dst": "wasm_func", "type": "calls",
+             "meta": {"bridge_kind": "wasm"}},
             {"src": "wasm_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
         ]
         findings = propagate_taint_structural(edges, sources, sinks, [])
@@ -1124,7 +1131,8 @@ class TestCrossLanguageTaint:
         assert "wasm_func" in findings[0].path
 
     def test_structural_taint_via_ipc(self) -> None:
-        """Taint should propagate through ipc_calls edges."""
+        """Taint propagates through IPC call edges. Post-Phase-3 these emit
+        as canonical 'calls' + meta['protocol']='ipc'."""
         sources = [TaintSource(
             taint_label="plaintext", module="crypto", name="decrypt",
             kind="function",
@@ -1135,21 +1143,24 @@ class TestCrossLanguageTaint:
         )]
         edges = [
             {"src": "frontend", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
-            {"src": "frontend", "dst": "backend", "type": "ipc_calls"},
+            {"src": "frontend", "dst": "backend", "type": "calls",
+             "meta": {"protocol": "ipc"}},
             {"src": "backend", "dst": "python:external:0-0:write:unresolved", "type": "calls"},
         ]
         findings = propagate_taint_structural(edges, sources, sinks, [])
         assert len(findings) == 1
 
     def test_ddg_taint_via_ffi_bridge(self) -> None:
-        """DDG-backed taint should also propagate through ffi_bridge edges."""
+        """DDG-backed taint propagates through FFI bridge edges. Post-Phase-3
+        these emit as canonical 'calls' + meta['bridge_kind']='ffi'."""
         ddg = [DdgEdge(
             variable="data", def_block="caller", def_line=1,
             use_block="caller", use_line=2,
         )]
         call_edges = [
             {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
-            {"src": "caller", "dst": "native_func", "type": "ffi_bridge"},
+            {"src": "caller", "dst": "native_func", "type": "calls",
+             "meta": {"bridge_kind": "ffi"}},
             {"src": "native_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
         ]
         sources = [TaintSource(

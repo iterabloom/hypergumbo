@@ -3460,11 +3460,12 @@ class TestCrossCuttingEdgeSeeding:
         Per ADR-0023 §6 Phase 3 (WI-vasik-jofiv / WI-mifor-vabul /
         WI-hahap-farid), bridge / IPC / route / DI / annotation edges
         all fold to canonical 'calls' / 'dispatches_to' /
-        'event_publishes' (with mechanism in meta). The set now
-        includes 'calls' and 'event_publishes' so cross-cutting
-        endpoint seeding still picks up FFI/IPC/queue/CRDT/MQ
-        endpoints after the rename. Deprecated entries (routes_to,
-        di_resolves) stay until WI-vomoj-suhaz Phase 4 prunes them.
+        'event_publishes' (with mechanism in meta). The set includes
+        'calls' and 'event_publishes' so cross-cutting endpoint
+        seeding still picks up FFI/IPC/queue/CRDT/MQ endpoints after
+        the rename. Phase 4b (WI-vomoj-suhaz) pruned the deprecated
+        entries (routes_to, di_resolves); the canonical members
+        transparently cover the folds.
         """
         from hypergumbo_core.compact import CROSS_CUTTING_EDGE_TYPES
 
@@ -3473,9 +3474,9 @@ class TestCrossCuttingEdgeSeeding:
         assert "dispatches_to" in CROSS_CUTTING_EDGE_TYPES
         assert "event_publishes" in CROSS_CUTTING_EDGE_TYPES
         assert "http_calls" in CROSS_CUTTING_EDGE_TYPES
-        # Deprecated entries kept until Phase 4:
-        assert "routes_to" in CROSS_CUTTING_EDGE_TYPES
-        assert "di_resolves" in CROSS_CUTTING_EDGE_TYPES
+        # Phase 4b pruned the deprecated entries:
+        assert "routes_to" not in CROSS_CUTTING_EDGE_TYPES
+        assert "di_resolves" not in CROSS_CUTTING_EDGE_TYPES
         # "ffi_calls" was removed: it's the name of a Python local variable
         # in the FFI linkers, not an emitted Edge.edge_type value.
         assert "ffi_calls" not in CROSS_CUTTING_EDGE_TYPES

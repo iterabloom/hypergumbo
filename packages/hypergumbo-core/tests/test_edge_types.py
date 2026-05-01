@@ -78,9 +78,11 @@ def test_edge_types_on_axis_returns_only_matching():
 
 def test_edge_types_on_axis_endpoint_shape_includes_known_deprecation_candidates():
     endpoints = {spec.name for spec in edge_types_on_axis(AXIS_ENDPOINT_SHAPE)}
-    # ADR-0023's representative endpoint-shaped values.
+    # Representative endpoint-shaped values still in the registry post-Phase-4b
+    # (their producers haven't been migrated yet — pending future Phase-3-style
+    # passes per ADR-0023 §6).
     assert {
-        "native_bridge", "message_send", "http_calls", "imports_module",
+        "http_calls", "grpc_calls", "graphql_calls", "script_src",
     } <= endpoints
 
 

@@ -750,10 +750,11 @@ TAINT_CALL_EDGE_TYPES = frozenset({
     # this edge type, auto-imported TaintSource records for attribute
     # kind primitives would never match in structural propagation.
     "module_attr_ref",
-    # Cross-language linker bridge edges
-    "ffi_bridge", "wasm_bridge", "wasm_load", "napi_bridge",
-    "bridge_invokes", "ipc_calls", "ipc_event",
-    "native_bridge", "cgo_bridge",
+    # Still-emitted endpoint_shape (grpc_calls) plus
+    # pending_classification entries awaiting per-family audit
+    # (implements_rpc). Bridge edges no longer enumerated explicitly:
+    # post-Phase-3 (WI-mifor-vabul), every bridge folds to 'calls' which
+    # is already a member; meta['bridge_kind'] carries the bridge type.
     "implements_rpc", "grpc_calls",
 })
 

@@ -179,35 +179,6 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     # relationship-shaped names with kind/language metadata on the
     # endpoint nodes.
     EdgeTypeSpec(
-        "imports_module", AXIS_ENDPOINT_SHAPE,
-        "Imports targeting a module/file specifically (use 'imports').",
-    ),
-    EdgeTypeSpec(
-        "imports_component", AXIS_ENDPOINT_SHAPE,
-        "Imports targeting a UI component (Vue/Svelte/React); per "
-        "ADR-0023 §6, fold into 'imports' + dst.kind == 'component'.",
-    ),
-    EdgeTypeSpec(
-        "model_reference", AXIS_ENDPOINT_SHAPE,
-        "ORM reference to a model class; per ADR-0023 §6, fold into "
-        "'references' + dst.kind == 'model'.",
-    ),
-    EdgeTypeSpec(
-        "type_ref", AXIS_ENDPOINT_SHAPE,
-        "TypeScript reference to a type symbol; per ADR-0023 §6, fold "
-        "into 'references' + dst.kind == 'type'.",
-    ),
-    EdgeTypeSpec(
-        "renders_component", AXIS_ENDPOINT_SHAPE,
-        "JSX/template render of a UI component; per ADR-0023 §6 review, "
-        "likely 'references' with meta['construct'] == 'jsx'.",
-    ),
-    EdgeTypeSpec(
-        "query_references", AXIS_ENDPOINT_SHAPE,
-        "Query reference to a database object (table, column, view); "
-        "per ADR-0023 §6, fold into 'references' + dst.kind == 'query'.",
-    ),
-    EdgeTypeSpec(
         "script_src", AXIS_ENDPOINT_SHAPE,
         "HTML ``<script src=...>`` reference.",
     ),
@@ -218,33 +189,6 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     EdgeTypeSpec(
         "kernel_launch", AXIS_ENDPOINT_SHAPE,
         "GPU kernel invocation.",
-    ),
-    EdgeTypeSpec(
-        "native_bridge", AXIS_ENDPOINT_SHAPE,
-        "JNI/FFI bridge to native code (use 'calls' + bridge meta).",
-    ),
-    EdgeTypeSpec(
-        "message_send", AXIS_ENDPOINT_SHAPE,
-        "Electron / Phoenix sender→receiver via named channel; per "
-        "ADR-0026 fold to 'event_publishes' + meta['channel_kind']='ipc'.",
-    ),
-    EdgeTypeSpec(
-        "message_receive", AXIS_ENDPOINT_SHAPE,
-        "Converse-direction edge of message_send; per ADR-0026 "
-        "DEPRECATE-NO-FOLD (Phase 3 producer rewrite picks the "
-        "canonical replacement — likely drop, since slice can compute "
-        "reverse paths from the forward event_publishes edge).",
-    ),
-    EdgeTypeSpec(
-        "websocket_message", AXIS_ENDPOINT_SHAPE,
-        "WebSocket sender_file→recv_file via channel; per ADR-0026 "
-        "fold to 'event_publishes' + meta['channel_kind']='websocket'.",
-    ),
-    EdgeTypeSpec(
-        "websocket_connection", AXIS_ENDPOINT_SHAPE,
-        "WebSocket file→endpoint declarative connectivity reference; "
-        "per ADR-0026 fold to 'references' + "
-        "meta['construct']='websocket_endpoint'.",
     ),
     EdgeTypeSpec(
         "grpc_calls", AXIS_ENDPOINT_SHAPE,
@@ -258,128 +202,14 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "graphql_calls", AXIS_ENDPOINT_SHAPE,
         "GraphQL call (use 'calls' + protocol meta).",
     ),
-    EdgeTypeSpec(
-        "message_queue", AXIS_ENDPOINT_SHAPE,
-        "RabbitMQ/Kafka publisher→subscriber via topic; per ADR-0026 "
-        "fold to 'event_publishes' + meta['channel_kind']='queue' "
-        "(same fold target as 'enqueues' from ADR-0025).",
-    ),
-    EdgeTypeSpec(
-        "cgo_bridge", AXIS_ENDPOINT_SHAPE,
-        "Go cgo FFI bridge (use 'calls' + bridge meta).",
-    ),
-    EdgeTypeSpec(
-        "ffi_bridge", AXIS_ENDPOINT_SHAPE,
-        "Generic FFI bridge (use 'calls' + bridge meta).",
-    ),
-    EdgeTypeSpec(
-        "napi_bridge", AXIS_ENDPOINT_SHAPE,
-        "Node-API native bridge (use 'calls' + bridge meta).",
-    ),
-    EdgeTypeSpec(
-        "wasm_bridge", AXIS_ENDPOINT_SHAPE,
-        "WebAssembly bridge invocation (use 'calls' + bridge meta).",
-    ),
-    EdgeTypeSpec(
-        "wasm_load", AXIS_ENDPOINT_SHAPE,
-        "WebAssembly module load.",
-    ),
-    EdgeTypeSpec(
-        "bridge_invokes", AXIS_ENDPOINT_SHAPE,
-        "Generic bridge-mediated invocation (use 'calls' + bridge meta).",
-    ),
-    EdgeTypeSpec(
-        "ipc_calls", AXIS_ENDPOINT_SHAPE,
-        "Tauri-style IPC call (Rust↔JS via invoke); per ADR-0026 "
-        "fold to 'calls' + meta['protocol']='ipc'.",
-    ),
-    EdgeTypeSpec(
-        "ipc_event", AXIS_ENDPOINT_SHAPE,
-        "Tauri-style IPC emit/listen; per ADR-0026 fold to "
-        "'event_publishes' + meta['channel_kind']='ipc'.",
-    ),
 
     # Dispatch-family fold targets per ADR-0025. Each was a deprecation
     # candidate where the family-specific name encoded a mechanism /
     # protocol / declaration-vs-runtime distinction, not a separate
     # relationship. Phase 3 producer migration renames these to the
     # canonical fold target with the differentiating fact in edge.meta.
-    EdgeTypeSpec(
-        "routes_to", AXIS_ENDPOINT_SHAPE,
-        "HTTP/router route to handler; per ADR-0025 fold to "
-        "'dispatches_to' + meta['dispatch_kind']='route'.",
-    ),
-    EdgeTypeSpec(
-        "delegates_to", AXIS_ENDPOINT_SHAPE,
-        "Class-level method delegation declaration (e.g., Ruby "
-        "delegate); per ADR-0025 fold to 'references' + "
-        "meta['mechanism']='delegate' (declaration-time, not dispatch).",
-    ),
-    EdgeTypeSpec(
-        "annotated_dispatches", AXIS_ENDPOINT_SHAPE,
-        "Annotation-driven dispatch; per ADR-0025 fold to "
-        "'dispatches_to' + meta['mechanism']='annotation'.",
-    ),
-    EdgeTypeSpec(
-        "uses_dispatch_table", AXIS_ENDPOINT_SHAPE,
-        "Function references a dispatch-table data symbol; per "
-        "ADR-0025 fold to 'references' + meta['construct']='dispatch_table'.",
-    ),
-    EdgeTypeSpec(
-        "di_registers", AXIS_ENDPOINT_SHAPE,
-        "DI container registration declaration; per ADR-0025 fold "
-        "to 'references' + meta['mechanism']='di_registration' "
-        "(declaration-time, not runtime dispatch).",
-    ),
-    EdgeTypeSpec(
-        "di_resolves", AXIS_ENDPOINT_SHAPE,
-        "DI container runtime resolution; per ADR-0025 fold to "
-        "'dispatches_to' + meta['mechanism']='di'.",
-    ),
-    EdgeTypeSpec(
-        "registers_routes", AXIS_ENDPOINT_SHAPE,
-        "Router declares a route; per ADR-0025 fold to "
-        "'references' + meta['mechanism']='route_registration' "
-        "(parallel to di_registers).",
-    ),
-    EdgeTypeSpec(
-        "message_dispatch", AXIS_ENDPOINT_SHAPE,
-        "Misnamed: emit shape is publisher→subscriber, not "
-        "dispatcher→target. Per ADR-0025 fold to 'event_publishes' "
-        "+ meta['channel_kind']='message_bus' (cross-family fold).",
-    ),
 
     # Publish-family fold targets per ADR-0025.
-    EdgeTypeSpec(
-        "event_subscribes", AXIS_ENDPOINT_SHAPE,
-        "DEPRECATE-NO-FOLD per ADR-0025: production emit shape is "
-        "subscriber→enclosing-function (structural containment) "
-        "while the name suggests pub-sub. Phase 3 producer rewrite "
-        "decides the canonical replacement (likely 'references' "
-        "or 'contains' with reversed direction).",
-    ),
-    EdgeTypeSpec(
-        "crdt_publishes", AXIS_ENDPOINT_SHAPE,
-        "CRDT-backed event log publish; per ADR-0025 fold to "
-        "'event_publishes' + meta['channel_kind']='crdt'.",
-    ),
-    EdgeTypeSpec(
-        "annotated_publishes", AXIS_ENDPOINT_SHAPE,
-        "Annotation-driven publish; per ADR-0025 fold to "
-        "'event_publishes' + meta['mechanism']='annotation'.",
-    ),
-    EdgeTypeSpec(
-        "emits", AXIS_ENDPOINT_SHAPE,
-        "Function references an event symbol it emits; per "
-        "ADR-0025 fold to 'references' + meta['construct']='event_emit' "
-        "(emit shape is function→event_symbol, not pub→sub).",
-    ),
-    EdgeTypeSpec(
-        "enqueues", AXIS_ENDPOINT_SHAPE,
-        "Producer pushes a job to a queue (e.g., Ruby ActiveJob "
-        "perform_later); per ADR-0025 fold to 'event_publishes' + "
-        "meta['channel_kind']='queue'.",
-    ),
 
     # Registry-completeness fills per WI-tavas-voror sweep —
     # endpoint_shape values producers were already emitting that
@@ -559,8 +389,6 @@ def find_edge_type(name: str) -> EdgeTypeSpec | None:
 
 IMPORT_EDGE_TYPES: Final[frozenset[str]] = frozenset({
     "imports",
-    "imports_module",
-    "imports_component",
 })
 """Edges representing import-shaped relationships, regardless of dst.kind.
 
@@ -568,10 +396,11 @@ Per ADR-0023 §6 Phase 2: replaces ad-hoc consumer-side sets like
 ``_IMPORT_EDGE_TYPES = {"imports", "imports_module"}`` (the silent
 bug from ADR-0023 §1 case 1 — Vue/Svelte/Astro/React component
 imports were silently miscategorized because ``imports_component``
-was missing). Centralizing here closes that gap; Phase 3 then
-folds the endpoint-shape variants into ``imports`` plus
-``dst.kind`` metadata, and Phase 4 removes the deprecated entries
-from this set."""
+was missing). After Phase 4b (this PR), the deprecated
+``imports_module`` and ``imports_component`` entries are removed
+from both the registry and this set; consumers querying by
+``dst.kind`` (e.g., ``dst.kind == 'component'``) get the
+component-import-specific behavior directly."""
 
 
 BRIDGE_KINDS: Final[frozenset[str]] = frozenset({

@@ -330,8 +330,11 @@ class TestDeadCodeMaybe:
         edges = [
             {"type": "calls", "src": "go:main.go:1-10:main:function",
              "dst": "go:routes.go:5-5:GET /api:route"},
-            {"type": "routes_to", "src": "go:routes.go:5-5:GET /api:route",
-             "dst": "go:handler.go:10-40:handleAPI:function"},
+            # Post-Phase-3 (WI-vasik-jofiv): routes_to → dispatches_to
+            # + meta['dispatch_kind']='route'
+            {"type": "dispatches_to", "src": "go:routes.go:5-5:GET /api:route",
+             "dst": "go:handler.go:10-40:handleAPI:function",
+             "meta": {"dispatch_kind": "route"}},
         ]
         bm_path = _make_behavior_map(tmp_path, nodes, edges)
 

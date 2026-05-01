@@ -720,12 +720,11 @@ _TRACEABLE_EDGE_TYPES = frozenset({
     # name in keeps the reverse-graph traversal crossing async-channel
     # boundaries after the IPC family rename.
     "event_publishes",
-    # FFI bridge edges (deprecated post-WI-mifor-vabul; kept here as
-    # dead-but-harmless until Phase 4 — every bridge now folds to 'calls'
-    # which is already a member).
-    "native_bridge", "wasm_bridge", "wasm_load", "bridge_invokes",
-    "cgo_bridge", "ffi_bridge",
-    "ipc_calls", "ipc_event", "grpc_calls", "implements_rpc",
+    # Still-emitted endpoint_shape values pending future Phase-3-style
+    # migrations of their respective linkers (grpc_calls in grpc.py),
+    # plus pending_classification entries awaiting per-family audit
+    # (implements_rpc).
+    "grpc_calls", "implements_rpc",
 })
 
 
