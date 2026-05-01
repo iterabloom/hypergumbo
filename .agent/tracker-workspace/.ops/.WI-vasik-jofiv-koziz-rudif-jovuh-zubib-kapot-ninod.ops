@@ -1,0 +1,22 @@
+- op: create  # 159e
+  at: '2026-05-01T02:33:24Z'  # 159e
+  by: agent  # 159e
+  actor: jgstern_agent  # 159e
+  clock: 1  # 159e
+  nonce: 159e  # 159e
+  data:  # 159e
+    kind: work_item  # 159e
+    title: "ADR-0023 §6 Phase 3 (publish/dispatch subset): producer migration per ADR-0025 verdicts"  # 159e
+    status: todo_soft  # 159e
+    priority: 3  # 159e
+    parent:  # 159e
+    tags:  # 159e
+    - concept_audit  # 159e
+    - framework_dispatch_linkers  # 159e
+    - protocol_linkers  # 159e
+    isbefore: []  # 159e
+    duplicate_of: []  # 159e
+    not_duplicate_of: []  # 159e
+    pr_ref:  # 159e
+    description: "Phase 3 producer-rename for the publish and dispatch families. Per ADR-0025, the audit verdicts are settled — fold targets and meta keys are in ADR-0025 §Migration impact. This item is the mechanical execution of those renames at producer sites.\n\nRENAMES (per ADR-0025 §Migration impact):\n- routes_to → dispatches_to + meta['dispatch_kind']='route' (~9 sites)\n- delegates_to → references + meta['mechanism']='delegate' (~3 sites, Ruby)\n- annotated_dispatches → dispatches_to + meta['mechanism']='annotation' (~1 site)\n- uses_dispatch_table → references + meta['construct']='dispatch_table' (~2 sites)\n- di_registers → references + meta['mechanism']='di_registration' (~1 site)\n- di_resolves → dispatches_to + meta['mechanism']='di' (~1 prod site)\n- registers_routes → references + meta['mechanism']='route_registration' (~1 site)\n- message_dispatch → event_publishes + meta['channel_kind']='message_bus' (~1 site, cross-family fold)\n- crdt_publishes → event_publishes + meta['channel_kind']='crdt' (~1 prod site + tests)\n- annotated_publishes → event_publishes + meta['mechanism']='annotation' (~1 site)\n- emits → references + meta['construct']='event_emit' (~1 site)\n- enqueues → event_publishes + meta['channel_kind']='queue' (~3 sites, Ruby ActiveJob)\n\nDEPRECATE-NO-FOLD (Phase 3 PRODUCER DECISION required):\n- event_subscribes — production emit shape (subscriber→enclosing-function, structural containment) doesn't match the name. The Phase 3 rewrite picks the canonical replacement. Per ADR-0025: 'likely references or contains with reversed direction'. Audit the consumer queries that follow event_subscribes edges (test_slice.py is one — check what semantics those tests expect) before deciding. Could also choose to drop the edge entirely since the information is recoverable from Symbol.span (with a small loss of graph navigability).\n\nEXPECTED CASCADE (informed by PR #3481 dst-kind subset):\n- Each producer rename triggers ~3-15 test assertion updates per producer.\n- Total estimate: ~40-60 producer-line edits + ~80-120 test-assertion edits.\n- Pattern: replace_all on each test file mapping old edge_type literal → new canonical literal. The meta-payload checks need adding to assertions for the affected edges (since the new edges carry meta keys the original edges didn't).\n- Consumer-side caught while migrating: any linker that filters by edge_type == <fold-source-name> needs the same Phase 2-shape rewrite the vue_component linker got in PR #3481 (filter by canonical edge_type AND meta-discriminator).\n\nACCEPTANCE:\n- All twelve fold-target values have zero production emit sites.\n- event_subscribes producer rewritten per the Phase 3 decision; rationale documented in this item's discussion thread.\n- Tag awaits_bakeoff_validation — the publish/dispatch renames affect how downstream consumers (slice, ranking) see relationships between symbols.\n\nDEPENDENCIES:\n- HARD: ADR-0025 (done, PR #3480) — the verdicts are the prerequisite.\n- HARD: WI-mokam-jalig dst-kind subset (done, PR #3481) — establishes the migration pattern.\n- SOFT: Independent of IPC and bridge/FFI subsets; can land in parallel."  # 159e
+    fields: {}  # 159e

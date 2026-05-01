@@ -19,3 +19,18 @@
     pr_ref:  # c5fb
     description: "ADR-0023 §6 Phase 3 producer migration for the IPC subset gates on a per-family audit (ADR-0025 is the worked example for dispatch and publish; this item is the IPC analogue). Currently ipc_calls and ipc_event sit at endpoint_shape in the canonical registry per ADR-0023 §6's first cut, but the deprecation/fold rationale isn't fully settled and producer migration shouldn't proceed until the audit picks canonical names + meta keys.\n\nVALUES TO AUDIT:\n- ipc_calls (registered, endpoint_shape) — inter-process call. Likely fold to 'calls' + meta['protocol']='ipc' or similar.\n- ipc_event (registered, endpoint_shape) — inter-process event dispatch. Likely fold to 'event_publishes' (per ADR-0025's publish family) + meta['channel_kind']='ipc'.\n\nTHE AUDIT QUESTIONS (from ADR-0025's methodology):\nFor each family member, decide CANONICAL / FOLD / DEPRECATE-NO-FOLD. Apply the four leakage tests at per-pair level. Produce a verdict table; commit verdicts to an ADR (could be an amendment to ADR-0025 or a new ADR-0026 — judgment call, but probably an amendment since IPC is a small family and ADR-0025 already has the methodology section).\n\nEMIT-SITE INVENTORY (from emit-site grep):\n- ipc_calls — packages/hypergumbo-core/src/hypergumbo_core/linkers/ipc.py, phoenix_ipc.py\n- ipc_event — same\n(Run an emit-site grep at audit time to confirm; the canonical inventory is whichever sites currently emit, not the description above.)\n\nDELIVERABLES (mirroring ADR-0025):\n1. Per-value verdict table in this item's discussion thread.\n2. ADR amendment or new ADR capturing verdicts.\n3. Registry updates per the verdicts.\n4. Once verdicts land, file a Phase 3 producer-migration item for IPC (analogous to PR #3481 for dst-kind).\n\nDEPENDENCIES:\n- HARD: ADR-0023 advancement (done, PR #3472).\n- SOFT: this item should not block on bridge/FFI Phase 3 — they're independent subsets.\n\nACCEPTANCE:\n- Every IPC family member has a documented verdict.\n- An ADR captures the verdicts as durable governance.\n- Registry reflects the verdicts (axis classifications updated)."  # c5fb
     fields: {}  # c5fb
+- op: update  # 2aff
+  at: '2026-05-01T04:23:10Z'  # 2aff
+  by: agent  # 2aff
+  actor: jgstern_agent  # 2aff
+  clock: 2  # 2aff
+  nonce: 2aff  # 2aff
+  set:  # 2aff
+    status: done  # 2aff
+- op: discuss  # 8517
+  at: '2026-05-01T04:23:10Z'  # 8517
+  by: agent  # 8517
+  actor: jgstern_agent  # 8517
+  clock: 3  # 8517
+  nonce: '8517'  # 8517
+  message: "Done in PR #3484 (ADR-0026). Audit went broader than the WI's named ipc_calls+ipc_event scope to cover the full IPC-shaped family (7 values across Tauri/Electron/Phoenix/WebSocket/MQ): zero CANONICAL, six FOLD (ipc_calls→calls+protocol=ipc; ipc_event/message_send/websocket_message/message_queue→event_publishes+channel_kind in {ipc,websocket,queue}; websocket_connection→references+construct=websocket_endpoint), one DEPRECATE-NO-FOLD (message_receive — same converse-direction shape problem as ADR-0025's event_subscribes). Cross-ADR overlap: message_queue and ADR-0025's enqueues fold to the same target (event_publishes+channel_kind=queue) — confirms the publish-family fold is protocol-agnostic. Registry descriptions updated; no axis reclassifications, no SCHEMA_VERSION bump (description-only). Phase 3 producer migration is WI-hahap-farid (narrow scope, may need expansion — discussed there)."  # 8517

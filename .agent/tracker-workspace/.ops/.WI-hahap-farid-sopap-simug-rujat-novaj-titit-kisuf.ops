@@ -1,0 +1,22 @@
+- op: create  # 02cf
+  at: '2026-05-01T02:50:06Z'  # 02cf
+  by: agent  # 02cf
+  actor: jgstern_agent  # 02cf
+  clock: 1  # 02cf
+  nonce: 02cf  # 02cf
+  data:  # 02cf
+    kind: work_item  # 02cf
+    title: "ADR-0023 §6 Phase 3 (IPC subset): producer migration per WI-fugun-butil verdicts"  # 02cf
+    status: todo_soft  # 02cf
+    priority: 3  # 02cf
+    parent:  # 02cf
+    tags:  # 02cf
+    - concept_audit  # 02cf
+    - protocol_linkers  # 02cf
+    isbefore:  # 02cf
+    - WI-vomoj-suhaz-ruvof-vazop-kigoh-tajog-rilav-pajoj  # 02cf
+    duplicate_of: []  # 02cf
+    not_duplicate_of: []  # 02cf
+    pr_ref:  # 02cf
+    description: "Phase 3 producer-rename for the IPC subset. Mirrors the dst-kind subset PR (#3481, WI-mokam-jalig progress) and the publish/dispatch subset (WI-vasik-jofiv) — mechanical rename of producer emits with meta payloads carrying the differentiating fact.\n\nVALUES TO MIGRATE (currently endpoint_shape per the canonical registry):\n- ipc_calls (registered, endpoint_shape) — inter-process call\n- ipc_event (registered, endpoint_shape) — inter-process event dispatch\n\nCANONICAL FOLD TARGETS — TBD by WI-fugun-butil (IPC family audit).\n\nLikely landings (preview, subject to the audit's verdict):\n- ipc_calls → calls + meta['protocol']='ipc' (or meta['transport']=specific transport)\n- ipc_event → event_publishes + meta['channel_kind']='ipc' (cross-family fold per ADR-0025's pattern; same shape as message_dispatch's cross-family fold)\n\nThe audit may settle on different verdicts — possibly subdividing by IPC mechanism (DBus, ZMQ, named pipes, Phoenix LiveView, Tauri, etc.) into protocol-specific meta keys, or possibly preserving ipc_event as a CANONICAL distinct relationship if the audit decides IPC events differ enough from event-bus pub-sub.\n\nPRODUCER SITES (from emit-site grep at WI-tavas-voror close-out):\n- linkers/ipc.py (or similar — confirm at migration time)\n- linkers/phoenix_ipc.py\n- linkers/tauri_ipc.py\n- (Run an emit-site grep at migration time to confirm the canonical inventory.)\n\nEXPECTED CASCADE (informed by PR #3481 dst-kind subset):\n- ~2 producer-line edits.\n- Test assertion updates per producer; replace_all-friendly given small scope.\n- Consumer-side check: any linker filtering by edge_type == 'ipc_calls' or 'ipc_event' needs Phase 2-shape rewrite. The bakeoff-deep _CALL_FLOW_EDGE_TYPES set currently includes 'ipc_calls' — after the rename it'll need to switch to canonical edge_type + meta query.\n\nACCEPTANCE:\n- ipc_calls and ipc_event have zero production emit sites (drift linter confirms).\n- meta key naming follows whatever verdict WI-fugun-butil settles on; documented in the audit's resolution and reflected in the canonical registry.\n- Tag awaits_bakeoff_validation per AGENTS.md §Bakeoff Validation Discipline — the rename affects how slice/ranking/sketch see IPC edges.\n\nDEPENDENCIES:\n- HARD: WI-fugun-butil (IPC family audit) must land first — this item's fold targets and meta keys come from that audit's verdicts.\n- HARD: WI-mokam-jalig dst-kind subset (done, PR #3481) — establishes the migration pattern.\n- SOFT: Independent of bridge/FFI (WI-mifor-vabul) and publish/dispatch (WI-vasik-jofiv) subsets; can land in parallel with either.\n\nThis item closes one of the three remaining preconditions for WI-mokam-jalig's full acceptance ('every endpoint_shape value has zero production emit sites'); the other two are WI-mifor-vabul and WI-vasik-jofiv. Phase 4 (WI-vomoj-suhaz) waits on all four (this + the three already filed) to close."  # 02cf
+    fields: {}  # 02cf
