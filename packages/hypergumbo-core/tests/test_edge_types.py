@@ -280,3 +280,91 @@ def test_find_axis_drift_skips_annotated_assignment_without_value(tmp_path: Path
         '_X_EDGE_TYPES: frozenset[str]\n',
     )
     assert find_axis_drift(tmp_path) == []
+
+
+# --- Strict-mode wrapper (WI-variv-lujug) ---
+
+
+def test_find_axis_drift_strict_known_off_axis_consumers():
+    """Strict mode reports the known-pending off-axis consumer
+    references. These reflect legitimate references to endpoint_shape
+    values whose producers haven't been Phase-3-migrated yet
+    (http.py emits ``http_calls``; grpc.py emits ``grpc_calls``). Each
+    entry is dead-but-harmless once that family ships its Phase 3 fold;
+    until then, the consumer reference is load-bearing because the
+    producer-side fold target ('calls' + meta) doesn't exist yet.
+
+    This test pins the *exact* known-pending list so a fourth
+    accidental off-axis reference fails the test loudly. When a
+    family's Phase 3 ships, drop that family's value from this list
+    (and ideally the consumer reference goes away in the same PR).
+    """
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    repo_root = Path(__file__).resolve().parents[3]
+    offenders = find_axis_drift(repo_root, strict=True)
+
+    # Each entry: (file_substring, set_name, value).
+    expected = {
+        ("compact.py", "CROSS_CUTTING_EDGE_TYPES", "http_calls"),
+        ("io_boundary.py", "_TRACEABLE_EDGE_TYPES", "grpc_calls"),
+        ("taint.py", "TAINT_CALL_EDGE_TYPES", "grpc_calls"),
+    }
+    # Format: "<rel_path>:<lineno> (<set_name>): contains
+    #   ['<value>'] not on allowed axis [...]"
+    candidate_triples = {
+        (f, s, v)
+        for f in ("compact.py", "io_boundary.py", "taint.py")
+        for s in (
+            "CROSS_CUTTING_EDGE_TYPES",
+            "_TRACEABLE_EDGE_TYPES",
+            "TAINT_CALL_EDGE_TYPES",
+        )
+        for v in ("http_calls", "grpc_calls", "graphql_calls")
+    }
+    actual: set[tuple[str, str, str]] = set()
+    for line in offenders:
+        for f, s, v in candidate_triples:
+            if f in line and s in line and f"'{v}'" in line:
+                actual.add((f, s, v))
+    assert actual == expected, (
+        f"Strict-mode off-axis offenders changed:\n"
+        f"  expected: {sorted(expected)}\n"
+        f"  actual: {sorted(actual)}\n"
+        f"  raw offenders: {offenders}"
+    )
+
+
+def test_find_axis_drift_strict_flags_endpoint_shape_value(tmp_path: Path):
+    """If a consumer set references an endpoint_shape value (which
+    Phase 4b should have removed everywhere), strict mode flags it."""
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        # 'http_calls' is endpoint_shape per the post-Phase-4b registry
+        # (its protocol-specific linker hasn't been migrated yet).
+        '_DEMO_EDGE_TYPES = frozenset({"calls", "http_calls"})\n',
+    )
+    # Default (lax) mode: registered value, no drift.
+    assert find_axis_drift(tmp_path) == []
+    # Strict mode: http_calls is endpoint_shape → off-axis.
+    offenders = find_axis_drift(tmp_path, strict=True)
+    assert len(offenders) == 1
+    assert "http_calls" in offenders[0]
+    assert "not on allowed axis" in offenders[0]
+
+
+def test_find_axis_drift_strict_allows_pending_classification(tmp_path: Path):
+    """Permissive-pending design: pending_classification values stay
+    allowed because they are real edges produced by GraphQL/OpenAPI/
+    RPC analyzers awaiting per-family audit. Existing consumers (e.g.,
+    io_boundary._TRACEABLE_EDGE_TYPES referencing implements_rpc)
+    must not be flagged by the strict-mode default."""
+    from hypergumbo_core.edge_types import find_axis_drift
+
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_DEMO_EDGE_TYPES = frozenset({"calls", "implements_rpc"})\n',
+    )
+    assert find_axis_drift(tmp_path, strict=True) == []

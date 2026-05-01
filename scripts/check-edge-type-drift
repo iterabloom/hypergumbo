@@ -12,6 +12,14 @@ bug shape from ADR-0023 (consumer-side hardcoded sets that drift from
 the canonical list — both *missing values* runtime emits and *phantom
 values* runtime never emits).
 
+The default mode enforces registry membership only. Pass ``--strict``
+(per WI-variv-lujug) to additionally enforce ADR-0023's axis
+principle: every value must be on the relationship axis (or the
+pending_classification axis, until per-family audits resolve those
+values onto relationship). Strict mode is the recommended default
+once a multi-value field's migration phases complete; for
+``Edge.edge_type`` that is post-WI-vomoj-suhaz Phase 4b.
+
 Exit codes:
     0 — no drift detected.
     1 — drift detected; offenders printed to stdout, fix instructions
@@ -22,6 +30,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -43,8 +52,25 @@ except ImportError as exc:  # pragma: no cover — defensive
     sys.exit(2)
 
 
-def main() -> int:
-    offenders = find_axis_drift(REPO_ROOT)
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Edge-type drift linter — verifies *EDGE_TYPE* consumer "
+            "sets are subsets of the canonical registry."
+        ),
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "Additionally enforce ADR-0023's axis principle: every "
+            "value must be on the relationship or pending_classification "
+            "axis. Endpoint_shape values flagged as off-axis."
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    offenders = find_axis_drift(REPO_ROOT, strict=args.strict)
     if not offenders:
         return 0
 

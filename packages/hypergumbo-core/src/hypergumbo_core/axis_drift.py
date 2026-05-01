@@ -136,6 +136,8 @@ def find_drift(
     registry_names: frozenset[str],
     search_roots: Iterable[str] = DEFAULT_SEARCH_ROOTS,
     excluded_path_substrings: Iterable[str] = DEFAULT_EXCLUDED_PATH_SUBSTRINGS,
+    allowed_axis_names: frozenset[str] | None = None,
+    name_to_axis: dict[str, str] | None = None,
 ) -> list[str]:
     """Return human-readable drift offenders found under *repo_root*.
 
@@ -146,6 +148,16 @@ def find_drift(
     *registry_names*; any value not in the registry is reported as
     drift.
 
+    When *allowed_axis_names* is provided (strict mode), additionally
+    enforces axis-principle membership: every value must appear in the
+    intersection of the registry AND the allowed-axis set. Values
+    that are in the registry but on a disallowed axis are reported as
+    "off-axis" drift. *name_to_axis* is the registry's name→axis map
+    used for that lookup; required when *allowed_axis_names* is given,
+    ignored otherwise. The two parameters are split rather than
+    fused into a single ``axis_filter`` so callers can pass the
+    canonical map once and toggle strictness via the allowed-set.
+
     Returns an empty list if no drift is detected, and silently skips
     *search_roots* entries that don't exist on disk (so a synthetic
     test repo with only ``packages/`` is fine).
@@ -154,8 +166,15 @@ def find_drift(
     (<target_name>): contains [<sorted_drift_values>] not in
     canonical registry`` — same shape as the original Edge-types
     detector so downstream messages (test failures, pre-commit
-    output) read consistently across axes.
+    output) read consistently across axes. Off-axis offenders use
+    the suffix ``not on allowed axis <{...}>`` so callers can
+    distinguish unregistered drift from registered-but-off-axis drift.
     """
+    if allowed_axis_names is not None and name_to_axis is None:
+        raise ValueError(
+            "allowed_axis_names requires name_to_axis "
+            "(the registry's name→axis lookup map)",
+        )
     excluded_tuple = tuple(excluded_path_substrings)
     offenders: list[str] = []
     for root_name in search_roots:
@@ -169,14 +188,25 @@ def find_drift(
             for lineno, target_name, values in iter_axis_set_assignments(
                 py_file, name_filter=name_filter,
             ):
+                try:
+                    rel = py_file.relative_to(repo_root)
+                except ValueError:  # pragma: no cover
+                    rel = py_file
                 drift = values - registry_names
                 if drift:
-                    try:
-                        rel = py_file.relative_to(repo_root)
-                    except ValueError:  # pragma: no cover
-                        rel = py_file
                     offenders.append(
                         f"{rel}:{lineno} ({target_name}): "
                         f"contains {sorted(drift)} not in canonical registry"
                     )
+                if allowed_axis_names is not None:
+                    off_axis = {
+                        v for v in (values & registry_names)
+                        if name_to_axis.get(v) not in allowed_axis_names
+                    }
+                    if off_axis:
+                        offenders.append(
+                            f"{rel}:{lineno} ({target_name}): "
+                            f"contains {sorted(off_axis)} not on "
+                            f"allowed axis {sorted(allowed_axis_names)}"
+                        )
     return offenders

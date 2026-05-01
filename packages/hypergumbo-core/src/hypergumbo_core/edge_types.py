@@ -452,7 +452,11 @@ the language-pair information is recoverable from
 # Other axis-bearing fields call ``axis_drift.find_drift`` directly.
 
 
-def find_axis_drift(repo_root: Path) -> list[str]:
+def find_axis_drift(
+    repo_root: Path,
+    *,
+    strict: bool = False,
+) -> list[str]:
     """Return drift offenders for ``Edge.edge_type`` consumer-side sets.
 
     Thin wrapper over :func:`hypergumbo_core.axis_drift.find_drift`
@@ -466,13 +470,35 @@ def find_axis_drift(repo_root: Path) -> list[str]:
     is the parameterized helper's
     :data:`~hypergumbo_core.axis_drift.DEFAULT_SEARCH_ROOTS`; pass
     ``search_roots=`` to ``find_drift`` directly if a narrower or
-    wider scope is needed. Used by the property test in
-    ``tests/test_edge_types.py`` and the pre-commit linter at
-    ``scripts/check-edge-type-drift``.
+    wider scope is needed.
+
+    When ``strict=True`` (per WI-variv-lujug, post-Phase-4b), the
+    linter additionally enforces axis-principle membership: consumer
+    sets are flagged if they contain any registry value whose axis is
+    not in ``{relationship, pending_classification}``. Pending values
+    stay allowed by design — they are real edges produced by GraphQL/
+    OpenAPI/RPC analyzers awaiting per-family audit, and consumers
+    legitimately reference them today (e.g., ``implements_rpc`` in
+    ``io_boundary._TRACEABLE_EDGE_TYPES``). When the per-family audits
+    move pending values to canonical-relationship, the existing
+    membership check catches any consumer that didn't follow the
+    rename.
+
+    Used by the property test in ``tests/test_edge_types.py`` and the
+    pre-commit linter at ``scripts/check-edge-type-drift``.
     """
     from hypergumbo_core.axis_drift import find_drift
+    allowed_axis_names: frozenset[str] | None = None
+    name_to_axis: dict[str, str] | None = None
+    if strict:
+        allowed_axis_names = frozenset(
+            {AXIS_RELATIONSHIP, AXIS_PENDING},
+        )
+        name_to_axis = {spec.name: spec.axis for spec in EDGE_TYPES}
     return find_drift(
         repo_root,
         name_filter="EDGE_TYPE",
         registry_names=all_edge_type_names(),
+        allowed_axis_names=allowed_axis_names,
+        name_to_axis=name_to_axis,
     )

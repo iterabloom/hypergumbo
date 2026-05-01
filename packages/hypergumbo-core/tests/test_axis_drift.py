@@ -236,3 +236,115 @@ def test_default_search_roots_includes_three_known_dirs():
 
 def test_default_excluded_path_substrings_includes_tests():
     assert "/tests/" in DEFAULT_EXCLUDED_PATH_SUBSTRINGS
+
+
+# --- Strict-mode axis-principle enforcement (WI-variv-lujug) ---
+
+
+def test_find_drift_strict_flags_off_axis_registry_member(tmp_path: Path):
+    """Strict mode flags consumer-set values that are in the registry
+    but on a disallowed axis. The membership check passes (no
+    unregistered values), but the off-axis check fires."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_X_KIND = {"alpha", "deprecated_x"}\n',
+    )
+    offenders = find_drift(
+        tmp_path,
+        name_filter="X_KIND",
+        registry_names=frozenset({"alpha", "deprecated_x"}),
+        allowed_axis_names=frozenset({"canonical"}),
+        name_to_axis={"alpha": "canonical", "deprecated_x": "endpoint_shape"},
+    )
+    assert len(offenders) == 1
+    assert "deprecated_x" in offenders[0]
+    assert "not on allowed axis" in offenders[0]
+    assert "['canonical']" in offenders[0]
+
+
+def test_find_drift_strict_clean_when_all_values_on_allowed_axis(
+    tmp_path: Path,
+):
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_X_KIND = {"alpha", "beta"}\n',
+    )
+    assert find_drift(
+        tmp_path,
+        name_filter="X_KIND",
+        registry_names=frozenset({"alpha", "beta"}),
+        allowed_axis_names=frozenset({"canonical"}),
+        name_to_axis={"alpha": "canonical", "beta": "canonical"},
+    ) == []
+
+
+def test_find_drift_strict_permissive_pending(tmp_path: Path):
+    """Per WI-variv-lujug design: pending_classification values are
+    real edges produced by analyzers awaiting per-family audit;
+    consumers may legitimately reference them. Strict mode allows
+    multiple axis names — typically {relationship, pending_classification}.
+    """
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_X_KIND = {"alpha", "pending_value"}\n',
+    )
+    assert find_drift(
+        tmp_path,
+        name_filter="X_KIND",
+        registry_names=frozenset({"alpha", "pending_value"}),
+        allowed_axis_names=frozenset({"canonical", "pending"}),
+        name_to_axis={"alpha": "canonical", "pending_value": "pending"},
+    ) == []
+
+
+def test_find_drift_strict_reports_both_drift_and_off_axis(tmp_path: Path):
+    """When a consumer set has both unregistered drift AND off-axis
+    registry values, strict mode reports both as separate offenders."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_X_KIND = {"alpha", "phantom_value", "deprecated_x"}\n',
+    )
+    offenders = find_drift(
+        tmp_path,
+        name_filter="X_KIND",
+        registry_names=frozenset({"alpha", "deprecated_x"}),
+        allowed_axis_names=frozenset({"canonical"}),
+        name_to_axis={"alpha": "canonical", "deprecated_x": "endpoint_shape"},
+    )
+    assert len(offenders) == 2
+    drift_msgs = [o for o in offenders if "not in canonical registry" in o]
+    off_axis_msgs = [o for o in offenders if "not on allowed axis" in o]
+    assert len(drift_msgs) == 1
+    assert "phantom_value" in drift_msgs[0]
+    assert len(off_axis_msgs) == 1
+    assert "deprecated_x" in off_axis_msgs[0]
+
+
+def test_find_drift_default_does_not_enforce_axis_principle(tmp_path: Path):
+    """Default mode (allowed_axis_names=None) keeps the original
+    'subset of registry' behavior — off-axis registry values are
+    silently allowed. Preserves backward compatibility."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_X_KIND = {"alpha", "deprecated_x"}\n',
+    )
+    assert find_drift(
+        tmp_path,
+        name_filter="X_KIND",
+        registry_names=frozenset({"alpha", "deprecated_x"}),
+    ) == []
+
+
+def test_find_drift_strict_requires_name_to_axis():
+    """Passing allowed_axis_names without name_to_axis raises ValueError —
+    the linter has no way to look up axes otherwise. Catches caller
+    bugs at the call site rather than producing a silent wrong answer.
+    """
+    import pytest
+    with pytest.raises(ValueError, match="name_to_axis"):
+        find_drift(
+            Path("/nonexistent"),
+            name_filter="X_KIND",
+            registry_names=frozenset({"alpha"}),
+            allowed_axis_names=frozenset({"canonical"}),
+        )
