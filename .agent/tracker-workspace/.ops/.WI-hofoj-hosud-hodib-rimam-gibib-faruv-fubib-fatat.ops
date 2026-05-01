@@ -1,0 +1,20 @@
+- op: create  # d686
+  at: '2026-05-01T19:34:04Z'  # d686
+  by: agent  # d686
+  actor: jgstern_agent  # d686
+  clock: 1  # d686
+  nonce: d686  # d686
+  data:  # d686
+    kind: work_item  # d686
+    title: "Document UsageContext.kind axis-mixing + re-eval triggers (per WI-gatuh-ruvar audit)"  # d686
+    status: todo_soft  # d686
+    priority: 4  # d686
+    parent:  # d686
+    tags:  # d686
+    - concept_audit  # d686
+    isbefore: []  # d686
+    duplicate_of: []  # d686
+    not_duplicate_of: []  # d686
+    pr_ref:  # d686
+    description: "Per the WI-gatuh-ruvar audit verdict (DOCUMENT with re-eval trigger), update the docstring on the UsageContext.kind field in packages/hypergumbo-core/src/hypergumbo_core/ir.py to surface the axis-mixing explicitly:\n\nDOCSTRING TO ADD (verbatim or close):\n'kind names how the surrounding source code references this symbol — either as a syntactic construct (call, macro) or as a semantic role (data_value, export). The field currently mixes two axes; the union is small enough (4 values) to be tractable, but a fifth value that doesn't fit either axis should trigger a split into separate fields (e.g., usage_construct + usage_role). Re-evaluation triggers: (a) a fifth value that fits neither construct nor role; (b) a consumer needing per-axis filtering; (c) a bug where the single picked value hides a cross-axis signal a consumer needs. See WI-gatuh-ruvar audit thread.'\n\nPure docstring update; no behavior change.\n\nACCEPTANCE: docstring lands on the UsageContext.kind field annotation; no test changes needed."  # d686
+    fields: {}  # d686

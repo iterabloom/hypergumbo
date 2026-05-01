@@ -1,0 +1,21 @@
+- op: create  # bf42
+  at: '2026-05-01T19:38:21Z'  # bf42
+  by: agent  # bf42
+  actor: jgstern_agent  # bf42
+  clock: 1  # bf42
+  nonce: bf42  # bf42
+  data:  # bf42
+    kind: work_item  # bf42
+    title: "ADR-0027 draft: Symbol.kind axis declaration (per WI-dumiz-bikul audit)"  # bf42
+    status: todo_soft  # bf42
+    priority: 3  # bf42
+    parent:  # bf42
+    tags:  # bf42
+    - concept_audit  # bf42
+    - analysis_quality  # bf42
+    isbefore: []  # bf42
+    duplicate_of: []  # bf42
+    not_duplicate_of: []  # bf42
+    pr_ref:  # bf42
+    description: "Per the WI-dumiz-bikul audit verdict (DEPRECATE — full ADR-0023-shape migration), draft ADR-0027 instantiating ADR-0024's four-part axis-declaration template for Symbol.kind. The audit's cluster taxonomy (in WI-dumiz-bikul's discussion thread) is the input to §1 Context and §3 Detailed analysis.\n\nADR-0027 SCOPE:\n- §1 Context: 192 distinct values across 8+ axes; reference the audit verdict.\n- §2 Decision: Symbol.kind names the SOURCE-LANGUAGE SYNTACTIC CONSTRUCT only. Cluster A from the audit (~30 values: function, class, method, struct, ...) is the canonical seed; framework participation moves to meta keys; edge labels reclassify or move.\n- §3 Detailed analysis: per-cluster fold targets (cluster D → kind=function/method + meta['framework_role']='event_publisher' etc.; cluster E → reclassify as call_site / drop; cluster F overlaps with ADR-0023's component value; cluster G arguably a separate axis).\n- §4 Consumer pattern: consumers query (kind, edge_type, meta) per ADR-0023 §6 Phase 2 shape.\n- §5 Enforcement: axis_drift.find_drift parameterized on name_filter='SYMBOL_KIND' with the new registry; per-axis property test; pre-commit linter via scripts/check-symbol-kind-drift (analogous to check-edge-type-drift).\n- §6 Migration plan: four phases mirroring ADR-0023 §6 (registry + linter, consumer migration, producer migration, schema bump + removal).\n\nESTIMATED EFFORT: ADR-0027 draft itself: ~1 day for the writing. Migration phases: cumulatively ~5-10 days, plus bakeoff validation per phase.\n\nFOLLOW-UP ITEMS: After ADR-0027 lands, file separate items for each phase (registry, drift linter, consumer migration, producer migration, schema bump) — same pattern as the WI-sahab-fatoz / WI-mokam-jalig / WI-vomoj-suhaz chain for ADR-0023.\n\nDEPENDENCIES: none HARD; SOFT dependency on ADR-0024 (axis-declaration template — already accepted, used as the authoritative format)."  # bf42
+    fields: {}  # bf42
