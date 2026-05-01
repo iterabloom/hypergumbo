@@ -34,10 +34,11 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0023](0023-edge-type-relationship-not-endpoints.md) | Edge Type Names the Relationship, Not the Endpoints | Accepted (§6 migration in progress) | 2026-04-29 |
 | [0024](0024-axis-declaration-template.md) | Axis Declaration Template for Multi-Value Fields | Draft | 2026-04-30 |
 | [0025](0025-dispatch-publish-family-audits.md) | Dispatch and Publish Family Classifications | Accepted | 2026-04-30 |
+| [0026](0026-ipc-family-audit.md) | IPC Family Classifications | Accepted | 2026-05-01 |
 
 ## Thematic grouping
 
-**Analysis pipeline:** 0003, 0004, 0005, 0006, 0007, 0012, 0014, 0015, 0016, 0017, 0022, 0023, 0024, 0025
+**Analysis pipeline:** 0003, 0004, 0005, 0006, 0007, 0012, 0014, 0015, 0016, 0017, 0022, 0023, 0024, 0025, 0026
 
 **Agent infrastructure and governance:** 0001, 0008, 0009, 0013, 0018, 0019, 0020, 0021
 

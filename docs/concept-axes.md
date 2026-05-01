@@ -74,13 +74,13 @@ Values whose meaning is leaked into the type label even though it is captured by
 - **`http_calls`** — HTTP call (use 'calls' + protocol meta).
 - **`imports_component`** — Imports targeting a UI component (Vue/Svelte/React); per ADR-0023 §6, fold into 'imports' + dst.kind == 'component'.
 - **`imports_module`** — Imports targeting a module/file specifically (use 'imports').
-- **`ipc_calls`** — Inter-process call (use 'calls' + protocol meta).
-- **`ipc_event`** — Inter-process event dispatch.
+- **`ipc_calls`** — Tauri-style IPC call (Rust↔JS via invoke); per ADR-0026 fold to 'calls' + meta['protocol']='ipc'.
+- **`ipc_event`** — Tauri-style IPC emit/listen; per ADR-0026 fold to 'event_publishes' + meta['channel_kind']='ipc'.
 - **`kernel_launch`** — GPU kernel invocation.
 - **`message_dispatch`** — Misnamed: emit shape is publisher→subscriber, not dispatcher→target. Per ADR-0025 fold to 'event_publishes' + meta['channel_kind']='message_bus' (cross-family fold).
-- **`message_queue`** — Message queue endpoint reference.
-- **`message_receive`** — Message consumed from a queue/topic.
-- **`message_send`** — Message produced to a queue/topic.
+- **`message_queue`** — RabbitMQ/Kafka publisher→subscriber via topic; per ADR-0026 fold to 'event_publishes' + meta['channel_kind']='queue' (same fold target as 'enqueues' from ADR-0025).
+- **`message_receive`** — Converse-direction edge of message_send; per ADR-0026 DEPRECATE-NO-FOLD (Phase 3 producer rewrite picks the canonical replacement — likely drop, since slice can compute reverse paths from the forward event_publishes edge).
+- **`message_send`** — Electron / Phoenix sender→receiver via named channel; per ADR-0026 fold to 'event_publishes' + meta['channel_kind']='ipc'.
 - **`model_reference`** — ORM reference to a model class; per ADR-0023 §6, fold into 'references' + dst.kind == 'model'.
 - **`napi_bridge`** — Node-API native bridge (use 'calls' + bridge meta).
 - **`native_bridge`** — JNI/FFI bridge to native code (use 'calls' + bridge meta).
@@ -93,8 +93,8 @@ Values whose meaning is leaked into the type label even though it is captured by
 - **`uses_dispatch_table`** — Function references a dispatch-table data symbol; per ADR-0025 fold to 'references' + meta['construct']='dispatch_table'.
 - **`wasm_bridge`** — WebAssembly bridge invocation (use 'calls' + bridge meta).
 - **`wasm_load`** — WebAssembly module load.
-- **`websocket_connection`** — WebSocket connection establishment.
-- **`websocket_message`** — WebSocket message exchange.
+- **`websocket_connection`** — WebSocket file→endpoint declarative connectivity reference; per ADR-0026 fold to 'references' + meta['construct']='websocket_endpoint'.
+- **`websocket_message`** — WebSocket sender_file→recv_file via channel; per ADR-0026 fold to 'event_publishes' + meta['channel_kind']='websocket'.
 
 ### `pending_classification` — per-family audit pending per ADR-0023 §5
 

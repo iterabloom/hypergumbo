@@ -184,19 +184,26 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     ),
     EdgeTypeSpec(
         "message_send", AXIS_ENDPOINT_SHAPE,
-        "Message produced to a queue/topic.",
+        "Electron / Phoenix sender→receiver via named channel; per "
+        "ADR-0026 fold to 'event_publishes' + meta['channel_kind']='ipc'.",
     ),
     EdgeTypeSpec(
         "message_receive", AXIS_ENDPOINT_SHAPE,
-        "Message consumed from a queue/topic.",
+        "Converse-direction edge of message_send; per ADR-0026 "
+        "DEPRECATE-NO-FOLD (Phase 3 producer rewrite picks the "
+        "canonical replacement — likely drop, since slice can compute "
+        "reverse paths from the forward event_publishes edge).",
     ),
     EdgeTypeSpec(
         "websocket_message", AXIS_ENDPOINT_SHAPE,
-        "WebSocket message exchange.",
+        "WebSocket sender_file→recv_file via channel; per ADR-0026 "
+        "fold to 'event_publishes' + meta['channel_kind']='websocket'.",
     ),
     EdgeTypeSpec(
         "websocket_connection", AXIS_ENDPOINT_SHAPE,
-        "WebSocket connection establishment.",
+        "WebSocket file→endpoint declarative connectivity reference; "
+        "per ADR-0026 fold to 'references' + "
+        "meta['construct']='websocket_endpoint'.",
     ),
     EdgeTypeSpec(
         "grpc_calls", AXIS_ENDPOINT_SHAPE,
@@ -212,7 +219,9 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     ),
     EdgeTypeSpec(
         "message_queue", AXIS_ENDPOINT_SHAPE,
-        "Message queue endpoint reference.",
+        "RabbitMQ/Kafka publisher→subscriber via topic; per ADR-0026 "
+        "fold to 'event_publishes' + meta['channel_kind']='queue' "
+        "(same fold target as 'enqueues' from ADR-0025).",
     ),
     EdgeTypeSpec(
         "cgo_bridge", AXIS_ENDPOINT_SHAPE,
@@ -240,11 +249,13 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     ),
     EdgeTypeSpec(
         "ipc_calls", AXIS_ENDPOINT_SHAPE,
-        "Inter-process call (use 'calls' + protocol meta).",
+        "Tauri-style IPC call (Rust↔JS via invoke); per ADR-0026 "
+        "fold to 'calls' + meta['protocol']='ipc'.",
     ),
     EdgeTypeSpec(
         "ipc_event", AXIS_ENDPOINT_SHAPE,
-        "Inter-process event dispatch.",
+        "Tauri-style IPC emit/listen; per ADR-0026 fold to "
+        "'event_publishes' + meta['channel_kind']='ipc'.",
     ),
 
     # Dispatch-family fold targets per ADR-0025. Each was a deprecation
