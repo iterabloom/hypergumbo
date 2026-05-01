@@ -1,0 +1,21 @@
+- op: create  # 808b
+  at: '2026-05-01T19:27:32Z'  # 808b
+  by: agent  # 808b
+  actor: jgstern_agent  # 808b
+  clock: 1  # 808b
+  nonce: 808b  # 808b
+  data:  # 808b
+    kind: work_item  # 808b
+    title: "Symbol: add is_example_file + is_config_file booleans (extends WI-rigun pattern)"  # 808b
+    status: todo_soft  # 808b
+    priority: 4  # 808b
+    parent:  # 808b
+    tags:  # 808b
+    - concept_audit  # 808b
+    - analysis_quality  # 808b
+    isbefore: []  # 808b
+    duplicate_of: []  # 808b
+    not_duplicate_of: []  # 808b
+    pr_ref:  # 808b
+    description: "Per the WI-gumoz-zoboz audit verdict (DOCUMENT + EXTEND), add two sibling booleans to Symbol mirroring is_test_file (WI-rigun), is_generated_file (WI-tizij), and is_exported (WI-zimum):\n\n- is_example_file: bool — set when supply_chain.py classifies the file as example/demo/sample/tutorial.\n- is_config_file: bool — set when supply_chain.py classifies the file as a config (package.json, pyproject.toml, etc.).\n\nThe integer supply_chain_tier stays unchanged (still 1=first_party, 2=internal_dep, 3=external_dep, 4=derived). The four-way distinction inside tier=2 becomes derivable as: is_test_file XOR is_example_file XOR is_config_file XOR (none = pure internal_dep).\n\nREPRO: today, a consumer asking 'is this example code?' against a tier-2 symbol has no way to answer from Symbol fields alone — the information is collapsed in supply_chain.py's classification logic but not surfaced. Adding the booleans surfaces them.\n\nACCEPTANCE:\n- ir.Symbol gains the two boolean fields with default False.\n- supply_chain.py's classification path sets each boolean when the corresponding signal fires (example path patterns; config path patterns / file extensions).\n- Property test: every Symbol whose tier=2 has at most one of is_test_file / is_example_file / is_config_file set (mutually exclusive within tier 2).\n- schema.json regenerates without breaking changes (new optional fields).\n\nDEPENDENCIES: none. Independent of any in-flight work.\n\nREGISTRY DRIFT: no — these are bool fields, not enum values, so they don't enter the edge-type or any enum drift surface."  # 808b
+    fields: {}  # 808b

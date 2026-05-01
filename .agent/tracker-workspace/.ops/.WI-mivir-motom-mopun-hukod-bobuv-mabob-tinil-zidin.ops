@@ -27,3 +27,18 @@
   clock: 2  # 7242
   nonce: '7242'  # 7242
   message: "Deliverable B (trigger bake-ins for per-release / post-incident / pre-refactor / domain-shift) is now scoped under WI-juvaf-pubib-kiguh-kubat-jagiv-sigad-jikav-gumag so the bake-ins can ship independently of docs/blind-spots.md (Deliverable A here). This item retains Deliverable A; the new item supersedes Deliverable B with a richer description per inflection point and a graceful-degradation rule for when blind-spots.md does not yet exist."  # 7242
+- op: update  # a696
+  at: '2026-05-01T19:24:40Z'  # a696
+  by: agent  # a696
+  actor: jgstern_agent  # a696
+  clock: 3  # a696
+  nonce: a696  # a696
+  set:  # a696
+    status: done  # a696
+- op: discuss  # f9fa
+  at: '2026-05-01T19:24:41Z'  # f9fa
+  by: agent  # f9fa
+  actor: jgstern_agent  # f9fa
+  clock: 4  # f9fa
+  nonce: f9fa  # f9fa
+  message: "docs/blind-spots.md shipped in PR (commit d8d214205). 4 seeded shapes (typing-axis vs values; assumed input boundaries; silently-load-bearing failure modes; null results read as confirmation), each with example/trigger/PR-or-WI reference. 'How to add an entry' preamble + pruning rule. Audit playbook's Cadence section gains a forward-reference: cadence hook tells you WHEN to audit; blind-spots tells you WHAT to look at when picking a suspect domain."  # f9fa

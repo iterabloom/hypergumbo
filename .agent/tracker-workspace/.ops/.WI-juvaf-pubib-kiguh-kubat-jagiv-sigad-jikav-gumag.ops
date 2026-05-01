@@ -27,3 +27,18 @@
   clock: 2  # 2146
   nonce: '2146'  # 2146
   message: "Per WI-gusam-faful resolution (audit triggers should couple to slack, not to deadlines): dropping Deliverable 1 (per-release bake-in). Even a light 5-minute prompt couples to release timing, which is anti-correlated with slack — the failure mode is ignored / rushed / half-investigated, all of which produce noise. The remaining three deliverables (post-incident, pre-refactor, domain-shift) all naturally fall in slack windows and are unaffected. Updated acceptance: at least 2 of the remaining 3 bake-ins land with concrete prompts wired into the appropriate playbooks; each landed bake-in survives without docs/blind-spots.md (degrades gracefully)."  # 2146
+- op: update  # 4962
+  at: '2026-05-01T19:24:41Z'  # 4962
+  by: agent  # 4962
+  actor: jgstern_agent  # 4962
+  clock: 3  # 4962
+  nonce: '4962'  # 4962
+  set:  # 4962
+    status: done  # 4962
+- op: discuss  # 969e
+  at: '2026-05-01T19:24:41Z'  # 969e
+  by: agent  # 969e
+  actor: jgstern_agent  # 969e
+  clock: 4  # 969e
+  nonce: 969e  # 969e
+  message: "Two of three remaining bake-ins shipped in PR (commit d8d214205) — per-release was dropped per the audit-triggers-couple-to-slack rule. Post-incident bake-in landed in agentic-session-retrospective.md (5-minute generative-question check between Phase 4 Synthesize and Phase 5 Record). Pre-refactor bake-in landed in structural-fix-scope-expansion-protocol.md (5-minute blind-spots check before the new frame solidifies). Both gracefully degrade when docs/blind-spots.md doesn't exist (bare 5-minutes-to-think prompt). Domain-shift bake-in deferred as future work; the 'at least 2 of 3' acceptance threshold is met."  # 969e
