@@ -593,15 +593,20 @@ def _create_di_edges(
                     continue  # pragma: no cover - defensive dedup
                 seen.add(pair)
 
+                # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+                # Runtime DI resolution dispatches an interface to its
+                # implementation; "di" is the mechanism. Canonical
+                # 'dispatches_to' + meta['mechanism']='di'.
                 edges.append(Edge.create(
                     src=iface_m.id,
                     dst=impl_m.id,
-                    edge_type="di_resolves",
+                    edge_type="dispatches_to",
                     line=iface_m.span.start_line if iface_m.span else 0,
                     confidence=binding.confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type=f"di_binding:{binding.source}",
+                    meta={"mechanism": "di"},
                 ))
 
     return edges
@@ -649,15 +654,20 @@ def _create_di_registers_edges(
             continue
         seen.add(pair)
 
+        # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv): DI
+        # registration is a declaration-time binding, not runtime
+        # dispatch. Canonical 'references' +
+        # meta['mechanism']='di_registration'.
         edges.append(Edge.create(
             src=module_sym.id,
             dst=provider_sym.id,
-            edge_type="di_registers",
+            edge_type="references",
             line=module_sym.span.start_line if module_sym.span else 0,
             confidence=binding.confidence,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="nestjs_module_registration",
+            meta={"mechanism": "di_registration"},
         ))
 
     return edges

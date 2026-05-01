@@ -880,22 +880,30 @@ class TestFindSourceFiles:
 
 
 class TestEventSubscriberToMethodEdges:
-    """Tests for subscriber→method edges enabling forward slice traversal.
+    """Tests asserting that subscriber→enclosing-method edges are NOT
+    emitted (post-ADR-0025 / ADR-0026 / WI-vasik-jofiv).
 
-    When an event subscriber (.on/.addEventListener) is detected inside a method,
-    the linker should create an ``event_subscribes`` edge from the subscriber
-    node to the enclosing method. This enables forward slices to traverse:
+    Originally the event sourcing linker emitted an ``event_subscribes``
+    edge from subscriber → enclosing method to enable forward-slice
+    traversal. ADR-0025 verdicted that emit pattern as DEPRECATE-NO-FOLD
+    (the production emit shape was structural-containment under a name
+    that suggested pub-sub semantics; mismatched name vs. shape).
 
-        emitting_method → event_publisher → event_publishes → event_subscriber
-            → event_subscribes → handler_method
+    The Phase-3 decision (this WI) was to drop the producer entirely:
+    the subscriber-is-enclosed-by-method information is recoverable from
+    Symbol.span (subscriber's span fits inside the method's span), so
+    the explicit edge was a denormalization with no downstream consumer
+    that needed the materialized form. Same verdict pattern as
+    message_receive (ADR-0026).
 
-    Without this edge, forward slices dead-end at the subscriber node.
+    These tests now assert the producer-side decision sticks: no
+    event_subscribes edges at all, regardless of input shape.
     """
 
-    def test_subscriber_has_event_subscribes_edge_to_enclosing_method(
+    def test_no_event_subscribes_edge_emitted_with_enclosing_method(
         self, tmp_path: Path
     ) -> None:
-        """Subscriber creates event_subscribes edge to enclosing method."""
+        """Even with enclosing method present, no event_subscribes edge."""
         # Create JS files with emit and on patterns
         pub_file = tmp_path / "emitter.js"
         pub_file.write_text("this.emit('data:ready', payload);")
@@ -921,17 +929,13 @@ class TestEventSubscriberToMethodEdges:
 
         result = event_sourcing_linker(ctx)
 
-        # Should have event_publishes edge (publisher → subscriber)
+        # event_publishes edges still emitted (publisher → subscriber)
         pub_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(pub_edges) == 1
 
-        # Should have event_subscribes edge (subscriber → handler_method)
+        # event_subscribes edges are NOT emitted post-WI-vasik-jofiv.
         sub_edges = [e for e in result.edges if e.edge_type == "event_subscribes"]
-        assert len(sub_edges) == 1, (
-            f"Expected 1 event_subscribes edge, got {len(sub_edges)}. "
-            f"All edges: {[(e.edge_type, e.src[:40], e.dst[:40]) for e in result.edges]}"
-        )
-        assert sub_edges[0].dst == handler_method.id
+        assert sub_edges == []
 
     def test_no_subscribes_edge_when_no_subscribers(
         self, tmp_path: Path
@@ -977,15 +981,19 @@ class TestEventSubscriberToMethodEdges:
         sub_edges = [e for e in result.edges if e.edge_type == "event_subscribes"]
         assert len(sub_edges) == 0
 
-    def test_subscribes_edge_with_relative_context_paths(
+    def test_no_event_subscribes_edge_with_relative_context_paths(
         self, tmp_path: Path
     ) -> None:
-        """event_subscribes edge works when context symbols have relative paths.
+        """No event_subscribes edge regardless of context-symbol path
+        format (post-WI-vasik-jofiv producer drop).
 
-        The CLI pipeline normalizes analyzer symbol paths to be relative to
-        the repo root before passing them to linkers. The event sourcing
-        linker scans files from repo_root and produces absolute paths.
-        The suffix-matching fallback must bridge this mismatch.
+        Originally this test verified the suffix-matching fallback that
+        bridged absolute-vs-relative path mismatches between the CLI's
+        normalized analyzer symbol paths and the linker's absolute
+        scan paths. After the producer drop the path-handling code is
+        still exercised (the linker still walks the same files for
+        publisher detection), but no event_subscribes edge is emitted
+        at the end.
         """
         pub_file = tmp_path / "emitter.js"
         pub_file.write_text("this.emit('data:ready', payload);")
@@ -1011,14 +1019,8 @@ class TestEventSubscriberToMethodEdges:
 
         result = event_sourcing_linker(ctx)
 
-        # Should still create event_subscribes edge despite path format mismatch
         sub_edges = [e for e in result.edges if e.edge_type == "event_subscribes"]
-        assert len(sub_edges) == 1, (
-            f"Expected 1 event_subscribes edge with relative context paths, "
-            f"got {len(sub_edges)}. "
-            f"All edges: {[(e.edge_type, e.src[:40], e.dst[:40]) for e in result.edges]}"
-        )
-        assert sub_edges[0].dst == handler_method.id
+        assert sub_edges == []
 
 
 class TestJavaCustomEventBusPatterns:

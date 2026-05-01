@@ -389,10 +389,13 @@ def link_yjs_crdt(
                     supply_chain_reason="synthetic Yjs CRDT subscriber",
                 ))
 
+            # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+            # CRDT publish IS publish; "crdt" is the channel kind.
+            # Canonical 'event_publishes' + meta['channel_kind']='crdt'.
             result_edges.append(Edge.create(
                 src=pub_id,
                 dst=sub_id,
-                edge_type="crdt_publishes",
+                edge_type="event_publishes",
                 line=write.line,
                 confidence=0.80,
                 origin=PASS_ID,
@@ -401,6 +404,7 @@ def link_yjs_crdt(
                 access_mode="write",
                 dest_access_mode="read",
                 channel=write.channel,
+                meta={"channel_kind": "crdt"},
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

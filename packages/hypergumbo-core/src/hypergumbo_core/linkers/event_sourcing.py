@@ -859,18 +859,21 @@ def _create_subscriber_to_method_edges(
                     best_size = size
                     enclosing = method
 
-        if enclosing is not None:
-            edges.append(Edge.create(
-                src=sub.id,
-                dst=enclosing.id,
-                edge_type="event_subscribes",
-                line=sub.span.start_line,
-                confidence=0.80,
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-                evidence_type="event_subscriber_enclosure",
-                access_mode="read",
-            ))
+        # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+        # event_subscribes was DEPRECATE-NO-FOLD per ADR-0025 — the
+        # production emit shape was subscriber→enclosing-function
+        # (structural containment) under a name suggesting pub-sub.
+        # The producer is dropped here per the Phase-3 decision: the
+        # subscriber-is-enclosed-by-method information is recoverable
+        # from Symbol.span (subscriber's span fits inside the
+        # method's span), so the edge was a denormalization with no
+        # downstream consumer that needed the explicit edge form.
+        # Same verdict pattern as message_receive in ADR-0026.
+        # `enclosing` retains its computation only because the
+        # surrounding loop walks methods to find the tightest scope —
+        # the value is still computed but no longer materialized as
+        # an edge.
+        _ = enclosing  # explicitly drop the value; no edge emitted
 
     return edges
 

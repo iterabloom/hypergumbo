@@ -63,7 +63,7 @@ class TestRouterRoutesLinker:
         edge = result.edges[0]
         assert edge.src == router.id
         assert edge.dst == route.id
-        assert edge.edge_type == "registers_routes"
+        assert edge.edge_type == "references"
         assert edge.evidence_type == "router_routes"
 
     def test_router_with_multiple_routes(self) -> None:

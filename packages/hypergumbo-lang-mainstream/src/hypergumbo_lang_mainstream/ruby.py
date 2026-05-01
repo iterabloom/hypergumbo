@@ -1665,24 +1665,26 @@ def _extract_ruby_delegates(
                     edges.append(Edge.create(
                         src=class_sym.id,
                         dst=target_method.id,
-                        edge_type="delegates_to",
+                        edge_type="references",
                         line=node.start_point[0] + 1,
                         evidence_type="ruby_delegate",
                         confidence=0.85,
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        meta={"mechanism": "delegate"},
                     ))
                 else:
                     # Target class exists but method not found
                     edges.append(Edge.create(
                         src=class_sym.id,
                         dst=f"ruby:?:0-0:{qualified}:unresolved",
-                        edge_type="delegates_to",
+                        edge_type="references",
                         line=node.start_point[0] + 1,
                         evidence_type="ruby_delegate",
                         confidence=0.65,
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        meta={"mechanism": "delegate"},
                     ))
             else:
                 # Target class not found at all
@@ -1690,7 +1692,7 @@ def _extract_ruby_delegates(
                 edges.append(Edge.create(
                     src=class_sym.id,
                     dst=f"ruby:?:0-0:{qualified}:unresolved",
-                    edge_type="delegates_to",
+                    edge_type="references",
                     line=node.start_point[0] + 1,
                     evidence_type="ruby_delegate",
                     confidence=0.65,
@@ -2055,15 +2057,20 @@ def _try_job_enqueue(
             if qualified in global_symbols:
                 callee = global_symbols[qualified]
                 if callee.id != current_method.id:
+                    # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+                    # ActiveJob perform_later enqueues a job (queue
+                    # is the channel kind). Canonical 'event_publishes'
+                    # + meta['channel_kind']='queue'.
                     edges.append(Edge.create(
                         src=current_method.id,
                         dst=callee.id,
-                        edge_type="enqueues",
+                        edge_type="event_publishes",
                         line=line,
                         evidence_type="job_enqueue",
                         confidence=0.90,
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        meta={"channel_kind": "queue"},
                     ))
                     return True
 
@@ -2075,12 +2082,13 @@ def _try_job_enqueue(
                 edges.append(Edge.create(
                     src=current_method.id,
                     dst=callee.id,
-                    edge_type="enqueues",
+                    edge_type="event_publishes",
                     line=line,
                     evidence_type="job_enqueue",
                     confidence=0.85,
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    meta={"channel_kind": "queue"},
                 ))
                 return True
 
@@ -2088,12 +2096,13 @@ def _try_job_enqueue(
     edges.append(Edge.create(
         src=current_method.id,
         dst=f"ruby:?:0-0:{receiver_class}:unresolved",
-        edge_type="enqueues",
+        edge_type="event_publishes",
         line=line,
         evidence_type="job_enqueue",
         confidence=0.70,
         origin=PASS_ID,
         origin_run_id=run_id,
+        meta={"channel_kind": "queue"},
     ))
     return True
 

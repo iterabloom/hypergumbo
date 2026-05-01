@@ -1037,10 +1037,20 @@ def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
         # Only flag missing routes when name suggests a web app AND
         # there's supporting evidence (route edges or framework signals).
         # Bare name matching ("web" in "webtunnel") causes false positives.
-        has_route_edges = any(
-            e.get("type", "") in ("routes_to", "handles_route")
-            for e in edges
-        )
+        # Per ADR-0023 §6 Phase 3 (WI-vasik-jofiv) routes_to folded to
+        # 'dispatches_to' + meta['dispatch_kind']='route'. handles_route
+        # is unrelated (different linker convention). Check both the
+        # canonical+meta form and the deprecated form.
+        def _is_route_edge(e: dict) -> bool:
+            etype = e.get("type", "")
+            if etype == "handles_route":
+                return True
+            if etype == "routes_to":
+                return True  # deprecated; remove in WI-vomoj-suhaz Phase 4
+            if etype == "dispatches_to":
+                return (e.get("meta") or {}).get("dispatch_kind") == "route"
+            return False
+        has_route_edges = any(_is_route_edge(e) for e in edges)
         # Only count web-serving framework signals (not event emitters,
         # CLI frameworks, test frameworks, etc.) as evidence of expected
         # routes.  Non-web frameworks like "emitter" cause false positives.

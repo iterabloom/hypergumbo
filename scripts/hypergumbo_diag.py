@@ -364,8 +364,19 @@ def analyze_behavior_map(json_path: str, repo_name: str) -> tuple[dict, dict]:
     for e in edges:
         u, v = edge_src(e), edge_dst(e)
         t = e.get("type", "")
+        # Per ADR-0023 §6 Phase 3 (WI-vasik-jofiv) routes_to folded to
+        # 'dispatches_to' + meta['dispatch_kind']='route'. Check both
+        # canonical+meta and the deprecated form (Phase 4 prunes
+        # the producer-side dead value).
+        is_route_edge = (
+            t == "routes_to"
+            or (
+                t == "dispatches_to"
+                and (e.get("meta") or {}).get("dispatch_kind") == "route"
+            )
+        )
         if u in prod_route_nodes:
-            if t == "routes_to":
+            if is_route_edge:
                 route_has_handler.add(u)
             elif v in idx and v not in route_nodes:
                 route_has_handler.add(u)

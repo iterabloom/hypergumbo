@@ -707,14 +707,19 @@ def link_routes_to_handlers(
             )
 
         if handler:
+            # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+            # Route → handler dispatch via path matching. Canonical
+            # 'dispatches_to' + meta['dispatch_kind']='route'.
+            handler_meta = {k: v for k, v in handler_ref.items() if k != "type"}
+            handler_meta["dispatch_kind"] = "route"
             edge = Edge.create(
                 src=route.id,
                 dst=handler.id,
-                edge_type="routes_to",
+                edge_type="dispatches_to",
                 line=route.span.start_line if route.span else 0,
                 confidence=0.9,
                 origin=PASS_ID,
-                meta={k: v for k, v in handler_ref.items() if k != "type"},
+                meta=handler_meta,
             )
             new_edges.append(edge)
             routes_linked += 1
@@ -729,14 +734,21 @@ def link_routes_to_handlers(
                 continue
             target = _resolve_express_handler(ref_name, symbol_by_name)
             if target:
+                # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+                # React Router loader/action route. Canonical
+                # 'dispatches_to' + meta['dispatch_kind']='route'.
                 la_edge = Edge.create(
                     src=route.id,
                     dst=target.id,
-                    edge_type="routes_to",
+                    edge_type="dispatches_to",
                     line=route_line,
                     confidence=0.85,
                     origin=PASS_ID,
-                    meta={"role": role, ref_key: ref_name},
+                    meta={
+                        "dispatch_kind": "route",
+                        "role": role,
+                        ref_key: ref_name,
+                    },
                 )
                 new_edges.append(la_edge)
 

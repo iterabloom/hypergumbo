@@ -1515,7 +1515,7 @@ int run_command(const char *name) {
 """)
         result = analyze_cpp(tmp_path)
 
-        table_edges = [e for e in result.edges if e.edge_type == "uses_dispatch_table"]
+        table_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(table_edges) >= 1
         run_cmd_sym = next(
             (s for s in result.symbols if s.name == "run_command"),
@@ -1549,7 +1549,7 @@ void print_table() {
 """)
         result = analyze_cpp(tmp_path)
 
-        table_edges = [e for e in result.edges if e.edge_type == "uses_dispatch_table"]
+        table_edges = [e for e in result.edges if e.edge_type == "references"]
         srcs = {e.src for e in table_edges}
         lookup_sym = next(s for s in result.symbols if s.name == "lookup")
         print_sym = next(s for s in result.symbols if s.name == "print_table")
@@ -1573,7 +1573,7 @@ int unrelated() {
 """)
         result = analyze_cpp(tmp_path)
 
-        table_edges = [e for e in result.edges if e.edge_type == "uses_dispatch_table"]
+        table_edges = [e for e in result.edges if e.edge_type == "references"]
         unrelated_sym = next(s for s in result.symbols if s.name == "unrelated")
         assert not any(e.src == unrelated_sym.id for e in table_edges)
 

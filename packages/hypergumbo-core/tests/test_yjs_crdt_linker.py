@@ -141,7 +141,7 @@ class TestLinkYjsCrdt:
 
         assert len(result.edges) >= 1
         edge = result.edges[0]
-        assert edge.edge_type == "crdt_publishes"
+        assert edge.edge_type == "event_publishes"
         assert edge.meta is not None
         assert edge.meta["access_mode"] == "write"
         assert edge.meta["dest_access_mode"] == "read"
@@ -383,7 +383,7 @@ class TestScanBlockSuitePatterns:
         result = link_yjs_crdt(tmp_path, syms)
         assert len(result.edges) >= 1
         edge = result.edges[0]
-        assert edge.edge_type == "crdt_publishes"
+        assert edge.edge_type == "event_publishes"
 
     def test_no_cross_api_blocksuite_to_yjs(self, tmp_path: Path) -> None:
         """BlockSuite writes should not match raw Yjs reads."""

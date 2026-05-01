@@ -518,14 +518,19 @@ def _extract_edges_from_tree(
                 event_name = node_text(event_name_node, source)
                 event_sym = local_symbols.get(event_name) or global_symbols.get(event_name)
                 if event_sym and event_sym.kind == "event":
+                    # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+                    # Solidity `emit Event(...)` is a function→event-symbol
+                    # reference, not pub-sub-shaped. Canonical
+                    # 'references' + meta['construct']='event_emit'.
                     edge = Edge.create(
                         src=current_function.id,
                         dst=event_sym.id,
-                        edge_type="emits",
+                        edge_type="references",
                         line=node.start_point[0] + 1,
                         confidence=0.95,
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        meta={"construct": "event_emit"},
                     )
                     edges.append(edge)
 

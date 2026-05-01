@@ -131,7 +131,7 @@ class TestLinkAnnotations:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.edge_type == "annotated_publishes"
+        assert edge.edge_type == "event_publishes"
         assert edge.confidence == 0.95
         assert edge.meta is not None
         assert edge.meta["access_mode"] == "write"
@@ -304,7 +304,7 @@ class TestLinkDispatchAnnotations:
         ]
         result = link_annotations(tmp_path, syms)
 
-        dispatch_edges = [e for e in result.edges if e.edge_type == "annotated_dispatches"]
+        dispatch_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
         assert len(dispatch_edges) >= 1
         assert dispatch_edges[0].meta["channel"] == "handle_join"
 
@@ -317,7 +317,7 @@ class TestLinkDispatchAnnotations:
         syms = [_make_sym("src/router.ts")]
         result = link_annotations(tmp_path, syms)
 
-        dispatch_edges = [e for e in result.edges if e.edge_type == "annotated_dispatches"]
+        dispatch_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
         assert len(dispatch_edges) == 0
 
     def test_dispatches_creates_synthetic_symbol(self, tmp_path: Path) -> None:

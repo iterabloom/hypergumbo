@@ -774,15 +774,20 @@ def link_grpc(
         # Create routes_to edge from route to the service symbol.
         svc_id = service_sym_by_name.get(rpc.service_name)
         if svc_id:
+            # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+            # gRPC RPC definition routes a route → service; "route"
+            # is the dispatch mechanism. Canonical 'dispatches_to'
+            # + meta['dispatch_kind']='route'.
             edges.append(Edge.create(
                 src=route_id,
                 dst=svc_id,
-                edge_type="routes_to",
+                edge_type="dispatches_to",
                 line=rpc.line,
                 confidence=0.90,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="grpc_rpc_definition",
+                meta={"dispatch_kind": "route"},
             ))
 
     # Link Go implementation methods to proto RPC route symbols.

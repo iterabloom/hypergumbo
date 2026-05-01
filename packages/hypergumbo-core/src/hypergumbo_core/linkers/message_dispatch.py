@@ -299,10 +299,15 @@ def link_message_dispatch(
                     supply_chain_reason="message dispatch handler",
                 ))
 
+            # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+            # Despite the name, the emit shape is publisher→subscriber
+            # (publish family, not dispatch). Canonical
+            # 'event_publishes' + meta['channel_kind']='message_bus'
+            # (cross-family fold per ADR-0025 §Migration impact).
             result_edges.append(Edge.create(
                 src=pub_id,
                 dst=sub_id,
-                edge_type="message_dispatch",
+                edge_type="event_publishes",
                 line=write.line,
                 confidence=0.70,
                 origin=PASS_ID,
@@ -311,6 +316,7 @@ def link_message_dispatch(
                 access_mode="write",
                 dest_access_mode="read",
                 channel=write.channel,
+                meta={"channel_kind": "message_bus"},
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

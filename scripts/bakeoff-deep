@@ -1023,9 +1023,20 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # that inflate their out-degree: prometheus genericSeriesSet.Err (1 line)
     # had out=20 from dispatches_to edges, passing _MIN_OUT_DEGREE=3 and
     # getting selected as a seed over real domain functions.
+    #
+    # Per ADR-0023 §6 Phase 3 (WI-vasik-jofiv / WI-mifor-vabul): the
+    # FFI bridges (cgo/ffi/napi/wasm/native), IPC calls (ipc_calls),
+    # routes (routes_to), DI resolves (di_resolves), annotated dispatch,
+    # message-bus dispatch, and ActiveJob enqueues now all emit as
+    # 'calls' or 'dispatches_to'. Adding both canonicals covers every
+    # post-migration emit. Deprecated entries kept until Phase 4 prunes
+    # them (they're dead-but-harmless because the canonicals already
+    # cover them).
     _CALL_FLOW_EDGE_TYPES = {
-        "calls", "routes_to", "wraps", "ipc_calls",
-        "implements_rpc", "grpc_calls", "wasm_bridge",
+        "calls", "dispatches_to", "wraps",
+        # Deprecated post-Phase-3 (kept until WI-vomoj-suhaz Phase 4):
+        "routes_to", "ipc_calls", "implements_rpc",
+        "grpc_calls", "wasm_bridge",
     }
 
     in_degree: dict = {}
@@ -1127,10 +1138,21 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
             if sid:
                 library_export_ids.add(sid)
 
-    # Identify API handler targets: nodes that are dst of routes_to edges.
+    # Identify API handler targets: nodes that are dst of route-flavored
+    # dispatch edges. Per ADR-0023 §6 Phase 3 (WI-vasik-jofiv) routes_to
+    # folded to 'dispatches_to' + meta['dispatch_kind']='route'; the
+    # query checks both the canonical + meta form and the deprecated
+    # form (until Phase 4 / WI-vomoj-suhaz prunes the producer-side
+    # dead values).
     api_handler_ids: set = set()
     for e in edges:
-        if e.get("type") == "routes_to":
+        etype = e.get("type")
+        meta = e.get("meta") or {}
+        is_route_dispatch = (
+            etype == "dispatches_to"
+            and meta.get("dispatch_kind") == "route"
+        ) or etype == "routes_to"
+        if is_route_dispatch:
             dst = e.get("dst") or e.get("target")
             if dst:
                 api_handler_ids.add(dst)

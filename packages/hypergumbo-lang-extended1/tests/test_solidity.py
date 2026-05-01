@@ -716,7 +716,7 @@ contract Token {
 
         result = analyze_solidity(temp_repo)
 
-        emit_edges = [e for e in result.edges if e.edge_type == "emits"]
+        emit_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(emit_edges) >= 1, "Expected at least one 'emits' edge"
 
         transfer_func = next(s for s in result.symbols if "transfer" in s.name and s.kind == "function")
@@ -742,7 +742,7 @@ contract Token {
 
         result = analyze_solidity(temp_repo)
 
-        emit_edges = [e for e in result.edges if e.edge_type == "emits"]
+        emit_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(emit_edges) >= 2, f"Expected 2+ emits edges, got {len(emit_edges)}"
 
     def test_event_not_orphaned_when_emitted(self, temp_repo: Path) -> None:

@@ -542,7 +542,7 @@ class TestDILinkerIntegration:
         result = link_di_resolution(ctx)
 
         assert isinstance(result, LinkerResult)
-        di_edges = [e for e in result.edges if e.edge_type == "di_resolves"]
+        di_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
         assert len(di_edges) >= 1
         edge = di_edges[0]
         assert edge.src == iface_method.id
@@ -573,7 +573,7 @@ class TestDILinkerIntegration:
         )
         result = link_di_resolution(ctx)
 
-        di_edges = [e for e in result.edges if e.edge_type == "di_resolves"]
+        di_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
         # Should have confidence 0.90 (explicit), not 0.70 (single-impl heuristic)
         assert len(di_edges) >= 1
         assert all(e.confidence == 0.90 for e in di_edges)
@@ -647,7 +647,7 @@ class TestDILinkerIntegration:
         )
         result = link_di_resolution(ctx)
 
-        di_edges = [e for e in result.edges if e.edge_type == "di_resolves"]
+        di_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
         # Expect edges for both Java and C# bindings
         java_edges = [e for e in di_edges if "java:" in e.src]
         cs_edges = [e for e in di_edges if "csharp:" in e.src]
@@ -1134,7 +1134,7 @@ class TestNestJSModuleRegistrations:
             edges=[],
         )
         result = link_di_resolution(ctx)
-        reg_edges = [e for e in result.edges if e.edge_type == "di_registers"]
+        reg_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(reg_edges) == 2
         dst_ids = {e.dst for e in reg_edges}
         assert provider_sym.id in dst_ids
@@ -1161,7 +1161,7 @@ class TestNestJSModuleRegistrations:
             edges=[],
         )
         result = link_di_resolution(ctx)
-        reg_edges = [e for e in result.edges if e.edge_type == "di_registers"]
+        reg_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(reg_edges) == 0
 
     def test_di_registers_dedup(self, tmp_path: Path) -> None:
@@ -1187,7 +1187,7 @@ class TestNestJSModuleRegistrations:
             edges=[],
         )
         result = link_di_resolution(ctx)
-        reg_edges = [e for e in result.edges if e.edge_type == "di_registers"]
+        reg_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(reg_edges) == 1
 
     def test_multiline_providers_array(self, tmp_path: Path) -> None:

@@ -926,7 +926,7 @@ class TestGrpcProtoRouteSymbols:
 
         result = link_grpc(tmp_path)
 
-        routes_to_edges = [e for e in result.edges if e.edge_type == "routes_to"]
+        routes_to_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
         assert len(routes_to_edges) == 1
         # Route should point to the grpc_service symbol
         assert any(

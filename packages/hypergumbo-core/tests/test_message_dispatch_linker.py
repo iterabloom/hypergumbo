@@ -180,7 +180,7 @@ class TestLinkMessageDispatch:
 
         assert len(result.edges) >= 1
         edge = result.edges[0]
-        assert edge.edge_type == "message_dispatch"
+        assert edge.edge_type == "event_publishes"
         assert edge.meta is not None
         assert edge.meta["channel"] == "JOIN"
 

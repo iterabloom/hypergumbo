@@ -690,15 +690,20 @@ def _extract_edges(
                 name = node_text(inner, source)
                 if name in dispatch_tables and name not in seen_tables:
                     seen_tables.add(name)
+                    # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+                    # Function references a dispatch-table data
+                    # symbol (not dispatcher→target). Canonical
+                    # 'references' + meta['construct']='dispatch_table'.
                     edges.append(Edge.create(
                         src=func_sym.id,
                         dst=dispatch_tables[name],
-                        edge_type="uses_dispatch_table",
+                        edge_type="references",
                         line=inner.start_point[0] + 1,
                         confidence=0.85,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="dispatch_table_reference",
+                        meta={"construct": "dispatch_table"},
                     ))
 
     return edges

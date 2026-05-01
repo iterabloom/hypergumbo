@@ -1159,7 +1159,7 @@ struct cmd_struct *get_builtin(const char *name) {
         # Should have uses_dispatch_table edges from get_builtin to commands
         ref_edges = [
             e for e in result.edges
-            if e.edge_type == "uses_dispatch_table"
+            if e.edge_type == "references"
         ]
         assert len(ref_edges) >= 1, (
             f"Expected uses_dispatch_table edges, got none. "
@@ -1210,7 +1210,7 @@ struct cmd_struct *find_builtin(const char *name) {
 
         ref_edges = [
             e for e in result.edges
-            if e.edge_type == "uses_dispatch_table"
+            if e.edge_type == "references"
         ]
 
         # Both list_builtins and find_builtin reference commands[]
@@ -1255,7 +1255,7 @@ void unrelated(void) {
 
         ref_edges = [
             e for e in result.edges
-            if e.edge_type == "uses_dispatch_table"
+            if e.edge_type == "references"
         ]
 
         # unrelated() should NOT have a uses_dispatch_table edge

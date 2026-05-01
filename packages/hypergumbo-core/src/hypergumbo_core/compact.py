@@ -105,11 +105,26 @@ _VICTIM_REMOVAL_EXCLUDE_DAMPENERS = (
 # seed their endpoints into the node selection so that these edges survive the
 # induced-subgraph filter — without this, centrality-based selection drops the
 # peripheral nodes that are endpoints of these edges.
+#
+# ADR-0023 §6 Phase 3 (WI-vasik-jofiv) folded routes_to and di_resolves
+# into 'dispatches_to' (already in the set), and message_dispatch /
+# annotated_publishes / crdt_publishes / enqueues / message_send /
+# message_queue / etc. into 'event_publishes'. Adding 'event_publishes'
+# preserves cross-cutting endpoint coverage for those folds. The
+# deprecated entries (routes_to, di_resolves) stay through the
+# deprecation window — they're dead-but-harmless because dispatches_to
+# is already in the set.
 CROSS_CUTTING_EDGE_TYPES = frozenset({
-    "routes_to",       # Web route → handler function
+    "calls",           # generic invocation (covers FFI/IPC/RPC bridges)
+    "dispatches_to",   # runtime dispatch indirection (covers routes,
+                       # delegates, DI resolution, annotation dispatch)
+    "event_publishes", # async producer→consumer (covers IPC, websocket,
+                       # queue, CRDT, message_bus)
     "http_calls",      # HTTP client call → server endpoint
-    "dispatches_to",   # Interface/abstract method → concrete implementation
-    "di_resolves",     # DI interface → bound implementation
+    # Deprecated entries — kept until Phase 4 prunes them; producers
+    # no longer emit these (see ADR-0023 §6 / ADR-0025 / ADR-0026).
+    "routes_to",
+    "di_resolves",
 })
 
 

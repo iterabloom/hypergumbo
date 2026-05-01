@@ -58,7 +58,7 @@ class TestRouteHandlerLinker:
         edge = result.edges[0]
         assert edge.src == route.id
         assert edge.dst == handler.id
-        assert edge.edge_type == "routes_to"
+        assert edge.edge_type == "dispatches_to"
         assert edge.meta["controller_action"] == "users#index"
 
     def test_rails_nested_controller_action(self) -> None:
@@ -269,7 +269,7 @@ class TestRouteHandlerLinker:
         edge = result.edges[0]
         assert edge.src == route.id
         assert edge.dst == handler.id
-        assert edge.edge_type == "routes_to"
+        assert edge.edge_type == "dispatches_to"
 
     def test_liveview_module_fallback(self) -> None:
         """LIVE route falls back to LiveView module when action function missing.
@@ -312,7 +312,7 @@ class TestRouteHandlerLinker:
         edge = result.edges[0]
         assert edge.src == route.id
         assert edge.dst == module.id
-        assert edge.edge_type == "routes_to"
+        assert edge.edge_type == "dispatches_to"
 
     def test_liveview_exact_module_name_match(self) -> None:
         """LIVE route resolves when controller exactly matches module name."""
@@ -857,7 +857,7 @@ class TestRouteHandlerLinker:
         edge = result.edges[0]
         assert edge.src == route.id
         assert edge.dst == handler.id
-        assert edge.edge_type == "routes_to"
+        assert edge.edge_type == "dispatches_to"
         assert edge.meta["controller_action"] == "UserController@index"
 
     def test_laravel_no_at_symbol_not_matched_as_laravel(self) -> None:
@@ -927,7 +927,7 @@ class TestRouteHandlerLinker:
         edge = result.edges[0]
         assert edge.src == route.id
         assert edge.dst == handler.id
-        assert edge.edge_type == "routes_to"
+        assert edge.edge_type == "dispatches_to"
         assert edge.meta["handler_ref"] == "userController.list"
 
     def test_express_exact_match_handler(self) -> None:
@@ -1075,7 +1075,7 @@ class TestRouteHandlerLinker:
         edge = result.edges[0]
         assert edge.src == route.id
         assert edge.dst == handler.id
-        assert edge.edge_type == "routes_to"
+        assert edge.edge_type == "dispatches_to"
 
     def test_direct_id_handler_ref_not_found(self) -> None:
         """Routes with handler_ref as symbol ID fall back gracefully.
@@ -1232,7 +1232,7 @@ class TestDjangoViewNameLinking:
         edge = result.edges[0]
         assert edge.src == route.id
         assert edge.dst == handler.id
-        assert edge.edge_type == "routes_to"
+        assert edge.edge_type == "dispatches_to"
         assert edge.meta.get("view_name") == "list_users"
 
     def test_django_view_name_class_based_view(self) -> None:
@@ -1376,7 +1376,7 @@ class TestGoRouteHandlerLinking:
         edge = result.edges[0]
         assert edge.src == route.id
         assert edge.dst == handler.id
-        assert edge.edge_type == "routes_to"
+        assert edge.edge_type == "dispatches_to"
         assert edge.meta["handler_name"] == "listUsers"
 
     def test_go_gin_qualified_handler_linking(self) -> None:
@@ -1554,7 +1554,7 @@ class TestGoRouteHandlerLinking:
         edge = result.edges[0]
         assert edge.src == route.id
         assert edge.dst == handler.id
-        assert edge.edge_type == "routes_to"
+        assert edge.edge_type == "dispatches_to"
 
     def test_express_handler_same_name_as_route_symbol(self) -> None:
         """Express handler is found even when route symbol has the same name.
@@ -1680,7 +1680,7 @@ class TestGoRouteHandlerLinking:
         assert len(result.edges) == 1
         assert result.edges[0].src == route.id
         assert result.edges[0].dst == handler.id
-        assert result.edges[0].edge_type == "routes_to"
+        assert result.edges[0].edge_type == "dispatches_to"
 
     def test_go_handler_lowercase_receiver_resolves_to_uppercase_method(self) -> None:
         """Go handler ``api.query`` (lowercase var) resolves to ``API.query`` method.
@@ -1902,7 +1902,7 @@ class TestLaravelSuffixMatchFallback:
         assert len(result.edges) == 1
         assert result.edges[0].src == route.id
         assert result.edges[0].dst == handler.id
-        assert result.edges[0].edge_type == "routes_to"
+        assert result.edges[0].edge_type == "dispatches_to"
 
     def test_rails_reverse_suffix_no_false_positive(self) -> None:
         """Reverse suffix matching doesn't match partial controller names.
@@ -2217,8 +2217,8 @@ class TestReactRouterLoaderActionLinking:
         assert len(result.edges) == 2
         handler_edge = next(e for e in result.edges if e.dst == handler.id)
         loader_edge = next(e for e in result.edges if e.dst == loader.id)
-        assert handler_edge.edge_type == "routes_to"
-        assert loader_edge.edge_type == "routes_to"
+        assert handler_edge.edge_type == "dispatches_to"
+        assert loader_edge.edge_type == "dispatches_to"
         assert loader_edge.meta.get("role") == "loader"
 
     def test_action_ref_creates_edge(self) -> None:
@@ -2231,7 +2231,7 @@ class TestReactRouterLoaderActionLinking:
 
         assert len(result.edges) == 2
         action_edge = next(e for e in result.edges if e.dst == action.id)
-        assert action_edge.edge_type == "routes_to"
+        assert action_edge.edge_type == "dispatches_to"
         assert action_edge.meta.get("role") == "action"
 
     def test_loader_and_action_both_linked(self) -> None:

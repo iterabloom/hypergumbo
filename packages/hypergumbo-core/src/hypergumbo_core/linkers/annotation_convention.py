@@ -227,10 +227,14 @@ def link_annotations(
                         supply_chain_reason="@hg:subscribes annotation",
                     ))
 
+                # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+                # @hg:publishes IS publish; "annotation" is the
+                # mechanism. Canonical 'event_publishes' +
+                # meta['mechanism']='annotation'.
                 result_edges.append(Edge.create(
                     src=pub_id,
                     dst=sub_id,
-                    edge_type="annotated_publishes",
+                    edge_type="event_publishes",
                     line=pub.line,
                     confidence=0.95,
                     origin=PASS_ID,
@@ -239,6 +243,7 @@ def link_annotations(
                     access_mode="write",
                     dest_access_mode="read",
                     channel=channel,
+                    meta={"mechanism": "annotation"},
                 ))
 
     # --- Create route symbols for @hg:route directives ---
@@ -302,16 +307,21 @@ def link_annotations(
             ))
 
         for target in target_syms:
+            # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+            # @hg:dispatches IS dispatch; "annotation" is the
+            # mechanism. Canonical 'dispatches_to' +
+            # meta['mechanism']='annotation'.
             result_edges.append(Edge.create(
                 src=disp_id,
                 dst=target.id,
-                edge_type="annotated_dispatches",
+                edge_type="dispatches_to",
                 line=disp.line,
                 confidence=0.95,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="hg_annotation",
                 channel=target_name,
+                meta={"mechanism": "annotation"},
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

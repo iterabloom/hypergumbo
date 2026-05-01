@@ -176,14 +176,19 @@ def link_router_routes(ctx: LinkerContext) -> LinkerResult:
             if not enclosing:
                 continue
             winner = min(enclosing, key=lambda r: _span_size(r.span))
+            # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+            # Router declares routes (declaration-time, not dispatch).
+            # Canonical 'references' +
+            # meta['mechanism']='route_registration'.
             edge = Edge.create(
                 src=winner.id,
                 dst=route.id,
-                edge_type="registers_routes",
+                edge_type="references",
                 line=winner.span.start_line,
                 origin=PASS_ID,
                 evidence_type="router_routes",
                 confidence=0.80,
+                meta={"mechanism": "route_registration"},
             )
             edges.append(edge)
 

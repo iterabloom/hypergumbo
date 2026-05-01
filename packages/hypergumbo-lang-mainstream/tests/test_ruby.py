@@ -3154,7 +3154,7 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        enqueue_edges = [e for e in result.edges if e.edge_type == "enqueues"]
+        enqueue_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(enqueue_edges) >= 1, (
             f"Expected enqueues edge from create to SendEmailJob#perform, "
             f"got edge types: {[e.edge_type for e in result.edges]}"
@@ -3188,7 +3188,7 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        enqueue_edges = [e for e in result.edges if e.edge_type == "enqueues"]
+        enqueue_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(enqueue_edges) >= 1, (
             "Expected enqueues edge from run_cleanup to CleanupWorker#perform"
         )
@@ -3217,7 +3217,7 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        enqueue_edges = [e for e in result.edges if e.edge_type == "enqueues"]
+        enqueue_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(enqueue_edges) >= 1, (
             "Expected enqueues edge for chained set().perform_later() pattern"
         )
@@ -3242,7 +3242,7 @@ end
 
         # Even without the job class, we should still detect the pattern
         # and create an enqueues edge (may be unresolved)
-        enqueue_edges = [e for e in result.edges if e.edge_type == "enqueues"]
+        enqueue_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(enqueue_edges) >= 1, (
             "Expected enqueues edge even when job class is not in repo"
         )
@@ -3270,7 +3270,7 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        enqueue_edges = [e for e in result.edges if e.edge_type == "enqueues"]
+        enqueue_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(enqueue_edges) >= 1, (
             "Expected enqueues edge for namespaced job"
         )
@@ -3296,7 +3296,7 @@ end
 
         result = analyze_ruby(tmp_path)
 
-        enqueue_edges = [e for e in result.edges if e.edge_type == "enqueues"]
+        enqueue_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(enqueue_edges) >= 1, (
             "Expected enqueues edge targeting job class"
         )
@@ -3551,7 +3551,7 @@ end
 
         delegate_edges = [
             e for e in result.edges
-            if e.edge_type == "delegates_to"
+            if e.edge_type == "references"
             and e.src == conv_sym.id
             and e.dst == method_sym.id
         ]
@@ -3591,7 +3591,7 @@ end
 
         delegate_edges = [
             e for e in result.edges
-            if e.edge_type == "delegates_to" and e.src == profile_sym.id
+            if e.edge_type == "references" and e.src == profile_sym.id
         ]
         assert len(delegate_edges) == 2, (
             f"Expected 2 delegates_to edges, got {len(delegate_edges)}"
@@ -3617,7 +3617,7 @@ end
 
         delegate_edges = [
             e for e in result.edges
-            if e.edge_type == "delegates_to" and e.src == conv_sym.id
+            if e.edge_type == "references" and e.src == conv_sym.id
         ]
         assert len(delegate_edges) == 1
         assert "unresolved" in delegate_edges[0].dst
@@ -3641,7 +3641,7 @@ end
         # :class delegates to the class itself — no meaningful edge needed
         delegate_edges = [
             e for e in result.edges
-            if e.edge_type == "delegates_to" and e.src == widget_sym.id
+            if e.edge_type == "references" and e.src == widget_sym.id
         ]
         # :class is a special pseudo-association, skip it
         assert len(delegate_edges) == 0
@@ -3672,7 +3672,7 @@ end
 
         delegate_edges = [
             e for e in result.edges
-            if e.edge_type == "delegates_to" and e.src == conv_sym.id
+            if e.edge_type == "references" and e.src == conv_sym.id
         ]
         assert len(delegate_edges) == 1
         assert "unresolved" in delegate_edges[0].dst
@@ -3694,7 +3694,7 @@ end
         result = analyze_ruby(tmp_path)
 
         delegate_edges = [
-            e for e in result.edges if e.edge_type == "delegates_to"
+            e for e in result.edges if e.edge_type == "references"
         ]
         assert len(delegate_edges) == 0
 
