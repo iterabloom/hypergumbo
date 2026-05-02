@@ -223,6 +223,19 @@ class Symbol:
         supply_chain_tier: Position in dependency graph (1=first_party, 2=internal_dep,
             3=external_dep, 4=derived). See §14 of spec.
         supply_chain_reason: Why this tier was assigned (e.g., "matches ^src/")
+        is_test_file: True if the file holds test code (WI-rigun). Independent
+            of tier — co-located test files can be tier 1.
+        is_example_file: True if the file is example/demo/sample/tutorial code
+            (WI-jobuj). Set when the path matches an EXAMPLE_PATTERN.
+        is_config_file: True if the file is a dependency/build manifest such as
+            ``pyproject.toml`` / ``package.json`` / ``Cargo.toml`` (WI-jobuj).
+            Within tier 2, ``is_test_file`` / ``is_example_file`` /
+            ``is_config_file`` are mutually exclusive — at most one is True
+            per Symbol.
+        is_generated_file: True if the file is generated code (WI-tizij).
+            Independent of the role flags above.
+        is_exported: True if the symbol is part of the package's public API
+            (WI-zimum).
         cyclomatic_complexity: McCabe cyclomatic complexity (decision points + 1).
             Counts if/elif/else, for, while, except, with, and/or, match/case.
         lines_of_code: Number of source lines in the symbol body (end_line - start_line + 1).
@@ -251,6 +264,8 @@ class Symbol:
     supply_chain_tier: int = 1  # Default to first_party
     supply_chain_reason: str = ""
     is_test_file: bool = False  # WI-rigun: independent of tier
+    is_example_file: bool = False  # WI-jobuj: example/demo/sample/tutorial code
+    is_config_file: bool = False  # WI-jobuj: dependency/build manifest
     is_generated_file: bool = False  # WI-tizij: generated code flag
     is_exported: bool = False  # WI-zimum: public API / externally reachable
     cyclomatic_complexity: Optional[int] = None
@@ -291,6 +306,8 @@ class Symbol:
                 "tier_name": _TIER_NAMES.get(self.supply_chain_tier, "first_party"),
                 "reason": self.supply_chain_reason,
                 "is_test_file": self.is_test_file,
+                "is_example_file": self.is_example_file,
+                "is_config_file": self.is_config_file,
                 "is_generated_file": self.is_generated_file,
                 "is_exported": self.is_exported,
             },
@@ -325,6 +342,8 @@ class Symbol:
             supply_chain_tier=supply_chain.get("tier", 1),
             supply_chain_reason=supply_chain.get("reason", ""),
             is_test_file=supply_chain.get("is_test_file", False),
+            is_example_file=supply_chain.get("is_example_file", False),
+            is_config_file=supply_chain.get("is_config_file", False),
             is_generated_file=supply_chain.get("is_generated_file", False),
             is_exported=supply_chain.get("is_exported", False),
             cyclomatic_complexity=d.get("cyclomatic_complexity"),

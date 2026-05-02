@@ -5025,6 +5025,8 @@ def _run_analysis(
         symbol.supply_chain_tier = classification.tier.value
         symbol.supply_chain_reason = classification.reason
         symbol.is_test_file = classification.is_test
+        symbol.is_example_file = classification.is_example
+        symbol.is_config_file = classification.is_config
         symbol.is_generated_file = classification.is_generated
         # WI-zimum: fold in modifier-derived export signal. Analyzer
         # may have already set is_exported (WI-gipag Python __all__);

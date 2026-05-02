@@ -6094,6 +6094,8 @@ def _classify_symbols(
         symbol.supply_chain_tier = classification.tier.value
         symbol.supply_chain_reason = classification.reason
         symbol.is_test_file = classification.is_test
+        symbol.is_example_file = classification.is_example
+        symbol.is_config_file = classification.is_config
         symbol.is_generated_file = classification.is_generated
         # WI-zimum: fold in modifier-derived export signal. The analyzer
         # may have already set Symbol.is_exported at extraction time

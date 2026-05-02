@@ -2590,6 +2590,30 @@ def test_detect_source_roots_no_layout(tmp_path: Path) -> None:
     assert _detect_source_roots(tmp_path) == []
 
 
+def test_detect_source_roots_skips_excluded_and_dot_dirs(tmp_path: Path) -> None:
+    """WI-davan E1: skip-list directories (.git, node_modules, __pycache__)
+    and dot-prefixed directories must NOT be descended into when searching
+    for src/ source roots. Without this guard, a node_modules/<pkg>/src/
+    or .venv/lib/.../src/ would be misclassified as a project source root.
+    """
+    # Plant a real, valid src/ root deep inside a skip-list directory.
+    # If _detect_source_roots descends in, it would incorrectly return
+    # this as a source root.
+    fake_src = tmp_path / "node_modules" / "pkg" / "src"
+    (fake_src / "fakemod").mkdir(parents=True)
+    (fake_src / "fakemod" / "__init__.py").write_text("")
+    # And one inside a dot-prefixed dir (e.g., .venv).
+    venv_src = tmp_path / ".venv" / "lib" / "site-packages" / "src"
+    (venv_src / "venvmod").mkdir(parents=True)
+    (venv_src / "venvmod" / "__init__.py").write_text("")
+    # No real src/ at the top level.
+
+    roots = _detect_source_roots(tmp_path)
+    assert fake_src not in roots
+    assert venv_src not in roots
+    assert roots == []
+
+
 def test_module_name_from_path_monorepo_packages_layout(tmp_path: Path) -> None:
     """WI-davan E1: a file under packages/<pkg>/src/<mod>/ produces the
     real Python module name (e.g. 'pkg_a.helper'), NOT the path-shaped

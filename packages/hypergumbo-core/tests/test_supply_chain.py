@@ -2303,3 +2303,255 @@ class TestDependencyManifest:
             "junit": {"direct": True},
         })
         assert manifest.classify_import("junit") == Tier.INTERNAL_DEP
+
+
+class TestIsExampleFileAxis:
+    """WI-jobuj: is_example flag is set when path matches EXAMPLE_PATTERNS.
+
+    Mirrors the WI-rigun pattern for is_test_file. Within tier 2,
+    is_example is mutually exclusive with is_test and is_config.
+    """
+
+    @pytest.mark.parametrize("path", [
+        "examples/hello.py",
+        "example/main.go",
+        "demos/widget.ts",
+        "demo/index.html",
+        "samples/foo.rs",
+        "sample/bar.kt",
+        "tutorials/lesson1.py",
+        "tutorial/intro.md",
+    ])
+    def test_example_paths_set_is_example(self, tmp_path: Path, path: str) -> None:
+        """All EXAMPLE_PATTERNS variants set is_example=True at tier 2."""
+        full = tmp_path / path
+        full.parent.mkdir(parents=True, exist_ok=True)
+        full.write_text("")
+        result = classify_file(full, tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_example is True
+        assert result.is_test is False
+        assert result.is_config is False
+
+    def test_first_party_src_is_not_example(self, tmp_path: Path) -> None:
+        """src/ files are tier 1 with is_example=False."""
+        f = tmp_path / "src" / "lib.py"
+        f.parent.mkdir(parents=True)
+        f.write_text("")
+        result = classify_file(f, tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_example is False
+
+
+class TestIsConfigFileAxis:
+    """WI-jobuj: is_config flag is set when basename matches CONFIG_FILE_NAMES."""
+
+    @pytest.mark.parametrize("filename", [
+        "pyproject.toml",
+        "setup.py",
+        "package.json",
+        "Cargo.toml",
+        "go.mod",
+        "Gemfile",
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+        "composer.json",
+        "mix.exs",
+    ])
+    def test_root_config_file_is_config(self, tmp_path: Path, filename: str) -> None:
+        """Manifest at repo root → is_config=True (tier defaults to first-party)."""
+        f = tmp_path / filename
+        f.write_text("")
+        result = classify_file(f, tmp_path, set())
+        assert result.is_config is True
+        assert result.is_test is False
+        assert result.is_example is False
+
+    def test_nested_config_file_is_config(self, tmp_path: Path) -> None:
+        """A pyproject.toml inside a workspace is also is_config=True."""
+        pkg = tmp_path / "packages" / "core"
+        pkg.mkdir(parents=True)
+        (pkg / "pyproject.toml").write_text("")
+        result = classify_file(pkg / "pyproject.toml", tmp_path, {pkg})
+        assert result.is_config is True
+
+    def test_random_toml_is_not_config(self, tmp_path: Path) -> None:
+        """An arbitrary .toml file is NOT is_config (filename, not extension)."""
+        f = tmp_path / "src" / "settings.toml"
+        f.parent.mkdir(parents=True)
+        f.write_text("")
+        result = classify_file(f, tmp_path, set())
+        assert result.is_config is False
+
+    def test_config_under_examples_is_example_not_config(self, tmp_path: Path) -> None:
+        """examples/foo/package.json → is_example=True, is_config=False.
+
+        Mutual exclusion: example detection wins over config detection so
+        within tier 2 the role flags are XOR-disjoint (acceptance criterion
+        for WI-jobuj).
+        """
+        f = tmp_path / "examples" / "foo" / "package.json"
+        f.parent.mkdir(parents=True)
+        f.write_text("{}")
+        result = classify_file(f, tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_example is True
+        assert result.is_config is False
+
+    def test_config_under_tests_is_test_not_config(self, tmp_path: Path) -> None:
+        """tests/fixtures/package.json → is_test=True, is_config=False."""
+        f = tmp_path / "tests" / "fixtures" / "package.json"
+        f.parent.mkdir(parents=True)
+        f.write_text("{}")
+        result = classify_file(f, tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+        assert result.is_test is True
+        assert result.is_config is False
+
+
+class TestRoleFlagMutualExclusionInTier2:
+    """WI-jobuj acceptance: every Symbol whose tier=2 has at most one of
+    is_test_file / is_example_file / is_config_file set.
+
+    This is the headline property the WI calls out:
+    'every Symbol whose tier=2 has at most one of is_test_file /
+    is_example_file / is_config_file set (mutually exclusive within
+    tier 2).'
+    """
+
+    def _classify(self, tmp_path: Path, rel: str, content: str = "") -> FileClassification:
+        f = tmp_path / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(content)
+        return classify_file(f, tmp_path, set())
+
+    @pytest.mark.parametrize("rel", [
+        # Test paths
+        "tests/test_foo.py",
+        "spec/handler_spec.rb",
+        "__tests__/util.test.js",
+        # Example paths
+        "examples/foo.py",
+        "demos/widget.ts",
+        "samples/intro.go",
+        "tutorials/lesson.md",
+        # Config (when not under example/test path)
+        "tools/pyproject.toml",  # tier defaults to first-party here, but check anyway
+        # Pure tier-2 categories with no role flag
+        "fuzz/fuzz_diff.rs",
+        "benchmarks/bench.py",
+        "doc.ipynb",
+    ])
+    def test_at_most_one_role_flag_when_tier_is_2(
+        self, tmp_path: Path, rel: str
+    ) -> None:
+        result = self._classify(tmp_path, rel)
+        if result.tier != Tier.INTERNAL_DEP:
+            # Property only constrains tier 2; outside tier 2 this test is vacuous.
+            return
+        flags_set = sum([result.is_test, result.is_example, result.is_config])
+        assert flags_set <= 1, (
+            f"tier-2 file {rel!r} has {flags_set} role flags set "
+            f"(is_test={result.is_test}, is_example={result.is_example}, "
+            f"is_config={result.is_config}); they must be mutually exclusive"
+        )
+
+
+class TestSymbolRoleFlagSerialization:
+    """WI-jobuj: is_example_file and is_config_file round-trip through to_dict / from_dict."""
+
+    def test_round_trip_with_example_flag(self) -> None:
+        from hypergumbo_core.ir import Span, Symbol
+
+        sym = Symbol(
+            id="py:examples/hello.py:1-5:greet:function",
+            name="greet",
+            kind="function",
+            language="python",
+            path="examples/hello.py",
+            span=Span(1, 5, 0, 0),
+            supply_chain_tier=2,
+            is_example_file=True,
+        )
+        d = sym.to_dict()
+        assert d["supply_chain"]["is_example_file"] is True
+        assert d["supply_chain"]["is_config_file"] is False
+        round_trip = Symbol.from_dict(d)
+        assert round_trip.is_example_file is True
+        assert round_trip.is_config_file is False
+
+    def test_round_trip_with_config_flag(self) -> None:
+        from hypergumbo_core.ir import Span, Symbol
+
+        sym = Symbol(
+            id="toml:pyproject.toml:1-3:project:section",
+            name="project",
+            kind="section",
+            language="toml",
+            path="pyproject.toml",
+            span=Span(1, 3, 0, 0),
+            supply_chain_tier=1,
+            is_config_file=True,
+        )
+        d = sym.to_dict()
+        assert d["supply_chain"]["is_config_file"] is True
+        round_trip = Symbol.from_dict(d)
+        assert round_trip.is_config_file is True
+
+    def test_default_flags_are_false(self) -> None:
+        from hypergumbo_core.ir import Span, Symbol
+
+        sym = Symbol(
+            id="py:src/lib.py:1-1:foo:function",
+            name="foo",
+            kind="function",
+            language="python",
+            path="src/lib.py",
+            span=Span(1, 1, 0, 0),
+        )
+        assert sym.is_example_file is False
+        assert sym.is_config_file is False
+
+
+class TestClassifySymbolsPropagatesNewFlags:
+    """WI-jobuj: _classify_symbols copies is_example/is_config from FileClassification."""
+
+    def test_classify_symbols_propagates_is_example(self, tmp_path: Path) -> None:
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Span, Symbol
+
+        (tmp_path / "examples").mkdir()
+        (tmp_path / "examples" / "hello.py").write_text("def greet(): pass")
+
+        sym = Symbol(
+            id="py:examples/hello.py:1-1:greet:function",
+            name="greet",
+            kind="function",
+            language="python",
+            path="examples/hello.py",
+            span=Span(1, 1, 0, 0),
+        )
+        _classify_symbols([sym], tmp_path, set())
+        assert sym.is_example_file is True
+        assert sym.is_config_file is False
+        assert sym.is_test_file is False
+
+    def test_classify_symbols_propagates_is_config(self, tmp_path: Path) -> None:
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Span, Symbol
+
+        (tmp_path / "pyproject.toml").write_text("[project]")
+
+        sym = Symbol(
+            id="toml:pyproject.toml:1-1:project:section",
+            name="project",
+            kind="section",
+            language="toml",
+            path="pyproject.toml",
+            span=Span(1, 1, 0, 0),
+        )
+        _classify_symbols([sym], tmp_path, set())
+        assert sym.is_config_file is True
+        assert sym.is_example_file is False
+        assert sym.is_test_file is False

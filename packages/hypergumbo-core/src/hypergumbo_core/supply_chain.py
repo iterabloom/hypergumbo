@@ -163,19 +163,28 @@ class SupplyChainConfig:
 class FileClassification:
     """Classification result for a file.
 
-    `tier` and `is_test` are independent axes (WI-rigun-patuz). The
-    classifier may demote a file to INTERNAL_DEP because it is a test
-    file, but consumers that want a clean 'real third-party deps' or
-    'production code only' query should compose `tier` with `is_test`
-    rather than re-deriving test-ness from path patterns. The historical
-    'tests = tier 2' framing (89154fa20) is preserved on `tier`; the new
-    `is_test` flag exposes the test-detection result as a separate bit.
+    `tier` and the boolean role flags (`is_test`, `is_example`,
+    `is_config`, `is_generated`) are independent axes (WI-rigun-patuz,
+    WI-jobuj). The classifier may demote a file to INTERNAL_DEP because
+    it is a test/example/config file, but consumers that want a clean
+    'real third-party deps' or 'production code only' query should
+    compose `tier` with the role flag rather than re-deriving the role
+    from path patterns. The historical 'tests = tier 2' framing
+    (89154fa20) is preserved on `tier`; the role flags expose the
+    detection results as separate bits.
+
+    Within tier 2 (INTERNAL_DEP), at most one of `is_test`,
+    `is_example`, `is_config` is True per file — the four-way
+    distinction (test / example / config / pure internal_dep) is
+    derivable from those bits.
     """
 
     tier: Tier
     reason: str
     package_name: Optional[str] = None
     is_test: bool = False
+    is_example: bool = False
+    is_config: bool = False
     is_generated: bool = False
 
 
@@ -295,6 +304,46 @@ EXAMPLE_PATTERNS = [
     r"^tutorials?/",  # tutorials/ or tutorial/
 ]
 
+# WI-jobuj: dependency/build manifest filenames. Files matching these
+# names are flagged with ``is_config=True`` independently of tier (see
+# FileClassification). The set is intentionally narrow — canonical
+# package-manager and build-tool manifests, not arbitrary dotfiles —
+# so the bit means "this file declares dependencies / build config",
+# not "this file happens to configure something."
+CONFIG_FILE_NAMES = frozenset({
+    # Python
+    "pyproject.toml",
+    "setup.py",
+    "setup.cfg",
+    "Pipfile",
+    "Pipfile.lock",
+    # Node
+    "package.json",
+    "package-lock.json",
+    "yarn.lock",
+    # Rust
+    "Cargo.toml",
+    "Cargo.lock",
+    # Go
+    "go.mod",
+    "go.sum",
+    # Ruby
+    "Gemfile",
+    "Gemfile.lock",
+    # Java / Kotlin / JVM
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "settings.gradle",
+    "settings.gradle.kts",
+    # PHP
+    "composer.json",
+    "composer.lock",
+    # Elixir
+    "mix.exs",
+    "mix.lock",
+})
+
 # Patterns for documentation directories (tier 2) — not production code.
 # Checked with re.search to match at any depth (e.g., Sources/Lib/Documentation.docc/).
 # Swift DocC (.docc) bundles contain tutorial fragments, articles, and extension files
@@ -397,6 +446,18 @@ def _is_generated_file(rel_path: str) -> bool:
     return False
 
 
+def _is_config_file(rel_path: str) -> bool:
+    """Check if a file path matches a known dependency/build manifest filename.
+
+    WI-jobuj: matches the basename against ``CONFIG_FILE_NAMES``.
+    Path-position-agnostic — a ``pyproject.toml`` at the repo root and
+    one inside a workspace are both flagged.
+    """
+    rel_norm = rel_path.replace("\\", "/")
+    basename = rel_norm.rsplit("/", 1)[-1]
+    return basename in CONFIG_FILE_NAMES
+
+
 def _has_generated_header(path: Path) -> bool:
     """Check the first few KB of *path* for a generated-file marker.
 
@@ -437,6 +498,11 @@ def classify_file(
         FileClassification with tier, reason, and optional package_name.
         The ``is_generated`` flag is set independently of tier when the
         file path matches known generated-code patterns (WI-tizij).
+        The ``is_config`` flag (WI-jobuj) is set independently of tier
+        when the basename matches a dependency/build manifest filename
+        (``pyproject.toml``, ``package.json``, ``Cargo.toml``, etc.) —
+        but NOT when ``is_test`` or ``is_example`` is already True, so
+        the role flags remain mutually exclusive within tier 2.
     """
     # Get relative path for pattern matching
     try:
@@ -449,10 +515,16 @@ def classify_file(
     # WI-pofin: fall back to a content-based header scan when the path
     # is unambiguous. Path check first because it's cheaper.
     generated = _is_generated_file(rel) or _has_generated_header(path)
+    config_filename = _is_config_file(rel)
 
     result = _classify_file_core(rel, path, repo_root, package_roots, config)
     if generated:
         result.is_generated = True
+    # WI-jobuj: is_config is mutually exclusive with is_test / is_example
+    # within tier 2 (test and example detection wins on a tie, e.g., a
+    # package.json under examples/ is is_example=True, not is_config).
+    if config_filename and not result.is_test and not result.is_example:
+        result.is_config = True
     return result
 
 
@@ -502,7 +574,9 @@ def _classify_file_core(
     # 4. Check example/demo patterns (lower priority than workspace packages)
     for pattern in EXAMPLE_PATTERNS:
         if re.match(pattern, rel):
-            return FileClassification(Tier.INTERNAL_DEP, f"path matches {pattern}")
+            return FileClassification(
+                Tier.INTERNAL_DEP, f"path matches {pattern}", is_example=True
+            )
 
     # 4b. Check documentation patterns (DocC bundles, etc.)
     for pattern in DOCUMENTATION_PATTERNS:
