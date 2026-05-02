@@ -19,3 +19,18 @@
     pr_ref:  # 808b
     description: "Per the WI-gumoz-zoboz audit verdict (DOCUMENT + EXTEND), add two sibling booleans to Symbol mirroring is_test_file (WI-rigun), is_generated_file (WI-tizij), and is_exported (WI-zimum):\n\n- is_example_file: bool — set when supply_chain.py classifies the file as example/demo/sample/tutorial.\n- is_config_file: bool — set when supply_chain.py classifies the file as a config (package.json, pyproject.toml, etc.).\n\nThe integer supply_chain_tier stays unchanged (still 1=first_party, 2=internal_dep, 3=external_dep, 4=derived). The four-way distinction inside tier=2 becomes derivable as: is_test_file XOR is_example_file XOR is_config_file XOR (none = pure internal_dep).\n\nREPRO: today, a consumer asking 'is this example code?' against a tier-2 symbol has no way to answer from Symbol fields alone — the information is collapsed in supply_chain.py's classification logic but not surfaced. Adding the booleans surfaces them.\n\nACCEPTANCE:\n- ir.Symbol gains the two boolean fields with default False.\n- supply_chain.py's classification path sets each boolean when the corresponding signal fires (example path patterns; config path patterns / file extensions).\n- Property test: every Symbol whose tier=2 has at most one of is_test_file / is_example_file / is_config_file set (mutually exclusive within tier 2).\n- schema.json regenerates without breaking changes (new optional fields).\n\nDEPENDENCIES: none. Independent of any in-flight work.\n\nREGISTRY DRIFT: no — these are bool fields, not enum values, so they don't enter the edge-type or any enum drift surface."  # 808b
     fields: {}  # 808b
+- op: update  # 57ee
+  at: '2026-05-02T10:09:16Z'  # 57ee
+  by: agent  # 57ee
+  actor: jgstern_agent  # 57ee
+  clock: 2  # 57ee
+  nonce: 57ee  # 57ee
+  set:  # 57ee
+    status: done  # 57ee
+- op: discuss  # b4dc
+  at: '2026-05-02T10:09:16Z'  # b4dc
+  by: agent  # b4dc
+  actor: jgstern_agent  # b4dc
+  clock: 3  # b4dc
+  nonce: b4dc  # b4dc
+  message: "Fixed in PR #3513 (commit f919fb9ba). Added is_example_file and is_config_file boolean fields to Symbol mirroring the WI-rigun is_test_file pattern. Set in supply_chain.classify_file via FileClassification (is_example fires on EXAMPLE_PATTERNS match; is_config fires on CONFIG_FILE_NAMES basename match, suppressed when is_test or is_example already True to preserve mutual exclusion). Wired through both call sites (cli.py _classify_symbols and sketch.py). Round-trips through Symbol.to_dict / from_dict via supply_chain sub-object. Property test confirms within tier 2 the three role flags are mutually exclusive. Pre-existing per-package isolation gap on mainstream py.py:1724 also closed in the same PR by adding a _detect_source_roots test for the skip-dir branch."  # b4dc

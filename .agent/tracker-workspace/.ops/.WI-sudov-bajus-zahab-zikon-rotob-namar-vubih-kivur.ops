@@ -18,3 +18,18 @@
     pr_ref:  # 3883
     description: "Per the WI-juvag-numud audit verdict (DOCUMENT with re-eval trigger), update the docstring on DataModelKind in packages/hypergumbo-core/src/hypergumbo_core/datamodels.py to surface the three-axis confusion explicitly:\n\nDOCSTRING TO ADD (verbatim or close):\n'This enum currently mixes three axes:\n  (1) language construct: DATACLASS (Python @dataclass decorator)\n  (2) library/framework: ORM_MODEL (Django/SQLAlchemy/TypeORM/GORM), PYDANTIC_MODEL, SCHEMA (Marshmallow / GraphQL types)\n  (3) architectural role: DTO, DOMAIN_MODEL, ENTITY (DDD-style)\n\nA class may legitimately satisfy values across multiple axes (e.g., a @dataclass that is also a Pydantic-style validator and is also a DTO). The current detection table at MODEL_BASE_CLASSES picks one verdict per class via regex priority order, losing the cross-axis information. Re-evaluation triggers (any one is sufficient): (a) a consumer needs to filter by axis independently; (b) the detection table grows past ~12 values; (c) a class is observed where the picked value visibly hides a cross-axis signal a consumer needs. See WI-juvag-numud audit thread.'\n\nPure docstring update; no behavior change.\n\nACCEPTANCE: docstring lands on the DataModelKind class definition; no test changes needed (no behavior change)."  # 3883
     fields: {}  # 3883
+- op: update  # 638f
+  at: '2026-05-02T08:30:50Z'  # 638f
+  by: agent  # 638f
+  actor: jgstern_agent  # 638f
+  clock: 2  # 638f
+  nonce: 638f  # 638f
+  set:  # 638f
+    status: done  # 638f
+- op: discuss  # 6e02
+  at: '2026-05-02T08:30:50Z'  # 6e02
+  by: agent  # 6e02
+  actor: jgstern_agent  # 6e02
+  clock: 3  # 6e02
+  nonce: '6e02'  # 6e02
+  message: "Fixed in PR (commit ee3b4dd10). Pure docstring update on DataModelKind per the WI-juvag-numud audit verdict, surfacing the three-axis confusion (language construct / library / architectural role) and re-eval triggers."  # 6e02
