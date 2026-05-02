@@ -186,7 +186,9 @@ class RankedFile:
 DEFAULT_EDGE_TYPE_WEIGHTS: Dict[str, float] = {
     "calls": 1.0,
     "implements_rpc": 1.0,
-    "grpc_calls": 0.9,
+    # Post WI-vumum-juvil: gRPC client→server edges are emitted as
+    # canonical 'calls' (weight 1.0); the prior 'grpc_calls' weight
+    # entry was dead after the protocol-call family fold.
     "event_publishes": 0.8,
     "crypto_flow": 0.8,
     "dispatches_to": 0.6,

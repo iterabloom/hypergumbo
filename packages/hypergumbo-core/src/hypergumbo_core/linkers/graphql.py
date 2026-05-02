@@ -26,7 +26,8 @@ How It Works
 1. Scan source files for GraphQL client patterns
 2. Extract operation names from query strings
 3. Match to schema operation definitions
-4. Create graphql_calls edges linking client to server
+4. Create canonical 'calls' edges with meta['protocol']='graphql' linking
+   client to server (post WI-vumum-juvil; pre-fold name was graphql_calls)
 
 Why This Design
 ---------------
@@ -274,10 +275,13 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
                 schema_sym = operation_map[op_key]
                 is_cross_language = client_symbol.language != schema_sym.language
 
+                # ADR-0023 §6 Phase 3 (WI-vumum-juvil): GraphQL is a
+                # wire protocol, not a relationship. The fold target is
+                # canonical 'calls' + meta['protocol']='graphql'.
                 edge = Edge.create(
                     src=client_symbol.id,
                     dst=schema_sym.id,
-                    edge_type="graphql_calls",
+                    edge_type="calls",
                     line=call.line,
                     confidence=0.9 if call.operation_name else 0.7,
                     origin=PASS_ID,
@@ -285,6 +289,7 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
                     evidence_type="graphql_operation_match",
                 )
                 edge.meta = {
+                    "protocol": "graphql",
                     "operation_type": call.operation_type,
                     "operation_name": call.operation_name,
                     "cross_language": is_cross_language,

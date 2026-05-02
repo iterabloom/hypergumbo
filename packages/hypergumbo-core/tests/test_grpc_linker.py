@@ -555,8 +555,12 @@ stub = user_pb2_grpc.UserServiceStub(channel)
 
         result = link_grpc(tmp_path)
 
-        # Should create edges between client and server
-        grpc_edges = [e for e in result.edges if e.edge_type == "grpc_calls"]
+        # Should create canonical 'calls' edges with meta['protocol']='grpc'
+        # (post WI-vumum-juvil; pre-fold edge_type was 'grpc_calls').
+        grpc_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.meta.get("protocol") == "grpc"
+        ]
         assert len(grpc_edges) >= 1
 
 
@@ -964,9 +968,11 @@ class TestGrpcProtoRouteSymbols:
 class TestGrpcServerToServiceBridge:
     """Tests for dispatches_to edges bridging server/servicer to service symbols.
 
-    grpc_calls edges terminate at grpc_server/grpc_servicer symbols (from Go
-    RegisterXxxServer or Python XxxServicer). routes_to edges originate from
-    route symbols and target grpc_service symbols (from proto files). Without a
+    Canonical 'calls' edges with meta['protocol']='grpc' (post
+    WI-vumum-juvil; pre-fold name was grpc_calls) terminate at
+    grpc_server/grpc_servicer symbols (from Go RegisterXxxServer or
+    Python XxxServicer). routes_to edges originate from route symbols
+    and target grpc_service symbols (from proto files). Without a
     bridge edge, these two graph components are disconnected, breaking forward
     slice traversal from client code to handler implementations.
     """

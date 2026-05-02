@@ -78,9 +78,10 @@ def test_edge_types_on_axis_returns_only_matching():
 
 def test_edge_types_on_axis_endpoint_shape_includes_known_deprecation_candidates():
     endpoints = {spec.name for spec in edge_types_on_axis(AXIS_ENDPOINT_SHAPE)}
-    # Representative endpoint-shaped values still in the registry post-Phase-4b
-    # (their producers haven't been migrated yet — pending future Phase-3-style
-    # passes per ADR-0023 §6).
+    # Representative endpoint-shaped values still in the registry. The
+    # protocol-call trio (http_calls / grpc_calls / graphql_calls) was
+    # producer-migrated in WI-vumum-juvil and stays in the registry as
+    # deprecated until Phase 4b' prunes them.
     assert {
         "http_calls", "grpc_calls", "graphql_calls", "script_src",
     } <= endpoints
@@ -285,53 +286,31 @@ def test_find_axis_drift_skips_annotated_assignment_without_value(tmp_path: Path
 # --- Strict-mode wrapper (WI-variv-lujug) ---
 
 
-def test_find_axis_drift_strict_known_off_axis_consumers():
-    """Strict mode reports the known-pending off-axis consumer
-    references. These reflect legitimate references to endpoint_shape
-    values whose producers haven't been Phase-3-migrated yet
-    (http.py emits ``http_calls``; grpc.py emits ``grpc_calls``). Each
-    entry is dead-but-harmless once that family ships its Phase 3 fold;
-    until then, the consumer reference is load-bearing because the
-    producer-side fold target ('calls' + meta) doesn't exist yet.
+def test_find_axis_drift_strict_no_off_axis_consumers():
+    """Strict mode reports zero off-axis consumer references after
+    WI-vumum-juvil. The protocol-call trio (http_calls / grpc_calls
+    / graphql_calls) was the last endpoint_shape family with consumer
+    references; this Phase 3 fold dropped http_calls from compact's
+    CROSS_CUTTING_EDGE_TYPES and grpc_calls from taint /
+    io_boundary's traceable sets, leaving only relationship- and
+    pending_classification-axis values in the consumer surfaces.
 
-    This test pins the *exact* known-pending list so a fourth
-    accidental off-axis reference fails the test loudly. When a
-    family's Phase 3 ships, drop that family's value from this list
-    (and ideally the consumer reference goes away in the same PR).
+    This test pins the empty list so a future regression that adds
+    an off-axis reference fails loudly. If a new Phase-3-pending
+    family appears, this test should fail and the failure message
+    should be triaged against the registry: either complete the fold
+    (drop the consumer reference + producer migration) or update
+    this test with the corresponding tracker item explaining why
+    the off-axis reference is load-bearing.
     """
     from hypergumbo_core.edge_types import find_axis_drift
 
     repo_root = Path(__file__).resolve().parents[3]
     offenders = find_axis_drift(repo_root, strict=True)
 
-    # Each entry: (file_substring, set_name, value).
-    expected = {
-        ("compact.py", "CROSS_CUTTING_EDGE_TYPES", "http_calls"),
-        ("io_boundary.py", "_TRACEABLE_EDGE_TYPES", "grpc_calls"),
-        ("taint.py", "TAINT_CALL_EDGE_TYPES", "grpc_calls"),
-    }
-    # Format: "<rel_path>:<lineno> (<set_name>): contains
-    #   ['<value>'] not on allowed axis [...]"
-    candidate_triples = {
-        (f, s, v)
-        for f in ("compact.py", "io_boundary.py", "taint.py")
-        for s in (
-            "CROSS_CUTTING_EDGE_TYPES",
-            "_TRACEABLE_EDGE_TYPES",
-            "TAINT_CALL_EDGE_TYPES",
-        )
-        for v in ("http_calls", "grpc_calls", "graphql_calls")
-    }
-    actual: set[tuple[str, str, str]] = set()
-    for line in offenders:
-        for f, s, v in candidate_triples:
-            if f in line and s in line and f"'{v}'" in line:
-                actual.add((f, s, v))
-    assert actual == expected, (
-        f"Strict-mode off-axis offenders changed:\n"
-        f"  expected: {sorted(expected)}\n"
-        f"  actual: {sorted(actual)}\n"
-        f"  raw offenders: {offenders}"
+    assert offenders == [], (
+        "Strict-mode off-axis offenders appeared:\n"
+        + "\n".join(offenders)
     )
 
 

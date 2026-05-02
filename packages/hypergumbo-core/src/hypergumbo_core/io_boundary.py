@@ -720,11 +720,11 @@ _TRACEABLE_EDGE_TYPES = frozenset({
     # name in keeps the reverse-graph traversal crossing async-channel
     # boundaries after the IPC family rename.
     "event_publishes",
-    # Still-emitted endpoint_shape values pending future Phase-3-style
-    # migrations of their respective linkers (grpc_calls in grpc.py),
-    # plus pending_classification entries awaiting per-family audit
-    # (implements_rpc).
-    "grpc_calls", "implements_rpc",
+    # pending_classification entries awaiting per-family audit
+    # (implements_rpc). Protocol-call family (WI-vumum-juvil) folds
+    # to 'calls' + meta['protocol'], so HTTP/gRPC/GraphQL traversals
+    # transfer via the canonical 'calls' member.
+    "implements_rpc",
 })
 
 
@@ -1145,7 +1145,10 @@ def tag_io_boundaries(
         "wasm_bridge", "wasm_load", "bridge_invokes",
         "cgo_bridge", "ffi_bridge",
         "ipc_calls", "ipc_event",
-        "grpc_calls", "implements_rpc",
+        # Protocol-call family (WI-vumum-juvil) folds to canonical
+        # 'calls' + meta['protocol']; HTTP/gRPC/GraphQL traversals
+        # transfer via 'calls'.
+        "implements_rpc",
     }),
 ) -> int:
     """Tag edges that reach I/O primitives with boundary metadata.

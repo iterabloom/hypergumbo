@@ -489,16 +489,22 @@ Phase-3-migrated yet. They split into two groups:
 
 1. **Protocol-call family** (`http_calls`, `grpc_calls`,
    `graphql_calls`): the natural next subset, since their fold
-   pattern is uniform (`calls` + `meta["protocol"]`). Filed as
-   `WI-vumum` (sibling tracker item to this ADR revision). After
-   that Phase 3 ships and bakeoff validates, a second 4b ship
-   prunes them and removes the corresponding consumer references
-   in `compact.CROSS_CUTTING_EDGE_TYPES`,
+   pattern is uniform (`calls` + `meta["protocol"]`). Producer
+   migration shipped under `WI-vumum-juvil`: `linkers/http.py`,
+   `linkers/grpc.py`, and `linkers/graphql.py` now emit canonical
+   `calls` with `meta["protocol"]` in `{"http", "grpc", "graphql"}`,
+   and the consumer-side references in
+   `compact.CROSS_CUTTING_EDGE_TYPES`,
    `taint.TAINT_CALL_EDGE_TYPES`, and
-   `io_boundary._TRACEABLE_EDGE_TYPES` (currently the only
-   load-bearing consumer references to these three values, and the
-   reason the strict-mode pre-commit gate from `WI-variv-lujug`
-   cannot yet flip — see WI-mumok).
+   `io_boundary._TRACEABLE_EDGE_TYPES` were dropped in the same PR
+   (canonical `calls` already in those sets transparently picks up
+   the folded edges). The strict-mode drift linter now reports zero
+   off-axis consumer references — this Phase 3 cleared the last
+   load-bearing endpoint_shape consumer reference, removing the
+   immediate-next blocker for the strict-mode pre-commit flip
+   (`WI-mumok`). The three deprecated registry entries stay until a
+   sibling Phase-4b' ship (gated on bakeoff validation of this
+   migration) prunes them along with a SCHEMA_VERSION bump.
 
 2. **Long-tail individual values** (~22 values from the
    WI-tavas-voror sweep: `abi_call`, `association`, `base_image`,

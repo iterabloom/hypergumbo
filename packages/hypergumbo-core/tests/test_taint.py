@@ -1094,19 +1094,22 @@ class TestCrossLanguageTaint:
     """Test taint propagation across language boundaries via linker edges."""
 
     def test_taint_call_edge_types_post_phase4b(self) -> None:
-        """Post Phase 4b (WI-vomoj-suhaz): bridge / IPC endpoint_shape values
-        are no longer enumerated explicitly in TAINT_CALL_EDGE_TYPES. Bridges
-        fold to canonical 'calls' + meta['bridge_kind']; IPC folds to 'calls'
-        + meta['protocol']='ipc'. The set keeps only canonicals plus
-        still-emitted endpoint_shape (grpc_calls) and pending_classification
-        (implements_rpc)."""
+        """Post Phase 4b (WI-vomoj-suhaz) and post WI-vumum-juvil:
+        bridge / IPC / protocol-call endpoint_shape values are no
+        longer enumerated explicitly in TAINT_CALL_EDGE_TYPES. Bridges
+        fold to canonical 'calls' + meta['bridge_kind']; IPC and
+        protocol-call (HTTP/gRPC/GraphQL) fold to 'calls' +
+        meta['protocol']. The set keeps only canonicals plus
+        pending_classification (implements_rpc)."""
         assert "calls" in TAINT_CALL_EDGE_TYPES
         assert "module_attr_ref" in TAINT_CALL_EDGE_TYPES
-        assert "grpc_calls" in TAINT_CALL_EDGE_TYPES
         assert "implements_rpc" in TAINT_CALL_EDGE_TYPES
         # Removed in Phase 4b — folded to 'calls' + meta:
         for removed in ("ffi_bridge", "wasm_bridge", "napi_bridge", "ipc_calls",
                         "native_bridge", "cgo_bridge", "bridge_invokes"):
+            assert removed not in TAINT_CALL_EDGE_TYPES
+        # Removed in WI-vumum-juvil — folded to 'calls' + meta['protocol']:
+        for removed in ("http_calls", "grpc_calls", "graphql_calls"):
             assert removed not in TAINT_CALL_EDGE_TYPES
 
     def test_structural_taint_via_wasm_bridge(self) -> None:

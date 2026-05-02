@@ -482,7 +482,8 @@ class TestLinkHttp:
         result = link_http(tmp_path, [route_symbol])
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "http_calls"
+        assert result.edges[0].edge_type == "calls"
+        assert result.edges[0].meta["protocol"] == "http"
         assert result.edges[0].dst == route_symbol.id
         assert result.edges[0].meta["http_method"] == "GET"
         assert result.edges[0].meta["url_path"] == "/api/users"
@@ -509,7 +510,8 @@ class TestLinkHttp:
         result = link_http(tmp_path, [route_symbol])
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "http_calls"
+        assert result.edges[0].edge_type == "calls"
+        assert result.edges[0].meta["protocol"] == "http"
         assert result.edges[0].dst == route_symbol.id
 
     def test_matches_parameterized_route(self, tmp_path):
@@ -1273,7 +1275,8 @@ class TestGoHttpLinking:
         result = link_http(tmp_path, [route_symbol])
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "http_calls"
+        assert result.edges[0].edge_type == "calls"
+        assert result.edges[0].meta["protocol"] == "http"
         assert result.edges[0].dst == route_symbol.id
         assert result.edges[0].meta["cross_language"] is True
 
@@ -1679,7 +1682,8 @@ class TestRubyHttpLinking:
         result = link_http(tmp_path, [route_symbol])
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "http_calls"
+        assert result.edges[0].edge_type == "calls"
+        assert result.edges[0].meta["protocol"] == "http"
         assert result.edges[0].dst == route_symbol.id
         assert result.edges[0].meta["cross_language"] is True
 
@@ -1733,7 +1737,8 @@ class TestJavaHttpLinking:
         result = link_http(tmp_path, [route_symbol])
 
         assert len(result.edges) == 1
-        assert result.edges[0].edge_type == "http_calls"
+        assert result.edges[0].edge_type == "calls"
+        assert result.edges[0].meta["protocol"] == "http"
         assert result.edges[0].dst == route_symbol.id
         assert result.edges[0].meta["cross_language"] is True
 
@@ -2325,7 +2330,7 @@ class TestElmFilesAreScanned:
         # And a cross-language edge should exist
         assert any(
             e.src == elm_syms[0].id and e.dst == route.id
-            and e.edge_type == "http_calls"
+            and e.edge_type == "calls" and e.meta.get("protocol") == "http"
             for e in result.edges
         ), "Elm → Go route edge missing from link_http result"
 
@@ -2574,7 +2579,7 @@ class TestJsTemplateLiteralEndToEnd:
         assert any(
             e.src == ts_syms[0].id
             and e.dst == route.id
-            and e.edge_type == "http_calls"
+            and e.edge_type == "calls" and e.meta.get("protocol") == "http"
             for e in result.edges
         ), "TS → Go route edge missing from link_http result"
 
@@ -2612,7 +2617,7 @@ class TestJsTemplateLiteralEndToEnd:
         result = link_http(tmp_path, [route])
 
         assert any(
-            e.dst == route.id and e.edge_type == "http_calls"
+            e.dst == route.id and e.edge_type == "calls" and e.meta.get("protocol") == "http"
             for e in result.edges
         ), "Wildcard-method route should be reachable via variable-URL prefix match"
 
@@ -2639,5 +2644,5 @@ class TestJsTemplateLiteralEndToEnd:
 
         # Client symbol is still created, but no edge emitted.
         assert not any(
-            e.edge_type == "http_calls" for e in result.edges
+            e.edge_type == "calls" and e.meta.get("protocol") == "http" for e in result.edges
         ), "Shallow '/api' prefix should not match any route"

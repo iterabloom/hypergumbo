@@ -750,12 +750,14 @@ TAINT_CALL_EDGE_TYPES = frozenset({
     # this edge type, auto-imported TaintSource records for attribute
     # kind primitives would never match in structural propagation.
     "module_attr_ref",
-    # Still-emitted endpoint_shape (grpc_calls) plus
     # pending_classification entries awaiting per-family audit
     # (implements_rpc). Bridge edges no longer enumerated explicitly:
     # post-Phase-3 (WI-mifor-vabul), every bridge folds to 'calls' which
     # is already a member; meta['bridge_kind'] carries the bridge type.
-    "implements_rpc", "grpc_calls",
+    # Protocol-call family (WI-vumum-juvil) similarly folds into 'calls'
+    # + meta['protocol'], so HTTP/gRPC/GraphQL taint propagation
+    # transfers automatically.
+    "implements_rpc",
 })
 
 

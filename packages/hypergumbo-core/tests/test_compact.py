@@ -3290,9 +3290,10 @@ class TestTieredTokenBudget:
 class TestCrossCuttingEdgeSeeding:
     """Tests for cross-cutting edge endpoint seeding (INV-posun).
 
-    Compact mode must retain cross-cutting edge types (routes_to, http_calls,
-    dispatches_to, di_resolves) by pre-seeding their endpoints into the node
-    selection.
+    Compact mode must retain cross-cutting edge types (calls,
+    dispatches_to, event_publishes) by pre-seeding their endpoints
+    into the node selection. Post WI-vumum-juvil, HTTP/gRPC/GraphQL
+    edges fold to canonical 'calls' and survive via that membership.
     """
 
     def test_routes_to_edges_preserved(self):
@@ -3362,7 +3363,12 @@ class TestCrossCuttingEdgeSeeding:
         )
 
     def test_http_calls_edges_preserved(self):
-        """http_calls edges survive compact when endpoints are seeded."""
+        """HTTP-protocol calls survive compact when endpoints are seeded.
+
+        Post WI-vumum-juvil, HTTP edges emit as canonical 'calls' with
+        meta['protocol']='http'; cross-cutting seeding picks them up
+        via the canonical name.
+        """
         # Client function making HTTP call
         client = make_symbol("fetch_users")
         # Server handler
@@ -3370,10 +3376,12 @@ class TestCrossCuttingEdgeSeeding:
         # Hub to anchor centrality
         hub = make_symbol("main")
 
+        http_edge = make_edge(client.id, server.id, edge_type="calls")
+        http_edge.meta = {"protocol": "http"}
         edges = [
             make_edge(hub.id, client.id),
             make_edge(hub.id, server.id),
-            make_edge(client.id, server.id, edge_type="http_calls"),
+            http_edge,
         ]
 
         all_symbols = [hub, client, server]
@@ -3390,8 +3398,9 @@ class TestCrossCuttingEdgeSeeding:
         )
 
         edge_types = {e["type"] for e in result["edges"]}
-        assert "http_calls" in edge_types, (
-            "http_calls edge should be preserved via cross-cutting seeding"
+        assert "calls" in edge_types, (
+            "HTTP call (canonical 'calls') should be preserved via "
+            "cross-cutting seeding"
         )
 
     def test_cross_cutting_seeds_capped(self):
@@ -3458,14 +3467,15 @@ class TestCrossCuttingEdgeSeeding:
         """CROSS_CUTTING_EDGE_TYPES contains the expected edge types.
 
         Per ADR-0023 §6 Phase 3 (WI-vasik-jofiv / WI-mifor-vabul /
-        WI-hahap-farid), bridge / IPC / route / DI / annotation edges
-        all fold to canonical 'calls' / 'dispatches_to' /
-        'event_publishes' (with mechanism in meta). The set includes
-        'calls' and 'event_publishes' so cross-cutting endpoint
-        seeding still picks up FFI/IPC/queue/CRDT/MQ endpoints after
-        the rename. Phase 4b (WI-vomoj-suhaz) pruned the deprecated
-        entries (routes_to, di_resolves); the canonical members
-        transparently cover the folds.
+        WI-hahap-farid / WI-vumum-juvil), bridge / IPC / protocol-call
+        / route / DI / annotation edges all fold to canonical 'calls' /
+        'dispatches_to' / 'event_publishes' (with mechanism in meta).
+        The set includes 'calls' and 'event_publishes' so cross-cutting
+        endpoint seeding picks up FFI/IPC/HTTP/gRPC/GraphQL/queue/CRDT/MQ
+        endpoints after each rename. Phase 4b (WI-vomoj-suhaz) pruned the
+        bridge/IPC entries; WI-vumum-juvil pruned the protocol-call
+        entry (http_calls); the canonical members transparently cover
+        the folds.
         """
         from hypergumbo_core.compact import CROSS_CUTTING_EDGE_TYPES
 
@@ -3473,10 +3483,10 @@ class TestCrossCuttingEdgeSeeding:
         assert "calls" in CROSS_CUTTING_EDGE_TYPES
         assert "dispatches_to" in CROSS_CUTTING_EDGE_TYPES
         assert "event_publishes" in CROSS_CUTTING_EDGE_TYPES
-        assert "http_calls" in CROSS_CUTTING_EDGE_TYPES
-        # Phase 4b pruned the deprecated entries:
+        # Phase 4b / WI-vumum-juvil pruned the deprecated entries:
         assert "routes_to" not in CROSS_CUTTING_EDGE_TYPES
         assert "di_resolves" not in CROSS_CUTTING_EDGE_TYPES
+        assert "http_calls" not in CROSS_CUTTING_EDGE_TYPES
         # "ffi_calls" was removed: it's the name of a Python local variable
         # in the FFI linkers, not an emitted Edge.edge_type value.
         assert "ffi_calls" not in CROSS_CUTTING_EDGE_TYPES

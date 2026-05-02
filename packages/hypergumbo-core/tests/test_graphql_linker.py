@@ -221,8 +221,13 @@ const GET_USERS = gql`query GetUsers { users { id } }`;
 
         result = link_graphql(tmp_path, [operation_symbol])
 
-        # Should have edge linking client to schema
-        graphql_edges = [e for e in result.edges if e.edge_type == "graphql_calls"]
+        # Should have canonical 'calls' edge with meta['protocol']='graphql'
+        # linking client to schema (post WI-vumum-juvil; pre-fold edge_type
+        # was 'graphql_calls').
+        graphql_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.meta.get("protocol") == "graphql"
+        ]
         assert len(graphql_edges) == 1
         assert operation_symbol.id in graphql_edges[0].dst
 

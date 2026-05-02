@@ -403,6 +403,39 @@ from both the registry and this set; consumers querying by
 component-import-specific behavior directly."""
 
 
+PROTOCOL_KINDS: Final[frozenset[str]] = frozenset({
+    "ipc",      # Tauri-style command bus, OS-level inter-process channels
+    "http",     # HTTP / HTTPS client-server calls
+    "grpc",     # gRPC over HTTP/2
+    "graphql",  # GraphQL operations against a schema
+})
+"""Closed enumeration of values for ``edge.meta['protocol']``.
+
+Per ADR-0023 §6 Phase 3 (WI-vumum-juvil): Phase 3 folds the
+protocol-call family endpoint_shape values (``http_calls``,
+``grpc_calls``, ``graphql_calls``) into the canonical ``calls``
+relationship plus ``meta['protocol']`` carrying the wire protocol.
+``ipc`` is already in flight (audit-findings 0002 / WI-hahap-farid:
+the Tauri IPC linker emits ``calls`` + ``meta['protocol']='ipc'``).
+The enumeration is closed: adding a new wire protocol requires an
+ADR amendment plus an entry here.
+
+The choice of *closed* enumeration mirrors :data:`BRIDGE_KINDS`
+(and ADR-0015's ``access_mode``): a small finite vocabulary keeps
+consumers' filter logic stable, and any analyzer wanting a new
+value has a forced governance moment. The closure is currently
+documented-but-unenforced — a property test would need to walk
+the producer-side ``meta={...}`` literals, which the current
+static drift linter does not do.
+
+Why protocol is genuinely orthogonal to ``edge_type``: the
+relationship is the same (a caller invokes a callee); the
+protocol picks the wire encoding / dispatch fabric. Two sites
+making an HTTP call and a gRPC call to functionally-equivalent
+endpoints share the relationship, not the wire shape — so the
+protocol belongs in ``meta``, not in the relationship name."""
+
+
 BRIDGE_KINDS: Final[frozenset[str]] = frozenset({
     "cgo",            # Go's cgo FFI
     "ffi",            # generic FFI (Python ctypes, Lua FFI, Ruby FFI, etc.)

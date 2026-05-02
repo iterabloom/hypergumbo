@@ -71,7 +71,8 @@ How It Works
 2. Scan source files for HTTP client calls
 3. Extract URL and method from each call (literal or variable)
 4. Match to route symbols by method + path pattern
-5. Create http_calls edges linking client to server
+5. Create canonical 'calls' edges with meta['protocol']='http' linking
+   client to server (post WI-vumum-juvil; pre-fold name was http_calls)
 
 Why This Design
 ---------------
@@ -1470,10 +1471,13 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
             else:
                 base_confidence = 0.9
 
+            # ADR-0023 §6 Phase 3 (WI-vumum-juvil): HTTP is a wire
+            # protocol, not a relationship. The fold target is
+            # canonical 'calls' + meta['protocol']='http'.
             edge = Edge.create(
                 src=client_symbol.id,
                 dst=matched_route.id,
-                edge_type="http_calls",
+                edge_type="calls",
                 line=call.line,
                 confidence=base_confidence,
                 origin=PASS_ID,
@@ -1481,6 +1485,7 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                 evidence_type="http_url_match",
             )
             edge.meta = {
+                "protocol": "http",
                 "http_method": call.method,
                 "url_path": call_path,
                 "cross_language": is_cross_language,

@@ -112,13 +112,17 @@ _VICTIM_REMOVAL_EXCLUDE_DAMPENERS = (
 # message_queue / etc. into 'event_publishes'. Phase 4b (WI-vomoj-suhaz)
 # pruned the deprecated entries from this set; the canonical members
 # transparently cover the folds via dispatches_to / event_publishes.
+# WI-vumum-juvil folded http_calls / grpc_calls / graphql_calls into
+# canonical 'calls' + meta['protocol']; cross-cutting endpoint seeding
+# still picks up HTTP/gRPC/GraphQL edges via the canonical name.
 CROSS_CUTTING_EDGE_TYPES = frozenset({
-    "calls",           # generic invocation (covers FFI/IPC/RPC bridges)
+    "calls",           # generic invocation (covers FFI/IPC/RPC bridges
+                       # and protocol-call family — HTTP, gRPC, GraphQL —
+                       # post WI-vumum-juvil)
     "dispatches_to",   # runtime dispatch indirection (covers routes,
                        # delegates, DI resolution, annotation dispatch)
     "event_publishes", # async producer→consumer (covers IPC, websocket,
                        # queue, CRDT, message_bus)
-    "http_calls",      # HTTP client call → server endpoint
 })
 
 

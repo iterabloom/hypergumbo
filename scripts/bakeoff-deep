@@ -1034,9 +1034,10 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # cover them).
     _CALL_FLOW_EDGE_TYPES = {
         "calls", "dispatches_to", "wraps",
-        # Still-emitted endpoint_shape (grpc_calls) plus
         # pending_classification awaiting per-family audit (implements_rpc).
-        "grpc_calls", "implements_rpc",
+        # Protocol-call family (WI-vumum-juvil) folds to canonical 'calls'
+        # + meta['protocol']; HTTP/gRPC/GraphQL flows transfer via 'calls'.
+        "implements_rpc",
     }
 
     in_degree: dict = {}

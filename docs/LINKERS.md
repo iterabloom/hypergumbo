@@ -80,7 +80,7 @@ Linkers operate on the combined output of all language analyzers:
 For example, the HTTP linker (Protocol subcategory):
 - Scans for `fetch("/api/users")` calls in JavaScript.
 - Scans for `@app.get("/api/users")` route handlers in Python (or equivalent in other languages via the YAML framework-pattern system).
-- Emits an `http_calls` edge from the client call site symbol to the server handler symbol.
+- Emits a canonical `calls` edge with `meta["protocol"] = "http"` from the client call site symbol to the server handler symbol (post WI-vumum-juvil; pre-fold edge_type was `http_calls`).
 
 ## Why Linkers Matter
 

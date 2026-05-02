@@ -36,7 +36,8 @@ How It Works
 4. Create kind="route" symbols for each proto RPC method, using the
    real HTTP/2 wire path /<package>.<ServiceName>/<MethodName>
 5. Match clients to servers by service name
-6. Create grpc_calls edges linking client stubs to servicers
+6. Create canonical 'calls' edges with meta['protocol']='grpc' linking
+   client stubs to servicers (post WI-vumum-juvil; pre-fold was grpc_calls)
 7. Create routes_to edges from RPC route symbols to service symbols
 
 Unresolved Edge Resolution
@@ -699,15 +700,19 @@ def link_grpc(
                 "grpc_servicer" if servicer.type in ("servicer", "registration") else "grpc_server"
             )
 
+            # ADR-0023 §6 Phase 3 (WI-vumum-juvil): gRPC is a wire
+            # protocol, not a relationship. The fold target is
+            # canonical 'calls' + meta['protocol']='grpc'.
             edges.append(Edge.create(
                 src=stub_id,
                 dst=servicer_id,
-                edge_type="grpc_calls",
+                edge_type="calls",
                 line=stub.line,
                 confidence=0.85,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="grpc_service_match",
+                meta={"protocol": "grpc"},
             ))
 
     # Create route symbols for proto RPC definitions.
@@ -719,8 +724,9 @@ def link_grpc(
             service_sym_by_name[sym.name] = sym.id
 
     # Bridge servicer/server symbols to their proto service definition.
-    # grpc_calls edges terminate at grpc_server/grpc_servicer, but route
-    # and implements_rpc edges originate from grpc_service symbols. Without
+    # The client-side 'calls' edges (with meta['protocol']='grpc')
+    # terminate at grpc_server/grpc_servicer, but route and
+    # implements_rpc edges originate from grpc_service symbols. Without
     # this bridge, the call chain is disconnected: the client-side graph
     # (stub → server) and the handler-side graph (route → service → method)
     # are separate components. This dispatches_to edge connects them.

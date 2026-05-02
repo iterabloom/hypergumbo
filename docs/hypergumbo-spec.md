@@ -451,7 +451,7 @@ Detects message send/receive patterns across process boundaries using string lit
 1. Collect server route symbols detected by the pattern system (see [§8](#8-entrypoint-detection))
 2. Scan client code for HTTP call patterns with URL arguments
 3. Match by HTTP method and URL path, with support for parameterized paths (`:id`, `{id}`, `<id>`)
-4. Emit `http_calls` edge from client call site to matching route handler
+4. Emit canonical `calls` edge with `meta["protocol"] = "http"` from client call site to matching route handler (post WI-vumum-juvil; pre-fold edge_type was `http_calls`)
 
 **Confidence scoring** (see [§12](#12-confidence-scoring) for the full confidence model):
 * Literal URL match: 0.90
@@ -751,7 +751,7 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 * `message_send` — sends IPC/protocol message
 * `message_receive` — handles IPC/protocol message
 * `instantiates` — class instantiation (constructor call)
-* `http_calls` — HTTP client call site to server route handler (see [§7 HTTP client-server linking](#http-client-server-linking))
+* HTTP client→server: canonical `calls` + `meta["protocol"] = "http"` (see [§7 HTTP client-server linking](#http-client-server-linking)); pre-WI-vumum-juvil this was a distinct edge_type `http_calls`, retained as a deprecated registry entry until Phase 4b'
 * ⬜ `manual` — user-annotated (not implemented)
 
 ### features[] — named slices
@@ -990,7 +990,7 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 
 **Function summaries.** When taint crosses a function call boundary, the solver consults a function summary to determine how arguments map to return values. Summaries are either inferred automatically from DDG analysis or declared in YAML for stdlib/framework functions whose source is not analyzed. Declared summaries live in `function_summaries/` (currently `rust_stdlib.yaml` and `typescript_stdlib.yaml`) and support `param_to_return`, `param_to_self`, `mutates_self`, `side_effect`, `sanitizes`, and structured `callback` flow for higher-order functions. Functions without an explicit summary receive the conservative default: all parameters flow to the return value.
 
-**Cross-language propagation.** Taint propagates through 13 edge types including direct calls and cross-language bridges (`ffi_bridge`, `wasm_bridge`, `napi_bridge`, `ipc_calls`, `cgo_bridge`, `grpc_calls`, etc.). IPC boundaries are taint-transparent by default — serialization does not sanitize.
+**Cross-language propagation.** Taint propagates through call-shaped edge types including direct calls and cross-language bridges. Post-Phase-3 (WI-mifor-vabul / WI-hahap-farid / WI-vumum-juvil), bridge / IPC / protocol-call edges all emit as canonical `calls` with the mechanism in `meta` (`bridge_kind` for FFI bridges, `protocol` for IPC/HTTP/gRPC/GraphQL); the taint configuration (`TAINT_CALL_EDGE_TYPES`) keeps `calls` plus `module_attr_ref` and the pending-classification `implements_rpc`. IPC boundaries are taint-transparent by default — serialization does not sanitize.
 
 **Field-sensitivity lite.** If `x` is tainted, `x.field` and `x.method()` inherit the taint. If `obj.field = tainted_value`, then `obj.field` is tainted but `obj.other_field` is not. Indirect aliasing (same object via different references) is not tracked.
 
