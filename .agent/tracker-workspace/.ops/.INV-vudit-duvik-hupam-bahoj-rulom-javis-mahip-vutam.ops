@@ -1,0 +1,23 @@
+- op: create  # 1bfb
+  at: '2026-05-02T03:15:55Z'  # 1bfb
+  by: agent  # 1bfb
+  actor: jgstern_agent  # 1bfb
+  clock: 1  # 1bfb
+  nonce: 1bfb  # 1bfb
+  data:  # 1bfb
+    kind: invariant  # 1bfb
+    title: "Deleting an item must clear dangling isbefore references (its own and inbound)"  # 1bfb
+    status: violated  # 1bfb
+    priority: 4  # 1bfb
+    parent:  # 1bfb
+    tags:  # 1bfb
+    - agent_governance  # 1bfb
+    - developer_experience  # 1bfb
+    isbefore: []  # 1bfb
+    duplicate_of: []  # 1bfb
+    not_duplicate_of: []  # 1bfb
+    pr_ref:  # 1bfb
+    description: "When an item is deleted (soft-delete via `status=deleted`), dangling isbefore data should be cleared automatically. Currently it is not.\n\n# Two cleanup actions that should happen on deletion\n\n1. **The deleted item's own `isbefore` list should be cleared.** The item is no longer doing anything; references it carries are dead weight, but more importantly they pollute `tracker show <deleted-item>` output and any tooling that walks .ops history.\n\n2. **Any other item's `isbefore` list that contains the deleted item should have that reference removed.** Otherwise `tracker show <Y>` and `tracker deps <Y>` will display a deleted blocker, forcing the human reader to mentally filter it out, and any future tooling that does not filter on `resolved_statuses` will treat the deleted ID as a real dependency.\n\n# Current behavior\n\n`tracker delete <ID>` is implemented as `tracker update <ID> --status deleted` (`packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py:1113-1114`). No sweep of inbound isbefore references happens. The dangling references persist in compiled state and in `.ops` files.\n\n# Why it does not currently break `ready`\n\n`TrackerSet.ready()` (trackerset.py:227) filters items via `resolved_statuses` (which includes `\"deleted\"` per `models.py:664`) before processing isbefore — so semantically, deleted blockers do not block their successors. But this only covers the `ready` query path. `show`, `deps`, raw YAML inspection, and any future consumer that walks isbefore without checking the target's status will see the dangling reference and treat it as live data. That is fragile.\n\n# Acceptance\n\n- `tracker delete <ID>` (and any other path that flips `status=deleted`) sweeps every item across every tier and removes the deleted ID from their `isbefore` lists.\n- The deleted item's own `isbefore` list is cleared.\n- After deletion, no item across any tier has the deleted ID in its `isbefore`.\n- Property test or integration test enforces the invariant.\n- The sweep emits a brief notice (\"Cleared N inbound isbefore references\") on the CLI for human visibility, since cleanup-by-side-effect is otherwise invisible.\n\n# Related questions (out of scope; file separately if compelling)\n\n- Symmetrical cleanup for `parent` field on deletion (does a deleted parent leave dangling parent references in children?).\n- Symmetrical cleanup for `duplicate_of` field on deletion of either side.\n- Whether the same cleanup should also fire on `status=wont_do` and `status=done` (resolved statuses generally), or only on `deleted`. Argument for resolved-only: the references are no longer load-bearing. Argument for deleted-only: `done`/`wont_do` items remain meaningful historical context, whereas `deleted` is an explicit \"this was a mistake / no longer applicable\" signal. Decide during implementation.\n- Whether the cleanup should batch into the same auto-sync window as the delete itself, or commit separately."  # 1bfb
+    fields:  # 1bfb
+      statement: "When an item's status is set to 'deleted', all isbefore data referencing the item must be cleared automatically: (a) the deleted item's own isbefore list, and (b) any isbefore entry in any other item across any tier that points at the deleted item. After deletion, no item across any tier carries a dangling isbefore reference to the deleted ID."  # 1bfb
+      root_cause: "tracker delete is implemented as a thin wrapper around 'tracker update --status deleted' (cli.py:1113-1114); no sweep of inbound isbefore references happens. Dangling references persist in compiled state and .ops files. ready() filters via resolved_statuses so semantics work for that query path, but show, deps, raw YAML inspection, and any non-resolved-status-aware future tooling all see and treat the dangling references as live data."  # 1bfb

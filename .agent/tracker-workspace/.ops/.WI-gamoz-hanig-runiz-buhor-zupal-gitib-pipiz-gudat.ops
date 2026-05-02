@@ -18,3 +18,18 @@
     pr_ref:  # 8762
     description: "Per session_retrospective_05012026_1810.md Finding 1: across the 2026-04-29 → 2026-05-01 session, trackerize was injected 38 times but the user typed the literal word 'trackerize' only ~6 times. The other 32 injections fired in contexts like 'Conduct a Conceptual Audit', 'Domain Recasting', 'Complete WI-vasik-jofiv', 'Disable Autonomous Mode'. The trackerize playbook itself defines the trigger as the literal word. Proposed fix: rewrite the trackerize hook summary in .agent/hooks/_shared/on_transcript_change.py:PLAYBOOKS to lead with 'Only inject when the user message contains the literal word trackerize' and remove softer co-occurring phrasing. Verify against a sample of the 32 false-positive contexts (in .agent/.last_injection_history.jsonl) that the rewritten summary no longer fires. The agentic-session-retrospective playbook itself flags this exact failure pattern as the canonical example of a precision miss."  # 8762
     fields: {}  # 8762
+- op: discuss  # 91c1
+  at: '2026-05-02T00:19:04Z'  # 91c1
+  by: human  # 91c1
+  actor: jgstern  # 91c1
+  clock: 2  # 91c1
+  nonce: 91c1  # 91c1
+  message: "This was filed in error due to incorrect playbook instructions. It is misleading and should be ignored."  # 91c1
+- op: update  # 13f6
+  at: '2026-05-02T00:19:27Z'  # 13f6
+  by: human  # 13f6
+  actor: jgstern  # 13f6
+  clock: 3  # 13f6
+  nonce: 13f6  # 13f6
+  set:  # 13f6
+    status: deleted  # 13f6

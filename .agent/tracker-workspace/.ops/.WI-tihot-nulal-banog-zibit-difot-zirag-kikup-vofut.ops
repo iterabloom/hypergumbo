@@ -43,3 +43,20 @@
   clock: 4  # de50
   nonce: de50  # de50
   message: "SCOPE CORRECTION (per same-turn user clarification): three-state lifecycle, not four. The previous four-state model (DECIDED / MIGRATED / VALIDATED / PRUNED) conflated remediation progress with bakeoff validation. Bakeoff validation is already tracked orthogonally via the awaits_bakeoff_validation tag on the related tracker item — duplicating it in the audit-findings doc adds no information.\n\nREVISED PER-VERDICT COMPLIANCE STATE — three-state lifecycle:\n\n- UNRESOLVED: verdict recorded; producers still emit the value.\n- PRELIM_RESOLVED: producer migration shipped; value remains in registry through the deprecation window.\n- RESOLVED: registry pruned; consumer-side enumerations cleaned up.\n\nThe PRELIM_RESOLVED state spans the full dual-validity window. Whether the migration has been bakeoff-validated within that window is tracked separately by the awaits_bakeoff_validation tag on the migration's tracker item, not by an additional audit-findings state.\n\nREVISED MECHANICAL CHECKS (replaces the four-state version):\n\n- UNRESOLVED ↔ value is in registry as endpoint_shape AND production emit sites exist (drift linter coverage; emit-site grep in non-test producer code).\n- PRELIM_RESOLVED ↔ value is in registry as endpoint_shape AND zero production emit sites.\n- RESOLVED ↔ value is absent from registry.\n\nFor DEPRECATE-NO-FOLD verdicts (e.g., event_subscribes, message_receive) the lifecycle compresses naturally: the producer drop is the migration (UNRESOLVED → PRELIM_RESOLVED), then registry removal is RESOLVED. Same three states apply.\n\nPROPERTY TEST: same shape as the schema-freshness and concept-axes-freshness pre-commit checks. For each verdict row in each audit-findings doc, the test reads the Status field and asserts the corresponding mechanical-check predicate holds. Hand-edits that drift from reality fail loudly.\n\nACCEPTANCE (replaces the prior four-state acceptance):\n- Audit-findings docs include a Status column with one of {UNRESOLVED, PRELIM_RESOLVED, RESOLVED} per verdict row.\n- Status values for the relocated ADR-0025/0026 docs at the moment of relocation: all RESOLVED (Phase 4b at SCHEMA_VERSION 0.4.0 cleared every value in both audits' scope).\n- Property test verifies each Status is consistent with the codebase state per the mechanical-check predicates.\n- Bakeoff validation status is NOT duplicated in the audit-findings doc; the awaits_bakeoff_validation tag on the migration's tracker item is the single source of truth for that orthogonal concern.\n- docs/adr/README.md rubric and the audit-findings format guidance specify the three-state lifecycle (not four) and the orthogonal-tag convention for bakeoff validation."  # de50
+- op: update  # 9c06
+  at: '2026-05-02T03:10:07Z'  # 9c06
+  by: human  # 9c06
+  actor: jgstern  # 9c06
+  clock: 5  # 9c06
+  nonce: 9c06  # 9c06
+  set:  # 9c06
+    status: deleted  # 9c06
+- op: update  # d257
+  at: '2026-05-02T03:12:33Z'  # d257
+  by: human  # d257
+  actor: jgstern  # d257
+  clock: 6  # d257
+  nonce: d257  # d257
+  set: {}  # d257
+  remove:  # d257
+    isbefore: [WI-dahim-vupif-lavin-kukor-gufih-gutad-kanuv-johor, WI-pilit-tokuh-nabij-fonin-sodis-salut-pibop-dirog]  # d257
