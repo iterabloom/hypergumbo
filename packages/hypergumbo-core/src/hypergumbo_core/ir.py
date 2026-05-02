@@ -203,7 +203,15 @@ class Symbol:
         language: Programming language (python, javascript, etc.)
         path: File path where the symbol is defined
         span: Source location with lines and columns
-        origin: Which analysis pass created this symbol
+        origin: Provenance string. For analyzer-emitted symbols, this SHOULD be
+            a versioned analyzer ID such as ``python-v1``, ``go-v1``, etc. (see
+            the analyzer registry for the canonical list). A small set of
+            synthesis-origin values (``inheritance``,
+            ``orchestrator_file_symbol_synthesis``, ``scip``) currently coexist
+            in this field as a documented exception pending a future split into
+            a sibling ``synthesis_mechanism`` field — see the WI-nusum-nukol
+            audit verdict. Do not extend the synthesis-shaped value set without
+            updating the audit thread.
         origin_run_id: Unique execution ID of the analysis run
         origin_run_signature: Run signature for grouping by analyzer config
         stable_id: Semantic identity hash (survives renames/moves)
@@ -546,7 +554,16 @@ class UsageContext:
 
     Attributes:
         id: Unique identifier for this usage context
-        kind: Type of usage context (call, data_value, export, macro)
+        kind: How the surrounding source code references this symbol — either
+            as a syntactic construct (``call``, ``macro``) or as a semantic
+            role (``data_value``, ``export``). The field currently mixes two
+            axes; the union is small enough (4 values) to be tractable, but a
+            fifth value that doesn't fit either axis should trigger a split
+            into separate fields (e.g., ``usage_construct`` + ``usage_role``).
+            Re-evaluation triggers: (a) a fifth value that fits neither
+            construct nor role; (b) a consumer needing per-axis filtering;
+            (c) a bug where the single picked value hides a cross-axis signal
+            a consumer needs. See the WI-gatuh-ruvar audit thread.
         context_name: Name of the function called, var defined, file exported from, etc.
         symbol_ref: ID of the symbol being used (None if inline/anonymous handler)
         position: Where in the context the symbol appears (e.g., "args[1]", ":get", "default")

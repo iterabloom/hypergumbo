@@ -48,7 +48,24 @@ from .ir import Symbol, Edge
 
 
 class DataModelKind(Enum):
-    """Types of data models that can be detected."""
+    """Types of data models that can be detected.
+
+    This enum currently mixes three axes:
+      (1) language construct: ``DATACLASS`` (Python ``@dataclass`` decorator).
+      (2) library/framework: ``ORM_MODEL`` (Django/SQLAlchemy/TypeORM/GORM),
+          ``PYDANTIC_MODEL``, ``SCHEMA`` (Marshmallow / GraphQL types).
+      (3) architectural role: ``DTO``, ``DOMAIN_MODEL``, ``ENTITY`` (DDD-style).
+
+    A class may legitimately satisfy values across multiple axes (e.g., a
+    ``@dataclass`` that is also a Pydantic-style validator and is also a DTO).
+    The current detection table at ``MODEL_BASE_CLASSES`` picks one verdict per
+    class via regex priority order, losing the cross-axis information.
+
+    Re-evaluation triggers (any one is sufficient): (a) a consumer needs to
+    filter by axis independently; (b) the detection table grows past ~12
+    values; (c) a class is observed where the picked value visibly hides a
+    cross-axis signal a consumer needs. See the WI-juvag-numud audit thread.
+    """
 
     ORM_MODEL = "orm_model"  # Django Model, SQLAlchemy, TypeORM, etc.
     PYDANTIC_MODEL = "pydantic_model"  # Pydantic BaseModel
