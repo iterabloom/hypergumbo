@@ -262,7 +262,7 @@ fi
 echo -n "  Edge-type axis coherence... "
 if git diff --cached --name-only | grep -qE "^packages/.*\.py$"; then
     DRIFT_LOG="/tmp/.axis-drift.$$"
-    if scripts/check-edge-type-drift > "$DRIFT_LOG" 2>&1; then
+    if scripts/check-edge-type-drift --strict > "$DRIFT_LOG" 2>&1; then
         echo -e "${GREEN}✓${NC}"
         rm -f "$DRIFT_LOG"
     else
