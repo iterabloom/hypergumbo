@@ -90,7 +90,7 @@ for repo in REPOS:
     # Output: claim_id -> (verdict, evidence)
 ```
 
-**Hard rule: import from the actual codebase, do not hand-roll allowlists.** The most expensive mistake of this session was a hand-rolled `KNOWN_LANGS` set in the verification script that omitted `jsonnet` and `rst`, producing 3,000+ false-flag invalid-language nodes. Use `from hypergumbo_core.taxonomy import LANGUAGES` (or whatever is canonical for the property being checked). When the codebase changes, the verification script automatically tracks.
+**Hard rule: import from the actual codebase, do not hand-roll allowlists.** A real mistake we hit: a hand-rolled `KNOWN_LANGS` set in the verification script that omitted `jsonnet` and `rst`, producing 3,000+ false-flag invalid-language nodes. Use `from hypergumbo_core.taxonomy import LANGUAGES` (or whatever is canonical for the property being checked). When the codebase changes, the verification script automatically tracks.
 
 The script's output is the basis for filling the YAML assessments in phase 5.
 
@@ -364,8 +364,7 @@ A single processing session can use both paths in parallel. The cohort path live
 ## Process anti-patterns to avoid
 
 - **Trusting auto-pr / merge-pr state announcements without cross-check.** When the API was returning 5xx during polling, the script's "🔄 Closing PR" message can be wrong. Always confirm with `./scripts/ci-debug pr-status <num>` before reporting up. Existing INV-rahib invariant covers this on the tool side; agent-side discipline is to not parrot the script's state-changes verbatim.
-- **Over-filing tracker items.** When extending a discussion on an existing item would suffice, do that instead of spawning a new item. The user's repeated pushback this session was a signal — every new item costs queue-management overhead.
-- **Manual cleanup of `.git/TRACKER_SYNC_PENDING`.** This marker leaks on SIGKILL (e.g., when the reflect-aggregate step's 60s subprocess timeout fires). Per WI-nutin, the right structural fix is fcntl.flock; until that lands, recognize the symptom (auto-pr exits with "Error: tracker sync in progress") and check whether a sync process is actually running before deleting the marker. Don't make the manual cleanup step part of the routine.
+- **Over-filing tracker items.** When extending a discussion on an existing item would suffice, do that instead of spawning a new item. Every new item costs queue-management overhead.
 - **Hand-rolled allowlists in verification scripts.** Drift from the codebase's canonical sources guarantees false flags. Always import from the canonical module (`from hypergumbo_core.taxonomy import LANGUAGES`).
 - **`init`-for-every-iteration.** Validation re-runs of a cohort go in iter-002 of the same session, not a fresh init. The bakeoff-artifacts-guide playbook covers this; it's worth re-reading.
 

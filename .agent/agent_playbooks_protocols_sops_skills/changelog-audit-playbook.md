@@ -113,7 +113,7 @@ This prevents drift — if you start editing without a plan, you risk reorganizi
 
 This prevents context-window overload from holding a 200+ line section in working memory. Each edit is small, self-contained, and verifiable. If you need to move content between subsections (e.g., merging IO catalog items), do the deletion and insertion as two sequential edits.
 
-**Budget:** Spend no more than 3 rounds of organization edits per changelog. If the section still feels messy after 3 rounds, it's good enough. Diminishing returns are real. Phase 2 should take 10-15 minutes per changelog — if you've been editing for 20+ minutes on one, stop.
+**Budget:** Spend no more than 3 rounds of organization edits per changelog. If the section still feels messy after 3 rounds, it's good enough. Phase 2 should take 10-15 minutes per changelog — if you've been editing for 20+ minutes on one, stop.
 
 ### Guard Rails
 

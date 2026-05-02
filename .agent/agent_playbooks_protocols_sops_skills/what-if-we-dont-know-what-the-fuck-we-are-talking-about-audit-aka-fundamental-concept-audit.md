@@ -235,11 +235,7 @@ outcomes below:
     [audit-findings 0001](../../docs/audits/0001-dispatch-publish-family.md)
     (dispatch and publish families on `Edge.edge_type`) and
     [audit-findings 0002](../../docs/audits/0002-ipc-family.md)
-    (IPC family on `Edge.edge_type`). NOTE: ADR-0025 and ADR-0026
-    were originally filed as ADRs in error and have been
-    reclassified to the audit-findings series; the bucket boundary
-    is documented in
-    [`docs/adr/README.md`](../../docs/adr/README.md).
+    (IPC family on `Edge.edge_type`).
 - **Document** — the distinction is genuine but undocumented. The
   artifact ranges from a short ADR addendum or module docstring (when
   the suspect domain is conceptual) up to a structured registry module

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 ### DEEP Mode Priority Queue:
 When in DEEP mode, focus on feature quality rather than coverage breadth:
-1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-deep-reflect` then `./scripts/bakeoff-deep-reflect aggregate` to assess developer usefulness. This IS the mode's core feedback loop — reflecting on whether outputs help developers is the entire point of DEEP mode. (`cycle` now includes reflect automatically; use `--skip-reflect` for fast iteration only.)
+1. **Reflect on bakeoff results:** After each cycle, run `./scripts/bakeoff-deep-reflect` then `./scripts/bakeoff-deep-reflect aggregate` to assess developer usefulness. This IS the mode's core feedback loop — reflecting on whether outputs help developers is the entire point of DEEP mode. (`cycle` includes reflect automatically; use `--skip-reflect` for fast iteration only.)
 2. **Aggregate across sessions:** Run `./scripts/bakeoff-deep-reflect aggregate --all` and `./scripts/bakeoff-deep compare <A> <B>` to track improvement trajectories. **Binary rule on a CONVERGED bakeoff:** if the tracker has any ready items, aggregate is NOT required — prefer tracker work and only return to aggregation after the backlog drains. Aggregation is only the natural next step when the bakeoff is not converged, or when it is converged AND the tracker is empty.
 3. **Slice quality:** Does forward slice capture actual dependencies?
 4. **Reverse slice:** Does it correctly identify callers?
