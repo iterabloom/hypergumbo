@@ -525,7 +525,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     sender.channel_type == "variable" or receiver.channel_type == "variable"
                 )
                 confidence = 0.65 if is_variable_match else 0.85
-                # ADR-0023 §6 Phase 3 / ADR-0026 (WI-hahap-farid):
+                # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
                 # Electron renderer→main message exchange is the
                 # publish-family shape; "ipc" is the channel kind.
                 # Canonical 'event_publishes' + meta['channel_kind']='ipc'.
@@ -551,12 +551,12 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 )
                 edges.append(edge)
 
-    # ADR-0026 (WI-hahap-farid): the converse-direction
+    # audit-findings 0002 (WI-hahap-farid): the converse-direction
     # message_receive edges are dropped — the forward
     # event_publishes edges above already capture the relationship,
     # and hypergumbo's slice handles reverse traversal natively
     # (no per-edge converse-direction emit needed). Same verdict
-    # as ADR-0025's event_subscribes shape problem.
+    # as audit-findings 0001's event_subscribes shape problem.
 
     # ---- Phase 3: contextBridge.exposeInMainWorld wrapper resolution ----
     # For each preload file with bridge definitions, scan other files for

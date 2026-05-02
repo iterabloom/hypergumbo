@@ -1,11 +1,13 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0024: Axis Declaration Template for Multi-Value Fields
 
-- Status: Draft
-- Date: 2026-04-30
+- Status: Accepted
+- Date: 2026-04-30 (updated 2026-05-02)
 - Supersedes: —
 - Superseded by: —
-- Related: ADR-0023 (the originating example), ADR-0015 (dataflow access modes — retroactively axis-shaped)
+- Related: ADR-0023 (the originating example), ADR-0015 (dataflow access modes — retroactively axis-shaped), [audit-findings 0001](../audits/0001-dispatch-publish-family.md) and [0002](../audits/0002-ipc-family.md) (worked-example outputs of this template's Phase 3 step)
+
+> **2026-05-02 update.** This ADR gained two sub-sections (§"Family-audit verdict methodology" and §"Fold-residue discipline"), the seven-step workflow's Phase 3 / Phase 5 outputs were redirected from "follow-on ADR" to "audit-findings document at `docs/audits/<NN>-<topic>.md`," and the enforcement and worked-example pointers were extended. The audit-findings filing path itself is documented in [`docs/audits/README.md`](../audits/README.md); the bucket-rubric (ADR vs audit-findings vs survey) lives in [`docs/adr/README.md`](README.md). Per WI-rodub-bupun-sukol-pobud-zojip-gajug-ruzop-mikol.
 
 ## Context
 
@@ -91,11 +93,93 @@ Adding a new axis to the codebase follows seven steps. Steps 1–4 are mandatory
 
 1. **Open a numbered ADR** using this template's structure: Context (why), Decision (the four parts), Likely-deprecate list (first cut, refinable by audit), Migration plan (phases for renaming or folding values), Related (back-references).
 2. **Land a registry module** at `packages/<package>/src/<module>/<field>_types.py` (or extend an existing one) with the four-part scaffolding: `AXIS_*` constants, `<TypeName>Spec` frozen dataclass (name + axis + description), tuple-of-specs `<FIELD>_TYPES`, accessors (`all_*_names()`, `*_on_axis(axis)`, `find_*(name)`).
-3. **Land a drift-coherence linter** at `scripts/check-<field>-drift` reading the registry and AST-walking `packages/` for `*<FIELD-PREFIX>*`-named sets. Wire into `.githooks/pre-commit` skipping when no `packages/*.py` files are staged.
+3. **Land a drift-coherence linter** at `scripts/check-<field>-drift` reading the registry and AST-walking `packages/` for `*<FIELD-PREFIX>*`-named sets. Wire into `.githooks/pre-commit` skipping when no `packages/*.py` files are staged. *Per-family audits triggered by this step file as audit-findings documents at `docs/audits/<NN>-<topic>.md` per the format in [`docs/audits/README.md`](../audits/README.md), citing this ADR as their methodology home — they are NOT new ADRs.*
 4. **Land a property test** in the registry's package's `tests/` directory: registry invariants (no duplicates, every spec has a valid axis, etc.) plus a drift-detection test calling the linter's underlying function on the live tree.
 5. **Land a by-axis view** at `docs/concept-axes.md` (existing aggregator; extend `scripts/generate-concept-axes`'s `_SECTIONS` table with the new axis's sections). Wire freshness check into pre-commit if it isn't already there.
 6. **Update the audit playbook** at `.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md` to mention the new field as audited; remove from the Step 5 adjacent-concept-sweep TODO list if applicable.
-7. **(Optional) Migrate violators**: if pre-existing values violate the new axiom, follow ADR-0023's four-phase migration shape (consumers → producers → schema bump → deprecation removal).
+7. **(Optional) Migrate violators**: if pre-existing values violate the new axiom, follow ADR-0023's four-phase migration shape (consumers → producers → schema bump → deprecation removal). *During this phase, per-family verdict outputs file as audit-findings documents at `docs/audits/<NN>-<topic>.md` (per the §"Family-audit verdict methodology" sub-section below), NOT as follow-on ADRs.*
+
+### Family-audit verdict methodology
+
+When the seven-step workflow's Step 3 audit or Step 7 migration
+groups values into families for per-family verdict, each member
+gets one of three verdicts. This trichotomy applies to **any
+axis-conformance audit**, not just `Edge.edge_type`'s families.
+
+1. **CANONICAL** — names a genuinely distinct relationship/category
+   on the axis. The value names what the axis classifies, with no
+   endpoint, mechanism, protocol, or framework leakage. Stays on
+   the canonical section of the axis (e.g., `relationship` for
+   `Edge.edge_type`).
+2. **FOLD** — protocol-conditional, framework-specific, or
+   mechanism-flavored alias of an existing canonical. The
+   differentiating fact (mechanism / protocol / channel-kind /
+   construct) is endpoint or meta information, not a separate
+   axis value. Migration: rename to the canonical at producer
+   sites; move the differentiating fact to the host dataclass's
+   per-instance metadata bag (e.g., `Edge.meta` for edge-shaped
+   axes).
+3. **DEPRECATE-NO-FOLD** — the value's emit shape doesn't match
+   the axis-classification the name suggests; the producer site is
+   doing something other than what the name implies. Migration:
+   producer site rewrites with a different label or stops emitting
+   altogether.
+
+Each verdict is justified by which of the four leakage tests (per
+the audit playbook §3) fired most diagnostically. Output of a
+per-family audit is an audit-findings document at
+`docs/audits/<NN>-<topic>.md` (worked examples:
+[audit-findings 0001](../audits/0001-dispatch-publish-family.md),
+[audit-findings 0002](../audits/0002-ipc-family.md)).
+
+> **Refactor trigger.** If future axis declarations
+> (post-`Edge.edge_type`) reveal that the verdict scheme genuinely
+> varies per axis — i.e., a different host dataclass needs a
+> different trichotomy or a four-way split — lift this sub-section
+> into a separate `docs/family-audit-methodology.md` at that point.
+> Don't speculatively split now; the trichotomy is empirically
+> general across `Edge.edge_type`'s three audited families.
+
+### Fold-residue discipline
+
+ADR-0023's axiom reserves the option to promote a recurring
+property to **a dedicated field on the host dataclass** rather
+than leaving it in the per-instance metadata bag (e.g.,
+`Edge.meta`). This sub-section operationalizes that reservation
+as three rules the family-audit step (Step 3 / Step 7) checks
+before parking a property in `meta`.
+
+1. **Endpoint-property check.** If a property is queryable from
+   `src` or `dst` (or whatever endpoint structure the host
+   dataclass exposes), query the endpoint instead of recording
+   the property in `meta`. Endpoint queries are cheaper and avoid
+   serialisation drift.
+2. **Axis-leakage check.** If a property describes a *different*
+   declared (or pending-declaration) axis, route it to that axis
+   even if the second axis isn't formally declared yet. This
+   prevents the "two axes squashed into one" pattern the audit
+   playbook §4 catches.
+3. **Recurrence-promotion threshold.** If a meta key recurs across
+   **N=3 distinct values on the axis OR N=2 producer modules**
+   that emit it, promote the meta key to a dedicated field on the
+   host dataclass. The asymmetric thresholds reflect the empirical
+   observation that producer-count drift is what bites first —
+   a meta key emitted by two different producer modules is already
+   a coordination problem.
+
+The "host dataclass" / "metadata bag" wording is deliberately
+generic: today's instance is `Edge` + `Edge.meta` for edge-shaped
+axes, but ADR-0027 (Symbol.kind axis) and ADR-0028
+(Edge.evidence_type axis) and any future axis declaration on a
+non-edge dataclass instantiate the same discipline against
+whatever per-instance metadata container that dataclass exposes.
+
+> **Where this discipline gets exercised.** (a) The cadence-hook
+> periodic pass asks "is any meta key tripping the recurrence
+> threshold?" and files a tracker item if so. (b) Per-axis-migration
+> review (Phase 3 of any axis migration) asks the three rules
+> against each new meta key the migration introduces, before the
+> producer rename ships.
 
 ### Creation practice
 
@@ -140,6 +224,15 @@ Surface the practice via:
 
 Workflow steps landed across PRs #3459 (registry + property test), #3462 (linter + pre-commit), #3463 (by-axis view), with playbook updates folded into the cadence-hook PR (#3460) and discrepancy resolutions in PR #3464.
 
+The seven-step workflow's Step 3 / Step 7 outputs — per-family verdicts produced by applying the §"Family-audit verdict methodology" to a specific scope — landed as the first two **audit-findings documents**:
+
+| Audit-findings doc | Family scope | Methodology |
+|---|---|---|
+| [audit-findings 0001](../audits/0001-dispatch-publish-family.md) | Dispatch and publish families (13 values) | per this ADR's §"Family-audit verdict methodology" |
+| [audit-findings 0002](../audits/0002-ipc-family.md) | IPC family (7 values) | per this ADR's §"Family-audit verdict methodology" |
+
+The format spec for audit-findings documents is at [`docs/audits/README.md`](../audits/README.md); the bucket boundary between ADRs and audit-findings is at [`docs/adr/README.md`](README.md).
+
 ## Alternatives considered
 
 ### A. Status quo — no template
@@ -148,7 +241,7 @@ Each new axis re-invents the four-part scaffolding. Loses the registry-module co
 
 ### B. One mega-ADR per host dataclass
 
-`Edge.* axes`, `Symbol.* axes`, `Span.* axes`. Wider scope per ADR, but each is a very different conversation (Edge values are framework-derived; Symbol kinds are language-derived; Span values are positional). Bundling them produces ADRs that are hard to amend without touching unrelated material. Rejected in favor of the per-axis ADR pattern (one ADR-0023, future ADR-0025 etc., each citing this template).
+`Edge.* axes`, `Symbol.* axes`, `Span.* axes`. Wider scope per ADR, but each is a very different conversation (Edge values are framework-derived; Symbol kinds are language-derived; Span values are positional). Bundling them produces ADRs that are hard to amend without touching unrelated material. Rejected in favor of the per-axis ADR pattern (one ADR-0023, future ADR-0027 / ADR-0028 etc., each citing this template). Per-family verdict outputs that fall out during each axis's migration are filed separately as audit-findings documents (see §"Family-audit verdict methodology" above), keeping the per-axis ADRs focused on the axis declaration itself.
 
 ### C. Code-generated axes from declarative DSL
 
@@ -157,7 +250,7 @@ Define each axis in a YAML or TOML file; generate the registry module, the linte
 ## Open questions (Draft status)
 
 1. **Should ADR-0015 (dataflow access modes) be retroactively documented as the first axis instance?** The access-mode field on `Edge` predates ADR-0023 and arguably constitutes an axis already (with values `read`, `write`, `read_write`, etc.). The four template artifacts don't currently exist for it. Decision: leave as-is until a separate audit confirms whether retroactive registry-ization is worth the disruption.
-2. **Pre-commit detection of new multi-value field additions** — the creation practice currently relies on documentation. Worth automating? Detection requires AST inspection of `@dataclass` definitions for fields whose type narrows (Literal vs. str), or a manual hint annotation. Tracker as a follow-on if drift surfaces.
+2. **Pre-commit detection of new multi-value field additions** — the creation practice currently relies on documentation. Worth automating? Detection requires AST inspection of `@dataclass` definitions for fields whose type narrows (Literal vs. str), or a manual hint annotation. **Resolved to defer:** filed as WI-busij-kadoz-bolok-lavig-lofaz-fogub-gajod-danif (P4) — land if a multi-value-field-without-axis incident occurs in production code, OR a future axis ADR ships with new multi-value fields and the author wants the linter as scaffolding before further axis declarations.
 3. **Section vocabulary normalization** — ADR-0023 used `relationship` / `endpoint_shape` / `pending_classification`. Future axes will pick their own; should there be a recommended vocabulary (`canonical` / `deprecated` / `pending_audit`) that future ADRs are encouraged to reuse? Probably yes for the canonical / deprecated split; pending_audit is more axis-specific.
 
 ## Related

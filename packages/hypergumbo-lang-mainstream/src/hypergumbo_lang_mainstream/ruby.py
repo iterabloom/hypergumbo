@@ -2057,7 +2057,7 @@ def _try_job_enqueue(
             if qualified in global_symbols:
                 callee = global_symbols[qualified]
                 if callee.id != current_method.id:
-                    # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+                    # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
                     # ActiveJob perform_later enqueues a job (queue
                     # is the channel kind). Canonical 'event_publishes'
                     # + meta['channel_kind']='queue'.

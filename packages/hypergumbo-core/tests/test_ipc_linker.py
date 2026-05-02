@@ -390,7 +390,7 @@ ipcMain.on('test-channel', handler);
             assert "channel_type" in edge.meta
 
     def test_no_message_receive_edges_emitted(self, tmp_path: Path) -> None:
-        """ADR-0026 (WI-hahap-farid): the converse-direction
+        """audit-findings 0002 (WI-hahap-farid): the converse-direction
         message_receive edges are dropped — the forward
         event_publishes edges already capture the relationship and
         hypergumbo's slice handles reverse traversal natively. This

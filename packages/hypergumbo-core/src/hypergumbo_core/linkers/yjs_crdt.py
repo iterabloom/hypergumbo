@@ -389,7 +389,7 @@ def link_yjs_crdt(
                     supply_chain_reason="synthetic Yjs CRDT subscriber",
                 ))
 
-            # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+            # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
             # CRDT publish IS publish; "crdt" is the channel kind.
             # Canonical 'event_publishes' + meta['channel_kind']='crdt'.
             result_edges.append(Edge.create(

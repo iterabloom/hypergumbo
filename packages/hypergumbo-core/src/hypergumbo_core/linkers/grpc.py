@@ -774,7 +774,7 @@ def link_grpc(
         # Create routes_to edge from route to the service symbol.
         svc_id = service_sym_by_name.get(rpc.service_name)
         if svc_id:
-            # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+            # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
             # gRPC RPC definition routes a route → service; "route"
             # is the dispatch mechanism. Canonical 'dispatches_to'
             # + meta['dispatch_kind']='route'.

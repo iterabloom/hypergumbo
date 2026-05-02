@@ -593,7 +593,7 @@ def _create_di_edges(
                     continue  # pragma: no cover - defensive dedup
                 seen.add(pair)
 
-                # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+                # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
                 # Runtime DI resolution dispatches an interface to its
                 # implementation; "di" is the mechanism. Canonical
                 # 'dispatches_to' + meta['mechanism']='di'.
@@ -654,7 +654,7 @@ def _create_di_registers_edges(
             continue
         seen.add(pair)
 
-        # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv): DI
+        # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv): DI
         # registration is a declaration-time binding, not runtime
         # dispatch. Canonical 'references' +
         # meta['mechanism']='di_registration'.

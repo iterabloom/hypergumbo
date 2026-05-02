@@ -299,11 +299,11 @@ def link_message_dispatch(
                     supply_chain_reason="message dispatch handler",
                 ))
 
-            # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+            # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
             # Despite the name, the emit shape is publisher→subscriber
             # (publish family, not dispatch). Canonical
             # 'event_publishes' + meta['channel_kind']='message_bus'
-            # (cross-family fold per ADR-0025 §Migration impact).
+            # (cross-family fold per audit-findings 0001 §Migration impact).
             result_edges.append(Edge.create(
                 src=pub_id,
                 dst=sub_id,

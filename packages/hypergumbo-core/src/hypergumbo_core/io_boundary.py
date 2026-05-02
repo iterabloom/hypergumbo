@@ -715,7 +715,7 @@ _TRACEABLE_EDGE_TYPES = frozenset({
     # — lets IO-primitive ``attributes:`` YAML entries become reachable from
     # the taint-style backward BFS that computes entry-point chains.
     "module_attr_ref",
-    # ADR-0026 (WI-hahap-farid): ipc_event / message_send / websocket_message
+    # audit-findings 0002 (WI-hahap-farid): ipc_event / message_send / websocket_message
     # / message_queue all fold to event_publishes; bringing the canonical
     # name in keeps the reverse-graph traversal crossing async-channel
     # boundaries after the IPC family rename.
@@ -1136,7 +1136,7 @@ def tag_io_boundaries(
         # the Python analyzer (and, per WI-gapam, eventually the tree-sitter
         # base class for JS/Java/Go/C/Rust).
         "module_attr_ref",
-        # ADR-0026 (WI-hahap-farid): IPC family folds to event_publishes
+        # audit-findings 0002 (WI-hahap-farid): IPC family folds to event_publishes
         # (ipc_event, message_send, websocket_message, message_queue);
         # adding the canonical preserves I/O-boundary tracing across async
         # channel boundaries after the rename.

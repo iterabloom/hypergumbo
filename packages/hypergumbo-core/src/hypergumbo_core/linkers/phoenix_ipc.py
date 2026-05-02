@@ -302,7 +302,7 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
             src_id = _ensure_symbol(sender, event)
             for receiver in receivers:
                 dst_id = _ensure_symbol(receiver, event)
-                # ADR-0023 §6 Phase 3 / ADR-0026 (WI-hahap-farid):
+                # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
                 # Phoenix Channels event match is publish-family
                 # shape; "ipc" is the channel kind. Canonical
                 # 'event_publishes' + meta['channel_kind']='ipc'.
@@ -323,8 +323,8 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
                 }
                 edges.append(edge)
 
-    # ADR-0026 (WI-hahap-farid): converse-direction
-    # message_receive edges dropped — same verdict as ADR-0025's
+    # audit-findings 0002 (WI-hahap-farid): converse-direction
+    # message_receive edges dropped — same verdict as audit-findings 0001's
     # event_subscribes shape problem; the forward
     # event_publishes edges already capture the relationship.
 

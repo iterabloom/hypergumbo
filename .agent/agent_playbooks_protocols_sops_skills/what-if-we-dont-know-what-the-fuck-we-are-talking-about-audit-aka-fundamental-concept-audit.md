@@ -217,11 +217,29 @@ Apply this decision per-pair — each suspect pair from Step 3 gets its
 own verdict, and a single audit can produce a mix of all three
 outcomes below:
 
-- **Deprecate** — the distinction is leakage; open an ADR with a typing
-  principle and a migration plan. ADR-0023 is the worked example;
-  ADR-0024 is the abstract template (axis name, axiom, consumer
-  pattern, enforcement) for declaring the new axis the deprecation
-  reorganizes around.
+- **Deprecate** — the distinction is leakage; the resolution depends
+  on whether you're declaring a new axis or applying an existing one:
+  - **New principle (declares an axis)**: open an ADR with a typing
+    principle and a migration plan. ADR-0023 is the worked example;
+    ADR-0024 is the abstract template (axis name, axiom, consumer
+    pattern, enforcement) for declaring the new axis the deprecation
+    reorganizes around.
+  - **Case ruling under existing law (audits values on a declared
+    axis)**: file an audit-findings document at
+    `docs/audits/<NN>-<topic>.md` per the format spec at
+    [`docs/audits/README.md`](../../docs/audits/README.md), applying
+    the CANONICAL / FOLD / DEPRECATE-NO-FOLD verdict trichotomy
+    defined in [ADR-0024 §"Family-audit verdict
+    methodology"](../../docs/adr/0024-axis-declaration-template.md).
+    Worked examples:
+    [audit-findings 0001](../../docs/audits/0001-dispatch-publish-family.md)
+    (dispatch and publish families on `Edge.edge_type`) and
+    [audit-findings 0002](../../docs/audits/0002-ipc-family.md)
+    (IPC family on `Edge.edge_type`). NOTE: ADR-0025 and ADR-0026
+    were originally filed as ADRs in error and have been
+    reclassified to the audit-findings series; the bucket boundary
+    is documented in
+    [`docs/adr/README.md`](../../docs/adr/README.md).
 - **Document** — the distinction is genuine but undocumented. The
   artifact ranges from a short ADR addendum or module docstring (when
   the suspect domain is conceptual) up to a structured registry module

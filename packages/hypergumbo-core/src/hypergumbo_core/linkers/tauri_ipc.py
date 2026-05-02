@@ -651,7 +651,7 @@ def link_tauri_ipc(
                     supply_chain_reason="synthetic IPC bridge node",
                 ))
 
-            # ADR-0023 §6 Phase 3 / ADR-0026 (WI-hahap-farid):
+            # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
             # Tauri's invoke IS a call; "ipc" is the mechanism.
             # Canonical 'calls' + meta['protocol']='ipc'.
             result_edges.append(Edge.create(
@@ -861,7 +861,7 @@ def link_tauri_ipc(
                             supply_chain_reason="synthetic Tauri event listener",
                         ))
 
-                    # ADR-0023 §6 Phase 3 / ADR-0026 (WI-hahap-farid):
+                    # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
                     # Tauri emit/listen IS publish; "ipc" is the
                     # channel kind. Canonical 'event_publishes' +
                     # meta['channel_kind']='ipc'.

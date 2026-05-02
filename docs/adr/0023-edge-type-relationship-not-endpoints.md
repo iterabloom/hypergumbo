@@ -424,7 +424,7 @@ For each:
 Producer migration order: start with the dst-kind leakage cases (lowest
 risk, purely additive on the consumer side), then bridge / FFI, then the
 publish / dispatch families after their per-family audits, then the IPC
-family (after ADR-0026), then the protocol-call family
+family (after audit-findings 0002), then the protocol-call family
 (`http_calls` / `grpc_calls` / `graphql_calls` → `calls` +
 `meta["protocol"]`). Each subset can ship as its own PR with its own
 `awaits_bakeoff_validation` tag, which is what the migration log

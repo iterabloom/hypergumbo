@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Pre-commit lint: every audit-findings doc under ``docs/audits/`` parses
+cleanly and every verdict row's ``status`` agrees with the live
+registry.
+
+Mirrors the property test
+``packages/hypergumbo-core/tests/test_audit_findings.py
+::test_live_tree_audit_findings_docs_parse_and_validate`` and shares
+its parser/validator (``hypergumbo_core.audit_findings``) so the
+pre-commit gate matches CI exactly.
+
+The format spec is at ``docs/audits/README.md``; the format itself was
+introduced by WI-rodub-bupun-sukol-pobud-zojip-gajug-ruzop-mikol
+alongside the ADR-0025/0026 reclassification.
+
+Exit codes:
+    0 — every audit-findings doc parses and validates.
+    1 — at least one doc failed parsing or registry-state validation;
+        details printed to stdout.
+    2 — could not import the parser (likely a packaging / editable-
+        install problem; do not block commits on this).
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
+
+try:
+    from hypergumbo_core.audit_findings import (
+        AuditFindingsError,
+        find_audit_findings_docs,
+        parse_audit_findings,
+        validate_against_registry,
+    )
+except ImportError as exc:  # pragma: no cover — defensive
+    print(
+        f"check-audit-findings: cannot import parser: {exc}",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+def main() -> int:
+    docs = find_audit_findings_docs(REPO_ROOT)
+    if not docs:
+        return 0
+
+    errors: list[str] = []
+    for md in docs:
+        try:
+            findings = parse_audit_findings(md)
+        except AuditFindingsError as exc:
+            errors.append(str(exc))
+            continue
+        errors.extend(validate_against_registry(findings))
+
+    if not errors:
+        return 0
+
+    print("Audit-findings format check failed:")
+    for line in errors:
+        print(f"  {line}")
+    print()
+    print(
+        "Either fix the audit-findings doc to match the live registry,\n"
+        "or update the registry at\n"
+        "  packages/hypergumbo-core/src/hypergumbo_core/edge_types.py\n"
+        "to match the doc. Format spec: docs/audits/README.md.",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())

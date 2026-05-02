@@ -707,7 +707,7 @@ def link_routes_to_handlers(
             )
 
         if handler:
-            # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+            # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
             # Route → handler dispatch via path matching. Canonical
             # 'dispatches_to' + meta['dispatch_kind']='route'.
             handler_meta = {k: v for k, v in handler_ref.items() if k != "type"}
@@ -734,7 +734,7 @@ def link_routes_to_handlers(
                 continue
             target = _resolve_express_handler(ref_name, symbol_by_name)
             if target:
-                # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+                # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
                 # React Router loader/action route. Canonical
                 # 'dispatches_to' + meta['dispatch_kind']='route'.
                 la_edge = Edge.create(

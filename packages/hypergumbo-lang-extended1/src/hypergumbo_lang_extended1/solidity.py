@@ -518,7 +518,7 @@ def _extract_edges_from_tree(
                 event_name = node_text(event_name_node, source)
                 event_sym = local_symbols.get(event_name) or global_symbols.get(event_name)
                 if event_sym and event_sym.kind == "event":
-                    # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+                    # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
                     # Solidity `emit Event(...)` is a function→event-symbol
                     # reference, not pub-sub-shaped. Canonical
                     # 'references' + meta['construct']='event_emit'.

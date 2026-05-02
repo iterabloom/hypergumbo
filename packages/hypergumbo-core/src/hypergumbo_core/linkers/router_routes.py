@@ -176,7 +176,7 @@ def link_router_routes(ctx: LinkerContext) -> LinkerResult:
             if not enclosing:
                 continue
             winner = min(enclosing, key=lambda r: _span_size(r.span))
-            # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+            # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
             # Router declares routes (declaration-time, not dispatch).
             # Canonical 'references' +
             # meta['mechanism']='route_registration'.

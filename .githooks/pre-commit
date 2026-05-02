@@ -276,6 +276,30 @@ else
     echo -e "${YELLOW}skipped (no packages/*.py staged)${NC}"
 fi
 
+# Audit-findings format check — fires when docs/audits/*.md OR the
+# canonical registry OR producer source files change. Validates that
+# every audit-findings doc parses cleanly and every verdict row's
+# status matches the live registry. Companion to the property test in
+# packages/hypergumbo-core/tests/test_audit_findings.py — both call
+# hypergumbo_core.audit_findings so the pre-commit gate matches CI
+# exactly. Format spec: docs/audits/README.md.
+echo -n "  Audit-findings format... "
+if git diff --cached --name-only | grep -qE "^(docs/audits/.*\.md$|packages/hypergumbo-core/src/hypergumbo_core/(edge_types|audit_findings)\.py$|packages/.*/(linkers|src)/.*\.py$)"; then
+    AUDIT_LOG="/tmp/.audit-findings.$$"
+    if scripts/check-audit-findings > "$AUDIT_LOG" 2>&1; then
+        echo -e "${GREEN}✓${NC}"
+        rm -f "$AUDIT_LOG"
+    else
+        echo -e "${RED}✗${NC}"
+        echo ""
+        cat "$AUDIT_LOG"
+        rm -f "$AUDIT_LOG"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}skipped (no audit-findings, registry, or producer files staged)${NC}"
+fi
+
 # Check affected-tests.txt manifest mode (must not be full-suite for CI)
 echo -n "  Test manifest... "
 MANIFEST=".ci/affected-tests.txt"

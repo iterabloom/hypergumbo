@@ -73,7 +73,7 @@ exception: a file→module load is import-shaped, not call-shaped.
 | `bridge_invokes`    | `edge_type == "calls"` and `meta["bridge_kind"] == "context_bridge"` |
 | `wasm_load`         | `edge_type == "imports"` and `dst.kind == "wasm_module"`          |
 
-### IPC family (per ADR-0026)
+### IPC family (per audit-findings 0002)
 
 Inter-process communication (Tauri, Electron, Phoenix Channels,
 WebSocket, message queues) folds to `calls` for invoke-shaped
@@ -90,7 +90,7 @@ exchanges and to `event_publishes` for publish-shaped ones. The
 | `message_queue`        | `edge_type == "event_publishes"` and `meta["channel_kind"] == "queue"`   |
 | `message_receive`      | **Dropped.** No replacement edge — see "Dropped edges" below.            |
 
-### Dispatch / publish family (per ADR-0025)
+### Dispatch / publish family (per audit-findings 0001)
 
 | Old `edge_type`        | New query                                                                  |
 |------------------------|----------------------------------------------------------------------------|
@@ -253,7 +253,7 @@ clears the next ship.
 Four `edge_type` values are classified `pending_classification` in
 the registry — the registry's deliberate "we haven't decided yet"
 state. They will be folded once their per-family audit completes
-(analogous to ADR-0025 for dispatch/publish and ADR-0026 for IPC).
+(analogous to audit-findings 0001 for dispatch/publish and audit-findings 0002 for IPC).
 Consumer queries that filter on these values still work today; the
 names may rename in a future minor version.
 
@@ -312,7 +312,7 @@ bump after that group's bakeoff validation clears.
 - `docs/schema.json` — the JSON Schema; its `Edge.type` field has
   the `enum` of valid values plus an `x-deprecated` extension key
   listing the deprecation candidates.
-- ADR-0023, ADR-0025, ADR-0026 (under `docs/adr/`) — the design
-  decisions behind the typing principle and the per-family
-  classifications. Read these only if you want the rationale; the
+- ADR-0023 (under `docs/adr/`) and audit-findings 0001 + 0002 (under
+  `docs/audits/`) — the design decision behind the typing principle and
+  the per-family classifications. Read these only if you want the rationale; the
   rename tables above are sufficient for migration.

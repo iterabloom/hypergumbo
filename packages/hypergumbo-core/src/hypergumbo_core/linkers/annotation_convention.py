@@ -227,7 +227,7 @@ def link_annotations(
                         supply_chain_reason="@hg:subscribes annotation",
                     ))
 
-                # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+                # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
                 # @hg:publishes IS publish; "annotation" is the
                 # mechanism. Canonical 'event_publishes' +
                 # meta['mechanism']='annotation'.
@@ -307,7 +307,7 @@ def link_annotations(
             ))
 
         for target in target_syms:
-            # ADR-0023 §6 Phase 3 / ADR-0025 (WI-vasik-jofiv):
+            # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
             # @hg:dispatches IS dispatch; "annotation" is the
             # mechanism. Canonical 'dispatches_to' +
             # meta['mechanism']='annotation'.

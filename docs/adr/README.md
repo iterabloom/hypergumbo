@@ -32,13 +32,25 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0021](0021-tracker-federation.md) | Tracker Federation | Proposed | 2026-03-30 |
 | [0022](0022-language-profile-registry.md) | Per-Language Configuration Surface and Language Profile Registry | Proposed (exploratory) | 2026-04-10 |
 | [0023](0023-edge-type-relationship-not-endpoints.md) | Edge Type Names the Relationship, Not the Endpoints | Accepted (§6 migration in progress) | 2026-04-29 |
-| [0024](0024-axis-declaration-template.md) | Axis Declaration Template for Multi-Value Fields | Draft | 2026-04-30 |
-| [0025](0025-dispatch-publish-family-audits.md) | Dispatch and Publish Family Classifications | Accepted | 2026-04-30 |
-| [0026](0026-ipc-family-audit.md) | IPC Family Classifications | Accepted | 2026-05-01 |
+| [0024](0024-axis-declaration-template.md) | Axis Declaration Template for Multi-Value Fields | Accepted | 2026-04-30 (updated 2026-05-02) |
+
+> ADR numbers 0025 and 0026 were filed under the ADR series in error and have been **reclassified as audit-findings documents** (per-value verdicts under existing law from ADR-0023 and ADR-0024, not new architecture decisions). They now live at [`docs/audits/0001-dispatch-publish-family.md`](../audits/0001-dispatch-publish-family.md) and [`docs/audits/0002-ipc-family.md`](../audits/0002-ipc-family.md). Stubs at the old paths are kept for URL-level discoverability but are not principles. The bucket boundary is documented in the next section.
+
+## When to write an ADR vs an audit-findings document vs a survey
+
+Three buckets, each with its own home:
+
+- **Bucket 1 — ADR (`docs/adr/<NN>-<topic>.md`).** A load-bearing decision document. May have a substantial Context section that includes analysis, surveys, or comparisons of alternatives — those serve the decision. Use even when Context is long, as long as the deliverable is fundamentally a decision. The decision is the deliverable; the analysis is in service of it. Examples in this directory: ADR-0023 (axis principle), ADR-0024 (axis-declaration template), ADR-0003 lineage (decisions with substantial Context).
+- **Bucket 2 — Audit-findings (`docs/audits/<NN>-<topic>.md`).** A record of per-value verdicts produced by applying an existing methodology (typically the [Fundamental Concept Audit](../../.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md)) to a specific scope. Records case rulings under existing law, NOT new principles. Carries lifecycle states + structured YAML format per [`docs/audits/README.md`](../audits/README.md). Worked examples: [audit-findings 0001](../audits/0001-dispatch-publish-family.md), [audit-findings 0002](../audits/0002-ipc-family.md).
+- **Bucket 3 — Survey/snapshot (`docs/surveys/<topic>.md` or `docs/architecture-snapshots/<date>.md`).** A catalog or point-in-time inventory with no associated decision. Pure descriptive. No documents currently fit this bucket; the directory is created lazily by the first survey to land.
+
+**Bucket boundary**: *decision present?* → bucket 1, regardless of Context length. *No decision; per-value verdicts?* → bucket 2. *No decision; inventory/catalog?* → bucket 3.
+
+**Bucket-1 self-justification guard.** Bucket 1 requires a load-bearing decision (a principle adopted, a template defined, an architectural change committed to). Context may be substantial in service of the decision, but the decision is the deliverable. If the deliverable is fundamentally a description with a "we should..." paragraph at the end, that's bucket 3 with weak decision content, not bucket 1.
 
 ## Thematic grouping
 
-**Analysis pipeline:** 0003, 0004, 0005, 0006, 0007, 0012, 0014, 0015, 0016, 0017, 0022, 0023, 0024, 0025, 0026
+**Analysis pipeline:** 0003, 0004, 0005, 0006, 0007, 0012, 0014, 0015, 0016, 0017, 0022, 0023, 0024
 
 **Agent infrastructure and governance:** 0001, 0008, 0009, 0013, 0018, 0019, 0020, 0021
 

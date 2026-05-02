@@ -3900,7 +3900,7 @@ class TestApplyFileKindWeights:
 
 
 class TestEventSubscribesEdgeWeight:
-    """Phase 4b removed event_subscribes from the registry per ADR-0025
+    """Phase 4b removed event_subscribes from the registry per audit-findings 0001
     DEPRECATE-NO-FOLD verdict; the canonical event_publishes carries the
     full pub-sub weighting (slice handles reverse traversal natively)."""
 

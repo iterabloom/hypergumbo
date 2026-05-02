@@ -61,7 +61,7 @@ Different kinds of things masquerading as values along a single
 `napi_bridge`), and dispatch-mechanism values (`routes_to`,
 `message_dispatch`) under one field. The leak existed for years before
 ADR-0023 named it. PRs #3459 / #3462 / #3463 / #3468 plus ADR-0023 /
-ADR-0024 / ADR-0025 / ADR-0026 plus WI-vomoj-suhaz Phase 4b removed
+ADR-0024 / audit-findings 0001 / audit-findings 0002 plus WI-vomoj-suhaz Phase 4b removed
 the leak.
 
 **Trigger** — Whenever you're about to add a new value to a

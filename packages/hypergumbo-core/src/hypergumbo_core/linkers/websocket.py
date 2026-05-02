@@ -572,7 +572,7 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
                     evidence_type = "variable_match" if is_variable_match else f"{send_pat.pattern_type}_emit"
                     # Pass linker-specific meta via Edge.create's meta= kwarg
                     # so Edge.create merges it with the dataflow fields —
-                    # ADR-0023 §6 Phase 3 / ADR-0026 (WI-hahap-farid):
+                    # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
                     # WebSocket sender→receiver via channel is publish-
                     # family shape; "websocket" is the channel kind.
                     # Canonical 'event_publishes' +
@@ -600,7 +600,7 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
                     )
                     edges.append(edge)
 
-    # ADR-0023 §6 Phase 3 / ADR-0026 (WI-hahap-farid): WebSocket
+    # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid): WebSocket
     # endpoint connections declare connectivity (file → endpoint
     # symbol), they don't carry messages. Canonical 'references' +
     # meta['construct']='websocket_endpoint'.

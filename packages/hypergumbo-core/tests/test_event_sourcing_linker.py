@@ -881,11 +881,11 @@ class TestFindSourceFiles:
 
 class TestEventSubscriberToMethodEdges:
     """Tests asserting that subscriber→enclosing-method edges are NOT
-    emitted (post-ADR-0025 / ADR-0026 / WI-vasik-jofiv).
+    emitted (post-audit-findings 0001 / audit-findings 0002 / WI-vasik-jofiv).
 
     Originally the event sourcing linker emitted an ``event_subscribes``
     edge from subscriber → enclosing method to enable forward-slice
-    traversal. ADR-0025 verdicted that emit pattern as DEPRECATE-NO-FOLD
+    traversal. audit-findings 0001 verdicted that emit pattern as DEPRECATE-NO-FOLD
     (the production emit shape was structural-containment under a name
     that suggested pub-sub semantics; mismatched name vs. shape).
 
@@ -894,7 +894,7 @@ class TestEventSubscriberToMethodEdges:
     Symbol.span (subscriber's span fits inside the method's span), so
     the explicit edge was a denormalization with no downstream consumer
     that needed the materialized form. Same verdict pattern as
-    message_receive (ADR-0026).
+    message_receive (audit-findings 0002).
 
     These tests now assert the producer-side decision sticks: no
     event_subscribes edges at all, regardless of input shape.

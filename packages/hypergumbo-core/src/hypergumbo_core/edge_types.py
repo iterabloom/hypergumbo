@@ -118,14 +118,14 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "module_attr_ref", AXIS_RELATIONSHIP,
         "Reads an attribute on an imported module (e.g., os.environ).",
     ),
-    # Promoted from pending_classification by ADR-0025 (dispatch family
+    # Promoted from pending_classification by audit-findings 0001 (dispatch family
     # audit): apex of single-target dispatch via runtime indirection.
     EdgeTypeSpec(
         "dispatches_to", AXIS_RELATIONSHIP,
         "Caller dispatches to callee via runtime indirection "
         "(virtual method, function pointer, DI resolution, etc.).",
     ),
-    # Promoted from pending_classification by ADR-0025 (publish family
+    # Promoted from pending_classification by audit-findings 0001 (publish family
     # audit): apex of producer→consumer over an async channel.
     EdgeTypeSpec(
         "event_publishes", AXIS_RELATIONSHIP,
@@ -203,13 +203,13 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "GraphQL call (use 'calls' + protocol meta).",
     ),
 
-    # Dispatch-family fold targets per ADR-0025. Each was a deprecation
+    # Dispatch-family fold targets per audit-findings 0001. Each was a deprecation
     # candidate where the family-specific name encoded a mechanism /
     # protocol / declaration-vs-runtime distinction, not a separate
     # relationship. Phase 3 producer migration renames these to the
     # canonical fold target with the differentiating fact in edge.meta.
 
-    # Publish-family fold targets per ADR-0025.
+    # Publish-family fold targets per audit-findings 0001.
 
     # Registry-completeness fills per WI-tavas-voror sweep —
     # endpoint_shape values producers were already emitting that
@@ -236,7 +236,7 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "caller_invokes", AXIS_ENDPOINT_SHAPE,
         "Tauri-style cross-language invoke (caller → bound command); "
         "likely fold to 'calls' + meta['protocol']='ipc' (parallel to "
-        "ipc_calls per ADR-0026).",
+        "ipc_calls per audit-findings 0002).",
     ),
     EdgeTypeSpec(
         "contains_routes", AXIS_ENDPOINT_SHAPE,
@@ -324,7 +324,7 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     ),
 
     # Per-family audit pending per ADR-0023 §5. The dispatch and
-    # publish families were resolved by ADR-0025; the resolver /
+    # publish families were resolved by audit-findings 0001; the resolver /
     # OpenAPI / RPC family awaits its own audit.
     EdgeTypeSpec(
         "resolver_implements", AXIS_PENDING,
