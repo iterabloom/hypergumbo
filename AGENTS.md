@@ -103,16 +103,11 @@ When documenting status, coverage, or completion:
 - **BANNED:** "all known issues", "no known problems", "all identified cases"
   - These are copouts. If you haven't investigated something, you don't know it's not a problem.
   - "All known" just means "cases I bothered to check" — it's the guy from Memento saying "I've investigated all known leads."
-- **BANNED:** "should work", "mostly complete", "generally handles"
-  - Either it works or it doesn't. Be specific about what works and what doesn't.
-- **BANNED:** "in most cases", "typically", "usually"
-  - State the actual scope. Which cases? Under what conditions?
-- **REQUIRED:** Concrete enumeration over vague claims
-  - NO: "All major languages are supported"
-  - YES: "Supported: Java, Python, JS/TS, Ruby, Kotlin. Not supported: C#, Scala, Swift, PHP, Go, C++."
+- **BANNED:** "should work", "mostly complete", "generally handles", "typically", "usually", "in most cases"
+  - Hedges instead of stating scope. Be specific about what works and under what conditions.
 - **REQUIRED:** Explicit gaps over implicit completeness
-  - NO: "META-001 is 100% fixed"
-  - YES: "META-001: 5/13 languages done. Missing: C#, Scala, Swift, PHP, Groovy, C++, Objective-C, Apex."
+  - NO: "Bags packed for the trip"
+  - YES: "Packed: passport, 3 shirts, charger. Still missing: socks, toiletries, rain jacket."
 
 No weak shit. If you don't know, say you don't know. If you haven't checked, say you haven't checked.
 
@@ -153,28 +148,7 @@ The full transcript lives on disk; you can search it freely; you never have to r
 **Hazard specific to `auto-pr`:** when `auto-pr` rebases (because the feature branch is behind base), it copies the tracker `.ops` directories to a temp dir and restores them after the rebase — silently overwriting any `tracker discuss` / `add` / `update` performed during the run. **Mitigation: do not perform tracker mutations while an `auto-pr` run is in flight.** The recovery procedure (including the pre-pop verification step for the post-merge auto-stash, which is a separate mechanism that may or may not have your edits) lives in the playbook. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/output-capture-long-running-playbook.md`.)
 
 ### Bakeoff Validation Discipline
-Any PR whose description or tracker discussion contains a quantitative bakeoff-improvement claim must receive the `awaits_bakeoff_validation` tag on its tracker item at merge time. The tag stays until a later DEEP-mode bakeoff cycle reproduces the claimed metric movement; on confirmed movement the tag is stripped via a resolution discussion that links the cohort where it was validated, and on no-movement a regression sub-item is created so the discrepancy is not silently absorbed.
-
-**What counts as a quantitative bakeoff claim** (apply the tag when any of these verb-forms appears):
-- "should improve X by N%"
-- "expected FP reduction of N"
-- "N dead → alive" or "N alive → dead"
-- "NN% reduction" / "NN% improvement"
-- "below threshold X" (any numeric threshold)
-- "newly-consumed concept" (asserting a concept flips from inert → live)
-- raw candidate-count deltas attributed to the change
-
-**What does NOT count:** qualitative claims ("handles the case", "covers the pattern"), coverage / test-count deltas, performance micro-benchmarks unrelated to the bakeoff corpus.
-
-**The authoritative running list** supersedes earlier hand-maintained patterns:
-```bash
-scripts/tracker list --tag awaits_bakeoff_validation
-```
-This is the single source of truth for pending bakeoff validations. The stop hook surfaces the tag automatically: when the count of tag-bearing items in a blocking status reaches `threshold` AND the most recent DEEP bakeoff cycle's `state.json` is older than `stale_cycle_hours`, an `## AWAITS_BAKEOFF_VALIDATION BACKLOG` section is appended to the active guidance file pointing at `./scripts/bakeoff-deep cycle`. Both knobs live under `stop_hook.awaits_bakeoff_validation_nudge` in `.agent/tracker/config.yaml` (defaults: `threshold=5`, `stale_cycle_hours=72`). Worker: `.agent/hooks/_shared/awaits_bakeoff_nudge.py`.
-
-**Integration with `bakeoff-deep-reflect aggregate`:** at aggregation time the reflect pass cross-references active `awaits_bakeoff_validation` items against the cohort's diagnostic output, injecting a per-claim question into the reflect prompt (`moved` / `no_move` / `inconclusive`). On `moved` the tag is auto-stripped with evidence; on `no_move` a regression sub-item is created. The aggregation glue is separate implementation work; the discipline rule is in force independently of that tooling.
-
-**Validation queue processing:** When the `awaits_bakeoff_validation` queue is large enough to warrant a session (~15+ items, or a human surfaces it), follow the seven-phase routine: audit-and-classify each item by validation modality (read each item's discussion thread for **explicit modality requests** like "validate via UAT" or "ground-truth required" — honor those before falling back to claim-shape defaults) → strip anomalies first (stale, misapplied, reverted-fix) → design a minimum-target cohort whose union exercises every cohort-validatable claim → run + verify per-claim with a script that imports canonical taxonomy (do not hand-roll allowlists; one such mistake produced 3,000+ false flags in this codebase) → fill substantive YAMLs with verdicts for **every applicable claim** (not just the auto-injected ones) and apply via aggregator → hand-correct inconclusive plurality with rationale for niche-language claims → tackle regressions (fix structurally OR close `wont_do` for by-design limitations / cohort-coverage gaps), then re-iterate via `bakeoff-deep cycle --workdir <existing-session>` (never fresh `init` for a validation re-run). Bucket B items (prospector-pipeline-dependent or shape claims) get UAT-style spot-check (10–15 candidate ground-truth) instead of cohort. **Directed UAT-bakeoff path:** for human-curated item lists or items with an explicit UAT modality request, validation runs in `~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-vX.Y.Z/` (created by the human copying `~/hypergumbo_lab_notebook/hg-uat-template/`) under a two-agent split — the **orchestrator agent** (this agent) drafts plan.md from the tracker and applies tag mutations post-round, while the **UAT agent** (a separate naive agent the human starts inside the campaign dir) executes the rounds with no source/tracker access. The firewall is the validation discipline; do not relay hypergumbo internals across it. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/process-validation-queue-with-bakeoffs-and-uat.md`.)
+At PR merge, any PR whose description or tracker discussion contains a quantitative bakeoff-improvement claim must receive the `awaits_bakeoff_validation` tag on its tracker item. The single source of truth for the queue is `scripts/tracker list --tag awaits_bakeoff_validation`. Verb-forms that trigger the rule, exemptions, lifecycle (moved → strip tag; no_move → file untagged regression sub-item; inconclusive → keep tag), stop-hook nudge knobs, and the `bakeoff-deep-reflect aggregate` auto-strip integration live in the tagging-discipline playbook. The drain procedure (seven-phase routine + directed UAT-bakeoff path) for when the queue is ~15+ items lives in the queue-processing playbook. (For more explanation, please read `.agent/agent_playbooks_protocols_sops_skills/bakeoff-validation-tagging-discipline.md` for the tag rule and `.agent/agent_playbooks_protocols_sops_skills/process-validation-queue-with-bakeoffs-and-uat.md` for the drain routine.)
 
 
 ## Pre-Work Checklist
@@ -221,16 +195,7 @@ Before every commit: verify git identity (user.name/user.email), run tests with 
   - If file exists, wait for `auto-pr` to complete before starting new work.
   - Manual PRs do not create this gate; use `./scripts/ci-debug status` to check CI.
 - **vPR Queue (offline resilience):** When remote is unavailable, `auto-pr` queues virtual PRs in `.git/PR_QUEUE` as a linear chain. Flush pushes all as a single atomic PR. Commands: `auto-pr list`, `auto-pr status`, `auto-pr flush`. To add changes while queue is non-empty, branch from the queue tip. (For more explanation, please read `hypergumbo/.agent/agent_playbooks_protocols_sops_skills/vpr-usage.md`.)
-- **CI Interaction Policy:**
-  - **NEVER** write bash loops that poll CI via curl/wget/api calls.
-  - **NEVER** call the Forgejo API directly outside of approved scripts.
-  - **Approved scripts** (exhaustive list): `auto-pr`, `merge-pr`, `ci-debug`, `contribute`. All CI/API interaction MUST go through these.
-  - **When `auto-pr` fails**, recover by exit code:
-    - **Exit 0:** Success — PR merged or vPR queued. If vPR queued, run `./scripts/auto-pr flush` when remote is available.
-    - **Exit 1:** Failure. Run `./scripts/ci-debug status` to diagnose, fix the issue, then either re-run `./scripts/auto-pr` or `./scripts/merge-pr <PR_NUM> --wait-for-ci`.
-    - **Exit 2:** Timeout (CI stuck or slow). Try `./scripts/merge-pr <PR_NUM> --wait-for-ci --timeout 3600`, or if CI already passed, `./scripts/merge-pr <PR_NUM>` to merge immediately. If CI remains stuck, follow Scenario B.
-    - **Exit 3:** Hung (no CI jobs started after 5 min). `auto-pr` already retried with exponential backoff (close PR, wait, repush — up to 4 times). All retries failed, meaning CI runners may be down. Follow Scenario B. Do NOT manually kill processes, clear PR_PENDING, or start new branches.
-  - **Scenario B (CI stuck after timeout):** Do NOT accumulate more changes to git-tracked hypergumbo code. Run `./scripts/ci-debug status` once per hour (manually, not in a loop). When CI recovers, use `./scripts/merge-pr <PR_NUM>` to merge. It is fine to wait.
+- **CI Interaction Policy:** NEVER write bash loops that poll CI or call the Forgejo API directly. All CI/API interaction goes through approved scripts only: `auto-pr`, `merge-pr`, `ci-debug`, `contribute`. When `auto-pr` exits non-zero, recover per the exit-code table in `.agent/agent_playbooks_protocols_sops_skills/ci-debug-protocol.md` (covers exit 0/1/2/3 and the CI-stuck Scenario B).
 - **Fixing Build:** If `dev` breaks, **revert first**, then fix.
 - **Fast Feedback:** During development, run only relevant tests (e.g., `pytest tests/test_cli.py`) to move fast.
 
