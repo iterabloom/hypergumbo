@@ -30,3 +30,41 @@
   nonce: 1c49  # 1c49
   set:  # 1c49
     status: todo_soft  # 1c49
+- op: update  # 7ff0
+  at: '2026-05-02T03:37:24Z'  # 7ff0
+  by: agent  # 7ff0
+  actor: jgstern_agent  # 7ff0
+  clock: 3  # 7ff0
+  nonce: 7ff0  # 7ff0
+  set:  # 7ff0
+    priority: 2  # 7ff0
+- op: discuss  # 0d1b
+  at: '2026-05-02T03:37:24Z'  # 0d1b
+  by: agent  # 0d1b
+  actor: jgstern_agent  # 0d1b
+  clock: 4  # 0d1b
+  nonce: 0d1b  # 0d1b
+  message: "Bumped P3→P2 per human direction. Rationale: the HARD isbefore on ADR-0027 (WI-dahim) and ADR-0028 (WI-pilit) drafts is load-bearing — if those ADRs ship under the current 'any structurally-significant doc gets an ADR' pattern, each will spawn 2-6 audit-findings-shaped follow-ons, making this cleanup substantially more painful. Also: human (josh@iterabloom.com) approved the AGENTS.md + audit-playbook governance edits required by Deliverables 4.2 and 4.3 inline in the request, and approved using auto-pr WITHOUT --gov for the implementation. Filed sibling WI-busij (P4) for the deferred 'pre-commit detection of new multi-value field additions' open question (ADR-0024 §3 OQ2)."  # 0d1b
+- op: discuss  # ad7e
+  at: '2026-05-02T03:50:14Z'  # ad7e
+  by: agent  # ad7e
+  actor: jgstern_agent  # ad7e
+  clock: 5  # ad7e
+  nonce: ad7e  # ad7e
+  message: "Interview complete; five unresolved bits resolved with human (josh@iterabloom.com). Decisions for the implementation:\n\n**Q1 — ADR index entries: Option A.** ADR-0025 and ADR-0026 are removed from the `docs/adr/README.md` index entirely. Stubs at the old paths handle URL-level discovery; the index lists current principles, not history. Anyone wanting \"what ADRs ever existed\" can `git log -- docs/adr/`.\n\n**Q2 — Recurrence-promotion threshold: Option A, generalized.** N=3 distinct axis values OR N=2 producer modules (asymmetric — producer-count drift bites first). Rule generalized to host-dataclass-agnostic language: \"promote to a dedicated FIELD on the host dataclass (Edge / Symbol / Span / etc., per which dataclass owns the axis)\" — not Edge-coupled. The \"meta\" container also generalizes — whatever per-instance metadata bag the host dataclass exposes (`Edge.meta` today; future host dataclasses get their own analogue).\n\n**Q3 — Property test extraction sentinel: Option C.** Both `## Verdicts` heading AND in-block `kind: audit_verdicts` key required; missing either is a lint error. Belt-and-suspenders; cheap insurance against copy-paste authoring errors.\n\n**Q4 — `diagnostic_test` shape: Option B.** Structured runnable-assertion shape: `{cmd, expect}` per row. Property test validates structural shape now (cmd + expect both present, expect is one of `empty`/`nonempty`/`exit_code:N`); execution is deferred but the structure makes it cheap to add. Resolves the DEPRECATE-NO-FOLD lifecycle ambiguity by making `diagnostic_test` the operational definition of \"RESOLVED for this row.\"\n\n**Q5 — `docs/surveys/` directory: Option B.** Don't create the directory in this PR. The rubric names it as a valid bucket; first survey to land materializes the directory + `docs/surveys/README.md`. A6 spot-check (ADR-0003 lineage docs) confirmed all three are bucket-1 ADRs (each has substantial Decision section with numbered decisions); none migrates to bucket 3, so no current driver to create the directory.\n\n**A6 spot-check details:**\n- `0003-architectural-analysis-and-revision-plan.md` — bucket 1. §6 \"Design Decisions\" enumerates 4 decisions (pure analyzers, framework specification, multi-framework repos, framework versions). Substantial Context (taxonomy in §1-§4) is in service of those decisions.\n- `0003-usage-context-patterns.md` — bucket 1. Decision: introduce `UsageContext` IR type unifying four usage-based pattern categories. Status `Implemented` with code references (`UsageContext` at `ir.py:538`, 22 framework YAMLs, named consumers).\n- `0003-linker-subcategory-restoration.md` — bucket 1. Decision section has 8 numbered decisions (restore Protocol/Bridge/Framework vocabulary, add Infrastructure subcategory, mandate per-module docstring declaration, rename catalogue docs, etc.). Status `Implemented` across seven rollout PRs.\n\nBeginning implementation now under feature branch `jgstern-agent/refactor/audit-findings-format`. PR will land via `auto-pr` per human direction (without `--gov`). Will follow standard TDD discipline: property test for the audit-findings format authored before the audit-findings docs that exercise it; relocation + reformatting + ADR-0024 revision + filing rubric land together as one PR per the \"must land together because they're structurally inseparable\" framing in the original description."  # ad7e
+- op: update  # a70c
+  at: '2026-05-02T04:38:57Z'  # a70c
+  by: agent  # a70c
+  actor: jgstern_agent  # a70c
+  clock: 6  # a70c
+  nonce: a70c  # a70c
+  set:  # a70c
+    status: done  # a70c
+    pr_ref: '#3507'  # a70c
+- op: discuss  # 76a9
+  at: '2026-05-02T04:38:57Z'  # 76a9
+  by: agent  # 76a9
+  actor: jgstern_agent  # 76a9
+  clock: 7  # 76a9
+  nonce: 76a9  # 76a9
+  message: "Merged in PR #3507 (https://codeberg.org/iterabloom/hypergumbo/pulls/3507). All four deliverables landed together as committed: (1) docs/audits/ format with README + 0001-dispatch-publish-family + 0002-ipc-family + redirect stubs at the old paths; (2) ADR-0024 substantively revised — Draft→Accepted, new §Family-audit verdict methodology + §Fold-residue discipline (host-dataclass-agnostic, N=3 distinct axis values OR N=2 producer modules), workflow language redirected, OQ2 resolved-deferred via WI-busij; (3) filing-convention rubric in docs/adr/README.md + AGENTS.md essentialization + audit playbook Step 6 revision; (4) format enforcement via hypergumbo_core.audit_findings + scripts/check-audit-findings + .githooks/pre-commit wire-up + 44-test property suite. Inbound-reference migration on 21 production/test/analyzer files + 3 docs (CHANGELOG historical entries left intact). 4504 tests passing, 100% coverage on all 19 changed source files. CI green across 11 checks (audit, build-grammars, changes, ci-complete, dco, hook-tests, lint, pytest, pytest-retry, stop-the-line, tracker-validate, verify-generated). Sibling tracker item WI-busij-kadoz-bolok-lavig-lofaz-fogub-gajod-danif (P4) filed for the deferred 'pre-commit detection of new multi-value field additions' open question."  # 76a9
