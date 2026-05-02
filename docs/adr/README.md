@@ -33,6 +33,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0022](0022-language-profile-registry.md) | Per-Language Configuration Surface and Language Profile Registry | Proposed (exploratory) | 2026-04-10 |
 | [0023](0023-edge-type-relationship-not-endpoints.md) | Edge Type Names the Relationship, Not the Endpoints | Accepted (§6 migration in progress) | 2026-04-29 |
 | [0024](0024-axis-declaration-template.md) | Axis Declaration Template for Multi-Value Fields | Accepted | 2026-04-30 (updated 2026-05-02) |
+| [0027](0027-symbol-kind-language-construct-only.md) | Symbol.kind Names the Source-Language Syntactic Construct | Draft | 2026-05-02 |
 
 > ADR numbers 0025 and 0026 were filed under the ADR series in error and have been **reclassified as audit-findings documents** (per-value verdicts under existing law from ADR-0023 and ADR-0024, not new architecture decisions). They now live at [`docs/audits/0001-dispatch-publish-family.md`](../audits/0001-dispatch-publish-family.md) and [`docs/audits/0002-ipc-family.md`](../audits/0002-ipc-family.md). Stubs at the old paths are kept for URL-level discoverability but are not principles. The bucket boundary is documented in the next section.
 
