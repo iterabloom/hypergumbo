@@ -1017,6 +1017,7 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # prod_in_degree excludes edges from test nodes so that production
     # functions called mostly from tests don't outrank functions called
     # from production code.
+    #
     # Edge types that represent actual function calls (not structural
     # relationships).  Only these count toward out-degree for seed scoring.
     # Without this filter, interface methods accumulate dispatches_to edges
@@ -1024,16 +1025,29 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # had out=20 from dispatches_to edges, passing _MIN_OUT_DEGREE=3 and
     # getting selected as a seed over real domain functions.
     #
+    # `dispatches_to` is intentionally EXCLUDED from this set, matching the
+    # treatment in `hypergumbo_core/slice.py` (see slice.py:596-616 — the
+    # forward-slice traversal follows dispatches_to but skips it from the
+    # per-node hub-prune count for the same reason). Most dispatches_to
+    # producers — `rust_trait_dispatch`, `kafka_streams_dispatch`,
+    # `type_hierarchy`, `jackson_dispatch`, `airflow_framework_dispatch`,
+    # `decorator_dispatch`, `annotation_convention`, `di_resolution`,
+    # `django_orm_dispatch`, `go_cobra`, `go_memberlist`, the C/C++ analyzers,
+    # and `grpc.py`'s server→service edge — emit it for synthetic
+    # interface-style "menu" relationships where the src node lists what's
+    # possible without doing the runtime call. Counting them as out-degree
+    # promotes interface stubs over real domain functions. Real-dispatch
+    # cases that ARE genuinely flow-bearing (route → handler, gRPC route →
+    # service) get scored via the API-handler / route boosts below; their
+    # out-degree was already typically 1-2 even when included here.
+    #
     # Per ADR-0023 §6 Phase 3 (WI-vasik-jofiv / WI-mifor-vabul): the
-    # FFI bridges (cgo/ffi/napi/wasm/native), IPC calls (ipc_calls),
-    # routes (routes_to), DI resolves (di_resolves), annotated dispatch,
-    # message-bus dispatch, and ActiveJob enqueues now all emit as
-    # 'calls' or 'dispatches_to'. Adding both canonicals covers every
-    # post-migration emit. Deprecated entries kept until Phase 4 prunes
-    # them (they're dead-but-harmless because the canonicals already
-    # cover them).
+    # FFI bridges, IPC calls, message-bus dispatch, ActiveJob enqueues,
+    # and protocol calls (HTTP/gRPC/GraphQL) all fold to `calls` (with a
+    # meta key carrying the kind) — those continue to count via `calls`.
+    # Only the `dispatches_to` half of the fold is excluded here.
     _CALL_FLOW_EDGE_TYPES = {
-        "calls", "dispatches_to", "wraps",
+        "calls", "wraps",
         # pending_classification awaiting per-family audit (implements_rpc).
         # Protocol-call family (WI-vumum-juvil) folds to canonical 'calls'
         # + meta['protocol']; HTTP/gRPC/GraphQL flows transfer via 'calls'.
