@@ -19,3 +19,18 @@
     pr_ref:  # e690
     description: "Per the design discussion in WI-variv-lujug (Option A + permissive pending), once strict-mode drift linting was implemented (PR aa5ed053d), the design called for flipping the pre-commit gate's default to --strict so future endpoint_shape regressions are caught at commit time rather than silently accepted.\n\nThe flip is a single-line change in .githooks/pre-commit (line 265):\n\n    OLD: if scripts/check-edge-type-drift > \"$DRIFT_LOG\" 2>&1; then\n    NEW: if scripts/check-edge-type-drift --strict > \"$DRIFT_LOG\" 2>&1; then\n\nWHY THIS REQUIRES HUMAN APPROVAL: .githooks/** is in AGENTS.md's governance-files list — changes require explicit human review per the approval workflow.\n\nWHY NOT YET: Although the strict-mode IMPLEMENTATION is clean, flipping the gate would currently fire on 3 load-bearing consumer references that exist in production code (http_calls in compact.CROSS_CUTTING_EDGE_TYPES; grpc_calls in taint.TAINT_CALL_EDGE_TYPES and io_boundary._TRACEABLE_EDGE_TYPES). These references are NOT bugs — they're necessary because http.py and grpc.py linkers still emit endpoint_shape values awaiting future Phase-3-style migrations. Flipping the pre-commit gate today would block ANY commit until those producers migrate, which would gate routine work on unrelated infrastructure timing.\n\nWHEN TO FLIP: After the http.py + grpc.py + graphql.py linkers ship their Phase-3-style producer migrations (folding to canonical 'calls' + meta['protocol']), AND after the consumer-side references in compact / taint / io_boundary are removed.\n\nALTERNATIVE: flip earlier, accept the 3 known violations by removing http_calls / grpc_calls from those consumer sets (which would cause their edges to go uncovered by cross-cutting / taint / I/O boundary tracing until the producer migration ships). This trades correctness now for stricter linting now. Recommendation: don't flip until the migration shipped — the strict-mode CLI is available for opt-in checks now (via --strict on the CLI) without enforcement.\n\nACCEPTANCE: human approves; one-line change in .githooks/pre-commit; the test_find_axis_drift_strict_known_off_axis_consumers test (which currently pins the 3 violations) is updated to assert ZERO violations and renamed accordingly."  # e690
     fields: {}  # e690
+- op: update  # 2bc3
+  at: '2026-05-02T21:56:15Z'  # 2bc3
+  by: agent  # 2bc3
+  actor: jgstern_agent  # 2bc3
+  clock: 2  # 2bc3
+  nonce: 2bc3  # 2bc3
+  set:  # 2bc3
+    status: done  # 2bc3
+- op: discuss  # 7155
+  at: '2026-05-02T21:56:15Z'  # 7155
+  by: agent  # 7155
+  actor: jgstern_agent  # 7155
+  clock: 3  # 7155
+  nonce: '7155'  # 7155
+  message: "Shipped in commit cd5738e2b / PR #3520. The one-line flip in .githooks/pre-commit:265 swaps the permissive default for --strict, so any future endpoint_shape regression on the Edge.edge_type axis will block at commit time.\n\nAcceptance criteria (from item description):\n  ✓ human approves — josh (in-conversation, 2026-05-02)\n  ✓ one-line change in .githooks/pre-commit\n  ✓ test_find_axis_drift_strict_known_off_axis_consumers renamed to\n    test_find_axis_drift_strict_no_off_axis_consumers and now asserts\n    offenders == [] (delivered as part of WI-vumum, PR fe233fb4e)\n\nPre-flight verification before flipping: scripts/check-edge-type-drift --strict reported zero violations against the post-WI-vumum tree. The strict-mode drift linter is now the production default for the pre-commit gate."  # 7155
