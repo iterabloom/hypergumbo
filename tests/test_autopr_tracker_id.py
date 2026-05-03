@@ -291,15 +291,23 @@ class TestWiring:
         ]
         assert len(defs) == 1, f"helper must be defined exactly once, found {len(defs)}"
 
+    # Window size for "is the helper called from the merge-success site?"
+    # scans below. The original 10-line window was chosen when there was a
+    # single comment block between the marker and the call. Subsequent
+    # additions (WI-miriz sentinel-trap comment, WI-dofaz orphan-sync
+    # warning + comment, WI-mokak comment) push the call to ~11 lines past
+    # the marker; the test was failing in full-suite under that drift.
+    # 25 absorbs the current spread plus reasonable future growth while
+    # still asserting the call is "near" the marker.
+    _HELPER_CALL_WINDOW = 25
+
     def test_helper_called_from_do_pr(self) -> None:
         """The do_pr merge-success site calls the helper."""
         content = AUTO_PR_PATH.read_text()
         lines = content.splitlines()
-        # Find the do_pr merge-success marker and look ahead a few lines
-        # for the helper call.
         for i, line in enumerate(lines):
             if '_autopr_state_final="merged"' in line and 'LOCAL_SHA' in "\n".join(lines[i:i + 5]):
-                window = "\n".join(lines[i:i + 10])
+                window = "\n".join(lines[i:i + self._HELPER_CALL_WINDOW])
                 assert "_autopr_append_tracker_discussion" in window, (
                     f"do_pr merge-success site does not call helper: {window}"
                 )
@@ -312,7 +320,7 @@ class TestWiring:
         lines = content.splitlines()
         for i, line in enumerate(lines):
             if '_autopr_state_final="merged"' in line and 'tip_sha' in "\n".join(lines[i:i + 5]):
-                window = "\n".join(lines[i:i + 10])
+                window = "\n".join(lines[i:i + self._HELPER_CALL_WINDOW])
                 assert "_autopr_append_tracker_discussion" in window, (
                     f"flush_queue merge-success site does not call helper: {window}"
                 )
