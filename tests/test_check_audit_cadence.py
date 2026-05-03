@@ -66,13 +66,18 @@ def test_load_threshold_returns_default_when_key_missing(tmp_path: Path):
 
 
 def test_load_threshold_returns_default_on_oserror(tmp_path: Path):
+    # Trigger an OSError on read by passing a directory as the config path.
+    # `Path.exists()` returns True for a directory (so the early-return
+    # branch in load_threshold is not taken) but `Path.read_text()` raises
+    # IsADirectoryError, an OSError subclass that the function's except
+    # clause catches — exercising the same code path as a permission error.
+    #
+    # The previous shape used `chmod(0o000)`, which is bypassed by root.
+    # CI runs as root in its container, so the chmod did nothing and the
+    # test failed because read_text() succeeded and returned 50.
     cfg = tmp_path / "config.yaml"
-    cfg.write_text("concept_audit:\n  commit_threshold: 50\n")
-    cfg.chmod(0o000)
-    try:
-        assert hook.load_threshold(cfg) == hook.DEFAULT_THRESHOLD
-    finally:
-        cfg.chmod(0o644)
+    cfg.mkdir()
+    assert hook.load_threshold(cfg) == hook.DEFAULT_THRESHOLD
 
 
 def test_load_threshold_returns_default_on_value_error(tmp_path: Path):
