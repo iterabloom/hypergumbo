@@ -224,9 +224,16 @@ TODAY=$(date +%Y-%m-%d)
 # Main CHANGELOG
 if grep -q "## \[Unreleased\]" CHANGELOG.md; then
     if ! $DRY_RUN; then
+        # Read SCHEMA_VERSION from the source of truth so the changelog
+        # header line stays in sync with the released schema (the bug that
+        # left v4.0.0 shipping with "Released schema is at: v0.2.2" while
+        # schema.py was at 0.4.0).
+        SCHEMA_PY="packages/hypergumbo-core/src/hypergumbo_core/schema.py"
+        SCHEMA_VERSION=$(grep -E '^SCHEMA_VERSION\s*=' "$SCHEMA_PY" | head -1 | sed 's/.*"\(.*\)".*/\1/')
         sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [$VERSION] - $TODAY/" CHANGELOG.md
         sed -i "s/^- Released \*\*tool\*\* is at: v[0-9.]*$/- Released **tool** is at: v$VERSION/" CHANGELOG.md
-        echo -e "${GREEN}✓${NC} Updated CHANGELOG.md with [$VERSION] - $TODAY"
+        sed -i "s/^- Released \*\*schema\*\* is at: v[0-9.]*$/- Released **schema** is at: v$SCHEMA_VERSION/" CHANGELOG.md
+        echo -e "${GREEN}✓${NC} Updated CHANGELOG.md with [$VERSION] - $TODAY (schema v$SCHEMA_VERSION)"
     else
         echo -e "${BLUE}[dry-run]${NC} Would update CHANGELOG.md: [Unreleased] → [$VERSION] - $TODAY"
     fi
