@@ -326,9 +326,7 @@ PR_TITLE="Release v$VERSION"
 PR_DESCRIPTION="Merge dev into main for v$VERSION release."
 if [[ -n "$TRACKER_VERSION" ]]; then
     PR_TITLE="Release v$VERSION (tracker $TRACKER_VERSION)"
-    PR_DESCRIPTION="Merge dev into main for v$VERSION release.
-
-Includes hypergumbo-tracker $TRACKER_VERSION."
+    PR_DESCRIPTION="Merge dev into main for v$VERSION release. Includes hypergumbo-tracker $TRACKER_VERSION."
 fi
 
 if $NO_PR; then
@@ -336,15 +334,15 @@ if $NO_PR; then
     PR_URL="(not created)"
 else
     if ! $DRY_RUN; then
-        # Create PR using Codeberg's refs/for/ syntax
+        # Create PR using Codeberg's refs/for/ syntax.
+        # NOTE: git rejects any push option containing a newline
+        # ("fatal: push options must not have new line characters"), so the
+        # title and description MUST be single-line strings. The
+        # tests/test_prepare_release_push_options.py regression test enforces
+        # this invariant statically.
         PR_OUTPUT=$(git push origin "dev:refs/for/main/release-$VERSION" \
             -o title="$PR_TITLE" \
-            -o description="$PR_DESCRIPTION
-
-## Checklist for reviewer
-- [ ] Version bumped correctly
-- [ ] CHANGELOG updated
-- [ ] CI passes" 2>&1) || true
+            -o description="$PR_DESCRIPTION Reviewer checklist: version bumped correctly, CHANGELOG updated, CI passes." 2>&1) || true
 
         # Extract PR URL from output (Codeberg outputs it)
         PR_URL=$(echo "$PR_OUTPUT" | grep -oE 'https://[^ ]+/pulls/[0-9]+' | head -1 || echo "")
