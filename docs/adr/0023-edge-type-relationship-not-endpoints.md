@@ -482,27 +482,28 @@ and the 13 publish/dispatch family values (`routes_to`,
 `message_dispatch`, `crdt_publishes`, `annotated_publishes`,
 `emits`, `enqueues`, `event_subscribes`).
 
-**Remaining endpoint_shape values: 25, pending future per-family
-Phase 3.** The first 4b ship is partial because 25 endpoint_shape
-values still have producer emissions that haven't been
-Phase-3-migrated yet. They split into two groups:
+**Remaining endpoint_shape registry entries: 25; of which 22 still
+emit under their current names.** The first 4b ship is partial
+because 25 endpoint_shape values still occupy the registry pending
+future per-family Phase 3 / 4b' work; only 3 of those 25 (the
+protocol-call family) have had their producers migrated. The 25
+split into two groups:
 
 1. **Protocol-call family** (`http_calls`, `grpc_calls`,
-   `graphql_calls`): the natural next subset, since their fold
-   pattern is uniform (`calls` + `meta["protocol"]`). Producer
-   migration shipped under `WI-vumum-juvil`: `linkers/http.py`,
-   `linkers/grpc.py`, and `linkers/graphql.py` now emit canonical
-   `calls` with `meta["protocol"]` in `{"http", "grpc", "graphql"}`,
-   and the consumer-side references in
-   `compact.CROSS_CUTTING_EDGE_TYPES`,
+   `graphql_calls`): producer migration shipped under
+   `WI-vumum-juvil`. The fold pattern is uniform (`calls` +
+   `meta["protocol"]`); `linkers/http.py`, `linkers/grpc.py`, and
+   `linkers/graphql.py` now emit canonical `calls` with
+   `meta["protocol"]` in `{"http", "grpc", "graphql"}`, and the
+   consumer-side references in `compact.CROSS_CUTTING_EDGE_TYPES`,
    `taint.TAINT_CALL_EDGE_TYPES`, and
    `io_boundary._TRACEABLE_EDGE_TYPES` were dropped in the same PR
    (canonical `calls` already in those sets transparently picks up
    the folded edges). The strict-mode drift linter now reports zero
    off-axis consumer references — this Phase 3 cleared the last
-   load-bearing endpoint_shape consumer reference, removing the
-   immediate-next blocker for the strict-mode pre-commit flip
-   (`WI-mumok`). The three deprecated registry entries stay until a
+   load-bearing endpoint_shape consumer reference, unblocking the
+   strict-mode pre-commit flip that subsequently shipped under
+   `WI-mumok`. The three deprecated registry entries stay until a
    sibling Phase-4b' ship (gated on bakeoff validation of this
    migration) prunes them along with a SCHEMA_VERSION bump.
 

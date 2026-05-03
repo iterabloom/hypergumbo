@@ -791,25 +791,26 @@ def _create_subscriber_to_method_edges(
     context_symbols: list[Symbol],
     run: AnalysisRun,
 ) -> list[Edge]:
-    """Create ``event_subscribes`` edges from subscriber nodes to enclosing methods.
+    """Tombstone for the dropped subscriber→enclosing-method edge.
 
-    For each ``event_subscriber`` symbol, finds the method/function from the
-    analysis context that encloses the subscriber's source location (same file,
-    line range contains the subscriber line). Creates an edge from the subscriber
-    to the enclosing method, enabling forward slice traversal through
-    event-driven architectures::
+    Per ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv),
+    ``event_subscribes`` was DEPRECATE-NO-FOLD: the production emit
+    shape was subscriber→enclosing-function (structural containment)
+    under a name suggesting pub-sub — the subscriber-is-enclosed-by-
+    method information is recoverable from ``Symbol.span``, so the
+    edge was a denormalization with no downstream consumer that
+    needed the explicit edge form.
+
+    This function is retained as a tombstone documenting the decision;
+    it always returns an empty edge list. The forward-slice flow is now::
 
         publisher_method → event_publisher → event_publishes → event_subscriber
-            → event_subscribes → handler_method
 
-    Without these edges, forward slices dead-end at subscriber nodes because
-    the ``uses`` edges (created by the enclosure linker) go in the wrong
-    direction (method → subscriber, not subscriber → method).
-
-    Path matching uses suffix comparison to handle absolute/relative path
-    mismatches: the event sourcing linker produces absolute paths from
-    filesystem scanning, while analyzer symbols may have paths normalized
-    to be relative to the repo root.
+    Consumers that need the enclosing method should look up the
+    subscriber's ``path`` and find the symbol whose span contains
+    the subscriber's span (suffix path matching handles abs/rel
+    mismatches between the linker's filesystem-derived paths and
+    the analyzer pipeline's normalized paths).
     """
     subscribers = [s for s in event_symbols if s.kind == "event_subscriber"]
     if not subscribers:
@@ -891,13 +892,18 @@ def _create_subscriber_to_method_edges(
 def event_sourcing_linker(ctx: LinkerContext) -> LinkerResult:
     """Event sourcing linker for registry-based dispatch.
 
-    This wraps link_events() and adds ``event_subscribes`` edges from subscriber
-    nodes to their enclosing methods, enabling forward slice traversal through
-    event-driven architectures.
+    This wraps link_events() and invokes the dropped-edge tombstone
+    helper. ``event_subscribes`` was DEPRECATE-NO-FOLD per
+    audit-findings 0001 (WI-vasik-jofiv); the helper now always
+    returns an empty list, so the linker emits only the edges produced
+    by ``link_events()``. The helper call is preserved as a documented
+    no-op so the deprecation rationale stays adjacent to the code.
     """
     result = link_events(ctx.repo_root)
 
-    # Create event_subscribes edges from subscriber → enclosing method
+    # Tombstone for the dropped subscriber → enclosing-method edge
+    # (DEPRECATE-NO-FOLD per audit-findings 0001 / WI-vasik-jofiv;
+    # always an empty list — see _create_subscriber_to_method_edges).
     subscribes_edges = _create_subscriber_to_method_edges(
         result.symbols, ctx.symbols, result.run,
     )

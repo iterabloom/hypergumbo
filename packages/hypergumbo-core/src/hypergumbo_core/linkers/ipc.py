@@ -1,42 +1,46 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Protocol linker: IPC for detecting inter-process communication patterns.
 
-This linker detects IPC patterns in JavaScript/TypeScript code and creates
-message_send and message_receive edges for cross-process communication.
+This linker detects IPC patterns in JavaScript/TypeScript code and emits
+canonical ``event_publishes`` edges (with ``meta["channel_kind"]="ipc"``)
+for the send-side of cross-process communication, plus ``calls`` edges
+(with ``meta["bridge_kind"]="context_bridge"``) for Electron contextBridge
+mediation. The receive side is intentionally not emitted — see audit-
+findings 0002.
+
+Post-Phase 3 IPC fold (WI-hahap-farid; pre-fold edge_types were
+``message_send`` / ``message_receive`` / ``bridge_invokes``):
 
 Detected Patterns
 -----------------
 Electron IPC (renderer → main):
-- ipcRenderer.send('channel', data) -> message_send
-- ipcRenderer.invoke('channel', data) -> message_send
-- ipcRenderer.sendSync('channel', data) -> message_send
-- ipcRenderer.send(channelVar, data) -> message_send (variable channel)
+- ipcRenderer.send('channel', data)        -> event_publishes (channel_kind='ipc')
+- ipcRenderer.invoke('channel', data)      -> event_publishes (channel_kind='ipc')
+- ipcRenderer.sendSync('channel', data)    -> event_publishes (channel_kind='ipc')
+- ipcRenderer.send(channelVar, data)       -> event_publishes (channel_kind='ipc'; variable)
 
 Electron IPC (main → renderer):
-- webContents.send('channel', data) -> message_send
-- event.sender.send('channel', data) -> message_send
+- webContents.send('channel', data)        -> event_publishes (channel_kind='ipc')
+- event.sender.send('channel', data)       -> event_publishes (channel_kind='ipc')
 
-Electron IPC (main-side receive):
-- ipcMain.on('channel', handler) -> message_receive
-- ipcMain.handle('channel', handler) -> message_receive
-- ipcMain.handleOnce('channel', handler) -> message_receive
-- ipcMain.handle(channelVar, handler) -> message_receive (variable channel)
-
-Electron IPC (renderer-side receive):
-- ipcRenderer.on('channel', handler) -> message_receive
-- ipcRenderer.once('channel', handler) -> message_receive
+Electron IPC (receive side — main and renderer):
+- ipcMain.on / .handle / .handleOnce       -> dropped (DEPRECATE-NO-FOLD per audit-findings 0002;
+- ipcRenderer.on / .once                      forward event_publishes captures the relationship,
+                                              and slice walks reverse direction natively)
 
 Electron contextBridge (preload → renderer):
 - contextBridge.exposeInMainWorld('ns', { method: () => ipcRenderer.invoke('ch') })
   Detects bridge definitions, then scans for window.ns.method() calls in renderer
-  files. Creates bridge_invokes edges from renderer call sites to the IPC send
-  symbols in the preload file, enabling end-to-end traceability from UI code through
-  the preload bridge into the main process handler.
+  files. Emits canonical ``calls`` edges with ``meta["bridge_kind"]="context_bridge"``
+  from renderer call sites to the IPC send symbols in the preload file (post WI-mifor-
+  vabul Phase 3 bridge/FFI; pre-fold edge_type was ``bridge_invokes``), enabling
+  end-to-end traceability from UI code through the preload bridge into the main process
+  handler.
 
 Web Workers / postMessage:
-- worker.postMessage(data) -> message_send
-- window.postMessage(data, origin) -> message_send
-- addEventListener('message', handler) -> message_receive
+- worker.postMessage(data)                 -> event_publishes (channel_kind='ipc')
+- window.postMessage(data, origin)         -> event_publishes (channel_kind='ipc')
+- addEventListener('message', handler)     -> dropped (per audit-findings 0002, as above)
 
 Channel Detection Strategy
 --------------------------

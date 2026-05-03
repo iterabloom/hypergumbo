@@ -388,7 +388,7 @@ JNIEXPORT void JNICALL Java_GuacamoleSession_processFrame(
 **Detection rules:**
 1. Find Java methods with `native` modifier
 2. Find C functions matching `Java_{ClassName}_{methodName}` pattern (mangled names)
-3. Emit `native_bridge` edge from Java method → C function
+3. Emit canonical `calls` edge with `meta["bridge_kind"] = "native"` from Java method → C function (post WI-mifor-vabul Phase 3 bridge/FFI; pre-fold edge_type was `native_bridge`)
 
 **Confidence scoring** (see [§12](#12-confidence-scoring) for the full confidence model):
 * Pattern-matched (naming convention): 0.95
@@ -419,7 +419,7 @@ Detects message send/receive patterns across process boundaries using string lit
 2. Extract channel/event name from string literal argument
 3. Build index of all senders and receivers by channel name
 4. Match senders to receivers with same channel name
-5. Emit `message_send` edge (caller → channel) and `message_receive` edge (channel → handler)
+5. Emit canonical `event_publishes` edge with `meta["channel_kind"] = "ipc"` (or `"websocket"`, `"queue"`) from caller → handler (post WI-hahap-farid Phase 3 IPC; pre-fold edge_type was `message_send`). The converse `message_receive` edge is no longer emitted (DEPRECATE-NO-FOLD per audit-findings 0002 — recoverable by walking `event_publishes` with the receiver as `dst`).
 
 **Confidence scoring** (see [§12](#12-confidence-scoring) for the full confidence model):
 * String literal channel name match: 0.85
@@ -747,9 +747,9 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 * `script_src` — script tag src attribute
 * `implements` — class implements interface (Java, TypeScript, Go via `var _ Interface = &Struct{}`)
 * `extends` — class extends base class
-* `native_bridge` — Java native method → C implementation (JNI)
-* `message_send` — sends IPC/protocol message
-* `message_receive` — handles IPC/protocol message
+* JNI Java native method → C implementation: canonical `calls` + `meta["bridge_kind"] = "native"` (see [§7 JNI bridge detection](#java-jni-cross-language-detection)); pre-WI-mifor-vabul this was a distinct edge_type `native_bridge`, retained as a deprecated registry entry until Phase 4b'
+* IPC send (Electron / WebSocket / EventEmitter / message queue): canonical `event_publishes` + `meta["channel_kind"]` in `{"ipc", "websocket", "queue", "message_bus", "crdt"}` (see [§7 IPC/Message Channel Detection](#ipcmessage-channel-detection)); pre-WI-hahap-farid this was a distinct edge_type `message_send`, retained as a deprecated registry entry until Phase 4b'
+* IPC receive: **dropped** (DEPRECATE-NO-FOLD per audit-findings 0002) — the forward `event_publishes` already captures the relationship; pre-WI-hahap-farid this was a distinct edge_type `message_receive`
 * `instantiates` — class instantiation (constructor call)
 * HTTP client→server: canonical `calls` + `meta["protocol"] = "http"` (see [§7 HTTP client-server linking](#http-client-server-linking)); pre-WI-vumum-juvil this was a distinct edge_type `http_calls`, retained as a deprecated registry entry until Phase 4b'
 * ⬜ `manual` — user-annotated (not implemented)
