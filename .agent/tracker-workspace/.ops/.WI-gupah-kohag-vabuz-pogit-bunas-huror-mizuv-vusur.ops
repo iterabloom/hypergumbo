@@ -88,3 +88,19 @@
   clock: 10  # 3846
   nonce: '3846'  # 3846
   message: "Validation likely needs a second hg-uat session, not a standard bakeoff cycle. The claim (7,614 java_bean_accessor candidates drop) is sourced from the WI-tubot dead-code prospector aggregate-v5 pipeline, which is not part of BROAD/DEEP cohort runs. A UAT-style pass would: pick a Jackson-using Java repo (kafka, spring-petclinic), run hypergumbo, sample 10-15 previously-flagged bean accessors, and ground-truth that the new dispatches_to edges connect them to the right ObjectMapper.writeValueAsString call sites. That gives a precision/recall verdict the bakeoff diagnostic counts cannot."  # 3846
+- op: update  # d6f4
+  at: '2026-05-04T03:01:45Z'  # d6f4
+  by: agent  # d6f4
+  actor: jgstern_agent  # d6f4
+  clock: 11  # d6f4
+  nonce: d6f4  # d6f4
+  set: {}  # d6f4
+  remove:  # d6f4
+    tags: [awaits_bakeoff_validation]  # d6f4
+- op: discuss  # 6d3e
+  at: '2026-05-04T03:01:45Z'  # 6d3e
+  by: agent  # 6d3e
+  actor: jgstern_agent  # 6d3e
+  clock: 12  # 6d3e
+  nonce: 6d3e  # 6d3e
+  message: "Validation **no_move** in hg-uat-v4.0.0 round 03 (target: ~/ALL_REPOS/whole_bunch_of_repos/spring-petclinic).\n\n**Result:** 0/15 ground-truth pass. The linker emits exactly 1 `dispatches_to` edge in the entire repo (on `Vets:class`, a JAX-B `@XmlRootElement`) and **zero** edges on the 6 `@Entity` JPA classes (Owner, Pet, Visit, Vet, Specialty, PetType) that dominate the Jackson serialization surface — despite the round-03 plan listing `@Entity` as a trigger annotation per this item's PR-merge discussion.\n\nPer the bakeoff-validation-tagging-discipline lifecycle:\n- Filed regression sub-item: **WI-sokaz** (UAT BUG-02), parent-linked to this item, NOT inheriting the `awaits_bakeoff_validation` tag (regressions are their own work, not new entries on the validation queue).\n- Stripping `awaits_bakeoff_validation` from this item — validation has been completed, with negative result; the queue meaning (\"waiting for validation\") no longer applies.\n\nThe original implementation (PR #3172) remains valid for the JAX-B / explicit-`@JsonXxx`-method-annotation surface; WI-sokaz is the decision-and-fix follow-up to either extend coverage to `@Entity` or formally narrow the documented scope.\n\nCampaign master report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.0.0/lab-notebook/master-report.md (BUG-02 § 2)."  # 6d3e

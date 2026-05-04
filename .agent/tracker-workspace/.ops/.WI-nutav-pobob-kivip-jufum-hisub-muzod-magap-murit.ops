@@ -89,3 +89,10 @@
   clock: 10  # c055
   nonce: c055  # c055
   message: "Validation likely needs a second hg-uat session, not a standard bakeoff cycle. The claim (4,511 → below 1,500, 67% reduction) is a WI-tubot dead-code prospector aggregate-v5 metric not measured by BROAD/DEEP cohorts. A UAT pass on Airflow would: sample 10-15 Hook/Sensor/Operator/Trigger subclasses previously flagged dead-maybe, and ground-truth that the new framework-dispatch edges connect them to the scheduler/executor invocation paths (Hook.get_conn, Sensor.poke, Operator.execute, Trigger.run)."  # c055
+- op: discuss  # 0e01
+  at: '2026-05-04T03:01:46Z'  # 0e01
+  by: agent  # 0e01
+  actor: jgstern_agent  # 0e01
+  clock: 11  # 0e01
+  nonce: '0e01'  # 0e01
+  message: "Validation **inconclusive** in hg-uat-v4.0.0 round 04 (target: ~/ALL_REPOS/whole_bunch_of_repos/airflow).\n\n**Result:** 5/15 ground-truth pass. Between no_move (<3) and moved (≥10).\n\n**Decomposition by sample shape:**\n- **Direct subclass** of BaseOperator/BaseHook/BaseSensor/BaseTrigger (e.g. `class FooOperator(BaseOperator)`): pass = **5/5**.\n- **Transitive subclass** via an intermediate (e.g. `AlloyDBWriteBaseOperator(BaseOperator)` → `AlloyDBWriteFooOperator(AlloyDBWriteBaseOperator)`): pass = **0/9**.\n\n**Root cause:** the linker matches `meta.base_classes` on direct-base-name only and does not walk the class hierarchy. Since real airflow provider code is shot through with intermediate base classes (`GoogleBaseHook`, `AlloyDBWriteBaseOperator`, etc.), the transitive case is the dominant case — which is what caps the pass rate at 5/15.\n\nFiled root cause as UAT BUG-01 / **WI-halat** (todo_hard, P2: \"Framework-dispatch linkers must traverse transitive base-class hierarchy\"). Verdict-level impact projected: flips this item to `moved` once WI-halat lands.\n\n**What would unblock:** ship WI-halat (either (a) per-linker hierarchy walk, or (b) transitively close `meta.base_classes` in Python analyzer); re-run round 04.\n\nTag retained per `inconclusive` lifecycle.\n\nCampaign master report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.0.0/lab-notebook/master-report.md (BUG-01 § 2)."  # 0e01

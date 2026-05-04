@@ -42,3 +42,12 @@
   clock: 4  # ae3e
   nonce: ae3e  # ae3e
   message: "Shipped in PR #3422 (commit a04ad5f93). Wired emit_module_attribute_refs (WI-vipur cross-language helper) into cpp.py with scoped_path=True over qualified_identifier (fields scope/name), injecting 'std' as implicit import and merging the namespace_aliases the analyzer already extracts. New cpp.yaml declares ipc_send/ipc_recv std attribute entries (cout/cerr/cin); cpp moved from _CATALOG_ALIASES to _CATALOG_PARENTS pointing at c so the cpp child catalog adds the iostream surface while still inheriting libc/POSIX from c.yaml. Bare cout/cerr/cin after 'using namespace std;' is intentionally out of scope (needs a using-declaration model first). Catalog status: in_progress per Plan C, PR B; promotion to complete requires <iostream>/<fstream>/<sstream> enumeration + stdlib_provenance per INV-pomir. Four real tree-sitter tests cover: std::cout/cerr/cin emission, nested qualified_identifier (std::numbers::pi) leftmost-resolution, callee-qualified-identifier exclusion (no double-emit for std::printf), and namespace alias resolution (fs = std::filesystem → std.filesystem). Tagged awaits_bakeoff_validation: a C++ cohort run on iostream-heavy CLIs should observe non-empty ipc_send/ipc_recv boundaries that previously fell off the C-alias path."  # ae3e
+- op: update  # da9d
+  at: '2026-05-04T03:04:03Z'  # da9d
+  by: agent  # da9d
+  actor: jgstern_agent  # da9d
+  clock: 5  # da9d
+  nonce: da9d  # da9d
+  set: {}  # da9d
+  remove:  # da9d
+    tags: [awaits_bakeoff_validation]  # da9d

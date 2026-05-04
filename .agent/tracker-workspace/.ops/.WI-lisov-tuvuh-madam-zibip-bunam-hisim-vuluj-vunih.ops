@@ -82,3 +82,19 @@
   clock: 9  # 9d09
   nonce: 9d09  # 9d09
   message: "Validation likely needs a second hg-uat session, not a standard bakeoff cycle. The claim (2,386 kafka_streams_internal candidates drop) is a WI-tubot prospector aggregate-v5 metric outside BROAD/DEEP scope. A UAT pass on Kafka would: sample 10-15 ProcessorSupplier.get / ValueMapper.apply / ValueTransformer.transform implementations previously flagged dead, and ground-truth that the new linker connects them to their StreamsBuilder DSL registration sites (filter/map/process/through/to)."  # 9d09
+- op: update  # 4684
+  at: '2026-05-04T03:01:45Z'  # 4684
+  by: agent  # 4684
+  actor: jgstern_agent  # 4684
+  clock: 10  # 4684
+  nonce: '4684'  # 4684
+  set: {}  # 4684
+  remove:  # 4684
+    tags: [awaits_bakeoff_validation]  # 4684
+- op: discuss  # 79d5
+  at: '2026-05-04T03:01:45Z'  # 79d5
+  by: agent  # 79d5
+  actor: jgstern_agent  # 79d5
+  clock: 11  # 79d5
+  nonce: 79d5  # 79d5
+  message: "Validation **moved** in hg-uat-v4.0.0 round 08 (target: ~/ALL_REPOS/whole_bunch_of_repos/kafka).\n\n**Result:** 15/15 ground-truth pass on (concrete-impl class, framework-called method) pairs across the 17 callback interfaces — cleanest framework-dispatch linker of the campaign per § 5 linker scoreboard. Coverage spans Java, Kotlin, and Scala wrapper (`kstream.scala`) idioms.\n\nPhase 2 (call-site → impl edges from `StreamsBuilder` DSL registration sites) remains deferred per the original PR-merge note; not in scope for this verdict.\n\n**Incidental finding (DQ-14):** one simple-name collision observed — a `Transformer<T>` class in oauthbearer code was treated by kafka_streams_dispatch as Kafka Streams' `Transformer` interface (confidence 0.5 on the spurious edge). Folded into the cross-cutting umbrella concern UAT DQ-06 / WI-pudil rather than filed as a separate item.\n\nStripping `awaits_bakeoff_validation` per lifecycle.\n\nCampaign master report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.0.0/lab-notebook/master-report.md."  # 79d5
