@@ -270,6 +270,64 @@ class TestLinkAirflowFrameworkDispatch:
         ctx = _ctx([cls, m], edges=[prior])
         assert link_airflow_framework_dispatch(ctx).edges == []
 
+    def test_transitive_subclass_via_extends_edge(self) -> None:
+        # WI-halat: MyOp -> AlloyDBWriteBaseOperator -> BaseOperator.
+        # AlloyDBWriteBaseOperator is in-tree (an intermediate base);
+        # BaseOperator is external. The linker must walk the extends
+        # edge and recognise MyOp as an Airflow subclass even though
+        # MyOp.meta.base_classes lists only "AlloyDBWriteBaseOperator".
+        intermediate = _class_sym(
+            "AlloyDBWriteBaseOperator",
+            path="airflow_plugins/base.py",
+            base_classes=["BaseOperator"],
+            span=(50, 80),
+        )
+        leaf = _class_sym(
+            "MyOp",
+            path="dags/alloydb.py",
+            base_classes=["AlloyDBWriteBaseOperator"],
+            span=(100, 120),
+        )
+        method = _method_sym(
+            "MyOp.execute", path="dags/alloydb.py", span=(105, 110),
+        )
+        prior = Edge.create(
+            src=leaf.id, dst=intermediate.id,
+            edge_type="extends", line=100,
+        )
+        ctx = _ctx([leaf, intermediate, method], edges=[prior])
+        result = link_airflow_framework_dispatch(ctx)
+        assert {(e.src, e.dst) for e in result.edges} == {(leaf.id, method.id)}
+
+    def test_transitive_two_intermediates(self) -> None:
+        # MyOp -> Mid1 -> Mid2 -> BaseSensor (external).
+        mid2 = _class_sym(
+            "Mid2", path="bases/m2.py",
+            base_classes=["BaseSensor"], span=(1, 5),
+        )
+        mid1 = _class_sym(
+            "Mid1", path="bases/m1.py",
+            base_classes=["Mid2"], span=(1, 5),
+        )
+        leaf = _class_sym(
+            "MyOp", path="dags/x.py",
+            base_classes=["Mid1"], span=(1, 5),
+        )
+        method = _method_sym(
+            "MyOp.poke", path="dags/x.py", span=(2, 4),
+        )
+        edges = [
+            Edge.create(
+                src=leaf.id, dst=mid1.id, edge_type="extends", line=1,
+            ),
+            Edge.create(
+                src=mid1.id, dst=mid2.id, edge_type="extends", line=1,
+            ),
+        ]
+        ctx = _ctx([leaf, mid1, mid2, method], edges=edges)
+        result = link_airflow_framework_dispatch(ctx)
+        assert {e.dst for e in result.edges} == {method.id}
+
     def test_deduplicates_within_run(self) -> None:
         # Two classes, both named MyOperator in the same file — method index
         # only keeps the first, so both classes dispatch to the same method.

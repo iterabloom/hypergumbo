@@ -43,6 +43,10 @@ import time
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
+from ._transitive_bases import (
+    build_inheritance_index,
+    collect_transitive_base_names,
+)
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
@@ -172,28 +176,37 @@ def _short_base_name(raw: str) -> str:
 
 def _find_django_subclasses(
     symbols: list["Symbol"],
+    edges: list[Edge] | None = None,
 ) -> list[tuple["Symbol", frozenset[str]]]:
     """Return (class_symbol, framework_method_names) for every Django subclass.
 
-    A class whose ``base_classes`` metadata names more than one Django
-    base (e.g., a CBV that inherits ``ListView`` and ``LoginRequiredMixin``
-    where the mixin resolves to ``View``) has the union of both bases'
-    method sets — every framework-called method on any matched base is
-    in scope.
+    A class qualifies when **any** name in its transitive ``base_classes``
+    chain — itself plus every in-tree ancestor reached via
+    ``extends``/``implements`` edges — matches a Django base. This
+    catches intermediate-base patterns (``Order(LoggedModel)`` /
+    ``LoggedModel(models.Model)``, ``HierarkeyForm(forms.Form)`` / custom
+    subclass) that the direct-only matcher missed; per WI-halat / UAT
+    BUG-01 round 05 found 0/6 transitive cases passing on pretix.
+
+    Multi-inherit / multi-base chains get the union of every matched
+    base's method set (CBV inheriting ``ListView`` plus a mixin that
+    resolves to ``View``, etc.).
     """
+    edges = edges or []
+    inheritance_index = build_inheritance_index(edges)
+    symbol_by_id = {sym.id: sym for sym in symbols}
+
     results: list[tuple[Symbol, frozenset[str]]] = []
     for sym in symbols:
         if sym.kind not in ("class", "struct"):
             continue
         if sym.language != "python":
             continue
-        base_classes = sym.meta.get("base_classes", []) if sym.meta else []
-        if not base_classes:
+        if not sym.meta or not sym.meta.get("base_classes"):
             continue
+        chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
         methods: set[str] = set()
-        for raw in base_classes:
-            if not isinstance(raw, str):
-                continue
+        for raw in chain:
             short = _short_base_name(raw)
             if short in DJANGO_BASE_METHODS:
                 methods.update(DJANGO_BASE_METHODS[short])
@@ -242,7 +255,7 @@ def link_django_orm_dispatch(ctx: LinkerContext) -> LinkerResult:
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
-    subclasses = _find_django_subclasses(ctx.symbols)
+    subclasses = _find_django_subclasses(ctx.symbols, ctx.edges)
     if not subclasses:
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(symbols=[], edges=[], run=run)

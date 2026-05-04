@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+
+- **Framework-dispatch linkers traverse transitive base-class chains** (WI-halat / UAT BUG-01): `airflow_framework_dispatch` and `django_orm_dispatch` now walk `extends`/`implements` edges to discover ancestors whose `meta.base_classes` names a framework base, fixing the dominant real-world pattern where projects extend an intermediate (`AlloyDBWriteBaseOperator(BaseOperator)`, `Order(LoggedModel)` / `LoggedModel(models.Model)`, `HierarkeyForm(forms.Form)` / custom subclass) rather than the framework class directly. UAT v4.0.0 round 04 (airflow) and round 05 (pretix) saw 0/9 and 0/6 transitive cases respectively under the prior direct-only matcher. New shared helper `linkers/_transitive_bases.py` (BFS with cycle guard) is the single source of truth for the walk; both linkers now consume it. Direct-base detection is unchanged.
+
 ## [4.0.0] - 2026-05-03
 
 ### Summary

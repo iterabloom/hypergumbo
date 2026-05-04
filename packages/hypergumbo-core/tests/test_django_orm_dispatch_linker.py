@@ -340,3 +340,91 @@ class TestConstants:
         view = DJANGO_BASE_METHODS["View"]
         for http_method in ("get", "post", "put", "delete", "dispatch"):
             assert http_method in view
+
+
+class TestTransitiveSubclassWalk:
+    """WI-halat: framework-dispatch must traverse the inheritance chain.
+
+    UAT BUG-01 round 05 (pretix): direct subclasses passed 8/8, but
+    every intermediate-base case (``Order(LoggedModel)`` /
+    ``LoggedModel(models.Model)``, ``HierarkeyForm`` / its custom
+    subclass) failed because the matcher only checked direct parents.
+    """
+
+    def test_one_intermediate_model_chain(self) -> None:
+        # Order(LoggedModel) ; LoggedModel(models.Model)
+        logged = _class_sym(
+            "LoggedModel", path="app/abstract.py",
+            base_classes=["models.Model"], span=(1, 5),
+        )
+        order = _class_sym(
+            "Order", path="app/orders.py",
+            base_classes=["LoggedModel"], span=(1, 5),
+        )
+        save = _method_sym(
+            "Order.save", path="app/orders.py", span=(2, 4),
+        )
+        edge = Edge.create(
+            src=order.id, dst=logged.id, edge_type="extends", line=1,
+        )
+        ctx = _ctx([order, logged, save], edges=[edge])
+        result = link_django_orm_dispatch(ctx)
+        assert {(e.src, e.dst) for e in result.edges} == {(order.id, save.id)}
+
+    def test_form_chain(self) -> None:
+        # CustomForm(HierarkeyForm) ; HierarkeyForm(forms.Form)
+        hierarkey = _class_sym(
+            "HierarkeyForm", path="app/forms_base.py",
+            base_classes=["forms.Form"], span=(1, 5),
+        )
+        custom = _class_sym(
+            "CustomForm", path="app/forms.py",
+            base_classes=["HierarkeyForm"], span=(1, 5),
+        )
+        clean = _method_sym(
+            "CustomForm.clean", path="app/forms.py", span=(2, 4),
+        )
+        edge = Edge.create(
+            src=custom.id, dst=hierarkey.id, edge_type="extends", line=1,
+        )
+        ctx = _ctx([custom, hierarkey, clean], edges=[edge])
+        result = link_django_orm_dispatch(ctx)
+        assert {e.dst for e in result.edges} == {clean.id}
+
+    def test_two_intermediates(self) -> None:
+        # Order -> LoggedModel -> AbstractModel -> models.Model
+        abstract = _class_sym(
+            "AbstractModel", path="app/m_abstract.py",
+            base_classes=["models.Model"], span=(1, 5),
+        )
+        logged = _class_sym(
+            "LoggedModel", path="app/m_logged.py",
+            base_classes=["AbstractModel"], span=(1, 5),
+        )
+        order = _class_sym(
+            "Order", path="app/orders.py",
+            base_classes=["LoggedModel"], span=(1, 5),
+        )
+        delete = _method_sym(
+            "Order.delete", path="app/orders.py", span=(2, 4),
+        )
+        edges = [
+            Edge.create(
+                src=order.id, dst=logged.id, edge_type="extends", line=1,
+            ),
+            Edge.create(
+                src=logged.id, dst=abstract.id,
+                edge_type="extends", line=1,
+            ),
+        ]
+        ctx = _ctx([order, logged, abstract, delete], edges=edges)
+        result = link_django_orm_dispatch(ctx)
+        assert {e.dst for e in result.edges} == {delete.id}
+
+    def test_external_intermediate_does_not_block_direct_match(self) -> None:
+        # Direct match still works when no extends edges exist (the
+        # legacy direct-only path).
+        c = _class_sym("User", base_classes=["models.Model"])
+        save = _method_sym("User.save")
+        ctx = _ctx([c, save], edges=[])
+        assert {e.dst for e in link_django_orm_dispatch(ctx).edges} == {save.id}

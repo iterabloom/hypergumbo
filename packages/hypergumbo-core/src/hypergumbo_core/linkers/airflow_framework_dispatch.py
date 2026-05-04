@@ -40,6 +40,10 @@ import time
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
+from ._transitive_bases import (
+    build_inheritance_index,
+    collect_transitive_base_names,
+)
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
@@ -81,22 +85,35 @@ def _short_base_name(raw: str) -> str:
 
 def _find_airflow_subclasses(
     symbols: list[Symbol],
+    edges: list[Edge] | None = None,
 ) -> list[tuple[Symbol, frozenset[str]]]:
     """Return (class_symbol, framework_method_names) for every Airflow subclass.
 
-    A class whose ``base_classes`` metadata names more than one Airflow base
-    (e.g., a multi-inherit shim) has the union of both bases' method sets —
-    every framework-called method on any matched base is in scope.
+    A class qualifies when **any** name in its transitive ``base_classes``
+    chain — itself plus every in-tree ancestor reached via
+    ``extends``/``implements`` edges — matches an Airflow base. This
+    catches the dominant real-world case where projects extend an
+    intermediate base (``AlloyDBWriteBaseOperator``) that itself extends
+    the framework base (``BaseOperator``); per WI-halat / UAT BUG-01 the
+    direct-only matcher missed all 9 transitive cases on airflow.
+
+    A class whose chain names more than one Airflow base (multi-inherit
+    shim, or a chain that crosses base families) gets the union of all
+    matched bases' method sets.
     """
+    edges = edges or []
+    inheritance_index = build_inheritance_index(edges)
+    symbol_by_id = {sym.id: sym for sym in symbols}
+
     results: list[tuple[Symbol, frozenset[str]]] = []
     for sym in symbols:
         if sym.kind not in ("class", "struct"):
             continue
-        base_classes = sym.meta.get("base_classes", []) if sym.meta else []
-        if not base_classes:
+        if not sym.meta or not sym.meta.get("base_classes"):
             continue
+        chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
         methods: set[str] = set()
-        for raw in base_classes:
+        for raw in chain:
             short = _short_base_name(raw)
             if short in AIRFLOW_BASE_METHODS:
                 methods.update(AIRFLOW_BASE_METHODS[short])
@@ -145,7 +162,7 @@ def link_airflow_framework_dispatch(ctx: LinkerContext) -> LinkerResult:
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
-    subclasses = _find_airflow_subclasses(ctx.symbols)
+    subclasses = _find_airflow_subclasses(ctx.symbols, ctx.edges)
     if not subclasses:
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(symbols=[], edges=[], run=run)
