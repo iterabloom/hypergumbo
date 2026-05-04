@@ -19,3 +19,20 @@
     pr_ref:  # 9963
     description: "From hg-uat-v4.0.0 directed-validation campaign (2026-05-03), master report\n§ BUG-01 (HIGH severity).\nMaster report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.0.0/lab-notebook/master-report.md\n\n## Symptom\n\nSeveral within-language framework-dispatch linkers (`airflow_framework_dispatch`,\n`django_orm_dispatch`) match a class against `meta.base_classes` only when one of\nthe linker's recognised base names appears **literally** in that direct\nparents list. They do **not** walk the class hierarchy to discover transitive\nancestors.\n\nIn real-world codebases this is the dominant case — projects use intermediate\nbase classes (`AlloyDBWriteBaseOperator` extending `BaseOperator`,\n`LoggedModel` extending `models.Model`, `HierarkeyForm` extending `Form`,\n`GoogleBaseHook` extending `BaseHook`) that wrap the framework's actual base.\nPass-rate degradation observed in UAT:\n\n- Round 04 (airflow Operator/Hook/Sensor/Trigger): direct subclass pass = 5/5;\n  transitive subclass pass = 0/9.\n- Round 05 (django Model/View/Form): direct = 8/8; transitive = 0/6.\n\nThe Kafka-Streams linker (round 08) doesn't expose this bug because the JVM\nidiom uses single-level `implements <Interface>` directly. Were that idiom to\nnest, the same matcher would underperform.\n\n## Distinction from INV-vusog\n\nINV-vusog is the *upstream* invariant: \"Class symbols with `base_classes`\nmetadata must create extends/implements edges to base classes/interfaces that\nexist in the analyzed codebase.\" That invariant produces the substrate.\n**This item is the consumer-side counterpart**: framework-dispatch linkers\nmust traverse those edges (or their underlying transitively-closed\nmetadata) when matching, not stop at the direct parent list.\n\n## Fix scope (two options, pick one)\n\n(a) Each affected linker walks `extends` / `implements` edges from each\ncandidate class up to a recognised base before matching.\n\n(b) The Python / Java / etc. analyzers transitively close `meta.base_classes`\nso every class records its full ancestor list (heavier, but unblocks every\nframework-dispatch linker with the same shape, including any future ones).\n\n## Verdict-level impact\n\nFixing this is expected to flip rounds 04 (WI-nutav, currently inconclusive\n5/15) and 05 (WI-nosug, currently inconclusive 8/15) toward `moved`, and may\nalso raise round 02's (WI-likab) Go access_mode coverage where missing\n`access_mode` correlates with unresolved transitive method dispatch.\n\n## Acceptance\n\nA re-run of UAT rounds 04 and 05 against airflow and pretix passes ≥10/15\nground-truth on the same sampling shape, including transitive-subclass cases."  # 9963
     fields: {}  # 9963
+- op: update  # 7573
+  at: '2026-05-04T06:34:57Z'  # 7573
+  by: agent  # 7573
+  actor: jgstern_agent  # 7573
+  clock: 2  # 7573
+  nonce: '7573'  # 7573
+  set:  # 7573
+    status: done  # 7573
+  add:  # 7573
+    tags: [awaits_bakeoff_validation]  # 7573
+- op: discuss  # 134d
+  at: '2026-05-04T06:34:58Z'  # 134d
+  by: agent  # 134d
+  actor: jgstern_agent  # 134d
+  clock: 3  # 134d
+  nonce: 134d  # 134d
+  message: "Fixed in PR #3539 (commit 0553b699f). Added shared helper linkers/_transitive_bases.py (BFS walk over extends/implements edges with cycle guard) and wired it into airflow_framework_dispatch and django_orm_dispatch. Both linkers now match against the union of {self.meta.base_classes} ∪ {ancestor.meta.base_classes for every in-tree ancestor}. Direct-base detection unchanged. Property tests cover one- and two-intermediate transitive chains plus diamond-inheritance cycle protection. Expected to flip UAT v4.0.0 rounds 04 (WI-nutav, currently 5/15 inconclusive) and 05 (WI-nosug, currently 8/15 inconclusive) toward 'moved' on re-run; round 02 (WI-likab) Go path is unaffected by this Python-only change. Tagging awaits_bakeoff_validation per the BVT discipline."  # 134d
