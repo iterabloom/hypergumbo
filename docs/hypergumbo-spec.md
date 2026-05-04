@@ -286,6 +286,15 @@ class AnalysisIR:
 ```
 🟪 `AnalysisIR`, `Reference`, `Relationship` are spec names; code uses `AnalysisResult`, `Symbol`, `Edge`.
 
+### Multi-value field axes
+
+Per ADR-0024 the multi-value type fields on the core dataclasses each declare an axis (axiom + consumer pattern + enforcement) so analyzers, linkers, and downstream consumers share a canonical vocabulary instead of free-form strings. Two axes are currently declared:
+
+* **`Edge.edge_type`** — ADR-0023 (Accepted). Axiom: "names the relationship that produced the edge." Three sections: `relationship` (canonical), `endpoint_shape` (deprecation candidates folding to canonical + meta), `pending_classification`. Registry at `packages/hypergumbo-core/src/hypergumbo_core/edge_types.py`; per-axis view at [`docs/concept-axes.md`](concept-axes.md). Schema enum + per-value `x-axis-of-values` annotation generated from the registry.
+* **`Symbol.kind`** — ADR-0027 (Accepted, Phase 1 landed at `SCHEMA_VERSION` 0.4.1). Axiom: "names the source-language syntactic construct the symbol represents; properties derivable from edges or framework metadata are queried from those structures rather than smuggled into the kind label." Three sections: `language_construct` (Cluster A canonical, ~50 values), `endpoint_shape` (Clusters D/E plus `component_ref` from F: deprecation candidates folding to canonical + `Symbol.meta["framework_role"]`, ~40 values), `pending_classification` (Clusters B/C/G/H: file-shape, apex/peer overloads, build-config, long-tail; ~100 values awaiting per-cluster audit-findings docs). Registry at `packages/hypergumbo-core/src/hypergumbo_core/symbol_kinds.py`; per-axis view at [`docs/concept-axes.md`](concept-axes.md). Drift gate (CI property test + pre-commit linter `scripts/check-symbol-kind-drift`) catches consumer-side hardcoded `*KIND*` sets that drift from the registry.
+
+Future axis declarations (ADR-0028 draft for `Edge.evidence_type`, possible `supply_chain.tier`) follow the same template; the same `axis_drift.find_drift` infrastructure powers their drift gates.
+
 ### Identity field semantics
 
 * `id` (location-based): `{lang}:{file}:{start_line}-{end_line}:{name}:{kind}` for symbols defined in source files; `{lang}:{module_hint}:0-0:{name}:{kind}` for synthetic nodes that have no real source location (external module references, unresolved import targets, boundary placeholders).

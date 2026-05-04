@@ -136,6 +136,7 @@ def find_drift(
     registry_names: frozenset[str],
     search_roots: Iterable[str] = DEFAULT_SEARCH_ROOTS,
     excluded_path_substrings: Iterable[str] = DEFAULT_EXCLUDED_PATH_SUBSTRINGS,
+    excluded_target_names: Iterable[str] = (),
     allowed_axis_names: frozenset[str] | None = None,
     name_to_axis: dict[str, str] | None = None,
 ) -> list[str]:
@@ -147,6 +148,15 @@ def find_drift(
     *name_filter*. Each set's values are checked against
     *registry_names*; any value not in the registry is reported as
     drift.
+
+    *excluded_target_names* is the set of target-name strings that
+    match *name_filter* by substring but are NOT enumerations of the
+    target axis. Some axes share substrings with unrelated
+    vocabularies — e.g., ``Symbol.kind``'s ``KIND`` filter also
+    matches ``PROTOCOL_KINDS`` and ``BRIDGE_KINDS``, which are
+    ``Edge.meta`` key vocabularies, not ``Symbol.kind`` enumerations.
+    Listing those names here lets the scan skip them without having
+    to rename the pre-existing constants.
 
     When *allowed_axis_names* is provided (strict mode), additionally
     enforces axis-principle membership: every value must appear in the
@@ -176,6 +186,7 @@ def find_drift(
             "(the registry's name→axis lookup map)",
         )
     excluded_tuple = tuple(excluded_path_substrings)
+    excluded_targets = frozenset(excluded_target_names)
     offenders: list[str] = []
     for root_name in search_roots:
         root = repo_root / root_name
@@ -188,6 +199,8 @@ def find_drift(
             for lineno, target_name, values in iter_axis_set_assignments(
                 py_file, name_filter=name_filter,
             ):
+                if target_name in excluded_targets:
+                    continue
                 try:
                     rel = py_file.relative_to(repo_root)
                 except ValueError:  # pragma: no cover

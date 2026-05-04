@@ -324,47 +324,56 @@ class TestSchemaUpToDate:
             f"Update scripts/generate-schema and run it."
         )
 
-    def test_all_symbol_kinds_in_schema(self):
-        """All symbol kinds used in analyzers are in the schema enum."""
+    def test_schema_kind_enum_matches_registry(self):
+        """The schema's Symbol.kind enum is derived from the canonical
+        registry (ADR-0027 Phase 1). After Phase 1 land, schema-vs-
+        runtime coherence is enforced by the drift linter property test
+        in tests/test_symbol_kinds.py; this test pins the registry →
+        schema derivation: every value in ``SYMBOL_KINDS`` appears in
+        the schema enum, and every enum entry is registered.
+
+        Replaces the prior hardcoded ``known_kinds`` list, which had
+        accumulated phantom entries (``contract``, ``kernel``,
+        ``device_function``, ``handler``, ``ipc_send``, etc.) — values
+        listed in the schema but not actually emitted by any analyzer.
+        That was the exact silent-bug shape ADR-0027 catches.
+        """
+        from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
         schema = load_schema()
-        kinds_in_schema = set(schema["$defs"]["Symbol"]["properties"]["kind"]["enum"])
-
-        # Known symbol kinds from analyzers and linkers
-        known_kinds = {
-            # Common
-            "function", "class", "method", "constructor", "property",
-            "interface", "type", "enum", "struct", "trait", "module",
-            "route", "getter", "setter", "macro", "data", "instance",
-            # Solidity
-            "contract", "event", "modifier", "library",
-            # SQL
-            "table", "view", "trigger", "index", "procedure",
-            # Terraform
-            "resource", "variable", "output", "provider",
-            # CUDA
-            "kernel", "device_function", "host_device_function",
-            # VHDL
-            "entity", "architecture", "package", "component",
-            # Shaders (GLSL/WGSL)
-            "uniform", "input", "storage",
-            # CSS
-            "keyframes", "media", "font_face",
-            # Ansible
-            "playbook", "task", "handler",
-            # Linkers
-            "event_publisher", "event_subscriber",
-            "ipc_send", "ipc_receive", "websocket_endpoint",
-            "grpc_service", "grpc_servicer", "grpc_stub", "grpc_client", "grpc_server",
-            "http_client", "graphql_client", "graphql_resolver",
-            "mq_publisher", "mq_subscriber", "db_query",
-            # Synthetic boundary node for unresolved external edge endpoints
-            # (created by ir.create_boundary_nodes; surfaced in the JSON
-            # output after PR1 of stop-stripping plan).
-            "external_symbol",
-        }
-
-        missing = known_kinds - kinds_in_schema
-        assert not missing, (
-            f"Symbol kinds missing from schema: {missing}. "
-            f"Update scripts/generate-schema and run it."
+        kinds_in_schema = set(
+            schema["$defs"]["Symbol"]["properties"]["kind"]["enum"],
         )
+        registry_kinds = set(all_symbol_kind_names())
+
+        assert kinds_in_schema == registry_kinds, (
+            f"Schema/registry mismatch.\n"
+            f"In registry but not schema (run ./scripts/generate-schema): "
+            f"{registry_kinds - kinds_in_schema}\n"
+            f"In schema but not registry (registry needs the value or schema "
+            f"is stale): {kinds_in_schema - registry_kinds}"
+        )
+
+    def test_schema_kind_enum_carries_axis_annotations(self):
+        """Per ADR-0024, the registry-derived enum carries a
+        ``x-axis-of-values`` extension annotating each value with its
+        axis. Mirrors the existing Edge.type integration."""
+        from hypergumbo_core.symbol_kinds import (
+            VALID_AXES,
+            all_symbol_kind_names,
+        )
+
+        schema = load_schema()
+        kind_node = schema["$defs"]["Symbol"]["properties"]["kind"]
+        assert "x-axis-of-values" in kind_node, (
+            "Symbol.kind enum must carry an x-axis-of-values annotation "
+            "per ADR-0024."
+        )
+        annotations = kind_node["x-axis-of-values"]
+        assert set(annotations.keys()) == set(all_symbol_kind_names()), (
+            "x-axis-of-values keys must exactly match the registry."
+        )
+        for name, axis in annotations.items():
+            assert axis in VALID_AXES, (
+                f"{name}: axis {axis!r} is not a valid axis name"
+            )

@@ -28,6 +28,7 @@ REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EDGE_TYPES
+from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.schema import SCHEMA_VERSION
 
@@ -276,35 +277,19 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             "name": {"type": "string", "description": "Symbol name"},
             "kind": {
                 "type": "string",
-                "description": "Symbol type",
-                "enum": [
-                    "function", "class", "method", "constructor", "property",
-                    "interface", "type", "enum", "struct", "trait", "module",
-                    "route", "getter", "setter", "macro", "data", "instance",
-                    "contract", "event", "modifier", "library",
-                    "table", "view", "trigger", "index", "procedure",
-                    "resource", "variable", "output", "provider",
-                    "kernel", "device_function", "host_device_function",
-                    "entity", "architecture", "package", "component",
-                    "uniform", "input", "storage", "keyframes", "media", "font_face",
-                    "playbook", "task", "handler",
-                    "event_publisher", "event_subscriber",
-                    "ipc_send", "ipc_receive", "websocket_endpoint",
-                    "grpc_service", "grpc_servicer", "grpc_stub", "grpc_client", "grpc_server",
-                    "http_client", "graphql_client", "graphql_resolver",
-                    "mq_publisher", "mq_subscriber", "db_query",
-                    # Synthetic boundary node for unresolved external edge
-                    # endpoints (WI-sikur / INV-miniz). Created by
-                    # ir.create_boundary_nodes after analysis to make
-                    # slice traversal stop gracefully at external code.
-                    "external_symbol",
-                    # Per-file pseudo-Symbol synthesised at the orchestrator
-                    # for any make_file_id-shape edge endpoint with no
-                    # producer-side Symbol (WI-ramuv). A handful of analyzers
-                    # (HTML, Lua, yaml_ansible, the tree-sitter base class
-                    # via create_file_symbols) also emit these directly.
-                    "file"
-                ]
+                "description": (
+                    "Symbol type. Per ADR-0027, the canonical axiom is "
+                    "'Symbol.kind names the source-language syntactic "
+                    "construct that the symbol represents.' The enum is "
+                    "derived from packages/hypergumbo-core/src/"
+                    "hypergumbo_core/symbol_kinds.py::SYMBOL_KINDS; per-"
+                    "value axis classification is carried under the "
+                    "x-axis-of-values extension."
+                ),
+                "enum": sorted(spec.name for spec in SYMBOL_KINDS),
+                "x-axis-of-values": {
+                    spec.name: spec.axis for spec in SYMBOL_KINDS
+                },
             },
             "language": {"type": "string", "description": "Programming language"},
             "path": {"type": "string", "description": "File path"},

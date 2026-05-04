@@ -42,10 +42,17 @@ from hypergumbo_core.edge_types import (  # noqa: E402
     EDGE_TYPES,
     EdgeTypeSpec,
 )
+from hypergumbo_core.symbol_kinds import (  # noqa: E402
+    AXIS_ENDPOINT_SHAPE as KIND_AXIS_ENDPOINT_SHAPE,
+    AXIS_LANGUAGE_CONSTRUCT,
+    AXIS_PENDING as KIND_AXIS_PENDING,
+    SYMBOL_KINDS,
+    SymbolKindSpec,
+)
 
 
-# Section ordering (most-canonical first). Each entry: axis-id, heading,
-# preamble paragraph.
+# Edge.type section ordering (most-canonical first). Each entry:
+# axis-id, heading, preamble paragraph.
 _SECTIONS: tuple[tuple[str, str, str], ...] = (
     (
         AXIS_RELATIONSHIP,
@@ -74,11 +81,47 @@ _SECTIONS: tuple[tuple[str, str, str], ...] = (
 )
 
 
+# Symbol.kind section ordering. Mirrors _SECTIONS in shape; entries
+# describe the per-axis preamble for ADR-0027's three sections.
+_KIND_SECTIONS: tuple[tuple[str, str, str], ...] = (
+    (
+        AXIS_LANGUAGE_CONSTRUCT,
+        "`language_construct` — ADR-0027 compliant",
+        "Values that name the source-language syntactic construct the "
+        "symbol represents. Per ADR-0027, this is the only axis a new "
+        "`Symbol.kind` value should occupy.",
+    ),
+    (
+        KIND_AXIS_ENDPOINT_SHAPE,
+        "`endpoint_shape` — deprecation candidates per ADR-0027",
+        "Values whose meaning is leaked into the kind label even though "
+        "it is captured by `Symbol.meta` (framework participation), "
+        "`Edge` relationships (edge labels masquerading as kinds), or "
+        "`dst.kind` queries (component refs). Migration plan in "
+        "ADR-0027 §\"Detailed analysis: per-cluster fold targets\" "
+        "folds these back into the canonical Cluster-A construct + "
+        "`meta[\"framework_role\"]` or drops them entirely as edge-only.",
+    ),
+    (
+        KIND_AXIS_PENDING,
+        "`pending_classification` — per-cluster audit pending per ADR-0027 §\"Migration\"",
+        "Values deferred to per-cluster audit-findings docs at "
+        "`docs/audits/<NN>-<topic>.md`. Includes the file-shape entities "
+        "(Cluster B), apex/peer overloads (Cluster C), build/config-shape "
+        "entities (Cluster G), and the long-tail domain vocabulary "
+        "(Cluster H). Each cluster's audit decides between fold-to-"
+        "Cluster-A vs separate-axis declaration vs producer-side drop.",
+    ),
+)
+
+
 _HEADER = """\
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!-- AUTO-GENERATED — do not edit manually.
      Regenerate with: ./scripts/generate-concept-axes
-     Source of truth: packages/hypergumbo-core/src/hypergumbo_core/edge_types.py -->
+     Sources of truth:
+       packages/hypergumbo-core/src/hypergumbo_core/edge_types.py
+       packages/hypergumbo-core/src/hypergumbo_core/symbol_kinds.py -->
 
 # Concept Axes
 
@@ -86,11 +129,12 @@ Typing axes maintained in hypergumbo's behavior map. Each axis names a
 dimension along which a multi-value field's values must be classified.
 New axes are introduced via ADR following ADR-0024's four-part
 declaration template (axis name, axiom, consumer pattern, enforcement);
-ADR-0023 (Edge.type) is the worked example.
+ADR-0023 (Edge.type) is the worked example, and ADR-0027 (Symbol.kind)
+is the second instantiation.
 
-The current axes apply to `Edge.type`. Other multi-value fields
-(`Symbol.kind`, `supply_chain.tier`, etc.) will be added here as their
-axes are formally declared.
+The current axes apply to `Edge.type` and `Symbol.kind`. Other
+multi-value fields (`supply_chain.tier`, `Edge.evidence_type` per
+ADR-0028 draft) will be added here as their axes are formally declared.
 
 ## Why this doc exists
 
@@ -112,54 +156,72 @@ filters or weights edges by `edge_type`, see
 [`docs/migrating-edge-types.md`](migrating-edge-types.md) for the
 rename table, the meta-key vocabulary, and migration patterns.
 
-The values currently in the `endpoint_shape` section below are
-deprecation candidates whose producers still emit them. Each is
-scheduled for migration to a canonical relationship-axis name plus
-an `edge.meta` payload (see the migration guide for the per-value
-fold targets). Each value's producer-side migration ships as its
-own per-family subset, with bakeoff validation, then a
-`SCHEMA_VERSION` minor bump removes the value from the registry —
-the pattern the original four subsets (dst-kind, bridge,
-publish/dispatch, IPC) followed at `SCHEMA_VERSION` 0.4.0. Values
-already removed at 0.4.0 do NOT appear here; this section is the
+The values currently in the `endpoint_shape` section below (under
+`Edge.type` axes and `Symbol.kind` axes both) are deprecation
+candidates whose producers still emit them. Each is scheduled for
+migration to a canonical relationship-axis (or language_construct-axis)
+name plus an `edge.meta` (or `Symbol.meta["framework_role"]`) payload
+— see the per-ADR migration guides for the per-value fold targets.
+Each value's producer-side migration ships as its own per-family
+subset, with bakeoff validation, then a `SCHEMA_VERSION` minor bump
+removes the value from the registry. Values already removed at
+`SCHEMA_VERSION` 0.4.0 do NOT appear here; this section is the
 remaining backlog.
 
 ## `Edge.type` axes
 """
 
 
+_KIND_HEADER = """\
+
+## `Symbol.kind` axes
+
+Per ADR-0027, `Symbol.kind` names the source-language syntactic
+construct the symbol represents. Properties derivable from edges or
+framework metadata are queried from those structures rather than
+smuggled into the kind label. The audit at WI-dumiz-bikul classified
+the 192 distinct `Symbol.kind` values currently in production into
+eight clusters; this section lays out the three axes (Cluster A on
+`language_construct`; Clusters D, E, plus `component_ref` from F on
+`endpoint_shape` deprecation; Clusters B, C, G, H on
+`pending_classification` until per-cluster audit-findings docs ship).
+"""
+
+
 def _format_axis_section(
-    heading: str, preamble: str, specs: Iterable[EdgeTypeSpec],
+    heading: str, preamble: str, specs: Iterable[object],
 ) -> str:
     lines = [f"### {heading}", "", preamble, ""]
-    bullets = sorted(specs, key=lambda s: s.name)
+    bullets = sorted(specs, key=lambda s: s.name)  # type: ignore[attr-defined]
     if not bullets:
         lines.append("_(empty — no values currently classified on this axis)_")
         lines.append("")
         return "\n".join(lines)
     for spec in bullets:
-        lines.append(f"- **`{spec.name}`** — {spec.description}")
+        lines.append(
+            f"- **`{spec.name}`** — {spec.description}",  # type: ignore[attr-defined]
+        )
     lines.append("")
     return "\n".join(lines)
 
 
 def render() -> str:
-    """Render the markdown body from ``EDGE_TYPES``."""
-    by_axis: dict[str, list[EdgeTypeSpec]] = {}
-    for spec in EDGE_TYPES:
-        by_axis.setdefault(spec.axis, []).append(spec)
-
+    """Render the markdown body from ``EDGE_TYPES`` and ``SYMBOL_KINDS``."""
     sections: list[str] = [_HEADER]
+
+    # Edge.type sections.
+    edge_by_axis: dict[str, list[EdgeTypeSpec]] = {}
+    for spec in EDGE_TYPES:
+        edge_by_axis.setdefault(spec.axis, []).append(spec)
     for axis_id, heading, preamble in _SECTIONS:
         sections.append(
-            _format_axis_section(heading, preamble, by_axis.get(axis_id, [])),
+            _format_axis_section(heading, preamble, edge_by_axis.get(axis_id, [])),
         )
-
-    # Surface any axis values that are NOT in _SECTIONS — guards
+    # Surface any Edge.type axis values that are NOT in _SECTIONS — guards
     # against future axis additions silently dropping out of the doc.
-    known_axes = {axis_id for axis_id, _, _ in _SECTIONS}
-    for axis_id, specs in sorted(by_axis.items()):
-        if axis_id in known_axes:
+    known_edge_axes = {axis_id for axis_id, _, _ in _SECTIONS}
+    for axis_id, specs in sorted(edge_by_axis.items()):
+        if axis_id in known_edge_axes:
             continue
         sections.append(  # pragma: no cover — defensive
             _format_axis_section(
@@ -170,6 +232,30 @@ def render() -> str:
                 specs,
             ),
         )
+
+    # Symbol.kind sections.
+    sections.append(_KIND_HEADER)
+    kind_by_axis: dict[str, list[SymbolKindSpec]] = {}
+    for kspec in SYMBOL_KINDS:
+        kind_by_axis.setdefault(kspec.axis, []).append(kspec)
+    for axis_id, heading, preamble in _KIND_SECTIONS:
+        sections.append(
+            _format_axis_section(heading, preamble, kind_by_axis.get(axis_id, [])),
+        )
+    known_kind_axes = {axis_id for axis_id, _, _ in _KIND_SECTIONS}
+    for axis_id, specs in sorted(kind_by_axis.items()):
+        if axis_id in known_kind_axes:
+            continue
+        sections.append(  # pragma: no cover — defensive
+            _format_axis_section(
+                f"`{axis_id}` — undocumented axis",
+                "This axis appears in the registry but has no documented "
+                "section in scripts/generate-concept-axes. Add an entry "
+                "to `_KIND_SECTIONS` describing the axis and its rationale.",
+                specs,
+            ),
+        )
+
     return "\n".join(sections).rstrip() + "\n"
 
 
