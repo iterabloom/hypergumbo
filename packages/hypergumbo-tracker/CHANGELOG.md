@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Fixed
+
+- **Auto-sync no longer wipes local ops files when sync fails (WI-lufal):** the cleanup in `do_sync()`'s `finally` block (`git checkout HEAD -- .ops/` reset and `unlink()` of untracked ops files) was running unconditionally on every sync attempt, regardless of whether the PR had actually been merged. When push, CI, or merge failed, the cleanup silently dropped every mutation in the in-flight batch — a regression that caused 4 of 17 boundary-adjacent ops to vanish during a Codeberg outage on 2026-05-03 (3 UPDATE ops + 1 silent ADD-loss for WI-pudil). Cleanup is now gated on a `merge_succeeded` flag set only after a successful merge, so failed syncs leave the working tree intact for the next attempt.
+
 ## [0.5.0] - 2026-04-29
 
 ### Added

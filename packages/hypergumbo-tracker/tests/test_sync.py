@@ -2407,6 +2407,109 @@ class TestDoSync:
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._git")
+    def test_push_failure_preserves_local_ops_files(
+        self,
+        mock_git: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Local ops files survive a failed sync (WI-lufal regression).
+
+        When ``do_sync`` fails before the PR is merged (here: push fails
+        all 3 attempts), the cleanup in the ``finally`` block must NOT
+        wipe local ops files. The 2026-05 regression had the destructive
+        cleanup running unconditionally — `git checkout HEAD -- .ops/`
+        reverted modified ops and ``ls-files --others`` + ``unlink()``
+        deleted untracked ops, silently dropping every mutation in the
+        in-flight batch (including new-item ADD ops like WI-pudil).
+
+        Repro shape: place a real untracked ops file in the working
+        tree, fail the push, and verify the file still exists at the
+        end of the sync attempt. The destructive cleanup is gated on
+        an actual successful merge.
+        """
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+
+        ops_file = ".agent/tracker/.ops/.WI-lufal-test.ops"
+        ops_path = tmp_path / ops_file
+        ops_path.parent.mkdir(parents=True, exist_ok=True)
+        ops_content = "ADD WI-lufal-test {payload}\n"
+        ops_path.write_text(ops_content)
+
+        pre = _make_preflight(tmp_path, changed_files=[ops_file])
+
+        # Plumbing setup succeeds, all 3 push attempts fail. The
+        # finally-block cleanup follows. Provide enough mock entries
+        # for the *successful*-path cleanup (fetch + checkout + ls-files
+        # returning our untracked ops path + ff-merge + branch -D) so a
+        # buggy implementation that DOES run the destructive block has
+        # the mocks it needs to actually call ``unlink()``.
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(returncode=1),  # push attempt 1
+            _make_completed_process(returncode=1),  # push attempt 2
+            _make_completed_process(returncode=1),  # push attempt 3
+            _make_completed_process(),                       # fetch
+            _make_completed_process(),                       # checkout HEAD --
+            _make_completed_process(stdout=f"{ops_file}\n"),  # ls-files --others
+            _make_completed_process(),                       # merge --ff-only
+            _make_completed_process(),                       # branch -D
+        ]
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert not result.success
+        assert "push failed" in result.error
+
+        # The ops file MUST still be on disk with its original content.
+        # Under the bug it would have been deleted by the unconditional
+        # ``unlink()`` in the destructive cleanup branch.
+        assert ops_path.exists(), (
+            f"Ops file {ops_file} was wiped by failed-sync cleanup. "
+            "Local ops must survive when the sync PR was never merged."
+        )
+        assert ops_path.read_text() == ops_content, (
+            "Ops file content was reverted by failed-sync cleanup."
+        )
+
+        # No destructive cleanup calls should have fired. The git call
+        # log should NOT contain ``checkout HEAD --`` (reset), an
+        # ``ls-files --others`` lookup, or an ``--ff-only`` merge —
+        # these are only safe after a successful merge propagated the
+        # ops to remote.
+        all_calls = mock_git.call_args_list
+        for git_call in all_calls:
+            args = git_call[0]
+            # ``checkout HEAD -- <ops paths>`` — destructive reset
+            if (
+                len(args) >= 3
+                and args[1] == "checkout"
+                and args[2] == "HEAD"
+            ):
+                pytest.fail(
+                    f"Unexpected destructive checkout on failed sync: {args}"
+                )
+            # ``ls-files --others`` — drives the untracked unlink loop
+            if (
+                len(args) >= 3
+                and args[1] == "ls-files"
+                and "--others" in args
+            ):
+                pytest.fail(
+                    f"Unexpected untracked-ops scan on failed sync: {args}"
+                )
+            # ``merge --ff-only`` — would advance HEAD past unsynced ops
+            if (
+                len(args) >= 3
+                and args[1] == "merge"
+                and "--ff-only" in args
+            ):
+                pytest.fail(
+                    f"Unexpected ff-merge on failed sync: {args}"
+                )
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._git")
     def test_push_retry_then_success(
         self,
         mock_git: MagicMock,

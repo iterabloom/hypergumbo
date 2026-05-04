@@ -1091,6 +1091,15 @@ def do_sync(
     tmp_index = str(preflight.git_dir / "tmp-sync-index")
     idx_env = {"GIT_INDEX_FILE": tmp_index}
 
+    # WI-lufal: gate the destructive post-sync cleanup on whether the
+    # PR actually merged.  When sync fails (push fails, CI fails, merge
+    # fails), the local ops files in the working tree have NOT been
+    # propagated to remote — running the ``checkout HEAD --`` reset and
+    # the untracked-ops ``unlink`` would silently wipe every mutation
+    # in the in-flight batch (including new-item ADD ops).  Set true
+    # only after the merge call succeeds.
+    merge_succeeded = False
+
     # 0a. Acquire the sync gate atomically.  fcntl.flock on an open fd
     # closes the race window between preflight and do_sync (concurrent
     # _maybe_auto_sync calls used to all pass preflight and push
@@ -1419,6 +1428,8 @@ def do_sync(
                 exit_code=1,
             )
 
+        merge_succeeded = True
+
         # Construct PR URL
         base_url_match = re.match(r"(https?://[^/]+)/", preflight.api_base)
         base_url = base_url_match.group(1) if base_url_match else "https://codeberg.org"
@@ -1466,10 +1477,13 @@ def do_sync(
         # - **Modified** (updates to existing items): must be reset to
         #   HEAD content before merge, otherwise git refuses to
         #   overwrite dirty tracked files.
-        # Both are safe because the content is identical to what's on
-        # origin/dev (we just synced them).  Use ``git checkout HEAD``
-        # for tracked files and ``unlink`` for untracked.
-        if preflight.original_branch == base_branch:
+        # Both are safe IFF the synced PR actually merged — that's the
+        # only state where origin/dev contains the ops content this
+        # routine is about to overwrite locally with.  When sync failed
+        # (``merge_succeeded`` is False) the ``checkout HEAD --`` reset
+        # and the untracked ``unlink`` would silently wipe local-only
+        # mutations that never made it to remote (WI-lufal).
+        if preflight.original_branch == base_branch and merge_succeeded:
             # Reset tracked ops files to HEAD (handles modified files).
             # ``git checkout HEAD -- <paths>`` silently ignores
             # untracked files, so this is safe.
