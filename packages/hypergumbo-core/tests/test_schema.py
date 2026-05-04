@@ -239,22 +239,40 @@ class TestSchemaValidation:
         with pytest.raises(jsonschema.ValidationError):
             validator.validate(invalid_edge)
 
-    def test_invalid_symbol_kind_fails_validation(self):
-        """A symbol with an invalid kind fails validation."""
+    def test_arbitrary_symbol_kind_passes_validation_until_phase_4b(self):
+        """Per ADR-0028 §"Path B", Symbol.kind's schema enum is OPEN
+        (`type: "string"` without enum constraint) until per-cluster
+        Phase 4b producer migrations land. While the L3 producer-
+        coherence linter at runtime gates registry membership at the
+        producer side, the JSON Schema itself accepts arbitrary
+        strings — that's the honest representation of what Phase 1
+        actually delivers.
+
+        When Phase 4b ships and the enum closes per cluster, replace
+        this test with one that verifies a known-invalid value is
+        rejected."""
         schema = load_schema()
 
-        invalid_symbol = {
+        symbol_with_unregistered_kind = {
             "id": "test::sym",
             "name": "test",
-            "kind": "invalid_kind_that_does_not_exist",
+            "kind": "kind_value_not_in_registry",
             "language": "python",
             "path": "/test.py",
             "span": {"start_line": 1, "end_line": 1, "start_col": 0, "end_col": 4},
         }
 
+        # The schema accepts the unregistered kind — open enum posture.
         validator = make_validator(schema, "Symbol")
-        with pytest.raises(jsonschema.ValidationError):
-            validator.validate(invalid_symbol)
+        validator.validate(symbol_with_unregistered_kind)
+
+        # But the registry-derived x-axis-of-values map does NOT contain
+        # it (consistency with the registry is documented through the
+        # extension annotation, not through enum validation).
+        kind_node = schema["$defs"]["Symbol"]["properties"]["kind"]
+        assert "kind_value_not_in_registry" not in kind_node[
+            "x-axis-of-values"
+        ]
 
 
 class TestSchemaUpToDate:
@@ -324,40 +342,36 @@ class TestSchemaUpToDate:
             f"Update scripts/generate-schema and run it."
         )
 
-    def test_schema_kind_enum_matches_registry(self):
-        """The schema's Symbol.kind enum is derived from the canonical
-        registry (ADR-0027 Phase 1). After Phase 1 land, schema-vs-
-        runtime coherence is enforced by the drift linter property test
-        in tests/test_symbol_kinds.py; this test pins the registry →
-        schema derivation: every value in ``SYMBOL_KINDS`` appears in
-        the schema enum, and every enum entry is registered.
+    def test_schema_kind_is_open_string_until_phase_4b(self):
+        """Per ADR-0028 §"Path B", the Symbol.kind schema enum is
+        intentionally OPEN (`type: "string"` without an `enum`
+        constraint) until per-cluster Phase 4b producer migrations
+        land. Current production includes dynamic ``kind=f"ipc_..."``
+        emits at ``ipc.py`` / ``phoenix_ipc.py`` that produce values
+        outside the static registry; closing the enum prematurely
+        would canonize the leak the ADR is fixing.
 
-        Replaces the prior hardcoded ``known_kinds`` list, which had
-        accumulated phantom entries (``contract``, ``kernel``,
-        ``device_function``, ``handler``, ``ipc_send``, etc.) — values
-        listed in the schema but not actually emitted by any analyzer.
-        That was the exact silent-bug shape ADR-0027 catches.
+        ADR-0027 Phase 1 originally shipped a closed enum; ADR-0028
+        Phase 1 retroactively reopened it for honesty (the L3
+        producer-coherence linter at
+        ``scripts/check-producer-axis-coherence`` is what now actually
+        gates registry membership at the producer side).
         """
-        from hypergumbo_core.symbol_kinds import all_symbol_kind_names
-
         schema = load_schema()
-        kinds_in_schema = set(
-            schema["$defs"]["Symbol"]["properties"]["kind"]["enum"],
-        )
-        registry_kinds = set(all_symbol_kind_names())
-
-        assert kinds_in_schema == registry_kinds, (
-            f"Schema/registry mismatch.\n"
-            f"In registry but not schema (run ./scripts/generate-schema): "
-            f"{registry_kinds - kinds_in_schema}\n"
-            f"In schema but not registry (registry needs the value or schema "
-            f"is stale): {kinds_in_schema - registry_kinds}"
+        kind_node = schema["$defs"]["Symbol"]["properties"]["kind"]
+        assert kind_node["type"] == "string"
+        assert "enum" not in kind_node, (
+            "Symbol.kind schema enum must stay OPEN until Phase 4b "
+            "producer migrations land. If you closed the enum, you "
+            "either (a) have shipped Phase 4b for at least one cluster, "
+            "in which case update this test to reflect the new closure "
+            "policy, or (b) have introduced a regression — re-open it."
         )
 
-    def test_schema_kind_enum_carries_axis_annotations(self):
-        """Per ADR-0024, the registry-derived enum carries a
-        ``x-axis-of-values`` extension annotating each value with its
-        axis. Mirrors the existing Edge.type integration."""
+    def test_schema_kind_carries_axis_annotations(self):
+        """Per ADR-0024, the registry's x-axis-of-values annotation
+        documents every Symbol.kind value's axis classification.
+        Replaces the closed-enum constraint per ADR-0028 §"Path B"."""
         from hypergumbo_core.symbol_kinds import (
             VALID_AXES,
             all_symbol_kind_names,
@@ -366,7 +380,7 @@ class TestSchemaUpToDate:
         schema = load_schema()
         kind_node = schema["$defs"]["Symbol"]["properties"]["kind"]
         assert "x-axis-of-values" in kind_node, (
-            "Symbol.kind enum must carry an x-axis-of-values annotation "
+            "Symbol.kind must carry an x-axis-of-values annotation "
             "per ADR-0024."
         )
         annotations = kind_node["x-axis-of-values"]
@@ -377,3 +391,54 @@ class TestSchemaUpToDate:
             assert axis in VALID_AXES, (
                 f"{name}: axis {axis!r} is not a valid axis name"
             )
+
+    def test_schema_evidence_type_is_open_string_until_phase_4b(self):
+        """Per ADR-0028 §"Path B", the Edge.evidence_type schema is
+        OPEN (`type: "string"` without enum) until per-cluster Phase
+        4b producer migrations land. Current production includes
+        dynamic f-string emits at ``websocket.py``, ``inheritance.py``,
+        and ``di_resolution.py`` that produce values outside the
+        static registry."""
+        schema = load_schema()
+        evidence_node = (
+            schema["$defs"]["Edge"]["properties"]["meta"]
+            ["properties"]["evidence_type"]
+        )
+        assert evidence_node["type"] == "string"
+        assert "enum" not in evidence_node, (
+            "Edge.evidence_type schema enum must stay OPEN until "
+            "Phase 4b producer migrations land."
+        )
+
+    def test_schema_evidence_type_carries_axis_annotations(self):
+        """The Edge.evidence_type schema property's x-axis-of-values
+        map exactly mirrors the canonical registry."""
+        from hypergumbo_core.evidence_types import (
+            VALID_AXES,
+            all_evidence_type_names,
+        )
+
+        schema = load_schema()
+        evidence_node = (
+            schema["$defs"]["Edge"]["properties"]["meta"]
+            ["properties"]["evidence_type"]
+        )
+        assert "x-axis-of-values" in evidence_node, (
+            "Edge.evidence_type must carry an x-axis-of-values "
+            "annotation per ADR-0024."
+        )
+        annotations = evidence_node["x-axis-of-values"]
+        assert set(annotations.keys()) == set(all_evidence_type_names())
+        for name, axis in annotations.items():
+            assert axis in VALID_AXES, (
+                f"{name}: axis {axis!r} is not a valid axis name"
+            )
+
+    def test_schema_edge_is_resolved_present(self):
+        """Per ADR-0028 §"Sibling-field design call-out", the new
+        sibling field appears at the top level of Edge with default
+        True."""
+        schema = load_schema()
+        is_resolved = schema["$defs"]["Edge"]["properties"]["is_resolved"]
+        assert is_resolved["type"] == "boolean"
+        assert is_resolved["default"] is True

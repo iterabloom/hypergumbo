@@ -378,6 +378,7 @@ class Edge:
         evidence_type: Type of evidence (e.g., ast_call_direct)
         evidence_lang: Language for confidence scoring
         evidence_spans: Structured locations of evidence
+        is_resolved: Whether the dst symbol was resolved at analysis time. Default True (the ~90% case); per ADR-0028, Cluster B `*_unresolved` evidence_type producers will set this to False during Phase 3 once their canonical-form fold target is decided.
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
     """
@@ -395,6 +396,7 @@ class Edge:
     evidence_type: str = "ast_call_direct"
     evidence_lang: Optional[str] = None
     evidence_spans: Optional[List[Dict[str, Any]]] = None
+    is_resolved: bool = True
     quality: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
 
@@ -411,6 +413,7 @@ class Edge:
         confidence: float = 0.85,
         evidence_lang: Optional[str] = None,
         evidence_spans: Optional[List[Dict[str, Any]]] = None,
+        is_resolved: bool = True,
         meta: Optional[Dict[str, Any]] = None,
         access_mode: Optional[str] = None,
         dest_access_mode: Optional[str] = None,
@@ -462,6 +465,7 @@ class Edge:
             evidence_type=evidence_type,
             evidence_lang=evidence_lang,
             evidence_spans=evidence_spans,
+            is_resolved=is_resolved,
             meta=meta,
         )
 
@@ -489,6 +493,7 @@ class Edge:
             "origin": self.origin,
             "origin_run_id": self.origin_run_id,
             "origin_run_signature": self.origin_run_signature,
+            "is_resolved": self.is_resolved,
             "quality": self.quality,
             "meta": meta,
         }
@@ -511,6 +516,7 @@ class Edge:
             evidence_type=meta.get("evidence_type", "ast_call_direct"),
             evidence_lang=meta.get("evidence_lang"),
             evidence_spans=meta.get("evidence_spans"),
+            is_resolved=d.get("is_resolved", True),
             quality=d.get("quality"),
             meta=meta,
         )

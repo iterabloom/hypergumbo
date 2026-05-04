@@ -300,6 +300,54 @@ else
     echo -e "${YELLOW}skipped (no packages/*.py staged)${NC}"
 fi
 
+# Edge.evidence_type axis coherence (L1 consumer-side) — only fires
+# when packages/*.py files are staged. ADR-0028 sibling of the
+# Edge-type and Symbol.kind drift gates above. Catches consumer-side
+# *EVIDENCE_TYPE* sets drifting from the canonical
+# hypergumbo_core.evidence_types.EVIDENCE_TYPES registry. Companion to
+# the property test in tests/test_evidence_types.py.
+echo -n "  Edge.evidence_type axis coherence... "
+if git diff --cached --name-only | grep -qE "^packages/.*\.py$"; then
+    DRIFT_LOG="/tmp/.evidence-drift.$$"
+    if scripts/check-evidence-type-drift > "$DRIFT_LOG" 2>&1; then
+        echo -e "${GREEN}✓${NC}"
+        rm -f "$DRIFT_LOG"
+    else
+        echo -e "${RED}✗${NC}"
+        echo ""
+        cat "$DRIFT_LOG"
+        rm -f "$DRIFT_LOG"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}skipped (no packages/*.py staged)${NC}"
+fi
+
+# Producer-side axis coherence (L3) — gates the producer surface for
+# all three sibling axes (Edge.evidence_type, Symbol.kind,
+# Edge.edge_type) at once. Catches the silent-bug shape that L1 misses:
+# a literal-string keyword arg passed to Edge.create / Symbol.create
+# that is NOT in the canonical registry (no consumer-side set yet, but
+# still a producer-introduced leak). F-string emits are advisory, not
+# blocking — they're Phase-3 fold candidates per the parent ADRs. Per
+# ADR-0028 §"Phase 1 — Path B".
+echo -n "  Producer-side axis coherence (L3)... "
+if git diff --cached --name-only | grep -qE "^packages/.*\.py$"; then
+    L3_LOG="/tmp/.producer-axis.$$"
+    if scripts/check-producer-axis-coherence > "$L3_LOG" 2>&1; then
+        echo -e "${GREEN}✓${NC}"
+        rm -f "$L3_LOG"
+    else
+        echo -e "${RED}✗${NC}"
+        echo ""
+        cat "$L3_LOG"
+        rm -f "$L3_LOG"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}skipped (no packages/*.py staged)${NC}"
+fi
+
 # Audit-findings format check — fires when docs/audits/*.md OR the
 # canonical registry OR producer source files change. Validates that
 # every audit-findings doc parses cleanly and every verdict row's

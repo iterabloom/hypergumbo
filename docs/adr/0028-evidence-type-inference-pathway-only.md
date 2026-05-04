@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0028: Edge.evidence_type Names the Inference Pathway
 
-- Status: Draft
+- Status: Accepted (Phase 1 landed at `SCHEMA_VERSION` 0.4.2)
 - Date: 2026-05-02
 - Supersedes: —
 - Superseded by: —

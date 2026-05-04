@@ -49,6 +49,13 @@ from hypergumbo_core.symbol_kinds import (  # noqa: E402
     SYMBOL_KINDS,
     SymbolKindSpec,
 )
+from hypergumbo_core.evidence_types import (  # noqa: E402
+    AXIS_ENDPOINT_SHAPE as EVIDENCE_AXIS_ENDPOINT_SHAPE,
+    AXIS_INFERENCE_PATHWAY,
+    AXIS_PENDING as EVIDENCE_AXIS_PENDING,
+    EVIDENCE_TYPES,
+    EvidenceTypeSpec,
+)
 
 
 # Edge.type section ordering (most-canonical first). Each entry:
@@ -77,6 +84,41 @@ _SECTIONS: tuple[tuple[str, str, str], ...] = (
         "distinct relationships; others are protocol-conditional "
         "duplicates of a more general relationship. Verdicts arrive with "
         "each family's audit.",
+    ),
+)
+
+
+# Edge.evidence_type section ordering. Mirrors _SECTIONS in shape;
+# entries describe the per-axis preamble for ADR-0028's three sections.
+_EVIDENCE_SECTIONS: tuple[tuple[str, str, str], ...] = (
+    (
+        AXIS_INFERENCE_PATHWAY,
+        "`inference_pathway` — ADR-0028 compliant",
+        "Values that name the inference pathway by which the analyzer "
+        "concluded this edge exists. Per ADR-0028, this is the only axis "
+        "a new `Edge.evidence_type` value should occupy. Resolution "
+        "status moves to the new sibling `Edge.is_resolved`; framework-"
+        "specific dispatch conventions move to `Edge.meta`.",
+    ),
+    (
+        EVIDENCE_AXIS_ENDPOINT_SHAPE,
+        "`endpoint_shape` — deprecation candidates per ADR-0028",
+        "Values whose meaning is leaked into the evidence label even "
+        "though it is captured by `Edge.is_resolved` (Cluster B "
+        "`*_unresolved` resolution-status leakage), `Edge.meta` "
+        "(Cluster C framework-dispatch conventions; Cluster D call-"
+        "construct surface forms). Migration plan in ADR-0028 §"
+        "\"Detailed analysis: per-cluster fold targets\" folds these "
+        "back into a canonical inference label plus the appropriate "
+        "sibling.",
+    ),
+    (
+        EVIDENCE_AXIS_PENDING,
+        "`pending_classification` — per-cluster audit pending per ADR-0028",
+        "Values deferred to per-cluster audit-findings docs at "
+        "`docs/audits/<NN>-<topic>.md`. Each cluster's audit decides "
+        "between fold-to-Cluster-A vs separate-axis declaration vs "
+        "producer-side drop.",
     ),
 )
 
@@ -121,7 +163,8 @@ _HEADER = """\
      Regenerate with: ./scripts/generate-concept-axes
      Sources of truth:
        packages/hypergumbo-core/src/hypergumbo_core/edge_types.py
-       packages/hypergumbo-core/src/hypergumbo_core/symbol_kinds.py -->
+       packages/hypergumbo-core/src/hypergumbo_core/symbol_kinds.py
+       packages/hypergumbo-core/src/hypergumbo_core/evidence_types.py -->
 
 # Concept Axes
 
@@ -132,9 +175,9 @@ declaration template (axis name, axiom, consumer pattern, enforcement);
 ADR-0023 (Edge.type) is the worked example, and ADR-0027 (Symbol.kind)
 is the second instantiation.
 
-The current axes apply to `Edge.type` and `Symbol.kind`. Other
-multi-value fields (`supply_chain.tier`, `Edge.evidence_type` per
-ADR-0028 draft) will be added here as their axes are formally declared.
+The current axes apply to `Edge.type`, `Symbol.kind`, and
+`Edge.evidence_type`. Other multi-value fields (`supply_chain.tier`,
+etc.) will be added here as their axes are formally declared.
 
 ## Why this doc exists
 
@@ -169,6 +212,23 @@ removes the value from the registry. Values already removed at
 remaining backlog.
 
 ## `Edge.type` axes
+"""
+
+
+_EVIDENCE_HEADER = """\
+
+## `Edge.evidence_type` axes
+
+Per ADR-0028, `Edge.evidence_type` names the inference pathway by which
+the analyzer concluded this edge exists. Properties of the dst's
+resolvedness move to the new sibling field `Edge.is_resolved`;
+framework-specific dispatch conventions and call-construct surface
+forms move to `Edge.meta`. The audit at WI-turin-pajuk classified the
+~210 distinct `Edge.evidence_type` values currently in production into
+four clusters; this section lays out the three axes (Cluster A on
+`inference_pathway`; Clusters B / C / D on `endpoint_shape`
+deprecation; long-tail or new clusters on `pending_classification`
+until per-cluster audit-findings docs ship).
 """
 
 
@@ -252,6 +312,32 @@ def render() -> str:
                 "This axis appears in the registry but has no documented "
                 "section in scripts/generate-concept-axes. Add an entry "
                 "to `_KIND_SECTIONS` describing the axis and its rationale.",
+                specs,
+            ),
+        )
+
+    # Edge.evidence_type sections.
+    sections.append(_EVIDENCE_HEADER)
+    evidence_by_axis: dict[str, list[EvidenceTypeSpec]] = {}
+    for espec in EVIDENCE_TYPES:
+        evidence_by_axis.setdefault(espec.axis, []).append(espec)
+    for axis_id, heading, preamble in _EVIDENCE_SECTIONS:
+        sections.append(
+            _format_axis_section(
+                heading, preamble, evidence_by_axis.get(axis_id, []),
+            ),
+        )
+    known_evidence_axes = {axis_id for axis_id, _, _ in _EVIDENCE_SECTIONS}
+    for axis_id, specs in sorted(evidence_by_axis.items()):
+        if axis_id in known_evidence_axes:
+            continue
+        sections.append(  # pragma: no cover — defensive
+            _format_axis_section(
+                f"`{axis_id}` — undocumented axis",
+                "This axis appears in the registry but has no documented "
+                "section in scripts/generate-concept-axes. Add an entry "
+                "to `_EVIDENCE_SECTIONS` describing the axis and its "
+                "rationale.",
                 specs,
             ),
         )

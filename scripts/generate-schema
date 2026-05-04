@@ -28,6 +28,7 @@ REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EDGE_TYPES
+from hypergumbo_core.evidence_types import EVIDENCE_TYPES
 from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.schema import SCHEMA_VERSION
@@ -280,13 +281,22 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "description": (
                     "Symbol type. Per ADR-0027, the canonical axiom is "
                     "'Symbol.kind names the source-language syntactic "
-                    "construct that the symbol represents.' The enum is "
-                    "derived from packages/hypergumbo-core/src/"
-                    "hypergumbo_core/symbol_kinds.py::SYMBOL_KINDS; per-"
-                    "value axis classification is carried under the "
-                    "x-axis-of-values extension."
+                    "construct that the symbol represents.' The "
+                    "x-axis-of-values map below documents the canonical "
+                    "registry from packages/hypergumbo-core/src/"
+                    "hypergumbo_core/symbol_kinds.py::SYMBOL_KINDS. The "
+                    "schema enum is intentionally open (type: string "
+                    "without enum constraint) until ADR-0027 Phase 4b "
+                    "producer migrations land per-cluster — current "
+                    "production includes dynamic kind=f\"ipc_{...}\" "
+                    "emits at ipc.py:498 and phoenix_ipc.py:276 that "
+                    "produce values not in the static registry. The L3 "
+                    "producer-coherence linter "
+                    "(scripts/check-producer-axis-coherence) gates new "
+                    "literal additions against the registry; the open "
+                    "enum honestly reflects the producer-side leak the "
+                    "ADR is fixing."
                 ),
-                "enum": sorted(spec.name for spec in SYMBOL_KINDS),
                 "x-axis-of-values": {
                     spec.name: spec.axis for spec in SYMBOL_KINDS
                 },
@@ -416,6 +426,19 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "oneOf": [{"type": "string"}, {"type": "null"}],
                 "description": "Run signature for cache keying"
             },
+            "is_resolved": {
+                "type": "boolean",
+                "default": True,
+                "description": (
+                    "Whether the dst symbol was resolved at analysis "
+                    "time. Per ADR-0028, this sibling field captures "
+                    "what the Cluster B `*_unresolved` evidence_type "
+                    "values previously smuggled into the inference "
+                    "label. Default True (the ~90% case); Phase 3 "
+                    "producers explicitly set False for the "
+                    "Cluster B fold targets."
+                ),
+            },
             "quality": {
                 "oneOf": [{"type": "object"}, {"type": "null"}],
                 "description": "Quality assessment"
@@ -424,7 +447,33 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "type": "object",
                 "description": "Edge metadata including evidence",
                 "properties": {
-                    "evidence_type": {"type": "string"},
+                    "evidence_type": {
+                        "type": "string",
+                        "description": (
+                            "Inference pathway by which the analyzer "
+                            "concluded this edge exists. Per ADR-0028, "
+                            "the canonical axiom is 'Edge.evidence_type "
+                            "names the inference pathway by which the "
+                            "analyzer concluded this edge exists.' The "
+                            "x-axis-of-values map documents the canonical "
+                            "registry from packages/hypergumbo-core/src/"
+                            "hypergumbo_core/evidence_types.py::"
+                            "EVIDENCE_TYPES. The schema enum is "
+                            "intentionally open (type: string without "
+                            "enum constraint) until Phase 4b producer "
+                            "migrations land per-cluster — current "
+                            "production includes dynamic f-string emits "
+                            "(websocket.py, di_resolution.py, "
+                            "inheritance.py) that produce values outside "
+                            "the static registry. The L3 producer-"
+                            "coherence linter gates literal additions; "
+                            "the open enum honestly reflects the "
+                            "producer-side leak the ADR is fixing."
+                        ),
+                        "x-axis-of-values": {
+                            spec.name: spec.axis for spec in EVIDENCE_TYPES
+                        },
+                    },
                     "evidence_lang": {"type": "string"},
                     "evidence_spans": {"type": "array"}
                 }

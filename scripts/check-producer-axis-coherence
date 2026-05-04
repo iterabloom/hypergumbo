@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Pre-commit lint: literal-string keyword arguments to ``Edge.create``,
+``Edge(...)``, ``Symbol.create``, and ``Symbol(...)`` constructors must
+be in their corresponding canonical axis registry.
+
+This is the L3 (producer-side) gate from ADR-0028 §"Phase 1". The L1
+(consumer-side) gates live in ``check-edge-type-drift``,
+``check-symbol-kind-drift``, and ``check-evidence-type-drift``. L1
+catches hardcoded ``frozenset({...})`` sets at module level whose
+values escape the registry; L3 catches literal-string emit sites that
+introduce new values without registering them.
+
+Behavior per axis:
+
+- **Strict violations** (literal value not in registry) → exit 1.
+- **Advisories** (f-string emits) → printed to stdout but do NOT block.
+  These are Phase-3 fold candidates per the parent ADRs (ADR-0023 /
+  ADR-0027 / ADR-0028); the registry-based discipline is established
+  here, the per-cluster producer migration normalizes them later.
+
+Exit codes:
+    0 — no strict violations across all three sibling axes.
+    1 — at least one axis has strict violations; fix before committing.
+    2 — could not import a registry (likely a packaging /
+        editable-install problem; do not block commits on this).
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Add the core package's src to sys.path so we can import the registries
+# without requiring an editable install.
+sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
+
+try:
+    from hypergumbo_core.producer_coherence import (
+        find_edge_type_producer_violations,
+        find_evidence_type_producer_violations,
+        find_symbol_kind_producer_violations,
+    )
+except ImportError as exc:  # pragma: no cover — defensive
+    print(
+        f"check-producer-axis-coherence: cannot import linter: {exc}",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+_AXES = (
+    ("Edge.evidence_type", find_evidence_type_producer_violations),
+    ("Symbol.kind", find_symbol_kind_producer_violations),
+    ("Edge.edge_type", find_edge_type_producer_violations),
+)
+
+
+def main() -> int:
+    any_strict = False
+    advisory_count = 0
+
+    for axis_name, finder in _AXES:
+        result = finder(REPO_ROOT)
+        if result.strict_violations:
+            any_strict = True
+            print(f"[{axis_name}] strict violations:")
+            for v in result.strict_violations:
+                print(f"  {v}")
+        for a in result.advisory_dynamic_emits:
+            advisory_count += 1
+        if result.advisory_dynamic_emits:
+            print(f"[{axis_name}] advisories ({len(result.advisory_dynamic_emits)} f-string emit(s); Phase-3 fold candidates):")
+            for a in result.advisory_dynamic_emits:
+                print(f"  {a}")
+
+    if any_strict:
+        print(
+            "\nProducer-side axis coherence check failed.\n"
+            "Either add the missing literal value(s) to the appropriate\n"
+            "canonical registry (per ADR-0023 / ADR-0027 / ADR-0028 axis\n"
+            "rules), or change the producer to emit a registered value.",
+            file=sys.stderr,
+        )
+        return 1
+    if advisory_count > 0:
+        print(
+            f"\nL3 producer-coherence check OK "
+            f"(0 strict violations, {advisory_count} advisory f-string emit(s) "
+            f"surfaced as Phase-3 fold candidates)."
+        )
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())

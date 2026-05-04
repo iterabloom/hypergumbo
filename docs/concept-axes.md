@@ -3,7 +3,8 @@
      Regenerate with: ./scripts/generate-concept-axes
      Sources of truth:
        packages/hypergumbo-core/src/hypergumbo_core/edge_types.py
-       packages/hypergumbo-core/src/hypergumbo_core/symbol_kinds.py -->
+       packages/hypergumbo-core/src/hypergumbo_core/symbol_kinds.py
+       packages/hypergumbo-core/src/hypergumbo_core/evidence_types.py -->
 
 # Concept Axes
 
@@ -14,9 +15,9 @@ declaration template (axis name, axiom, consumer pattern, enforcement);
 ADR-0023 (Edge.type) is the worked example, and ADR-0027 (Symbol.kind)
 is the second instantiation.
 
-The current axes apply to `Edge.type` and `Symbol.kind`. Other
-multi-value fields (`supply_chain.tier`, `Edge.evidence_type` per
-ADR-0028 draft) will be added here as their axes are formally declared.
+The current axes apply to `Edge.type`, `Symbol.kind`, and
+`Edge.evidence_type`. Other multi-value fields (`supply_chain.tier`,
+etc.) will be added here as their axes are formally declared.
 
 ## Why this doc exists
 
@@ -339,3 +340,254 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`wasm_module`** — WebAssembly module symbol. Pending cluster-B audit.
 - **`work_item`** — Work-item symbol. Pending cluster-G audit.
 - **`yield`** — Yield-statement symbol. Pending cluster-H audit.
+
+
+## `Edge.evidence_type` axes
+
+Per ADR-0028, `Edge.evidence_type` names the inference pathway by which
+the analyzer concluded this edge exists. Properties of the dst's
+resolvedness move to the new sibling field `Edge.is_resolved`;
+framework-specific dispatch conventions and call-construct surface
+forms move to `Edge.meta`. The audit at WI-turin-pajuk classified the
+~210 distinct `Edge.evidence_type` values currently in production into
+four clusters; this section lays out the three axes (Cluster A on
+`inference_pathway`; Clusters B / C / D on `endpoint_shape`
+deprecation; long-tail or new clusters on `pending_classification`
+until per-cluster audit-findings docs ship).
+
+### `inference_pathway` — ADR-0028 compliant
+
+Values that name the inference pathway by which the analyzer concluded this edge exists. Per ADR-0028, this is the only axis a new `Edge.evidence_type` value should occupy. Resolution status moves to the new sibling `Edge.is_resolved`; framework-specific dispatch conventions move to `Edge.meta`.
+
+- **`ast_annotation`** — Edge inferred from a type/decorator annotation in source AST.
+- **`ast_attribute`** — Edge inferred from an attribute access in source AST.
+- **`ast_call`** — Edge inferred from a generic call expression in source AST.
+- **`ast_call_direct`** — Edge inferred from a direct (non-method) call site.
+- **`ast_call_extension`** — Edge inferred from an extension-method call (Kotlin / Swift / C#).
+- **`ast_call_inherited`** — Edge inferred from a call on an inherited member.
+- **`ast_call_inherited_field`** — Edge inferred from access to an inherited field.
+- **`ast_call_inherited_method`** — Edge inferred from a call on an inherited method.
+- **`ast_call_static`** — Edge inferred from a static (class-level) method call.
+- **`ast_call_this`** — Edge inferred from a `this`/`self` receiver call.
+- **`ast_call_this_property`** — Edge inferred from a `this.property` / `self.attr` resolved access.
+- **`ast_call_type_inferred`** — Edge inferred from a call site where the receiver type was inferred.
+- **`ast_cite`** — Edge inferred from a citation/cross-reference link in source.
+- **`ast_decorator`** — Edge inferred from a decorator/annotation node in source AST.
+- **`ast_extends`** — Edge inferred from an `extends` clause in source AST.
+- **`ast_implements`** — Edge inferred from an `implements` clause in source AST.
+- **`ast_import`** — Edge inferred from an import statement in source AST.
+- **`ast_include`** — Edge inferred from an include directive in source AST (C/C++).
+- **`ast_method_inferred`** — Edge inferred from a method call where dispatch was inferred.
+- **`ast_method_this`** — Edge inferred from a `this`/`self` method call.
+- **`ast_method_this_property`** — Edge inferred from a `this.prop` / `self.attr` reference.
+- **`ast_method_type_inferred`** — Edge inferred from a method call with type-inferred receiver.
+- **`ast_new`** — Edge inferred from a `new` constructor expression.
+- **`ast_package`** — Edge inferred from a package declaration.
+- **`ast_perform`** — Edge inferred from a `perform`/effect-handler invocation (OCaml/Eff).
+- **`ast_ref`** — Edge inferred from a generic name reference in source AST.
+- **`ast_static_call`** — Edge inferred from a static method call (qualifier-resolved).
+- **`ast_type_ref`** — Edge inferred from a type reference (annotation, generic, etc.).
+- **`async_spawn`** — Edge inferred from an async spawn / task-creation construct.
+- **`behaviour`** — Edge inferred from an Erlang `-behaviour(...)` attribute.
+- **`behaviour_callback`** — Edge inferred from an Erlang behaviour callback definition.
+- **`bridging_header_import`** — Edge inferred from an Objective-C bridging-header import.
+- **`build_dependency`** — Edge inferred from a build-system dependency declaration.
+- **`build_target_main`** — Edge inferred from a build target's main entry point.
+- **`callable_reference`** — Edge inferred from a callable reference (Kotlin `::fn`, etc.).
+- **`callback_argument_reference`** — Edge inferred from a callback function passed as an argument.
+- **`canonical_name`** — Edge inferred from canonical-name resolution.
+- **`cgo_call`** — Edge inferred from a Go cgo C-function call.
+- **`closure_wrapper`** — Edge inferred from a closure/lambda wrapper construct.
+- **`cmake_target_link`** — Edge inferred from a CMake `target_link_libraries` call.
+- **`constructor_reference`** — Edge inferred from a constructor reference (Java `::new`, etc.).
+- **`designated_init_fptr`** — Edge inferred from a designated-initializer function pointer (C99).
+- **`dispatch_pattern`** — Edge inferred from a generic dispatch-pattern recognition.
+- **`dispatch_table_initializer`** — Edge inferred from a dispatch-table initializer entry.
+- **`dispatch_table_reference`** — Edge inferred from a reference into a dispatch table.
+- **`dockerfile_copy_from`** — Edge inferred from a Dockerfile `COPY --from=...` directive.
+- **`dockerfile_from`** — Edge inferred from a Dockerfile `FROM` directive.
+- **`enclosing_scope`** — Edge inferred from an enclosing-scope relationship.
+- **`eta_expansion`** — Edge inferred from an eta-expansion (point-free → pointed).
+- **`extends`** — Edge inferred from a generic extends/inheritance relationship.
+- **`function_pointer`** — Edge inferred from a function-pointer assignment or use.
+- **`function_pointer_arg`** — Edge inferred from a function pointer passed as an argument.
+- **`function_reference`** — Edge inferred from a function reference (not a call).
+- **`function_reference_arg`** — Edge inferred from a function reference passed as an argument.
+- **`hash_field_reference`** — Edge inferred from a hash/dict field reference.
+- **`hg_annotation`** — Edge inferred from a hypergumbo-emitted analyzer annotation.
+- **`import`** — Edge inferred from a generic import construct.
+- **`import_declaration`** — Edge inferred from an import declaration node.
+- **`import_directive`** — Edge inferred from an import directive (C# `using`, etc.).
+- **`import_statement`** — Edge inferred from an import statement node.
+- **`import_static`** — Edge inferred from a Java `import static` declaration.
+- **`import_to_manifest`** — Edge inferred from a manifest-driven import resolution.
+- **`include`** — Edge inferred from a generic include construct.
+- **`include_directive`** — Edge inferred from a `#include` directive (C / C++).
+- **`instance`** — Edge inferred from a typeclass / trait instance declaration.
+- **`interface_dispatch`** — Edge inferred from interface-method dispatch resolution.
+- **`jsx_element`** — Edge inferred from a JSX element reference.
+- **`link`** — Edge inferred from an OTP link/monitor relationship.
+- **`make_prerequisite`** — Edge inferred from a Make/CMake prerequisite declaration.
+- **`message_send`** — Edge inferred from a message-send construct (Erlang `!`, Smalltalk).
+- **`method_reference`** — Edge inferred from a method reference (Java `::method`, etc.).
+- **`module_attribute_reference`** — Edge inferred from a module-level attribute reference.
+- **`module_export_heuristic`** — Edge inferred from a module-export heuristic recognition.
+- **`module_identifier_reference`** — Edge inferred from a module-qualified identifier reference.
+- **`module_source`** — Edge inferred from a module's source-file relationship.
+- **`naming_convention`** — Edge inferred from a language-level naming convention.
+- **`notify`** — Edge inferred from a notification/signal construct.
+- **`object_field_reference`** — Edge inferred from an object-field reference.
+- **`open`** — Edge inferred from an `open` directive (OCaml / F#).
+- **`open_import`** — Edge inferred from a Go open-import (qualified-but-unbound).
+- **`recipe_dependency`** — Edge inferred from a Bazel/Buck recipe-dependency declaration.
+- **`reference`** — Edge inferred from a generic name-reference.
+- **`require`** — Edge inferred from a `require` construct (Ruby / Node).
+- **`require_alias_call`** — Edge inferred from a `require(...)` aliased to a local name.
+- **`require_dynamic`** — Edge inferred from a dynamic `require(...)` call.
+- **`require_statement`** — Edge inferred from a top-level `require` statement.
+- **`require_static`** — Edge inferred from a static `require(...)` invocation.
+- **`schema_relation`** — Edge inferred from a schema-declared relation.
+- **`scip_occurrence_ref`** — Edge inferred from a SCIP occurrence cross-reference.
+- **`scip_relationship`** — Edge inferred from a SCIP-emitted symbol-relationship record.
+- **`signal_constraint`** — Edge inferred from an HDL signal-constraint declaration.
+- **`source_statement`** — Edge inferred from a generic source-level statement.
+- **`span_overlap`** — Edge inferred from text-span overlap between symbols.
+- **`sql_foreign_key`** — Edge inferred from a SQL `FOREIGN KEY` constraint.
+- **`stack_construction`** — Edge inferred from a stack-frame construction site.
+- **`static`** — Edge inferred from a static-linkage declaration.
+- **`struct_field_reference`** — Edge inferred from a struct-field reference.
+- **`subdir_include`** — Edge inferred from a subdirectory-include in a build file.
+- **`trait_impl`** — Edge inferred from a Rust `impl Trait for Type` block.
+- **`tree_sitter`** — Edge inferred from a tree-sitter query match.
+- **`type_hierarchy`** — Edge inferred from a type-hierarchy traversal.
+- **`typeclass_instance`** — Edge inferred from a typeclass-instance declaration (Haskell, Scala).
+- **`use`** — Edge inferred from a `use` directive (Rust, PHP).
+- **`use-package`** — Edge inferred from a Common Lisp `use-package` form (hyphenated identifier per CL convention).
+- **`use_declaration`** — Edge inferred from a `use` declaration node.
+- **`use_directive`** — Edge inferred from a `use` directive (qualifier-bound).
+- **`using_directive`** — Edge inferred from a `using` directive (C# / C++).
+- **`variable_match`** — Edge inferred from a variable-name match across sites.
+- **`verilog_instantiation`** — Edge inferred from a Verilog module instantiation.
+- **`vhdl_architecture`** — Edge inferred from a VHDL architecture declaration.
+
+### `endpoint_shape` — deprecation candidates per ADR-0028
+
+Values whose meaning is leaked into the evidence label even though it is captured by `Edge.is_resolved` (Cluster B `*_unresolved` resolution-status leakage), `Edge.meta` (Cluster C framework-dispatch conventions; Cluster D call-construct surface forms). Migration plan in ADR-0028 §"Detailed analysis: per-cluster fold targets" folds these back into a canonical inference label plus the appropriate sibling.
+
+- **`abi_name_match`** — Cluster C fold: canonical inference + `meta['detection_pattern']='abi_name_match'`.
+- **`activerecord_association`** — Cluster C fold: canonical inference + `meta['framework_dispatch']='activerecord_association'`.
+- **`airflow_framework_dispatch`** — Cluster C fold: canonical inference + `meta['framework_dispatch']='airflow'`.
+- **`ambiguous_method_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['resolution_quality']='ambiguous'`.
+- **`ast_annotation_unresolved`** — Cluster B fold: `ast_annotation` + `is_resolved=False`.
+- **`ast_attribute_unresolved`** — Cluster B fold: `ast_attribute` + `is_resolved=False`.
+- **`ast_call_unresolved_import`** — Cluster B fold: `ast_call_direct` (or producer-specific) + `is_resolved=False`.
+- **`ast_decorator_unresolved`** — Cluster B fold: `ast_decorator` + `is_resolved=False`.
+- **`ast_method_unresolved_global`** — Cluster B fold: `ast_method_inferred` + `is_resolved=False`.
+- **`ast_method_unresolved_namespace`** — Cluster B fold: `ast_method_inferred` + `is_resolved=False`.
+- **`bare_method_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['receiver']='bare'`.
+- **`call`** — Cluster D fold: `ast_call` (the apex; `call` is the generic peer).
+- **`chained_call_unresolved`** — Cluster B fold: `method_call_field_chain` apex + `is_resolved=False`.
+- **`chained_return_type_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='chained_return_type'`.
+- **`constructor_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='constructor'`.
+- **`context_bridge_wrapper`** — Cluster C fold: canonical inference + `meta['framework_dispatch']='electron_context_bridge'`.
+- **`controller_routes`** — Cluster C fold: canonical inference + `meta['framework_dispatch']='controller_routes'`.
+- **`cross_file_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='cross_file'`.
+- **`cross_file_message_send`** — Cluster D fold: `message_send` + `meta['call_construct']='cross_file'`.
+- **`crypto_api_pattern`** — Cluster C fold: canonical inference + `meta['detection_pattern']='crypto_api'`.
+- **`cuda_kernel_launch`** — Cluster C fold: canonical inference + `meta['framework_dispatch']='cuda_kernel_launch'`.
+- **`di_binding`** — Cluster C placeholder for `f"di_binding:{source}"` colon-form emits at di_resolution.py:608. Phase 3 folds to canonical + `meta['framework_dispatch']` per binding source.
+- **`django_channels_emit`** — Cluster C dynamic emit (websocket.py:572): `f"{pattern_type}_emit"`. Fold: canonical + `meta['framework_dispatch']='django_channels'`.
+- **`django_channels_endpoint`** — Cluster C dynamic emit (websocket.py:613): `f"{pattern_type}_endpoint"`. Fold: canonical + `meta['framework_dispatch']='django_channels'`.
+- **`django_orm_dispatch`** — Cluster C fold: canonical inference + `meta['framework_dispatch']='django_orm'`.
+- **`django_signal_receiver`** — Cluster C fold: canonical inference + `meta['framework_dispatch']='django_signal'`.
+- **`django_signal_receiver_unresolved`** — Cluster B+C fold: canonical inference + `meta['framework_dispatch']='django_signal'` + `is_resolved=False`.
+- **`event_name_match`** — Cluster C fold: canonical inference + `meta['detection_pattern']='event_name'`.
+- **`external_receiver_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['receiver']='external'`.
+- **`fastapi_emit`** — Cluster C dynamic emit (websocket.py:572). Fold: canonical + `meta['framework_dispatch']='fastapi'`.
+- **`fastapi_endpoint`** — Cluster C dynamic emit (websocket.py:613). Fold: canonical + `meta['framework_dispatch']='fastapi'`.
+- **`function_application`** — Cluster D fold: `ast_call` + `meta['call_construct']='application'`.
+- **`function_application_external`** — Cluster D fold: `ast_call` + `meta['call_construct']='application_external'`.
+- **`function_call`** — Cluster D fold: `ast_call` apex (the high-frequency emitter).
+- **`go_cobra_dispatch`** — Cluster C fold: canonical + `meta['framework_dispatch']='cobra'`.
+- **`go_memberlist_delegate`** — Cluster C fold: canonical + `meta['framework_dispatch']='memberlist'`.
+- **`graphql_operation_match`** — Cluster C fold: canonical + `meta['framework_dispatch']='graphql_operation'`.
+- **`grpc_go_server_method`** — Cluster C fold: canonical + `meta['framework_dispatch']='grpc_go_server'`.
+- **`grpc_rpc_definition`** — Cluster C fold: canonical + `meta['framework_dispatch']='grpc_rpc_definition'`.
+- **`grpc_server_to_service`** — Cluster C fold: canonical + `meta['framework_dispatch']='grpc_server_to_service'`.
+- **`grpc_service_match`** — Cluster C fold: canonical + `meta['framework_dispatch']='grpc_service_match'`.
+- **`grpc_unresolved_resolution`** — Cluster B fold: new canonical (e.g. `grpc_stub_resolution`) + `is_resolved=False`.
+- **`http_url_match`** — Cluster C fold: canonical + `meta['detection_pattern']='http_url'`.
+- **`implicit_convention`** — Cluster C fold: canonical + `meta['detection_pattern']='implicit_convention'`.
+- **`jackson_bean_dispatch`** — Cluster C fold: canonical + `meta['framework_dispatch']='jackson_bean'`.
+- **`jni_naming_convention`** — Cluster C fold: canonical + `meta['detection_pattern']='jni_naming_convention'`.
+- **`job_enqueue`** — Cluster C fold: canonical + `meta['framework_dispatch']='job_enqueue'`.
+- **`kafka_streams_dispatch`** — Cluster C fold: canonical + `meta['framework_dispatch']='kafka_streams'`.
+- **`local_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='local'`.
+- **`luajit_ffi_unresolved`** — Cluster B fold: new canonical (e.g. `luajit_ffi_lookup`) + `is_resolved=False`.
+- **`macro_body_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='macro_body'`.
+- **`method_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='method'`.
+- **`method_call_field_chain`** — Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['receiver']='field_chain'`.
+- **`method_call_recovery`** — Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['resolution_quality']='recovery'`.
+- **`method_call_type_inferred`** — Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['resolution_quality']='type_inferred'`.
+- **`method_call_typed`** — Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['resolution_quality']='typed'`.
+- **`method_group`** — Cluster D fold: `ast_call` + `meta['call_construct']='method_group'` (C# delegate group).
+- **`middleware_chain`** — Cluster C fold: canonical + `meta['framework_dispatch']='middleware_chain'`.
+- **`native_emit`** — Cluster C dynamic emit (websocket.py:572). Fold: canonical + `meta['framework_dispatch']='native_websocket'`.
+- **`native_endpoint`** — Cluster C dynamic emit (websocket.py:613). Fold: canonical + `meta['framework_dispatch']='native_websocket'`.
+- **`nestjs_module_registration`** — Cluster C fold: `ast_decorator` + `meta['framework_dispatch']='nestjs_module'`.
+- **`npm_package_import`** — Cluster C fold: canonical import inference + `meta['framework_dispatch']='npm_package'`.
+- **`object_creation`** — Cluster D fold: `ast_call` + `meta['call_construct']='constructor'` (peer of constructor_call).
+- **`openapi_operation_id_match`** — Cluster C fold: canonical + `meta['framework_dispatch']='openapi_operation_id'`.
+- **`openapi_path_match`** — Cluster C fold: canonical + `meta['framework_dispatch']='openapi_path'`.
+- **`orm_accessor_pattern`** — Cluster C fold: canonical + `meta['framework_dispatch']='orm_accessor'`.
+- **`otp_genserver_dispatch`** — Cluster C fold: canonical + `meta['framework_dispatch']='otp_genserver'`.
+- **`phoenix_event_match`** — Cluster C fold: `naming_convention` + `meta['detection_pattern']='phoenix_event'`.
+- **`pipe_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='pipe'` (Elixir / F# pipe).
+- **`pyo3_bridge`** — Cluster C fold: canonical + `meta['framework_dispatch']='pyo3_bridge'`.
+- **`rails_block_callback`** — Cluster C fold: canonical + `meta['framework_dispatch']='rails_block_callback'`.
+- **`rails_callback`** — Cluster C fold: canonical + `meta['framework_dispatch']='rails_callback'`.
+- **`receiver_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['receiver']='generic'`.
+- **`registry_dispatch`** — Cluster C fold: canonical + `meta['framework_dispatch']='registry_dispatch'`.
+- **`remote_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='remote'`.
+- **`remote_call_external`** — Cluster D fold: `ast_call` + `meta['call_construct']='remote_external'`.
+- **`resolver_field_match`** — Cluster C fold: canonical + `meta['framework_dispatch']='graphql_resolver_field'`.
+- **`resolver_type_match`** — Cluster C fold: canonical + `meta['framework_dispatch']='graphql_resolver_type'`.
+- **`route_mount`** — Cluster C fold: canonical + `meta['framework_dispatch']='route_mount'`.
+- **`router_routes`** — Cluster C fold: canonical + `meta['framework_dispatch']='router_routes'`.
+- **`ruby_c_extension`** — Cluster C fold: canonical + `meta['framework_dispatch']='ruby_c_extension'`.
+- **`ruby_delegate`** — Cluster C fold: canonical + `meta['framework_dispatch']='ruby_delegate'`.
+- **`ruby_ffi_attach`** — Cluster C fold: canonical + `meta['framework_dispatch']='ruby_ffi_attach'`.
+- **`ruby_ffi_attach_unresolved`** — Cluster B fold: `ruby_ffi_attach` canonical + `is_resolved=False`.
+- **`rust_trait_dispatch`** — Cluster C fold: canonical + `meta['framework_dispatch']='rust_trait_dispatch'`.
+- **`script_src`** — Cluster C fold: canonical + `meta['framework_dispatch']='html_script_src'`.
+- **`socketio_emit`** — Cluster C dynamic emit (websocket.py:572). Fold: canonical + `meta['framework_dispatch']='socketio'`.
+- **`socketio_endpoint`** — Cluster C dynamic emit (websocket.py:613). Fold: canonical + `meta['framework_dispatch']='socketio'`.
+- **`specta_wrapper_import`** — Cluster C fold: canonical + `meta['framework_dispatch']='specta_wrapper'`.
+- **`stdlib_method_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['receiver']='stdlib'`.
+- **`subprocess_cli_match`** — Cluster C fold: canonical + `meta['detection_pattern']='subprocess_cli'`.
+- **`table_name_match`** — Cluster C fold: canonical + `meta['detection_pattern']='table_name'`.
+- **`tauri_emit_listen`** — Cluster C fold: canonical + `meta['framework_dispatch']='tauri_emit_listen'`.
+- **`tauri_invoke`** — Cluster C fold: canonical + `meta['framework_dispatch']='tauri_invoke'`.
+- **`trait_impl_unresolved`** — Cluster B fold: `trait_impl` canonical + `is_resolved=False`.
+- **`typed_field_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['receiver']='typed_field'`.
+- **`typed_receiver_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['resolution_quality']='typed_receiver'`.
+- **`unexported_method_call`** — Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['visibility']='unexported'` (Go).
+- **`unresolved_dotted_submodule_call`** — Cluster B fold: canonical call inference + `is_resolved=False`.
+- **`unresolved_external_call`** — Cluster B fold: `ast_call_direct` + `is_resolved=False`.
+- **`unresolved_imported_name_call`** — Cluster B fold: `ast_call_direct` + `is_resolved=False`.
+- **`unresolved_method_call`** — Cluster B fold: `method_call` (post-collapse `ast_call`) + `is_resolved=False`.
+- **`unresolved_module_call`** — Cluster B fold: canonical call inference + `is_resolved=False`.
+- **`unresolved_variable_method_call`** — Cluster B fold: `method_call_type_inferred` apex + `is_resolved=False`.
+- **`vue_component_import`** — Cluster C fold: canonical + `meta['framework_dispatch']='vue_component'`.
+- **`vue_event_handler`** — Cluster C fold: canonical + `meta['framework_dispatch']='vue_event_handler'`.
+- **`wasm_bindgen_import`** — Cluster C fold: canonical + `meta['framework_dispatch']='wasm_bindgen_import'`.
+- **`wasm_instantiate`** — Cluster C fold: canonical + `meta['framework_dispatch']='wasm_instantiate'`.
+- **`ws_emit`** — Cluster C dynamic emit (websocket.py:572). Fold: canonical + `meta['framework_dispatch']='ws'`.
+- **`ws_endpoint`** — Cluster C dynamic emit (websocket.py:613). Fold: canonical + `meta['framework_dispatch']='ws'`.
+- **`yjs_crdt_pattern`** — Cluster C fold: canonical + `meta['framework_dispatch']='yjs_crdt'`.
+
+### `pending_classification` — per-cluster audit pending per ADR-0028
+
+Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.md`. Each cluster's audit decides between fold-to-Cluster-A vs separate-axis declaration vs producer-side drop.
+
+_(empty — no values currently classified on this axis)_
