@@ -1,0 +1,21 @@
+- op: create  # 893d
+  at: '2026-05-04T02:54:09Z'  # 893d
+  by: agent  # 893d
+  actor: jgstern_agent  # 893d
+  clock: 1  # 893d
+  nonce: 893d  # 893d
+  data:  # 893d
+    kind: work_item  # 893d
+    title: "django_orm_dispatch: add 'dispatch' to View per-base method map (UAT DQ-02)"  # 893d
+    status: todo_soft  # 893d
+    priority: 4  # 893d
+    parent:  # 893d
+    tags:  # 893d
+    - analysis_quality  # 893d
+    - framework_dispatch_linkers  # 893d
+    isbefore: []  # 893d
+    duplicate_of: []  # 893d
+    not_duplicate_of: []  # 893d
+    pr_ref:  # 893d
+    description: "From hg-uat-v4.0.0 directed-validation campaign (2026-05-03), master report\n§ DQ-02.\nMaster report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.0.0/lab-notebook/master-report.md\n\n## Symptom\n\n`django_orm_dispatch` emits `dispatches_to` edges for View base-class methods\n`get`, `post`, etc. — but **not** for `dispatch`, despite `dispatch` being\nlisted in the round-05 plan's expected method surface (Django's `View.dispatch`\nis the framework-called router that dispatches to `get`/`post`/etc.).\n\nIn pretix, the linker emits **0** `dispatches_to` edges to any `*.dispatch`\nmethod anywhere in the graph. This is one of the contributors (alongside\nBUG-01) that left WI-nosug at an inconclusive 8/15.\n\n## Fix scope\n\nAdd `dispatch` to the View per-base method map in\n`django_orm_dispatch` (alongside any other generic-CBV lifecycle method\nthat's currently missing — e.g. spot-check `setup`, `http_method_not_allowed`,\n`options`).\n\nTrivial change. Filed separately from BUG-01 to keep the commit narrow.\n\n## Acceptance\n\nAfter the fix, a class subclassing `View` (or any generic-CBV) with a\n`dispatch` override emits a `dispatches_to` edge from class to `dispatch`\nwith provenance attributable to `django_orm_dispatch`."  # 893d
+    fields: {}  # 893d

@@ -1,0 +1,21 @@
+- op: create  # 88e8
+  at: '2026-05-04T02:54:08Z'  # 88e8
+  by: agent  # 88e8
+  actor: jgstern_agent  # 88e8
+  clock: 1  # 88e8
+  nonce: '88e8'  # 88e8
+  data:  # 88e8
+    kind: work_item  # 88e8
+    title: "Rust implements-edge linker: kind disambiguation + cross-language gating (UAT BUG-03)"  # 88e8
+    status: todo_hard  # 88e8
+    priority: 3  # 88e8
+    parent:  # 88e8
+    tags:  # 88e8
+    - analysis_quality  # 88e8
+    - infrastructure_linkers  # 88e8
+    isbefore: []  # 88e8
+    duplicate_of: []  # 88e8
+    not_duplicate_of: []  # 88e8
+    pr_ref:  # 88e8
+    description: "From hg-uat-v4.0.0 directed-validation campaign (2026-05-03), master report\n§ BUG-03 (MED severity).\nMaster report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.0.0/lab-notebook/master-report.md\n\n## Symptom\n\nIn candle, `impl Module for LayerNorm` produces an `implements` edge from\n`LayerNorm` to a `Module` **struct** in `candle-kernels` — not the `Module`\n**trait** in `candle-core`. The implements-edge linker (originally landed\nunder WI-tulid) resolves on simple-name match without disambiguating by\nsymbol kind.\n\n**Cross-language amplification**: the 31 `implements`-edge sources for the\nactual `Module` trait are all **Python `class`** nodes from `candle-pyo3`\n(PyTorch `nn.Module` subclasses). Python classes can't implement Rust traits,\nbut the unqualified-name matcher links them anyway.\n\n## Distinction from prior name-collision items\n\nPrior collision work (WI-zojis on Rust call edges, WI-jopar on Go interface\ndispatch, WI-luvaj on centrality, WI-jabut on Rust turbofish, WI-minij/Scala,\nWI-mavan/Swift, WI-hikug/Go receiver type, WI-fokor/Haskell,\nWI-guvuz/Java extends/implements, INV-rovuj/C++ method names) covered other\nlinkers. This item is specific to the **Rust implements-edge linker\ninherited via WI-tulid** and adds the cross-language Python→Rust dimension.\n\n## Fix scope\n\nTwo layers:\n\n1. **Kind disambiguation within Rust**: when resolving the target of `impl\n   Trait for Struct`, the implements-edge linker must require `dst.kind ==\n   \"trait\"`, not just name match. Falling back to a struct of the same name\n   is a precision regression.\n2. **Cross-language gating**: an `implements` edge from a Python `class` to a\n   Rust `trait` is structurally impossible (no FFI dispatch surface bridges\n   `nn.Module.forward` to `candle::Module::forward` directly). The linker\n   should refuse to emit `implements` edges across language boundaries\n   unless an explicit bridge linker (PyO3 / cffi / wasm_bindgen) sanctions\n   it.\n\n## Verdict-level impact\n\nWI-kivut still passed 14/15 in round 06 because the UAT agent re-rolled the\nsample to traits without the collision (UnaryOpT, Map1, Map2, GgmlType,\nSimpleBackend). But hypergumbo's output on candle in production shows\nzero-recall on the actual `Module` trait — a real cap on usefulness.\n\n## Acceptance\n\nA re-run on candle: zero `implements` edges from `LayerNorm` (or other Rust\nstructs) to a struct-kind `Module`; zero `implements` edges from Python\n`nn.Module` subclasses to any Rust trait; the canonical\n`Module`-trait-in-candle-core `implements`-edge population reflects the real\nRust struct implementers."  # 88e8
+    fields: {}  # 88e8

@@ -1,0 +1,21 @@
+- op: create  # 0095
+  at: '2026-05-04T02:54:11Z'  # 0095
+  by: agent  # 0095
+  actor: jgstern_agent  # 0095
+  clock: 1  # 0095
+  nonce: '0095'  # 0095
+  data:  # 0095
+    kind: work_item  # 0095
+    title: "hypergumbo run --out: side-emits 4-30 additional files; pick remediation (UAT DQ-04)"  # 0095
+    status: needs_human_review  # 0095
+    priority: 3  # 0095
+    parent:  # 0095
+    tags:  # 0095
+    - developer_experience  # 0095
+    - cli  # 0095
+    isbefore: []  # 0095
+    duplicate_of: []  # 0095
+    not_duplicate_of: []  # 0095
+    pr_ref:  # 0095
+    description: "From hg-uat-v4.0.0 directed-validation campaign (2026-05-03), master report\n§ DQ-04 / UX-02.\nMaster report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.0.0/lab-notebook/master-report.md\n\n## Status\n\n`needs_human_review` — design question, not a bug. The current behaviour is\ndeliberate (stdout transparently lists what's emitted) but surprising; the\nhuman should pick the remediation.\n\n## Observation\n\nBeyond the requested `--out` path, every `hypergumbo run` invocation in the\ncampaign also wrote:\n\n- `<out_basename>.4k.json`\n- `<out_basename>.16k.json`\n- `<out_basename>.64k.json`\n- `slice.handler.index.json`\n- One `slice.handler.<route>.json` per detected REST route\n  (round 03: 24 such files on spring-petclinic; round 05: many on pretix)\n\nRound 03 saw **30 outputs from a single command**. After 8 rounds, `/tmp` had\n~50 stray hypergumbo artifacts even though every round only asked for one\n`--out` file.\n\n## Three possible remediations (pick one)\n\n(a) **Opt-in flags** (e.g. `--emit-compact-tiers`, `--emit-route-slices`).\nDefault behaviour becomes \"exactly what the user asked for\".\n\n(b) **Sibling directory.** Place side-outputs under\n`<out_basename>.aux/` so the user can delete them in one `rm -rf`.\n\n(c) **Document the behaviour in `--help`.** Lowest-effort; preserves\ncurrent behaviour but warns users it'll happen.\n\nAny of the three would reduce friction. Awaiting human triage on which path\nto take."  # 0095
+    fields: {}  # 0095
