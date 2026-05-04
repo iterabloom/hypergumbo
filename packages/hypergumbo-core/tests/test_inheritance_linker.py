@@ -681,6 +681,192 @@ class TestInheritanceLinker:
         assert result.edges[0].dst == "sym:Serializable"
         assert result.edges[0].edge_type == "implements"
 
+    def test_rust_struct_resolves_to_trait_when_struct_collision_exists(self) -> None:
+        """Rust struct's base_class with both a trait and a struct of the same
+        name resolves to the trait (kind discipline — WI-zozuz BUG-03 layer 1).
+
+        ``impl Module for LayerNorm`` makes the analyzer emit
+        ``LayerNorm.meta.base_classes = ["Module"]``. If a same-named struct
+        exists elsewhere (here in ``candle-kernels``), the linker must NOT
+        fall back to it — Rust structs cannot extend other structs.
+        """
+        module_trait = Symbol(
+            id="rust:candle-core/src/nn.rs:1-5:Module:trait",
+            name="Module",
+            kind="trait",
+            language="rust",
+            path="/candle-core/src/nn.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="rust-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        module_struct = Symbol(
+            id="rust:candle-kernels/src/lib.rs:1-3:Module:struct",
+            name="Module",
+            kind="struct",
+            language="rust",
+            path="/candle-kernels/src/lib.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="rust-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        layer_norm = Symbol(
+            id="rust:candle-nn/src/layer_norm.rs:10-20:LayerNorm:struct",
+            name="LayerNorm",
+            kind="struct",
+            language="rust",
+            path="/candle-nn/src/layer_norm.rs",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="rust-v1",
+            origin_run_id="test-run",
+            meta={"base_classes": ["Module"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[module_trait, module_struct, layer_norm],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+
+        edges_from_layer_norm = [e for e in result.edges if e.src == layer_norm.id]
+        assert len(edges_from_layer_norm) == 1
+        assert edges_from_layer_norm[0].dst == module_trait.id
+        assert edges_from_layer_norm[0].edge_type == "implements"
+
+    def test_rust_struct_no_edge_when_only_struct_target_exists(self) -> None:
+        """Rust struct with no trait target produces NO edge — Rust structs
+        cannot extend other structs (kind discipline — WI-zozuz BUG-03 layer 1).
+        """
+        module_struct = Symbol(
+            id="rust:candle-kernels/src/lib.rs:1-3:Module:struct",
+            name="Module",
+            kind="struct",
+            language="rust",
+            path="/candle-kernels/src/lib.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="rust-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        layer_norm = Symbol(
+            id="rust:candle-nn/src/layer_norm.rs:10-20:LayerNorm:struct",
+            name="LayerNorm",
+            kind="struct",
+            language="rust",
+            path="/candle-nn/src/layer_norm.rs",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="rust-v1",
+            origin_run_id="test-run",
+            meta={"base_classes": ["Module"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[module_struct, layer_norm],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+
+        # No trait Module exists; Rust structs cannot extend structs, so no edge.
+        assert result.edges == []
+
+    def test_python_class_does_not_implement_rust_trait(self) -> None:
+        """A Python class with base_classes=["Module"] must NOT match a Rust
+        ``Module`` trait (cross-language gating — WI-zozuz BUG-03 layer 2).
+
+        ``class FooModule(nn.Module)`` in candle-pyo3 normalizes to
+        ``base_classes=["Module"]``. Without gating, the inheritance linker
+        emits 31 spurious cross-language ``implements`` edges from those
+        Python classes to the Rust ``Module`` trait.
+        """
+        rust_trait = Symbol(
+            id="rust:candle-core/src/nn.rs:1-5:Module:trait",
+            name="Module",
+            kind="trait",
+            language="rust",
+            path="/candle-core/src/nn.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="rust-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        python_class = Symbol(
+            id="python:candle-pyo3/py_src/foo.py:1-10:FooModule:class",
+            name="FooModule",
+            kind="class",
+            language="python",
+            path="/candle-pyo3/py_src/foo.py",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="python-v1",
+            origin_run_id="test-run",
+            meta={"base_classes": ["Module"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[rust_trait, python_class],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+
+        # Cross-language match must not happen.
+        assert result.edges == []
+
+    def test_same_language_match_still_works_when_other_language_collides(
+        self,
+    ) -> None:
+        """Cross-language gating must not block legitimate same-language
+        resolution when a same-named symbol also exists in another language.
+        """
+        py_base = Symbol(
+            id="python:base.py:1-3:Base:class",
+            name="Base",
+            kind="class",
+            language="python",
+            path="/py/base.py",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="python-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        rust_base_struct = Symbol(
+            id="rust:base.rs:1-3:Base:struct",
+            name="Base",
+            kind="struct",
+            language="rust",
+            path="/rust/base.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="rust-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        py_child = Symbol(
+            id="python:child.py:1-5:Child:class",
+            name="Child",
+            kind="class",
+            language="python",
+            path="/py/child.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="python-v1",
+            origin_run_id="test-run",
+            meta={"base_classes": ["Base"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[py_base, rust_base_struct, py_child],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+
+        edges = [e for e in result.edges if e.src == py_child.id]
+        assert len(edges) == 1
+        assert edges[0].dst == py_base.id
+        assert edges[0].edge_type == "extends"
+
     def test_class_extends_class_and_trait(self) -> None:
         """Class with both class and trait base_classes gets both edge types."""
         base_class = Symbol(

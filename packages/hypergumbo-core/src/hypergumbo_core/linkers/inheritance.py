@@ -77,8 +77,15 @@ def _resolve_target_symbol(
     When multiple symbols share the same name (e.g., test stubs named 'Model'),
     uses a priority cascade:
 
-    1. Same-file match: prefer the candidate defined in the same file as the child
-    2. Deterministic fallback: first by sorted symbol ID
+    1. Cross-language gating (WI-zozuz): drop candidates whose language differs
+       from the child's. Inheritance is structurally a same-language relation;
+       FFI conformance is the territory of dedicated bridge linkers (PyO3,
+       cffi, wasm_bindgen, jni). Without this filter, a Python
+       ``class FooModule(nn.Module)`` collapses to ``base_classes=["Module"]``
+       and erroneously produces an ``implements`` edge to a Rust ``Module``
+       trait — see WI-zozuz BUG-03.
+    2. Same-file match: prefer the candidate defined in the same file as the child
+    3. Deterministic fallback: first by sorted symbol ID
 
     The centralized linker does not have per-file import context (unlike
     per-analyzer resolvers), so import-based disambiguation is not available.
@@ -92,6 +99,11 @@ def _resolve_target_symbol(
         The resolved Symbol, or None if no match found.
     """
     candidates = candidates_by_name.get(name)
+    if not candidates:
+        return None
+
+    # Cross-language gating: only consider same-language candidates.
+    candidates = [c for c in candidates if c.language == child_sym.language]
     if not candidates:
         return None
 
@@ -175,7 +187,19 @@ def _create_inheritance_edges(
             if "::" in base_name:
                 lookup_names.append(base_name.split("::")[-1])
 
-            # Try to find the target symbol
+            # Try to find the target symbol.
+            #
+            # Rust kind discipline (WI-zozuz BUG-03 layer 1): Rust structs and
+            # enums cannot extend other structs/enums — the only inheritance-
+            # like relation Rust permits is ``impl Trait for Struct``. When a
+            # Rust source's base_class also matches a Rust struct of the same
+            # name in another crate, falling back to the struct emits a
+            # spurious extends edge (the candle/LayerNorm→Module-struct case).
+            # Restrict Rust struct/enum sources to trait targets.
+            rust_kind_discipline = (
+                sym.language == "rust" and sym.kind in ("struct", "enum")
+            )
+
             target_sym = None
             edge_type = None
 
@@ -187,6 +211,8 @@ def _create_inheritance_edges(
                     target_sym = resolved
                     edge_type = "implements"
                     break
+                if rust_kind_discipline:
+                    continue
                 resolved = _resolve_target_symbol(
                     lookup_name, sym, class_by_name,
                 )
