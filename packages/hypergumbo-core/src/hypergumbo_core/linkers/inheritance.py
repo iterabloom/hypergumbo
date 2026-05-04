@@ -71,7 +71,7 @@ def _resolve_target_symbol(
     name: str,
     child_sym: Symbol,
     candidates_by_name: dict[str, list[Symbol]],
-) -> Symbol | None:
+) -> tuple[Symbol, bool] | None:
     """Resolve a base class/interface name to a specific Symbol.
 
     When multiple symbols share the same name (e.g., test stubs named 'Model'),
@@ -96,7 +96,11 @@ def _resolve_target_symbol(
         candidates_by_name: Multi-value lookup: name -> list of candidates
 
     Returns:
-        The resolved Symbol, or None if no match found.
+        ``(symbol, is_fallback)`` tuple where ``is_fallback`` is True iff the
+        match was made by simple-name short-form without import-context
+        disambiguation (the deterministic-by-sorted-ID branch). Per INV-zuhub,
+        edges built from a fallback match must carry ``confidence <= 0.5`` and
+        ``meta["disambiguation_fallback"] = True``. Returns None if no match.
     """
     candidates = candidates_by_name.get(name)
     if not candidates:
@@ -108,18 +112,19 @@ def _resolve_target_symbol(
         return None
 
     if len(candidates) == 1:
-        return candidates[0]
+        return candidates[0], False
 
     child_path = child_sym.path or ""
 
-    # 1. Same-file match: prefer candidate in the same file
+    # 1. Same-file match: prefer candidate in the same file (precision)
     same_file = [c for c in candidates if c.path == child_path]
     if len(same_file) == 1:
-        return same_file[0]
+        return same_file[0], False
 
-    # 2. Deterministic fallback: first by symbol ID (sorted for stability)
+    # 2. Deterministic fallback: first by symbol ID (sorted for stability).
+    #    INV-zuhub flags this branch so the caller can downgrade the edge.
     candidates_sorted = sorted(candidates, key=lambda c: c.id)
-    return candidates_sorted[0]
+    return candidates_sorted[0], True
 
 
 def _create_inheritance_edges(
@@ -202,13 +207,14 @@ def _create_inheritance_edges(
 
             target_sym = None
             edge_type = None
+            is_fallback = False
 
             for lookup_name in lookup_names:
                 resolved = _resolve_target_symbol(
                     lookup_name, sym, interface_by_name,
                 )
                 if resolved is not None:
-                    target_sym = resolved
+                    target_sym, is_fallback = resolved
                     edge_type = "implements"
                     break
                 if rust_kind_discipline:
@@ -217,7 +223,7 @@ def _create_inheritance_edges(
                     lookup_name, sym, class_by_name,
                 )
                 if resolved is not None:
-                    target_sym = resolved
+                    target_sym, is_fallback = resolved
                     edge_type = "extends"
                     break
 
@@ -233,15 +239,24 @@ def _create_inheritance_edges(
             if edge_key in existing_edge_keys:
                 continue
 
+            # INV-zuhub: simple-name fallback edges carry conf <= 0.5 and
+            # the disambiguation_fallback flag so consumers can filter the
+            # fallback population from the precision-resolved one.
+            confidence = 0.5 if is_fallback else 0.95
+            edge_meta: dict[str, object] | None = (
+                {"disambiguation_fallback": True} if is_fallback else None
+            )
+
             edge = Edge.create(
                 src=sym.id,
                 dst=target_sym.id,
                 edge_type=edge_type,
                 line=sym.span.start_line if sym.span else 0,
-                confidence=0.95,
+                confidence=confidence,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type=f"ast_{edge_type}",
+                meta=edge_meta,
             )
             edges.append(edge)
 

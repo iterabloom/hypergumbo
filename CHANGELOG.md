@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Changed
+
+- **Inheritance linker annotates simple-name fallback edges per INV-zuhub**: when `_resolve_target_symbol` falls back to deterministic-by-sorted-ID disambiguation (multiple cross-file candidates, no same-file precision match), the resulting `extends` / `implements` edge now carries `confidence=0.5` and `meta["disambiguation_fallback"]=True`. Single-candidate and same-file resolutions remain at `confidence=0.95` with no flag. Provides downstream consumers (slice ranking, dead-code analysis, supply-chain tier classification) a structured signal to filter the fallback population from the precision-resolved one. First worked example of INV-zuhub conformance — pattern is portable to the kafka_streams_dispatch and Go interface_dispatch sites listed under the invariant's "Concrete known violations" table.
+
 ### Fixed
 
 - **Jackson dispatch linker recognizes JPA `@Entity` / `@MappedSuperclass` / `@Embeddable`** (WI-sokaz / UAT BUG-02): the Spring Data JPA + Spring MVC pattern routinely Jackson-serializes JPA-mapped types as REST response bodies, but `jackson_dispatch` was only triggering on Jackson, JAX-B, and Spring-binding annotations — not the JPA persistence annotations. On spring-petclinic the linker emitted exactly 1 edge (for a JAX-B `@XmlRootElement`-marked class) while the 6 `@Entity` JPA classes (Owner, Pet, Visit, Vet, Specialty, PetType) that dominate the serialization surface produced zero edges. `Entity`, `MappedSuperclass`, and `Embeddable` join the class-level annotation set; bean-convention accessors on JPA classes now receive `dispatches_to` edges as expected.

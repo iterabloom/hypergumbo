@@ -297,7 +297,11 @@ class TestInheritanceLinker:
         )
 
     def test_deterministic_fallback_when_ambiguous(self) -> None:
-        """When no same-file match, uses deterministic fallback (sorted by ID)."""
+        """When no same-file match, uses deterministic fallback (sorted by ID)
+        and the resulting edge carries INV-zuhub provenance: confidence <= 0.5
+        and meta["disambiguation_fallback"] = True so downstream consumers
+        can filter the fallback population from the precision-resolved one.
+        """
         # Two files define Base, neither is in the same file as Child
         base_x = Symbol(
             id="sym:x:Base",
@@ -342,10 +346,109 @@ class TestInheritanceLinker:
 
         extends_edges = [e for e in result.edges if e.src == "sym:z:Child"]
         assert len(extends_edges) == 1
+        edge = extends_edges[0]
         # Deterministic: first by sorted symbol ID
-        assert extends_edges[0].dst == "sym:x:Base", (
-            f"Expected deterministic fallback (sym:x:Base), got {extends_edges[0].dst}"
+        assert edge.dst == "sym:x:Base", (
+            f"Expected deterministic fallback (sym:x:Base), got {edge.dst}"
         )
+        # INV-zuhub: simple-name fallback edges must carry conf <= 0.5 and
+        # the disambiguation_fallback provenance flag.
+        assert edge.confidence <= 0.5, (
+            f"Fallback edge confidence {edge.confidence} exceeds INV-zuhub cap of 0.5"
+        )
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+
+    def test_single_candidate_resolution_keeps_high_confidence(self) -> None:
+        """Single-candidate resolution is precision (no ambiguity), so the
+        edge keeps high confidence and no disambiguation_fallback flag.
+        """
+        base = Symbol(
+            id="sym:BaseModel",
+            name="BaseModel",
+            kind="class",
+            language="python",
+            path="/test.py",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        derived = Symbol(
+            id="sym:User",
+            name="User",
+            kind="class",
+            language="python",
+            path="/other.py",
+            span=Span(start_line=5, end_line=7, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test-run",
+            meta={"base_classes": ["BaseModel"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[base, derived],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.confidence > 0.5
+        if edge.meta is not None:
+            assert edge.meta.get("disambiguation_fallback") is not True
+
+    def test_same_file_resolution_keeps_high_confidence(self) -> None:
+        """Same-file resolution uses import-context disambiguation, so it
+        is precision (not fallback) and keeps high confidence.
+        """
+        base_a = Symbol(
+            id="sym:a:Base",
+            name="Base",
+            kind="class",
+            language="csharp",
+            path="/A.cs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        base_b = Symbol(
+            id="sym:b:Base",
+            name="Base",
+            kind="class",
+            language="csharp",
+            path="/B.cs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        child = Symbol(
+            id="sym:b:Child",
+            name="Child",
+            kind="class",
+            language="csharp",
+            path="/B.cs",
+            span=Span(start_line=5, end_line=7, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test-run",
+            meta={"base_classes": ["Base"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[base_a, base_b, child],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+        edges = [e for e in result.edges if e.src == "sym:b:Child"]
+        assert len(edges) == 1
+        edge = edges[0]
+        assert edge.dst == "sym:b:Base"
+        assert edge.confidence > 0.5
+        if edge.meta is not None:
+            assert edge.meta.get("disambiguation_fallback") is not True
 
     def test_interface_same_file_preferred_over_collision(self) -> None:
         """When multiple interfaces share a name, prefer same-file for implements edge."""
