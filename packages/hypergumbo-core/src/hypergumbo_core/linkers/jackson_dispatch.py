@@ -31,6 +31,9 @@ exclusive markers of "this type is serialized"):
   ``@XmlAccessorType``.
 * **Spring configuration binding** — ``@ConfigurationProperties``,
   ``@ConstructorBinding``.
+* **JPA persistence** — ``@Entity``, ``@MappedSuperclass``, ``@Embeddable``.
+  Jackson routinely serializes JPA-mapped types as Spring MVC REST response
+  bodies (Spring Data JPA), so the entire JPA mapping surface is in scope.
 * **Any method on the class carries a Jackson method-level annotation** —
   ``@JsonProperty``, ``@JsonGetter``, ``@JsonSetter``, ``@JsonCreator``,
   ``@JsonValue``, ``@JsonAnyGetter``, ``@JsonAnySetter``, ``@JsonRawValue``.
@@ -111,6 +114,13 @@ CLASS_LEVEL_SERIALIZATION_ANNOTATIONS: frozenset[str] = frozenset({
     # Spring binding
     "ConfigurationProperties",
     "ConstructorBinding",
+    # JPA — Jackson routinely serializes @Entity classes as Spring MVC REST
+    # response bodies (the Spring Data JPA + spring-petclinic shape). WI-sokaz:
+    # without these triggers the linker emits zero edges for the dominant
+    # serialization surface in JPA-backed services.
+    "Entity",
+    "MappedSuperclass",
+    "Embeddable",
 })
 
 # Annotations on methods (or the methods paired with annotated fields) that

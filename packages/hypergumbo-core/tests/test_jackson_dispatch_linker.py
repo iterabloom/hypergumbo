@@ -151,6 +151,50 @@ class TestClassHasSerializationHint:
         c = _class_sym("User", decorators=[{"name": "ConfigurationProperties"}])
         assert _class_has_serialization_hint(c) is True
 
+    def test_jpa_entity_annotation(self) -> None:
+        """JPA @Entity classes are routinely Jackson-serialized as REST
+        response bodies (Spring Data JPA + Spring MVC). WI-sokaz BUG-02:
+        spring-petclinic's 6 @Entity JPA classes (Owner, Pet, Visit, Vet,
+        Specialty, PetType) dominate the Jackson serialization surface.
+        """
+        c = _class_sym("Owner", decorators=[{"name": "Entity"}])
+        assert _class_has_serialization_hint(c) is True
+
+    def test_jpa_entity_qualified_annotation(self) -> None:
+        c = _class_sym(
+            "Owner",
+            decorators=[{"name": "jakarta.persistence.Entity"}],
+        )
+        assert _class_has_serialization_hint(c) is True
+
+    def test_jpa_javax_entity_annotation(self) -> None:
+        c = _class_sym(
+            "Owner",
+            decorators=[{"name": "javax.persistence.Entity"}],
+        )
+        assert _class_has_serialization_hint(c) is True
+
+    def test_jpa_mapped_superclass_annotation(self) -> None:
+        """JPA @MappedSuperclass marks an abstract base whose accessors are
+        inherited by every @Entity subclass — Jackson reflects over those too.
+        """
+        c = _class_sym(
+            "BaseEntity",
+            decorators=[{"name": "MappedSuperclass"}],
+        )
+        assert _class_has_serialization_hint(c) is True
+
+    def test_jpa_embeddable_annotation(self) -> None:
+        """JPA @Embeddable value types (e.g. Address embedded in Owner) are
+        flattened into the parent's serialized form; Jackson reflects over
+        them just like @Entity classes.
+        """
+        c = _class_sym(
+            "Address",
+            decorators=[{"name": "Embeddable"}],
+        )
+        assert _class_has_serialization_hint(c) is True
+
     def test_unrelated_annotation_rejected(self) -> None:
         c = _class_sym("User", decorators=[{"name": "Deprecated"}])
         assert _class_has_serialization_hint(c) is False
@@ -462,6 +506,55 @@ class TestLinkJacksonDispatch:
         result = link_jackson_dispatch(_ctx([]))
         assert result.edges == []
         assert result.symbols == []
+
+    def test_jpa_entity_emits_dispatches_to_for_accessors(self) -> None:
+        """JPA @Entity classes (the spring-petclinic Owner/Pet/Vet/... shape)
+        produce dispatches_to edges to their bean accessors. WI-sokaz BUG-02.
+        """
+        owner = _class_sym(
+            "Owner",
+            path="src/main/java/com/example/Owner.java",
+            decorators=[{"name": "Entity"}],
+            span=(1, 50),
+        )
+        get_first_name = _method_sym(
+            "Owner.getFirstName",
+            path="src/main/java/com/example/Owner.java",
+            span=(10, 12),
+            signature="()",
+        )
+        set_first_name = _method_sym(
+            "Owner.setFirstName",
+            path="src/main/java/com/example/Owner.java",
+            span=(14, 16),
+            signature="(String firstName)",
+        )
+        result = link_jackson_dispatch(_ctx([owner, get_first_name, set_first_name]))
+        dsts = {e.dst for e in result.edges}
+        assert dsts == {get_first_name.id, set_first_name.id}
+        for e in result.edges:
+            assert e.src == owner.id
+            assert e.edge_type == "dispatches_to"
+
+    def test_jpa_mapped_superclass_emits_dispatches_to_for_accessors(self) -> None:
+        """JPA @MappedSuperclass abstract bases also receive dispatches_to
+        edges — Jackson reflects over inherited accessors on every concrete
+        @Entity subclass.
+        """
+        base = _class_sym(
+            "BaseEntity",
+            path="src/main/java/com/example/BaseEntity.java",
+            decorators=[{"name": "MappedSuperclass"}],
+            span=(1, 30),
+        )
+        get_id = _method_sym(
+            "BaseEntity.getId",
+            path="src/main/java/com/example/BaseEntity.java",
+            span=(10, 12),
+            signature="()",
+        )
+        result = link_jackson_dispatch(_ctx([base, get_id]))
+        assert [e.dst for e in result.edges] == [get_id.id]
 
 
 class TestConstants:
