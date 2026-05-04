@@ -1,0 +1,20 @@
+- op: create  # eb40
+  at: '2026-05-04T19:20:59Z'  # eb40
+  by: agent  # eb40
+  actor: jgstern_agent  # eb40
+  clock: 1  # eb40
+  nonce: eb40  # eb40
+  data:  # eb40
+    kind: work_item  # eb40
+    title: "Cluster E edge labels masquerading as kinds: call_site reclassify or drop (ADR-0027 Phase 3)"  # eb40
+    status: todo_soft  # eb40
+    priority: 3  # eb40
+    parent:  # eb40
+    tags:  # eb40
+    - analysis_quality  # eb40
+    isbefore: []  # eb40
+    duplicate_of: []  # eb40
+    not_duplicate_of: []  # eb40
+    pr_ref:  # eb40
+    description: "Phase 3 of ADR-0027, Cluster E. Per-value sub-case for edge-label kinds (~10 values).\n\nSub-case (a): values that name a call site or use site (call, function_call, subprocess_call, db_query, abi_call) reclassify as a new canonical 'call_site' kind, distinct from the edge's 'calls'. The producer emits Symbol-of-kind-'call_site' plus an Edge-of-edge_type-'calls'; dual representation lets consumers query 'list all call sites in this file' without traversing edges.\n\nSub-case (b): values that duplicate an edge (import, inherit, reference, write, read, include, extends) drop entirely at the producer — relationship already captured by the corresponding Edge.\n\nPer-value sub-case assignment in the cluster-E audit-findings doc at docs/audits/<NN>-symbol-kind-cluster-e-edge-label-kinds.md per the docs/audits/README.md format spec.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Phase 3\" and §\"Detailed analysis: per-cluster fold targets\" Cluster E."  # eb40
+    fields: {}  # eb40

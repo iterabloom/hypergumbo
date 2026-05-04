@@ -19,3 +19,12 @@
     pr_ref:  # d551
     description: "Phase 3 of ADR-0027, Cluster A. File audit-findings doc at docs/audits/<NN>-symbol-kind-cluster-a-language-constructs.md per the docs/audits/README.md format spec.\n\nCluster A is the canonical seed (~50 values: function, class, method, struct, interface, enum, module, variable, property, etc.). Per ADR-0027 §\"Detailed analysis: per-cluster fold targets\", all Cluster A values keep their existing form on the language_construct axis. The audit-findings doc records per-value verdicts (CANONICAL for each, with per-value rationale) so future audits have a baseline to reference.\n\nThis is the lowest-risk Phase 3 item — no producer migration is required, just the audit-findings doc.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Phase 3\"; format spec at docs/audits/README.md."  # d551
     fields: {}  # d551
+- op: update  # fc62
+  at: '2026-05-04T19:19:50Z'  # fc62
+  by: agent  # fc62
+  actor: jgstern_agent  # fc62
+  clock: 2  # fc62
+  nonce: fc62  # fc62
+  set: {}  # fc62
+  remove:  # fc62
+    isbefore: [WI-jukav-dodok-hurok-ririb-mozon-judan-nufuv-kavol]  # fc62

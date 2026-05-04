@@ -1,0 +1,20 @@
+- op: create  # df6b
+  at: '2026-05-04T19:20:57Z'  # df6b
+  by: agent  # df6b
+  actor: jgstern_agent  # df6b
+  clock: 1  # df6b
+  nonce: df6b  # df6b
+  data:  # df6b
+    kind: work_item  # df6b
+    title: "Cluster C apex/peer collapse: fn→function, var→variable, etc. (ADR-0027 Phase 3)"  # df6b
+    status: todo_soft  # df6b
+    priority: 3  # df6b
+    parent:  # df6b
+    tags:  # df6b
+    - analysis_quality  # df6b
+    isbefore: []  # df6b
+    duplicate_of: []  # df6b
+    not_duplicate_of: []  # df6b
+    pr_ref:  # df6b
+    description: "Phase 3 of ADR-0027, Cluster C. Fold apex/peer overloads to a single canonical per pair: fn → function, var → variable, proc → procedure, structure → struct.\n\nCluster C is the lowest-risk Phase 3 item: consumer-side enumerations don't change (the apex was already in the registry). Producer-side migration replaces the peer label with the apex per the cluster-C audit-findings doc.\n\nFile audit-findings doc at docs/audits/<NN>-symbol-kind-cluster-c-apex-peer-collapse.md per the docs/audits/README.md format spec. Document apex selection per pair (most-frequent-emitter wins, mirroring ADR-0023 heuristic).\n\nAffects ~5-10 producer files (the analyzers emitting peer labels). Tag with awaits_bakeoff_validation at PR merge per BVT discipline.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Phase 3\" and §\"Detailed analysis: per-cluster fold targets\" Cluster C."  # df6b
+    fields: {}  # df6b

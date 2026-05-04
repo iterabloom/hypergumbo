@@ -1,0 +1,21 @@
+- op: create  # 0c86
+  at: '2026-05-04T19:20:58Z'  # 0c86
+  by: agent  # 0c86
+  actor: jgstern_agent  # 0c86
+  clock: 1  # 0c86
+  nonce: 0c86  # 0c86
+  data:  # 0c86
+    kind: work_item  # 0c86
+    title: "Cluster D framework roles → meta['framework_role'] (ADR-0027 Phase 3)"  # 0c86
+    status: todo_hard  # 0c86
+    priority: 2  # 0c86
+    parent:  # 0c86
+    tags:  # 0c86
+    - analysis_quality  # 0c86
+    - framework_dispatch_linkers  # 0c86
+    isbefore: []  # 0c86
+    duplicate_of: []  # 0c86
+    not_duplicate_of: []  # 0c86
+    pr_ref:  # 0c86
+    description: "Phase 3 of ADR-0027, Cluster D. Fold framework-role kind values (~25 entries: event_publisher, event_subscriber, ipc_publisher, ipc_subscriber, ipc_caller, ipc_bridge_caller, objc_bridge, crypto_producer, crypto_consumer, message_sender, message_handler, mq_publisher, mq_subscriber, grpc_server, grpc_stub, websocket_endpoint, websocket_emitter, websocket_listener, dispatcher, graphql_resolver, graphql_client, http_client, route_mount, route, route_include, openapi_operation, abi_call, selector_ref, rpc, service) to canonical Cluster A construct + meta['framework_role']=<value>.\n\nWorked example: kind='event_publisher' → kind='function' (or 'method', depending on the symbol's actual construct) + meta['framework_role']='event_publisher'.\n\nThis is the largest single Phase 3 subset (~15-20 producer linkers affected). Each producer subset can ship as its own PR with its own awaits_bakeoff_validation tag per BVT discipline.\n\nFile audit-findings doc at docs/audits/<NN>-symbol-kind-cluster-d-framework-roles.md per the docs/audits/README.md format spec. The 25 values map to ~5 distinct meta key/value pairs after deduplication; exact mapping in the audit-findings doc.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Phase 3\" and §\"Detailed analysis: per-cluster fold targets\" Cluster D."  # 0c86
+    fields: {}  # 0c86
