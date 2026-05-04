@@ -1,0 +1,20 @@
+- op: create  # c718
+  at: '2026-05-04T19:16:13Z'  # c718
+  by: agent  # c718
+  actor: jgstern_agent  # c718
+  clock: 1  # c718
+  nonce: c718  # c718
+  data:  # c718
+    kind: work_item  # c718
+    title: "Migrate Symbol.kind consumers to symbol_kinds_on_axis() (ADR-0027 Phase 2)"  # c718
+    status: todo_soft  # c718
+    priority: 3  # c718
+    parent:  # c718
+    tags:  # c718
+    - analysis_quality  # c718
+    isbefore: []  # c718
+    duplicate_of: []  # c718
+    not_duplicate_of: []  # c718
+    pr_ref:  # c718
+    description: "Phase 2 of ADR-0027. Replace consumer-side hardcoded *KIND* sets with calls to symbol_kinds_on_axis() or the composed (kind, edge_type, meta) shape from ADR-0027 §3.\n\nKnown consumer surfaces from ADR-0027 §\"Phase 2\":\n- packages/hypergumbo-core/src/hypergumbo_core/ranking.py — _CALLABLE_KINDS, _NODE_KIND_WEIGHTS-shape tables\n- packages/hypergumbo-core/src/hypergumbo_core/slice.py — _CONTAINER_KINDS\n- packages/hypergumbo-core/src/hypergumbo_core/sketch.py — KEY_SYMBOL_KINDS\n- packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py — _CALLABLE_KINDS, _ROUTE_KINDS, _SEMANTIC_KINDS\n- packages/hypergumbo-core/src/hypergumbo_core/selection/filters.py — EXCLUDED_KINDS\n- packages/hypergumbo-core/src/hypergumbo_core/cli.py — _DEPENDENCY_KINDS, _NOISE_KINDS\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/registry.py — SYNTHETIC_KINDS\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/containment.py — CONTAINABLE_KINDS, CONTAINER_KINDS\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/vue_template_method.py — _HANDLER_KINDS\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/js_module.py — _EXPORTABLE_KINDS\n- packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py — _DECORATOR_KINDS\n\nPhase 1 registry landed in PR #3546. Each consumer migration is reversible: the old kind semantics produce the right answer with the new query shape. This phase can land before producer migration begins.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Phase 2\"."  # c718
+    fields: {}  # c718

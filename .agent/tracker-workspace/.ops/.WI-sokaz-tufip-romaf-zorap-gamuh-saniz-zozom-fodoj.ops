@@ -35,3 +35,20 @@
   nonce: 83c5  # 83c5
   set:  # 83c5
     priority: 2  # 83c5
+- op: update  # e19b
+  at: '2026-05-04T09:29:37Z'  # e19b
+  by: agent  # e19b
+  actor: jgstern_agent  # e19b
+  clock: 4  # e19b
+  nonce: e19b  # e19b
+  set:  # e19b
+    status: done  # e19b
+  add:  # e19b
+    tags: [awaits_bakeoff_validation]  # e19b
+- op: discuss  # 14ef
+  at: '2026-05-04T09:29:37Z'  # 14ef
+  by: agent  # 14ef
+  actor: jgstern_agent  # 14ef
+  clock: 5  # 14ef
+  nonce: 14ef  # 14ef
+  message: "Fixed in PR #3544 (commit b8e798aa0). Added Entity / MappedSuperclass / Embeddable to CLASS_LEVEL_SERIALIZATION_ANNOTATIONS in packages/hypergumbo-core/src/hypergumbo_core/linkers/jackson_dispatch.py.\n\nResolution choice: option (a) — extend coverage. The JPA mapping surface is the dominant Jackson serialization surface in Spring Data JPA + Spring MVC services (the spring-petclinic shape), and the round-03 PR-merge discussion on WI-gupah listed @Entity as a trigger; the linker omitted it. Adding the three JPA annotations matches the documented intent.\n\nProperty tests in packages/hypergumbo-core/tests/test_jackson_dispatch_linker.py cover each annotation at the serialization-hint level (test_jpa_entity_annotation, test_jpa_entity_qualified_annotation, test_jpa_javax_entity_annotation, test_jpa_mapped_superclass_annotation, test_jpa_embeddable_annotation) plus integration-shape tests verifying that bean accessors on @Entity and @MappedSuperclass classes receive dispatches_to edges (test_jpa_entity_emits_dispatches_to_for_accessors, test_jpa_mapped_superclass_emits_dispatches_to_for_accessors). 100% coverage on jackson_dispatch.py. Detection-criteria docstring updated to reflect the JPA persistence trigger.\n\nTagging awaits_bakeoff_validation per BVT discipline. Validation pending: re-run on spring-petclinic should produce dispatches_to edges for the 6 @Entity classes (Owner, Pet, Visit, Vet, Specialty, PetType) and (transitively) for any @MappedSuperclass base they extend, and is expected to flip the parent WI-gupah's UAT verdict from no_move (0/15) toward moved with >=10/15 ground-truth where >=3 are accessor methods on @Entity JPA classes per the round-03 acceptance criterion."  # 14ef
