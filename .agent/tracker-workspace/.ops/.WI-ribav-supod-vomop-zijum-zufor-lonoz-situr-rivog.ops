@@ -1,0 +1,43 @@
+- op: create  # 2853
+  at: '2026-05-03T23:38:34Z'  # 2853
+  by: agent  # 2853
+  actor: jgstern_agent  # 2853
+  clock: 1  # 2853
+  nonce: '2853'  # 2853
+  data:  # 2853
+    kind: work_item  # 2853
+    title: "Validate bakeoff-deep dispatches_to exclusion: seeds shift from interface stubs to real domain functions"  # 2853
+    status: in_progress  # 2853
+    priority: 2  # 2853
+    parent:  # 2853
+    tags:  # 2853
+    - awaits_bakeoff_validation  # 2853
+    - bakeoff_infrastructure  # 2853
+    isbefore: []  # 2853
+    duplicate_of: []  # 2853
+    not_duplicate_of: []  # 2853
+    pr_ref:  # 2853
+    description: "Excluded `dispatches_to` from `pick_reverse_slice_seeds`'s out-degree counting in `scripts/bakeoff-deep` (the prometheus genericSeriesSet.Err regression cited in the function's own comment had recurred — interface stubs picking up out=N from synthetic trait→impl edges and outranking real domain functions). 16 of 18 dispatches_to producers emit synthetic 'menu' relationships; the 2 real-dispatch producers (route_handler.py, grpc.py:790) score via the route + API-handler boosts already.\n\nValidation: next DEEP bakeoff cycle should show seed selection shifting away from interface stubs (e.g. SeriesSet.Err on prometheus, similar trait stubs on rust repos) toward real domain functions. `moved` if confirmed, `no_move` (parent-link a regression sub-item) if seeds get worse, `inconclusive` otherwise.\n\nTriggered by failed full-suite test `tests/test_bakeoff_deep_compress.py::test_pick_reverse_slice_seeds_dispatches_to_not_counted_as_out`. Fix lands via PR (number TBD)."  # 2853
+    fields: {}  # 2853
+- op: discuss  # 7a1c
+  at: '2026-05-03T23:44:20Z'  # 7a1c
+  by: agent  # 7a1c
+  actor: jgstern_agent  # 7a1c
+  clock: 2  # 7a1c
+  nonce: 7a1c  # 7a1c
+  message: "Merged as PR #3535, dev SHA c4f6e966347d."  # 7a1c
+- op: update  # bbbf
+  at: '2026-05-03T23:44:34Z'  # bbbf
+  by: agent  # bbbf
+  actor: jgstern_agent  # bbbf
+  clock: 3  # bbbf
+  nonce: bbbf  # bbbf
+  set:  # bbbf
+    status: done  # bbbf
+- op: discuss  # 931d
+  at: '2026-05-03T23:44:35Z'  # 931d
+  by: agent  # 931d
+  actor: jgstern_agent  # 931d
+  clock: 4  # 931d
+  nonce: 931d  # 931d
+  message: "Fix landed in PR #3535 (commit on dev). awaits_bakeoff_validation tag stays — next DEEP cycle should confirm seed-selection shift away from interface stubs."  # 931d

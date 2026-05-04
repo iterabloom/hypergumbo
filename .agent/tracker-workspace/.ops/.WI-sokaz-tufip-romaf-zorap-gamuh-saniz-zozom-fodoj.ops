@@ -1,0 +1,21 @@
+- op: create  # 6dd4
+  at: '2026-05-04T02:52:56Z'  # 6dd4
+  by: agent  # 6dd4
+  actor: jgstern_agent  # 6dd4
+  clock: 1  # 6dd4
+  nonce: 6dd4  # 6dd4
+  data:  # 6dd4
+    kind: work_item  # 6dd4
+    title: "jackson_dispatch linker: extend coverage to @Entity classes (UAT BUG-02)"  # 6dd4
+    status: todo_hard  # 6dd4
+    priority: 3  # 6dd4
+    parent:  # 6dd4
+    tags:  # 6dd4
+    - analysis_quality  # 6dd4
+    - framework_dispatch_linkers  # 6dd4
+    isbefore: []  # 6dd4
+    duplicate_of: []  # 6dd4
+    not_duplicate_of: []  # 6dd4
+    pr_ref:  # 6dd4
+    description: "From hg-uat-v4.0.0 directed-validation campaign (2026-05-03), master report\n§ BUG-02 (MED severity).\nMaster report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.0.0/lab-notebook/master-report.md\n\n## Symptom\n\nThe `jackson_dispatch` linker emits exactly **1** `dispatches_to` edge on\nspring-petclinic — for `Vets:class` (a JAX-B `@XmlRootElement`). The 6\n`@Entity` JPA classes (Owner, Pet, Visit, Vet, Specialty, PetType) that\ndominate the Jackson serialization surface produce **zero** edges, despite\nthe round-03 plan listing `@Entity` as a trigger annotation per the original\nPR-merge discussion on WI-gupah.\n\n## Tension to resolve\n\nEither the linker is incomplete (intended to support `@Entity` but doesn't),\nor the WI-gupah claim text overstated scope (in which case the\n`awaits_bakeoff_validation` resolution is a `done` mark on a narrower cut\nthan the plan described).\n\n## Fix scope\n\nAudit `jackson_dispatch` against the full Jackson + JAX-B + Spring + JPA\nannotation surface that triggers reflective serialization at runtime, and\neither (a) extend coverage to `@Entity` (and any other missing trigger), or\n(b) document the scope narrowing in the linker's docstring and update\nhg-uat plans / WI-gupah discussion accordingly.\n\n## Verdict-level impact\n\nFixing this is expected to flip WI-gupah's UAT verdict from `no_move` (0/15)\ntoward `moved`. WI-gupah is parented separately as the original work item;\nthis item is the regression follow-up filed per the\nbakeoff-validation-tagging-discipline lifecycle.\n\n## Acceptance\n\nA re-run of UAT round 03 against spring-petclinic passes ≥10/15 ground-truth\nwhere ≥3 of the 15 are accessor methods on `@Entity` JPA classes."  # 6dd4
+    fields: {}  # 6dd4
