@@ -693,6 +693,64 @@ def _canonical_external_id(language: str, path: str, name: str, kind: str) -> st
     return f"{language}:{path}:0-0:{name}:{kind}"
 
 
+_SYNTHETIC_SPAN = "0-0"
+
+
+def validate_symbol_id_format(symbol_id: str) -> Optional[str]:
+    """Validate a symbol id against the dual-shape format spec.
+
+    Returns ``None`` if the id is well-formed, or a string describing
+    the first violation. Used by callers that want to assert IDs they
+    receive are well-formed (load-time checks) and by property tests
+    that exercise analyzer output.
+
+    The two valid shapes are documented in ``docs/hypergumbo-spec.md``
+    §6 Identity field semantics:
+
+    - **File-path shape** ``{lang}:{file}:{N-M}:{name}:{kind}`` — slot 2
+      is a literal repo-relative path. Hyphens, slashes, and arbitrary
+      directory names are all permitted because they reflect on-disk
+      reality. Span is non-``0-0`` (real ``start-end`` lines, or the
+      whole-file sentinel ``1-1``).
+    - **Module-hint shape** ``{lang}:{module_hint}:0-0:{name}:{kind}``
+      — slot 2 is a dotted-module-form qualifier in the language's
+      import vocabulary. Span is ``0-0``.
+
+    A ``0-0``-span id whose slot-2 qualifier carries filesystem
+    segments (``packages.``, ``.src.``) or — for Python — an embedded
+    hyphen indicates an analyzer derivation bug: the producer fell
+    through from "resolve to a real source root" to "stringify the
+    file path as if it were a module name." This is the WI-davan bug
+    class, and is the only class of malformation this validator
+    rejects; other ID irregularities pass through silently.
+
+    Slot 2 may itself contain colons (e.g. ``dart:dart:io:0-0:…``
+    where the path is ``dart:io``); the parse uses the trailing
+    span/name/kind triple to identify the boundary, matching
+    :func:`_parse_dangling_id`.
+    """
+    parts = symbol_id.split(":")
+    if len(parts) < 5:
+        return None
+    span = parts[-3]
+    if span != _SYNTHETIC_SPAN:
+        return None
+    language = parts[0]
+    slot2 = ":".join(parts[1:-3])
+    if "packages." in slot2 or ".src." in slot2:
+        return (
+            f"module-hint qualifier {slot2!r} in {symbol_id!r} contains "
+            f"filesystem segments ('packages.' or '.src.') — derivation bug "
+            f"(see WI-davan)"
+        )
+    if language == "python" and "-" in slot2:
+        return (
+            f"python module-hint qualifier {slot2!r} in {symbol_id!r} contains "
+            f"a hyphen — invalid Python identifier (see WI-davan)"
+        )
+    return None
+
+
 def _canonical_external_stable_id(
     language: str, path: str, name: str, kind: str,
 ) -> str:

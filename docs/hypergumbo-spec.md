@@ -288,8 +288,10 @@ class AnalysisIR:
 
 ### Identity field semantics
 
-* `id` (location-based): `{lang}:{file}:{start_line}-{end_line}:{name}:{kind}`
-  - Changes when code moves to different file/line
+* `id` (location-based): `{lang}:{file}:{start_line}-{end_line}:{name}:{kind}` for symbols defined in source files; `{lang}:{module_hint}:0-0:{name}:{kind}` for synthetic nodes that have no real source location (external module references, unresolved import targets, boundary placeholders).
+  - **The span field discriminates which shape applies.** A real span (`{start_line}-{end_line}` with non-zero values, plus the whole-file sentinel `1-1`) means slot 2 is a *repo-relative file path* — preserved literally, including hyphens like `packages/hypergumbo-core/...`; path segments are not coerced into language-level identifiers, and a path segment that happens to be a valid identifier in the language is incidental, not contractual. The sentinel span `0-0` means slot 2 is a *dotted-module-form qualifier* in the language's import vocabulary (e.g. `python:hypergumbo_core.taxonomy:0-0:LANGUAGE_ALIASES:symbol`). The two shapes never collide because no real symbol carries a `0-0` span.
+  - A `0-0`-span ID whose slot-2 qualifier contains filesystem segments (`packages.`, `.src.`) or invalid-identifier characters (e.g. hyphens in Python module qualifiers) indicates an analyzer bug: the producer fell through from "resolve to a real source root" to "stringify the file path as if it were a module name." This shape leaked through monorepo `packages/<pkg>/src/<mod>/` layouts before WI-davan was fixed.
+  - Changes when code moves to different file/line (file-path shape) or when import resolution changes (module-hint shape)
   - Purpose: Reproducible slicing, deterministic diffs
 * `stable_id` (semantic, optional): Interface identity (signature-based), **not implementation identity**
   - 🟩 **For typed languages or annotated Python**: `sha256({kind}:{normalized_signature}:{visibility}:{decorators}:{containing_module_stable_id})`

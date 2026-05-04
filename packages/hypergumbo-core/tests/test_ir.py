@@ -5,7 +5,7 @@ from pathlib import Path
 from hypergumbo_core.ir import (
     VALID_ACCESS_MODES,
     AnalysisRun, Edge, Span, Symbol, UsageContext, create_boundary_nodes,
-    is_external_boundary,
+    is_external_boundary, validate_symbol_id_format,
 )
 from hypergumbo_lang_mainstream.py import analyze_python
 
@@ -1702,3 +1702,157 @@ class TestIsExternalBoundary:
         assert is_external_boundary(s) is False
         s.meta = {"other_key": True}
         assert is_external_boundary(s) is False
+
+
+# ==================== VALIDATE_SYMBOL_ID_FORMAT TESTS ====================
+# WI-davan: enforce the dual-shape spec from docs/hypergumbo-spec.md §6.
+
+
+def test_validate_accepts_file_path_shape_with_real_span() -> None:
+    assert validate_symbol_id_format(
+        "python:src/app.py:10-25:get_users:function"
+    ) is None
+
+
+def test_validate_accepts_file_path_shape_with_whole_file_sentinel() -> None:
+    # `1-1:file:file` is the canonical whole-file pseudo-id.
+    assert validate_symbol_id_format(
+        "python:packages/hypergumbo-core/src/hypergumbo_core/cli.py:1-1:file:file"
+    ) is None
+
+
+def test_validate_accepts_file_path_shape_with_hyphens_in_path() -> None:
+    # Hyphens in directory names (`hypergumbo-core/`) are real on-disk
+    # path segments, not module identifiers — the file-path shape must
+    # preserve them.
+    assert validate_symbol_id_format(
+        "python:packages/hypergumbo-core/src/hypergumbo_core/foo.py:5-12:bar:function"
+    ) is None
+
+
+def test_validate_accepts_module_hint_shape() -> None:
+    assert validate_symbol_id_format(
+        "python:hypergumbo_core.taxonomy:0-0:LANGUAGE_ALIASES:symbol"
+    ) is None
+
+
+def test_validate_accepts_module_hint_with_sentinel_slot2() -> None:
+    # `external` and `unresolved` are sentinel slot-2 values used as
+    # fallbacks when no module hint is recoverable. They are not the
+    # WI-davan bug.
+    assert validate_symbol_id_format(
+        "python:external:0-0:requests:unresolved"
+    ) is None
+    assert validate_symbol_id_format(
+        "python:unresolved:0-0:foo.bar:unresolved"
+    ) is None
+
+
+def test_validate_accepts_dart_io_with_colon_in_slot2() -> None:
+    # Slot 2 may contain colons (e.g. `dart:io`); the parse uses the
+    # trailing span/name/kind triple as the boundary.
+    assert validate_symbol_id_format(
+        "dart:dart:io:0-0:module:module"
+    ) is None
+
+
+def test_validate_rejects_packages_segment_in_module_hint() -> None:
+    # WI-davan canonical: `packages.<pkg>.src.<mod>` shape leaking
+    # into a module-hint slot.
+    err = validate_symbol_id_format(
+        "python:packages.hypergumbo-core.src.hypergumbo_core.taxonomy:0-0:LANGUAGE_ALIASES:symbol"
+    )
+    assert err is not None
+    assert "packages." in err
+    assert "WI-davan" in err
+
+
+def test_validate_rejects_src_dot_segment_in_module_hint() -> None:
+    err = validate_symbol_id_format(
+        "python:foo.src.bar:0-0:Quux:symbol"
+    )
+    assert err is not None
+    assert ".src." in err
+
+
+def test_validate_rejects_python_module_hint_with_hyphen() -> None:
+    # Python identifiers cannot contain hyphens. A 0-0-span Python id
+    # whose slot 2 has a hyphen is the path-stringified-as-module bug.
+    err = validate_symbol_id_format(
+        "python:my-package.foo:0-0:Bar:symbol"
+    )
+    assert err is not None
+    assert "hyphen" in err
+
+
+def test_validate_does_not_constrain_non_python_module_hint_hyphens() -> None:
+    # Other languages may legitimately have hyphens in module hints
+    # (e.g. npm package names). Only Python identifier rules are enforced.
+    assert validate_symbol_id_format(
+        "javascript:my-package:0-0:doThing:export"
+    ) is None
+
+
+def test_validate_passes_through_short_ids() -> None:
+    # Ids with fewer than 5 colon-separated parts are out of scope —
+    # this validator is narrowly the WI-davan bug class.
+    assert validate_symbol_id_format("garbage") is None
+    assert validate_symbol_id_format("a:b:c:d") is None
+
+
+def test_validate_passes_through_file_path_shape_with_packages_dot_substring() -> None:
+    # In the file-path shape, slot 2 is a literal path; the substring
+    # 'packages.' might incidentally appear (e.g. inside a directory
+    # name). The validator does not check file-path-shape ids at all.
+    # This test documents that contract.
+    assert validate_symbol_id_format(
+        "python:weird/packages.like.dir/foo.py:1-2:f:function"
+    ) is None
+
+
+def test_python_analyzer_emits_only_well_formed_ids_on_monorepo(
+    tmp_path: Path,
+) -> None:
+    """Property test: ``analyze_python`` on a synthetic
+    ``packages/<pkg>/src/<mod>/`` monorepo emits no symbols or edges
+    whose IDs violate :func:`validate_symbol_id_format`.
+
+    This is the structural enforcement the lab notebook proposed for
+    WI-davan — replacing tag-borne validation with an in-CI invariant
+    check. Catches future regressions in ``_detect_source_roots``,
+    ``_module_name_from_path``, or any analyzer that derives a
+    module-hint qualifier from a file path under a monorepo layout.
+    """
+    pkg_a = tmp_path / "packages" / "pkg-a" / "src" / "pkg_a"
+    pkg_a.mkdir(parents=True)
+    (pkg_a / "__init__.py").write_text("")
+    (pkg_a / "constants.py").write_text("X = 1\nY = 2\n")
+    (pkg_a / "core.py").write_text("def helper():\n    return 1\n")
+
+    pkg_b = tmp_path / "packages" / "pkg-b" / "src" / "pkg_b"
+    pkg_b.mkdir(parents=True)
+    (pkg_b / "__init__.py").write_text("")
+    (pkg_b / "consumer.py").write_text(
+        "from pkg_a.constants import X\n"
+        "from pkg_a.core import helper\n"
+        "def use():\n    return X + helper()\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    violations = []
+    for symbol in result.symbols:
+        err = validate_symbol_id_format(symbol.id)
+        if err is not None:
+            violations.append(f"symbol: {err}")
+    for edge in result.edges:
+        for endpoint_role, endpoint_id in (("src", edge.src), ("dst", edge.dst)):
+            err = validate_symbol_id_format(endpoint_id)
+            if err is not None:
+                violations.append(f"edge.{endpoint_role}: {err}")
+
+    assert not violations, (
+        f"analyze_python emitted {len(violations)} ill-formed IDs on a "
+        f"packages/<pkg>/src/<mod>/ monorepo (WI-davan regression). First "
+        f"few:\n  " + "\n  ".join(violations[:5])
+    )
