@@ -57,12 +57,27 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("containment-linker")
 
-# Symbol kinds that can be "contained" by a class/interface/service
+# Symbol kinds that can be "contained" by a class/interface/service.
+#
+# ADR-0027 Phase-2 audit (WI-jukav): MIXED. ``method``, ``getter``,
+# ``setter`` are Cluster A (forward-compatible). ``rpc`` is Cluster D
+# (AXIS_ENDPOINT_SHAPE) — folds to ``method`` + meta["framework_role"]="rpc"
+# in Wave 5. ``message`` is Cluster H pending. Follow-on PR
+# (WI-jukav slice 2) will dual-shape this set or split into
+# language-construct + framework-role components.
 CONTAINABLE_KINDS = frozenset({"method", "getter", "setter", "rpc", "message"})
 
 # Symbol kinds that can "contain" other symbols.
 # Includes struct/trait/enum for Rust (and Go/C/Zig structs),
 # service for proto (contains RPCs), message for proto (nested messages).
+#
+# ADR-0027 Phase-2 audit (WI-jukav): MIXED. Cluster A:
+# {class, interface, struct, trait, enum, module}. Cluster D
+# (AXIS_ENDPOINT_SHAPE): ``service`` — folds to interface/class
+# + meta["framework_role"]="service" in Wave 5. ``message`` is
+# Cluster H pending. Follow-on PR (WI-jukav slice 2) will dual-shape
+# this set; the proto-IDL containment relationship is real but
+# Wave-5-emit-shape-aware.
 CONTAINER_KINDS = frozenset({
     "class", "interface", "struct", "trait", "enum", "module",
     "service", "message",

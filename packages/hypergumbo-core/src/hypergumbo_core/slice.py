@@ -524,6 +524,12 @@ def slice_graph(
     # Container kinds that should be expanded to member methods for reverse slicing.
     # When reverse-slicing from a class/interface, we also want to find callers of
     # its methods, not just edges pointing directly to the class node.
+    #
+    # ADR-0027 Phase-2 audit (WI-jukav): every member is AXIS_LANGUAGE_CONSTRUCT
+    # (Cluster A) and stable across Phase 3. Intentionally narrower than
+    # ``linkers.containment.CONTAINER_KINDS`` (which adds ``service``, ``message``
+    # for proto IDL nesting) — slice expansion targets ``contains`` edges from
+    # OOP-style class containers, not RPC service nodes. Forward-compatible.
     _CONTAINER_KINDS = {"class", "interface", "module", "struct", "trait", "enum"}
 
     # Initialize with entry nodes

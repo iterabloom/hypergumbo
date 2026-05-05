@@ -950,6 +950,101 @@ class TestEnclosureLinker:
         assert len(results) == 1
         assert results[0][0] == "no-enclosing-test"
 
+    def test_creates_uses_edges_for_post_phase3_framework_role_shape(self):
+        """Synthetic nodes emitted in the post-Wave-5 shape — kind=function/method
+        + meta['framework_role'] — are still recognised as synthetic.
+
+        Validates the dual-shape ``_is_synthetic_node`` predicate added in
+        WI-jukav (ADR-0027 §"Phase 2"): the consumer continues to fire after
+        Cluster D producers fold framework_role labels off ``Symbol.kind``
+        and into ``Symbol.meta``.
+        """
+        from hypergumbo_core.ir import Symbol, Span
+
+        func = Symbol(
+            id="python:test.py:10-20:my_func:function",
+            name="my_func",
+            kind="function",
+            language="python",
+            path="test.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="python-ast-v1",
+            origin_run_id="test",
+        )
+
+        # Post-Wave-5 emit shape: kind="method" (canonical Cluster A
+        # construct) plus framework_role label moved to meta.
+        stub = Symbol(
+            id="grpc:test.py:15:EmailService.SendMail:method",
+            name="EmailService.SendMail",
+            kind="method",
+            language="python",
+            path="test.py",
+            span=Span(start_line=15, end_line=15, start_col=0, end_col=0),
+            origin="grpc-linker-v1",
+            origin_run_id="test",
+            meta={"framework_role": "grpc_stub"},
+        )
+
+        @register_linker("post-phase3-test", priority=50)
+        def link_post_phase3(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult(symbols=[stub])
+
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[func])
+        results = run_all_linkers(ctx)
+
+        assert len(results) == 2
+        assert results[1][0] == "enclosure"
+        enclosure_result = results[1][1]
+        assert len(enclosure_result.edges) == 1
+        edge = enclosure_result.edges[0]
+        assert edge.src == func.id
+        assert edge.dst == stub.id
+        assert edge.edge_type == "uses"
+
+    def test_post_phase3_shape_skipped_when_framework_role_unknown(self):
+        """A method with meta['framework_role'] outside SYNTHETIC_KINDS does
+        not get an enclosure edge — guards against leakage of unrelated
+        framework_role values into the synthetic-node pipeline.
+        """
+        from hypergumbo_core.ir import Symbol, Span
+
+        func = Symbol(
+            id="python:test.py:10-20:my_func:function",
+            name="my_func",
+            kind="function",
+            language="python",
+            path="test.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="python-ast-v1",
+            origin_run_id="test",
+        )
+
+        # kind=method + meta['framework_role'] that is NOT a synthetic role
+        # (e.g., a future framework_role for a different consumer pathway).
+        non_synth = Symbol(
+            id="python:test.py:15:Handler.handle:method",
+            name="Handler.handle",
+            kind="method",
+            language="python",
+            path="test.py",
+            span=Span(start_line=15, end_line=15, start_col=0, end_col=0),
+            origin="some-linker-v1",
+            origin_run_id="test",
+            meta={"framework_role": "some_other_role"},
+        )
+
+        @register_linker("non-synth-role-test", priority=50)
+        def link_non_synth(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult(symbols=[non_synth])
+
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[func])
+        results = run_all_linkers(ctx)
+
+        # No enclosure pass result — predicate rejects unknown roles.
+        assert len(results) == 1
+        assert results[0][0] == "non-synth-role-test"
+
 
 class TestLinkerPipelineAccumulation:
     """Tests that linker outputs are accumulated into ctx for subsequent linkers.

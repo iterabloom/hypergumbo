@@ -42,6 +42,12 @@ from .registry import LinkerActivation, LinkerContext, LinkerResult, register_li
 PASS_ID = make_pass_id("vue-template-method-linker")
 
 # Symbol kinds that can be template handler targets.
+#
+# ADR-0027 Phase-2 audit (WI-jukav): all members are AXIS_LANGUAGE_CONSTRUCT
+# (Cluster A) and stable across Phase 3. Vue ``@click="handleClick"``
+# bindings only resolve to source-language callables; framework-role
+# values (Cluster D) never appear as event handlers in Vue's
+# setup-script emit shape. Forward-compatible.
 _HANDLER_KINDS = frozenset({"method", "function", "getter", "setter"})
 
 

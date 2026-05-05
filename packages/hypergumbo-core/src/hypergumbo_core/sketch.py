@@ -5474,6 +5474,25 @@ def _format_symbols(
     # - Fortran/COBOL: program, subroutine
     # - VHDL: entity, architecture, component
     # - Other: struct, enum, trait, interface, protocol, object
+    # ADR-0027 Phase-2 audit (WI-jukav): MIXED axis membership.
+    # - AXIS_LANGUAGE_CONSTRUCT (Cluster A): ``function``, ``class``,
+    #   ``method``, ``constructor``, ``struct``, ``enum``, ``type``,
+    #   ``union``, ``interface``, ``trait``, ``module``, ``namespace``,
+    #   ``object``, ``macro``, ``binding`` — stable across Phase 3.
+    # - AXIS_PENDING (Clusters B/G/H — domain long-tail): ``record``,
+    #   ``abstract``, ``protocol``, ``instance``, ``derivation``,
+    #   ``input``, ``resource``, ``data``, ``variable``, ``output``,
+    #   ``provider``, ``local``, ``port``, ``table``, ``view``,
+    #   ``procedure``, ``trigger``, ``stage``, ``value``, ``theorem``,
+    #   ``inductive``, ``program``, ``subroutine``, ``entity``,
+    #   ``architecture``, ``component``, ``structure``. Audit-findings
+    #   0006/0007 (Cluster G/H) recommend canonical promotions for many
+    #   of these; the registry update is Wave 6 follow-through per
+    #   WI-runod. Until then, none of these values is scheduled for
+    #   fold/rename in Phase 3, so this set is forward-compatible —
+    #   it captures the intent "key declaration kinds across all
+    #   languages" and Phase 3 doesn't change which values populate
+    #   that intent.
     KEY_SYMBOL_KINDS = frozenset({
         # OOP languages
         "function", "class", "method", "constructor",

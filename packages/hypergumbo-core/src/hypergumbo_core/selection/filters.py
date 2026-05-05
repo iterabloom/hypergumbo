@@ -30,8 +30,24 @@ import os
 
 from ..paths import is_test_file
 
-# Symbol kinds to exclude from tiered output
-# These have high centrality but don't represent useful code
+# Symbol kinds to exclude from tiered output.
+# These have high centrality but don't represent useful code.
+#
+# ADR-0027 Phase-2 audit (WI-jukav): MIXED axis membership.
+# - AXIS_LANGUAGE_CONSTRUCT (Cluster A): ``variable``.
+# - AXIS_ENDPOINT_SHAPE (Cluster D — Wave 5 fold target):
+#   ``event_subscriber``. After Wave 5 this fires only when the
+#   producer still emits the legacy kind label, NOT when it's
+#   moved to meta["framework_role"]. Follow-on PR (WI-jukav slice 2)
+#   will dual-shape the framework-role members so the exclusion
+#   filter survives Wave 5.
+# - AXIS_PENDING (Clusters B/G/H): ``dependency``, ``devDependency``,
+#   ``file``, ``target``, ``special_target``, ``project``, ``package``,
+#   ``script``, ``module_file``, ``section``, ``code_block``, ``link``,
+#   ``npm_package``, ``class_selector``, ``id_selector``, ``keyframes``,
+#   ``media``, ``font_face``. Forward-compatibility verdict gates on
+#   per-cluster audit-findings outcomes (filed as Wave 6 follow-through
+#   in WI-runod).
 EXCLUDED_KINDS = frozenset({
     "dependency",       # package.json, pyproject.toml dependencies
     "devDependency",    # package.json dev dependencies

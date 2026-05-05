@@ -2435,6 +2435,10 @@ def _extract_decorator_edges(
             # interface, or type named "Post" is not the @Post() decorator.
             # This prevents name collision false positives (e.g., NestJS @Post()
             # resolving to a GraphQL Post data class).
+            # ADR-0027 Phase-2 audit (WI-jukav): all members are
+            # AXIS_LANGUAGE_CONSTRUCT (Cluster A) and stable across
+            # Phase 3. JS/TS decorators only resolve to callable
+            # source-language constructs. Forward-compatible.
             _DECORATOR_KINDS = {"function", "method", "arrow_function"}
             decorator_sym = global_symbols.get(dec_name)
             if decorator_sym and decorator_sym.kind not in _DECORATOR_KINDS:

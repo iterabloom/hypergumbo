@@ -650,7 +650,16 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
     return results
 
 
-# Synthetic node kinds that should be connected to enclosing functions
+# Synthetic node kinds that should be connected to enclosing functions.
+#
+# Every value here is a Cluster D framework_role per ADR-0027 (axis =
+# ``endpoint_shape``). When ADR-0027 §"Phase 3 — Cluster D" Wave 5 lands
+# (WI-habut), these will be folded to ``Symbol.kind="function"|"method"``
+# + ``Symbol.meta["framework_role"]=<value>``. To stay forward-compatible
+# across that fold without requiring a coordinated consumer/producer cut,
+# call ``_is_synthetic_node(sym)`` rather than testing
+# ``sym.kind in SYNTHETIC_KINDS`` directly — the predicate matches both
+# pre- and post-Wave-5 emit shapes.
 SYNTHETIC_KINDS = frozenset({
     "grpc_stub",
     "grpc_server",
@@ -668,6 +677,29 @@ SYNTHETIC_KINDS = frozenset({
     "subprocess_call",
     "abi_call",
 })
+
+
+def _is_synthetic_node(sym: "Symbol") -> bool:
+    """True if *sym* is a linker-synthesized framework-role node.
+
+    Forward-compatible across ADR-0027 §"Phase 3" Wave 5 (the Cluster D
+    fold tracked by WI-habut): matches both the pre-Wave-5 emit shape
+    (``Symbol.kind`` directly carries the framework-role label) and the
+    post-Wave-5 shape (``Symbol.kind`` is the canonical language
+    construct ``"function"`` or ``"method"`` and the role moves to
+    ``Symbol.meta["framework_role"]``).
+
+    Per ADR-0027 §"Phase 2", consumer migration is reversible: the old
+    semantics still produce the right answer with the new query shape,
+    so this Phase-2 dual-shape check can ship before any producer
+    migration begins.
+    """
+    if sym.kind in SYNTHETIC_KINDS:
+        return True
+    if sym.kind in {"function", "method"}:
+        meta = getattr(sym, "meta", None) or {}
+        return meta.get("framework_role") in SYNTHETIC_KINDS
+    return False
 
 
 def _connect_synthetic_to_enclosing(
@@ -691,21 +723,50 @@ def _connect_synthetic_to_enclosing(
     edges: list[Edge] = []
     seen_pairs: set[tuple[str, str]] = set()
 
+    # Pre-Phase-3 the synthetic stubs carried framework-role values in
+    # ``Symbol.kind`` (e.g. ``"grpc_stub"``), which sit outside
+    # ``find_enclosing_symbol``'s default ``kinds`` filter, so the
+    # synthetic node never matched itself as its own encloser. Post-
+    # Phase-3 (ADR-0027 §"Phase 3" Wave 5) the canonical kind is
+    # ``"function"`` or ``"method"`` and the role moves to
+    # ``Symbol.meta["framework_role"]`` — which means the synthetic
+    # node DOES match the default kinds and could be returned as its
+    # own encloser. Build an enclosing-search context that excludes
+    # the synthetic nodes from this run; only non-synthetic real
+    # callables can be enclosers.
+    synthetic_ids = {
+        s.id for s in linker_symbols
+        if hasattr(s, "kind") and _is_synthetic_node(s)
+    }
+    if synthetic_ids:
+        enclosing_ctx = LinkerContext(
+            repo_root=ctx.repo_root,
+            symbols=[s for s in ctx.symbols if s.id not in synthetic_ids],
+            edges=ctx.edges,
+            captured_symbols=ctx.captured_symbols,
+            detected_frameworks=ctx.detected_frameworks,
+            detected_languages=ctx.detected_languages,
+        )
+    else:  # pragma: no cover - defensive: no synthetics means no edges anyway
+        enclosing_ctx = ctx
+
     for sym in linker_symbols:
         # Skip non-Symbol objects (e.g., mock data in tests)
         if not hasattr(sym, "kind"):
             continue
 
-        # Only process synthetic node kinds
-        if sym.kind not in SYNTHETIC_KINDS:
+        # Only process synthetic framework-role nodes (forward-compatible
+        # with ADR-0027 §"Phase 3" Wave 5 framework_role fold).
+        if not _is_synthetic_node(sym):
             continue
 
         # Need span to find enclosing function
         if sym.span is None:  # pragma: no cover - defensive for malformed symbols
             continue
 
-        # Find enclosing function/method/class
-        enclosing = ctx.find_enclosing_symbol(sym.path, sym.span.start_line)
+        # Find enclosing function/method/class (excluding synthetic
+        # nodes themselves, which would otherwise self-match post-Phase-3).
+        enclosing = enclosing_ctx.find_enclosing_symbol(sym.path, sym.span.start_line)
         if enclosing is None:
             continue
 

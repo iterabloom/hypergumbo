@@ -877,7 +877,14 @@ def apply_common_method_name_weights(
     """
     # Count how many distinct symbols define each method name
     # Only count callable kinds (function, method) — class names are
-    # expected to repeat across modules
+    # expected to repeat across modules.
+    #
+    # ADR-0027 Phase-2 audit (WI-jukav): both members are AXIS_LANGUAGE_CONSTRUCT
+    # (Cluster A) and stable across Phase 3. The set is intentionally
+    # narrower than the entrypoints._CALLABLE_KINDS counterpart (which
+    # includes "constructor"); constructors carry the class name, so
+    # name-conflict dampening on them would penalise normal Java/C# style.
+    # Forward-compatible — no migration needed.
     _CALLABLE_KINDS = {"function", "method"}
 
     name_counts: Dict[str, int] = {}
@@ -941,6 +948,8 @@ def apply_sibling_impl_weights(
     Returns:
         Dictionary mapping symbol ID to dampened centrality score.
     """
+    # ADR-0027 Phase-2 audit (WI-jukav): see apply_common_method_name_weights
+    # above for the rationale on the narrow set. Forward-compatible.
     _CALLABLE_KINDS = {"function", "method"}
 
     # Group callable symbols by name

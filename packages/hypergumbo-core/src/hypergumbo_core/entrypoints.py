@@ -984,6 +984,11 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+# ADR-0027 Phase-2 audit (WI-jukav): all members are AXIS_LANGUAGE_CONSTRUCT
+# (Cluster A) and stable across Phase 3. Intentionally wider than
+# ``ranking._CALLABLE_KINDS`` — connectivity-fallback entrypoints can
+# legitimately be constructors (e.g., a service object's __init__ wires
+# up dependencies and forms a real graph hub). Forward-compatible.
 _CALLABLE_KINDS = frozenset({"function", "method", "constructor"})
 _MAX_CONNECTIVITY_ENTRYPOINTS = 5
 

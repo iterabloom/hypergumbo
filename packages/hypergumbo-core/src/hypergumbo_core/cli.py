@@ -6062,6 +6062,13 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
     return p
 
 
+# ADR-0027 Phase-2 audit (WI-jukav): all AXIS_PENDING (Cluster G —
+# build/config-shape). Forward-compatibility verdict gates on the
+# Cluster G audit-findings outcome (already landed in audit-findings
+# 0006 with promotions to language_construct, but the registry
+# axis-update is Wave 6 follow-through per WI-runod). Until that
+# registry update lands, this set is forward-compatible by virtue of
+# none of its values being scheduled for fold/rename in Phase 3.
 _DEPENDENCY_KINDS = frozenset({
     "dependency", "devDependency", "dev-dependency", "build-dependency",
 })
@@ -6786,6 +6793,13 @@ def run_behavior_map(
     # (.gitignore patterns, npm scripts) are typically degree-0 and add
     # noise without architectural insight.
     if not include_docs:
+        # ADR-0027 Phase-2 audit (WI-jukav): all members are AXIS_PENDING
+        # (Clusters G/H — build/config-shape and domain long-tail) or
+        # AXIS_LANGUAGE_CONSTRUCT (Cluster A — ``property``, ``label``,
+        # ``heading``, ``paragraph`` per audit-findings 0006/0007). None
+        # of these values is scheduled for fold/rename in Phase 3 producer
+        # migration; the noise-filtering semantics survive Wave 5
+        # unchanged. Forward-compatible.
         _NOISE_KINDS = frozenset({
             # Documentation / config
             "section", "table", "table_array", "code_block",

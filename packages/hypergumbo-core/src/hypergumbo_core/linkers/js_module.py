@@ -70,6 +70,14 @@ PASS_ID = make_pass_id("js-module-linker")
 _PROBE_EXTENSIONS = (".js", ".ts", ".jsx", ".tsx", ".mjs", ".mts", ".vue", ".json")
 
 # Symbol kinds that represent "exported" callable code in a JS/TS module.
+#
+# ADR-0027 Phase-2 audit (WI-jukav): all members are AXIS_LANGUAGE_CONSTRUCT
+# (Cluster A) and stable across Phase 3. JS ``export`` declarations only
+# wrap source-language constructs; framework-role values (Cluster D) are
+# emitted by separate framework linkers and reach this consumer as
+# either kind="function" / kind="method" (post-Phase-3) or via dedicated
+# framework_role meta — both already covered by the language-construct
+# subset here. Forward-compatible.
 _EXPORTABLE_KINDS = frozenset({
     "function", "method", "class", "getter", "setter", "constructor",
 })
