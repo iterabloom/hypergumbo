@@ -18,3 +18,18 @@
     pr_ref:  # f3c3
     description: "ADR-0027 Phase 1 (PR #?) shipped a closed Symbol.kind schema enum. ADR-0028 Phase 1 (PR #3549 / commit 711e273d1) retroactively relaxed it to type:'string' + x-axis-of-values map, removing the closed-enum constraint that was missing dynamic kind=f'ipc_{...}' emits at ipc.py / phoenix_ipc.py. ADR-0027's status note and 'Schema impact' section should be amended with a footnote referencing ADR-0028's Phase 1 PR so the ADR remains an accurate historical record. Editorial change only — no code."  # f3c3
     fields: {}  # f3c3
+- op: update  # b459
+  at: '2026-05-05T01:52:03Z'  # b459
+  by: agent  # b459
+  actor: jgstern_agent  # b459
+  clock: 2  # b459
+  nonce: b459  # b459
+  set:  # b459
+    status: done  # b459
+- op: discuss  # bfe5
+  at: '2026-05-05T01:52:03Z'  # bfe5
+  by: agent  # bfe5
+  actor: jgstern_agent  # bfe5
+  clock: 3  # bfe5
+  nonce: bfe5  # bfe5
+  message: "ADR-0027 Status header now references ADR-0028 in Related, and Phase 1 step #5 carries an inline schema-impact note documenting the retroactive re-open. Editorial change only; no code. Wave 0 housekeeping per WI-runod schedule."  # bfe5

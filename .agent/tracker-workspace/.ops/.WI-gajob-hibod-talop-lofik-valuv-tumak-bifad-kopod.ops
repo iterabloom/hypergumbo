@@ -25,3 +25,18 @@
   clock: 2  # 4e61
   nonce: '4e61'  # 4e61
   message: "## Standard agent autonomy applies — no needs_human_review at any stage\n\nA prior discussion on WI-runod (the cross-axis schedule) suggested this item's outcome might warrant `needs_human_review` if the audit verdict lands on \"new axis ADR.\" That framing was wrong and is being retracted.\n\n**Why:** ADRs are not on AGENTS.md's governance file list (governance is `.githooks/**`, `.agent/**`, scripts, CODEOWNERS, AUTONOMOUS_MODE, ALLOWED_WEBSITES, AGENTS.md). Files in `docs/adr/` are editorial. ADR-0028 itself was filed Draft → Accepted by an agent (during the WI-turin-pajuk audit close-out) without human pre-approval. The standard workflow is:\n\n1. Agent runs the audit (mechanical classification per ADR-0024 §\"Family-audit verdict methodology\").\n2. Agent produces `docs/audits/<NN>-cluster-b-file-shape.md` with per-value verdicts (CANONICAL / FOLD / DEPRECATE-NO-FOLD / NEW-AXIS).\n3. If the cluster's natural home is a new axis: agent files the new ADR draft + Phase 1 implementation in the same PR-group, mirroring ADR-0028's lifecycle.\n4. Human review happens at PR-merge boundary, the standard checkpoint — not at \"should we file an ADR?\"\n\n**Implication for this item:** proceed under standard agent autonomy. No needs_human_review flag at audit-time, no pre-approval before opening any new ADR that the verdict requires. The PR(s) that ship the audit doc + ADR + Phase 1 get reviewed at merge as normal."  # 4e61
+- op: update  # 1f20
+  at: '2026-05-05T02:48:26Z'  # 1f20
+  by: agent  # 1f20
+  actor: jgstern_agent  # 1f20
+  clock: 3  # 1f20
+  nonce: 1f20  # 1f20
+  set:  # 1f20
+    status: done  # 1f20
+- op: discuss  # 228c
+  at: '2026-05-05T02:48:26Z'  # 228c
+  by: agent  # 228c
+  actor: jgstern_agent  # 228c
+  clock: 4  # 228c
+  nonce: 228c  # 228c
+  message: "Audit-findings 0005 landed via PR (TBD). 17 Cluster B values: 6 CANONICAL, 10 FOLD to Cluster A + meta key, 1 DEPRECATE-NO-FOLD. No new axis ADR required. Wave 6 of WI-runod schedule covers the producer migration. WI-runod Wave 1."  # 228c

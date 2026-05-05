@@ -18,3 +18,18 @@
     pr_ref:  # 2288
     description: "Per ADR-0028 §\"Path B\" Phase 1 close-out. The L3 producer-coherence linter (scripts/check-producer-axis-coherence) surfaces 5 f-string emit sites across the three sibling axes — these are Phase-3 fold candidates, advisory not blocking.\n\nEdge.evidence_type advisories:\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/inheritance.py:250 — evidence_type=f'ast_{edge_type}' produces ast_extends, ast_implements (already canonical; advisory may be benign).\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py:608 — evidence_type=f'{ep.pattern_type}_endpoint' produces socketio_endpoint, fastapi_endpoint, native_endpoint, ws_endpoint, django_channels_endpoint (Cluster C — fold to canonical + meta['framework_dispatch']).\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/di_resolution.py:600 — evidence_type=f'di_binding:{binding.source}' (Cluster C — colon-form encodes pathway × binding source; fold to canonical + meta['framework_dispatch'] per source).\n\nSymbol.kind advisories:\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/ipc.py:495 — kind=f'ipc_{pattern.type}'\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/phoenix_ipc.py:276 — kind=f'ipc_{pattern.type}'\n(Both Cluster D under ADR-0027 — fold to function/method + meta['framework_role'] per pattern type.)\n\nEach Phase-3 cluster item references its share of these advisories. This summary item exists so a single tracker entry has the full inventory in one place. Phase 1 landed in PR #3549 / commit 711e273d1."  # 2288
     fields: {}  # 2288
+- op: update  # 770b
+  at: '2026-05-05T01:48:13Z'  # 770b
+  by: agent  # 770b
+  actor: jgstern_agent  # 770b
+  clock: 2  # 770b
+  nonce: 770b  # 770b
+  set:  # 770b
+    status: done  # 770b
+- op: discuss  # bfc5
+  at: '2026-05-05T01:48:14Z'  # bfc5
+  by: agent  # bfc5
+  actor: jgstern_agent  # bfc5
+  clock: 3  # bfc5
+  nonce: bfc5  # bfc5
+  message: "Inventory recorded in the item description itself; the L3 producer-coherence linter (scripts/check-producer-axis-coherence) is the live source of truth for new advisory sites. Each Phase-3 cluster item (WI-nunal Cluster B, WI-kagik Cluster C, WI-nibis Cluster D, WI-habut Cluster D for Symbol.kind) consumes its share of these advisories at fold time. Wave 0 housekeeping per WI-runod schedule."  # bfc5

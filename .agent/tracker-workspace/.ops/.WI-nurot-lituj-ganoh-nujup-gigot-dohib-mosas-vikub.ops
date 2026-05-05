@@ -36,3 +36,18 @@
   set: {}  # 0db6
   add:  # 0db6
     isbefore: [WI-jubak-zivih-kadif-gubub-hosor-lunan-burig-virav]  # 0db6
+- op: update  # c00f
+  at: '2026-05-05T02:30:12Z'  # c00f
+  by: agent  # c00f
+  actor: jgstern_agent  # c00f
+  clock: 4  # c00f
+  nonce: c00f  # c00f
+  set:  # c00f
+    status: done  # c00f
+- op: discuss  # 9fcc
+  at: '2026-05-05T02:30:12Z'  # 9fcc
+  by: agent  # 9fcc
+  actor: jgstern_agent  # 9fcc
+  clock: 5  # 9fcc
+  nonce: 9fcc  # 9fcc
+  message: "Audit-findings 0004 landed via PR (TBD). 110 Cluster A values, all CANONICAL + RESOLVED. WI-runod Wave 1. Note: WI-nurot's isbefore edges to WI-nunal/WI-kagik/WI-nibis/WI-jubak are now satisfied (canonical seed audit doc filed); those waves can proceed."  # 9fcc
