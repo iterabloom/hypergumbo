@@ -31,6 +31,7 @@ write an ADR vs an audit-findings document."
 | [0004](0004-evidence-type-cluster-a-canonical-inference.md) | Edge.evidence_type Cluster A — Canonical Inference Pathways | `Edge.evidence_type` | All RESOLVED |
 | [0005](0005-symbol-kind-cluster-b-file-shape.md) | Symbol.kind Cluster B — File-Shape and Package-Shape Entities | `Symbol.kind` | All UNRESOLVED |
 | [0006](0006-symbol-kind-cluster-g-build-config-shape.md) | Symbol.kind Cluster G — Build / Config-Shape Entities | `Symbol.kind` | All UNRESOLVED |
+| [0007](0007-symbol-kind-cluster-h-long-tail.md) | Symbol.kind Cluster H — Domain-Specific Long Tail | `Symbol.kind` | All UNRESOLVED |
 
 ## File format
 
