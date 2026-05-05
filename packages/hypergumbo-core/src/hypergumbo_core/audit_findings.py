@@ -31,16 +31,41 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 import yaml
 
 from hypergumbo_core.edge_types import (
-    AXIS_ENDPOINT_SHAPE,
+    AXIS_ENDPOINT_SHAPE as _EDGE_TYPE_AXIS_ENDPOINT_SHAPE,
     AXIS_RELATIONSHIP,
     EDGE_TYPES,
-    EdgeTypeSpec,
 )
+from hypergumbo_core.evidence_types import (
+    AXIS_ENDPOINT_SHAPE as _EVIDENCE_TYPE_AXIS_ENDPOINT_SHAPE,
+    AXIS_INFERENCE_PATHWAY,
+    EVIDENCE_TYPES,
+)
+from hypergumbo_core.symbol_kinds import (
+    AXIS_ENDPOINT_SHAPE as _SYMBOL_KIND_AXIS_ENDPOINT_SHAPE,
+    AXIS_LANGUAGE_CONSTRUCT,
+    SYMBOL_KINDS,
+)
+
+
+class _AxisSpec(Protocol):
+    """Duck-type protocol satisfied by EdgeTypeSpec / SymbolKindSpec / EvidenceTypeSpec.
+
+    The validator's mechanical-check predicates only consume ``name`` and
+    ``axis`` from a spec, so a structural protocol lets one validator
+    function serve all three registries without the dataclass types being
+    a sealed sum.
+    """
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def axis(self) -> str: ...
 
 
 # --- Allowed enums ---
@@ -69,13 +94,50 @@ _EXIT_CODE_RE: Final[re.Pattern[str]] = re.compile(r"^exit_code:\d+$")
 
 REQUIRED_KIND: Final[str] = "audit_verdicts"
 AXIS_EDGE_EDGE_TYPE: Final[str] = "Edge.edge_type"
+AXIS_SYMBOL_KIND: Final[str] = "Symbol.kind"
+AXIS_EDGE_EVIDENCE_TYPE: Final[str] = "Edge.evidence_type"
+
+
+@dataclass(frozen=True)
+class _AxisRegistry:
+    """Per-axis binding for the validator's mechanical-check predicates.
+
+    Each declared axis pairs (a) the live registry tuple it covers with
+    (b) the axis-name string that registry uses to mark *canonical*
+    rows and (c) the axis-name string it uses for the deprecation-window
+    *endpoint_shape* axis. Registries differ on (b) — Edge.edge_type
+    canonicals live on ``relationship``; Symbol.kind canonicals live on
+    ``language_construct``; Edge.evidence_type canonicals live on
+    ``inference_pathway`` — so the predicates parameterise over these
+    instead of hard-coding ``relationship``.
+    """
+
+    specs: tuple[_AxisSpec, ...]
+    canonical_axis: str
+    endpoint_axis: str
+
 
 # Mapping from axis identifier (declared in the YAML block) to the
-# registry tuple it covers. Future axes (Symbol.kind via ADR-0027,
-# Edge.evidence_type via ADR-0028) extend this map alongside their
-# registries.
-_REGISTRIES: Final[dict[str, tuple[EdgeTypeSpec, ...]]] = {
-    AXIS_EDGE_EDGE_TYPE: EDGE_TYPES,
+# per-axis binding. Each ADR that declares a multi-value field axis
+# (ADR-0023 Edge.edge_type, ADR-0027 Symbol.kind, ADR-0028
+# Edge.evidence_type) lands its registry import + entry here so the
+# audit-findings format can carry per-value verdicts on that axis.
+_REGISTRIES: Final[dict[str, _AxisRegistry]] = {
+    AXIS_EDGE_EDGE_TYPE: _AxisRegistry(
+        specs=EDGE_TYPES,
+        canonical_axis=AXIS_RELATIONSHIP,
+        endpoint_axis=_EDGE_TYPE_AXIS_ENDPOINT_SHAPE,
+    ),
+    AXIS_SYMBOL_KIND: _AxisRegistry(
+        specs=SYMBOL_KINDS,
+        canonical_axis=AXIS_LANGUAGE_CONSTRUCT,
+        endpoint_axis=_SYMBOL_KIND_AXIS_ENDPOINT_SHAPE,
+    ),
+    AXIS_EDGE_EVIDENCE_TYPE: _AxisRegistry(
+        specs=EVIDENCE_TYPES,
+        canonical_axis=AXIS_INFERENCE_PATHWAY,
+        endpoint_axis=_EVIDENCE_TYPE_AXIS_ENDPOINT_SHAPE,
+    ),
 }
 
 VERDICTS_HEADING_RE: Final[re.Pattern[str]] = re.compile(
@@ -302,7 +364,7 @@ def validate_against_registry(findings: AuditFindings) -> list[str]:
         ]
 
     registry = _REGISTRIES[findings.axis]
-    by_name = {spec.name: spec for spec in registry}
+    by_name = {spec.name: spec for spec in registry.specs}
     errors: list[str] = []
 
     for row in findings.verdicts:
@@ -311,12 +373,12 @@ def validate_against_registry(findings: AuditFindings) -> list[str]:
 
         if row.status == STATUS_RESOLVED:
             if row.verdict == VERDICT_CANONICAL:
-                if not (in_registry and spec.axis == AXIS_RELATIONSHIP):
+                if not (in_registry and spec.axis == registry.canonical_axis):
                     errors.append(
                         f"{findings.path}: row {row.value!r} verdict "
                         f"CANONICAL + status RESOLVED requires the "
                         f"value to be in the registry on the "
-                        f"'relationship' axis; current state: "
+                        f"{registry.canonical_axis!r} axis; current state: "
                         f"{_describe_state(spec)}",
                     )
             else:
@@ -328,11 +390,11 @@ def validate_against_registry(findings: AuditFindings) -> list[str]:
                         f"currently present on axis {spec.axis!r}",
                     )
         elif row.status == STATUS_PRELIM_RESOLVED:
-            if not (in_registry and spec.axis == AXIS_ENDPOINT_SHAPE):
+            if not (in_registry and spec.axis == registry.endpoint_axis):
                 errors.append(
                     f"{findings.path}: row {row.value!r} status "
                     f"PRELIM_RESOLVED requires the value to be in "
-                    f"the registry on the 'endpoint_shape' axis; "
+                    f"the registry on the {registry.endpoint_axis!r} axis; "
                     f"current state: {_describe_state(spec)}",
                 )
         else:  # UNRESOLVED
@@ -346,7 +408,7 @@ def validate_against_registry(findings: AuditFindings) -> list[str]:
     return errors
 
 
-def _describe_state(spec: EdgeTypeSpec | None) -> str:
+def _describe_state(spec: _AxisSpec | None) -> str:
     if spec is None:
         return "absent from registry"
     return f"present on axis {spec.axis!r}"

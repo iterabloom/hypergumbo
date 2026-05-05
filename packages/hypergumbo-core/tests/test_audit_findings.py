@@ -16,6 +16,8 @@ import pytest
 
 from hypergumbo_core.audit_findings import (
     AXIS_EDGE_EDGE_TYPE,
+    AXIS_EDGE_EVIDENCE_TYPE,
+    AXIS_SYMBOL_KIND,
     AuditFindings,
     AuditFindingsError,
     DiagnosticTest,
@@ -560,13 +562,94 @@ def test_validate_canonical_resolved_absent_fails(tmp_path: Path):
 
 def test_validate_unknown_axis_returns_error(tmp_path: Path):
     text = _good_doc().replace(
-        f"axis: {AXIS_EDGE_EDGE_TYPE}", "axis: Symbol.kind",
+        f"axis: {AXIS_EDGE_EDGE_TYPE}", "axis: Ferret.feature",
     )
     md = _write(tmp_path, text)
     findings = parse_audit_findings(md)
     errors = validate_against_registry(findings)
     assert len(errors) == 1
     assert "no\n  registry mapping" in errors[0] or "no registry mapping" in errors[0]
+
+
+def test_validate_canonical_resolved_symbol_kind_passes(tmp_path: Path):
+    """Symbol.kind canonicals live on the language_construct axis."""
+    text = f"""# Symbol kind audit
+
+## Verdicts
+
+```yaml
+kind: audit_verdicts
+axis: {AXIS_SYMBOL_KIND}
+verdicts:
+  - value: function
+    verdict: CANONICAL
+    fold_target: null
+    status: RESOLVED
+    diagnostic_test:
+      cmd: "true"
+      expect: exit_code:0
+    rationale: "Cluster A canonical language construct."
+```
+"""
+    md = _write(tmp_path, text)
+    findings = parse_audit_findings(md)
+    assert validate_against_registry(findings) == []
+
+
+def test_validate_canonical_resolved_symbol_kind_off_axis_fails(tmp_path: Path):
+    """A Symbol.kind value present on endpoint_shape (not language_construct)
+    fails the CANONICAL+RESOLVED predicate; the failure message names the
+    axis-specific canonical axis (language_construct), not the edge-type
+    default (relationship).
+    """
+    text = f"""# Symbol kind audit
+
+## Verdicts
+
+```yaml
+kind: audit_verdicts
+axis: {AXIS_SYMBOL_KIND}
+verdicts:
+  - value: event_publisher
+    verdict: CANONICAL
+    fold_target: null
+    status: RESOLVED
+    diagnostic_test:
+      cmd: "true"
+      expect: exit_code:0
+    rationale: "Wrong axis — should fail."
+```
+"""
+    md = _write(tmp_path, text)
+    findings = parse_audit_findings(md)
+    errors = validate_against_registry(findings)
+    assert len(errors) == 1
+    assert "language_construct" in errors[0]
+
+
+def test_validate_canonical_resolved_evidence_type_passes(tmp_path: Path):
+    """Edge.evidence_type canonicals live on the inference_pathway axis."""
+    text = f"""# Evidence type audit
+
+## Verdicts
+
+```yaml
+kind: audit_verdicts
+axis: {AXIS_EDGE_EVIDENCE_TYPE}
+verdicts:
+  - value: ast_call
+    verdict: CANONICAL
+    fold_target: null
+    status: RESOLVED
+    diagnostic_test:
+      cmd: "true"
+      expect: exit_code:0
+    rationale: "Cluster A canonical inference pathway."
+```
+"""
+    md = _write(tmp_path, text)
+    findings = parse_audit_findings(md)
+    assert validate_against_registry(findings) == []
 
 
 def test_validate_fold_resolved_absent_passes():
