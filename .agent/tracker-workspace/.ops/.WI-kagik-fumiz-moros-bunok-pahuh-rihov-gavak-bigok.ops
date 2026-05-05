@@ -1,0 +1,21 @@
+- op: create  # 930f
+  at: '2026-05-05T00:17:35Z'  # 930f
+  by: agent  # 930f
+  actor: jgstern_agent  # 930f
+  clock: 1  # 930f
+  nonce: 930f  # 930f
+  data:  # 930f
+    kind: work_item  # 930f
+    title: "Cluster C: fold framework-specific evidence types to canonical + meta['framework_dispatch'] (ADR-0028 Phase 3)"  # 930f
+    status: todo_hard  # 930f
+    priority: 3  # 930f
+    parent:  # 930f
+    tags:  # 930f
+    - analysis_quality  # 930f
+    - framework_dispatch_linkers  # 930f
+    isbefore: []  # 930f
+    duplicate_of: []  # 930f
+    not_duplicate_of: []  # 930f
+    pr_ref:  # 930f
+    description: "Per ADR-0028 Phase 3 Cluster C. File docs/audits/<NN>-evidence-type-cluster-c-framework-dispatch.md with per-row mapping. Migrate ~54 framework-prefixed evidence types (django_orm_dispatch, kafka_streams_dispatch, phoenix_event_match, nestjs_module_registration, vue_event_handler, etc.) to canonical inference label + meta['framework_dispatch']=<value>. Largest of the four Phase-3 subsets (~30 producer modules). Per-framework sub-PRs each ship as their own awaits_bakeoff_validation PR. Estimated 5-8 days alone. Open follow-on (ADR-0028 Open Question 2): if meta['framework_dispatch'] hits the recurrence-promotion threshold (~30 distinct values across ~30 producer modules), file a follow-on to promote it to a dedicated Edge.framework: str | None field. Tags: analysis_quality, framework_dispatch_linkers."  # 930f
+    fields: {}  # 930f

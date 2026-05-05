@@ -1,0 +1,20 @@
+- op: create  # 6926
+  at: '2026-05-05T00:18:14Z'  # 6926
+  by: agent  # 6926
+  actor: jgstern_agent  # 6926
+  clock: 1  # 6926
+  nonce: '6926'  # 6926
+  data:  # 6926
+    kind: work_item  # 6926
+    title: "Cluster D: collapse call-construct peers to canonical apex + meta['call_construct'] (ADR-0028 Phase 3)"  # 6926
+    status: todo_hard  # 6926
+    priority: 3  # 6926
+    parent:  # 6926
+    tags:  # 6926
+    - analysis_quality  # 6926
+    isbefore: []  # 6926
+    duplicate_of: []  # 6926
+    not_duplicate_of: []  # 6926
+    pr_ref:  # 6926
+    description: "Per ADR-0028 Phase 3 Cluster D. File docs/audits/<NN>-evidence-type-cluster-d-call-construct.md with apex selection and per-peer call_construct enumeration. Migrate ~28 call-construct evidence types (function_call, method_call, function_application, typed_receiver_call, ambiguous_method_call, pipe_call, bare_method_call, etc.) to canonical apex (likely ast_call per ADR-0028 Open Question 1) + meta['call_construct'] in {function, method, application, pipe, ...}. Decision required (ADR-0028 Open Question 1): apex name. ast_call (symmetry with ast_*) vs function_call (most-frequent emitter, 38 occurrences). Cluster D audit-findings doc decides. ~25 producer modules affected. Per-language sub-PRs. Tag: analysis_quality."  # 6926
+    fields: {}  # 6926

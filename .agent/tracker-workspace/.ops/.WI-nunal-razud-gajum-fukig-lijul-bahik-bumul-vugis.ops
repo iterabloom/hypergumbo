@@ -1,0 +1,20 @@
+- op: create  # 4806
+  at: '2026-05-05T00:16:46Z'  # 4806
+  by: agent  # 4806
+  actor: jgstern_agent  # 4806
+  clock: 1  # 4806
+  nonce: '4806'  # 4806
+  data:  # 4806
+    kind: work_item  # 4806
+    title: "Cluster B: fold *_unresolved evidence types to canonical + is_resolved=False (ADR-0028 Phase 3)"  # 4806
+    status: todo_hard  # 4806
+    priority: 3  # 4806
+    parent:  # 4806
+    tags:  # 4806
+    - analysis_quality  # 4806
+    isbefore: []  # 4806
+    duplicate_of: []  # 4806
+    not_duplicate_of: []  # 4806
+    pr_ref:  # 4806
+    description: "Per ADR-0028 Phase 3 Cluster B. File docs/audits/<NN>-evidence-type-cluster-b-resolution-status.md with per-row fold target. Migrate ~18 *_unresolved / unresolved_* producer emit sites to set evidence_type to canonical inference label + Edge.is_resolved=False. Mechanical pattern; smallest blast radius of the four clusters. Worked examples: ast_annotation_unresolved → ast_annotation + is_resolved=False; ast_decorator_unresolved → ast_decorator + is_resolved=False; unresolved_method_call → method_call (or post-collapse ast_call) + is_resolved=False; luajit_ffi_unresolved may need new canonical (e.g. luajit_ffi_lookup) — audit decides. Tag: analysis_quality."  # 4806
+    fields: {}  # 4806

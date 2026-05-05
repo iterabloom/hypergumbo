@@ -1,0 +1,20 @@
+- op: create  # 82d3
+  at: '2026-05-05T00:15:45Z'  # 82d3
+  by: agent  # 82d3
+  actor: jgstern_agent  # 82d3
+  clock: 1  # 82d3
+  nonce: 82d3  # 82d3
+  data:  # 82d3
+    kind: work_item  # 82d3
+    title: "Cluster A: file canonical inference-pathway audit-findings doc (ADR-0028 Phase 3)"  # 82d3
+    status: todo_hard  # 82d3
+    priority: 3  # 82d3
+    parent:  # 82d3
+    tags:  # 82d3
+    - analysis_quality  # 82d3
+    isbefore: []  # 82d3
+    duplicate_of: []  # 82d3
+    not_duplicate_of: []  # 82d3
+    pr_ref:  # 82d3
+    description: "Per ADR-0028 Phase 3 Cluster A. File docs/audits/<NN>-evidence-type-cluster-a-canonical-inference.md with per-value verdict for ~107 inference_pathway-axis evidence types (ast_*, scip_*, naming_convention, tree_sitter, etc.). No producer changes — these values stay on inference_pathway. The audit-findings doc records canonical-form rationale plus any apex/peer collapses surfaced from Cluster D's analysis. Phase 1 landed in PR #3549 / commit 711e273d1."  # 82d3
+    fields: {}  # 82d3
