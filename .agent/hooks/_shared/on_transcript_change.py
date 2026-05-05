@@ -19,7 +19,7 @@ Configuration (environment variables):
   TRANSCRIPT_DISTILL_MODEL  — model for goal distillation (default: mistralai/mistral-small-3.2-24b-instruct)
   TRANSCRIPT_SELECT_MODEL   — model for playbook selection with reasoning (default: mistralai/mistral-small-2603)
   TRANSCRIPT_MAX_TOKENS     — token budget for transcript window (default: 4000)
-  TRANSCRIPT_DEDUP_TOKENS   — suppress re-injection within this many tokens (default: 50000)
+  TRANSCRIPT_DEDUP_TOKENS   — suppress re-injection within this many tokens (default: 200000)
 """
 
 import contextlib
@@ -143,7 +143,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DISTILL_MODEL = os.environ.get("TRANSCRIPT_DISTILL_MODEL", "mistralai/mistral-small-3.2-24b-instruct")
 SELECT_MODEL = os.environ.get("TRANSCRIPT_SELECT_MODEL", "mistralai/mistral-small-2603")
 MAX_TOKENS = int(os.environ.get("TRANSCRIPT_MAX_TOKENS", "4000"))
-DEDUP_TOKENS = int(os.environ.get("TRANSCRIPT_DEDUP_TOKENS", "100000"))
+DEDUP_TOKENS = int(os.environ.get("TRANSCRIPT_DEDUP_TOKENS", "200000"))
 CHARS_PER_TOKEN = 4.4
 
 # Training data collection: log LLM inputs/outputs for future local model finetuning.
