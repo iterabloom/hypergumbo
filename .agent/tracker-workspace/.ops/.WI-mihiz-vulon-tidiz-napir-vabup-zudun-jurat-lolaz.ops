@@ -18,3 +18,12 @@
     pr_ref:  # d5b4
     description: "Phase 3 of ADR-0027, Cluster F. component_ref is dst-kind leakage of the same shape ADR-0023 caught for imports_component. Fold: component_ref → reference + dst.kind == 'component'.\n\nOther Cluster F values (component, slot, prop, view) stay on language_construct (genuinely syntactic constructs in Vue / Svelte / Astro). component_file is Cluster B (file-shape).\n\nFile audit-findings doc at docs/audits/<NN>-symbol-kind-cluster-f-component-refs.md per the docs/audits/README.md format spec. Per-value verdicts in the audit-findings.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Phase 3\" and §\"Detailed analysis: per-cluster fold targets\" Cluster F."  # d5b4
     fields: {}  # d5b4
+- op: update  # 2002
+  at: '2026-05-04T19:25:29Z'  # 2002
+  by: agent  # 2002
+  actor: jgstern_agent  # 2002
+  clock: 2  # 2002
+  nonce: '2002'  # 2002
+  set: {}  # 2002
+  add:  # 2002
+    isbefore: [WI-tikuh-runip-bibub-safof-favov-sijih-buran-fosad]  # 2002

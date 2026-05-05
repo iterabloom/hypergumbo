@@ -1,0 +1,20 @@
+- op: create  # 0020
+  at: '2026-05-04T19:25:58Z'  # 0020
+  by: agent  # 0020
+  actor: jgstern_agent  # 0020
+  clock: 1  # 0020
+  nonce: '0020'  # 0020
+  data:  # 0020
+    kind: work_item  # 0020
+    title: "Sequence Phase 3 producer migrations between ADR-0027 and ADR-0028 (open question 5)"  # 0020
+    status: todo_soft  # 0020
+    priority: 4  # 0020
+    parent:  # 0020
+    tags:  # 0020
+    - analysis_quality  # 0020
+    isbefore: []  # 0020
+    duplicate_of: []  # 0020
+    not_duplicate_of: []  # 0020
+    pr_ref:  # 0020
+    description: "Per ADR-0027 §\"Open questions\" #5. Both ADR-0027 (Symbol.kind) and ADR-0028 (Edge.evidence_type, draft) depend on axis_drift.find_drift and the audit-findings filing convention; both will land registries that share the JSON Schema extension.\n\nPhasing: Phase 1 of either can land independently (ADR-0027 Phase 1 landed in PR #3546). Phase 3 producer migrations may benefit from sequencing — do the cluster with the smallest blast radius first across both axes.\n\nOpen task: when ADR-0028 Phase 1 lands, audit the cross-axis blast-radius matrix (Cluster D + evidence_type clusters) and propose a sequencing schedule that minimizes producer-file thrash. Tracked at the parent ADRs; the work-item chain for each axis's migration phases is filed once both Phase 1s land.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Open questions\" #5."  # 0020
+    fields: {}  # 0020

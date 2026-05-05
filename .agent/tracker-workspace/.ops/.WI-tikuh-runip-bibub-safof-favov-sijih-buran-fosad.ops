@@ -1,0 +1,29 @@
+- op: create  # c133
+  at: '2026-05-04T19:25:27Z'  # c133
+  by: agent  # c133
+  actor: jgstern_agent  # c133
+  clock: 1  # c133
+  nonce: c133  # c133
+  data:  # c133
+    kind: work_item  # c133
+    title: "Phase 4a: Mark Symbol.kind endpoint_shape values as x-deprecated (ADR-0027)"  # c133
+    status: todo_soft  # c133
+    priority: 4  # c133
+    parent:  # c133
+    tags:  # c133
+    - analysis_quality  # c133
+    isbefore: []  # c133
+    duplicate_of: []  # c133
+    not_duplicate_of: []  # c133
+    pr_ref:  # c133
+    description: "Phase 4a of ADR-0027. Add x-deprecated annotation to docs/schema.json for every Symbol.kind value classified as endpoint_shape in the canonical registry. Values stay valid in the enum during the deprecation window. SCHEMA_VERSION minor bump (0.4.x → 0.5.0) marks the announcement.\n\nPer-value migration guidance lives in the registry's SymbolKindSpec.description (already populated in Phase 1). Update scripts/generate-schema to read spec.description and emit it alongside x-deprecated when the value's axis is endpoint_shape.\n\nMirrors ADR-0023's Phase 4a additive shape.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Phase 4 — schema bump and deprecation removal\"."  # c133
+    fields: {}  # c133
+- op: update  # daf5
+  at: '2026-05-04T19:25:29Z'  # daf5
+  by: agent  # daf5
+  actor: jgstern_agent  # daf5
+  clock: 2  # daf5
+  nonce: daf5  # daf5
+  set: {}  # daf5
+  add:  # daf5
+    isbefore: [WI-butol-muvog-gulap-hanig-hanuh-foduh-puzad-vonom]  # daf5

@@ -1,0 +1,20 @@
+- op: create  # 78ef
+  at: '2026-05-04T19:25:57Z'  # 78ef
+  by: agent  # 78ef
+  actor: jgstern_agent  # 78ef
+  clock: 1  # 78ef
+  nonce: 78ef  # 78ef
+  data:  # 78ef
+    kind: work_item  # 78ef
+    title: "Establish axis_meta_keys.py parallel registry for Symbol.meta keys (ADR-0027 open question 4)"  # 78ef
+    status: todo_soft  # 78ef
+    priority: 4  # 78ef
+    parent:  # 78ef
+    tags:  # 78ef
+    - analysis_quality  # 78ef
+    isbefore: []  # 78ef
+    duplicate_of: []  # 78ef
+    not_duplicate_of: []  # 78ef
+    pr_ref:  # 78ef
+    description: "Per ADR-0027 §\"Open questions\" #4 and ADR-0024 §\"Fold-residue discipline\" rule 3 (recurrence-promotion threshold).\n\nPhase 1 of ADR-0027 implicitly establishes meta['framework_role'] as a recognized convention (the Cluster D fold target). Once a second meta key promotion candidate is identified — e.g., a future Phase 3 audit-findings doc proposes a new meta key, or ADR-0028's Edge.evidence_type fold introduces meta['resolution_quality'] — the recurrence-promotion threshold fires and a parallel axis_meta_keys.py registry should be established.\n\nDefer until the second candidate appears; until then, file as P4 backlog. The registry shape mirrors edge_types.py / symbol_kinds.py: Final[tuple[MetaKeySpec, ...]] with name, axis, description.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Open questions\" #4; docs/adr/0024-axis-declaration-template.md §\"Fold-residue discipline\" rule 3."  # 78ef
+    fields: {}  # 78ef

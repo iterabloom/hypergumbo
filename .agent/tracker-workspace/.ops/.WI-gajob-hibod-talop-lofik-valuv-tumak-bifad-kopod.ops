@@ -1,0 +1,20 @@
+- op: create  # e677
+  at: '2026-05-04T19:22:55Z'  # e677
+  by: agent  # e677
+  actor: jgstern_agent  # e677
+  clock: 1  # e677
+  nonce: e677  # e677
+  data:  # e677
+    kind: work_item  # e677
+    title: "Cluster B file-shape entities: separate-axis vs canonical (ADR-0027 Phase 3)"  # e677
+    status: todo_soft  # e677
+    priority: 4  # e677
+    parent:  # e677
+    tags:  # e677
+    - analysis_quality  # e677
+    isbefore: []  # e677
+    duplicate_of: []  # e677
+    not_duplicate_of: []  # e677
+    pr_ref:  # e677
+    description: "Phase 3 of ADR-0027, Cluster B. File-shape entities (~12 values: file, library, dependency, package, executable, program, project, module_file, component_file, npm_package, composer_package, main_entry, bin, library_export, export_entry, wasm_module, tsconfig, script).\n\nThese are NOT language constructs in the same sense as Cluster A. Two options for resolution:\n(a) park them on pending_classification and file a follow-on ADR declaring a Symbol.shape or Symbol.role axis for file-shape entities; or\n(b) fold them into Cluster A by treating 'file' as a language construct in its own right (the file is a syntactic unit at the document level).\n\nThe fold-residue discipline (ADR-0024 §\"Fold-residue discipline\" rule 2) suggests option (a) — a property describing a different axis routes to that axis, not into meta. Decision deferred to the cluster-B audit-findings doc.\n\nFile audit-findings doc at docs/audits/<NN>-symbol-kind-cluster-b-file-shape.md per the docs/audits/README.md format spec.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Phase 3\" Cluster B and §\"Risks\" file-shape question."  # e677
+    fields: {}  # e677

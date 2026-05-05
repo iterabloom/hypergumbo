@@ -1,0 +1,20 @@
+- op: create  # de7e
+  at: '2026-05-04T19:22:57Z'  # de7e
+  by: agent  # de7e
+  actor: jgstern_agent  # de7e
+  clock: 1  # de7e
+  nonce: de7e  # de7e
+  data:  # de7e
+    kind: work_item  # de7e
+    title: "Cluster H domain long-tail per-value audit (ADR-0027 Phase 3)"  # de7e
+    status: todo_soft  # de7e
+    priority: 4  # de7e
+    parent:  # de7e
+    tags:  # de7e
+    - analysis_quality  # de7e
+    isbefore: []  # de7e
+    duplicate_of: []  # de7e
+    not_duplicate_of: []  # de7e
+    pr_ref:  # de7e
+    description: "Phase 3 of ADR-0027, Cluster H. Domain-specific long-tail values (~70+: section, paragraph, code_block, diagram, plot, yield, for_loop, conditional, declaration, prefix, base, query, entry, task, python_task, addtask, entity, architecture, error_set, participant, state, model, fragment, partial, provider, local, style_block, permission, keyframes, media, font_face, class_selector, id_selector, etc.).\n\nThe cluster-H audit-findings doc is expected to be the longest of the series. Many values are domain-vocabulary nouns that read fine as language_construct (code_block, paragraph, diagram for documentation languages); a non-trivial subset are leakage of the Cluster-D / -E shape (handler, signal, model, entity).\n\nPer-value audit. File audit-findings doc at docs/audits/<NN>-symbol-kind-cluster-h-long-tail.md per the docs/audits/README.md format spec. Per-value verdicts (CANONICAL / FOLD / DEPRECATE-NO-FOLD per ADR-0024 §\"Family-audit verdict methodology\") in the audit-findings.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Phase 3\" Cluster H and §\"Risks\" long-tail."  # de7e
+    fields: {}  # de7e

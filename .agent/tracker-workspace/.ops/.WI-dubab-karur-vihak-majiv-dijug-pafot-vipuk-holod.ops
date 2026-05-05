@@ -1,0 +1,20 @@
+- op: create  # 5cf6
+  at: '2026-05-04T19:22:56Z'  # 5cf6
+  by: agent  # 5cf6
+  actor: jgstern_agent  # 5cf6
+  clock: 1  # 5cf6
+  nonce: 5cf6  # 5cf6
+  data:  # 5cf6
+    kind: work_item  # 5cf6
+    title: "Cluster G build/config-shape: separate-axis or demote (ADR-0027 Phase 3)"  # 5cf6
+    status: todo_soft  # 5cf6
+    priority: 4  # 5cf6
+    parent:  # 5cf6
+    tags:  # 5cf6
+    - analysis_quality  # 5cf6
+    isbefore: []  # 5cf6
+    duplicate_of: []  # 5cf6
+    not_duplicate_of: []  # 5cf6
+    pr_ref:  # 5cf6
+    description: "Phase 3 of ADR-0027, Cluster G. Build / config-shape entities (~24 values: test, work_item, target, recipe, env_var, build_arg, exposed_port, stage, requirement, editable, url_requirement, setting, config, derivation, special_target, dependency, devDependency, dev-dependency, build-dependency, addtask, python_task, task, trigger, test_case).\n\nAlmost certainly a separate axis (a Makefile target is structurally different from a Python function). Cluster-G audit-findings doc decides between:\n(a) declare a Symbol.role or Symbol.config_shape sibling axis vs.\n(b) demote these entirely (e.g., a Makefile target may be better represented as a SymbolID with no language-level kind, depending on whether downstream consumers ever query it as a language construct).\n\nFile audit-findings doc at docs/audits/<NN>-symbol-kind-cluster-g-build-config-shape.md per the docs/audits/README.md format spec.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Phase 3\" Cluster G."  # 5cf6
+    fields: {}  # 5cf6

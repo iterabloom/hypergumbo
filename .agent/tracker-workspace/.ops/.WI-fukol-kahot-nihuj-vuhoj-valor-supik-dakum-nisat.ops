@@ -1,0 +1,20 @@
+- op: create  # b638
+  at: '2026-05-05T00:08:59Z'  # b638
+  by: agent  # b638
+  actor: jgstern_agent  # b638
+  clock: 1  # b638
+  nonce: b638  # b638
+  data:  # b638
+    kind: work_item  # b638
+    title: "Migrate Edge.evidence_type consumers to evidence_types_on_axis() / Edge.is_resolved query shape (ADR-0028 Phase 2)"  # b638
+    status: todo_soft  # b638
+    priority: 3  # b638
+    parent:  # b638
+    tags:  # b638
+    - analysis_quality  # b638
+    isbefore: []  # b638
+    duplicate_of: []  # b638
+    not_duplicate_of: []  # b638
+    pr_ref:  # b638
+    description: "Per ADR-0028 §\"Phase 2 — migrate consumers\". Replace hardcoded evidence_type set membership in consumers with axis-aware queries: evidence_types_on_axis(AXIS_INFERENCE_PATHWAY) for canonical-pathway sets, edge.is_resolved checks for resolution-status filtering, edge.meta lookups for framework-dispatch / call-construct context.\n\nKnown consumer surfaces (audit during Phase 1 land surfaced these): packages/hypergumbo-core/src/hypergumbo_core/taint.py (already had cross-field bug fixed alongside ADR-0023 Phase 1), io_boundary.py (IO boundary detection may filter on resolution status), slice.py (slice membership rules likely filter on resolution status), ranking.py (centrality weights may discount unresolved edges). Audit notebook at ~/hypergumbo_lab_notebook/concept-audit-sweep_2026-04-30.md lists additional consumer sites. Each consumer migration is reversible: the old *_unresolved set semantics still produce the right answer with the new (is_resolved=False) query shape.\n\nEstimated effort: 1-2 days, comparable to ADR-0023 Phase 2.\n\nPhase 1 landed in PR #3549 (commit 711e273d1)."  # b638
+    fields: {}  # b638

@@ -18,3 +18,39 @@
     pr_ref:  # df6b
     description: "Phase 3 of ADR-0027, Cluster C. Fold apex/peer overloads to a single canonical per pair: fn → function, var → variable, proc → procedure, structure → struct.\n\nCluster C is the lowest-risk Phase 3 item: consumer-side enumerations don't change (the apex was already in the registry). Producer-side migration replaces the peer label with the apex per the cluster-C audit-findings doc.\n\nFile audit-findings doc at docs/audits/<NN>-symbol-kind-cluster-c-apex-peer-collapse.md per the docs/audits/README.md format spec. Document apex selection per pair (most-frequent-emitter wins, mirroring ADR-0023 heuristic).\n\nAffects ~5-10 producer files (the analyzers emitting peer labels). Tag with awaits_bakeoff_validation at PR merge per BVT discipline.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Phase 3\" and §\"Detailed analysis: per-cluster fold targets\" Cluster C."  # df6b
     fields: {}  # df6b
+- op: update  # 76ad
+  at: '2026-05-04T19:24:27Z'  # 76ad
+  by: agent  # 76ad
+  actor: jgstern_agent  # 76ad
+  clock: 2  # 76ad
+  nonce: 76ad  # 76ad
+  set: {}  # 76ad
+  add:  # 76ad
+    isbefore: [WI-habut-diziv-jahuv-gimub-kipus-rosaj-nukol-gujil]  # 76ad
+- op: update  # 5d15
+  at: '2026-05-04T19:24:27Z'  # 5d15
+  by: agent  # 5d15
+  actor: jgstern_agent  # 5d15
+  clock: 3  # 5d15
+  nonce: 5d15  # 5d15
+  set: {}  # 5d15
+  add:  # 5d15
+    isbefore: [WI-zarov-nosin-fokum-vofom-kazum-kinir-lijof-lihud]  # 5d15
+- op: update  # b4ff
+  at: '2026-05-04T19:24:27Z'  # b4ff
+  by: agent  # b4ff
+  actor: jgstern_agent  # b4ff
+  clock: 4  # b4ff
+  nonce: b4ff  # b4ff
+  set: {}  # b4ff
+  add:  # b4ff
+    isbefore: [WI-mihiz-vulon-tidiz-napir-vabup-zudun-jurat-lolaz]  # b4ff
+- op: update  # cbc5
+  at: '2026-05-04T19:25:29Z'  # cbc5
+  by: agent  # cbc5
+  actor: jgstern_agent  # cbc5
+  clock: 5  # cbc5
+  nonce: cbc5  # cbc5
+  set: {}  # cbc5
+  add:  # cbc5
+    isbefore: [WI-tikuh-runip-bibub-safof-favov-sijih-buran-fosad]  # cbc5
