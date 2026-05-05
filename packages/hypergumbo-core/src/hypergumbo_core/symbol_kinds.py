@@ -302,7 +302,13 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("component", AXIS_LANGUAGE_CONSTRUCT,
                    "Component declaration (Vue / Svelte / Astro / React)."),
     SymbolKindSpec("component_ref", AXIS_ENDPOINT_SHAPE,
-                   "Inline component reference. Fold to reference + dst.kind == 'component'."),
+                   "Cluster F dst-kind leakage per audit-findings 0011: "
+                   "DEPRECATE-NO-FOLD (PRELIM_RESOLVED). Three producers "
+                   "(vue.py / svelte.py / astro.py) drop the per-reference "
+                   "Symbol; the companion imports Edge re-routes src to "
+                   "make_file_id and carries component_name + source_path "
+                   "in meta. Registry entry stays through the Phase 4a "
+                   "deprecation window."),
     SymbolKindSpec("view", AXIS_LANGUAGE_CONSTRUCT,
                    "View declaration (MVC / template languages)."),
 

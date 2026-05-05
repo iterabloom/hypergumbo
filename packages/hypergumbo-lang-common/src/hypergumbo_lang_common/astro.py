@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_file_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -299,47 +300,39 @@ class _AstroFileExtractor:
 
         # Check if this is a component reference (capitalized)
         if tag_name[0].isupper():
-            symbol_id = _make_symbol_id(rel_path, tag_name, "component_ref", line)
-            span = Span(
-                start_line=line,
-                start_col=node.start_point[1],
-                end_line=node.end_point[0] + 1,
-                end_col=node.end_point[1],
-            )
-
             import_path = self._current_imports.get(tag_name, "")
 
-            symbol = Symbol(
-                id=symbol_id,
-                stable_id=symbol_id,
-                name=tag_name,
-                kind="component_ref",
-                language="astro",
-                path=str(rel_path),
-                span=span,
+            # Cluster F per audit-findings 0011: per-reference component_ref
+            # Symbol was redundant (dst-kind leakage of imports Edge). Edge
+            # src is now the source-file id; the component name and source
+            # path move to Edge.meta. The Edge is emitted unconditionally —
+            # when import_path is empty (unresolved local reference), dst
+            # is a 5-part dangling component id so the relationship keeps
+            # representation in the graph.
+            if import_path:
+                edge_dst = import_path
+                edge_confidence = 0.95
+            else:
+                edge_dst = f"astro:component:{tag_name}:0-0:{tag_name}:component"
+                edge_confidence = 0.6
+            edge = Edge.create(
+                src=make_file_id("astro", str(rel_path)),
+                dst=edge_dst,
+                edge_type="imports",
+                line=line,
                 origin=PASS_ID,
-                signature=f"<{tag_name}>",
+                origin_run_id=self._execution_id,
+                evidence_type="import",
+                confidence=edge_confidence,
                 meta={
                     "import_path": import_path,
+                    "source_path": str(rel_path),
+                    "component_name": tag_name,
                     "client_directive": client_directive,
                     "attributes": attributes,
                 },
             )
-            self._symbols.append(symbol)
-
-            # Create edge if we have import info
-            if import_path:
-                edge = Edge.create(
-                    src=symbol_id,
-                    dst=import_path,
-                    edge_type="imports",
-                    line=line,
-                    origin=PASS_ID,
-                    origin_run_id=self._execution_id,
-                    evidence_type="import",
-                    confidence=0.95,
-                )
-                self._edges.append(edge)
+            self._edges.append(edge)
 
             # Create symbol for client directive if present
             if client_directive:

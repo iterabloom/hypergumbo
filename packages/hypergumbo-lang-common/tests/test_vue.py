@@ -61,16 +61,21 @@ class TestAnalyzeVue:
         assert result.run is None
 
     def test_extracts_component_ref(self, tmp_path: Path) -> None:
+        # Cluster F per audit-findings 0011: component_ref Symbol was
+        # dropped; the imports Edge with meta['component_name'] carries
+        # the relationship.
         make_vue_file(tmp_path, "App.vue", """<template>
   <Header title="Hello"/>
 </template>
 """)
         result = analyze_vue(tmp_path)
         assert not result.skipped
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.name == "Header"
-        assert comp.signature == "<Header>"
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Header"),
+            None,
+        )
+        assert edge is not None
 
     def test_extracts_multiple_component_refs(self, tmp_path: Path) -> None:
         make_vue_file(tmp_path, "App.vue", """<template>
@@ -82,10 +87,11 @@ class TestAnalyzeVue:
 </template>
 """)
         result = analyze_vue(tmp_path)
-        comps = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(comps) == 3
-        names = {c.name for c in comps}
-        assert names == {"Header", "Sidebar", "Footer"}
+        # Cluster F per audit-findings 0011: assert on imports Edge instead
+        # of the dropped component_ref Symbol.
+        edges = [e for e in result.edges if e.edge_type == "imports"]
+        names = {(e.meta or {}).get("component_name") for e in edges}
+        assert names >= {"Header", "Sidebar", "Footer"}
 
     def test_ignores_html_elements(self, tmp_path: Path) -> None:
         make_vue_file(tmp_path, "App.vue", """<template>
@@ -96,8 +102,14 @@ class TestAnalyzeVue:
 </template>
 """)
         result = analyze_vue(tmp_path)
-        comps = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(comps) == 0
+        # Cluster F per audit-findings 0011: HTML elements are not
+        # component refs so no imports Edge is emitted for them.
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "imports"
+            and (e.meta or {}).get("component_name") in {"span", "button", "div"}
+        ]
+        assert edges == []
 
     def test_extracts_directive_v_if(self, tmp_path: Path) -> None:
         make_vue_file(tmp_path, "App.vue", """<template>
@@ -379,9 +391,15 @@ export default {
 </script>
 """)
         result = analyze_vue(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.meta.get("import_path") == "@/components/Button.vue"
+        # Cluster F per audit-findings 0011: import_path lives on the
+        # imports Edge meta.
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "MyButton"),
+            None,
+        )
+        assert edge is not None
+        assert edge.meta.get("import_path") == "@/components/Button.vue"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_vue_file(tmp_path, "App.vue", "<template></template>")
@@ -400,28 +418,43 @@ export default {
         assert result.run.files_analyzed == 2
 
     def test_pass_id(self, tmp_path: Path) -> None:
+        # Cluster F per audit-findings 0011: component_ref Symbol dropped;
+        # verify pass id via the imports Edge origin instead.
         make_vue_file(tmp_path, "App.vue", "<template><Header/></template>")
         result = analyze_vue(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.origin == "vue-v1"
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Header"),
+            None,
+        )
+        assert edge is not None
+        assert edge.origin == "vue-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
+        # Cluster F per audit-findings 0011: component_ref Symbol dropped;
+        # verify edge src is a well-formed file_id.
         make_vue_file(tmp_path, "App.vue", "<template><Header/></template>")
         result = analyze_vue(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.id == comp.stable_id
-        assert "vue:" in comp.id
-        assert "App.vue" in comp.id
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Header"),
+            None,
+        )
+        assert edge is not None
+        assert edge.src == "vue:App.vue:1-1:file:file"
 
     def test_span_info(self, tmp_path: Path) -> None:
+        # Cluster F per audit-findings 0011: per-reference span moved from
+        # the dropped Symbol to Edge.line.
         make_vue_file(tmp_path, "App.vue", "<template><Header/></template>")
         result = analyze_vue(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.span is not None
-        assert comp.span.start_line >= 1
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Header"),
+            None,
+        )
+        assert edge is not None
+        assert edge.line >= 1
 
     def test_kebab_case_component(self, tmp_path: Path) -> None:
         """Test kebab-case component names are recognized."""
@@ -440,10 +473,11 @@ export default {
 </script>
 """)
         result = analyze_vue(tmp_path)
-        comps = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(comps) == 2
-        names = {c.name for c in comps}
-        assert names == {"my-component", "custom-button"}
+        # Cluster F per audit-findings 0011: assert kebab-case component
+        # names appear in imports Edge meta.
+        edges = [e for e in result.edges if e.edge_type == "imports"]
+        names = {(e.meta or {}).get("component_name") for e in edges}
+        assert names >= {"my-component", "custom-button"}
 
     def test_complete_component(self, tmp_path: Path) -> None:
         """Test a complete Vue component with all features."""
@@ -500,10 +534,14 @@ export default {
 """)
         result = analyze_vue(tmp_path)
 
-        # Check component refs
-        comps = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(comps) == 1
-        assert comps[0].name == "Avatar"
+        # Cluster F per audit-findings 0011: component_ref Symbol dropped;
+        # verify the imports Edge carries the relationship.
+        comp_edges = [
+            e for e in result.edges if e.edge_type == "imports"
+            and (e.meta or {}).get("component_name") is not None
+        ]
+        assert len(comp_edges) == 1
+        assert comp_edges[0].meta.get("component_name") == "Avatar"
 
         # Check directives
         directives = [s for s in result.symbols if s.kind == "directive"]
@@ -561,14 +599,20 @@ export default {
 </script>
 """)
         result = analyze_vue(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.name == "Button"
-        # Named import should also track the path
-        assert comp.meta.get("import_path") == "./components/index.vue"
+        # Cluster F per audit-findings 0011: component_ref Symbol dropped;
+        # named import path lives on Edge.meta.
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Button"),
+            None,
+        )
+        assert edge is not None
+        assert edge.meta.get("import_path") == "./components/index.vue"
 
     def test_component_with_slot_attr(self, tmp_path: Path) -> None:
         """Test component with slot attribute."""
+        # Cluster F per audit-findings 0011: has_slot_attr meta moved from
+        # the dropped component_ref Symbol to the imports Edge.
         make_vue_file(tmp_path, "App.vue", """<template>
   <Card>
     <Button slot="actions"/>
@@ -576,9 +620,13 @@ export default {
 </template>
 """)
         result = analyze_vue(tmp_path)
-        button = next((s for s in result.symbols if s.name == "Button"), None)
-        assert button is not None
-        assert button.meta.get("has_slot_attr") is True
+        button_edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Button"),
+            None,
+        )
+        assert button_edge is not None
+        assert button_edge.meta.get("has_slot_attr") is True
 
     def test_event_directive_captures_handler_expression(self, tmp_path: Path) -> None:
         """v-on directives store the handler expression in metadata."""

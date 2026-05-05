@@ -62,6 +62,8 @@ class TestAnalyzeAstro:
         assert result.run.files_analyzed == 0
 
     def test_extracts_component_ref(self, tmp_path: Path) -> None:
+        # Cluster F per audit-findings 0011: imports Edge with
+        # meta['component_name'] replaces the dropped component_ref Symbol.
         make_astro_file(tmp_path, "index.astro", """---
 import Header from './Header.astro';
 ---
@@ -70,10 +72,12 @@ import Header from './Header.astro';
 """)
         result = analyze_astro(tmp_path)
         assert not result.skipped
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.name == "Header"
-        assert comp.signature == "<Header>"
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Header"),
+            None,
+        )
+        assert edge is not None
 
     def test_extracts_multiple_component_refs(self, tmp_path: Path) -> None:
         make_astro_file(tmp_path, "index.astro", """---
@@ -88,10 +92,13 @@ import Footer from './Footer.astro';
 </html>
 """)
         result = analyze_astro(tmp_path)
-        comps = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(comps) == 2
-        names = {c.name for c in comps}
-        assert names == {"Header", "Footer"}
+        # Cluster F per audit-findings 0011.
+        comp_edges = [
+            e for e in result.edges if e.edge_type == "imports"
+            and (e.meta or {}).get("component_name") is not None
+        ]
+        names = {(e.meta or {}).get("component_name") for e in comp_edges}
+        assert names >= {"Header", "Footer"}
 
     def test_ignores_html_elements(self, tmp_path: Path) -> None:
         make_astro_file(tmp_path, "index.astro", """---
@@ -103,8 +110,13 @@ import Footer from './Footer.astro';
 </div>
 """)
         result = analyze_astro(tmp_path)
-        comps = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(comps) == 0
+        # Cluster F per audit-findings 0011: HTML elements never produce
+        # component imports Edges.
+        edges = [
+            e for e in result.edges if e.edge_type == "imports"
+            and (e.meta or {}).get("component_name") is not None
+        ]
+        assert edges == []
 
     def test_extracts_import_symbol(self, tmp_path: Path) -> None:
         make_astro_file(tmp_path, "index.astro", """---
@@ -215,7 +227,28 @@ import Header from './Header.astro';
         assert edge is not None
         assert edge.dst == "./Header.astro"
 
+    def test_component_ref_without_import(self, tmp_path: Path) -> None:
+        """Unresolved component ref (no import) emits a dangling component
+        Edge so the relationship keeps representation in the graph."""
+        # Cluster F per audit-findings 0011: shape-2 edge-endpoint redesign
+        # exercises the unconditional emission path.
+        make_astro_file(tmp_path, "index.astro", """---
+---
+
+<MyComponent/>
+""")
+        result = analyze_astro(tmp_path)
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "MyComponent"),
+            None,
+        )
+        assert edge is not None
+        assert edge.meta.get("import_path") == ""
+        assert edge.dst == "astro:component:MyComponent:0-0:MyComponent:component"
+
     def test_component_with_import_path(self, tmp_path: Path) -> None:
+        # Cluster F per audit-findings 0011.
         make_astro_file(tmp_path, "index.astro", """---
 import Button from '../components/Button.astro';
 ---
@@ -223,11 +256,17 @@ import Button from '../components/Button.astro';
 <Button/>
 """)
         result = analyze_astro(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.meta.get("import_path") == "../components/Button.astro"
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Button"),
+            None,
+        )
+        assert edge is not None
+        assert edge.meta.get("import_path") == "../components/Button.astro"
 
     def test_component_with_client_directive_in_meta(self, tmp_path: Path) -> None:
+        # Cluster F per audit-findings 0011: client_directive meta moved
+        # from the dropped component_ref Symbol to the imports Edge.
         make_astro_file(tmp_path, "index.astro", """---
 import Counter from './Counter.astro';
 ---
@@ -235,9 +274,13 @@ import Counter from './Counter.astro';
 <Counter client:load/>
 """)
         result = analyze_astro(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.meta.get("client_directive") == "client:load"
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Counter"),
+            None,
+        )
+        assert edge is not None
+        assert edge.meta.get("client_directive") == "client:load"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_astro_file(tmp_path, "index.astro", "---\n---\n<h1>Hello</h1>")
@@ -256,6 +299,8 @@ import Counter from './Counter.astro';
         assert result.run.files_analyzed == 2
 
     def test_pass_id(self, tmp_path: Path) -> None:
+        # Cluster F per audit-findings 0011: component_ref Symbol dropped;
+        # verify the imports Edge origin instead.
         make_astro_file(tmp_path, "index.astro", """---
 import Header from './Header.astro';
 ---
@@ -263,11 +308,16 @@ import Header from './Header.astro';
 <Header/>
 """)
         result = analyze_astro(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.origin == "astro-v1"
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Header"),
+            None,
+        )
+        assert edge is not None
+        assert edge.origin == "astro-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
+        # Cluster F per audit-findings 0011: edge src is now a file_id.
         make_astro_file(tmp_path, "index.astro", """---
 import Header from './Header.astro';
 ---
@@ -275,13 +325,17 @@ import Header from './Header.astro';
 <Header/>
 """)
         result = analyze_astro(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.id == comp.stable_id
-        assert "astro:" in comp.id
-        assert "index.astro" in comp.id
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Header"),
+            None,
+        )
+        assert edge is not None
+        assert edge.src.startswith("astro:")
+        assert edge.src.endswith("index.astro:1-1:file:file")
 
     def test_span_info(self, tmp_path: Path) -> None:
+        # Cluster F per audit-findings 0011: span info moved to Edge.line.
         make_astro_file(tmp_path, "index.astro", """---
 import Header from './Header.astro';
 ---
@@ -289,12 +343,16 @@ import Header from './Header.astro';
 <Header/>
 """)
         result = analyze_astro(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.span is not None
-        assert comp.span.start_line >= 1
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Header"),
+            None,
+        )
+        assert edge is not None
+        assert edge.line >= 1
 
     def test_component_attributes_in_meta(self, tmp_path: Path) -> None:
+        # Cluster F per audit-findings 0011: attributes meta moved to Edge.
         make_astro_file(tmp_path, "index.astro", """---
 import Card from './Card.astro';
 ---
@@ -302,13 +360,18 @@ import Card from './Card.astro';
 <Card title="Hello" size="large"/>
 """)
         result = analyze_astro(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert "title" in comp.meta.get("attributes", [])
-        assert "size" in comp.meta.get("attributes", [])
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Card"),
+            None,
+        )
+        assert edge is not None
+        assert "title" in edge.meta.get("attributes", [])
+        assert "size" in edge.meta.get("attributes", [])
 
     def test_named_import_component(self, tmp_path: Path) -> None:
         """Test named imports of components."""
+        # Cluster F per audit-findings 0011: import_path lives on Edge meta.
         make_astro_file(tmp_path, "index.astro", """---
 import { Header, Footer } from './components.astro';
 ---
@@ -317,16 +380,13 @@ import { Header, Footer } from './components.astro';
 <Footer/>
 """)
         result = analyze_astro(tmp_path)
-        comps = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(comps) == 2
-        # Named imports should populate _current_imports
-        # Header and Footer should have the import path in meta
-        header = next((c for c in comps if c.name == "Header"), None)
-        footer = next((c for c in comps if c.name == "Footer"), None)
-        assert header is not None
-        assert footer is not None
-        assert header.meta.get("import_path") == "./components.astro"
-        assert footer.meta.get("import_path") == "./components.astro"
+        comp_edges = [
+            e for e in result.edges if e.edge_type == "imports"
+            and (e.meta or {}).get("component_name") in {"Header", "Footer"}
+        ]
+        assert len(comp_edges) == 2
+        for e in comp_edges:
+            assert e.meta.get("import_path") == "./components.astro"
 
     def test_complete_component(self, tmp_path: Path) -> None:
         """Test a complete Astro component with all features."""
@@ -368,10 +428,14 @@ const description = 'A test page';
         var_names = {v.name for v in variables}
         assert var_names == {"title", "description"}
 
-        # Check component refs
-        comps = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(comps) == 3
-        comp_names = {c.name for c in comps}
+        # Cluster F per audit-findings 0011: component refs ride imports
+        # Edge meta['component_name'] (Symbol dropped).
+        comp_edges = [
+            e for e in result.edges if e.edge_type == "imports"
+            and (e.meta or {}).get("component_name") is not None
+        ]
+        assert len(comp_edges) == 3
+        comp_names = {(e.meta or {}).get("component_name") for e in comp_edges}
         assert comp_names == {"Header", "Footer", "Counter"}
 
         # Check slots

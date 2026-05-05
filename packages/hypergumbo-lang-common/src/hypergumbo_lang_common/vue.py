@@ -49,6 +49,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    make_file_id,
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -533,14 +534,6 @@ class VueAnalyzer(TreeSitterAnalyzer):
         execution_id = f"uuid:{uuid.uuid4()}"
 
         if is_component:
-            symbol_id = _make_symbol_id(rel_path, tag_name, "component_ref", line)
-            span = Span(
-                start_line=line,
-                start_col=node.start_point[1],
-                end_line=node.end_point[0] + 1,
-                end_col=node.end_point[1],
-            )
-
             import_path = current_imports.get(tag_name, "")
             if not import_path and "-" in tag_name:
                 pascal_name = "".join(
@@ -548,48 +541,40 @@ class VueAnalyzer(TreeSitterAnalyzer):
                 )
                 import_path = current_imports.get(pascal_name, "")
 
-            symbol = Symbol(
-                id=symbol_id,
-                stable_id=symbol_id,
-                name=tag_name,
-                kind="component_ref",
-                language="vue",
-                path=str(rel_path),
-                span=span,
-                origin=PASS_ID,
-                signature=f"<{tag_name}>",
-                meta={
-                    "import_path": import_path,
-                    "directives": directives,
-                    "has_slot_attr": has_slot_attr,
-                },
-            )
-            symbols.append(symbol)
-
+            # Cluster F per audit-findings 0011: per-reference component_ref
+            # Symbol was redundant (dst-kind leakage of imports Edge). Edge
+            # src is now the source-file id; the component name and source
+            # path move to Edge.meta. The Edge is emitted unconditionally —
+            # when import_path is empty (unresolved local reference), dst
+            # is a 5-part dangling component id so the relationship keeps
+            # representation in the graph. See WI-vobiv for dst-id discipline.
             if import_path:
-                # WI-vobiv: previously dst was the raw import_path (e.g.
-                # "./Header.vue"), which falls through ir._parse_dangling_id
-                # and stuffs the path into the language slot of the
-                # synthesized boundary node — producing 871 invalid boundary
-                # nodes on chatwoot in cohort-001/iter-001 (INV-nodij class).
-                # Construct a properly-formed 5-part dst id; the linker
-                # vue_component.py reads the raw path from edge.meta.
                 component_name_from_path = Path(import_path).stem or tag_name
                 formatted_dst = (
                     f"vue:{import_path}:0-0:{component_name_from_path}:component"
                 )
-                edge = Edge.create(
-                    src=symbol_id,
-                    dst=formatted_dst,
-                    edge_type="imports",
-                    line=line,
-                    origin=PASS_ID,
-                    origin_run_id=execution_id,
-                    evidence_type="import",
-                    confidence=0.95,
-                    meta={"import_path": import_path},
-                )
-                edges.append(edge)
+                edge_confidence = 0.95
+            else:
+                formatted_dst = f"vue:component:{tag_name}:0-0:{tag_name}:component"
+                edge_confidence = 0.6
+            edge = Edge.create(
+                src=make_file_id("vue", str(rel_path)),
+                dst=formatted_dst,
+                edge_type="imports",
+                line=line,
+                origin=PASS_ID,
+                origin_run_id=execution_id,
+                evidence_type="import",
+                confidence=edge_confidence,
+                meta={
+                    "import_path": import_path,
+                    "source_path": str(rel_path),
+                    "component_name": tag_name,
+                    "directives": directives,
+                    "has_slot_attr": has_slot_attr,
+                },
+            )
+            edges.append(edge)
 
         # Record directives
         for i, directive in enumerate(directives):

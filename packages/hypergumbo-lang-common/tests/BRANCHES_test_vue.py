@@ -44,6 +44,8 @@ class TestComponentRefExtraction:
 
     def test_component_reference(self, tmp_path: Path) -> None:
         """Test component reference extraction."""
+        # Cluster F per audit-findings 0011: component_ref Symbol dropped;
+        # imports Edge with meta['component_name'] carries the relationship.
         make_vue_file(tmp_path, "App.vue", """
 <template>
     <Button />
@@ -59,12 +61,13 @@ export default {
         result = analyze_vue(tmp_path)
         assert not result.skipped
 
-        refs = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(refs) >= 1
-        assert any(r.name == "Button" for r in refs)
+        edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert any((e.meta or {}).get("component_name") == "Button" for e in edges)
 
     def test_component_with_import_path(self, tmp_path: Path) -> None:
-        """Test component has import path in metadata."""
+        """Test component import path is on the Edge meta."""
+        # Cluster F per audit-findings 0011: import_path moved from the
+        # dropped component_ref Symbol to the imports Edge meta.
         make_vue_file(tmp_path, "App.vue", """
 <template>
     <Header />
@@ -78,10 +81,13 @@ export default {
 </script>
 """)
         result = analyze_vue(tmp_path)
-        refs = [s for s in result.symbols if s.kind == "component_ref" and s.name == "Header"]
-        assert len(refs) >= 1
-        assert refs[0].meta is not None
-        assert refs[0].meta.get("import_path") == "./components/Header.vue"
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Header"),
+            None,
+        )
+        assert edge is not None
+        assert edge.meta.get("import_path") == "./components/Header.vue"
 
     def test_component_creates_import_edge(self, tmp_path: Path) -> None:
         """Test component reference creates import edge."""
@@ -116,8 +122,10 @@ export default {
 </script>
 """)
         result = analyze_vue(tmp_path)
-        refs = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(refs) >= 1
+        # Cluster F per audit-findings 0011: kebab-case component refs
+        # appear as imports Edge meta['component_name'].
+        edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert any((e.meta or {}).get("component_name") for e in edges)
 
 
 class TestDirectiveExtraction:

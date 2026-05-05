@@ -40,6 +40,8 @@ class TestComponentRefExtraction:
 
     def test_component_reference(self, tmp_path: Path) -> None:
         """Test component reference extraction."""
+        # Cluster F per audit-findings 0011: imports Edge with
+        # meta['component_name'] replaces the dropped component_ref Symbol.
         make_svelte_file(tmp_path, "App.svelte", """
 <script>
     import Button from './Button.svelte';
@@ -50,12 +52,12 @@ class TestComponentRefExtraction:
         result = analyze_svelte(tmp_path)
         assert not result.skipped
 
-        refs = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(refs) >= 1
-        assert any(r.name == "Button" for r in refs)
+        edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert any((e.meta or {}).get("component_name") == "Button" for e in edges)
 
     def test_component_with_import_path(self, tmp_path: Path) -> None:
-        """Test component has import path in metadata."""
+        """Test component import path is on the Edge meta."""
+        # Cluster F per audit-findings 0011.
         make_svelte_file(tmp_path, "App.svelte", """
 <script>
     import Header from './Header.svelte';
@@ -64,10 +66,13 @@ class TestComponentRefExtraction:
 <Header />
 """)
         result = analyze_svelte(tmp_path)
-        refs = [s for s in result.symbols if s.kind == "component_ref" and s.name == "Header"]
-        assert len(refs) >= 1
-        assert refs[0].meta is not None
-        assert refs[0].meta.get("import_path") == "./Header.svelte"
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Header"),
+            None,
+        )
+        assert edge is not None
+        assert edge.meta.get("import_path") == "./Header.svelte"
 
     def test_component_creates_import_edge(self, tmp_path: Path) -> None:
         """Test component reference creates import edge."""
@@ -245,6 +250,8 @@ class TestComponentMetadata:
 
     def test_component_with_events(self, tmp_path: Path) -> None:
         """Test component reference with event handlers."""
+        # Cluster F per audit-findings 0011: events meta moved from
+        # the dropped component_ref Symbol to the imports Edge.
         make_svelte_file(tmp_path, "App.svelte", """
 <script>
     import Button from './Button.svelte';
@@ -253,7 +260,10 @@ class TestComponentMetadata:
 <Button on:click={handleClick} />
 """)
         result = analyze_svelte(tmp_path)
-        refs = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(refs) >= 1
-        assert refs[0].meta is not None
-        assert "events" in refs[0].meta
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Button"),
+            None,
+        )
+        assert edge is not None
+        assert "events" in edge.meta

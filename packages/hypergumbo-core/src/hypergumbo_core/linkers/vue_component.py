@@ -211,9 +211,20 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
         # edge.meta["import_path"]; fall back to dst for back-compat with
         # any pre-WI-vobiv edges.
         raw_path = (edge.meta or {}).get("import_path", edge.dst)
+        if not raw_path:
+            # Unresolved component reference (no companion import statement);
+            # the producer emits a dangling component dst that this linker
+            # cannot resolve to a real file. Skip.
+            continue
 
-        # Get the source file path for relative import resolution
-        src_path = symbol_path_map.get(edge.src, "")
+        # Get the source file path for relative import resolution.
+        # WI-mihiz / audit-findings 0011: prefer edge.meta["source_path"]
+        # (set by the producer when component_ref Symbol was dropped and
+        # Edge.src moved to make_file_id). Fall back to symbol_path_map
+        # for pre-refactor edges and for non-component import callers.
+        src_path = (edge.meta or {}).get("source_path") or symbol_path_map.get(
+            edge.src, ""
+        )
         if not src_path:
             continue
 

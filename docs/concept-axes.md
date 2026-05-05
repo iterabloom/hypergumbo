@@ -192,7 +192,7 @@ Values whose meaning is leaked into the kind label even though it is captured by
 
 - **`abi_call`** — Cluster E sub-case (a) FOLD per audit-findings 0010 (reclassified from Cluster D in this PR — the Solidity ABI emit site names a call expression, not a framework role): the solidity_abi linker was reclassified to kind='call_site' + meta['call_kind']='abi'. Registry entry stays through the Phase 4a deprecation window.
 - **`call`** — Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: zero Symbol.kind=call producers (the value lives only on UsageContext.kind, a different field). Registry entry stays through the Phase 4a deprecation window.
-- **`component_ref`** — Inline component reference. Fold to reference + dst.kind == 'component'.
+- **`component_ref`** — Cluster F dst-kind leakage per audit-findings 0011: DEPRECATE-NO-FOLD (PRELIM_RESOLVED). Three producers (vue.py / svelte.py / astro.py) drop the per-reference Symbol; the companion imports Edge re-routes src to make_file_id and carries component_name + source_path in meta. Registry entry stays through the Phase 4a deprecation window.
 - **`crypto_consumer`** — Crypto-flow consumer. Fold to function/method + meta['framework_role']='crypto_consumer'.
 - **`crypto_producer`** — Crypto-flow producer. Fold to function/method + meta['framework_role']='crypto_producer'.
 - **`db_query`** — Cluster E sub-case (a) FOLD per audit-findings 0010: the database_query linker was reclassified to kind='call_site' + meta['call_kind']='db_query'. Registry entry stays through the Phase 4a deprecation window.

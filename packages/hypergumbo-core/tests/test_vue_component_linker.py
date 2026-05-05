@@ -393,6 +393,40 @@ class TestVueComponentLinker:
         resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 0
 
+    def test_edge_with_empty_import_path_skipped(self, tmp_path: Path) -> None:
+        """WI-mihiz / audit-findings 0011: edge with empty meta['import_path']
+        (unresolved component ref with dangling component dst) is skipped —
+        the linker can only resolve real filesystem paths."""
+        (tmp_path / "App.vue").write_text("<template><Ghost/></template>")
+
+        # Producer-shape edge for an unresolved local component reference:
+        # src is a file_id, dst is a 5-part dangling component id, and
+        # meta['import_path'] is empty.
+        edge = Edge.create(
+            src="vue:App.vue:1-1:file:file",
+            dst="vue:component:Ghost:0-0:Ghost:component",
+            edge_type="imports",
+            line=1,
+            origin="test",
+            origin_run_id="test-run",
+            evidence_type="import",
+            confidence=0.6,
+            meta={
+                "import_path": "",
+                "source_path": "App.vue",
+                "component_name": "Ghost",
+            },
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[],
+            edges=[edge],
+        )
+        result = link_vue_components(ctx)
+
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(resolved) == 0
+
     def test_activation_requires_vue(self) -> None:
         """Linker activation requires vue framework or language."""
         from hypergumbo_core.linkers.registry import get_linker

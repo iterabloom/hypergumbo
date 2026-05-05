@@ -43,6 +43,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    make_file_id,
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -228,47 +229,39 @@ def _process_tag(
 
     # Check if this is a component reference (capitalized = always a component in Svelte)
     if tag_name[0].isupper():
-        symbol_id = _make_symbol_id(rel_path, tag_name, "component_ref", line)
-        span = Span(
-            start_line=line,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
-        )
-
         import_path = current_imports.get(tag_name, "")
 
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=symbol_id,
-            name=tag_name,
-            kind="component_ref",
-            language="svelte",
-            path=str(rel_path),
-            span=span,
+        # Cluster F per audit-findings 0011: per-reference component_ref
+        # Symbol was redundant (dst-kind leakage of imports Edge). Edge
+        # src is now the source-file id; the component name and source
+        # path move to Edge.meta. The Edge is emitted unconditionally —
+        # when import_path is empty (unresolved local reference), dst is
+        # a 5-part dangling component id so the relationship keeps
+        # representation in the graph.
+        if import_path:
+            edge_dst = import_path
+            edge_confidence = 0.95
+        else:
+            edge_dst = f"svelte:component:{tag_name}:0-0:{tag_name}:component"
+            edge_confidence = 0.6
+        edge = Edge.create(
+            src=make_file_id("svelte", str(rel_path)),
+            dst=edge_dst,
+            edge_type="imports",
+            line=line,
             origin=PASS_ID,
-            signature=f"<{tag_name}>",
+            origin_run_id=execution_id,
+            evidence_type="import",
+            confidence=edge_confidence,
             meta={
                 "import_path": import_path,
+                "source_path": str(rel_path),
+                "component_name": tag_name,
                 "events": events,
                 "has_slot_attr": has_slot_attr,
             },
         )
-        symbols.append(symbol)
-
-        # Create edge if we have import info
-        if import_path:
-            edge = Edge.create(
-                src=symbol_id,
-                dst=import_path,
-                edge_type="imports",
-                line=line,
-                origin=PASS_ID,
-                origin_run_id=execution_id,
-                evidence_type="import",
-                confidence=0.95,
-            )
-            edges.append(edge)
+        edges.append(edge)
 
     # Check for slot elements
     elif tag_name == "slot":

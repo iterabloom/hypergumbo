@@ -104,18 +104,20 @@ class TestComponentReferences:
 
     def test_component_ref_extraction(self, tmp_path: Path) -> None:
         """Test capitalized component reference extraction."""
+        # Cluster F per audit-findings 0011: imports Edge with
+        # meta['component_name'] replaces the dropped component_ref Symbol.
         make_astro_file(tmp_path, "Page.astro", """---
 import Card from './Card.astro'
 ---
 <Card title="Hello" />
 """)
         result = analyze_astro(tmp_path)
-        refs = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(refs) >= 1
-        assert any(r.name == "Card" for r in refs)
+        edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert any((e.meta or {}).get("component_name") == "Card" for e in edges)
 
     def test_multiple_component_refs(self, tmp_path: Path) -> None:
         """Test multiple component references."""
+        # Cluster F per audit-findings 0011.
         make_astro_file(tmp_path, "Page.astro", """---
 import Header from './Header.astro'
 import Nav from './Nav.astro'
@@ -126,11 +128,9 @@ import Footer from './Footer.astro'
 <Footer />
 """)
         result = analyze_astro(tmp_path)
-        refs = [s for s in result.symbols if s.kind == "component_ref"]
-        names = [r.name for r in refs]
-        assert "Header" in names
-        assert "Nav" in names
-        assert "Footer" in names
+        edges = [e for e in result.edges if e.edge_type == "imports"]
+        names = {(e.meta or {}).get("component_name") for e in edges}
+        assert names >= {"Header", "Nav", "Footer"}
 
 
 class TestClientDirectives:

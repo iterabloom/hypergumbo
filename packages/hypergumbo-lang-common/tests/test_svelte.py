@@ -55,6 +55,8 @@ class TestAnalyzeSvelte:
         assert "not available" in result.skip_reason
 
     def test_extracts_component_ref(self, tmp_path: Path) -> None:
+        # Cluster F per audit-findings 0011: component_ref Symbol dropped;
+        # imports Edge with meta['component_name'] carries the relationship.
         make_svelte_file(tmp_path, "App.svelte", """<script>
   import Header from './Header.svelte';
 </script>
@@ -62,11 +64,13 @@ class TestAnalyzeSvelte:
 """)
         result = analyze_svelte(tmp_path)
         assert not result.skipped
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.name == "Header"
-        assert comp.language == "svelte"
-        assert comp.meta.get("import_path") == "./Header.svelte"
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Header"),
+            None,
+        )
+        assert edge is not None
+        assert edge.meta.get("import_path") == "./Header.svelte"
 
     def test_creates_imports_edge(self, tmp_path: Path) -> None:
         make_svelte_file(tmp_path, "App.svelte", """<script>
@@ -75,10 +79,15 @@ class TestAnalyzeSvelte:
 <Button />
 """)
         result = analyze_svelte(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "imports"), None)
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Button"),
+            None,
+        )
         assert edge is not None
         assert edge.dst == "./Button.svelte"
-        assert edge.edge_type == "imports"
+        # Cluster F per audit-findings 0011: edge src is now the file id.
+        assert edge.src == "svelte:App.svelte:1-1:file:file"
 
     def test_extracts_default_slot(self, tmp_path: Path) -> None:
         make_svelte_file(tmp_path, "Card.svelte", """<div class="card">
@@ -176,8 +185,10 @@ class TestAnalyzeSvelte:
 </div>
 """)
         result = analyze_svelte(tmp_path)
-        comp_refs = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(comp_refs) == 0
+        # Cluster F per audit-findings 0011: lowercase HTML elements never
+        # produce imports Edges (component refs require capitalized tags).
+        edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert edges == []
 
     def test_ignores_svg_elements(self, tmp_path: Path) -> None:
         make_svelte_file(tmp_path, "Icon.svelte", """<svg width="100" height="100">
@@ -186,8 +197,8 @@ class TestAnalyzeSvelte:
 </svg>
 """)
         result = analyze_svelte(tmp_path)
-        comp_refs = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(comp_refs) == 0
+        edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert edges == []
 
     def test_pass_id(self, tmp_path: Path) -> None:
         make_svelte_file(tmp_path, "App.svelte", "<slot />")
@@ -246,29 +257,38 @@ class TestAnalyzeSvelte:
 
     def test_component_ref_without_import(self, tmp_path: Path) -> None:
         """Test component reference without import (globally registered)."""
+        # Cluster F per audit-findings 0011: unresolved component refs now
+        # produce an imports Edge with a 5-part dangling component dst, so
+        # the relationship keeps representation in the graph.
         make_svelte_file(tmp_path, "App.svelte", """<MyComponent />
 """)
         result = analyze_svelte(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.name == "MyComponent"
-        assert comp.meta.get("import_path") == ""
-        # No edge created for unimported component
-        edges = [e for e in result.edges if e.edge_type == "imports"]
-        assert len(edges) == 0
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "MyComponent"),
+            None,
+        )
+        assert edge is not None
+        assert edge.meta.get("import_path") == ""
+        assert edge.dst == "svelte:component:MyComponent:0-0:MyComponent:component"
 
     def test_component_with_events_and_slot(self, tmp_path: Path) -> None:
+        # Cluster F per audit-findings 0011: events / has_slot_attr meta
+        # moved from the dropped component_ref Symbol to the imports Edge.
         make_svelte_file(tmp_path, "App.svelte", """<script>
   import Card from './Card.svelte';
 </script>
 <Card on:click={handleClick} slot="content" />
 """)
         result = analyze_svelte(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.name == "Card"
-        assert "click" in comp.meta.get("events", [])
-        assert comp.meta.get("has_slot_attr") is True
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Card"),
+            None,
+        )
+        assert edge is not None
+        assert "click" in edge.meta.get("events", [])
+        assert edge.meta.get("has_slot_attr") is True
 
     def test_complete_component(self, tmp_path: Path) -> None:
         make_svelte_file(tmp_path, "App.svelte", """<script>
@@ -297,10 +317,14 @@ class TestAnalyzeSvelte:
 """)
         result = analyze_svelte(tmp_path)
 
-        # Components
-        comp_refs = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(comp_refs) == 2
-        comp_names = {c.name for c in comp_refs}
+        # Cluster F per audit-findings 0011: component refs ride imports
+        # Edge meta['component_name'] (Symbol dropped).
+        comp_edges = [
+            e for e in result.edges if e.edge_type == "imports"
+            and (e.meta or {}).get("component_name") is not None
+        ]
+        assert len(comp_edges) == 2
+        comp_names = {(e.meta or {}).get("component_name") for e in comp_edges}
         assert comp_names == {"Header", "Footer"}
 
         # Slot
@@ -332,12 +356,18 @@ class TestAnalyzeSvelte:
 <Card />
 """)
         result = analyze_svelte(tmp_path)
-        comp_refs = [s for s in result.symbols if s.kind == "component_ref"]
-        assert len(comp_refs) == 2
-        # Named imports to .svelte file should track import path
-        button = next((c for c in comp_refs if c.name == "Button"), None)
-        assert button is not None
-        assert button.meta.get("import_path") == "./components/index.svelte"
+        # Cluster F per audit-findings 0011: import_path lives on Edge meta.
+        comp_edges = [
+            e for e in result.edges if e.edge_type == "imports"
+            and (e.meta or {}).get("component_name") is not None
+        ]
+        assert len(comp_edges) == 2
+        button_edge = next(
+            (e for e in comp_edges if (e.meta or {}).get("component_name") == "Button"),
+            None,
+        )
+        assert button_edge is not None
+        assert button_edge.meta.get("import_path") == "./components/index.svelte"
 
     def test_non_svelte_import(self, tmp_path: Path) -> None:
         """Test that non-.svelte imports don't create edges."""
@@ -378,16 +408,19 @@ class TestAnalyzeSvelte:
 
     def test_self_closing_component(self, tmp_path: Path) -> None:
         """Test self-closing component syntax."""
+        # Cluster F per audit-findings 0011: assert via imports Edge meta.
         make_svelte_file(tmp_path, "App.svelte", """<script>
   import Icon from './Icon.svelte';
 </script>
 <Icon name="check" />
 """)
         result = analyze_svelte(tmp_path)
-        comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
-        assert comp is not None
-        assert comp.name == "Icon"
-        assert comp.signature == "<Icon>"
+        edge = next(
+            (e for e in result.edges if e.edge_type == "imports"
+             and (e.meta or {}).get("component_name") == "Icon"),
+            None,
+        )
+        assert edge is not None
 
     def test_element_with_multiple_events(self, tmp_path: Path) -> None:
         """Test element with multiple event handlers."""
