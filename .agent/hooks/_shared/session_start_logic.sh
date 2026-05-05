@@ -34,7 +34,7 @@ _append_concept_audit_cadence() {
     if [[ -n "$SESSION_START_MESSAGE" ]]; then
         SESSION_START_MESSAGE="${SESSION_START_MESSAGE}
 
-${_cadence_msg}"
+ALSO REQUIRED (separate item — do not treat as resolved by handling the prompt above): ${_cadence_msg}"
     else
         SESSION_START_MESSAGE="$_cadence_msg"
         SESSION_START_NEEDS_PROMPT=true
@@ -126,7 +126,7 @@ _append_agent_notes_status() {
     if [[ -n "$SESSION_START_MESSAGE" ]]; then
         SESSION_START_MESSAGE="${SESSION_START_MESSAGE}
 
-${_msg}"
+ALSO REQUIRED (separate item — do not treat as resolved by handling the prompt above): ${_msg}"
     else
         SESSION_START_MESSAGE="$_msg"
         SESSION_START_NEEDS_PROMPT=true

@@ -138,6 +138,13 @@ def test_notes_prompt_fires_with_both_ages(tmp_path: Path) -> None:
     assert "./scripts/agent-notes --show" in msg
     # Mode prompt still fires — the helper appends, doesn't replace.
     assert "Autonomous mode is OFF" in msg
+    # When the notes prompt is appended onto an existing message, the
+    # "ALSO REQUIRED" prefix marks it as a separate item so the agent
+    # doesn't treat answering the mode prompt as resolving both.
+    assert (
+        "ALSO REQUIRED (separate item — do not treat as resolved by handling the prompt above):"
+        in msg
+    )
 
 
 def test_notes_prompt_uses_seconds_under_one_minute(tmp_path: Path) -> None:
@@ -283,3 +290,7 @@ def test_notes_prompt_fires_in_case_4_mode_active(tmp_path: Path) -> None:
     assert "agent_notes.json was last updated" in msg
     # Mode prompt is NOT in the message (mode is DEEP, not OFF).
     assert "Autonomous mode is OFF" not in msg
+    # Case 4 starts with an empty SESSION_START_MESSAGE before the notes
+    # helper runs, so the "ALSO REQUIRED" prefix is not added — the notes
+    # prompt is the sole item, not an appendage to a prior one.
+    assert "ALSO REQUIRED" not in msg
