@@ -33,3 +33,10 @@
   clock: 3  # 2354
   nonce: '2354'  # 2354
   message: "Closed by PR #3560 / commit 29861602b. Audit-findings 0007 ships per-value verdicts for 60 of the 61 Cluster H values (structure deferred to Cluster C / WI-rusit): 53 CANONICAL (top-level constructs in their respective DSLs — doc/template/CSS/HCL/Mermaid/GraphQL/SPARQL/LaTeX/VHDL/Swift/QML/Vue/Svelte/Twig/Handlebars), 0 FOLD (Cluster G already absorbed the scope-qualifier shape), 7 DEPRECATE-NO-FOLD (heading/inductive/theorem/message — dead vocabulary; model — ID-string-only synthetic, prisma.py:120 emits Symbol kind=class while passing kind=model only to ID-construction; external_symbol/unresolved — boundary-pseudo kinds deferred pending parallel Symbol.is_resolved ADR decision mirroring Edge.is_resolved). Cluster D/E shape-leakage hypothesis from handoff notes was refuted at the producer level (signal/entity/event/model are all language-keyword emitters or ID-string-only). Largest single-cluster registry promotion in the ADR-0027 series. Wave 6 of WI-runod is the migration."  # 2354
+- op: discuss  # a4d9
+  at: '2026-05-05T17:39:25Z'  # a4d9
+  by: human  # a4d9
+  actor: jgstern  # a4d9
+  clock: 4  # a4d9
+  nonce: a4d9  # a4d9
+  message: "60/61 verdicts? what's the deal with the 1 remaining?"  # a4d9

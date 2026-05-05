@@ -48,3 +48,10 @@
   set:  # eb36
     status: todo_hard  # eb36
     priority: 0  # eb36
+- op: discuss  # d8fb
+  at: '2026-05-05T10:16:38Z'  # d8fb
+  by: agent  # d8fb
+  actor: jgstern_agent  # d8fb
+  clock: 6  # d8fb
+  nonce: d8fb  # d8fb
+  message: "Wave 3 COMPLETE this session. WI-nunal canary producer fold landed in PR #3564 (commit b523ed6a0): 18 Cluster B *_unresolved values migrated to canonical+is_resolved=False across 11 producer files; audit-findings 0008 filed; 2 new Cluster A canonicals added (grpc_stub_resolution, luajit_ffi_lookup); awaits_bakeoff_validation tagged. Wave 2 progress: WI-jukav slice 1 landed in PR #3562 (SYNTHETIC_KINDS dual-shape predicate + audit comments on all 11 surfaces; Phase-3 forward-compat bug discovered+fixed in same PR — find_enclosing_symbol self-match issue). Slice 2 of WI-jukav (containment.CONTAINABLE/CONTAINER, EXCLUDED_KINDS) deferred — those values still emitted by live producers; defer until alongside Wave 5 framework-role fold. WI-fukol effectively no-op (verified by grep: zero hardcoded evidence_type sets in consumer surfaces named in WI; only consumer-side evidence_type usage is internal flow control in pyffi.py — not a migration target). Wave 4 (WI-mihiz/WI-zarov/WI-nibis/WI-rusit mid-scale folds) is the next priority; first Phase 3 production write of is_resolved is now end-to-end validated. Bakeoff validation queue grows by 1 (WI-nunal); should run DEEP cycle when queue ~15+."  # d8fb

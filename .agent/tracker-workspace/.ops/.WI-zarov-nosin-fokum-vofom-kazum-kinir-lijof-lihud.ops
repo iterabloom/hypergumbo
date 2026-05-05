@@ -27,3 +27,17 @@
   set: {}  # 096b
   add:  # 096b
     isbefore: [WI-tikuh-runip-bibub-safof-favov-sijih-buran-fosad]  # 096b
+- op: discuss  # 78c6
+  at: '2026-05-05T19:20:50Z'  # 78c6
+  by: agent  # 78c6
+  actor: jgstern_agent  # 78c6
+  clock: 3  # 78c6
+  nonce: 78c6  # 78c6
+  message: "PR 1 of WI-zarov Wave 4 ships Cluster E sub-case (a) call_site reclassification (4 sites: twig function_call, subprocess_cli, database_query, solidity_abi → all migrate to kind='call_site' + meta['call_kind']) + sub-case (b) clean drops (3 sites: css.py and jsonnet.py per-import Symbols + bitbake.py per-class inherit Symbols dropped because the corresponding Edge has endpoints independent of the dropped Symbol id). Audit-findings 0010 filed with per-row verdicts; cross-doc reclassification removes 4 rows (import/include/inherit/extends) from audit-findings 0003 that were misfiled as Cluster A — they belong in Cluster E sub-case (b) per ADR-0027 line 159. inherit's registry placement moves from language_construct to endpoint_shape (PRELIM_RESOLVED). 7 of 12 Cluster E values ship at PRELIM_RESOLVED (sub-case a + clean drops + zero-producer DEPRECATE-NO-FOLD for call/read/write); 5 remain UNRESOLVED with shape-classified per-producer rationale (reference, import, include, extends — partial coverage pending follow-on). PR 2 (next session) tackles the 5 sub-case (b) shape-2 edge-endpoint-dependent producers: json_config.py reference, astro.py import, puppet.py / scss.py / twig.py (×3 sites) include+extends — these need the Edge src/dst to re-route off the Symbol id before the Symbol can be dropped. Three further shape-3 edge-absent producers (r_lang.py import, make.py include, blade.py extends) need a redesign decision (introduce a companion Edge?) and are tracked separately as PR 3 / a follow-on item. Local pytest 11652 passed, 3 skipped, 100% coverage on changed files."  # 78c6
+- op: discuss  # 1927
+  at: '2026-05-05T20:20:37Z'  # 1927
+  by: agent  # 1927
+  actor: jgstern_agent  # 1927
+  clock: 4  # 1927
+  nonce: '1927'  # 1927
+  message: "PR 2 of WI-zarov Wave 4 ships sub-case (b) shape-2 edge-endpoint redesign for the 4 remaining shape-2 producers (6 sites). Each producer's Edge has its src/dst re-routed off the dropped Symbol id to a containing-scope id (file id via make_file_id, or 5-part dangling target id for unresolved cases): json_config.py references (dst → tsconfig file id), puppet.py includes_class (src → manifest file id, dst → dangling class id when unresolved), scss.py uses_mixin (src → stylesheet file id, dst → dangling mixin id when unresolved), twig.py extends_template + 2× includes_template (src → twig template file id, dst preserves existing twig:template:{name} format). Edges are emitted unconditionally now — unresolved cases keep representation via dangling targets handled by IR boundary materialization. PR 2 re-inspection also corrected an audit doc misclassification: astro.py:209 import was originally shape-2 in the doc; closer inspection found the imports Edge nearby belongs to the separate component_ref Symbol (Cluster F), not the import Symbol. Astro is shape-3 (no companion edge for import); reclassification noted in audit-findings 0010 §3. After PR 2: 9 of 12 Cluster E values at PRELIM_RESOLVED; 3 (import, include, extends) remain UNRESOLVED with one residual shape-3 producer each (r_lang.py / make.py / blade.py) deferred to a separate follow-on item. Local pytest 16633 passed, 7 skipped, 100% coverage on changed files."  # 1927

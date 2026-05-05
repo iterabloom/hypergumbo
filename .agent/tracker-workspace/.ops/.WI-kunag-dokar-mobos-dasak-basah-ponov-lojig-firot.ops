@@ -1,0 +1,20 @@
+- op: create  # 9924
+  at: '2026-05-05T20:36:05Z'  # 9924
+  by: agent  # 9924
+  actor: jgstern_agent  # 9924
+  clock: 1  # 9924
+  nonce: '9924'  # 9924
+  data:  # 9924
+    kind: work_item  # 9924
+    title: "WI-zarov Cluster E shape-3 follow-on: 4 edge-absent producers (r_lang import, astro import, make include, blade extends)"  # 9924
+    status: todo_soft  # 9924
+    priority: 3  # 9924
+    parent:  # 9924
+    tags:  # 9924
+    - analysis_quality  # 9924
+    isbefore: []  # 9924
+    duplicate_of: []  # 9924
+    not_duplicate_of: []  # 9924
+    pr_ref:  # 9924
+    description: "Per audit-findings 0010 §'Diagnostic findings' #2, four producers emit a use-site Symbol with no companion Edge. Dropping the Symbol would erase the language-level construct (the import / extends / include directive) from the behaviour map. Each needs a redesign decision: (a) introduce a companion Edge (e.g., emit an 'imports' Edge for r_lang library() calls), or (b) accept loss of representation. Affected sites: r_lang.py:215 (library() / require() imports — no companion Edge), astro.py:209 (frontmatter import statements — the imports Edge nearby in astro.py:332 belongs to the separate component_ref Symbol, not the import Symbol; corrected from shape-2 to shape-3 in PR 2 of WI-zarov), make.py:282 (makefile include directives — no companion Edge), blade.py:265 (Blade @extends directives — no companion Edge). After resolution, audit-findings 0010 statuses for import / include / extends advance from UNRESOLVED to PRELIM_RESOLVED. Reference: docs/audits/0010-symbol-kind-cluster-e-edge-label-kinds.md."  # 9924
+    fields: {}  # 9924

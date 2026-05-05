@@ -36,3 +36,20 @@
   set: {}  # ef29
   add:  # ef29
     isbefore: [WI-jubak-zivih-kadif-gubub-hosor-lunan-burig-virav]  # ef29
+- op: update  # 6153
+  at: '2026-05-05T10:15:46Z'  # 6153
+  by: agent  # 6153
+  actor: jgstern_agent  # 6153
+  clock: 4  # 6153
+  nonce: '6153'  # 6153
+  set:  # 6153
+    status: done  # 6153
+  add:  # 6153
+    tags: [awaits_bakeoff_validation]  # 6153
+- op: discuss  # 7dc3
+  at: '2026-05-05T10:15:46Z'  # 7dc3
+  by: agent  # 7dc3
+  actor: jgstern_agent  # 7dc3
+  clock: 5  # 7dc3
+  nonce: 7dc3  # 7dc3
+  message: "Wave 3 producer fold landed in PR #3564 (commit b523ed6a0). 18 *_unresolved/unresolved_* values migrated to canonical+is_resolved=False across 11 producer files. Two new Cluster A canonicals shipped (grpc_stub_resolution, luajit_ffi_lookup). Audit-findings 0008 records per-row FOLD verdicts. The 18 Cluster B registry entries stay on AXIS_ENDPOINT_SHAPE through the Phase 4a window. Tagged awaits_bakeoff_validation per the PR description's quantitative-implication claim (slice membership / centrality weighting / orphan rate may shift once consumers query is_resolved); current consumers don't yet read the field, so the implication is forward-looking, validating end-to-end producer→schema→consumer infrastructure rather than an immediate metric movement. DEEP cycle should compare cohort metrics before/after this PR."  # 7dc3
