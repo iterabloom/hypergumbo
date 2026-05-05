@@ -1,0 +1,20 @@
+- op: create  # 2288
+  at: '2026-05-05T00:22:24Z'  # 2288
+  by: agent  # 2288
+  actor: jgstern_agent  # 2288
+  clock: 1  # 2288
+  nonce: '2288'  # 2288
+  data:  # 2288
+    kind: work_item  # 2288
+    title: "Producer-side advisory inventory from L3 linter (ADR-0028 Phase 1 close-out)"  # 2288
+    status: todo_soft  # 2288
+    priority: 3  # 2288
+    parent:  # 2288
+    tags:  # 2288
+    - analysis_quality  # 2288
+    isbefore: []  # 2288
+    duplicate_of: []  # 2288
+    not_duplicate_of: []  # 2288
+    pr_ref:  # 2288
+    description: "Per ADR-0028 §\"Path B\" Phase 1 close-out. The L3 producer-coherence linter (scripts/check-producer-axis-coherence) surfaces 5 f-string emit sites across the three sibling axes — these are Phase-3 fold candidates, advisory not blocking.\n\nEdge.evidence_type advisories:\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/inheritance.py:250 — evidence_type=f'ast_{edge_type}' produces ast_extends, ast_implements (already canonical; advisory may be benign).\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py:608 — evidence_type=f'{ep.pattern_type}_endpoint' produces socketio_endpoint, fastapi_endpoint, native_endpoint, ws_endpoint, django_channels_endpoint (Cluster C — fold to canonical + meta['framework_dispatch']).\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/di_resolution.py:600 — evidence_type=f'di_binding:{binding.source}' (Cluster C — colon-form encodes pathway × binding source; fold to canonical + meta['framework_dispatch'] per source).\n\nSymbol.kind advisories:\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/ipc.py:495 — kind=f'ipc_{pattern.type}'\n- packages/hypergumbo-core/src/hypergumbo_core/linkers/phoenix_ipc.py:276 — kind=f'ipc_{pattern.type}'\n(Both Cluster D under ADR-0027 — fold to function/method + meta['framework_role'] per pattern type.)\n\nEach Phase-3 cluster item references its share of these advisories. This summary item exists so a single tracker entry has the full inventory in one place. Phase 1 landed in PR #3549 / commit 711e273d1."  # 2288
+    fields: {}  # 2288

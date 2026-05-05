@@ -18,3 +18,12 @@
     pr_ref:  # b638
     description: "Per ADR-0028 §\"Phase 2 — migrate consumers\". Replace hardcoded evidence_type set membership in consumers with axis-aware queries: evidence_types_on_axis(AXIS_INFERENCE_PATHWAY) for canonical-pathway sets, edge.is_resolved checks for resolution-status filtering, edge.meta lookups for framework-dispatch / call-construct context.\n\nKnown consumer surfaces (audit during Phase 1 land surfaced these): packages/hypergumbo-core/src/hypergumbo_core/taint.py (already had cross-field bug fixed alongside ADR-0023 Phase 1), io_boundary.py (IO boundary detection may filter on resolution status), slice.py (slice membership rules likely filter on resolution status), ranking.py (centrality weights may discount unresolved edges). Audit notebook at ~/hypergumbo_lab_notebook/concept-audit-sweep_2026-04-30.md lists additional consumer sites. Each consumer migration is reversible: the old *_unresolved set semantics still produce the right answer with the new (is_resolved=False) query shape.\n\nEstimated effort: 1-2 days, comparable to ADR-0023 Phase 2.\n\nPhase 1 landed in PR #3549 (commit 711e273d1)."  # b638
     fields: {}  # b638
+- op: update  # 9327
+  at: '2026-05-05T00:20:53Z'  # 9327
+  by: agent  # 9327
+  actor: jgstern_agent  # 9327
+  clock: 2  # 9327
+  nonce: '9327'  # 9327
+  set: {}  # 9327
+  add:  # 9327
+    isbefore: [WI-nurot-lituj-ganoh-nujup-gigot-dohib-mosas-vikub, WI-nunal-razud-gajum-fukig-lijul-bahik-bumul-vugis, WI-kagik-fumiz-moros-bunok-pahuh-rihov-gavak-bigok, WI-nibis-bohak-bitik-fozul-vohan-finik-soful-zijov]  # 9327

@@ -1,0 +1,20 @@
+- op: create  # f3c3
+  at: '2026-05-05T00:22:25Z'  # f3c3
+  by: agent  # f3c3
+  actor: jgstern_agent  # f3c3
+  clock: 1  # f3c3
+  nonce: f3c3  # f3c3
+  data:  # f3c3
+    kind: work_item  # f3c3
+    title: "Update ADR-0027 to record Symbol.kind enum re-open at ADR-0028 Phase 1 land"  # f3c3
+    status: todo_soft  # f3c3
+    priority: 4  # f3c3
+    parent:  # f3c3
+    tags:  # f3c3
+    - analysis_quality  # f3c3
+    isbefore: []  # f3c3
+    duplicate_of: []  # f3c3
+    not_duplicate_of: []  # f3c3
+    pr_ref:  # f3c3
+    description: "ADR-0027 Phase 1 (PR #?) shipped a closed Symbol.kind schema enum. ADR-0028 Phase 1 (PR #3549 / commit 711e273d1) retroactively relaxed it to type:'string' + x-axis-of-values map, removing the closed-enum constraint that was missing dynamic kind=f'ipc_{...}' emits at ipc.py / phoenix_ipc.py. ADR-0027's status note and 'Schema impact' section should be amended with a footnote referencing ADR-0028's Phase 1 PR so the ADR remains an accurate historical record. Editorial change only — no code."  # f3c3
+    fields: {}  # f3c3

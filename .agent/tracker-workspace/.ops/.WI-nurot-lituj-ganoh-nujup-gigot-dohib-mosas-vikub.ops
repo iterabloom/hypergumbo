@@ -18,3 +18,21 @@
     pr_ref:  # 82d3
     description: "Per ADR-0028 Phase 3 Cluster A. File docs/audits/<NN>-evidence-type-cluster-a-canonical-inference.md with per-value verdict for ~107 inference_pathway-axis evidence types (ast_*, scip_*, naming_convention, tree_sitter, etc.). No producer changes — these values stay on inference_pathway. The audit-findings doc records canonical-form rationale plus any apex/peer collapses surfaced from Cluster D's analysis. Phase 1 landed in PR #3549 / commit 711e273d1."  # 82d3
     fields: {}  # 82d3
+- op: update  # fa2b
+  at: '2026-05-05T00:20:53Z'  # fa2b
+  by: agent  # fa2b
+  actor: jgstern_agent  # fa2b
+  clock: 2  # fa2b
+  nonce: fa2b  # fa2b
+  set: {}  # fa2b
+  add:  # fa2b
+    isbefore: [WI-nunal-razud-gajum-fukig-lijul-bahik-bumul-vugis, WI-kagik-fumiz-moros-bunok-pahuh-rihov-gavak-bigok, WI-nibis-bohak-bitik-fozul-vohan-finik-soful-zijov]  # fa2b
+- op: update  # 0db6
+  at: '2026-05-05T00:20:53Z'  # 0db6
+  by: agent  # 0db6
+  actor: jgstern_agent  # 0db6
+  clock: 3  # 0db6
+  nonce: 0db6  # 0db6
+  set: {}  # 0db6
+  add:  # 0db6
+    isbefore: [WI-jubak-zivih-kadif-gubub-hosor-lunan-burig-virav]  # 0db6

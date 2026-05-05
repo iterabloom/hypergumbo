@@ -18,3 +18,12 @@
     pr_ref:  # 6926
     description: "Per ADR-0028 Phase 3 Cluster D. File docs/audits/<NN>-evidence-type-cluster-d-call-construct.md with apex selection and per-peer call_construct enumeration. Migrate ~28 call-construct evidence types (function_call, method_call, function_application, typed_receiver_call, ambiguous_method_call, pipe_call, bare_method_call, etc.) to canonical apex (likely ast_call per ADR-0028 Open Question 1) + meta['call_construct'] in {function, method, application, pipe, ...}. Decision required (ADR-0028 Open Question 1): apex name. ast_call (symmetry with ast_*) vs function_call (most-frequent emitter, 38 occurrences). Cluster D audit-findings doc decides. ~25 producer modules affected. Per-language sub-PRs. Tag: analysis_quality."  # 6926
     fields: {}  # 6926
+- op: update  # 2c79
+  at: '2026-05-05T00:21:29Z'  # 2c79
+  by: agent  # 2c79
+  actor: jgstern_agent  # 2c79
+  clock: 2  # 2c79
+  nonce: 2c79  # 2c79
+  set: {}  # 2c79
+  add:  # 2c79
+    isbefore: [WI-jubak-zivih-kadif-gubub-hosor-lunan-burig-virav]  # 2c79

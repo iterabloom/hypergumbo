@@ -19,3 +19,21 @@
     pr_ref:  # 930f
     description: "Per ADR-0028 Phase 3 Cluster C. File docs/audits/<NN>-evidence-type-cluster-c-framework-dispatch.md with per-row mapping. Migrate ~54 framework-prefixed evidence types (django_orm_dispatch, kafka_streams_dispatch, phoenix_event_match, nestjs_module_registration, vue_event_handler, etc.) to canonical inference label + meta['framework_dispatch']=<value>. Largest of the four Phase-3 subsets (~30 producer modules). Per-framework sub-PRs each ship as their own awaits_bakeoff_validation PR. Estimated 5-8 days alone. Open follow-on (ADR-0028 Open Question 2): if meta['framework_dispatch'] hits the recurrence-promotion threshold (~30 distinct values across ~30 producer modules), file a follow-on to promote it to a dedicated Edge.framework: str | None field. Tags: analysis_quality, framework_dispatch_linkers."  # 930f
     fields: {}  # 930f
+- op: update  # 03ae
+  at: '2026-05-05T00:21:29Z'  # 03ae
+  by: agent  # 03ae
+  actor: jgstern_agent  # 03ae
+  clock: 2  # 03ae
+  nonce: 03ae  # 03ae
+  set: {}  # 03ae
+  add:  # 03ae
+    isbefore: [WI-jubak-zivih-kadif-gubub-hosor-lunan-burig-virav]  # 03ae
+- op: update  # baeb
+  at: '2026-05-05T00:43:22Z'  # baeb
+  by: agent  # baeb
+  actor: jgstern_agent  # baeb
+  clock: 3  # baeb
+  nonce: baeb  # baeb
+  set: {}  # baeb
+  add:  # baeb
+    isbefore: [WI-vusot-pibip-suruf-fapuk-dahob-siral-tokuk-bitiz]  # baeb

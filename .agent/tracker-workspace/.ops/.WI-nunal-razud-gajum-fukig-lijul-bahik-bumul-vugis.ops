@@ -18,3 +18,21 @@
     pr_ref:  # 4806
     description: "Per ADR-0028 Phase 3 Cluster B. File docs/audits/<NN>-evidence-type-cluster-b-resolution-status.md with per-row fold target. Migrate ~18 *_unresolved / unresolved_* producer emit sites to set evidence_type to canonical inference label + Edge.is_resolved=False. Mechanical pattern; smallest blast radius of the four clusters. Worked examples: ast_annotation_unresolved → ast_annotation + is_resolved=False; ast_decorator_unresolved → ast_decorator + is_resolved=False; unresolved_method_call → method_call (or post-collapse ast_call) + is_resolved=False; luajit_ffi_unresolved may need new canonical (e.g. luajit_ffi_lookup) — audit decides. Tag: analysis_quality."  # 4806
     fields: {}  # 4806
+- op: update  # f7e0
+  at: '2026-05-05T00:20:53Z'  # f7e0
+  by: agent  # f7e0
+  actor: jgstern_agent  # f7e0
+  clock: 2  # f7e0
+  nonce: f7e0  # f7e0
+  set: {}  # f7e0
+  add:  # f7e0
+    isbefore: [WI-kagik-fumiz-moros-bunok-pahuh-rihov-gavak-bigok, WI-nibis-bohak-bitik-fozul-vohan-finik-soful-zijov]  # f7e0
+- op: update  # ef29
+  at: '2026-05-05T00:21:28Z'  # ef29
+  by: agent  # ef29
+  actor: jgstern_agent  # ef29
+  clock: 3  # ef29
+  nonce: ef29  # ef29
+  set: {}  # ef29
+  add:  # ef29
+    isbefore: [WI-jubak-zivih-kadif-gubub-hosor-lunan-burig-virav]  # ef29

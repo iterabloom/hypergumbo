@@ -1,0 +1,20 @@
+- op: create  # d9ca
+  at: '2026-05-05T00:20:16Z'  # d9ca
+  by: agent  # d9ca
+  actor: jgstern_agent  # d9ca
+  clock: 1  # d9ca
+  nonce: d9ca  # d9ca
+  data:  # d9ca
+    kind: work_item  # d9ca
+    title: "Phase 4b: Remove deprecated Edge.evidence_type values from EVIDENCE_TYPES post-bakeoff-validation (ADR-0028)"  # d9ca
+    status: todo_soft  # d9ca
+    priority: 4  # d9ca
+    parent:  # d9ca
+    tags:  # d9ca
+    - analysis_quality  # d9ca
+    isbefore: []  # d9ca
+    duplicate_of: []  # d9ca
+    not_duplicate_of: []  # d9ca
+    pr_ref:  # d9ca
+    description: "Per ADR-0028 Phase 4 hard-fail. Ships piecewise per-cluster as each Phase 3 cluster's awaits_bakeoff_validation tag clears. Per-ship: remove the cluster's endpoint_shape values from EVIDENCE_TYPES in evidence_types.py; SCHEMA_VERSION minor bump; regenerate schema.json + concept-axes.md. Phase 4b prerequisites match ADR-0023's: bakeoff validation must clear for the corresponding Phase 3 subset before its 4b ships. Expect 5-7 sub-ships across the four clusters; each gets its own SCHEMA_VERSION bump. Predecessors: Phase 4a additive deprecation, plus the relevant Phase 3 cluster cleared bakeoff validation. Tag: analysis_quality."  # d9ca
+    fields: {}  # d9ca

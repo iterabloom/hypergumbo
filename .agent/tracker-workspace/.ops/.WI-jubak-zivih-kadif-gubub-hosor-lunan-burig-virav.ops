@@ -1,0 +1,29 @@
+- op: create  # 63a7
+  at: '2026-05-05T00:19:36Z'  # 63a7
+  by: agent  # 63a7
+  actor: jgstern_agent  # 63a7
+  clock: 1  # 63a7
+  nonce: 63a7  # 63a7
+  data:  # 63a7
+    kind: work_item  # 63a7
+    title: "Phase 4a: Mark Edge.evidence_type endpoint_shape values as x-deprecated (ADR-0028)"  # 63a7
+    status: todo_soft  # 63a7
+    priority: 4  # 63a7
+    parent:  # 63a7
+    tags:  # 63a7
+    - analysis_quality  # 63a7
+    isbefore: []  # 63a7
+    duplicate_of: []  # 63a7
+    not_duplicate_of: []  # 63a7
+    pr_ref:  # 63a7
+    description: "Per ADR-0028 Phase 4 additive. Once Phase 3 producer migration lands per-cluster, mark each migrated endpoint_shape value with an x-deprecated annotation in docs/schema.json. Values stay valid in the (open) schema for the deprecation window. SCHEMA_VERSION minor bump per per-cluster ship. Phase 1 (PR #3549 / commit 711e273d1) shipped the open-enum posture (no closed enum to deprecate FROM); the x-deprecated annotation is purely informational until Phase 4b removes the value from EVIDENCE_TYPES. Predecessors: at least one Phase 3 cluster's awaits_bakeoff_validation tag must clear. Tag: analysis_quality."  # 63a7
+    fields: {}  # 63a7
+- op: update  # 6012
+  at: '2026-05-05T00:20:53Z'  # 6012
+  by: agent  # 6012
+  actor: jgstern_agent  # 6012
+  clock: 2  # 6012
+  nonce: '6012'  # 6012
+  set: {}  # 6012
+  add:  # 6012
+    isbefore: [WI-porim-guzis-kirid-fikoh-labal-rufol-hojip-zajus]  # 6012

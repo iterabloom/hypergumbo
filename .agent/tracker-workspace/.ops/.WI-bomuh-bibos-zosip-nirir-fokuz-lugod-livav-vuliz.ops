@@ -18,3 +18,18 @@
     pr_ref:  # 78ef
     description: "Per ADR-0027 §\"Open questions\" #4 and ADR-0024 §\"Fold-residue discipline\" rule 3 (recurrence-promotion threshold).\n\nPhase 1 of ADR-0027 implicitly establishes meta['framework_role'] as a recognized convention (the Cluster D fold target). Once a second meta key promotion candidate is identified — e.g., a future Phase 3 audit-findings doc proposes a new meta key, or ADR-0028's Edge.evidence_type fold introduces meta['resolution_quality'] — the recurrence-promotion threshold fires and a parallel axis_meta_keys.py registry should be established.\n\nDefer until the second candidate appears; until then, file as P4 backlog. The registry shape mirrors edge_types.py / symbol_kinds.py: Final[tuple[MetaKeySpec, ...]] with name, axis, description.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Open questions\" #4; docs/adr/0024-axis-declaration-template.md §\"Fold-residue discipline\" rule 3."  # 78ef
     fields: {}  # 78ef
+- op: update  # a9e1
+  at: '2026-05-05T00:43:39Z'  # a9e1
+  by: agent  # a9e1
+  actor: jgstern_agent  # a9e1
+  clock: 2  # a9e1
+  nonce: a9e1  # a9e1
+  set:  # a9e1
+    status: wont_do  # a9e1
+- op: discuss  # 38a4
+  at: '2026-05-05T00:43:40Z'  # 38a4
+  by: agent  # 38a4
+  actor: jgstern_agent  # 38a4
+  clock: 3  # 38a4
+  nonce: 38a4  # 38a4
+  message: "Superseded by WI-vusot, which has the same scope (axis_meta_keys.py parallel registry) but a broader title that explicitly covers BOTH Edge.meta AND Symbol.meta keys. WI-vusot fires once both ADR-0027 (framework_role) and ADR-0028 (framework_dispatch + call_construct) meta key spaces are populated post-Wave-5 framework dispatch landing. Hard isbefore edges WI-habut→WI-vusot and WI-kagik→WI-vusot enforce the dependency. Closing this item to dedupe the work stream."  # 38a4
