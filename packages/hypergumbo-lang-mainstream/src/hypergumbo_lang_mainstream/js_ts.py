@@ -2470,7 +2470,8 @@ def _extract_decorator_edges(
                     confidence=0.50,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="ast_decorator_unresolved",
+                    evidence_type="ast_decorator",
+                    is_resolved=False,
                 )
                 edges.append(edge)
 
@@ -3738,7 +3739,8 @@ def _extract_edges(
                                 line=node.start_point[0] + 1 + line_offset,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
-                                evidence_type="ast_call_unresolved_import",
+                                evidence_type="ast_call_direct",
+                                is_resolved=False,
                                 confidence=0.70,
                             )
                             edges.append(edge)
@@ -3877,7 +3879,8 @@ def _extract_edges(
                                     line=node.start_point[0] + 1 + line_offset,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    evidence_type="ast_method_unresolved_namespace",
+                                    evidence_type="ast_method_inferred",
+                                    is_resolved=False,
                                     confidence=0.70,
                                 )
                                 edges.append(edge)
@@ -3941,7 +3944,8 @@ def _extract_edges(
                                 line=node.start_point[0] + 1 + line_offset,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
-                                evidence_type="ast_method_unresolved_global",
+                                evidence_type="ast_method_inferred",
+                                is_resolved=False,
                                 confidence=0.65,
                             )
                             edges.append(edge)

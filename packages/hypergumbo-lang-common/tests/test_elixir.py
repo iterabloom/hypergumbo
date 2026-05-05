@@ -530,11 +530,12 @@ end
             e for e in call_edges
             if "Main.run" in e.src
             and "unresolved" in e.dst
-            and e.evidence_type == "unresolved_module_call"
+            and e.evidence_type == "ast_call_direct"
+            and not e.is_resolved
         ]
         assert len(unresolved) == 1, (
             f"Expected 1 unresolved edge, got {len(unresolved)}. "
-            f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+            f"All call edges: {[(e.src, e.dst, e.evidence_type, e.is_resolved) for e in call_edges]}"
         )
         assert unresolved[0].confidence == 0.50
 
@@ -695,12 +696,13 @@ end
             e for e in call_edges
             if "Router.build" in e.src
             and "Plug.Builder" in e.dst
-            and e.evidence_type == "unresolved_module_call"
+            and e.evidence_type == "ast_call_direct"
+            and not e.is_resolved
         ]
         assert len(unresolved) == 1, (
             "Expected 1 unresolved edge for Plug.Builder.compile, "
             f"got {len(unresolved)}. "
-            f"All: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+            f"All: {[(e.src, e.dst, e.evidence_type, e.is_resolved) for e in call_edges]}"
         )
 
     def test_simple_function_definition(self, tmp_path: Path) -> None:

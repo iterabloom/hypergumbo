@@ -191,7 +191,8 @@ class TestRubyFFIGem:
 
         assert len(result.edges) == 1
         assert result.edges[0].dst == f"{RUBY_FFI_STDLIB_PREFIX}nonexistent:unresolved"
-        assert result.edges[0].evidence_type == "ruby_ffi_attach_unresolved"
+        assert result.edges[0].evidence_type == "ruby_ffi_attach"
+        assert result.edges[0].is_resolved is False
 
     def test_attach_function_with_string_name(self, tmp_path: Path) -> None:
         """attach_function with string name (instead of symbol)."""
@@ -256,7 +257,8 @@ class TestRubyFFIUnresolvedEdges:
         edge = result.edges[0]
         assert edge.edge_type == "calls"
         assert edge.dst == f"{RUBY_FFI_STDLIB_PREFIX}zmq_send:unresolved"
-        assert edge.evidence_type == "ruby_ffi_attach_unresolved"
+        assert edge.evidence_type == "ruby_ffi_attach"
+        assert edge.is_resolved is False
         assert edge.confidence == 0.75
 
     def test_prefers_resolved_when_c_symbol_exists(self, tmp_path: Path) -> None:

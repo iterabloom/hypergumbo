@@ -413,6 +413,7 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`function_pointer_arg`** — Edge inferred from a function pointer passed as an argument.
 - **`function_reference`** — Edge inferred from a function reference (not a call).
 - **`function_reference_arg`** — Edge inferred from a function reference passed as an argument.
+- **`grpc_stub_resolution`** — Edge inferred from a gRPC stub-method resolution lookup. Cluster B canonical for `grpc_unresolved_resolution` (ADR-0028 §Phase 3 Cluster B / WI-nunal).
 - **`hash_field_reference`** — Edge inferred from a hash/dict field reference.
 - **`hg_annotation`** — Edge inferred from a hypergumbo-emitted analyzer annotation.
 - **`import`** — Edge inferred from a generic import construct.
@@ -427,6 +428,7 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`interface_dispatch`** — Edge inferred from interface-method dispatch resolution.
 - **`jsx_element`** — Edge inferred from a JSX element reference.
 - **`link`** — Edge inferred from an OTP link/monitor relationship.
+- **`luajit_ffi_lookup`** — Edge inferred from a LuaJIT FFI symbol lookup. Cluster B canonical for `luajit_ffi_unresolved` (ADR-0028 §Phase 3 Cluster B / WI-nunal).
 - **`make_prerequisite`** — Edge inferred from a Make/CMake prerequisite declaration.
 - **`message_send`** — Edge inferred from a message-send construct (Erlang `!`, Smalltalk).
 - **`method_reference`** — Edge inferred from a method reference (Java `::method`, etc.).

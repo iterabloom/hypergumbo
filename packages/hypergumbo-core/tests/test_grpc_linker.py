@@ -1786,7 +1786,8 @@ class TestGrpcUnresolvedEdgeResolution:
             confidence=0.5,
             origin="go-analyzer",
             origin_run_id="test",
-            evidence_type="unresolved_method_call",
+            evidence_type="method_call",
+            is_resolved=False,
         )
 
         # Create a symbol that can resolve the edge

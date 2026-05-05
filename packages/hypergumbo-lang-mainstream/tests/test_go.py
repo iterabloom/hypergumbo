@@ -4578,9 +4578,13 @@ func cleanup() {
 
         # Should be unresolved — chained-call guard fires before ambiguity guard
         for edge in close_calls:
-            assert edge.evidence_type == "chained_call_unresolved", (
+            assert edge.evidence_type == "method_call_field_chain", (
                 f"Chained call Close() with 3+ candidates should be "
-                f"chained_call_unresolved, got '{edge.evidence_type}'"
+                f"method_call_field_chain (post-Cluster-B fold), got '{edge.evidence_type}'"
+            )
+            assert edge.is_resolved is False, (
+                f"Chained call Close() with 3+ candidates should be unresolved, "
+                f"got is_resolved={edge.is_resolved}"
             )
             assert "Server.Close" not in edge.dst
             assert "Client.Close" not in edge.dst
@@ -4623,9 +4627,13 @@ func testFunc() {
 
         # Should NOT resolve to Manager.Update — receiver type is unknown
         for edge in update_calls:
-            assert edge.evidence_type == "chained_call_unresolved", (
+            assert edge.evidence_type == "method_call_field_chain", (
                 f"Chained call Update() with 1 candidate should be "
-                f"chained_call_unresolved, got '{edge.evidence_type}'"
+                f"method_call_field_chain (post-Cluster-B fold), got '{edge.evidence_type}'"
+            )
+            assert edge.is_resolved is False, (
+                f"Chained call Update() with 1 candidate should be unresolved, "
+                f"got is_resolved={edge.is_resolved}"
             )
             assert "Manager.Update" not in edge.dst, (
                 f"Should not resolve to Manager.Update, got {edge.dst}"
@@ -4656,9 +4664,14 @@ func handler() {
 
         # Should NOT be marked as chained_call_unresolved
         for edge in handler_calls:
-            assert edge.evidence_type != "chained_call_unresolved", (
+            # Post-Cluster-B fold: chained_call_unresolved → method_call_field_chain
+            # + is_resolved=False. Guard not firing means is_resolved is True.
+            assert not (
+                edge.evidence_type == "method_call_field_chain"
+                and edge.is_resolved is False
+            ), (
                 f"Package-qualified chained call should not trigger guard, "
-                f"got '{edge.evidence_type}'"
+                f"got evidence_type='{edge.evidence_type}' is_resolved={edge.is_resolved}"
             )
 
     def test_selector_operand_resolved_via_field_chain(self, tmp_path: Path) -> None:
@@ -4852,13 +4865,13 @@ func runQuery(e *Engine) {
             f"return-type registry, found: {[e.dst for e in exec_calls]}"
         )
 
-        # Should NOT be chained_call_unresolved
+        # Should NOT be unresolved chained-call (post-Cluster-B fold)
         exec_unresolved = [
             e for e in exec_calls
-            if e.evidence_type == "chained_call_unresolved"
+            if e.evidence_type == "method_call_field_chain" and e.is_resolved is False
         ]
         assert len(exec_unresolved) == 0, (
-            f"Exec() should be resolved, not chained_call_unresolved: "
+            f"Exec() should be resolved, not unresolved method_call_field_chain: "
             f"{[e.dst for e in exec_unresolved]}"
         )
 
@@ -5012,12 +5025,16 @@ func doWork(mu *sync.Mutex) {
             # the unresolved_method_call path (with correct module hint 'sync')
             # instead of the stdlib_method_call guard.  Both are correct — the
             # key invariant is that DirLocker.Lock is NOT chosen.
-            assert edge.evidence_type in (
-                "stdlib_method_call", "unresolved_method_call",
-            ), (
-                f"stdlib method collision should produce unresolved edge, "
-                f"got '{edge.evidence_type}'"
+            # Post-Cluster-B fold (WI-nunal): unresolved_method_call → method_call + is_resolved=False.
+            assert edge.evidence_type in ("stdlib_method_call", "method_call"), (
+                f"stdlib method collision should produce stdlib_method_call or "
+                f"unresolved method_call edge, got '{edge.evidence_type}'"
             )
+            if edge.evidence_type == "method_call":
+                assert edge.is_resolved is False, (
+                    f"method_call from stdlib collision should be unresolved, "
+                    f"got is_resolved={edge.is_resolved}"
+                )
             assert edge.confidence <= 0.50, (
                 f"stdlib method collision should have low confidence, "
                 f"got {edge.confidence}"
@@ -5139,13 +5156,15 @@ func saveData(m *sync.Map) {
                 f"m.Store() should NOT resolve to DownTrackSpreader.Store, got {edge.dst}"
             )
             # With qualified-type parameter tracking, *sync.Map propagates
-            # module hint, so the edge may go through unresolved_method_call
-            # path instead of stdlib_method_call.  Both are correct.
-            assert edge.evidence_type in (
-                "stdlib_method_call", "unresolved_method_call",
-            ), (
+            # module hint, so the edge may go through unresolved method_call
+            # path (post-Cluster-B fold WI-nunal: unresolved_method_call →
+            # method_call + is_resolved=False) instead of stdlib_method_call.
+            # Both are correct.
+            assert edge.evidence_type in ("stdlib_method_call", "method_call"), (
                 f"Expected unresolved edge, got '{edge.evidence_type}'"
             )
+            if edge.evidence_type == "method_call":
+                assert edge.is_resolved is False
 
     def test_load_single_candidate_produces_unresolved(
         self, tmp_path: Path,

@@ -4970,7 +4970,8 @@ class TestUnresolvedEdgeEmission:
         edge = unresolved[0]
 
         # Verify the edge properties
-        assert edge["meta"]["evidence_type"] == "unresolved_method_call"
+        assert edge["meta"]["evidence_type"] == "method_call"
+        assert edge["is_resolved"] is False
         assert edge["confidence"] == 0.50
 
     def test_unresolved_edge_for_imported_class_method(self, tmp_path: Path) -> None:

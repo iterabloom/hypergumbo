@@ -71,7 +71,8 @@ def _make_unresolved_edge(
         dst=f"go:{import_path}:0-0:{func_name}:unresolved",
         edge_type="calls",
         line=line,
-        evidence_type="unresolved_method_call",
+        evidence_type="method_call",
+        is_resolved=False,
         confidence=0.50,
         origin="go-v1",
     )

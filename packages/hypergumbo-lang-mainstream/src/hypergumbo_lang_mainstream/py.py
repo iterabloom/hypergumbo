@@ -2843,7 +2843,8 @@ def _extract_edges(
                         dst=dst_id,
                         edge_type="decorated_by",
                         line=line,
-                        evidence_type="ast_decorator_unresolved",
+                        evidence_type="ast_decorator",
+                        is_resolved=False,
                         confidence=0.50,
                     ))
 
@@ -2920,7 +2921,8 @@ def _extract_edges(
                     dst=decorated_symbol.id,
                     edge_type="signal_receiver",
                     line=line,
-                    evidence_type="django_signal_receiver_unresolved",
+                    evidence_type="django_signal_receiver",
+                    is_resolved=False,
                     confidence=0.50,
                 ))
 
@@ -3227,7 +3229,8 @@ def _process_call(
                     dst=dst_id,
                     edge_type="calls",
                     line=call_node.lineno,
-                    evidence_type="unresolved_method_call",
+                    evidence_type="method_call",
+                    is_resolved=False,
                     confidence=0.50,  # Lower confidence for unresolved
                 ))
             # Case: imported_name.method() where imported_name not resolved
@@ -3239,7 +3242,8 @@ def _process_call(
                     dst=dst_id,
                     edge_type="calls",
                     line=call_node.lineno,
-                    evidence_type="unresolved_method_call",
+                    evidence_type="method_call",
+                    is_resolved=False,
                     confidence=0.50,
                 ))
             # Case: local_var.method() where type cannot be inferred.
@@ -3253,7 +3257,8 @@ def _process_call(
                     dst=dst_id,
                     edge_type="calls",
                     line=call_node.lineno,
-                    evidence_type="unresolved_variable_method_call",
+                    evidence_type="method_call_type_inferred",
+                    is_resolved=False,
                     confidence=0.40,
                 ))
         elif isinstance(func, ast.Attribute):
@@ -3276,7 +3281,8 @@ def _process_call(
                         dst=dst_id,
                         edge_type="calls",
                         line=call_node.lineno,
-                        evidence_type="unresolved_dotted_submodule_call",
+                        evidence_type="ast_call_direct",
+                        is_resolved=False,
                         confidence=0.50,
                     ))
         elif isinstance(func, ast.Name):
@@ -3294,7 +3300,8 @@ def _process_call(
                     dst=dst_id,
                     edge_type="calls",
                     line=call_node.lineno,
-                    evidence_type="unresolved_imported_name_call",
+                    evidence_type="ast_call_direct",
+                    is_resolved=False,
                     confidence=0.50,
                 ))
 

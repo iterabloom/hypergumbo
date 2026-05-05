@@ -1631,12 +1631,12 @@ class TestRustMethodCallAmbiguity:
 
         resolved_edges = [
             e for e in edges
-            if e.edge_type == "calls" and e.evidence_type != "unresolved_external_call"
+            if e.edge_type == "calls" and e.is_resolved
         ]
         # With 20 candidates and ambiguity_threshold=3, no resolved edge
         assert len(resolved_edges) == 0
         # But an unresolved external edge is emitted
-        unresolved = [e for e in edges if e.evidence_type == "unresolved_external_call"]
+        unresolved = [e for e in edges if not e.is_resolved]
         assert len(unresolved) == 1
 
     def test_method_call_prefers_same_module(self, tmp_path: Path) -> None:
@@ -2085,13 +2085,13 @@ class TestRustScopedIdentifierResolution:
 
         resolved_edges = [
             e for e in edges
-            if e.edge_type == "calls" and e.evidence_type != "unresolved_external_call"
+            if e.edge_type == "calls" and e.is_resolved
         ]
         # No symbols registered, so no resolved edges should be produced
         assert len(resolved_edges) == 0
         # But an unresolved edge should exist for the external call
         unresolved = [
-            e for e in edges if e.evidence_type == "unresolved_external_call"
+            e for e in edges if not e.is_resolved
         ]
         assert len(unresolved) == 1
         assert "Unknown::method" in unresolved[0].dst
@@ -4667,7 +4667,7 @@ fn read_file(path: &str) {
 
         unresolved = [
             e for e in result.edges
-            if e.evidence_type == "unresolved_external_call"
+            if not e.is_resolved
         ]
         # open() should be unresolved (std::fs::File::open is not in project)
         assert len(unresolved) >= 1
@@ -4688,7 +4688,7 @@ fn main() { helper(); }
 
         unresolved_helper = [
             e for e in result.edges
-            if e.evidence_type == "unresolved_external_call" and "helper" in e.dst
+            if not e.is_resolved and "helper" in e.dst
         ]
         assert len(unresolved_helper) == 0
 

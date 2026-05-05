@@ -1334,7 +1334,7 @@ contract Vault {
 
         unresolved = [
             e for e in result.edges
-            if e.evidence_type == "unresolved_external_call"
+            if not e.is_resolved
         ]
         assert len(unresolved) >= 1
         callee_names = {e.dst.split(":")[-2] for e in unresolved}
@@ -1361,7 +1361,7 @@ contract Test {
 
         unresolved = [
             e for e in result.edges
-            if e.evidence_type == "unresolved_external_call"
+            if not e.is_resolved
         ]
         assert len(unresolved) >= 1
         callee_names = {e.dst.split(":")[-2] for e in unresolved}
@@ -1386,7 +1386,7 @@ contract Test {
 
         unresolved = [
             e for e in result.edges
-            if e.evidence_type == "unresolved_external_call"
+            if not e.is_resolved
         ]
         # msg.sender.call is a member access that can't be resolved
         assert any("call" in e.dst or "sender" in e.dst for e in unresolved)

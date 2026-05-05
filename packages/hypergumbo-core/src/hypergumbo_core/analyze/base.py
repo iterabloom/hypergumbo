@@ -407,7 +407,8 @@ def make_unresolved_edge(
         confidence=0.50,
         origin=pass_id,
         origin_run_id=run_id,
-        evidence_type="unresolved_external_call",
+        evidence_type="ast_call_direct",
+        is_resolved=False,
     )
 
 

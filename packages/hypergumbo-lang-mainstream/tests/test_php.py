@@ -1465,7 +1465,7 @@ function cleanup($obj) {
         for edge in cleanup_calls:
             if "close" in edge.dst.lower():
                 # Accept either bare "close" or unresolved external edge
-                assert edge.dst == "close" or edge.evidence_type == "unresolved_external_call", (
+                assert edge.dst == "close" or not edge.is_resolved, (
                     "Ambiguous method call should not resolve to a specific class, "
                     f"got {edge.dst}"
                 )

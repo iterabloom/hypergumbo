@@ -1443,7 +1443,8 @@ def _extract_attribute_edges(
                     confidence=0.50,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="ast_attribute_unresolved",
+                    evidence_type="ast_attribute",
+                    is_resolved=False,
                 )
                 edges.append(edge)
 

@@ -1779,7 +1779,8 @@ def _extract_annotation_edges(
                     confidence=0.50,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="ast_annotation_unresolved",
+                    evidence_type="ast_annotation",
+                    is_resolved=False,
                 )
                 edges.append(edge)
 

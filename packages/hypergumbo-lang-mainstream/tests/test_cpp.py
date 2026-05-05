@@ -2269,7 +2269,7 @@ void greet() {
 
         unresolved = [
             e for e in result.edges
-            if e.evidence_type == "unresolved_external_call"
+            if not e.is_resolved
         ]
         callee_names = {e.dst.split(":")[-2] for e in unresolved}
         assert "printf" in callee_names
@@ -2289,7 +2289,7 @@ int main() { return helper(); }
 
         unresolved_helper = [
             e for e in result.edges
-            if e.evidence_type == "unresolved_external_call" and "helper" in e.dst
+            if not e.is_resolved and "helper" in e.dst
         ]
         assert len(unresolved_helper) == 0
 

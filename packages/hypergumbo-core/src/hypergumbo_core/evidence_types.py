@@ -197,6 +197,9 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
                      "Edge inferred from a function reference (not a call)."),
     EvidenceTypeSpec("function_reference_arg", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a function reference passed as an argument."),
+    EvidenceTypeSpec("grpc_stub_resolution", AXIS_INFERENCE_PATHWAY,
+                     "Edge inferred from a gRPC stub-method resolution lookup. "
+                     "Cluster B canonical for `grpc_unresolved_resolution` (ADR-0028 §Phase 3 Cluster B / WI-nunal)."),
     EvidenceTypeSpec("hash_field_reference", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a hash/dict field reference."),
     EvidenceTypeSpec("hg_annotation", AXIS_INFERENCE_PATHWAY,
@@ -225,6 +228,9 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
                      "Edge inferred from a JSX element reference."),
     EvidenceTypeSpec("link", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from an OTP link/monitor relationship."),
+    EvidenceTypeSpec("luajit_ffi_lookup", AXIS_INFERENCE_PATHWAY,
+                     "Edge inferred from a LuaJIT FFI symbol lookup. "
+                     "Cluster B canonical for `luajit_ffi_unresolved` (ADR-0028 §Phase 3 Cluster B / WI-nunal)."),
     EvidenceTypeSpec("make_prerequisite", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a Make/CMake prerequisite declaration."),
     EvidenceTypeSpec("message_send", AXIS_INFERENCE_PATHWAY,

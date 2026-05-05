@@ -931,7 +931,8 @@ def _resolve_unresolved_grpc_edges(
                 confidence=0.75,  # Lower confidence for linker-resolved
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="grpc_unresolved_resolution",
+                evidence_type="grpc_stub_resolution",
+                is_resolved=False,
             ))
 
     return resolved_edges

@@ -32,6 +32,7 @@ write an ADR vs an audit-findings document."
 | [0005](0005-symbol-kind-cluster-b-file-shape.md) | Symbol.kind Cluster B — File-Shape and Package-Shape Entities | `Symbol.kind` | All UNRESOLVED |
 | [0006](0006-symbol-kind-cluster-g-build-config-shape.md) | Symbol.kind Cluster G — Build / Config-Shape Entities | `Symbol.kind` | All UNRESOLVED |
 | [0007](0007-symbol-kind-cluster-h-long-tail.md) | Symbol.kind Cluster H — Domain-Specific Long Tail | `Symbol.kind` | All UNRESOLVED |
+| [0008](0008-evidence-type-cluster-b-resolution-status.md) | Edge.evidence_type Cluster B — Resolution-Status Leakage | `Edge.evidence_type` | All PRELIM_RESOLVED |
 
 ## File format
 

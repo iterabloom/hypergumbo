@@ -1921,7 +1921,7 @@ void read_file(const char *path) {
 
         unresolved = [
             e for e in result.edges
-            if e.evidence_type == "unresolved_external_call"
+            if not e.is_resolved
         ]
         callee_names = {e.dst.split(":")[-2] for e in unresolved}
         assert "fopen" in callee_names
@@ -1947,7 +1947,7 @@ int main() { return helper(); }
         # helper() call should be resolved, not unresolved
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert any(e.evidence_type == "ast_call_direct" for e in call_edges)
-        assert not any(e.evidence_type == "unresolved_external_call" for e in call_edges)
+        assert not any(not e.is_resolved for e in call_edges)
 
     def test_unresolved_edge_has_correct_id_format(self, tmp_path: Path) -> None:
         """Unresolved edge dst follows c:external:0-0:name:unresolved format."""
@@ -1964,7 +1964,7 @@ void do_stuff() {
 
         unresolved = [
             e for e in result.edges
-            if e.evidence_type == "unresolved_external_call"
+            if not e.is_resolved
         ]
         assert len(unresolved) >= 1
         printf_edge = next(e for e in unresolved if "printf" in e.dst)

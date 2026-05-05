@@ -1567,7 +1567,8 @@ class TestMakeUnresolvedEdge:
         assert edge.dst == "c:external:0-0:fopen:unresolved"
         assert edge.edge_type == "calls"
         assert edge.confidence == 0.50
-        assert edge.evidence_type == "unresolved_external_call"
+        assert edge.evidence_type == "ast_call_direct"
+        assert edge.is_resolved is False
         assert edge.origin == "c-pass"
         assert edge.origin_run_id == "run-123"
         assert edge.line == 3
