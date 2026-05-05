@@ -200,33 +200,12 @@ def _extract_symbols_recursive(
             analysis.symbol_by_name[sym.name] = sym
 
     elif node.type == "import":
-        import_path = None
-        for child in node.children:
-            if child.type == "string":
-                for subchild in child.children:
-                    if subchild.type == "string_content":
-                        import_path = _get_node_text(subchild)
-                        break
-
-        if import_path:
-            sym = Symbol(
-                id=make_symbol_id("jsonnet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, import_path, "import"),
-                stable_id=analyzer.compute_stable_id(node, kind="import"),
-                name=import_path,
-                kind="import",
-                language="jsonnet",
-                path=rel_path,
-                span=Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            analysis.symbols.append(sym)
-            analysis.node_for_symbol[sym.id] = node
-            analysis.symbol_by_name[sym.name] = sym
+        # Cluster E sub-case (b) FOLD-clean-drop per audit-findings 0010:
+        # the per-import Symbol was redundant with the imports Edge emitted
+        # by ``_extract_edges_recursive`` (src=jsonnet:{rel_path}:file,
+        # dst=jsonnet:import:{import_path} — both endpoints are independent
+        # of any dropped Symbol id). Producer now emits only the Edge.
+        pass
 
     for child in node.children:
         _extract_symbols_recursive(child, rel_path, analysis, analyzer)

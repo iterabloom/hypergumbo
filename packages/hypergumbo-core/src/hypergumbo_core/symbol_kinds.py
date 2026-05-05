@@ -130,6 +130,14 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Subroutine / sub declaration (Fortran / Perl)."),
     SymbolKindSpec("procedure", AXIS_LANGUAGE_CONSTRUCT,
                    "Procedure declaration (Pascal / Ada / SQL)."),
+    SymbolKindSpec("call_site", AXIS_LANGUAGE_CONSTRUCT,
+                   "Call-expression site as a syntactic construct. Cluster E sub-case (a) "
+                   "fold target per audit-findings 0010: the call expression is an AST "
+                   "node worth representing as a Symbol, distinct from the relationship "
+                   "captured by an Edge of edge_type='calls'. Producers that previously "
+                   "emitted kind='function_call' / 'subprocess_call' / 'db_query' / "
+                   "'abi_call' now emit kind='call_site' with the prior specialisation "
+                   "moved to meta['call_kind']."),
     SymbolKindSpec("proc", AXIS_ENDPOINT_SHAPE,
                    "Cluster C apex/peer: deprecated peer of `procedure`. "
                    "No producer emits this kind (verified WI-rusit Wave 4); "
@@ -167,8 +175,6 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Import declaration as a syntactic-form symbol."),
     SymbolKindSpec("include", AXIS_LANGUAGE_CONSTRUCT,
                    "Include declaration (Ruby include, C #include, Make include)."),
-    SymbolKindSpec("inherit", AXIS_LANGUAGE_CONSTRUCT,
-                   "Inherit clause as a syntactic form (BitBake, OOP DSLs)."),
     SymbolKindSpec("extends", AXIS_LANGUAGE_CONSTRUCT,
                    "Extends clause as a syntactic form (Java, Solidity)."),
 
@@ -232,7 +238,11 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("openapi_operation", AXIS_ENDPOINT_SHAPE,
                    "OpenAPI operation. Fold to function/method + meta['framework_role']='openapi_operation'."),
     SymbolKindSpec("abi_call", AXIS_ENDPOINT_SHAPE,
-                   "Solidity ABI call site. Fold to function/method + meta['framework_role']='abi_call'."),
+                   "Cluster E sub-case (a) FOLD per audit-findings 0010 (reclassified "
+                   "from Cluster D in this PR — the Solidity ABI emit site names a "
+                   "call expression, not a framework role): the solidity_abi linker "
+                   "was reclassified to kind='call_site' + meta['call_kind']='abi'. "
+                   "Registry entry stays through the Phase 4a deprecation window."),
     SymbolKindSpec("selector_ref", AXIS_ENDPOINT_SHAPE,
                    "ObjC selector reference. Fold to reference + meta['framework_role']='selector_ref'."),
     SymbolKindSpec("rpc", AXIS_ENDPOINT_SHAPE,
@@ -245,19 +255,44 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     # AXIS_ENDPOINT_SHAPE: per-value sub-case in cluster-E audit.
     # ----------------------------------------------------------------
     SymbolKindSpec("call", AXIS_ENDPOINT_SHAPE,
-                   "Call site. Fold to call_site (new canonical) or drop in favor of edge."),
+                   "Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: zero "
+                   "Symbol.kind=call producers (the value lives only on UsageContext.kind, "
+                   "a different field). Registry entry stays through the Phase 4a "
+                   "deprecation window."),
+    SymbolKindSpec("inherit", AXIS_ENDPOINT_SHAPE,
+                   "Cluster E sub-case (b) FOLD-clean-drop per audit-findings 0010: the "
+                   "BitBake inherit-clause Symbol was dropped (relationship captured by "
+                   "the inherits Edge with src=bitbake:{file}, dst=bitbake:class:{cls}). "
+                   "Registry entry stays through the Phase 4a deprecation window."),
     SymbolKindSpec("function_call", AXIS_ENDPOINT_SHAPE,
-                   "Function-call site. Fold to call_site or drop."),
+                   "Cluster E sub-case (a) FOLD per audit-findings 0010: the Twig "
+                   "function-call producer (twig.py) was reclassified to "
+                   "kind='call_site'. Registry entry stays through the Phase 4a "
+                   "deprecation window."),
     SymbolKindSpec("subprocess_call", AXIS_ENDPOINT_SHAPE,
-                   "Subprocess-call site. Fold to call_site or drop."),
+                   "Cluster E sub-case (a) FOLD per audit-findings 0010: the "
+                   "subprocess_cli linker was reclassified to kind='call_site' + "
+                   "meta['call_kind']='subprocess'. Registry entry stays through the "
+                   "Phase 4a deprecation window."),
     SymbolKindSpec("db_query", AXIS_ENDPOINT_SHAPE,
-                   "DB query site. Fold to call_site + meta['framework_role']='db_query' or drop."),
+                   "Cluster E sub-case (a) FOLD per audit-findings 0010: the "
+                   "database_query linker was reclassified to kind='call_site' + "
+                   "meta['call_kind']='db_query'. Registry entry stays through the "
+                   "Phase 4a deprecation window."),
     SymbolKindSpec("read", AXIS_ENDPOINT_SHAPE,
-                   "Read access (relationship); drop — already on Edge."),
+                   "Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: zero "
+                   "Symbol.kind=read producers (matches in pub/sub linkers are on "
+                   "internal dataclass fields YjsSite.kind / CryptoSite.kind / "
+                   "DispatchSite.kind, not Symbol.kind). Registry entry stays through "
+                   "the Phase 4a deprecation window."),
     SymbolKindSpec("write", AXIS_ENDPOINT_SHAPE,
-                   "Write access (relationship); drop — already on Edge."),
+                   "Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: symmetric "
+                   "counterpart of read; zero Symbol.kind=write producers. Registry "
+                   "entry stays through the Phase 4a deprecation window."),
     SymbolKindSpec("reference", AXIS_ENDPOINT_SHAPE,
-                   "Generic reference; drop or rename to reference_site."),
+                   "Cluster E sub-case (b) per audit-findings 0010: UNRESOLVED — sole "
+                   "producer (json_config.py) is shape-2 edge-endpoint-dependent "
+                   "(references Edge has dst=symbol_id). Drop deferred to follow-on PR."),
 
     # ----------------------------------------------------------------
     # Cluster F — Component / UI references.

@@ -59,8 +59,10 @@ body { margin: 0; }
         result = analyze_css_files(tmp_path)
         assert not result.skipped
 
-        imports = [s for s in result.symbols if s.kind == "import"]
-        assert len(imports) >= 2
+        # Cluster E sub-case (b) per audit-findings 0010: import Symbol
+        # was dropped; the imports Edge carries the relationship.
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(import_edges) >= 2
 
     def test_import_url(self, tmp_path: Path) -> None:
         """Test @import with url()."""
@@ -70,8 +72,8 @@ body { margin: 0; }
 body { font-family: 'Roboto', sans-serif; }
 """)
         result = analyze_css_files(tmp_path)
-        imports = [s for s in result.symbols if s.kind == "import"]
-        assert len(imports) >= 1
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(import_edges) >= 1
 
     def test_import_creates_edge(self, tmp_path: Path) -> None:
         """Test import creates imports edge."""

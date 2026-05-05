@@ -269,7 +269,8 @@ class TestLinkSolidityAbi:
         result = link_solidity_abi(tmp_path, [ts_func], [sol_func])
         assert len(result.symbols) == 1
         syn = result.symbols[0]
-        assert syn.kind == "abi_call"
+        assert syn.kind == "call_site"
+        assert syn.meta.get("call_kind") == "abi"
         assert "transfer" in syn.name
 
     def test_edge_confidence(self, tmp_path: Path) -> None:

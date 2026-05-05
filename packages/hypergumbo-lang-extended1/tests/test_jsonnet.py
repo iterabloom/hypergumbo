@@ -120,9 +120,11 @@ local utils = import "utils.libsonnet";
 {}
 """)
         result = analyze_jsonnet(tmp_path)
-        imp = next((s for s in result.symbols if s.kind == "import"), None)
-        assert imp is not None
-        assert imp.name == "utils.libsonnet"
+        # Cluster E sub-case (b) per audit-findings 0010: import Symbol
+        # was dropped; the imports Edge carries the relationship.
+        imp_edge = next((e for e in result.edges if e.edge_type == "imports"), None)
+        assert imp_edge is not None
+        assert "utils.libsonnet" in imp_edge.dst
 
     def test_extracts_call_edges(self, tmp_path: Path) -> None:
         make_jsonnet_file(tmp_path, "test.jsonnet", """

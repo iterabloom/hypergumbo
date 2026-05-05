@@ -359,38 +359,12 @@ verdicts:
       cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"export\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Cluster A language construct: Export declaration (JS / TS / TOML / Rust)."
-  - value: import
-    verdict: CANONICAL
-    fold_target: null
-    status: RESOLVED
-    diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"import\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
-      expect: exit_code:0
-    rationale: "Cluster A language construct: Import declaration as a syntactic-form symbol."
-  - value: include
-    verdict: CANONICAL
-    fold_target: null
-    status: RESOLVED
-    diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"include\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
-      expect: exit_code:0
-    rationale: "Cluster A language construct: Include declaration (Ruby include, C #include, Make include)."
-  - value: inherit
-    verdict: CANONICAL
-    fold_target: null
-    status: RESOLVED
-    diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"inherit\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
-      expect: exit_code:0
-    rationale: "Cluster A language construct: Inherit clause as a syntactic form (BitBake, OOP DSLs)."
-  - value: extends
-    verdict: CANONICAL
-    fold_target: null
-    status: RESOLVED
-    diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"extends\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
-      expect: exit_code:0
-    rationale: "Cluster A language construct: Extends clause as a syntactic form (Java, Solidity)."
+  # Note: import / include / inherit / extends were initially filed as
+  # Cluster A CANONICAL here at first-cut filing. Audit-findings 0010
+  # reclassifies all four under Cluster E sub-case (b) (DEPRECATE-NO-FOLD —
+  # the relationship lives on the corresponding Edge). Their rows now live
+  # in 0010; removing them from this doc avoids a contradictory dual
+  # verdict on the same value.
   - value: component
     verdict: CANONICAL
     fold_target: null

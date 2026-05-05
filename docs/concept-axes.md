@@ -142,6 +142,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`alias`** — Generic alias declaration.
 - **`arrow_function`** — Arrow-function expression (JS / TS).
 - **`attribute`** — Attribute declaration (Python class attribute, etc.).
+- **`call_site`** — Call-expression site as a syntactic construct. Cluster E sub-case (a) fold target per audit-findings 0010: the call expression is an AST node worth representing as a Symbol, distinct from the relationship captured by an Edge of edge_type='calls'. Producers that previously emitted kind='function_call' / 'subprocess_call' / 'db_query' / 'abi_call' now emit kind='call_site' with the prior specialisation moved to meta['call_kind'].
 - **`class`** — Class declaration.
 - **`component`** — Component declaration (Vue / Svelte / Astro / React).
 - **`const`** — Const declaration (C / C++ / Rust / JS const).
@@ -158,7 +159,6 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`getter`** — Property getter accessor.
 - **`import`** — Import declaration as a syntactic-form symbol.
 - **`include`** — Include declaration (Ruby include, C #include, Make include).
-- **`inherit`** — Inherit clause as a syntactic form (BitBake, OOP DSLs).
 - **`instance`** — Typeclass / interface instance declaration.
 - **`interface`** — Interface declaration.
 - **`keyword`** — Keyword-shaped construct (configuration languages).
@@ -190,22 +190,23 @@ Values that name the source-language syntactic construct the symbol represents. 
 
 Values whose meaning is leaked into the kind label even though it is captured by `Symbol.meta` (framework participation), `Edge` relationships (edge labels masquerading as kinds), or `dst.kind` queries (component refs). Migration plan in ADR-0027 §"Detailed analysis: per-cluster fold targets" folds these back into the canonical Cluster-A construct + `meta["framework_role"]` or drops them entirely as edge-only.
 
-- **`abi_call`** — Solidity ABI call site. Fold to function/method + meta['framework_role']='abi_call'.
-- **`call`** — Call site. Fold to call_site (new canonical) or drop in favor of edge.
+- **`abi_call`** — Cluster E sub-case (a) FOLD per audit-findings 0010 (reclassified from Cluster D in this PR — the Solidity ABI emit site names a call expression, not a framework role): the solidity_abi linker was reclassified to kind='call_site' + meta['call_kind']='abi'. Registry entry stays through the Phase 4a deprecation window.
+- **`call`** — Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: zero Symbol.kind=call producers (the value lives only on UsageContext.kind, a different field). Registry entry stays through the Phase 4a deprecation window.
 - **`component_ref`** — Inline component reference. Fold to reference + dst.kind == 'component'.
 - **`crypto_consumer`** — Crypto-flow consumer. Fold to function/method + meta['framework_role']='crypto_consumer'.
 - **`crypto_producer`** — Crypto-flow producer. Fold to function/method + meta['framework_role']='crypto_producer'.
-- **`db_query`** — DB query site. Fold to call_site + meta['framework_role']='db_query' or drop.
+- **`db_query`** — Cluster E sub-case (a) FOLD per audit-findings 0010: the database_query linker was reclassified to kind='call_site' + meta['call_kind']='db_query'. Registry entry stays through the Phase 4a deprecation window.
 - **`dispatcher`** — Generic dispatcher symbol. Fold to function/method + meta['framework_role']='dispatcher'.
 - **`event_publisher`** — Symbol that publishes events. Fold to function/method + meta['framework_role']='event_publisher'.
 - **`event_subscriber`** — Symbol that subscribes to events. Fold to function/method + meta['framework_role']='event_subscriber'.
 - **`fn`** — Cluster C apex/peer: deprecated peer of `function`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: function.
-- **`function_call`** — Function-call site. Fold to call_site or drop.
+- **`function_call`** — Cluster E sub-case (a) FOLD per audit-findings 0010: the Twig function-call producer (twig.py) was reclassified to kind='call_site'. Registry entry stays through the Phase 4a deprecation window.
 - **`graphql_client`** — GraphQL client call site. Fold to function/method + meta['framework_role']='graphql_client'.
 - **`graphql_resolver`** — GraphQL resolver. Fold to function/method + meta['framework_role']='graphql_resolver'.
 - **`grpc_server`** — gRPC server method. Fold to function/method + meta['framework_role']='grpc_server'.
 - **`grpc_stub`** — gRPC stub method. Fold to function/method + meta['framework_role']='grpc_stub'.
 - **`http_client`** — HTTP client call site. Fold to function/method + meta['framework_role']='http_client'.
+- **`inherit`** — Cluster E sub-case (b) FOLD-clean-drop per audit-findings 0010: the BitBake inherit-clause Symbol was dropped (relationship captured by the inherits Edge with src=bitbake:{file}, dst=bitbake:class:{cls}). Registry entry stays through the Phase 4a deprecation window.
 - **`ipc`** — Generic IPC endpoint. Fold to function/method + meta['framework_role']='ipc'.
 - **`ipc_bridge_caller`** — IPC bridge call endpoint. Fold to function/method + meta['framework_role']='ipc_bridge_caller'.
 - **`ipc_caller`** — IPC call endpoint. Fold to function/method + meta['framework_role']='ipc_caller'.
@@ -218,8 +219,8 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`objc_bridge`** — Objective-C bridge call. Fold to function/method + meta['framework_role']='objc_bridge'.
 - **`openapi_operation`** — OpenAPI operation. Fold to function/method + meta['framework_role']='openapi_operation'.
 - **`proc`** — Cluster C apex/peer: deprecated peer of `procedure`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: procedure.
-- **`read`** — Read access (relationship); drop — already on Edge.
-- **`reference`** — Generic reference; drop or rename to reference_site.
+- **`read`** — Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: zero Symbol.kind=read producers (matches in pub/sub linkers are on internal dataclass fields YjsSite.kind / CryptoSite.kind / DispatchSite.kind, not Symbol.kind). Registry entry stays through the Phase 4a deprecation window.
+- **`reference`** — Cluster E sub-case (b) per audit-findings 0010: UNRESOLVED — sole producer (json_config.py) is shape-2 edge-endpoint-dependent (references Edge has dst=symbol_id). Drop deferred to follow-on PR.
 - **`route`** — Route declaration. Fold to function/method + meta['framework_role']='route'.
 - **`route_include`** — Route include declaration. Fold to function/method + meta['framework_role']='route_include'.
 - **`route_mount`** — Route mount declaration. Fold to function/method + meta['framework_role']='route_mount'.
@@ -227,12 +228,12 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`selector_ref`** — ObjC selector reference. Fold to reference + meta['framework_role']='selector_ref'.
 - **`service`** — Service declaration (gRPC service, k8s service). Fold to interface/class + meta['framework_role']='service'.
 - **`structure`** — Cluster C apex/peer: deprecated peer of `struct`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: struct.
-- **`subprocess_call`** — Subprocess-call site. Fold to call_site or drop.
+- **`subprocess_call`** — Cluster E sub-case (a) FOLD per audit-findings 0010: the subprocess_cli linker was reclassified to kind='call_site' + meta['call_kind']='subprocess'. Registry entry stays through the Phase 4a deprecation window.
 - **`var`** — Cluster C apex/peer: deprecated peer of `variable`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: variable.
 - **`websocket_emitter`** — WebSocket emitter. Fold to function/method + meta['framework_role']='websocket_emitter'.
 - **`websocket_endpoint`** — WebSocket endpoint. Fold to function/method + meta['framework_role']='websocket_endpoint'.
 - **`websocket_listener`** — WebSocket listener. Fold to function/method + meta['framework_role']='websocket_listener'.
-- **`write`** — Write access (relationship); drop — already on Edge.
+- **`write`** — Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: symmetric counterpart of read; zero Symbol.kind=write producers. Registry entry stays through the Phase 4a deprecation window.
 
 ### `pending_classification` — per-cluster audit pending per ADR-0027 §"Migration"
 

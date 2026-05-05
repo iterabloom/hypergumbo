@@ -147,32 +147,10 @@ def _process_css_tree(
             import_path = _extract_import_path(node, source)
             if import_path:
                 start_line = node.start_point[0] + 1
-                end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, import_path, "import")
-                fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
-
-                symbols.append(
-                    Symbol(
-                        id=symbol_id,
-                        stable_id=None,
-                        shape_id=None,
-                        canonical_name=import_path,
-                        fingerprint=fingerprint,
-                        kind="import",
-                        name=import_path,
-                        path=rel_path,
-                        language="css",
-                        span=Span(
-                            start_line=start_line,
-                            start_col=node.start_point[1],
-                            end_line=end_line,
-                            end_col=node.end_point[1],
-                        ),
-                        origin=PASS_ID,
-                    )
-                )
-
-                # Create import edge from file to imported path
+                # Cluster E sub-case (b) FOLD-clean-drop per audit-findings 0010:
+                # the per-import Symbol was redundant with the imports Edge.
+                # Producer now emits only the Edge (src=file_symbol_id is
+                # independent of any dropped Symbol id).
                 edges.append(
                     Edge.create(
                         src=file_symbol_id,

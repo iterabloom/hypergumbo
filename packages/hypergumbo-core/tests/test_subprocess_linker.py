@@ -349,7 +349,8 @@ subprocess.run(["git", "status"])  # Different CLI, should not match
         # Should create a symbol for the subprocess call
         assert len(result.symbols) >= 1
         call_symbol = result.symbols[0]
-        assert call_symbol.kind == "subprocess_call"
+        assert call_symbol.kind == "call_site"
+        assert call_symbol.meta.get("call_kind") == "subprocess"
         assert "myapp" in call_symbol.name
 
     def test_variable_command_lower_confidence(self, tmp_path: Path) -> None:

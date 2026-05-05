@@ -409,7 +409,8 @@ class TestDatabaseQueryLinker:
         result = link_database_queries(tmp_path, table_symbols)
 
         assert len(result.symbols) == 1
-        assert result.symbols[0].kind == "db_query"
+        assert result.symbols[0].kind == "call_site"
+        assert result.symbols[0].meta.get("call_kind") == "db_query"
         assert result.symbols[0].meta["tables"] == ["users"]
 
         # Should have query_references edge

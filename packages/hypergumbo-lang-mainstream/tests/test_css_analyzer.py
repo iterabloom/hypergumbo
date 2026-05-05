@@ -33,11 +33,13 @@ def test_analyze_import(tmp_path):
     result = analyze_css_files(tmp_path)
 
     assert not result.skipped
-    imports = [s for s in result.symbols if s.kind == "import"]
-    assert len(imports) >= 2
-    names = [i.name for i in imports]
-    assert "base.css" in names
-    assert "theme.css" in names
+    # Cluster E sub-case (b) per audit-findings 0010: import Symbol was
+    # dropped; the imports Edge carries the relationship.
+    import_edges = [e for e in result.edges if e.edge_type == "imports"]
+    assert len(import_edges) >= 2
+    targets = [e.dst for e in import_edges]
+    assert "base.css" in targets
+    assert "theme.css" in targets
 
 def test_analyze_import_edges(tmp_path):
     """Test that import edges are created."""

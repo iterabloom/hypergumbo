@@ -251,32 +251,12 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
 
         rel_p = Path(rel_path)
 
+        # Cluster E sub-case (b) FOLD-clean-drop per audit-findings 0010:
+        # the per-class inherit Symbol was redundant with the inherits Edge
+        # (src=bitbake:{file}, dst=bitbake:class:{cls} — both endpoints are
+        # independent of any dropped Symbol id). Producer now emits only
+        # the Edge per inherited class.
         for cls in classes:
-            symbol_id = _make_symbol_id(rel_p, cls, "inherit")
-
-            span = Span(
-                start_line=node.start_point[0] + 1,
-                start_col=node.start_point[1],
-                end_line=node.end_point[0] + 1,
-                end_col=node.end_point[1],
-            )
-
-            symbol = Symbol(
-                id=symbol_id,
-                stable_id=symbol_id,
-                name=cls,
-                kind="inherit",
-                language="bitbake",
-                path=str(rel_p),
-                span=span,
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-                signature=f"inherit {cls}",
-                meta={"class": cls},
-            )
-            analysis.symbols.append(symbol)
-
-            # Add inherit edge
             edge = Edge.create(
                 src=f"bitbake:{rel_p}",
                 dst=f"bitbake:class:{cls}",

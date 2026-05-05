@@ -350,7 +350,7 @@ def _create_query_symbol(pattern: DatabaseQueryPattern, root: Path) -> Symbol:
     return Symbol(
         id=f"{rel_path}::db_query::{pattern.line}",
         name=f"{pattern.query_type} {tables_str}",
-        kind="db_query",
+        kind="call_site",
         path=pattern.file_path,
         span=Span(
             start_line=pattern.line,
@@ -364,6 +364,7 @@ def _create_query_symbol(pattern: DatabaseQueryPattern, root: Path) -> Symbol:
             "query_type": pattern.query_type,
             "tables": pattern.tables,
             "query_preview": pattern.query_text[:100],
+            "call_kind": "db_query",
         },
     )
 

@@ -323,7 +323,7 @@ def _create_call_symbol(call: SubprocessCall, root: Path) -> Symbol:
     return Symbol(
         id=f"{rel_path}::subprocess_call::{call.line}",
         name=name,
-        kind="subprocess_call",
+        kind="call_site",
         path=call.file_path,
         span=Span(
             start_line=call.line,
@@ -337,6 +337,7 @@ def _create_call_symbol(call: SubprocessCall, root: Path) -> Symbol:
             "subcommand": call.subcommand,
             "call_type": call.call_type,
             "is_python_m": call.is_python_m,
+            "call_kind": "subprocess",
         },
     )
 

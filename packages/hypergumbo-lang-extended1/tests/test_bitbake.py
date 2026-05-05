@@ -138,10 +138,8 @@ RANDOM_THING = "other value"
 inherit cmake
 """)
         result = analyze_bitbake(tmp_path)
-        inherit = next((s for s in result.symbols if s.kind == "inherit"), None)
-        assert inherit is not None
-        assert inherit.name == "cmake"
-        # Should create inherit edge
+        # Cluster E sub-case (b) per audit-findings 0010: inherit Symbol
+        # was dropped; the inherits Edge carries the relationship.
         inherit_edge = next((e for e in result.edges if e.edge_type == "inherits"), None)
         assert inherit_edge is not None
         assert "cmake" in inherit_edge.dst
@@ -151,11 +149,11 @@ inherit cmake
 inherit cmake pkgconfig
 """)
         result = analyze_bitbake(tmp_path)
-        inherits = [s for s in result.symbols if s.kind == "inherit"]
-        assert len(inherits) == 2
-        names = {i.name for i in inherits}
-        assert "cmake" in names
-        assert "pkgconfig" in names
+        inherit_edges = [e for e in result.edges if e.edge_type == "inherits"]
+        assert len(inherit_edges) == 2
+        targets = {e.dst for e in inherit_edges}
+        assert any("cmake" in t for t in targets)
+        assert any("pkgconfig" in t for t in targets)
 
     def test_extracts_task_function(self, tmp_path: Path) -> None:
         make_bitbake_file(tmp_path, "test.bb", """
@@ -290,9 +288,10 @@ do_install() {
         vars = [s for s in result.symbols if s.kind == "variable"]
         assert len(vars) >= 4  # SUMMARY, LICENSE, SRC_URI, DEPENDS
 
-        # Check inherits
-        inherits = [s for s in result.symbols if s.kind == "inherit"]
-        assert len(inherits) == 2
+        # Check inherits — Cluster E sub-case (b) per audit-findings 0010:
+        # inherit Symbols dropped; inherits Edges carry the relationship.
+        inherit_edges = [e for e in result.edges if e.edge_type == "inherits"]
+        assert len(inherit_edges) == 2
 
         # Check tasks
         tasks = [s for s in result.symbols if s.kind == "task"]
@@ -301,9 +300,6 @@ do_install() {
         # Check edges
         dep_edges = [e for e in result.edges if e.edge_type == "depends"]
         assert len(dep_edges) >= 2
-
-        inherit_edges = [e for e in result.edges if e.edge_type == "inherits"]
-        assert len(inherit_edges) == 2
 
     def test_run_files_analyzed(self, tmp_path: Path) -> None:
         make_bitbake_file(tmp_path, "a.bb", "SUMMARY = \"A\"")

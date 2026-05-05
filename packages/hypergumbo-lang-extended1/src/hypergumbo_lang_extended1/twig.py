@@ -468,13 +468,13 @@ def _extract_function_call(
         id=symbol_id,
         stable_id=symbol_id,
         name=func_name,
-        kind="function_call",
+        kind="call_site",
         language="twig",
         path=str(rel_path),
         span=span,
         origin=PASS_ID,
         signature=f"{{{{ {func_name}() }}}}",
-        meta={"arg_count": len(args)},
+        meta={"arg_count": len(args), "call_kind": "function"},
     )
     symbols_out.append(symbol)
 

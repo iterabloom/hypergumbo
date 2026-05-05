@@ -206,7 +206,7 @@ def link_solidity_abi(
         syn_sym = Symbol(
             id=syn_id,
             name=f"abi_call:{func_name}",
-            kind="abi_call",
+            kind="call_site",
             language="typescript",
             path=rel_path,
             span=Span(
@@ -216,6 +216,7 @@ def link_solidity_abi(
                 end_col=0,
             ),
             supply_chain_tier=2,
+            meta={"call_kind": "abi"},
         )
         result_symbols.append(syn_sym)
 

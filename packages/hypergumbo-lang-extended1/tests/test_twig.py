@@ -164,10 +164,11 @@ Hello, {{ user.name }}!
     def test_extracts_function_call(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "template.twig", "{{ date('now') }}")
         result = analyze_twig(tmp_path)
-        func = next((s for s in result.symbols if s.kind == "function_call"), None)
+        func = next((s for s in result.symbols if s.kind == "call_site"), None)
         assert func is not None
         assert func.name == "date"
         assert func.meta.get("arg_count") == 1
+        assert func.meta.get("call_kind") == "function"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "template.twig", "{% block content %}{% endblock %}")
