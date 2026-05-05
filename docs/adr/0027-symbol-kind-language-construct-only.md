@@ -5,7 +5,7 @@
 - Date: 2026-05-02
 - Supersedes: —
 - Superseded by: —
-- Related: ADR-0024 (the axis-declaration template instantiated here), ADR-0023 (the worked example whose four-phase migration shape this ADR mirrors), ADR-0014 (Generalized Symbol Identity — the dataclass this axis types one field of), tracker item `WI-dumiz-bikul-pitaf-gutiv-nudig-vovam-sinad-vogaj` (the deep audit whose verdict produced this ADR; the cluster taxonomy in §3 below is that audit's output)
+- Related: ADR-0024 (the axis-declaration template instantiated here), ADR-0023 (the worked example whose four-phase migration shape this ADR mirrors), ADR-0014 (Generalized Symbol Identity — the dataclass this axis types one field of), ADR-0028 (the sibling-axis ADR for `Edge.evidence_type`; ADR-0028 Phase 1 retroactively re-opened this ADR's `Symbol.kind` JSON Schema enum — see the schema-impact note appended to Phase 1 step #5 below), tracker item `WI-dumiz-bikul-pitaf-gutiv-nudig-vovam-sinad-vogaj` (the deep audit whose verdict produced this ADR; the cluster taxonomy in §3 below is that audit's output)
 
 ## Context
 
@@ -179,6 +179,8 @@ Mirrors ADR-0023 Phase 1. Land:
 3. The property test in `tests/test_symbol_kinds.py`: registry invariants (no duplicates, every spec has a valid axis, every axis section is non-empty) plus a drift-detection test calling the linter's underlying function on the live tree.
 4. By-axis view extension: add the `Symbol.kind` axis's three sections to `scripts/generate-concept-axes`'s `_SECTIONS` table; regenerate `docs/concept-axes.md`.
 5. JSON Schema integration: extend `scripts/generate-schema` to emit `x-axis-of-values` for the `Symbol.kind` enum (analogous to the existing `Edge.edge_type` integration).
+
+   > **Schema-impact note (added 2026-05-05).** Phase 1 as originally shipped (PR #3546) emitted a *closed* JSON Schema enum derived from `sorted(spec.name for spec in SYMBOL_KINDS)`, with the closed-enum-with-known-gap caveat that dynamic `kind=f"ipc_{...}"` emit sites at `linkers/ipc.py` and `linkers/phoenix_ipc.py` produced runtime values outside the registry. ADR-0028 Phase 1 (PR #3549, commit `711e273d1`) retroactively *re-opened* this enum to `type: "string"` + `x-axis-of-values` annotation, mirroring the open-enum posture chosen for `Edge.evidence_type` for the same dynamic-emit reason. The closed enum returns at Phase 4b once the per-cluster producer migrations land. `SCHEMA_VERSION` patch-bumped 0.4.1 → 0.4.2 alongside ADR-0028's Phase 1 land. The four artifacts listed above (registry, drift linter, property test, by-axis view) are unaffected by the re-open; only the schema enum constraint relaxed.
 
 Estimated effort: ~1-2 days. No producer or consumer changes ship in this phase; the registry is a pure addition.
 
