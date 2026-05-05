@@ -154,7 +154,6 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`export`** — Export declaration (JS / TS / TOML / Rust).
 - **`extends`** — Extends clause as a syntactic form (Java, Solidity).
 - **`field`** — Field declaration on a struct / class / record.
-- **`fn`** — Function declaration (Rust fn, Elixir def).
 - **`function`** — Top-level function definition.
 - **`getter`** — Property getter accessor.
 - **`import`** — Import declaration as a syntactic-form symbol.
@@ -169,7 +168,6 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`module`** — Module declaration (the source-level construct).
 - **`namespace`** — Namespace declaration (C++ / TypeScript / C#).
 - **`object`** — Object / singleton declaration (Scala / Kotlin).
-- **`proc`** — Procedure / proc declaration (Tcl / Nim / Ruby Proc).
 - **`procedure`** — Procedure declaration (Pascal / Ada / SQL).
 - **`prop`** — Component prop declaration (Vue / React).
 - **`property`** — Property declaration (Kotlin / Swift / C#).
@@ -185,7 +183,6 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`type_alias`** — Type alias declaration.
 - **`typedef`** — C/C++ typedef declaration.
 - **`union`** — Union / sum-type declaration.
-- **`var`** — Var declaration (Go / JS var).
 - **`variable`** — Variable / let / mutable binding.
 - **`view`** — View declaration (MVC / template languages).
 
@@ -202,6 +199,7 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`dispatcher`** — Generic dispatcher symbol. Fold to function/method + meta['framework_role']='dispatcher'.
 - **`event_publisher`** — Symbol that publishes events. Fold to function/method + meta['framework_role']='event_publisher'.
 - **`event_subscriber`** — Symbol that subscribes to events. Fold to function/method + meta['framework_role']='event_subscriber'.
+- **`fn`** — Cluster C apex/peer: deprecated peer of `function`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: function.
 - **`function_call`** — Function-call site. Fold to call_site or drop.
 - **`graphql_client`** — GraphQL client call site. Fold to function/method + meta['framework_role']='graphql_client'.
 - **`graphql_resolver`** — GraphQL resolver. Fold to function/method + meta['framework_role']='graphql_resolver'.
@@ -219,6 +217,7 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`mq_subscriber`** — Message-queue subscriber. Fold to function/method + meta['framework_role']='mq_subscriber'.
 - **`objc_bridge`** — Objective-C bridge call. Fold to function/method + meta['framework_role']='objc_bridge'.
 - **`openapi_operation`** — OpenAPI operation. Fold to function/method + meta['framework_role']='openapi_operation'.
+- **`proc`** — Cluster C apex/peer: deprecated peer of `procedure`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: procedure.
 - **`read`** — Read access (relationship); drop — already on Edge.
 - **`reference`** — Generic reference; drop or rename to reference_site.
 - **`route`** — Route declaration. Fold to function/method + meta['framework_role']='route'.
@@ -227,7 +226,9 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`rpc`** — RPC method declaration. Fold to function/method + meta['framework_role']='rpc'.
 - **`selector_ref`** — ObjC selector reference. Fold to reference + meta['framework_role']='selector_ref'.
 - **`service`** — Service declaration (gRPC service, k8s service). Fold to interface/class + meta['framework_role']='service'.
+- **`structure`** — Cluster C apex/peer: deprecated peer of `struct`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: struct.
 - **`subprocess_call`** — Subprocess-call site. Fold to call_site or drop.
+- **`var`** — Cluster C apex/peer: deprecated peer of `variable`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: variable.
 - **`websocket_emitter`** — WebSocket emitter. Fold to function/method + meta['framework_role']='websocket_emitter'.
 - **`websocket_endpoint`** — WebSocket endpoint. Fold to function/method + meta['framework_role']='websocket_endpoint'.
 - **`websocket_listener`** — WebSocket listener. Fold to function/method + meta['framework_role']='websocket_listener'.
@@ -320,7 +321,6 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`special_target`** — Make special-target symbol. Pending cluster-G audit.
 - **`stage`** — Build / pipeline stage. Pending cluster-G audit.
 - **`state`** — State symbol (state-machine DSL). Pending cluster-H audit.
-- **`structure`** — Apex/peer of struct emitted by some analyzers. Cluster C fold target: collapse to 'struct'. Pending cluster-C audit.
 - **`style_block`** — Style-block symbol (Vue / scoped CSS). Pending cluster-H audit.
 - **`subdirectory`** — Subdirectory pseudo-symbol. Pending cluster-H audit.
 - **`subscript`** — Subscript symbol (Swift / Python __getitem__). Pending cluster-H audit.

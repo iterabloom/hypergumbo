@@ -282,30 +282,11 @@ verdicts:
       cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"procedure\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Cluster A language construct: Procedure declaration (Pascal / Ada / SQL)."
-  - value: proc
-    verdict: CANONICAL
-    fold_target: null
-    status: RESOLVED
-    diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"proc\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
-      expect: exit_code:0
-    rationale: "Cluster A language construct: Procedure / proc declaration (Tcl / Nim / Ruby Proc)."
-  - value: fn
-    verdict: CANONICAL
-    fold_target: null
-    status: RESOLVED
-    diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"fn\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
-      expect: exit_code:0
-    rationale: "Cluster A language construct: Function declaration (Rust fn, Elixir def)."
-  - value: var
-    verdict: CANONICAL
-    fold_target: null
-    status: RESOLVED
-    diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"var\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
-      expect: exit_code:0
-    rationale: "Cluster A language construct: Var declaration (Go / JS var)."
+  # `proc` / `fn` / `var` were seeded here as Cluster A canonical at 0003's
+  # filing time because the registry placed them on `language_construct`.
+  # WI-rusit (audit-findings 0009) reclassifies them as Cluster C apex/peer
+  # overloads (peers of `procedure` / `function` / `variable`); the rows live
+  # in 0009 with FOLD verdicts at PRELIM_RESOLVED. They no longer appear here.
   - value: arrow_function
     verdict: CANONICAL
     fold_target: null

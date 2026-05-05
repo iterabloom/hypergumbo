@@ -130,12 +130,21 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Subroutine / sub declaration (Fortran / Perl)."),
     SymbolKindSpec("procedure", AXIS_LANGUAGE_CONSTRUCT,
                    "Procedure declaration (Pascal / Ada / SQL)."),
-    SymbolKindSpec("proc", AXIS_LANGUAGE_CONSTRUCT,
-                   "Procedure / proc declaration (Tcl / Nim / Ruby Proc)."),
-    SymbolKindSpec("fn", AXIS_LANGUAGE_CONSTRUCT,
-                   "Function declaration (Rust fn, Elixir def)."),
-    SymbolKindSpec("var", AXIS_LANGUAGE_CONSTRUCT,
-                   "Var declaration (Go / JS var)."),
+    SymbolKindSpec("proc", AXIS_ENDPOINT_SHAPE,
+                   "Cluster C apex/peer: deprecated peer of `procedure`. "
+                   "No producer emits this kind (verified WI-rusit Wave 4); "
+                   "registry entry remains through the Phase 4a deprecation "
+                   "window per ADR-0027. Fold target: procedure."),
+    SymbolKindSpec("fn", AXIS_ENDPOINT_SHAPE,
+                   "Cluster C apex/peer: deprecated peer of `function`. "
+                   "No producer emits this kind (verified WI-rusit Wave 4); "
+                   "registry entry remains through the Phase 4a deprecation "
+                   "window per ADR-0027. Fold target: function."),
+    SymbolKindSpec("var", AXIS_ENDPOINT_SHAPE,
+                   "Cluster C apex/peer: deprecated peer of `variable`. "
+                   "No producer emits this kind (verified WI-rusit Wave 4); "
+                   "registry entry remains through the Phase 4a deprecation "
+                   "window per ADR-0027. Fold target: variable."),
     SymbolKindSpec("arrow_function", AXIS_LANGUAGE_CONSTRUCT,
                    "Arrow-function expression (JS / TS)."),
     SymbolKindSpec("object", AXIS_LANGUAGE_CONSTRUCT,
@@ -478,8 +487,11 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Theorem symbol (Coq / Lean). Pending cluster-H audit."),
     SymbolKindSpec("playbook", AXIS_PENDING,
                    "Ansible playbook symbol. Pending cluster-H audit."),
-    SymbolKindSpec("structure", AXIS_PENDING,
-                   "Apex/peer of struct emitted by some analyzers. Cluster C fold target: collapse to 'struct'. Pending cluster-C audit."),
+    SymbolKindSpec("structure", AXIS_ENDPOINT_SHAPE,
+                   "Cluster C apex/peer: deprecated peer of `struct`. "
+                   "No producer emits this kind (verified WI-rusit Wave 4); "
+                   "registry entry remains through the Phase 4a deprecation "
+                   "window per ADR-0027. Fold target: struct."),
     SymbolKindSpec("external_symbol", AXIS_PENDING,
                    "External-symbol pseudo-node. Pending cluster-H audit."),
     SymbolKindSpec("unresolved", AXIS_PENDING,
