@@ -78,10 +78,11 @@ class TestAnalyzeTwig:
         make_twig_file(tmp_path, "page.twig", '{% extends "base.html.twig" %}')
         result = analyze_twig(tmp_path)
         assert not result.skipped
-        extends = next((s for s in result.symbols if s.kind == "extends"), None)
-        assert extends is not None
-        assert extends.name == "extends base.html.twig"
-        assert extends.meta.get("template") == "base.html.twig"
+        # Cluster E sub-case (b) per audit-findings 0010: extends Symbol was
+        # dropped; the extends_template Edge carries the relationship.
+        edge = next((e for e in result.edges if e.edge_type == "extends_template"), None)
+        assert edge is not None
+        assert (edge.meta or {}).get("template") == "base.html.twig"
 
     def test_extends_creates_edge(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "page.twig", '{% extends "base.html.twig" %}')
@@ -112,10 +113,11 @@ Hello World
     def test_extracts_include_directive(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "template.twig", '{% include "partials/header.twig" %}')
         result = analyze_twig(tmp_path)
-        include = next((s for s in result.symbols if s.kind == "include"), None)
-        assert include is not None
-        assert include.name == "include partials/header.twig"
-        assert include.meta.get("template") == "partials/header.twig"
+        # Cluster E sub-case (b) per audit-findings 0010: include Symbol was
+        # dropped; the includes_template Edge carries the relationship.
+        edge = next((e for e in result.edges if e.edge_type == "includes_template"), None)
+        assert edge is not None
+        assert (edge.meta or {}).get("template") == "partials/header.twig"
 
     def test_include_creates_edge(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "template.twig", '{% include "partials/header.twig" %}')
@@ -126,9 +128,15 @@ Hello World
     def test_extracts_include_function(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "template.twig", "{{ include('partials/header.twig') }}")
         result = analyze_twig(tmp_path)
-        include = next((s for s in result.symbols if s.kind == "include"), None)
-        assert include is not None
-        assert "partials/header.twig" in include.name
+        # Cluster E sub-case (b) per audit-findings 0010: include Symbol was
+        # dropped; the includes_template Edge (form='function') carries it.
+        edge = next(
+            (e for e in result.edges if e.edge_type == "includes_template"
+             and (e.meta or {}).get("form") == "function"),
+            None,
+        )
+        assert edge is not None
+        assert "partials/header.twig" in edge.dst
 
     def test_extracts_macro(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "macros.twig", """{% macro button(text) %}
@@ -230,20 +238,20 @@ Hello, {{ user.name }}!
 {% endblock %}""")
         result = analyze_twig(tmp_path)
 
-        # Check extends
-        extends = next((s for s in result.symbols if s.kind == "extends"), None)
-        assert extends is not None
-        assert extends.meta.get("template") == "base.html.twig"
+        # Check extends + includes — Cluster E sub-case (b) per
+        # audit-findings 0010: Symbols dropped; Edges carry the relations.
+        extends_edge_check = next(
+            (e for e in result.edges if e.edge_type == "extends_template"
+             and (e.meta or {}).get("template") == "base.html.twig"),
+            None,
+        )
+        assert extends_edge_check is not None
 
         # Check blocks
         blocks = [s for s in result.symbols if s.kind == "block"]
         assert len(blocks) == 2
         block_names = {b.name for b in blocks}
         assert block_names == {"title", "content"}
-
-        # Check includes
-        includes = [s for s in result.symbols if s.kind == "include"]
-        assert len(includes) == 2
 
         # Check for loop
         for_loops = [s for s in result.symbols if s.kind == "for_loop"]
@@ -262,6 +270,8 @@ Hello, {{ user.name }}!
     def test_extends_with_single_quotes(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "page.twig", "{% extends 'base.html.twig' %}")
         result = analyze_twig(tmp_path)
-        extends = next((s for s in result.symbols if s.kind == "extends"), None)
-        assert extends is not None
-        assert extends.meta.get("template") == "base.html.twig"
+        # Cluster E sub-case (b) per audit-findings 0010: extends Symbol was
+        # dropped; the extends_template Edge carries the relationship.
+        edge = next((e for e in result.edges if e.edge_type == "extends_template"), None)
+        assert edge is not None
+        assert (edge.meta or {}).get("template") == "base.html.twig"

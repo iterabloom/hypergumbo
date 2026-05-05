@@ -150,10 +150,14 @@ class TestAnalyzePuppet:
   include nginx
 }""")
         result = analyze_puppet(tmp_path)
-        include = next((s for s in result.symbols if s.kind == "include"), None)
-        assert include is not None
-        assert include.name == "include nginx"
-        assert include.meta.get("class_name") == "nginx"
+        # Cluster E sub-case (b) per audit-findings 0010: include Symbol was
+        # dropped; the includes_class Edge carries the relationship.
+        edge = next(
+            (e for e in result.edges if e.edge_type == "includes_class"
+             and (e.meta or {}).get("class_name") == "nginx"),
+            None,
+        )
+        assert edge is not None
 
     def test_creates_require_edge(self, tmp_path: Path) -> None:
         make_puppet_file(tmp_path, "init.pp", """class nginx {
@@ -289,11 +293,8 @@ node 'webserver.example.com' {
         assert node is not None
         assert node.name == "webserver.example.com"
 
-        # Check include
-        include = next((s for s in result.symbols if s.kind == "include"), None)
-        assert include is not None
-
-        # Check edges
+        # Check edges — Cluster E sub-case (b) per audit-findings 0010:
+        # include Symbol dropped; includes_class Edge carries the relation.
         require_edges = [e for e in result.edges if e.edge_type == "requires_resource"]
         assert len(require_edges) >= 1
         notify_edges = [e for e in result.edges if e.edge_type == "notifies_resource"]

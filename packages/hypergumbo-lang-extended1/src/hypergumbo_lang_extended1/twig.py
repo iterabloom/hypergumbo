@@ -49,6 +49,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_file_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -84,39 +85,22 @@ def _make_symbol_id(path: str, name: str, kind: str, line: int) -> str:
     return f"twig:{path}:{kind}:{line}:{name}"
 
 
-def _create_extends_symbol(
+def _create_extends_edges(
     rel_path: str, node: "tree_sitter.Node",
     template_name: str, run_id: str,
-) -> tuple[Symbol, list[Edge]]:
-    """Create a symbol for extends statement."""
+) -> list[Edge]:
+    """Create edge for extends statement.
+
+    Cluster E sub-case (b) per audit-findings 0010: per-extends Symbol
+    was redundant. Edge src is the using template file id; dst is the
+    parent template's dangling id (handled by IR boundary materialization).
+    """
     line = node.start_point[0] + 1
     edges: list[Edge] = []
 
-    symbol_id = _make_symbol_id(rel_path, template_name, "extends", line)
-    span = Span(
-        start_line=line,
-        start_col=node.start_point[1],
-        end_line=node.end_point[0] + 1,
-        end_col=node.end_point[1],
-    )
-
-    symbol = Symbol(
-        id=symbol_id,
-        stable_id=symbol_id,
-        name=f"extends {template_name}",
-        kind="extends",
-        language="twig",
-        path=str(rel_path),
-        span=span,
-        origin=PASS_ID,
-        signature=f'{{% extends "{template_name}" %}}',
-        meta={"template": template_name},
-    )
-
-    # Create edge to parent template
     if template_name:
         edge = Edge.create(
-            src=symbol_id,
+            src=make_file_id("twig", str(rel_path)),
             dst=f"twig:template:{template_name}",
             edge_type="extends_template",
             line=line,
@@ -124,10 +108,11 @@ def _create_extends_symbol(
             origin_run_id=run_id,
             evidence_type="extends",
             confidence=0.95,
+            meta={"template": template_name},
         )
         edges.append(edge)
 
-    return symbol, edges
+    return edges
 
 
 def _create_block_symbol(
@@ -158,39 +143,23 @@ def _create_block_symbol(
     )
 
 
-def _create_include_symbol(
+def _create_include_edges(
     rel_path: str, node: "tree_sitter.Node",
     template_name: str, run_id: str,
-) -> tuple[Symbol, list[Edge]]:
-    """Create a symbol for include statement."""
+) -> list[Edge]:
+    """Create edge for {% include %} statement.
+
+    Cluster E sub-case (b) per audit-findings 0010: per-include Symbol
+    was redundant. Edge src is the including template file id; dst is
+    the included template's dangling id (handled by IR boundary
+    materialization).
+    """
     line = node.start_point[0] + 1
     edges: list[Edge] = []
 
-    symbol_id = _make_symbol_id(rel_path, template_name, "include", line)
-    span = Span(
-        start_line=line,
-        start_col=node.start_point[1],
-        end_line=node.end_point[0] + 1,
-        end_col=node.end_point[1],
-    )
-
-    symbol = Symbol(
-        id=symbol_id,
-        stable_id=symbol_id,
-        name=f"include {template_name}",
-        kind="include",
-        language="twig",
-        path=str(rel_path),
-        span=span,
-        origin=PASS_ID,
-        signature=f'{{% include "{template_name}" %}}',
-        meta={"template": template_name},
-    )
-
-    # Create edge to included template
     if template_name:
         edge = Edge.create(
-            src=symbol_id,
+            src=make_file_id("twig", str(rel_path)),
             dst=f"twig:template:{template_name}",
             edge_type="includes_template",
             line=line,
@@ -198,10 +167,11 @@ def _create_include_symbol(
             origin_run_id=run_id,
             evidence_type="include",
             confidence=0.95,
+            meta={"template": template_name},
         )
         edges.append(edge)
 
-    return symbol, edges
+    return edges
 
 
 def _create_macro_symbol(
@@ -232,38 +202,19 @@ def _create_macro_symbol(
     )
 
 
-def _create_include_function_symbol(
+def _create_include_function_edges(
     rel_path: str, node: "tree_sitter.Node",
     template_name: str, run_id: str,
-) -> tuple[Symbol, list[Edge]]:
-    """Create a symbol for include() function call."""
+) -> list[Edge]:
+    """Create edge for {{ include() }} function call.
+
+    Cluster E sub-case (b) per audit-findings 0010: per-include Symbol
+    was redundant. Edge src is the including template file id; dst is
+    the included template's dangling id.
+    """
     line = node.start_point[0] + 1
-    edges: list[Edge] = []
-
-    symbol_id = _make_symbol_id(rel_path, template_name, "include_func", line)
-    span = Span(
-        start_line=line,
-        start_col=node.start_point[1],
-        end_line=node.end_point[0] + 1,
-        end_col=node.end_point[1],
-    )
-
-    symbol = Symbol(
-        id=symbol_id,
-        stable_id=symbol_id,
-        name=f"include({template_name})",
-        kind="include",
-        language="twig",
-        path=str(rel_path),
-        span=span,
-        origin=PASS_ID,
-        signature=f"{{{{ include('{template_name}') }}}}",
-        meta={"template": template_name},
-    )
-
-    # Create edge to included template
     edge = Edge.create(
-        src=symbol_id,
+        src=make_file_id("twig", str(rel_path)),
         dst=f"twig:template:{template_name}",
         edge_type="includes_template",
         line=line,
@@ -271,10 +222,9 @@ def _create_include_function_symbol(
         origin_run_id=run_id,
         evidence_type="include",
         confidence=0.95,
+        meta={"template": template_name, "form": "function"},
     )
-    edges.append(edge)
-
-    return symbol, edges
+    return [edge]
 
 
 def _extract_tag_statement(
@@ -301,16 +251,12 @@ def _extract_tag_statement(
                 arg_value = text
 
     if tag_name == "extends":
-        sym, edges = _create_extends_symbol(rel_path, parent_node, arg_value, run_id)
-        symbols_out.append(sym)
-        edges_out.extend(edges)
+        edges_out.extend(_create_extends_edges(rel_path, parent_node, arg_value, run_id))
     elif tag_name == "block" and arg_value:
         sym = _create_block_symbol(rel_path, parent_node, arg_value)
         symbols_out.append(sym)
     elif tag_name == "include":
-        sym, edges = _create_include_symbol(rel_path, parent_node, arg_value, run_id)
-        symbols_out.append(sym)
-        edges_out.extend(edges)
+        edges_out.extend(_create_include_edges(rel_path, parent_node, arg_value, run_id))
 
 
 def _extract_macro_statement(
@@ -449,11 +395,9 @@ def _extract_function_call(
     # Handle include() function calls
     if func_name == "include" and args:
         template_name = args[0].strip("'\"")
-        sym, edges = _create_include_function_symbol(
+        edges_out.extend(_create_include_function_edges(
             rel_path, parent_node, template_name, run_id,
-        )
-        symbols_out.append(sym)
-        edges_out.extend(edges)
+        ))
         return
 
     symbol_id = _make_symbol_id(rel_path, func_name, "function_call", line)

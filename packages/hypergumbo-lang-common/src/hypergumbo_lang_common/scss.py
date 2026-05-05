@@ -41,6 +41,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    make_file_id,
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -366,42 +367,27 @@ def _extract_include(
     rel_path = path.relative_to(repo_root)
     line = node.start_point[0] + 1
 
-    # Create symbol for the include
-    symbol_id = _make_symbol_id(rel_path, f"@include {mixin_name}", "include", line)
-    span = Span(
-        start_line=line,
-        start_col=node.start_point[1],
-        end_line=node.end_point[0] + 1,
-        end_col=node.end_point[1],
+    # Cluster E sub-case (b) per audit-findings 0010: per-include Symbol
+    # was redundant. Edge src is now the stylesheet file id; edge is
+    # emitted unconditionally — when the mixin isn't defined in the
+    # local file, dst is a 5-part dangling id so unresolved-include
+    # cases keep their representation in the graph.
+    stylesheet_id = make_file_id("scss", str(rel_path))
+    dst = mixin_definitions.get(
+        mixin_name, f"scss:mixin:{mixin_name}:1-1:{mixin_name}:mixin"
     )
-
-    symbol = Symbol(
-        id=symbol_id,
-        stable_id=symbol_id,
-        name=f"@include {mixin_name}",
-        kind="include",
-        language="scss",
-        path=str(rel_path),
-        span=span,
+    edge = Edge.create(
+        src=stylesheet_id,
+        dst=dst,
+        edge_type="uses_mixin",
+        line=line,
         origin=PASS_ID,
-        signature=f"@include {mixin_name}",
+        origin_run_id=execution_id,
+        evidence_type="include",
+        confidence=0.95 if mixin_name in mixin_definitions else 0.6,
         meta={"mixin_name": mixin_name},
     )
-    symbols.append(symbol)
-
-    # Create edge to mixin if defined
-    if mixin_name in mixin_definitions:
-        edge = Edge.create(
-            src=symbol_id,
-            dst=mixin_definitions[mixin_name],
-            edge_type="uses_mixin",
-            line=line,
-            origin=PASS_ID,
-            origin_run_id=execution_id,
-            evidence_type="include",
-            confidence=0.95,
-        )
-        edges.append(edge)
+    edges.append(edge)
 
 
 class ScssAnalyzer(TreeSitterAnalyzer):

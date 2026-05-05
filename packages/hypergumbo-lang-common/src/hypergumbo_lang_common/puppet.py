@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, populate_docstrings_from_tree
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_file_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -399,41 +399,29 @@ class _PuppetExtractor:
         rel_path = path.relative_to(self.repo_root)
         line = node.start_point[0] + 1
 
-        symbol_id = _make_symbol_id(rel_path, f"include {class_name}", "include", line)
-        span = Span(
-            start_line=line,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
+        # Cluster E sub-case (b) per audit-findings 0010: per-include Symbol
+        # was redundant. Edge src is now the manifest file id; edge is
+        # emitted unconditionally — when the class isn't in the local
+        # registry, dst is a 5-part dangling id that the IR's boundary
+        # materialization handles (so unresolved-include cases keep their
+        # representation in the graph instead of disappearing with the
+        # dropped Symbol).
+        manifest_id = make_file_id("puppet", str(rel_path))
+        dst = self._class_registry.get(
+            class_name, f"puppet:class:{class_name}:1-1:{class_name}:class"
         )
-
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=symbol_id,
-            name=f"include {class_name}",
-            kind="include",
-            language="puppet",
-            path=str(rel_path),
-            span=span,
+        edge = Edge.create(
+            src=manifest_id,
+            dst=dst,
+            edge_type="includes_class",
+            line=line,
             origin=PASS_ID,
-            signature=f"include {class_name}",
+            origin_run_id=self._execution_id,
+            evidence_type="include",
+            confidence=0.95 if class_name in self._class_registry else 0.6,
             meta={"class_name": class_name},
         )
-        self._symbols.append(symbol)
-
-        # Create edge to class if defined
-        if class_name in self._class_registry:
-            edge = Edge.create(
-                src=symbol_id,
-                dst=self._class_registry[class_name],
-                edge_type="includes_class",
-                line=line,
-                origin=PASS_ID,
-                origin_run_id=self._execution_id,
-                evidence_type="include",
-                confidence=0.95,
-            )
-            self._edges.append(edge)
+        self._edges.append(edge)
 
 
 class PuppetAnalyzer(TreeSitterAnalyzer):

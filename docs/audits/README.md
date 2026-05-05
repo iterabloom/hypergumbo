@@ -34,7 +34,7 @@ write an ADR vs an audit-findings document."
 | [0007](0007-symbol-kind-cluster-h-long-tail.md) | Symbol.kind Cluster H — Domain-Specific Long Tail | `Symbol.kind` | All UNRESOLVED |
 | [0008](0008-evidence-type-cluster-b-resolution-status.md) | Edge.evidence_type Cluster B — Resolution-Status Leakage | `Edge.evidence_type` | All PRELIM_RESOLVED |
 | [0009](0009-symbol-kind-cluster-c-apex-peer.md) | Symbol.kind Cluster C — Apex/Peer Overloads | `Symbol.kind` | All PRELIM_RESOLVED |
-| [0010](0010-symbol-kind-cluster-e-edge-label-kinds.md) | Symbol.kind Cluster E — Edge Labels Masquerading as Kinds | `Symbol.kind` | Mixed (7 PRELIM_RESOLVED, 5 UNRESOLVED) |
+| [0010](0010-symbol-kind-cluster-e-edge-label-kinds.md) | Symbol.kind Cluster E — Edge Labels Masquerading as Kinds | `Symbol.kind` | Mixed (9 PRELIM_RESOLVED, 3 UNRESOLVED) |
 
 ## File format
 

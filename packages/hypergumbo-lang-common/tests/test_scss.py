@@ -293,10 +293,14 @@ $spacing: 16px;
 }
 """)
         result = analyze_scss(tmp_path)
-        include = next((s for s in result.symbols if s.kind == "include"), None)
-        assert include is not None
-        assert include.name == "@include button"
-        assert include.meta.get("mixin_name") == "button"
+        # Cluster E sub-case (b) per audit-findings 0010: include Symbol was
+        # dropped; the uses_mixin Edge carries the relationship.
+        edge = next(
+            (e for e in result.edges if e.edge_type == "uses_mixin"
+             and (e.meta or {}).get("mixin_name") == "button"),
+            None,
+        )
+        assert edge is not None
 
     def test_creates_uses_mixin_edge(self, tmp_path: Path) -> None:
         make_scss_file(tmp_path, "styles.scss", """@mixin button {
@@ -413,10 +417,7 @@ $font-size: 14px;
         assert ".header" in rule_names
         assert ".button" in rule_names
 
-        # Check includes
-        includes = [s for s in result.symbols if s.kind == "include"]
-        assert len(includes) == 2
-
-        # Check edges
+        # Check includes — Cluster E sub-case (b) per audit-findings 0010:
+        # include Symbol dropped; uses_mixin Edge carries the relationship.
         edges = [e for e in result.edges if e.edge_type == "uses_mixin"]
         assert len(edges) == 2

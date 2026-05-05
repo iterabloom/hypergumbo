@@ -229,10 +229,8 @@ class TestIncludeExtraction:
 }
 """)
         result = analyze_scss(tmp_path)
-        includes = [s for s in result.symbols if s.kind == "include"]
-        assert len(includes) >= 1
-
-        # Check for edge
+        # Cluster E sub-case (b) per audit-findings 0010: include Symbol
+        # dropped; uses_mixin Edge carries the relationship.
         uses_edges = [e for e in result.edges if e.edge_type == "uses_mixin"]
         assert len(uses_edges) >= 1
 

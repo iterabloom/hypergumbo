@@ -747,6 +747,10 @@ def _process_tsconfig(
     symbols.append(sym)
 
     # Process references (project references)
+    # Cluster E sub-case (b) per audit-findings 0010: per-reference Symbol
+    # was redundant with the references Edge. Edge dst is now the referenced
+    # tsconfig file id (5-part well-formed dangling id; IR's boundary
+    # materialization handles it).
     refs_node = _find_object_key(obj_node, source, "references")
     if refs_node and refs_node.type == "array":
         for child in refs_node.children:
@@ -756,39 +760,16 @@ def _process_tsconfig(
                     ref_path = _get_string_content(path_node, source)
                     if ref_path:
                         ref_start = child.start_point[0] + 1
-                        ref_end = child.end_point[0] + 1
-                        ref_id = _make_symbol_id(rel_path, ref_start, ref_end, ref_path, "reference")
-
-                        ref_sym = Symbol(
-                            id=ref_id,
-                            stable_id=None,
-                            shape_id=None,
-                            canonical_name=ref_path,
-                            fingerprint=hashlib.sha256(source[child.start_byte:child.end_byte]).hexdigest()[:16],
-                            kind="reference",
-                            name=ref_path,
-                            path=rel_path,
-                            language="json",
-                            span=Span(
-                                start_line=ref_start,
-                                end_line=ref_end,
-                                start_col=child.start_point[1],
-                                end_col=child.end_point[1],
-                            ),
-                            origin=PASS_ID,
-                            meta={"reference_path": ref_path},
-                        )
-                        symbols.append(ref_sym)
-
-                        # Create reference edge
+                        ref_dst = f"json:{ref_path}:1-1:{Path(ref_path).name}:tsconfig"
                         edge = Edge.create(
                             src=config_id,
-                            dst=ref_id,
+                            dst=ref_dst,
                             edge_type="references",
                             line=ref_start,
                             confidence=0.95,
                             origin=PASS_ID,
                             evidence_type="static",
+                            meta={"reference_path": ref_path},
                         )
                         edges.append(edge)
 

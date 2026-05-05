@@ -208,11 +208,15 @@ def test_analyze_tsconfig(tmp_path):
     configs = [s for s in result.symbols if s.kind == "tsconfig"]
     assert len(configs) >= 1
 
-    # Find references
-    refs = [s for s in result.symbols if s.kind == "reference"]
-    assert len(refs) >= 2
+    # Cluster E sub-case (b) per audit-findings 0010: per-reference Symbol
+    # was dropped; the references Edge carries the relationship.
+    ref_edges = [e for e in result.edges if e.edge_type == "references"]
+    assert len(ref_edges) >= 2
 
-    core_ref = next((r for r in refs if r.name == "./packages/core"), None)
+    core_ref = next(
+        (e for e in ref_edges if (e.meta or {}).get("reference_path") == "./packages/core"),
+        None,
+    )
     assert core_ref is not None
 
 def test_analyze_tsconfig_reference_edges(tmp_path):

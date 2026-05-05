@@ -210,9 +210,8 @@ class TestTsconfigProcessing:
 }
 """)
         result = analyze_json_files(tmp_path)
-        refs = [s for s in result.symbols if s.kind == "reference"]
-
-        assert len(refs) >= 2
+        # Cluster E sub-case (b) per audit-findings 0010: per-reference
+        # Symbol was dropped; the references Edge carries the relationship.
         ref_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(ref_edges) >= 2
 

@@ -2,7 +2,7 @@
 # Audit-findings 0010: Symbol.kind Cluster E — Edge Labels Masquerading as Kinds
 
 - Date: 2026-05-05
-- Status: Mixed — sub-case (a) call_site reclassifications and sub-case (b) DEPRECATE-NO-FOLD-zero-producer rows ship at PRELIM_RESOLVED; sub-case (b) drop verdicts split per-producer (one clean-drop site PRELIM_RESOLVED, the remaining producer surface UNRESOLVED pending edge-endpoint refactor in a follow-on PR).
+- Status: Mixed — sub-case (a) call_site reclassifications and sub-case (b) DEPRECATE-NO-FOLD-zero-producer rows ship at PRELIM_RESOLVED; sub-case (b) `inherit` PRELIM_RESOLVED at PR 1; sub-case (b) `reference` PRELIM_RESOLVED at PR 2 (json_config edge-endpoint redesign). Three rows (`import`, `include`, `extends`) remain UNRESOLVED — each has a residual shape-3 (edge-absent) producer (r_lang.py / make.py / blade.py) deferred to a separate follow-on item.
 - Closes (partial): WI-zarov-nosin-fokum-vofom-kazum-kinir-lijof-lihud (Cluster E, ADR-0027 Phase 3) — sub-case (a) closed; sub-case (b) partial. Follow-on tracker items file the deferred per-producer work.
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Sixth audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical), 0005 (Cluster B file-shape), 0006 (Cluster G build/config), 0007 (Cluster H domain long-tail), and 0009 (Cluster C apex/peer).
 
@@ -33,7 +33,7 @@ ADR-0027 Cluster E sub-case (b)'s prescription — "drop entirely at the produce
 
 1. **Edge-independent.** The producer emits both a Symbol and an Edge whose endpoints reference *other* Symbols (file/scope/external boundary nodes), not the Symbol being dropped. Cleanly dropping the Symbol leaves the Edge intact. Three sites exhibit this shape: `bitbake.py:264` (inherit), `css.py:155` (import), `jsonnet.py:212` (import).
 2. **Edge-endpoint dependency.** The producer emits a Symbol *and* an Edge whose `src` (or, in one case, `dst`) is the Symbol's id. Dropping the Symbol orphans the Edge. Five sites: `json_config.py:762` (reference), `puppet.py:410` (include), `scss.py:378` (include), `twig.py:166`/`twig.py:228`/`twig.py:198` (include×2 + extends).
-3. **Edge-absent.** The producer emits a Symbol with no companion Edge; dropping the Symbol erases the language-level construct (the import / extends / include directive) from the behaviour map. Five sites: `r_lang.py:215` (import), `astro.py:209` (import — note: astro emits an `imports` Edge with the Symbol's id as `src`, so it is shape (2) on closer inspection), `make.py:282` (include), `blade.py:265` (extends), and the astro site (re-classified to shape 2 above).
+3. **Edge-absent.** The producer emits a Symbol with no companion Edge; dropping the Symbol erases the language-level construct (the import / extends / include directive) from the behaviour map. Four sites: `r_lang.py:215` (import — no companion Edge for R `library()` imports), `astro.py:209` (import — note: the astro analyzer does emit an `imports` Edge nearby in `astro.py:332`, but that Edge is for the separate component_ref Symbol (Cluster F), not for the import Symbol; this audit's PR 2 re-inspection corrects the original shape-2 classification of this site to shape-3), `make.py:282` (include), `blade.py:265` (extends).
 
 Per-shape verdict applicability:
 
@@ -118,11 +118,11 @@ verdicts:
   - value: reference
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]reference[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Sub-case (b) drop verdict — the references Edge captures the relationship; no replacement Symbol kind. Sole producer (json_config.py:762) is shape (2) edge-endpoint-dependent: the references Edge has dst=symbol_id. Drop deferred to follow-on PR — the Edge's dst must re-route to the resolved reference target before the Symbol can be dropped."
+    rationale: "Sub-case (b) drop verdict — the references Edge captures the relationship; no replacement Symbol kind. Sole producer (json_config.py) was shape (2) edge-endpoint-dependent (references Edge had dst=symbol_id). PR 2 (WI-zarov shape-2 redesign) re-routes the Edge dst from the dropped Symbol id to a 5-part dangling tsconfig file id (handled by IR boundary materialization), then drops the Symbol. The reference_path moves from Symbol.meta to Edge.meta."
   - value: import
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
@@ -130,7 +130,7 @@ verdicts:
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]import[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Sub-case (b) drop verdict — the imports Edge captures the relationship; no replacement Symbol kind. Four producers split by shape: css.py:155 (shape 1, dropped this PR), jsonnet.py:212 (shape 1, dropped this PR), astro.py:209 (shape 2, deferred — imports Edge has src=symbol_id), r_lang.py:215 (shape 3, deferred — no companion Edge for R library() imports). Status remains UNRESOLVED until astro and r_lang sites resolve."
+    rationale: "Sub-case (b) drop verdict — the imports Edge captures the relationship; no replacement Symbol kind. Four producers split by shape: css.py:155 (shape 1, dropped in PR 1), jsonnet.py:212 (shape 1, dropped in PR 1), astro.py:209 (shape 3 on closer inspection — the imports Edge in astro.py:332 belongs to the separate component_ref Symbol (Cluster F), not the import Symbol; the import Symbol has no companion Edge. Originally classified shape 2 in this audit; PR 2 re-inspection corrected to shape 3), r_lang.py:215 (shape 3, no companion Edge for R library() imports). Both remaining producers are now shape 3 (edge-absent) and deferred to a separate follow-on item that decides whether to introduce a companion Edge or accept the loss of import-directive representation. Status remains UNRESOLVED."
   - value: inherit
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
@@ -146,7 +146,7 @@ verdicts:
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]include[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Sub-case (b) drop verdict — the include-family Edges (includes_class, uses_mixin, includes_template) capture the relationship; no replacement Symbol kind. Five producers, all deferred. Four are shape (2) edge-endpoint-dependent: puppet.py:410 (includes_class Edge with src=symbol_id), scss.py:378 (uses_mixin Edge with src=symbol_id), twig.py:166 and twig.py:198 (includes_template Edges with src=symbol_id). One is shape (3) edge-absent: make.py:282 (no companion Edge for makefile include directives). Drop deferred to follow-on PRs."
+    rationale: "Sub-case (b) drop verdict — the include-family Edges (includes_class, uses_mixin, includes_template) capture the relationship; no replacement Symbol kind. Five producers split by shape and migration wave: puppet.py (shape 2, dropped in PR 2 — includes_class Edge re-routed src to manifest file id, dst made unconditional via dangling class id when class isn't in local registry), scss.py (shape 2, dropped in PR 2 — uses_mixin Edge re-routed src to stylesheet file id, dst made unconditional via dangling mixin id), twig.py:166 + twig.py:255 (shape 2, both dropped in PR 2 — includes_template Edge re-routed src to template file id; the {{ include() }} function-call form distinguished via meta['form']='function'). One remaining producer is shape (3) edge-absent: make.py (no companion Edge for makefile include directives). Status remains UNRESOLVED until make.py resolves."
   - value: extends
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
@@ -154,7 +154,7 @@ verdicts:
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]extends[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Sub-case (b) drop verdict — the extends_template Edge captures the relationship; no replacement Symbol kind. Two producers: twig.py:228 (shape 2, extends_template Edge with src=symbol_id) and blade.py:265 (shape 3, no companion Edge for Blade @extends directives). Both deferred."
+    rationale: "Sub-case (b) drop verdict — the extends_template Edge captures the relationship; no replacement Symbol kind. Two producers: twig.py (shape 2, dropped in PR 2 — extends_template Edge re-routed src to template file id) and blade.py (shape 3, edge-absent, deferred). Status remains UNRESOLVED until blade.py resolves."
 ```
 
 ## Migration impact
