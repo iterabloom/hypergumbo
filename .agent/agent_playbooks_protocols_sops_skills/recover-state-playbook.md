@@ -66,6 +66,27 @@ What to include (in priority order):
 
 Keep it under ~5 lines. The notes file is a working hand-off, not a log; verbose entries dilute signal. The retro file (lab notebook) is where detailed analysis goes. Treat this step as part of "stopping" — the *during*-session bullet list above stays useful, but a fresh notes write at sign-off is what makes the next session's `cat agent_notes.json` actually informative rather than n-hours-stale.
 
+### Fresh-session read trigger (the symmetric read-side hook)
+
+The session-end write rule above has a counterpart at the **other end** of the recovery loop: the session-start hook reads the same file. When `_append_agent_notes_status` (in `.agent/hooks/_shared/session_start_logic.sh`) sees a non-empty `agent_notes.json`, it appends a one-line prompt to `SESSION_START_MESSAGE` naming both ages and asking the agent to ask the user about loading the notes via `./scripts/agent-notes --show`:
+
+> agent_notes.json was last updated **26m ago**, last session ended **2h ago**. Ask the user whether to load the prior session's handoff via `./scripts/agent-notes --show` before starting work.
+
+Two timestamps are reported because they answer two different questions: the **notes age** tells the user whether the handoff is fresh enough to be relevant; the **last-session age** tells the user how stale "last" actually is (a notes file might be 26m old because the agent appended near the end of a long session that ended 2h ago — the gap matters).
+
+The hook **does not** dump notes content into the system reminder unprompted — that would inject potentially-stale handoff text into every fresh session whether the user wants it or not. Asking first preserves the user's option to skip a notes file that's no longer relevant (e.g., they've already read it offline, or the prior session's plan got superseded).
+
+The prompt fires when:
+- `jq` is available on `PATH` (the helper needs it to parse the JSON safely);
+- The notes file exists at `$HOME/<repo_name>_lab_notebook/guidance_log/agent_notes.json`; and
+- The `notes` field is non-empty after stripping whitespace (so an `--append`-with-empty-string corner case doesn't fire spurious prompts).
+
+It's appended on top of the autonomous-mode prompt in Cases 1 (OFF), 2 (stale PID), and 4 (mode active); skipped in Case 3 (another live session owns the lock — adding text there would interrupt that session). Tests live at `tests/test_session_start_agent_notes.py`.
+
+### Doctrine note: write-side and read-side both required
+
+WI-borur originally surfaced as the *write*-side gap (no agent appended at session end, so the next session's recovery had nothing to read). Closing that gap mechanically turned the *read*-side into the new gap (the agent now writes, but a fresh session has no automatic trigger to read). The two halves only close the recovery loop together — either alone is just one writer or one reader talking to a void.
+
 DO NOT write to stop_hook_state.json directly. That file is hook-owned — last_completed_utc, guidance_file, and bakeoff fields are maintained by stop_logic.sh automatically. Writing to it manually would reintroduce the facet-1 failure mode where agent-edited timestamps drift from reality.
 
 Also check for pending work items:

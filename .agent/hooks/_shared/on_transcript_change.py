@@ -330,21 +330,24 @@ PLAYBOOKS = [
      "branch with the naming convention author/[feat|fix|docs|refactor]/description."),
     ("recover-state-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/recover-state-playbook.md",
-     "After context compaction, recover state from two files in "
-     "~/<repo>_lab_notebook/guidance_log/: stop_hook_state.json (hook-written: "
-     "last_completed_utc, current_branch, guidance_file, bakeoff fields) and "
-     "agent_notes.json (agent-written free-text notes field, via "
-     "scripts/agent-notes --set/--append). Also check guidance_file for recent "
-     "stop hook output and run tracker ready for pending work items. Keep notes "
-     "fresh after key milestones via the scripts/agent-notes tool only — the "
+     "Recover state from two files in ~/<repo>_lab_notebook/guidance_log/: "
+     "stop_hook_state.json (hook-written: last_completed_utc, current_branch, "
+     "guidance_file, bakeoff fields) and agent_notes.json (agent-written free-text "
+     "notes field, via scripts/agent-notes --set/--append). Two triggers fire this: "
+     "(1) post-compaction recovery, when context loss requires re-orienting; and "
+     "(2) fresh-session start, when the session_start_logic.sh hook prompts the "
+     "agent to ask the user about loading the prior session's handoff via "
+     "./scripts/agent-notes --show (the symmetric read-side complement to the "
+     "session-end write-side rule below). Also check guidance_file for recent stop "
+     "hook output and run tracker ready for pending work items. Keep notes fresh "
+     "after key milestones via the scripts/agent-notes tool only — the "
      "stop_hook_state.json file is hook-owned and must not be edited directly. "
      "Before signing off (no in-flight work, no auto-pr pending), append a "
      "one-paragraph summary of what the next session needs to know — open "
      "invariant violations, P1+ defects discovered, status changes on tracked "
      "invariants, cross-cutting context — via scripts/agent-notes --append. "
-     "The during-session 'keep notes fresh' rule covers updates as you go; the "
-     "session-end refresh is the symmetric write obligation that closes the "
-     "recovery loop."),
+     "Write-side and read-side both required: closing only one half leaves the "
+     "recovery loop open."),
     ("pre-commit-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/pre-commit-playbook.md",
      "Before every commit: verify git identity (user.name/user.email), run tests with "
