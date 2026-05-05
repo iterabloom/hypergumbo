@@ -90,3 +90,10 @@
   set: {}  # ce9f
   add:  # ce9f
     isbefore: [WI-nupus-fovor-rataf-momub-natit-hihir-bufas-bukih]  # ce9f
+- op: discuss  # 075c
+  at: '2026-05-05T08:56:01Z'  # 075c
+  by: agent  # 075c
+  actor: jgstern_agent  # 075c
+  clock: 10  # 075c
+  nonce: 075c  # 075c
+  message: "Slice 1 landed (PR #3562, commit 0761011). Migrated linkers/registry.SYNTHETIC_KINDS to dual-shape predicate _is_synthetic_node(sym) — recognizes both pre-Wave-5 (Symbol.kind=<role>) and post-Wave-5 (Symbol.kind=function|method + meta['framework_role']=<role>) emit shapes. Discovered + fixed Phase-3 forward-compat bug in same PR: find_enclosing_symbol's default kinds=('function','method','class','module') means a post-fold synthetic 'method' node self-matches as its own encloser (smallest-enclosing logic picks the 1-line synthetic over the surrounding function); enclosure pass now filters synthetic node IDs out of the search context. Two new tests cover post-Phase-3 emit shape + non-synthetic-role rejection. Audit comments added to all 11 surfaces named in description. Slice 2 follow-on (at-risk surfaces: containment.CONTAINABLE_KINDS / CONTAINER_KINDS, selection.EXCLUDED_KINDS) deferred — those values are still emitted by live producers (proto.py, thrift.py, capnp.py for service/rpc/message; framework linkers for event_subscriber). Slice 2 dual-shape work will land alongside or after Wave 5 (WI-habut framework-role fold)."  # 075c

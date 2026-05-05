@@ -20,3 +20,11 @@
     fields:  # 6dd3
       statement: "At most one sync-transcript.sh watcher process exists per (repo, SESSION_ID), regardless of how many times the vendor's SessionStart hook fires (startup, resume, /clear, /compact). Equivalently: launch-transcript-sync.sh must kill any prior watcher for the same SESSION_ID before launching a new one, and filter-transcript.py must serialize concurrent invocations via fcntl.flock(LOCK_EX) on the state file."  # 6dd3
       root_cause: "launch-transcript-sync.sh's orphan sweep explicitly skipped its own SESSION_ID (line 89 'continue'), so a prior live watcher for the same session was always left alone. The vendor session-start hooks (claude-code/cursor/codex-cli/gemini-cli) never inspected the SessionStart 'source' field — they unconditionally re-launched on any of {startup, resume, clear, compact}. A second watcher launched on /compact tailed the same vendor source as the first; both raced on the unlocked filter-transcript.py state file, both filtered+appended the same N bytes per close_write event, producing uniform 2x consecutive-block duplication of every event in the per-session DEST file. Rotation (mv -f) preserved the doubling into .last_*. Observed in 4 of 132 archived sessions (~3% HIT rate), exclusively in sessions containing isCompactSummary events."  # 6dd3
+- op: update  # 4e08
+  at: '2026-05-05T07:37:13Z'  # 4e08
+  by: agent  # 4e08
+  actor: jgstern_agent  # 4e08
+  clock: 2  # 4e08
+  nonce: '4e08'  # 4e08
+  set:  # 4e08
+    priority: 2  # 4e08

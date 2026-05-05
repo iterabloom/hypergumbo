@@ -199,3 +199,11 @@
   clock: 25  # 58ec
   nonce: 58ec  # 58ec
   message: "Human approval acknowledged ('yes I approve using auto-pr WITHOUT --gov'). Fix shipped via PR #3419 (commit da94238c9 on dev). Both surfaces landed per the locked plan: Surface 1 _pre_scenario_b_gate in forgejo-api.sh covers _check_pr_merged + mergeable+single-poll_ci-retry-with-120s-backoff at the close-and-repush boundary; Surface 2 do_merge labeled while-loop with rebase_max iter cap replaces the prior one-shot+Recovery: hint. Status already moved violated → pending_validation. Validation criterion (verbatim): 'the next auto-pr invocation that traverses the rebase-then-merge path completes without emitting Recovery: and merges to dev.' Will be exercised organically by the next concurrent-tracker-sync ship; flip to satisfied at that point."  # 58ec
+- op: update  # 89ac
+  at: '2026-05-05T07:36:44Z'  # 89ac
+  by: agent  # 89ac
+  actor: jgstern_agent  # 89ac
+  clock: 26  # 89ac
+  nonce: 89ac  # 89ac
+  set:  # 89ac
+    priority: 1  # 89ac

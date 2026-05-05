@@ -25,3 +25,18 @@
   clock: 2  # 5b9e
   nonce: 5b9e  # 5b9e
   message: "## Standard agent autonomy applies — no needs_human_review at any stage\n\nSame revised framing as WI-gajob. A prior discussion on WI-runod suggested this item's outcome might warrant `needs_human_review` if the audit verdict lands on \"new axis ADR.\" That framing was wrong and is being retracted.\n\n**Why:** ADRs are not on AGENTS.md's governance file list. Files in `docs/adr/` are editorial. ADR-0028 itself was filed Draft → Accepted by an agent (during the WI-turin-pajuk audit close-out) without human pre-approval. The standard workflow is:\n\n1. Agent runs the audit (mechanical classification per ADR-0024 §\"Family-audit verdict methodology\").\n2. Agent produces `docs/audits/<NN>-cluster-g-build-config.md` with per-value verdicts (CANONICAL / FOLD / DEPRECATE-NO-FOLD / NEW-AXIS).\n3. If the cluster's natural home is a new axis OR demotion to documentation: agent files the new ADR draft + Phase 1 implementation in the same PR-group, mirroring ADR-0028's lifecycle.\n4. Human review happens at PR-merge boundary, the standard checkpoint.\n\n**Implication for this item:** proceed under standard agent autonomy. No needs_human_review flag at any stage; PR review at merge is the standard checkpoint."  # 5b9e
+- op: update  # 30f3
+  at: '2026-05-05T05:58:49Z'  # 30f3
+  by: agent  # 30f3
+  actor: jgstern_agent  # 30f3
+  clock: 3  # 30f3
+  nonce: 30f3  # 30f3
+  set:  # 30f3
+    status: done  # 30f3
+- op: discuss  # 0592
+  at: '2026-05-05T05:58:49Z'  # 0592
+  by: agent  # 0592
+  actor: jgstern_agent  # 0592
+  clock: 4  # 0592
+  nonce: '0592'  # 0592
+  message: "Closed by PR #3559 / commit 8efd20da2. Audit-findings 0006 ships per-value verdicts for all 24 Cluster G values: 15 CANONICAL (build/config DSL top-level constructs), 5 FOLD (test_case→test, editable/url_requirement→requirement, devDependency→dependency, python_task→task), 4 DEPRECATE-NO-FOLD (config — Prisma generic block placeholder; dev-dependency / build-dependency — dead vocabulary; work_item — tracker Item.kind misregistered). No new axis ADR required — confirmed verdict shape predicted in handoff notes. Wave 6 of WI-runod is the producer migration."  # 0592
