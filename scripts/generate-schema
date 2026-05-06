@@ -300,6 +300,18 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "x-axis-of-values": {
                     spec.name: spec.axis for spec in SYMBOL_KINDS
                 },
+                # ADR-0027 §"Phase 4a" (additive): every endpoint_shape
+                # Symbol.kind value is a deprecation candidate scheduled
+                # for removal in Phase 4b. Producers either no longer
+                # emit these (Phase 3 fold complete) or are scheduled to
+                # fold during Phase 3 sub-PRs. Values stay valid in the
+                # open schema for the deprecation window. Per-value
+                # migration guidance lives in the registry's
+                # SymbolKindSpec.description.
+                "x-deprecated": [
+                    spec.name for spec in SYMBOL_KINDS
+                    if spec.axis == AXIS_ENDPOINT_SHAPE
+                ],
             },
             "language": {"type": "string", "description": "Programming language"},
             "path": {"type": "string", "description": "File path"},
@@ -473,6 +485,19 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                         "x-axis-of-values": {
                             spec.name: spec.axis for spec in EVIDENCE_TYPES
                         },
+                        # ADR-0028 §"Phase 4a" (additive): every
+                        # endpoint_shape evidence_type value is a
+                        # deprecation candidate scheduled for removal in
+                        # Phase 4b. Cluster B canary fold (WI-nunal) has
+                        # shipped; Clusters C/D are mid-Phase-3 with
+                        # awaits_bakeoff_validation tags. Values stay
+                        # valid in the open schema for the deprecation
+                        # window. Per-value migration guidance lives in
+                        # the registry's EvidenceTypeSpec.description.
+                        "x-deprecated": [
+                            spec.name for spec in EVIDENCE_TYPES
+                            if spec.axis == AXIS_ENDPOINT_SHAPE
+                        ],
                     },
                     "evidence_lang": {"type": "string"},
                     "evidence_spans": {"type": "array"}
