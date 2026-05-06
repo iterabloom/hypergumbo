@@ -959,7 +959,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     route_ep_ids = {ep.symbol_id for ep in entrypoints if ep.kind == EntrypointKind.HTTP_ROUTE}
 
     for sym in symbols:
-        if sym.kind != "route":
+        if (sym.meta or {}).get("framework_role") != "route":
             continue
         if sym.id in route_ep_ids:
             continue

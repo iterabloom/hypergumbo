@@ -45,12 +45,12 @@ def _kind_route_handler(name: str, path: str, http_method: str, route_path: str)
     return Symbol(
         id=sym_id,
         name=name,
-        kind="route",
+        kind="function",
         language="go",
         path=path,
         span=Span(1, 5, 0, 10),
         stable_id=f"sha256:route-{name}",
-        meta={"http_method": http_method, "route_path": route_path},
+        meta={"http_method": http_method, "route_path": route_path, "framework_role": "route"},
     )
 
 
@@ -131,7 +131,7 @@ def test_extract_route_info_incomplete_kind_route_falls_back_to_concept() -> Non
     """kind='route' without method/path falls through to concept scan."""
     sym_id = "go:p.go:1-5:h:route"
     sym = Symbol(
-        id=sym_id, name="h", kind="route", language="go", path="p.go",
+        id=sym_id, name="h", kind="function", language="go", path="p.go",
         span=Span(1, 5, 0, 10),
         stable_id="sha256:h",
         meta={"concepts": [{"concept": "route", "method": "GET", "path": "/y"}]},
@@ -268,10 +268,10 @@ def test_emit_handler_slices_fallback_filename_without_route(tmp_path: Path) -> 
     """kind='route' symbol with no method/path still gets emitted with fallback name."""
     sym_id = "go:p.go:1-5:mystery:route"
     sym = Symbol(
-        id=sym_id, name="mystery", kind="route", language="go", path="p.go",
+        id=sym_id, name="mystery", kind="function", language="go", path="p.go",
         span=Span(1, 5, 0, 10),
         stable_id="sha256:mystery",
-        meta={},
+        meta={"framework_role": "route"},
     )
     bmap = _behavior_map([sym], [])
     written = _emit_handler_slices(bmap, [sym], [], Path("p.go"), tmp_path)

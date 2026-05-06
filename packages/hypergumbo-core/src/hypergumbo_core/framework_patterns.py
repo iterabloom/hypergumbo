@@ -385,10 +385,20 @@ class Pattern:
                 # symbol_name matches
                 result["matched_symbol_name"] = symbol.name
 
-                # Check symbol_kind if also specified (AND condition)
+                # Check symbol_kind if also specified (AND condition).
+                # ADR-0027 Phase 3 / audit-findings 0013 fold: framework-role
+                # values previously emitted as kind="route" etc. are now folded
+                # to kind="function" + meta["framework_role"]=<role>. To keep
+                # YAML patterns like symbol_kind=r"^route$" working without
+                # forcing every framework YAML to migrate, also try matching
+                # against framework_role meta.
                 if self._symbol_kind_re:
+                    framework_role = (symbol.meta or {}).get("framework_role")
                     if self._symbol_kind_re.match(symbol.kind):
                         result["matched_symbol_kind"] = symbol.kind
+                        return [result]
+                    if framework_role and self._symbol_kind_re.match(framework_role):  # pragma: no cover - ADR-0027 fold backward-compat for combined name+kind patterns
+                        result["matched_symbol_kind"] = framework_role
                         return [result]
                     # symbol_kind specified but doesn't match
                     # Don't match this pattern
@@ -410,8 +420,12 @@ class Pattern:
             and not self._annotation_re
             and not self._param_type_re
         ):
+            framework_role = (symbol.meta or {}).get("framework_role")
             if self._symbol_kind_re.match(symbol.kind):
                 result["matched_symbol_kind"] = symbol.kind
+                return [result]
+            if framework_role and self._symbol_kind_re.match(framework_role):
+                result["matched_symbol_kind"] = framework_role
                 return [result]
 
         # Try parent_base_class + method_name combined match (for lifecycle hooks)
@@ -1620,7 +1634,7 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
     # once at urls.py and once at the view method. Pretix UAT saw 985 routes
     # where only ~500 were unique.
     for existing in symbols:
-        if existing.kind != "route":
+        if (existing.meta or {}).get("framework_role") != "route":
             continue
         em = existing.meta or {}
         ex_method = str(em.get("http_method") or "").upper()
@@ -1641,8 +1655,8 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
             if concept.get("concept") != "route":
                 continue
 
-            # Already has a kind="route" symbol (e.g., Go/JS analyzers created one)
-            if sym.kind == "route":
+            # Already has a route symbol (e.g., Go/JS analyzers created one)
+            if (sym.meta or {}).get("framework_role") == "route":
                 continue
 
             method = (concept.get("method") or "").upper()
@@ -1685,7 +1699,7 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
             route_sym = SymbolCls(
                 id=route_id,
                 name=route_name,
-                kind="route",
+                kind="function",
                 language=sym.language,
                 path=sym.path,
                 span=Span(
@@ -1701,6 +1715,7 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
                     "http_method": method,
                     "handler_ref": sym.name,
                     "materialized_from": sym.id,
+                    "framework_role": "route",
                 },
             )
             new_route_symbols.append(route_sym)
@@ -1767,7 +1782,7 @@ def expand_class_based_view_routes(
     removed_ids: set[str] = set()
 
     for sym in symbols:
-        if sym.kind != "route" or not sym.meta:
+        if not sym.meta or sym.meta.get("framework_role") != "route":
             continue
         meta = sym.meta
         # Only expand routes flagged as class-based with method=ANY.
@@ -1795,6 +1810,7 @@ def expand_class_based_view_routes(
                 "view_name": view_name,
                 "view_method": method_name,
                 "expanded_from": sym.id,
+                "framework_role": "route",
             }
             new_id = (
                 f"{sym.language}:{sym.path}:{sym.span.start_line}-"
@@ -1804,7 +1820,7 @@ def expand_class_based_view_routes(
                 SymbolCls(
                     id=new_id,
                     name=f"{sym.name}.{method_name}",
-                    kind="route",
+                    kind="function",
                     language=sym.language,
                     path=sym.path,
                     span=Span(

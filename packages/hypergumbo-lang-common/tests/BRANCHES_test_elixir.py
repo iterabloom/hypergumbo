@@ -242,7 +242,7 @@ defmodule MyApp.Router do
 end
 """)
         data = analyze(tmp_path)
-        routes = [n for n in data["nodes"] if n["kind"] == "route"]
+        routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
         assert any("GET /" in r["name"] for r in routes)
 
     def test_post_route(self, tmp_path: Path) -> None:
@@ -253,7 +253,7 @@ defmodule MyApp.Router do
 end
 """)
         data = analyze(tmp_path)
-        routes = [n for n in data["nodes"] if n["kind"] == "route"]
+        routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
         assert any("POST" in r["name"] and "users" in r["name"] for r in routes)
 
     def test_resources_route(self, tmp_path: Path) -> None:
@@ -264,7 +264,7 @@ defmodule MyApp.Router do
 end
 """)
         data = analyze(tmp_path)
-        routes = [n for n in data["nodes"] if n["kind"] == "route"]
+        routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
         # resources creates 7 RESTful routes
         post_routes = [r for r in routes if "posts" in r["name"]]
         assert len(post_routes) >= 7
@@ -277,7 +277,7 @@ defmodule MyApp.Router do
 end
 """)
         data = analyze(tmp_path)
-        routes = [n for n in data["nodes"] if n["kind"] == "route"]
+        routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
         assert any("PUT" in r["name"] for r in routes)
 
     def test_delete_route(self, tmp_path: Path) -> None:
@@ -288,7 +288,7 @@ defmodule MyApp.Router do
 end
 """)
         data = analyze(tmp_path)
-        routes = [n for n in data["nodes"] if n["kind"] == "route"]
+        routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
         assert any("DELETE" in r["name"] for r in routes)
 
 

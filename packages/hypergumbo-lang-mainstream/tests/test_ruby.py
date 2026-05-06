@@ -1224,7 +1224,7 @@ end
         result = analyze_ruby(tmp_path)
 
         # Find route symbols
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 2
 
         get_route = next((s for s in route_symbols if "GET" in s.name), None)
@@ -1254,7 +1254,7 @@ end
 """)
         result = analyze_ruby(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         # Should have 7 RESTful routes: index, show, new, create, edit, update, destroy
         assert len(route_symbols) == 7
 
@@ -1301,7 +1301,7 @@ end
 """)
         result = analyze_ruby(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         # Singular resource: show, new, create, edit, update, destroy (no index)
         assert len(route_symbols) == 6
 
@@ -1336,7 +1336,7 @@ end
 """)
         result = analyze_ruby(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         controller_actions = {s.meta["controller_action"] for s in route_symbols}
 
         # Should NOT have double-s
@@ -1361,7 +1361,7 @@ Rails.application.routes.draw do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         actions = {s.meta["controller_action"] for s in route_symbols}
 
         assert len(route_symbols) == 5  # 7 - 2 excluded
@@ -1381,7 +1381,7 @@ Rails.application.routes.draw do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         actions = {s.meta["controller_action"] for s in route_symbols}
 
         assert len(route_symbols) == 2
@@ -1400,7 +1400,7 @@ Rails.application.routes.draw do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         actions = {s.meta["controller_action"] for s in route_symbols}
 
         assert len(route_symbols) == 5  # 6 - 1 excluded
@@ -1417,7 +1417,7 @@ Rails.application.routes.draw do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         actions = {s.meta["controller_action"] for s in route_symbols}
 
         assert len(route_symbols) == 2
@@ -1435,7 +1435,7 @@ Rails.application.routes.draw do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 1
         assert route_symbols[0].meta["controller_action"] == "tags#index"
 
@@ -1450,7 +1450,7 @@ end
 """)
         result = analyze_ruby(tmp_path)
 
-        route_symbol = next((s for s in result.symbols if s.kind == "route"), None)
+        route_symbol = next((s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"), None)
         assert route_symbol is not None
         assert route_symbol.meta["controller_action"] == "pages#home"
 
@@ -1475,7 +1475,7 @@ end
 """)
         result = analyze_ruby(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 4
 
         # Check each route has correct controller_action
@@ -1525,7 +1525,7 @@ describe 'Users API' do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 0, (
             f"Test file should not produce route symbols, got: "
             f"{[s.name for s in route_symbols]}"
@@ -1543,7 +1543,7 @@ get '/health'
 post '/login', params: { user: 'admin' }
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 0
 
     def test_route_file_still_produces_symbols(self, tmp_path: Path) -> None:
@@ -1557,7 +1557,7 @@ Rails.application.routes.draw do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 2
 
     def test_config_routes_directory(self, tmp_path: Path) -> None:
@@ -1570,7 +1570,7 @@ end
 get '/api/v1/health', to: 'health#check'
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 1
 
     def test_sinatra_routes_in_app_files(self, tmp_path: Path) -> None:
@@ -1589,7 +1589,7 @@ post '/users' do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 2
 
     def test_bare_http_calls_in_app_files_not_routes(self, tmp_path: Path) -> None:
@@ -1608,7 +1608,7 @@ class ApiClient
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 0, (
             f"Bare HTTP calls without blocks should not produce routes, got: "
             f"{[s.name for s in route_symbols]}"
@@ -1634,7 +1634,7 @@ Rails.application.routes.draw do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         # Should have 7 RESTful routes under admin namespace
         assert len(route_symbols) == 7
@@ -1667,7 +1667,7 @@ Rails.application.routes.draw do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         assert len(route_symbols) == 7
 
@@ -1689,7 +1689,7 @@ Rails.application.routes.draw do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         assert len(route_symbols) == 1
         route = route_symbols[0]
@@ -1708,7 +1708,7 @@ Rails.application.routes.draw do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         assert len(route_symbols) == 7
 
@@ -1733,7 +1733,7 @@ Rails.application.routes.draw do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         # 7 admin routes + 7 post routes = 14
         assert len(route_symbols) == 14
@@ -1757,7 +1757,7 @@ Rails.application.routes.draw do
 end
 """)
         result = analyze_ruby(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         assert len(route_symbols) == 7
 
@@ -1791,7 +1791,7 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_syms = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         # Should have 7 parent routes (users) + 7 nested routes (posts)
         route_names = {s.name for s in route_syms}
@@ -1825,7 +1825,7 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_syms = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_names = {s.name for s in route_syms}
 
         assert "POST /users/:id/activate" in route_names
@@ -1855,7 +1855,7 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_syms = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_names = {s.name for s in route_syms}
 
         assert "GET /users/active" in route_names
@@ -1884,7 +1884,7 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_syms = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_names = {s.name for s in route_syms}
 
         # Should have namespace prefix + nested resource prefix
@@ -1916,7 +1916,7 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_syms = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_names = {s.name for s in route_syms}
 
         assert "POST /articles/:id/publish" in route_names
@@ -1947,7 +1947,7 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_syms = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_names = {s.name for s in route_syms}
 
         # categories → category_id
@@ -1974,7 +1974,7 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_syms = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_names = {s.name for s in route_syms}
 
         # 3-level nesting: users → posts → comments
@@ -1994,7 +1994,7 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_syms = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         # Should just have the one explicit route
         assert len(route_syms) == 1
         assert route_syms[0].name == "GET /home"
@@ -2020,7 +2020,7 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_syms = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_names = {s.name for s in route_syms}
 
         assert "GET /domains/:id/setup" in route_names
@@ -2049,7 +2049,7 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_syms = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_names = {s.name for s in route_syms}
 
         # Nested inside singular resource

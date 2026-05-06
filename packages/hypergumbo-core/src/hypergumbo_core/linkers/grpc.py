@@ -545,7 +545,7 @@ def _link_go_methods_to_rpc_routes(
     # Key: (service_name, rpc_name) → route symbol ID
     rpc_route_lookup: dict[tuple[str, str], str] = {}
     for sym in route_symbols:
-        if sym.kind == "route" and sym.meta:
+        if (sym.meta or {}).get("framework_role") == "route" and sym.meta:
             svc = sym.meta.get("rpc_service", "")
             method = sym.meta.get("rpc_method", "")
             if svc and method:
@@ -770,16 +770,12 @@ def link_grpc(
         route_id = _make_symbol_id(
             rpc.file_path, rpc.line, route_name, "route"
         )
-        # ADR-0027 Phase 3 / audit-findings 0013: this `kind="route"` emit is
-        # in scope for the dedicated Symbol.kind="route" sweep PR (Wave 5
-        # PR #6 per the agreed schedule), not this gRPC PR. Migrating it
-        # here in isolation would break ~13 production consumers that
-        # filter by `kind == "route"` across linkers/, cli.py, and language
-        # analyzers; those consumers migrate together with the producers.
+        # ADR-0027 Phase 3 / audit-findings 0013: route Symbol.kind fold
+        # ships in this PR (Wave 5 PR #6) coordinated with all consumers.
         symbols.append(Symbol(
             id=route_id,
             name=route_name,
-            kind="route",
+            kind="function",
             language="protobuf",
             path=rpc.file_path,
             span=Span(rpc.line, rpc.line, 0, 0),
@@ -791,6 +787,7 @@ def link_grpc(
                 "http_method": "RPC",
                 "rpc_service": rpc.service_name,
                 "rpc_method": rpc.rpc_name,
+                "framework_role": "route",
             },
         ))
 

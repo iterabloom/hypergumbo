@@ -557,7 +557,7 @@ def _extract_phoenix_routes(
                 route_symbol = Symbol(
                     id=route_id,
                     name=route_name,
-                    kind="route",
+                    kind="function",
                     language="elixir",
                     path=str(file_path),
                     span=span,
@@ -566,6 +566,7 @@ def _extract_phoenix_routes(
                         "route_path": route_pth,
                         "controller": controller,
                         "action": act,
+                        "framework_role": "route",
                     },
                     origin=pass_id,
                     origin_run_id=run_id,
@@ -584,13 +585,14 @@ def _extract_phoenix_routes(
             route_symbol = Symbol(
                 id=route_id,
                 name=route_name,
-                kind="route",
+                kind="function",
                 language="elixir",
                 path=str(file_path),
                 span=span,
                 meta={
                     "http_method": http_method,
                     "route_path": normalized_path,
+                    "framework_role": "route",
                 },
                 origin=pass_id,
                 origin_run_id=run_id,

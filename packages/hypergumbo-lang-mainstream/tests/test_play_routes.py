@@ -26,7 +26,7 @@ class TestParsePlayRoutes:
         content = "GET  /  controllers.Application.index"
         syms, edges = parse_play_routes(content, "conf/routes", "run-1")
         assert len(syms) == 1
-        assert syms[0].kind == "route"
+        assert (syms[0].meta or {}).get("framework_role") == "route"
         assert syms[0].name == "GET /"
         assert syms[0].meta["http_method"] == "GET"
         assert syms[0].meta["route_path"] == "/"
@@ -201,7 +201,7 @@ POST  /api/data         controllers.Api.create
         result = analyze_play_routes(tmp_path)
         assert not result.skipped
         assert len(result.symbols) == 3
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 3
         paths = {s.meta["route_path"] for s in routes}
         assert "/" in paths
@@ -222,7 +222,7 @@ GET  /  controllers.Home.index
 """)
         result = analyze_play_routes(tmp_path)
         assert len(result.symbols) == 2
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         includes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route_include"]
         assert len(routes) == 1
         assert len(includes) == 1
@@ -252,7 +252,7 @@ GET   /games/export/:username          controllers.Game.exportByUser(username: U
 POST  /bookmark/$gameId<\\w{8}>         controllers.Game.bookmark(gameId: GameId)
 """)
         result = analyze_play_routes(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 7
         # Check specific routes
         actions = {s.meta["controller_action"] for s in routes}

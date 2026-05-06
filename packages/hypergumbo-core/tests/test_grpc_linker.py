@@ -821,7 +821,7 @@ class TestGrpcProtoRouteSymbols:
 
     gRPC RPC methods are accessed via HTTP/2 at path
     /<package>.<ServiceName>/<MethodName>.  The linker should create
-    kind="route" symbols for proto RPC definitions so they appear in
+    kind="function" symbols for proto RPC definitions so they appear in
     ``routes.txt`` and can be linked to handler implementations.
     """
 
@@ -841,7 +841,7 @@ class TestGrpcProtoRouteSymbols:
 
         result = link_grpc(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 2
 
         route_names = sorted(s.name for s in route_symbols)
@@ -865,7 +865,7 @@ class TestGrpcProtoRouteSymbols:
 
         result = link_grpc(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 1
 
         route = route_symbols[0]
@@ -888,7 +888,7 @@ class TestGrpcProtoRouteSymbols:
 
         result = link_grpc(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 1
 
         route = route_symbols[0]
@@ -910,7 +910,7 @@ class TestGrpcProtoRouteSymbols:
 
         result = link_grpc(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 1
         assert route_symbols[0].stable_id is not None
         assert route_symbols[0].stable_id.startswith("sha256:")
@@ -956,7 +956,7 @@ class TestGrpcProtoRouteSymbols:
 
         result = link_grpc(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 2
         paths = sorted(s.meta["route_path"] for s in route_symbols)
         assert paths == [
@@ -1208,7 +1208,7 @@ class TestGrpcProtoToGoImplementation:
         assert len(impl_edges) == 2
 
         # Check edge targets are proto RPC route symbols
-        route_ids = {s.id for s in result.symbols if s.kind == "route"}
+        route_ids = {s.id for s in result.symbols if (s.meta or {}).get("framework_role") == "route"}
         for edge in impl_edges:
             assert edge.dst in route_ids
 
@@ -1489,7 +1489,7 @@ class TestGrpcProtoToGoImplementation:
             src_method = edge.src.split(":")[-2].split(".")[-1]
             dst_route = next(
                 s for s in result.symbols
-                if s.kind == "route" and s.id == edge.dst
+                if (s.meta or {}).get("framework_role") == "route" and s.id == edge.dst
             )
             assert src_method in dst_route.meta["rpc_method"]
 

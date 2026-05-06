@@ -269,7 +269,7 @@ def link_annotations(
                 shape_id=None,
                 canonical_name=f"@hg:route {route.argument}",
                 fingerprint=hashlib.sha256(route_id.encode()).hexdigest()[:16],
-                kind="route",
+                kind="function",
                 name=route.argument,
                 path=route.file_path,
                 language="unknown",
@@ -278,7 +278,7 @@ def link_annotations(
                     start_col=0, end_col=0,
                 ),
                 origin=PASS_ID,
-                meta={"hg_annotation": "route", "route_spec": route.argument},
+                meta={"hg_annotation": "route", "route_spec": route.argument, "framework_role": "route"},
                 supply_chain_tier=1,
                 supply_chain_reason="@hg:route annotation",
             ))

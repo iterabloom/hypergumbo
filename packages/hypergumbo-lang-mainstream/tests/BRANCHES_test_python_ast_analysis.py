@@ -51,7 +51,7 @@ def test_django_cbv_as_view_with_local_class_attribute_form(tmp_path: Path) -> N
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 1
     assert routes[0].get("meta", {}).get("view_name") == "LocalView"
 
@@ -81,7 +81,7 @@ def test_django_cbv_as_view_with_local_class_name_form(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 1
     assert routes[0].get("meta", {}).get("view_name") == "MyLocalView"
 

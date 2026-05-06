@@ -2876,14 +2876,14 @@ def _extract_symbols(
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "route", lang),
                             name=name,
-                            kind="route",
+                            kind="function",
                             language=lang,
                             path=str(file_path),
                             span=span,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             stable_id=make_route_stable_id(http_method, route_path) if route_path else None,
-                            meta={"route_path": route_path, "http_method": http_method, "handler_ref": handler_name},
+                            meta={"route_path": route_path, "http_method": http_method, "handler_ref": handler_name, "framework_role": "route"},
                         )
                         symbols.append(symbol)
                     else:
@@ -2927,19 +2927,21 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+                jsx_route_meta = _build_jsx_route_meta(
+                    route_path, component_name, lazy_import_map,
+                ) or {}
+                jsx_route_meta["framework_role"] = "route"
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, handler_name, "route", lang),
                     name=handler_name,
-                    kind="route",
+                    kind="function",
                     language=lang,
                     path=str(file_path),
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     stable_id=make_route_stable_id("GET", route_path),
-                    meta=_build_jsx_route_meta(
-                        route_path, component_name, lazy_import_map,
-                    ),
+                    meta=jsx_route_meta,
                 )
                 symbols.append(symbol)
                 # Don't continue — let tree walk also process child nodes
@@ -2959,12 +2961,13 @@ def _extract_symbols(
                     "route_path": rpath,
                     "http_method": "GET",
                     "handler_ref": comp,
+                    "framework_role": "route",
                 }
                 route_meta.update(extra_meta)
                 symbols.append(Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, handler_name, "route", lang),
                     name=handler_name,
-                    kind="route",
+                    kind="function",
                     language=lang,
                     path=str(file_path),
                     span=span,
@@ -4020,7 +4023,7 @@ def _extract_edges(
                         # a route, prefer the function symbol with the
                         # same name via symbols_by_name, so the edge
                         # points to the function definition.
-                        if target is not None and target.kind == "route" and symbols_by_name:
+                        if target is not None and (target.meta or {}).get("framework_role") == "route" and symbols_by_name:
                             fn_candidates = [
                                 s for s in symbols_by_name.get(arg_name, [])
                                 if s.kind in ("function", "method")
@@ -4073,7 +4076,7 @@ def _extract_edges(
                         if arg.type == "identifier":
                             arg_name = _node_text(arg, source)
                             resolved = global_symbols.get(arg_name)
-                            if resolved is not None and resolved.kind == "route" and symbols_by_name:
+                            if resolved is not None and (resolved.meta or {}).get("framework_role") == "route" and symbols_by_name:
                                 fn_cands = [
                                     s for s in symbols_by_name.get(arg_name, [])
                                     if s.kind in ("function", "method")

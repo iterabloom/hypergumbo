@@ -629,7 +629,7 @@ def _extract_laravel_routes(
                     route_symbol = Symbol(
                         id=route_id,
                         name=route_name,
-                        kind="route",
+                        kind="function",
                         language="php",
                         path=str(file_path),
                         span=span,
@@ -637,6 +637,7 @@ def _extract_laravel_routes(
                             "http_method": http_meth,
                             "route_path": route_pth,
                             "controller_action": f"{controller}@{action}",
+                            "framework_role": "route",
                         },
                         origin=run.pass_id,
                         origin_run_id=run.execution_id,
@@ -655,13 +656,14 @@ def _extract_laravel_routes(
             route_symbol = Symbol(
                 id=route_id,
                 name=route_name,
-                kind="route",
+                kind="function",
                 language="php",
                 path=str(file_path),
                 span=span,
                 meta={
                     "http_method": http_method,
                     "route_path": normalized_path,
+                    "framework_role": "route",
                 },
                 origin=run.pass_id,
                 origin_run_id=run.execution_id,

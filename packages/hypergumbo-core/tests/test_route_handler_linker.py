@@ -26,7 +26,7 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/app/config/routes.rb:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
@@ -34,6 +34,7 @@ class TestRouteHandlerLinker:
                 "http_method": "GET",
                 "route_path": "/users",
                 "controller_action": "users#index",
+                "framework_role": "route",
             },
             origin="ruby-v1",
             origin_run_id="test-run",
@@ -66,7 +67,7 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/app/config/routes.rb:20-20:GET /admin/users:route",
             name="GET /admin/users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=20, end_line=20, start_col=0, end_col=60),
@@ -74,6 +75,7 @@ class TestRouteHandlerLinker:
                 "http_method": "GET",
                 "route_path": "/admin/users",
                 "controller_action": "admin/users#index",
+                "framework_role": "route",
             },
             origin="ruby-v1",
             origin_run_id="test-run",
@@ -104,7 +106,7 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/app/config/routes.rb:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
@@ -112,6 +114,7 @@ class TestRouteHandlerLinker:
                 "http_method": "GET",
                 "route_path": "/users",
                 "controller_action": "users#index",
+                "framework_role": "route",
             },
             origin="ruby-v1",
             origin_run_id="test-run",
@@ -127,14 +130,15 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/app/config/routes.rb:10-10:GET /static:route",
             name="GET /static",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={
                 "http_method": "GET",
                 "route_path": "/static",
-                # No controller_action
+                # No controller_action,
+                "framework_role": "route",
             },
             origin="ruby-v1",
             origin_run_id="test-run",
@@ -160,11 +164,11 @@ class TestRouteHandlerLinker:
         route1 = Symbol(
             id="ruby:/app/config/routes.rb:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
-            meta={"controller_action": "users#index"},
+            meta={"controller_action": "users#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -172,11 +176,11 @@ class TestRouteHandlerLinker:
         route2 = Symbol(
             id="ruby:/app/config/routes.rb:11-11:GET /people:route",
             name="GET /people",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=11, end_line=11, start_col=0, end_col=50),
-            meta={"controller_action": "users#index"},  # Same handler
+            meta={"controller_action": "users#index", "framework_role": "route"},  # Same handler
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -201,7 +205,7 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="elixir:/lib/app_web/router.ex:15-15:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="elixir",
             path="/lib/app_web/router.ex",
             span=Span(start_line=15, end_line=15, start_col=0, end_col=50),
@@ -210,6 +214,7 @@ class TestRouteHandlerLinker:
                 "route_path": "/users",
                 "controller": "UserController",
                 "action": "index",
+                "framework_role": "route",
             },
             origin="elixir-v1",
             origin_run_id="test-run",
@@ -238,7 +243,7 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="elixir:/lib/app_web/router.ex:20-20:LIVE /dashboard:route",
             name="LIVE /dashboard",
-            kind="route",
+            kind="function",
             language="elixir",
             path="/lib/app_web/router.ex",
             span=Span(start_line=20, end_line=20, start_col=0, end_col=50),
@@ -247,6 +252,7 @@ class TestRouteHandlerLinker:
                 "route_path": "/dashboard",
                 "controller": "DashboardLive",
                 "action": "mount",
+                "framework_role": "route",
             },
             origin="elixir-v1",
             origin_run_id="test-run",
@@ -281,7 +287,7 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="elixir:/lib/app_web/router.ex:5-5:LIVE /:route",
             name="LIVE /",
-            kind="route",
+            kind="function",
             language="elixir",
             path="/lib/app_web/router.ex",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
@@ -290,6 +296,7 @@ class TestRouteHandlerLinker:
                 "route_path": "/",
                 "controller": "HomeLive",
                 "action": "page",
+                "framework_role": "route",
             },
             origin="elixir-v1",
             origin_run_id="test-run",
@@ -319,7 +326,7 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="elixir:/lib/router.ex:5-5:LIVE /admin:route",
             name="LIVE /admin",
-            kind="route",
+            kind="function",
             language="elixir",
             path="/lib/router.ex",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
@@ -328,6 +335,7 @@ class TestRouteHandlerLinker:
                 "route_path": "/admin",
                 "controller": "AdminLive",
                 "action": "index",
+                "framework_role": "route",
             },
             origin="elixir-v1",
             origin_run_id="test-run",
@@ -354,7 +362,7 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="elixir:/lib/app_web/router.ex:5-5:LIVE /dash:route",
             name="LIVE /dash",
-            kind="route",
+            kind="function",
             language="elixir",
             path="/lib/app_web/router.ex",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
@@ -363,6 +371,7 @@ class TestRouteHandlerLinker:
                 "route_path": "/dash",
                 "controller": "DashLive",
                 "action": "mount",
+                "framework_role": "route",
             },
             origin="elixir-v1",
             origin_run_id="test-run",
@@ -403,11 +412,11 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/app/config/routes.rb:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
-            meta={"controller_action": "users_index"},  # No #
+            meta={"controller_action": "users_index", "framework_role": "route"},  # No #
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -431,11 +440,11 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/app/config/routes.rb:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
-            meta={"controller_action": "users#index"},
+            meta={"controller_action": "users#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -460,11 +469,11 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/app/config/routes.rb:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
-            meta={"controller_action": "users#index"},
+            meta={"controller_action": "users#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -490,11 +499,11 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/app/config/routes.rb:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
-            meta={"controller_action": "users#index"},
+            meta={"controller_action": "users#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -526,11 +535,11 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/config/routes.rb:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
-            meta={"controller_action": "users#index"},
+            meta={"controller_action": "users#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -557,11 +566,11 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/config/routes.rb:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
-            meta={"controller_action": "users#index"},
+            meta={"controller_action": "users#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -606,11 +615,11 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/config/routes.rb:30-30:GET /ip_pool_rules:route",
             name="GET /ip_pool_rules",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/config/routes.rb",
             span=Span(start_line=30, end_line=30, start_col=0, end_col=60),
-            meta={"controller_action": "ip_pool_rules#index"},
+            meta={"controller_action": "ip_pool_rules#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -637,11 +646,11 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/config/routes.rb:28-28:GET /http_endpoints:route",
             name="GET /http_endpoints",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/config/routes.rb",
             span=Span(start_line=28, end_line=28, start_col=0, end_col=60),
-            meta={"controller_action": "http_endpoints#index"},
+            meta={"controller_action": "http_endpoints#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -667,11 +676,11 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/config/routes.rb:50-50:GET /api/v1/ip_addresses:route",
             name="GET /api/v1/ip_addresses",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/config/routes.rb",
             span=Span(start_line=50, end_line=50, start_col=0, end_col=60),
-            meta={"controller_action": "api/v1/ip_addresses#index"},
+            meta={"controller_action": "api/v1/ip_addresses#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -703,11 +712,11 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/config/routes.rb:60-60:GET /ip_pools:route",
             name="GET /ip_pools",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/config/routes.rb",
             span=Span(start_line=60, end_line=60, start_col=0, end_col=60),
-            meta={"controller_action": "ip_pools#index"},
+            meta={"controller_action": "ip_pools#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -733,11 +742,11 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/config/routes.rb:30-30:GET /ip_pools:route",
             name="GET /ip_pools",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/config/routes.rb",
             span=Span(start_line=30, end_line=30, start_col=0, end_col=60),
-            meta={"controller_action": "ip_pools#index"},
+            meta={"controller_action": "ip_pools#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -763,13 +772,14 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="elixir:/lib/app_web/router.ex:15-15:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="elixir",
             path="/lib/app_web/router.ex",
             span=Span(start_line=15, end_line=15, start_col=0, end_col=50),
             meta={
                 "controller": "UserController",
                 "action": "index",
+                "framework_role": "route",
             },
             origin="elixir-v1",
             origin_run_id="test-run",
@@ -795,13 +805,14 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="elixir:/lib/app_web/router.ex:15-15:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="elixir",
             path="/lib/app_web/router.ex",
             span=Span(start_line=15, end_line=15, start_col=0, end_col=50),
             meta={
                 "controller": "UserController",
                 "action": "index",
+                "framework_role": "route",
             },
             origin="elixir-v1",
             origin_run_id="test-run",
@@ -827,7 +838,7 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="php:/routes/web.php:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="php",
             path="/routes/web.php",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
@@ -835,6 +846,7 @@ class TestRouteHandlerLinker:
                 "http_method": "GET",
                 "route_path": "/users",
                 "controller_action": "UserController@index",
+                "framework_role": "route",
             },
             origin="php-v1",
             origin_run_id="test-run",
@@ -865,11 +877,11 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/app/config/routes.rb:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
-            meta={"controller_action": "users#index"},  # Rails format, not Laravel
+            meta={"controller_action": "users#index", "framework_role": "route"},  # Rails format, not Laravel
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -896,7 +908,7 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="javascript:/app/src/app.js:10-10:userController.list:route",
             name="userController.list",
-            kind="route",
+            kind="function",
             language="javascript",
             path="/app/src/app.js",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
@@ -904,6 +916,7 @@ class TestRouteHandlerLinker:
                 "http_method": "GET",
                 "route_path": "/users",
                 "handler_ref": "userController.list",
+                "framework_role": "route",
             },
             origin="js-ts-v1",
             origin_run_id="test-run",
@@ -935,14 +948,15 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="javascript:/app/src/app.js:10-10:handleRequest:route",
             name="handleRequest",
-            kind="route",
+            kind="function",
             language="javascript",
             path="/app/src/app.js",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={
                 "http_method": "GET",
                 "route_path": "/request",
-                "handler_ref": "handleRequest",  # Simple name, not qualified
+                "handler_ref": "handleRequest",  # Simple name, not qualified,
+                "framework_role": "route",
             },
             origin="js-ts-v1",
             origin_run_id="test-run",
@@ -970,7 +984,7 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="javascript:/app/src/app.js:10-10:api.getUser:route",
             name="api.getUser",
-            kind="route",
+            kind="function",
             language="javascript",
             path="/app/src/app.js",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
@@ -978,6 +992,7 @@ class TestRouteHandlerLinker:
                 "http_method": "GET",
                 "route_path": "/users/:id",
                 "handler_ref": "api.getUser",
+                "framework_role": "route",
             },
             origin="js-ts-v1",
             origin_run_id="test-run",
@@ -1005,11 +1020,11 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="ruby:/app/config/routes.rb:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
-            meta={"controller_action": "users#index"},
+            meta={"controller_action": "users#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -1044,7 +1059,7 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="python:/app/api.py:5-5:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="python",
             path="/app/api.py",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=40),
@@ -1053,6 +1068,7 @@ class TestRouteHandlerLinker:
                 "route_path": "/users",
                 "handler_ref": handler_id,
                 "view_name": "UserResource",
+                "framework_role": "route",
             },
             origin="python-v1",
             origin_run_id="test-run",
@@ -1086,7 +1102,7 @@ class TestRouteHandlerLinker:
         route = Symbol(
             id="python:/app/api.py:5-5:GET /foo:route",
             name="GET /foo",
-            kind="route",
+            kind="function",
             language="python",
             path="/app/api.py",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=30),
@@ -1094,6 +1110,7 @@ class TestRouteHandlerLinker:
                 "http_method": "GET",
                 "route_path": "/foo",
                 "handler_ref": "python:/app/missing.py:1-1:Gone:class",
+                "framework_role": "route",
             },
             origin="python-v1",
             origin_run_id="test-run",
@@ -1112,11 +1129,11 @@ class TestLinkerEntryPoint:
         route_with_handler = Symbol(
             id="ruby:/app/config/routes.rb:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
-            meta={"controller_action": "users#index"},
+            meta={"controller_action": "users#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -1124,11 +1141,11 @@ class TestLinkerEntryPoint:
         route_without_handler = Symbol(
             id="ruby:/app/config/routes.rb:20-20:GET /static:route",
             name="GET /static",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=20, end_line=20, start_col=0, end_col=50),
-            meta={},  # No handler metadata
+            meta={"framework_role": "route", },  # No handler metadata
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -1160,11 +1177,11 @@ class TestLinkerEntryPoint:
         route = Symbol(
             id="ruby:/app/config/routes.rb:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
-            meta={"controller_action": "users#index"},
+            meta={"controller_action": "users#index", "framework_role": "route"},
             origin="ruby-v1",
             origin_run_id="test-run",
         )
@@ -1202,7 +1219,7 @@ class TestDjangoViewNameLinking:
         route = Symbol(
             id="python:/app/urls.py:10-10:GET /users/:route",
             name="GET /users/",
-            kind="route",
+            kind="function",
             language="python",
             path="/app/urls.py",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
@@ -1210,6 +1227,7 @@ class TestDjangoViewNameLinking:
                 "http_method": "GET",
                 "route_path": "/users/",
                 "view_name": "list_users",
+                "framework_role": "route",
             },
             origin="python-v1",
             origin_run_id="test-run",
@@ -1240,7 +1258,7 @@ class TestDjangoViewNameLinking:
         route = Symbol(
             id="python:/app/urls.py:15-15:GET /api/users/:route",
             name="GET /api/users/",
-            kind="route",
+            kind="function",
             language="python",
             path="/app/urls.py",
             span=Span(start_line=15, end_line=15, start_col=0, end_col=60),
@@ -1248,6 +1266,7 @@ class TestDjangoViewNameLinking:
                 "http_method": "GET",
                 "route_path": "/api/users/",
                 "view_name": "UserListView",
+                "framework_role": "route",
             },
             origin="python-v1",
             origin_run_id="test-run",
@@ -1276,13 +1295,14 @@ class TestDjangoViewNameLinking:
         route = Symbol(
             id="python:/app/urls.py:20-20:GET /accounts/:route",
             name="GET /accounts/",
-            kind="route",
+            kind="function",
             language="python",
             path="/app/urls.py",
             span=Span(start_line=20, end_line=20, start_col=0, end_col=50),
             meta={
                 "http_method": "GET",
                 "view_name": "accounts.views.list_accounts",
+                "framework_role": "route",
             },
             origin="python-v1",
             origin_run_id="test-run",
@@ -1309,13 +1329,14 @@ class TestDjangoViewNameLinking:
         route = Symbol(
             id="python:/app/urls.py:10-10:GET /users/:route",
             name="GET /users/",
-            kind="route",
+            kind="function",
             language="python",
             path="/app/urls.py",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={
                 "http_method": "GET",
                 "view_name": "nonexistent_view",
+                "framework_role": "route",
             },
             origin="python-v1",
             origin_run_id="test-run",
@@ -1346,7 +1367,7 @@ class TestGoRouteHandlerLinking:
         route = Symbol(
             id="go:/app/main.go:10-10:listUsers:route",
             name="listUsers",
-            kind="route",
+            kind="function",
             language="go",
             path="/app/main.go",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
@@ -1354,6 +1375,7 @@ class TestGoRouteHandlerLinking:
                 "http_method": "GET",
                 "route_path": "/users",
                 "handler_name": "listUsers",
+                "framework_role": "route",
             },
             origin="go-v1",
             origin_run_id="test-run",
@@ -1384,7 +1406,7 @@ class TestGoRouteHandlerLinking:
         route = Symbol(
             id="go:/app/main.go:15-15:handlers.GetAPI:route",
             name="handlers.GetAPI",
-            kind="route",
+            kind="function",
             language="go",
             path="/app/main.go",
             span=Span(start_line=15, end_line=15, start_col=0, end_col=50),
@@ -1392,6 +1414,7 @@ class TestGoRouteHandlerLinking:
                 "http_method": "GET",
                 "route_path": "/api",
                 "handler_name": "handlers.GetAPI",
+                "framework_role": "route",
             },
             origin="go-v1",
             origin_run_id="test-run",
@@ -1419,7 +1442,7 @@ class TestGoRouteHandlerLinking:
         route1 = Symbol(
             id="go:/app/main.go:10-10:listUsers:route",
             name="listUsers",
-            kind="route",
+            kind="function",
             language="go",
             path="/app/main.go",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
@@ -1427,6 +1450,7 @@ class TestGoRouteHandlerLinking:
                 "http_method": "GET",
                 "route_path": "/users",
                 "handler_name": "listUsers",
+                "framework_role": "route",
             },
             origin="go-v1",
             origin_run_id="test-run",
@@ -1435,7 +1459,7 @@ class TestGoRouteHandlerLinking:
         route2 = Symbol(
             id="go:/app/main.go:11-11:createUser:route",
             name="createUser",
-            kind="route",
+            kind="function",
             language="go",
             path="/app/main.go",
             span=Span(start_line=11, end_line=11, start_col=0, end_col=50),
@@ -1443,6 +1467,7 @@ class TestGoRouteHandlerLinking:
                 "http_method": "POST",
                 "route_path": "/users",
                 "handler_name": "createUser",
+                "framework_role": "route",
             },
             origin="go-v1",
             origin_run_id="test-run",
@@ -1479,7 +1504,7 @@ class TestGoRouteHandlerLinking:
         route = Symbol(
             id="go:/app/main.go:15-15:controllers.GetUsers:route",
             name="controllers.GetUsers",
-            kind="route",
+            kind="function",
             language="go",
             path="/app/main.go",
             span=Span(start_line=15, end_line=15, start_col=0, end_col=50),
@@ -1487,6 +1512,7 @@ class TestGoRouteHandlerLinking:
                 "http_method": "GET",
                 "route_path": "/users",
                 "handler_name": "controllers.GetUsers",
+                "framework_role": "route",
             },
             origin="go-v1",
             origin_run_id="test-run",
@@ -1534,7 +1560,7 @@ class TestGoRouteHandlerLinking:
         route = Symbol(
             id="go:/app/routers.go:30-30:ArticleCreate:route",
             name="ArticleCreate",
-            kind="route",
+            kind="function",
             language="go",
             path="/app/routers.go",
             span=Span(start_line=30, end_line=30, start_col=0, end_col=50),
@@ -1542,6 +1568,7 @@ class TestGoRouteHandlerLinking:
                 "http_method": "POST",
                 "route_path": "/articles",
                 "handler_name": "ArticleCreate",
+                "framework_role": "route",
             },
             origin="go-v1",
             origin_run_id="test-run",
@@ -1577,7 +1604,7 @@ class TestGoRouteHandlerLinking:
         route = Symbol(
             id="javascript:/app/routes.js:10-10:getUsers:route",
             name="getUsers",
-            kind="route",
+            kind="function",
             language="javascript",
             path="/app/routes.js",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
@@ -1585,6 +1612,7 @@ class TestGoRouteHandlerLinking:
                 "http_method": "GET",
                 "route_path": "/users",
                 "handler_ref": "getUsers",
+                "framework_role": "route",
             },
             origin="js-ts-v1",
             origin_run_id="test-run",
@@ -1619,7 +1647,7 @@ class TestGoRouteHandlerLinking:
         route = Symbol(
             id="python:/app/urls.py:10-10:list_users:route",
             name="list_users",
-            kind="route",
+            kind="function",
             language="python",
             path="/app/urls.py",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
@@ -1627,6 +1655,7 @@ class TestGoRouteHandlerLinking:
                 "http_method": "GET",
                 "route_path": "/users/",
                 "view_name": "list_users",
+                "framework_role": "route",
             },
             origin="python-v1",
             origin_run_id="test-run",
@@ -1649,7 +1678,7 @@ class TestGoRouteHandlerLinking:
         route = Symbol(
             id="go:/api/v2/restapi/operations/api.go:377-377:GET /alerts:route",
             name="api.getAlertsHandler",
-            kind="route",
+            kind="function",
             language="go",
             path="/api/v2/restapi/operations/api.go",
             span=Span(start_line=377, end_line=377, start_col=0, end_col=80),
@@ -1658,6 +1687,7 @@ class TestGoRouteHandlerLinking:
                 "route_path": "/alerts",
                 "handler_name": "api.getAlertsHandler",
                 "handler_field": "AlertGetAlertsHandler",
+                "framework_role": "route",
             },
             origin="go-v1",
             origin_run_id="test-run",
@@ -1707,7 +1737,7 @@ class TestGoRouteHandlerLinking:
         route = Symbol(
             id="go:/repo/web/api/v1/api.go:425-425:api.query:route",
             name="api.query",
-            kind="route",
+            kind="function",
             language="go",
             path="/repo/web/api/v1/api.go",
             span=Span(start_line=425, end_line=425, start_col=0, end_col=50),
@@ -1715,6 +1745,7 @@ class TestGoRouteHandlerLinking:
                 "http_method": "GET",
                 "route_path": "/query",
                 "handler_name": "api.query",
+                "framework_role": "route",
             },
             origin="go-v1",
             origin_run_id="test-run",
@@ -1766,7 +1797,7 @@ class TestGoRouteHandlerLinking:
         route = Symbol(
             id="go:/app/main.go:10-10:missingHandler:route",
             name="missingHandler",
-            kind="route",
+            kind="function",
             language="go",
             path="/app/main.go",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
@@ -1774,6 +1805,7 @@ class TestGoRouteHandlerLinking:
                 "http_method": "GET",
                 "route_path": "/test",
                 "handler_name": "missingHandler",
+                "framework_role": "route",
             },
             origin="go-v1",
             origin_run_id="test-run",
@@ -1797,7 +1829,7 @@ class TestLaravelSuffixMatchFallback:
         route = Symbol(
             id="php:/routes/web.php:5-5:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="php",
             path="/routes/web.php",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=50),
@@ -1805,6 +1837,7 @@ class TestLaravelSuffixMatchFallback:
                 "http_method": "GET",
                 "route_path": "/users",
                 "controller_action": "UserController@index",
+                "framework_role": "route",
             },
             origin="php-v1",
             origin_run_id="test-run",
@@ -1831,7 +1864,7 @@ class TestLaravelSuffixMatchFallback:
         route = Symbol(
             id="php:/routes/api.php:3-3:POST /orders:route",
             name="POST /orders",
-            kind="route",
+            kind="function",
             language="php",
             path="/routes/api.php",
             span=Span(start_line=3, end_line=3, start_col=0, end_col=50),
@@ -1839,6 +1872,7 @@ class TestLaravelSuffixMatchFallback:
                 "http_method": "POST",
                 "route_path": "/orders",
                 "controller_action": "OrderController@store",
+                "framework_role": "route",
             },
             origin="php-v1",
             origin_run_id="test-run",
@@ -1872,7 +1906,7 @@ class TestLaravelSuffixMatchFallback:
         route = Symbol(
             id="ruby:/config/routes.rb:42-42:DELETE /api/v1/statuses/:id:route",
             name="DELETE /api/v1/statuses/:id",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/config/routes.rb",
             span=Span(start_line=42, end_line=42, start_col=0, end_col=60),
@@ -1880,6 +1914,7 @@ class TestLaravelSuffixMatchFallback:
                 "http_method": "DELETE",
                 "route_path": "/api/v1/statuses/:id",
                 "controller_action": "api/v1/statuses#destroy",
+                "framework_role": "route",
             },
             origin="ruby-v1",
             origin_run_id="test-run",
@@ -1915,7 +1950,7 @@ class TestLaravelSuffixMatchFallback:
         route = Symbol(
             id="ruby:/config/routes.rb:42-42:DELETE /api/v1/statuses/:id:route",
             name="DELETE /api/v1/statuses/:id",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/config/routes.rb",
             span=Span(start_line=42, end_line=42, start_col=0, end_col=60),
@@ -1923,6 +1958,7 @@ class TestLaravelSuffixMatchFallback:
                 "http_method": "DELETE",
                 "route_path": "/api/v1/statuses/:id",
                 "controller_action": "api/v1/statuses#destroy",
+                "framework_role": "route",
             },
             origin="ruby-v1",
             origin_run_id="test-run",
@@ -1955,7 +1991,7 @@ class TestLaravelSuffixMatchFallback:
         route = Symbol(
             id="ruby:/config/routes.rb:50-50:GET /api/v1/ip_addresses:route",
             name="GET /api/v1/ip_addresses",
-            kind="route",
+            kind="function",
             language="ruby",
             path="/config/routes.rb",
             span=Span(start_line=50, end_line=50, start_col=0, end_col=60),
@@ -1963,6 +1999,7 @@ class TestLaravelSuffixMatchFallback:
                 "http_method": "GET",
                 "route_path": "/api/v1/ip_addresses",
                 "controller_action": "api/v1/ip_addresses#index",
+                "framework_role": "route",
             },
             origin="ruby-v1",
             origin_run_id="test-run",
@@ -1990,7 +2027,7 @@ class TestLaravelSuffixMatchFallback:
         route = Symbol(
             id="php:/routes/web.php:5-5:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="php",
             path="/routes/web.php",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=50),
@@ -1998,6 +2035,7 @@ class TestLaravelSuffixMatchFallback:
                 "http_method": "GET",
                 "route_path": "/users",
                 "controller_action": "UserController@index",
+                "framework_role": "route",
             },
             origin="php-v1",
             origin_run_id="test-run",
@@ -2033,11 +2071,11 @@ class TestJSXRouteComponentLinking:
         route = Symbol(
             id="javascript:src/App.tsx:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="javascript",
             path="src/App.tsx",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
-            meta={"route_path": "/users", "http_method": "GET", "handler_ref": "Users"},
+            meta={"route_path": "/users", "http_method": "GET", "handler_ref": "Users", "framework_role": "route"},
             origin="js-ts-v1",
             origin_run_id="test-run",
         )
@@ -2062,11 +2100,11 @@ class TestJSXRouteComponentLinking:
         route = Symbol(
             id="javascript:src/App.tsx:20-20:GET /drop:route",
             name="GET /drop",
-            kind="route",
+            kind="function",
             language="javascript",
             path="src/App.tsx",
             span=Span(start_line=20, end_line=20, start_col=0, end_col=50),
-            meta={"route_path": "/drop", "http_method": "GET", "handler_ref": "DropStage"},
+            meta={"route_path": "/drop", "http_method": "GET", "handler_ref": "DropStage", "framework_role": "route"},
             origin="js-ts-v1",
             origin_run_id="test-run",
         )
@@ -2091,12 +2129,14 @@ class TestJSXRouteComponentLinking:
         route = Symbol(
             id="javascript:src/admin.js:10-10:GET /content-cdn:route",
             name="GET /content-cdn",
-            kind="route",
+            kind="function",
             language="javascript",
             path="src/admin.js",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"route_path": "/content-cdn", "http_method": "GET",
-                  "handler_ref": "ContentCDN"},
+                  "handler_ref": "ContentCDN",
+                  "framework_role": "route",
+              },
             origin="js-ts-v1",
             origin_run_id="test-run",
         )
@@ -2121,11 +2161,11 @@ class TestJSXRouteComponentLinking:
         route = Symbol(
             id="javascript:src/App.tsx:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="javascript",
             path="src/App.tsx",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
-            meta={"route_path": "/users", "http_method": "GET", "handler_ref": "Users"},
+            meta={"route_path": "/users", "http_method": "GET", "handler_ref": "Users", "framework_role": "route"},
             origin="js-ts-v1",
             origin_run_id="test-run",
         )
@@ -2176,6 +2216,7 @@ class TestReactRouterLoaderActionLinking:
             "route_path": path,
             "http_method": "GET",
             "handler_ref": handler_ref,
+            "framework_role": "route",
         }
         if loader_ref is not None:
             meta["loader_ref"] = loader_ref
@@ -2184,7 +2225,7 @@ class TestReactRouterLoaderActionLinking:
         return Symbol(
             id=f"javascript:src/routes.tsx:10-10:GET {path}:route",
             name=f"GET {path}",
-            kind="route",
+            kind="function",
             language="javascript",
             path="src/routes.tsx",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),

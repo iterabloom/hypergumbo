@@ -1049,7 +1049,7 @@ Route::post('/login', 'AuthController@login');
 
         result = analyze_php(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 2
 
         get_route = next((s for s in route_symbols if "GET" in s.name), None)
@@ -1075,7 +1075,7 @@ Route::resource('photos', PhotoController::class);
 
         result = analyze_php(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         # Laravel resource creates 7 RESTful routes
         assert len(route_symbols) == 7
 
@@ -1117,7 +1117,7 @@ Route::apiResource('posts', PostController::class);
 ?>""")
 
         result = analyze_php(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         assert len(route_symbols) == 5
         actions = {s.meta["controller_action"] for s in route_symbols}
@@ -1141,7 +1141,7 @@ Route::resource('users', UserController::class)->except(['create']);
 ?>""")
 
         result = analyze_php(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         actions = {s.meta["controller_action"] for s in route_symbols}
         assert "UserController@create" not in actions
@@ -1159,7 +1159,7 @@ Route::resource('books', BookController::class)->except('create', 'edit');
 ?>""")
 
         result = analyze_php(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         actions = {s.meta["controller_action"] for s in route_symbols}
         assert len(route_symbols) == 5
@@ -1175,7 +1175,7 @@ Route::resource('reports', ReportController::class)->only(['index', 'show']);
 ?>""")
 
         result = analyze_php(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         actions = {s.meta["controller_action"] for s in route_symbols}
         assert actions == {
@@ -1192,7 +1192,7 @@ Route::apiResource('comments', CommentController::class)->except(['destroy']);
 ?>""")
 
         result = analyze_php(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         actions = {s.meta["controller_action"] for s in route_symbols}
         assert actions == {
@@ -1213,7 +1213,7 @@ Route::resource('logs', LogController::class)->only(['index', 'show', 'destroy']
 ?>""")
 
         result = analyze_php(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         actions = {s.meta["controller_action"] for s in route_symbols}
         assert actions == {
@@ -1238,7 +1238,7 @@ Route::resource('items', ItemController::class)->except($excluded);
 ?>""")
 
         result = analyze_php(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         # Variable arg → no static string actions → no removal
         assert len(route_symbols) == 7
@@ -1254,7 +1254,7 @@ Route::resource('tags', TagController::class)->name('tags');
 ?>""")
 
         result = analyze_php(tmp_path)
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         assert len(route_symbols) == 7
 

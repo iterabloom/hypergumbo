@@ -1043,13 +1043,14 @@ def _extract_vapor_usage_contexts(
         route_symbols.append(Symbol(
             id=route_id,
             name=route_name,
-            kind="route",
+            kind="function",
             language="swift",
             path=str(file_path),
             span=span,
             meta={
                 "http_method": http_method,
                 "route_path": f"/{route_path}" if route_path else "/",
+                "framework_role": "route",
             },
             origin=PASS_ID,
             origin_run_id=run_id,

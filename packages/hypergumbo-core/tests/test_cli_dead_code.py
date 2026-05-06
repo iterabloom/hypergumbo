@@ -25,9 +25,9 @@ class TestDeadCodeMaybe:
         import argparse
 
         nodes = [
-            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "route",
+            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "function",
              "language": "python", "path": "app.py", "span": {"start_line": 1, "end_line": 5},
-             "meta": {"route_path": "/api", "http_method": "GET"}},
+             "meta": {"route_path": "/api", "http_method": "GET", "framework_role": "route"}},
             {"id": "py:app.py:7-10:helper:function", "name": "helper", "kind": "function",
              "language": "python", "path": "app.py", "span": {"start_line": 7, "end_line": 10}},
             {"id": "py:app.py:12-20:orphan:function", "name": "orphan", "kind": "function",
@@ -67,9 +67,9 @@ class TestDeadCodeMaybe:
         import argparse
 
         nodes = [
-            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "route",
+            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "function",
              "language": "python", "path": "app.py", "span": {"start_line": 1, "end_line": 5},
-             "meta": {"route_path": "/api", "http_method": "GET"}},
+             "meta": {"route_path": "/api", "http_method": "GET", "framework_role": "route"}},
             {"id": "py:app.py:7-10:helper:function", "name": "helper", "kind": "function",
              "language": "python", "path": "app.py", "span": {"start_line": 7, "end_line": 10}},
         ]
@@ -102,9 +102,9 @@ class TestDeadCodeMaybe:
         import argparse
 
         nodes = [
-            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "route",
+            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "function",
              "language": "python", "path": "app.py", "span": {"start_line": 1, "end_line": 5},
-             "meta": {"route_path": "/api", "http_method": "GET"}},
+             "meta": {"route_path": "/api", "http_method": "GET", "framework_role": "route"}},
             {"id": "py:app.py:12-20:orphan:function", "name": "orphan", "kind": "function",
              "language": "python", "path": "app.py", "span": {"start_line": 12, "end_line": 20},
              "lines_of_code": 9},
@@ -134,9 +134,9 @@ class TestDeadCodeMaybe:
         import argparse
 
         nodes = [
-            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "route",
+            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "function",
              "language": "python", "path": "app.py", "span": {"start_line": 1, "end_line": 5},
-             "meta": {"route_path": "/api", "http_method": "GET"}},
+             "meta": {"route_path": "/api", "http_method": "GET", "framework_role": "route"}},
             {"id": "py:app.py:7-10:handler:function", "name": "handler", "kind": "function",
              "language": "python", "path": "app.py", "span": {"start_line": 7, "end_line": 10}},
             {"id": "py:tests/test_app.py:1-5:test_main:function", "name": "test_main",
@@ -214,9 +214,9 @@ class TestDeadCodeMaybe:
         import argparse
 
         nodes = [
-            {"id": "py:app.py:1-5:GET /health:route", "name": "health", "kind": "route",
+            {"id": "py:app.py:1-5:GET /health:route", "name": "health", "kind": "function",
              "language": "python", "path": "app.py", "span": {"start_line": 1, "end_line": 5},
-             "meta": {"route_path": "/health", "http_method": "GET"}},
+             "meta": {"route_path": "/health", "http_method": "GET", "framework_role": "route"}},
             {"id": "py:app.py:7-10:handler:function", "name": "handler", "kind": "function",
              "language": "python", "path": "app.py", "span": {"start_line": 7, "end_line": 10}},
         ]
@@ -257,7 +257,7 @@ class TestDeadCodeMaybe:
             {"id": "go:main.go:1-10:main:function", "name": "main",
              "kind": "function", "language": "go", "path": "main.go",
              "span": {"start_line": 1, "end_line": 10},
-             "meta": {"is_main": True}},
+             "meta": {"is_main": True, "framework_role": "route"}},
             # Interface method
             {"id": "go:notify.go:5-5:Notifier.Notify:method", "name": "Notifier.Notify",
              "kind": "method", "language": "go", "path": "notify.go",
@@ -316,12 +316,12 @@ class TestDeadCodeMaybe:
             {"id": "go:main.go:1-10:main:function", "name": "main",
              "kind": "function", "language": "go", "path": "main.go",
              "span": {"start_line": 1, "end_line": 10},
-             "meta": {"is_main": True}},
+             "meta": {"is_main": True, "framework_role": "route"}},
             # Route registration node
             {"id": "go:routes.go:5-5:GET /api:route", "name": "GET /api",
-             "kind": "route", "language": "go", "path": "routes.go",
+             "kind": "function", "language": "go", "path": "routes.go",
              "span": {"start_line": 5, "end_line": 5},
-             "meta": {"route_path": "/api", "http_method": "GET"}},
+             "meta": {"route_path": "/api", "http_method": "GET", "framework_role": "route"}},
             # Handler function
             {"id": "go:handler.go:10-40:handleAPI:function", "name": "handleAPI",
              "kind": "function", "language": "go", "path": "handler.go",
@@ -334,7 +334,7 @@ class TestDeadCodeMaybe:
             # + meta['dispatch_kind']='route'
             {"type": "dispatches_to", "src": "go:routes.go:5-5:GET /api:route",
              "dst": "go:handler.go:10-40:handleAPI:function",
-             "meta": {"dispatch_kind": "route"}},
+             "meta": {"dispatch_kind": "route", "framework_role": "route"}},
         ]
         bm_path = _make_behavior_map(tmp_path, nodes, edges)
 
@@ -368,7 +368,7 @@ class TestDeadCodeMaybe:
             {"id": "go:main.go:1-10:main:function", "name": "main",
              "kind": "function", "language": "go", "path": "main.go",
              "span": {"start_line": 1, "end_line": 10},
-             "meta": {"is_main": True}},
+             "meta": {"is_main": True, "framework_role": "route"}},
             # Wrapper function
             {"id": "go:middleware.go:5-15:authWrap:function", "name": "authWrap",
              "kind": "function", "language": "go", "path": "middleware.go",
@@ -429,7 +429,7 @@ class TestDeadCodeMaybe:
              "name": "main", "kind": "function",
              "language": "python", "path": "app.py",
              "span": {"start_line": 1, "end_line": 2},
-             "meta": {"is_main": True}},
+             "meta": {"is_main": True, "framework_role": "route"}},
         ]
         edges: list = []
         bm_path = _make_behavior_map(tmp_path, nodes, edges)
@@ -493,10 +493,10 @@ class TestDeadCodeMaybe:
         import argparse
 
         nodes = [
-            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "route",
+            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "function",
              "language": "python", "path": "app.py",
              "span": {"start_line": 1, "end_line": 5},
-             "meta": {"route_path": "/api", "http_method": "GET"}},
+             "meta": {"route_path": "/api", "http_method": "GET", "framework_role": "route"}},
             {"id": "py:app.py:7-10:handler:function", "name": "handler",
              "kind": "function", "language": "python", "path": "app.py",
              "span": {"start_line": 7, "end_line": 10}},
@@ -572,10 +572,10 @@ class TestDeadCodeMaybe:
         import argparse
 
         nodes = [
-            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "route",
+            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "function",
              "language": "python", "path": "app.py",
              "span": {"start_line": 1, "end_line": 5},
-             "meta": {"route_path": "/api", "http_method": "GET"}},
+             "meta": {"route_path": "/api", "http_method": "GET", "framework_role": "route"}},
             # Has concepts → should be EXCLUDED by --exclude-annotated
             {"id": "go:main.go:10-20:libFunc:function", "name": "libFunc",
              "kind": "function", "language": "go", "path": "main.go",
@@ -620,13 +620,13 @@ class TestDeadCodeMaybe:
              "name": "UserController", "kind": "class", "language": "java",
              "path": "UserController.java",
              "span": {"start_line": 1, "end_line": 30},
-             "meta": {"annotations": ["@RestController", "@RequestMapping"]}},
+             "meta": {"annotations": ["@RestController", "@RequestMapping"], "framework_role": "route"}},
             # Handler method with no own annotations (framework-dispatched)
             {"id": "java:UserController.java:5-10:listUsers:method",
              "name": "listUsers", "kind": "method", "language": "java",
              "path": "UserController.java",
              "span": {"start_line": 5, "end_line": 10},
-             "meta": {}},
+             "meta": {"framework_role": "route"}},
             # Plain function with no parent class → kept
             {"id": "java:Util.java:1-5:orphan:method",
              "name": "orphan", "kind": "method", "language": "java",
@@ -672,12 +672,12 @@ class TestDeadCodeMaybe:
              "name": "UserView", "kind": "class", "language": "python",
              "path": "views.py",
              "span": {"start_line": 1, "end_line": 30},
-             "meta": {"decorators": ["@register_view"]}},
+             "meta": {"decorators": ["@register_view"], "framework_role": "route"}},
             {"id": "py:views.py:5-10:get:method",
              "name": "get", "kind": "method", "language": "python",
              "path": "views.py",
              "span": {"start_line": 5, "end_line": 10},
-             "meta": {}},
+             "meta": {"framework_role": "route"}},
         ]
         edges = [
             {"id": "e1", "src": "py:views.py:1-30:UserView:class",
@@ -790,9 +790,9 @@ class TestDeadCodeMaybe:
         import argparse
 
         nodes = [
-            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "route",
+            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "function",
              "language": "python", "path": "app.py", "span": {"start_line": 1, "end_line": 5},
-             "meta": {"route_path": "/api", "http_method": "GET"}},
+             "meta": {"route_path": "/api", "http_method": "GET", "framework_role": "route"}},
             {"id": "py:app.py:12-20:tested_fn:function", "name": "tested_fn",
              "kind": "function", "language": "python", "path": "app.py",
              "span": {"start_line": 12, "end_line": 20}},
@@ -1104,7 +1104,7 @@ class TestDeadCodeMaybe:
         """WI-hadap H2: a bare-string decorator entry (older-schema
         encoding) matches the fragment check."""
         from hypergumbo_core.cli import _compute_ffi_signature_flag
-        node = {"meta": {"decorators": ["no_mangle"]}}
+        node = {"meta": {"decorators": ["no_mangle"], "framework_role": "route"}}
         assert _compute_ffi_signature_flag(node) is True
 
     def test_ffi_signature_flag_ignores_non_dict_non_str_decorator(
@@ -1112,7 +1112,7 @@ class TestDeadCodeMaybe:
     ) -> None:
         """WI-hadap H2: a non-dict/non-str decorator entry is ignored."""
         from hypergumbo_core.cli import _compute_ffi_signature_flag
-        node = {"meta": {"decorators": [42, None]}}
+        node = {"meta": {"decorators": [42, None], "framework_role": "route"}}
         assert _compute_ffi_signature_flag(node) is False
 
     def test_ffi_signature_flag_false_for_plain_function(
@@ -1152,10 +1152,10 @@ class TestDeadCodeMaybe:
         import argparse
 
         nodes = [
-            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "route",
+            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "function",
              "language": "python", "path": "app.py",
              "span": {"start_line": 1, "end_line": 5},
-             "meta": {"route_path": "/api", "http_method": "GET"}},
+             "meta": {"route_path": "/api", "http_method": "GET", "framework_role": "route"}},
             {"id": "py:app.py:7-10:reached:function", "name": "reached",
              "kind": "function", "language": "python", "path": "app.py",
              "span": {"start_line": 7, "end_line": 10},

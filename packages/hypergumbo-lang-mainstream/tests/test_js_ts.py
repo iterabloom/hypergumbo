@@ -2870,7 +2870,7 @@ router.delete('/users/:id', userController.deleteUser);
         result = analyze_javascript(tmp_path)
 
         # Find route symbols (external handlers create route symbols, not function symbols)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         assert len(routes) == 3
 
@@ -2913,7 +2913,7 @@ router.get('/users', handleUsers);
 
         result = analyze_javascript(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         assert len(routes) == 1
         assert routes[0].name == "handleUsers"
@@ -2946,7 +2946,7 @@ router
 
         result = analyze_javascript(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
 
         assert len(routes) == 5
 
@@ -3150,7 +3150,7 @@ app.get('/health', (req, res) => res.send('ok'));
 """)
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_funcs = [s for s in result.symbols if s.meta and s.meta.get("route_path")]
 
         # Only /health should be detected, not AppService or DYNAMIC_TOKEN
@@ -7769,7 +7769,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
 
         route = routes[0]
@@ -7792,7 +7792,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
 
         route = routes[0]
@@ -7816,7 +7816,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
 
         route = routes[0]
@@ -7841,7 +7841,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 3
 
         paths = {r.meta["route_path"] for r in routes if r.meta}
@@ -7861,7 +7861,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 0
 
     def test_member_expression_route_tag(self, tmp_path: Path) -> None:
@@ -7878,7 +7878,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
 
         route = routes[0]
@@ -7896,7 +7896,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 0
 
     def test_create_browser_router_routes(self, tmp_path: Path) -> None:
@@ -7914,7 +7914,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_paths = {s.meta["route_path"] for s in routes if s.meta}
         assert "/" in route_paths
         assert "/users" in route_paths
@@ -7938,7 +7938,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_paths = {s.meta["route_path"] for s in routes if s.meta}
         assert "/dashboard" in route_paths
         assert "/dashboard/settings" in route_paths
@@ -7955,7 +7955,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         assert routes[0].meta["route_path"] == "/about"
 
@@ -7979,7 +7979,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
 
         route = next(r for r in routes if r.meta["route_path"] == "/users")
@@ -8002,7 +8002,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
 
         route = next(r for r in routes if r.meta["route_path"] == "/dashboard")
@@ -8028,7 +8028,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_map = {r.meta["route_path"]: r for r in routes if r.meta}
 
         settings = route_map["/settings"]
@@ -8055,7 +8055,7 @@ class TestReactRouterJSXRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route = next(r for r in routes if r.meta["route_path"] == "/nolazy")
         assert "lazy_import" not in route.meta
 
@@ -8091,7 +8091,7 @@ class TestReactLazyRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
 
         route = next(r for r in routes if r.meta.get("route_path") == "/dashboard")
@@ -8114,7 +8114,7 @@ class TestReactLazyRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route = next(r for r in routes if r.meta.get("route_path") == "/settings")
         assert route.meta["lazy_import"] == "./Settings"
 
@@ -8132,7 +8132,7 @@ class TestReactLazyRouteDetection:
         )
 
         result = analyze_javascript(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route = next(r for r in routes if r.meta.get("route_path") == "/")
         assert "lazy_import" not in route.meta
 

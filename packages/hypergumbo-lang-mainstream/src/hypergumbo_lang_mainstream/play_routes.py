@@ -130,7 +130,7 @@ def parse_play_routes(
             symbols.append(Symbol(
                 id=route_id,
                 name=route_name,
-                kind="route",
+                kind="function",
                 language="scala",
                 path=file_path,
                 span=span,
@@ -138,6 +138,7 @@ def parse_play_routes(
                     "http_method": method,
                     "route_path": path,
                     "controller_action": action,
+                    "framework_role": "route",
                 },
                 origin=PASS_ID,
                 origin_run_id=run_id,

@@ -115,7 +115,7 @@ class TestMiddlewareChainLinker:
     def test_no_middleware_no_edges(self) -> None:
         """No middleware symbols should produce no edges."""
         func = _sym("handler", kind="function", span=(1, 10))
-        route = _sym("GET /users", kind="route", span=(1, 1))
+        route = _sym("GET /users", kind="function", span=(1, 1))
 
         ctx = LinkerContext(
             repo_root=Path("/repo"),

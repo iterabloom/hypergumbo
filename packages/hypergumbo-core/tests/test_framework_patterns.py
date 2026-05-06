@@ -722,13 +722,14 @@ class TestPattern:
         symbol = Symbol(
             id="test:routes.rb:1:get_users:route",
             name="GET /users",
-            kind="route",  # Rails analyzer creates route symbols
+            kind="function",  # Rails analyzer creates route symbols
             language="ruby",
             path="config/routes.rb",
             span=Span(1, 1, 0, 20),
             meta={
                 "http_method": "GET",
                 "route_path": "/users",
+                "framework_role": "route",
             },
         )
 
@@ -768,11 +769,11 @@ class TestPattern:
         route_symbol = Symbol(
             id="test:routes.rb:1:get:route",
             name="GET /",
-            kind="route",
+            kind="function",
             language="ruby",
             path="routes.rb",
             span=Span(1, 1, 0, 10),
-            meta={},
+            meta={"framework_role": "route", },
         )
         result = pattern.matches(route_symbol)
         assert result is not None
@@ -4584,13 +4585,14 @@ class TestRailsPatterns:
         symbol = Symbol(
             id="test:routes.rb:1:GET_users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="config/routes.rb",
             span=Span(1, 1, 0, 30),
             meta={
                 "http_method": "GET",
                 "route_path": "/users",
+                "framework_role": "route",
             },
         )
 
@@ -4611,12 +4613,13 @@ class TestRailsPatterns:
         symbol = Symbol(
             id="test:routes.rb:5:resources_users:route",
             name="resources:users",
-            kind="route",
+            kind="function",
             language="ruby",
             path="config/routes.rb",
             span=Span(5, 5, 0, 20),
             meta={
                 "route_path": "users",
+                "framework_role": "route",
             },
         )
 
@@ -4947,7 +4950,7 @@ class TestPhoenixPatterns:
     def test_phoenix_route_symbol_kind_pattern(self) -> None:
         """Phoenix route symbols (kind=route) match route pattern via symbol_kind.
 
-        The Elixir analyzer creates route symbols with kind="route" directly.
+        The Elixir analyzer creates route symbols with kind="function" directly.
         This pattern ensures these get the "route" concept for entrypoint detection.
         """
         clear_pattern_cache()
@@ -4959,13 +4962,14 @@ class TestPhoenixPatterns:
         symbol = Symbol(
             id="elixir:router.ex:10-10:GET /users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="elixir",
             path="lib/my_app_web/router.ex",
             span=Span(10, 10, 0, 50),
             meta={
                 "http_method": "GET",
                 "route_path": "/users",
+                "framework_role": "route",
             },
         )
 
@@ -5313,13 +5317,14 @@ class TestLaravelPatterns:
         symbol = Symbol(
             id="test:web.php:1:GET_users:route",
             name="GET /users",
-            kind="route",
+            kind="function",
             language="php",
             path="routes/web.php",
             span=Span(1, 1, 0, 40),
             meta={
                 "http_method": "GET",
                 "route_path": "/users",
+                "framework_role": "route",
             },
         )
 
@@ -5340,13 +5345,14 @@ class TestLaravelPatterns:
         symbol = Symbol(
             id="test:api.php:5:POST_api_login:route",
             name="POST /api/login",
-            kind="route",
+            kind="function",
             language="php",
             path="routes/api.php",
             span=Span(5, 5, 0, 50),
             meta={
                 "http_method": "POST",
                 "route_path": "/api/login",
+                "framework_role": "route",
             },
         )
 
@@ -18605,7 +18611,7 @@ class TestMaterializeRouteSymbols:
         routes = materialize_route_symbols([handler])
         assert len(routes) == 1
         route = routes[0]
-        assert route.kind == "route"
+        assert (route.meta or {}).get("framework_role") == "route"
         assert route.name == "GET /api/users"
         assert route.meta["route_path"] == "/api/users"
         assert route.meta["http_method"] == "GET"
@@ -18644,10 +18650,10 @@ class TestMaterializeRouteSymbols:
         """Symbols already with kind='route' are not duplicated."""
         sym = Symbol(
             id="go:main.go:10-20:GET /users:route",
-            name="GET /users", kind="route", language="go",
+            name="GET /users", kind="function", language="go",
             path="main.go",
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/users"}]},
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/users"}], "framework_role": "route"},
         )
         routes = materialize_route_symbols([sym])
         assert len(routes) == 0
@@ -18726,10 +18732,10 @@ class TestMaterializeRouteSymbols:
         """WI-tizad: dedupe against analyzer-emitted kind=route symbols."""
         existing_route = Symbol(
             id="python:urls.py:1-1:GET /users/:route",
-            name="GET /users/", kind="route", language="python",
+            name="GET /users/", kind="function", language="python",
             path="urls.py",
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            meta={"route_path": "/users/", "http_method": "GET"},
+            meta={"route_path": "/users/", "http_method": "GET", "framework_role": "route"},
         )
         handler = Symbol(
             id="python:views.py:10-20:UsersView.get:method",
@@ -18759,11 +18765,13 @@ class TestMaterializeRouteSymbols:
         """ANY routes (CBV pending expansion) do not suppress materializer."""
         any_route = Symbol(
             id="python:urls.py:1-1:ANY /foo/:route",
-            name="ANY /foo/", kind="route", language="python",
+            name="ANY /foo/", kind="function", language="python",
             path="urls.py",
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
             meta={"route_path": "/foo/", "http_method": "ANY",
-                  "is_class_based_view": True},
+                  "is_class_based_view": True,
+                  "framework_role": "route",
+              },
         )
         handler = Symbol(
             id="python:views.py:10-20:FooView.get:method",
@@ -18791,7 +18799,7 @@ class TestExpandClassBasedViewRoutes:
         return Symbol(
             id=rid,
             name=f"django:{view_name}",
-            kind="route",
+            kind="function",
             language="python",
             path="urls.py",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
@@ -18800,6 +18808,7 @@ class TestExpandClassBasedViewRoutes:
                 "http_method": "ANY",
                 "view_name": view_name,
                 "is_class_based_view": True,
+                "framework_role": "route",
             },
         )
 
@@ -18843,13 +18852,14 @@ class TestExpandClassBasedViewRoutes:
         """Routes without is_class_based_view flag are not expanded."""
         fbv = Symbol(
             id="python:urls.py:5-5:/users/:route",
-            name="django:user_list", kind="route", language="python",
+            name="django:user_list", kind="function", language="python",
             path="urls.py",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
             meta={
                 "route_path": "/users/",
                 "http_method": "GET",
                 "view_name": "user_list",
+                "framework_role": "route",
             },
         )
         m = self._make_method("user_list", "get")
@@ -18861,12 +18871,13 @@ class TestExpandClassBasedViewRoutes:
         """CBV-flagged route with non-ANY method is left alone (already expanded)."""
         sym = Symbol(
             id="python:urls.py:5-5:/x/:GET:route",
-            name="django:X.get", kind="route", language="python",
+            name="django:X.get", kind="function", language="python",
             path="urls.py",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
             meta={
                 "route_path": "/x/", "http_method": "GET",
                 "view_name": "X", "is_class_based_view": True,
+                "framework_role": "route",
             },
         )
         m = self._make_method("X", "get")
@@ -18878,12 +18889,13 @@ class TestExpandClassBasedViewRoutes:
         """CBV ANY route without view_name cannot be expanded."""
         sym = Symbol(
             id="python:urls.py:5-5:/x/:route",
-            name="django:unknown", kind="route", language="python",
+            name="django:unknown", kind="function", language="python",
             path="urls.py",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
             meta={
                 "route_path": "/x/", "http_method": "ANY",
                 "view_name": None, "is_class_based_view": True,
+                "framework_role": "route",
             },
         )
         new_routes, removed = expand_class_based_view_routes([sym])
@@ -18908,9 +18920,10 @@ class TestExpandClassBasedViewRoutes:
         """Routes with meta=None do not crash the pass."""
         sym = Symbol(
             id="python:urls.py:5-5:no-meta:route",
-            name="x", kind="route", language="python",
+            name="x", kind="function", language="python",
             path="urls.py",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
+            meta={"framework_role": "route"},
         )
         new_routes, removed = expand_class_based_view_routes([sym])
         assert new_routes == []
@@ -18947,12 +18960,13 @@ class TestExpandClassBasedViewRoutes:
         """If meta.route_path is empty/None, expanded routes default to '/'."""
         route = Symbol(
             id="python:urls.py:5-5::route",
-            name="django:Cls", kind="route", language="python",
+            name="django:Cls", kind="function", language="python",
             path="urls.py",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
             meta={
                 "route_path": "", "http_method": "ANY",
                 "view_name": "Cls", "is_class_based_view": True,
+                "framework_role": "route",
             },
         )
         m = self._make_method("Cls", "get")

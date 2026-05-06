@@ -501,7 +501,7 @@ func main() {
 }
 """)
         data = analyze(tmp_path)
-        routes = [n for n in data["nodes"] if n["kind"] == "route"]
+        routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
         assert any(n.get("meta", {}).get("http_method") == "GET" for n in routes)
 
     def test_echo_route_post(self, tmp_path: Path) -> None:
@@ -519,7 +519,7 @@ func main() {
 }
 """)
         data = analyze(tmp_path)
-        routes = [n for n in data["nodes"] if n["kind"] == "route"]
+        routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
         assert any(n.get("meta", {}).get("http_method") == "POST" for n in routes)
 
     def test_fiber_route_lowercase_get(self, tmp_path: Path) -> None:
@@ -537,7 +537,7 @@ func main() {
 }
 """)
         data = analyze(tmp_path)
-        routes = [n for n in data["nodes"] if n["kind"] == "route"]
+        routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
         # Fiber Get should be normalized to GET
         assert any(n.get("meta", {}).get("http_method") == "GET" for n in routes)
 
@@ -558,7 +558,7 @@ func main() {
 }
 """)
         data = analyze(tmp_path)
-        routes = [n for n in data["nodes"] if n["kind"] == "route"]
+        routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
         assert any("GetUser" in n["name"] for n in routes)
 
     def test_route_all_http_methods(self, tmp_path: Path) -> None:
@@ -582,7 +582,7 @@ func main() {
 }
 """)
         data = analyze(tmp_path)
-        routes = [n for n in data["nodes"] if n["kind"] == "route"]
+        routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
         methods = {n.get("meta", {}).get("http_method") for n in routes}
         assert "GET" in methods
         assert "POST" in methods

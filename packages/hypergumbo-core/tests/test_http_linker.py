@@ -469,7 +469,7 @@ class TestLinkHttp:
         route_symbol = Symbol(
             id="server.js::getUsers",
             name="getUsers",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
@@ -497,7 +497,7 @@ class TestLinkHttp:
         route_symbol = Symbol(
             id="server.py::get_users",
             name="get_users",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
@@ -523,7 +523,7 @@ class TestLinkHttp:
         route_symbol = Symbol(
             id="server.js::getUser",
             name="getUser",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
@@ -547,7 +547,7 @@ class TestLinkHttp:
         route_symbol = Symbol(
             id="server.js::getUsers",
             name="getUsers",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
@@ -571,7 +571,7 @@ class TestLinkHttp:
         route_symbol = Symbol(
             id="server.py::get_users",
             name="get_users",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
@@ -595,7 +595,7 @@ class TestLinkHttp:
         route_symbol = Symbol(
             id="server.js::getUsers",
             name="getUsers",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
@@ -640,7 +640,7 @@ class TestLinkHttp:
         route_symbol = Symbol(
             id="server.js::handleData",
             name="handleData",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
@@ -758,7 +758,7 @@ class TestVariableUrlPatterns:
         route_symbol = Symbol(
             id="server.js::getUsers",
             name="getUsers",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
@@ -782,7 +782,7 @@ class TestVariableUrlPatterns:
         route_symbol = Symbol(
             id="server.js::getUsers",
             name="getUsers",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
@@ -997,11 +997,11 @@ class TestConceptMetadataSupport:
         legacy_route = Symbol(
             id="old.py::get_users::function",
             name="get_users",
-            kind="route",
+            kind="function",
             path="old.py",
             span=Span(start_line=1, start_col=0, end_line=10, end_col=0),
             language="python",
-            meta={"route_path": "/api/users", "http_method": "GET"},
+            meta={"route_path": "/api/users", "http_method": "GET", "framework_role": "route"},
         )
 
         non_route = Symbol(
@@ -1038,7 +1038,7 @@ class TestConceptMetadataSupport:
         route_symbol = Symbol(
             id="routes.rb::GET /users::route",
             name="GET /users",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "routes.rb"),
             span=Span(start_line=5, start_col=0, end_line=5, end_col=30),
             language="ruby",
@@ -1046,6 +1046,7 @@ class TestConceptMetadataSupport:
                 "http_method": "GET",
                 "route_path": "/users",
                 "controller_action": "users#index",
+                "framework_role": "route",
             },
         )
 
@@ -1065,13 +1066,14 @@ class TestConceptMetadataSupport:
         symbol = Symbol(
             id="routes.rb::GET /api::route",
             name="GET /api",
-            kind="route",
+            kind="function",
             path="routes.rb",
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="ruby",
             meta={
                 "route_path": "/api/users",
                 "http_method": "POST",
+                "framework_role": "route",
             },
         )
 
@@ -1091,10 +1093,11 @@ class TestHttpLinkerEntryPoint:
         route = Symbol(
             id="server.py::get_users",
             name="get_users",
-            kind="route",
+            kind="function",
             path="server.py",
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
+            meta={"framework_role": "route"},
         )
 
         non_route = Symbol(
@@ -1120,7 +1123,7 @@ class TestHttpLinkerEntryPoint:
         route = Symbol(
             id="server.py::get_users",
             name="get_users",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
@@ -1263,7 +1266,7 @@ class TestGoHttpLinking:
         route_symbol = Symbol(
             id="server.py::get_users",
             name="get_users",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
@@ -1670,7 +1673,7 @@ class TestRubyHttpLinking:
         route_symbol = Symbol(
             id="server.py::get_users",
             name="get_users",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
@@ -1725,7 +1728,7 @@ class TestJavaHttpLinking:
         route_symbol = Symbol(
             id="server.py::get_users",
             name="get_users",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
@@ -1754,13 +1757,14 @@ class TestJavaHttpLinking:
         route_symbol = Symbol(
             id="routes.rb::GET /api/users::route",
             name="GET /api/users",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "routes.rb"),
             span=Span(start_line=5, start_col=0, end_line=5, end_col=30),
             language="ruby",
             meta={
                 "http_method": "GET",
                 "route_path": "/api/users",
+                "framework_role": "route",
             },
         )
 
@@ -2313,13 +2317,14 @@ class TestElmFilesAreScanned:
         route = Symbol(
             id="api/alerts.go::handleAlerts",
             name="handleAlerts",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "api" / "alerts.go"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
             language="go",
             meta={
                 "route_path": "/api/v2/alerts",
                 "http_method": "GET",
+                "framework_role": "route",
             },
         )
 
@@ -2566,11 +2571,11 @@ class TestJsTemplateLiteralEndToEnd:
         route = Symbol(
             id="api/alerts.go::handleAlerts",
             name="handleAlerts",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "api" / "alerts.go"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
             language="go",
-            meta={"route_path": "/api/v1/alerts", "http_method": "GET"},
+            meta={"route_path": "/api/v1/alerts", "http_method": "GET", "framework_role": "route"},
         )
 
         result = link_http(tmp_path, [route])
@@ -2608,11 +2613,11 @@ class TestJsTemplateLiteralEndToEnd:
         route = Symbol(
             id="api/any.py::any_handler",
             name="any_handler",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "api" / "any.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
             language="python",
-            meta={"route_path": "/api/v1/catchall"},
+            meta={"route_path": "/api/v1/catchall", "framework_role": "route"},
         )
 
         result = link_http(tmp_path, [route])
@@ -2634,11 +2639,11 @@ class TestJsTemplateLiteralEndToEnd:
         route = Symbol(
             id="api/foo.go::foo",
             name="foo",
-            kind="route",
+            kind="function",
             path=str(tmp_path / "api" / "foo.go"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
             language="go",
-            meta={"route_path": "/api/foo", "http_method": "GET"},
+            meta={"route_path": "/api/foo", "http_method": "GET", "framework_role": "route"},
         )
 
         result = link_http(tmp_path, [route])

@@ -3205,6 +3205,7 @@ def _extract_go_routes(
                                     "route_path": route_path,
                                     "http_method": normalized_method,
                                     "handler_name": handler_name,
+                                    "framework_role": "route",
                                 }
                                 if handler_arg_node is not None:
                                     w_name, corrected = _extract_wrapper_info(
@@ -3248,7 +3249,7 @@ def _extract_go_routes(
                                     ),
                                     stable_id=make_route_stable_id(normalized_method, route_path),
                                     name=handler_name,
-                                    kind="route",
+                                    kind="function",
                                     language="go",
                                     path=str(file_path),
                                     span=Span(
@@ -3324,6 +3325,7 @@ def _extract_go_routes(
                                     "route_path": route_path,
                                     "http_method": handle_http_method,
                                     "handler_name": handler_name,
+                                    "framework_role": "route",
                                 }
                                 if handler_arg_node is not None:
                                     w_name, corrected = _extract_wrapper_info(
@@ -3367,7 +3369,7 @@ def _extract_go_routes(
                                         handle_http_method, route_path,
                                     ),
                                     name=handler_name,
-                                    kind="route",
+                                    kind="function",
                                     language="go",
                                     path=str(file_path),
                                     span=Span(
@@ -3408,7 +3410,7 @@ def _extract_go_routes(
                                 ),
                                 stable_id=make_route_stable_id(normalized_method, route_path),
                                 name=handler_name,
-                                kind="route",
+                                kind="function",
                                 language="go",
                                 path=str(file_path),
                                 span=Span(
@@ -3423,6 +3425,7 @@ def _extract_go_routes(
                                     "route_path": route_path,
                                     "http_method": normalized_method,
                                     "handler_name": handler_name,
+                                    "framework_role": "route",
                                 },
                             )
                             routes.append(route_sym)
@@ -3618,6 +3621,7 @@ def _extract_go_routes(
                 "route_path": route_path,
                 "http_method": normalized_method,
                 "handler_name": handler_name,
+                "framework_role": "route",
             }
             if handler_field:
                 meta["handler_field"] = handler_field
@@ -3629,7 +3633,7 @@ def _extract_go_routes(
                 ),
                 stable_id=make_route_stable_id(normalized_method, route_path),
                 name=handler_name,
-                kind="route",
+                kind="function",
                 language="go",
                 path=str(file_path),
                 span=Span(

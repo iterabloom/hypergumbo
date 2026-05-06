@@ -1404,7 +1404,7 @@ def test_flask_restful_add_resource_usage_context(tmp_path: Path) -> None:
     assert "Todo" in ctx_names
 
     # Route symbols should be created for each add_resource call
-    route_syms = [s for s in result.symbols if s.kind == "route"]
+    route_syms = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
     assert len(route_syms) >= 2
     route_paths = {s.meta.get("route_path") for s in route_syms}
     assert "/todos" in route_paths
@@ -1988,7 +1988,7 @@ def test_django_path_urlpattern(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 2
 
     route_paths = {r.get("meta", {}).get("route_path") for r in routes}
@@ -2014,7 +2014,7 @@ def test_django_route_stable_id_no_collision(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 2
     stable_ids = [r["stable_id"] for r in routes]
     assert stable_ids[0] != stable_ids[1], f"stable_id collision: {stable_ids}"
@@ -2040,7 +2040,7 @@ def test_django_path_empty_string_root_route(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 2, "Both empty string root and /about/ should be detected"
 
     route_paths = {r.get("meta", {}).get("route_path") for r in routes}
@@ -2066,7 +2066,7 @@ def test_django_re_path_urlpattern(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 1
 
     route = routes[0]
@@ -2090,7 +2090,7 @@ def test_django_url_legacy_urlpattern(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 1
 
 
@@ -2113,7 +2113,7 @@ def test_django_path_with_direct_function_reference(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 1
     assert routes[0].get("meta", {}).get("view_name") == "my_view"
 
@@ -2136,7 +2136,7 @@ def test_django_path_with_cbv_as_view(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 2
 
     view_names = [r.get("meta", {}).get("view_name") for r in routes]
@@ -2161,7 +2161,7 @@ def test_django_path_with_local_cbv_as_view(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 1
     assert routes[0].get("meta", {}).get("view_name") == "TemplateView"
 
@@ -2211,7 +2211,7 @@ def test_django_re_path_cbv_method_introspection(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
 
     by_view: dict[str, set[str]] = {}
     for r in routes:
@@ -2245,7 +2245,7 @@ def test_django_cbv_unresolved_view_class_keeps_any_method(tmp_path: Path) -> No
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 1
     meta = routes[0].get("meta") or {}
     assert meta.get("view_name") == "LoginView"
@@ -5787,7 +5787,7 @@ def test_django_path_string_concatenation(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 1, f"Expected 1 route, got {len(routes)}: {routes}"
     route_path = routes[0].get("meta", {}).get("route_path")
     assert route_path == "/api/v1/users/", f"Expected '/api/v1/users/', got {route_path!r}"
@@ -5812,7 +5812,7 @@ def test_django_path_module_constant(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 1, f"Expected 1 route, got {len(routes)}: {routes}"
     route_path = routes[0].get("meta", {}).get("route_path")
     assert route_path == "/users/", f"Expected '/users/', got {route_path!r}"
@@ -5866,7 +5866,7 @@ def test_django_path_imported_constant(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 1, f"Expected 1 route, got {len(routes)}: {routes}"
     route_path = routes[0].get("meta", {}).get("route_path")
     assert route_path == "/api/v1/items/", f"Expected '/api/v1/items/', got {route_path!r}"
@@ -5889,7 +5889,7 @@ def test_django_path_unresolvable_variable_skipped(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 0, f"Expected 0 routes for unresolvable call, got {len(routes)}"
 
 
@@ -5910,7 +5910,7 @@ def test_django_path_partial_concatenation_skipped(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 0, f"Expected 0 routes for partial resolution, got {len(routes)}"
 
 
@@ -5931,7 +5931,7 @@ def test_django_path_undefined_name_skipped(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 0, f"Expected 0 routes for undefined var, got {len(routes)}"
 
 
@@ -5955,7 +5955,7 @@ def test_django_path_nested_concatenation(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     assert len(routes) == 1, f"Expected 1 route, got {len(routes)}: {routes}"
     route_path = routes[0].get("meta", {}).get("route_path")
     assert route_path == "/api/v2/items/", f"Expected '/api/v2/items/', got {route_path!r}"

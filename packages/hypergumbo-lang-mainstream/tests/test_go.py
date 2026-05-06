@@ -661,7 +661,7 @@ func createUser(c *gin.Context) {}
         result = analyze_go(tmp_path)
 
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_names = [s.name for s in routes]
 
         assert "listUsers" in route_names
@@ -692,7 +692,7 @@ func deleteUser(c echo.Context) error { return nil }
         result = analyze_go(tmp_path)
 
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_names = [s.name for s in routes]
 
         assert "home" in route_names
@@ -728,7 +728,7 @@ func postData(c *fiber.Ctx) error { return nil }
         result = analyze_go(tmp_path)
 
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_names = [s.name for s in routes]
 
         assert "home" in route_names
@@ -753,7 +753,7 @@ func handler() {}
         result = analyze_go(tmp_path)
 
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         assert routes[0].stable_id == make_route_stable_id("GET", "/test")
 
@@ -775,7 +775,7 @@ func getUser() {}
         result = analyze_go(tmp_path)
 
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         assert routes[0].meta["route_path"] == "/api/v1/users/:id"
         assert routes[0].meta["http_method"] == "GET"
@@ -814,7 +814,7 @@ func main() {
 
         assert len(routes) == 1
         assert routes[0].name == "submitHandler"
-        assert routes[0].kind == "route"
+        assert (routes[0].meta or {}).get("framework_role") == "route"
         assert len(routes[0].stable_id) == 64  # sha256 hex digest (ADR-0014 §4)
 
     def test_no_routes_in_non_web_code(self, tmp_path: Path) -> None:
@@ -837,7 +837,7 @@ func PostProcess(s string) {}
         result = analyze_go(tmp_path)
 
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 0
 
     def test_selector_handler(self, tmp_path: Path) -> None:
@@ -856,7 +856,7 @@ func main() {
         result = analyze_go(tmp_path)
 
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         assert routes[0].name == "handlers.GetAPI"
 
@@ -883,7 +883,7 @@ func GetRawFile() {}
 """)
 
         result = analyze_go(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         # Handler is the LAST argument, not the first middleware
         assert routes[0].name == "GetRawFile"
@@ -901,7 +901,7 @@ func main() {
 """)
 
         result = analyze_go(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         # Last arg is the handler, not the middleware
         assert routes[0].name == "repo.GetRawFile"
@@ -928,7 +928,7 @@ func authMiddleware() {}
 """)
 
         result = analyze_go(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         # The closure can't be named, so the named identifier before it is used
         assert routes[0].name == "authMiddleware"
@@ -962,7 +962,7 @@ func main() {
 """)
 
         result = analyze_go(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_paths = {s.meta["route_path"] for s in routes}
         assert "/-/healthy" in route_paths
         assert "/-/ready" in route_paths
@@ -1010,7 +1010,7 @@ func healthCheck(c *gin.Context) {}
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_paths = {s.meta["route_path"]: s.name for s in routes if s.meta}
 
         # Routes inside Group should have prefix
@@ -1054,7 +1054,7 @@ func listAdminUsers(c *gin.Context) {}
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_paths = [s.meta["route_path"] for s in routes if s.meta]
 
         assert "/admin/users/list" in route_paths, (
@@ -1092,7 +1092,7 @@ func main() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         handler_names = {
             s.meta["route_path"]: s.meta.get("handler_name", s.name)
             for s in routes if s.meta
@@ -1135,7 +1135,7 @@ func deleteAlert(w http.ResponseWriter, r *http.Request) {}
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_methods = {
             s.meta["route_path"]: s.meta["http_method"]
             for s in routes if s.meta
@@ -1174,7 +1174,7 @@ func getResources() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 0, (
             f"Non-path string arguments should NOT produce routes, "
             f"got: {[(s.name, s.meta.get('route_path')) for s in routes if s.meta]}"
@@ -1223,7 +1223,7 @@ func (api *API) serveStatus() {}
 """)
 
         result = analyze_go(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         routes_by_path = {s.meta["route_path"]: s for s in routes}
 
         # Wrapped route should have wrapper_name
@@ -1327,7 +1327,7 @@ func listUsers() {}
 """)
 
         result = analyze_go(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         assert routes[0].meta.get("wrapper_name") == "auth"
 
@@ -1344,7 +1344,7 @@ func Register(r Router) {
 """)
 
         result = analyze_go(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         if routes:
             assert "wrapper_name" not in routes[0].meta
 
@@ -1378,7 +1378,7 @@ func handlerB() {}
         assert len(wrapper_syms) == 1
 
         # Both routes should reference the wrapper
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         for route in routes:
             assert route.meta.get("wrapper_name") == "wrap"
 
@@ -1428,7 +1428,7 @@ func (api *API) list() {}
 """)
 
         result = analyze_go(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         routes_by_path = {s.meta["route_path"]: s for s in routes}
         assert routes_by_path["/a"].meta.get("wrapper_name") == "wrap"
         assert routes_by_path["/b"].meta.get("wrapper_name") == "wrap"
@@ -1468,7 +1468,7 @@ func getUser(w http.ResponseWriter, r *http.Request) {}
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_names = {s.name for s in routes}
 
         assert "listUsers" in route_names
@@ -1500,7 +1500,7 @@ func apiHandler() {}
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         assert routes[0].name == "apiHandler"
         assert routes[0].meta["route_path"] == "/api"
@@ -1526,7 +1526,7 @@ func apiV1Handler() {}
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         assert routes[0].name == "apiV1Handler"
         assert routes[0].meta["route_path"] == "/api/v1"
@@ -1554,7 +1554,7 @@ func createUser() {}
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_by_name = {s.name: s for s in routes}
 
         assert "listUsers" in route_by_name
@@ -1585,7 +1585,7 @@ func fileServer() {}
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         assert routes[0].name == "fileServer"
         assert routes[0].meta["route_path"] == "/static/"
@@ -1608,7 +1608,7 @@ func main() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         assert routes[0].meta["route_path"] == "/api"
         # Handler name extracted from the function call
@@ -1632,7 +1632,7 @@ func main() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         assert routes[0].name == "handlers.GetAPI"
         assert routes[0].meta["route_path"] == "/api"
@@ -1655,7 +1655,7 @@ func handler() {}
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         assert routes[0].stable_id == make_route_stable_id("ANY", "/test")
 
@@ -1677,7 +1677,7 @@ func handler() {}
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         assert routes[0].stable_id == make_route_stable_id("GET", "/test")
         assert routes[0].meta["http_method"] == "GET"
@@ -1701,7 +1701,7 @@ func listPosts() {}
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 2
         stable_ids = [s.stable_id for s in routes]
         assert len(set(stable_ids)) == len(stable_ids), f"stable_id collision: {stable_ids}"
@@ -1724,7 +1724,7 @@ func main() {
 """)
 
         result = analyze_go(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 1
         assert routes[0].meta["route_path"] == "/health"
         assert routes[0].name == "<closure>"
@@ -1759,7 +1759,7 @@ func viewCart(w http.ResponseWriter, r *http.Request) {}
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_paths = {s.meta["route_path"] for s in routes}
 
         # Should detect routes with literal suffixes
@@ -1799,7 +1799,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {}
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_meta = {s.meta["route_path"]: s.meta for s in routes}
 
         # Method-path routes should extract both method and path
@@ -1883,7 +1883,7 @@ func main() {
 """)
 
         result = analyze_go(tmp_path)
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         route_paths = {s.meta["route_path"] for s in routes if s.meta}
 
         assert "/api/users" in route_paths, f"Expected /api/users, got {route_paths}"
@@ -2066,7 +2066,7 @@ func (o *API) initHandlerCache() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 1
         r = routes[0]
         assert r.meta["http_method"] == "DELETE"
@@ -2096,7 +2096,7 @@ func (o *AlertmanagerAPI) initHandlerCache() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 9
 
         # Check method distribution
@@ -2124,7 +2124,7 @@ func (o *API) initHandlerCache() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 2
         stable_ids = [r.stable_id for r in routes]
         assert len(set(stable_ids)) == 2, f"stable_id collision: {stable_ids}"
@@ -2144,7 +2144,7 @@ func (o *API) initHandlerCache() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 1
         assert routes[0].meta["handler_name"] == "NewHealthCheck"
 
@@ -2163,7 +2163,7 @@ func init() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 0
 
     def test_handler_cache_ignores_non_path_value(self, tmp_path: Path) -> None:
@@ -2181,7 +2181,7 @@ func init() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 0
 
     def test_handler_cache_bare_identifier_rhs(self, tmp_path: Path) -> None:
@@ -2199,7 +2199,7 @@ func (o *API) initHandlerCache() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 1
         assert routes[0].meta["handler_name"] == "healthHandler"
 
@@ -2218,7 +2218,7 @@ func (o *API) initHandlerCache() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 0
 
 
@@ -2248,7 +2248,7 @@ func (o *API) initHandlerCache() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 1
         assert routes[0].meta.get("handler_field") == "AlertGetAlertsHandler"
 
@@ -2290,7 +2290,7 @@ func (api *API) postAlertsHandler(params alert_ops.PostAlertsParams) middleware.
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 2
 
         get_alerts = next(r for r in routes if r.meta["http_method"] == "GET")
@@ -2315,7 +2315,7 @@ func (o *API) initHandlerCache() {
 
         result = analyze_go(tmp_path)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 1
         # No wiring pattern in this file, so handler_name stays as constructor
         assert routes[0].meta["handler_name"] == "NewHealthCheck"
@@ -2338,7 +2338,7 @@ func setup(o *API) {
 
         result = analyze_go(tmp_path)
         # No routes should be created from wiring-only code
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 0
 
 

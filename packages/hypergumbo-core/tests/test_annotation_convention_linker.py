@@ -253,7 +253,7 @@ class TestLinkRouteAnnotations:
         syms = [_make_sym("src/handler.rs", language="rust")]
         result = link_annotations(tmp_path, syms)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         assert routes[0].name == "POST join"
         assert routes[0].meta["hg_annotation"] == "route"
@@ -272,7 +272,7 @@ class TestLinkRouteAnnotations:
         syms = [_make_sym("src/api.rs", language="rust")]
         result = link_annotations(tmp_path, syms)
 
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) == 2
         names = {r.name for r in routes}
         assert "POST join" in names
@@ -478,4 +478,4 @@ class TestDirectiveFiltering:
         syms = [_make_sym("src/events.ts")]
         result = link_annotations(tmp_path, syms)
         assert len(result.symbols) == 1
-        assert result.symbols[0].kind == "route"
+        assert (result.symbols[0].meta or {}).get("framework_role") == "route"

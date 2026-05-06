@@ -339,11 +339,11 @@ def test_run_behavior_map_cbv_expansion(tmp_path: Path, monkeypatch: pytest.Monk
     fake_expanded = [Symbol(
         id="python:views.py:0-0:GET /foo/:route",
         name="GET /foo/",
-        kind="route",
+        kind="function",
         language="python",
         path="views.py",
         span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
-        meta={"http_method": "GET", "expanded_from_cbv": True},
+        meta={"http_method": "GET", "expanded_from_cbv": True, "framework_role": "route"},
     )]
     fake_removed = {"python:views.py:0-0:ANY /foo/:route"}
 

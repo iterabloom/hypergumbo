@@ -1557,7 +1557,7 @@ def _get_route_symbols(ctx: LinkerContext) -> list[Symbol]:
     """
     return [
         s for s in ctx.symbols
-        if s.kind == "route"
+        if (s.meta or {}).get("framework_role") == "route"
         or _has_route_concept(s)
     ]
 

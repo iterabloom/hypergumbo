@@ -2899,12 +2899,13 @@ class TestRouteKindEntrypointDetection:
         sym = make_symbol(
             "ListUsers",
             path="routers/api/v1/user.go",
-            kind="route",
+            kind="function",
             language="go",
             meta={
                 "route_path": "/api/v1/users",
                 "http_method": "GET",
                 "handler_name": "ListUsers",
+                "framework_role": "route",
             },
         )
         entrypoints = detect_entrypoints([sym], [])
@@ -2921,9 +2922,9 @@ class TestRouteKindEntrypointDetection:
         sym = make_symbol(
             "handler",
             path="routes.go",
-            kind="route",
+            kind="function",
             language="go",
-            meta={"http_method": "POST"},
+            meta={"http_method": "POST", "framework_role": "route"},
         )
         entrypoints = detect_entrypoints([sym], [])
 
@@ -2936,9 +2937,9 @@ class TestRouteKindEntrypointDetection:
         sym = make_symbol(
             "handler",
             path="routes.go",
-            kind="route",
+            kind="function",
             language="go",
-            meta={"route_path": "/health"},
+            meta={"route_path": "/health", "framework_role": "route"},
         )
         entrypoints = detect_entrypoints([sym], [])
 
@@ -2947,12 +2948,13 @@ class TestRouteKindEntrypointDetection:
         assert "/health" in route_eps[0].label
 
     def test_route_kind_no_metadata(self) -> None:
-        """Route symbol with no meta still becomes entrypoint."""
+        """Route symbol with no other meta still becomes entrypoint."""
         sym = make_symbol(
             "handler",
             path="routes.go",
-            kind="route",
+            kind="function",
             language="go",
+            meta={"framework_role": "route"},
         )
         entrypoints = detect_entrypoints([sym], [])
 
@@ -2965,11 +2967,12 @@ class TestRouteKindEntrypointDetection:
         sym = make_symbol(
             "ListUsers",
             path="routes.go",
-            kind="route",
+            kind="function",
             language="go",
             meta={
                 "route_path": "/users",
                 "http_method": "GET",
+                "framework_role": "route",
                 "concepts": [
                     {"concept": "route", "path": "/users", "method": "GET"},
                 ],
@@ -2984,13 +2987,13 @@ class TestRouteKindEntrypointDetection:
     def test_multiple_route_symbols(self) -> None:
         """Multiple route symbols each become entrypoints."""
         sym1 = make_symbol(
-            "GetUser", path="api.go", kind="route", language="go",
-            meta={"route_path": "/users/:id", "http_method": "GET"},
+            "GetUser", path="api.go", kind="function", language="go",
+            meta={"route_path": "/users/:id", "http_method": "GET", "framework_role": "route"},
             start_line=1, end_line=1,
         )
         sym2 = make_symbol(
-            "CreateUser", path="api.go", kind="route", language="go",
-            meta={"route_path": "/users", "http_method": "POST"},
+            "CreateUser", path="api.go", kind="function", language="go",
+            meta={"route_path": "/users", "http_method": "POST", "framework_role": "route"},
             start_line=10, end_line=10,
         )
         entrypoints = detect_entrypoints([sym1, sym2], [])
@@ -3197,9 +3200,9 @@ class TestApplicationLibraryExportDemotion:
         Only routes survive.
         """
         route = make_symbol(
-            "ListUsers", path="routers/api/v1/user.go", kind="route",
+            "ListUsers", path="routers/api/v1/user.go", kind="function",
             language="go",
-            meta={"route_path": "/api/v1/users", "http_method": "GET"},
+            meta={"route_path": "/api/v1/users", "http_method": "GET", "framework_role": "route"},
         )
         export1 = make_symbol(
             "GetEngine", path="models/engine.go", kind="function",
@@ -3398,9 +3401,9 @@ class TestApplicationLibraryExportDemotion:
         """
         routes = [
             make_symbol(
-                f"Route{i}", path=f"routers/api/v1/r{i}.go", kind="route",
+                f"Route{i}", path=f"routers/api/v1/r{i}.go", kind="function",
                 language="go", start_line=i,
-                meta={"route_path": f"/api/v1/r{i}", "http_method": "GET"},
+                meta={"route_path": f"/api/v1/r{i}", "http_method": "GET", "framework_role": "route"},
             )
             for i in range(50)  # Subset of 772
         ]
@@ -3598,7 +3601,7 @@ class TestRouteLabelDedup:
         """Multiple symbols producing HTTP POST /-/quit should yield one entry."""
         # Route symbol from route registration
         route_sym = make_symbol(
-            "POST /-/quit", path="web/web.go", kind="route",
+            "POST /-/quit", path="web/web.go", kind="function",
             language="go", start_line=565,
             meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
         )
@@ -3610,7 +3613,7 @@ class TestRouteLabelDedup:
         )
         # Another route registration at a different line
         route_sym2 = make_symbol(
-            "POST /-/quit", path="web/web.go", kind="route",
+            "POST /-/quit", path="web/web.go", kind="function",
             language="go", start_line=574,
             meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
         )
@@ -3626,12 +3629,12 @@ class TestRouteLabelDedup:
     def test_different_methods_same_path_not_deduplicated(self) -> None:
         """POST /-/quit and PUT /-/quit are different entrypoints."""
         post_sym = make_symbol(
-            "POST /-/quit", path="web/web.go", kind="route",
+            "POST /-/quit", path="web/web.go", kind="function",
             language="go", start_line=565,
             meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
         )
         put_sym = make_symbol(
-            "PUT /-/quit", path="web/web.go", kind="route",
+            "PUT /-/quit", path="web/web.go", kind="function",
             language="go", start_line=566,
             meta={"concepts": [{"concept": "route", "method": "PUT", "path": "/-/quit"}]},
         )
@@ -3645,13 +3648,13 @@ class TestRouteLabelDedup:
         """When deduplicating routes, the highest confidence entry is kept."""
         # Non-test file route (high confidence)
         prod_sym = make_symbol(
-            "POST /-/quit", path="web/web.go", kind="route",
+            "POST /-/quit", path="web/web.go", kind="function",
             language="go", start_line=565,
             meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
         )
         # Test file route (will get confidence penalty)
         test_sym = make_symbol(
-            "POST /-/quit", path="web/web_test.go", kind="route",
+            "POST /-/quit", path="web/web_test.go", kind="function",
             language="go", start_line=100,
             meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
         )

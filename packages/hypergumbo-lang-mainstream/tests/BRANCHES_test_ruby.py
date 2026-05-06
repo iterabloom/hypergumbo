@@ -184,7 +184,7 @@ def test_ruby_rails_route_with_to_option(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     route_names = [r["name"] for r in routes]
     assert any("/users" in name for name in route_names)
 
@@ -207,7 +207,7 @@ def test_ruby_rails_hash_rocket_route(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     # Even if routes aren't extracted, verify the file is analyzed
     classes = [n for n in data["nodes"] if n["kind"] == "class"]
     modules = [n for n in data["nodes"] if n["kind"] == "module"]
@@ -233,7 +233,7 @@ def test_ruby_rails_resources_macro(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     # resources :users should expand to multiple routes
     # Check for RESTful routes
     route_names = [r["name"] for r in routes]
@@ -259,7 +259,7 @@ def test_ruby_rails_resource_singular(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     # Should have some routes for the singular resources
     assert len(routes) >= 0
 
@@ -286,7 +286,7 @@ def test_ruby_sinatra_route_with_block(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     route_names = [r["name"] for r in routes]
     # Sinatra routes should be detected
     assert any("/" in name for name in route_names) or len(routes) >= 0

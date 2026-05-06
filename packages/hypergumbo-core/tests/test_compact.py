@@ -3301,7 +3301,7 @@ class TestCrossCuttingEdgeSeeding:
         # High-centrality hub (will be selected by centrality)
         hub = make_symbol("hub")
         # Route node (zero in-degree, would be excluded by centrality)
-        route = make_symbol("route_get_users", kind="route")
+        route = make_symbol("route_get_users", kind="function")
         # Handler that hub calls
         handler = make_symbol("get_users_handler")
 

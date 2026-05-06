@@ -383,7 +383,7 @@ class TestRoutePromotionFromDerived:
         # The route symbol should be present (promoted from tier 4 to tier 2)
         route_nodes = [
             n for n in nodes
-            if n.get("kind") == "route"
+            if (n.get("meta") or {}).get("framework_role") == "route"
             or any(
                 isinstance(c, dict) and c.get("concept") == "route"
                 for c in (n.get("meta") or {}).get("concepts", [])

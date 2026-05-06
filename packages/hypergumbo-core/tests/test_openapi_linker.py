@@ -196,7 +196,7 @@ paths:
         route_symbol = Symbol(
             id="python:/app.py:10-20:get_users:function",
             name="get_users",
-            kind="route",
+            kind="function",
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
@@ -230,7 +230,7 @@ paths:
         route_symbol = Symbol(
             id="python:/app.py:10-20:getUsers:function",
             name="getUsers",
-            kind="route",
+            kind="function",
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
@@ -266,7 +266,7 @@ paths:
         route_symbol = Symbol(
             id="python:/app.py:10-20:get_user:function",
             name="get_user",
-            kind="route",
+            kind="function",
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
@@ -300,7 +300,7 @@ paths:
         route_symbol = Symbol(
             id="python:/app.py:10-20:get_users:function",
             name="get_users",
-            kind="route",
+            kind="function",
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
@@ -427,7 +427,7 @@ paths:
         route_symbol = Symbol(
             id="python:/app.py:10-20:get_users:function",
             name="get_users",
-            kind="route",
+            kind="function",
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
@@ -536,10 +536,11 @@ paths:
         route = Symbol(
             id="test:route",
             name="get_users",
-            kind="route",
+            kind="function",
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            meta={"framework_role": "route"},
         )
         ctx = LinkerContext(repo_root=tmp_path, symbols=[route])
         symbols = _get_route_symbols(ctx)
@@ -555,7 +556,7 @@ paths:
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            meta={"concepts": [{"concept": "route", "path": "/users", "method": "GET"}]},
+            meta={"concepts": [{"concept": "route", "path": "/users", "method": "GET"}], "framework_role": "route"},
         )
         ctx = LinkerContext(repo_root=tmp_path, symbols=[route])
         symbols = _get_route_symbols(ctx)
@@ -591,11 +592,11 @@ paths:
         route = Symbol(
             id="python:/app.py:10-20:getUsers:function",
             name="getUsers",
-            kind="route",
+            kind="function",
             language="python",
             path=str(tmp_path / "app.py"),
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            meta={"path": "/users", "method": "GET"},
+            meta={"path": "/users", "method": "GET", "framework_role": "route"},
         )
         ctx = LinkerContext(repo_root=tmp_path, symbols=[route])
 

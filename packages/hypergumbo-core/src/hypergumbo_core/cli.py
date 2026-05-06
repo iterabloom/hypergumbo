@@ -1657,7 +1657,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
                 break
 
         # Check 2: symbol kind (analyzers create kind="route" symbols directly)
-        if not is_route and node.get("kind") == "route":
+        if not is_route and (node.get("meta") or {}).get("framework_role") == "route":
             is_route = True
 
         if is_route:
@@ -1687,7 +1687,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         # enrichment (Phase 3) can attach multiple concepts with different
         # methods when a handler is reused across GET/POST — using the
         # concept method would cause dedup collisions.
-        if node.get("kind") == "route":
+        if (node.get("meta") or {}).get("framework_role") == "route":
             route_path = meta.get("route_path")
             method = meta.get("http_method")
         if route_path is None:
@@ -1753,7 +1753,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
             route_path = None
             method = None
             controller_action = None
-            if route.get("kind") == "route":
+            if (route.get("meta") or {}).get("framework_role") == "route":
                 route_path = meta.get("route_path")
                 method = meta.get("http_method")
             if route_path is None:
@@ -6178,9 +6178,9 @@ def _is_route_symbol(symbol: Symbol) -> bool:
     meta.concepts list contains a concept='route' entry (produced by
     framework-YAML concept enrichment, e.g. FastAPI @app.get).
     """
-    if symbol.kind == "route":
-        return True
     meta = symbol.meta or {}
+    if meta.get("framework_role") == "route":
+        return True
     for concept in meta.get("concepts", []) or []:
         if isinstance(concept, dict) and concept.get("concept") == "route":
             return True
@@ -6197,7 +6197,7 @@ def _extract_route_info(symbol: Symbol) -> dict | None:
     route symbols fall back to the first matching concept entry.
     """
     meta = symbol.meta or {}
-    if symbol.kind == "route":
+    if meta.get("framework_role") == "route":
         method = meta.get("http_method")
         path = meta.get("route_path")
         if method and path:
@@ -6730,7 +6730,7 @@ def run_behavior_map(
     # the code is generated (e.g., go-swagger, protobuf gRPC stubs).
     for s in all_symbols:
         if s.supply_chain_tier == 4:
-            is_route = s.kind == "route"
+            is_route = (s.meta or {}).get("framework_role") == "route"
             if not is_route:
                 for concept in (s.meta or {}).get("concepts", []):
                     if isinstance(concept, dict) and concept.get("concept") == "route":

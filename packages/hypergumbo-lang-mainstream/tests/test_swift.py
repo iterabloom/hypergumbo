@@ -1602,7 +1602,7 @@ func routes(_ app: Application) throws {
         assert ctx.metadata["http_method"] == "GET"
 
         # Route symbols should also be created
-        routes = [s for s in result.symbols if s.kind == "route"]
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(routes) >= 1
         route = routes[0]
         assert route.name == "GET /hello"

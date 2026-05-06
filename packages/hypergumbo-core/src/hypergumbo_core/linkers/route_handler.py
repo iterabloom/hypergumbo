@@ -389,6 +389,8 @@ def _resolve_express_handler(
 
     def is_handler(sym: Symbol) -> bool:
         """Check if symbol is a potential handler (not a route itself)."""
+        if (sym.meta or {}).get("framework_role") == "route":
+            return False
         return sym.kind in ("function", "method", "arrow_function")
 
     def is_component(sym: Symbol) -> bool:
@@ -452,6 +454,8 @@ def _resolve_django_handler(
 
     def is_handler(sym: Symbol) -> bool:
         """Check if symbol is a potential Django handler (function or class)."""
+        if (sym.meta or {}).get("framework_role") == "route":  # pragma: no cover - ADR-0027 defensive: routes folded to kind=function shouldn't shadow real handlers
+            return False
         return sym.kind in ("function", "method", "class")
 
     # Try exact match first
@@ -521,6 +525,8 @@ def _resolve_go_handler(
 
     def is_handler(sym: Symbol) -> bool:
         """Check if symbol is a potential handler (not a route itself)."""
+        if (sym.meta or {}).get("framework_role") == "route":
+            return False
         return sym.kind in ("function", "method")
 
     # Try exact match first
@@ -640,21 +646,21 @@ def link_routes_to_handlers(
     for s in symbols:
         symbol_by_id[s.id] = s
         existing = symbol_by_name.get(s.name)
-        if existing is None or existing.kind == "route":
+        if existing is None or (existing.meta or {}).get("framework_role") == "route":
             symbol_by_name[s.name] = s
         # Also index by qualified name if available
         if s.meta and s.meta.get("qualified_name"):
             qn = s.meta["qualified_name"]
             existing_qn = symbol_by_name.get(qn)
-            if existing_qn is None or existing_qn.kind == "route":
+            if existing_qn is None or (existing_qn.meta or {}).get("framework_role") == "route":
                 symbol_by_name[qn] = s
         # Index by short name for same-file disambiguation
-        if s.kind in ("function", "method"):
+        if s.kind in ("function", "method") and (s.meta or {}).get("framework_role") != "route":
             short = s.name.rsplit(".", 1)[-1] if "." in s.name else s.name
             symbols_by_short_name.setdefault(short, []).append(s)
 
     # Find route symbols
-    routes = [s for s in symbols if s.kind == "route"]
+    routes = [s for s in symbols if (s.meta or {}).get("framework_role") == "route"]
 
     # Build Rails index once if there are any Rails routes
     rails_index: _RailsIndex | None = None
@@ -762,7 +768,7 @@ def _check_routes_available(ctx: LinkerContext) -> int:
     """Check how many route symbols have handler metadata."""
     count = 0
     for s in ctx.symbols:
-        if s.kind == "route" and _extract_handler_ref(s):
+        if (s.meta or {}).get("framework_role") == "route" and _extract_handler_ref(s):
             count += 1
     return count
 

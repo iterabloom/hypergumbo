@@ -1090,7 +1090,7 @@ def _extract_rails_routes(
                 route_symbol = Symbol(
                     id=route_id,
                     name=route_name,
-                    kind="route",
+                    kind="function",
                     language="ruby",
                     path=str(file_path),
                     span=span,
@@ -1098,6 +1098,7 @@ def _extract_rails_routes(
                         "http_method": http_meth,
                         "route_path": route_pth,
                         "controller_action": f"{controller_name}#{action}",
+                        "framework_role": "route",
                     },
                     origin=PASS_ID,
                     origin_run_id=run_id,
@@ -1138,7 +1139,7 @@ def _extract_rails_routes(
                 route_symbol = Symbol(
                     id=route_id,
                     name=route_name,
-                    kind="route",
+                    kind="function",
                     language="ruby",
                     path=str(file_path),
                     span=span,
@@ -1146,6 +1147,7 @@ def _extract_rails_routes(
                         "http_method": http_meth,
                         "route_path": route_pth,
                         "controller_action": f"{controller_name}#{action}",
+                        "framework_role": "route",
                     },
                     origin=PASS_ID,
                     origin_run_id=run_id,
@@ -1165,13 +1167,14 @@ def _extract_rails_routes(
                 "http_method": http_method,
                 "route_path": normalized_path,
                 "has_block": has_block,
+                "framework_role": "route",
             }
             if controller_action:
                 route_meta["controller_action"] = controller_action
             route_symbol = Symbol(
                 id=route_id,
                 name=route_name,
-                kind="route",
+                kind="function",
                 language="ruby",
                 path=str(file_path),
                 span=span,

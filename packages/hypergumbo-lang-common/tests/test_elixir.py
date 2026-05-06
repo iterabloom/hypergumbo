@@ -1088,7 +1088,7 @@ end
 ''')
         result = analyze_elixir(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 2
 
         get_route = next((s for s in route_symbols if "GET" in s.name), None)
@@ -1115,7 +1115,7 @@ end
 ''')
         result = analyze_elixir(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         # Phoenix resources creates 7 RESTful routes (same as Rails)
         assert len(route_symbols) == 7
 
@@ -1213,7 +1213,7 @@ end
 ''')
         result = analyze_elixir(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 3
 
         settings_route = next(
@@ -1245,7 +1245,7 @@ end
 ''')
         result = analyze_elixir(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 1
         route = route_symbols[0]
         assert route.meta["controller"] == "UserLive.Edit"
@@ -1266,7 +1266,7 @@ end
 ''')
         result = analyze_elixir(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 3
 
         methods = {s.meta["http_method"] for s in route_symbols}
@@ -2328,7 +2328,7 @@ end
 ''')
         result = analyze_elixir(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 1
 
         route = route_symbols[0]
@@ -2348,7 +2348,7 @@ end
 ''')
         result = analyze_elixir(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 1
 
         route = route_symbols[0]
@@ -2368,7 +2368,7 @@ end
 ''')
         result = analyze_elixir(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         # resources creates 7 RESTful routes
         assert len(route_symbols) == 7
 
@@ -2405,7 +2405,7 @@ end
 ''')
         result = analyze_elixir(tmp_path)
 
-        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 1
         assert route_symbols[0].meta["controller"] == "UserController"
 

@@ -2418,13 +2418,14 @@ def _extract_file_analysis(
             "route_path": route_path,
             "http_method": http_method,
             "view_name": view_name,
+            "framework_role": "route",
         }
         if is_cbv:
             meta["is_class_based_view"] = True
         symbol = Symbol(
             id=_make_symbol_id(str(py_file), ctx.span.start_line, ctx.span.end_line, route_path, "route"),
             name=f"django:{view_name or 'unknown'}",
-            kind="route",
+            kind="function",
             language="python",
             path=str(py_file),
             span=ctx.span,
@@ -2451,7 +2452,7 @@ def _extract_file_analysis(
                     f"{method}:{route_path}", "route",
                 ),
                 name=f"starlette:{view_name or 'unknown'}",
-                kind="route",
+                kind="function",
                 language="python",
                 path=str(py_file),
                 span=ctx.span,
@@ -2463,6 +2464,7 @@ def _extract_file_analysis(
                     "handler_ref": ctx.symbol_ref,
                     "framework": "starlette",
                     "route_class": receiver,
+                    "framework_role": "route",
                 },
             )
             symbols.append(symbol)
@@ -2479,7 +2481,7 @@ def _extract_file_analysis(
         symbol = Symbol(
             id=_make_symbol_id(str(py_file), ctx.span.start_line, ctx.span.end_line, route_path, "route"),
             name=f"{view_name or 'unknown'}",
-            kind="route",
+            kind="function",
             language="python",
             path=str(py_file),
             span=ctx.span,
@@ -2489,6 +2491,7 @@ def _extract_file_analysis(
                 "http_method": "ANY",
                 "view_name": view_name,
                 "handler_ref": ctx.symbol_ref,
+                "framework_role": "route",
             },
         )
         symbols.append(symbol)

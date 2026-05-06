@@ -221,7 +221,7 @@ def test_starlette_routes_appear_as_route_kind_nodes(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
     data = json.loads(out_path.read_text())
 
-    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
     paths_methods = sorted(
         (n["meta"]["route_path"], n["meta"]["http_method"]) for n in routes
     )
