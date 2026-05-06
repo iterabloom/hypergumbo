@@ -188,8 +188,8 @@ class TestLinkAnnotations:
         result = link_annotations(tmp_path, syms)
 
         assert len(result.symbols) == 2
-        pub_sym = next(s for s in result.symbols if s.kind == "event_publisher")
-        sub_sym = next(s for s in result.symbols if s.kind == "event_subscriber")
+        pub_sym = next(s for s in result.symbols if (s.meta or {}).get("framework_role") == "event_publisher")
+        sub_sym = next(s for s in result.symbols if (s.meta or {}).get("framework_role") == "event_subscriber")
         assert pub_sym.name == "events.created"
         assert sub_sym.name == "events.created"
         assert pub_sym.meta["hg_annotation"] == "publishes"
@@ -342,7 +342,7 @@ class TestLinkDispatchAnnotations:
         ]
         result = link_annotations(tmp_path, syms)
 
-        dispatchers = [s for s in result.symbols if s.kind == "dispatcher"]
+        dispatchers = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "dispatcher"]
         assert len(dispatchers) >= 1
 
 

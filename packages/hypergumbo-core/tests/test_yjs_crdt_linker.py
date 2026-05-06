@@ -218,8 +218,8 @@ class TestLinkYjsCrdt:
         result = link_yjs_crdt(tmp_path, syms)
 
         assert len(result.symbols) >= 2
-        pubs = [s for s in result.symbols if s.kind == "event_publisher"]
-        subs = [s for s in result.symbols if s.kind == "event_subscriber"]
+        pubs = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "event_publisher"]
+        subs = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "event_subscriber"]
         assert len(pubs) >= 1
         assert len(subs) >= 1
 

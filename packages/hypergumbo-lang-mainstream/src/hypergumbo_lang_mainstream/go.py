@@ -3463,7 +3463,9 @@ def _extract_go_routes(
                                         ),
                                         stable_id=make_route_stable_id("MOUNT", mount_prefix),
                                         name=handler_ref,
-                                        kind="route_mount",
+                                        # ADR-0027 Phase 3 / audit-findings 0013:
+                                        # framework-role leak.
+                                        kind="function",
                                         language="go",
                                         path=str(file_path),
                                         span=Span(
@@ -3477,6 +3479,7 @@ def _extract_go_routes(
                                         meta={
                                             "mount_prefix": mount_prefix,
                                             "handler_ref": handler_ref,
+                                            "framework_role": "route_mount",
                                         },
                                     )
                                     routes.append(mount_sym)
@@ -3501,6 +3504,8 @@ def _extract_go_routes(
                                                     f"go:external:0-0:"
                                                     f"{handler_ref}:function"
                                                 )
+                                            # ADR-0028 Phase 3 / audit-findings 0014:
+                                            # framework-dispatch leak.
                                             mount_edges.append(Edge.create(
                                                 src=enclosing.id,
                                                 dst=dst_id,
@@ -3511,7 +3516,10 @@ def _extract_go_routes(
                                                 origin_run_id=(
                                                     run.execution_id
                                                 ),
-                                                evidence_type="route_mount",
+                                                evidence_type="ast_call_direct",
+                                                meta={
+                                                    "framework_dispatch": "route_mount",
+                                                },
                                             ))
 
         elif n.type == "assignment_statement":

@@ -98,7 +98,8 @@ PATCH  /api/data/:id  controllers.Api.patchData(id: Int)
         content = "->  /api  api.Routes"
         syms, _ = parse_play_routes(content, "conf/routes", "run-1")
         assert len(syms) == 1
-        assert syms[0].kind == "route_include"
+        assert syms[0].kind == "function"
+        assert (syms[0].meta or {}).get("framework_role") == "route_include"
         assert syms[0].meta["route_prefix"] == "/api"
         assert syms[0].meta["module_ref"] == "api.Routes"
 
@@ -222,7 +223,7 @@ GET  /  controllers.Home.index
         result = analyze_play_routes(tmp_path)
         assert len(result.symbols) == 2
         routes = [s for s in result.symbols if s.kind == "route"]
-        includes = [s for s in result.symbols if s.kind == "route_include"]
+        includes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route_include"]
         assert len(routes) == 1
         assert len(includes) == 1
 

@@ -239,8 +239,8 @@ class TestLinkMessageDispatch:
         result = link_message_dispatch(tmp_path, syms)
 
         assert len(result.symbols) >= 2
-        senders = [s for s in result.symbols if s.kind == "message_sender"]
-        handlers = [s for s in result.symbols if s.kind == "message_handler"]
+        senders = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "message_sender"]
+        handlers = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "message_handler"]
         assert len(senders) >= 1
         assert len(handlers) >= 1
 

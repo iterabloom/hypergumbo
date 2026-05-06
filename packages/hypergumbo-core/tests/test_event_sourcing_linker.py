@@ -332,8 +332,8 @@ class TestEventSourcingLinker:
         result = link_events(tmp_path)
 
         assert len(result.symbols) == 2
-        publishers = [s for s in result.symbols if s.kind == "event_publisher"]
-        subscribers = [s for s in result.symbols if s.kind == "event_subscriber"]
+        publishers = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "event_publisher"]
+        subscribers = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "event_subscriber"]
         assert len(publishers) == 1
         assert len(subscribers) == 1
 
@@ -428,7 +428,8 @@ class TestEventSourcingLinker:
 
         assert len(result.symbols) == 1
         symbol = result.symbols[0]
-        assert symbol.kind == "event_publisher"
+        assert symbol.kind == "function"
+        assert (symbol.meta or {}).get("framework_role") == "event_publisher"
         assert symbol.meta["event_name"] == "user:created"
         assert symbol.meta["framework"] == "event_bus"
         assert symbol.stable_id == "user:created"
@@ -874,7 +875,8 @@ class TestFindSourceFiles:
 
         # Only the source file's symbol should exist
         assert len(result.symbols) == 1
-        assert result.symbols[0].kind == "event_publisher"
+        assert result.symbols[0].kind == "function"
+        assert (result.symbols[0].meta or {}).get("framework_role") == "event_publisher"
         # The symbol should be from the source file, not the test dir
         assert Path(result.symbols[0].path).name == "emitter.js"
 
@@ -953,8 +955,8 @@ class TestEventSubscriberToMethodEdges:
         result = event_sourcing_linker(ctx)
 
         # Should have publisher symbol but no subscriber symbols
-        pub_syms = [s for s in result.symbols if s.kind == "event_publisher"]
-        sub_syms = [s for s in result.symbols if s.kind == "event_subscriber"]
+        pub_syms = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "event_publisher"]
+        sub_syms = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "event_subscriber"]
         assert len(pub_syms) >= 1
         assert len(sub_syms) == 0
 

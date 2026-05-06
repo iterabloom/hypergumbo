@@ -644,18 +644,27 @@ def _scan_file(file_path: Path, content: str) -> list[EventPattern]:
 
 
 def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
-    """Create a symbol for an event publisher or subscriber."""
+    """Create a symbol for an event publisher or subscriber.
+
+    ADR-0027 Phase 3 / audit-findings 0013: event_publisher / event_subscriber
+    are framework-role values that fold to canonical kind="function" +
+    meta["framework_role"]. The role suffix is preserved in the Symbol ID
+    string for stable identity (the ID format `<lang>:<path>:<span>:<name>:<kind>`
+    used :event_publisher / :event_subscriber as the disambiguator).
+    """
     try:
         rel_path = Path(pattern.file_path).relative_to(root)
     except ValueError:  # pragma: no cover
         rel_path = Path(pattern.file_path)
 
-    kind = "event_publisher" if pattern.pattern_type == "publish" else "event_subscriber"
+    framework_role = (
+        "event_publisher" if pattern.pattern_type == "publish" else "event_subscriber"
+    )
 
     return Symbol(
-        id=f"{pattern.language}:{rel_path}:{pattern.line}-{pattern.line}:{pattern.event_name}:{kind}",
+        id=f"{pattern.language}:{rel_path}:{pattern.line}-{pattern.line}:{pattern.event_name}:{framework_role}",
         name=f"{pattern.event_name}",
-        kind=kind,
+        kind="function",
         path=pattern.file_path,
         span=Span(
             start_line=pattern.line,
@@ -670,6 +679,7 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
             "framework": pattern.framework,
             "pattern_type": pattern.pattern_type,
             "event_type": pattern.event_type,
+            "framework_role": framework_role,
         },
     )
 
@@ -721,10 +731,11 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                 subscriber_by_event[event_key] = []
             subscriber_by_event[event_key].append((pattern, symbol))
 
-    # Build (file_path, line) -> symbol index for fast publisher lookup
+    # Build (file_path, line) -> symbol index for fast publisher lookup.
+    # Post-fold: filter on meta["framework_role"] since kind is now "function".
     publisher_symbol_index: dict[tuple[str, int], Symbol] = {}
     for s in symbols:
-        if s.kind == "event_publisher":
+        if (s.meta or {}).get("framework_role") == "event_publisher":
             publisher_symbol_index[(s.path, s.span.start_line)] = s
 
     # Create edges from publishers to matching subscribers
@@ -752,6 +763,11 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                 # Edge.create merges it with the dataflow fields — assigning
                 # to edge.meta after construction would wipe access_mode and
                 # dest_access_mode set by the kwargs above (INV-forim).
+                #
+                # ADR-0028 Phase 3 / audit-findings 0014: pattern-detection leak
+                # (event_name_match was a regex/naming-pattern shape).
+                # Fold to evidence_type="naming_convention" +
+                # meta["detection_pattern"]="event_name".
                 edge = Edge.create(
                     src=pub_symbol.id,
                     dst=sub_symbol.id,
@@ -760,7 +776,7 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                     confidence=base_confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="event_name_match",
+                    evidence_type="naming_convention",
                     access_mode="write",
                     dest_access_mode="read",
                     channel=publisher.event_name,
@@ -771,6 +787,7 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                         "cross_language": is_cross_language,
                         "publisher_event_type": publisher.event_type,
                         "subscriber_event_type": sub_pattern.event_type,
+                        "detection_pattern": "event_name",
                     },
                 )
                 edges.append(edge)
@@ -812,7 +829,11 @@ def _create_subscriber_to_method_edges(
     mismatches between the linker's filesystem-derived paths and
     the analyzer pipeline's normalized paths).
     """
-    subscribers = [s for s in event_symbols if s.kind == "event_subscriber"]
+    # Post-fold: filter on meta["framework_role"] since kind is now "function".
+    subscribers = [
+        s for s in event_symbols
+        if (s.meta or {}).get("framework_role") == "event_subscriber"
+    ]
     if not subscribers:
         return []
 

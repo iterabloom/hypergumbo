@@ -353,7 +353,9 @@ def link_yjs_crdt(
                     shape_id=None,
                     canonical_name=f"yjs.write({write.channel})",
                     fingerprint=hashlib.sha256(pub_id.encode()).hexdigest()[:16],
-                    kind="event_publisher",
+                    # ADR-0027 Phase 3 / audit-findings 0013: framework-role
+                    # leak.
+                    kind="function",
                     name=write.channel,
                     path=write.file_path,
                     language="typescript",
@@ -362,7 +364,11 @@ def link_yjs_crdt(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
-                    meta={"yjs_api": write.api, "channel": write.channel},
+                    meta={
+                        "yjs_api": write.api,
+                        "channel": write.channel,
+                        "framework_role": "event_publisher",
+                    },
                     supply_chain_tier=2,
                     supply_chain_reason="synthetic Yjs CRDT publisher",
                 ))
@@ -375,7 +381,9 @@ def link_yjs_crdt(
                     shape_id=None,
                     canonical_name=f"yjs.observe({read.channel})",
                     fingerprint=hashlib.sha256(sub_id.encode()).hexdigest()[:16],
-                    kind="event_subscriber",
+                    # ADR-0027 Phase 3 / audit-findings 0013: framework-role
+                    # leak.
+                    kind="function",
                     name=read.channel,
                     path=read.file_path,
                     language="typescript",
@@ -384,7 +392,11 @@ def link_yjs_crdt(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
-                    meta={"yjs_api": read.api, "channel": read.channel},
+                    meta={
+                        "yjs_api": read.api,
+                        "channel": read.channel,
+                        "framework_role": "event_subscriber",
+                    },
                     supply_chain_tier=2,
                     supply_chain_reason="synthetic Yjs CRDT subscriber",
                 ))
@@ -392,6 +404,9 @@ def link_yjs_crdt(
             # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
             # CRDT publish IS publish; "crdt" is the channel kind.
             # Canonical 'event_publishes' + meta['channel_kind']='crdt'.
+            #
+            # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
+            # Fold evidence_type to ast_call_direct + meta key.
             result_edges.append(Edge.create(
                 src=pub_id,
                 dst=sub_id,
@@ -400,11 +415,14 @@ def link_yjs_crdt(
                 confidence=0.80,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="yjs_crdt_pattern",
+                evidence_type="ast_call_direct",
                 access_mode="write",
                 dest_access_mode="read",
                 channel=write.channel,
-                meta={"channel_kind": "crdt"},
+                meta={
+                    "channel_kind": "crdt",
+                    "framework_dispatch": "yjs_crdt",
+                },
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

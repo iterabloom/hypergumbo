@@ -159,16 +159,20 @@ def parse_play_routes(
                 name=inc_name,
                 kind="route_include",
             )
+            # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
+            # Fold runtime kind to "function" + meta["framework_role"]; the
+            # ID's :route_include suffix stays for stable identity.
             symbols.append(Symbol(
                 id=inc_id,
                 name=inc_name,
-                kind="route_include",
+                kind="function",
                 language="scala",
                 path=file_path,
                 span=span,
                 meta={
                     "route_prefix": prefix,
                     "module_ref": module_ref,
+                    "framework_role": "route_include",
                 },
                 origin=PASS_ID,
                 origin_run_id=run_id,

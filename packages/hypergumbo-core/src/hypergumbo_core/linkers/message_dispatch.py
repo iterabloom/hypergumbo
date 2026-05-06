@@ -263,7 +263,9 @@ def link_message_dispatch(
                     shape_id=None,
                     canonical_name=f"dispatch.send({write.channel})",
                     fingerprint=hashlib.sha256(pub_id.encode()).hexdigest()[:16],
-                    kind="message_sender",
+                    # ADR-0027 Phase 3 / audit-findings 0013: framework-role
+                    # leak.
+                    kind="function",
                     name=write.channel,
                     path=write.file_path,
                     language=lang,
@@ -272,7 +274,11 @@ def link_message_dispatch(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
-                    meta={"dispatch_api": write.api, "channel": write.channel},
+                    meta={
+                        "dispatch_api": write.api,
+                        "channel": write.channel,
+                        "framework_role": "message_sender",
+                    },
                     supply_chain_tier=2,
                     supply_chain_reason="message dispatch sender",
                 ))
@@ -285,7 +291,9 @@ def link_message_dispatch(
                     shape_id=None,
                     canonical_name=f"dispatch.handle({read.channel})",
                     fingerprint=hashlib.sha256(sub_id.encode()).hexdigest()[:16],
-                    kind="message_handler",
+                    # ADR-0027 Phase 3 / audit-findings 0013: framework-role
+                    # leak.
+                    kind="function",
                     name=read.channel,
                     path=read.file_path,
                     language=lang,
@@ -294,7 +302,11 @@ def link_message_dispatch(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
-                    meta={"dispatch_api": read.api, "channel": read.channel},
+                    meta={
+                        "dispatch_api": read.api,
+                        "channel": read.channel,
+                        "framework_role": "message_handler",
+                    },
                     supply_chain_tier=2,
                     supply_chain_reason="message dispatch handler",
                 ))

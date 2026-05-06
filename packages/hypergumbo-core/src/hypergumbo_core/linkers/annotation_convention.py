@@ -189,7 +189,9 @@ def link_annotations(
                     shape_id=None,
                     canonical_name=f"@hg:publishes {channel}",
                     fingerprint=hashlib.sha256(pub_id.encode()).hexdigest()[:16],
-                    kind="event_publisher",
+                    # ADR-0027 Phase 3 / audit-findings 0013: framework-role
+                    # leak.
+                    kind="function",
                     name=channel,
                     path=pub.file_path,
                     language="unknown",
@@ -198,7 +200,11 @@ def link_annotations(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
-                    meta={"hg_annotation": "publishes", "channel": channel},
+                    meta={
+                        "hg_annotation": "publishes",
+                        "channel": channel,
+                        "framework_role": "event_publisher",
+                    },
                     supply_chain_tier=2,
                     supply_chain_reason="@hg:publishes annotation",
                 ))
@@ -213,7 +219,9 @@ def link_annotations(
                         shape_id=None,
                         canonical_name=f"@hg:subscribes {channel}",
                         fingerprint=hashlib.sha256(sub_id.encode()).hexdigest()[:16],
-                        kind="event_subscriber",
+                        # ADR-0027 Phase 3 / audit-findings 0013: framework-role
+                        # leak.
+                        kind="function",
                         name=channel,
                         path=sub.file_path,
                         language="unknown",
@@ -222,7 +230,11 @@ def link_annotations(
                             start_col=0, end_col=0,
                         ),
                         origin=PASS_ID,
-                        meta={"hg_annotation": "subscribes", "channel": channel},
+                        meta={
+                            "hg_annotation": "subscribes",
+                            "channel": channel,
+                            "framework_role": "event_subscriber",
+                        },
                         supply_chain_tier=2,
                         supply_chain_reason="@hg:subscribes annotation",
                     ))
@@ -292,7 +304,8 @@ def link_annotations(
                 shape_id=None,
                 canonical_name=f"@hg:dispatches {target_name}",
                 fingerprint=hashlib.sha256(disp_id.encode()).hexdigest()[:16],
-                kind="dispatcher",
+                # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
+                kind="function",
                 name=target_name,
                 path=disp.file_path,
                 language="unknown",
@@ -301,7 +314,11 @@ def link_annotations(
                     start_col=0, end_col=0,
                 ),
                 origin=PASS_ID,
-                meta={"hg_annotation": "dispatches", "channel": target_name},
+                meta={
+                    "hg_annotation": "dispatches",
+                    "channel": target_name,
+                    "framework_role": "dispatcher",
+                },
                 supply_chain_tier=2,
                 supply_chain_reason="@hg:dispatches annotation",
             ))

@@ -1931,7 +1931,7 @@ func listUsers(w http.ResponseWriter, r *http.Request) {}
 
         result = analyze_go(tmp_path)
 
-        mounts = [s for s in result.symbols if s.kind == "route_mount"]
+        mounts = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route_mount"]
         assert len(mounts) == 1, (
             f"Expected 1 route_mount symbol, found {len(mounts)}: "
             f"{[s.name for s in mounts]}"
@@ -1974,7 +1974,7 @@ func showDashboard(w http.ResponseWriter, r *http.Request) {}
         # There should be an edge from setupRoutes → adminRoutes
         mount_edges = [
             e for e in result.edges
-            if e.evidence_type == "route_mount"
+            if (e.meta or {}).get("framework_dispatch") == "route_mount"
         ]
         assert len(mount_edges) == 1, (
             f"Expected 1 route_mount edge, found {len(mount_edges)}"
@@ -2007,7 +2007,7 @@ func webhookRoutes() chi.Router { return nil }
 
         result = analyze_go(tmp_path)
 
-        mounts = [s for s in result.symbols if s.kind == "route_mount"]
+        mounts = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route_mount"]
         prefixes = sorted([s.meta["mount_prefix"] for s in mounts if s.meta])
         assert prefixes == ["/admin", "/api/v1", "/webhooks"], (
             f"Expected 3 mount prefixes, found: {prefixes}"
@@ -2033,7 +2033,7 @@ func main() {
 
         result = analyze_go(tmp_path)
 
-        mounts = [s for s in result.symbols if s.kind == "route_mount"]
+        mounts = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route_mount"]
         assert len(mounts) == 1
         assert mounts[0].meta["mount_prefix"] == "/api/v1"
         # For package-qualified calls, handler_ref includes the package
