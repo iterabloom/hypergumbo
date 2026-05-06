@@ -59,25 +59,32 @@ PASS_ID = make_pass_id("containment-linker")
 
 # Symbol kinds that can be "contained" by a class/interface/service.
 #
-# ADR-0027 Phase-2 audit (WI-jukav): MIXED. ``method``, ``getter``,
-# ``setter`` are Cluster A (forward-compatible). ``rpc`` is Cluster D
-# (AXIS_ENDPOINT_SHAPE) — folds to ``method`` + meta["framework_role"]="rpc"
-# in Wave 5. ``message`` is Cluster H pending. Follow-on PR
-# (WI-jukav slice 2) will dual-shape this set or split into
-# language-construct + framework-role components.
+# ADR-0027 Phase-2 audit (WI-jukav slice 2 verdict): no dual-shape
+# predicate needed. The post-fold canonical for Cluster D ``rpc`` is
+# ``method`` + ``meta["framework_role"]="rpc"`` — and ``method`` is
+# already in this set, so post-fold producers (when proto.py /
+# thrift.py / capnp.py eventually migrate, currently legacy-shape)
+# continue to match unchanged. Cluster H pending ``message`` resolves
+# in Wave 6 and similarly cannot fold without changing this set.
+# Live producers today (proto.py, thrift.py, capnp.py) emit the
+# legacy kinds directly through positional helpers that the L3
+# producer-coherence linter cannot statically gate; the Wave-5
+# framework-linker producers don't reach this filter (their
+# synthetic-node names lack class-qualifier separators, so the
+# parent-extraction step in :func:`link_containment` skips them
+# before kind matters).
 CONTAINABLE_KINDS = frozenset({"method", "getter", "setter", "rpc", "message"})
 
 # Symbol kinds that can "contain" other symbols.
 # Includes struct/trait/enum for Rust (and Go/C/Zig structs),
 # service for proto (contains RPCs), message for proto (nested messages).
 #
-# ADR-0027 Phase-2 audit (WI-jukav): MIXED. Cluster A:
-# {class, interface, struct, trait, enum, module}. Cluster D
-# (AXIS_ENDPOINT_SHAPE): ``service`` — folds to interface/class
-# + meta["framework_role"]="service" in Wave 5. ``message`` is
-# Cluster H pending. Follow-on PR (WI-jukav slice 2) will dual-shape
-# this set; the proto-IDL containment relationship is real but
-# Wave-5-emit-shape-aware.
+# ADR-0027 Phase-2 audit (WI-jukav slice 2 verdict): no dual-shape
+# predicate needed. The post-fold canonical for Cluster D ``service``
+# is ``interface``/``class`` + ``meta["framework_role"]="service"`` —
+# both are already in this set. Wave-5 framework-linker producers
+# don't reach this filter for the same reason as ``CONTAINABLE_KINDS``
+# above (synthetic-node names lack class-qualifier separators).
 CONTAINER_KINDS = frozenset({
     "class", "interface", "struct", "trait", "enum", "module",
     "service", "message",

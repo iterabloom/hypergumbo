@@ -115,7 +115,7 @@ from .profile import detect_profile
 from .schema import new_behavior_map
 from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_representativeness_table
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
-from .selection.filters import EXCLUDED_KINDS
+from .selection.filters import is_excluded_kind
 from .supply_chain import classify_file, detect_package_roots
 from .ranking import (
     rank_symbols, _is_test_path, compute_transitive_test_coverage,
@@ -3018,8 +3018,12 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         outd = out_degree.get(node_id, 0)
         degree = ind + outd
 
-        # Apply filters
-        if kind in EXCLUDED_KINDS:
+        # Apply filters. WI-jukav slice 2: dual-shape predicate
+        # forward-compat with ADR-0027 §"Phase 3" Wave 5 framework_role
+        # fold — synthetic post-fold nodes (kind=function|method +
+        # meta.framework_role=<excluded role>) are excluded the same as
+        # their pre-fold legacy-kind counterparts.
+        if is_excluded_kind(kind, node.get("meta")):
             continue
         if args.kind and kind != args.kind:
             continue

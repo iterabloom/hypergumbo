@@ -58,7 +58,8 @@ from .ranking import (
 )
 from .selection.filters import (
     EXAMPLE_PATH_PATTERNS,  # re-export for backwards compatibility
-    EXCLUDED_KINDS,
+    EXCLUDED_KINDS,  # re-export: test_compact.py imports this  # noqa: F401
+    is_excluded_kind,
     is_test_path as _is_test_path,  # re-export: test_compact.py imports this  # noqa: F401
     is_example_path as _is_example_path,
 )
@@ -1133,7 +1134,14 @@ def select_by_tokens(
     # These are excluded from selection but still count toward "omitted"
     eligible_symbols = symbols
     if exclude_non_code:
-        eligible_symbols = [s for s in eligible_symbols if s.kind not in EXCLUDED_KINDS]
+        # WI-jukav slice 2: dual-shape predicate forward-compat with
+        # ADR-0027 §"Phase 3" Wave 5 framework_role fold (post-fold
+        # synthetic ``method``/``function`` symbols carry the legacy
+        # role on ``meta["framework_role"]``).
+        eligible_symbols = [
+            s for s in eligible_symbols
+            if not is_excluded_kind(s.kind, s.meta)
+        ]
     if exclude_tests:
         eligible_symbols = [
             s for s in eligible_symbols
@@ -1357,9 +1365,11 @@ def format_tiered_behavior_map(
     # (slice / verify-claims / test-coverage) to reason about external
     # edges, but the tiered compact view must still hide them because
     # they have no source code.
+    # WI-jukav slice 2 dual-shape: see comment on the eligible_symbols
+    # filter ~225 lines above.
     eligible_symbols = [
         s for s in symbols
-        if s.kind not in EXCLUDED_KINDS
+        if not is_excluded_kind(s.kind, s.meta)
         and not _is_test_node(s.path, s.meta)
         and not _is_example_path(s.path)
         and not is_external_boundary(s)

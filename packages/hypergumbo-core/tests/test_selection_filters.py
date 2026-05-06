@@ -4,6 +4,7 @@
 from hypergumbo_core.selection.filters import (
     is_test_path,
     is_example_path,
+    is_excluded_kind,
     EXCLUDED_KINDS,
     EXAMPLE_PATH_PATTERNS,
 )
@@ -189,6 +190,63 @@ class TestExcludedKinds:
         assert "function" not in EXCLUDED_KINDS
         assert "class" not in EXCLUDED_KINDS
         assert "method" not in EXCLUDED_KINDS
+
+
+class TestIsExcludedKind:
+    """Tests for is_excluded_kind dual-shape predicate (WI-jukav slice 2).
+
+    Forward-compatible across ADR-0027 §"Phase 3" Wave 5 framework_role
+    fold: matches both pre-fold (Symbol.kind == legacy_role) and post-fold
+    (Symbol.kind in {function, method} + Symbol.meta["framework_role"] ==
+    legacy_role) emit shapes."""
+
+    def test_legacy_kind_in_set_is_excluded(self):
+        """Pre-fold shape: legacy framework-role kind directly in set."""
+        assert is_excluded_kind("event_subscriber") is True
+
+    def test_legacy_kind_not_in_set_is_not_excluded(self):
+        """A kind not in the set is not excluded regardless of meta."""
+        assert is_excluded_kind("function") is False
+        assert is_excluded_kind("class") is False
+
+    def test_post_fold_method_with_excluded_role_is_excluded(self):
+        """Post-fold shape: kind=method + meta.framework_role=excluded."""
+        assert is_excluded_kind(
+            "method", {"framework_role": "event_subscriber"},
+        ) is True
+
+    def test_post_fold_function_with_excluded_role_is_excluded(self):
+        """Post-fold shape: kind=function + meta.framework_role=excluded."""
+        assert is_excluded_kind(
+            "function", {"framework_role": "event_subscriber"},
+        ) is True
+
+    def test_post_fold_method_with_unrelated_role_is_not_excluded(self):
+        """A function-role that's NOT in EXCLUDED_KINDS (e.g.,
+        framework_role='route') doesn't trigger exclusion. Routes are
+        first-class endpoints — the user wants to see them."""
+        assert is_excluded_kind(
+            "method", {"framework_role": "route"},
+        ) is False
+
+    def test_bare_method_no_meta_is_not_excluded(self):
+        """Real methods (no framework_role meta) must not be excluded."""
+        assert is_excluded_kind("method") is False
+        assert is_excluded_kind("method", {}) is False
+        assert is_excluded_kind("method", None) is False
+
+    def test_meta_without_framework_role_is_not_excluded(self):
+        """Meta dict present but no framework_role key — not excluded."""
+        assert is_excluded_kind("method", {"signature": "foo()"}) is False
+
+    def test_non_callable_kind_with_meta_role_is_not_excluded(self):
+        """Only kind in {function, method} triggers the meta lookup —
+        a struct or class with framework_role meta isn't excluded by
+        this dual-shape rule. Defends against accidentally over-excluding
+        framework-role-tagged container kinds."""
+        assert is_excluded_kind(
+            "class", {"framework_role": "event_subscriber"},
+        ) is False
 
 
 class TestExamplePathPatterns:

@@ -27,6 +27,7 @@ token_budget : Token estimation and budget management
 from .filters import (
     is_test_path,
     is_example_path,
+    is_excluded_kind,
     EXCLUDED_KINDS,
     EXAMPLE_PATH_PATTERNS,
 )
@@ -62,6 +63,7 @@ __all__ = [
     "group_files_by_language",
     "group_symbols_by_language",
     "is_example_path",
+    "is_excluded_kind",
     "is_test_path",
     "parse_tier_spec",
     "select_proportionally",

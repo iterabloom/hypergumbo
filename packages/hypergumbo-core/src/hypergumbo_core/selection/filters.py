@@ -27,6 +27,7 @@ implementations of is_test_path with different pattern sets.
 from __future__ import annotations
 
 import os
+from typing import Any, Dict, Optional
 
 from ..paths import is_test_file
 
@@ -36,11 +37,14 @@ from ..paths import is_test_file
 # ADR-0027 Phase-2 audit (WI-jukav): MIXED axis membership.
 # - AXIS_LANGUAGE_CONSTRUCT (Cluster A): ``variable``.
 # - AXIS_ENDPOINT_SHAPE (Cluster D — Wave 5 fold target):
-#   ``event_subscriber``. After Wave 5 this fires only when the
-#   producer still emits the legacy kind label, NOT when it's
-#   moved to meta["framework_role"]. Follow-on PR (WI-jukav slice 2)
-#   will dual-shape the framework-role members so the exclusion
-#   filter survives Wave 5.
+#   ``event_subscriber``. WI-jukav slice 2 closes this leg via the
+#   :func:`is_excluded_kind` dual-shape predicate below — post-Wave-5
+#   producers emit ``kind="method"`` + ``meta["framework_role"]=
+#   "event_subscriber"``, which the predicate matches alongside the
+#   pre-fold ``kind="event_subscriber"`` shape. The set still names
+#   the legacy label so the predicate's ``meta`` lookup has a
+#   reference vocabulary and so any unmigrated producer continues to
+#   match.
 # - AXIS_PENDING (Clusters B/G/H): ``dependency``, ``devDependency``,
 #   ``file``, ``target``, ``special_target``, ``project``, ``package``,
 #   ``script``, ``module_file``, ``section``, ``code_block``, ``link``,
@@ -70,6 +74,44 @@ EXCLUDED_KINDS = frozenset({
     "code_block",       # markdown fenced code blocks
     "link",             # markdown links
 })
+
+
+def is_excluded_kind(kind: str, meta: Optional[Dict[str, Any]] = None) -> bool:
+    """Dual-shape predicate for ``EXCLUDED_KINDS`` (WI-jukav slice 2).
+
+    Forward-compatible across ADR-0027 §"Phase 3" Wave 5 framework_role
+    fold: matches both the pre-fold emit shape (``Symbol.kind`` directly
+    carries the legacy framework-role label, e.g. ``"event_subscriber"``)
+    and the post-fold shape (``Symbol.kind`` is the canonical language
+    construct ``"function"`` or ``"method"`` and the role moves to
+    ``Symbol.meta["framework_role"]``).
+
+    Why this lives here rather than as ``sym.kind in EXCLUDED_KINDS``
+    inline: post-fold synthetic nodes (Phoenix Channels event subscribers,
+    Django signal receivers, etc.) emit ``kind="method"`` plus a
+    ``framework_role`` meta key. The bare set membership check would no
+    longer exclude them, silently inflating selection / compact output
+    with framework-emitted synthetics. Naively widening the set to
+    include ``"method"`` over-excludes every real method, so the
+    forward-compat path goes through this predicate instead.
+
+    Args:
+        kind: Symbol's ``kind`` field.
+        meta: Symbol's ``meta`` dict (or ``None`` if no meta).
+
+    Returns:
+        ``True`` iff the symbol should be excluded by selection /
+        compact filters.
+
+    Mirrors :func:`hypergumbo_core.linkers.registry._is_synthetic_node`
+    in shape — the slice 1 idiom for SYNTHETIC_KINDS — applied here to
+    the slice 2 at-risk surface.
+    """
+    if kind in EXCLUDED_KINDS:
+        return True
+    if kind in {"function", "method"} and meta:
+        return meta.get("framework_role") in EXCLUDED_KINDS
+    return False
 
 # Path patterns indicating example/demo code
 # Include both /examples/ and examples/ to handle absolute and relative paths
