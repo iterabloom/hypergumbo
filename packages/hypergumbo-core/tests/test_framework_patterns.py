@@ -765,6 +765,42 @@ class TestPattern:
         assert result["concept"] == "route"
         assert result["matched_framework_role"] == "route"
 
+    def test_pattern_symbol_name_plus_framework_role_combined(self) -> None:
+        """Combined symbol_name + framework_role pattern requires both to match."""
+        pattern = Pattern(
+            concept="root_route",
+            symbol_name=r"^GET /$",
+            framework_role=r"^route$",
+        )
+
+        # Both match: symbol_name matches AND framework_role matches.
+        match_symbol = Symbol(
+            id="test:routes.rb:1:get_root:route",
+            name="GET /",
+            kind="function",
+            language="ruby",
+            path="config/routes.rb",
+            span=Span(1, 1, 0, 10),
+            meta={"framework_role": "route"},
+        )
+        result = pattern.matches(match_symbol)
+        assert result is not None
+        assert result["concept"] == "root_route"
+        assert result["matched_symbol_name"] == "GET /"
+        assert result["matched_framework_role"] == "route"
+
+        # symbol_name matches but framework_role does not — pattern does not match.
+        wrong_role = Symbol(
+            id="test:lib.rb:1:GET /:function",
+            name="GET /",
+            kind="function",
+            language="ruby",
+            path="lib.rb",
+            span=Span(1, 1, 0, 10),
+            meta={"framework_role": "websocket_endpoint"},
+        )
+        assert pattern.matches(wrong_role) is None
+
     def test_pattern_framework_role_no_match_when_meta_absent(self) -> None:
         """framework_role pattern does not match when meta lacks the key."""
         pattern = Pattern(concept="route", framework_role=r"^route$")
