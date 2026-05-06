@@ -395,10 +395,10 @@ def link_pyffi(
                 confidence=0.85,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="pyo3_bridge",
+                evidence_type="ast_call_direct",
                 access_mode="write",
                 dest_access_mode="read",
-                meta={"bridge_kind": "ffi"},
+                meta={"bridge_kind": "ffi", "framework_dispatch": "pyo3_bridge"},
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

@@ -273,15 +273,27 @@ def _extract_cuda_edges(
                     dst_id = f"cuda:external:{called_name}:function"
                     confidence = 0.70
 
-                edge = Edge.create(
-                    src=caller.id,
-                    dst=dst_id,
-                    edge_type=edge_type,
-                    line=start_line,
-                    confidence=confidence,
-                    origin=PASS_ID,
-                    evidence_type="cuda_kernel_launch" if is_kernel_launch else "cuda_call",
-                )
+                if is_kernel_launch:
+                    edge = Edge.create(
+                        src=caller.id,
+                        dst=dst_id,
+                        edge_type=edge_type,
+                        line=start_line,
+                        confidence=confidence,
+                        origin=PASS_ID,
+                        evidence_type="ast_call_direct",
+                        meta={"framework_dispatch": "cuda_kernel_launch"},
+                    )
+                else:
+                    edge = Edge.create(
+                        src=caller.id,
+                        dst=dst_id,
+                        edge_type=edge_type,
+                        line=start_line,
+                        confidence=confidence,
+                        origin=PASS_ID,
+                        evidence_type="ast_call_direct",
+                    )
                 edges.append(edge)
 
 

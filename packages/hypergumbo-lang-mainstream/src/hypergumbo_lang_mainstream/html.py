@@ -138,8 +138,9 @@ def analyze_html(
                 line=line_num,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="script_src",
+                evidence_type="ast_import",
                 confidence=0.95,  # High confidence for static HTML
+                meta={"framework_dispatch": "html_script_src"},
             )
             edges.append(edge)
 

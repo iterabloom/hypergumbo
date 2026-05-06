@@ -226,9 +226,10 @@ def go_memberlist_linker(ctx: LinkerContext) -> LinkerResult:
                         line=target.span.start_line,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
-                        evidence_type="go_memberlist_delegate",
+                        evidence_type="ast_call_direct",
                         meta={
                             "delegate_method": _short_name(target.name),
+                            "framework_dispatch": "memberlist",
                         },
                     ),
                 )

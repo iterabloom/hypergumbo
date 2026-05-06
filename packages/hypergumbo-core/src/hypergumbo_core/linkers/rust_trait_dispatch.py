@@ -176,7 +176,8 @@ def link_rust_trait_dispatch(ctx: LinkerContext) -> LinkerResult:
                     confidence=0.85,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="rust_trait_dispatch",
+                    evidence_type="ast_call_direct",
+                    meta={"framework_dispatch": "rust_trait_dispatch"},
                 ),
             )
 

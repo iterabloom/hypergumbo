@@ -249,7 +249,8 @@ class TestLinkKafkaStreamsDispatch:
         assert e.src == cls.id
         assert e.dst == apply_method.id
         assert e.edge_type == "dispatches_to"
-        assert e.evidence_type == "kafka_streams_dispatch"
+        assert e.evidence_type == "ast_call_direct"
+        assert (e.meta or {}).get("framework_dispatch") == "kafka_streams"
         assert e.confidence == 0.90
 
     def test_transformer_emits_three_lifecycle_edges(self) -> None:

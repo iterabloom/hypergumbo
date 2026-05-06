@@ -116,8 +116,9 @@ def link_vue_template_methods(
             line=sym.span.start_line if sym.span else 0,
             origin=PASS_ID,
             origin_run_id="",
-            evidence_type="vue_event_handler",
+            evidence_type="ast_call_direct",
             confidence=0.90,
+            meta={"framework_dispatch": "vue_event_handler"},
         )
         new_edges.append(edge)
 

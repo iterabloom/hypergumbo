@@ -349,7 +349,8 @@ class TestPyFFILinkerPyO3:
         edge = result.edges[0]
         assert edge.edge_type == "calls"
         assert edge.dst == rust_func.id
-        assert edge.evidence_type == "pyo3_bridge"
+        assert edge.evidence_type == "ast_call_direct"
+        assert (edge.meta or {}).get("framework_dispatch") == "pyo3_bridge"
 
     def test_pyo3_pyclass_method(self, tmp_path: Path) -> None:
         """Rust #[pymethods] with matching Python call creates edge."""
@@ -405,7 +406,8 @@ class TestPyFFILinkerPyO3:
         )
 
         assert len(result.edges) == 1
-        assert result.edges[0].evidence_type == "pyo3_bridge"
+        assert result.edges[0].evidence_type == "ast_call_direct"
+        assert (result.edges[0].meta or {}).get("framework_dispatch") == "pyo3_bridge"
 
     def test_no_link_without_pyfunction_decorator(self, tmp_path: Path) -> None:
         """Regular Rust functions without #[pyfunction] don't create edges."""

@@ -396,10 +396,10 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                                 confidence=confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
-                                evidence_type="otp_genserver_dispatch",
+                                evidence_type="ast_call_direct",
                             )
                             edge.meta = {
-                                "evidence_type": "otp_genserver_dispatch",
+                                "framework_dispatch": "otp_genserver",
                                 "call_type": call_type,
                                 "target": target,
                             }
@@ -485,10 +485,10 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                                 confidence=confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
-                                evidence_type="otp_genserver_dispatch",
+                                evidence_type="ast_call_direct",
                             )
                             edge.meta = {
-                                "evidence_type": "otp_genserver_dispatch",
+                                "framework_dispatch": "otp_genserver",
                                 "call_type": call_type,
                                 "target": target,
                             }

@@ -157,7 +157,8 @@ class TestLinkRustTraitDispatch:
         for e in result.edges:
             assert e.src == t.id
             assert e.edge_type == "dispatches_to"
-            assert e.evidence_type == "rust_trait_dispatch"
+            assert e.evidence_type == "ast_call_direct"
+            assert (e.meta or {}).get("framework_dispatch") == "rust_trait_dispatch"
             assert e.confidence == 0.85
 
     def test_no_implements_edges_no_op(self) -> None:

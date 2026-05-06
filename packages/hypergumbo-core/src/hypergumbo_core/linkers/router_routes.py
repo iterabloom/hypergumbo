@@ -186,9 +186,9 @@ def link_router_routes(ctx: LinkerContext) -> LinkerResult:
                 edge_type="references",
                 line=winner.span.start_line,
                 origin=PASS_ID,
-                evidence_type="router_routes",
+                evidence_type="ast_call_direct",
                 confidence=0.80,
-                meta={"mechanism": "route_registration"},
+                meta={"mechanism": "route_registration", "framework_dispatch": "router_routes"},
             )
             edges.append(edge)
 

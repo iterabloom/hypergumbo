@@ -206,7 +206,8 @@ class TestLinkDecoratorDispatch:
         for edge in result.edges:
             assert edge.src == dispatch_site.id
             assert edge.edge_type == "dispatches_to"
-            assert edge.evidence_type == "registry_dispatch"
+            assert edge.evidence_type == "ast_call_direct"
+            assert (edge.meta or {}).get("framework_dispatch") == "registry_dispatch"
             assert edge.confidence == 0.70
 
     def test_no_dispatch_site_no_edges(self) -> None:

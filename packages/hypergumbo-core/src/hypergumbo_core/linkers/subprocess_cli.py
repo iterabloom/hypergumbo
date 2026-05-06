@@ -408,13 +408,14 @@ def link_subprocess(root: Path, cli_symbols: list[Symbol]) -> SubprocessLinkResu
                     confidence=confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="subprocess_cli_match",
+                    evidence_type="ast_call_direct",
                 )
                 edge.meta = {
                     "executable": call.executable,
                     "subcommand": call.subcommand,
                     "call_type": call.call_type,
                     "is_python_m": call.is_python_m,
+                    "detection_pattern": "subprocess_cli",
                 }
                 edges.append(edge)
 

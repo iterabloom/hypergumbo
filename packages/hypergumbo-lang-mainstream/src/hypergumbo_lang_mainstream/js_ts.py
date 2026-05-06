@@ -4106,8 +4106,9 @@ def _extract_edges(
                                 line=node.start_point[0] + 1 + line_offset,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
-                                evidence_type="middleware_chain",
+                                evidence_type="ast_call_direct",
                                 confidence=0.70,
+                                meta={"framework_dispatch": "middleware_chain"},
                             ))
 
         # new ClassName() or new namespace.ClassName()

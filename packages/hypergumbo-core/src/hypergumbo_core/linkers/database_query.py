@@ -425,12 +425,13 @@ def link_database_queries(root: Path, table_symbols: list[Symbol]) -> DatabaseQu
                     confidence=0.85,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="table_name_match",
+                    evidence_type="naming_convention",
                 )
                 edge.meta = {
                     "table_name": table_name,
                     "query_type": pattern.query_type,
                     "cross_language": is_cross_language,
+                    "detection_pattern": "table_name",
                 }
                 edges.append(edge)
 

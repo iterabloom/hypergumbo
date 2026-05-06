@@ -287,10 +287,10 @@ def link_wasm_bindgen(
                 confidence=0.85,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="wasm_bindgen_import",
+                evidence_type="ast_import",
                 access_mode="write",
                 dest_access_mode="read",
-                meta={"bridge_kind": "wasm"},
+                meta={"bridge_kind": "wasm", "framework_dispatch": "wasm_bindgen_import"},
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
@@ -427,7 +427,8 @@ def _create_wasm_load_edges(
                 confidence=0.80,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="wasm_instantiate",
+                evidence_type="ast_call_direct",
+                meta={"framework_dispatch": "wasm_instantiate"},
             ))
 
     return edges, symbols

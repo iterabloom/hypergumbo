@@ -237,10 +237,11 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
                         line=line,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
-                        evidence_type="go_cobra_dispatch",
+                        evidence_type="ast_call_direct",
                         meta={
                             "cobra_field": field,
                             "handler_name": handler_name,
+                            "framework_dispatch": "cobra",
                         },
                     ),
                 )

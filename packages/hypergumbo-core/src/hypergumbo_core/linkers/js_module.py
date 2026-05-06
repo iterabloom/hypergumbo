@@ -841,8 +841,9 @@ def link_js_modules(
                 line=edge.line,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="npm_package_import",
+                evidence_type="ast_import",
                 confidence=0.95,
+                meta={"framework_dispatch": "npm_package"},
             ))
 
     run.files_analyzed = len(module_file_cache)

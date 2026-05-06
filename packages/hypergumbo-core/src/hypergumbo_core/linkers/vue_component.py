@@ -254,8 +254,9 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
             line=edge.line,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            evidence_type="vue_component_import",
+            evidence_type="ast_import",
             confidence=0.90,
+            meta={"framework_dispatch": "vue_component"},
         )
         new_edges.append(resolved_edge)
 

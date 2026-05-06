@@ -64,7 +64,8 @@ class TestRouterRoutesLinker:
         assert edge.src == router.id
         assert edge.dst == route.id
         assert edge.edge_type == "references"
-        assert edge.evidence_type == "router_routes"
+        assert edge.evidence_type == "ast_call_direct"
+        assert (edge.meta or {}).get("framework_dispatch") == "router_routes"
 
     def test_router_with_multiple_routes(self) -> None:
         """All nested route registrations get their own edge from the router."""

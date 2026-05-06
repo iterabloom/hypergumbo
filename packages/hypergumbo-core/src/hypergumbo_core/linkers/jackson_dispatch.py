@@ -381,7 +381,8 @@ def link_jackson_dispatch(ctx: LinkerContext) -> LinkerResult:
                     confidence=0.90,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="jackson_bean_dispatch",
+                    evidence_type="ast_decorator",
+                    meta={"framework_dispatch": "jackson_bean"},
                 ),
             )
 

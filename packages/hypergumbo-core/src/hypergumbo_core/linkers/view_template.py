@@ -264,8 +264,9 @@ def link_view_templates(
                 edge_type="renders",
                 line=sym.span.start_line if sym.span else 0,
                 origin=PASS_ID,
-                evidence_type="implicit_convention",
+                evidence_type="naming_convention",
                 confidence=0.85,
+                meta={"detection_pattern": "implicit_convention"},
             )
             new_edges.append(edge)
 

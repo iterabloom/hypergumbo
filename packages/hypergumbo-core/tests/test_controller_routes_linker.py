@@ -74,7 +74,8 @@ class TestControllerRoutesLinker:
         assert edge.src == controller.id
         assert edge.dst == route.id
         assert edge.edge_type == "contains_routes"
-        assert edge.evidence_type == "controller_routes"
+        assert edge.evidence_type == "ast_call_direct"
+        assert (edge.meta or {}).get("framework_dispatch") == "controller_routes"
 
     def test_controller_with_multiple_routes(self) -> None:
         """All nested routes get their own edge from the controller."""

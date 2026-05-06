@@ -162,8 +162,9 @@ def link_controller_routes(ctx: LinkerContext) -> LinkerResult:
                 edge_type="contains_routes",
                 line=winner.span.start_line,
                 origin=PASS_ID,
-                evidence_type="controller_routes",
+                evidence_type="ast_call_direct",
                 confidence=0.80,
+                meta={"framework_dispatch": "controller_routes"},
             )
             edges.append(edge)
 

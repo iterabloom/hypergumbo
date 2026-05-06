@@ -605,8 +605,8 @@ def _create_di_edges(
                     confidence=binding.confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type=f"di_binding:{binding.source}",
-                    meta={"mechanism": "di"},
+                    evidence_type="ast_call_direct",
+                    meta={"mechanism": "di", "framework_dispatch": binding.source},
                 ))
 
     return edges
@@ -666,8 +666,8 @@ def _create_di_registers_edges(
             confidence=binding.confidence,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            evidence_type="nestjs_module_registration",
-            meta={"mechanism": "di_registration"},
+            evidence_type="ast_decorator",
+            meta={"mechanism": "di_registration", "framework_dispatch": "nestjs_module"},
         ))
 
     return edges

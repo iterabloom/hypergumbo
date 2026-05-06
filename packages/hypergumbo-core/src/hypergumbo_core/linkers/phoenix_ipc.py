@@ -314,12 +314,13 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
                     confidence=0.85,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="phoenix_event_match",
+                    evidence_type="naming_convention",
                 )
                 edge.meta = {
                     "channel_kind": "ipc",
                     "event": event,
                     "topic": sender.topic,
+                    "detection_pattern": "phoenix_event",
                 }
                 edges.append(edge)
 

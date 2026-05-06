@@ -154,8 +154,9 @@ def link_decorator_dispatch(ctx: LinkerContext) -> LinkerResult:
                 edge_type="dispatches_to",
                 line=site_sym.span.start_line if site_sym.span else 0,
                 origin=PASS_ID,
-                evidence_type="registry_dispatch",
+                evidence_type="ast_call_direct",
                 confidence=0.70,
+                meta={"framework_dispatch": "registry_dispatch"},
             )
             edges.append(edge)
 

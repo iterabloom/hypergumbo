@@ -419,7 +419,8 @@ class TestLinkJacksonDispatch:
         for e in result.edges:
             assert e.src == c.id
             assert e.edge_type == "dispatches_to"
-            assert e.evidence_type == "jackson_bean_dispatch"
+            assert e.evidence_type == "ast_decorator"
+            assert (e.meta or {}).get("framework_dispatch") == "jackson_bean"
             assert e.confidence == 0.90
 
     def test_method_annotation_triggers_class_dispatch(self) -> None:

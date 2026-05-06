@@ -63,7 +63,8 @@ class TestMiddlewareChainLinker:
         assert edge.src == mw1.id
         assert edge.dst == mw2.id
         assert edge.edge_type == "references"
-        assert edge.evidence_type == "middleware_chain"
+        assert edge.evidence_type == "ast_call_direct"
+        assert (edge.meta or {}).get("framework_dispatch") == "middleware_chain"
 
     def test_three_middleware_same_file_creates_two_edges(self) -> None:
         """Three middleware create a chain: mw1 → mw2 → mw3."""

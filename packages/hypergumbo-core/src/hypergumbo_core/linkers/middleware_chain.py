@@ -103,8 +103,9 @@ def link_middleware_chain(ctx: LinkerContext) -> LinkerResult:
                 edge_type="references",
                 line=src.span.start_line if src.span else 0,
                 origin=PASS_ID,
-                evidence_type="middleware_chain",
+                evidence_type="ast_call_direct",
                 confidence=0.70,
+                meta={"framework_dispatch": "middleware_chain"},
             )
             edges.append(edge)
 

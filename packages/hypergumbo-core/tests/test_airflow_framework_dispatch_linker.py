@@ -208,7 +208,8 @@ class TestLinkAirflowFrameworkDispatch:
         assert e.dst == method.id
         assert e.edge_type == "dispatches_to"
         assert e.confidence == 0.90
-        assert e.evidence_type == "airflow_framework_dispatch"
+        assert e.evidence_type == "ast_call_direct"
+        assert (e.meta or {}).get("framework_dispatch") == "airflow"
 
     def test_emits_edges_for_all_overridden_methods(self) -> None:
         cls = _class_sym("MyOperator", base_classes=["BaseOperator"])

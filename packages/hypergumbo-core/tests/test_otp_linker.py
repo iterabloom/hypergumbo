@@ -844,7 +844,8 @@ end
         result = otp_linker(ctx)
 
         assert len(result.edges) >= 1
-        assert result.edges[0].meta.get("evidence_type") == "otp_genserver_dispatch"
+        assert result.edges[0].evidence_type == "ast_call_direct"
+        assert result.edges[0].meta.get("framework_dispatch") == "otp_genserver"
 
 
 class TestOTPLinkerAliasResolution:

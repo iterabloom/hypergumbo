@@ -192,7 +192,8 @@ class TestLinkViewTemplates:
         assert edge.src == method.id
         assert edge.dst == "erb:app/views/users/index.html.erb:1-1:index.html.erb:template"
         assert edge.edge_type == "renders"
-        assert edge.evidence_type == "implicit_convention"
+        assert edge.evidence_type == "naming_convention"
+        assert (edge.meta or {}).get("detection_pattern") == "implicit_convention"
         assert edge.confidence == 0.85
 
     def test_namespaced_controller(self, tmp_path: Path) -> None:

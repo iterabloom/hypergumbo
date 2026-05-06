@@ -316,7 +316,8 @@ class TestLinkWasmBindgen:
         assert edge.edge_type == "calls"
         assert edge.dst == rust_sym.id
         assert edge.confidence == 0.85
-        assert edge.evidence_type == "wasm_bindgen_import"
+        assert edge.evidence_type == "ast_import"
+        assert (edge.meta or {}).get("framework_dispatch") == "wasm_bindgen_import"
 
     def test_no_rust_exports(self, tmp_path: Path) -> None:
         """Returns empty when no wasm_bindgen exports found."""
