@@ -492,10 +492,16 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
         """Create symbol for IPC endpoint if not already created."""
         sym_id = _make_symbol_id(pattern, channel)
         if sym_id not in created_symbol_ids:
+            # ADR-0027 Phase 3 / audit-findings 0013: f-string Symbol.kind
+            # framework-role leak (was kind=f"ipc_{pattern.type}", expanding
+            # to "ipc_send" or "ipc_receive"). Fold to canonical
+            # kind="function" + meta["framework_role"] capturing the same
+            # information dynamically. The framework_role meta key is
+            # open-form per ADR-0024 §"Fold-residue discipline".
             symbols.append(Symbol(
                 id=sym_id,
                 name=f"ipc:{pattern.type}:{channel}",
-                kind=f"ipc_{pattern.type}",
+                kind="function",
                 language="javascript",
                 path=pattern.file_path,
                 span=Span(
@@ -510,6 +516,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     "channel": channel,
                     "channel_type": pattern.channel_type,
                     "pattern_type": pattern.pattern_type,
+                    "framework_role": f"ipc_{pattern.type}",
                 },
             ))
             created_symbol_ids.add(sym_id)
@@ -632,10 +639,12 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     f":{namespace}.{method_name}"
                 )
                 if caller_id not in created_symbol_ids:
+                    # ADR-0027 Phase 3 / audit-findings 0013: framework-role
+                    # leak.
                     symbols.append(Symbol(
                         id=caller_id,
                         name=f"window.{namespace}.{method_name}",
-                        kind="ipc_bridge_caller",
+                        kind="function",
                         language=_get_language(Path(file_str)),
                         path=rel_path,
                         span=Span(
@@ -650,6 +659,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                             "namespace": namespace,
                             "bridge_method": method_name,
                             "channel": channel,
+                            "framework_role": "ipc_bridge_caller",
                         },
                     ))
                     created_symbol_ids.add(caller_id)
@@ -681,6 +691,9 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical
                 # 'calls' + meta['bridge_kind']='context_bridge' for
                 # Electron's contextBridge mediation.
+                #
+                # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
+                # leak; meta["framework_dispatch"]="electron_context_bridge".
                 edge = Edge.create(
                     src=caller_id,
                     dst=preload_send_id,
@@ -689,13 +702,14 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     confidence=0.80,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="context_bridge_wrapper",
+                    evidence_type="ast_call_direct",
                     access_mode="write",
                     channel=channel,
                     meta={
                         "bridge_kind": "context_bridge",
                         "method": method_name,
                         "namespace": namespace,
+                        "framework_dispatch": "electron_context_bridge",
                     },
                 )
                 edges.append(edge)
@@ -727,10 +741,12 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     f"ipc:bridge_caller:{rel_path}:{call_line}:{func_name}"
                 )
                 if caller_id not in created_symbol_ids:
+                    # ADR-0027 Phase 3 / audit-findings 0013: framework-role
+                    # leak.
                     symbols.append(Symbol(
                         id=caller_id,
                         name=f"window.{func_name}",
-                        kind="ipc_bridge_caller",
+                        kind="function",
                         language=_get_language(Path(file_str)),
                         path=rel_path,
                         span=Span(
@@ -744,6 +760,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                         meta={
                             "bridge_function": func_name,
                             "channel": channel,
+                            "framework_role": "ipc_bridge_caller",
                         },
                     ))
                     created_symbol_ids.add(caller_id)
@@ -773,6 +790,9 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
 
                 # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical
                 # 'calls' + meta['bridge_kind']='context_bridge'.
+                #
+                # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
+                # leak; meta["framework_dispatch"]="electron_context_bridge".
                 edge = Edge.create(
                     src=caller_id,
                     dst=preload_send_id,
@@ -781,12 +801,13 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     confidence=0.80,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="context_bridge_wrapper",
+                    evidence_type="ast_call_direct",
                     access_mode="write",
                     channel=channel,
                     meta={
                         "bridge_kind": "context_bridge",
                         "function": func_name,
+                        "framework_dispatch": "electron_context_bridge",
                     },
                 )
                 edges.append(edge)

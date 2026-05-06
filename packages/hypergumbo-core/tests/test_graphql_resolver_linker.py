@@ -342,7 +342,8 @@ class TestGraphQLResolverLinker:
         result = link_graphql_resolvers(tmp_path, schema_symbols)
 
         assert len(result.symbols) == 1
-        assert result.symbols[0].kind == "graphql_resolver"
+        assert result.symbols[0].kind == "function"
+        assert (result.symbols[0].meta or {}).get("framework_role") == "graphql_resolver"
         assert result.symbols[0].name == "Query.users"
 
         # Should have resolver_for_type edge
@@ -479,7 +480,8 @@ class TestGraphQLResolverLinker:
 
         assert len(result.symbols) == 1
         symbol = result.symbols[0]
-        assert symbol.kind == "graphql_resolver"
+        assert symbol.kind == "function"
+        assert (symbol.meta or {}).get("framework_role") == "graphql_resolver"
         assert symbol.meta["type_name"] == "Query"
         assert symbol.meta["field_name"] == "users"
         assert symbol.stable_id == "Query.users"
@@ -515,7 +517,8 @@ class TestGraphQLResolverLinkerRegistry:
         result = graphql_resolver_linker(ctx)
 
         assert len(result.symbols) == 1
-        assert result.symbols[0].kind == "graphql_resolver"
+        assert result.symbols[0].kind == "function"
+        assert (result.symbols[0].meta or {}).get("framework_role") == "graphql_resolver"
         assert result.run is not None
 
     def test_count_graphql_schema_requirement(self, tmp_path: Path):

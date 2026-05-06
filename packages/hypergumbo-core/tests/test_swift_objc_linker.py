@@ -40,7 +40,7 @@ import Foundation
         result = link_swift_objc(tmp_path)
 
         # Should create symbols for exposed Swift methods
-        bridge_symbols = [s for s in result.symbols if s.kind == "objc_bridge"]
+        bridge_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "objc_bridge"]
         assert len(bridge_symbols) >= 1
 
     def test_detects_bridging_header_imports(self, tmp_path: Path) -> None:
@@ -82,8 +82,13 @@ class ViewController: UIViewController {
 
         result = link_swift_objc(tmp_path)
 
-        # Should detect selector reference
-        symbols = [s for s in result.symbols if "selector" in s.kind.lower() or "objc" in s.kind.lower()]
+        # Should detect selector reference. Post-fold (audit-findings 0013):
+        # selector_ref → kind="reference" + meta["framework_role"]="selector_ref";
+        # objc_bridge → kind="function" + meta["framework_role"]="objc_bridge".
+        symbols = [
+            s for s in result.symbols
+            if (s.meta or {}).get("framework_role") in ("selector_ref", "objc_bridge")
+        ]
         assert len(symbols) >= 1
 
 
@@ -227,7 +232,7 @@ class ProductModel: NSObject {
         result = link_swift_objc(tmp_path)
 
         # NSObject subclasses are automatically exposed to Objective-C
-        bridge_symbols = [s for s in result.symbols if s.kind == "objc_bridge"]
+        bridge_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "objc_bridge"]
         assert len(bridge_symbols) >= 2
 
 

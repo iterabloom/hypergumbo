@@ -424,10 +424,12 @@ def _create_resolver_symbol(pattern: ResolverPattern, root: Path) -> Symbol:
     except ValueError:  # pragma: no cover
         rel_path = Path(pattern.file_path)
 
+    # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
+    # Fold to canonical kind="function" + meta["framework_role"].
     return Symbol(
         id=f"{rel_path}::resolver::{pattern.line}",
         name=f"{pattern.type_name}.{pattern.field_name}",
-        kind="graphql_resolver",
+        kind="function",
         path=pattern.file_path,
         span=Span(
             start_line=pattern.line,
@@ -440,6 +442,7 @@ def _create_resolver_symbol(pattern: ResolverPattern, root: Path) -> Symbol:
         meta={
             "type_name": pattern.type_name,
             "field_name": pattern.field_name,
+            "framework_role": "graphql_resolver",
         },
     )
 
@@ -500,6 +503,7 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
             schema_sym = schema_lookup[field_key]
             is_cross_language = resolver_symbol.language != schema_sym.language
 
+            # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
             edge = Edge.create(
                 src=resolver_symbol.id,
                 dst=schema_sym.id,
@@ -508,12 +512,13 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
                 confidence=0.9,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="resolver_field_match",
+                evidence_type="ast_call_direct",
             )
             edge.meta = {
                 "type_name": pattern.type_name,
                 "field_name": pattern.field_name,
                 "cross_language": is_cross_language,
+                "framework_dispatch": "graphql_resolver_field",
             }
             edges.append(edge)
 
@@ -523,6 +528,7 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
             type_sym = type_lookup[type_key]
             is_cross_language = resolver_symbol.language != type_sym.language
 
+            # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
             edge = Edge.create(
                 src=resolver_symbol.id,
                 dst=type_sym.id,
@@ -531,12 +537,13 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
                 confidence=0.8,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="resolver_type_match",
+                evidence_type="ast_call_direct",
             )
             edge.meta = {
                 "type_name": pattern.type_name,
                 "field_name": pattern.field_name,
                 "cross_language": is_cross_language,
+                "framework_dispatch": "graphql_resolver_type",
             }
             edges.append(edge)
 

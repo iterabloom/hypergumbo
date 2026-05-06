@@ -1320,10 +1320,12 @@ def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
     """Create a symbol for an HTTP client call."""
     rel_path = Path(call.file_path).relative_to(root) if root else Path(call.file_path)
 
+    # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
+    # Fold to canonical kind="function" + meta["framework_role"].
     return Symbol(
         id=f"{rel_path}::http_client::{call.line}",
         name=f"{call.method} {call.url}",
-        kind="http_client",
+        kind="function",
         path=call.file_path,
         span=Span(
             start_line=call.line,
@@ -1340,6 +1342,7 @@ def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
             "url_path": _extract_path_from_url(call.url) or call.url,
             "raw_url": call.url,
             "url_type": call.url_type,
+            "framework_role": "http_client",
         },
     )
 
@@ -1474,6 +1477,10 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
             # ADR-0023 §6 Phase 3 (WI-vumum-juvil): HTTP is a wire
             # protocol, not a relationship. The fold target is
             # canonical 'calls' + meta['protocol']='http'.
+            # ADR-0028 Phase 3 / audit-findings 0014: pattern-detection leak.
+            # http_url_match is a pattern shape (URL string match), not a
+            # framework — fold uses meta["detection_pattern"] not
+            # meta["framework_dispatch"].
             edge = Edge.create(
                 src=client_symbol.id,
                 dst=matched_route.id,
@@ -1482,7 +1489,7 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                 confidence=base_confidence,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="http_url_match",
+                evidence_type="ast_call_direct",
             )
             edge.meta = {
                 "protocol": "http",
@@ -1490,6 +1497,7 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                 "url_path": call_path,
                 "cross_language": is_cross_language,
                 "url_type": call.url_type,
+                "detection_pattern": "http_url",
             }
             edges.append(edge)
 

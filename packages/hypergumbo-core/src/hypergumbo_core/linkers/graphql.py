@@ -202,10 +202,12 @@ def _create_client_symbol(call: GraphQLClientCall, root: Path) -> Symbol:
     if call.operation_name:
         name = f"{name} {call.operation_name}"
 
+    # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
+    # Fold to canonical kind="function" + meta["framework_role"].
     return Symbol(
         id=f"{rel_path}::graphql_client::{call.line}",
         name=name,
-        kind="graphql_client",
+        kind="function",
         path=call.file_path,
         span=Span(
             start_line=call.line,
@@ -219,6 +221,7 @@ def _create_client_symbol(call: GraphQLClientCall, root: Path) -> Symbol:
             "operation_type": call.operation_type,
             "operation_name": call.operation_name,
             "query_text": call.query_text[:100] + "..." if len(call.query_text) > 100 else call.query_text,
+            "framework_role": "graphql_client",
         },
     )
 
@@ -286,13 +289,16 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
                     confidence=0.9 if call.operation_name else 0.7,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="graphql_operation_match",
+                    evidence_type="ast_call_direct",
                 )
+                # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
+                # leak; meta["framework_dispatch"]="graphql_operation".
                 edge.meta = {
                     "protocol": "graphql",
                     "operation_type": call.operation_type,
                     "operation_name": call.operation_name,
                     "cross_language": is_cross_language,
+                    "framework_dispatch": "graphql_operation",
                 }
                 edges.append(edge)
 

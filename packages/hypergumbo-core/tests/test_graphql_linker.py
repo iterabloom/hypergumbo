@@ -186,7 +186,7 @@ export function UserList() {
         # Should have symbols for detected client calls
         assert len(result.symbols) >= 1
         # Client calls should be GraphQL operations
-        client_ops = [s for s in result.symbols if s.kind == "graphql_client"]
+        client_ops = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "graphql_client"]
         assert len(client_ops) == 1
         assert client_ops[0].meta.get("operation_name") == "GetUsers"
 

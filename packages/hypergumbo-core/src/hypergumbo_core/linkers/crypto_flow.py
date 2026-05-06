@@ -288,7 +288,9 @@ def link_crypto_flow(
                     shape_id=None,
                     canonical_name=f"crypto.{write.channel}",
                     fingerprint=hashlib.sha256(pub_id.encode()).hexdigest()[:16],
-                    kind="crypto_producer",
+                    # ADR-0027 Phase 3 / audit-findings 0013: framework-role
+                    # leak.
+                    kind="function",
                     name=write.channel,
                     path=write.file_path,
                     language=lang,
@@ -297,7 +299,11 @@ def link_crypto_flow(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
-                    meta={"crypto_api": write.api, "channel": write.channel},
+                    meta={
+                        "crypto_api": write.api,
+                        "channel": write.channel,
+                        "framework_role": "crypto_producer",
+                    },
                     supply_chain_tier=1,
                     supply_chain_reason=f"crypto {write.api} producer",
                 ))
@@ -310,7 +316,9 @@ def link_crypto_flow(
                     shape_id=None,
                     canonical_name=f"crypto.{read.channel}",
                     fingerprint=hashlib.sha256(sub_id.encode()).hexdigest()[:16],
-                    kind="crypto_consumer",
+                    # ADR-0027 Phase 3 / audit-findings 0013: framework-role
+                    # leak.
+                    kind="function",
                     name=read.channel,
                     path=read.file_path,
                     language=lang,
@@ -319,11 +327,18 @@ def link_crypto_flow(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
-                    meta={"crypto_api": read.api, "channel": read.channel},
+                    meta={
+                        "crypto_api": read.api,
+                        "channel": read.channel,
+                        "framework_role": "crypto_consumer",
+                    },
                     supply_chain_tier=1,
                     supply_chain_reason=f"crypto {read.api} consumer",
                 ))
 
+            # ADR-0028 Phase 3 / audit-findings 0014: pattern-detection leak.
+            # crypto_api_pattern is a pattern shape, not a framework — fold
+            # uses meta["detection_pattern"]="crypto_api".
             result_edges.append(Edge.create(
                 src=pub_id,
                 dst=sub_id,
@@ -332,10 +347,11 @@ def link_crypto_flow(
                 confidence=0.75,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="crypto_api_pattern",
+                evidence_type="ast_call_direct",
                 access_mode="write",
                 dest_access_mode="read",
                 channel=write.channel,
+                meta={"detection_pattern": "crypto_api"},
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

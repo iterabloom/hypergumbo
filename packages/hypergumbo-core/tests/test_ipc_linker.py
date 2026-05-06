@@ -1041,7 +1041,10 @@ const data = await window.api.getData();
 
         result = link_ipc(tmp_path)
 
-        bridge_syms = [s for s in result.symbols if s.kind == "ipc_bridge_caller"]
+        bridge_syms = [
+            s for s in result.symbols
+            if (s.meta or {}).get("framework_role") == "ipc_bridge_caller"
+        ]
         assert len(bridge_syms) >= 1
         assert bridge_syms[0].meta.get("namespace") == "api"
         assert bridge_syms[0].meta.get("bridge_method") == "getData"
@@ -1153,7 +1156,8 @@ window.api.openFile('/path');
         dst_id = bridge_edges[0].dst
         dst_sym = next((s for s in result.symbols if s.id == dst_id), None)
         assert dst_sym is not None
-        assert dst_sym.kind == "ipc_send"
+        assert dst_sym.kind == "function"
+        assert (dst_sym.meta or {}).get("framework_role") == "ipc_send"
 
     def test_bridge_confidence(self, tmp_path: Path) -> None:
         """bridge_invokes edges have 0.80 confidence."""

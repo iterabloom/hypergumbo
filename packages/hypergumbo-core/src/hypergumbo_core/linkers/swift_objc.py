@@ -113,15 +113,17 @@ def _extract_swift_objc_patterns(
         line_num = content[:match.start()].count("\n") + 1
         symbol_id = _make_symbol_id(rel_path, line_num, name, "objc_bridge")
 
+        # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
         symbols.append(Symbol(
             id=symbol_id,
             name=name,
-            kind="objc_bridge",
+            kind="function",
             language="swift",
             path=rel_path,
             span=Span(line_num, line_num, 0, len(lines[line_num - 1]) if line_num <= len(lines) else 0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
+            meta={"framework_role": "objc_bridge"},
         ))
 
     # Find NSObject subclasses
@@ -130,17 +132,23 @@ def _extract_swift_objc_patterns(
         line_num = content[:match.start()].count("\n") + 1
         symbol_id = _make_symbol_id(rel_path, line_num, name, "objc_bridge")
 
-        # Avoid duplicates (if already has @objc)
-        if not any(s.name == name and s.kind == "objc_bridge" for s in symbols):
+        # Avoid duplicates (if already has @objc).
+        # Post-fold: filter on meta["framework_role"] since kind is now "function".
+        if not any(
+            s.name == name
+            and (s.meta or {}).get("framework_role") == "objc_bridge"
+            for s in symbols
+        ):
             symbols.append(Symbol(
                 id=symbol_id,
                 name=name,
-                kind="objc_bridge",
+                kind="function",
                 language="swift",
                 path=rel_path,
                 span=Span(line_num, line_num, 0, len(lines[line_num - 1]) if line_num <= len(lines) else 0),
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
+                meta={"framework_role": "objc_bridge"},
             ))
 
     # Find #selector references
@@ -149,15 +157,20 @@ def _extract_swift_objc_patterns(
         line_num = content[:match.start()].count("\n") + 1
         symbol_id = _make_symbol_id(rel_path, line_num, name, "selector_ref")
 
+        # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
+        # Per audit, selector_ref folds to canonical kind="reference" (not
+        # function/method) — the _ref suffix names a use-site, not a
+        # definition.
         symbols.append(Symbol(
             id=symbol_id,
             name=name,
-            kind="selector_ref",
+            kind="reference",
             language="swift",
             path=rel_path,
             span=Span(line_num, line_num, 0, 0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
+            meta={"framework_role": "selector_ref"},
         ))
 
     return symbols, edges

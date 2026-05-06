@@ -47,7 +47,7 @@ ipcMain.on('my-channel', (event, data) => {
         # Multiple sends + one receive creates multiple edges
         assert result is not None
         # Should have multiple symbols (one per send endpoint + one receive)
-        send_symbols = [s for s in result.symbols if s.kind == "ipc_send"]
+        send_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "ipc_send"]
         assert len(send_symbols) == 2  # Two sends on same channel
 
     def test_multiple_receives_same_channel(self, tmp_path: Path) -> None:
@@ -80,7 +80,7 @@ ipcMain.on('shared-channel', (event, data) => {
         result = link_ipc(tmp_path)
         # Multiple receives should be detected as symbols
         assert result is not None
-        receive_symbols = [s for s in result.symbols if s.kind == "ipc_receive"]
+        receive_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "ipc_receive"]
         assert len(receive_symbols) == 2  # Two receives on same channel
 
     def test_mixed_multiple_channels(self, tmp_path: Path) -> None:
@@ -102,8 +102,8 @@ ipcMain.on('data-channel', handleUpdate);
         result = link_ipc(tmp_path)
         assert result is not None
         # Verify multiple symbols created
-        send_symbols = [s for s in result.symbols if s.kind == "ipc_send"]
-        receive_symbols = [s for s in result.symbols if s.kind == "ipc_receive"]
+        send_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "ipc_send"]
+        receive_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "ipc_receive"]
         assert len(send_symbols) == 2
         assert len(receive_symbols) == 2
         # Edges should be created linking sends to receives

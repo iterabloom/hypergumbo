@@ -299,8 +299,8 @@ class TestLinkCryptoFlow:
         result = link_crypto_flow(tmp_path, syms)
 
         assert len(result.symbols) >= 2
-        pubs = [s for s in result.symbols if s.kind == "crypto_producer"]
-        subs = [s for s in result.symbols if s.kind == "crypto_consumer"]
+        pubs = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "crypto_producer"]
+        subs = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "crypto_consumer"]
         assert len(pubs) >= 1
         assert len(subs) >= 1
 

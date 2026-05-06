@@ -610,7 +610,8 @@ class TestLinkHttp:
         # Should create an http_client symbol for the fetch call
         assert len(result.symbols) >= 1
         client_sym = result.symbols[0]
-        assert client_sym.kind == "http_client"
+        assert client_sym.kind == "function"
+        assert (client_sym.meta or {}).get("framework_role") == "http_client"
         assert client_sym.meta["url_path"] == "/api/users"
 
     def test_empty_when_no_routes(self, tmp_path):
