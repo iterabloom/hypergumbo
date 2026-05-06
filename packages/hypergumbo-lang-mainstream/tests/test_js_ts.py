@@ -7253,7 +7253,7 @@ function setupRoutes(app) {
 
         chain_edges = [
             e for e in result.edges
-            if e.evidence_type == "middleware_chain"
+            if e.evidence_type == "ast_call_direct" and (e.meta or {}).get("framework_dispatch") == "middleware_chain"
         ]
         # Should have 2 chain edges: auth→validate, validate→handle
         assert len(chain_edges) == 2
@@ -7287,7 +7287,7 @@ function setupRoutes(app) {
 
         chain_edges = [
             e for e in result.edges
-            if e.evidence_type == "middleware_chain"
+            if e.evidence_type == "ast_call_direct" and (e.meta or {}).get("framework_dispatch") == "middleware_chain"
         ]
         # auth → need, need → handler
         assert len(chain_edges) == 2
@@ -7316,7 +7316,7 @@ function setup(app) {
 
         chain_edges = [
             e for e in result.edges
-            if e.evidence_type == "middleware_chain"
+            if e.evidence_type == "ast_call_direct" and (e.meta or {}).get("framework_dispatch") == "middleware_chain"
         ]
         assert len(chain_edges) == 0
 
@@ -7337,7 +7337,7 @@ function fetch() {
 
         chain_edges = [
             e for e in result.edges
-            if e.evidence_type == "middleware_chain"
+            if e.evidence_type == "ast_call_direct" and (e.meta or {}).get("framework_dispatch") == "middleware_chain"
         ]
         assert len(chain_edges) == 0
 
@@ -7536,7 +7536,7 @@ class TestCrossPackageGuardAllPaths:
         result = analyze_javascript(tmp_path)
         chain_edges = [
             e for e in result.edges
-            if e.evidence_type == "middleware_chain"
+            if e.evidence_type == "ast_call_direct" and (e.meta or {}).get("framework_dispatch") == "middleware_chain"
         ]
         for edge in chain_edges:
             assert "client" not in edge.src, (
