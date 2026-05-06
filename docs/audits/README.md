@@ -37,6 +37,8 @@ write an ADR vs an audit-findings document."
 | [0010](0010-symbol-kind-cluster-e-edge-label-kinds.md) | Symbol.kind Cluster E — Edge Labels Masquerading as Kinds | `Symbol.kind` | Mixed (9 PRELIM_RESOLVED, 3 UNRESOLVED) |
 | [0011](0011-symbol-kind-cluster-f-component-refs.md) | Symbol.kind Cluster F — Component References | `Symbol.kind` | Mixed |
 | [0012](0012-evidence-type-cluster-d-call-construct.md) | Edge.evidence_type Cluster D — Apex/Peer Call-Construct Overloads | `Edge.evidence_type` | All PRELIM_RESOLVED |
+| [0013](0013-symbol-kind-cluster-d-framework-roles.md) | Symbol.kind Cluster D — Framework Roles | `Symbol.kind` | Mixed (most UNRESOLVED, 8 PRELIM_RESOLVED registry placeholders) |
+| [0014](0014-evidence-type-cluster-c-framework-dispatch.md) | Edge.evidence_type Cluster C — Framework-Specific Dispatch | `Edge.evidence_type` | All UNRESOLVED |
 
 ## File format
 
