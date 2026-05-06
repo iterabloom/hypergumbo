@@ -1,0 +1,42 @@
+- op: create  # dd9c
+  at: '2026-05-06T21:01:47Z'  # dd9c
+  by: agent  # dd9c
+  actor: jgstern_agent  # dd9c
+  clock: 1  # dd9c
+  nonce: dd9c  # dd9c
+  data:  # dd9c
+    kind: work_item  # dd9c
+    title: "Extend L3 producer-coherence linter to catch f-string and assignment-form Symbol.kind / Edge.evidence_type / Edge.edge_type producers"  # dd9c
+    status: todo_hard  # dd9c
+    priority: 3  # dd9c
+    parent:  # dd9c
+    tags:  # dd9c
+    - analysis_quality  # dd9c
+    isbefore: []  # dd9c
+    duplicate_of: []  # dd9c
+    not_duplicate_of: []  # dd9c
+    pr_ref:  # dd9c
+    description: "The L3 producer-coherence linter (scripts/check-producer-axis-coherence, packages/hypergumbo-core/src/hypergumbo_core/producer_coherence.py) currently catches only the literal-kwarg form of producer construction:\n\n    Symbol(kind=\"<literal>\", ...)\n    Edge.create(... evidence_type=\"<literal>\" ...)\n\nTwo structural blind spots have caused real producer-side leaks to ship undetected through ADR-0027 / ADR-0028 Phase 3 PRs:\n\n1. Assignment-form: kind = \"...\" followed by Symbol(kind=kind, ...).\n   Caught in WI-nitil (2026-05-06): linkers/grpc.py:660,663 emitted grpc_server / grpc_stub via assignment + Symbol(kind=kind, ...); linkers/message_queue.py:410 emitted mq_publisher / mq_subscriber the same way. All four landed UNDETECTED through Wave 5 PR #1 of WI-habut. Fix shipped as a separate correction PR.\n\n2. F-string form: kind=f\"<prefix>_{var}\".\n   Caught in WI-bajif (2026-05-05): inventoried as advisory (5 sites across the three axes). Phoenix Channels site at linkers/phoenix_ipc.py:279 (kind=f\"ipc_{pattern.type}\") was inventoried but landed UNDETECTED through all six Wave 5 PRs and only got migrated as a Wave 5 follow-on (selfh PR #174, 2026-05-06).\n\nPattern: every wave's diagnostic test methodology has had to be retroactively widened. The cost is real — each missed producer lands in production at an unregistered or endpoint_shape value, sometimes for weeks, until a manual broader-grep sweep finds it.\n\nProposed extensions (any combination):\n\nA. Assignment-form trace. When the linter sees Symbol(kind=name, ...) or Edge.create(... edge_type=name ...) where name is a local-scoped variable, walk back simple assignment patterns within the same function:\n   - Literal: name = \"literal\"\n   - Ternary: name = \"a\" if cond else \"b\"\n   - If-else assignment chain.\n   - Dict lookup with literal-key values.\n   For each extracted candidate, run the same registry-membership check as the literal-kwarg path.\n\nB. F-string strict mode. Optionally promote f-string producers from advisory to error when:\n   - The f-string has a literal prefix concatenated with a known-typed variable (e.g., kind=f\"ipc_{p.type}\" where p.type's enum is enumerable from the dataclass).\n   - Per-axis opt-in via a config knob (some f-strings — e.g., inheritance.py's evidence_type=f'ast_{edge_type}' — always expand to canonical and are benign).\n\nC. Producer-construction style guide. Disallow Symbol(kind=variable, ...) outright in lint rules; require either literal kwargs or a small set of named factory functions with type-checked dispatch. Higher-friction but eliminates both blind spots structurally.\n\nRecommended order: A first (low-friction, catches the most common miss), B second (configurable per-axis), C as the optional structural backstop.\n\nTests: each extension should land with a unit test under tests/test_producer_coherence.py that exercises both the catch path and the false-positive control path.\n\nReferences:\n- packages/hypergumbo-core/src/hypergumbo_core/producer_coherence.py\n- scripts/check-producer-axis-coherence\n- WI-nitil (assignment-form correction, 2026-05-06)\n- WI-bajif (f-string advisory inventory)\n- audit-findings 0013 'Filing-time miscount' paragraph — the 'closing that gap is tracked as a follow-on linter improvement' line points here.\n- selfh PR #174 (phoenix_ipc.py:279 f-string fix, 2026-05-06)"  # dd9c
+    fields: {}  # dd9c
+- op: discuss  # 09d9
+  at: '2026-05-06T21:58:12Z'  # 09d9
+  by: agent  # 09d9
+  actor: jgstern_agent  # 09d9
+  clock: 2  # 09d9
+  nonce: 09d9  # 09d9
+  message: "Extension A (assignment-form trace) shipped via selfh PR #176. The L3 producer-coherence linter now resolves Symbol(kind=name)/Edge.create(...=name) keyword Name references by walking back simple function-local assignment patterns: literal, ternary, if/else chain. Conservative posture: any unresolvable RHS in scope poisons resolution to silent-skip (function parameters, dict-lookups, computed values stay out of the strict gate).\n\nSurfaced 18 latent leaks on landing (12 Symbol.kind, 5 Edge.evidence_type, 1 Edge.edge_type). Per WI guidance 'If ext A surfaces existing latent leaks, fix them' — all 18 registered in their respective registries:\n- Symbol.kind AXIS_PENDING (Cluster G/H follow-on): binary, benchmark, example, workspace, handler, pattern_rule, helper, uniform, varying, private, storage, workgroup\n- Edge.evidence_type AXIS_PENDING (Cluster A/C/D follow-on): cffi_call, ctypes_call, alias_resolution, import_resolution, ast_call_method\n- Edge.edge_type canonical AXIS_RELATIONSHIP: constrains (pip -c file reference)\n\nSCHEMA_VERSION 0.5.0 → 0.5.1 (additive enum widening).\n\nTests: 11 new fixtures at tests/test_producer_coherence.py exercise catch and false-positive paths. 100% coverage on producer_coherence.py.\n\nExtensions B (f-string strict mode, per-axis opt-in) and C (ban-the-variable-form structural backstop) remain todo_soft / deferred per the agreed sequencing (defensive cleanup that pays off for future axis ADRs more than closing ADR-0027/0028)."  # 09d9
+- op: update  # 5ca0
+  at: '2026-05-06T21:58:59Z'  # 5ca0
+  by: agent  # 5ca0
+  actor: jgstern_agent  # 5ca0
+  clock: 3  # 5ca0
+  nonce: 5ca0  # 5ca0
+  set:  # 5ca0
+    status: todo_soft  # 5ca0
+- op: discuss  # 47ee
+  at: '2026-05-06T23:24:25Z'  # 47ee
+  by: agent  # 47ee
+  actor: jgstern_agent  # 47ee
+  clock: 4  # 47ee
+  nonce: 47ee  # 47ee
+  message: "Empirical addendum to ext A scope: WI-fukol survey (2026-05-06) discovered a third producer-leak shape that ext A doesn't catch — DICT-INDEX assignment.\n\nlinkers/pyffi.py:142,157 emits evidence_type values via:\n\n    lib_vars[var_name] = 'ctypes_stdlib_call'  # line 142\n    lib_vars[var_name] = 'cffi_stdlib_call'    # line 157\n\nThen later: evidence_type = lib_vars[var_name]; Edge.create(... evidence_type=evidence_type, ...).\n\next A's _resolve_function_local walks back assignments where target is an ast.Name (kind = 'literal'). It does not handle ast.Subscript targets (lib_vars[var_name] = '...'). The conservative posture (dict-derived RHS = unresolvable, silent skip) means ext A correctly skips this without false-positive — but the leak is real: ctypes_stdlib_call / cffi_stdlib_call are emitted today and were never registered in evidence_types.py until this finding (will register in next PR).\n\nThis adds a fourth blind-spot category to the catalog:\n  1. Literal-kwarg form (caught by original linter)\n  2. Assignment-form to Name (caught by ext A)\n  3. F-string form (advisory only; ext B target)\n  4. Dict-subscript-target assignment-form (NEW; ext C target — the structural-backstop ban-the-variable-form rule covers this)\n\nReinforces the ext B/C value proposition: ext C in particular (banning Symbol(kind=variable, ...) / Edge.create(...=variable, ...) producer shapes) eliminates ALL three remaining blind spots structurally rather than playing whack-a-mole."  # 47ee

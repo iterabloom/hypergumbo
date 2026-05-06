@@ -27,3 +27,10 @@
   set: {}  # 9327
   add:  # 9327
     isbefore: [WI-nurot-lituj-ganoh-nujup-gigot-dohib-mosas-vikub, WI-nunal-razud-gajum-fukig-lijul-bahik-bumul-vugis, WI-kagik-fumiz-moros-bunok-pahuh-rihov-gavak-bigok, WI-nibis-bohak-bitik-fozul-vohan-finik-soful-zijov]  # 9327
+- op: discuss  # 249d
+  at: '2026-05-06T23:23:47Z'  # 249d
+  by: agent  # 249d
+  actor: jgstern_agent  # 249d
+  clock: 3  # 249d
+  nonce: 249d  # 249d
+  message: "Closing as done — scope was empty post-Phase-1.\n\nEmpirical survey (2026-05-06): grep across packages/ found ZERO consumer-side hardcoded evidence_type sets or set-membership checks. The named at-risk surfaces (taint.py, io_boundary.py, slice.py, ranking.py) contain no references to evidence_type, is_resolved, or _unresolved.\n\nThe only consumer-style evidence_type comparison in the codebase is pyffi.py:315's ternary 'ctypes_call' if evidence_type == 'ctypes_stdlib_call' else 'cffi_call' — but that's producer-side (remap stdlib variant to canonical inside the linker), not a consumer-set membership check.\n\nWhy scope was empty: ADR-0028 Phase 1 (PR #3549) seeded the registry as the single source of truth, added the L1 drift linter for module-level set drift, and the L3 producer-coherence linter for emit-side drift. The L1 gate would block any new module-level *EVIDENCE_TYPES* set that drifts from the registry; consumers couldn't have hardcoded sets without breaking the gate.\n\nThe Cluster B *_unresolved migration (WI-nunal Wave 3, ADR-0028 §Phase 3) absorbed the only foreseeable consumer-shape change (filtering by *_unresolved) at the producer side via Edge.is_resolved=False. No consumer-shape lifting was needed because no consumer ever filtered on the legacy *_unresolved string values.\n\nSide discovery: pyffi.py emits two values not in the registry (ctypes_stdlib_call, cffi_stdlib_call) via dict-index assignment (lib_vars[var_name] = '<value>') which sits outside ext A's function-local Name-assignment trace. Filed as discussion on WI-nubuv as additional empirical justification for ext B/C."  # 249d

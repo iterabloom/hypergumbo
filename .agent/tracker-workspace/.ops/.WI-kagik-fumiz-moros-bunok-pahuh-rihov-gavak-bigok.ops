@@ -65,3 +65,18 @@
   clock: 7  # 766c
   nonce: 766c  # 766c
   message: "Wave 5 PR #3 of 6 merged in selfh PR #163 (commit cc26061). Edge.evidence_type producers folded for: event_sourcing.py (event_name_match → naming_convention + meta['detection_pattern']='event_name'; pattern-shape, not framework), yjs_crdt.py (yjs_crdt_pattern → ast_call_direct + meta['framework_dispatch']='yjs_crdt'), go.py (route_mount evidence_type → ast_call_direct + meta['framework_dispatch']='route_mount'). Item stays todo_hard."  # 766c
+- op: update  # b4fc
+  at: '2026-05-06T20:44:33Z'  # b4fc
+  by: agent  # b4fc
+  actor: jgstern_agent  # b4fc
+  clock: 8  # b4fc
+  nonce: b4fc  # b4fc
+  set:  # b4fc
+    status: done  # b4fc
+- op: discuss  # 43cc
+  at: '2026-05-06T20:44:33Z'  # 43cc
+  by: agent  # 43cc
+  actor: jgstern_agent  # 43cc
+  clock: 9  # 43cc
+  nonce: 43cc  # 43cc
+  message: "Cluster C framework_dispatch producer migration complete + audit-findings 0014 doc layer fully advanced. Wave 5 of WI-runod (six PRs across Codeberg #3572 + selfh #162-#166) shipped the canonical-fold (canonical inference + meta['framework_dispatch'] / meta['detection_pattern'] partition). websocket.py f-string emit was rewritten to canonical inference + structured meta in PR #1. Audit-findings 0014 row statuses advanced UNRESOLVED → PRELIM_RESOLVED for all 65 rows in selfh PR #175 (today); doc Status header now reads 'All rows PRELIM_RESOLVED'. Phase 4a deprecation tagging shipped as selfh PR #173 (WI-jubak). Phase 4b registry pruning (WI-porim) remains queued, gated on per-cluster bakeoff validation per ADR-0028 §Phase 4."  # 43cc

@@ -72,3 +72,18 @@
   clock: 8  # ab27
   nonce: ab27  # ab27
   message: "Wave 5 of WI-runod complete. All 6 PRs merged via selfh failover (Codeberg PR creation API still down):\n- PR #1 (#3572 on Codeberg, pre-failover): websocket / tauri / grpc / openapi (8 evidence_types + 4 Symbol.kind)\n- PR #2 (selfh #162): graphql / http / crypto / ipc / objc (~7 evidence_types + 9 Symbol.kind)\n- PR #3 (selfh #163): event-dispatch / yjs / message_dispatch / annotation_convention / Go-route_mount (~5 evidence_types + 5 Symbol.kind)\n- PR #4 (selfh #164): Ruby / Django framework_dispatch fold (10 evidence_types)\n- PR #5 (selfh #165): single-row dispatch modules — 27 evidence_types across 25 producers\n- PR #6 (selfh #166): Symbol.kind=route sweep — 17 src files, 14 production consumers, ~330 sites total\nTotal: ~75 evidence_type values + ~28 Symbol.kind values folded across Cluster C and Cluster D.\nAudit-findings 0013 (Cluster D framework roles) and 0014 (Cluster C framework dispatch) producer migration complete."  # ab27
+- op: update  # ce66
+  at: '2026-05-06T20:44:33Z'  # ce66
+  by: agent  # ce66
+  actor: jgstern_agent  # ce66
+  clock: 9  # ce66
+  nonce: ce66  # ce66
+  set:  # ce66
+    status: done  # ce66
+- op: discuss  # 5ebf
+  at: '2026-05-06T20:44:33Z'  # 5ebf
+  by: agent  # 5ebf
+  actor: jgstern_agent  # 5ebf
+  clock: 10  # 5ebf
+  nonce: 5ebf  # 5ebf
+  message: "Cluster D framework_role producer migration complete + audit-findings 0013 doc layer fully advanced. Wave 5 of WI-runod (six PRs across Codeberg #3572 + selfh #162-#166) shipped the canonical-fold for active producers. WI-nitil corrected four assignment-form misses (gRPC + MQ at linkers/grpc.py:660,663 and linkers/message_queue.py:410) and added three previously-unregistered values (grpc_service / grpc_servicer / grpc_client). Phoenix IPC f-string-form producer at phoenix_ipc.py:279 closed in selfh PR #174 (today). Audit-findings 0013 row statuses advanced UNRESOLVED → PRELIM_RESOLVED for all 28 active rows in selfh PR #175 (today); doc Status header now reads 'All rows PRELIM_RESOLVED'. Phase 4a deprecation tagging shipped as selfh PR #173 (WI-tikuh). Phase 4b registry pruning (WI-butol) remains queued, gated on per-cluster bakeoff validation per ADR-0027 §Phase 4."  # 5ebf
