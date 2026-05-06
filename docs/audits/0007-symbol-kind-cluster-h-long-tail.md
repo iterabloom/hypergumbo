@@ -2,7 +2,7 @@
 # Audit-findings 0007: Symbol.kind Cluster H — Domain-Specific Long Tail
 
 - Date: 2026-05-05
-- Status: All rows UNRESOLVED at filing (Phase 3 producer migrations + registry updates pending)
+- Status: Mixed — 53 CANONICAL rows RESOLVED via WI-runod Wave 6 PR 2 registry promotion; 7 DEPRECATE-NO-FOLD rows remain UNRESOLVED pending subsequent Wave 6 PRs (`heading`, `inductive`, `theorem`, `message`, `model`, `external_symbol`, `unresolved`).
 - Closes: WI-nupus-fovor-rataf-momub-natit-hihir-bufas-bukih (Cluster H domain long-tail per-value audit, ADR-0027 Phase 3)
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Fourth audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical), 0005 (Cluster B file-shape), and 0006 (Cluster G build/config-shape).
 
@@ -127,425 +127,425 @@ verdicts:
   - value: section
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"section\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"section\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Top-level structural construct in seven documentation/config DSLs (Markdown, RST, LaTeX, INI, KDL, COBOL, Blade). Cross-DSL overload like function/package. Promote to language_construct."
   - value: paragraph
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"paragraph\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"paragraph\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "COBOL paragraph is a language-level construct between section and statement in the COBOL hierarchy. Promote to language_construct."
   - value: code_block
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"code_block\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"code_block\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Markdown fenced code block is a top-level Markdown structural construct. Promote to language_construct."
   - value: diagram
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"diagram\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"diagram\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Mermaid diagram declaration is the top-level Mermaid construct. Promote to language_construct."
   - value: plot
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"plot\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"plot\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "gnuplot 'plot' command is a top-level gnuplot construct. Promote to language_construct."
   - value: yield
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"yield\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"yield\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Blade @yield('section') is a top-level Blade template directive. Promote to language_construct."
   - value: for_loop
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"for_loop\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"for_loop\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Twig {% for %} block is a top-level Twig control-flow construct (Twig is a template DSL where control-flow blocks are first-class structural elements, not statements). Promote to language_construct."
   - value: conditional
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"conditional\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"conditional\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Twig {% if %} block is a top-level Twig control-flow construct (template DSL). Promote to language_construct."
   - value: block
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"block\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"block\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Block expression in three template DSLs (Handlebars {{#each}}, Svelte {#if}, Twig {% block %}). Cross-DSL overload like function. Promote to language_construct."
   - value: prefix
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"prefix\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"prefix\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "SPARQL PREFIX declaration is a top-level SPARQL construct. Promote to language_construct."
   - value: base
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"base\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"base\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "SPARQL BASE declaration is a top-level SPARQL construct. Promote to language_construct."
   - value: query
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"query\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"query\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "SPARQL named query block is a top-level SPARQL construct. Promote to language_construct."
   - value: entry
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"entry\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"entry\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "BibTeX @article{...} / @book{...} entry is the top-level BibTeX construct. Promote to language_construct."
   - value: entity
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"entity\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"entity\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "VHDL entity keyword declares a hardware-interface — a top-level VHDL construct. NOT a Cluster D framework qualifier (despite handoff hypothesis). Promote to language_construct."
   - value: architecture
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"architecture\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"architecture\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "VHDL architecture keyword declares an entity-implementation block — a top-level VHDL construct. Promote to language_construct."
   - value: participant
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"participant\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"participant\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Mermaid sequence-diagram participant declaration is a top-level Mermaid sequence-diagram construct. Promote to language_construct."
   - value: state
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"state\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"state\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Mermaid state-diagram state declaration is a top-level Mermaid construct. Promote to language_construct."
   - value: fragment
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"fragment\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"fragment\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "GraphQL fragment definition is a top-level GraphQL construct. Promote to language_construct."
   - value: partial
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"partial\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"partial\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Handlebars {{> name}} partial-reference declaration is a top-level Handlebars template construct. Promote to language_construct."
   - value: provider
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"provider\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"provider\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "HCL/Terraform 'provider' block is a top-level Terraform construct. Promote to language_construct."
   - value: local
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"local\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"local\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "HCL/Terraform 'locals' block declares a local-value binding — a top-level Terraform construct. Promote to language_construct."
   - value: style_block
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"style_block\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"style_block\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Vue <style scoped>...</style> block is a top-level Vue SFC construct. Promote to language_construct."
   - value: permission
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"permission\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"permission\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "XML config (Android manifest etc.) permission declaration is a top-level construct in those manifest DSLs. Promote to language_construct."
   - value: keyframes
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"keyframes\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"keyframes\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "CSS @keyframes at-rule is a top-level CSS construct. Promote to language_construct."
   - value: media
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"media\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"media\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "CSS @media at-rule is a top-level CSS construct. Promote to language_construct."
   - value: font_face
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"font_face\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"font_face\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "CSS @font-face at-rule is a top-level CSS construct. Promote to language_construct."
   - value: class_selector
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"class_selector\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"class_selector\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "CSS class selector (.foo) is a top-level CSS construct. Promote to language_construct."
   - value: id_selector
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"id_selector\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"id_selector\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "CSS id selector (#foo) is a top-level CSS construct. Promote to language_construct."
   - value: rule_set
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"rule_set\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"rule_set\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "SCSS / shader rule-set is a top-level CSS-family construct. Promote to language_construct."
   - value: subdirectory
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"subdirectory\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"subdirectory\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "CMake add_subdirectory() directive declares a CMake subdirectory inclusion — a top-level CMake construct. Promote to language_construct."
   - value: table
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"table\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"table\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "SQL CREATE TABLE and TOML [table] are top-level constructs in their respective DSLs. Cross-DSL overload like package. Promote to language_construct."
   - value: table_array
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"table_array\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"table_array\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "TOML [[arr]] table-array is a top-level TOML construct. Promote to language_construct."
   - value: link
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"link\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"link\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Markdown link inline construct is a top-level Markdown reference construct. Promote to language_construct."
   - value: label
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"label\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"label\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "LaTeX \\label{} is a top-level LaTeX cross-reference construct. Promote to language_construct."
   - value: command
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"command\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"command\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "LaTeX \\newcommand declaration is a top-level LaTeX construct. Promote to language_construct."
   - value: environment
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"environment\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"environment\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "LaTeX \\begin{env}...\\end{env} environment is a top-level LaTeX construct. Promote to language_construct."
   - value: binding
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"binding\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"binding\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Nix let binding / attribute binding is a top-level Nix construct. Promote to language_construct."
   - value: id
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"id\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"id\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "QML 'id: foo' property declaration is a QML language-level identity declaration. Promote to language_construct."
   - value: source
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"source\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"source\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "R source() directive symbol is a top-level R reference shape (analogous to Python import). Promote to language_construct."
   - value: port
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"port\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"port\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Elm 'port' declaration for FFI is a top-level Elm construct. Promote to language_construct."
   - value: output
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"output\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"output\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "HCL/Terraform 'output' block + GLSL 'out' qualifier. Cross-DSL overload like function. Promote to language_construct."
   - value: input
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"input\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"input\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "GLSL 'in' qualifier + Nix function input parameter. Cross-DSL overload like function. Promote to language_construct."
   - value: value
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"value\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"value\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "F# 'let foo = ...' value binding — F#'s primary value-introduction construct (analogous to variable in other languages). Promote to language_construct."
   - value: pattern
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"pattern\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"pattern\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "gitignore pattern entry is a top-level gitignore-DSL construct. Promote to language_construct."
   - value: subscript
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"subscript\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"subscript\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Swift subscript keyword declares a subscript operator overload — a top-level Swift construct. Promote to language_construct."
   - value: signal
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"signal\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"signal\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "QML 'signal foo()' declaration is a top-level QML language construct. NOT a Cluster D framework qualifier (despite handoff hypothesis — the producer is a real language keyword). Promote to language_construct."
   - value: data
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"data\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"data\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "HCL/Terraform 'data' block + COBOL DATA division. Cross-DSL overload like package. Promote to language_construct."
   - value: resource
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"resource\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"resource\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "HCL/Terraform 'resource' block + Puppet resource declaration + Robot Framework resource file. Cross-DSL overload. Promote to language_construct."
   - value: event
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"event\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"event\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Svelte on:event event-dispatch declaration is a top-level Svelte construct. NOT a Cluster D framework qualifier (the related event_publisher / event_subscriber / event_handler endpoint-shape values are already on endpoint_shape and out-of-scope here). Promote to language_construct."
   - value: protocol
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"protocol\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"protocol\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Swift 'protocol' / Objective-C '@protocol' declaration is a top-level construct. Cross-DSL overload like class. Promote to language_construct."
   - value: index
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"index\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"index\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "SQL CREATE INDEX is a top-level SQL construct. Promote to language_construct."
   - value: node
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"node\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"node\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Mermaid flowchart node + Puppet node block. Cross-DSL overload like function. Promote to language_construct."
   - value: playbook
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"playbook\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"playbook\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Ansible YAML playbook declaration is a top-level Ansible-DSL construct. Promote to language_construct."
   - value: heading

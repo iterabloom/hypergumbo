@@ -2,7 +2,7 @@
 # Audit-findings 0006: Symbol.kind Cluster G — Build / Config-Shape Entities
 
 - Date: 2026-05-05
-- Status: All rows UNRESOLVED at filing (Phase 3 producer migrations + registry updates pending)
+- Status: Mixed — 15 CANONICAL rows RESOLVED via WI-runod Wave 6 PR 2 registry promotion; 9 FOLD/DEPRECATE-NO-FOLD rows remain UNRESOLVED pending subsequent Wave 6 PRs (5 FOLD producer migrations: `test_case`/`editable`/`url_requirement`/`devDependency`/`python_task`; 4 DEPRECATE-NO-FOLD: `config`/`dev-dependency`/`build-dependency`/`work_item`).
 - Closes: WI-dubab-karur-vihak-majiv-dijug-pafot-vipuk-holod (Cluster G build/config-shape entities: separate-axis or demote, ADR-0027 Phase 3)
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Third audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical) and 0005 (Cluster B file-shape).
 
@@ -88,121 +88,121 @@ verdicts:
   - value: target
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"target\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"target\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Meson custom_target/vcs_tag and RST hyperlink-target are top-level constructs in their respective DSLs. Cross-DSL overload reads like function/package. Promote to language_construct."
   - value: special_target
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"special_target\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"special_target\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Make .PHONY / .SUFFIXES / .DEFAULT etc. are language-level keywords in Makefile syntax — distinct from regular targets. Promote to language_construct."
   - value: recipe
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"recipe\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"recipe\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Justfile recipe (name: deps) is the top-level Just language construct. Promote to language_construct."
   - value: env_var
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"env_var\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"env_var\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Dockerfile ENV directive declares an environment variable — a top-level Dockerfile construct. Promote to language_construct."
   - value: build_arg
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"build_arg\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"build_arg\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Dockerfile ARG directive declares a build-time argument — a top-level Dockerfile construct. Promote to language_construct."
   - value: exposed_port
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"exposed_port\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"exposed_port\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Dockerfile EXPOSE directive declares a network port the container intends to listen on — a top-level Dockerfile construct. Promote to language_construct."
   - value: stage
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"stage\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"stage\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Dockerfile FROM ... AS <stage> declares a multi-stage build stage — a top-level Dockerfile construct. Promote to language_construct."
   - value: derivation
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"derivation\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"derivation\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Nix mkDerivation / stdenv.mkDerivation is the core Nix-language construct for declaring a buildable artifact. Promote to language_construct."
   - value: addtask
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"addtask\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"addtask\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "BitBake addtask directive registers a task in the build graph — structurally distinct from defining a task body. Promote to language_construct."
   - value: task
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"task\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"task\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "BitBake task definition (foo() { ... } shell-style body) is the canonical task construct. Apex selection: 'task' over 'python_task' (which folds to task + meta). Promote to language_construct."
   - value: trigger
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"trigger\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"trigger\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "SQL CREATE TRIGGER and Apex 'trigger Foo on Bar' are top-level constructs in their respective DSLs. Cross-DSL overload reads like function. Promote to language_construct."
   - value: test
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"test\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"test\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Zig 'test \"name\" { ... }' is a top-level Zig language keyword; Cargo [[test]] table is a top-level pyproject/Cargo build-DSL section. Apex selection: 'test' over 'test_case' (which folds to test). Promote to language_construct."
   - value: requirement
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"requirement\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"requirement\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "requirements.txt entry is the apex pip requirement construct. 'editable' and 'url_requirement' fold here under install-mode / install-source meta. Promote to language_construct."
   - value: dependency
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"dependency\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"dependency\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "pyproject.toml [project.dependencies], package.json dependencies, Composer require, Maven <dependency> — cross-ecosystem the same concept (a runtime dependency declaration). Apex: 'dependency'. 'devDependency' folds here under dependency_scope meta. Promote to language_construct."
   - value: setting
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"setting\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"setting\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "INI file key=value pair. INI is the DSL; 'setting' is the natural name for the leaf construct. Promote to language_construct."
   - value: test_case

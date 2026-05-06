@@ -140,55 +140,123 @@ eight clusters; this section lays out the three axes (Cluster A on
 Values that name the source-language syntactic construct the symbol represents. Per ADR-0027, this is the only axis a new `Symbol.kind` value should occupy.
 
 - **`abstract`** — Abstract class / member declaration.
+- **`addtask`** — BitBake addtask symbol. CANONICAL per audit-findings 0006.
 - **`alias`** — Generic alias declaration.
+- **`architecture`** — Architecture symbol (VHDL). CANONICAL per audit-findings 0007.
 - **`arrow_function`** — Arrow-function expression (JS / TS).
 - **`attribute`** — Attribute declaration (Python class attribute, etc.).
+- **`base`** — Base symbol (XML / OWL). CANONICAL per audit-findings 0007.
+- **`binding`** — Binding symbol (DSL / DI). CANONICAL per audit-findings 0007.
+- **`block`** — Block symbol. CANONICAL per audit-findings 0007.
+- **`build_arg`** — Build argument symbol. CANONICAL per audit-findings 0006.
 - **`call_site`** — Call-expression site as a syntactic construct. Cluster E sub-case (a) fold target per audit-findings 0010: the call expression is an AST node worth representing as a Symbol, distinct from the relationship captured by an Edge of edge_type='calls'. Producers that previously emitted kind='function_call' / 'subprocess_call' / 'db_query' / 'abi_call' now emit kind='call_site' with the prior specialisation moved to meta['call_kind'].
 - **`class`** — Class declaration.
+- **`class_selector`** — CSS class selector symbol. CANONICAL per audit-findings 0007.
+- **`code_block`** — Code-block symbol (markdown). CANONICAL per audit-findings 0007.
+- **`command`** — Command symbol (shell / Cobra). CANONICAL per audit-findings 0007.
 - **`component`** — Component declaration (Vue / Svelte / Astro / React).
+- **`conditional`** — Conditional-statement symbol. CANONICAL per audit-findings 0007.
 - **`const`** — Const declaration (C / C++ / Rust / JS const).
 - **`constant`** — Constant / final / let-immutable binding.
 - **`constructor`** — Constructor / __init__ / init method.
+- **`data`** — Data symbol (Terraform data block). CANONICAL per audit-findings 0007.
 - **`declaration`** — Generic declaration (catch-all for non-categorized syntactic forms).
 - **`defined_type`** — Defined / nominal type declaration (Puppet / Coq).
+- **`dependency`** — Dependency entry. CANONICAL per audit-findings 0006.
+- **`derivation`** — Nix derivation symbol. CANONICAL per audit-findings 0006.
+- **`diagram`** — Diagram symbol (mermaid / graphviz). CANONICAL per audit-findings 0007.
 - **`directive`** — Directive declaration (Vue / Angular / GraphQL).
+- **`entity`** — Entity symbol (DSL). CANONICAL per audit-findings 0007.
+- **`entry`** — Entry symbol. CANONICAL per audit-findings 0007.
 - **`enum`** — Enum declaration.
+- **`env_var`** — Environment variable symbol. CANONICAL per audit-findings 0006.
+- **`environment`** — Environment symbol (LaTeX / shell). CANONICAL per audit-findings 0007.
+- **`event`** — Event symbol (DSL / Solidity). CANONICAL per audit-findings 0007.
 - **`executable`** — Executable declaration (CMake `add_executable`, Meson `executable`). CANONICAL per audit-findings 0005.
 - **`export`** — Export declaration (JS / TS / TOML / Rust).
+- **`exposed_port`** — Container exposed-port symbol. CANONICAL per audit-findings 0006.
 - **`field`** — Field declaration on a struct / class / record.
 - **`file`** — File-shape symbol — top-level file declaration in build / source DSLs. CANONICAL per audit-findings 0005.
+- **`font_face`** — CSS @font-face symbol. CANONICAL per audit-findings 0007.
+- **`for_loop`** — For-loop symbol (control-flow). CANONICAL per audit-findings 0007.
+- **`fragment`** — Fragment symbol (GraphQL / template). CANONICAL per audit-findings 0007.
 - **`function`** — Top-level function definition.
 - **`getter`** — Property getter accessor.
+- **`id`** — Id symbol (k8s / DSL). CANONICAL per audit-findings 0007.
+- **`id_selector`** — CSS id selector symbol. CANONICAL per audit-findings 0007.
+- **`index`** — Index symbol (SQL / DSL). CANONICAL per audit-findings 0007.
+- **`input`** — Input symbol (Terraform / shader). CANONICAL per audit-findings 0007.
 - **`instance`** — Typeclass / interface instance declaration.
 - **`interface`** — Interface declaration.
+- **`keyframes`** — CSS @keyframes symbol. CANONICAL per audit-findings 0007.
 - **`keyword`** — Keyword-shaped construct (configuration languages).
+- **`label`** — Label symbol (assembly / k8s). CANONICAL per audit-findings 0007.
 - **`library`** — Library declaration (CMake `add_library`, Meson `library`, Cargo `[lib]`, etc.). CANONICAL per audit-findings 0005.
+- **`link`** — Link symbol (markdown / yaml-anchor). CANONICAL per audit-findings 0007.
+- **`local`** — Local symbol (Terraform local). CANONICAL per audit-findings 0007.
 - **`macro`** — Macro definition (Rust / C / Scheme).
+- **`media`** — CSS @media symbol. CANONICAL per audit-findings 0007.
 - **`method`** — Method on a class / struct / interface.
 - **`mixin`** — Mixin declaration (Ruby / Sass).
 - **`module`** — Module declaration (the source-level construct).
 - **`namespace`** — Namespace declaration (C++ / TypeScript / C#).
+- **`node`** — Node symbol (k8s / DSL). CANONICAL per audit-findings 0007.
 - **`object`** — Object / singleton declaration (Scala / Kotlin).
+- **`output`** — Output symbol (Terraform / shader). CANONICAL per audit-findings 0007.
 - **`package`** — Package declaration (CMake `find_package`, VHDL `package`, Go `package`, JS `package.json` synthesis, etc.). CANONICAL per audit-findings 0005.
+- **`paragraph`** — Paragraph symbol (markdown / docs). CANONICAL per audit-findings 0007.
+- **`partial`** — Partial symbol (template). CANONICAL per audit-findings 0007.
+- **`participant`** — Participant symbol (mermaid). CANONICAL per audit-findings 0007.
+- **`pattern`** — Pattern symbol (DSL / regex). CANONICAL per audit-findings 0007.
+- **`permission`** — Permission symbol (k8s / Solidity). CANONICAL per audit-findings 0007.
+- **`playbook`** — Ansible playbook symbol. CANONICAL per audit-findings 0007.
+- **`plot`** — Plot symbol (notebook / R). CANONICAL per audit-findings 0007.
+- **`port`** — Port symbol (k8s / VHDL). CANONICAL per audit-findings 0007.
+- **`prefix`** — Prefix symbol (URI / namespace). CANONICAL per audit-findings 0007.
 - **`procedure`** — Procedure declaration (Pascal / Ada / SQL).
 - **`program`** — Program declaration (Fortran `PROGRAM`, COBOL `PROGRAM-ID`, Pascal `program`). CANONICAL per audit-findings 0005.
 - **`project`** — Project declaration (Meson `project()`, .csproj root, etc.). CANONICAL per audit-findings 0005.
 - **`prop`** — Component prop declaration (Vue / React).
 - **`property`** — Property declaration (Kotlin / Swift / C#).
+- **`protocol`** — Protocol symbol (Swift / Solidity / DSL). CANONICAL per audit-findings 0007.
+- **`provider`** — Provider symbol (Terraform / DI). CANONICAL per audit-findings 0007.
+- **`query`** — Query symbol (GraphQL / SQL operation). CANONICAL per audit-findings 0007.
+- **`recipe`** — Make recipe symbol. CANONICAL per audit-findings 0006.
 - **`record`** — Record declaration (Java 14+, Erlang, Haskell).
+- **`requirement`** — Requirement / pip requirement. CANONICAL per audit-findings 0006.
+- **`resource`** — Resource symbol (Terraform / k8s). CANONICAL per audit-findings 0007.
+- **`rule_set`** — CSS / shader rule-set symbol. CANONICAL per audit-findings 0007.
+- **`section`** — Section symbol (markdown / config). CANONICAL per audit-findings 0007.
 - **`setter`** — Property setter accessor.
+- **`setting`** — Setting / option symbol. CANONICAL per audit-findings 0006.
+- **`signal`** — Signal symbol (VHDL / Verilog / Qt). CANONICAL per audit-findings 0007.
 - **`simple_type`** — Simple-type declaration (XSD-shape).
 - **`slot`** — Component slot declaration (Vue / Svelte).
+- **`source`** — Source symbol (data-flow / shell). CANONICAL per audit-findings 0007.
+- **`special_target`** — Make special-target symbol. CANONICAL per audit-findings 0006.
+- **`stage`** — Build / pipeline stage. CANONICAL per audit-findings 0006.
+- **`state`** — State symbol (state-machine DSL). CANONICAL per audit-findings 0007.
 - **`struct`** — Struct / record-type declaration.
+- **`style_block`** — Style-block symbol (Vue / scoped CSS). CANONICAL per audit-findings 0007.
+- **`subdirectory`** — Subdirectory pseudo-symbol. CANONICAL per audit-findings 0007.
 - **`subroutine`** — Subroutine / sub declaration (Fortran / Perl).
+- **`subscript`** — Subscript symbol (Swift / Python __getitem__). CANONICAL per audit-findings 0007.
+- **`table`** — Table symbol (SQL / TOML / Markdown). CANONICAL per audit-findings 0007.
+- **`table_array`** — TOML table-array symbol. CANONICAL per audit-findings 0007.
+- **`target`** — Build-target symbol. CANONICAL per audit-findings 0006.
+- **`task`** — Generic task symbol. CANONICAL per audit-findings 0006.
 - **`template`** — Template declaration (C++ / Vue / Handlebars).
+- **`test`** — Test-case symbol. CANONICAL per audit-findings 0006.
 - **`trait`** — Trait declaration (Rust / Scala / Groovy).
+- **`trigger`** — Pipeline / DB trigger symbol. CANONICAL per audit-findings 0006.
 - **`type`** — Type declaration (TypeScript type, Haskell type, etc.).
 - **`type_alias`** — Type alias declaration.
 - **`typedef`** — C/C++ typedef declaration.
 - **`union`** — Union / sum-type declaration.
+- **`value`** — Value symbol (key-value DSLs). CANONICAL per audit-findings 0007.
 - **`variable`** — Variable / let / mutable binding.
 - **`view`** — View declaration (MVC / template languages).
+- **`yield`** — Yield-statement symbol. CANONICAL per audit-findings 0007.
 
 ### `endpoint_shape` — deprecation candidates per ADR-0027
 
@@ -249,114 +317,46 @@ Values whose meaning is leaked into the kind label even though it is captured by
 
 Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.md`. Includes the file-shape entities (Cluster B), apex/peer overloads (Cluster C), build/config-shape entities (Cluster G), and the long-tail domain vocabulary (Cluster H). Each cluster's audit decides between fold-to-Cluster-A vs separate-axis declaration vs producer-side drop.
 
-- **`addtask`** — BitBake addtask symbol. Pending cluster-G audit.
-- **`architecture`** — Architecture symbol (VHDL). Pending cluster-H audit.
-- **`base`** — Base symbol (XML / OWL). Pending cluster-H audit.
 - **`benchmark`** — Cargo `[[bench]]` target kind. Pending cluster-G audit.
 - **`bin`** — Binary executable symbol. Pending cluster-B audit.
 - **`binary`** — Cargo `[[bin]]` target kind. Pending cluster-G audit.
-- **`binding`** — Binding symbol (DSL / DI). Pending cluster-H audit.
-- **`block`** — Block symbol. Pending cluster-H audit.
 - **`build-dependency`** — Build-dependency entry. Pending cluster-G audit.
-- **`build_arg`** — Build argument symbol. Pending cluster-G audit.
-- **`class_selector`** — CSS class selector symbol. Pending cluster-H audit.
-- **`code_block`** — Code-block symbol (markdown). Pending cluster-H audit.
-- **`command`** — Command symbol (shell / Cobra). Pending cluster-H audit.
 - **`component_file`** — Component-as-file symbol. Pending cluster-B audit.
 - **`composer_package`** — Composer package symbol. Pending cluster-B audit.
-- **`conditional`** — Conditional-statement symbol. Pending cluster-H audit.
 - **`config`** — Config symbol. Pending cluster-G audit.
-- **`data`** — Data symbol (Terraform data block). Pending cluster-H audit.
-- **`dependency`** — Dependency entry. Pending cluster-G audit.
-- **`derivation`** — Nix derivation symbol. Pending cluster-G audit.
 - **`dev-dependency`** — Dev-dependency entry. Pending cluster-G audit.
 - **`devDependency`** — JS devDependency entry. Pending cluster-G audit.
-- **`diagram`** — Diagram symbol (mermaid / graphviz). Pending cluster-H audit.
 - **`editable`** — Editable install symbol. Pending cluster-G audit.
-- **`entity`** — Entity symbol (DSL). Pending cluster-H audit.
-- **`entry`** — Entry symbol. Pending cluster-H audit.
-- **`env_var`** — Environment variable symbol. Pending cluster-G audit.
-- **`environment`** — Environment symbol (LaTeX / shell). Pending cluster-H audit.
-- **`event`** — Event symbol (DSL / Solidity). Pending cluster-H audit.
 - **`example`** — Cargo `[[example]]` target kind. Pending cluster-G audit.
 - **`export_entry`** — Generic export entry. Pending cluster-B audit.
-- **`exposed_port`** — Container exposed-port symbol. Pending cluster-G audit.
 - **`external_symbol`** — External-symbol pseudo-node. Pending cluster-H audit.
-- **`font_face`** — CSS @font-face symbol. Pending cluster-H audit.
-- **`for_loop`** — For-loop symbol (control-flow). Pending cluster-H audit.
-- **`fragment`** — Fragment symbol (GraphQL / template). Pending cluster-H audit.
 - **`handler`** — Ansible playbook handler. Pending cluster-G audit.
 - **`heading`** — Heading symbol (markdown / docs). Pending cluster-H audit.
 - **`helper`** — Handlebars block helper (non-builtin). Pending cluster-H audit.
-- **`id`** — Id symbol (k8s / DSL). Pending cluster-H audit.
-- **`id_selector`** — CSS id selector symbol. Pending cluster-H audit.
-- **`index`** — Index symbol (SQL / DSL). Pending cluster-H audit.
 - **`inductive`** — Inductive type (Coq / Lean). Pending cluster-H audit.
-- **`input`** — Input symbol (Terraform / shader). Pending cluster-H audit.
-- **`keyframes`** — CSS @keyframes symbol. Pending cluster-H audit.
-- **`label`** — Label symbol (assembly / k8s). Pending cluster-H audit.
 - **`library_export`** — Library-export entry. Pending cluster-B audit.
-- **`link`** — Link symbol (markdown / yaml-anchor). Pending cluster-H audit.
-- **`local`** — Local symbol (Terraform local). Pending cluster-H audit.
 - **`main_entry`** — Main-entry pseudo-symbol. Pending cluster-B audit.
-- **`media`** — CSS @media symbol. Pending cluster-H audit.
 - **`message`** — Message symbol (proto / DSL). Pending cluster-H audit.
 - **`model`** — Model symbol (DSL). Pending cluster-H audit.
 - **`module_file`** — Module-as-file symbol. Pending cluster-B audit.
-- **`node`** — Node symbol (k8s / DSL). Pending cluster-H audit.
 - **`npm_package`** — NPM package symbol. Pending cluster-B audit.
-- **`output`** — Output symbol (Terraform / shader). Pending cluster-H audit.
-- **`paragraph`** — Paragraph symbol (markdown / docs). Pending cluster-H audit.
-- **`partial`** — Partial symbol (template). Pending cluster-H audit.
-- **`participant`** — Participant symbol (mermaid). Pending cluster-H audit.
-- **`pattern`** — Pattern symbol (DSL / regex). Pending cluster-H audit.
 - **`pattern_rule`** — Make pattern-rule target. Pending cluster-G audit.
-- **`permission`** — Permission symbol (k8s / Solidity). Pending cluster-H audit.
-- **`playbook`** — Ansible playbook symbol. Pending cluster-H audit.
-- **`plot`** — Plot symbol (notebook / R). Pending cluster-H audit.
-- **`port`** — Port symbol (k8s / VHDL). Pending cluster-H audit.
-- **`prefix`** — Prefix symbol (URI / namespace). Pending cluster-H audit.
 - **`private`** — WGSL `var<private>` address space. Pending cluster-H audit.
-- **`protocol`** — Protocol symbol (Swift / Solidity / DSL). Pending cluster-H audit.
-- **`provider`** — Provider symbol (Terraform / DI). Pending cluster-H audit.
 - **`python_task`** — BitBake Python task symbol. Pending cluster-G audit.
-- **`query`** — Query symbol (GraphQL / SQL operation). Pending cluster-H audit.
-- **`recipe`** — Make recipe symbol. Pending cluster-G audit.
-- **`requirement`** — Requirement / pip requirement. Pending cluster-G audit.
-- **`resource`** — Resource symbol (Terraform / k8s). Pending cluster-H audit.
-- **`rule_set`** — CSS / shader rule-set symbol. Pending cluster-H audit.
 - **`script`** — Shell-script-shape symbol. Pending cluster-B audit.
-- **`section`** — Section symbol (markdown / config). Pending cluster-H audit.
-- **`setting`** — Setting / option symbol. Pending cluster-G audit.
-- **`signal`** — Signal symbol (VHDL / Verilog / Qt). Pending cluster-H audit.
-- **`source`** — Source symbol (data-flow / shell). Pending cluster-H audit.
-- **`special_target`** — Make special-target symbol. Pending cluster-G audit.
-- **`stage`** — Build / pipeline stage. Pending cluster-G audit.
-- **`state`** — State symbol (state-machine DSL). Pending cluster-H audit.
 - **`storage`** — WGSL `var<storage>` address space. Pending cluster-H audit.
-- **`style_block`** — Style-block symbol (Vue / scoped CSS). Pending cluster-H audit.
-- **`subdirectory`** — Subdirectory pseudo-symbol. Pending cluster-H audit.
-- **`subscript`** — Subscript symbol (Swift / Python __getitem__). Pending cluster-H audit.
-- **`table`** — Table symbol (SQL / TOML / Markdown). Pending cluster-H audit.
-- **`table_array`** — TOML table-array symbol. Pending cluster-H audit.
-- **`target`** — Build-target symbol. Pending cluster-G audit.
-- **`task`** — Generic task symbol. Pending cluster-G audit.
-- **`test`** — Test-case symbol. Pending cluster-G audit.
 - **`test_case`** — Test-case symbol (alternate label). Pending cluster-G audit.
 - **`theorem`** — Theorem symbol (Coq / Lean). Pending cluster-H audit.
-- **`trigger`** — Pipeline / DB trigger symbol. Pending cluster-G audit.
 - **`tsconfig`** — TypeScript tsconfig symbol. Pending cluster-B audit.
 - **`uniform`** — Shader uniform binding (GLSL / WGSL). Pending cluster-H audit.
 - **`unresolved`** — Unresolved-symbol pseudo-node. Pending cluster-H audit.
 - **`url_requirement`** — URL-requirement install symbol. Pending cluster-G audit.
-- **`value`** — Value symbol (key-value DSLs). Pending cluster-H audit.
 - **`varying`** — GLSL varying qualifier (legacy interpolation). Pending cluster-H audit.
 - **`wasm_import`** — WebAssembly import symbol. Pending cluster-B audit.
 - **`wasm_module`** — WebAssembly module symbol. Pending cluster-B audit.
 - **`work_item`** — Work-item symbol. Pending cluster-G audit.
 - **`workgroup`** — WGSL `var<workgroup>` address space. Pending cluster-H audit.
 - **`workspace`** — Cargo `[workspace]` table kind. Pending cluster-G audit.
-- **`yield`** — Yield-statement symbol. Pending cluster-H audit.
 
 
 ## `Edge.evidence_type` axes
