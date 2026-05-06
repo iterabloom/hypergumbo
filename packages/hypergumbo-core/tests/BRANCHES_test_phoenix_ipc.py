@@ -36,7 +36,11 @@ end
         result = link_phoenix_ipc(tmp_path)
         assert result is not None
         # Both pushes to "response" should create symbols
-        send_symbols = [s for s in result.symbols if s.kind == "ipc_send"]
+        # Post-fold (ADR-0027 Phase 3): kind="function" + meta["framework_role"]="ipc_send"
+        send_symbols = [
+            s for s in result.symbols
+            if (s.meta or {}).get("framework_role") == "ipc_send"
+        ]
         response_sends = [s for s in send_symbols if "response" in s.name.lower()]
         assert len(response_sends) == 2
 
@@ -67,7 +71,11 @@ end
         result = link_phoenix_ipc(tmp_path)
         assert result is not None
         # Multiple handle_in for "shout" should create symbols
-        receive_symbols = [s for s in result.symbols if s.kind == "ipc_receive"]
+        # Post-fold (ADR-0027 Phase 3): kind="function" + meta["framework_role"]="ipc_receive"
+        receive_symbols = [
+            s for s in result.symbols
+            if (s.meta or {}).get("framework_role") == "ipc_receive"
+        ]
         shout_receives = [s for s in receive_symbols if "shout" in s.name.lower()]
         assert len(shout_receives) == 2
 

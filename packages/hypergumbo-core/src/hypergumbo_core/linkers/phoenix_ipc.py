@@ -273,10 +273,18 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
         """Create symbol for Phoenix endpoint if not already created."""
         sym_id = _make_symbol_id(pattern, event)
         if sym_id not in created_symbol_ids:
+            # ADR-0027 Phase 3 / audit-findings 0013: f-string Symbol.kind
+            # framework-role leak (was kind=f"ipc_{pattern.type}", expanding
+            # to "ipc_send" or "ipc_receive"). Fold to canonical
+            # kind="function" + meta["framework_role"] capturing the same
+            # information dynamically. Mirrors the linkers/ipc.py fold
+            # shape; the L3 producer-coherence linter's f-string blind spot
+            # (only catches literal-form kwargs) is what hid this site
+            # through Wave 5.
             symbols.append(Symbol(
                 id=sym_id,
                 name=f"phoenix:{pattern.type}:{event}",
-                kind=f"ipc_{pattern.type}",
+                kind="function",
                 language="elixir",
                 path=pattern.file_path,
                 span=Span(
@@ -291,6 +299,7 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
                     "event": event,
                     "pattern_type": pattern.pattern_type,
                     "topic": pattern.topic,
+                    "framework_role": f"ipc_{pattern.type}",
                 },
             ))
             created_symbol_ids.add(sym_id)

@@ -169,6 +169,58 @@ MyApp.Endpoint.broadcast!(socket, "event", %{})
         assert len(send_patterns) == 0  # Neither pattern should match validly
 
 
+class TestPhoenixSymbolFold:
+    """ADR-0027 Phase 3 / audit-findings 0013 fold: Phoenix IPC symbols carry
+    canonical kind="function" + meta["framework_role"]=f"ipc_{type}" rather
+    than the f-string-form Symbol.kind=f"ipc_{type}" that pre-fold producers
+    used. Mirrors the linkers/ipc.py fold shape (WI-habut Wave 5 follow-on).
+    """
+
+    def test_phoenix_symbol_kind_is_canonical_function(self, tmp_path: Path) -> None:
+        """Phoenix IPC Symbols emit kind='function' (canonical Cluster A)."""
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
+
+        (tmp_path / "channel.ex").write_text("""
+defmodule MyApp.RoomChannel do
+  use Phoenix.Channel
+
+  def handle_in("ping", _payload, socket) do
+    broadcast!(socket, "ping", %{})
+    {:noreply, socket}
+  end
+end
+""")
+        result = link_phoenix_ipc(tmp_path)
+        phoenix_syms = [s for s in result.symbols if s.id.startswith("phoenix:")]
+        assert len(phoenix_syms) >= 1
+        for sym in phoenix_syms:
+            assert sym.kind == "function", (
+                f"expected kind='function' (post-fold), got kind={sym.kind!r} "
+                f"on symbol {sym.id}"
+            )
+
+    def test_phoenix_symbol_meta_carries_framework_role(self, tmp_path: Path) -> None:
+        """Phoenix IPC Symbols carry meta['framework_role']='ipc_send' / 'ipc_receive'."""
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
+
+        (tmp_path / "channel.ex").write_text("""
+defmodule MyApp.RoomChannel do
+  use Phoenix.Channel
+
+  def handle_in("ping", _payload, socket) do
+    broadcast!(socket, "ping", %{})
+    {:noreply, socket}
+  end
+end
+""")
+        result = link_phoenix_ipc(tmp_path)
+        phoenix_syms = [s for s in result.symbols if s.id.startswith("phoenix:")]
+        assert len(phoenix_syms) >= 1
+        roles = {(s.meta or {}).get("framework_role") for s in phoenix_syms}
+        assert roles <= {"ipc_send", "ipc_receive"}
+        assert roles, "expected at least one phoenix Symbol with framework_role"
+
+
 class TestPhoenixLinker:
     """Tests for Phoenix Channels linker edge creation."""
 
