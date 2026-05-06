@@ -2269,7 +2269,7 @@ end
         receiver_edges = [
             e for e in call_edges
             if "handle" in e.src and "process" in e.dst
-            and e.evidence_type == "receiver_call"
+            and (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "generic")
         ]
         assert len(receiver_edges) == 1, (
             f"Expected 1 receiver_call edge, got {len(receiver_edges)}. "
@@ -2305,7 +2305,7 @@ end
         scope_edges = [
             e for e in call_edges
             if "migrate" in e.src and "connection" in e.dst
-            and e.evidence_type == "receiver_call"
+            and (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "generic")
         ]
         assert len(scope_edges) >= 1, (
             f"Expected at least 1 receiver_call edge, got {len(scope_edges)}. "
@@ -2347,7 +2347,7 @@ end
         ns_edges = [
             e for e in call_edges
             if "create" in e.src and "perform!" in e.dst
-            and e.evidence_type == "receiver_call"
+            and (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "generic")
         ]
         assert len(ns_edges) >= 1, (
             f"Expected receiver_call edge for Voice::InboundCallBuilder.perform!(), "
@@ -2499,7 +2499,7 @@ end
         resolver_edges = [
             e for e in call_edges
             if "run" in e.src and "locate" in e.dst
-            and e.evidence_type == "receiver_call"
+            and (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "generic")
         ]
         assert len(resolver_edges) == 1, (
             f"Expected 1 resolver fallback edge, got {len(resolver_edges)}. "
@@ -2527,7 +2527,7 @@ Service.work
 
         receiver_edges = [
             e for e in result.edges
-            if e.edge_type == "calls" and e.evidence_type == "receiver_call"
+            if e.edge_type == "calls" and (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "generic")
         ]
         assert len(receiver_edges) == 0
 
@@ -4031,7 +4031,7 @@ end
             f"Expected edge from Controller#show to Account#balance. "
             f"Edges from show: {[e for e in result.edges if e.src == show.id]}"
         )
-        assert edge.evidence_type == "typed_receiver_call"
+        assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "typed_receiver")
         assert edge.confidence >= 0.75
 
     def test_find_factory_type_tracking(self, tmp_path: Path) -> None:
@@ -4067,7 +4067,7 @@ end
         assert edge is not None, (
             "Expected edge from UsersController#show to User#email"
         )
-        assert edge.evidence_type == "typed_receiver_call"
+        assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "typed_receiver")
 
     def test_variable_receiver_without_type_no_false_edge(self, tmp_path: Path) -> None:
         """Variable calls without tracked type still don't create false edges."""
@@ -4145,7 +4145,7 @@ end
             None,
         )
         assert edge is not None, "pet.bark should resolve to Dog#bark (first assignment)"
-        assert edge.evidence_type == "typed_receiver_call"
+        assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "typed_receiver")
 
         cat_edge = next(
             (e for e in result.edges if e.src == run_sym.id and e.dst == cat_bark.id),
@@ -4190,7 +4190,7 @@ end
             f"Expected edge from Dashboard#show to User#email via Admin::User. "
             f"Edges from show: {[e for e in result.edges if e.src == show.id]}"
         )
-        assert edge.evidence_type == "typed_receiver_call"
+        assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "typed_receiver")
 
     def test_bare_call_rhs_no_type_inferred(self, tmp_path: Path) -> None:
         """var = some_method() does not infer type (no constant receiver)."""

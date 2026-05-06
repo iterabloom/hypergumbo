@@ -301,7 +301,7 @@ def _extract_edges_from_file(
                                 line=node.start_point[0] + 1,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
-                                evidence_type="call",
+                                evidence_type="ast_call",
                                 confidence=0.9,
                             )
                             edges.append(edge)

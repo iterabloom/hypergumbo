@@ -749,10 +749,11 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                     dst=target.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    evidence_type="function_call",
+                                    evidence_type="ast_call",
                                     confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
+                                    meta={"call_construct": "function"},
                                 ))
                                 edge_added = True
 
@@ -771,10 +772,11 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                     dst=callee.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    evidence_type="function_call",
+                                    evidence_type="ast_call",
                                     confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
+                                    meta={"call_construct": "function"},
                                 ))
                             # Check global symbols via resolver
                             else:
@@ -785,10 +787,11 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                         dst=lookup_result.symbol.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
-                                        evidence_type="function_call",
+                                        evidence_type="ast_call",
                                         confidence=0.80 * lookup_result.confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
+                                        meta={"call_construct": "function"},
                                     ))
                                 else:
                                     edges.append(make_unresolved_edge(

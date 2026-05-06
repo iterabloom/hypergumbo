@@ -1278,10 +1278,11 @@ def _extract_edges_from_file(
                                     dst=callee.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    evidence_type="function_call",
+                                    evidence_type="ast_call",
                                     confidence=0.90,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
+                                    meta={"call_construct": "function"},
                                 ))
                                 resolved = True
                             else:
@@ -1295,10 +1296,11 @@ def _extract_edges_from_file(
                                         dst=lookup_result.symbol.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
-                                        evidence_type="function_call",
+                                        evidence_type="ast_call",
                                         confidence=0.80 * lookup_result.confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
+                                        meta={"call_construct": "function"},
                                     ))
                                     resolved = True
 
@@ -1319,10 +1321,11 @@ def _extract_edges_from_file(
                                                 dst=callee.id,
                                                 edge_type="calls",
                                                 line=node.start_point[0] + 1,
-                                                evidence_type="function_call",
+                                                evidence_type="ast_call",
                                                 confidence=0.85,
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
+                                                meta={"call_construct": "function"},
                                             ))
                                             resolved = True
                                             break
@@ -1335,10 +1338,11 @@ def _extract_edges_from_file(
                                                 dst=lr.symbol.id,
                                                 edge_type="calls",
                                                 line=node.start_point[0] + 1,
-                                                evidence_type="function_call",
+                                                evidence_type="ast_call",
                                                 confidence=0.80 * lr.confidence,
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
+                                                meta={"call_construct": "function"},
                                             ))
                                             resolved = True
                                             break
@@ -1382,10 +1386,11 @@ def _extract_edges_from_file(
                                             dst=target.id,
                                             edge_type="calls",
                                             line=node.start_point[0] + 1,
-                                            evidence_type="typed_field_call",
+                                            evidence_type="ast_call",
                                             confidence=0.88,
                                             origin=PASS_ID,
                                             origin_run_id=run_id,
+                                            meta={"call_construct": "method", "receiver": "typed_field"},
                                         ))
                                         resolved = True
 
@@ -1398,10 +1403,11 @@ def _extract_edges_from_file(
                                     dst=callee.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    evidence_type="function_call",
+                                    evidence_type="ast_call",
                                     confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
+                                    meta={"call_construct": "function"},
                                 ))
                             # Check global symbols via resolver
                             else:
@@ -1446,10 +1452,11 @@ def _extract_edges_from_file(
                                         dst=lookup_result.symbol.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
-                                        evidence_type="function_call",
+                                        evidence_type="ast_call",
                                         confidence=confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
+                                        meta={"call_construct": "function"},
                                     ))
                                 elif callee_name not in _RUST_GENERIC_TRAIT_METHODS:
                                     # Use scoped name as callee for richer context
@@ -1493,10 +1500,11 @@ def _extract_edges_from_file(
                                 dst=target.id,
                                 edge_type="calls",
                                 line=call_line,
-                                evidence_type="macro_body_call",
+                                evidence_type="ast_call",
                                 confidence=0.75,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
+                                meta={"call_construct": "macro_body"},
                             ))
 
     # WI-vipur: emit module_attr_ref edges for scoped attribute reads

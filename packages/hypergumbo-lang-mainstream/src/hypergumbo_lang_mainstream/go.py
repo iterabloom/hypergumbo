@@ -36,13 +36,15 @@ How It Works
 6. Ambiguous method call guard:
    - When a method call ``x.Method()`` has no inferred receiver type and the
      method name has 2+ candidates in global symbols, creates an unresolved
-     edge with ``evidence_type="ambiguous_method_call"`` instead of picking
+     edge with ``evidence_type="ast_call"`` + ``meta={"call_construct":
+     "method", "resolution_quality": "ambiguous"}`` instead of picking
      an arbitrary candidate (which would produce a false-positive call edge)
 7. Stdlib interface method guard:
    - When a method call ``x.Lock()`` has no inferred receiver type and the
      method name matches a well-known Go stdlib interface method (Lock, Close,
      Read, Write, String, Error, etc.), creates an unresolved edge with
-     ``evidence_type="stdlib_method_call"`` even if only 1 candidate exists
+     ``evidence_type="ast_call"`` + ``meta={"call_construct": "method",
+     "receiver": "stdlib"}`` even if only 1 candidate exists
      in the repo. This prevents ``sync.Mutex.Lock()`` calls from resolving
      to ``DirLocker.Lock`` (the only repo candidate), which would give
      DirLocker.Lock 255+ false in-degree edges.
@@ -2086,10 +2088,11 @@ def _extract_edges_from_file(
                                         dst=callee.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
-                                        evidence_type="typed_receiver_call",
+                                        evidence_type="ast_call",
                                         confidence=0.85,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
+                                        meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
                                     ))
                                     callee_name = None  # Already resolved
                                 elif qualified_name in global_symbols:
@@ -2101,10 +2104,11 @@ def _extract_edges_from_file(
                                             dst=candidates[0].id,
                                             edge_type="calls",
                                             line=node.start_point[0] + 1,
-                                            evidence_type="typed_receiver_call",
+                                            evidence_type="ast_call",
                                             confidence=0.85,
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
+                                            meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
                                         ))
                                         callee_name = None  # Already resolved
                                 # Fallback: if receiver_type is a qualified
@@ -2166,10 +2170,11 @@ def _extract_edges_from_file(
                                         dst=target.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
-                                        evidence_type="typed_field_call",
+                                        evidence_type="ast_call",
                                         confidence=0.88,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
+                                        meta={"call_construct": "method", "receiver": "typed_field"},
                                     ))
                                     callee_name = None  # Already resolved
                                 # Fallback: if resolved_type is a qualified
@@ -2260,10 +2265,11 @@ def _extract_edges_from_file(
                                                     dst=target.id,
                                                     edge_type="calls",
                                                     line=node.start_point[0] + 1,
-                                                    evidence_type="chained_return_type_call",
+                                                    evidence_type="ast_call",
                                                     confidence=0.75,
                                                     origin=PASS_ID,
                                                     origin_run_id=run.execution_id,
+                                                    meta={"call_construct": "chained_return_type"},
                                                 ))
                                                 callee_name = None
 
@@ -2289,11 +2295,12 @@ def _extract_edges_from_file(
                                 dst=dst_id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="method_call_field_chain",
+                                evidence_type="ast_call",
                                 is_resolved=False,
                                 confidence=0.40,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
+                                meta={"call_construct": "method", "receiver": "field_chain"},
                             ))
                             callee_name = None  # Already handled
 
@@ -2336,10 +2343,11 @@ def _extract_edges_from_file(
                                     dst=dst_id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    evidence_type="external_receiver_call",
+                                    evidence_type="ast_call",
                                     confidence=0.50,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
+                                    meta={"call_construct": "method", "receiver": "external"},
                                 ))
                                 callee_name = None  # Already handled
 
@@ -2399,10 +2407,11 @@ def _extract_edges_from_file(
                                     dst=dst_id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    evidence_type="ambiguous_method_call",
+                                    evidence_type="ast_call",
                                     confidence=0.50,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
+                                    meta={"call_construct": "method", "resolution_quality": "ambiguous"},
                                 ))
                                 callee_name = None  # Already handled
 
@@ -2424,10 +2433,11 @@ def _extract_edges_from_file(
                                 dst=dst_id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="unexported_method_call",
+                                evidence_type="ast_call",
                                 confidence=0.40,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
+                                meta={"call_construct": "method", "visibility": "unexported"},
                             ))
                             callee_name = None  # Already handled
 
@@ -2452,10 +2462,11 @@ def _extract_edges_from_file(
                                 dst=dst_id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="stdlib_method_call",
+                                evidence_type="ast_call",
                                 confidence=0.45,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
+                                meta={"call_construct": "method", "receiver": "stdlib"},
                             ))
                             callee_name = None  # Already handled
 
@@ -2471,10 +2482,11 @@ def _extract_edges_from_file(
                                 dst=callee.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="function_call",
+                                evidence_type="ast_call",
                                 confidence=0.85,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
+                                meta={"call_construct": "function"},
                             ))
                         # Check global symbols with disambiguation via ListNameResolver
                         else:
@@ -2487,10 +2499,11 @@ def _extract_edges_from_file(
                                     dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    evidence_type="function_call",
+                                    evidence_type="ast_call",
                                     confidence=edge_confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
+                                    meta={"call_construct": "function"},
                                 ))
                             # Bug #2 fix: Create edge for external/unresolved method calls
                             # This enables linkers to potentially match across languages
@@ -2509,11 +2522,12 @@ def _extract_edges_from_file(
                                     dst=dst_id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    evidence_type="method_call",
+                                    evidence_type="ast_call",
                                     is_resolved=False,
                                     confidence=0.50,  # Lower confidence for unresolved
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
+                                    meta={"call_construct": "method"},
                                 ))
 
                 # Detect function references passed as arguments

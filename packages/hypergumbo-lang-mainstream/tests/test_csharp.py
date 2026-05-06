@@ -498,8 +498,8 @@ public class Handler {
 
         assert save_edge is not None, "Expected call edge for db.Save() via param type inference"
         assert commit_edge is not None, "Expected call edge for db.Commit() via param type inference"
-        assert save_edge.evidence_type == "method_call_type_inferred"
-        assert commit_edge.evidence_type == "method_call_type_inferred"
+        assert (save_edge.evidence_type == "ast_call" and save_edge.meta.get("call_construct") == "method" and save_edge.meta.get("resolution_quality") == "type_inferred")
+        assert (commit_edge.evidence_type == "ast_call" and commit_edge.meta.get("call_construct") == "method" and commit_edge.meta.get("resolution_quality") == "type_inferred")
 
     def test_constructor_type_inference(self, tmp_path: Path) -> None:
         """Constructor assignments should enable method call resolution."""
@@ -582,7 +582,7 @@ public class Controller {
                 if e.src == do_work.id
                 and e.dst == repo_save.id
                 and e.edge_type == "calls"
-                and e.evidence_type == "method_call_type_inferred"
+                and (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("resolution_quality") == "type_inferred")
             ),
             None,
         )
@@ -847,7 +847,7 @@ public class App {
             "Expected call edge for client.Fetch() via return type inference. "
             f"Edges from Run: {[e for e in result.edges if e.src == run_method.id]}"
         )
-        assert call_edge.evidence_type == "method_call_type_inferred"
+        assert (call_edge.evidence_type == "ast_call" and call_edge.meta.get("call_construct") == "method" and call_edge.meta.get("resolution_quality") == "type_inferred")
 
     def test_return_type_inference_void_no_resolution(self, tmp_path: Path) -> None:
         """Methods with void return type don't enable type inference."""
@@ -894,7 +894,7 @@ public class App {
                 if e.src == run_method.id
                 and e.dst == fetch_method.id
                 and e.edge_type == "calls"
-                and e.evidence_type == "method_call_type_inferred"
+                and (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("resolution_quality") == "type_inferred")
             ),
             None,
         )
@@ -950,7 +950,7 @@ public class App {
             "Expected call edge for client.Fetch() via simple call return type inference. "
             f"Edges from Run: {[e for e in result.edges if e.src == run_method.id]}"
         )
-        assert call_edge.evidence_type == "method_call_type_inferred"
+        assert (call_edge.evidence_type == "ast_call" and call_edge.meta.get("call_construct") == "method" and call_edge.meta.get("resolution_quality") == "type_inferred")
 
 
 class TestCSharpReturnTypeExtraction:
@@ -2032,7 +2032,7 @@ class TestCSharpMethodGroupReferences:
             if e.edge_type == "references" and "Run" in e.src and "Process" in e.dst
         ]
         assert len(ref_edges) == 1
-        assert ref_edges[0].evidence_type == "method_group"
+        assert (ref_edges[0].evidence_type == "ast_call" and ref_edges[0].meta.get("call_construct") == "method_group")
 
     def test_method_group_assignment(self, tmp_path: Path) -> None:
         """Method group assigned to variable creates references edge."""
@@ -2053,7 +2053,7 @@ class TestCSharpMethodGroupReferences:
             if e.edge_type == "references" and "Run" in e.src and "Handle" in e.dst
         ]
         assert len(ref_edges) == 1
-        assert ref_edges[0].evidence_type == "method_group"
+        assert (ref_edges[0].evidence_type == "ast_call" and ref_edges[0].meta.get("call_construct") == "method_group")
 
     def test_method_group_argument_cross_file(self, tmp_path: Path) -> None:
         """Method group in argument resolves cross-file via resolver."""

@@ -790,10 +790,11 @@ def _extract_edges_from_file(
                                 dst=callee.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="function_call",
+                                evidence_type="ast_call",
                                 confidence=0.90,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
+                                meta={"call_construct": "function"},
                             ))
                             resolved = True
                         elif qualified_name in global_symbols:
@@ -803,10 +804,11 @@ def _extract_edges_from_file(
                                 dst=callee.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="function_call",
+                                evidence_type="ast_call",
                                 confidence=0.90,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
+                                meta={"call_construct": "function"},
                             ))
                             resolved = True
 
@@ -817,10 +819,11 @@ def _extract_edges_from_file(
                             dst=callee.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
-                            evidence_type="function_call",
+                            evidence_type="ast_call",
                             confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run_id,
+                            meta={"call_construct": "function"},
                         ))
                         resolved = True
 
@@ -841,10 +844,11 @@ def _extract_edges_from_file(
                                 dst=lookup_result.symbol.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="function_call",
+                                evidence_type="ast_call",
                                 confidence=0.80 * lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
+                                meta={"call_construct": "function"},
                             ))
                         else:
                             edges.append(make_unresolved_edge(

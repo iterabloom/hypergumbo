@@ -475,7 +475,7 @@ end
             f"Typed method call should have confidence >= 0.70, got {process_edge.confidence}"
         )
         # Evidence type should indicate typed resolution
-        assert process_edge.evidence_type == "method_call_typed"
+        assert (process_edge.evidence_type == "ast_call" and process_edge.meta.get("call_construct") == "method" and process_edge.meta.get("resolution_quality") == "typed")
 
     def test_untyped_method_call_remains_low_confidence(self, tmp_path: Path) -> None:
         """Method call without type info still uses low confidence.
@@ -507,7 +507,7 @@ end
         # Without type info, should remain at low confidence (0.40 * resolver)
         assert send_edge.confidence <= 0.50
         # Evidence type should remain as untyped function_call
-        assert send_edge.evidence_type == "function_call"
+        assert (send_edge.evidence_type == "ast_call" and send_edge.meta.get("call_construct") == "function")
 
     def test_dot_index_assignment_type_tracking(self, tmp_path: Path) -> None:
         """Track type from dot_index_expression assignment (e.g., ngx.socket.tcp).
@@ -543,7 +543,7 @@ end
         assert send_edge is not None, "Call edge to send not found"
         # Should resolve with higher confidence because sock = ngx_socket.tcp()
         # returns ngx_socket (the table that has :send defined)
-        assert send_edge.evidence_type == "method_call_typed"
+        assert (send_edge.evidence_type == "ast_call" and send_edge.meta.get("call_construct") == "method" and send_edge.meta.get("resolution_quality") == "typed")
 
     def test_constructor_pattern_type_tracking(self, tmp_path: Path) -> None:
         """Track type from constructor call (MyClass:new()).
@@ -578,7 +578,7 @@ end
         )
         assert speak_edge is not None, "Call edge to Animal.speak not found"
         # Constructor pattern should resolve type: dog → Animal
-        assert speak_edge.evidence_type == "method_call_typed"
+        assert (speak_edge.evidence_type == "ast_call" and speak_edge.meta.get("call_construct") == "method" and speak_edge.meta.get("resolution_quality") == "typed")
         assert speak_edge.confidence >= 0.70
 
     def test_type_tracking_does_not_affect_direct_calls(self, tmp_path: Path) -> None:
@@ -602,7 +602,7 @@ end
             (e for e in call_edges if "helper" in e.dst), None
         )
         assert helper_edge is not None
-        assert helper_edge.evidence_type == "function_call"
+        assert (helper_edge.evidence_type == "ast_call" and helper_edge.meta.get("call_construct") == "function")
         assert helper_edge.confidence >= 0.80
 
 

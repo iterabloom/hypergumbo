@@ -636,7 +636,7 @@ void processData(Database db) {
 
         # Find the type-inferred call edge
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        inferred_edges = [e for e in call_edges if e.evidence_type == "method_call_type_inferred"]
+        inferred_edges = [e for e in call_edges if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("resolution_quality") == "type_inferred")]
 
         # Should have an edge from processData to Database.save
         assert len(inferred_edges) >= 1
@@ -664,7 +664,7 @@ void main() {
 
         # Find the type-inferred call edge
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        inferred_edges = [e for e in call_edges if e.evidence_type == "method_call_type_inferred"]
+        inferred_edges = [e for e in call_edges if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("resolution_quality") == "type_inferred")]
 
         # Should have an edge from main to HttpClient.send
         assert len(inferred_edges) >= 1
@@ -691,7 +691,7 @@ void process({Logger logger}) {
 
         # Find the type-inferred call edge
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        inferred_edges = [e for e in call_edges if e.evidence_type == "method_call_type_inferred"]
+        inferred_edges = [e for e in call_edges if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("resolution_quality") == "type_inferred")]
 
         # Should have an edge from process to Logger.log
         assert len(inferred_edges) >= 1
@@ -752,7 +752,7 @@ void main() {
             "Expected call edge for client.fetch() via return type inference. "
             f"Edges from main: {[e for e in result.edges if e.src == main_func.id]}"
         )
-        assert call_edge.evidence_type == "method_call_type_inferred"
+        assert (call_edge.evidence_type == "ast_call" and call_edge.meta.get("call_construct") == "method" and call_edge.meta.get("resolution_quality") == "type_inferred")
 
     def test_type_inference_no_annotation_no_resolution(
         self, tmp_path: Path
@@ -796,7 +796,7 @@ void main() {
                 if e.src == main_func.id
                 and e.dst == fetch_method.id
                 and e.edge_type == "calls"
-                and e.evidence_type == "method_call_type_inferred"
+                and (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("resolution_quality") == "type_inferred")
             ),
             None,
         )
@@ -854,7 +854,7 @@ void main() {
             "Expected call edge for client.fetch() via navigation return type inference. "
             f"Edges from main: {[e for e in result.edges if e.src == main_func.id]}"
         )
-        assert call_edge.evidence_type == "method_call_type_inferred"
+        assert (call_edge.evidence_type == "ast_call" and call_edge.meta.get("call_construct") == "method" and call_edge.meta.get("resolution_quality") == "type_inferred")
 
 
 class TestDartReturnTypeExtraction:

@@ -390,10 +390,11 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                         dst=callee.id,
                                         edge_type="calls",
                                         line=line,
-                                        evidence_type="function_call",
+                                        evidence_type="ast_call",
                                         confidence=0.95,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
+                                        meta={"call_construct": "function"},
                                     ))
                                 else:
                                     # Check global symbols via resolver
@@ -404,10 +405,11 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                             dst=lookup_result.symbol.id,
                                             edge_type="calls",
                                             line=line,
-                                            evidence_type="cross_file_call",
+                                            evidence_type="ast_call",
                                             confidence=0.80 * lookup_result.confidence,
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
+                                            meta={"call_construct": "cross_file"},
                                         ))
 
         return edges

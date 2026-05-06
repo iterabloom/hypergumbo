@@ -530,10 +530,11 @@ def _extract_edges_from_tree(
                             dst=callee.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
-                            evidence_type="function_call",
+                            evidence_type="ast_call",
                             confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run_id,
+                            meta={"call_construct": "function"},
                         ))
                     # Check global symbols via resolver
                     else:
@@ -544,10 +545,11 @@ def _extract_edges_from_tree(
                                 dst=lookup_result.symbol.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="function_call",
+                                evidence_type="ast_call",
                                 confidence=0.80 * lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
+                                meta={"call_construct": "function"},
                             ))
 
     return edges

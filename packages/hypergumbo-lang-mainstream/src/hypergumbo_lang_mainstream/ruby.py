@@ -1967,10 +1967,11 @@ def _try_receiver_call(
                         dst=callee.id,
                         edge_type="calls",
                         line=line,
-                        evidence_type="constructor_call",
+                        evidence_type="ast_call",
                         confidence=0.90,
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        meta={"call_construct": "constructor"},
                     ))
                     return True
         # No user-defined #initialize found — inherits Object#initialize (not
@@ -1995,10 +1996,11 @@ def _try_receiver_call(
                         dst=callee.id,
                         edge_type="calls",
                         line=line,
-                        evidence_type="receiver_call",
+                        evidence_type="ast_call",
                         confidence=0.85,
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        meta={"call_construct": "method", "receiver": "generic"},
                     ))
                     return True
 
@@ -2017,10 +2019,11 @@ def _try_receiver_call(
                 dst=callee.id,
                 edge_type="calls",
                 line=line,
-                evidence_type="receiver_call",
+                evidence_type="ast_call",
                 confidence=0.75 * lookup_result.confidence,
                 origin=PASS_ID,
                 origin_run_id=run_id,
+                meta={"call_construct": "method", "receiver": "generic"},
             ))
             return True
 
@@ -2316,10 +2319,11 @@ def _extract_edges_from_file(
                                         dst=callee.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
-                                        evidence_type="typed_receiver_call",
+                                        evidence_type="ast_call",
                                         confidence=0.80,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
+                                        meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
                                     ))
                             # else: variable receiver with unknown type — no edge
                             # (avoids false positives from bare-name matching)
@@ -2338,10 +2342,11 @@ def _extract_edges_from_file(
                                     dst=callee.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    evidence_type="method_call",
+                                    evidence_type="ast_call",
                                     confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
+                                    meta={"call_construct": "method"},
                                 ))
                         # Check global symbols via resolver (bare calls only)
                         elif receiver_node is None:
@@ -2354,10 +2359,11 @@ def _extract_edges_from_file(
                                     dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    evidence_type="method_call",
+                                    evidence_type="ast_call",
                                     confidence=0.80 * lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
+                                    meta={"call_construct": "method"},
                                 ))
 
         # Detect bare method calls (identifier nodes that are method names)
@@ -2415,10 +2421,11 @@ def _extract_edges_from_file(
                                 dst=callee.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="bare_method_call",
+                                evidence_type="ast_call",
                                 confidence=confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
+                                meta={"call_construct": "method", "receiver": "bare"},
                             ))
                 elif not ambiguous:
                     # Use require hints for disambiguation
@@ -2432,10 +2439,11 @@ def _extract_edges_from_file(
                                 dst=callee.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="bare_method_call",
+                                evidence_type="ast_call",
                                 confidence=0.70 * lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
+                                meta={"call_construct": "method", "receiver": "bare"},
                             ))
 
         # Hash literal function references: {on_success: my_callback}

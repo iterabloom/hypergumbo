@@ -1085,10 +1085,11 @@ def _extract_edges_from_file(
                                             dst=local_symbols[qname].id,
                                             edge_type="calls",
                                             line=node.start_point[0] + 1,
-                                            evidence_type="method_call_field_chain",
+                                            evidence_type="ast_call",
                                             confidence=0.80,
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
+                                            meta={"call_construct": "method", "receiver": "field_chain"},
                                         ))
                                         _track_csharp_return_type(
                                             local_symbols[qname], node, source,
@@ -1102,10 +1103,11 @@ def _extract_edges_from_file(
                                             dst=lookup.symbol.id,
                                             edge_type="calls",
                                             line=node.start_point[0] + 1,
-                                            evidence_type="method_call_field_chain",
+                                            evidence_type="ast_call",
                                             confidence=0.75 * lookup.confidence,
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
+                                            meta={"call_construct": "method", "receiver": "field_chain"},
                                         ))
                                         _track_csharp_return_type(
                                             lookup.symbol, node, source,
@@ -1149,10 +1151,11 @@ def _extract_edges_from_file(
                                     dst=callee.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    evidence_type="method_call_type_inferred",
+                                    evidence_type="ast_call",
                                     confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
+                                    meta={"call_construct": "method", "resolution_quality": "type_inferred"},
                                 ))
                                 _track_csharp_return_type(
                                     callee, node, source, var_types, local_symbols
@@ -1168,10 +1171,11 @@ def _extract_edges_from_file(
                                         dst=lookup_result.symbol.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
-                                        evidence_type="method_call_type_inferred",
+                                        evidence_type="ast_call",
                                         confidence=0.80 * lookup_result.confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
+                                        meta={"call_construct": "method", "resolution_quality": "type_inferred"},
                                     ))
                                     _track_csharp_return_type(
                                         lookup_result.symbol, node, source,
@@ -1196,10 +1200,11 @@ def _extract_edges_from_file(
                             dst=callee.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
-                            evidence_type="method_call",
+                            evidence_type="ast_call",
                             confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            meta={"call_construct": "method"},
                         ))
                         _track_csharp_return_type(
                             callee, node, source, var_types, local_symbols
@@ -1214,10 +1219,11 @@ def _extract_edges_from_file(
                                 dst=lookup_result.symbol.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="method_call",
+                                evidence_type="ast_call",
                                 confidence=0.80 * lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
+                                meta={"call_construct": "method"},
                             ))
                             _track_csharp_return_type(
                                 lookup_result.symbol, node, source,
@@ -1239,10 +1245,11 @@ def _extract_edges_from_file(
                         dst=target.id,
                         edge_type="instantiates",
                         line=node.start_point[0] + 1,
-                        evidence_type="object_creation",
+                        evidence_type="ast_call",
                         confidence=0.90,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
+                        meta={"call_construct": "constructor"},
                     ))
                 else:
                     # Use import path for disambiguation
@@ -1254,10 +1261,11 @@ def _extract_edges_from_file(
                             dst=lookup_result.symbol.id,
                             edge_type="instantiates",
                             line=node.start_point[0] + 1,
-                            evidence_type="object_creation",
+                            evidence_type="ast_call",
                             confidence=0.85 * lookup_result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            meta={"call_construct": "constructor"},
                         ))
 
             # Track variable type for type inference
@@ -1302,10 +1310,11 @@ def _extract_edges_from_file(
                             dst=target.id,
                             edge_type="references",
                             line=node.start_point[0] + 1,
-                            evidence_type="method_group",
+                            evidence_type="ast_call",
                             confidence=0.80,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            meta={"call_construct": "method_group"},
                         ))
 
         # Pattern 2: variable_declarator with RHS identifier — Action handler = Handle
@@ -1336,10 +1345,11 @@ def _extract_edges_from_file(
                                 dst=target.id,
                                 edge_type="references",
                                 line=node.start_point[0] + 1,
-                                evidence_type="method_group",
+                                evidence_type="ast_call",
                                 confidence=0.80,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
+                                meta={"call_construct": "method_group"},
                             ))
 
     return edges

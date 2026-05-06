@@ -3873,7 +3873,7 @@ impl Server {
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 1
         edge = typed_edges[0]
@@ -3912,7 +3912,7 @@ impl Server {
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 1
         assert typed_edges[0].confidence == 0.88
@@ -3947,7 +3947,7 @@ impl Outer {
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 1
         run_sym = next(s for s in result.symbols if s.name == "App::run")
@@ -3979,7 +3979,7 @@ impl Server {
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 0
 
@@ -4009,7 +4009,7 @@ impl Server {
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         # other.app isn't rooted at self, so Strategy 1.5 doesn't fire
         assert len(typed_edges) == 0
@@ -4044,7 +4044,7 @@ impl Server {
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 1
         send_sym = next(s for s in result.symbols if s.name == "Client::send")
@@ -4078,7 +4078,7 @@ impl Server {
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) >= 1
 
@@ -4156,7 +4156,7 @@ impl Server {
             analyzer=analyzer,
         )
 
-        typed_edges = [e for e in edges if e.evidence_type == "typed_field_call"]
+        typed_edges = [e for e in edges if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")]
         assert len(typed_edges) == 1
         assert typed_edges[0].dst == target.id
         assert typed_edges[0].confidence == 0.88
@@ -4193,7 +4193,7 @@ impl Server {
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 1
         edge = typed_edges[0]
@@ -4485,7 +4485,7 @@ impl Server {
             f"Should detect Self::handle inside select!, got: {call_edges}"
         )
         # Check evidence type
-        macro_edges = [e for e in handle_edges if e.evidence_type == "macro_body_call"]
+        macro_edges = [e for e in handle_edges if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "macro_body")]
         assert len(macro_edges) >= 1
 
     def test_select_simple_function_call(self, tmp_path: Path) -> None:

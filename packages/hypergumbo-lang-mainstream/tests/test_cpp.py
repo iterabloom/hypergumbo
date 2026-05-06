@@ -1831,7 +1831,7 @@ class Ctrl {
         # Should resolve this->_repo->save() to Repo::save, not Service::save
         chain_edges = [
             e for e in result.edges
-            if e.evidence_type == "method_call_field_chain"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "field_chain")
         ]
         assert len(chain_edges) == 1
         assert "save" in chain_edges[0].dst
@@ -1860,7 +1860,7 @@ class Ctrl {
 
         chain_edges = [
             e for e in result.edges
-            if e.evidence_type == "method_call_field_chain"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "field_chain")
         ]
         assert len(chain_edges) == 1
         assert "query" in chain_edges[0].dst
@@ -1881,7 +1881,7 @@ class Ctrl {
 
         chain_edges = [
             e for e in result.edges
-            if e.evidence_type == "method_call_field_chain"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "field_chain")
         ]
         assert len(chain_edges) == 0
 
@@ -1927,7 +1927,7 @@ class Ctrl {
 
         chain_edges = [
             e for e in result.edges
-            if e.evidence_type == "method_call_field_chain"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "field_chain")
         ]
         assert len(chain_edges) == 1
         assert "query" in chain_edges[0].dst
@@ -2160,7 +2160,7 @@ void process() {
         # process() should NOT have edges to clear(), push_back(), resize()
         for edge in call_edges:
             if "process" in edge.src:
-                assert "clear" not in edge.dst or edge.evidence_type != "function_call", (
+                assert "clear" not in edge.dst or (not (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "function")), (
                     f"v.clear() should not resolve to project clear(). Edge: {edge}"
                 )
 

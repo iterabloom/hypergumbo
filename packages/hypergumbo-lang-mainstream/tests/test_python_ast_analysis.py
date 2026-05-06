@@ -4970,7 +4970,8 @@ class TestUnresolvedEdgeEmission:
         edge = unresolved[0]
 
         # Verify the edge properties
-        assert edge["meta"]["evidence_type"] == "method_call"
+        assert edge["meta"]["evidence_type"] == "ast_call"
+        assert edge["meta"]["call_construct"] == "method"
         assert edge["is_resolved"] is False
         assert edge["confidence"] == 0.50
 

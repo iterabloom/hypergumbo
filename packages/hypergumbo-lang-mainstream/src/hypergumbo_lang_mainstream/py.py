@@ -3229,9 +3229,10 @@ def _process_call(
                     dst=dst_id,
                     edge_type="calls",
                     line=call_node.lineno,
-                    evidence_type="method_call",
+                    evidence_type="ast_call",
                     is_resolved=False,
                     confidence=0.50,  # Lower confidence for unresolved
+                    meta={"call_construct": "method"},
                 ))
             # Case: imported_name.method() where imported_name not resolved
             elif receiver_name in imports:
@@ -3242,9 +3243,10 @@ def _process_call(
                     dst=dst_id,
                     edge_type="calls",
                     line=call_node.lineno,
-                    evidence_type="method_call",
+                    evidence_type="ast_call",
                     is_resolved=False,
                     confidence=0.50,
+                    meta={"call_construct": "method"},
                 ))
             # Case: local_var.method() where type cannot be inferred.
             # Emit unresolved edge using the attribute name so that IO
@@ -3257,9 +3259,10 @@ def _process_call(
                     dst=dst_id,
                     edge_type="calls",
                     line=call_node.lineno,
-                    evidence_type="method_call_type_inferred",
+                    evidence_type="ast_call",
                     is_resolved=False,
                     confidence=0.40,
+                    meta={"call_construct": "method", "resolution_quality": "type_inferred"},
                 ))
         elif isinstance(func, ast.Attribute):
             # WI-zigah: multi-segment chain like `urllib.request.urlopen(x)`

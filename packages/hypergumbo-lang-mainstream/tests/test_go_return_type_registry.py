@@ -181,7 +181,7 @@ func main() {
         )
         # Verify it was resolved via typed_receiver_call (not unresolved)
         assert any(
-            e.evidence_type == "typed_receiver_call" for e in chained_edges
+            (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("resolution_quality") == "typed_receiver") for e in chained_edges
         ), (
             f"Chained call should resolve as typed_receiver_call; "
             f"got evidence types: {[e.evidence_type for e in chained_edges]}"

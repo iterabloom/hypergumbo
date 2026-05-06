@@ -770,7 +770,7 @@ class TestErlangDocstrings:
 
         # External edges should have synthetic dst IDs
         ext_edges = [e for e in call_edges
-                     if e.evidence_type == "remote_call_external"]
+                     if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "remote_external")]
         assert len(ext_edges) >= 2, (
             f"Expected >= 2 external edges, got {len(ext_edges)}: "
             f"{[(e.src, e.dst) for e in ext_edges]}"

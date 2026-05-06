@@ -179,8 +179,9 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
                 line=ucall.line,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="method_call_recovery",
+                evidence_type="ast_call",
                 confidence=min(chosen_hint.confidence, ucall.confidence),
+                meta={"call_construct": "method", "resolution_quality": "recovery"},
             ))
             # Mark resolved so a second unresolved sibling on the same
             # method doesn't double-emit.

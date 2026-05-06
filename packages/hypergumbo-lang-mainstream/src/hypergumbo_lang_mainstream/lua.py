@@ -598,8 +598,9 @@ def _extract_edges_from_file(
                                     line=node.start_point[0] + 1,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
-                                    evidence_type="method_call_typed",
+                                    evidence_type="ast_call",
                                     confidence=confidence,
+                                    meta={"call_construct": "method", "resolution_quality": "typed"},
                                 )
                                 edges.append(edge)
                                 typed_resolved = True
@@ -618,8 +619,9 @@ def _extract_edges_from_file(
                                     line=node.start_point[0] + 1,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
-                                    evidence_type="function_call",
+                                    evidence_type="ast_call",
                                     confidence=confidence,
+                                    meta={"call_construct": "function"},
                                 )
                                 edges.append(edge)
                             else:
@@ -642,8 +644,9 @@ def _extract_edges_from_file(
                                     line=node.start_point[0] + 1,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
-                                    evidence_type="function_call",
+                                    evidence_type="ast_call",
                                     confidence=confidence,
+                                    meta={"call_construct": "function"},
                                 )
                                 edges.append(edge)
                             else:
@@ -664,8 +667,9 @@ def _extract_edges_from_file(
                                 line=node.start_point[0] + 1,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
-                                evidence_type="function_call",
+                                evidence_type="ast_call",
                                 confidence=confidence,
+                                meta={"call_construct": "function"},
                             )
                             edges.append(edge)
                         else:

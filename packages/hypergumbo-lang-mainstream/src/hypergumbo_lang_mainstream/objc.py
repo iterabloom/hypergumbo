@@ -553,10 +553,11 @@ def _extract_edges_from_file(
                             dst=lookup_result.symbol.id,
                             edge_type="calls",
                             line=line,
-                            evidence_type="cross_file_message_send",
+                            evidence_type="message_send",
                             confidence=0.75 * lookup_result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            meta={"call_construct": "cross_file"},
                         ))
                     else:
                         edges.append(make_unresolved_edge(

@@ -91,7 +91,9 @@ class TestMethodCallRecovery:
         assert new_edge.src == main.id
         assert new_edge.dst == run_method.id
         assert new_edge.edge_type == "calls"
-        assert new_edge.evidence_type == "method_call_recovery"
+        assert new_edge.evidence_type == "ast_call"
+        assert new_edge.meta.get("call_construct") == "method"
+        assert new_edge.meta.get("resolution_quality") == "recovery"
 
     def test_no_recovery_when_method_not_in_class(self) -> None:
         """If the unresolved name is not contained in the called class, skip."""

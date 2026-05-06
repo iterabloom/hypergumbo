@@ -3730,7 +3730,7 @@ func main() {
         run_calls = [e for e in main_calls if "Run" in e.dst]
         assert len(run_calls) >= 1
 
-        assert run_calls[0].evidence_type == "typed_receiver_call", (
+        assert (run_calls[0].evidence_type == "ast_call" and run_calls[0].meta.get("call_construct") == "method" and run_calls[0].meta.get("resolution_quality") == "typed_receiver"), (
             f"Expected evidence_type='typed_receiver_call', got '{run_calls[0].evidence_type}'"
         )
 
@@ -4325,7 +4325,7 @@ func cleanup(x interface{}) {
         # The edge should be UNRESOLVED (ambiguous_method_call), not resolved
         # to any specific type
         for edge in close_calls:
-            assert edge.evidence_type == "ambiguous_method_call", (
+            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "ambiguous"), (
                 f"x.Close() with 3+ candidates should have evidence_type='ambiguous_method_call', "
                 f"got '{edge.evidence_type}'"
             )
@@ -4381,7 +4381,7 @@ func start(x interface{}) {
 
         # Should be marked as ambiguous_method_call
         for edge in run_calls:
-            assert edge.evidence_type == "ambiguous_method_call", (
+            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "ambiguous"), (
                 f"2-candidate method should trigger ambiguity guard, "
                 f"got '{edge.evidence_type}'"
             )
@@ -4415,7 +4415,7 @@ func main() {
 
         # No edge should have evidence_type="ambiguous_method_call"
         for edge in main_calls:
-            assert edge.evidence_type != "ambiguous_method_call", (
+            assert (not (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "ambiguous")), (
                 f"Package-qualified call should not be guarded, got {edge.evidence_type}"
             )
 
@@ -4458,7 +4458,7 @@ func main() {
         assert any("Server.Close" in e.dst for e in close_calls), (
             f"s.Close() should resolve to Server.Close, found: {[e.dst for e in close_calls]}"
         )
-        assert all(e.evidence_type != "ambiguous_method_call" for e in close_calls), (
+        assert all((not (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("resolution_quality") == "ambiguous")) for e in close_calls), (
             "Typed receiver call should not be marked as ambiguous"
         )
 
@@ -4578,7 +4578,7 @@ func cleanup() {
 
         # Should be unresolved — chained-call guard fires before ambiguity guard
         for edge in close_calls:
-            assert edge.evidence_type == "method_call_field_chain", (
+            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("receiver") == "field_chain"), (
                 f"Chained call Close() with 3+ candidates should be "
                 f"method_call_field_chain (post-Cluster-B fold), got '{edge.evidence_type}'"
             )
@@ -4627,7 +4627,7 @@ func testFunc() {
 
         # Should NOT resolve to Manager.Update — receiver type is unknown
         for edge in update_calls:
-            assert edge.evidence_type == "method_call_field_chain", (
+            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("receiver") == "field_chain"), (
                 f"Chained call Update() with 1 candidate should be "
                 f"method_call_field_chain (post-Cluster-B fold), got '{edge.evidence_type}'"
             )
@@ -4667,7 +4667,7 @@ func handler() {
             # Post-Cluster-B fold: chained_call_unresolved → method_call_field_chain
             # + is_resolved=False. Guard not firing means is_resolved is True.
             assert not (
-                edge.evidence_type == "method_call_field_chain"
+                (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("receiver") == "field_chain")
                 and edge.is_resolved is False
             ), (
                 f"Package-qualified chained call should not trigger guard, "
@@ -4715,7 +4715,7 @@ func process(resp Response) {
 
         # Field chain resolves: resp → Response → Body → Server → Server.Close
         for edge in close_calls:
-            assert edge.evidence_type == "typed_field_call", (
+            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("receiver") == "typed_field"), (
                 f"resp.Body.Close() should resolve via field chain, "
                 f"got '{edge.evidence_type}'"
             )
@@ -4757,7 +4757,7 @@ func closeAll(items []interface{}) {
 
         # Should be unresolved — NOT resolved to any specific type
         for edge in close_calls:
-            assert edge.evidence_type == "ambiguous_method_call", (
+            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "ambiguous"), (
                 f"Index operand Close() with 3+ candidates should be "
                 f"ambiguous_method_call, got '{edge.evidence_type}'"
             )
@@ -4868,7 +4868,7 @@ func runQuery(e *Engine) {
         # Should NOT be unresolved chained-call (post-Cluster-B fold)
         exec_unresolved = [
             e for e in exec_calls
-            if e.evidence_type == "method_call_field_chain" and e.is_resolved is False
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "field_chain") and e.is_resolved is False
         ]
         assert len(exec_unresolved) == 0, (
             f"Exec() should be resolved, not unresolved method_call_field_chain: "
@@ -4954,7 +4954,7 @@ func (s *Server) Cleanup() {
             f"found: {[e.dst for e in close_calls]}"
         )
         for edge in close_calls:
-            assert edge.evidence_type == "typed_receiver_call", (
+            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "typed_receiver"), (
                 f"Self-method call should use typed_receiver_call, "
                 f"got '{edge.evidence_type}'"
             )
@@ -5025,12 +5025,16 @@ func doWork(mu *sync.Mutex) {
             # the unresolved_method_call path (with correct module hint 'sync')
             # instead of the stdlib_method_call guard.  Both are correct — the
             # key invariant is that DirLocker.Lock is NOT chosen.
-            # Post-Cluster-B fold (WI-nunal): unresolved_method_call → method_call + is_resolved=False.
-            assert edge.evidence_type in ("stdlib_method_call", "method_call"), (
-                f"stdlib method collision should produce stdlib_method_call or "
-                f"unresolved method_call edge, got '{edge.evidence_type}'"
+            # Post-WI-nibis fold: stdlib_method_call / method_call → ast_call + meta['call_construct']='method'.
+            assert (
+                edge.evidence_type == "ast_call"
+                and edge.meta.get("call_construct") == "method"
+            ), (
+                f"stdlib method collision should produce ast_call + call_construct='method' "
+                f"(receiver='stdlib' for stdlib guard, no receiver for unresolved), "
+                f"got evidence_type='{edge.evidence_type}', meta={edge.meta}"
             )
-            if edge.evidence_type == "method_call":
+            if (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method"):
                 assert edge.is_resolved is False, (
                     f"method_call from stdlib collision should be unresolved, "
                     f"got is_resolved={edge.is_resolved}"
@@ -5102,7 +5106,7 @@ func run(x interface{}) {
         # Non-stdlib method with 1 candidate should resolve
         assert len(analyze_calls) >= 1
         for edge in analyze_calls:
-            assert edge.evidence_type != "stdlib_method_call", (
+            assert (not (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("receiver") == "stdlib")), (
                 f"Non-stdlib method should not trigger stdlib guard, "
                 f"got '{edge.evidence_type}'"
             )
@@ -5159,11 +5163,15 @@ func saveData(m *sync.Map) {
             # module hint, so the edge may go through unresolved method_call
             # path (post-Cluster-B fold WI-nunal: unresolved_method_call →
             # method_call + is_resolved=False) instead of stdlib_method_call.
-            # Both are correct.
-            assert edge.evidence_type in ("stdlib_method_call", "method_call"), (
-                f"Expected unresolved edge, got '{edge.evidence_type}'"
+            # Both are correct. Post-WI-nibis fold: both → ast_call + meta['call_construct']='method'.
+            assert (
+                edge.evidence_type == "ast_call"
+                and edge.meta.get("call_construct") == "method"
+            ), (
+                f"Expected unresolved edge with ast_call + call_construct='method', "
+                f"got evidence_type='{edge.evidence_type}', meta={edge.meta}"
             )
-            if edge.evidence_type == "method_call":
+            if (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method"):
                 assert edge.is_resolved is False
 
     def test_load_single_candidate_produces_unresolved(
@@ -5193,7 +5201,7 @@ func getData(x interface{}) {
         assert len(load_calls) >= 1
         for edge in load_calls:
             assert "Cache.Load" not in edge.dst
-            assert edge.evidence_type == "stdlib_method_call"
+            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("receiver") == "stdlib")
 
 
 class TestGoPrivateMethodScope:
@@ -6852,7 +6860,7 @@ func main() {}
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 1
         edge = typed_edges[0]
@@ -6890,7 +6898,7 @@ func main() {}
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 1
         assert typed_edges[0].confidence == 0.88
@@ -6923,7 +6931,7 @@ func main() {}
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 1
         edge = typed_edges[0]
@@ -6960,7 +6968,7 @@ func main() {}
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         # getHolder().foo.Bar() — root is call, not resolvable
         assert len(typed_edges) == 0
@@ -6996,7 +7004,7 @@ func main() {}
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 0
 
@@ -7035,7 +7043,7 @@ func main() {}
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 0
 
@@ -7072,7 +7080,7 @@ func main() {}
 
         typed_edges = [
             e for e in result.edges
-            if e.evidence_type == "typed_field_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 0
 
@@ -7172,7 +7180,7 @@ func (d *Dispatcher) Run() string {
             f"d.stage.Exec() should resolve to Stage.Exec symbol, "
             f"got dst={exec_edge.dst}"
         )
-        assert exec_edge.evidence_type == "typed_field_call"
+        assert (exec_edge.evidence_type == "ast_call" and exec_edge.meta.get("call_construct") == "method" and exec_edge.meta.get("receiver") == "typed_field")
 
     def test_cross_package_interface_param_resolves_to_interface_method(
         self, tmp_path: Path,
@@ -7276,7 +7284,7 @@ func main() {
 
         typed_calls = [
             e for e in result.edges
-            if e.evidence_type == "typed_receiver_call"
+            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("resolution_quality") == "typed_receiver")
             and "Server.Run" in e.dst
         ]
         assert len(typed_calls) == 1
@@ -7310,7 +7318,7 @@ func main() {
             and e.edge_type == "calls"
         ]
         assert len(run_calls) >= 1
-        assert any(e.evidence_type == "typed_receiver_call" for e in run_calls)
+        assert any((e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("resolution_quality") == "typed_receiver") for e in run_calls)
 
 
 class TestGoShapeId:

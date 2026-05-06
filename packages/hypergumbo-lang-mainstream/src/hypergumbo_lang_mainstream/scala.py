@@ -683,10 +683,11 @@ def _extract_edges_from_file(
                                 dst=target.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="function_call",
+                                evidence_type="ast_call",
                                 confidence=0.85,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
+                                meta={"call_construct": "function"},
                             ))
                             edge_added = True
 
@@ -697,10 +698,11 @@ def _extract_edges_from_file(
                             dst=callee.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
-                            evidence_type="function_call",
+                            evidence_type="ast_call",
                             confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run_id,
+                            meta={"call_construct": "function"},
                         ))
                     elif not edge_added:
                         path_hint = import_aliases.get(callee_name)
@@ -712,10 +714,11 @@ def _extract_edges_from_file(
                                 dst=lookup_result.symbol.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="function_call",
+                                evidence_type="ast_call",
                                 confidence=conf,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
+                                meta={"call_construct": "function"},
                             ))
                         else:
                             edges.append(make_unresolved_edge(

@@ -922,10 +922,11 @@ def _extract_edges_from_tree(
                                     dst=callee.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    evidence_type="function_call",
+                                    evidence_type="ast_call",
                                     confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
+                                    meta={"call_construct": "function"},
                                 ))
                         # Fallback: single-match local lookup (modules, macros)
                         elif target_name in local_symbols:  # pragma: no cover — defensive; multi index covers all symbols
@@ -935,10 +936,11 @@ def _extract_edges_from_tree(
                                 dst=callee.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                evidence_type="function_call",
+                                evidence_type="ast_call",
                                 confidence=0.85,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
+                                meta={"call_construct": "function"},
                             ))
                         # Cross-file: multi-clause global lookup, then resolver.
                         # Skip for Kernel/stdlib names — bare ``inspect(x)`` is
@@ -961,10 +963,11 @@ def _extract_edges_from_tree(
                                         dst=callee.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
-                                        evidence_type="function_call",
+                                        evidence_type="ast_call",
                                         confidence=0.80,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
+                                        meta={"call_construct": "function"},
                                     ))
                             else:  # pragma: no cover — multi-index has same keys as resolver
                                 # Use alias hints for disambiguation
@@ -976,10 +979,11 @@ def _extract_edges_from_tree(
                                         dst=lookup_result.symbol.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
-                                        evidence_type="function_call",
+                                        evidence_type="ast_call",
                                         confidence=0.80 * lookup_result.confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
+                                        meta={"call_construct": "function"},
                                     ))
 
             # Module-qualified calls: Helper.greet(), App.Services.UserService.find()
@@ -1013,10 +1017,11 @@ def _extract_edges_from_tree(
                                     dst=callee.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    evidence_type="pipe_call",
+                                    evidence_type="ast_call",
                                     confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
+                                    meta={"call_construct": "pipe"},
                                 ))
                         elif func_name not in _ELIXIR_STDLIB_FUNCTIONS:
                             global_multi = global_symbols_multi.get(func_name) if global_symbols_multi else None
@@ -1032,10 +1037,11 @@ def _extract_edges_from_tree(
                                         dst=callee.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
-                                        evidence_type="pipe_call",
+                                        evidence_type="ast_call",
                                         confidence=0.80,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
+                                        meta={"call_construct": "pipe"},
                                     ))
                 # Note: ``data |> Mod.func`` (module-qualified pipe) does NOT
                 # produce a bare ``dot`` rhs — tree-sitter wraps it in a
