@@ -95,7 +95,7 @@ class TestRubyFFIGem:
         edge = result.edges[0]
         assert edge.edge_type == "calls"
         assert edge.dst == c_func.id
-        assert edge.evidence_type == "ruby_ffi_attach"
+        assert edge.evidence_type == "ast_call_direct" and (edge.meta or {}).get("framework_dispatch") == "ruby_ffi_attach"
         assert edge.meta is not None
         assert edge.meta.get("access_mode") == "write"
         assert edge.meta.get("dest_access_mode") == "read"
@@ -191,7 +191,7 @@ class TestRubyFFIGem:
 
         assert len(result.edges) == 1
         assert result.edges[0].dst == f"{RUBY_FFI_STDLIB_PREFIX}nonexistent:unresolved"
-        assert result.edges[0].evidence_type == "ruby_ffi_attach"
+        assert result.edges[0].evidence_type == "ast_call_direct" and (result.edges[0].meta or {}).get("framework_dispatch") == "ruby_ffi_attach"
         assert result.edges[0].is_resolved is False
 
     def test_attach_function_with_string_name(self, tmp_path: Path) -> None:
@@ -257,7 +257,7 @@ class TestRubyFFIUnresolvedEdges:
         edge = result.edges[0]
         assert edge.edge_type == "calls"
         assert edge.dst == f"{RUBY_FFI_STDLIB_PREFIX}zmq_send:unresolved"
-        assert edge.evidence_type == "ruby_ffi_attach"
+        assert edge.evidence_type == "ast_call_direct" and (edge.meta or {}).get("framework_dispatch") == "ruby_ffi_attach"
         assert edge.is_resolved is False
         assert edge.confidence == 0.75
 
@@ -289,7 +289,7 @@ class TestRubyFFIUnresolvedEdges:
 
         assert len(result.edges) == 1
         assert result.edges[0].dst == c_func.id
-        assert result.edges[0].evidence_type == "ruby_ffi_attach"
+        assert result.edges[0].evidence_type == "ast_call_direct" and (result.edges[0].meta or {}).get("framework_dispatch") == "ruby_ffi_attach"
 
     def test_multiple_external_functions(self, tmp_path: Path) -> None:
         """Multiple attach_function to external lib each get unresolved edges."""
@@ -371,7 +371,7 @@ class TestRubyCExtension:
         assert len(result.edges) == 1
         edge = result.edges[0]
         assert edge.edge_type == "calls"
-        assert edge.evidence_type == "ruby_c_extension"
+        assert edge.evidence_type == "ast_call_direct" and (edge.meta or {}).get("framework_dispatch") == "ruby_c_extension"
         assert edge.dst == c_func.id
 
     def test_rb_define_module_function(self, tmp_path: Path) -> None:
@@ -401,7 +401,7 @@ class TestRubyCExtension:
         )
 
         assert len(result.edges) == 1
-        assert result.edges[0].evidence_type == "ruby_c_extension"
+        assert result.edges[0].evidence_type == "ast_call_direct" and (result.edges[0].meta or {}).get("framework_dispatch") == "ruby_c_extension"
 
     def test_rb_define_singleton_method(self, tmp_path: Path) -> None:
         """rb_define_singleton_method also creates edges."""

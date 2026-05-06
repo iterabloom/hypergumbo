@@ -290,7 +290,8 @@ def link_django_orm_dispatch(ctx: LinkerContext) -> LinkerResult:
                     confidence=0.90,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="django_orm_dispatch",
+                    evidence_type="ast_call_direct",
+                    meta={"framework_dispatch": "django_orm"},
                 ),
             )
 

@@ -2860,7 +2860,8 @@ end
             and e.dst == callback.id
         ]
         assert len(edges) == 1
-        assert edges[0].evidence_type == "rails_callback"
+        assert edges[0].evidence_type == "ast_call_direct"
+        assert (edges[0].meta or {}).get("framework_dispatch") == "rails_callback"
 
     def test_after_create_creates_callback_edge(self, tmp_path: Path) -> None:
         """after_create :method creates invokes_callback edge."""
@@ -2995,7 +2996,8 @@ end
             f"Expected 1 invokes_callback edge for block callback, got {len(callback_edges)}. "
             f"All edges: {[(e.edge_type, e.src, e.dst) for e in result.edges]}"
         )
-        assert callback_edges[0].evidence_type == "rails_block_callback"
+        assert callback_edges[0].evidence_type == "ast_call_direct"
+        assert (callback_edges[0].meta or {}).get("framework_dispatch") == "rails_block_callback"
 
     def test_do_block_callback_multiple_calls(self, tmp_path: Path) -> None:
         """Block with multiple method calls creates edges for each."""
@@ -3344,7 +3346,8 @@ end
             f"got {len(assoc_edges)}. "
             f"All edges: {[(e.edge_type, e.src, e.dst) for e in result.edges]}"
         )
-        assert assoc_edges[0].evidence_type == "activerecord_association"
+        assert assoc_edges[0].evidence_type == "ast_call_direct"
+        assert (assoc_edges[0].meta or {}).get("framework_dispatch") == "activerecord_association"
         assert assoc_edges[0].confidence == 0.90
 
     def test_belongs_to_creates_association_edge(self, tmp_path: Path) -> None:
@@ -3559,7 +3562,8 @@ end
             f"Expected 1 delegates_to edge, got {len(delegate_edges)}. "
             f"All edges: {[(e.edge_type, e.src, e.dst) for e in result.edges]}"
         )
-        assert delegate_edges[0].evidence_type == "ruby_delegate"
+        assert delegate_edges[0].evidence_type == "ast_call_direct"
+        assert (delegate_edges[0].meta or {}).get("framework_dispatch") == "ruby_delegate"
         assert delegate_edges[0].confidence == 0.85
 
     def test_delegate_multiple_methods(self, tmp_path: Path) -> None:

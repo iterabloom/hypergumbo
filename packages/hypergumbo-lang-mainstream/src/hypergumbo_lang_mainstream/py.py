@@ -2910,8 +2910,9 @@ def _extract_edges(
                     dst=decorated_symbol.id,
                     edge_type="signal_receiver",
                     line=line,
-                    evidence_type="django_signal_receiver",
+                    evidence_type="ast_decorator",
                     confidence=0.90,
+                    meta={"framework_dispatch": "django_signal"},
                 ))
             elif isinstance(signal_node, ast.Name):
                 # Unresolved signal - emit edge anyway for visibility
@@ -2921,9 +2922,10 @@ def _extract_edges(
                     dst=decorated_symbol.id,
                     edge_type="signal_receiver",
                     line=line,
-                    evidence_type="django_signal_receiver",
+                    evidence_type="ast_decorator",
                     is_resolved=False,
                     confidence=0.50,
+                    meta={"framework_dispatch": "django_signal"},
                 ))
 
     # Pre-collect class field types for self.field.method() resolution (INV-014).

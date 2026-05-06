@@ -227,7 +227,8 @@ class TestLinkDjangoOrmDispatch:
         for e in result.edges:
             assert e.src == c.id
             assert e.edge_type == "dispatches_to"
-            assert e.evidence_type == "django_orm_dispatch"
+            assert e.evidence_type == "ast_call_direct"
+            assert (e.meta or {}).get("framework_dispatch") == "django_orm"
             assert e.confidence == 0.90
 
     def test_no_edges_when_no_django_subclasses(self) -> None:

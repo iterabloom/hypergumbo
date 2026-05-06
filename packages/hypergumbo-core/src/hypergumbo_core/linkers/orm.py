@@ -239,11 +239,12 @@ def link_orm_queries(
             confidence=0.85,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            evidence_type="orm_accessor_pattern",
+            evidence_type="ast_call_direct",
         )
         edge.meta = {
             "model_name": ref.model_name,
             "accessor": ref.accessor,
+            "framework_dispatch": "orm_accessor",
         }
         edges.append(edge)
 

@@ -1245,10 +1245,11 @@ def _extract_block_callback_edges(
             dst=callee.id,
             edge_type="invokes_callback",
             line=line,
-            evidence_type="rails_block_callback",
+            evidence_type="ast_call_direct",
             confidence=0.85,
             origin=PASS_ID,
             origin_run_id=run_id,
+            meta={"framework_dispatch": "rails_block_callback"},
         ))
 
 
@@ -1359,10 +1360,11 @@ def _extract_rails_callbacks(
                     dst=callee.id,
                     edge_type="invokes_callback",
                     line=node.start_point[0] + 1,
-                    evidence_type="rails_callback",
+                    evidence_type="ast_call_direct",
                     confidence=0.9,
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    meta={"framework_dispatch": "rails_callback"},
                 ))
 
         # Block-style callbacks: after_commit do...end or before_save { ... }
@@ -1523,10 +1525,11 @@ def _extract_activerecord_associations(
                 dst=target_sym.id,
                 edge_type="association",
                 line=node.start_point[0] + 1,
-                evidence_type="activerecord_association",
+                evidence_type="ast_call_direct",
                 confidence=0.90,
                 origin=PASS_ID,
                 origin_run_id=run_id,
+                meta={"framework_dispatch": "activerecord_association"},
             ))
         else:
             # Unresolved: target model not found (may be in a gem)
@@ -1535,10 +1538,11 @@ def _extract_activerecord_associations(
                 dst=f"ruby:?:0-0:{target_class}:unresolved",
                 edge_type="association",
                 line=node.start_point[0] + 1,
-                evidence_type="activerecord_association",
+                evidence_type="ast_call_direct",
                 confidence=0.70,
                 origin=PASS_ID,
                 origin_run_id=run_id,
+                meta={"framework_dispatch": "activerecord_association"},
             ))
 
     return edges
@@ -1667,11 +1671,11 @@ def _extract_ruby_delegates(
                         dst=target_method.id,
                         edge_type="references",
                         line=node.start_point[0] + 1,
-                        evidence_type="ruby_delegate",
+                        evidence_type="ast_call_direct",
                         confidence=0.85,
                         origin=PASS_ID,
                         origin_run_id=run_id,
-                        meta={"mechanism": "delegate"},
+                        meta={"mechanism": "delegate", "framework_dispatch": "ruby_delegate"},
                     ))
                 else:
                     # Target class exists but method not found
@@ -1680,11 +1684,11 @@ def _extract_ruby_delegates(
                         dst=f"ruby:?:0-0:{qualified}:unresolved",
                         edge_type="references",
                         line=node.start_point[0] + 1,
-                        evidence_type="ruby_delegate",
+                        evidence_type="ast_call_direct",
                         confidence=0.65,
                         origin=PASS_ID,
                         origin_run_id=run_id,
-                        meta={"mechanism": "delegate"},
+                        meta={"mechanism": "delegate", "framework_dispatch": "ruby_delegate"},
                     ))
             else:
                 # Target class not found at all
@@ -1694,10 +1698,11 @@ def _extract_ruby_delegates(
                     dst=f"ruby:?:0-0:{qualified}:unresolved",
                     edge_type="references",
                     line=node.start_point[0] + 1,
-                    evidence_type="ruby_delegate",
+                    evidence_type="ast_call_direct",
                     confidence=0.65,
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    meta={"framework_dispatch": "ruby_delegate"},
                 ))
 
     return edges
@@ -2069,11 +2074,11 @@ def _try_job_enqueue(
                         dst=callee.id,
                         edge_type="event_publishes",
                         line=line,
-                        evidence_type="job_enqueue",
+                        evidence_type="ast_call_direct",
                         confidence=0.90,
                         origin=PASS_ID,
                         origin_run_id=run_id,
-                        meta={"channel_kind": "queue"},
+                        meta={"channel_kind": "queue", "framework_dispatch": "job_enqueue"},
                     ))
                     return True
 
@@ -2087,11 +2092,11 @@ def _try_job_enqueue(
                     dst=callee.id,
                     edge_type="event_publishes",
                     line=line,
-                    evidence_type="job_enqueue",
+                    evidence_type="ast_call_direct",
                     confidence=0.85,
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    meta={"channel_kind": "queue"},
+                    meta={"channel_kind": "queue", "framework_dispatch": "job_enqueue"},
                 ))
                 return True
 
@@ -2101,11 +2106,11 @@ def _try_job_enqueue(
         dst=f"ruby:?:0-0:{receiver_class}:unresolved",
         edge_type="event_publishes",
         line=line,
-        evidence_type="job_enqueue",
+        evidence_type="ast_call_direct",
         confidence=0.70,
         origin=PASS_ID,
         origin_run_id=run_id,
-        meta={"channel_kind": "queue"},
+        meta={"channel_kind": "queue", "framework_dispatch": "job_enqueue"},
     ))
     return True
 
