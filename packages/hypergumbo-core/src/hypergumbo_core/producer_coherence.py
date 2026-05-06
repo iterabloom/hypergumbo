@@ -109,6 +109,94 @@ def _resolve_module_constant(
     return None
 
 
+_FuncScope = ast.FunctionDef | ast.AsyncFunctionDef
+
+
+def _iter_same_scope_assignments(node: ast.AST) -> Iterator[ast.Assign | ast.AnnAssign]:
+    """Yield Assign/AnnAssign nodes in *node*'s lexical scope.
+
+    Descends through compound control-flow statements (``if``, ``for``,
+    ``while``, ``try``, ``with``) but stops at nested function, class,
+    and lambda boundaries — those introduce new scopes and their
+    assignments do not bind the same name in the parent scope.
+    """
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, (
+            ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda,
+        )):
+            continue
+        if isinstance(child, (ast.Assign, ast.AnnAssign)):
+            yield child
+        yield from _iter_same_scope_assignments(child)
+
+
+def _resolve_simple_rhs(value: ast.expr) -> frozenset[str] | None:
+    """Try to resolve a RHS expression to a frozenset of string literals.
+
+    Recognized shapes (extension A scope):
+
+    - ``"literal"`` — single string constant.
+    - ``"a" if cond else "b"`` — ternary with both branches resolvable
+      to literals (recursively, so nested ternaries also work).
+
+    Returns ``None`` for any other shape (function call, arithmetic,
+    Name reference, dict subscript, etc.). Conservative on purpose: a
+    later extension B/C can broaden this without changing the contract.
+    """
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        return frozenset({value.value})
+    if isinstance(value, ast.IfExp):
+        body_set = _resolve_simple_rhs(value.body)
+        else_set = _resolve_simple_rhs(value.orelse)
+        if body_set is None or else_set is None:
+            return None
+        return body_set | else_set
+    return None
+
+
+def _resolve_function_local(
+    name: str, func_node: _FuncScope,
+) -> frozenset[str] | None:
+    """Resolve a function-local name to its candidate literal values.
+
+    Walks every Assign / AnnAssign in *func_node*'s scope (excluding
+    nested function and class bodies) that targets *name*. If every
+    such assignment's RHS resolves via :func:`_resolve_simple_rhs`,
+    returns the union of all candidate literals. Otherwise — or if no
+    matching assignment exists — returns ``None``, signalling the
+    caller to keep its existing silent-skip behaviour.
+
+    The conservative posture (any unresolvable assignment poisons the
+    whole resolution) keeps false positives out of the L3 gate: a
+    variable that might be reassigned to anything at runtime cannot
+    be statically gated.
+    """
+    candidates: set[str] = set()
+    found_target = False
+    for assign in _iter_same_scope_assignments(func_node):
+        if isinstance(assign, ast.Assign):
+            targets: list[ast.expr] = list(assign.targets)
+            value: ast.expr = assign.value
+        else:  # ast.AnnAssign
+            # ``label: str`` (no RHS) is a type-annotation declaration
+            # that creates no binding. Skip — only ``label: str = "x"``
+            # contributes a candidate value.
+            if assign.value is None:
+                continue
+            targets = [assign.target]
+            value = assign.value
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id == name:
+                found_target = True
+                resolved = _resolve_simple_rhs(value)
+                if resolved is None:
+                    return None
+                candidates |= resolved
+    if not found_target:
+        return None
+    return frozenset(candidates)
+
+
 def _matches_constructor(call_node: ast.Call, constructor_names: frozenset[str]) -> bool:
     """Return True iff *call_node*'s callable matches any name in *constructor_names*."""
     func = call_node.func
@@ -136,17 +224,25 @@ def _find_keyword(call_node: ast.Call, keyword_arg: str) -> ast.keyword | None:
 
 
 def _classify_value(
-    value: ast.expr, tree: ast.Module,
-) -> tuple[str, str | None]:
+    value: ast.expr, tree: ast.Module, func_scope: _FuncScope | None,
+) -> tuple[str, str | frozenset[str] | None]:
     """Classify a keyword argument's value expression.
 
     Returns ``(category, payload)`` where category is one of:
 
     - ``"literal"`` — payload is the resolved literal string.
+    - ``"literals"`` — payload is a frozenset of candidate literal
+      strings (WI-nubuv ext A: function-local single-literal,
+      ternary, and if/else assignment chains).
     - ``"fstring"`` — payload is the literal-prefix portion of the
       f-string when one exists, else ``""``.
     - ``"unresolvable"`` — payload is a short description (e.g.
       ``"Name(other_var)"``) for the advisory.
+
+    Resolution order for ``ast.Name``: function-local assignments
+    first (Python LEGB scoping), then module-level constants. This
+    matches Python's runtime behaviour — a function-local rebinding
+    shadows the module-level constant.
     """
     if isinstance(value, ast.Constant) and isinstance(value.value, str):
         return ("literal", value.value)
@@ -159,6 +255,12 @@ def _classify_value(
                 break
         return ("fstring", "".join(prefix_parts))
     if isinstance(value, ast.Name):
+        if func_scope is not None:
+            local = _resolve_function_local(value.id, func_scope)
+            if local is not None:
+                if len(local) == 1:
+                    return ("literal", next(iter(local)))
+                return ("literals", local)
         resolved = _resolve_module_constant(value.id, tree)
         if resolved is not None:
             return ("literal", resolved)
@@ -166,17 +268,54 @@ def _classify_value(
     return ("unresolvable", type(value).__name__)
 
 
+def _walk_calls_with_scope(
+    node: ast.AST,
+    func_scope: _FuncScope | None,
+    *,
+    constructor_names: frozenset[str],
+    keyword_arg: str,
+) -> Iterator[tuple[ast.Call, _FuncScope | None]]:
+    """Recursively yield matching Call nodes paired with their enclosing function.
+
+    Tracks the innermost enclosing FunctionDef / AsyncFunctionDef as a
+    scope handle for downstream :func:`_resolve_function_local`
+    lookups. ClassDef bodies do NOT update the scope (their bare body
+    is class-level, not a function); methods inside them re-enter
+    function scope when their FunctionDef is visited.
+    """
+    if (
+        isinstance(node, ast.Call)
+        and _matches_constructor(node, constructor_names)
+        and _find_keyword(node, keyword_arg) is not None
+    ):
+        yield node, func_scope
+
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        new_scope: _FuncScope | None = node
+    else:
+        new_scope = func_scope
+
+    for child in ast.iter_child_nodes(node):
+        yield from _walk_calls_with_scope(
+            child, new_scope,
+            constructor_names=constructor_names,
+            keyword_arg=keyword_arg,
+        )
+
+
 def _iter_producer_call_sites(
     path: Path,
     *,
     constructor_names: frozenset[str],
     keyword_arg: str,
-) -> Iterator[tuple[int, ast.expr, ast.Module]]:
-    """Yield ``(lineno, value_node, module_tree)`` for each matching call site.
+) -> Iterator[tuple[int, ast.expr, ast.Module, _FuncScope | None]]:
+    """Yield ``(lineno, value_node, module_tree, enclosing_func)`` per match.
 
-    Walks every ``ast.Call`` node in *path* and surfaces the keyword's
-    value expression for downstream classification. Files that fail to
-    read or parse are silently skipped (best-effort, same posture as
+    Walks every ``ast.Call`` node in *path*, surfaces the keyword's
+    value expression, and tracks the innermost enclosing function
+    scope so :func:`_classify_value` can resolve function-local name
+    references. Files that fail to read or parse are silently skipped
+    (best-effort, same posture as
     :func:`axis_drift.iter_axis_set_assignments`).
     """
     try:
@@ -188,15 +327,16 @@ def _iter_producer_call_sites(
     except SyntaxError:  # pragma: no cover
         return
 
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        if not _matches_constructor(node, constructor_names):
-            continue
-        kw = _find_keyword(node, keyword_arg)
-        if kw is None:
-            continue
-        yield node.lineno, kw.value, tree
+    for call_node, func_scope in _walk_calls_with_scope(
+        tree, None,
+        constructor_names=constructor_names,
+        keyword_arg=keyword_arg,
+    ):
+        kw = _find_keyword(call_node, keyword_arg)
+        # _walk_calls_with_scope filtered to calls that have this
+        # keyword, so kw is never None here.
+        assert kw is not None  # pragma: no cover
+        yield call_node.lineno, kw.value, tree, func_scope
 
 
 def find_producer_coherence_violations(
@@ -243,7 +383,7 @@ def find_producer_coherence_violations(
             py_str = str(py_file)
             if any(sub in py_str for sub in excluded_tuple):
                 continue
-            for lineno, value_node, tree in _iter_producer_call_sites(
+            for lineno, value_node, tree, func_scope in _iter_producer_call_sites(
                 py_file,
                 constructor_names=constructor_names,
                 keyword_arg=keyword_arg,
@@ -252,11 +392,24 @@ def find_producer_coherence_violations(
                     rel = py_file.relative_to(repo_root)
                 except ValueError:  # pragma: no cover
                     rel = py_file
-                category, payload = _classify_value(value_node, tree)
+                category, payload = _classify_value(value_node, tree, func_scope)
                 if category == "literal":
                     if payload not in registry_names:
                         strict.append(
                             f"{rel}:{lineno} ({keyword_arg}={payload!r}): "
+                            f"not in canonical registry"
+                        )
+                elif category == "literals":
+                    # WI-nubuv ext A: multi-literal candidate set
+                    # (ternary, if/else chain). Flag every offending
+                    # literal so the operator sees which branch is
+                    # the unregistered one.
+                    assert isinstance(payload, frozenset)
+                    bad = sorted(v for v in payload if v not in registry_names)
+                    for v in bad:
+                        strict.append(
+                            f"{rel}:{lineno} ({keyword_arg}={v!r} via "
+                            f"function-local assignment): "
                             f"not in canonical registry"
                         )
                 elif category == "fstring":

@@ -153,6 +153,13 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "(LaTeX \\include, RST .. include::, Meson subdir, etc.).",
     ),
     EdgeTypeSpec(
+        "constrains", AXIS_RELATIONSHIP,
+        "pip ``-c`` / ``--constraint`` file reference — constrains "
+        "version selection without forcing install. Peer of "
+        "``includes`` (which models ``-r`` / ``--requirement``). "
+        "Surfaced by WI-nubuv ext A in linkers/requirements.py.",
+    ),
+    EdgeTypeSpec(
         "defines_target", AXIS_RELATIONSHIP,
         "Config file defines a build/run/deploy target (Makefile "
         "rule, package.json script, pyproject entry point, "

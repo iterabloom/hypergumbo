@@ -275,3 +275,288 @@ def test_call_without_keyword_is_skipped(tmp_path: Path):
         registry_names=frozenset({"ast_call_direct"}),
     )
     assert result.strict_violations == ()
+
+
+# --- WI-nubuv extension A: assignment-form trace ---
+#
+# These cases mirror the WI-nitil empirical leak shape:
+#   kind = "<literal>"
+#   ...
+#   Symbol(kind=kind, ...)
+# The literal-kwarg-only matcher caught NONE of them; the WI-nubuv
+# extension walks back simple assignment patterns within the enclosing
+# function to surface the literal candidates.
+
+
+def test_assignment_form_literal_in_registry_is_clean(tmp_path: Path):
+    """Function-local ``kind = "literal"`` followed by ``Symbol(kind=kind)``
+    where the literal IS in the registry should not produce a violation."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make():\n'
+        '    label = "ast_call_direct"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_assignment_form_literal_not_in_registry_is_strict(tmp_path: Path):
+    """The WI-nitil shape: function-local single-literal assignment
+    whose value is NOT in the registry should fail strictly."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make():\n'
+        '    label = "brand_new_label"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert len(result.strict_violations) == 1
+    assert "brand_new_label" in result.strict_violations[0]
+
+
+def test_assignment_form_ternary_both_in_registry_is_clean(tmp_path: Path):
+    """Ternary ``kind = "a" if cond else "b"`` where both are in
+    registry should be clean."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(x):\n'
+        '    label = "ast_call_direct" if x else "naming_convention"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct", "naming_convention"}),
+    )
+    assert result.strict_violations == ()
+
+
+def test_assignment_form_ternary_one_unregistered_is_strict(tmp_path: Path):
+    """Ternary with one branch outside registry should flag that branch."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(x):\n'
+        '    label = "ast_call_direct" if x else "brand_new_label"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert len(result.strict_violations) == 1
+    assert "brand_new_label" in result.strict_violations[0]
+
+
+def test_assignment_form_if_else_chain_one_unregistered_is_strict(tmp_path: Path):
+    """If/else chain assigning the same name to literals — both branches
+    are inspected."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(x):\n'
+        '    if x:\n'
+        '        label = "ast_call_direct"\n'
+        '    else:\n'
+        '        label = "brand_new_label"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert len(result.strict_violations) == 1
+    assert "brand_new_label" in result.strict_violations[0]
+
+
+def test_assignment_form_unresolvable_rhs_is_silent(tmp_path: Path):
+    """Conservative: if any RHS in scope is unresolvable (function call,
+    arithmetic), the whole resolution falls back to silent-skip rather
+    than partially flagging — the variable could be anything at runtime."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(x):\n'
+        '    label = compute_label(x)\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_assignment_form_nested_function_scope_isolated(tmp_path: Path):
+    """An assignment inside a nested function must not pollute the
+    outer function's scope — Python lexical scoping; ``inner()`` has its
+    own ``label`` binding."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def outer():\n'
+        '    def inner():\n'
+        '        label = "brand_new_label"\n'
+        '        return label\n'
+        '    label = "ast_call_direct"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert result.strict_violations == ()
+
+
+def test_assignment_form_nested_if_block_resolves(tmp_path: Path):
+    """A literal assignment nested inside an ``if`` block (no else,
+    or one-arm) is still in the enclosing function's scope and must be
+    resolvable."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(x):\n'
+        '    if x:\n'
+        '        label = "brand_new_label"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert len(result.strict_violations) == 1
+    assert "brand_new_label" in result.strict_violations[0]
+
+
+def test_assignment_form_annassign_resolves(tmp_path: Path):
+    """``label: str = "literal"`` (annotated assignment) should resolve
+    the same way as plain assignment."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make():\n'
+        '    label: str = "brand_new_label"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert len(result.strict_violations) == 1
+    assert "brand_new_label" in result.strict_violations[0]
+
+
+def test_assignment_form_function_param_is_silent(tmp_path: Path):
+    """A function parameter (no in-scope assignment of the name) keeps
+    the existing silent-skip behaviour. Regression guard."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(label):\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_assignment_form_ternary_one_branch_unresolvable_is_silent(tmp_path: Path):
+    """Conservative posture also applies inside ternaries: if one branch
+    is a function call (unresolvable), the whole resolution falls back
+    to silent-skip rather than partial-flagging the resolvable branch."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(x):\n'
+        '    label = "ast_call_direct" if x else compute_label(x)\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_assignment_form_annassign_without_value_is_skipped(tmp_path: Path):
+    """``label: str`` is a type-annotation declaration with no RHS;
+    it does not bind a value and must be skipped during the walk-back.
+    A subsequent real assignment (``label = "literal"``) is still
+    resolved normally."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make():\n'
+        '    label: str\n'
+        '    label = "brand_new_label"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert len(result.strict_violations) == 1
+    assert "brand_new_label" in result.strict_violations[0]
+
+
+def test_assignment_form_module_constant_still_takes_precedence(tmp_path: Path):
+    """When a module-level constant exists with the same name as a
+    function-local variable, the function-local resolution still uses
+    its own assignment (Python LEGB scoping). Sanity check that the
+    function-local path doesn't accidentally pull in the module-level
+    constant's value."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'label = "ast_call_direct"\n'
+        'def make():\n'
+        '    label = "brand_new_label"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert len(result.strict_violations) == 1
+    assert "brand_new_label" in result.strict_violations[0]

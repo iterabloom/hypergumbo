@@ -556,6 +556,38 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
                      "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['resolution_quality']='typed_receiver'`."),
     EvidenceTypeSpec("unexported_method_call", AXIS_ENDPOINT_SHAPE,
                      "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['visibility']='unexported'` (Go)."),
+
+    # ----------------------------------------------------------------
+    # WI-nubuv ext A discoveries — assignment-form producer leaks
+    # ----------------------------------------------------------------
+    # Surfaced by the L3 producer-coherence linter when extension A
+    # (function-local assignment trace) landed and walked back
+    # ``evidence_type = "<literal>"`` shapes that were previously
+    # invisible to the literal-kwarg-only matcher. All registered
+    # AXIS_PENDING for follow-on Cluster-C audit; the values describe
+    # language/framework mechanism dispatch and are at-risk for
+    # mechanism-on-evidence_type fold per ADR-0028 §"Phase 3 Cluster C".
+    EvidenceTypeSpec("cffi_call", AXIS_PENDING,
+                     "Python cffi FFI call (linkers/pyffi.py). At-risk "
+                     "Cluster C: fold candidate to canonical inference "
+                     "+ `meta['ffi_mechanism']='cffi'`. Pending cluster-C audit."),
+    EvidenceTypeSpec("ctypes_call", AXIS_PENDING,
+                     "Python ctypes FFI call (linkers/pyffi.py). At-risk "
+                     "Cluster C: fold candidate to canonical inference "
+                     "+ `meta['ffi_mechanism']='ctypes'`. Pending cluster-C audit."),
+    EvidenceTypeSpec("alias_resolution", AXIS_PENDING,
+                     "JS module-resolution pathway via path alias "
+                     "(linkers/js_module.py). Pending cluster-A audit "
+                     "(could promote to AXIS_INFERENCE_PATHWAY canonical)."),
+    EvidenceTypeSpec("import_resolution", AXIS_PENDING,
+                     "JS module-resolution pathway via direct import "
+                     "(linkers/js_module.py). Pending cluster-A audit "
+                     "(could promote to AXIS_INFERENCE_PATHWAY canonical)."),
+    EvidenceTypeSpec("ast_call_method", AXIS_PENDING,
+                     "Python AST method-call inference (py.py). At-risk "
+                     "Cluster D peer of `ast_call_direct`: fold candidate "
+                     "to `ast_call_direct` + `meta['call_construct']='method'`. "
+                     "Pending cluster-D audit."),
 )
 
 

@@ -566,6 +566,50 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "External-symbol pseudo-node. Pending cluster-H audit."),
     SymbolKindSpec("unresolved", AXIS_PENDING,
                    "Unresolved-symbol pseudo-node. Pending cluster-H audit."),
+
+    # ----------------------------------------------------------------
+    # WI-nubuv ext A discoveries — assignment-form producer leaks
+    # ----------------------------------------------------------------
+    # Surfaced by the L3 producer-coherence linter when extension A
+    # (function-local assignment trace) landed and walked back
+    # ``kind = "<literal>"`` shapes that were previously invisible to
+    # the literal-kwarg-only matcher. All registered AXIS_PENDING for
+    # follow-on Cluster-G / Cluster-H audit; the values themselves
+    # are real language-level kinds, just never previously surfaced.
+    SymbolKindSpec("binary", AXIS_PENDING,
+                   "Cargo `[[bin]]` target kind. "
+                   "Pending cluster-G audit."),
+    SymbolKindSpec("benchmark", AXIS_PENDING,
+                   "Cargo `[[bench]]` target kind. "
+                   "Pending cluster-G audit."),
+    SymbolKindSpec("example", AXIS_PENDING,
+                   "Cargo `[[example]]` target kind. "
+                   "Pending cluster-G audit."),
+    SymbolKindSpec("workspace", AXIS_PENDING,
+                   "Cargo `[workspace]` table kind. "
+                   "Pending cluster-G audit."),
+    SymbolKindSpec("handler", AXIS_PENDING,
+                   "Ansible playbook handler. Pending cluster-G audit."),
+    SymbolKindSpec("pattern_rule", AXIS_PENDING,
+                   "Make pattern-rule target. Pending cluster-G audit."),
+    SymbolKindSpec("helper", AXIS_PENDING,
+                   "Handlebars block helper (non-builtin). "
+                   "Pending cluster-H audit."),
+    SymbolKindSpec("uniform", AXIS_PENDING,
+                   "Shader uniform binding (GLSL / WGSL). "
+                   "Pending cluster-H audit."),
+    SymbolKindSpec("varying", AXIS_PENDING,
+                   "GLSL varying qualifier (legacy interpolation). "
+                   "Pending cluster-H audit."),
+    SymbolKindSpec("private", AXIS_PENDING,
+                   "WGSL `var<private>` address space. "
+                   "Pending cluster-H audit."),
+    SymbolKindSpec("storage", AXIS_PENDING,
+                   "WGSL `var<storage>` address space. "
+                   "Pending cluster-H audit."),
+    SymbolKindSpec("workgroup", AXIS_PENDING,
+                   "WGSL `var<workgroup>` address space. "
+                   "Pending cluster-H audit."),
 )
 
 

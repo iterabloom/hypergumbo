@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.5.0"
+      "const": "0.5.1"
     },
     "confidence_model": {
       "type": "string",
@@ -383,7 +383,19 @@
             "playbook": "pending_classification",
             "structure": "endpoint_shape",
             "external_symbol": "pending_classification",
-            "unresolved": "pending_classification"
+            "unresolved": "pending_classification",
+            "binary": "pending_classification",
+            "benchmark": "pending_classification",
+            "example": "pending_classification",
+            "workspace": "pending_classification",
+            "handler": "pending_classification",
+            "pattern_rule": "pending_classification",
+            "helper": "pending_classification",
+            "uniform": "pending_classification",
+            "varying": "pending_classification",
+            "private": "pending_classification",
+            "storage": "pending_classification",
+            "workgroup": "pending_classification"
           },
           "x-deprecated": [
             "proc",
@@ -682,6 +694,7 @@
             "inherits",
             "decorated_by",
             "includes",
+            "constrains",
             "defines_target",
             "data_flows_to",
             "module_exports",
@@ -737,6 +750,7 @@
             "inherits": "relationship",
             "decorated_by": "relationship",
             "includes": "relationship",
+            "constrains": "relationship",
             "defines_target": "relationship",
             "data_flows_to": "relationship",
             "module_exports": "relationship",
@@ -1075,7 +1089,12 @@
                 "stdlib_method_call": "endpoint_shape",
                 "typed_field_call": "endpoint_shape",
                 "typed_receiver_call": "endpoint_shape",
-                "unexported_method_call": "endpoint_shape"
+                "unexported_method_call": "endpoint_shape",
+                "cffi_call": "pending_classification",
+                "ctypes_call": "pending_classification",
+                "alias_resolution": "pending_classification",
+                "import_resolution": "pending_classification",
+                "ast_call_method": "pending_classification"
               },
               "x-deprecated": [
                 "ast_annotation_unresolved",

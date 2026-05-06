@@ -58,6 +58,7 @@ remaining backlog.
 Values that name the relationship the edge expresses between src and dst. Per ADR-0023, this is the only axis a new `edge_type` value should occupy.
 
 - **`calls`** — Caller invokes callee.
+- **`constrains`** — pip ``-c`` / ``--constraint`` file reference — constrains version selection without forcing install. Peer of ``includes`` (which models ``-r`` / ``--requirement``). Surfaced by WI-nubuv ext A in linkers/requirements.py.
 - **`contains`** — Container symbol holds member symbol.
 - **`data_flows_to`** — Data flow edge per ADR-0015 — value computed at src reaches dst.
 - **`decorated_by`** — Symbol is decorated/annotated by another (e.g., Python decorator, Java annotation, C# attribute, Rust derive).
@@ -245,7 +246,9 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`addtask`** — BitBake addtask symbol. Pending cluster-G audit.
 - **`architecture`** — Architecture symbol (VHDL). Pending cluster-H audit.
 - **`base`** — Base symbol (XML / OWL). Pending cluster-H audit.
+- **`benchmark`** — Cargo `[[bench]]` target kind. Pending cluster-G audit.
 - **`bin`** — Binary executable symbol. Pending cluster-B audit.
+- **`binary`** — Cargo `[[bin]]` target kind. Pending cluster-G audit.
 - **`binding`** — Binding symbol (DSL / DI). Pending cluster-H audit.
 - **`block`** — Block symbol. Pending cluster-H audit.
 - **`build-dependency`** — Build-dependency entry. Pending cluster-G audit.
@@ -269,6 +272,7 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`env_var`** — Environment variable symbol. Pending cluster-G audit.
 - **`environment`** — Environment symbol (LaTeX / shell). Pending cluster-H audit.
 - **`event`** — Event symbol (DSL / Solidity). Pending cluster-H audit.
+- **`example`** — Cargo `[[example]]` target kind. Pending cluster-G audit.
 - **`executable`** — Executable-shape symbol. Pending cluster-B audit.
 - **`export_entry`** — Generic export entry. Pending cluster-B audit.
 - **`exposed_port`** — Container exposed-port symbol. Pending cluster-G audit.
@@ -277,7 +281,9 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`font_face`** — CSS @font-face symbol. Pending cluster-H audit.
 - **`for_loop`** — For-loop symbol (control-flow). Pending cluster-H audit.
 - **`fragment`** — Fragment symbol (GraphQL / template). Pending cluster-H audit.
+- **`handler`** — Ansible playbook handler. Pending cluster-G audit.
 - **`heading`** — Heading symbol (markdown / docs). Pending cluster-H audit.
+- **`helper`** — Handlebars block helper (non-builtin). Pending cluster-H audit.
 - **`id`** — Id symbol (k8s / DSL). Pending cluster-H audit.
 - **`id_selector`** — CSS id selector symbol. Pending cluster-H audit.
 - **`index`** — Index symbol (SQL / DSL). Pending cluster-H audit.
@@ -302,11 +308,13 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`partial`** — Partial symbol (template). Pending cluster-H audit.
 - **`participant`** — Participant symbol (mermaid). Pending cluster-H audit.
 - **`pattern`** — Pattern symbol (DSL / regex). Pending cluster-H audit.
+- **`pattern_rule`** — Make pattern-rule target. Pending cluster-G audit.
 - **`permission`** — Permission symbol (k8s / Solidity). Pending cluster-H audit.
 - **`playbook`** — Ansible playbook symbol. Pending cluster-H audit.
 - **`plot`** — Plot symbol (notebook / R). Pending cluster-H audit.
 - **`port`** — Port symbol (k8s / VHDL). Pending cluster-H audit.
 - **`prefix`** — Prefix symbol (URI / namespace). Pending cluster-H audit.
+- **`private`** — WGSL `var<private>` address space. Pending cluster-H audit.
 - **`program`** — Program-shape symbol. Pending cluster-B audit.
 - **`project`** — Project-shape symbol. Pending cluster-B audit.
 - **`protocol`** — Protocol symbol (Swift / Solidity / DSL). Pending cluster-H audit.
@@ -325,6 +333,7 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`special_target`** — Make special-target symbol. Pending cluster-G audit.
 - **`stage`** — Build / pipeline stage. Pending cluster-G audit.
 - **`state`** — State symbol (state-machine DSL). Pending cluster-H audit.
+- **`storage`** — WGSL `var<storage>` address space. Pending cluster-H audit.
 - **`style_block`** — Style-block symbol (Vue / scoped CSS). Pending cluster-H audit.
 - **`subdirectory`** — Subdirectory pseudo-symbol. Pending cluster-H audit.
 - **`subscript`** — Subscript symbol (Swift / Python __getitem__). Pending cluster-H audit.
@@ -337,12 +346,16 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`theorem`** — Theorem symbol (Coq / Lean). Pending cluster-H audit.
 - **`trigger`** — Pipeline / DB trigger symbol. Pending cluster-G audit.
 - **`tsconfig`** — TypeScript tsconfig symbol. Pending cluster-B audit.
+- **`uniform`** — Shader uniform binding (GLSL / WGSL). Pending cluster-H audit.
 - **`unresolved`** — Unresolved-symbol pseudo-node. Pending cluster-H audit.
 - **`url_requirement`** — URL-requirement install symbol. Pending cluster-G audit.
 - **`value`** — Value symbol (key-value DSLs). Pending cluster-H audit.
+- **`varying`** — GLSL varying qualifier (legacy interpolation). Pending cluster-H audit.
 - **`wasm_import`** — WebAssembly import symbol. Pending cluster-B audit.
 - **`wasm_module`** — WebAssembly module symbol. Pending cluster-B audit.
 - **`work_item`** — Work-item symbol. Pending cluster-G audit.
+- **`workgroup`** — WGSL `var<workgroup>` address space. Pending cluster-H audit.
+- **`workspace`** — Cargo `[workspace]` table kind. Pending cluster-G audit.
 - **`yield`** — Yield-statement symbol. Pending cluster-H audit.
 
 
@@ -596,4 +609,8 @@ Values whose meaning is leaked into the evidence label even though it is capture
 
 Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.md`. Each cluster's audit decides between fold-to-Cluster-A vs separate-axis declaration vs producer-side drop.
 
-_(empty — no values currently classified on this axis)_
+- **`alias_resolution`** — JS module-resolution pathway via path alias (linkers/js_module.py). Pending cluster-A audit (could promote to AXIS_INFERENCE_PATHWAY canonical).
+- **`ast_call_method`** — Python AST method-call inference (py.py). At-risk Cluster D peer of `ast_call_direct`: fold candidate to `ast_call_direct` + `meta['call_construct']='method'`. Pending cluster-D audit.
+- **`cffi_call`** — Python cffi FFI call (linkers/pyffi.py). At-risk Cluster C: fold candidate to canonical inference + `meta['ffi_mechanism']='cffi'`. Pending cluster-C audit.
+- **`ctypes_call`** — Python ctypes FFI call (linkers/pyffi.py). At-risk Cluster C: fold candidate to canonical inference + `meta['ffi_mechanism']='ctypes'`. Pending cluster-C audit.
+- **`import_resolution`** — JS module-resolution pathway via direct import (linkers/js_module.py). Pending cluster-A audit (could promote to AXIS_INFERENCE_PATHWAY canonical).
