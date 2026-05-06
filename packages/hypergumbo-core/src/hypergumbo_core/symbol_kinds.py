@@ -212,9 +212,26 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("mq_subscriber", AXIS_ENDPOINT_SHAPE,
                    "Message-queue subscriber. Fold to function/method + meta['framework_role']='mq_subscriber'."),
     SymbolKindSpec("grpc_server", AXIS_ENDPOINT_SHAPE,
-                   "gRPC server method. Fold to function/method + meta['framework_role']='grpc_server'."),
+                   "gRPC server class. Fold to class + meta['framework_role']='grpc_server'."),
     SymbolKindSpec("grpc_stub", AXIS_ENDPOINT_SHAPE,
-                   "gRPC stub method. Fold to function/method + meta['framework_role']='grpc_stub'."),
+                   "gRPC stub call site. Fold to function + meta['framework_role']='grpc_stub'."),
+    SymbolKindSpec("grpc_service", AXIS_ENDPOINT_SHAPE,
+                   "gRPC `service Foo {...}` proto declaration. Fold to interface "
+                   "+ meta['framework_role']='grpc_service'. Added 2026-05-06 (WI-nitil) — "
+                   "assignment-form producer at linkers/grpc.py:655 was missed by the "
+                   "original literal-grep audit. Registry entry stays through the Phase 4a "
+                   "deprecation window."),
+    SymbolKindSpec("grpc_servicer", AXIS_ENDPOINT_SHAPE,
+                   "gRPC servicer class. Fold to class + meta['framework_role']='grpc_servicer'. "
+                   "Added 2026-05-06 (WI-nitil) — assignment-form producer at linkers/grpc.py:657 "
+                   "was missed by the original literal-grep audit. Registry entry stays through "
+                   "the Phase 4a deprecation window."),
+    SymbolKindSpec("grpc_client", AXIS_ENDPOINT_SHAPE,
+                   "gRPC client call site (sibling of grpc_stub). Fold to function "
+                   "+ meta['framework_role']='grpc_client'. Added 2026-05-06 (WI-nitil) — "
+                   "assignment-form producer at linkers/grpc.py:660 was missed by the original "
+                   "literal-grep audit. Registry entry stays through the Phase 4a deprecation "
+                   "window."),
     SymbolKindSpec("websocket_endpoint", AXIS_ENDPOINT_SHAPE,
                    "WebSocket endpoint. Fold to function/method + meta['framework_role']='websocket_endpoint'."),
     SymbolKindSpec("websocket_emitter", AXIS_ENDPOINT_SHAPE,

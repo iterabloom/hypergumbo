@@ -188,10 +188,11 @@ def test_cmd_routes_empty_emits_hint_when_related_kinds_present(
             {
                 "id": "python:src/q.py:1-3:pub:mq_publisher",
                 "name": "pub",
-                "kind": "mq_publisher",
+                "kind": "function",
                 "language": "python",
                 "path": "src/q.py",
                 "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 10},
+                "meta": {"framework_role": "mq_publisher"},
             },
         ],
         "edges": [],
@@ -220,10 +221,11 @@ def test_count_related_endpoint_kinds_returns_canonical_order(tmp_path: Path) ->
     from hypergumbo_core.cli import _count_related_endpoint_kinds
 
     nodes = [
-        {"kind": "mq_publisher"},
-        {"kind": "websocket_endpoint"},
+        # Post-fold shape: kind="function" + meta.framework_role.
+        {"kind": "function", "meta": {"framework_role": "mq_publisher"}},
+        {"kind": "function", "meta": {"framework_role": "websocket_endpoint"}},
         {"kind": "function"},  # Not in the related set, ignored.
-        {"kind": "websocket_endpoint"},
+        {"kind": "function", "meta": {"framework_role": "websocket_endpoint"}},
     ]
     counts = _count_related_endpoint_kinds(nodes)
     # websocket_endpoint comes before mq_publisher in the canonical tuple.

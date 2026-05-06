@@ -41,7 +41,7 @@ class UserServiceServicer(user_pb2_grpc.UserServiceServicer):
         result = link_grpc(tmp_path)
 
         # Should create symbols for the servicer
-        service_symbols = [s for s in result.symbols if s.kind == "grpc_servicer"]
+        service_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_servicer"]
         assert len(service_symbols) >= 1
         assert any("UserService" in s.name for s in service_symbols)
 
@@ -62,7 +62,7 @@ response = stub.GetUser(user_pb2.GetUserRequest(id=1))
         result = link_grpc(tmp_path)
 
         # Should create symbols for the stub
-        client_symbols = [s for s in result.symbols if s.kind == "grpc_stub"]
+        client_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_stub"]
         assert len(client_symbols) >= 1
         assert any("UserService" in s.name for s in client_symbols)
 
@@ -117,7 +117,7 @@ func (s *userServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.U
         result = link_grpc(tmp_path)
 
         # Should create symbols for the server
-        server_symbols = [s for s in result.symbols if s.kind == "grpc_server"]
+        server_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_server"]
         assert len(server_symbols) >= 1
 
     def test_detects_go_client_creation(self, tmp_path: Path) -> None:
@@ -140,7 +140,7 @@ func main() {
         result = link_grpc(tmp_path)
 
         # Should create symbols for the client
-        client_symbols = [s for s in result.symbols if s.kind == "grpc_client"]
+        client_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_client"]
         assert len(client_symbols) >= 1
 
     def test_detects_go_server_registration(self, tmp_path: Path) -> None:
@@ -193,7 +193,7 @@ class TestTtrpcPatterns:
 
         result = link_grpc(tmp_path)
 
-        server_symbols = [s for s in result.symbols if s.kind == "grpc_server"]
+        server_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_server"]
         assert any("AgentService" in s.name for s in server_symbols), (
             f"Expected AgentService server symbol, got: {[s.name for s in server_symbols]}"
         )
@@ -281,7 +281,7 @@ class TestTtrpcPatterns:
 
         result = link_grpc(tmp_path)
 
-        server_symbols = [s for s in result.symbols if s.kind == "grpc_server"]
+        server_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_server"]
         assert any("Health" in s.name for s in server_symbols), (
             f"Expected Health server symbol, got: {[s.name for s in server_symbols]}"
         )
@@ -527,7 +527,7 @@ class TestTtrpcPatterns:
 
         result = link_grpc(tmp_path)
 
-        server_symbols = [s for s in result.symbols if s.kind == "grpc_server"]
+        server_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_server"]
         assert any("Controller" in s.name for s in server_symbols), (
             f"Expected Controller server symbol, got: {[s.name for s in server_symbols]}"
         )
@@ -587,7 +587,7 @@ public class UserServiceImpl extends UserServiceGrpc.UserServiceImplBase {
         result = link_grpc(tmp_path)
 
         # Should create symbols for the service implementation
-        service_symbols = [s for s in result.symbols if s.kind == "grpc_servicer"]
+        service_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_servicer"]
         assert len(service_symbols) >= 1
 
     def test_detects_java_stub_usage(self, tmp_path: Path) -> None:
@@ -610,7 +610,7 @@ public class Client {
         result = link_grpc(tmp_path)
 
         # Should create symbols for the stub
-        client_symbols = [s for s in result.symbols if s.kind == "grpc_stub"]
+        client_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_stub"]
         assert len(client_symbols) >= 1
 
 
@@ -637,7 +637,7 @@ client.getUser(request, (err, response) => {
         result = link_grpc(tmp_path)
 
         # Should create symbols for the client
-        client_symbols = [s for s in result.symbols if s.kind in ("grpc_client", "grpc_stub")]
+        client_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") in ("grpc_client", "grpc_stub")]
         assert len(client_symbols) >= 1
 
 
@@ -672,7 +672,7 @@ message GetUserRequest {
         result = link_grpc(tmp_path)
 
         # Should create symbols for the proto service
-        proto_symbols = [s for s in result.symbols if s.kind == "grpc_service"]
+        proto_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_service"]
         assert len(proto_symbols) >= 1
         assert any("UserService" in s.name for s in proto_symbols)
 
@@ -783,7 +783,7 @@ const user = new UserServiceClient('localhost:50051');
         result = link_grpc(tmp_path)
 
         # Should only detect UserServiceClient, not the false positives
-        client_symbols = [s for s in result.symbols if s.kind in ("grpc_client", "grpc_stub")]
+        client_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") in ("grpc_client", "grpc_stub")]
         client_names = [s.name for s in client_symbols]
         assert "UserService" in client_names
         assert "Http" not in client_names
@@ -934,7 +934,7 @@ class TestGrpcProtoRouteSymbols:
         assert len(routes_to_edges) == 1
         # Route should point to the grpc_service symbol
         assert any(
-            s.kind == "grpc_service" and s.id == routes_to_edges[0].dst
+            (s.meta or {}).get("framework_role") == "grpc_service" and s.id == routes_to_edges[0].dst
             for s in result.symbols
         )
 
@@ -1004,8 +1004,8 @@ class TestGrpcServerToServiceBridge:
         assert len(dispatches) >= 1
 
         # The edge should go from grpc_server to grpc_service
-        server_ids = {s.id for s in result.symbols if s.kind == "grpc_server"}
-        service_ids = {s.id for s in result.symbols if s.kind == "grpc_service"}
+        server_ids = {s.id for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_server"}
+        service_ids = {s.id for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_service"}
         bridge = [
             e for e in dispatches
             if e.src in server_ids and e.dst in service_ids
@@ -1044,8 +1044,8 @@ class TestGrpcServerToServiceBridge:
         assert len(dispatches) >= 1
 
         # Verify it bridges servicer to service
-        servicer_ids = {s.id for s in result.symbols if s.kind == "grpc_servicer"}
-        service_ids = {s.id for s in result.symbols if s.kind == "grpc_service"}
+        servicer_ids = {s.id for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_servicer"}
+        service_ids = {s.id for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_service"}
         bridge = [e for e in dispatches if e.src in servicer_ids and e.dst in service_ids]
         assert len(bridge) == 1
 
@@ -1090,8 +1090,8 @@ class TestGrpcServerToServiceBridge:
             adj.setdefault(e.src, set()).add(e.dst)
 
         # Find client and service symbols
-        clients = [s for s in result.symbols if s.kind == "grpc_client"]
-        services = [s for s in result.symbols if s.kind == "grpc_service"]
+        clients = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_client"]
+        services = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_service"]
 
         assert len(clients) >= 1, "Should have at least one client"
         assert len(services) >= 1, "Should have at least one service"
@@ -1795,12 +1795,13 @@ class TestGrpcUnresolvedEdgeResolution:
         register_sym = Symbol(
             id="grpc:user_grpc.pb.go:100:UserService:grpc_server",
             name="RegisterUserServer",
-            kind="grpc_server",
+            kind="class",
             language="go",
             path=str(tmp_path / "pkg/pb/user_grpc.pb.go"),
             span=Span(100, 110, 0, 0),
             origin="grpc-linker-v1",
             origin_run_id="test",
+            meta={"framework_role": "grpc_server"},
         )
 
         ctx = LinkerContext(
@@ -1867,22 +1868,24 @@ class TestGrpcUnresolvedEdgeResolution:
         wrong_sym = Symbol(
             id="grpc:frontend/pb/grpc.pb.go:100:Checkout:grpc_server",
             name="RegisterCheckoutServer",
-            kind="grpc_server",
+            kind="class",
             language="go",
             path=str(tmp_path / "frontend/pb/grpc.pb.go"),
             span=Span(100, 110, 0, 0),
             origin="grpc-linker-v1",
             origin_run_id="test",
+            meta={"framework_role": "grpc_server"},
         )
         correct_sym = Symbol(
             id="grpc:checkout/pb/grpc.pb.go:100:Checkout:grpc_server",
             name="RegisterCheckoutServer",
-            kind="grpc_server",
+            kind="class",
             language="go",
             path=str(tmp_path / "checkout/pb/grpc.pb.go"),
             span=Span(100, 110, 0, 0),
             origin="grpc-linker-v1",
             origin_run_id="test",
+            meta={"framework_role": "grpc_server"},
         )
 
         ctx = LinkerContext(
@@ -1920,12 +1923,13 @@ class TestGrpcUnresolvedEdgeResolution:
         register_sym = Symbol(
             id="grpc:user_grpc.pb.go:100:UserService:grpc_server",
             name="RegisterUserServer",
-            kind="grpc_server",
+            kind="class",
             language="go",
             path=str(tmp_path / "pkg/pb/user_grpc.pb.go"),
             span=Span(100, 110, 0, 0),
             origin="grpc-linker-v1",
             origin_run_id="test",
+            meta={"framework_role": "grpc_server"},
         )
 
         # Pass the symbol via ctx.symbols instead of the second argument

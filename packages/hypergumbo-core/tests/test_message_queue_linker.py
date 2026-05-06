@@ -708,7 +708,8 @@ class TestMessageQueueLinker:
 
         assert len(result.symbols) == 1
         symbol = result.symbols[0]
-        assert symbol.kind == "mq_publisher"
+        assert symbol.kind == "function"
+        assert (symbol.meta or {}).get("framework_role") == "mq_publisher"
         assert symbol.meta["queue_type"] == "kafka"
         assert symbol.meta["topic"] == "my-topic"
         assert symbol.stable_id == "kafka:my-topic"
@@ -760,5 +761,6 @@ class TestMessageQueueLinkerRegistry:
         result = message_queue_linker(ctx)
 
         assert len(result.symbols) == 1
-        assert result.symbols[0].kind == "mq_publisher"
+        assert result.symbols[0].kind == "function"
+        assert (result.symbols[0].meta or {}).get("framework_role") == "mq_publisher"
         assert result.run is not None

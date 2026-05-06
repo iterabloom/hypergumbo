@@ -1609,12 +1609,22 @@ def _count_related_endpoint_kinds(
     declared in ``_RELATED_ENDPOINT_KINDS``, omitting kinds with zero
     matches. Returns an empty list when no related nodes are present so
     callers can leave the existing single-line message unchanged.
+
+    Post-fold lookup (ADR-0027 Phase 3 / audit-findings 0013): Cluster D
+    framework-role values (``mq_publisher``, ``websocket_endpoint``,
+    ``event_publisher``, ``event_subscriber``, ``http_client``) now ride
+    on ``kind="function"`` + ``meta["framework_role"]=<value>``. The
+    matching here checks ``meta.framework_role`` first, falling back to
+    ``kind`` so legacy unfolded values (``graphql_resolver``,
+    ``db_query``, ``subprocess_call``) still match.
     """
     counts: dict[str, int] = dict.fromkeys(_RELATED_ENDPOINT_KINDS, 0)
     for node in nodes:
+        framework_role = (node.get("meta") or {}).get("framework_role")
         kind = node.get("kind")
-        if kind in counts:
-            counts[kind] += 1
+        bucket = framework_role if framework_role in counts else kind
+        if bucket in counts:
+            counts[bucket] += 1
     return [(k, c) for k in _RELATED_ENDPOINT_KINDS if (c := counts[k]) > 0]
 
 

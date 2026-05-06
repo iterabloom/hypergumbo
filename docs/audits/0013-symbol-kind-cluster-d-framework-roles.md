@@ -1,8 +1,9 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Audit-findings 0013: Symbol.kind Cluster D — Framework Roles
 
-- Date: 2026-05-05
+- Date: 2026-05-05 (filed); 2026-05-06 corrections (WI-nitil)
 - Status: Mixed — values with active producers ship UNRESOLVED (verdict recorded; per-framework Phase 3 sub-PRs follow); values with zero producers ship PRELIM_RESOLVED (producer migration trivially complete; registry entry remains through the Phase 4a deprecation window).
+- 2026-05-06 corrections (WI-nitil): the original literal-grep diagnostic test (`grep -rn 'kind=["\047]<value>["\047]'`) only catches kwarg-form producers like `Symbol(kind="mq_publisher", ...)` and missed assignment-form producers like `kind = "mq_publisher" if ... else "mq_subscriber"` followed by `Symbol(kind=kind, ...)`. Re-sweep with a broader pattern (`kind\s*=\s*["\047]<value>["\047]`) found four assignment-form producers — `grpc_server` and `grpc_stub` at `linkers/grpc.py:660,663`, `mq_publisher` and `mq_subscriber` at `linkers/message_queue.py:410`. Those four rows are corrected to UNRESOLVED below. The other five originally-PRELIM_RESOLVED rows (`ipc_subscriber`, `websocket_emitter`, `websocket_listener`, `rpc`, `service`) re-verified as zero-producer; they retain PRELIM_RESOLVED. Three additional values emitted by the same `linkers/grpc.py` block but absent from the registry — `grpc_service`, `grpc_servicer`, `grpc_client` — are added as new verdict rows below. The L3 producer-coherence linter only flags literal-string kwargs (`Symbol(kind="literal", ...)`) and so cannot catch the assignment-form gap; closing that gap is tracked as a follow-on linter improvement.
 - Closes: WI-habut-diziv-jahuv-gimub-kipus-rosaj-nukol-gujil (Cluster D, ADR-0027 Phase 3) at the verdict-table layer. Producer-side migration ships piecewise as per-framework sub-PRs (Wave 5 of WI-runod schedule), each carrying its own `awaits_bakeoff_validation` tag.
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Eighth audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical), 0005 (Cluster B file-shape), 0006 (Cluster G build/config), 0007 (Cluster H domain long-tail), 0009 (Cluster C apex/peer), 0010 (Cluster E edge-label leakage), and 0011 (Cluster F component refs).
 
@@ -26,7 +27,7 @@ route_include, openapi_operation, abi_call, selector_ref, rpc, service
 This audit answers two questions:
 
 1. **Per-value verdicts.** All 29 in-scope values FOLD. The fold target is `function` or `method` for callables (the dominant case), `interface` or `class` for declarations (`service`), or `reference` for cross-symbol pointers (`selector_ref`). Per-row choice between `function` and `method` is decided at producer migration time based on the symbol's actual construct site (member of a class → `method`; free function → `function`).
-2. **Filing-time status per row.** Per-framework Phase 3 sub-PRs ship one at a time, so most rows arrive at this audit with active producers (UNRESOLVED). Eight values have zero literal-grep producers in the codebase at filing — `ipc_subscriber`, `mq_publisher`, `mq_subscriber`, `grpc_server`, `grpc_stub`, `websocket_emitter`, `websocket_listener`, `rpc`, `service`. These are registry placeholders without active emit sites; their producer migration is trivially complete and the rows ship PRELIM_RESOLVED.
+2. **Filing-time status per row.** Per-framework Phase 3 sub-PRs ship one at a time, so most rows arrive at this audit with active producers (UNRESOLVED). Five values have zero producers in the codebase (after the 2026-05-06 WI-nitil broader-grep re-sweep) — `ipc_subscriber`, `websocket_emitter`, `websocket_listener`, `rpc`, `service`. These are registry placeholders without active emit sites; their producer migration is trivially complete and the rows ship PRELIM_RESOLVED. Four rows originally listed as zero-producer (`mq_publisher`, `mq_subscriber`, `grpc_server`, `grpc_stub`) were misclassified at filing because the literal-grep diagnostic missed assignment-form producers; corrected to UNRESOLVED below.
 
 **No new axis ADR required.** The four-leakage-test pass for each of the 29 in-scope values fired uniformly on Test 1 (property derivability) and Test 4 (mechanism vs. category). Each value encodes either "this symbol participates in framework pattern X" (Test 4: mechanism, not category) or "this symbol has an outgoing/incoming edge of type Y" (Test 1: derivable from `(edge_type, dst.kind)` queries per the ADR-0023 pattern). Both are exactly the leak that `meta["framework_role"]` absorbs.
 
@@ -49,7 +50,7 @@ The 29 in-scope values cluster naturally into six framework families, each owned
 - **Event / messaging** (~5 values: `event_publisher`, `event_subscriber`, `message_sender`, `message_handler`, `dispatcher`). Producers: `linkers/annotation_convention.py`, `linkers/message_dispatch.py`, `linkers/tauri_ipc.py`, `linkers/yjs_crdt.py`.
 - **IPC** (~5 values: `ipc_publisher`, `ipc_subscriber`, `ipc_caller`, `ipc_bridge_caller`, `ipc`). Producers: `linkers/ipc.py`, `linkers/tauri_ipc.py`.
 - **Crypto flow** (2 values: `crypto_producer`, `crypto_consumer`). Producer: `linkers/crypto_flow.py`.
-- **gRPC / RPC / service** (4 values: `grpc_server`, `grpc_stub`, `rpc`, `service`). Producers: none active at filing time (registry placeholders). The `linkers/grpc.py` file currently emits Edge-side framework_dispatch values (audit-findings 0014 Cluster C) but does not produce Symbol.kind framework-role values.
+- **gRPC / RPC / service** (4 in-scope + 3 unregistered: `grpc_server`, `grpc_stub`, `rpc`, `service`, plus assignment-form-only `grpc_service`, `grpc_servicer`, `grpc_client`). Producers: `linkers/grpc.py` lines 654-663 emit all five gRPC values via assignment form (`kind = "grpc_..."`), then pass `kind=kind` to the `Symbol` constructor. The original literal-grep diagnostic only matched kwarg form `Symbol(kind="grpc_server", ...)` and missed all five. `rpc` and `service` remain registry placeholders with no producers.
 - **WebSocket** (3 values: `websocket_endpoint`, `websocket_emitter`, `websocket_listener`). Producer: `linkers/websocket.py` for `websocket_endpoint` only; the emitter and listener variants are registry placeholders.
 - **HTTP / GraphQL / OpenAPI / route** (8 values: `graphql_resolver`, `graphql_client`, `http_client`, `route_mount`, `route`, `route_include`, `openapi_operation`, plus `mq_publisher` / `mq_subscriber` as message-queue placeholders). Producers: `linkers/graphql.py`, `linkers/graphql_resolver.py`, `linkers/http.py`, `linkers/openapi.py`, `linkers/route_handler.py`, `linkers/annotation_convention.py`, plus `route` emits scattered across mainstream language analyzers (`go.py`, `js_ts.py`, `php.py`, `play_routes.py`, `py.py`, `ruby.py`, `swift.py`, `elixir.py`).
 - **ObjC / cross-language bridge** (2 values: `objc_bridge`, `selector_ref`). Producer: `linkers/swift_objc.py`.
@@ -64,18 +65,19 @@ Twenty-six of the 29 in-scope values fold to `function` or `method` (the choice 
 - **`selector_ref`** → `reference`. The `_ref` suffix names the *use* of a selector at a call site, not the selector definition itself. Same shape as audit-findings 0011 §"Diagnostic findings" #3 caught for `component_ref` — but here the parallel resolution from audit-findings 0010 (DEPRECATE-NO-FOLD on `reference`) does **not** apply, because the registry's `reference` Symbol kind is on Cluster A `language_construct` (an actual cross-symbol pointer in source languages like Rust `&foo`), not the Cluster E edge-label-shadow `reference` that audit-findings 0010 deprecated. The two `reference` values are distinct registry entries with distinct semantics.
 - **`abi_call`** (excluded) → already resolved per audit-findings 0010 sub-case (a): `kind="call_site"` + `meta["call_kind"]="abi"`. Not re-filed here.
 
-### 3. Eight values have zero producers at filing time
+### 3. Five values have zero producers (after 2026-05-06 broader-grep re-sweep)
 
-Eight registry entries have no `Symbol(kind="<value>")` literal-grep matches in `packages/` outside of tests:
+Five registry entries have no producers (literal- or assignment-form) in `packages/` outside of tests:
 
 ```
-ipc_subscriber, mq_publisher, mq_subscriber, grpc_server, grpc_stub,
-websocket_emitter, websocket_listener, rpc, service
+ipc_subscriber, websocket_emitter, websocket_listener, rpc, service
 ```
 
-These are forward-looking registry placeholders — values seeded by ADR-0027 Phase 1 because the per-cluster scan found them in earlier code revisions or because the cluster's symmetry suggested them, but no producer currently emits them. For these rows the producer migration is trivially complete (zero edits needed). They ship at status PRELIM_RESOLVED at filing; the registry entry remains on `endpoint_shape` through the Phase 4a deprecation window per ADR-0027 §"Phase 4". Phase 4b prunes the registry entry along with the rest of Cluster D after bakeoff validation clears.
+These are forward-looking registry placeholders — values seeded by ADR-0027 Phase 1 because the per-cluster scan found them in earlier code revisions or because the cluster's symmetry suggested them, but no producer currently emits them. For these rows the producer migration is trivially complete (zero edits needed). They ship at status PRELIM_RESOLVED; the registry entry remains on `endpoint_shape` through the Phase 4a deprecation window per ADR-0027 §"Phase 4". Phase 4b prunes the registry entry along with the rest of Cluster D after bakeoff validation clears.
 
-If a future analyzer adds a producer for one of these values, the row's status reverts to UNRESOLVED until that producer migrates. The diagnostic test (literal grep over `packages/`) catches this regression mechanically.
+**Filing-time miscount, corrected 2026-05-06 (WI-nitil).** The original list was nine rows: it added `mq_publisher`, `mq_subscriber`, `grpc_server`, `grpc_stub` because the literal-grep diagnostic test (`grep -rn 'kind=["\047]<value>["\047]'`) found no kwarg-form matches. All four have assignment-form producers (`linkers/message_queue.py:410` for the mq pair, `linkers/grpc.py:660,663` for the grpc pair) where the `Symbol(kind=...)` constructor receives a variable, not a literal. The broader pattern `kind\s*=\s*["\047]<value>["\047]` catches them. Their rows below are now UNRESOLVED; producer migration ships in this same WI-nitil PR. Three additional values — `grpc_service`, `grpc_servicer`, `grpc_client` — were emitted by the same `linkers/grpc.py` block but absent from the registry entirely; verdict rows for them are added below and they migrate in the same PR.
+
+If a future analyzer adds a producer for one of the five remaining placeholders, the row's status reverts to UNRESOLVED until that producer migrates. The diagnostic test now uses the broader assignment-aware pattern.
 
 ### 4. The `route` emit-site list is the largest blast radius in this cluster
 
@@ -190,35 +192,59 @@ verdicts:
   - value: mq_publisher
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: UNRESOLVED
     diagnostic_test:
-      cmd: "grep -rn '\\bkind=[\"\\047]mq_publisher[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
+      cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]mq_publisher[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Framework participation. Fold: kind=function/method + meta['framework_role']='mq_publisher'. Registry placeholder — no producer emits this value at filing time."
+    rationale: "Framework participation. Fold: kind=function/method + meta['framework_role']='mq_publisher'. Producer: linkers/message_queue.py:410 (assignment-form `kind = ...if pattern.type == 'publish' else ...`). Originally PRELIM_RESOLVED at 2026-05-05 filing; corrected to UNRESOLVED 2026-05-06 (WI-nitil) — the literal-grep diagnostic missed assignment-form producers."
   - value: mq_subscriber
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: UNRESOLVED
     diagnostic_test:
-      cmd: "grep -rn '\\bkind=[\"\\047]mq_subscriber[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
+      cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]mq_subscriber[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Framework participation. Fold: kind=function/method + meta['framework_role']='mq_subscriber'. Registry placeholder — no producer emits this value at filing time."
+    rationale: "Framework participation. Fold: kind=function/method + meta['framework_role']='mq_subscriber'. Producer: linkers/message_queue.py:410 (assignment-form ternary, sibling of mq_publisher). Originally PRELIM_RESOLVED at 2026-05-05 filing; corrected to UNRESOLVED 2026-05-06 (WI-nitil)."
   - value: grpc_server
     verdict: FOLD
-    fold_target: function
-    status: PRELIM_RESOLVED
+    fold_target: class
+    status: UNRESOLVED
     diagnostic_test:
-      cmd: "grep -rn '\\bkind=[\"\\047]grpc_server[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
+      cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]grpc_server[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Framework participation (gRPC server method). Fold: kind=function/method + meta['framework_role']='grpc_server'. Registry placeholder — no producer emits this value at filing time."
+    rationale: "Framework participation (gRPC server class). Fold target is class (not function/method) — the producer at linkers/grpc.py:663 names a server-side service-implementation class, not a method. Fold: kind=class + meta['framework_role']='grpc_server'. Originally PRELIM_RESOLVED at 2026-05-05 filing; corrected to UNRESOLVED 2026-05-06 (WI-nitil) — the literal-grep diagnostic missed the assignment-form producer at linkers/grpc.py:663."
   - value: grpc_stub
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: UNRESOLVED
     diagnostic_test:
-      cmd: "grep -rn '\\bkind=[\"\\047]grpc_stub[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
+      cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]grpc_stub[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Framework participation (gRPC stub method). Fold: kind=function/method + meta['framework_role']='grpc_stub'. Registry placeholder — no producer emits this value at filing time."
+    rationale: "Framework participation (gRPC stub call site). Fold: kind=function + meta['framework_role']='grpc_stub'. Producer: linkers/grpc.py:660 (assignment-form ternary `kind = 'grpc_stub' if pattern.type == 'stub' else 'grpc_client'`). Originally PRELIM_RESOLVED at 2026-05-05 filing; corrected to UNRESOLVED 2026-05-06 (WI-nitil)."
+  - value: grpc_service
+    verdict: FOLD
+    fold_target: interface
+    status: UNRESOLVED
+    diagnostic_test:
+      cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]grpc_service[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
+      expect: empty
+    rationale: "Framework participation (gRPC `service Foo {...}` proto declaration). Fold target is interface (a service definition is a type, not a callable). Fold: kind=interface + meta['framework_role']='grpc_service'. Producer: linkers/grpc.py:655. Added 2026-05-06 (WI-nitil) — assignment-form producer absent from the original audit's literal-grep scope and absent from the registry; not registered separately because the value migrates to the canonical `interface` kind in the same PR."
+  - value: grpc_servicer
+    verdict: FOLD
+    fold_target: class
+    status: UNRESOLVED
+    diagnostic_test:
+      cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]grpc_servicer[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
+      expect: empty
+    rationale: "Framework participation (gRPC servicer class — Python `class FooServicer(...)`). Fold target is class. Fold: kind=class + meta['framework_role']='grpc_servicer'. Producer: linkers/grpc.py:657. Added 2026-05-06 (WI-nitil) — assignment-form producer absent from the original audit and registry; folds to canonical `class` in the same PR."
+  - value: grpc_client
+    verdict: FOLD
+    fold_target: function
+    status: UNRESOLVED
+    diagnostic_test:
+      cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]grpc_client[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
+      expect: empty
+    rationale: "Framework participation (gRPC client call site, sibling of grpc_stub). Fold: kind=function + meta['framework_role']='grpc_client'. Producer: linkers/grpc.py:660 (assignment-form ternary). Added 2026-05-06 (WI-nitil) — assignment-form producer absent from the original audit and registry; folds to canonical `function` in the same PR."
   - value: websocket_endpoint
     verdict: FOLD
     fold_target: function

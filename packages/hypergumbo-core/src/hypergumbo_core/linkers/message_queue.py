@@ -407,12 +407,16 @@ def _create_symbol(pattern: MessageQueuePattern, root: Path) -> Symbol:
     except ValueError:  # pragma: no cover
         rel_path = Path(pattern.file_path)
 
-    kind = "mq_publisher" if pattern.type == "publish" else "mq_subscriber"
+    # ADR-0027 Phase 3 / audit-findings 0013 (WI-nitil): framework-role
+    # leak. Fold to canonical kind="function" + meta["framework_role"].
+    # The framework-role string remains the ID disambiguator so cross-PR
+    # identity is stable.
+    framework_role = "mq_publisher" if pattern.type == "publish" else "mq_subscriber"
 
     return Symbol(
-        id=f"{rel_path}::{kind}::{pattern.line}",
+        id=f"{rel_path}::{framework_role}::{pattern.line}",
         name=f"{pattern.queue_type}:{pattern.type}:{pattern.topic}",
-        kind=kind,
+        kind="function",
         path=pattern.file_path,
         span=Span(
             start_line=pattern.line,
@@ -427,6 +431,7 @@ def _create_symbol(pattern: MessageQueuePattern, root: Path) -> Symbol:
             "topic": pattern.topic,
             "topic_type": pattern.topic_type,
             "message_type": pattern.type,
+            "framework_role": framework_role,
         },
     )
 

@@ -650,33 +650,45 @@ def link_grpc(
     stubs: list[GrpcPattern] = []
     servicers: list[GrpcPattern] = []
 
+    # ADR-0027 Phase 3 / audit-findings 0013 (WI-nitil): framework-role
+    # leak. Each gRPC kind folds to a canonical Cluster A construct
+    # (`interface` for the proto service declaration, `class` for
+    # server-side implementation classes, `function` for client-side
+    # call sites) plus meta["framework_role"]=<value>. The
+    # framework-role string remains the disambiguator in the Symbol ID
+    # so cross-PR identity is stable.
     for pattern in all_patterns:
         if pattern.type == "service":
-            kind = "grpc_service"
+            framework_role = "grpc_service"
+            canonical_kind = "interface"
         elif pattern.type in ("servicer", "registration"):
-            kind = "grpc_servicer"
+            framework_role = "grpc_servicer"
+            canonical_kind = "class"
             servicers.append(pattern)
         elif pattern.type in ("stub", "client"):
-            kind = "grpc_stub" if pattern.type == "stub" else "grpc_client"
+            framework_role = "grpc_stub" if pattern.type == "stub" else "grpc_client"
+            canonical_kind = "function"
             stubs.append(pattern)
         elif pattern.type == "server":
-            kind = "grpc_server"
+            framework_role = "grpc_server"
+            canonical_kind = "class"
             servicers.append(pattern)
         else:  # pragma: no cover
             continue
 
         symbol_id = _make_symbol_id(
-            pattern.file_path, pattern.line, pattern.service_name, kind
+            pattern.file_path, pattern.line, pattern.service_name, framework_role
         )
         symbols.append(Symbol(
             id=symbol_id,
             name=pattern.service_name,
-            kind=kind,
+            kind=canonical_kind,
             language=pattern.language,
             path=pattern.file_path,
             span=Span(pattern.line, pattern.line, 0, 0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
+            meta={"framework_role": framework_role},
         ))
 
     # Create edges linking clients/stubs to servicers/servers
@@ -729,7 +741,7 @@ def link_grpc(
     # Build a lookup for service symbols to create routes_to edges.
     service_sym_by_name: dict[str, str] = {}
     for sym in symbols:
-        if sym.kind == "grpc_service":
+        if (sym.meta or {}).get("framework_role") == "grpc_service":
             service_sym_by_name[sym.name] = sym.id
 
     # Bridge servicer/server symbols to their proto service definition.
@@ -744,7 +756,7 @@ def link_grpc(
         service_by_normalized[_normalize_service_name(svc_name)] = svc_id
 
     for sym in symbols:
-        if sym.kind in ("grpc_server", "grpc_servicer"):
+        if (sym.meta or {}).get("framework_role") in ("grpc_server", "grpc_servicer"):
             normalized = _normalize_service_name(sym.name)
             svc_id = service_by_normalized.get(normalized)
             if svc_id and svc_id != sym.id:

@@ -203,8 +203,11 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`function_call`** — Cluster E sub-case (a) FOLD per audit-findings 0010: the Twig function-call producer (twig.py) was reclassified to kind='call_site'. Registry entry stays through the Phase 4a deprecation window.
 - **`graphql_client`** — GraphQL client call site. Fold to function/method + meta['framework_role']='graphql_client'.
 - **`graphql_resolver`** — GraphQL resolver. Fold to function/method + meta['framework_role']='graphql_resolver'.
-- **`grpc_server`** — gRPC server method. Fold to function/method + meta['framework_role']='grpc_server'.
-- **`grpc_stub`** — gRPC stub method. Fold to function/method + meta['framework_role']='grpc_stub'.
+- **`grpc_client`** — gRPC client call site (sibling of grpc_stub). Fold to function + meta['framework_role']='grpc_client'. Added 2026-05-06 (WI-nitil) — assignment-form producer at linkers/grpc.py:660 was missed by the original literal-grep audit. Registry entry stays through the Phase 4a deprecation window.
+- **`grpc_server`** — gRPC server class. Fold to class + meta['framework_role']='grpc_server'.
+- **`grpc_service`** — gRPC `service Foo {...}` proto declaration. Fold to interface + meta['framework_role']='grpc_service'. Added 2026-05-06 (WI-nitil) — assignment-form producer at linkers/grpc.py:655 was missed by the original literal-grep audit. Registry entry stays through the Phase 4a deprecation window.
+- **`grpc_servicer`** — gRPC servicer class. Fold to class + meta['framework_role']='grpc_servicer'. Added 2026-05-06 (WI-nitil) — assignment-form producer at linkers/grpc.py:657 was missed by the original literal-grep audit. Registry entry stays through the Phase 4a deprecation window.
+- **`grpc_stub`** — gRPC stub call site. Fold to function + meta['framework_role']='grpc_stub'.
 - **`http_client`** — HTTP client call site. Fold to function/method + meta['framework_role']='http_client'.
 - **`inherit`** — Cluster E sub-case (b) FOLD-clean-drop per audit-findings 0010: the BitBake inherit-clause Symbol was dropped (relationship captured by the inherits Edge with src=bitbake:{file}, dst=bitbake:class:{cls}). Registry entry stays through the Phase 4a deprecation window.
 - **`ipc`** — Generic IPC endpoint. Fold to function/method + meta['framework_role']='ipc'.
