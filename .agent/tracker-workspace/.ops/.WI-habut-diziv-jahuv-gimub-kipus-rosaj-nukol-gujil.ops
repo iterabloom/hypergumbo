@@ -37,3 +37,17 @@
   set: {}  # 9808
   add:  # 9808
     isbefore: [WI-vusot-pibip-suruf-fapuk-dahob-siral-tokuk-bitiz]  # 9808
+- op: discuss  # f2c0
+  at: '2026-05-06T03:00:40Z'  # f2c0
+  by: agent  # f2c0
+  actor: jgstern_agent  # f2c0
+  clock: 4  # f2c0
+  nonce: f2c0  # f2c0
+  message: "Audit-findings 0013 (Symbol.kind Cluster D — Framework Roles) filed in PR #3571 (commit 92c4ec781), closing the verdict-table layer of this item. 29 in-scope values FOLD: 27 to function/method, 1 (service) to interface, 1 (selector_ref) to reference. abi_call excluded per audit-findings 0010 sub-case (a). 8 values ship at PRELIM_RESOLVED (registry placeholders with no producers); 21 at UNRESOLVED (producers active). Producer migration ships piecewise as per-framework Wave 5 sub-PRs, paired with the parallel ADR-0028 Cluster C framework_dispatch fold (audit-findings 0014) per the WI-runod schedule. Item stays todo_hard until producer migration ships across all framework families."  # f2c0
+- op: discuss  # 9fe7
+  at: '2026-05-06T05:09:44Z'  # 9fe7
+  by: agent  # 9fe7
+  actor: jgstern_agent  # 9fe7
+  clock: 5  # 9fe7
+  nonce: 9fe7  # 9fe7
+  message: "Wave 5 PR #1 of 6 merged in PR #3572 (commit 2e4721c59). Symbol.kind framework_role producers folded for: websocket.py (websocket_endpoint → function), tauri_ipc.py (ipc_publisher, ipc_caller, event_publisher, event_subscriber → function), openapi.py (openapi_operation → function). gRPC route Symbol.kind held for PR #6 (route consumer-coupled with ~13 production consumers across linkers/cli/language analyzers). Five remaining PRs (per the user's 6-PR plan): PR #2 GraphQL/HTTP/Crypto/IPC/ObjC; PR #3 generic event/dispatch + Go-specific; PR #4 Ruby/Django; PR #5 single-row dispatch modules batched; PR #6 route Symbol.kind sweep + consumers. Item stays todo_hard."  # 9fe7

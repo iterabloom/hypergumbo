@@ -27,3 +27,18 @@
   set: {}  # 2c79
   add:  # 2c79
     isbefore: [WI-jubak-zivih-kadif-gubub-hosor-lunan-burig-virav]  # 2c79
+- op: update  # 7199
+  at: '2026-05-06T02:03:25Z'  # 7199
+  by: agent  # 7199
+  actor: jgstern_agent  # 7199
+  clock: 3  # 7199
+  nonce: '7199'  # 7199
+  set:  # 7199
+    status: done  # 7199
+- op: discuss  # 39d6
+  at: '2026-05-06T02:03:26Z'  # 39d6
+  by: agent  # 39d6
+  actor: jgstern_agent  # 39d6
+  clock: 4  # 39d6
+  nonce: 39d6  # 39d6
+  message: "Closed via PR #3570 (merged commit 0dae2af80). Cluster D apex/peer call-construct fold per audit-findings 0012: 28 peer evidence_type values collapsed to canonical apex ast_call (or message_send for cross_file_message_send) + structured meta keys. 89 emit sites across 26 producer files migrated. Apex name resolved (ADR-0028 Open Question 1): ast_call chosen for symmetry with ast_* family. All 28 rows ship at PRELIM_RESOLVED on AXIS_ENDPOINT_SHAPE through Phase 4a deprecation window per ADR-0028 §Phase 4. Tests: 11 files migrated; 5072 passed, 0 failed, 100% coverage on changed sources."  # 39d6

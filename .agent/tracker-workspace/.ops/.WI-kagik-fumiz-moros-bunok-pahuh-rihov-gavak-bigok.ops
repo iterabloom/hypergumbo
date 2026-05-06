@@ -37,3 +37,17 @@
   set: {}  # baeb
   add:  # baeb
     isbefore: [WI-vusot-pibip-suruf-fapuk-dahob-siral-tokuk-bitiz]  # baeb
+- op: discuss  # 877e
+  at: '2026-05-06T03:01:02Z'  # 877e
+  by: agent  # 877e
+  actor: jgstern_agent  # 877e
+  clock: 4  # 877e
+  nonce: 877e  # 877e
+  message: "Audit-findings 0014 (Edge.evidence_type Cluster C — Framework-Specific Dispatch) filed in PR #3571 (commit 92c4ec781), closing the verdict-table layer of this item. All 65 values FOLD: 56 to canonical inference + meta['framework_dispatch']=<framework_name>; 9 to canonical inference + meta['detection_pattern']=<pattern_name> (abi_name_match, crypto_api_pattern, event_name_match, http_url_match, implicit_convention, jni_naming_convention, phoenix_event_match, subprocess_cli_match, table_name_match). 10 values are dynamic-emit results of two f-strings at linkers/websocket.py:572/613; their producer fold is one PR rewriting the f-strings. ADR-0028 Open Question 1 (apex name for Cluster D ast_call) was already decided in audit-findings 0012; Open Question 2 (framework_dispatch promotion to Edge.framework field) tracks at parent ADR pending Phase 3 emission counts. Item stays todo_hard until producer migration ships across all framework families."  # 877e
+- op: discuss  # 6472
+  at: '2026-05-06T05:10:20Z'  # 6472
+  by: agent  # 6472
+  actor: jgstern_agent  # 6472
+  clock: 5  # 6472
+  nonce: '6472'  # 6472
+  message: "Wave 5 PR #1 of 6 merged in PR #3572 (commit 2e4721c59). Edge.evidence_type framework_dispatch producers folded for: websocket.py (10 dynamic-emit values via single f-string rewrite — django_channels_emit/endpoint, fastapi_emit/endpoint, native_emit/endpoint, socketio_emit/endpoint, ws_emit/endpoint), tauri_ipc.py (tauri_invoke, tauri_emit_listen, specta_wrapper_import — note specta uses ast_import canonical not ast_call_direct), grpc.py (4 values: grpc_go_server_method, grpc_service_match, grpc_server_to_service, grpc_rpc_definition), openapi.py (openapi_path_match, openapi_operation_id_match). Total: 19 evidence_types across 4 files. Item stays todo_hard."  # 6472

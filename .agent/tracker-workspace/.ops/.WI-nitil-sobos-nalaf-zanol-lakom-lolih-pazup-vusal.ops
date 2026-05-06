@@ -1,0 +1,21 @@
+- op: create  # 1a44
+  at: '2026-05-06T05:11:05Z'  # 1a44
+  by: agent  # 1a44
+  actor: jgstern_agent  # 1a44
+  clock: 1  # 1a44
+  nonce: 1a44  # 1a44
+  data:  # 1a44
+    kind: work_item  # 1a44
+    title: "Audit-findings 0013 correction: grpc_server / grpc_stub Symbol.kind producers found"  # 1a44
+    status: todo_soft  # 1a44
+    priority: 3  # 1a44
+    parent:  # 1a44
+    tags:  # 1a44
+    - analysis_quality  # 1a44
+    - framework_dispatch_linkers  # 1a44
+    isbefore: []  # 1a44
+    duplicate_of: []  # 1a44
+    not_duplicate_of: []  # 1a44
+    pr_ref:  # 1a44
+    description: "Audit-findings 0013 §'Diagnostic findings' #3 lists grpc_server, grpc_stub, ipc_subscriber, mq_publisher, mq_subscriber, websocket_emitter, websocket_listener, rpc, service as 'registry placeholders with no producers' (PRELIM_RESOLVED at filing). The diagnostic-test literal grep used kwarg-form (kind=\"<value>\") and missed assignment-form producers. grpc.py:657 emits kind = \"grpc_stub\" if pattern.type == \"stub\" else \"grpc_client\" and grpc.py:660 emits kind = \"grpc_server\" — both via assignment, not kwarg. These rows should be reclassified UNRESOLVED in audit-findings 0013, and gRPC server/stub/service/servicer/client kinds should be migrated as part of a follow-on Wave 5 sub-PR (likely combined with the grpc framework_dispatch evidence_type fold already shipped in PR #3572). Also check whether the other 7 'no producer' rows (ipc_subscriber, mq_publisher, mq_subscriber, websocket_emitter, websocket_listener, rpc, service) have similar assignment-form producers that the literal-grep missed. Found while shipping Wave 5 PR #1."  # 1a44
+    fields: {}  # 1a44

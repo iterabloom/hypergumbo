@@ -27,3 +27,18 @@
   set: {}  # 2002
   add:  # 2002
     isbefore: [WI-tikuh-runip-bibub-safof-favov-sijih-buran-fosad]  # 2002
+- op: update  # 0cd0
+  at: '2026-05-05T23:00:55Z'  # 0cd0
+  by: agent  # 0cd0
+  actor: jgstern_agent  # 0cd0
+  clock: 3  # 0cd0
+  nonce: 0cd0  # 0cd0
+  set:  # 0cd0
+    status: done  # 0cd0
+- op: discuss  # e5c3
+  at: '2026-05-05T23:00:55Z'  # e5c3
+  by: agent  # e5c3
+  actor: jgstern_agent  # e5c3
+  clock: 4  # e5c3
+  nonce: e5c3  # e5c3
+  message: "Closed by PR. Refactored 3 producers (vue/svelte/astro) to drop component_ref Symbol; Edge src moved to make_file_id with fallback dangling component dst for unresolved refs. Audit-findings 0011 filed. Disposition: DEPRECATE-NO-FOLD (parallel to audit-findings 0010 sub-case (b) for shape-2 edge-endpoint sites; original ADR-0027 fold target reference was already deprecated)."  # e5c3
