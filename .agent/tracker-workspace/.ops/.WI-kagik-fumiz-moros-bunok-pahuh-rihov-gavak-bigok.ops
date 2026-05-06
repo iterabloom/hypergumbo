@@ -51,3 +51,17 @@
   clock: 5  # 6472
   nonce: '6472'  # 6472
   message: "Wave 5 PR #1 of 6 merged in PR #3572 (commit 2e4721c59). Edge.evidence_type framework_dispatch producers folded for: websocket.py (10 dynamic-emit values via single f-string rewrite — django_channels_emit/endpoint, fastapi_emit/endpoint, native_emit/endpoint, socketio_emit/endpoint, ws_emit/endpoint), tauri_ipc.py (tauri_invoke, tauri_emit_listen, specta_wrapper_import — note specta uses ast_import canonical not ast_call_direct), grpc.py (4 values: grpc_go_server_method, grpc_service_match, grpc_server_to_service, grpc_rpc_definition), openapi.py (openapi_path_match, openapi_operation_id_match). Total: 19 evidence_types across 4 files. Item stays todo_hard."  # 6472
+- op: discuss  # d794
+  at: '2026-05-06T07:56:54Z'  # d794
+  by: agent  # d794
+  actor: jgstern_agent  # d794
+  clock: 6  # d794
+  nonce: d794  # d794
+  message: "Wave 5 PR #2 of 6 merged in selfh PR #162 (commit 6b015da2d). Edge.evidence_type framework_dispatch producers folded for: graphql.py (graphql_operation_match), graphql_resolver.py (resolver_field_match, resolver_type_match), ipc.py (context_bridge_wrapper → electron_context_bridge). Pattern-detection (meta['detection_pattern']) producers folded for: http.py (http_url_match → http_url), crypto_flow.py (crypto_api_pattern → crypto_api). All migrated edges carry evidence_type='ast_call_direct' + structured meta. L3 producer-coherence linter ipc.py f-string advisory cleared. Note: shipped via failover (selfh PR #162); will repatriate to Codeberg on disengage. Item stays todo_hard."  # d794
+- op: discuss  # 766c
+  at: '2026-05-06T09:04:41Z'  # 766c
+  by: agent  # 766c
+  actor: jgstern_agent  # 766c
+  clock: 7  # 766c
+  nonce: 766c  # 766c
+  message: "Wave 5 PR #3 of 6 merged in selfh PR #163 (commit cc26061). Edge.evidence_type producers folded for: event_sourcing.py (event_name_match → naming_convention + meta['detection_pattern']='event_name'; pattern-shape, not framework), yjs_crdt.py (yjs_crdt_pattern → ast_call_direct + meta['framework_dispatch']='yjs_crdt'), go.py (route_mount evidence_type → ast_call_direct + meta['framework_dispatch']='route_mount'). Item stays todo_hard."  # 766c

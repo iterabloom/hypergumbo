@@ -40,3 +40,10 @@
   clock: 4  # a4d9
   nonce: a4d9  # a4d9
   message: "60/61 verdicts? what's the deal with the 1 remaining?"  # a4d9
+- op: discuss  # f844
+  at: '2026-05-06T10:47:43Z'  # f844
+  by: agent  # f844
+  actor: jgstern_agent  # f844
+  clock: 5  # f844
+  nonce: f844  # f844
+  message: "The 1 deferred value is `structure`. Per audit-findings 0007 §opening note (line 13): `structure` is the apex/peer pair of `struct` and is in-scope of WI-rusit (Cluster C apex/peer fold, Wave 4 of WI-runod). It was excluded from the cluster-H audit to avoid double-counting — the apex/peer collapse decides the canonical for both halves of the pair in a single verdict. Cross-linked at line 631 (References). So 60/61 = full cluster-H scope; the 61st is filed under the right cluster instead. WI-rusit is currently todo_soft P3, one of the Wave 4 prerequisites still outstanding."  # f844
