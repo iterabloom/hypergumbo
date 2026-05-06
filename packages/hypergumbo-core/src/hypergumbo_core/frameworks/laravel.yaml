@@ -47,9 +47,9 @@ patterns:
       method: "metadata.http_method"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
-  # Keep symbol_kind pattern for backwards compatibility
+  # ADR-0027 Phase 3 fold: kind="function" + meta.framework_role="route".
   - concept: route
-    symbol_kind: "^route$"
+    framework_role: "^route$"
 
   # Controllers - extend Controller
   - concept: controller

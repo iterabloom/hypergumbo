@@ -203,6 +203,7 @@ class TestPattern:
             "_annotation_re": "NameMatcher",
             "_param_type_re": "NameMatcher",
             "_symbol_kind_re": "re.compile",
+            "_framework_role_re": "re.compile",
             "_modifiers_re": "re.compile",
             "_modifiers_exclude_re": "re.compile",
             "_symbol_path_re": "re.compile",
@@ -713,16 +714,42 @@ class TestPattern:
         assert "method" not in result
 
     def test_pattern_matches_symbol_kind(self) -> None:
-        """Pattern matches symbol by its kind field."""
+        """Pattern matches symbol by its (canonical) kind field."""
+        pattern = Pattern(
+            concept="any_class",
+            symbol_kind=r"^class$",
+        )
+
+        symbol = Symbol(
+            id="test:app.rb:1:UsersController:class",
+            name="UsersController",
+            kind="class",
+            language="ruby",
+            path="app/controllers/users_controller.rb",
+            span=Span(1, 50, 0, 0),
+            meta={},
+        )
+
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "any_class"
+        assert result["matched_symbol_kind"] == "class"
+
+    def test_pattern_matches_framework_role(self) -> None:
+        """Pattern matches symbol by ``meta['framework_role']``.
+
+        ADR-0027 Phase 3 fold residue: route / event_publisher / etc. ride
+        on ``meta.framework_role`` after the canonical-kind fold.
+        """
         pattern = Pattern(
             concept="route",
-            symbol_kind=r"^route$",
+            framework_role=r"^route$",
         )
 
         symbol = Symbol(
             id="test:routes.rb:1:get_users:route",
             name="GET /users",
-            kind="function",  # Rails analyzer creates route symbols
+            kind="function",  # Rails analyzer post-fold canonical
             language="ruby",
             path="config/routes.rb",
             span=Span(1, 1, 0, 20),
@@ -736,22 +763,36 @@ class TestPattern:
         result = pattern.matches(symbol)
         assert result is not None
         assert result["concept"] == "route"
-        assert result["matched_symbol_kind"] == "route"
+        assert result["matched_framework_role"] == "route"
+
+    def test_pattern_framework_role_no_match_when_meta_absent(self) -> None:
+        """framework_role pattern does not match when meta lacks the key."""
+        pattern = Pattern(concept="route", framework_role=r"^route$")
+        symbol = Symbol(
+            id="test:routes.rb:1:plain:function",
+            name="plain",
+            kind="function",
+            language="ruby",
+            path="routes.rb",
+            span=Span(1, 1, 0, 10),
+            meta=None,
+        )
+        assert pattern.matches(symbol) is None
 
     def test_pattern_symbol_kind_no_match(self) -> None:
         """Pattern does not match when symbol kind doesn't match."""
         pattern = Pattern(
-            concept="route",
-            symbol_kind=r"^route$",
+            concept="any_class",
+            symbol_kind=r"^class$",
         )
 
         symbol = Symbol(
-            id="test:app.rb:1:UsersController:class",
-            name="UsersController",
-            kind="class",  # Not a route
+            id="test:utils.rb:1:helper:function",
+            name="helper",
+            kind="function",
             language="ruby",
-            path="app/controllers/users_controller.rb",
-            span=Span(1, 50, 0, 0),
+            path="lib/utils.rb",
+            span=Span(1, 5, 0, 0),
             meta={},
         )
 
@@ -759,39 +800,39 @@ class TestPattern:
         assert result is None
 
     def test_pattern_symbol_kind_with_regex(self) -> None:
-        """Pattern symbol_kind uses regex matching."""
+        """Pattern symbol_kind uses regex matching against canonical kind."""
         pattern = Pattern(
-            concept="endpoint",
-            symbol_kind=r"^(route|endpoint|handler)$",
+            concept="callable",
+            symbol_kind=r"^(function|method)$",
         )
 
-        # Test with "route"
-        route_symbol = Symbol(
-            id="test:routes.rb:1:get:route",
-            name="GET /",
+        # Test with "function"
+        fn_symbol = Symbol(
+            id="test:lib.py:1:foo:function",
+            name="foo",
             kind="function",
-            language="ruby",
-            path="routes.rb",
+            language="python",
+            path="lib.py",
             span=Span(1, 1, 0, 10),
-            meta={"framework_role": "route", },
+            meta={},
         )
-        result = pattern.matches(route_symbol)
+        result = pattern.matches(fn_symbol)
         assert result is not None
-        assert result["matched_symbol_kind"] == "route"
+        assert result["matched_symbol_kind"] == "function"
 
-        # Test with "handler"
-        handler_symbol = Symbol(
-            id="test:handler.go:1:HandleGet:handler",
-            name="HandleGet",
-            kind="handler",
-            language="go",
-            path="handler.go",
+        # Test with "method"
+        method_symbol = Symbol(
+            id="test:lib.py:1:Foo.bar:method",
+            name="Foo.bar",
+            kind="method",
+            language="python",
+            path="lib.py",
             span=Span(1, 10, 0, 0),
             meta={},
         )
-        result = pattern.matches(handler_symbol)
+        result = pattern.matches(method_symbol)
         assert result is not None
-        assert result["matched_symbol_kind"] == "handler"
+        assert result["matched_symbol_kind"] == "method"
 
     def test_pattern_matches_parent_base_class(self) -> None:
         """Pattern matches method by parent class's base classes."""
@@ -4600,7 +4641,7 @@ class TestRailsPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "route"
-        assert results[0]["matched_symbol_kind"] == "route"
+        assert results[0]["matched_framework_role"] == "route"
 
     def test_rails_resources_route_pattern(self) -> None:
         """Rails resources route symbols match route pattern."""
@@ -4977,7 +5018,7 @@ class TestPhoenixPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "route"
-        assert results[0]["matched_symbol_kind"] == "route"
+        assert results[0]["matched_framework_role"] == "route"
 
     def test_phoenix_enrich_symbols_integration(self) -> None:
         """Phoenix patterns enrich symbols with concept metadata."""
@@ -5332,7 +5373,7 @@ class TestLaravelPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "route"
-        assert results[0]["matched_symbol_kind"] == "route"
+        assert results[0]["matched_framework_role"] == "route"
 
     def test_laravel_api_route_pattern(self) -> None:
         """Laravel API route symbols match route pattern."""

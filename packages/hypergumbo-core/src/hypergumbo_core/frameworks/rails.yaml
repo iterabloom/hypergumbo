@@ -35,10 +35,10 @@ patterns:
       method: "literal:RESOURCES"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
-  # Keep symbol_kind pattern for backwards compatibility with symbols
-  # created directly by the Ruby analyzer
+  # Match route symbols emitted by the Ruby analyzer.
+  # ADR-0027 Phase 3 fold (audit-findings 0013): kind="function" + meta.framework_role="route".
   - concept: route
-    symbol_kind: "^route$"
+    framework_role: "^route$"
 
   # Controllers - inherit from ApplicationController or ActionController::Base
   - concept: controller

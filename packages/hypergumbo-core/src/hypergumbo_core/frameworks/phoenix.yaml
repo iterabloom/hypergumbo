@@ -45,10 +45,10 @@ patterns:
       method: "literal:LIVE"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
-  # Keep symbol_kind pattern for backwards compatibility with route symbols
-  # created directly by the Elixir analyzer (v1.0.x convention)
+  # Match route symbols emitted by the Elixir analyzer.
+  # ADR-0027 Phase 3 fold (audit-findings 0013): kind="function" + meta.framework_role="route".
   - concept: route
-    symbol_kind: "^route$"
+    framework_role: "^route$"
 
   # Controllers - use Phoenix.Controller or MyAppWeb :controller
   - concept: controller

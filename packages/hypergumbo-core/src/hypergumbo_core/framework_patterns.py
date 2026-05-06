@@ -166,6 +166,10 @@ class Pattern:
         annotation: Regex pattern to match against Java annotations
         parameter_type: Regex pattern to match against parameter types
         symbol_kind: Regex pattern to match against symbol kind field
+        framework_role: Regex pattern to match against ``Symbol.meta["framework_role"]``
+            (ADR-0027 Phase 3 fold residue — see audit-findings 0013). Use this
+            field for framework-participation patterns (route, event_publisher,
+            websocket_endpoint, …) instead of overloading ``symbol_kind``.
         modifiers: Regex pattern requiring at least one modifier to match (positive filter)
         modifiers_exclude: Regex pattern to reject symbols with matching modifiers
         symbol_path: Regex pattern to match against symbol's file path (search, not match)
@@ -186,6 +190,7 @@ class Pattern:
     annotation: str | None = None
     parameter_type: str | None = None
     symbol_kind: str | None = None
+    framework_role: str | None = None
     extract_path: str | None = None
     extract_method: str | None = None
     prefix_from_parent: str | None = None
@@ -242,6 +247,9 @@ class Pattern:
         )
         self._symbol_kind_re = (
             re.compile(self.symbol_kind) if self.symbol_kind else None
+        )
+        self._framework_role_re = (
+            re.compile(self.framework_role) if self.framework_role else None
         )
         self._modifiers_re = (
             re.compile(self.modifiers) if self.modifiers else None
@@ -385,33 +393,43 @@ class Pattern:
                 # symbol_name matches
                 result["matched_symbol_name"] = symbol.name
 
-                # Check symbol_kind if also specified (AND condition).
-                # ADR-0027 Phase 3 / audit-findings 0013 fold: framework-role
-                # values previously emitted as kind="route" etc. are now folded
-                # to kind="function" + meta["framework_role"]=<role>. To keep
-                # YAML patterns like symbol_kind=r"^route$" working without
-                # forcing every framework YAML to migrate, also try matching
-                # against framework_role meta.
-                if self._symbol_kind_re:
+                # Check symbol_kind / framework_role if specified (AND condition).
+                # symbol_kind matches Symbol.kind (canonical Cluster A construct);
+                # framework_role matches Symbol.meta["framework_role"] (ADR-0027
+                # Phase 3 fold residue per audit-findings 0013). Either kind of
+                # constraint can be specified independently; both must match
+                # when both are specified. When neither matches, fall through
+                # so other pattern types can still try.
+                if self._symbol_kind_re or self._framework_role_re:
+                    kind_ok = (
+                        self._symbol_kind_re is None
+                        or self._symbol_kind_re.match(symbol.kind) is not None
+                    )
                     framework_role = (symbol.meta or {}).get("framework_role")
-                    if self._symbol_kind_re.match(symbol.kind):
-                        result["matched_symbol_kind"] = symbol.kind
+                    role_ok = (
+                        self._framework_role_re is None
+                        or (framework_role is not None
+                            and self._framework_role_re.match(framework_role) is not None)
+                    )
+                    if kind_ok and role_ok:
+                        if self._symbol_kind_re:
+                            result["matched_symbol_kind"] = symbol.kind
+                        if self._framework_role_re:
+                            result["matched_framework_role"] = framework_role
                         return [result]
-                    if framework_role and self._symbol_kind_re.match(framework_role):  # pragma: no cover - ADR-0027 fold backward-compat for combined name+kind patterns
-                        result["matched_symbol_kind"] = framework_role
-                        return [result]
-                    # symbol_kind specified but doesn't match
-                    # Don't match this pattern
+                    # else: don't match this pattern; fall through
                 else:
                     # Only symbol_name specified, and it matches
                     return [result]
 
-        # Try symbol_kind match (alone, without any other specific match field).
-        # If decorator/base_class/annotation/param_type were specified but didn't
-        # match above, we must NOT fall through to symbol_kind-only matching —
-        # those fields are AND conditions, not independent alternatives.
+        # Try symbol_kind / framework_role match (alone, without any other
+        # specific match field). If decorator / base_class / annotation /
+        # param_type were specified but didn't match above, we must NOT fall
+        # through to symbol_kind-only matching — those fields are AND
+        # conditions, not independent alternatives. Both symbol_kind and
+        # framework_role can be specified together (AND).
         if (
-            self._symbol_kind_re
+            (self._symbol_kind_re or self._framework_role_re)
             and not self._symbol_name_re
             and not self._parent_base_class_re
             and not self._method_name_re
@@ -420,12 +438,21 @@ class Pattern:
             and not self._annotation_re
             and not self._param_type_re
         ):
+            kind_ok = (
+                self._symbol_kind_re is None
+                or self._symbol_kind_re.match(symbol.kind) is not None
+            )
             framework_role = (symbol.meta or {}).get("framework_role")
-            if self._symbol_kind_re.match(symbol.kind):
-                result["matched_symbol_kind"] = symbol.kind
-                return [result]
-            if framework_role and self._symbol_kind_re.match(framework_role):
-                result["matched_symbol_kind"] = framework_role
+            role_ok = (
+                self._framework_role_re is None
+                or (framework_role is not None
+                    and self._framework_role_re.match(framework_role) is not None)
+            )
+            if kind_ok and role_ok:
+                if self._symbol_kind_re:
+                    result["matched_symbol_kind"] = symbol.kind
+                if self._framework_role_re:
+                    result["matched_framework_role"] = framework_role
                 return [result]
 
         # Try parent_base_class + method_name combined match (for lifecycle hooks)
@@ -784,6 +811,7 @@ class FrameworkPatternDef:
                 annotation=p.get("annotation"),
                 parameter_type=p.get("parameter_type"),
                 symbol_kind=p.get("symbol_kind"),
+                framework_role=p.get("framework_role"),
                 modifiers=p.get("modifiers"),
                 modifiers_exclude=p.get("modifiers_exclude"),
                 symbol_path=p.get("symbol_path"),
