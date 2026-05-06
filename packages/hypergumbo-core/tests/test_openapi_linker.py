@@ -208,7 +208,8 @@ paths:
         result = link_openapi(tmp_path, [route_symbol])
 
         assert len(result.symbols) == 1
-        assert result.symbols[0].kind == "openapi_operation"
+        assert result.symbols[0].kind == "function"
+        assert (result.symbols[0].meta or {}).get("framework_role") == "openapi_operation"
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "openapi_implements"
 
@@ -243,7 +244,7 @@ paths:
         # Should still match by operationId
         assert len(result.edges) >= 1
         op_id_edge = next(
-            (e for e in result.edges if e.evidence_type == "openapi_operation_id_match"),
+            (e for e in result.edges if (e.meta or {}).get("framework_dispatch") == "openapi_operation_id"),
             None,
         )
         assert op_id_edge is not None
@@ -278,7 +279,7 @@ paths:
 
         assert len(result.edges) >= 1
         path_edge = next(
-            (e for e in result.edges if e.evidence_type == "openapi_path_match"),
+            (e for e in result.edges if (e.meta or {}).get("framework_dispatch") == "openapi_path"),
             None,
         )
         assert path_edge is not None
@@ -312,7 +313,7 @@ paths:
 
         # Should have symbol but no path match edge
         assert len(result.symbols) == 1
-        path_edges = [e for e in result.edges if e.evidence_type == "openapi_path_match"]
+        path_edges = [e for e in result.edges if (e.meta or {}).get("framework_dispatch") == "openapi_path"]
         assert len(path_edges) == 0
 
     def test_link_multiple_operations(self, tmp_path: Path) -> None:
@@ -436,7 +437,7 @@ paths:
         result = link_openapi(tmp_path, [route_symbol])
         # Should create symbol but no path match edge
         assert len(result.symbols) == 1
-        path_edges = [e for e in result.edges if e.evidence_type == "openapi_path_match"]
+        path_edges = [e for e in result.edges if (e.meta or {}).get("framework_dispatch") == "openapi_path"]
         assert len(path_edges) == 0
 
     def test_malformed_paths_not_dict(self, tmp_path: Path) -> None:
@@ -601,7 +602,8 @@ paths:
         result = openapi_linker(ctx)
 
         assert len(result.symbols) == 1
-        assert result.symbols[0].kind == "openapi_operation"
+        assert result.symbols[0].kind == "function"
+        assert (result.symbols[0].meta or {}).get("framework_role") == "openapi_operation"
         assert len(result.edges) >= 1
         assert result.run is not None
 

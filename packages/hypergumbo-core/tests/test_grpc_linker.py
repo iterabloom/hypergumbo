@@ -1011,7 +1011,8 @@ class TestGrpcServerToServiceBridge:
             if e.src in server_ids and e.dst in service_ids
         ]
         assert len(bridge) == 1
-        assert bridge[0].evidence_type == "grpc_server_to_service"
+        assert bridge[0].evidence_type == "ast_call_direct"
+        assert (bridge[0].meta or {}).get("framework_dispatch") == "grpc_server_to_service"
 
     def test_python_servicer_dispatches_to_proto_service(self, tmp_path: Path) -> None:
         """Python grpc_servicer symbol gets dispatches_to edge to proto grpc_service."""
@@ -1038,7 +1039,7 @@ class TestGrpcServerToServiceBridge:
         dispatches = [
             e for e in result.edges
             if e.edge_type == "dispatches_to"
-            and e.evidence_type == "grpc_server_to_service"
+            and (e.meta or {}).get("framework_dispatch") == "grpc_server_to_service"
         ]
         assert len(dispatches) >= 1
 
@@ -1131,7 +1132,7 @@ class TestGrpcServerToServiceBridge:
         dispatches = [
             e for e in result.edges
             if e.edge_type == "dispatches_to"
-            and e.evidence_type == "grpc_server_to_service"
+            and (e.meta or {}).get("framework_dispatch") == "grpc_server_to_service"
         ]
         assert len(dispatches) == 0
 

@@ -821,7 +821,8 @@ class TestTauriIPCSyntheticSymbols:
             # Every edge source has a corresponding Symbol
             assert edge.src in sym_by_id
             sym = sym_by_id[edge.src]
-            assert sym.kind == "ipc_publisher"
+            assert sym.kind == "function"
+            assert (sym.meta or {}).get("framework_role") == "ipc_publisher"
             assert sym.language == "typescript"
 
     def test_synthetic_symbol_has_correct_fields(self, tmp_path: Path) -> None:
@@ -846,10 +847,11 @@ class TestTauriIPCSyntheticSymbols:
         assert len(result.symbols) == 1
         sym = result.symbols[0]
         assert sym.name == "greet"
-        assert sym.kind == "ipc_publisher"
+        assert sym.kind == "function"
+        assert (sym.meta or {}).get("framework_role") == "ipc_publisher"
         assert sym.language == "typescript"
         assert sym.canonical_name == "invoke('greet')"
-        assert sym.meta == {"tauri_command": "greet"}
+        assert sym.meta == {"tauri_command": "greet", "framework_role": "ipc_publisher"}
         assert sym.fingerprint is not None
         assert len(sym.fingerprint) == 16  # sha256 hex truncated to 16
         # Tier 2 prevents _classify_symbols from reclassifying to tier 4
@@ -929,7 +931,8 @@ class TestTauriIPCSyntheticSymbols:
 
         result = run_linker("tauri_ipc", ctx)
         assert len(result.symbols) == 1
-        assert result.symbols[0].kind == "ipc_publisher"
+        assert result.symbols[0].kind == "function"
+        assert (result.symbols[0].meta or {}).get("framework_role") == "ipc_publisher"
 
 
 class TestTauriSpectaWrapperResolution:
@@ -1182,7 +1185,8 @@ class TestTauriSpectaWrapperResolution:
         )
 
         caller_syms = [
-            s for s in result.symbols if s.kind == "ipc_caller"
+            s for s in result.symbols
+            if (s.meta or {}).get("framework_role") == "ipc_caller"
         ]
         assert len(caller_syms) == 1
         assert caller_syms[0].language == "typescript"
@@ -2007,7 +2011,11 @@ commands.stopRecording();
         # Should have caller_invokes edges from the named import
         caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
         assert len(caller_edges) >= 2
-        cmd_names = {e.meta.get("tauri_command") if e.meta else None for e in result.symbols if e.kind == "ipc_caller"}
+        cmd_names = {
+            (e.meta or {}).get("tauri_command")
+            for e in result.symbols
+            if (e.meta or {}).get("framework_role") == "ipc_caller"
+        }
         assert "start_recording" in cmd_names
         assert "stop_recording" in cmd_names
 

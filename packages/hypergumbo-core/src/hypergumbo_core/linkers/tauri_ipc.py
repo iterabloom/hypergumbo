@@ -637,13 +637,18 @@ def link_tauri_ipc(
                     shape_id=None,
                     canonical_name=f"invoke('{cmd_name}')",
                     fingerprint=hashlib.sha256(src_id.encode()).hexdigest()[:16],
-                    kind="ipc_publisher",
+                    # ADR-0027 Phase 3 / audit-findings 0013: framework-role
+                    # leak. Fold to canonical kind="function" + meta key.
+                    kind="function",
                     name=cmd_name,
                     path=rel_path,
                     language="typescript",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
-                    meta={"tauri_command": cmd_name},
+                    meta={
+                        "tauri_command": cmd_name,
+                        "framework_role": "ipc_publisher",
+                    },
                     # Tier 2 prevents _classify_symbols from reclassifying
                     # based on the host file path (e.g., tauri.ts detected
                     # as "minified/generated" → tier 4 → filtered out).
@@ -654,6 +659,10 @@ def link_tauri_ipc(
             # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
             # Tauri's invoke IS a call; "ipc" is the mechanism.
             # Canonical 'calls' + meta['protocol']='ipc'.
+            #
+            # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
+            # Fold evidence_type to canonical ast_call_direct
+            # + meta["framework_dispatch"]="tauri_invoke".
             result_edges.append(Edge.create(
                 src=src_id,
                 dst=target_sym.id,
@@ -662,10 +671,13 @@ def link_tauri_ipc(
                 confidence=0.90,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="tauri_invoke",
+                evidence_type="ast_call_direct",
                 access_mode="write",
                 dest_access_mode="read",
-                meta={"protocol": "ipc"},
+                meta={
+                    "protocol": "ipc",
+                    "framework_dispatch": "tauri_invoke",
+                },
             ))
 
     # Phase 4: Specta wrapper resolution
@@ -691,8 +703,10 @@ def link_tauri_ipc(
         # Build publisher_id lookup: cmd_name → ipc_publisher src_id
         publisher_id_by_cmd: dict[str, str] = {}
         for sym in result_symbols:
-            if sym.kind == "ipc_publisher":
-                cmd = sym.meta.get("tauri_command", "") if sym.meta else ""
+            # Post-fold: ipc_publisher symbols carry kind="function" +
+            # meta["framework_role"]="ipc_publisher" per audit-findings 0013.
+            if (sym.meta or {}).get("framework_role") == "ipc_publisher":
+                cmd = (sym.meta or {}).get("tauri_command", "")
                 if cmd:
                     publisher_id_by_cmd[cmd] = sym.id
 
@@ -743,7 +757,9 @@ def link_tauri_ipc(
                         fingerprint=hashlib.sha256(
                             caller_id.encode(),
                         ).hexdigest()[:16],
-                        kind="ipc_caller",
+                        # ADR-0027 Phase 3 / audit-findings 0013: framework-role
+                        # leak. Fold to canonical kind="function" + meta key.
+                        kind="function",
                         name=func_name,
                         path=rel_path,
                         language="typescript",
@@ -752,11 +768,18 @@ def link_tauri_ipc(
                             start_col=0, end_col=0,
                         ),
                         origin=PASS_ID,
-                        meta={"tauri_command": cmd_name},
+                        meta={
+                            "tauri_command": cmd_name,
+                            "framework_role": "ipc_caller",
+                        },
                         supply_chain_tier=2,
                         supply_chain_reason="synthetic IPC caller node",
                     ))
 
+                # ADR-0028 Phase 3 / audit-findings 0014: specta_wrapper_import
+                # is a framework-dispatch leak — the underlying inference is an
+                # import. Fold to canonical ast_import +
+                # meta["framework_dispatch"]="specta_wrapper".
                 result_edges.append(Edge.create(
                     src=caller_id,
                     dst=publisher_id,
@@ -765,8 +788,9 @@ def link_tauri_ipc(
                     confidence=0.80,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="specta_wrapper_import",
+                    evidence_type="ast_import",
                     access_mode="write",
+                    meta={"framework_dispatch": "specta_wrapper"},
                 ))
 
     # Phase 5: Rust→TS event emission (emit/emit_all/emit_to → listen/once)
@@ -830,13 +854,18 @@ def link_tauri_ipc(
                             shape_id=None,
                             canonical_name=f"emit('{event_name}')",
                             fingerprint=hashlib.sha256(src_id.encode()).hexdigest()[:16],
-                            kind="event_publisher",
+                            # ADR-0027 Phase 3 / audit-findings 0013:
+                            # framework-role leak.
+                            kind="function",
                             name=event_name,
                             path=rust_path,
                             language="rust",
                             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                             origin=PASS_ID,
-                            meta={"tauri_event": event_name},
+                            meta={
+                                "tauri_event": event_name,
+                                "framework_role": "event_publisher",
+                            },
                             supply_chain_tier=2,
                             supply_chain_reason="synthetic Tauri event emitter",
                         ))
@@ -850,13 +879,18 @@ def link_tauri_ipc(
                             shape_id=None,
                             canonical_name=f"listen('{event_name}')",
                             fingerprint=hashlib.sha256(dst_id.encode()).hexdigest()[:16],
-                            kind="event_subscriber",
+                            # ADR-0027 Phase 3 / audit-findings 0013:
+                            # framework-role leak.
+                            kind="function",
                             name=event_name,
                             path=ts_path,
                             language="typescript",
                             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                             origin=PASS_ID,
-                            meta={"tauri_event": event_name},
+                            meta={
+                                "tauri_event": event_name,
+                                "framework_role": "event_subscriber",
+                            },
                             supply_chain_tier=2,
                             supply_chain_reason="synthetic Tauri event listener",
                         ))
@@ -865,6 +899,10 @@ def link_tauri_ipc(
                     # Tauri emit/listen IS publish; "ipc" is the
                     # channel kind. Canonical 'event_publishes' +
                     # meta['channel_kind']='ipc'.
+                    #
+                    # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
+                    # leak. Fold evidence_type to canonical ast_call_direct
+                    # + meta["framework_dispatch"]="tauri_emit_listen".
                     result_edges.append(Edge.create(
                         src=src_id,
                         dst=dst_id,
@@ -873,11 +911,14 @@ def link_tauri_ipc(
                         confidence=0.85,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
-                        evidence_type="tauri_emit_listen",
+                        evidence_type="ast_call_direct",
                         access_mode="write",
                         dest_access_mode="read",
                         channel=event_name,
-                        meta={"channel_kind": "ipc"},
+                        meta={
+                            "channel_kind": "ipc",
+                            "framework_dispatch": "tauri_emit_listen",
+                        },
                     ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

@@ -340,7 +340,7 @@ class TestLinkWebSocket:
         file.write_text("io.on('connection', (socket) => {});")
         result = link_websocket(tmp_path)
         # Should have endpoint symbol + file symbol
-        endpoint_symbols = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        endpoint_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "websocket_endpoint"]
         assert len(endpoint_symbols) == 1
         assert "connection" in endpoint_symbols[0].name
 
@@ -522,7 +522,7 @@ function sendMessage(text) {
         result = link_websocket(tmp_path)
 
         # Should find connection endpoint
-        assert any(s.kind == "websocket_endpoint" for s in result.symbols)
+        assert any((s.meta or {}).get("framework_role") == "websocket_endpoint" for s in result.symbols)
 
         # Should find message edges for 'chat message' event
         message_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
@@ -546,7 +546,7 @@ ws.onmessage = (event) => {
         result = link_websocket(tmp_path)
 
         # Should find WebSocket endpoint
-        endpoints = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        endpoints = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "websocket_endpoint"]
         assert len(endpoints) == 1
         assert "wss://api.example.com/ws" in endpoints[0].name
 
@@ -572,7 +572,7 @@ wss.on('connection', (ws) => {
         result = link_websocket(tmp_path)
 
         # Should find connection endpoint
-        assert any(s.kind == "websocket_endpoint" for s in result.symbols)
+        assert any((s.meta or {}).get("framework_role") == "websocket_endpoint" for s in result.symbols)
 
 
 class TestPythonFileDiscovery:
@@ -901,7 +901,7 @@ async def handler(websocket):
     await websocket.accept()
 """)
         result = link_websocket(tmp_path)
-        endpoint_symbols = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        endpoint_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "websocket_endpoint"]
         assert len(endpoint_symbols) >= 1
         for sym in endpoint_symbols:
             assert sym.language == "python"
@@ -913,7 +913,7 @@ async def handler(websocket):
 io.on('connection', handler);
 """)
         result = link_websocket(tmp_path)
-        endpoint_symbols = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        endpoint_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "websocket_endpoint"]
         assert len(endpoint_symbols) == 1
         assert endpoint_symbols[0].language == "javascript"
 
@@ -930,7 +930,7 @@ async def ws_handler(websocket):
     pass
 """)
         result = link_websocket(tmp_path)
-        endpoints = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        endpoints = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "websocket_endpoint"]
         assert len(endpoints) >= 1
         assert any("/ws" in e.name for e in endpoints)
 
@@ -942,7 +942,7 @@ class ChatConsumer(WebsocketConsumer):
     pass
 """)
         result = link_websocket(tmp_path)
-        endpoints = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        endpoints = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "websocket_endpoint"]
         assert len(endpoints) >= 1
         assert any("ChatConsumer" in e.name for e in endpoints)
 
@@ -974,7 +974,7 @@ ws.send(JSON.stringify({action: 'ping'}));
         result = link_websocket(tmp_path)
 
         # Should have endpoint symbols from both languages
-        endpoints = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        endpoints = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "websocket_endpoint"]
         assert len(endpoints) >= 2
 
         # Should have file symbols for both files
@@ -1106,7 +1106,7 @@ io.on('connection', handler);
 
         result = link_websocket(tmp_path)
 
-        endpoints = [s for s in result.symbols if s.kind == "websocket_endpoint"]
+        endpoints = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "websocket_endpoint"]
         assert len(endpoints) >= 1
         assert "event_type" in endpoints[0].meta
         assert endpoints[0].meta["event_type"] == "literal"

@@ -315,10 +315,12 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
     for op in all_operations:
         symbol_id = f"openapi:{op.file_path}:{op.line}:{op.method}:{op.path}"
 
+        # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
+        # Fold to canonical kind="function" + meta["framework_role"].
         symbol = Symbol(
             id=symbol_id,
             name=op.operation_id or f"{op.method} {op.path}",
-            kind="openapi_operation",
+            kind="function",
             language="openapi",
             path=op.file_path,
             span=Span(start_line=op.line, end_line=op.line, start_col=0, end_col=0),
@@ -329,6 +331,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                 "operation_id": op.operation_id,
                 "summary": op.summary,
                 "tags": op.tags,
+                "framework_role": "openapi_operation",
             },
         )
         result_symbols.append(symbol)
@@ -349,17 +352,19 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                     continue
 
                 # Create edge linking spec to implementation
+                # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
                 edge = Edge.create(
                     src=symbol.id,
                     dst=route.id,
                     edge_type="openapi_implements",
                     line=op.line,
                     confidence=0.85,
-                    evidence_type="openapi_path_match",
+                    evidence_type="ast_call_direct",
                     meta={
                         "openapi_path": op.path,
                         "route_path": route_path,
                         "method": op.method,
+                        "framework_dispatch": "openapi_path",
                     },
                 )
                 result_edges.append(edge)
@@ -370,16 +375,19 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
             for route in route_symbols:
                 # Check if operationId matches function name
                 if route.name == op.operation_id:
+                    # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
+                    # leak.
                     edge = Edge.create(
                         src=symbol.id,
                         dst=route.id,
                         edge_type="openapi_implements",
                         line=op.line,
                         confidence=0.9,  # Higher confidence for operationId match
-                        evidence_type="openapi_operation_id_match",
+                        evidence_type="ast_call_direct",
                         meta={
                             "operation_id": op.operation_id,
                             "route_name": route.name,
+                            "framework_dispatch": "openapi_operation_id",
                         },
                     )
                     result_edges.append(edge)

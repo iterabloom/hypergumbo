@@ -578,6 +578,8 @@ def _link_go_methods_to_rpc_routes(
         if not route_id:
             continue
 
+        # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
+        # Fold to canonical ast_call_direct + meta["framework_dispatch"].
         edges.append(Edge.create(
             src=sym.id,
             dst=route_id,
@@ -586,7 +588,8 @@ def _link_go_methods_to_rpc_routes(
             confidence=0.90,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            evidence_type="grpc_go_server_method",
+            evidence_type="ast_call_direct",
+            meta={"framework_dispatch": "grpc_go_server"},
         ))
 
     return edges
@@ -703,6 +706,9 @@ def link_grpc(
             # ADR-0023 §6 Phase 3 (WI-vumum-juvil): gRPC is a wire
             # protocol, not a relationship. The fold target is
             # canonical 'calls' + meta['protocol']='grpc'.
+            #
+            # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
+            # Fold evidence_type to ast_call_direct + meta key.
             edges.append(Edge.create(
                 src=stub_id,
                 dst=servicer_id,
@@ -711,8 +717,11 @@ def link_grpc(
                 confidence=0.85,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="grpc_service_match",
-                meta={"protocol": "grpc"},
+                evidence_type="ast_call_direct",
+                meta={
+                    "protocol": "grpc",
+                    "framework_dispatch": "grpc_service_match",
+                },
             ))
 
     # Create route symbols for proto RPC definitions.
@@ -739,6 +748,7 @@ def link_grpc(
             normalized = _normalize_service_name(sym.name)
             svc_id = service_by_normalized.get(normalized)
             if svc_id and svc_id != sym.id:
+                # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
                 edges.append(Edge.create(
                     src=sym.id,
                     dst=svc_id,
@@ -747,7 +757,8 @@ def link_grpc(
                     confidence=0.90,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    evidence_type="grpc_server_to_service",
+                    evidence_type="ast_call_direct",
+                    meta={"framework_dispatch": "grpc_server_to_service"},
                 ))
 
     for rpc in all_rpc_defs:
@@ -759,6 +770,12 @@ def link_grpc(
         route_id = _make_symbol_id(
             rpc.file_path, rpc.line, route_name, "route"
         )
+        # ADR-0027 Phase 3 / audit-findings 0013: this `kind="route"` emit is
+        # in scope for the dedicated Symbol.kind="route" sweep PR (Wave 5
+        # PR #6 per the agreed schedule), not this gRPC PR. Migrating it
+        # here in isolation would break ~13 production consumers that
+        # filter by `kind == "route"` across linkers/, cli.py, and language
+        # analyzers; those consumers migrate together with the producers.
         symbols.append(Symbol(
             id=route_id,
             name=route_name,
@@ -784,6 +801,9 @@ def link_grpc(
             # gRPC RPC definition routes a route → service; "route"
             # is the dispatch mechanism. Canonical 'dispatches_to'
             # + meta['dispatch_kind']='route'.
+            #
+            # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
+            # Fold evidence_type to ast_call_direct + meta key.
             edges.append(Edge.create(
                 src=route_id,
                 dst=svc_id,
@@ -792,8 +812,11 @@ def link_grpc(
                 confidence=0.90,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="grpc_rpc_definition",
-                meta={"dispatch_kind": "route"},
+                evidence_type="ast_call_direct",
+                meta={
+                    "dispatch_kind": "route",
+                    "framework_dispatch": "grpc_rpc_definition",
+                },
             ))
 
     # Link Go implementation methods to proto RPC route symbols.

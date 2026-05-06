@@ -495,13 +495,34 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
             return "python"
         return "javascript"
 
+    # ADR-0027 Phase 3 / audit-findings 0013: Symbol.kind="websocket_endpoint"
+    # is a framework-role leak (Test 4: mechanism vs. category). Fold to the
+    # canonical Cluster A construct kind="function" + meta["framework_role"]
+    # so the kind axis stays language-construct-only.
+    #
+    # ADR-0028 Phase 3 / audit-findings 0014: the dynamic f-string emits
+    # f"{pattern_type}_emit" and f"{pattern_type}_endpoint" leak framework
+    # identity into evidence_type. Fold to canonical inference label
+    # ast_call_direct + meta["framework_dispatch"]=<framework_name>.
+    # _PATTERN_TYPE_TO_FRAMEWORK maps the linker's internal pattern_type slug
+    # to the framework_dispatch value prescribed by audit-findings 0014:
+    #   pattern_type "native"  →  framework_dispatch "native_websocket"
+    #   (all other pattern_types pass through as their own framework name)
+    _PATTERN_TYPE_TO_FRAMEWORK = {
+        "django_channels": "django_channels",
+        "fastapi": "fastapi",
+        "native": "native_websocket",
+        "socketio": "socketio",
+        "ws": "ws",
+    }
+
     # Create symbols for endpoints
     symbols: list[Symbol] = []
     for ep in endpoints:
         symbols.append(Symbol(
             id=_make_symbol_id(ep.file_path, ep.line, ep.event, "endpoint"),
             name=f"ws:{ep.event}",
-            kind="websocket_endpoint",
+            kind="function",
             language=get_language(ep.pattern_type),
             path=ep.file_path,
             span=Span(start_line=ep.line, end_line=ep.line, start_col=0, end_col=0),
@@ -510,6 +531,7 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
             meta={
                 "pattern_type": ep.pattern_type,
                 "event_type": ep.event_type,
+                "framework_role": "websocket_endpoint",
             },
         ))
 
@@ -569,7 +591,11 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
                         send_pat.event_type == "variable" or recv_pat.event_type == "variable"
                     )
                     confidence = 0.65 if is_variable_match else 0.85
-                    evidence_type = "variable_match" if is_variable_match else f"{send_pat.pattern_type}_emit"
+                    # ADR-0028 Phase 3 / audit-findings 0014: f"{pattern_type}_emit"
+                    # leaked framework identity into evidence_type. Fold to canonical
+                    # ast_call_direct + meta["framework_dispatch"]=<framework_name>.
+                    # The variable_match branch keeps its Cluster A canonical.
+                    evidence_type = "variable_match" if is_variable_match else "ast_call_direct"
                     # Pass linker-specific meta via Edge.create's meta= kwarg
                     # so Edge.create merges it with the dataflow fields —
                     # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
@@ -596,6 +622,9 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
                             "channel_kind": "websocket",
                             "event": event,
                             "event_type": "variable" if is_variable_match else "literal",
+                            "framework_dispatch": _PATTERN_TYPE_TO_FRAMEWORK[
+                                send_pat.pattern_type
+                            ],
                         },
                     )
                     edges.append(edge)
@@ -604,19 +633,26 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
     # endpoint connections declare connectivity (file → endpoint
     # symbol), they don't carry messages. Canonical 'references' +
     # meta['construct']='websocket_endpoint'.
+    #
+    # ADR-0028 Phase 3 / audit-findings 0014: f"{pattern_type}_endpoint" leaked
+    # framework identity into evidence_type. Fold to canonical ast_call_direct
+    # + meta["framework_dispatch"]=<framework_name>.
     for ep in endpoints:
         edges.append(Edge.create(
             src=_make_file_id(ep.file_path),
             dst=_make_symbol_id(ep.file_path, ep.line, ep.event, "endpoint"),
             edge_type="references",
             line=ep.line,
-            evidence_type=f"{ep.pattern_type}_endpoint",
+            evidence_type="ast_call_direct",
             confidence=0.90,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             access_mode="write",
             channel=ep.event,
-            meta={"construct": "websocket_endpoint"},
+            meta={
+                "construct": "websocket_endpoint",
+                "framework_dispatch": _PATTERN_TYPE_TO_FRAMEWORK[ep.pattern_type],
+            },
         ))
 
     run.files_analyzed = files_analyzed
