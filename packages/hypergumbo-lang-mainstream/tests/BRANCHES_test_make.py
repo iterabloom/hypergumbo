@@ -160,7 +160,7 @@ class TestIncludeDirective:
     """Branch coverage for include directive extraction."""
 
     def test_include_directive(self, tmp_path: Path) -> None:
-        """Test include directive extraction."""
+        """Test include directive edge (post-WI-kunag fold)."""
         make_makefile(tmp_path, "Makefile", """include config.mk
 include $(wildcard *.d)
 
@@ -168,7 +168,7 @@ all:
 	echo "Building"
 """)
         result = analyze_make_files(tmp_path)
-        includes = [s for s in result.symbols if s.kind == "include"]
+        includes = [e for e in result.edges if e.edge_type == "includes"]
 
         assert len(includes) >= 1
 

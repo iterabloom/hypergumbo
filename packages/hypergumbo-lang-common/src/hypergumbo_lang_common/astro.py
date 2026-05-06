@@ -195,31 +195,31 @@ class _AstroFileExtractor:
                 if import_path.endswith(".astro"):
                     if default_import:
                         self._current_imports[default_import] = import_path
-                        # Create import symbol
+                        # ADR-0027 Cluster E sub-case (b) shape 3
+                        # (audit-findings 0010, WI-kunag): drop the per-import
+                        # Symbol and emit a companion `imports` Edge so the
+                        # frontmatter-import relationship keeps representation.
+                        # ``src`` is the .astro file id; ``dst`` is a 5-part
+                        # dangling id naming the imported component module.
+                        # The Cluster F component_ref imports edge in
+                        # ``_create_component_edge`` is a separate concern (it
+                        # links the JSX/HTML use-site to the component); this
+                        # edge represents the frontmatter ``import …`` syntax.
                         line_num = base_line + _line_offset
-                        symbol_id = _make_symbol_id(
-                            rel_path, default_import, "import", line_num
-                        )
-                        span = Span(
-                            start_line=line_num,
-                            start_col=0,
-                            end_line=line_num,
-                            end_col=len(line),
-                        )
-
-                        symbol = Symbol(
-                            id=symbol_id,
-                            stable_id=symbol_id,
-                            name=default_import,
-                            kind="import",
-                            language="astro",
-                            path=str(rel_path),
-                            span=span,
+                        self._edges.append(Edge.create(
+                            src=make_file_id("astro", str(rel_path)),
+                            dst=f"astro:{import_path}:1-1:file:file",
+                            edge_type="imports",
+                            line=line_num,
+                            confidence=0.85,
                             origin=PASS_ID,
-                            signature=f"import {default_import} from '{import_path}'",
-                            meta={"import_path": import_path},
-                        )
-                        self._symbols.append(symbol)
+                            origin_run_id="",
+                            evidence_type="import",
+                            meta={
+                                "import_name": default_import,
+                                "import_path": import_path,
+                            },
+                        ))
 
                     if named_imports:
                         for name in named_imports.split(","):

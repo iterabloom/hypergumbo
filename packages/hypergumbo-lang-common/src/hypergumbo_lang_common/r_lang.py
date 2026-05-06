@@ -3,7 +3,9 @@
 
 This analyzer parses R source files and extracts:
 - Function definitions (function <- function(...) { })
-- Library/require imports
+- Library/require imports as companion ``imports`` Edges (ADR-0027
+  Cluster E sub-case (b) / audit-findings 0010 / WI-kunag — no per-import
+  Symbol; src is the file id, dst is a 5-part dangling package id)
 - Function calls
 - Source file references
 
@@ -39,6 +41,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
+    make_file_id,
     make_symbol_id,
     node_text,
     populate_docstrings_from_tree,
@@ -132,15 +135,18 @@ def _extract_r_symbols(
     source: bytes,
     rel_path: str,
     symbols: list[Symbol],
+    edges: list[Edge],
     symbol_registry: dict[str, Symbol],
 ) -> None:
-    """Extract symbols from R AST tree (pass 1).
+    """Extract symbols and per-file edges from R AST tree (pass 1).
 
     Args:
         root_node: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
         symbols: List to append symbols to
+        edges: List to append edges to (companion ``imports`` edges per
+            ADR-0027 Cluster E sub-case (b) for ``library()`` / ``require()``)
         symbol_registry: Registry mapping function names to Symbol objects
     """
     for node in iter_tree(root_node):
@@ -211,26 +217,35 @@ def _extract_r_symbols(
                                     if "=" in pkg_name:  # pragma: no cover - named arg syntax
                                         pkg_name = pkg_name.split("=")[-1].strip().strip("\"'")  # pragma: no cover
                                     if pkg_name and pkg_name not in ("(", ")"):
-                                        import_id = make_symbol_id("r", rel_path, start_line, start_line, pkg_name, "import")
-                                        imp_sym = Symbol(
-                                            id=import_id,
-                                            stable_id=None,
-                                            shape_id=None,
-                                            canonical_name=pkg_name,
-                                            fingerprint=hashlib.sha256(pkg_name.encode()).hexdigest()[:16],
-                                            kind="import",
-                                            name=pkg_name,
-                                            path=rel_path,
-                                            language="r",
-                                            span=Span(
-                                                start_line=start_line,
-                                                end_line=start_line,
-                                                start_col=node.start_point[1],
-                                                end_col=node.end_point[1],
-                                            ),
+                                        # ADR-0027 Cluster E sub-case (b)
+                                        # shape 3 (audit-findings 0010,
+                                        # WI-kunag): drop the per-import Symbol
+                                        # and emit a companion `imports` Edge
+                                        # so the package-import relationship
+                                        # keeps representation. ``src`` is the
+                                        # R file id; ``dst`` is a 5-part
+                                        # dangling id naming the package (R
+                                        # packages live in CRAN/Bioconductor —
+                                        # the local scan does not enumerate
+                                        # them).
+                                        # ``r:<pkg>:…`` shape: profile.py's
+                                        # framework-refinement consumer splits
+                                        # dst on ``:`` and reads parts[1] as
+                                        # the imported module name, so the
+                                        # package name must occupy parts[1].
+                                        edges.append(Edge.create(
+                                            src=make_file_id("r", rel_path),
+                                            dst=f"r:{pkg_name}:0-0:{pkg_name}:package",
+                                            edge_type="imports",
+                                            line=start_line,
+                                            confidence=0.85,
                                             origin=PASS_ID,
-                                        )
-                                        symbols.append(imp_sym)
+                                            evidence_type="import",
+                                            meta={
+                                                "package": pkg_name,
+                                                "import_form": func_name,
+                                            },
+                                        ))
                                     break  # Only first argument is package name
                 elif func_name == "source":
                     # source() imports another R file
@@ -453,6 +468,7 @@ class RAnalyzer(TreeSitterAnalyzer):
                     source,
                     rel_path,
                     symbols,
+                    edges,
                     global_symbol_registry,
                 )
                 populate_docstrings_from_tree(tree.root_node, source, symbols[before:])

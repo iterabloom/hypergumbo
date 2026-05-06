@@ -23,11 +23,18 @@ class TestAnalyzeBlade:
         assert any(s.kind == "yield" for s in result.symbols)
 
     def test_detects_extends(self, tmp_path: Path) -> None:
+        # ADR-0027 Cluster E sub-case (b) shape 3 (audit-findings 0010,
+        # WI-kunag): @extends now emits a companion extends_template Edge,
+        # not a Symbol. The relationship is still represented in the graph.
         (tmp_path / "page.blade.php").write_text("@extends('layouts.app')")
         result = analyze_blade(tmp_path)
-        names = [s.name for s in result.symbols]
-        assert "layouts.app" in names
-        assert any(s.kind == "extends" for s in result.symbols)
+        assert any(
+            e.edge_type == "extends_template"
+            and (e.meta or {}).get("template") == "layouts.app"
+            for e in result.edges
+        )
+        # No `extends`-kind Symbol after the fold.
+        assert not any(s.kind == "extends" for s in result.symbols)
 
     def test_detects_component(self, tmp_path: Path) -> None:
         (tmp_path / "page.blade.php").write_text("@component('alert')\nDanger!\n@endcomponent")
@@ -49,7 +56,9 @@ class TestAnalyzeBlade:
         content = "@extends('layouts.app')\n@section('title')\nHello\n@endsection\n@yield('footer')"
         (tmp_path / "page.blade.php").write_text(content)
         result = analyze_blade(tmp_path)
-        assert len(result.symbols) == 3
+        # 2 Symbols (section, yield) + 1 Edge (extends_template — see WI-kunag)
+        assert len(result.symbols) == 2
+        assert any(e.edge_type == "extends_template" for e in result.edges)
 
     def test_double_quoted_names(self, tmp_path: Path) -> None:
         (tmp_path / "page.blade.php").write_text('@section("content")\n@endsection')

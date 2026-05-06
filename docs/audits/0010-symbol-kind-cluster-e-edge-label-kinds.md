@@ -1,8 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Audit-findings 0010: Symbol.kind Cluster E — Edge Labels Masquerading as Kinds
 
-- Date: 2026-05-05
-- Status: Mixed — sub-case (a) call_site reclassifications and sub-case (b) DEPRECATE-NO-FOLD-zero-producer rows ship at PRELIM_RESOLVED; sub-case (b) `inherit` PRELIM_RESOLVED at PR 1; sub-case (b) `reference` PRELIM_RESOLVED at PR 2 (json_config edge-endpoint redesign). Three rows (`import`, `include`, `extends`) remain UNRESOLVED — each has a residual shape-3 (edge-absent) producer (r_lang.py / make.py / blade.py) deferred to a separate follow-on item.
+- Date: 2026-05-05 (filed); 2026-05-06 (WI-kunag — three rows advance to PRELIM_RESOLVED)
+- Status: Mixed — sub-case (a) call_site reclassifications and sub-case (b) DEPRECATE-NO-FOLD-zero-producer rows ship at PRELIM_RESOLVED; sub-case (b) `inherit` PRELIM_RESOLVED at PR 1; sub-case (b) `reference` PRELIM_RESOLVED at PR 2 (json_config edge-endpoint redesign); sub-case (b) `import` / `include` / `extends` PRELIM_RESOLVED at WI-kunag PR (companion `imports` / `includes` / `extends_template` Edges introduced for the four shape-3 producers — astro.py, r_lang.py, make.py, blade.py — so the corresponding syntactic relationships keep representation in the graph after the per-Symbol drop).
 - Closes (partial): WI-zarov-nosin-fokum-vofom-kazum-kinir-lijof-lihud (Cluster E, ADR-0027 Phase 3) — sub-case (a) closed; sub-case (b) partial. Follow-on tracker items file the deferred per-producer work.
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Sixth audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical), 0005 (Cluster B file-shape), 0006 (Cluster G build/config), 0007 (Cluster H domain long-tail), and 0009 (Cluster C apex/peer).
 
@@ -126,11 +126,11 @@ verdicts:
   - value: import
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]import[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Sub-case (b) drop verdict — the imports Edge captures the relationship; no replacement Symbol kind. Four producers split by shape: css.py:155 (shape 1, dropped in PR 1), jsonnet.py:212 (shape 1, dropped in PR 1), astro.py:209 (shape 3 on closer inspection — the imports Edge in astro.py:332 belongs to the separate component_ref Symbol (Cluster F), not the import Symbol; the import Symbol has no companion Edge. Originally classified shape 2 in this audit; PR 2 re-inspection corrected to shape 3), r_lang.py:215 (shape 3, no companion Edge for R library() imports). Both remaining producers are now shape 3 (edge-absent) and deferred to a separate follow-on item that decides whether to introduce a companion Edge or accept the loss of import-directive representation. Status remains UNRESOLVED."
+    rationale: "Sub-case (b) drop verdict — the imports Edge captures the relationship; no replacement Symbol kind. Four producers across migration waves: css.py:155 (shape 1, dropped in PR 1), jsonnet.py:212 (shape 1, dropped in PR 1), astro.py:209 (originally shape 2; PR 2 re-inspection corrected to shape 3 — the imports Edge in astro.py:332 belongs to the separate component_ref Symbol (Cluster F), not the import Symbol. WI-kunag introduces a companion frontmatter `imports` Edge with src=make_file_id(\"astro\", path) and a 5-part dangling dst, so the frontmatter `import …` syntactic relationship now keeps representation in the graph alongside the use-site component_ref Edge), r_lang.py:215 (shape 3 — WI-kunag introduces a companion `imports` Edge for library() / require() with src=make_file_id(\"r\", path) and a 5-part dangling package id, so R package imports now keep representation in the graph). All four producers' Symbol emissions dropped. Status advances 2026-05-06 (WI-kunag) from UNRESOLVED to PRELIM_RESOLVED."
   - value: inherit
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
@@ -142,19 +142,19 @@ verdicts:
   - value: include
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]include[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Sub-case (b) drop verdict — the include-family Edges (includes_class, uses_mixin, includes_template) capture the relationship; no replacement Symbol kind. Five producers split by shape and migration wave: puppet.py (shape 2, dropped in PR 2 — includes_class Edge re-routed src to manifest file id, dst made unconditional via dangling class id when class isn't in local registry), scss.py (shape 2, dropped in PR 2 — uses_mixin Edge re-routed src to stylesheet file id, dst made unconditional via dangling mixin id), twig.py:166 + twig.py:255 (shape 2, both dropped in PR 2 — includes_template Edge re-routed src to template file id; the {{ include() }} function-call form distinguished via meta['form']='function'). One remaining producer is shape (3) edge-absent: make.py (no companion Edge for makefile include directives). Status remains UNRESOLVED until make.py resolves."
+    rationale: "Sub-case (b) drop verdict — the include-family Edges (includes_class, uses_mixin, includes_template, includes) capture the relationship; no replacement Symbol kind. Five producers across migration waves: puppet.py (shape 2, dropped in PR 2 — includes_class Edge re-routed src to manifest file id, dst made unconditional via dangling class id when class isn't in local registry), scss.py (shape 2, dropped in PR 2 — uses_mixin Edge re-routed src to stylesheet file id, dst made unconditional via dangling mixin id), twig.py:166 + twig.py:255 (shape 2, both dropped in PR 2 — includes_template Edge re-routed src to template file id; the {{ include() }} function-call form distinguished via meta['form']='function'), make.py (shape 3 — WI-kunag introduces a companion `includes` Edge with src=make_file_id(\"make\", path) and a 5-part dangling included-file id, so makefile include directives keep representation in the graph). All five producers' Symbol emissions dropped. Status advances 2026-05-06 (WI-kunag) from UNRESOLVED to PRELIM_RESOLVED."
   - value: extends
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]extends[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Sub-case (b) drop verdict — the extends_template Edge captures the relationship; no replacement Symbol kind. Two producers: twig.py (shape 2, dropped in PR 2 — extends_template Edge re-routed src to template file id) and blade.py (shape 3, edge-absent, deferred). Status remains UNRESOLVED until blade.py resolves."
+    rationale: "Sub-case (b) drop verdict — the extends_template Edge captures the relationship; no replacement Symbol kind. Two producers: twig.py (shape 2, dropped in PR 2 — extends_template Edge re-routed src to template file id) and blade.py (shape 3 — WI-kunag introduces a companion `extends_template` Edge with src=make_file_id(\"blade\", path) and a 5-part dangling parent-template id, so @extends directives keep representation in the graph). Both producers' Symbol emissions dropped. Status advances 2026-05-06 (WI-kunag) from UNRESOLVED to PRELIM_RESOLVED."
 ```
 
 ## Migration impact

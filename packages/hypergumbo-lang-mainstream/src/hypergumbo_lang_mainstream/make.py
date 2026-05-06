@@ -5,7 +5,8 @@ This analyzer uses tree-sitter to parse Makefiles and extract:
 - Variable definitions
 - Target rules (explicit and pattern rules)
 - Prerequisites (dependencies)
-- Include directives
+- Include directives (companion ``includes`` Edge per ADR-0027 Cluster E
+  sub-case (b) / audit-findings 0010 / WI-kunag — no per-include Symbol)
 - Define blocks (functions/macros)
 
 If tree-sitter-make is not installed, the analyzer
@@ -38,7 +39,14 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -274,30 +282,24 @@ def _process_make_tree(
         elif node.type == "include_directive":
             include_files = _get_include_files(node, source)
             start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
 
+            # ADR-0027 Cluster E sub-case (b) shape 3 (audit-findings 0010,
+            # WI-kunag): drop the per-include Symbol and emit a companion
+            # `includes` Edge so the file-inclusion relationship keeps
+            # representation. ``src`` is the makefile file id; ``dst`` is a
+            # 5-part dangling id naming the included file (the local scan
+            # does not enumerate the include search path).
             for include_file in include_files:
-                symbol_id = make_symbol_id("make", rel_path, start_line, end_line, include_file, "include")
-
-                sym = Symbol(
-                    id=symbol_id,
-                    stable_id=None,
-                    shape_id=None,
-                    canonical_name=include_file,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                    kind="include",
-                    name=include_file,
-                    path=rel_path,
-                    language="make",
-                    span=Span(
-                        start_line=start_line,
-                        end_line=end_line,
-                        start_col=node.start_point[1],
-                        end_col=node.end_point[1],
-                    ),
+                edges.append(Edge.create(
+                    src=make_file_id("make", rel_path),
+                    dst=f"make:{include_file}:1-1:file:file",
+                    edge_type="includes",
+                    line=start_line,
+                    confidence=0.85,
                     origin=PASS_ID,
-                )
-                symbols.append(sym)
+                    evidence_type="include",
+                    meta={"include_file": include_file},
+                ))
 
 
 class MakeAnalyzer(TreeSitterAnalyzer):

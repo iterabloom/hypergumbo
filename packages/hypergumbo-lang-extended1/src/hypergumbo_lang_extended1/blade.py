@@ -18,7 +18,15 @@ Symbols Extracted
 - **section**: Named content sections (@section('name'))
 - **component**: Component references (@component('name'))
 - **yield**: Yield points for layout inheritance (@yield('name'))
-- **extends**: Parent layout reference (@extends('name'))
+
+Edges Extracted
+---------------
+- **extends_template**: layout inheritance — emitted from @extends('name').
+  Per ADR-0027 Cluster E sub-case (b) (audit-findings 0010), the per-@extends
+  Symbol kind was dropped in favour of this companion Edge so the
+  layout-inheritance relationship keeps representation in the graph. ``src``
+  is the blade file id; ``dst`` is a 5-part dangling id naming the parent
+  template (the local Blade scan does not enumerate layouts).
 
 Why This Design
 ---------------
@@ -34,7 +42,7 @@ from typing import Iterator
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, make_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 PASS_ID = make_pass_id("blade")
@@ -104,16 +112,23 @@ def analyze_blade(
 
             for match in _EXTENDS_RE.finditer(line):
                 name = match.group(1)
-                symbols.append(Symbol(
-                    id=_make_symbol_id(path_str, line_num, name, "extends"),
-                    name=name,
-                    kind="extends",
-                    language="blade",
-                    path=path_str,
-                    span=Span(start_line=line_num, end_line=line_num,
-                              start_col=match.start(), end_col=match.end()),
+                # ADR-0027 Cluster E sub-case (b) shape 3 (audit-findings 0010,
+                # WI-kunag): drop the per-extends Symbol and emit a companion
+                # extends_template Edge so the layout-inheritance relationship
+                # keeps representation. src is the blade file id; dst is a
+                # 5-part dangling id (Blade @extends always references an
+                # external template by name, no local registry of layouts at
+                # this analyzer scope).
+                edges.append(Edge.create(
+                    src=make_file_id("blade", path_str),
+                    dst=f"blade:template:{name}:0-0:{name}:template",
+                    edge_type="extends_template",
+                    line=line_num,
+                    confidence=0.85,
                     origin=PASS_ID,
                     origin_run_id="",
+                    evidence_type="extends",
+                    meta={"template": name},
                 ))
 
             for match in _COMPONENT_RE.finditer(line):

@@ -41,7 +41,7 @@ class TestFrontmatterImports:
     """Branch coverage for frontmatter import extraction."""
 
     def test_default_import(self, tmp_path: Path) -> None:
-        """Test default import extraction from frontmatter."""
+        """Test default import edge from frontmatter (post-WI-kunag fold)."""
         make_astro_file(tmp_path, "Page.astro", """---
 import Button from './Button.astro'
 ---
@@ -50,12 +50,17 @@ import Button from './Button.astro'
         result = analyze_astro(tmp_path)
         assert not result.skipped
 
-        imports = [s for s in result.symbols if s.kind == "import"]
+        # Frontmatter `imports` Edge: meta.import_name set, no component_name.
+        imports = [
+            e for e in result.edges
+            if e.edge_type == "imports"
+            and (e.meta or {}).get("import_name") == "Button"
+            and (e.meta or {}).get("component_name") is None
+        ]
         assert len(imports) >= 1
-        assert any(i.name == "Button" for i in imports)
 
     def test_multiple_imports(self, tmp_path: Path) -> None:
-        """Test multiple imports in frontmatter."""
+        """Test multiple frontmatter imports (post-WI-kunag fold)."""
         make_astro_file(tmp_path, "Layout.astro", """---
 import Header from './Header.astro'
 import Footer from './Footer.astro'
@@ -64,8 +69,13 @@ import Footer from './Footer.astro'
 <Footer />
 """)
         result = analyze_astro(tmp_path)
-        imports = [s for s in result.symbols if s.kind == "import"]
-        names = [i.name for i in imports]
+        imports = [
+            e for e in result.edges
+            if e.edge_type == "imports"
+            and (e.meta or {}).get("import_name") is not None
+            and (e.meta or {}).get("component_name") is None
+        ]
+        names = [(e.meta or {}).get("import_name") for e in imports]
         assert "Header" in names
         assert "Footer" in names
 

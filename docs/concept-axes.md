@@ -153,12 +153,9 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`directive`** — Directive declaration (Vue / Angular / GraphQL).
 - **`enum`** — Enum declaration.
 - **`export`** — Export declaration (JS / TS / TOML / Rust).
-- **`extends`** — Extends clause as a syntactic form (Java, Solidity).
 - **`field`** — Field declaration on a struct / class / record.
 - **`function`** — Top-level function definition.
 - **`getter`** — Property getter accessor.
-- **`import`** — Import declaration as a syntactic-form symbol.
-- **`include`** — Include declaration (Ruby include, C #include, Make include).
 - **`instance`** — Typeclass / interface instance declaration.
 - **`interface`** — Interface declaration.
 - **`keyword`** — Keyword-shaped construct (configuration languages).
@@ -199,6 +196,7 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`dispatcher`** — Generic dispatcher symbol. Fold to function/method + meta['framework_role']='dispatcher'.
 - **`event_publisher`** — Symbol that publishes events. Fold to function/method + meta['framework_role']='event_publisher'.
 - **`event_subscriber`** — Symbol that subscribes to events. Fold to function/method + meta['framework_role']='event_subscriber'.
+- **`extends`** — Cluster E sub-case (b) DEPRECATE-NO-FOLD per audit-findings 0010: the extends_template Edge captures the relationship; no replacement Symbol kind. Two producers (twig.py, blade.py) dropped across PRs 2 and WI-kunag. Registry entry stays through the Phase 4a deprecation window.
 - **`fn`** — Cluster C apex/peer: deprecated peer of `function`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: function.
 - **`function_call`** — Cluster E sub-case (a) FOLD per audit-findings 0010: the Twig function-call producer (twig.py) was reclassified to kind='call_site'. Registry entry stays through the Phase 4a deprecation window.
 - **`graphql_client`** — GraphQL client call site. Fold to function/method + meta['framework_role']='graphql_client'.
@@ -209,6 +207,8 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`grpc_servicer`** — gRPC servicer class. Fold to class + meta['framework_role']='grpc_servicer'. Added 2026-05-06 (WI-nitil) — assignment-form producer at linkers/grpc.py:657 was missed by the original literal-grep audit. Registry entry stays through the Phase 4a deprecation window.
 - **`grpc_stub`** — gRPC stub call site. Fold to function + meta['framework_role']='grpc_stub'.
 - **`http_client`** — HTTP client call site. Fold to function/method + meta['framework_role']='http_client'.
+- **`import`** — Cluster E sub-case (b) DEPRECATE-NO-FOLD per audit-findings 0010: the imports Edge captures the relationship; no replacement Symbol kind. Four producers (css.py, jsonnet.py, astro.py, r_lang.py) dropped across PRs 1, 2, and WI-kunag. Registry entry stays through the Phase 4a deprecation window.
+- **`include`** — Cluster E sub-case (b) DEPRECATE-NO-FOLD per audit-findings 0010: the include-family Edges capture the relationship; no replacement Symbol kind. Five producers (puppet.py, scss.py, twig.py x2, make.py) dropped across PRs 1, 2, and WI-kunag. Registry entry stays through the Phase 4a deprecation window.
 - **`inherit`** — Cluster E sub-case (b) FOLD-clean-drop per audit-findings 0010: the BitBake inherit-clause Symbol was dropped (relationship captured by the inherits Edge with src=bitbake:{file}, dst=bitbake:class:{cls}). Registry entry stays through the Phase 4a deprecation window.
 - **`ipc`** — Generic IPC endpoint. Fold to function/method + meta['framework_role']='ipc'.
 - **`ipc_bridge_caller`** — IPC bridge call endpoint. Fold to function/method + meta['framework_role']='ipc_bridge_caller'.

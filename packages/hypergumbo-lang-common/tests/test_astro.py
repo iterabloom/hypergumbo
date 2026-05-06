@@ -118,7 +118,11 @@ import Footer from './Footer.astro';
         ]
         assert edges == []
 
-    def test_extracts_import_symbol(self, tmp_path: Path) -> None:
+    def test_extracts_import_edge(self, tmp_path: Path) -> None:
+        # ADR-0027 Cluster E sub-case (b) shape 3 (audit-findings 0010,
+        # WI-kunag): frontmatter `import …` now emits a companion `imports`
+        # Edge instead of a Symbol. The component-ref `imports` Edge from
+        # the JSX use-site is a separate (Cluster F) emission.
         make_astro_file(tmp_path, "index.astro", """---
 import Header from './Header.astro';
 ---
@@ -126,10 +130,16 @@ import Header from './Header.astro';
 <Header/>
 """)
         result = analyze_astro(tmp_path)
-        imp = next((s for s in result.symbols if s.kind == "import"), None)
-        assert imp is not None
-        assert imp.name == "Header"
-        assert imp.meta.get("import_path") == "./Header.astro"
+        # Frontmatter import edge: src is the file id, dst is a 5-part dangling id.
+        frontmatter_edges = [
+            e for e in result.edges
+            if e.edge_type == "imports"
+            and (e.meta or {}).get("import_name") == "Header"
+        ]
+        assert len(frontmatter_edges) == 1
+        assert frontmatter_edges[0].meta.get("import_path") == "./Header.astro"
+        # No `import`-kind Symbol after the fold.
+        assert not any(s.kind == "import" for s in result.symbols)
 
     def test_extracts_variable(self, tmp_path: Path) -> None:
         make_astro_file(tmp_path, "index.astro", """---
@@ -223,9 +233,16 @@ import Header from './Header.astro';
 <Header/>
 """)
         result = analyze_astro(tmp_path)
-        edge = next((e for e in result.edges if e.edge_type == "imports"), None)
-        assert edge is not None
-        assert edge.dst == "./Header.astro"
+        # Component-ref `imports` Edge (Cluster F audit-findings 0011) has
+        # meta.component_name and dst=import_path. WI-kunag adds a separate
+        # frontmatter `imports` Edge whose meta carries import_name; this
+        # test still asserts the component-ref edge specifically.
+        comp_edges = [
+            e for e in result.edges
+            if e.edge_type == "imports" and (e.meta or {}).get("component_name") == "Header"
+        ]
+        assert len(comp_edges) == 1
+        assert comp_edges[0].dst == "./Header.astro"
 
     def test_component_ref_without_import(self, tmp_path: Path) -> None:
         """Unresolved component ref (no import) emits a dangling component
@@ -416,10 +433,15 @@ const description = 'A test page';
 """)
         result = analyze_astro(tmp_path)
 
-        # Check imports
-        imports = [s for s in result.symbols if s.kind == "import"]
-        assert len(imports) == 3
-        import_names = {i.name for i in imports}
+        # Check frontmatter imports (Edges, post-WI-kunag fold)
+        frontmatter_imports = [
+            e for e in result.edges
+            if e.edge_type == "imports"
+            and (e.meta or {}).get("component_name") is None
+            and (e.meta or {}).get("import_name") is not None
+        ]
+        assert len(frontmatter_imports) == 3
+        import_names = {(e.meta or {}).get("import_name") for e in frontmatter_imports}
         assert import_names == {"Header", "Footer", "Counter"}
 
         # Check variables
@@ -449,6 +471,6 @@ const description = 'A test page';
         assert len(directives) == 1
         assert directives[0].name == "client:load"
 
-        # Check edges
+        # Check edges: 3 frontmatter imports + 3 component-ref imports = 6 total.
         edges = [e for e in result.edges if e.edge_type == "imports"]
-        assert len(edges) == 3
+        assert len(edges) == 6

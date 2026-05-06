@@ -67,6 +67,9 @@ my_func = function(x) {
 
 def test_analyze_library_imports(tmp_path):
     """Test detection of library() imports."""
+    # ADR-0027 Cluster E sub-case (b) shape 3 (audit-findings 0010, WI-kunag):
+    # library() / require() now emit companion `imports` Edges instead of
+    # `import`-kind Symbols.
     r_file = tmp_path / "script.R"
     r_file.write_text("""
 library(ggplot2)
@@ -75,14 +78,19 @@ require(tidyr)
 """)
     result = analyze_r_files(tmp_path)
 
-    imports = [s for s in result.symbols if s.kind == "import"]
-    assert len(imports) >= 3
-
-    ggplot_import = next((i for i in imports if i.name == "ggplot2"), None)
-    assert ggplot_import is not None
-
-    dplyr_import = next((i for i in imports if i.name == "dplyr"), None)
-    assert dplyr_import is not None
+    import_edges = [
+        e for e in result.edges if e.edge_type == "imports"
+    ]
+    assert len(import_edges) >= 3
+    packages = [(e.meta or {}).get("package") for e in import_edges]
+    assert "ggplot2" in packages
+    assert "dplyr" in packages
+    assert "tidyr" in packages
+    # No `import`-kind Symbol after the fold.
+    assert not any(s.kind == "import" for s in result.symbols)
+    # ``import_form`` distinguishes library() vs require().
+    forms = {(e.meta or {}).get("import_form") for e in import_edges}
+    assert forms == {"library", "require"}
 
 def test_analyze_source_imports(tmp_path):
     """Test detection of source() file references."""

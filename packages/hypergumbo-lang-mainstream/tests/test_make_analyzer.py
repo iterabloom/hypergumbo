@@ -152,7 +152,11 @@ endef
     assert functions[0].name == "my_function"
 
 def test_analyze_include_directive(tmp_path):
-    """Test detection of include directives."""
+    """Test detection of include directives.
+
+    ADR-0027 Cluster E sub-case (b) shape 3 (audit-findings 0010, WI-kunag):
+    include directives now emit companion ``includes`` Edges, not Symbols.
+    """
     makefile = tmp_path / "Makefile"
     makefile.write_text("""
 include common.mk
@@ -160,11 +164,15 @@ include config/rules.mk
 """)
     result = analyze_make_files(tmp_path)
 
-    includes = [s for s in result.symbols if s.kind == "include"]
+    includes = [
+        e for e in result.edges if e.edge_type == "includes"
+    ]
     assert len(includes) >= 2
-    names = [i.name for i in includes]
+    names = [(e.meta or {}).get("include_file") for e in includes]
     assert "common.mk" in names
     assert "config/rules.mk" in names
+    # No `include`-kind Symbol after the fold.
+    assert not any(s.kind == "include" for s in result.symbols)
 
 def test_find_make_files(tmp_path):
     """Test that Makefile files are discovered correctly."""
@@ -305,14 +313,16 @@ endef
 """)
     result = analyze_make_files(tmp_path)
 
-    # Check for expected symbol kinds
+    # Check for expected symbol kinds. `include` is no longer a Symbol kind
+    # (ADR-0027 Cluster E sub-case (b) shape 3, WI-kunag) — it's an Edge now.
     kinds = {s.kind for s in result.symbols}
     assert "variable" in kinds
     assert "target" in kinds
     assert "special_target" in kinds
     assert "pattern_rule" in kinds
-    assert "include" in kinds
     assert "function" in kinds
+    edge_types = {e.edge_type for e in result.edges}
+    assert "includes" in edge_types
 
     # Check for dependency edges
     dep_edges = [e for e in result.edges if e.edge_type == "depends_on"]

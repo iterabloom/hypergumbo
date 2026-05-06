@@ -171,12 +171,24 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Keyword-shaped construct (configuration languages)."),
     SymbolKindSpec("export", AXIS_LANGUAGE_CONSTRUCT,
                    "Export declaration (JS / TS / TOML / Rust)."),
-    SymbolKindSpec("import", AXIS_LANGUAGE_CONSTRUCT,
-                   "Import declaration as a syntactic-form symbol."),
-    SymbolKindSpec("include", AXIS_LANGUAGE_CONSTRUCT,
-                   "Include declaration (Ruby include, C #include, Make include)."),
-    SymbolKindSpec("extends", AXIS_LANGUAGE_CONSTRUCT,
-                   "Extends clause as a syntactic form (Java, Solidity)."),
+    SymbolKindSpec("import", AXIS_ENDPOINT_SHAPE,
+                   "Cluster E sub-case (b) DEPRECATE-NO-FOLD per audit-findings 0010: "
+                   "the imports Edge captures the relationship; no replacement Symbol "
+                   "kind. Four producers (css.py, jsonnet.py, astro.py, r_lang.py) "
+                   "dropped across PRs 1, 2, and WI-kunag. Registry entry stays through "
+                   "the Phase 4a deprecation window."),
+    SymbolKindSpec("include", AXIS_ENDPOINT_SHAPE,
+                   "Cluster E sub-case (b) DEPRECATE-NO-FOLD per audit-findings 0010: "
+                   "the include-family Edges capture the relationship; no replacement "
+                   "Symbol kind. Five producers (puppet.py, scss.py, twig.py x2, make.py) "
+                   "dropped across PRs 1, 2, and WI-kunag. Registry entry stays through "
+                   "the Phase 4a deprecation window."),
+    SymbolKindSpec("extends", AXIS_ENDPOINT_SHAPE,
+                   "Cluster E sub-case (b) DEPRECATE-NO-FOLD per audit-findings 0010: "
+                   "the extends_template Edge captures the relationship; no replacement "
+                   "Symbol kind. Two producers (twig.py, blade.py) dropped across PRs 2 "
+                   "and WI-kunag. Registry entry stays through the Phase 4a deprecation "
+                   "window."),
 
     # ----------------------------------------------------------------
     # Cluster D — Framework roles / dispatch participation.

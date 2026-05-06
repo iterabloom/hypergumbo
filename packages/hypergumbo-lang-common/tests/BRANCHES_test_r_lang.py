@@ -90,25 +90,29 @@ class TestLibraryImports:
     """Branch coverage for library/require imports."""
 
     def test_library_import(self, tmp_path: Path) -> None:
-        """Test library import extraction."""
+        """Test library import edge (post-WI-kunag fold)."""
         make_r_file(tmp_path, "analysis.R", """
 library(dplyr)
 library(ggplot2)
 """)
         result = analyze_r_files(tmp_path)
-        imports = [s for s in result.symbols if s.kind == "import"]
-        names = [i.name for i in imports]
-        assert "dplyr" in names
-        assert "ggplot2" in names
+        imports = [e for e in result.edges if e.edge_type == "imports"]
+        packages = [(e.meta or {}).get("package") for e in imports]
+        assert "dplyr" in packages
+        assert "ggplot2" in packages
 
     def test_require_import(self, tmp_path: Path) -> None:
-        """Test require import extraction."""
+        """Test require import edge (post-WI-kunag fold)."""
         make_r_file(tmp_path, "utils.R", """
 require(tidyr)
 """)
         result = analyze_r_files(tmp_path)
-        imports = [s for s in result.symbols if s.kind == "import"]
-        assert any(i.name == "tidyr" for i in imports)
+        imports = [e for e in result.edges if e.edge_type == "imports"]
+        assert any(
+            (e.meta or {}).get("package") == "tidyr"
+            and (e.meta or {}).get("import_form") == "require"
+            for e in imports
+        )
 
 class TestSourceImports:
     """Branch coverage for source() imports."""
