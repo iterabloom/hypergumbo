@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.5.1"
+      "const": "0.5.2"
     },
     "confidence_model": {
       "type": "string",
@@ -281,12 +281,12 @@
             "component": "language_construct",
             "component_ref": "endpoint_shape",
             "view": "language_construct",
-            "file": "pending_classification",
-            "library": "pending_classification",
-            "package": "pending_classification",
-            "executable": "pending_classification",
-            "program": "pending_classification",
-            "project": "pending_classification",
+            "file": "language_construct",
+            "library": "language_construct",
+            "package": "language_construct",
+            "executable": "language_construct",
+            "program": "language_construct",
+            "project": "language_construct",
             "module_file": "pending_classification",
             "component_file": "pending_classification",
             "npm_package": "pending_classification",

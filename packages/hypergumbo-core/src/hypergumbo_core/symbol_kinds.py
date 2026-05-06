@@ -343,21 +343,38 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
 
     # ----------------------------------------------------------------
     # Cluster B — File-shape entities.
-    # AXIS_PENDING: separate-axis vs language-construct decision per
-    # cluster-B audit-findings doc.
+    # CANONICAL promotions per audit-findings 0005 (WI-runod Wave 6 PR 1):
+    # build-DSL / source-language top-level constructs (CMake, Meson,
+    # COBOL, Pascal, Fortran, VHDL declarations) are language-level
+    # constructs in their own tongue. Test 4 (mechanism vs. category)
+    # confirms each names a *category* of source-language construct,
+    # not a *mechanism* qualifier. Test 1 (property derivability) does
+    # not fire — none is derivable from another field. The remaining
+    # AXIS_PENDING entries below (module_file, component_file,
+    # npm_package, composer_package, main_entry, bin, library_export,
+    # export_entry, wasm_module, wasm_import, tsconfig) ship FOLD or
+    # DEPRECATE-NO-FOLD verdicts; their producer migrations are
+    # subsequent Wave-6 PRs.
     # ----------------------------------------------------------------
-    SymbolKindSpec("file", AXIS_PENDING,
-                   "File-shape symbol. Pending cluster-B audit."),
-    SymbolKindSpec("library", AXIS_PENDING,
-                   "Library-shape symbol. Pending cluster-B audit."),
-    SymbolKindSpec("package", AXIS_PENDING,
-                   "Package-shape symbol. Pending cluster-B audit."),
-    SymbolKindSpec("executable", AXIS_PENDING,
-                   "Executable-shape symbol. Pending cluster-B audit."),
-    SymbolKindSpec("program", AXIS_PENDING,
-                   "Program-shape symbol. Pending cluster-B audit."),
-    SymbolKindSpec("project", AXIS_PENDING,
-                   "Project-shape symbol. Pending cluster-B audit."),
+    SymbolKindSpec("file", AXIS_LANGUAGE_CONSTRUCT,
+                   "File-shape symbol — top-level file declaration in build / "
+                   "source DSLs. CANONICAL per audit-findings 0005."),
+    SymbolKindSpec("library", AXIS_LANGUAGE_CONSTRUCT,
+                   "Library declaration (CMake `add_library`, Meson `library`, "
+                   "Cargo `[lib]`, etc.). CANONICAL per audit-findings 0005."),
+    SymbolKindSpec("package", AXIS_LANGUAGE_CONSTRUCT,
+                   "Package declaration (CMake `find_package`, VHDL `package`, "
+                   "Go `package`, JS `package.json` synthesis, etc.). "
+                   "CANONICAL per audit-findings 0005."),
+    SymbolKindSpec("executable", AXIS_LANGUAGE_CONSTRUCT,
+                   "Executable declaration (CMake `add_executable`, Meson "
+                   "`executable`). CANONICAL per audit-findings 0005."),
+    SymbolKindSpec("program", AXIS_LANGUAGE_CONSTRUCT,
+                   "Program declaration (Fortran `PROGRAM`, COBOL `PROGRAM-ID`, "
+                   "Pascal `program`). CANONICAL per audit-findings 0005."),
+    SymbolKindSpec("project", AXIS_LANGUAGE_CONSTRUCT,
+                   "Project declaration (Meson `project()`, .csproj root, "
+                   "etc.). CANONICAL per audit-findings 0005."),
     SymbolKindSpec("module_file", AXIS_PENDING,
                    "Module-as-file symbol. Pending cluster-B audit."),
     SymbolKindSpec("component_file", AXIS_PENDING,

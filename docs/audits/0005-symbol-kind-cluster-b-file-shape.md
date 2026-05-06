@@ -2,7 +2,7 @@
 # Audit-findings 0005: Symbol.kind Cluster B — File-Shape and Package-Shape Entities
 
 - Date: 2026-05-05
-- Status: All rows UNRESOLVED at filing (Phase 3 producer migrations + registry updates pending)
+- Status: Mixed — 6 CANONICAL rows RESOLVED via Wave 6 PR 1 registry promotion (file, library, package, executable, program, project moved from `pending_classification` to `language_construct`); 11 FOLD/DEPRECATE-NO-FOLD rows remain UNRESOLVED pending subsequent Wave 6 PRs (producer migrations for the framework-qualified file representations, plus tsconfig DEPRECATE-NO-FOLD).
 - Closes: WI-gajob-hibod-talop-lofik-valuv-tumak-bifad-kopod (Cluster B file-shape entities: separate-axis vs canonical, ADR-0027 Phase 3)
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Second audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical).
 
@@ -61,51 +61,51 @@ verdicts:
   - value: file
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"file\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"file\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "File is the top-level container construct. Boundary-node and make_file_id machinery treat it as load-bearing; ranking.py / sketch.py reference it. Promote to language_construct in registry."
+    rationale: "File is the top-level container construct. Boundary-node and make_file_id machinery treat it as load-bearing; ranking.py / sketch.py reference it. Promoted to language_construct in registry (Wave 6 PR 1)."
   - value: library
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"library\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"library\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "CMake add_library / Robot Framework Library imports declare a top-level library construct in the build-DSL. Promote to language_construct."
+    rationale: "CMake add_library / Robot Framework Library imports declare a top-level library construct in the build-DSL. Promoted to language_construct (Wave 6 PR 1)."
   - value: package
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"package\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"package\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "VHDL package keyword is a language construct; CMake find_package and json_config package-declaration synthesis name the same concept across DSLs. Cross-language overload reads like function/class. Promote to language_construct."
+    rationale: "VHDL package keyword is a language construct; CMake find_package and json_config package-declaration synthesis name the same concept across DSLs. Cross-language overload reads like function/class. Promoted to language_construct (Wave 6 PR 1)."
   - value: executable
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"executable\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"executable\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "CMake add_executable declares an executable target — genuine build-DSL top-level construct. Promote to language_construct."
+    rationale: "CMake add_executable declares an executable target — genuine build-DSL top-level construct. Promoted to language_construct (Wave 6 PR 1)."
   - value: program
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"program\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"program\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "COBOL PROGRAM-ID, Pascal program keyword, Fortran PROGRAM are language-level top-level constructs. Promote to language_construct."
+    rationale: "COBOL PROGRAM-ID, Pascal program keyword, Fortran PROGRAM are language-level top-level constructs. Promoted to language_construct (Wave 6 PR 1)."
   - value: project
     verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"project\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"project\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "Meson project() and CMake project() are top-level build-DSL constructs. Promote to language_construct."
+    rationale: "Meson project() and CMake project() are top-level build-DSL constructs. Promoted to language_construct (Wave 6 PR 1)."
   - value: module_file
     verdict: FOLD
     fold_target: file

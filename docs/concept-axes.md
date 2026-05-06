@@ -153,20 +153,26 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`defined_type`** — Defined / nominal type declaration (Puppet / Coq).
 - **`directive`** — Directive declaration (Vue / Angular / GraphQL).
 - **`enum`** — Enum declaration.
+- **`executable`** — Executable declaration (CMake `add_executable`, Meson `executable`). CANONICAL per audit-findings 0005.
 - **`export`** — Export declaration (JS / TS / TOML / Rust).
 - **`field`** — Field declaration on a struct / class / record.
+- **`file`** — File-shape symbol — top-level file declaration in build / source DSLs. CANONICAL per audit-findings 0005.
 - **`function`** — Top-level function definition.
 - **`getter`** — Property getter accessor.
 - **`instance`** — Typeclass / interface instance declaration.
 - **`interface`** — Interface declaration.
 - **`keyword`** — Keyword-shaped construct (configuration languages).
+- **`library`** — Library declaration (CMake `add_library`, Meson `library`, Cargo `[lib]`, etc.). CANONICAL per audit-findings 0005.
 - **`macro`** — Macro definition (Rust / C / Scheme).
 - **`method`** — Method on a class / struct / interface.
 - **`mixin`** — Mixin declaration (Ruby / Sass).
 - **`module`** — Module declaration (the source-level construct).
 - **`namespace`** — Namespace declaration (C++ / TypeScript / C#).
 - **`object`** — Object / singleton declaration (Scala / Kotlin).
+- **`package`** — Package declaration (CMake `find_package`, VHDL `package`, Go `package`, JS `package.json` synthesis, etc.). CANONICAL per audit-findings 0005.
 - **`procedure`** — Procedure declaration (Pascal / Ada / SQL).
+- **`program`** — Program declaration (Fortran `PROGRAM`, COBOL `PROGRAM-ID`, Pascal `program`). CANONICAL per audit-findings 0005.
+- **`project`** — Project declaration (Meson `project()`, .csproj root, etc.). CANONICAL per audit-findings 0005.
 - **`prop`** — Component prop declaration (Vue / React).
 - **`property`** — Property declaration (Kotlin / Swift / C#).
 - **`record`** — Record declaration (Java 14+, Erlang, Haskell).
@@ -273,11 +279,9 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`environment`** — Environment symbol (LaTeX / shell). Pending cluster-H audit.
 - **`event`** — Event symbol (DSL / Solidity). Pending cluster-H audit.
 - **`example`** — Cargo `[[example]]` target kind. Pending cluster-G audit.
-- **`executable`** — Executable-shape symbol. Pending cluster-B audit.
 - **`export_entry`** — Generic export entry. Pending cluster-B audit.
 - **`exposed_port`** — Container exposed-port symbol. Pending cluster-G audit.
 - **`external_symbol`** — External-symbol pseudo-node. Pending cluster-H audit.
-- **`file`** — File-shape symbol. Pending cluster-B audit.
 - **`font_face`** — CSS @font-face symbol. Pending cluster-H audit.
 - **`for_loop`** — For-loop symbol (control-flow). Pending cluster-H audit.
 - **`fragment`** — Fragment symbol (GraphQL / template). Pending cluster-H audit.
@@ -291,7 +295,6 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`input`** — Input symbol (Terraform / shader). Pending cluster-H audit.
 - **`keyframes`** — CSS @keyframes symbol. Pending cluster-H audit.
 - **`label`** — Label symbol (assembly / k8s). Pending cluster-H audit.
-- **`library`** — Library-shape symbol. Pending cluster-B audit.
 - **`library_export`** — Library-export entry. Pending cluster-B audit.
 - **`link`** — Link symbol (markdown / yaml-anchor). Pending cluster-H audit.
 - **`local`** — Local symbol (Terraform local). Pending cluster-H audit.
@@ -303,7 +306,6 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`node`** — Node symbol (k8s / DSL). Pending cluster-H audit.
 - **`npm_package`** — NPM package symbol. Pending cluster-B audit.
 - **`output`** — Output symbol (Terraform / shader). Pending cluster-H audit.
-- **`package`** — Package-shape symbol. Pending cluster-B audit.
 - **`paragraph`** — Paragraph symbol (markdown / docs). Pending cluster-H audit.
 - **`partial`** — Partial symbol (template). Pending cluster-H audit.
 - **`participant`** — Participant symbol (mermaid). Pending cluster-H audit.
@@ -315,8 +317,6 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`port`** — Port symbol (k8s / VHDL). Pending cluster-H audit.
 - **`prefix`** — Prefix symbol (URI / namespace). Pending cluster-H audit.
 - **`private`** — WGSL `var<private>` address space. Pending cluster-H audit.
-- **`program`** — Program-shape symbol. Pending cluster-B audit.
-- **`project`** — Project-shape symbol. Pending cluster-B audit.
 - **`protocol`** — Protocol symbol (Swift / Solidity / DSL). Pending cluster-H audit.
 - **`provider`** — Provider symbol (Terraform / DI). Pending cluster-H audit.
 - **`python_task`** — BitBake Python task symbol. Pending cluster-G audit.
