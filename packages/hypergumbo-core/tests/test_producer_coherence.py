@@ -19,6 +19,10 @@ from pathlib import Path
 
 from hypergumbo_core.producer_coherence import (
     find_edge_type_producer_violations,
+    find_emitted_edge_types,
+    find_emitted_evidence_types,
+    find_emitted_literal_values,
+    find_emitted_symbol_kinds,
     find_evidence_type_producer_violations,
     find_producer_coherence_violations,
     find_symbol_kind_producer_violations,
@@ -536,6 +540,124 @@ def test_assignment_form_annassign_without_value_is_skipped(tmp_path: Path):
     )
     assert len(result.strict_violations) == 1
     assert "brand_new_label" in result.strict_violations[0]
+
+
+# --- find_emitted_literal_values + per-axis wrappers ---
+
+
+def _write_producer(tmp_path: Path, body: str) -> None:
+    _write(tmp_path / "packages" / "demo" / "src" / "demo.py", body)
+
+
+def test_emitted_symbol_kinds_returns_literal_kwarg_emit_sites(tmp_path: Path):
+    """find_emitted_symbol_kinds maps {kind_value: (file:line, ...)} and
+    catches literal-kwarg emits at Symbol(...) call sites."""
+    _write_producer(
+        tmp_path,
+        'from foo import Symbol\n'
+        'def make():\n'
+        '    return Symbol(kind="custom_kind", id="x")\n',
+    )
+    sites = find_emitted_symbol_kinds(tmp_path)
+    assert "custom_kind" in sites
+    assert any("demo.py:3" in s for s in sites["custom_kind"])
+
+
+def test_emitted_evidence_types_returns_literal_kwarg_emit_sites(tmp_path: Path):
+    """find_emitted_evidence_types maps {evidence_type: (file:line, ...)}
+    and catches literal-kwarg emits at Edge(...) call sites."""
+    _write_producer(
+        tmp_path,
+        'from foo import Edge\n'
+        'def link():\n'
+        '    return Edge(src="a", dst="b", evidence_type="brand_inference", '
+        'edge_type="calls")\n',
+    )
+    sites = find_emitted_evidence_types(tmp_path)
+    assert "brand_inference" in sites
+    assert any("demo.py:3" in s for s in sites["brand_inference"])
+
+
+def test_emitted_edge_types_returns_literal_kwarg_emit_sites(tmp_path: Path):
+    """find_emitted_edge_types maps {edge_type: (file:line, ...)} and
+    catches literal-kwarg emits at Edge(...) call sites."""
+    _write_producer(
+        tmp_path,
+        'from foo import Edge\n'
+        'def link():\n'
+        '    return Edge(src="a", dst="b", edge_type="brand_relation")\n',
+    )
+    sites = find_emitted_edge_types(tmp_path)
+    assert "brand_relation" in sites
+    assert any("demo.py:3" in s for s in sites["brand_relation"])
+
+
+def test_emitted_literal_values_resolves_assignment_form_to_name(tmp_path: Path):
+    """The literal enumerator picks up assignment-form-to-Name shapes
+    (WI-nubuv ext A scope), not just the literal-kwarg shape."""
+    _write_producer(
+        tmp_path,
+        'from foo import Symbol\n'
+        'def make():\n'
+        '    k = "via_assignment"\n'
+        '    return Symbol(kind=k, id="x")\n',
+    )
+    sites = find_emitted_literal_values(
+        tmp_path,
+        constructor_names=frozenset({"Symbol"}),
+        keyword_arg="kind",
+    )
+    assert "via_assignment" in sites
+
+
+def test_emitted_literal_values_resolves_ternary_assignment(tmp_path: Path):
+    """A ternary assignment with both branches resolvable contributes
+    both literal candidates to the emit map (ext A frozenset path)."""
+    _write_producer(
+        tmp_path,
+        'from foo import Symbol\n'
+        'def make(cond):\n'
+        '    k = "branch_a" if cond else "branch_b"\n'
+        '    return Symbol(kind=k, id="x")\n',
+    )
+    sites = find_emitted_literal_values(
+        tmp_path,
+        constructor_names=frozenset({"Symbol"}),
+        keyword_arg="kind",
+    )
+    assert "branch_a" in sites
+    assert "branch_b" in sites
+
+
+def test_emitted_literal_values_skips_fstring_and_unresolvable(tmp_path: Path):
+    """f-string and unresolvable-Name shapes contribute no literal
+    values to the emit map. They're flagged as advisories by the gate
+    function, not enumerated as emit candidates."""
+    _write_producer(
+        tmp_path,
+        'from foo import Symbol\n'
+        'def dynamic(prefix, foo):\n'
+        '    return Symbol(kind=f"prefix_{foo}", id="x")\n'
+        'def name_unresolvable(other_var):\n'
+        '    return Symbol(kind=other_var, id="y")\n',
+    )
+    sites = find_emitted_literal_values(
+        tmp_path,
+        constructor_names=frozenset({"Symbol"}),
+        keyword_arg="kind",
+    )
+    assert sites == {}
+
+
+def test_emitted_literal_values_skips_missing_search_root(tmp_path: Path):
+    """Missing search-root directories are silently skipped — the empty
+    map is the correct result for a tmp_path with no packages/."""
+    sites = find_emitted_literal_values(
+        tmp_path,
+        constructor_names=frozenset({"Symbol"}),
+        keyword_arg="kind",
+    )
+    assert sites == {}
 
 
 def test_assignment_form_module_constant_still_takes_precedence(tmp_path: Path):
