@@ -145,6 +145,46 @@ def build_inheritance_maps(
     return dict(parent_to_children), dict(interface_to_impls)
 
 
+def close_parent_to_children_transitively(
+    parent_to_children: dict[str, list[str]],
+) -> dict[str, list[str]]:
+    """Return a parent_id -> [all transitive descendant ids] map.
+
+    The input is a one-hop ``parent_id -> [direct child ids]`` map; the
+    output replaces each value list with all transitively-reachable
+    descendants (BFS) so that callers iterating override candidates can
+    reach skip-level overrides — e.g. ``A.foo`` overridden only by
+    ``Grandchild.foo`` when the intermediate ``Child`` doesn't override.
+
+    Cycle protection: per-source visited set handles self-edges and
+    diamonds without infinite-looping. Order is preserved relative to
+    BFS traversal; duplicates are not introduced because a parent is
+    enqueued at most once per source.
+
+    WI-firuj: closes the type_hierarchy linker's skip-level dispatches_to
+    gap. The fix lives at construction time so the iteration loop in
+    ``link_type_hierarchy`` stays simple — get descendants, find methods,
+    emit edges.
+    """
+    closed: dict[str, list[str]] = {}
+    for source in parent_to_children:
+        descendants: list[str] = []
+        visited: set[str] = {source}
+        queue: list[str] = list(parent_to_children.get(source, []))
+        for first_hop in queue:
+            visited.add(first_hop)
+        while queue:
+            current = queue.pop(0)
+            descendants.append(current)
+            for grand in parent_to_children.get(current, ()):
+                if grand in visited:
+                    continue
+                visited.add(grand)
+                queue.append(grand)
+        closed[source] = descendants
+    return closed
+
+
 def _get_method_short_name(method_name: str) -> str:
     """Extract short method name from qualified name.
 
@@ -380,10 +420,19 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
         ctx.symbols, ctx.edges
     )
 
-    # Combine both maps - we treat extends and implements the same way
-    all_parents_to_children: dict[str, list[str]] = {}
-    all_parents_to_children.update(parent_to_children)
-    all_parents_to_children.update(interface_to_impls)
+    # Combine both maps - we treat extends and implements the same way.
+    # WI-firuj: close the combined map transitively so a parent reaches
+    # its skip-level overrides. Without this, when ``Grandparent.foo``
+    # is overridden only in ``Grandchild`` (intermediate ``Parent``
+    # doesn't override), the edge ``Grandparent.foo → Grandchild.foo``
+    # is never emitted because ``Grandchild`` is not in
+    # ``parent_to_children[Grandparent]``.
+    one_hop_parents_to_children: dict[str, list[str]] = {}
+    one_hop_parents_to_children.update(parent_to_children)
+    one_hop_parents_to_children.update(interface_to_impls)
+    all_parents_to_children = close_parent_to_children_transitively(
+        one_hop_parents_to_children,
+    )
 
     if not all_parents_to_children:
         # No inheritance relationships, nothing to do

@@ -19,6 +19,7 @@ from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.linkers.type_hierarchy import (
     link_type_hierarchy,
     build_inheritance_maps,
+    close_parent_to_children_transitively,
     find_implementing_methods,
     PASS_ID,
 )
@@ -1390,3 +1391,160 @@ class TestPerLanguageConcreteExtendsDispatch:
         # because its child symbol is not in the graph.
         assert len(dispatches) == 1
         assert dispatches[0].dst == child_method.id
+
+
+class TestCloseParentToChildrenTransitively:
+    """Unit tests for the WI-firuj transitive-closure helper."""
+
+    def test_empty_map(self) -> None:
+        assert close_parent_to_children_transitively({}) == {}
+
+    def test_single_hop_unchanged(self) -> None:
+        m = {"A": ["B"]}
+        assert close_parent_to_children_transitively(m) == {"A": ["B"]}
+
+    def test_two_hop_chain(self) -> None:
+        # A -> B -> C
+        m = {"A": ["B"], "B": ["C"]}
+        result = close_parent_to_children_transitively(m)
+        assert sorted(result["A"]) == ["B", "C"]
+        assert result["B"] == ["C"]
+
+    def test_three_hop_chain(self) -> None:
+        # A -> B -> C -> D
+        m = {"A": ["B"], "B": ["C"], "C": ["D"]}
+        result = close_parent_to_children_transitively(m)
+        assert sorted(result["A"]) == ["B", "C", "D"]
+
+    def test_diamond_no_double_visit(self) -> None:
+        # A -> B, A -> C, B -> D, C -> D
+        m = {"A": ["B", "C"], "B": ["D"], "C": ["D"]}
+        result = close_parent_to_children_transitively(m)
+        # D appears once even though A reaches it through both B and C.
+        assert result["A"].count("D") == 1
+        assert sorted(result["A"]) == ["B", "C", "D"]
+
+    def test_self_cycle_safe(self) -> None:
+        # Pathological self-cycle: A is its own child. Walk must
+        # terminate. The input asserts A is a direct descendant of
+        # itself, so the closure preserves it once; downstream the
+        # linker's own self-dispatch guard prevents the edge emission.
+        m = {"A": ["A"]}
+        result = close_parent_to_children_transitively(m)
+        assert result == {"A": ["A"]}
+
+    def test_mutual_cycle_safe(self) -> None:
+        # A -> B, B -> A
+        m = {"A": ["B"], "B": ["A"]}
+        result = close_parent_to_children_transitively(m)
+        assert result["A"] == ["B"]
+        assert result["B"] == ["A"]
+
+
+class TestSkipLevelDispatch:
+    """WI-firuj: type_hierarchy emits dispatches_to to transitive overrides
+    even when an intermediate class doesn't override the parent method.
+    """
+
+    def _make_class(self, name: str, path: str | None = None) -> Symbol:
+        path = path or f"/app/{name}.java"
+        return Symbol(
+            id=f"java:{path}:1-50:{name}:class",
+            name=name, kind="class", language="java",
+            path=path, span=Span(1, 50, 0, 1),
+            origin="java-v1", origin_run_id="test",
+        )
+
+    def _make_method(self, qualified: str, *, span: tuple[int, int] = (5, 10)) -> Symbol:
+        cls = qualified.rsplit(".", 1)[0]
+        return Symbol(
+            id=f"java:/app/{cls}.java:{span[0]}-{span[1]}:{qualified}:method",
+            name=qualified, kind="method", language="java",
+            path=f"/app/{cls}.java", span=Span(span[0], span[1], 4, 5),
+            origin="java-v1", origin_run_id="test",
+        )
+
+    def test_skip_level_grandparent_to_grandchild(self) -> None:
+        """A.foo defined; B(A) does NOT override; C(B) overrides → A.foo → C.foo."""
+        a = self._make_class("A")
+        a_foo = self._make_method("A.foo")
+        b = self._make_class("B")
+        # B does NOT override foo.
+        c = self._make_class("C")
+        c_foo = self._make_method("C.foo")
+
+        edges = [
+            Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1),
+            Edge.create(src=c.id, dst=b.id, edge_type="extends", line=1),
+        ]
+        ctx = LinkerContext(
+            repo_root="/app", symbols=[a, a_foo, b, c, c_foo], edges=edges,
+        )
+        result = link_type_hierarchy(ctx)
+        # A.foo dispatches to C.foo, the only override in the chain.
+        dispatch_dsts = {e.dst for e in result.edges if e.src == a_foo.id}
+        assert c_foo.id in dispatch_dsts
+
+    def test_three_level_with_intermediate_override(self) -> None:
+        """A.foo, B(A).foo overrides, C(B).foo overrides → A.foo dispatches to BOTH B.foo and C.foo."""
+        a = self._make_class("A")
+        a_foo = self._make_method("A.foo")
+        b = self._make_class("B")
+        b_foo = self._make_method("B.foo")
+        c = self._make_class("C")
+        c_foo = self._make_method("C.foo")
+
+        edges = [
+            Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1),
+            Edge.create(src=c.id, dst=b.id, edge_type="extends", line=1),
+        ]
+        ctx = LinkerContext(
+            repo_root="/app", symbols=[a, a_foo, b, b_foo, c, c_foo], edges=edges,
+        )
+        result = link_type_hierarchy(ctx)
+        dispatches_from_a_foo = {e.dst for e in result.edges if e.src == a_foo.id}
+        # A.foo dispatches to B.foo (direct child) AND C.foo (transitive).
+        assert {b_foo.id, c_foo.id} <= dispatches_from_a_foo
+        # B.foo dispatches to C.foo.
+        dispatches_from_b_foo = {e.dst for e in result.edges if e.src == b_foo.id}
+        assert c_foo.id in dispatches_from_b_foo
+
+    def test_diamond_grandparent_no_double_emit(self) -> None:
+        """A.foo with diamond inheritance: A → B, A → C, B → D, C → D, D.foo overrides.
+
+        D should receive one dispatches_to edge from A.foo, not two.
+        """
+        a = self._make_class("A")
+        a_foo = self._make_method("A.foo")
+        b = self._make_class("B")
+        c = self._make_class("C")
+        d = self._make_class("D")
+        d_foo = self._make_method("D.foo")
+        edges = [
+            Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1),
+            Edge.create(src=c.id, dst=a.id, edge_type="extends", line=1),
+            Edge.create(src=d.id, dst=b.id, edge_type="extends", line=1),
+            Edge.create(src=d.id, dst=c.id, edge_type="extends", line=1),
+        ]
+        ctx = LinkerContext(
+            repo_root="/app", symbols=[a, a_foo, b, c, d, d_foo], edges=edges,
+        )
+        result = link_type_hierarchy(ctx)
+        dispatches_to_d_foo = [
+            e for e in result.edges if e.src == a_foo.id and e.dst == d_foo.id
+        ]
+        # Exactly one A.foo → D.foo edge, despite two paths in the diamond.
+        assert len(dispatches_to_d_foo) == 1
+
+    def test_direct_override_regression_unaffected(self) -> None:
+        """A.foo, B(A).foo overrides. Direct dispatch still works."""
+        a = self._make_class("A")
+        a_foo = self._make_method("A.foo")
+        b = self._make_class("B")
+        b_foo = self._make_method("B.foo")
+        edges = [Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1)]
+        ctx = LinkerContext(
+            repo_root="/app", symbols=[a, a_foo, b, b_foo], edges=edges,
+        )
+        result = link_type_hierarchy(ctx)
+        assert any(e.src == a_foo.id and e.dst == b_foo.id for e in result.edges)
