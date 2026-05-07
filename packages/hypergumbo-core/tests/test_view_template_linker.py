@@ -498,3 +498,161 @@ class TestRegistryEntryPoint:
 
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "renders"
+
+
+class TestTransitiveControllerBase:
+    """WI-vigih: controller base detection walks transitive ancestors.
+
+    Rails apps ubiquitously subclass a project-defined ApplicationController
+    that itself extends ActionController::Base; direct-only matching missed
+    the dominant pattern.
+    """
+
+    def test_one_intermediate_chain(self, tmp_path: Path) -> None:
+        """LeafController -> ApplicationController -> ActionController::Base."""
+        template_dir = tmp_path / "app" / "views" / "leaf"
+        template_dir.mkdir(parents=True)
+        (template_dir / "index.html.erb").write_text("<h1>Leaf</h1>")
+
+        # ApplicationController is in-tree, extending the framework base.
+        app_ctl = Symbol(
+            id="ruby:app/controllers/application_controller.rb:1-30:ApplicationController:class",
+            name="ApplicationController", kind="class", language="ruby",
+            path="app/controllers/application_controller.rb",
+            span=Span(1, 30, 0, 3),
+            meta={"base_classes": ["ActionController::Base"]},
+            origin="ruby-v1",
+        )
+        leaf_ctl = Symbol(
+            id="ruby:app/controllers/leaf_controller.rb:1-50:LeafController:class",
+            name="LeafController", kind="class", language="ruby",
+            path="app/controllers/leaf_controller.rb",
+            span=Span(1, 50, 0, 3),
+            meta={"base_classes": ["ApplicationController"]},
+            origin="ruby-v1",
+        )
+        method = _make_method("LeafController", "index")
+        edge = Edge.create(
+            src=leaf_ctl.id, dst=app_ctl.id, edge_type="extends", line=1,
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[leaf_ctl, app_ctl, method],
+            edges=[edge],
+        )
+        result = link_view_template(ctx)
+        assert len(result.edges) == 1
+        assert result.edges[0].src == method.id
+
+    def test_two_intermediate_chain(self, tmp_path: Path) -> None:
+        """Leaf -> Mid -> App -> ActionController::Base."""
+        template_dir = tmp_path / "app" / "views" / "leaf"
+        template_dir.mkdir(parents=True)
+        (template_dir / "show.html.erb").write_text("<h1>Show</h1>")
+
+        app_ctl = Symbol(
+            id="ruby:app/controllers/application_controller.rb:1-30:ApplicationController:class",
+            name="ApplicationController", kind="class", language="ruby",
+            path="app/controllers/application_controller.rb",
+            span=Span(1, 30, 0, 3),
+            meta={"base_classes": ["ActionController::Base"]},
+            origin="ruby-v1",
+        )
+        mid_ctl = Symbol(
+            id="ruby:app/controllers/secured_controller.rb:1-30:SecuredController:class",
+            name="SecuredController", kind="class", language="ruby",
+            path="app/controllers/secured_controller.rb",
+            span=Span(1, 30, 0, 3),
+            meta={"base_classes": ["ApplicationController"]},
+            origin="ruby-v1",
+        )
+        leaf_ctl = Symbol(
+            id="ruby:app/controllers/leaf_controller.rb:1-50:LeafController:class",
+            name="LeafController", kind="class", language="ruby",
+            path="app/controllers/leaf_controller.rb",
+            span=Span(1, 50, 0, 3),
+            meta={"base_classes": ["SecuredController"]},
+            origin="ruby-v1",
+        )
+        method = _make_method("LeafController", "show")
+        edges = [
+            Edge.create(src=leaf_ctl.id, dst=mid_ctl.id, edge_type="extends", line=1),
+            Edge.create(src=mid_ctl.id, dst=app_ctl.id, edge_type="extends", line=1),
+        ]
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[leaf_ctl, mid_ctl, app_ctl, method],
+            edges=edges,
+        )
+        result = link_view_template(ctx)
+        assert len(result.edges) == 1
+
+    def test_diamond_inheritance_cycle_guarded(self, tmp_path: Path) -> None:
+        """Two paths from leaf to a controller-base ancestor — no double-emit."""
+        template_dir = tmp_path / "app" / "views" / "leaf"
+        template_dir.mkdir(parents=True)
+        (template_dir / "edit.html.erb").write_text("<h1>Edit</h1>")
+
+        app_ctl = Symbol(
+            id="ruby:app/controllers/application_controller.rb:1-10:ApplicationController:class",
+            name="ApplicationController", kind="class", language="ruby",
+            path="app/controllers/application_controller.rb",
+            span=Span(1, 10, 0, 3),
+            meta={"base_classes": ["ActionController::Base"]},
+            origin="ruby-v1",
+        )
+        left_ctl = Symbol(
+            id="ruby:app/controllers/left_controller.rb:1-10:LeftController:class",
+            name="LeftController", kind="class", language="ruby",
+            path="app/controllers/left_controller.rb",
+            span=Span(1, 10, 0, 3),
+            meta={"base_classes": ["ApplicationController"]},
+            origin="ruby-v1",
+        )
+        right_ctl = Symbol(
+            id="ruby:app/controllers/right_controller.rb:1-10:RightController:class",
+            name="RightController", kind="class", language="ruby",
+            path="app/controllers/right_controller.rb",
+            span=Span(1, 10, 0, 3),
+            meta={"base_classes": ["ApplicationController"]},
+            origin="ruby-v1",
+        )
+        leaf_ctl = Symbol(
+            id="ruby:app/controllers/leaf_controller.rb:1-10:LeafController:class",
+            name="LeafController", kind="class", language="ruby",
+            path="app/controllers/leaf_controller.rb",
+            span=Span(1, 10, 0, 3),
+            meta={"base_classes": ["LeftController", "RightController"]},
+            origin="ruby-v1",
+        )
+        method = _make_method("LeafController", "edit")
+        edges = [
+            Edge.create(src=leaf_ctl.id, dst=left_ctl.id, edge_type="extends", line=1),
+            Edge.create(src=leaf_ctl.id, dst=right_ctl.id, edge_type="extends", line=1),
+            Edge.create(src=left_ctl.id, dst=app_ctl.id, edge_type="extends", line=1),
+            Edge.create(src=right_ctl.id, dst=app_ctl.id, edge_type="extends", line=1),
+        ]
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[leaf_ctl, left_ctl, right_ctl, app_ctl, method],
+            edges=edges,
+        )
+        result = link_view_template(ctx)
+        # Exactly one renders edge for LeafController#edit (no duplicate).
+        edges_for_method = [e for e in result.edges if e.src == method.id]
+        assert len(edges_for_method) == 1
+
+    def test_direct_subclass_regression_unaffected(self, tmp_path: Path) -> None:
+        """Direct subclass of ApplicationController continues to render."""
+        template_dir = tmp_path / "app" / "views" / "direct"
+        template_dir.mkdir(parents=True)
+        (template_dir / "new.html.erb").write_text("<h1>New</h1>")
+
+        controller = _make_controller_class("DirectController")
+        method = _make_method("DirectController", "new")
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[controller, method],
+        )
+        result = link_view_template(ctx)
+        assert len(result.edges) == 1

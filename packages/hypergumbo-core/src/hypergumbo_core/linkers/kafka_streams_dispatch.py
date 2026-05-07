@@ -80,6 +80,10 @@ import time
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
+from ._transitive_bases import (
+    build_inheritance_index,
+    collect_transitive_base_names,
+)
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
@@ -131,30 +135,43 @@ def _short_type_name(raw: str) -> str:
     return name
 
 
-def _callback_interfaces_on(sym: "Symbol") -> list[str]:
+def _callback_interfaces_on(
+    sym: "Symbol",
+    symbol_by_id: dict[str, "Symbol"] | None = None,
+    inheritance_index: dict[str, list[str]] | None = None,
+) -> list[str]:
     """Return the Kafka Streams callback interfaces the class declares.
 
-    Reads ``sym.meta['base_classes']`` and ``sym.meta['interfaces']`` — Java,
-    Kotlin, and Scala analyzers store the ``extends`` / ``implements`` lists
-    under one of those keys depending on the language surface. Returns the
-    ordered, deduplicated list of short interface names present in
-    :data:`KAFKA_STREAMS_CALLBACKS`.
+    Walks the transitive base-class chain (extends + implements) so a
+    class that inherits its callback interface through an in-tree
+    intermediate (Kotlin / Scala SAM-style wrapper) matches the same as
+    a direct subclass. Java, Kotlin, and Scala analyzers store the
+    ``extends`` / ``implements`` lists under separate metadata keys, so
+    both are passed to the helper. Returns the ordered, deduplicated
+    list of short interface names present in
+    :data:`KAFKA_STREAMS_CALLBACKS`. (WI-vigih.)
+
+    ``symbol_by_id`` and ``inheritance_index`` are optional for
+    backward compatibility — when omitted, only the class's own
+    ``meta.base_classes`` and ``meta.interfaces`` are consulted.
     """
     if not isinstance(sym.meta, dict):
         return []
+    if symbol_by_id is None:
+        symbol_by_id = {sym.id: sym}
+    if inheritance_index is None:
+        inheritance_index = {}
+    chain = collect_transitive_base_names(
+        sym, symbol_by_id, inheritance_index,
+        meta_keys=("base_classes", "interfaces"),
+    )
     seen: set[str] = set()
     found: list[str] = []
-    for key in ("base_classes", "interfaces"):
-        raw = sym.meta.get(key) or []
-        if not isinstance(raw, list):
-            continue
-        for entry in raw:
-            if not isinstance(entry, str):
-                continue
-            short = _short_type_name(entry)
-            if short in KAFKA_STREAMS_CALLBACKS and short not in seen:
-                seen.add(short)
-                found.append(short)
+    for entry in chain:
+        short = _short_type_name(entry)
+        if short in KAFKA_STREAMS_CALLBACKS and short not in seen:
+            seen.add(short)
+            found.append(short)
     return found
 
 
@@ -208,6 +225,8 @@ def link_kafka_streams_dispatch(ctx: LinkerContext) -> LinkerResult:
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     method_index = _build_class_method_index(ctx.symbols)
+    inheritance_index = build_inheritance_index(ctx.edges)
+    symbol_by_id = {sym.id: sym for sym in ctx.symbols}
     existing_keys: set[tuple[str, str, str]] = {
         (e.src, e.dst, e.edge_type)
         for e in ctx.edges
@@ -220,7 +239,7 @@ def link_kafka_streams_dispatch(ctx: LinkerContext) -> LinkerResult:
             continue
         if sym.language not in {"java", "kotlin", "scala"}:
             continue
-        interfaces = _callback_interfaces_on(sym)
+        interfaces = _callback_interfaces_on(sym, symbol_by_id, inheritance_index)
         if not interfaces:
             continue
         expected = _expected_method_names(interfaces)

@@ -45,6 +45,10 @@ from .registry import (
     register_linker,
 )
 from ._text_filters import read_masked_source
+from ._transitive_bases import (
+    build_inheritance_index,
+    collect_transitive_base_names,
+)
 
 PASS_ID = make_pass_id("react-component-linker")
 
@@ -61,6 +65,19 @@ _REACT_BUILTINS = frozenset({
     "Fragment", "Suspense", "StrictMode", "Profiler",
     "React.Fragment", "React.Suspense", "React.StrictMode", "React.Profiler",
 })
+
+# React class-component base classes (qualified and bare forms). A class
+# whose transitive base chain hits any of these is a React component
+# regardless of its name capitalization.
+_REACT_CLASS_BASES = frozenset({
+    "Component", "PureComponent",
+    "React.Component", "React.PureComponent",
+})
+
+
+def _short_react_base(raw: str) -> str:
+    """Strip generics so ``React.Component<Props, State>`` matches ``React.Component``."""
+    return raw.split("<", 1)[0].strip()
 
 
 @dataclass
@@ -83,14 +100,22 @@ def _is_pascal_case(name: str) -> bool:
 
 def _build_component_map(
     symbols: list[Symbol],
+    edges: list[Edge] | None = None,
 ) -> dict[str, Symbol]:
     """Build component name -> Symbol map from JS/TS symbols.
 
     A symbol is considered a React component if:
-    - It's a function/class in JS/TS
-    - Its name is PascalCase (React convention)
-    - OR it extends React.Component/PureComponent
+    - It's a function/class in JS/TS, AND
+    - Its name is PascalCase (React convention), OR
+    - It transitively extends React.Component / React.PureComponent
+      (WI-vigih: walks in-tree intermediate base classes; closes the
+      structural gap where the docstring previously claimed base-class
+      detection but the code only matched on PascalCase).
     """
+    edges = edges or []
+    inheritance_index = build_inheritance_index(edges)
+    symbol_by_id = {sym.id: sym for sym in symbols}
+
     component_map: dict[str, Symbol] = {}
 
     for sym in symbols:
@@ -98,11 +123,17 @@ def _build_component_map(
             continue
         if sym.kind not in ("function", "class"):
             continue
-        if not _is_pascal_case(sym.name):
+
+        if _is_pascal_case(sym.name):
+            component_map[sym.name] = sym
             continue
 
-        # Register under simple name
-        component_map[sym.name] = sym
+        if sym.kind == "class":
+            chain = collect_transitive_base_names(
+                sym, symbol_by_id, inheritance_index,
+            )
+            if any(_short_react_base(b) in _REACT_CLASS_BASES for b in chain):
+                component_map[sym.name] = sym
 
     return component_map
 

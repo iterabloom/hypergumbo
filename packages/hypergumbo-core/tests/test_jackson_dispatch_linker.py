@@ -577,3 +577,111 @@ class TestConstants:
             CLASS_LEVEL_SERIALIZATION_ANNOTATIONS
             & METHOD_LEVEL_SERIALIZATION_ANNOTATIONS
         ) == set()
+
+
+class TestTransitiveBeanMarkerBase:
+    """WI-vigih property tests: bean-marker base traversal walks transitive ancestors.
+
+    A class that extends an in-tree intermediate which itself extends
+    ``ConfigurationProperties`` (or any other ``BEAN_MARKER_BASE_CLASSES``
+    entry) is a serialization target the same way a direct subclass is.
+    """
+
+    def _link(
+        self, symbols: list[Symbol], edges: list[Edge] | None = None,
+    ) -> list[Edge]:
+        return link_jackson_dispatch(_ctx(symbols, edges)).edges
+
+    def test_one_intermediate_chain(self) -> None:
+        """LeafConfig -> ProjectBaseConfig -> ConfigurationProperties."""
+        base = _class_sym(
+            "ProjectBaseConfig",
+            path="src/main/java/com/example/Base.java", span=(1, 30),
+            base_classes=["ConfigurationProperties"],
+        )
+        leaf = _class_sym(
+            "LeafConfig", path="src/main/java/com/example/Leaf.java",
+            span=(1, 40), base_classes=["ProjectBaseConfig"],
+        )
+        get_url = _method_sym(
+            "LeafConfig.getUrl",
+            path="src/main/java/com/example/Leaf.java",
+            span=(10, 12), signature="()",
+        )
+        edges = [Edge.create(src=leaf.id, dst=base.id, edge_type="extends", line=1)]
+        result_edges = self._link([leaf, base, get_url], edges=edges)
+        assert get_url.id in {e.dst for e in result_edges}
+
+    def test_two_intermediate_chain(self) -> None:
+        """Leaf -> Mid -> Base -> ConfigurationProperties."""
+        base = _class_sym(
+            "ProjectBase", path="src/main/java/com/example/Base.java",
+            span=(1, 30), base_classes=["ConfigurationProperties"],
+        )
+        mid = _class_sym(
+            "ProjectMid", path="src/main/java/com/example/Mid.java",
+            span=(1, 30), base_classes=["ProjectBase"],
+        )
+        leaf = _class_sym(
+            "LeafConfig", path="src/main/java/com/example/Leaf.java",
+            span=(1, 30), base_classes=["ProjectMid"],
+        )
+        get_x = _method_sym(
+            "LeafConfig.getX",
+            path="src/main/java/com/example/Leaf.java",
+            span=(10, 12), signature="()",
+        )
+        edges = [
+            Edge.create(src=leaf.id, dst=mid.id, edge_type="extends", line=1),
+            Edge.create(src=mid.id, dst=base.id, edge_type="extends", line=1),
+        ]
+        result_edges = self._link([leaf, mid, base, get_x], edges=edges)
+        assert get_x.id in {e.dst for e in result_edges}
+
+    def test_diamond_inheritance_cycle_guarded(self) -> None:
+        """Diamond inheritance must not double-count or loop."""
+        base = _class_sym(
+            "BaseConfig", path="src/main/java/com/example/Base.java",
+            span=(1, 10), base_classes=["ConfigurationProperties"],
+        )
+        left = _class_sym(
+            "LeftConfig", path="src/main/java/com/example/Left.java",
+            span=(1, 10), base_classes=["BaseConfig"],
+        )
+        right = _class_sym(
+            "RightConfig", path="src/main/java/com/example/Right.java",
+            span=(1, 10), base_classes=["BaseConfig"],
+        )
+        leaf = _class_sym(
+            "LeafConfig", path="src/main/java/com/example/Leaf.java",
+            span=(1, 10), base_classes=["LeftConfig", "RightConfig"],
+        )
+        get_x = _method_sym(
+            "LeafConfig.getX",
+            path="src/main/java/com/example/Leaf.java",
+            span=(5, 6), signature="()",
+        )
+        edges = [
+            Edge.create(src=leaf.id, dst=left.id, edge_type="extends", line=1),
+            Edge.create(src=leaf.id, dst=right.id, edge_type="extends", line=1),
+            Edge.create(src=left.id, dst=base.id, edge_type="extends", line=1),
+            Edge.create(src=right.id, dst=base.id, edge_type="extends", line=1),
+        ]
+        result_edges = self._link([leaf, left, right, base, get_x], edges=edges)
+        # Exactly one edge to LeafConfig.getX (no double-emit through diamond).
+        edges_to_get_x = [e for e in result_edges if e.dst == get_x.id]
+        assert len(edges_to_get_x) == 1
+
+    def test_direct_subclass_regression_unaffected(self) -> None:
+        """Direct subclass of bean-marker base still produces dispatches."""
+        leaf = _class_sym(
+            "DirectConfig", path="src/main/java/com/example/Direct.java",
+            span=(1, 30), base_classes=["ConfigurationProperties"],
+        )
+        get_url = _method_sym(
+            "DirectConfig.getUrl",
+            path="src/main/java/com/example/Direct.java",
+            span=(10, 12), signature="()",
+        )
+        result_edges = self._link([leaf, get_url])
+        assert get_url.id in {e.dst for e in result_edges}

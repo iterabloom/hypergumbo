@@ -35,6 +35,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ._transitive_bases import (
+    build_inheritance_index,
+    collect_transitive_base_names,
+)
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
 PASS_ID = make_pass_id("view-template-linker")
@@ -188,13 +192,18 @@ def link_view_templates(
     Returns:
         LinkerResult with new renders edges and template symbols
     """
-    # Step 1: Find controller classes
+    # Step 1: Find controller classes (transitive base walk per WI-vigih:
+    # Rails apps ubiquitously subclass a project-defined ApplicationController
+    # that itself extends ActionController::Base, so direct-only matching
+    # misses the dominant pattern.)
+    inheritance_index = build_inheritance_index(edges)
+    symbol_by_id = {sym.id: sym for sym in symbols}
     controller_classes: set[str] = set()
     for sym in symbols:
         if sym.kind != "class":
             continue
-        base_classes = (sym.meta or {}).get("base_classes", [])
-        for base in base_classes:
+        chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
+        for base in chain:
             if base in _CONTROLLER_BASES:
                 controller_classes.add(sym.name)
                 break
@@ -280,13 +289,15 @@ def link_view_templates(
 
 
 def _count_controller_methods(ctx: LinkerContext) -> int:
-    """Count methods belonging to controller classes."""
+    """Count methods belonging to controller classes (transitive base walk per WI-vigih)."""
+    inheritance_index = build_inheritance_index(ctx.edges)
+    symbol_by_id = {sym.id: sym for sym in ctx.symbols}
     controller_classes: set[str] = set()
     for sym in ctx.symbols:
         if sym.kind != "class":
             continue
-        base_classes = (sym.meta or {}).get("base_classes", [])
-        for base in base_classes:
+        chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
+        for base in chain:
             if base in _CONTROLLER_BASES:
                 controller_classes.add(sym.name)
                 break

@@ -165,3 +165,43 @@ class TestCollectTransitiveBaseNames:
         a.meta["base_classes"] = ["BaseOperator", 42, None, "BaseHook"]
         names = collect_transitive_base_names(a, {a.id: a}, {})
         assert names == ["BaseOperator", "BaseHook"]
+
+    def test_meta_keys_collects_interfaces_too(self) -> None:
+        # WI-vigih: kafka_streams_dispatch needs to walk both base_classes
+        # and interfaces. Defaulting meta_keys=("base_classes",) keeps
+        # WI-halat callers (airflow, django) backward-compatible.
+        impl = _cls("MyProcessor", base_classes=[])
+        impl.meta["interfaces"] = ["Processor"]
+        names = collect_transitive_base_names(
+            impl, {impl.id: impl}, {},
+            meta_keys=("base_classes", "interfaces"),
+        )
+        assert "Processor" in names
+
+    def test_meta_keys_default_excludes_interfaces(self) -> None:
+        # The default meta_keys should NOT collect from "interfaces"
+        # (so airflow/django callers continue to see only base_classes).
+        impl = _cls("MyProcessor", base_classes=["Foo"])
+        impl.meta["interfaces"] = ["Processor"]
+        names = collect_transitive_base_names(impl, {impl.id: impl}, {})
+        assert "Foo" in names
+        assert "Processor" not in names
+
+    def test_meta_keys_walks_transitively_with_interfaces(self) -> None:
+        # ChildImpl -> ParentImpl implements Processor. The transitive
+        # walk must reach Processor via the inheritance edge AND collect
+        # ParentImpl's interfaces entry.
+        parent = _cls("ParentImpl", span=(10, 20), base_classes=[])
+        parent.meta["interfaces"] = ["Processor"]
+        child = _cls(
+            "ChildImpl", span=(30, 40), base_classes=["ParentImpl"],
+        )
+        edges = [_edge(child, parent)]
+        sym_by_id = {child.id: child, parent.id: parent}
+        index = build_inheritance_index(edges)
+        names = collect_transitive_base_names(
+            child, sym_by_id, index,
+            meta_keys=("base_classes", "interfaces"),
+        )
+        assert "ParentImpl" in names
+        assert "Processor" in names

@@ -369,3 +369,105 @@ class TestCallbackTable:
         for key in KAFKA_STREAMS_CALLBACKS:
             if key.endswith("Supplier"):
                 assert KAFKA_STREAMS_CALLBACKS[key] == frozenset({"get"})
+
+
+class TestTransitiveCallbackInterface:
+    """WI-vigih: callback-interface match walks transitive ancestors.
+
+    A class implementing a Kotlin / Scala SAM-style wrapper that itself
+    extends a Kafka Streams callback interface must be detected the
+    same as a direct implementation.
+    """
+
+    def _link(
+        self, symbols: list[Symbol], edges: list[Edge] | None = None,
+    ) -> list[Edge]:
+        return link_kafka_streams_dispatch(_ctx(symbols, edges)).edges
+
+    def test_one_intermediate_chain(self) -> None:
+        """LeafImpl extends BaseImpl which implements Processor."""
+        base = _class_sym(
+            "BaseImpl", path="src/main/java/com/example/Base.java",
+            span=(1, 30), interfaces=["Processor"],
+        )
+        leaf = _class_sym(
+            "LeafImpl", path="src/main/java/com/example/Leaf.java",
+            span=(1, 30), base_classes=["BaseImpl"],
+        )
+        proc = _method_sym(
+            "LeafImpl.process",
+            path="src/main/java/com/example/Leaf.java", span=(10, 12),
+        )
+        edges = [Edge.create(src=leaf.id, dst=base.id, edge_type="extends", line=1)]
+        result_edges = self._link([leaf, base, proc], edges=edges)
+        assert proc.id in {e.dst for e in result_edges}
+
+    def test_two_intermediate_chain(self) -> None:
+        """Leaf -> Mid -> Base implements ValueMapper (two intermediates)."""
+        base = _class_sym(
+            "BaseMapper", path="src/main/java/com/example/Base.java",
+            span=(1, 30), interfaces=["ValueMapper"],
+        )
+        mid = _class_sym(
+            "MidMapper", path="src/main/java/com/example/Mid.java",
+            span=(1, 30), base_classes=["BaseMapper"],
+        )
+        leaf = _class_sym(
+            "LeafMapper", path="src/main/java/com/example/Leaf.java",
+            span=(1, 30), base_classes=["MidMapper"],
+        )
+        apply = _method_sym(
+            "LeafMapper.apply",
+            path="src/main/java/com/example/Leaf.java", span=(10, 12),
+        )
+        edges = [
+            Edge.create(src=leaf.id, dst=mid.id, edge_type="extends", line=1),
+            Edge.create(src=mid.id, dst=base.id, edge_type="extends", line=1),
+        ]
+        result_edges = self._link([leaf, mid, base, apply], edges=edges)
+        assert apply.id in {e.dst for e in result_edges}
+
+    def test_diamond_inheritance_cycle_guarded(self) -> None:
+        """Diamond inheritance must terminate without double-emit."""
+        base = _class_sym(
+            "BaseImpl", path="src/main/java/com/example/Base.java",
+            span=(1, 10), interfaces=["Predicate"],
+        )
+        left = _class_sym(
+            "LeftImpl", path="src/main/java/com/example/Left.java",
+            span=(1, 10), base_classes=["BaseImpl"],
+        )
+        right = _class_sym(
+            "RightImpl", path="src/main/java/com/example/Right.java",
+            span=(1, 10), base_classes=["BaseImpl"],
+        )
+        leaf = _class_sym(
+            "LeafImpl", path="src/main/java/com/example/Leaf.java",
+            span=(1, 10), base_classes=["LeftImpl", "RightImpl"],
+        )
+        test_method = _method_sym(
+            "LeafImpl.test",
+            path="src/main/java/com/example/Leaf.java", span=(5, 6),
+        )
+        edges = [
+            Edge.create(src=leaf.id, dst=left.id, edge_type="extends", line=1),
+            Edge.create(src=leaf.id, dst=right.id, edge_type="extends", line=1),
+            Edge.create(src=left.id, dst=base.id, edge_type="extends", line=1),
+            Edge.create(src=right.id, dst=base.id, edge_type="extends", line=1),
+        ]
+        result_edges = self._link([leaf, left, right, base, test_method], edges=edges)
+        edges_to_test = [e for e in result_edges if e.dst == test_method.id]
+        assert len(edges_to_test) == 1
+
+    def test_direct_subclass_regression_unaffected(self) -> None:
+        """Direct interface implementation continues to work."""
+        leaf = _class_sym(
+            "DirectImpl", path="src/main/java/com/example/Direct.java",
+            span=(1, 30), interfaces=["Reducer"],
+        )
+        apply = _method_sym(
+            "DirectImpl.apply",
+            path="src/main/java/com/example/Direct.java", span=(10, 12),
+        )
+        result_edges = self._link([leaf, apply])
+        assert apply.id in {e.dst for e in result_edges}

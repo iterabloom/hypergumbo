@@ -490,3 +490,117 @@ class TestReactComponentRegistry:
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "references"
         assert result.edges[0].meta.get("construct") == "jsx"
+
+
+class TestTransitiveReactBase:
+    """WI-vigih: a class transitively extending React.Component is a component
+    even if its name does not pass the PascalCase heuristic.
+    """
+
+    def test_one_intermediate_chain(self) -> None:
+        from hypergumbo_core.ir import Edge
+        from hypergumbo_core.linkers.react_component import _build_component_map
+
+        base = Symbol(
+            id="typescript:src/Base.tsx:1-30:base_helper:class",
+            name="base_helper", kind="class", language="typescript",
+            path="src/Base.tsx", span=_make_span(),
+            meta={"base_classes": ["React.Component"]},
+        )
+        leaf = Symbol(
+            id="typescript:src/Leaf.tsx:1-30:leaf_view:class",
+            name="leaf_view", kind="class", language="typescript",
+            path="src/Leaf.tsx", span=_make_span(),
+            meta={"base_classes": ["base_helper"]},
+        )
+        edges = [Edge.create(src=leaf.id, dst=base.id, edge_type="extends", line=1)]
+        result = _build_component_map([leaf, base], edges=edges)
+        assert "leaf_view" in result
+        assert "base_helper" in result
+
+    def test_two_intermediate_chain(self) -> None:
+        from hypergumbo_core.ir import Edge
+        from hypergumbo_core.linkers.react_component import _build_component_map
+
+        base = Symbol(
+            id="typescript:src/Base.tsx:1-30:abstract_view:class",
+            name="abstract_view", kind="class", language="typescript",
+            path="src/Base.tsx", span=_make_span(),
+            meta={"base_classes": ["React.Component"]},
+        )
+        mid = Symbol(
+            id="typescript:src/Mid.tsx:1-30:mid_view:class",
+            name="mid_view", kind="class", language="typescript",
+            path="src/Mid.tsx", span=_make_span(),
+            meta={"base_classes": ["abstract_view"]},
+        )
+        leaf = Symbol(
+            id="typescript:src/Leaf.tsx:1-30:leaf_view:class",
+            name="leaf_view", kind="class", language="typescript",
+            path="src/Leaf.tsx", span=_make_span(),
+            meta={"base_classes": ["mid_view"]},
+        )
+        edges = [
+            Edge.create(src=leaf.id, dst=mid.id, edge_type="extends", line=1),
+            Edge.create(src=mid.id, dst=base.id, edge_type="extends", line=1),
+        ]
+        result = _build_component_map([leaf, mid, base], edges=edges)
+        assert "leaf_view" in result
+
+    def test_diamond_inheritance_cycle_guarded(self) -> None:
+        from hypergumbo_core.ir import Edge
+        from hypergumbo_core.linkers.react_component import _build_component_map
+
+        base = Symbol(
+            id="typescript:src/Base.tsx:1-10:abstract_view:class",
+            name="abstract_view", kind="class", language="typescript",
+            path="src/Base.tsx", span=_make_span(),
+            meta={"base_classes": ["React.Component"]},
+        )
+        left = Symbol(
+            id="typescript:src/Left.tsx:1-10:left_view:class",
+            name="left_view", kind="class", language="typescript",
+            path="src/Left.tsx", span=_make_span(),
+            meta={"base_classes": ["abstract_view"]},
+        )
+        right = Symbol(
+            id="typescript:src/Right.tsx:1-10:right_view:class",
+            name="right_view", kind="class", language="typescript",
+            path="src/Right.tsx", span=_make_span(),
+            meta={"base_classes": ["abstract_view"]},
+        )
+        leaf = Symbol(
+            id="typescript:src/Leaf.tsx:1-10:leaf_view:class",
+            name="leaf_view", kind="class", language="typescript",
+            path="src/Leaf.tsx", span=_make_span(),
+            meta={"base_classes": ["left_view", "right_view"]},
+        )
+        edges = [
+            Edge.create(src=leaf.id, dst=left.id, edge_type="extends", line=1),
+            Edge.create(src=leaf.id, dst=right.id, edge_type="extends", line=1),
+            Edge.create(src=left.id, dst=base.id, edge_type="extends", line=1),
+            Edge.create(src=right.id, dst=base.id, edge_type="extends", line=1),
+        ]
+        result = _build_component_map([leaf, left, right, base], edges=edges)
+        assert "leaf_view" in result
+
+    def test_direct_base_regression_unaffected(self) -> None:
+        """PascalCase detection still works when no edges supplied."""
+        from hypergumbo_core.linkers.react_component import _build_component_map
+
+        button = _make_js_sym("Button", path="src/Button.tsx")
+        result = _build_component_map([button])
+        assert "Button" in result
+
+    def test_pure_component_short_name_match(self) -> None:
+        """Bare 'PureComponent' (without React. prefix) matches the base set."""
+        from hypergumbo_core.linkers.react_component import _build_component_map
+
+        leaf = Symbol(
+            id="typescript:src/Leaf.tsx:1-10:my_view:class",
+            name="my_view", kind="class", language="typescript",
+            path="src/Leaf.tsx", span=_make_span(),
+            meta={"base_classes": ["PureComponent"]},
+        )
+        result = _build_component_map([leaf])
+        assert "my_view" in result

@@ -64,15 +64,24 @@ def collect_transitive_base_names(
     class_sym: "Symbol",
     symbol_by_id: dict[str, "Symbol"],
     inheritance_index: dict[str, list[str]],
+    meta_keys: tuple[str, ...] = ("base_classes",),
 ) -> list[str]:
     """Return the raw base-class name strings reachable from ``class_sym``.
 
     Walks ``extends``/``implements`` edges from ``class_sym`` to every
-    transitively-reachable in-tree ancestor (BFS), collecting each
-    visited symbol's ``meta.base_classes`` strings — including
-    ``class_sym``'s own list. The class itself's name is NOT included,
-    only the names listed in its (and its ancestors') ``base_classes``
-    metadata.
+    transitively-reachable in-tree ancestor (BFS), collecting strings
+    from each visited symbol's ``meta`` keys listed in ``meta_keys``
+    (default ``("base_classes",)``) — including ``class_sym``'s own
+    entries. The class itself's name is NOT included, only the names
+    listed in its (and its ancestors') metadata.
+
+    The ``meta_keys`` parameter exists because Java/Kotlin/Scala
+    analyzers split ancestors into ``base_classes`` (extends) and
+    ``interfaces`` (implements) under separate metadata keys. Linkers
+    that match against interface names (kafka_streams_dispatch) pass
+    ``meta_keys=("base_classes", "interfaces")`` so the root class's
+    interface declarations are captured alongside its extends targets.
+    Default keeps WI-halat callers (airflow, django) backward-compatible.
 
     Names are returned in their raw, un-normalized form: callers should
     apply their own ``_short_base_name``-style stripping before lookup
@@ -94,10 +103,13 @@ def collect_transitive_base_names(
     while queue:
         current = queue.pop(0)
         meta = current.meta or {}
-        bases = meta.get("base_classes", []) or []
-        for raw in bases:
-            if isinstance(raw, str):
-                collected.append(raw)
+        for key in meta_keys:
+            entries = meta.get(key, []) or []
+            if not isinstance(entries, list):
+                continue
+            for raw in entries:
+                if isinstance(raw, str):
+                    collected.append(raw)
 
         for parent_id in inheritance_index.get(current.id, ()):
             if parent_id in visited:

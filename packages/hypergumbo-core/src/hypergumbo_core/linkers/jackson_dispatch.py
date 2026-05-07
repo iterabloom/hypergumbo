@@ -85,6 +85,10 @@ import time
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
+from ._transitive_bases import (
+    build_inheritance_index,
+    collect_transitive_base_names,
+)
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
@@ -174,18 +178,30 @@ def _decorator_names(meta: object | None) -> set[str]:
     return names
 
 
-def _class_has_serialization_hint(sym: "Symbol") -> bool:
-    """True when a class symbol itself carries a serialization annotation or base."""
+def _class_has_serialization_hint(
+    sym: "Symbol",
+    symbol_by_id: dict[str, "Symbol"] | None = None,
+    inheritance_index: dict[str, list[str]] | None = None,
+) -> bool:
+    """True when a class symbol carries a serialization annotation or extends a bean-marker base.
+
+    The bean-marker base check walks the class's transitive base-class
+    chain (WI-vigih) so a class that extends an in-tree intermediate
+    which itself extends ``ConfigurationProperties`` is matched the same
+    as a direct subclass. ``symbol_by_id`` and ``inheritance_index`` are
+    optional for backward compatibility — when omitted, only the class's
+    own ``meta.base_classes`` is consulted.
+    """
     names = _decorator_names(sym.meta)
     if names & CLASS_LEVEL_SERIALIZATION_ANNOTATIONS:
         return True
-    if not isinstance(sym.meta, dict):
-        return False
-    base_classes = sym.meta.get("base_classes") or []
-    if not isinstance(base_classes, list):
-        return False
-    for raw in base_classes:
-        if isinstance(raw, str) and _short_annotation_name(raw) in BEAN_MARKER_BASE_CLASSES:
+    if symbol_by_id is None:
+        symbol_by_id = {sym.id: sym}
+    if inheritance_index is None:
+        inheritance_index = {}
+    chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
+    for raw in chain:
+        if _short_annotation_name(raw) in BEAN_MARKER_BASE_CLASSES:
             return True
     return False
 
@@ -298,6 +314,7 @@ def _build_class_method_index(
 def _find_bean_target_classes(
     symbols: list["Symbol"],
     method_index: dict[tuple[str, str], list["Symbol"]],
+    edges: list[Edge] | None = None,
 ) -> list["Symbol"]:
     """Return the class symbols that should receive dispatch edges to accessors.
 
@@ -308,13 +325,17 @@ def _find_bean_target_classes(
     method's decorators, so a method sweep under the class finds the hint
     even if the class declaration itself is unannotated.
     """
+    edges = edges or []
+    inheritance_index = build_inheritance_index(edges)
+    symbol_by_id = {sym.id: sym for sym in symbols}
+
     targets: list[Symbol] = []
     for sym in symbols:
         if sym.kind not in {"class", "interface", "struct"}:
             continue
         if sym.language not in {"java", "kotlin", "scala"}:
             continue
-        if _class_has_serialization_hint(sym):
+        if _class_has_serialization_hint(sym, symbol_by_id, inheritance_index):
             targets.append(sym)
             continue
         key = (sym.path or "", sym.name)
@@ -352,7 +373,7 @@ def link_jackson_dispatch(ctx: LinkerContext) -> LinkerResult:
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     method_index = _build_class_method_index(ctx.symbols)
-    targets = _find_bean_target_classes(ctx.symbols, method_index)
+    targets = _find_bean_target_classes(ctx.symbols, method_index, ctx.edges)
     if not targets:
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(symbols=[], edges=[], run=run)
