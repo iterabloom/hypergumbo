@@ -186,6 +186,88 @@ the manual sweep found 2 silent bugs, the property test added
 afterwards surfaced 3 more, one of which exposed the phantom-value
 shape.
 
+### Step 4.5 — Indirection-aware producer trace
+
+When the suspect domain is a value-set in code (a Symbol kind, an
+edge_type, an evidence_type, etc.), Step 4's grep for hardcoded
+*consumer* sets only covers half the surface. The other half — what
+**producers** emit — has its own characteristic blind spots that
+literal-substring grep misses, and missing them produces wrong audit
+verdicts. Wave 6 PR 4 of the Symbol.kind axis migration is the
+canonical example: three values (`theorem`, `inductive`, `message`)
+were initially classified DEPRECATE-NO-FOLD ("dead vocabulary, no
+producer") on the strength of a literal grep for `kind="theorem"`
+returning zero hits. A re-trace using indirection-aware patterns
+found real producers via `add_symbol(...)` and
+`_make_proto_symbol(...)` helper calls in `lean.py`, `tlaplus.py`,
+and `proto.py`. Three out of seven verdicts in that cluster were
+wrong — a 43% miss rate for that single re-trace, ~5% across the
+broader cluster.
+
+**The five producer-emit shapes** that any verdict claiming "no
+producer" or "this fold target is correct" must check:
+
+1. **Literal kwarg.** `Symbol(kind="<value>", ...)` or
+   `Edge(edge_type="<value>", ...)`. The shape literal-grep catches.
+2. **Helper-call positional or kwarg.** `add_symbol(..., "<value>")`,
+   `_make_*_symbol(..., "<value>", ...)`, `make_symbol_id(...,
+   "<value>")`. Grep the helper signatures and follow each emit site
+   into its caller.
+3. **Assignment-form to Name.** `kind = "<value>"` followed (in the
+   same function or a few statements later) by `Symbol(kind=kind,
+   ...)`. WI-nubuv ext A's L3 producer-coherence linter trace covers
+   this *for the literal-Name-target shape*; check the trace's output
+   when re-auditing.
+4. **f-string interpolation.** `kind=f"...{value}..."` or
+   `kind=f"<prefix>_{suffix}"` where one of the interpolated
+   fragments is the audited value. Literal-substring grep misses
+   these entirely. WI-nubuv ext B (todo_soft) is the planned
+   structural fix; until it lands, manual re-grep with f-string
+   patterns is the fallback.
+5. **Dict-subscript-target assignment.** `kinds["<key>"] = "<value>"`
+   followed by `Symbol(kind=kinds[k], ...)` somewhere downstream. The
+   blind spot at `pyffi.py:142,157` discovered in WI-fukol is the
+   canonical case — `ctypes_stdlib_call` and `cffi_stdlib_call`
+   slipped past every prior trace because they're stored in a dict
+   by the analyzer module before being read out at emit time. WI-nubuv
+   ext C (todo_soft) is the structural backstop.
+
+The producer-emit shapes above are the *known* miss categories for
+this codebase as of 2026-05-07. New languages or analyzer styles can
+introduce new shapes; treat the list as a checklist seed, not as
+exhaustive. When you find a sixth shape during an audit, append it
+here with a file:line example.
+
+**Procedure.** For every value the audit's per-pair Step 6 verdict
+will touch — especially every value receiving a DEPRECATE-NO-FOLD
+verdict — run *each* of the five greps above. The audit's evidence
+section must record either the producer site found (file:line) or an
+explicit "ran shape N grep, zero hits" entry. A verdict that lists
+literal-grep hits only is incomplete and must not ship.
+
+**Pair with the ext-A/B/C linter trace.** WI-nubuv ext A's literal-
+kwarg + Name-assignment trace is already wired into the L3 linter
+output. The shapes the linter doesn't yet cover (ext B f-string, ext
+C variable-form structural backstop, dict-subscript-target) require
+manual grep. The audit must explicitly note which shapes were checked
+manually because the linter doesn't catch them yet — a future audit
+re-run after ext B/C land can drop those manual steps.
+
+**Forward-looking enforcement.** The
+`packages/hypergumbo-core/tests/test_audit_findings.py` property test
+currently validates the *structural shape* of each row's
+`diagnostic_test` field but does not yet execute the cmd. A planned
+extension (filed as a tracker work item alongside this playbook
+amendment) will execute every DEPRECATE-NO-FOLD verdict's
+`diagnostic_test.cmd` and assert `expect: empty` — providing a
+regression guard so that if a producer is added later for a value
+currently flagged as DEPRECATE-NO-FOLD, CI fails and the verdict is
+forced back into the audit funnel. Until that extension lands, the
+Step 4.5 grep is the only trace; treat any DEPRECATE-NO-FOLD verdict
+shipped before the regression guard exists as needing a manual re-
+trace at the time of registry pruning (Phase 4b in the ADR-0027
+worked example).
+
 ### Step 5 — Adjacent concept sweep
 
 Once you've found one confusion, expand outward. The same cognitive
@@ -317,6 +399,10 @@ Before you stop the audit, confirm:
       the audit was confirmation theater.
 - [ ] Did I inventory all values of the suspect field?
 - [ ] Did I apply each of the four leakage tests to candidate pairs?
+- [ ] Did I run the indirection-aware producer trace (Step 4.5) for
+      every value with a verdict that asserts producer existence or
+      non-existence — checking literal kwarg, helper-call, assignment-
+      form, f-string, AND dict-subscript-target shapes?
 - [ ] Did I find at least one silent bug or near-bug — or write a
       sentence stating "no silent bugs found, here's why I'm
       confident"?
@@ -366,6 +452,23 @@ runs can find prior work:
   triage pass. The sweep validates the playbook's "audit the
   surrounding territory after one leak" heuristic — the same
   cognitive habit produced multiple instances.
+
+- **2026-05-07 — Methodology hardening (not an audit, a playbook
+  amendment).** Wave 6 PR 4 of the Symbol.kind axis migration
+  reclassified `theorem`, `inductive`, `message` from DEPRECATE-NO-
+  FOLD to CANONICAL after a re-trace surfaced producers via
+  `add_symbol(...)` and `_make_proto_symbol(...)` indirection at
+  `lean.py`, `tlaplus.py`, `proto.py`. The original audit's
+  literal-grep produced zero hits and the verdict shipped wrong.
+  The follow-on lab notebook entry
+  (`~/hypergumbo_lab_notebook/notebookjournal_05072026_0316.md`)
+  enumerated the validation gap; this playbook update added Step
+  4.5 (indirection-aware producer trace) and the corresponding self-
+  test bullet to make the trace mandatory before any verdict
+  asserting producer existence ships. No re-audit performed in this
+  amendment — see the related re-audit work item for the
+  retrospective re-trace of the ~225 PRELIM_RESOLVED rows on
+  Symbol.kind axis carried over from prior audits.
 
 (Future audits append here.)
 
