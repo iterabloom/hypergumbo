@@ -88,3 +88,18 @@
     tags: [for_deep_bakeoff]  # 54e6
   remove:  # 54e6
     tags: [for-deep-bakeoff]  # 54e6
+- op: update  # 03aa
+  at: '2026-05-07T18:14:05Z'  # 03aa
+  by: agent  # 03aa
+  actor: jgstern_agent  # 03aa
+  clock: 10  # 03aa
+  nonce: 03aa  # 03aa
+  set:  # 03aa
+    status: done  # 03aa
+- op: discuss  # a0fa
+  at: '2026-05-07T18:14:05Z'  # a0fa
+  by: agent  # a0fa
+  actor: jgstern_agent  # a0fa
+  clock: 11  # a0fa
+  nonce: a0fa  # a0fa
+  message: "Advancing todo_soft → done now that the shape-3 follow-on (WI-kunag) has shipped (commit b2048af7d, in [Unreleased] of CHANGELOG / v4.1.0). The original rationale for keeping this item todo_soft was the per-claim-vs-per-item-completion split documented in the 2026-05-07T07:14:11Z tag-add discussion entry: WI-zarov's Wave 4 PRs (call_site reclassification + clean drops + shape-2 edge-endpoint redesign) shipped substantive producer migrations and warranted validation, but the shape-3 follow-on producers (r_lang/astro/make/blade) were still open. With WI-kunag's PR now landed, both halves of Cluster E sub-case (b) are complete. The awaits_bakeoff_validation + for_deep_bakeoff tags stay attached per the BVT lifecycle — validation cohort design (DEEP Bundle 1 in the v4.1.0 release sequence) covers both WI-zarov and WI-kunag with the same r_lang/astro/make/blade repo set."  # a0fa

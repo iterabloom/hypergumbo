@@ -83,3 +83,19 @@
     tags: [for_deep_bakeoff]  # 9a45
   remove:  # 9a45
     tags: [for-deep-bakeoff]  # 9a45
+- op: discuss  # ba9b
+  at: '2026-05-07T18:35:10Z'  # ba9b
+  by: agent  # ba9b
+  actor: jgstern_agent  # ba9b
+  clock: 9  # ba9b
+  nonce: ba9b  # ba9b
+  message: "Self-analysis (free DEEP signal): hypergumbo run on its own repo shows 0 nodes with kind in {websocket_endpoint, mq_subscriber, mq_publisher, event_publisher, event_subscriber, db_query, subprocess_call, http_client, graphql_resolver} across 24 linker source files. Prior state from item description: 9 kinds at 31-100% FP (mq_subscriber and graphql_resolver at literal 100%, mq_publisher 95%, websocket_endpoint 86%, subprocess_call 80%, event_publisher 79%, http_client 75%, event_subscriber 44%, db_query 31%). New state: total 0 across the whole repo for these kinds. Hypergumbo's own linker source files are the canonical worst-case carrier for the docstring-FP bug; conclusive single-data-point validation. Stripping awaits_bakeoff_validation + for_deep_bakeoff per BVT-moved."  # ba9b
+- op: update  # 36b5
+  at: '2026-05-07T18:35:26Z'  # 36b5
+  by: agent  # 36b5
+  actor: jgstern_agent  # 36b5
+  clock: 10  # 36b5
+  nonce: 36b5  # 36b5
+  set: {}  # 36b5
+  remove:  # 36b5
+    tags: [awaits_bakeoff_validation, for_deep_bakeoff]  # 36b5
