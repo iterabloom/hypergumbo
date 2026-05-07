@@ -34,11 +34,11 @@ write an ADR vs an audit-findings document."
 | [0007](0007-symbol-kind-cluster-h-long-tail.md) | Symbol.kind Cluster H — Domain-Specific Long Tail | `Symbol.kind` | All rows resolved (57 RESOLVED, 3 PRELIM_RESOLVED) |
 | [0008](0008-evidence-type-cluster-b-resolution-status.md) | Edge.evidence_type Cluster B — Resolution-Status Leakage | `Edge.evidence_type` | All PRELIM_RESOLVED |
 | [0009](0009-symbol-kind-cluster-c-apex-peer.md) | Symbol.kind Cluster C — Apex/Peer Overloads | `Symbol.kind` | All PRELIM_RESOLVED |
-| [0010](0010-symbol-kind-cluster-e-edge-label-kinds.md) | Symbol.kind Cluster E — Edge Labels Masquerading as Kinds | `Symbol.kind` | Mixed (9 PRELIM_RESOLVED, 3 UNRESOLVED) |
-| [0011](0011-symbol-kind-cluster-f-component-refs.md) | Symbol.kind Cluster F — Component References | `Symbol.kind` | Mixed |
+| [0010](0010-symbol-kind-cluster-e-edge-label-kinds.md) | Symbol.kind Cluster E — Edge Labels Masquerading as Kinds | `Symbol.kind` | All PRELIM_RESOLVED |
+| [0011](0011-symbol-kind-cluster-f-component-refs.md) | Symbol.kind Cluster F — Component References | `Symbol.kind` | Mixed (4 RESOLVED, 1 PRELIM_RESOLVED) |
 | [0012](0012-evidence-type-cluster-d-call-construct.md) | Edge.evidence_type Cluster D — Apex/Peer Call-Construct Overloads | `Edge.evidence_type` | All PRELIM_RESOLVED |
-| [0013](0013-symbol-kind-cluster-d-framework-roles.md) | Symbol.kind Cluster D — Framework Roles | `Symbol.kind` | Mixed (most UNRESOLVED, 8 PRELIM_RESOLVED registry placeholders) |
-| [0014](0014-evidence-type-cluster-c-framework-dispatch.md) | Edge.evidence_type Cluster C — Framework-Specific Dispatch | `Edge.evidence_type` | All UNRESOLVED |
+| [0013](0013-symbol-kind-cluster-d-framework-roles.md) | Symbol.kind Cluster D — Framework Roles | `Symbol.kind` | All PRELIM_RESOLVED |
+| [0014](0014-evidence-type-cluster-c-framework-dispatch.md) | Edge.evidence_type Cluster C — Framework-Specific Dispatch | `Edge.evidence_type` | All PRELIM_RESOLVED |
 
 ## File format
 
