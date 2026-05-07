@@ -29,6 +29,7 @@ tracker item via the ``awaits_bakeoff_validation`` tag.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Iterable, Protocol
@@ -479,6 +480,131 @@ def find_zero_producer_violations(
                     f"emit site(s) found via literal-kwarg / assignment-form "
                     f"trace: {', '.join(sites)}",
                 )
+
+    return errors
+
+
+# --- README index sync regression guard ---
+
+# Matches a numeric-prefixed status mention inside a README index cell, e.g.
+# ``57 RESOLVED`` or ``11 PRELIM_RESOLVED``. The trailing ``\b`` is critical
+# so ``RESOLVED`` does not match the suffix of ``PRELIM_RESOLVED`` (the
+# preceding ``_`` is a word char, so the boundary at the start of
+# ``RESOLVED`` would not fire there) — but having both anchors guards the
+# pattern against future forms like ``RESOLVEDish``.
+_README_NUM_STATUS_RE: Final[re.Pattern[str]] = re.compile(
+    r"\b(\d+)\s+(RESOLVED|PRELIM_RESOLVED|UNRESOLVED)\b",
+)
+
+# Matches a row in the README index table:
+# ``| [0005](0005-foo.md) | Title | `Symbol.kind` | <status cell> |``
+# Captures the leading numeric ID and the trailing status cell text.
+_README_INDEX_ROW_RE: Final[re.Pattern[str]] = re.compile(
+    r"^\|\s*\[(\d{4})\]\([^)]+\)\s*\|[^|]*\|[^|]*\|\s*(.+?)\s*\|\s*$",
+    re.MULTILINE,
+)
+
+
+def _parse_readme_status_counts(cell: str) -> dict[str, int]:
+    """Extract ``{status: count}`` pairs from a README index status cell."""
+    return {m.group(2): int(m.group(1)) for m in _README_NUM_STATUS_RE.finditer(cell)}
+
+
+def _parse_readme_index(readme_path: Path) -> dict[str, str]:
+    """Return ``{NN: status_cell_text}`` for every audit-findings row.
+
+    The README index lives at ``docs/audits/README.md``. Its body
+    contains a table with columns ``ID | Title | Axis | Status``.
+    Non-data lines (header / separator / prose) are skipped by the
+    regex match shape.
+    """
+    text = readme_path.read_text()
+    return {m.group(1): m.group(2) for m in _README_INDEX_ROW_RE.finditer(text)}
+
+
+def find_readme_index_drift(
+    repo_root: Path,
+    findings_list: Iterable[AuditFindings],
+) -> list[str]:
+    """Return one error per audit-findings doc whose README Status drifts.
+
+    The README index at ``docs/audits/README.md`` is hand-maintained and
+    historically goes stale as audit-findings docs advance through the
+    UNRESOLVED / PRELIM_RESOLVED / RESOLVED lifecycle. Wave 6 PR 5 of
+    the WI-runod migration shipped a hand-edit to bring four index rows
+    back in sync; the same drift will recur as Phase 4b registry-pruning
+    PRs land. This function is the regression guard: for every audit-
+    findings doc, derive the canonical status-count distribution from
+    the verdict YAML and verify the README's Status cell agrees.
+
+    The comparison rule:
+
+    1. **README cell carries explicit numeric counts** (e.g.
+       ``Mixed (6 RESOLVED, 11 PRELIM_RESOLVED)`` or
+       ``All rows resolved (57 RESOLVED, 3 PRELIM_RESOLVED)``): the
+       explicit counts must equal the YAML row counts exactly. Decorative
+       prose around the count tuples (``Mixed``, ``All rows resolved``)
+       is unconstrained.
+    2. **README cell carries no numeric counts** (e.g. ``All RESOLVED``,
+       ``All PRELIM_RESOLVED``, ``All RESOLVED at relocation
+       (2026-05-02)``): the YAML must have all rows in a single status,
+       and the cell must contain ``All <STATUS>`` matching that status.
+       Trailing prose (the date in the relocation case) is unconstrained.
+
+    Returns an empty list when the README and every doc agree.
+    """
+    readme_path = repo_root / "docs" / "audits" / "README.md"
+    if not readme_path.exists():  # pragma: no cover
+        return []
+
+    readme_index = _parse_readme_index(readme_path)
+    errors: list[str] = []
+
+    for findings in findings_list:
+        nn = findings.path.name.split("-", 1)[0]
+        cell = readme_index.get(nn)
+        if cell is None:
+            errors.append(
+                f"{findings.path}: not listed in {readme_path} index "
+                f"(expected row id {nn!r})",
+            )
+            continue
+
+        yaml_counts: dict[str, int] = {
+            status: count
+            for status, count in Counter(
+                row.status for row in findings.verdicts
+            ).items()
+            if count > 0
+        }
+        readme_counts = _parse_readme_status_counts(cell)
+
+        if readme_counts:
+            if readme_counts != yaml_counts:
+                errors.append(
+                    f"{findings.path}: README index cell {cell!r} "
+                    f"counts {readme_counts} disagree with YAML row "
+                    f"counts {yaml_counts}",
+                )
+            continue
+
+        if len(yaml_counts) != 1:
+            errors.append(
+                f"{findings.path}: README index cell {cell!r} carries "
+                f"no explicit counts but YAML has mixed statuses "
+                f"{yaml_counts}; the cell should list explicit counts "
+                f"(e.g. 'Mixed (X RESOLVED, Y PRELIM_RESOLVED)')",
+            )
+            continue
+
+        (yaml_status,) = yaml_counts.keys()
+        marker = f"All {yaml_status}"
+        if marker not in cell:
+            errors.append(
+                f"{findings.path}: README index cell {cell!r} does not "
+                f"contain {marker!r} for YAML's single status "
+                f"{yaml_status} (count {yaml_counts[yaml_status]})",
+            )
 
     return errors
 

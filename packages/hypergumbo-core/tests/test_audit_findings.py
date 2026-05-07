@@ -30,6 +30,7 @@ from hypergumbo_core.audit_findings import (
     VerdictRow,
     _is_valid_expect,
     find_audit_findings_docs,
+    find_readme_index_drift,
     find_zero_producer_violations,
     parse_audit_findings,
     validate_against_registry,
@@ -1105,4 +1106,207 @@ def test_live_tree_deprecate_no_fold_has_zero_producers():
     assert not errors, (
         "DEPRECATE-NO-FOLD verdicts contradicted by live producer "
         "emit sites:\n" + "\n".join(errors)
+    )
+
+
+# --- README index sync regression guard ---
+
+
+def _make_audit_doc(
+    audits: Path,
+    nn: str,
+    rows: list[tuple[str, str, str]],
+    axis: str = AXIS_SYMBOL_KIND,
+) -> Path:
+    """Write an audit-findings doc with rows of (value, verdict, status)."""
+    rows_yaml = "\n".join(
+        f"""  - value: {value}
+    verdict: {verdict}
+    fold_target: {'"target"' if verdict == VERDICT_FOLD else 'null'}
+    status: {status}
+    diagnostic_test:
+      cmd: "true"
+      expect: exit_code:0
+    rationale: "Test row."
+"""
+        for value, verdict, status in rows
+    )
+    md = audits / f"{nn}-test.md"
+    md.write_text(f"""# Test audit {nn}
+
+## Verdicts
+
+```yaml
+kind: audit_verdicts
+axis: {axis}
+verdicts:
+{rows_yaml}
+```
+""")
+    return md
+
+
+def _make_readme(audits: Path, rows: list[tuple[str, str]]) -> None:
+    """Write a README.md with index rows of (NN, status_cell)."""
+    body_lines = [
+        "# Audit-Findings Documents",
+        "",
+        "## Index",
+        "",
+        "| ID | Title | Axis | Status |",
+        "|----|-------|------|--------|",
+    ]
+    for nn, status_cell in rows:
+        body_lines.append(
+            f"| [{nn}]({nn}-test.md) | Title | `Symbol.kind` | {status_cell} |",
+        )
+    (audits / "README.md").write_text("\n".join(body_lines) + "\n")
+
+
+def test_readme_drift_clean_when_explicit_counts_match(tmp_path: Path):
+    audits = tmp_path / "docs" / "audits"
+    audits.mkdir(parents=True)
+    md = _make_audit_doc(
+        audits, "0099",
+        [("a", "CANONICAL", "RESOLVED"),
+         ("b", "CANONICAL", "RESOLVED"),
+         ("c", "FOLD", "PRELIM_RESOLVED")],
+    )
+    _make_readme(audits, [("0099", "Mixed (2 RESOLVED, 1 PRELIM_RESOLVED)")])
+    findings = parse_audit_findings(md)
+    assert find_readme_index_drift(tmp_path, [findings]) == []
+
+
+def test_readme_drift_flags_count_mismatch(tmp_path: Path):
+    audits = tmp_path / "docs" / "audits"
+    audits.mkdir(parents=True)
+    md = _make_audit_doc(
+        audits, "0098",
+        [("a", "CANONICAL", "RESOLVED"),
+         ("b", "FOLD", "PRELIM_RESOLVED"),
+         ("c", "FOLD", "PRELIM_RESOLVED")],
+    )
+    _make_readme(audits, [("0098", "Mixed (2 RESOLVED, 1 PRELIM_RESOLVED)")])
+    findings = parse_audit_findings(md)
+    errors = find_readme_index_drift(tmp_path, [findings])
+    assert len(errors) == 1
+    assert "Mixed (2 RESOLVED, 1 PRELIM_RESOLVED)" in errors[0]
+    assert "{'RESOLVED': 1, 'PRELIM_RESOLVED': 2}" in errors[0]
+
+
+def test_readme_drift_clean_when_all_resolved_marker_matches(tmp_path: Path):
+    audits = tmp_path / "docs" / "audits"
+    audits.mkdir(parents=True)
+    md = _make_audit_doc(
+        audits, "0097",
+        [("a", "CANONICAL", "RESOLVED"),
+         ("b", "CANONICAL", "RESOLVED")],
+    )
+    _make_readme(audits, [("0097", "All RESOLVED")])
+    findings = parse_audit_findings(md)
+    assert find_readme_index_drift(tmp_path, [findings]) == []
+
+
+def test_readme_drift_clean_when_all_resolved_with_trailing_prose(tmp_path: Path):
+    """Trailing prose (e.g., a relocation date) after the All marker
+    is allowed — only the marker substring needs to be present."""
+    audits = tmp_path / "docs" / "audits"
+    audits.mkdir(parents=True)
+    md = _make_audit_doc(
+        audits, "0096",
+        [("a", "CANONICAL", "RESOLVED")],
+    )
+    _make_readme(audits, [("0096", "All RESOLVED at relocation (2026-05-02)")])
+    findings = parse_audit_findings(md)
+    assert find_readme_index_drift(tmp_path, [findings]) == []
+
+
+def test_readme_drift_flags_missing_all_marker(tmp_path: Path):
+    audits = tmp_path / "docs" / "audits"
+    audits.mkdir(parents=True)
+    md = _make_audit_doc(
+        audits, "0095",
+        [("a", "FOLD", "PRELIM_RESOLVED")],
+    )
+    # Cell says wrong marker
+    _make_readme(audits, [("0095", "All RESOLVED")])
+    findings = parse_audit_findings(md)
+    errors = find_readme_index_drift(tmp_path, [findings])
+    assert len(errors) == 1
+    assert "PRELIM_RESOLVED" in errors[0]
+
+
+def test_readme_drift_flags_no_count_marker_with_mixed_yaml(tmp_path: Path):
+    """When the YAML has mixed statuses, the README cell must carry
+    explicit counts — a bare 'All <X>' marker is insufficient."""
+    audits = tmp_path / "docs" / "audits"
+    audits.mkdir(parents=True)
+    md = _make_audit_doc(
+        audits, "0094",
+        [("a", "CANONICAL", "RESOLVED"),
+         ("b", "FOLD", "PRELIM_RESOLVED")],
+    )
+    _make_readme(audits, [("0094", "All RESOLVED")])
+    findings = parse_audit_findings(md)
+    errors = find_readme_index_drift(tmp_path, [findings])
+    assert len(errors) == 1
+    assert "no explicit counts but YAML has mixed statuses" in errors[0]
+
+
+def test_readme_drift_flags_doc_missing_from_index(tmp_path: Path):
+    audits = tmp_path / "docs" / "audits"
+    audits.mkdir(parents=True)
+    md = _make_audit_doc(
+        audits, "0093",
+        [("a", "CANONICAL", "RESOLVED")],
+    )
+    _make_readme(audits, [("0099", "All RESOLVED")])
+    findings = parse_audit_findings(md)
+    errors = find_readme_index_drift(tmp_path, [findings])
+    assert len(errors) == 1
+    assert "not listed in" in errors[0]
+    assert "0093" in errors[0]
+
+
+def test_readme_drift_handles_decorative_prose_around_counts(tmp_path: Path):
+    """Audit 0007's 'All rows resolved (57 RESOLVED, 3 PRELIM_RESOLVED)'
+    shape is allowed: the explicit counts win over the decorative
+    'All rows resolved' prefix."""
+    audits = tmp_path / "docs" / "audits"
+    audits.mkdir(parents=True)
+    rows = (
+        [("v" + str(i), "CANONICAL", "RESOLVED") for i in range(57)]
+        + [("p" + str(i), "FOLD", "PRELIM_RESOLVED") for i in range(3)]
+    )
+    md = _make_audit_doc(audits, "0092", rows)
+    _make_readme(
+        audits, [("0092", "All rows resolved (57 RESOLVED, 3 PRELIM_RESOLVED)")],
+    )
+    findings = parse_audit_findings(md)
+    assert find_readme_index_drift(tmp_path, [findings]) == []
+
+
+def test_live_tree_readme_index_in_sync_with_audit_docs():
+    """Walks the live ``docs/audits/`` tree and asserts the README index
+    Status column agrees with each doc's verdict YAML row counts.
+
+    Closes the README-index-drift gap called for in
+    ``~/hypergumbo_lab_notebook/notebookjournal_05072026_0316.md``
+    §"High-value (file as tracker items) #4". Wave 6 PR 5 demonstrated
+    the recurrence pattern (four index rows fell behind their per-doc
+    Status fields after Wave 5 + Wave 6 advances landed); this test
+    blocks the next recurrence at every-commit time.
+
+    Skips when ``docs/audits/`` is absent (isolated package run).
+    """
+    repo_root = Path(__file__).resolve().parents[3]
+    docs = find_audit_findings_docs(repo_root)
+    if not docs:
+        pytest.skip("docs/audits/ not present (isolated package run)")
+
+    findings_list = [parse_audit_findings(md) for md in docs]
+    errors = find_readme_index_drift(repo_root, findings_list)
+    assert not errors, (
+        "README index Status column has drifted from audit-findings "
+        "verdict YAMLs:\n" + "\n".join(errors)
     )
