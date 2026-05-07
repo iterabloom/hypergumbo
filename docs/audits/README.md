@@ -27,18 +27,18 @@ write an ADR vs an audit-findings document."
 |----|-------|------|--------|
 | [0001](0001-dispatch-publish-family.md) | Dispatch and Publish Family Classifications | `Edge.edge_type` | All RESOLVED |
 | [0002](0002-ipc-family.md) | IPC Family Classifications | `Edge.edge_type` | All RESOLVED |
-| [0003](0003-symbol-kind-cluster-a-language-constructs.md) | Symbol.kind Cluster A — Canonical Language Constructs | `Symbol.kind` | All RESOLVED |
-| [0004](0004-evidence-type-cluster-a-canonical-inference.md) | Edge.evidence_type Cluster A — Canonical Inference Pathways | `Edge.evidence_type` | All RESOLVED |
-| [0005](0005-symbol-kind-cluster-b-file-shape.md) | Symbol.kind Cluster B — File-Shape and Package-Shape Entities | `Symbol.kind` | Mixed (6 RESOLVED, 11 PRELIM_RESOLVED) |
-| [0006](0006-symbol-kind-cluster-g-build-config-shape.md) | Symbol.kind Cluster G — Build / Config-Shape Entities | `Symbol.kind` | Mixed (15 RESOLVED, 9 PRELIM_RESOLVED) |
-| [0007](0007-symbol-kind-cluster-h-long-tail.md) | Symbol.kind Cluster H — Domain-Specific Long Tail | `Symbol.kind` | All rows resolved (57 RESOLVED, 3 PRELIM_RESOLVED) |
-| [0008](0008-evidence-type-cluster-b-resolution-status.md) | Edge.evidence_type Cluster B — Resolution-Status Leakage | `Edge.evidence_type` | All PRELIM_RESOLVED |
-| [0009](0009-symbol-kind-cluster-c-apex-peer.md) | Symbol.kind Cluster C — Apex/Peer Overloads | `Symbol.kind` | All PRELIM_RESOLVED |
-| [0010](0010-symbol-kind-cluster-e-edge-label-kinds.md) | Symbol.kind Cluster E — Edge Labels Masquerading as Kinds | `Symbol.kind` | Mixed (2 RESOLVED, 10 PRELIM_RESOLVED) |
-| [0011](0011-symbol-kind-cluster-f-component-refs.md) | Symbol.kind Cluster F — Component References | `Symbol.kind` | Mixed (4 RESOLVED, 1 PRELIM_RESOLVED) |
-| [0012](0012-evidence-type-cluster-d-call-construct.md) | Edge.evidence_type Cluster D — Apex/Peer Call-Construct Overloads | `Edge.evidence_type` | All PRELIM_RESOLVED |
-| [0013](0013-symbol-kind-cluster-d-framework-roles.md) | Symbol.kind Cluster D — Framework Roles | `Symbol.kind` | All PRELIM_RESOLVED |
-| [0014](0014-evidence-type-cluster-c-framework-dispatch.md) | Edge.evidence_type Cluster C — Framework-Specific Dispatch | `Edge.evidence_type` | All PRELIM_RESOLVED |
+| [0003](0003-symbol-kind-cluster-a-language-constructs.md) | Symbol.kind Cluster 27A — Canonical Language Constructs | `Symbol.kind` | All RESOLVED |
+| [0004](0004-evidence-type-cluster-a-canonical-inference.md) | Edge.evidence_type Cluster 28A — Canonical Inference Pathways | `Edge.evidence_type` | All RESOLVED |
+| [0005](0005-symbol-kind-cluster-b-file-shape.md) | Symbol.kind Cluster 27B — File-Shape and Package-Shape Entities | `Symbol.kind` | Mixed (6 RESOLVED, 11 PRELIM_RESOLVED) |
+| [0006](0006-symbol-kind-cluster-g-build-config-shape.md) | Symbol.kind Cluster 27G — Build / Config-Shape Entities | `Symbol.kind` | Mixed (15 RESOLVED, 9 PRELIM_RESOLVED) |
+| [0007](0007-symbol-kind-cluster-h-long-tail.md) | Symbol.kind Cluster 27H — Domain-Specific Long Tail | `Symbol.kind` | All rows resolved (57 RESOLVED, 3 PRELIM_RESOLVED) |
+| [0008](0008-evidence-type-cluster-b-resolution-status.md) | Edge.evidence_type Cluster 28B — Resolution-Status Leakage | `Edge.evidence_type` | All PRELIM_RESOLVED |
+| [0009](0009-symbol-kind-cluster-c-apex-peer.md) | Symbol.kind Cluster 27C — Apex/Peer Overloads | `Symbol.kind` | All PRELIM_RESOLVED |
+| [0010](0010-symbol-kind-cluster-e-edge-label-kinds.md) | Symbol.kind Cluster 27E — Edge Labels Masquerading as Kinds | `Symbol.kind` | Mixed (2 RESOLVED, 10 PRELIM_RESOLVED) |
+| [0011](0011-symbol-kind-cluster-f-component-refs.md) | Symbol.kind Cluster 27F — Component References | `Symbol.kind` | Mixed (4 RESOLVED, 1 PRELIM_RESOLVED) |
+| [0012](0012-evidence-type-cluster-d-call-construct.md) | Edge.evidence_type Cluster 28D — Apex/Peer Call-Construct Overloads | `Edge.evidence_type` | All PRELIM_RESOLVED |
+| [0013](0013-symbol-kind-cluster-d-framework-roles.md) | Symbol.kind Cluster 27D — Framework Roles | `Symbol.kind` | All PRELIM_RESOLVED |
+| [0014](0014-evidence-type-cluster-c-framework-dispatch.md) | Edge.evidence_type Cluster 28C — Framework-Specific Dispatch | `Edge.evidence_type` | All PRELIM_RESOLVED |
 
 ## File format
 

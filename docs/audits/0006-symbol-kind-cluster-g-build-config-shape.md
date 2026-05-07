@@ -1,30 +1,30 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# Audit-findings 0006: Symbol.kind Cluster G — Build / Config-Shape Entities
+# Audit-findings 0006: Symbol.kind Cluster 27G — Build / Config-Shape Entities
 
 - Date: 2026-05-05
 - Status: Mixed — 15 CANONICAL rows RESOLVED via WI-runod Wave 6 PR 2 registry promotion; 4 DEPRECATE-NO-FOLD rows now PRELIM_RESOLVED via Wave 6 PR 4 (`config`/`dev-dependency`/`build-dependency`/`work_item`); 5 FOLD rows now PRELIM_RESOLVED via Wave 6 PR 5 (`test_case`/`editable`/`url_requirement`/`devDependency`/`python_task` — producer migrations + registry move from `pending_classification` to `endpoint_shape`).
-- Closes: WI-dubab-karur-vihak-majiv-dijug-pafot-vipuk-holod (Cluster G build/config-shape entities: separate-axis or demote, ADR-0027 Phase 3)
-- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Third audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical) and 0005 (Cluster B file-shape).
+- Closes: WI-dubab-karur-vihak-majiv-dijug-pafot-vipuk-holod (Cluster 27G build/config-shape entities: separate-axis or demote, ADR-0027 Phase 3)
+- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Third audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster 27A canonical) and 0005 (Cluster 27B file-shape).
 
 ## Context
 
-[ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) §"Phase 3" Cluster G identifies build / config-shape `Symbol.kind` values currently parked on `pending_classification`. The tracker scope expanded the original ADR list to **24 values**: `test`, `test_case`, `work_item`, `target`, `special_target`, `recipe`, `env_var`, `build_arg`, `exposed_port`, `stage`, `requirement`, `editable`, `url_requirement`, `setting`, `config`, `derivation`, `dependency`, `devDependency`, `dev-dependency`, `build-dependency`, `addtask`, `python_task`, `task`, `trigger`.
+[ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) §"Phase 3" Cluster 27G identifies build / config-shape `Symbol.kind` values currently parked on `pending_classification`. The tracker scope expanded the original ADR list to **24 values**: `test`, `test_case`, `work_item`, `target`, `special_target`, `recipe`, `env_var`, `build_arg`, `exposed_port`, `stage`, `requirement`, `editable`, `url_requirement`, `setting`, `config`, `derivation`, `dependency`, `devDependency`, `dev-dependency`, `build-dependency`, `addtask`, `python_task`, `task`, `trigger`.
 
-The cluster-G framing question (per WI-dubab and ADR-0027 §"Phase 3" Cluster G): are these *language constructs* in their respective build / config DSLs (CMake, Make, Just, Dockerfile, Nix, BitBake, requirements.txt, pyproject.toml, package.json, INI, Prisma, SQL, …), or are they better represented on a *separate axis* (a `Symbol.role` / `Symbol.config_shape` sibling), or *demoted entirely* (a Makefile target as a SymbolID with no language-level kind)?
+The cluster-27G framing question (per WI-dubab and ADR-0027 §"Phase 3" Cluster 27G): are these *language constructs* in their respective build / config DSLs (CMake, Make, Just, Dockerfile, Nix, BitBake, requirements.txt, pyproject.toml, package.json, INI, Prisma, SQL, …), or are they better represented on a *separate axis* (a `Symbol.role` / `Symbol.config_shape` sibling), or *demoted entirely* (a Makefile target as a SymbolID with no language-level kind)?
 
 This audit answers: **mostly CANONICAL — these are genuine constructs in their respective build / config / data DSLs, no new axis required.** A minority FOLD to a sibling apex with the qualifier moved to `meta`; three rows are DEPRECATE-NO-FOLD. The verdicts below partition the 24 values into:
 
 - **CANONICAL promotions** (15 values): values that are top-level constructs in their respective build / config / data DSLs (Dockerfile ENV/ARG/EXPOSE/FROM, Make `.PHONY`, Just recipe, Nix derivation, BitBake addtask/task, SQL/Apex trigger, Meson `target`, …); they belong on `language_construct` after registry update.
-- **FOLD to existing Cluster G canonical + meta key** (5 values): values that are sub-mode / scope / implementation qualifiers on an underlying canonical construct; the qualifier moves to `Symbol.meta` and the kind drops to the sibling apex. (`test_case` → `test`; `editable`, `url_requirement` → `requirement`; `devDependency` → `dependency`; `python_task` → `task`.)
+- **FOLD to existing Cluster 27G canonical + meta key** (5 values): values that are sub-mode / scope / implementation qualifiers on an underlying canonical construct; the qualifier moves to `Symbol.meta` and the kind drops to the sibling apex. (`test_case` → `test`; `editable`, `url_requirement` → `requirement`; `devDependency` → `dependency`; `python_task` → `task`.)
 - **DEPRECATE-NO-FOLD** (4 values): three are dead vocabulary in the registry with no producer (`dev-dependency`, `build-dependency`); one (`config`) is a generic Prisma DSL-block placeholder where the real construct already lives in `meta["block_type"]`; one (`work_item`) is the tracker's own `Item.kind` value that should not appear in the `Symbol.kind` registry at all.
 
 All rows ship at `UNRESOLVED` status because Phase 3 producer migrations + registry updates have not landed. Wave 6 of the [WI-runod](../../.agent/tracker/) cross-axis schedule covers the migration; this document is the precondition for that wave.
 
-**Scope decision (no new ADR).** Per ADR-0027 §"Phase 3" Cluster G, an alternate path was to declare a separate `Symbol.role` / `Symbol.config_shape` axis for these values. After running the four leakage tests on each, that path is rejected: the build / config DSLs are *programming languages in their own right*, with their own top-level constructs that the analyzer parses out of source AST. The cross-DSL overload pattern (Meson `target`, RST `target`; SQL `trigger`, Apex `trigger`; Nix `derivation`, BitBake `addtask`) reads as the same shape as `function` or `package` appearing in every general-purpose language — not as a leak. No new axis ADR is filed; the canonical promotions land via registry update in the Wave 6 producer-migration PR series.
+**Scope decision (no new ADR).** Per ADR-0027 §"Phase 3" Cluster 27G, an alternate path was to declare a separate `Symbol.role` / `Symbol.config_shape` axis for these values. After running the four leakage tests on each, that path is rejected: the build / config DSLs are *programming languages in their own right*, with their own top-level constructs that the analyzer parses out of source AST. The cross-DSL overload pattern (Meson `target`, RST `target`; SQL `trigger`, Apex `trigger`; Nix `derivation`, BitBake `addtask`) reads as the same shape as `function` or `package` appearing in every general-purpose language — not as a leak. No new axis ADR is filed; the canonical promotions land via registry update in the Wave 6 producer-migration PR series.
 
 ## Methodology
 
-The CANONICAL / FOLD / DEPRECATE-NO-FOLD trichotomy and the four-leakage-test diagnostic procedure are defined in [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). This document applies that methodology to the Cluster G subset of `Symbol.kind` values.
+The CANONICAL / FOLD / DEPRECATE-NO-FOLD trichotomy and the four-leakage-test diagnostic procedure are defined in [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). This document applies that methodology to the Cluster 27G subset of `Symbol.kind` values.
 
 The `diagnostic_test` field for each row is a one-line Python invocation that asserts the value is currently present on the `pending_classification` axis (the Phase 1 seed home). The `expect: exit_code:0` shape lets a future audit runner verify the row's claim that the value is still pending migration.
 
@@ -34,7 +34,7 @@ Five distinct shapes surfaced during the four-leakage-test pass:
 
 ### 1. Build-DSL top-level constructs are language constructs in their own tongue
 
-Most Cluster G values (15 of 24) are emitted from build / config / data DSL analyzers — Dockerfile, Make, Just, Meson, Nix, BitBake, SQL, Apex, requirements.txt, pyproject.toml, package.json, Maven `pom.xml`, Robot Framework, INI — for declarations that are genuinely top-level constructs in the source language at hand. Dockerfile's `ENV FOO=bar`, Make's `.PHONY:`, Just's `recipe:`, Nix's `mkDerivation { … }`, BitBake's `addtask` directive, SQL's `CREATE TRIGGER`, Apex's `trigger Foo on Bar`, Meson's `executable()` / `library()` / `custom_target()` are language-level keywords / declarations the analyzer parses out of source AST.
+Most Cluster 27G values (15 of 24) are emitted from build / config / data DSL analyzers — Dockerfile, Make, Just, Meson, Nix, BitBake, SQL, Apex, requirements.txt, pyproject.toml, package.json, Maven `pom.xml`, Robot Framework, INI — for declarations that are genuinely top-level constructs in the source language at hand. Dockerfile's `ENV FOO=bar`, Make's `.PHONY:`, Just's `recipe:`, Nix's `mkDerivation { … }`, BitBake's `addtask` directive, SQL's `CREATE TRIGGER`, Apex's `trigger Foo on Bar`, Meson's `executable()` / `library()` / `custom_target()` are language-level keywords / declarations the analyzer parses out of source AST.
 
 Test 4 (mechanism vs. category) confirms each: the value names a *category* of source-language construct, not a *mechanism* qualifier. Test 1 (property derivability) does not fire — none is derivable from another field. Test 2 (apex/peer overloading) fires mildly for `target` (Meson build target vs. RST hyperlink target) and `trigger` (SQL trigger vs. Apex trigger), but the cross-DSL overload reads as "the same general concept across DSLs" — the same shape as `function` appearing in every language. Test 3 (construct vs. relationship) does not fire.
 
@@ -42,7 +42,7 @@ These 15 values get verdict **CANONICAL** with the migration action being: lift 
 
 ### 2. Sub-mode / scope qualifiers are apex + meta
 
-Five values (`test_case`, `editable`, `url_requirement`, `devDependency`, `python_task`) emit at the same construct position as a sibling Cluster G canonical, with a *sub-mode*, *scope*, or *implementation* qualifier baked into the kind name:
+Five values (`test_case`, `editable`, `url_requirement`, `devDependency`, `python_task`) emit at the same construct position as a sibling Cluster 27G canonical, with a *sub-mode*, *scope*, or *implementation* qualifier baked into the kind name:
 
 - `test_case` (Robot Framework `*** Test Cases ***` entries) is the same concept as `test` (Cargo `[[test]]` table, Zig `test "…" { … }`); Robot's vocabulary happens to read "test case." Apex selection: `test` is the canonical noun; `test_case` folds to `test`.
 - `editable` (`pip install -e .`) and `url_requirement` (`git+https://…` form in `requirements.txt`) are the same construct as `requirement` (the plain `pkg==1.0` line) under different *install modes* / *install sources*. Apex: `requirement`; the qualifier moves to `meta["install_mode"]="editable"` or `meta["install_source"]="url"`.
@@ -51,7 +51,7 @@ Five values (`test_case`, `editable`, `url_requirement`, `devDependency`, `pytho
 
 Test 1 (property derivability) fires on every one: each value's qualifier is derivable as the difference between the value's name and its underlying canonical. Test 4 (mechanism vs. category) reinforces — the install-mode / dependency-scope / task-implementation is a *mechanism* by which the underlying construct is realised, not a different category of construct.
 
-These five values get verdict **FOLD** with the underlying Cluster G apex as the fold target and the qualifier moved to `meta`. This mirrors the Cluster B fold pattern for ecosystem qualifiers (`npm_package` → `package` + `meta["package_ecosystem"]="npm"`).
+These five values get verdict **FOLD** with the underlying Cluster 27G apex as the fold target and the qualifier moved to `meta`. This mirrors the Cluster 27B fold pattern for ecosystem qualifiers (`npm_package` → `package` + `meta["package_ecosystem"]="npm"`).
 
 Note on `addtask`: BitBake's `addtask foo before bar after baz` is a *directive that registers a task* — it is structurally distinct from `task` (which *defines* a task body). It's a separate construct in BitBake syntax, not a sub-mode of `task`. **CANONICAL.**
 
@@ -61,7 +61,7 @@ One value (`config`) is emitted by the Prisma analyzer for ALL Prisma schema blo
 
 The real construct is already named in `meta["block_type"]`. The `config` value adds no information; it actively obscures the construct. Test 1 (property derivability) fires hard: `config` is fully derivable from "this came from a Prisma analyzer" — and the meaningful classification is in meta.
 
-Verdict: **DEPRECATE-NO-FOLD**. The `prisma.py` producer rewrites to emit `kind=block_type` directly (matching the existing meta key value). Consumers that today filter on `kind="config"` instead query `language="prisma"` (or the per-block-type kind, after the rewrite). Some block_type values (`model`, `enum`, `type`, `view`) are already canonical Cluster A constructs; others (`generator`, `datasource`) are Prisma-specific top-level constructs that may need their own registry entries.
+Verdict: **DEPRECATE-NO-FOLD**. The `prisma.py` producer rewrites to emit `kind=block_type` directly (matching the existing meta key value). Consumers that today filter on `kind="config"` instead query `language="prisma"` (or the per-block-type kind, after the rewrite). Some block_type values (`model`, `enum`, `type`, `view`) are already canonical Cluster 27A constructs; others (`generator`, `datasource`) are Prisma-specific top-level constructs that may need their own registry entries.
 
 ### 4. Dead vocabulary
 
@@ -294,17 +294,17 @@ Wave 6 of the [WI-runod](../../.agent/tracker/) cross-axis Phase 3 sequencing sc
    Per-PR `awaits_bakeoff_validation` tag where the change crosses the centrality / slice / sketch surfaces.
 
 3. **DEPRECATE-NO-FOLD migrations (two small PRs):**
-   - `prisma.py:179` rewrites the producer to emit `kind=block_type` directly (matching the existing `meta["block_type"]` value), dropping `kind="config"`. The audit-findings row moves to RESOLVED once the registry pruning lands. Some of the resulting block_type values (`model`, `enum`, `type`, `view`) already exist in the Cluster A registry; `generator` and `datasource` may need new registry entries on `language_construct` (they are top-level Prisma constructs).
+   - `prisma.py:179` rewrites the producer to emit `kind=block_type` directly (matching the existing `meta["block_type"]` value), dropping `kind="config"`. The audit-findings row moves to RESOLVED once the registry pruning lands. Some of the resulting block_type values (`model`, `enum`, `type`, `view`) already exist in the Cluster 27A registry; `generator` and `datasource` may need new registry entries on `language_construct` (they are top-level Prisma constructs).
    - The two dead-vocabulary entries (`dev-dependency`, `build-dependency`) and the cross-schema entry (`work_item`) ship in the same registry-cleanup PR with `cli.py:6066`'s defensive enumeration simplified accordingly.
 
 The `meta` keys introduced by Wave 6 (`test_dialect`, `install_mode`, `install_source`, `dependency_scope`, `task_implementation`) are candidates for ADR-0029's `axis_meta_keys.py` registry (Wave 9, WI-vusot).
 
 ## Related
 
-- [ADR-0027: Symbol.kind Names the Source-Language Syntactic Construct](../adr/0027-symbol-kind-language-construct-only.md) — the originating axis declaration. §"Phase 3" Cluster G is the scope this audit covers.
+- [ADR-0027: Symbol.kind Names the Source-Language Syntactic Construct](../adr/0027-symbol-kind-language-construct-only.md) — the originating axis declaration. §"Phase 3" Cluster 27G is the scope this audit covers.
 - [ADR-0024: Axis Declaration Template](../adr/0024-axis-declaration-template.md) — §"Family-audit verdict methodology" defines the verdict trichotomy applied here; §"Fold-residue discipline" rule 3 is the recurrence-promotion threshold the meta keys named here will trigger.
-- [Audit-findings 0003](0003-symbol-kind-cluster-a-language-constructs.md) — sibling Cluster A audit on the same axis. The CANONICAL promotions named here will join 0003's seed once Wave 6 ships.
-- [Audit-findings 0005](0005-symbol-kind-cluster-b-file-shape.md) — sibling Cluster B audit; the FOLD-with-qualifier-to-meta pattern used here mirrors 0005's framework-qualified-file-representation pattern.
+- [Audit-findings 0003](0003-symbol-kind-cluster-a-language-constructs.md) — sibling Cluster 27A audit on the same axis. The CANONICAL promotions named here will join 0003's seed once Wave 6 ships.
+- [Audit-findings 0005](0005-symbol-kind-cluster-b-file-shape.md) — sibling Cluster 27B audit; the FOLD-with-qualifier-to-meta pattern used here mirrors 0005's framework-qualified-file-representation pattern.
 - [`docs/audits/README.md`](README.md) — format spec.
 - WI-runod (cross-axis Phase 3 sequencing schedule) — this document is Wave 1 in the schedule; Wave 6 acts on its verdicts.
 - WI-vusot (axis_meta_keys.py parallel registry, Wave 9) — consumes the meta keys listed in §"Migration impact" once Wave 6 ships.

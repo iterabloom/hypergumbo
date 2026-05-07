@@ -1,18 +1,18 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# Audit-findings 0011: Symbol.kind Cluster F — Component / UI References
+# Audit-findings 0011: Symbol.kind Cluster 27F — Component / UI References
 
 - Date: 2026-05-05
-- Status: Mixed — `component_ref` PRELIM_RESOLVED (shape-2 edge-endpoint redesign + producer drop ship in this PR); `component`, `slot`, `prop`, `view` CANONICAL + RESOLVED on `language_construct`; `component_file` deferred to audit-findings 0005 Cluster B per the file-shape verdict already on record there.
-- Closes: WI-mihiz-vulon-tidiz-napir-vabup-zudun-jurat-lolaz (Cluster F, ADR-0027 Phase 3).
-- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Seventh audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical), 0005 (Cluster B file-shape), 0006 (Cluster G build/config), 0007 (Cluster H domain long-tail), 0009 (Cluster C apex/peer), and 0010 (Cluster E edge-label leakage).
+- Status: Mixed — `component_ref` PRELIM_RESOLVED (shape-2 edge-endpoint redesign + producer drop ship in this PR); `component`, `slot`, `prop`, `view` CANONICAL + RESOLVED on `language_construct`; `component_file` deferred to audit-findings 0005 Cluster 27B per the file-shape verdict already on record there.
+- Closes: WI-mihiz-vulon-tidiz-napir-vabup-zudun-jurat-lolaz (Cluster 27F, ADR-0027 Phase 3).
+- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Seventh audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster 27A canonical), 0005 (Cluster 27B file-shape), 0006 (Cluster 27G build/config), 0007 (Cluster 27H domain long-tail), 0009 (Cluster 27C apex/peer), and 0010 (Cluster 27E edge-label leakage).
 
 ## Context
 
-[ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) §"Detailed analysis: per-cluster fold targets" Cluster F is the component / UI-reference cluster of `Symbol.kind`. Six values seeded by Phase 1: `component`, `component_ref`, `component_file`, `slot`, `prop`, `view`. Five are unproblematic syntactic constructs (`component`, `slot`, `prop`, `view`) or file-shape entries (`component_file`) already governed by another audit; the sixth (`component_ref`) is a dst-kind leakage of the same shape ADR-0023 §"Detailed analysis" Cluster F caught for `imports_component`. The Phase-3 prescription for `component_ref` was originally "fold to `reference` + `dst.kind == 'component'`", but `reference` was itself resolved DEPRECATE-NO-FOLD in audit-findings 0010 sub-case (b). This audit therefore substitutes a parallel disposition: drop `component_ref` entirely and let the `imports` Edge carry the relationship, exactly as audit-findings 0010 PR 2 did for `puppet.py`'s `include` and `scss.py`'s `include` (also shape-2 edge-endpoint sites).
+[ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) §"Detailed analysis: per-cluster fold targets" Cluster 27F is the component / UI-reference cluster of `Symbol.kind`. Six values seeded by Phase 1: `component`, `component_ref`, `component_file`, `slot`, `prop`, `view`. Five are unproblematic syntactic constructs (`component`, `slot`, `prop`, `view`) or file-shape entries (`component_file`) already governed by another audit; the sixth (`component_ref`) is a dst-kind leakage of the same shape ADR-0023 §"Detailed analysis" caught for `imports_component`. The Phase-3 prescription for `component_ref` was originally "fold to `reference` + `dst.kind == 'component'`", but `reference` was itself resolved DEPRECATE-NO-FOLD in audit-findings 0010 sub-case (b). This audit therefore substitutes a parallel disposition: drop `component_ref` entirely and let the `imports` Edge carry the relationship, exactly as audit-findings 0010 PR 2 did for `puppet.py`'s `include` and `scss.py`'s `include` (also shape-2 edge-endpoint sites).
 
 ## Methodology
 
-Per [ADR-0027 §"Phase 3" Cluster F](../adr/0027-symbol-kind-language-construct-only.md) and the four leakage tests from the [Fundamental Concept Audit playbook](../../.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md). Test 4 (mechanism vs. category) is the load-bearing test for `component_ref`: the `_ref` suffix names the *use* of a thing, not the thing itself, while the `imports` Edge already names the use-relationship structurally. Two values describing the same relationship — once via `Symbol.kind` and once via `Edge.edge_type` — is the canonical signature of a category-vs-mechanism leak.
+Per [ADR-0027 §"Phase 3" Cluster 27F](../adr/0027-symbol-kind-language-construct-only.md) and the four leakage tests from the [Fundamental Concept Audit playbook](../../.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md). Test 4 (mechanism vs. category) is the load-bearing test for `component_ref`: the `_ref` suffix names the *use* of a thing, not the thing itself, while the `imports` Edge already names the use-relationship structurally. Two values describing the same relationship — once via `Symbol.kind` and once via `Edge.edge_type` — is the canonical signature of a category-vs-mechanism leak.
 
 The audit's empirical scope is `Symbol(kind=...)` emissions only. The producer count below is the count of `Symbol(kind="<value>", ...)` constructions across `packages/`.
 
@@ -26,7 +26,7 @@ The PR 2 pattern from WI-zarov (audit-findings 0010 §"Diagnostic findings" #2) 
 
 ### 2. The original ADR-0027 prescription "fold to `reference`" is invalidated by audit-findings 0010
 
-ADR-0027 §"Detailed analysis" Cluster F line 167 records the fold target for `component_ref` as "`reference` + `dst.kind == 'component'`". That target value was deprecated in audit-findings 0010 sub-case (b) (`reference` → DEPRECATE-NO-FOLD, no replacement Symbol kind, the relationship lives on the `references` / `imports` Edge). The cross-axis disposition for `component_ref` therefore loses its fold target at the same time. This audit applies the parallel resolution: DEPRECATE-NO-FOLD, no replacement Symbol kind, the `imports` Edge carries the relationship.
+ADR-0027 §"Detailed analysis" Cluster 27F line 167 records the fold target for `component_ref` as "`reference` + `dst.kind == 'component'`". That target value was deprecated in audit-findings 0010 sub-case (b) (`reference` → DEPRECATE-NO-FOLD, no replacement Symbol kind, the relationship lives on the `references` / `imports` Edge). The cross-axis disposition for `component_ref` therefore loses its fold target at the same time. This audit applies the parallel resolution: DEPRECATE-NO-FOLD, no replacement Symbol kind, the `imports` Edge carries the relationship.
 
 This is structurally identical to the propagation already captured in audit-findings 0010's PR 2 verdicts: shape-2 edge-endpoint sites all resolved to DEPRECATE-NO-FOLD, not to a fold-into-`reference`.
 
@@ -42,7 +42,7 @@ Each is an AST-level declarative form in its source language. The four leakage t
 
 ### 4. `component_file` is governed by audit-findings 0005
 
-`component_file` was filed in audit-findings 0005 Cluster B (file-shape entries) as `verdict: FOLD, fold_target: file, status: PRELIM_RESOLVED` with the rationale "Vue / Svelte / Astro single-file component. Structurally a kind=file with framework metadata. Fold to file + meta['component_framework']='vue' (or 'svelte', etc.)." The Cluster B Wave 6 PR group (per audit-findings 0005 §"Migration impact") will execute the producer-side fold. This audit-findings doc only notes the cross-cluster reference and does not introduce a separate verdict row.
+`component_file` was filed in audit-findings 0005 Cluster 27B (file-shape entries) as `verdict: FOLD, fold_target: file, status: PRELIM_RESOLVED` with the rationale "Vue / Svelte / Astro single-file component. Structurally a kind=file with framework metadata. Fold to file + meta['component_framework']='vue' (or 'svelte', etc.)." The Cluster 27B Wave 6 PR group (per audit-findings 0005 §"Migration impact") will execute the producer-side fold. This audit-findings doc only notes the cross-cluster reference and does not introduce a separate verdict row.
 
 ## Verdicts
 
@@ -57,7 +57,7 @@ verdicts:
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]component_ref[\"\\047]' packages/ scripts/ | grep -v 'test_\\|BRANCHES_test\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Cluster F dst-kind leakage; the imports Edge captures the relationship; no replacement Symbol kind. Three producers (vue.py, svelte.py, astro.py) all shape-2 edge-endpoint-dependent (imports Edge had src=symbol_id). This PR re-routes the Edge src to make_file_id(<lang>, rel_path) and moves the component name to Edge.meta['component_name'], then drops the Symbol. The original ADR-0027 fold target (`reference`) was deprecated in audit-findings 0010 sub-case (b); this audit applies the parallel DEPRECATE-NO-FOLD disposition."
+    rationale: "Cluster 27F dst-kind leakage; the imports Edge captures the relationship; no replacement Symbol kind. Three producers (vue.py, svelte.py, astro.py) all shape-2 edge-endpoint-dependent (imports Edge had src=symbol_id). This PR re-routes the Edge src to make_file_id(<lang>, rel_path) and moves the component name to Edge.meta['component_name'], then drops the Symbol. The original ADR-0027 fold target (`reference`) was deprecated in audit-findings 0010 sub-case (b); this audit applies the parallel DEPRECATE-NO-FOLD disposition."
   - value: component
     verdict: CANONICAL
     fold_target: null
@@ -92,7 +92,7 @@ verdicts:
     rationale: "Genuine syntactic construct in SQL. CREATE VIEW declaration. No leakage."
 ```
 
-`component_file` is intentionally absent — its verdict and disposition are recorded in audit-findings 0005 Cluster B (file-shape) as `FOLD → file + meta['component_framework']`. Wave 6 of the Cluster B migration handles the producer-side fold; tracking it here would dual-file the verdict.
+`component_file` is intentionally absent — its verdict and disposition are recorded in audit-findings 0005 Cluster 27B (file-shape) as `FOLD → file + meta['component_framework']`. Wave 6 of the Cluster 27B migration handles the producer-side fold; tracking it here would dual-file the verdict.
 
 ## Migration impact
 
@@ -108,9 +108,9 @@ verdicts:
 
 ## Related
 
-- [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) — declares the `Symbol.kind` axis this audit applies. §"Detailed analysis" Cluster F and §"Phase 3" Cluster F are the load-bearing references.
+- [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) — declares the `Symbol.kind` axis this audit applies. §"Detailed analysis" Cluster 27F and §"Phase 3" Cluster 27F are the load-bearing references.
 - [ADR-0024](../adr/0024-axis-declaration-template.md) — the template ADR-0027 instantiates; defines the CANONICAL/FOLD/DEPRECATE-NO-FOLD verdict trichotomy.
-- [ADR-0023](../adr/0023-edge-type-relationship-not-endpoints.md) — the `Edge.edge_type` precedent for dst-kind-leakage cleanup; `imports_component` was caught and folded to `imports` + `dst.kind=='component'` per ADR-0023 §"Detailed analysis" Cluster F. `component_ref` is the same leak shape on the `Symbol.kind` axis.
-- Audit-findings 0010 — Cluster E shape-2 PR 2 precedent (puppet.py / scss.py / json_config.py / twig.py); the structural template this audit's `component_ref` resolution applies.
-- Audit-findings 0005 — Cluster B file-shape; governs `component_file` (referenced but not re-filed here).
+- [ADR-0023](../adr/0023-edge-type-relationship-not-endpoints.md) — the `Edge.edge_type` precedent for dst-kind-leakage cleanup; `imports_component` was caught and folded to `imports` + `dst.kind=='component'` per ADR-0023 §"Detailed analysis". `component_ref` is the same leak shape on the `Symbol.kind` axis.
+- Audit-findings 0010 — Cluster 27E shape-2 PR 2 precedent (puppet.py / scss.py / json_config.py / twig.py); the structural template this audit's `component_ref` resolution applies.
+- Audit-findings 0005 — Cluster 27B file-shape; governs `component_file` (referenced but not re-filed here).
 - WI-runod cross-axis schedule — Wave 4 of which this PR closes one item.

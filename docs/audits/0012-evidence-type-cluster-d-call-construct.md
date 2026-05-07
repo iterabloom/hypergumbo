@@ -1,16 +1,16 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# Audit-findings 0012: Edge.evidence_type Cluster D — Apex/Peer Call-Construct Overloads
+# Audit-findings 0012: Edge.evidence_type Cluster 28D — Apex/Peer Call-Construct Overloads
 
 - Date: 2026-05-05
 - Status: All rows PRELIM_RESOLVED at filing (Phase 3 producer migration shipped this PR; values remain on `endpoint_shape` through the Phase 4a deprecation window per ADR-0028 §"Phase 4")
-- Closes: WI-nibis-bohak-bitik-fozul-vohan-finik-soful-zijov (Cluster D apex/peer collapse, ADR-0028 Phase 3)
-- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Third audit-findings doc on the `Edge.evidence_type` axis declared by [ADR-0028](../adr/0028-evidence-type-inference-pathway-only.md), companion to audit-findings 0004 (Cluster A canonical inference) and audit-findings 0008 (Cluster B resolution-status).
+- Closes: WI-nibis-bohak-bitik-fozul-vohan-finik-soful-zijov (Cluster 28D apex/peer collapse, ADR-0028 Phase 3)
+- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Third audit-findings doc on the `Edge.evidence_type` axis declared by [ADR-0028](../adr/0028-evidence-type-inference-pathway-only.md), companion to audit-findings 0004 (Cluster 28A canonical inference) and audit-findings 0008 (Cluster 28B resolution-status).
 
 ## Context
 
-[ADR-0028](../adr/0028-evidence-type-inference-pathway-only.md) §"Phase 3" Cluster D is the apex/peer call-construct cluster of `Edge.evidence_type`: 28 values that name "a call happened" with the call-construct surface form (function vs. method vs. application vs. pipe vs. constructor vs. cross-file vs. macro-body) baked into the inference label. The "what surface form did the call take?" property belongs in `Edge.meta["call_construct"]` (and friends — `meta["receiver"]`, `meta["resolution_quality"]`, `meta["visibility"]`), not on the inference label.
+[ADR-0028](../adr/0028-evidence-type-inference-pathway-only.md) §"Phase 3" Cluster 28D is the apex/peer call-construct cluster of `Edge.evidence_type`: 28 values that name "a call happened" with the call-construct surface form (function vs. method vs. application vs. pipe vs. constructor vs. cross-file vs. macro-body) baked into the inference label. The "what surface form did the call take?" property belongs in `Edge.meta["call_construct"]` (and friends — `meta["receiver"]`, `meta["resolution_quality"]`, `meta["visibility"]`), not on the inference label.
 
-The 28 Cluster D values seeded by ADR-0028 Phase 1 (registry lines 503–558):
+The 28 Cluster 28D values seeded by ADR-0028 Phase 1 (registry lines 503–558):
 
 ```
 ambiguous_method_call, bare_method_call, call, chained_return_type_call,
@@ -27,13 +27,13 @@ Wave 4 of the WI-runod cross-axis schedule designates this cluster's producer fo
 This audit answers two questions:
 
 1. **Apex name** (ADR-0028 Open Question 1). Choice between `ast_call` (symmetry with `ast_*` companions like `ast_call_direct`, `ast_attribute`, `ast_decorator`) and `function_call` (the high-frequency emitter, 38 occurrences). **Decision: `ast_call`.** Symmetry with the `ast_*` family wins; `function_call` itself becomes a peer that folds to `ast_call` + `meta["call_construct"]="function"`. The choice is recoverable but the symmetry preserves the naming invariant that AST-derived inference labels carry the `ast_` prefix.
-2. **Per-value verdicts.** All 28 values FOLD to `ast_call` + structured `meta` keys. One value (`cross_file_message_send`) folds to a different apex (`message_send`, an existing Cluster A canonical) because the underlying inference is not a call expression — it's a cross-file message-send pattern that shares the cross-file flavor.
+2. **Per-value verdicts.** All 28 values FOLD to `ast_call` + structured `meta` keys. One value (`cross_file_message_send`) folds to a different apex (`message_send`, an existing Cluster 28A canonical) because the underlying inference is not a call expression — it's a cross-file message-send pattern that shares the cross-file flavor.
 
 **No new axis ADR required.** The four-leakage-test pass for each of the 28 values fired exclusively on Test 2 (apex/peer overloading) — multiple "flavors" of *a call happened* in the same field, distinguished only by an inference-path detail that should be a `meta` key. This is exactly the leak that ADR-0028's `meta["call_construct"]` surface absorbs.
 
 ## Methodology
 
-Per [ADR-0028 §"Phase 3" Cluster D](../adr/0028-evidence-type-inference-pathway-only.md). Each value's verdict applies the four leakage tests from the [Fundamental Concept Audit playbook](../../.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md). Test 2 (apex/peer overloading) is the load-bearing test for this cluster: every value pairs the apex relationship "a call edge" with a per-emit-site distinguishing detail (function vs. method vs. constructor; bare vs. typed vs. external receiver; ambiguous vs. recovered vs. type-inferred resolution).
+Per [ADR-0028 §"Phase 3" Cluster 28D](../adr/0028-evidence-type-inference-pathway-only.md). Each value's verdict applies the four leakage tests from the [Fundamental Concept Audit playbook](../../.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md). Test 2 (apex/peer overloading) is the load-bearing test for this cluster: every value pairs the apex relationship "a call edge" with a per-emit-site distinguishing detail (function vs. method vs. constructor; bare vs. typed vs. external receiver; ambiguous vs. recovered vs. type-inferred resolution).
 
 Producer-side migration: each emit site replaces `evidence_type="<peer_name>"` with `evidence_type="ast_call"` (or `evidence_type="message_send"` for `cross_file_message_send`) plus structured `meta` keys per the per-row verdict. The L3 producer-side coherence linter (`scripts/check-producer-axis-coherence`) catches drift at pre-commit.
 
@@ -41,19 +41,19 @@ Producer-side migration: each emit site replaces `evidence_type="<peer_name>"` w
 
 ### 1. `ast_call` apex selected for symmetry, not frequency
 
-The ADR-0023 heuristic ("most-frequent emitter wins") would pick `function_call` (38 sites). This audit overrides that heuristic for the symmetry consideration: the registry's Cluster A members carry the `ast_` prefix as a naming invariant (`ast_annotation`, `ast_attribute`, `ast_call_direct`, `ast_decorator`, `ast_method_inferred`). The apex of the call-construct family belongs in that pattern.
+The ADR-0023 heuristic ("most-frequent emitter wins") would pick `function_call` (38 sites). This audit overrides that heuristic for the symmetry consideration: the registry's Cluster 28A members carry the `ast_` prefix as a naming invariant (`ast_annotation`, `ast_attribute`, `ast_call_direct`, `ast_decorator`, `ast_method_inferred`). The apex of the call-construct family belongs in that pattern.
 
-Rejected alternative: rename the apex to `function_call` and rename `ast_call_direct` to `function_call_direct` for consistency. This was rejected because `ast_call_direct` predates Cluster D and ships with downstream consumer dependencies; renaming it would be a breaking change unrelated to the cluster fold.
+Rejected alternative: rename the apex to `function_call` and rename `ast_call_direct` to `function_call_direct` for consistency. This was rejected because `ast_call_direct` predates Cluster 28D and ships with downstream consumer dependencies; renaming it would be a breaking change unrelated to the cluster fold.
 
 ### 2. `cross_file_message_send` is the lone non-`ast_call` apex
 
-`cross_file_message_send` is the only Cluster D value whose underlying inference is not a call expression. It records a cross-file message-send pattern (Objective-C `[receiver selector:args]` with a cross-file resolution). Its apex is `message_send` (an existing Cluster A canonical at registry line 236), not `ast_call`. The `cross_file` flavor moves to `meta["call_construct"]="cross_file"`.
+`cross_file_message_send` is the only Cluster 28D value whose underlying inference is not a call expression. It records a cross-file message-send pattern (Objective-C `[receiver selector:args]` with a cross-file resolution). Its apex is `message_send` (an existing Cluster 28A canonical at registry line 236), not `ast_call`. The `cross_file` flavor moves to `meta["call_construct"]="cross_file"`.
 
-This is the same shape as Cluster A's parallel `message_send` family: `ast_call` for direct call expressions; `message_send` for Objective-C / Smalltalk-style message-passing; both are inference-pathway peers, both can carry call-construct flavors via `meta`.
+This is the same shape as Cluster 28A's parallel `message_send` family: `ast_call` for direct call expressions; `message_send` for Objective-C / Smalltalk-style message-passing; both are inference-pathway peers, both can carry call-construct flavors via `meta`.
 
 ### 3. Multi-key meta is normal
 
-Several Cluster D values carry **two** distinguishing dimensions, e.g. `bare_method_call` is a method-call (call_construct=method) on a bare receiver (receiver=bare). Both keys are emitted:
+Several Cluster 28D values carry **two** distinguishing dimensions, e.g. `bare_method_call` is a method-call (call_construct=method) on a bare receiver (receiver=bare). Both keys are emitted:
 
 - `bare_method_call` → `meta={"call_construct": "method", "receiver": "bare"}`
 - `method_call_recovery` → `meta={"call_construct": "method", "resolution_quality": "recovery"}`
@@ -130,7 +130,7 @@ verdicts:
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"cross_file_message_send\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
-    rationale: "Apex/peer overload on a non-ast_call inference. The apex is message_send (an existing Cluster A canonical for Objective-C / Smalltalk-style message-passing). Fold: evidence_type=message_send + meta['call_construct']='cross_file'. Producer: objc.py."
+    rationale: "Apex/peer overload on a non-ast_call inference. The apex is message_send (an existing Cluster 28A canonical for Objective-C / Smalltalk-style message-passing). Fold: evidence_type=message_send + meta['call_construct']='cross_file'. Producer: objc.py."
   - value: external_receiver_call
     verdict: FOLD
     fold_target: ast_call
@@ -304,15 +304,15 @@ verdicts:
 ## Migration impact
 
 - **Producer-side:** ~89 emit sites across 25 files migrated from `evidence_type="<peer_name>"` to `evidence_type="ast_call"` (or `evidence_type="message_send"` for `cross_file_message_send`) + structured `meta` keys. Files: `bash.py`, `clojure.py`, `commonlisp.py`, `cpp.py`, `csharp.py`, `dart.py`, `elixir.py`, `elm.py`, `erlang.py`, `fsharp.py`, `go.py`, `groovy.py`, `haskell.py`, `julia.py`, `kotlin.py`, `lua.py`, `objc.py`, `ocaml.py`, `perl.py`, `py.py`, `ruby.py`, `rust.py`, `scala.py`, `swift.py`, `wolfram.py`, `linkers/method_call_recovery.py`.
-- **Registry-side:** No new entries required. The Cluster A apex `ast_call` (line 94) and `message_send` (line 236) already exist. The 28 Cluster D values stay in the registry on AXIS_ENDPOINT_SHAPE through the Phase 4a deprecation window per ADR-0028 §"Phase 4"; Phase 4b (gated on bakeoff validation per the `awaits_bakeoff_validation` discipline) will remove them.
+- **Registry-side:** No new entries required. The Cluster 28A apex `ast_call` (line 94) and `message_send` (line 236) already exist. The 28 Cluster 28D values stay in the registry on AXIS_ENDPOINT_SHAPE through the Phase 4a deprecation window per ADR-0028 §"Phase 4"; Phase 4b (gated on bakeoff validation per the `awaits_bakeoff_validation` discipline) will remove them.
 - **Schema-side:** Open enum on `Edge.evidence_type` already accommodates the additive change (no SCHEMA_VERSION bump). The new `meta` keys (`call_construct`, `receiver`, `resolution_quality`, `visibility`) are documented in the `Edge.meta` open-form section of the schema; no per-key registration required.
 - **Test-side:** Tests previously asserting `evidence_type == "<peer_name>"` on the migrated edges update to assert `evidence_type == "ast_call" and meta["call_construct"] == "<value>"` (and additional meta keys per row).
-- **Cluster B holdovers:** Three Cluster B PRELIM_RESOLVED rows fold to Cluster D peer values (`chained_call_unresolved`→`method_call_field_chain`, `unresolved_method_call`→`method_call`, `unresolved_variable_method_call`→`method_call_type_inferred`). The Cluster B Phase 3 producer migration (audit-findings 0008) emits those peer values; this PR re-folds those producer sites to `ast_call` + `meta` while preserving `is_resolved=False`.
+- **Cluster 28B holdovers:** Three Cluster 28B PRELIM_RESOLVED rows fold to Cluster 28D peer values (`chained_call_unresolved`→`method_call_field_chain`, `unresolved_method_call`→`method_call`, `unresolved_variable_method_call`→`method_call_type_inferred`). The Cluster 28B Phase 3 producer migration (audit-findings 0008) emits those peer values; this PR re-folds those producer sites to `ast_call` + `meta` while preserving `is_resolved=False`.
 
 ## Related
 
-- [ADR-0028](../adr/0028-evidence-type-inference-pathway-only.md) — declares the `Edge.evidence_type` axis this audit applies; §"Phase 3" Cluster D names this fold; §"Open question 1" decided here in favor of `ast_call`.
+- [ADR-0028](../adr/0028-evidence-type-inference-pathway-only.md) — declares the `Edge.evidence_type` axis this audit applies; §"Phase 3" Cluster 28D names this fold; §"Open question 1" decided here in favor of `ast_call`.
 - [ADR-0024](../adr/0024-axis-declaration-template.md) — the template ADR-0028 instantiates; defines the CANONICAL/FOLD/DEPRECATE-NO-FOLD verdict trichotomy.
-- Audit-findings 0004 — Cluster A canonical inference (the registry seed for the inference_pathway axis where `ast_call` and `message_send` apex values live).
-- Audit-findings 0008 — Cluster B resolution-status (the canary Phase 3 sub-PR; some of its fold targets are Cluster D peer values that this audit re-folds).
+- Audit-findings 0004 — Cluster 28A canonical inference (the registry seed for the inference_pathway axis where `ast_call` and `message_send` apex values live).
+- Audit-findings 0008 — Cluster 28B resolution-status (the canary Phase 3 sub-PR; some of its fold targets are Cluster 28D peer values that this audit re-folds).
 - WI-runod cross-axis schedule — Wave 4 of which this PR closes.

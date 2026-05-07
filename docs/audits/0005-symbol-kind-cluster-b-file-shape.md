@@ -1,28 +1,28 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# Audit-findings 0005: Symbol.kind Cluster B — File-Shape and Package-Shape Entities
+# Audit-findings 0005: Symbol.kind Cluster 27B — File-Shape and Package-Shape Entities
 
 - Date: 2026-05-05
 - Status: Mixed — 6 CANONICAL rows RESOLVED via Wave 6 PR 1 registry promotion (file, library, package, executable, program, project moved from `pending_classification` to `language_construct`); 11 FOLD/DEPRECATE-NO-FOLD rows now PRELIM_RESOLVED via Wave 6 PR 3 (producer migrations + registry move from `pending_classification` to `endpoint_shape`).
-- Closes: WI-gajob-hibod-talop-lofik-valuv-tumak-bifad-kopod (Cluster B file-shape entities: separate-axis vs canonical, ADR-0027 Phase 3)
-- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Second audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical).
+- Closes: WI-gajob-hibod-talop-lofik-valuv-tumak-bifad-kopod (Cluster 27B file-shape entities: separate-axis vs canonical, ADR-0027 Phase 3)
+- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Second audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster 27A canonical).
 
 ## Context
 
-[ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) §"Phase 3" Cluster B identifies ~17 `Symbol.kind` values that represent file-shape, package-shape, and project-shape entities — `file`, `library`, `package`, `executable`, `program`, `project`, `module_file`, `component_file`, `npm_package`, `composer_package`, `main_entry`, `library_export`, `export_entry`, `wasm_module`, `wasm_import`, `tsconfig`, `script`. All are currently parked on `pending_classification` per the ADR-0027 Phase 1 registry seeding.
+[ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) §"Phase 3" Cluster 27B identifies ~17 `Symbol.kind` values that represent file-shape, package-shape, and project-shape entities — `file`, `library`, `package`, `executable`, `program`, `project`, `module_file`, `component_file`, `npm_package`, `composer_package`, `main_entry`, `library_export`, `export_entry`, `wasm_module`, `wasm_import`, `tsconfig`, `script`. All are currently parked on `pending_classification` per the ADR-0027 Phase 1 registry seeding.
 
-The cluster-B framing question (per WI-gajob): are these *language constructs* in the same sense as Cluster A (function, class, method, struct, …), or are they a different conceptual axis (e.g., a Symbol.shape or Symbol.role axis recording the file/build-artifact role of a non-syntactic entity)?
+The cluster-27B framing question (per WI-gajob): are these *language constructs* in the same sense as Cluster 27A (function, class, method, struct, …), or are they a different conceptual axis (e.g., a Symbol.shape or Symbol.role axis recording the file/build-artifact role of a non-syntactic entity)?
 
 This audit answers: **mostly yes for build-DSL top-level constructs, mostly fold-to-canonical for framework-qualified file representations**. No new axis is required. The verdicts below partition the 17 values into:
 
 - **CANONICAL promotions** (6 values): values that are genuinely language-level constructs in their respective DSLs (CMake / Meson / build-system tongues; COBOL / Pascal / Fortran source); they belong on `language_construct` after registry update.
-- **FOLD to existing Cluster A canonical + meta key** (10 values): values that are framework / ecosystem qualifiers on an underlying file / package / export / import / module; the qualifier moves to `Symbol.meta["framework_role"]` or a parallel meta key, and the kind drops to the canonical Cluster A construct.
+- **FOLD to existing Cluster 27A canonical + meta key** (10 values): values that are framework / ecosystem qualifiers on an underlying file / package / export / import / module; the qualifier moves to `Symbol.meta["framework_role"]` or a parallel meta key, and the kind drops to the canonical Cluster 27A construct.
 - **DEPRECATE-NO-FOLD candidates** (1 value, advisory): `tsconfig` is a single-purpose marker for a single file path; the producer should drop the kind specialisation and synthesise the same data via `is_config_file=True` already shipped at v4.0.0 plus `meta["config_format"]="tsconfig"`.
 
 All rows ship at `UNRESOLVED` status because Phase 3 producer migrations + registry updates have not landed. Wave 6 of the [WI-runod](../../.agent/tracker/) cross-axis schedule covers the migration; this document is the precondition for that wave.
 
 ## Methodology
 
-The CANONICAL / FOLD / DEPRECATE-NO-FOLD trichotomy and the four-leakage-test diagnostic procedure are defined in [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). This document applies that methodology to the Cluster B subset of `Symbol.kind` values.
+The CANONICAL / FOLD / DEPRECATE-NO-FOLD trichotomy and the four-leakage-test diagnostic procedure are defined in [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). This document applies that methodology to the Cluster 27B subset of `Symbol.kind` values.
 
 The `diagnostic_test` field for each row is a one-line Python invocation that asserts the value is currently present on the `pending_classification` axis (the Phase 1 seed home). The `expect: exit_code:0` shape lets a future audit runner verify the row's claim that the value is still pending migration.
 
@@ -44,7 +44,7 @@ Ten values (`module_file`, `component_file`, `npm_package`, `composer_package`, 
 
 Test 1 (property derivability) fires on every one: each value's framework qualifier is derivable as the difference between the value's name and its underlying canonical. Test 4 (mechanism vs. category) reinforces — the framework / ecosystem is a *mechanism* by which the underlying construct is realised, not a different category of construct.
 
-These ten values get verdict **FOLD** with the underlying Cluster A canonical as the fold target and the framework qualifier moved to `meta`. This mirrors ADR-0023's fold pattern for `Edge.edge_type` ecosystem qualifiers (e.g., `tauri_invoke` → `dispatches_to` + `meta["bridge_kind"]="tauri"`).
+These ten values get verdict **FOLD** with the underlying Cluster 27A canonical as the fold target and the framework qualifier moved to `meta`. This mirrors ADR-0023's fold pattern for `Edge.edge_type` ecosystem qualifiers (e.g., `tauri_invoke` → `dispatches_to` + `meta["bridge_kind"]="tauri"`).
 
 ### 3. Single-purpose file markers are role flags, not kinds
 
@@ -202,7 +202,7 @@ Wave 6 of the [WI-runod](../../.agent/tracker/) cross-axis Phase 3 sequencing sc
 
 1. **Registry update (mechanical, doc-only PR):** lift the six CANONICAL values (`file`, `library`, `package`, `executable`, `program`, `project`) from `AXIS_PENDING` to `AXIS_LANGUAGE_CONSTRUCT` in `symbol_kinds.py`. Update the row statuses in this audit-findings doc from `UNRESOLVED` → `RESOLVED` in the same PR.
 
-2. **Per-producer FOLD migration (one PR per producer surface):** the ten FOLD values shipped from the producer-side, mirroring ADR-0023's per-family migration shape. Each producer (js_module.py, vue_component.py, json_config.py, wasm_bindgen.py, etc.) folds the specialised kind to its Cluster A canonical and routes the qualifier to `Symbol.meta`. Per-PR `awaits_bakeoff_validation` tag.
+2. **Per-producer FOLD migration (one PR per producer surface):** the ten FOLD values shipped from the producer-side, mirroring ADR-0023's per-family migration shape. Each producer (js_module.py, vue_component.py, json_config.py, wasm_bindgen.py, etc.) folds the specialised kind to its Cluster 27A canonical and routes the qualifier to `Symbol.meta`. Per-PR `awaits_bakeoff_validation` tag.
 
 3. **DEPRECATE-NO-FOLD migration (single small PR):** `json_config.py:735` rewrites the tsconfig.json producer to drop `kind="tsconfig"` and rely on the existing `is_config_file=True` boolean. The audit-findings row moves to RESOLVED once the registry pruning lands.
 
@@ -210,9 +210,9 @@ The `meta` keys introduced by Wave 6 (`module_system`, `component_framework`, `p
 
 ## Related
 
-- [ADR-0027: Symbol.kind Names the Source-Language Syntactic Construct](../adr/0027-symbol-kind-language-construct-only.md) — the originating axis declaration. §"Phase 3" Cluster B is the scope this audit covers.
+- [ADR-0027: Symbol.kind Names the Source-Language Syntactic Construct](../adr/0027-symbol-kind-language-construct-only.md) — the originating axis declaration. §"Phase 3" Cluster 27B is the scope this audit covers.
 - [ADR-0024: Axis Declaration Template](../adr/0024-axis-declaration-template.md) — §"Family-audit verdict methodology" defines the verdict trichotomy applied here; §"Fold-residue discipline" rule 3 is the recurrence-promotion threshold the meta keys named here will trigger.
-- [Audit-findings 0003](0003-symbol-kind-cluster-a-language-constructs.md) — sibling Cluster A audit on the same axis. The CANONICAL promotions named here will join 0003's seed once Wave 6 ships.
+- [Audit-findings 0003](0003-symbol-kind-cluster-a-language-constructs.md) — sibling Cluster 27A audit on the same axis. The CANONICAL promotions named here will join 0003's seed once Wave 6 ships.
 - [`docs/audits/README.md`](README.md) — format spec.
 - WI-runod (cross-axis Phase 3 sequencing schedule) — this document is Wave 1 in the schedule; Wave 6 acts on its verdicts.
 - WI-vusot (axis_meta_keys.py parallel registry, Wave 9) — consumes the meta keys listed in §"Migration impact" once Wave 6 ships.

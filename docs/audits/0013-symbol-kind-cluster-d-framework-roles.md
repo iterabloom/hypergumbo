@@ -1,15 +1,15 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# Audit-findings 0013: Symbol.kind Cluster D — Framework Roles
+# Audit-findings 0013: Symbol.kind Cluster 27D — Framework Roles
 
 - Date: 2026-05-05 (filed); 2026-05-06 corrections (WI-nitil)
 - Status: All rows PRELIM_RESOLVED — Phase 3 producer migration complete across all 33 in-scope rows. Wave 5 of WI-runod (six PRs across Codeberg #3572 and selfh #162-#166) shipped the framework_role fold for active producers; WI-nitil corrected four assignment-form misses (gRPC + MQ) and added three previously-unregistered values (`grpc_service`, `grpc_servicer`, `grpc_client`); the `phoenix_ipc.py` f-string-form Symbol.kind producer (selfh PR #174) closed the final f-string blind spot. Empirical re-grep finds zero live `Symbol(kind=<value>)` producers across all rows. Values remain on `endpoint_shape` through the Phase 4a deprecation window per ADR-0027 §"Phase 4".
 - 2026-05-06 corrections (WI-nitil): the original literal-grep diagnostic test (`grep -rn 'kind=["\047]<value>["\047]'`) only catches kwarg-form producers like `Symbol(kind="mq_publisher", ...)` and missed assignment-form producers like `kind = "mq_publisher" if ... else "mq_subscriber"` followed by `Symbol(kind=kind, ...)`. Re-sweep with a broader pattern (`kind\s*=\s*["\047]<value>["\047]`) found four assignment-form producers — `grpc_server` and `grpc_stub` at `linkers/grpc.py:660,663`, `mq_publisher` and `mq_subscriber` at `linkers/message_queue.py:410`. Those four rows are corrected to UNRESOLVED below. The other five originally-PRELIM_RESOLVED rows (`ipc_subscriber`, `websocket_emitter`, `websocket_listener`, `rpc`, `service`) re-verified as zero-producer; they retain PRELIM_RESOLVED. Three additional values emitted by the same `linkers/grpc.py` block but absent from the registry — `grpc_service`, `grpc_servicer`, `grpc_client` — are added as new verdict rows below. The L3 producer-coherence linter only flags literal-string kwargs (`Symbol(kind="literal", ...)`) and so cannot catch the assignment-form gap; closing that gap is tracked as a follow-on linter improvement.
-- Closes: WI-habut-diziv-jahuv-gimub-kipus-rosaj-nukol-gujil (Cluster D, ADR-0027 Phase 3) at the verdict-table layer. Producer-side migration ships piecewise as per-framework sub-PRs (Wave 5 of WI-runod schedule), each carrying its own `awaits_bakeoff_validation` tag.
-- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Eighth audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical), 0005 (Cluster B file-shape), 0006 (Cluster G build/config), 0007 (Cluster H domain long-tail), 0009 (Cluster C apex/peer), 0010 (Cluster E edge-label leakage), and 0011 (Cluster F component refs).
+- Closes: WI-habut-diziv-jahuv-gimub-kipus-rosaj-nukol-gujil (Cluster 27D, ADR-0027 Phase 3) at the verdict-table layer. Producer-side migration ships piecewise as per-framework sub-PRs (Wave 5 of WI-runod schedule), each carrying its own `awaits_bakeoff_validation` tag.
+- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Eighth audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster 27A canonical), 0005 (Cluster 27B file-shape), 0006 (Cluster 27G build/config), 0007 (Cluster 27H domain long-tail), 0009 (Cluster 27C apex/peer), 0010 (Cluster 27E edge-label leakage), and 0011 (Cluster 27F component refs).
 
 ## Context
 
-[ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) §"Detailed analysis: per-cluster fold targets" Cluster D is the framework-role cluster of `Symbol.kind`: ~30 values that name **the symbol's participation in a framework pattern** rather than what the symbol *is* in its source language. ADR-0027 §"Resolution" prescribes a uniform fold: each value collapses to a canonical Cluster A construct (`function` or `method` for callables, `interface`/`class` for declarations, `reference` for cross-symbol pointers) plus `meta["framework_role"]=<value>`. ADR-0023 caught the same shape on `Edge.edge_type` for its dispatch / publish / IPC families; this audit applies the parallel `Symbol.kind` resolution.
+[ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) §"Detailed analysis: per-cluster fold targets" Cluster 27D is the framework-role cluster of `Symbol.kind`: ~30 values that name **the symbol's participation in a framework pattern** rather than what the symbol *is* in its source language. ADR-0027 §"Resolution" prescribes a uniform fold: each value collapses to a canonical Cluster 27A construct (`function` or `method` for callables, `interface`/`class` for declarations, `reference` for cross-symbol pointers) plus `meta["framework_role"]=<value>`. ADR-0023 caught the same shape on `Edge.edge_type` for its dispatch / publish / IPC families; this audit applies the parallel `Symbol.kind` resolution.
 
 The 30 values ADR-0027 Phase 1 seeded on `AXIS_ENDPOINT_SHAPE` (registry lines 186–251):
 
@@ -22,7 +22,7 @@ dispatcher, graphql_resolver, graphql_client, http_client, route_mount, route,
 route_include, openapi_operation, abi_call, selector_ref, rpc, service
 ```
 
-`abi_call` is intentionally absent from this audit's verdict list. Audit-findings 0010 sub-case (a) reclassified it from Cluster D into Cluster E and folded it to `kind="call_site"` + `meta["call_kind"]="abi"` — the Solidity ABI emit site names a call expression, not a framework participation. The registry entry stays on `endpoint_shape` through the Phase 4a deprecation window per audit-findings 0010; this doc does not re-file the verdict.
+`abi_call` is intentionally absent from this audit's verdict list. Audit-findings 0010 sub-case (a) reclassified it from Cluster 27D into Cluster 27E and folded it to `kind="call_site"` + `meta["call_kind"]="abi"` — the Solidity ABI emit site names a call expression, not a framework participation. The registry entry stays on `endpoint_shape` through the Phase 4a deprecation window per audit-findings 0010; this doc does not re-file the verdict.
 
 This audit answers two questions:
 
@@ -33,13 +33,13 @@ This audit answers two questions:
 
 ## Methodology
 
-Per [ADR-0027 §"Phase 3" Cluster D](../adr/0027-symbol-kind-language-construct-only.md). Each value's verdict applies the four leakage tests from the [Fundamental Concept Audit playbook](../../.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md). Tests 1 (property derivability) and 4 (mechanism vs. category) are the load-bearing tests for this cluster: every value names a framework-participation property of the symbol, not a syntactic-construct kind, and the participation is derivable from the symbol's edges plus framework metadata.
+Per [ADR-0027 §"Phase 3" Cluster 27D](../adr/0027-symbol-kind-language-construct-only.md). Each value's verdict applies the four leakage tests from the [Fundamental Concept Audit playbook](../../.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md). Tests 1 (property derivability) and 4 (mechanism vs. category) are the load-bearing tests for this cluster: every value names a framework-participation property of the symbol, not a syntactic-construct kind, and the participation is derivable from the symbol's edges plus framework metadata.
 
 The audit's empirical scope is `Symbol(kind=...)` emissions only. The producer count below is the count of `Symbol(kind="<value>", ...)` literal-grep matches across `packages/`, excluding test files and the registry module.
 
 Producer-side migration: each emit site replaces `kind="<value>"` with `kind="function"` (or `"method"`, depending on the site's construct) plus `meta["framework_role"]=<value>`. Three rows take a different canonical: `service` folds to `interface` or `class`; `selector_ref` folds to `reference`; the rest fold to `function`/`method`. The L3 producer-side coherence linter (`scripts/check-producer-axis-coherence`) catches drift at pre-commit.
 
-This audit-findings doc is **doc-only at filing time**: no producer code is migrated in this PR. Per-framework sub-PRs (Wave 5 of WI-runod schedule) ship the producer migration grouped with the parallel ADR-0028 Cluster C framework-dispatch fold for each framework's linker file (per audit-findings 0014). Each sub-PR carries its own `awaits_bakeoff_validation` tag per the validation-tagging discipline.
+This audit-findings doc is **doc-only at filing time**: no producer code is migrated in this PR. Per-framework sub-PRs (Wave 5 of WI-runod schedule) ship the producer migration grouped with the parallel ADR-0028 Cluster 28C framework-dispatch fold for each framework's linker file (per audit-findings 0014). Each sub-PR carries its own `awaits_bakeoff_validation` tag per the validation-tagging discipline.
 
 ## Diagnostic findings
 
@@ -62,7 +62,7 @@ Per-framework PR-groups (Wave 5 of WI-runod) align to these families. Each PR mi
 Twenty-six of the 29 in-scope values fold to `function` or `method` (the choice picked at the producer site by inspecting whether the symbol is a class member). Three values use a different canonical:
 
 - **`service`** → `interface` or `class`. A service declaration (gRPC `service Foo {…}`, Kubernetes `Service`) is a type/interface, not a callable. Per-row choice between `interface` and `class` is producer-site-dependent.
-- **`selector_ref`** → `reference`. The `_ref` suffix names the *use* of a selector at a call site, not the selector definition itself. Same shape as audit-findings 0011 §"Diagnostic findings" #3 caught for `component_ref` — but here the parallel resolution from audit-findings 0010 (DEPRECATE-NO-FOLD on `reference`) does **not** apply, because the registry's `reference` Symbol kind is on Cluster A `language_construct` (an actual cross-symbol pointer in source languages like Rust `&foo`), not the Cluster E edge-label-shadow `reference` that audit-findings 0010 deprecated. The two `reference` values are distinct registry entries with distinct semantics.
+- **`selector_ref`** → `reference`. The `_ref` suffix names the *use* of a selector at a call site, not the selector definition itself. Same shape as audit-findings 0011 §"Diagnostic findings" #3 caught for `component_ref` — but here the parallel resolution from audit-findings 0010 (DEPRECATE-NO-FOLD on `reference`) does **not** apply, because the registry's `reference` Symbol kind is on Cluster 27A `language_construct` (an actual cross-symbol pointer in source languages like Rust `&foo`), not the Cluster 27E edge-label-shadow `reference` that audit-findings 0010 deprecated. The two `reference` values are distinct registry entries with distinct semantics.
 - **`abi_call`** (excluded) → already resolved per audit-findings 0010 sub-case (a): `kind="call_site"` + `meta["call_kind"]="abi"`. Not re-filed here.
 
 ### 3. Five values have zero producers (after 2026-05-06 broader-grep re-sweep)
@@ -73,7 +73,7 @@ Five registry entries have no producers (literal- or assignment-form) in `packag
 ipc_subscriber, websocket_emitter, websocket_listener, rpc, service
 ```
 
-These are forward-looking registry placeholders — values seeded by ADR-0027 Phase 1 because the per-cluster scan found them in earlier code revisions or because the cluster's symmetry suggested them, but no producer currently emits them. For these rows the producer migration is trivially complete (zero edits needed). They ship at status PRELIM_RESOLVED; the registry entry remains on `endpoint_shape` through the Phase 4a deprecation window per ADR-0027 §"Phase 4". Phase 4b prunes the registry entry along with the rest of Cluster D after bakeoff validation clears.
+These are forward-looking registry placeholders — values seeded by ADR-0027 Phase 1 because the per-cluster scan found them in earlier code revisions or because the cluster's symmetry suggested them, but no producer currently emits them. For these rows the producer migration is trivially complete (zero edits needed). They ship at status PRELIM_RESOLVED; the registry entry remains on `endpoint_shape` through the Phase 4a deprecation window per ADR-0027 §"Phase 4". Phase 4b prunes the registry entry along with the rest of Cluster 27D after bakeoff validation clears.
 
 **Filing-time miscount, corrected 2026-05-06 (WI-nitil).** The original list was nine rows: it added `mq_publisher`, `mq_subscriber`, `grpc_server`, `grpc_stub` because the literal-grep diagnostic test (`grep -rn 'kind=["\047]<value>["\047]'`) found no kwarg-form matches. All four have assignment-form producers (`linkers/message_queue.py:410` for the mq pair, `linkers/grpc.py:660,663` for the grpc pair) where the `Symbol(kind=...)` constructor receives a variable, not a literal. The broader pattern `kind\s*=\s*["\047]<value>["\047]` catches them. Their rows below are now UNRESOLVED; producer migration ships in this same WI-nitil PR. Three additional values — `grpc_service`, `grpc_servicer`, `grpc_client` — were emitted by the same `linkers/grpc.py` block but absent from the registry entirely; verdict rows for them are added below and they migrate in the same PR.
 
@@ -340,7 +340,7 @@ verdicts:
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]selector_ref[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Framework participation (ObjC selector reference at a call site). The _ref suffix names the use, not the definition. Fold: kind=reference + meta['framework_role']='selector_ref'. Producer: linkers/swift_objc.py. Note: the registry's reference Symbol kind on Cluster A language_construct is a distinct entry from the Cluster E edge-label-shadow reference deprecated in audit-findings 0010 sub-case (b); this fold targets the Cluster A canonical."
+    rationale: "Framework participation (ObjC selector reference at a call site). The _ref suffix names the use, not the definition. Fold: kind=reference + meta['framework_role']='selector_ref'. Producer: linkers/swift_objc.py. Note: the registry's reference Symbol kind on Cluster 27A language_construct is a distinct entry from the Cluster 27E edge-label-shadow reference deprecated in audit-findings 0010 sub-case (b); this fold targets the Cluster 27A canonical."
   - value: rpc
     verdict: FOLD
     fold_target: function
@@ -363,19 +363,19 @@ verdicts:
 
 ## Migration impact
 
-- **Producer-side this PR:** zero — doc-only filing. Per-framework Phase 3 sub-PRs (Wave 5 of WI-runod schedule) ship the producer migration grouped with the parallel ADR-0028 Cluster C framework-dispatch fold (audit-findings 0014) for each framework's linker file.
+- **Producer-side this PR:** zero — doc-only filing. Per-framework Phase 3 sub-PRs (Wave 5 of WI-runod schedule) ship the producer migration grouped with the parallel ADR-0028 Cluster 28C framework-dispatch fold (audit-findings 0014) for each framework's linker file.
 - **Linker-side this PR:** zero. The L3 producer-side coherence linter (`scripts/check-producer-axis-coherence`) already enforces axis discipline; per-framework PRs use it as the gate.
-- **Registry-side this PR:** zero. The 30 Cluster D registry entries (29 in-scope + `abi_call`) stay on `AXIS_ENDPOINT_SHAPE` through the Phase 4a deprecation window per ADR-0027 §"Phase 4". Phase 4b prunes them piecewise as each framework's `awaits_bakeoff_validation` clears.
+- **Registry-side this PR:** zero. The 30 Cluster 27D registry entries (29 in-scope + `abi_call`) stay on `AXIS_ENDPOINT_SHAPE` through the Phase 4a deprecation window per ADR-0027 §"Phase 4". Phase 4b prunes them piecewise as each framework's `awaits_bakeoff_validation` clears.
 - **Schema-side:** no change. The open enum on `Symbol.kind` already accommodates the additive change. The new `meta["framework_role"]` key is documented in the `Symbol.meta` open-form section of the schema; no per-key registration required at audit-filing time.
 - **Consumer-side:** no immediate change. Consumer enumerations of `Symbol.kind == "<framework_role>"` migrate to `Symbol.kind in {"function","method"} and Symbol.meta.get("framework_role") == "<value>"` in a Phase 4 follow-on (ADR-0027 §"Phase 4b"). This audit does not gate the consumer migration; per-framework sub-PRs may opportunistically migrate consumer call sites that are local to the framework's scope.
 - **Cross-axis coupling:** Wave 5 of WI-runod ships per-framework PR-groups that fold both axes simultaneously. The same linker files emit both Symbol.kind framework_role values (this audit) and Edge.evidence_type framework_dispatch values (audit-findings 0014). Coordinating both folds in one PR per framework halves producer churn vs. shipping the two axes' migrations as separate sweeps.
 
 ## Related
 
-- [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) — declares the `Symbol.kind` axis this audit applies. §"Detailed analysis" Cluster D and §"Phase 3" Cluster D are the load-bearing references; §"Resolution" rule 2 names `meta["framework_role"]` as the fold-residue convention.
+- [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) — declares the `Symbol.kind` axis this audit applies. §"Detailed analysis" Cluster 27D and §"Phase 3" Cluster 27D are the load-bearing references; §"Resolution" rule 2 names `meta["framework_role"]` as the fold-residue convention.
 - [ADR-0024](../adr/0024-axis-declaration-template.md) — the template ADR-0027 instantiates; defines the CANONICAL/FOLD/DEPRECATE-NO-FOLD verdict trichotomy. §"Fold-residue discipline" rule 3 names the recurrence-promotion threshold relevant for `meta["framework_role"]`.
 - [ADR-0023](../adr/0023-edge-type-relationship-not-endpoints.md) — the `Edge.edge_type` precedent for framework-role-leakage cleanup. ADR-0023's dispatch / publish / IPC family deprecations are the structural template this audit's `Symbol.kind` resolution applies on the parallel axis.
-- Audit-findings 0010 — Cluster E sub-case (a) for `abi_call` (excluded from this audit's verdicts; resolved as `kind="call_site"` + `meta["call_kind"]="abi"`).
-- Audit-findings 0011 — Cluster F component-ref pattern, parallel `_ref` suffix shape; the structural template for `selector_ref`'s fold-to-`reference`.
-- Audit-findings 0014 — Cluster C framework-dispatch on `Edge.evidence_type`; the cross-axis companion. Wave 5 per-framework sub-PRs migrate both axes at once.
+- Audit-findings 0010 — Cluster 27E sub-case (a) for `abi_call` (excluded from this audit's verdicts; resolved as `kind="call_site"` + `meta["call_kind"]="abi"`).
+- Audit-findings 0011 — Cluster 27F component-ref pattern, parallel `_ref` suffix shape; the structural template for `selector_ref`'s fold-to-`reference`.
+- Audit-findings 0014 — Cluster 28C framework-dispatch on `Edge.evidence_type`; the cross-axis companion. Wave 5 per-framework sub-PRs migrate both axes at once.
 - WI-runod cross-axis schedule (discussion entry 2026-05-05) — Wave 5 framework-dispatch coordinated pair; this audit closes the verdict-table layer of the Symbol.kind half.

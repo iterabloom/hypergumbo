@@ -1,36 +1,36 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# Audit-findings 0007: Symbol.kind Cluster H — Domain-Specific Long Tail
+# Audit-findings 0007: Symbol.kind Cluster 27H — Domain-Specific Long Tail
 
 - Date: 2026-05-05
 - Status: All rows resolved — 57 CANONICAL rows RESOLVED (53 via Wave 6 PR 2 registry promotion + 3 via Wave 6 PR 4 reclassification of `theorem`/`inductive`/`message` + 1 via Wave 6 PR 6 reclassification of `external_symbol`); 3 DEPRECATE-NO-FOLD rows PRELIM_RESOLVED (`heading`, `model` via Wave 6 PR 4; `unresolved` via Wave 6 PR 6).
-- Closes: WI-nupus-fovor-rataf-momub-natit-hihir-bufas-bukih (Cluster H domain long-tail per-value audit, ADR-0027 Phase 3)
-- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Fourth audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical), 0005 (Cluster B file-shape), and 0006 (Cluster G build/config-shape).
+- Closes: WI-nupus-fovor-rataf-momub-natit-hihir-bufas-bukih (Cluster 27H domain long-tail per-value audit, ADR-0027 Phase 3)
+- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Fourth audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster 27A canonical), 0005 (Cluster 27B file-shape), and 0006 (Cluster 27G build/config-shape).
 
 ## Context
 
-[ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) §"Phase 3" Cluster H is the long tail of `Symbol.kind` values currently parked on `pending_classification` — domain-vocabulary nouns, control-flow constructs, and per-language synthetic kinds emitted by the documentation, template, configuration, query, hardware-description, theorem-prover, and notebook analyzers in `packages/hypergumbo-lang-*`. The ADR predicted (§"Risks") this would be the longest audit in the series and the one most likely to surface separate-axis pressure.
+[ADR-0027](../adr/0027-symbol-kind-language-construct-only.md) §"Phase 3" Cluster 27H is the long tail of `Symbol.kind` values currently parked on `pending_classification` — domain-vocabulary nouns, control-flow constructs, and per-language synthetic kinds emitted by the documentation, template, configuration, query, hardware-description, theorem-prover, and notebook analyzers in `packages/hypergumbo-lang-*`. The ADR predicted (§"Risks") this would be the longest audit in the series and the one most likely to surface separate-axis pressure.
 
-The registry's Cluster H section seeds 61 values. One of them — `structure` — is explicitly noted in the registry as a Cluster C apex/peer fold target (Cluster C audit, WI-rusit per the [WI-runod](../../.agent/tracker/) cross-axis schedule). It is excluded from this audit and left to the cluster-C verdict. The remaining **60 values** are: `section`, `paragraph`, `heading`, `code_block`, `diagram`, `plot`, `yield`, `for_loop`, `conditional`, `block`, `prefix`, `base`, `query`, `entry`, `entity`, `architecture`, `participant`, `state`, `model`, `fragment`, `partial`, `provider`, `local`, `style_block`, `permission`, `keyframes`, `media`, `font_face`, `class_selector`, `id_selector`, `rule_set`, `subdirectory`, `table`, `table_array`, `link`, `label`, `command`, `environment`, `binding`, `id`, `source`, `port`, `output`, `input`, `value`, `pattern`, `subscript`, `signal`, `message`, `data`, `resource`, `event`, `protocol`, `index`, `node`, `inductive`, `theorem`, `playbook`, `external_symbol`, `unresolved`.
+The registry's Cluster 27H section seeds 61 values. One of them — `structure` — is explicitly noted in the registry as a Cluster 27C apex/peer fold target (Cluster 27C audit, WI-rusit per the [WI-runod](../../.agent/tracker/) cross-axis schedule). It is excluded from this audit and left to the cluster-27C verdict. The remaining **60 values** are: `section`, `paragraph`, `heading`, `code_block`, `diagram`, `plot`, `yield`, `for_loop`, `conditional`, `block`, `prefix`, `base`, `query`, `entry`, `entity`, `architecture`, `participant`, `state`, `model`, `fragment`, `partial`, `provider`, `local`, `style_block`, `permission`, `keyframes`, `media`, `font_face`, `class_selector`, `id_selector`, `rule_set`, `subdirectory`, `table`, `table_array`, `link`, `label`, `command`, `environment`, `binding`, `id`, `source`, `port`, `output`, `input`, `value`, `pattern`, `subscript`, `signal`, `message`, `data`, `resource`, `event`, `protocol`, `index`, `node`, `inductive`, `theorem`, `playbook`, `external_symbol`, `unresolved`.
 
-The cluster-H framing question (per WI-nupus and ADR-0027 §"Risks"): are these *language constructs* in their respective DSLs (CSS, SQL, HCL/Terraform, Mermaid, GraphQL, LaTeX, Markdown, BibTeX, gnuplot, Vue, Svelte, Twig, Handlebars, Blade, QML, VHDL, SPARQL, Nix, COBOL, Swift, Objective-C, Elm, F#, R, Ansible YAML, gitignore, …), or do a non-trivial subset leak Cluster D / E shape (`*_handler` framework qualifiers, `*_call` relationship-shaped kinds), warranting per-value FOLD verdicts or a separate axis ADR?
+The cluster-27H framing question (per WI-nupus and ADR-0027 §"Risks"): are these *language constructs* in their respective DSLs (CSS, SQL, HCL/Terraform, Mermaid, GraphQL, LaTeX, Markdown, BibTeX, gnuplot, Vue, Svelte, Twig, Handlebars, Blade, QML, VHDL, SPARQL, Nix, COBOL, Swift, Objective-C, Elm, F#, R, Ansible YAML, gitignore, …), or do a non-trivial subset leak Cluster 27D / 27E shape (`*_handler` framework qualifiers, `*_call` relationship-shaped kinds), warranting per-value FOLD verdicts or a separate axis ADR?
 
-This audit answers (post Wave 6 PR 4 + PR 6 reclassifications — see §"Diagnostic findings" #3 and #4): **57 CANONICAL** (each is a top-level construct in the source language at hand, including the IR pipeline's own pseudo-DSL — the cross-DSL overload pattern reads like `function` or `package` across general-purpose languages, not as a leak), **0 FOLD** (no sub-mode/scope qualifier shapes surfaced once Cluster G's audit absorbed the `task`/`python_task`/`addtask` scope-qualifier shape), and **3 DEPRECATE-NO-FOLD** (1 dead vocabulary with no producer at all — `heading`; 1 ID-string-only synthetic — `model`; 1 registry seed error — `unresolved`, where the producer-side trace at Wave 6 PR 6 showed no `Symbol(kind='unresolved')` emission exists).
+This audit answers (post Wave 6 PR 4 + PR 6 reclassifications — see §"Diagnostic findings" #3 and #4): **57 CANONICAL** (each is a top-level construct in the source language at hand, including the IR pipeline's own pseudo-DSL — the cross-DSL overload pattern reads like `function` or `package` across general-purpose languages, not as a leak), **0 FOLD** (no sub-mode/scope qualifier shapes surfaced once Cluster 27G's audit absorbed the `task`/`python_task`/`addtask` scope-qualifier shape), and **3 DEPRECATE-NO-FOLD** (1 dead vocabulary with no producer at all — `heading`; 1 ID-string-only synthetic — `model`; 1 registry seed error — `unresolved`, where the producer-side trace at Wave 6 PR 6 showed no `Symbol(kind='unresolved')` emission exists).
 
 All rows ship at `UNRESOLVED` status because Phase 3 producer migrations + registry updates have not landed. Wave 6 of the WI-runod cross-axis schedule covers the migration; this document is the precondition for that wave.
 
-**Scope decision (no new ADR).** Per ADR-0027 §"Phase 3" Cluster H, an alternate path was per-language sub-axes (`Symbol.css_construct`, `Symbol.template_construct`, `Symbol.shader_construct`, …). After running the four leakage tests on each of the 60 values, that path is rejected: every CANONICAL value names a *category* of source-language construct in its own DSL, and the cross-language overload is the same shape as `function` appearing in every general-purpose language. No new axis ADR is filed.
+**Scope decision (no new ADR).** Per ADR-0027 §"Phase 3" Cluster 27H, an alternate path was per-language sub-axes (`Symbol.css_construct`, `Symbol.template_construct`, `Symbol.shader_construct`, …). After running the four leakage tests on each of the 60 values, that path is rejected: every CANONICAL value names a *category* of source-language construct in its own DSL, and the cross-language overload is the same shape as `function` appearing in every general-purpose language. No new axis ADR is filed.
 
-The "Cluster D/E shape leakage" handoff hypothesis (handler / signal / model / entity reading as framework qualifiers rather than constructs) was tested and **largely refuted at the producer level**:
+The "Cluster 27D/27E shape leakage" handoff hypothesis (handler / signal / model / entity reading as framework qualifiers rather than constructs) was tested and **largely refuted at the producer level**:
 
 - `signal` is emitted by `qml.py` for QML's `signal` keyword — a top-level QML language declaration, not a `*_signal` framework-role qualifier. **CANONICAL.**
 - `entity` is emitted by `vhdl.py` for VHDL's `entity` keyword (a hardware-interface declaration), not a `*_entity` framework-role qualifier. **CANONICAL.**
 - `model` is emitted only as a `kind=` argument to `compute_stable_id` and `make_symbol_id` in `prisma.py:120` — both are *ID-construction* call sites; the actual `Symbol(kind=…)` field at the same site is `kind="class"` (line 122). **DEPRECATE-NO-FOLD on the Symbol.kind axis** because no Symbol is ever emitted with `kind="model"`. (The `model` token persists in the symbol_id format string for stable identity; this audit does not change that.)
-- `event` is emitted by `svelte.py` for Svelte's `on:event` event-dispatch declaration (not a `*_event` framework qualifier). **CANONICAL.** (Note: the related Cluster D values `event_publisher`, `event_subscriber`, `event_handler` are already on `endpoint_shape` and queued for Wave 5 framework-dispatch fold per ADR-0027.)
+- `event` is emitted by `svelte.py` for Svelte's `on:event` event-dispatch declaration (not a `*_event` framework qualifier). **CANONICAL.** (Note: the related Cluster 27D values `event_publisher`, `event_subscriber`, `event_handler` are already on `endpoint_shape` and queued for Wave 5 framework-dispatch fold per ADR-0027.)
 - `handler` does not appear in the registry on `pending_classification` — it's emitted at non-Symbol surfaces and is being absorbed by Wave 5's framework-dispatch fold. Out of scope here.
 
 ## Methodology
 
-The CANONICAL / FOLD / DEPRECATE-NO-FOLD trichotomy and the four-leakage-test diagnostic procedure are defined in [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). This document applies that methodology to the Cluster H subset of `Symbol.kind` values.
+The CANONICAL / FOLD / DEPRECATE-NO-FOLD trichotomy and the four-leakage-test diagnostic procedure are defined in [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). This document applies that methodology to the Cluster 27H subset of `Symbol.kind` values.
 
 The `diagnostic_test` field for each row is a one-line Python invocation that asserts the value is currently present on the `pending_classification` axis (the Phase 1 seed home). The `expect: exit_code:0` shape lets a future audit runner verify the row's claim that the value is still pending migration.
 
@@ -97,8 +97,8 @@ Two values (`external_symbol`, `unresolved`) appear in the registry as pipeline-
 
 **Verdict (Wave 6 PR 6, replacing the original deferred verdict):**
 
-- `external_symbol` — **CANONICAL**, status RESOLVED. Promoted to `language_construct` in `symbol_kinds.py` as a pipeline-DSL top-level construct, parallel to other Cluster H domain-DSL constructs (`playbook`, `participant`, `fragment`). Consumer behavior is unchanged because consumers never queried the kind value.
-- `unresolved` — **DEPRECATE-NO-FOLD**, status PRELIM_RESOLVED. Registry seed error (no producer); advanced to `endpoint_shape` for symmetry with the rest of Cluster H's vacuous DEPRECATE-NO-FOLD entries. The previously-anticipated `Symbol.is_resolved` follow-on ADR is **withdrawn** — the trace showed there is no leak to absorb. If a future situation surfaces multiple Symbol-side resolution-status producers, that's the signal to revisit; until then, ADR-0028's `Edge.is_resolved` covers the only resolution-status surface that exists.
+- `external_symbol` — **CANONICAL**, status RESOLVED. Promoted to `language_construct` in `symbol_kinds.py` as a pipeline-DSL top-level construct, parallel to other Cluster 27H domain-DSL constructs (`playbook`, `participant`, `fragment`). Consumer behavior is unchanged because consumers never queried the kind value.
+- `unresolved` — **DEPRECATE-NO-FOLD**, status PRELIM_RESOLVED. Registry seed error (no producer); advanced to `endpoint_shape` for symmetry with the rest of Cluster 27H's vacuous DEPRECATE-NO-FOLD entries. The previously-anticipated `Symbol.is_resolved` follow-on ADR is **withdrawn** — the trace showed there is no leak to absorb. If a future situation surfaces multiple Symbol-side resolution-status producers, that's the signal to revisit; until then, ADR-0028's `Edge.is_resolved` covers the only resolution-status surface that exists.
 
 ### 4. Dead vocabulary
 
@@ -124,11 +124,11 @@ Wave 6 PR 4 reclassifies all three values as **CANONICAL** — top-level constru
 
 The cross-DSL overload pattern (Lean `theorem` vs TLA+ `theorem`) reads like the cross-language `function` overload — same general concept across multiple theorem-prover tongues, not a leak. Promoted to `language_construct` in `symbol_kinds.py`.
 
-The `message_handler` / `message_sender` peer endpoint_shape kinds remain on a separate surface (Cluster D framework_role fold per audit-findings 0013); promoting `message` does not affect them.
+The `message_handler` / `message_sender` peer endpoint_shape kinds remain on a separate surface (Cluster 27D framework_role fold per audit-findings 0013); promoting `message` does not affect them.
 
 ### 5. ID-string-only synthetic kinds
 
-One value (`model`) appears in the registry but is emitted only at `prisma.py:120` as the `kind=` argument to `compute_stable_id(node, kind="model")` and `make_symbol_id(…, name, "model")` — both are *ID-construction* call sites. The actual `Symbol(kind=…)` field at the same emit site (line 122) is `kind="class"` — the prisma analyzer folds Prisma `model` blocks to the canonical Cluster A `class` kind for downstream consumption.
+One value (`model`) appears in the registry but is emitted only at `prisma.py:120` as the `kind=` argument to `compute_stable_id(node, kind="model")` and `make_symbol_id(…, name, "model")` — both are *ID-construction* call sites. The actual `Symbol(kind=…)` field at the same emit site (line 122) is `kind="class"` — the prisma analyzer folds Prisma `model` blocks to the canonical Cluster 27A `class` kind for downstream consumption.
 
 The `model` token therefore persists in the *symbol_id format string* (the persisted ID has `…:Foo:model` as its last components) for stable identity / round-trip purposes, but no Symbol is ever emitted with `Symbol.kind == "model"`.
 
@@ -253,7 +253,7 @@ verdicts:
     diagnostic_test:
       cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"entity\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "VHDL entity keyword declares a hardware-interface — a top-level VHDL construct. NOT a Cluster D framework qualifier (despite handoff hypothesis). Promote to language_construct."
+    rationale: "VHDL entity keyword declares a hardware-interface — a top-level VHDL construct. NOT a Cluster 27D framework qualifier (despite handoff hypothesis). Promote to language_construct."
   - value: architecture
     verdict: CANONICAL
     fold_target: null
@@ -509,7 +509,7 @@ verdicts:
     diagnostic_test:
       cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"signal\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "QML 'signal foo()' declaration is a top-level QML language construct. NOT a Cluster D framework qualifier (despite handoff hypothesis — the producer is a real language keyword). Promote to language_construct."
+    rationale: "QML 'signal foo()' declaration is a top-level QML language construct. NOT a Cluster 27D framework qualifier (despite handoff hypothesis — the producer is a real language keyword). Promote to language_construct."
   - value: data
     verdict: CANONICAL
     fold_target: null
@@ -533,7 +533,7 @@ verdicts:
     diagnostic_test:
       cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"event\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "Svelte on:event event-dispatch declaration is a top-level Svelte construct. NOT a Cluster D framework qualifier (the related event_publisher / event_subscriber / event_handler endpoint-shape values are already on endpoint_shape and out-of-scope here). Promote to language_construct."
+    rationale: "Svelte on:event event-dispatch declaration is a top-level Svelte construct. NOT a Cluster 27D framework qualifier (the related event_publisher / event_subscriber / event_handler endpoint-shape values are already on endpoint_shape and out-of-scope here). Promote to language_construct."
   - value: protocol
     verdict: CANONICAL
     fold_target: null
@@ -613,7 +613,7 @@ verdicts:
     diagnostic_test:
       cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"external_symbol\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "IR-pipeline boundary pseudo-symbol (single producer at ir.py:959 via create_boundary_nodes). Reclassified Wave 6 PR 6 — re-trace showed (1) no consumer reads kind=='external_symbol' as a discriminator (consumers query is_external_boundary(sym) which checks meta['external_boundary']), (2) the kind is a label not a load-bearing classifier, and (3) ADR-0024 §'Fold-residue discipline' rule 3's recurrence threshold (≥3 distinct values OR ≥2 producer modules) is not met (1 producer, 0 consumer reads). Promoted to language_construct as a pipeline-DSL top-level construct, parallel to other Cluster H domain-DSL constructs (playbook, participant, fragment)."
+    rationale: "IR-pipeline boundary pseudo-symbol (single producer at ir.py:959 via create_boundary_nodes). Reclassified Wave 6 PR 6 — re-trace showed (1) no consumer reads kind=='external_symbol' as a discriminator (consumers query is_external_boundary(sym) which checks meta['external_boundary']), (2) the kind is a label not a load-bearing classifier, and (3) ADR-0024 §'Fold-residue discipline' rule 3's recurrence threshold (≥3 distinct values OR ≥2 producer modules) is not met (1 producer, 0 consumer reads). Promoted to language_construct as a pipeline-DSL top-level construct, parallel to other Cluster 27H domain-DSL constructs (playbook, participant, fragment)."
   - value: unresolved
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
@@ -632,18 +632,18 @@ Wave 6 of the [WI-runod](../../.agent/tracker/) cross-axis Phase 3 sequencing sc
 
 2. **Boundary-pseudo-symbol resolution (deferred PR pending follow-on ADR):** the two `external_symbol` / `unresolved` rows do not migrate in Wave 6. They wait on a follow-on ADR (parallel to ADR-0028) that decides whether `Symbol` deserves an `is_resolved` sibling field for boundary-symbol resolution status. Once that ADR lands, this audit's two DEPRECATE-NO-FOLD rows resolve to either FOLD (if the sibling field ships) or CANONICAL (if it doesn't). Tracked at the parent ADR-0027.
 
-3. **No per-producer FOLD migration in this cluster.** Unlike Cluster B (10 FOLD rows) or Cluster G (5 FOLD rows), no Cluster H value carries a sub-mode / scope / framework qualifier that needs to fold to a sibling apex. The cluster is empirically clean once the dead vocabulary and ID-string-only synthetic are pruned.
+3. **No per-producer FOLD migration in this cluster.** Unlike Cluster 27B (10 FOLD rows) or Cluster 27G (5 FOLD rows), no Cluster 27H value carries a sub-mode / scope / framework qualifier that needs to fold to a sibling apex. The cluster is empirically clean once the dead vocabulary and ID-string-only synthetic are pruned.
 
-This is the largest single-cluster registry promotion in the ADR-0027 series (52 of ~100 originally-pending values). After Wave 6, only Cluster C (apex/peer overloads, WI-rusit) and the deferred boundary-pseudo rows remain on `pending_classification`; Clusters D/E continue to migrate per Waves 4-5.
+This is the largest single-cluster registry promotion in the ADR-0027 series (52 of ~100 originally-pending values). After Wave 6, only Cluster 27C (apex/peer overloads, WI-rusit) and the deferred boundary-pseudo rows remain on `pending_classification`; Clusters D/E continue to migrate per Waves 4-5.
 
 ## Related
 
-- [ADR-0027: Symbol.kind Names the Source-Language Syntactic Construct](../adr/0027-symbol-kind-language-construct-only.md) — the originating axis declaration. §"Phase 3" Cluster H is the scope this audit covers.
+- [ADR-0027: Symbol.kind Names the Source-Language Syntactic Construct](../adr/0027-symbol-kind-language-construct-only.md) — the originating axis declaration. §"Phase 3" Cluster 27H is the scope this audit covers.
 - [ADR-0028: Edge.evidence_type Names the Inference Pathway](../adr/0028-evidence-type-inference-pathway-only.md) — the Edge.is_resolved sibling-field pattern referenced in §"Diagnostic findings" #5 for the boundary-pseudo-symbol resolution-status question.
 - [ADR-0024: Axis Declaration Template](../adr/0024-axis-declaration-template.md) — §"Family-audit verdict methodology" defines the verdict trichotomy applied here; §"Fold-residue discipline" rule 3 defines the recurrence-promotion threshold the (intentionally empty) Wave 6 meta keys would otherwise trigger.
-- [Audit-findings 0003](0003-symbol-kind-cluster-a-language-constructs.md) — sibling Cluster A audit on the same axis. The CANONICAL promotions named here will join 0003's seed once Wave 6 ships.
-- [Audit-findings 0005](0005-symbol-kind-cluster-b-file-shape.md) — sibling Cluster B audit; same fold-pattern shape (CANONICAL + DEPRECATE-NO-FOLD) but with a non-trivial FOLD subset. Cluster H surfaced no FOLD rows — reflective of the long-tail values being mostly first-class language constructs in their respective DSLs rather than framework-qualified variants.
-- [Audit-findings 0006](0006-symbol-kind-cluster-g-build-config-shape.md) — sibling Cluster G audit; absorbed several values originally listed in Cluster H scope (`task`, `python_task`, `addtask`).
+- [Audit-findings 0003](0003-symbol-kind-cluster-a-language-constructs.md) — sibling Cluster 27A audit on the same axis. The CANONICAL promotions named here will join 0003's seed once Wave 6 ships.
+- [Audit-findings 0005](0005-symbol-kind-cluster-b-file-shape.md) — sibling Cluster 27B audit; same fold-pattern shape (CANONICAL + DEPRECATE-NO-FOLD) but with a non-trivial FOLD subset. Cluster 27H surfaced no FOLD rows — reflective of the long-tail values being mostly first-class language constructs in their respective DSLs rather than framework-qualified variants.
+- [Audit-findings 0006](0006-symbol-kind-cluster-g-build-config-shape.md) — sibling Cluster 27G audit; absorbed several values originally listed in Cluster 27H scope (`task`, `python_task`, `addtask`).
 - [`docs/audits/README.md`](README.md) — format spec.
 - WI-runod (cross-axis Phase 3 sequencing schedule) — this document is Wave 1 in the schedule; Wave 6 acts on its verdicts.
-- WI-rusit (Cluster C apex/peer fold, Wave 4) — covers the `structure` value (apex/peer of `struct`) explicitly excluded from this audit's scope.
+- WI-rusit (Cluster 27C apex/peer fold, Wave 4) — covers the `structure` value (apex/peer of `struct`) explicitly excluded from this audit's scope.
