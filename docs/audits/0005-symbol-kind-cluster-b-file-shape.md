@@ -2,7 +2,7 @@
 # Audit-findings 0005: Symbol.kind Cluster B — File-Shape and Package-Shape Entities
 
 - Date: 2026-05-05
-- Status: Mixed — 6 CANONICAL rows RESOLVED via Wave 6 PR 1 registry promotion (file, library, package, executable, program, project moved from `pending_classification` to `language_construct`); 11 FOLD/DEPRECATE-NO-FOLD rows remain UNRESOLVED pending subsequent Wave 6 PRs (producer migrations for the framework-qualified file representations, plus tsconfig DEPRECATE-NO-FOLD).
+- Status: Mixed — 6 CANONICAL rows RESOLVED via Wave 6 PR 1 registry promotion (file, library, package, executable, program, project moved from `pending_classification` to `language_construct`); 11 FOLD/DEPRECATE-NO-FOLD rows now PRELIM_RESOLVED via Wave 6 PR 3 (producer migrations + registry move from `pending_classification` to `endpoint_shape`).
 - Closes: WI-gajob-hibod-talop-lofik-valuv-tumak-bifad-kopod (Cluster B file-shape entities: separate-axis vs canonical, ADR-0027 Phase 3)
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Second audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical).
 
@@ -109,89 +109,89 @@ verdicts:
   - value: module_file
     verdict: FOLD
     fold_target: file
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"module_file\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"module_file\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "JS module-file marker. Structurally a kind=file with module-resolution metadata. Fold to file + meta['module_system']='esm' (or 'commonjs')."
   - value: component_file
     verdict: FOLD
     fold_target: file
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"component_file\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"component_file\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Vue / Svelte / Astro single-file component. Structurally a kind=file with framework metadata. Fold to file + meta['component_framework']='vue' (or 'svelte', etc.)."
   - value: npm_package
     verdict: FOLD
     fold_target: package
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"npm_package\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"npm_package\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "npm-ecosystem qualifier on package. Fold to package + meta['package_ecosystem']='npm'."
   - value: composer_package
     verdict: FOLD
     fold_target: package
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"composer_package\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"composer_package\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "PHP Composer-ecosystem qualifier on package. Fold to package + meta['package_ecosystem']='composer'."
   - value: main_entry
     verdict: FOLD
     fold_target: file
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"main_entry\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"main_entry\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "package.json 'main' field — declares the role of a file (entry point), not a category. Fold to file + meta['entry_role']='main'."
   - value: library_export
     verdict: FOLD
     fold_target: export
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"library_export\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"library_export\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "JS/TS library-level export declaration. The 'library' qualifier is a scope marker; the construct is export. Fold to export + meta['export_scope']='library'."
   - value: export_entry
     verdict: FOLD
     fold_target: export
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"export_entry\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"export_entry\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "package.json exports-map entry. Structurally an export with package.json metadata. Fold to export + meta['export_source']='package_exports_map'."
   - value: wasm_module
     verdict: FOLD
     fold_target: module
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"wasm_module\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"wasm_module\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "wasm-bindgen-emitted wasm module. Structurally a module with wasm-compilation metadata. Fold to module + meta['compilation_target']='wasm'."
   - value: wasm_import
     verdict: FOLD
     fold_target: import
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"wasm_import\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"wasm_import\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "wasm-bindgen import declaration. Structurally an import with wasm-target metadata. Fold to import + meta['compilation_target']='wasm'."
   - value: script
     verdict: FOLD
     fold_target: file
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"script\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"script\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "pyproject.toml [project.scripts] / package.json scripts entries — file with executable-script role. Fold to file + meta['entry_role']='script'."
   - value: tsconfig
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"tsconfig\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"tsconfig\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Single-purpose marker for tsconfig.json — redundant with the v4.0.0 is_config_file boolean. Producer drops the kind specialisation; consumer queries is_config_file + path.endswith('tsconfig.json') or meta['config_format']='tsconfig'."
 ```

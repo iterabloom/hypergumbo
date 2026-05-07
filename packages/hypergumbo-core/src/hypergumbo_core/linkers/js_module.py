@@ -753,20 +753,29 @@ def link_js_modules(
 
             resolved_str = str(resolved)
 
-            # Get or create module_file symbol
+            # Get or create module-file symbol. Wave 6 PR 3 fold per
+            # audit-findings 0005: kind="file" + meta["module_system"]
+            # ("esm" for .mjs/.ts/default, "commonjs" for .cjs). The ID
+            # suffix retains the legacy "module_file" literal to preserve
+            # stable_id contracts and existing test fixtures.
             if rel_path not in module_file_cache:
                 sym_id = _make_module_file_id(rel_path, lang)
+                ext = resolved.suffix.lower()
+                if ext == ".cjs":
+                    module_system = "commonjs"
+                else:
+                    module_system = "esm"
                 mod_sym = Symbol(
                     id=sym_id,
                     stable_id=sym_id,
                     name=resolved.stem,
-                    kind="module_file",
+                    kind="file",
                     language=lang,
                     path=rel_path,
                     span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    meta={},
+                    meta={"module_system": module_system},
                 )
                 module_file_cache[rel_path] = mod_sym
                 new_symbols.append(mod_sym)
@@ -816,13 +825,16 @@ def link_js_modules(
                     id=pkg_id,
                     stable_id=pkg_id,
                     name=pkg_name,
-                    kind="npm_package",
+                    kind="package",
                     language=lang,
                     path="",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    meta={"package_name": pkg_name},
+                    meta={
+                        "package_name": pkg_name,
+                        "package_ecosystem": "npm",
+                    },
                     supply_chain_tier=3,
                     supply_chain_reason="npm_package (third-party dependency)",
                 )

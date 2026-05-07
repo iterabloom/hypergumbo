@@ -119,7 +119,7 @@ my-tool = "mypackage.tool:run"
     result = analyze_toml_files(tmp_path)
 
     # Should detect script entry points
-    scripts = [s for s in result.symbols if s.kind == "script"]
+    scripts = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("entry_role") == "script"]
     assert len(scripts) >= 2
 
     my_cli = next((s for s in scripts if s.name == "my-cli"), None)

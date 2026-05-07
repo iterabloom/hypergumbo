@@ -129,7 +129,7 @@ class TestPackageJsonProcessing:
 }
 """)
         result = analyze_json_files(tmp_path)
-        scripts = [s for s in result.symbols if s.kind == "script"]
+        scripts = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("entry_role") == "script"]
 
         assert len(scripts) >= 3
         assert any(s.name == "build" for s in scripts)
@@ -193,7 +193,7 @@ class TestTsconfigProcessing:
 }
 """)
         result = analyze_json_files(tmp_path)
-        tsconfigs = [s for s in result.symbols if s.kind == "tsconfig"]
+        tsconfigs = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("config_format") == "tsconfig"]
 
         assert len(tsconfigs) >= 1
 
@@ -229,7 +229,7 @@ class TestComposerJsonProcessing:
 }
 """)
         result = analyze_json_files(tmp_path)
-        packages = [s for s in result.symbols if s.kind == "composer_package"]
+        packages = [s for s in result.symbols if s.kind == "package" and s.meta and s.meta.get("package_ecosystem") == "composer"]
 
         assert len(packages) >= 1
         assert any(p.name == "vendor/my-package" for p in packages)

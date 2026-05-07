@@ -543,7 +543,8 @@ class TestWasmBindgenSyntheticSymbols:
         for edge in result.edges:
             assert edge.src in sym_by_id
             sym = sym_by_id[edge.src]
-            assert sym.kind == "wasm_import"
+            assert sym.kind == "import"
+            assert sym.meta.get("compilation_target") == "wasm"
             assert sym.language == "typescript"
 
     def test_synthetic_symbol_has_correct_fields(self, tmp_path: Path) -> None:
@@ -560,10 +561,11 @@ class TestWasmBindgenSyntheticSymbols:
         assert len(result.symbols) == 1
         sym = result.symbols[0]
         assert sym.name == "greet"
-        assert sym.kind == "wasm_import"
+        assert sym.kind == "import"
+        assert sym.meta.get("compilation_target") == "wasm"
         assert sym.language == "typescript"
         assert sym.canonical_name == "import { greet }"
-        assert sym.meta == {"wasm_export": "greet"}
+        assert sym.meta == {"wasm_export": "greet", "compilation_target": "wasm"}
         assert sym.fingerprint is not None
         assert len(sym.fingerprint) == 16
         # Tier 2 prevents _classify_symbols from reclassifying to tier 4
@@ -597,7 +599,8 @@ class TestWasmBindgenSyntheticSymbols:
         ctx = LinkerContext(repo_root=tmp_path, symbols=[js_sym, rust_sym])
         result = run_linker("wasm_bindgen", ctx)
         assert len(result.symbols) == 1
-        assert result.symbols[0].kind == "wasm_import"
+        assert result.symbols[0].kind == "import"
+        assert result.symbols[0].meta.get("compilation_target") == "wasm"
 
 
 class TestWasmBindgenRegistry:
@@ -735,7 +738,8 @@ class TestWasmDynamicLoading:
         assert len(edges) == 1
         assert edges[0].edge_type == "imports"
         assert len(symbols) == 1
-        assert symbols[0].kind == "wasm_module"
+        assert symbols[0].kind == "module"
+        assert symbols[0].meta.get("compilation_target") == "wasm"
         assert "rotate.wasm" in symbols[0].name
 
     def test_emscripten_module_detected(self, tmp_path: Path) -> None:
@@ -900,5 +904,5 @@ class TestWasmDynamicLoading:
 
         wasm_load_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(wasm_load_edges) == 1
-        wasm_module_syms = [s for s in result.symbols if s.kind == "wasm_module"]
+        wasm_module_syms = [s for s in result.symbols if s.kind == "module" and s.meta and s.meta.get("compilation_target") == "wasm"]
         assert len(wasm_module_syms) == 1

@@ -2124,6 +2124,38 @@ class TestJSXRouteComponentLinking:
         assert len(result.edges) == 1
         assert result.edges[0].dst == handler.id
 
+    def test_jsx_route_links_to_post_fold_module_file(self) -> None:
+        """Wave 6 PR 3 fold: post-fold ``kind='file'`` + ``meta['module_system']``
+        symbol matches as a component (dual-shape coverage of route_handler.is_component).
+        """
+        route = Symbol(
+            id="javascript:src/App.tsx:20-20:GET /drop:route",
+            name="GET /drop",
+            kind="function",
+            language="javascript",
+            path="src/App.tsx",
+            span=Span(start_line=20, end_line=20, start_col=0, end_col=50),
+            meta={"route_path": "/drop", "http_method": "GET", "handler_ref": "DropStage", "framework_role": "route"},
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        handler = Symbol(
+            id="javascript:src/DropStage.tsx:module_file:1:DropStage",
+            name="DropStage",
+            kind="file",
+            language="javascript",
+            path="src/DropStage.tsx",
+            span=Span(start_line=1, end_line=100, start_col=0, end_col=0),
+            meta={"module_system": "esm"},
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
     def test_jsx_route_suffix_component_match(self) -> None:
         """Route handler_ref='ContentCDN' matches 'ContentCDNComponent' symbol."""
         route = Symbol(

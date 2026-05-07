@@ -255,6 +255,28 @@ class TestLinkJsModules:
             origin_run_id="test-run",
         )
 
+    def test_cjs_import_marks_module_system_commonjs(self, repo_root: Path) -> None:
+        """Wave 6 PR 3 fold: .cjs extension resolves module_system='commonjs'."""
+        # Add a .cjs file alongside the standard fixture's utils.js
+        (repo_root / "src" / "legacy.cjs").write_text("module.exports = {}")
+        app_path = str(repo_root / "src" / "app.js")
+        file_sym = self._make_file_symbol(app_path)
+        import_edge = self._make_import_edge(file_sym.id, "./legacy.cjs")
+
+        utils_path = str(repo_root / "src" / "legacy.cjs")
+        helper_fn = self._make_function_symbol(utils_path, "helper")
+
+        result = link_js_modules(
+            repo_root=repo_root,
+            symbols=[file_sym, helper_fn],
+            edges=[import_edge],
+        )
+
+        assert len(result.symbols) >= 1
+        module_file = result.symbols[0]
+        assert module_file.kind == "file"
+        assert module_file.meta.get("module_system") == "commonjs"
+
     def test_resolves_relative_import(self, repo_root: Path) -> None:
         """./utils import from src/app.js resolves to src/utils.js."""
         app_path = str(repo_root / "src" / "app.js")
@@ -274,7 +296,8 @@ class TestLinkJsModules:
         # Should create: module_file symbol + module_imports edge + module_exports edge
         assert len(result.symbols) >= 1
         module_file = result.symbols[0]
-        assert module_file.kind == "module_file"
+        assert module_file.kind == "file"
+        assert module_file.meta.get("module_system") in ("esm", "commonjs")
         assert "utils.js" in module_file.path
 
         # Should have module_imports edge (file -> module_file)
@@ -306,7 +329,7 @@ class TestLinkJsModules:
             edges=[import_edge],
         )
 
-        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        module_files = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("module_system")]
         assert len(module_files) == 1
         assert "lib/index.js" in module_files[0].path
 
@@ -342,7 +365,7 @@ class TestLinkJsModules:
             edges=[import_edge],
         )
 
-        npm_packages = [s for s in result.symbols if s.kind == "npm_package"]
+        npm_packages = [s for s in result.symbols if s.kind == "package" and s.meta and s.meta.get("package_ecosystem") == "npm"]
         assert len(npm_packages) == 1
         assert npm_packages[0].name == "lodash"
         assert npm_packages[0].supply_chain_tier == 3
@@ -364,7 +387,7 @@ class TestLinkJsModules:
             edges=[import_edge],
         )
 
-        npm_packages = [s for s in result.symbols if s.kind == "npm_package"]
+        npm_packages = [s for s in result.symbols if s.kind == "package" and s.meta and s.meta.get("package_ecosystem") == "npm"]
         assert len(npm_packages) == 1
         assert npm_packages[0].name == "@vue/test-utils"
         assert npm_packages[0].supply_chain_tier == 3
@@ -444,7 +467,7 @@ class TestLinkJsModules:
         )
 
         # Only one module_file symbol for utils.js
-        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        module_files = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("module_system")]
         assert len(module_files) == 1
 
         # Two module_imports edges (one from each importing file)
@@ -517,7 +540,7 @@ class TestLinkJsModules:
         )
 
         # Should still resolve via ID parsing fallback
-        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        module_files = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("module_system")]
         assert len(module_files) == 1
         module_imports = [e for e in result.edges if e.edge_type == "imports"]
         assert len(module_imports) == 1
@@ -536,7 +559,7 @@ class TestLinkJsModules:
             edges=[import_edge],
         )
 
-        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        module_files = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("module_system")]
         assert len(module_files) == 1
         assert module_files[0].path.endswith("Modal.vue")
 
@@ -557,7 +580,7 @@ class TestLinkJsModules:
             edges=[import_edge],
         )
 
-        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        module_files = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("module_system")]
         assert len(module_files) == 1
         assert module_files[0].path.endswith("types.ts")
 
@@ -601,7 +624,7 @@ class TestLinkerRegistryIntegration:
         result = link_js_module(ctx)
         assert result.run is not None
         # Should resolve the import
-        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        module_files = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("module_system")]
         assert len(module_files) == 1
 
     def test_activation_requires_js_or_ts(self) -> None:
@@ -759,7 +782,7 @@ class TestEdgeCases:
             edges=[edge],
         )
 
-        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        module_files = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("module_system")]
         assert len(module_files) == 1
         # Path should be absolute since it's outside repo_root
         assert module_files[0].path.startswith("/")
@@ -1240,7 +1263,7 @@ class TestAliasIntegration:
             edges=[import_edge],
         )
 
-        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        module_files = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("module_system")]
         assert len(module_files) == 1
         assert "utils.ts" in module_files[0].path
 
@@ -1277,12 +1300,12 @@ class TestAliasIntegration:
             edges=[import_edge],
         )
 
-        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        module_files = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("module_system")]
         assert len(module_files) == 1
         assert "Header.vue" in module_files[0].path
 
         # Should NOT create npm_package for 'dashboard'
-        npm_packages = [s for s in result.symbols if s.kind == "npm_package"]
+        npm_packages = [s for s in result.symbols if s.kind == "package" and s.meta and s.meta.get("package_ecosystem") == "npm"]
         assert len(npm_packages) == 0
 
     def test_unresolved_alias_falls_to_npm(self, tmp_path: Path) -> None:
@@ -1298,7 +1321,7 @@ class TestAliasIntegration:
             edges=[import_edge],
         )
 
-        npm_packages = [s for s in result.symbols if s.kind == "npm_package"]
+        npm_packages = [s for s in result.symbols if s.kind == "package" and s.meta and s.meta.get("package_ecosystem") == "npm"]
         assert len(npm_packages) == 1
         assert npm_packages[0].name == "lodash"
 
@@ -1588,12 +1611,12 @@ class TestMonorepoIntegration:
             edges=[import_edge],
         )
 
-        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        module_files = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("module_system")]
         assert len(module_files) == 1
         assert "Button.tsx" in module_files[0].path
 
         # Should NOT be treated as npm_package
-        npm = [s for s in result.symbols if s.kind == "npm_package"]
+        npm = [s for s in result.symbols if s.kind == "package" and s.meta and s.meta.get("package_ecosystem") == "npm"]
         assert len(npm) == 0
 
         module_imports = [e for e in result.edges if e.edge_type == "imports"]
@@ -1639,13 +1662,13 @@ class TestMonorepoIntegration:
             edges=[fe_edge, be_edge],
         )
 
-        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        module_files = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("module_system")]
         assert len(module_files) == 2
         paths = {m.path for m in module_files}
         assert any("utils.ts" in p for p in paths)
         assert any("db.ts" in p for p in paths)
 
-        npm = [s for s in result.symbols if s.kind == "npm_package"]
+        npm = [s for s in result.symbols if s.kind == "package" and s.meta and s.meta.get("package_ecosystem") == "npm"]
         assert len(npm) == 0
 
 
@@ -1682,7 +1705,7 @@ class TestNonJsImportsSkipped:
         )
 
         # No npm_package nodes should be created for Rust crate imports
-        npm = [s for s in result.symbols if s.kind == "npm_package"]
+        npm = [s for s in result.symbols if s.kind == "package" and s.meta and s.meta.get("package_ecosystem") == "npm"]
         assert len(npm) == 0
         # No new edges either
         assert len(result.edges) == 0

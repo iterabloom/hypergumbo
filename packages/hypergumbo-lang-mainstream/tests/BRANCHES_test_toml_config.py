@@ -210,7 +210,7 @@ name = "mypackage"
 mycli = "mypackage.cli:main"
 """)
         result = analyze_toml_files(tmp_path)
-        scripts = [s for s in result.symbols if s.kind == "script"]
+        scripts = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("entry_role") == "script"]
 
         assert len(scripts) >= 1
         script = scripts[0]

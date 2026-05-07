@@ -237,7 +237,10 @@ def _process_scripts(
                 end_line = child.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, end_line, script_name, "script")
 
-                meta: dict = {"script_name": script_name}
+                meta: dict = {
+                    "script_name": script_name,
+                    "entry_role": "script",
+                }
                 if command:
                     meta["command"] = command
 
@@ -247,7 +250,7 @@ def _process_scripts(
                     shape_id=None,
                     canonical_name=f"npm run {script_name}",
                     fingerprint=hashlib.sha256(source[child.start_byte:child.end_byte]).hexdigest()[:16],
-                    kind="script",
+                    kind="file",
                     name=script_name,
                     path=rel_path,
                     language="json",
@@ -412,7 +415,7 @@ def _process_main_entry(
         shape_id=None,
         canonical_name=entry_name,
         fingerprint=hashlib.sha256(source[main_node.start_byte:main_node.end_byte]).hexdigest()[:16],
-        kind="main_entry",
+        kind="file",
         name=entry_name,
         path=rel_path,
         language="json",
@@ -423,7 +426,7 @@ def _process_main_entry(
             end_col=main_node.end_point[1],
         ),
         origin=PASS_ID,
-        meta={"path": main_path},
+        meta={"path": main_path, "entry_role": "main"},
     )
     symbols.append(sym)
 
@@ -526,7 +529,7 @@ def _process_exports(
                 fingerprint=hashlib.sha256(
                     source[exports_node.start_byte:exports_node.end_byte],
                 ).hexdigest()[:16],
-                kind="export_entry",
+                kind="export",
                 name=entry_name,
                 path=rel_path,
                 language="json",
@@ -537,7 +540,11 @@ def _process_exports(
                     end_col=exports_node.end_point[1],
                 ),
                 origin=PASS_ID,
-                meta={"path": export_path, "subpath": entry_name},
+                meta={
+                    "path": export_path,
+                    "subpath": entry_name,
+                    "export_source": "package_exports_map",
+                },
             )
             symbols.append(sym)
             target = export_path.lstrip("./")
@@ -583,7 +590,7 @@ def _process_exports(
             fingerprint=hashlib.sha256(
                 source[child.start_byte:child.end_byte],
             ).hexdigest()[:16],
-            kind="export_entry",
+            kind="export",
             name=subpath,
             path=rel_path,
             language="json",
@@ -594,7 +601,11 @@ def _process_exports(
                 end_col=child.end_point[1],
             ),
             origin=PASS_ID,
-            meta={"path": export_path, "subpath": subpath},
+            meta={
+                "path": export_path,
+                "subpath": subpath,
+                "export_source": "package_exports_map",
+            },
         )
         symbols.append(sym)
         target = export_path.lstrip("./")
@@ -723,7 +734,10 @@ def _process_tsconfig(
     start_line = obj_node.start_point[0] + 1
     end_line = obj_node.end_point[0] + 1
 
-    # Create tsconfig symbol
+    # Create tsconfig symbol. Wave 6 PR 3 DEPRECATE-NO-FOLD per
+    # audit-findings 0005: drop the kind="tsconfig" specialisation;
+    # consumer queries is_config_file=True + meta["config_format"]=
+    # "tsconfig" instead.
     config_id = _make_symbol_id(rel_path, start_line, end_line, rel_path, "tsconfig")
 
     sym = Symbol(
@@ -732,7 +746,8 @@ def _process_tsconfig(
         shape_id=None,
         canonical_name=rel_path,
         fingerprint=hashlib.sha256(source[obj_node.start_byte:obj_node.end_byte]).hexdigest()[:16],
-        kind="tsconfig",
+        kind="file",
+        is_config_file=True,
         name=Path(rel_path).name,
         path=rel_path,
         language="json",
@@ -743,6 +758,7 @@ def _process_tsconfig(
             end_col=obj_node.end_point[1],
         ),
         origin=PASS_ID,
+        meta={"config_format": "tsconfig"},
     )
     symbols.append(sym)
 
@@ -811,7 +827,7 @@ def _process_composer_json(
             shape_id=None,
             canonical_name=pkg_name,
             fingerprint=hashlib.sha256(source[obj_node.start_byte:obj_node.end_byte]).hexdigest()[:16],
-            kind="composer_package",
+            kind="package",
             name=pkg_name,
             path=rel_path,
             language="json",
@@ -822,6 +838,7 @@ def _process_composer_json(
                 end_col=obj_node.end_point[1],
             ),
             origin=PASS_ID,
+            meta={"package_ecosystem": "composer"},
         )
         symbols.append(sym)
 

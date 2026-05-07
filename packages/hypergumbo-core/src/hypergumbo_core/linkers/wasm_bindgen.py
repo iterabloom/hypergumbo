@@ -263,13 +263,16 @@ def link_wasm_bindgen(
                     shape_id=None,
                     canonical_name=f"import {{ {import_name} }}",
                     fingerprint=hashlib.sha256(src_id.encode()).hexdigest()[:16],
-                    kind="wasm_import",
+                    kind="import",
                     name=import_name,
                     path=rel_path,
                     language="typescript",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
-                    meta={"wasm_export": import_name},
+                    meta={
+                        "wasm_export": import_name,
+                        "compilation_target": "wasm",
+                    },
                     # Tier 2 prevents _classify_symbols from reclassifying
                     # based on the host file path (e.g., generated pkg/ files
                     # detected as "minified/generated" → tier 4 → filtered out).
@@ -397,12 +400,13 @@ def _create_wasm_load_edges(
                     shape_id=None,
                     canonical_name=f"WASM module: {wasm_ref}",
                     fingerprint=hashlib.sha256(wasm_module_id.encode()).hexdigest()[:16],
-                    kind="wasm_module",
+                    kind="module",
                     name=wasm_ref,
                     path=wasm_ref,
                     language="wasm",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
+                    meta={"compilation_target": "wasm"},
                     supply_chain_tier=2,
                     supply_chain_reason="WASM module loaded dynamically",
                 ))
@@ -418,7 +422,8 @@ def _create_wasm_load_edges(
             # ADR-0023 §6 Phase 3 (WI-mifor-vabul): wasm_load is a
             # file→module relationship (not a call), parallel to module
             # imports. Fold to canonical 'imports'; the dst's
-            # ``kind == 'wasm_module'`` carries the WASM-specificity.
+            # ``kind == 'module'`` + ``meta['compilation_target']='wasm'``
+            # carries the WASM-specificity (Wave 6 PR 3 fold).
             edges.append(Edge.create(
                 src=src_id,
                 dst=wasm_module_id,

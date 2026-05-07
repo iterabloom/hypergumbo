@@ -565,7 +565,7 @@ def _extract_pyproject_scripts(
                 symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, script_name, "script")
                 node_bytes = content[child.start_byte : child.end_byte].encode()
 
-                meta: dict = {}
+                meta: dict = {"entry_role": "script"}
                 if entry_point:
                     meta["entry_point"] = entry_point
 
@@ -576,7 +576,7 @@ def _extract_pyproject_scripts(
                         shape_id=None,
                         canonical_name=script_name,
                         fingerprint=hashlib.sha256(node_bytes).hexdigest()[:16],
-                        kind="script",
+                        kind="file",
                         name=script_name,
                         path=rel_path,
                         language="toml",

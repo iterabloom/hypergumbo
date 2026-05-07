@@ -45,13 +45,26 @@ from ..paths import is_test_file
 #   the legacy label so the predicate's ``meta`` lookup has a
 #   reference vocabulary and so any unmigrated producer continues to
 #   match.
-# - AXIS_PENDING (Clusters B/G/H): ``dependency``, ``devDependency``,
-#   ``file``, ``target``, ``special_target``, ``project``, ``package``,
-#   ``script``, ``module_file``, ``section``, ``code_block``, ``link``,
-#   ``npm_package``, ``class_selector``, ``id_selector``, ``keyframes``,
-#   ``media``, ``font_face``. Forward-compatibility verdict gates on
-#   per-cluster audit-findings outcomes (filed as Wave 6 follow-through
-#   in WI-runod).
+# - AXIS_PENDING (Clusters B/G/H residue): ``dependency``,
+#   ``devDependency``, ``target``, ``special_target``, ``section``,
+#   ``code_block``, ``link``, ``class_selector``, ``id_selector``,
+#   ``keyframes``, ``media``, ``font_face``. Forward-compatibility
+#   verdict gates on per-cluster audit-findings outcomes (filed as
+#   Wave 6 follow-through in WI-runod).
+# - AXIS_LANGUAGE_CONSTRUCT post-promotion (Wave 6 PR 1, audit-findings
+#   0005): ``file``, ``project``, ``package``. The set keeps these
+#   names because the policy is "synthetic file/package-shape nodes
+#   should not show up in centrality tables / compact output," and
+#   these canonical kinds carry the synthetic load.
+# - AXIS_ENDPOINT_SHAPE post-fold (Wave 6 PR 3, audit-findings 0005):
+#   ``script``, ``module_file``, ``npm_package``. Producers now emit
+#   ``kind="file"`` + ``meta["entry_role"]="script"`` (script),
+#   ``kind="file"`` + ``meta["module_system"]`` (module_file), and
+#   ``kind="package"`` + ``meta["package_ecosystem"]="npm"``
+#   (npm_package). The post-fold shapes are excluded automatically
+#   because their fold targets (``file`` / ``package``) are already
+#   in the set; the legacy literals stay through the Phase 4a
+#   deprecation window for any unmigrated producer.
 EXCLUDED_KINDS = frozenset({
     "dependency",       # package.json, pyproject.toml dependencies
     "devDependency",    # package.json dev dependencies

@@ -89,7 +89,7 @@ class TestVueComponentLinker:
         result = link_vue_components(ctx)
 
         # Should create a component_file symbol for Header.vue
-        file_symbols = [s for s in result.symbols if s.kind == "component_file"]
+        file_symbols = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("component_framework") == "vue"]
         assert len(file_symbols) >= 1
         header_file = next((s for s in file_symbols if "Header.vue" in s.path), None)
         assert header_file is not None
@@ -120,7 +120,7 @@ class TestVueComponentLinker:
         )
         result = link_vue_components(ctx)
 
-        file_symbols = [s for s in result.symbols if s.kind == "component_file"]
+        file_symbols = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("component_framework") == "vue"]
         assert len(file_symbols) >= 1
         btn_file = next((s for s in file_symbols if "Button.vue" in s.path), None)
         assert btn_file is not None
@@ -149,7 +149,7 @@ class TestVueComponentLinker:
         )
         result = link_vue_components(ctx)
 
-        file_symbols = [s for s in result.symbols if s.kind == "component_file"]
+        file_symbols = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("component_framework") == "vue"]
         modal_file = next((s for s in file_symbols if "Modal.vue" in s.path), None)
         assert modal_file is not None
 
@@ -181,7 +181,7 @@ class TestVueComponentLinker:
         )
         result = link_vue_components(ctx)
 
-        file_symbols = [s for s in result.symbols if s.kind == "component_file"]
+        file_symbols = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("component_framework") == "vue"]
         header_files = [s for s in file_symbols if "Header.vue" in s.path]
         assert len(header_files) == 1
 
@@ -241,7 +241,7 @@ class TestVueComponentLinker:
         )
         result = link_vue_components(ctx)
 
-        file_symbols = [s for s in result.symbols if s.kind == "component_file"]
+        file_symbols = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("component_framework") == "vue"]
         paths = {s.path for s in file_symbols}
         # Both App.vue and Header.vue should have component_file symbols
         assert any("App.vue" in p for p in paths)

@@ -192,13 +192,13 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
             id=sym_id,
             stable_id=sym_id,
             name=name,
-            kind="component_file",
+            kind="file",
             language="vue",
             path=rel_path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            meta={},
+            meta={"component_framework": "vue"},
         )
         file_symbol_cache[rel_path] = sym
         new_symbols.append(sym)

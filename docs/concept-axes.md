@@ -264,13 +264,16 @@ Values whose meaning is leaked into the kind label even though it is captured by
 
 - **`abi_call`** — Cluster E sub-case (a) FOLD per audit-findings 0010 (reclassified from Cluster D in this PR — the Solidity ABI emit site names a call expression, not a framework role): the solidity_abi linker was reclassified to kind='call_site' + meta['call_kind']='abi'. Registry entry stays through the Phase 4a deprecation window.
 - **`call`** — Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: zero Symbol.kind=call producers (the value lives only on UsageContext.kind, a different field). Registry entry stays through the Phase 4a deprecation window.
+- **`component_file`** — FOLDed to ``file`` + ``meta['component_framework']`` ('vue', 'svelte', 'astro', etc.) per audit-findings 0005, Wave 6 PR 3. Producer (``vue_component.py``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`component_ref`** — Cluster F dst-kind leakage per audit-findings 0011: DEPRECATE-NO-FOLD (PRELIM_RESOLVED). Three producers (vue.py / svelte.py / astro.py) drop the per-reference Symbol; the companion imports Edge re-routes src to make_file_id and carries component_name + source_path in meta. Registry entry stays through the Phase 4a deprecation window.
+- **`composer_package`** — FOLDed to ``package`` + ``meta['package_ecosystem']='composer'`` per audit-findings 0005, Wave 6 PR 3. Producer (``json_config.py``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`crypto_consumer`** — Crypto-flow consumer. Fold to function/method + meta['framework_role']='crypto_consumer'.
 - **`crypto_producer`** — Crypto-flow producer. Fold to function/method + meta['framework_role']='crypto_producer'.
 - **`db_query`** — Cluster E sub-case (a) FOLD per audit-findings 0010: the database_query linker was reclassified to kind='call_site' + meta['call_kind']='db_query'. Registry entry stays through the Phase 4a deprecation window.
 - **`dispatcher`** — Generic dispatcher symbol. Fold to function/method + meta['framework_role']='dispatcher'.
 - **`event_publisher`** — Symbol that publishes events. Fold to function/method + meta['framework_role']='event_publisher'.
 - **`event_subscriber`** — Symbol that subscribes to events. Fold to function/method + meta['framework_role']='event_subscriber'.
+- **`export_entry`** — FOLDed to ``export`` + ``meta['export_source']='package_exports_map'`` per audit-findings 0005, Wave 6 PR 3. Producer (``json_config.py``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`extends`** — Cluster E sub-case (b) DEPRECATE-NO-FOLD per audit-findings 0010: the extends_template Edge captures the relationship; no replacement Symbol kind. Two producers (twig.py, blade.py) dropped across PRs 2 and WI-kunag. Registry entry stays through the Phase 4a deprecation window.
 - **`fn`** — Cluster C apex/peer: deprecated peer of `function`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: function.
 - **`function_call`** — Cluster E sub-case (a) FOLD per audit-findings 0010: the Twig function-call producer (twig.py) was reclassified to kind='call_site'. Registry entry stays through the Phase 4a deprecation window.
@@ -290,10 +293,14 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`ipc_caller`** — IPC call endpoint. Fold to function/method + meta['framework_role']='ipc_caller'.
 - **`ipc_publisher`** — IPC publish endpoint. Fold to function/method + meta['framework_role']='ipc_publisher'.
 - **`ipc_subscriber`** — IPC subscribe endpoint. Fold to function/method + meta['framework_role']='ipc_subscriber'.
+- **`library_export`** — Audit-findings 0005 verdict FOLD to ``export`` + ``meta['export_scope']='library'``. Migration is vacuous on the Symbol.kind axis: the value is only emitted as ``UsageContext.kind`` (``js_ts.py``), which is a separate axis. The Symbol.kind registry entry was a Phase-1 seed error; this entry stays on AXIS_ENDPOINT_SHAPE through the Phase 4a deprecation window for symmetry with the rest of the Cluster B fold cohort.
+- **`main_entry`** — FOLDed to ``file`` + ``meta['entry_role']='main'`` per audit-findings 0005, Wave 6 PR 3. Producer (``json_config.py``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`message_handler`** — Message-bus handler. Fold to function/method + meta['framework_role']='message_handler'.
 - **`message_sender`** — Message-bus sender. Fold to function/method + meta['framework_role']='message_sender'.
+- **`module_file`** — FOLDed to ``file`` + ``meta['module_system']`` ('esm' / 'commonjs') per audit-findings 0005, Wave 6 PR 3. Producer (``js_module.py``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`mq_publisher`** — Message-queue publisher. Fold to function/method + meta['framework_role']='mq_publisher'.
 - **`mq_subscriber`** — Message-queue subscriber. Fold to function/method + meta['framework_role']='mq_subscriber'.
+- **`npm_package`** — FOLDed to ``package`` + ``meta['package_ecosystem']='npm'`` per audit-findings 0005, Wave 6 PR 3. Producer (``js_module.py``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`objc_bridge`** — Objective-C bridge call. Fold to function/method + meta['framework_role']='objc_bridge'.
 - **`openapi_operation`** — OpenAPI operation. Fold to function/method + meta['framework_role']='openapi_operation'.
 - **`proc`** — Cluster C apex/peer: deprecated peer of `procedure`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: procedure.
@@ -303,11 +310,15 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`route_include`** — Route include declaration. Fold to function/method + meta['framework_role']='route_include'.
 - **`route_mount`** — Route mount declaration. Fold to function/method + meta['framework_role']='route_mount'.
 - **`rpc`** — RPC method declaration. Fold to function/method + meta['framework_role']='rpc'.
+- **`script`** — FOLDed to ``file`` + ``meta['entry_role']='script'`` per audit-findings 0005, Wave 6 PR 3. Producers (``json_config.py`` for npm scripts, ``toml_config.py`` for ``[project.scripts]``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`selector_ref`** — ObjC selector reference. Fold to reference + meta['framework_role']='selector_ref'.
 - **`service`** — Service declaration (gRPC service, k8s service). Fold to interface/class + meta['framework_role']='service'.
 - **`structure`** — Cluster C apex/peer: deprecated peer of `struct`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: struct.
 - **`subprocess_call`** — Cluster E sub-case (a) FOLD per audit-findings 0010: the subprocess_cli linker was reclassified to kind='call_site' + meta['call_kind']='subprocess'. Registry entry stays through the Phase 4a deprecation window.
+- **`tsconfig`** — DEPRECATE-NO-FOLD per audit-findings 0005, Wave 6 PR 3: producer (``json_config.py``) drops the kind specialisation and emits ``kind='file'`` + ``is_config_file=True`` + ``meta['config_format']='tsconfig'`` instead. Registry entry stays through the Phase 4a deprecation window.
 - **`var`** — Cluster C apex/peer: deprecated peer of `variable`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: variable.
+- **`wasm_import`** — FOLDed to ``import`` + ``meta['compilation_target']='wasm'`` per audit-findings 0005, Wave 6 PR 3. Note: the fold target ``import`` is itself on AXIS_ENDPOINT_SHAPE per audit-findings 0010 — wasm_bindgen requires the synthetic node for slicer BFS continuity, so this is the one Cluster B FOLD where the target is a deprecation-window kind. Producer (``wasm_bindgen.py``) migrated.
+- **`wasm_module`** — FOLDed to ``module`` + ``meta['compilation_target']='wasm'`` per audit-findings 0005, Wave 6 PR 3. Producer (``wasm_bindgen.py``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`websocket_emitter`** — WebSocket emitter. Fold to function/method + meta['framework_role']='websocket_emitter'.
 - **`websocket_endpoint`** — WebSocket endpoint. Fold to function/method + meta['framework_role']='websocket_endpoint'.
 - **`websocket_listener`** — WebSocket listener. Fold to function/method + meta['framework_role']='websocket_listener'.
@@ -321,39 +332,28 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`bin`** — Binary executable symbol. Pending cluster-B audit.
 - **`binary`** — Cargo `[[bin]]` target kind. Pending cluster-G audit.
 - **`build-dependency`** — Build-dependency entry. Pending cluster-G audit.
-- **`component_file`** — Component-as-file symbol. Pending cluster-B audit.
-- **`composer_package`** — Composer package symbol. Pending cluster-B audit.
 - **`config`** — Config symbol. Pending cluster-G audit.
 - **`dev-dependency`** — Dev-dependency entry. Pending cluster-G audit.
 - **`devDependency`** — JS devDependency entry. Pending cluster-G audit.
 - **`editable`** — Editable install symbol. Pending cluster-G audit.
 - **`example`** — Cargo `[[example]]` target kind. Pending cluster-G audit.
-- **`export_entry`** — Generic export entry. Pending cluster-B audit.
 - **`external_symbol`** — External-symbol pseudo-node. Pending cluster-H audit.
 - **`handler`** — Ansible playbook handler. Pending cluster-G audit.
 - **`heading`** — Heading symbol (markdown / docs). Pending cluster-H audit.
 - **`helper`** — Handlebars block helper (non-builtin). Pending cluster-H audit.
 - **`inductive`** — Inductive type (Coq / Lean). Pending cluster-H audit.
-- **`library_export`** — Library-export entry. Pending cluster-B audit.
-- **`main_entry`** — Main-entry pseudo-symbol. Pending cluster-B audit.
 - **`message`** — Message symbol (proto / DSL). Pending cluster-H audit.
 - **`model`** — Model symbol (DSL). Pending cluster-H audit.
-- **`module_file`** — Module-as-file symbol. Pending cluster-B audit.
-- **`npm_package`** — NPM package symbol. Pending cluster-B audit.
 - **`pattern_rule`** — Make pattern-rule target. Pending cluster-G audit.
 - **`private`** — WGSL `var<private>` address space. Pending cluster-H audit.
 - **`python_task`** — BitBake Python task symbol. Pending cluster-G audit.
-- **`script`** — Shell-script-shape symbol. Pending cluster-B audit.
 - **`storage`** — WGSL `var<storage>` address space. Pending cluster-H audit.
 - **`test_case`** — Test-case symbol (alternate label). Pending cluster-G audit.
 - **`theorem`** — Theorem symbol (Coq / Lean). Pending cluster-H audit.
-- **`tsconfig`** — TypeScript tsconfig symbol. Pending cluster-B audit.
 - **`uniform`** — Shader uniform binding (GLSL / WGSL). Pending cluster-H audit.
 - **`unresolved`** — Unresolved-symbol pseudo-node. Pending cluster-H audit.
 - **`url_requirement`** — URL-requirement install symbol. Pending cluster-G audit.
 - **`varying`** — GLSL varying qualifier (legacy interpolation). Pending cluster-H audit.
-- **`wasm_import`** — WebAssembly import symbol. Pending cluster-B audit.
-- **`wasm_module`** — WebAssembly module symbol. Pending cluster-B audit.
 - **`work_item`** — Work-item symbol. Pending cluster-G audit.
 - **`workgroup`** — WGSL `var<workgroup>` address space. Pending cluster-H audit.
 - **`workspace`** — Cargo `[workspace]` table kind. Pending cluster-G audit.

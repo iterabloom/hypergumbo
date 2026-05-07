@@ -78,7 +78,7 @@ def test_analyze_package_json_scripts(tmp_path):
 """)
     result = analyze_json_files(tmp_path)
 
-    scripts = [s for s in result.symbols if s.kind == "script"]
+    scripts = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("entry_role") == "script"]
     assert len(scripts) >= 3
 
     start_script = next((s for s in scripts if s.name == "start"), None)
@@ -205,7 +205,7 @@ def test_analyze_tsconfig(tmp_path):
     result = analyze_json_files(tmp_path)
 
     # Find tsconfig symbol
-    configs = [s for s in result.symbols if s.kind == "tsconfig"]
+    configs = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("config_format") == "tsconfig"]
     assert len(configs) >= 1
 
     # Cluster E sub-case (b) per audit-findings 0010: per-reference Symbol
@@ -241,7 +241,7 @@ def test_analyze_tsconfig_variants(tmp_path):
 
     result = analyze_json_files(tmp_path)
 
-    configs = [s for s in result.symbols if s.kind == "tsconfig"]
+    configs = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("config_format") == "tsconfig"]
     assert len(configs) >= 3
 
 def test_analyze_composer_json(tmp_path):
@@ -261,7 +261,7 @@ def test_analyze_composer_json(tmp_path):
     result = analyze_json_files(tmp_path)
 
     # Find composer package
-    packages = [s for s in result.symbols if s.kind == "composer_package"]
+    packages = [s for s in result.symbols if s.kind == "package" and s.meta and s.meta.get("package_ecosystem") == "composer"]
     assert len(packages) >= 1
     assert packages[0].name == "vendor/my-package"
 
@@ -394,7 +394,7 @@ def test_package_json_main_creates_defines_target_edge(tmp_path):
     assert main_edge is not None
 
     # Should also create a main_entry symbol
-    main_syms = [s for s in result.symbols if s.kind == "main_entry"]
+    main_syms = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("entry_role") == "main"]
     assert len(main_syms) >= 1
     assert main_syms[0].name == "my-electron-app"
     assert main_syms[0].meta["path"] == "./src/main.js"
@@ -424,7 +424,7 @@ def test_package_json_main_missing_no_edge(tmp_path):
 """)
     result = analyze_json_files(tmp_path)
 
-    main_syms = [s for s in result.symbols if s.kind == "main_entry"]
+    main_syms = [s for s in result.symbols if s.kind == "file" and s.meta and s.meta.get("entry_role") == "main"]
     assert len(main_syms) == 0
 
 
@@ -447,7 +447,7 @@ def test_package_json_exports_object_creates_defines_target_edges(tmp_path):
 """)
     result = analyze_json_files(tmp_path)
 
-    export_syms = [s for s in result.symbols if s.kind == "export_entry"]
+    export_syms = [s for s in result.symbols if s.kind == "export" and s.meta and s.meta.get("export_source") == "package_exports_map"]
     assert len(export_syms) >= 2
 
     main_export = next((s for s in export_syms if s.name == "."), None)
@@ -475,7 +475,7 @@ def test_package_json_exports_string_creates_defines_target_edge(tmp_path):
 """)
     result = analyze_json_files(tmp_path)
 
-    export_syms = [s for s in result.symbols if s.kind == "export_entry"]
+    export_syms = [s for s in result.symbols if s.kind == "export" and s.meta and s.meta.get("export_source") == "package_exports_map"]
     assert len(export_syms) >= 1
     assert export_syms[0].meta["path"] == "./src/index.js"
 
@@ -503,7 +503,7 @@ def test_package_json_exports_conditional_resolves_best_path(tmp_path):
 """)
     result = analyze_json_files(tmp_path)
 
-    export_syms = [s for s in result.symbols if s.kind == "export_entry"]
+    export_syms = [s for s in result.symbols if s.kind == "export" and s.meta and s.meta.get("export_source") == "package_exports_map"]
     assert len(export_syms) >= 1
     # Should pick the "import" or first source-like path
     assert export_syms[0].meta["path"] in (
@@ -530,7 +530,7 @@ def test_package_json_exports_conditional_unknown_conditions(tmp_path):
 """)
     result = analyze_json_files(tmp_path)
 
-    export_syms = [s for s in result.symbols if s.kind == "export_entry"]
+    export_syms = [s for s in result.symbols if s.kind == "export" and s.meta and s.meta.get("export_source") == "package_exports_map"]
     assert len(export_syms) >= 1
     # Should pick first non-types path (browser)
     assert export_syms[0].meta["path"] == "./dist/browser.js"
@@ -546,7 +546,7 @@ def test_package_json_exports_missing_no_export_syms(tmp_path):
 """)
     result = analyze_json_files(tmp_path)
 
-    export_syms = [s for s in result.symbols if s.kind == "export_entry"]
+    export_syms = [s for s in result.symbols if s.kind == "export" and s.meta and s.meta.get("export_source") == "package_exports_map"]
     assert len(export_syms) == 0
 
 

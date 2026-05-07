@@ -375,30 +375,77 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("project", AXIS_LANGUAGE_CONSTRUCT,
                    "Project declaration (Meson `project()`, .csproj root, "
                    "etc.). CANONICAL per audit-findings 0005."),
-    SymbolKindSpec("module_file", AXIS_PENDING,
-                   "Module-as-file symbol. Pending cluster-B audit."),
-    SymbolKindSpec("component_file", AXIS_PENDING,
-                   "Component-as-file symbol. Pending cluster-B audit."),
-    SymbolKindSpec("npm_package", AXIS_PENDING,
-                   "NPM package symbol. Pending cluster-B audit."),
-    SymbolKindSpec("composer_package", AXIS_PENDING,
-                   "Composer package symbol. Pending cluster-B audit."),
-    SymbolKindSpec("main_entry", AXIS_PENDING,
-                   "Main-entry pseudo-symbol. Pending cluster-B audit."),
+    # Wave 6 PR 3 FOLDs per audit-findings 0005 — producer migration
+    # shipped, registry entries kept on AXIS_ENDPOINT_SHAPE through the
+    # Phase 4a deprecation window. Each fold target is the canonical
+    # Cluster A construct above; the framework / ecosystem qualifier
+    # moves to ``Symbol.meta`` under the named axis key.
+    SymbolKindSpec("module_file", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``file`` + ``meta['module_system']`` ('esm' / "
+                   "'commonjs') per audit-findings 0005, Wave 6 PR 3. Producer "
+                   "(``js_module.py``) migrated; registry entry stays through "
+                   "the Phase 4a deprecation window."),
+    SymbolKindSpec("component_file", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``file`` + ``meta['component_framework']`` ('vue', "
+                   "'svelte', 'astro', etc.) per audit-findings 0005, Wave 6 "
+                   "PR 3. Producer (``vue_component.py``) migrated; registry "
+                   "entry stays through the Phase 4a deprecation window."),
+    SymbolKindSpec("npm_package", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``package`` + ``meta['package_ecosystem']='npm'`` "
+                   "per audit-findings 0005, Wave 6 PR 3. Producer "
+                   "(``js_module.py``) migrated; registry entry stays through "
+                   "the Phase 4a deprecation window."),
+    SymbolKindSpec("composer_package", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``package`` + ``meta['package_ecosystem']="
+                   "'composer'`` per audit-findings 0005, Wave 6 PR 3. Producer "
+                   "(``json_config.py``) migrated; registry entry stays through "
+                   "the Phase 4a deprecation window."),
+    SymbolKindSpec("main_entry", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``file`` + ``meta['entry_role']='main'`` per "
+                   "audit-findings 0005, Wave 6 PR 3. Producer "
+                   "(``json_config.py``) migrated; registry entry stays through "
+                   "the Phase 4a deprecation window."),
     SymbolKindSpec("bin", AXIS_PENDING,
                    "Binary executable symbol. Pending cluster-B audit."),
-    SymbolKindSpec("library_export", AXIS_PENDING,
-                   "Library-export entry. Pending cluster-B audit."),
-    SymbolKindSpec("export_entry", AXIS_PENDING,
-                   "Generic export entry. Pending cluster-B audit."),
-    SymbolKindSpec("wasm_module", AXIS_PENDING,
-                   "WebAssembly module symbol. Pending cluster-B audit."),
-    SymbolKindSpec("wasm_import", AXIS_PENDING,
-                   "WebAssembly import symbol. Pending cluster-B audit."),
-    SymbolKindSpec("tsconfig", AXIS_PENDING,
-                   "TypeScript tsconfig symbol. Pending cluster-B audit."),
-    SymbolKindSpec("script", AXIS_PENDING,
-                   "Shell-script-shape symbol. Pending cluster-B audit."),
+    SymbolKindSpec("library_export", AXIS_ENDPOINT_SHAPE,
+                   "Audit-findings 0005 verdict FOLD to ``export`` + "
+                   "``meta['export_scope']='library'``. Migration is vacuous "
+                   "on the Symbol.kind axis: the value is only emitted as "
+                   "``UsageContext.kind`` (``js_ts.py``), which is a separate "
+                   "axis. The Symbol.kind registry entry was a Phase-1 seed "
+                   "error; this entry stays on AXIS_ENDPOINT_SHAPE through "
+                   "the Phase 4a deprecation window for symmetry with the "
+                   "rest of the Cluster B fold cohort."),
+    SymbolKindSpec("export_entry", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``export`` + ``meta['export_source']="
+                   "'package_exports_map'`` per audit-findings 0005, Wave 6 "
+                   "PR 3. Producer (``json_config.py``) migrated; registry "
+                   "entry stays through the Phase 4a deprecation window."),
+    SymbolKindSpec("wasm_module", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``module`` + ``meta['compilation_target']='wasm'`` "
+                   "per audit-findings 0005, Wave 6 PR 3. Producer "
+                   "(``wasm_bindgen.py``) migrated; registry entry stays "
+                   "through the Phase 4a deprecation window."),
+    SymbolKindSpec("wasm_import", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``import`` + ``meta['compilation_target']='wasm'`` "
+                   "per audit-findings 0005, Wave 6 PR 3. Note: the fold "
+                   "target ``import`` is itself on AXIS_ENDPOINT_SHAPE per "
+                   "audit-findings 0010 — wasm_bindgen requires the synthetic "
+                   "node for slicer BFS continuity, so this is the one Cluster "
+                   "B FOLD where the target is a deprecation-window kind. "
+                   "Producer (``wasm_bindgen.py``) migrated."),
+    SymbolKindSpec("tsconfig", AXIS_ENDPOINT_SHAPE,
+                   "DEPRECATE-NO-FOLD per audit-findings 0005, Wave 6 PR 3: "
+                   "producer (``json_config.py``) drops the kind specialisation "
+                   "and emits ``kind='file'`` + ``is_config_file=True`` + "
+                   "``meta['config_format']='tsconfig'`` instead. Registry "
+                   "entry stays through the Phase 4a deprecation window."),
+    SymbolKindSpec("script", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``file`` + ``meta['entry_role']='script'`` per "
+                   "audit-findings 0005, Wave 6 PR 3. Producers "
+                   "(``json_config.py`` for npm scripts, ``toml_config.py`` "
+                   "for ``[project.scripts]``) migrated; registry entry stays "
+                   "through the Phase 4a deprecation window."),
 
     # ----------------------------------------------------------------
     # Cluster G — Build / config-shape.

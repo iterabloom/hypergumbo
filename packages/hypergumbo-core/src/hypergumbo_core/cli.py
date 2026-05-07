@@ -6840,6 +6840,14 @@ def run_behavior_map(
                 return True
             if sym.kind == "variable" and sym.language in _CSS_LANGUAGES:
                 return True
+            # Wave 6 PR 3 fold per audit-findings 0005: ``script`` now
+            # emits as ``kind="file"`` + ``meta["entry_role"]="script"``.
+            # The legacy literal stays in ``_NOISE_KINDS`` for unmigrated
+            # producers; this branch catches the post-fold shape without
+            # over-excluding real ``kind="file"`` symbols.
+            if sym.kind == "file" and sym.meta:
+                if sym.meta.get("entry_role") == "script":
+                    return True
             return False
 
         noise_ids = {s.id for s in all_symbols if _is_noise(s)}

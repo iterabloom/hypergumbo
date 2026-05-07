@@ -394,8 +394,19 @@ def _resolve_express_handler(
         return sym.kind in ("function", "method", "arrow_function")
 
     def is_component(sym: Symbol) -> bool:
-        """Check if symbol is a React component (class or module_file)."""
-        return sym.kind in ("class", "module_file")
+        """Check if symbol is a React component (class or module-file).
+
+        Wave 6 PR 3 fold per audit-findings 0005: ``module_file`` is now
+        emitted as ``kind="file"`` + ``meta["module_system"]`` ("esm" or
+        "commonjs"). Match both pre- and post-fold shapes through the
+        deprecation window. Legacy ``"module_file"`` literal stays in
+        the tuple for any unmigrated producer.
+        """
+        if sym.kind in ("class", "module_file"):
+            return True
+        if sym.kind == "file" and sym.meta:
+            return sym.meta.get("module_system") in ("esm", "commonjs")
+        return False
 
     # Try exact match first — prefer function/method kinds, fall back to class/module
     if handler_ref in symbol_by_name:
