@@ -185,6 +185,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`getter`** — Property getter accessor.
 - **`id`** — Id symbol (k8s / DSL). CANONICAL per audit-findings 0007.
 - **`id_selector`** — CSS id selector symbol. CANONICAL per audit-findings 0007.
+- **`import`** — Top-level wasm-bindgen FFI import declaration. Reclassified DEPRECATE-NO-FOLD → CANONICAL on 2026-05-07 by the indirection-aware re-audit: the original Cluster E sub-case (b) drop verdict in audit-findings 0010 was correct for the css.py / jsonnet.py / astro.py / r_lang.py producers it inventoried, but Wave 6 PR 3 (wasm_import → kind="import" + meta["compilation_target"]="wasm") added wasm_bindgen.py:266 as a new producer for a different purpose — a synthetic boundary node the slicer BFS needs for continuity. The wasm-bindgen `import` is a real top-level construct in its source DSL, not a relabel of the imports Edge.
 - **`index`** — Index symbol (SQL / DSL). CANONICAL per audit-findings 0007.
 - **`inductive`** — Lean ``inductive`` type declaration (``lean.py:247``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``lean.py`` emits via ``add_symbol(..., 'inductive')`` indirection).
 - **`input`** — Input symbol (Terraform / shader). CANONICAL per audit-findings 0007.
@@ -226,6 +227,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`query`** — Query symbol (GraphQL / SQL operation). CANONICAL per audit-findings 0007.
 - **`recipe`** — Make recipe symbol. CANONICAL per audit-findings 0006.
 - **`record`** — Record declaration (Java 14+, Erlang, Haskell).
+- **`reference`** — Use-site reference (Objective-C selector_ref shape; possibly other _ref folds). Reclassified DEPRECATE-NO-FOLD → CANONICAL on 2026-05-07 by the indirection-aware re-audit: the original Cluster E sub-case (b) drop verdict in audit-findings 0010 predated Wave 5's framework-role fold, which moved selector_ref to canonical kind="reference" + meta["framework_role"]="selector_ref" at swift_objc.py:167 per audit-findings 0011's _ref shape disposition. The (separate, defunct) json_config.py shape-2 redesign that the original verdict referenced was for the tsconfig case and has been resolved by Wave 6 PR 3.
 - **`requirement`** — Requirement / pip requirement. CANONICAL per audit-findings 0006.
 - **`resource`** — Resource symbol (Terraform / k8s). CANONICAL per audit-findings 0007.
 - **`rule_set`** — CSS / shader rule-set symbol. CANONICAL per audit-findings 0007.
@@ -295,7 +297,6 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`grpc_stub`** — gRPC stub call site. Fold to function + meta['framework_role']='grpc_stub'.
 - **`heading`** — DEPRECATE-NO-FOLD per audit-findings 0007, Wave 6 PR 4: dead vocabulary — markdown emits ``kind='section'`` (``markdown.py:198``); no producer emits ``kind='heading'``. Registry entry stays through the Phase 4a deprecation window.
 - **`http_client`** — HTTP client call site. Fold to function/method + meta['framework_role']='http_client'.
-- **`import`** — Cluster E sub-case (b) DEPRECATE-NO-FOLD per audit-findings 0010: the imports Edge captures the relationship; no replacement Symbol kind. Four producers (css.py, jsonnet.py, astro.py, r_lang.py) dropped across PRs 1, 2, and WI-kunag. Registry entry stays through the Phase 4a deprecation window.
 - **`include`** — Cluster E sub-case (b) DEPRECATE-NO-FOLD per audit-findings 0010: the include-family Edges capture the relationship; no replacement Symbol kind. Five producers (puppet.py, scss.py, twig.py x2, make.py) dropped across PRs 1, 2, and WI-kunag. Registry entry stays through the Phase 4a deprecation window.
 - **`inherit`** — Cluster E sub-case (b) FOLD-clean-drop per audit-findings 0010: the BitBake inherit-clause Symbol was dropped (relationship captured by the inherits Edge with src=bitbake:{file}, dst=bitbake:class:{cls}). Registry entry stays through the Phase 4a deprecation window.
 - **`ipc`** — Generic IPC endpoint. Fold to function/method + meta['framework_role']='ipc'.
@@ -317,7 +318,6 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`proc`** — Cluster C apex/peer: deprecated peer of `procedure`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: procedure.
 - **`python_task`** — FOLDed to ``task`` + ``meta['task_implementation']='python'`` per audit-findings 0006, Wave 6 PR 5. Producer (``bitbake.py:346``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`read`** — Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: zero Symbol.kind=read producers (matches in pub/sub linkers are on internal dataclass fields YjsSite.kind / CryptoSite.kind / DispatchSite.kind, not Symbol.kind). Registry entry stays through the Phase 4a deprecation window.
-- **`reference`** — Cluster E sub-case (b) per audit-findings 0010: UNRESOLVED — sole producer (json_config.py) is shape-2 edge-endpoint-dependent (references Edge has dst=symbol_id). Drop deferred to follow-on PR.
 - **`route`** — Route declaration. Fold to function/method + meta['framework_role']='route'.
 - **`route_include`** — Route include declaration. Fold to function/method + meta['framework_role']='route_include'.
 - **`route_mount`** — Route mount declaration. Fold to function/method + meta['framework_role']='route_mount'.

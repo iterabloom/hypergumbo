@@ -1068,17 +1068,30 @@ verdicts:
     assert errors == []
 
 
-def test_live_tree_deprecate_no_fold_function_runs_without_crashing():
-    """Walks the live ``docs/audits/`` tree and confirms
-    ``find_zero_producer_violations`` runs end-to-end against the live
-    registry without raising.
+def test_live_tree_deprecate_no_fold_has_zero_producers():
+    """Walks the live ``docs/audits/`` tree, collects every
+    DEPRECATE-NO-FOLD verdict across the three registered axes
+    (``Symbol.kind``, ``Edge.edge_type``, ``Edge.evidence_type``), and
+    asserts no producer call site emits the value via literal kwarg or
+    assignment-form-to-Name.
 
-    Distinct from the live-tree *regression* assertion (which would also
-    require ``len(errors) == 0``): this minimal smoke check ships the
-    machinery in this PR, leaving the strict assertion for the verdict-
-    correctness re-audit PR that absorbs whatever leak set the function
-    surfaces. Splitting the work prevents the test infrastructure from
-    being held hostage to the (separate) re-audit deliverable.
+    This is the regression guard called for in
+    ``~/hypergumbo_lab_notebook/notebookjournal_05072026_0316.md``
+    §"High-value (file as tracker items) #3" — closes the gap demonstrated
+    by Wave 6 PR 4 (theorem/inductive/message reclassification) where
+    DEPRECATE-NO-FOLD verdicts shipped while real producers existed.
+    Promoted from the smoke check that landed alongside this regression
+    guard's machinery in PR #189 (WI-viluk) once the verdict-correctness
+    re-audit on 2026-05-07 absorbed the two leaks the new assertion
+    surfaced (`reference` at swift_objc.py:167 from Wave 5;
+    `import` at wasm_bindgen.py:266 from Wave 6 PR 3).
+
+    Coverage gap, by design: helper-call indirection (e.g.
+    ``add_symbol(node, name, "<value>")``), f-string interpolation, and
+    dict-subscript-target assignment are not enumerated here; the
+    Fundamental Concept Audit playbook §"Step 4.5" requires manual greps
+    for those at audit-write time. WI-nubuv ext B / ext C are the
+    structural backstops.
 
     Skips when ``docs/audits/`` is absent (isolated package run).
     """
@@ -1089,6 +1102,7 @@ def test_live_tree_deprecate_no_fold_function_runs_without_crashing():
 
     findings_list = [parse_audit_findings(md) for md in docs]
     errors = find_zero_producer_violations(repo_root, findings_list)
-    assert isinstance(errors, list)
-    for entry in errors:
-        assert isinstance(entry, str) and entry
+    assert not errors, (
+        "DEPRECATE-NO-FOLD verdicts contradicted by live producer "
+        "emit sites:\n" + "\n".join(errors)
+    )

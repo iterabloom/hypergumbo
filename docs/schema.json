@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.5.7"
+      "const": "0.5.8"
     },
     "confidence_model": {
       "type": "string",
@@ -233,7 +233,7 @@
             "declaration": "language_construct",
             "keyword": "language_construct",
             "export": "language_construct",
-            "import": "endpoint_shape",
+            "import": "language_construct",
             "include": "endpoint_shape",
             "extends": "endpoint_shape",
             "event_publisher": "endpoint_shape",
@@ -277,7 +277,7 @@
             "db_query": "endpoint_shape",
             "read": "endpoint_shape",
             "write": "endpoint_shape",
-            "reference": "endpoint_shape",
+            "reference": "language_construct",
             "component": "language_construct",
             "component_ref": "endpoint_shape",
             "view": "language_construct",
@@ -401,7 +401,6 @@
             "proc",
             "fn",
             "var",
-            "import",
             "include",
             "extends",
             "event_publisher",
@@ -445,7 +444,6 @@
             "db_query",
             "read",
             "write",
-            "reference",
             "component_ref",
             "module_file",
             "component_file",

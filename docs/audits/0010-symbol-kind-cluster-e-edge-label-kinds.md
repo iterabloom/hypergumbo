@@ -1,8 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Audit-findings 0010: Symbol.kind Cluster E — Edge Labels Masquerading as Kinds
 
-- Date: 2026-05-05 (filed); 2026-05-06 (WI-kunag — three rows advance to PRELIM_RESOLVED)
-- Status: All rows PRELIM_RESOLVED — sub-case (a) call_site reclassifications and sub-case (b) DEPRECATE-NO-FOLD-zero-producer rows shipped at PR 1; sub-case (b) `inherit` at PR 1; sub-case (b) `reference` at PR 2 (json_config edge-endpoint redesign); sub-case (b) `import` / `include` / `extends` at WI-kunag PR (companion `imports` / `includes` / `extends_template` Edges introduced for the four shape-3 producers — astro.py, r_lang.py, make.py, blade.py — so the corresponding syntactic relationships keep representation in the graph after the per-Symbol drop). Values remain on `endpoint_shape` through the Phase 4a deprecation window per ADR-0027 §"Phase 4".
+- Date: 2026-05-05 (filed); 2026-05-06 (WI-kunag — three rows advance to PRELIM_RESOLVED); 2026-05-07 (indirection-aware re-audit — `import` and `reference` reclassified DEPRECATE-NO-FOLD → CANONICAL)
+- Status: Mixed (2 RESOLVED, 10 PRELIM_RESOLVED) — `import` and `reference` reclassified CANONICAL with status RESOLVED on 2026-05-07 after the indirection-aware re-audit surfaced new Wave-introduced producers (wasm_bindgen.py:266 for `import`, swift_objc.py:167 for `reference`). The remaining 10 rows stay PRELIM_RESOLVED through the Phase 4a deprecation window per ADR-0027 §"Phase 4".
 - Closes (partial): WI-zarov-nosin-fokum-vofom-kazum-kinir-lijof-lihud (Cluster E, ADR-0027 Phase 3) — sub-case (a) closed; sub-case (b) partial. Follow-on tracker items file the deferred per-producer work.
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Sixth audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical), 0005 (Cluster B file-shape), 0006 (Cluster G build/config), 0007 (Cluster H domain long-tail), and 0009 (Cluster C apex/peer).
 
@@ -116,21 +116,21 @@ verdicts:
       expect: empty
     rationale: "Symmetric counterpart of read. Zero Symbol.kind=write producers; the registry entry is stale. Phase 4b removal pending."
   - value: reference
-    verdict: DEPRECATE-NO-FOLD
+    verdict: CANONICAL
     fold_target: null
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "grep -rn '\\bkind=[\"\\047]reference[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
-      expect: empty
-    rationale: "Sub-case (b) drop verdict — the references Edge captures the relationship; no replacement Symbol kind. Sole producer (json_config.py) was shape (2) edge-endpoint-dependent (references Edge had dst=symbol_id). PR 2 (WI-zarov shape-2 redesign) re-routes the Edge dst from the dropped Symbol id to a 5-part dangling tsconfig file id (handled by IR boundary materialization), then drops the Symbol. The reference_path moves from Symbol.meta to Edge.meta."
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"reference\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
+      expect: exit_code:0
+    rationale: "Use-site reference; the canonical fold target for Objective-C selector_ref per audit-findings 0011's _ref shape disposition (Wave 5 framework-role fold). The original DEPRECATE-NO-FOLD verdict was correct for the json_config.py shape-2 producer it inventoried, but the indirection-aware re-audit on 2026-05-07 surfaced swift_objc.py:167 (selector_ref → kind=\"reference\" + meta[\"framework_role\"]=\"selector_ref\") as a real Wave 5-introduced producer. Reclassified DEPRECATE-NO-FOLD → CANONICAL with status RESOLVED — promoted to language_construct in symbol_kinds.py."
   - value: import
-    verdict: DEPRECATE-NO-FOLD
+    verdict: CANONICAL
     fold_target: null
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "grep -rn '\\bkind=[\"\\047]import[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
-      expect: empty
-    rationale: "Sub-case (b) drop verdict — the imports Edge captures the relationship; no replacement Symbol kind. Four producers across migration waves: css.py:155 (shape 1, dropped in PR 1), jsonnet.py:212 (shape 1, dropped in PR 1), astro.py:209 (originally shape 2; PR 2 re-inspection corrected to shape 3 — the imports Edge in astro.py:332 belongs to the separate component_ref Symbol (Cluster F), not the import Symbol. WI-kunag introduces a companion frontmatter `imports` Edge with src=make_file_id(\"astro\", path) and a 5-part dangling dst, so the frontmatter `import …` syntactic relationship now keeps representation in the graph alongside the use-site component_ref Edge), r_lang.py:215 (shape 3 — WI-kunag introduces a companion `imports` Edge for library() / require() with src=make_file_id(\"r\", path) and a 5-part dangling package id, so R package imports now keep representation in the graph). All four producers' Symbol emissions dropped. Status advances 2026-05-06 (WI-kunag) from UNRESOLVED to PRELIM_RESOLVED."
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"import\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
+      expect: exit_code:0
+    rationale: "Top-level wasm-bindgen FFI import declaration. The original DEPRECATE-NO-FOLD verdict was correct for the css.py / jsonnet.py / astro.py / r_lang.py producers it inventoried (those Symbol emissions dropped across PR 1, PR 2, WI-kunag), but the indirection-aware re-audit on 2026-05-07 surfaced wasm_bindgen.py:266 as a new producer introduced by Wave 6 PR 3 (wasm_import → kind=\"import\" + meta[\"compilation_target\"]=\"wasm\"). The wasm-bindgen `import` is a real top-level construct in its source DSL, retained because the slicer BFS needs the synthetic boundary node for continuity. Reclassified DEPRECATE-NO-FOLD → CANONICAL with status RESOLVED — promoted to language_construct in symbol_kinds.py."
   - value: inherit
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
@@ -167,6 +167,109 @@ verdicts:
 - **Consumer-side:** no immediate change. Tests asserting `kind="function_call|subprocess_call|db_query|abi_call|inherit"` migrate (test files updated in this PR). One test (`test_jsonnet.py:123`) updates to verify the `imports` Edge instead of the dropped Symbol.
 - **Test-side:** ~7 test files updated. Diagnostic-test assertions in `tests/test_audit_findings.py` continue to pass (every row's status agrees with registry presence).
 - **Producer-side deferred:** 8 sites for sub-case (b) shapes (2) and (3) — `json_config.py`, `r_lang.py`, `astro.py`, `puppet.py`, `scss.py`, `make.py`, `twig.py` (×3), `blade.py`. Tracked in WI-zarov follow-on PRs.
+
+## Re-audit (2026-05-07) — Indirection-aware producer trace
+
+The Fundamental Concept Audit playbook §"Step 4.5 — Indirection-aware
+producer trace" was added on 2026-05-07 (companion methodology
+hardening to this re-audit). It requires checking five producer-emit
+shapes — literal kwarg, helper-call positional/kwarg, assignment-form-
+to-Name, f-string interpolation, dict-subscript-target — for every
+verdict asserting producer existence or non-existence. This section
+records the systematic re-application of those five greps to every
+DEPRECATE-NO-FOLD row in this audit-findings doc and across the other
+DEPRECATE-NO-FOLD rows in the broader audit-findings corpus.
+
+**Methodology.** For each of the 19 DEPRECATE-NO-FOLD-flagged values
+across audit-findings 0005 / 0006 / 0007 / 0010 / 0012 — namely
+`build-dependency`, `call`, `component_ref`, `config`, `dev-dependency`,
+`event_subscribes`, `extends`, `heading`, `import`, `include`,
+`inherit`, `message_receive`, `model`, `read`, `reference`, `tsconfig`,
+`unresolved`, `work_item`, `write` — run grep across `packages/` and
+`scripts/` for each of:
+
+1. `kind=\"<value>\"` and `evidence_type=\"<value>\"` (literal kwarg)
+2. `add_symbol(\\*, \"<value>\")`, `_make_*_symbol(\\*, \"<value>\")`,
+   `make_symbol_id(\\*, \"<value>\")` (helper-call positional)
+3. `kind = \"<value>\"` followed by `Symbol(kind=…)` (assignment-form
+   to Name — auto-checked by the WI-viluk regression-guard added in
+   the same merge series)
+4. `kind=f\"…<value>…\"` and `f\"…<value>…\"` (f-string interpolation)
+5. `kinds[\"<key>\"] = \"<value>\"` (dict-subscript-target assignment)
+
+**Results.** Two leaks surfaced; both reclassified in this PR:
+
+- **`reference` — `swift_objc.py:167`** (Wave 5 framework-role fold).
+  Audit-findings 0011's `_ref` shape disposition folded `selector_ref`
+  to canonical `kind="reference"` + `meta["framework_role"]="selector_ref"`.
+  The original audit-findings 0010 sub-case (b) drop verdict was
+  correct for the json_config.py shape-2 producer it inventoried (the
+  tsconfig case, separately resolved by Wave 6 PR 3) but the Wave 5
+  fold added a different real producer that the literal-grep at the
+  time did not surface. Reclassified DEPRECATE-NO-FOLD → CANONICAL
+  with status RESOLVED; `reference` moves to AXIS_LANGUAGE_CONSTRUCT
+  in `symbol_kinds.py`.
+- **`import` — `wasm_bindgen.py:266`** (Wave 6 PR 3 wasm_import fold).
+  The original sub-case (b) drop verdict was correct for the four
+  producers it inventoried (css.py, jsonnet.py, astro.py, r_lang.py —
+  all dropped per their respective Symbol-emission removals). Wave 6
+  PR 3 then added a *new* producer for a different purpose:
+  `wasm_import → kind="import" + meta["compilation_target"]="wasm"` at
+  `wasm_bindgen.py:266` — the slicer BFS needs the synthetic boundary
+  node for continuity, so the post-fold form had to retain `import`
+  as a Symbol.kind value. The wasm-bindgen `import` is a real top-
+  level construct in its source DSL, not a relabel of the imports
+  Edge. Reclassified DEPRECATE-NO-FOLD → CANONICAL with status
+  RESOLVED; `import` moves to AXIS_LANGUAGE_CONSTRUCT in
+  `symbol_kinds.py`.
+
+**False-positive analysis.** The other 17 DEPRECATE-NO-FOLD values
+were verified clean. The grep noise broke down as:
+
+- **ID-construction tail tokens.** `model` (`prisma.py:119`
+  `make_symbol_id(..., "model")`), `tsconfig` (`json_config.py:748`
+  `_make_symbol_id(..., "tsconfig")`), `unresolved`
+  (`pyffi.py:333` / `ruby_ffi.py:231` `f"{prefix}{name}:unresolved"`):
+  the trailing token in symbol_id / dst_id format strings preserves
+  stable_id contracts after a fold; the actual `Symbol(kind=…)`
+  emission uses the fold target. Each audit-findings doc explicitly
+  notes this pattern in its prose.
+- **Linker-internal dataclass fields.** `read` / `write` at
+  `dataflow.py` (`result[node_type] = "read"|"write"`) and at
+  `crypto_flow.py` / `yjs_crdt.py` (`CryptoSite(kind="read"|"write")` /
+  `YjsSite(kind="read"|"write")`): different classes' `kind` fields,
+  not `Symbol.kind` producers. Audit-findings 0010 explicitly notes
+  this.
+- **Tracker `Item.kind` field.** `work_item` at
+  `screenshot_save.py:78` and `migration.py:560`
+  (`ts.add(kind="work_item")` / `ParsedItem(kind="work_item")`):
+  tracker-package internal API, not `Symbol.kind`. Audit-findings 0006
+  explicitly notes this.
+- **Edge dst-id format-string components.** `tsconfig` at
+  `json_config.py:786` (`f"json:{ref_path}:1-1:{name}:tsconfig"`) and
+  `unresolved` (above): the 5-part dangling-id format
+  (`lang:path:line:name:kind`) carries a kind-shaped trailing token
+  that the IR boundary materializer reads to construct an
+  `external_symbol` Symbol. The downstream Symbol emission uses
+  `kind="external_symbol"` per Wave 6 PR 6, not the trailing token
+  literally. Not a producer leak.
+- **Prose strings.** `call`/`config`/`extends`/`heading`/`include`/
+  `model`/`read`/`reference`/`write` appear in error messages,
+  docstrings, comments, and label prose. None reach a producer
+  call site.
+- **Dict-subscript values not flowing to producers.** `dataflow.py`
+  assigns `result[node_type] = "read"|"write"` for dataflow access-
+  mode tracking, with no downstream `Symbol(kind=...)` emit consuming
+  the dict.
+
+The five-shape grep itself is documented in this PR's CHANGELOG entry
+and in the playbook §"Step 4.5". The literal-kwarg + assignment-form
+shapes are now also enforced at every-commit time by the WI-viluk
+regression-guard property test
+(`tests/test_audit_findings.py::test_live_tree_deprecate_no_fold_has_zero_producers`).
+The remaining three shapes — helper-call, f-string, dict-subscript —
+require manual grep per playbook until WI-nubuv ext B / ext C land
+the structural backstops.
 
 ## Related
 
