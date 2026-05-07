@@ -40,3 +40,19 @@
   clock: 4  # 0592
   nonce: '0592'  # 0592
   message: "Closed by PR #3559 / commit 8efd20da2. Audit-findings 0006 ships per-value verdicts for all 24 Cluster G values: 15 CANONICAL (build/config DSL top-level constructs), 5 FOLD (test_case→test, editable/url_requirement→requirement, devDependency→dependency, python_task→task), 4 DEPRECATE-NO-FOLD (config — Prisma generic block placeholder; dev-dependency / build-dependency — dead vocabulary; work_item — tracker Item.kind misregistered). No new axis ADR required — confirmed verdict shape predicted in handoff notes. Wave 6 of WI-runod is the producer migration."  # 0592
+- op: update  # 8471
+  at: '2026-05-07T07:05:52Z'  # 8471
+  by: agent  # 8471
+  actor: jgstern_agent  # 8471
+  clock: 5  # 8471
+  nonce: '8471'  # 8471
+  set: {}  # 8471
+  add:  # 8471
+    tags: [awaits_bakeoff_validation]  # 8471
+- op: discuss  # 506a
+  at: '2026-05-07T07:06:31Z'  # 506a
+  by: agent  # 506a
+  actor: jgstern_agent  # 506a
+  clock: 6  # 506a
+  nonce: 506a  # 506a
+  message: "Tag added 2026-05-07 per validation-modality-mapping conversation. WI-dubab's audit (audit-findings 0006) plus the Wave 6 PR 5 producer migration (selfh #183, 5 producer sites: robot.py / requirements.py / json_config.py / bitbake.py) shipped without an explicit bakeoff-validation tag. This entry establishes the validation queue claim retroactively.\n\nValidation modality:\n\nDEEP (primary): cohort comparing pre-Wave-6-PR-5 to post-Wave-6-PR-5 behavior maps. Expected metric movements: (1) Robot Framework test extraction — kind='test_case' → kind='test'+meta['test_dialect']='robot'; YAML pattern matchers that select on kind='^test$' now match Robot tests too; (2) pip requirements -e and url forms — kind='editable'/'url_requirement' → kind='requirement' + meta['install_mode']='editable' or meta['install_source']='url'; supply-chain tier classification stability across requirement variants; (3) npm devDependencies — kind='devDependency' → kind='dependency'+meta['dependency_scope']='dev'; EXCLUDED_KINDS already contained 'dependency' so devDependencies remain excluded from centrality table post-fold; (4) BitBake python tasks — kind='python_task' → kind='task'+meta['task_implementation']='python'; (5) YAML pattern matching with framework_role/framework_dispatch combined with these G FOLDs.\n\nUAT (supplementary): Robot Framework test repo (test_case→test fold; verify test extraction count is preserved); requirements.txt with -e and git+ URLs (editable/url_requirement→requirement folds; verify supply-chain edges are still emitted); package.json with both dependencies and devDependencies (devDependency→dependency+scope=dev fold; verify centrality table excludes dev deps); BitBake recipe with python {} blocks (python_task→task+impl=python; verify task graph reachability); Composer require-dev (covers the same _process_dependencies path as npm devDependencies)."  # 506a

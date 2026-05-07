@@ -87,3 +87,19 @@
   clock: 10  # 5ebf
   nonce: 5ebf  # 5ebf
   message: "Cluster D framework_role producer migration complete + audit-findings 0013 doc layer fully advanced. Wave 5 of WI-runod (six PRs across Codeberg #3572 + selfh #162-#166) shipped the canonical-fold for active producers. WI-nitil corrected four assignment-form misses (gRPC + MQ at linkers/grpc.py:660,663 and linkers/message_queue.py:410) and added three previously-unregistered values (grpc_service / grpc_servicer / grpc_client). Phoenix IPC f-string-form producer at phoenix_ipc.py:279 closed in selfh PR #174 (today). Audit-findings 0013 row statuses advanced UNRESOLVED → PRELIM_RESOLVED for all 28 active rows in selfh PR #175 (today); doc Status header now reads 'All rows PRELIM_RESOLVED'. Phase 4a deprecation tagging shipped as selfh PR #173 (WI-tikuh). Phase 4b registry pruning (WI-butol) remains queued, gated on per-cluster bakeoff validation per ADR-0027 §Phase 4."  # 5ebf
+- op: update  # de36
+  at: '2026-05-07T07:02:22Z'  # de36
+  by: agent  # de36
+  actor: jgstern_agent  # de36
+  clock: 11  # de36
+  nonce: de36  # de36
+  set: {}  # de36
+  add:  # de36
+    tags: [awaits_bakeoff_validation]  # de36
+- op: discuss  # c9db
+  at: '2026-05-07T07:02:55Z'  # c9db
+  by: agent  # c9db
+  actor: jgstern_agent  # c9db
+  clock: 12  # c9db
+  nonce: c9db  # c9db
+  message: "Tag added 2026-05-07 per validation-modality-mapping conversation. The Wave 5 framework_role fold was never explicitly tagged at merge time; this entry establishes the validation queue claim retroactively.\n\nValidation modality:\n\nDEEP (primary): cohort comparing pre-Wave-5 to post-Wave-6 behavior maps. Expected metric movements: (1) framework-handler centrality — route/event/IPC/RPC handlers fold to function/method canonical kinds, no longer over-counted as their own kind; (2) YAML pattern match counts via Pattern.framework_role field (WI-fojun-shipped backward-compat shim removal increases relevance); (3) slice membership shifts as post-fold canonical kinds participate in callable slices that pre-fold endpoint_shape kinds were excluded from; (4) supply-chain tier classification stability for framework-emitted synthetics.\n\nUAT (supplementary, per-framework spot-checks where ground-truth is more persuasive than aggregate): Phoenix Channels app (event_subscriber→method+role); Tauri IPC app (ipc_caller→function+role + the WI-nibis call_construct fold); Django signal receiver app; gRPC server / stub repo (grpc_server→class+role per WI-nitil correction); WebSocket emitter/listener app (Socket.IO or similar); GraphQL resolver app."  # c9db

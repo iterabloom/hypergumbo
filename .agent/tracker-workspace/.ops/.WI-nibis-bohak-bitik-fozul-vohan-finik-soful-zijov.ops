@@ -42,3 +42,12 @@
   clock: 4  # 39d6
   nonce: 39d6  # 39d6
   message: "Closed via PR #3570 (merged commit 0dae2af80). Cluster D apex/peer call-construct fold per audit-findings 0012: 28 peer evidence_type values collapsed to canonical apex ast_call (or message_send for cross_file_message_send) + structured meta keys. 89 emit sites across 26 producer files migrated. Apex name resolved (ADR-0028 Open Question 1): ast_call chosen for symmetry with ast_* family. All 28 rows ship at PRELIM_RESOLVED on AXIS_ENDPOINT_SHAPE through Phase 4a deprecation window per ADR-0028 §Phase 4. Tests: 11 files migrated; 5072 passed, 0 failed, 100% coverage on changed sources."  # 39d6
+- op: update  # 6179
+  at: '2026-05-07T07:10:47Z'  # 6179
+  by: agent  # 6179
+  actor: jgstern_agent  # 6179
+  clock: 5  # 6179
+  nonce: '6179'  # 6179
+  set: {}  # 6179
+  add:  # 6179
+    tags: [awaits_bakeoff_validation]  # 6179
