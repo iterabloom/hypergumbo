@@ -1946,3 +1946,217 @@ class TestGrpcUnresolvedEdgeResolution:
         assert len(resolved) == 1
         assert resolved[0].src == unresolved_edge.src
         assert resolved[0].dst == register_sym.id
+
+
+class TestTransitiveStructEmbedding:
+    """WI-pogus: Go gRPC ttrpc detection walks transitive struct embedding.
+
+    The Go analyzer encodes embedded structs in ``meta.base_classes``.
+    A struct that embeds an in-tree intermediate (e.g. ``BaseFooImpl``
+    extending ``UnimplementedFooServer`` or implementing ``HealthService``)
+    must be detected the same as a direct embedder.
+    """
+
+    def test_one_intermediate_chain(self, tmp_path: Path) -> None:
+        """LeafImpl extends BaseImpl which embeds UnimplementedHealthServer.
+
+        Go's UnimplementedXxxServer detection has its own regex-based
+        file scan; this test exercises the base_classes-based fallback
+        path used for ttrpc / CSI patterns where the embedded type is
+        an interface name (``HealthService``).
+        """
+        from hypergumbo_core.ir import Edge, Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "health.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package grpc;\n"
+            "service Health {\n"
+            "    rpc Check(HealthCheckRequest) returns (HealthCheckResponse);\n"
+            "}\n"
+        )
+
+        # In-tree intermediate that implements HealthService directly.
+        base_struct = Symbol(
+            id="go:base.go:1-5:BaseHealthImpl:struct",
+            name="BaseHealthImpl", kind="struct", language="go",
+            path="base.go", span=Span(1, 5, 0, 0),
+            origin="go-v1", origin_run_id="test",
+            meta={"base_classes": ["HealthService"]},
+        )
+        # Leaf struct embeds the intermediate but not the framework type.
+        leaf_struct = Symbol(
+            id="go:leaf.go:1-5:UserHealth:struct",
+            name="UserHealth", kind="struct", language="go",
+            path="leaf.go", span=Span(1, 5, 0, 0),
+            origin="go-v1", origin_run_id="test",
+            meta={"base_classes": ["BaseHealthImpl"]},
+        )
+        check = Symbol(
+            id="go:leaf.go:10-12:UserHealth.Check:method",
+            name="UserHealth.Check", kind="method", language="go",
+            path="leaf.go", span=Span(10, 12, 0, 0),
+            origin="go-v1", origin_run_id="test",
+        )
+        edge = Edge.create(
+            src=leaf_struct.id, dst=base_struct.id,
+            edge_type="extends", line=1,
+        )
+        result = link_grpc(
+            tmp_path,
+            existing_symbols=[base_struct, leaf_struct, check],
+            existing_edges=[edge],
+        )
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert any(check.id == e.src for e in impl_edges), (
+            f"UserHealth.Check should implement Health.Check transitively; got "
+            f"{[(e.src, e.dst) for e in impl_edges]}"
+        )
+
+    def test_two_intermediate_chain(self, tmp_path: Path) -> None:
+        """Three-level chain: Leaf → Mid → Base implements HealthService."""
+        from hypergumbo_core.ir import Edge, Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "health.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package grpc;\n"
+            "service Health {\n"
+            "    rpc Check(HealthCheckRequest) returns (HealthCheckResponse);\n"
+            "}\n"
+        )
+
+        base_struct = Symbol(
+            id="go:base.go:1-5:BaseHealth:struct",
+            name="BaseHealth", kind="struct", language="go",
+            path="base.go", span=Span(1, 5, 0, 0),
+            origin="go-v1", origin_run_id="test",
+            meta={"base_classes": ["HealthService"]},
+        )
+        mid_struct = Symbol(
+            id="go:mid.go:1-5:MidHealth:struct",
+            name="MidHealth", kind="struct", language="go",
+            path="mid.go", span=Span(1, 5, 0, 0),
+            origin="go-v1", origin_run_id="test",
+            meta={"base_classes": ["BaseHealth"]},
+        )
+        leaf_struct = Symbol(
+            id="go:leaf.go:1-5:UserHealth:struct",
+            name="UserHealth", kind="struct", language="go",
+            path="leaf.go", span=Span(1, 5, 0, 0),
+            origin="go-v1", origin_run_id="test",
+            meta={"base_classes": ["MidHealth"]},
+        )
+        check = Symbol(
+            id="go:leaf.go:10-12:UserHealth.Check:method",
+            name="UserHealth.Check", kind="method", language="go",
+            path="leaf.go", span=Span(10, 12, 0, 0),
+            origin="go-v1", origin_run_id="test",
+        )
+        edges = [
+            Edge.create(src=leaf_struct.id, dst=mid_struct.id, edge_type="extends", line=1),
+            Edge.create(src=mid_struct.id, dst=base_struct.id, edge_type="extends", line=1),
+        ]
+        result = link_grpc(
+            tmp_path,
+            existing_symbols=[base_struct, mid_struct, leaf_struct, check],
+            existing_edges=edges,
+        )
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert any(check.id == e.src for e in impl_edges)
+
+    def test_diamond_inheritance_cycle_guarded(self, tmp_path: Path) -> None:
+        """Two paths from leaf to a HealthService ancestor — terminates without double-emit."""
+        from hypergumbo_core.ir import Edge, Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "health.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package grpc;\n"
+            "service Health {\n"
+            "    rpc Check(HealthCheckRequest) returns (HealthCheckResponse);\n"
+            "}\n"
+        )
+
+        base_struct = Symbol(
+            id="go:base.go:1-5:BaseHealth:struct",
+            name="BaseHealth", kind="struct", language="go",
+            path="base.go", span=Span(1, 5, 0, 0),
+            origin="go-v1", origin_run_id="test",
+            meta={"base_classes": ["HealthService"]},
+        )
+        left_struct = Symbol(
+            id="go:left.go:1-5:LeftHealth:struct",
+            name="LeftHealth", kind="struct", language="go",
+            path="left.go", span=Span(1, 5, 0, 0),
+            origin="go-v1", origin_run_id="test",
+            meta={"base_classes": ["BaseHealth"]},
+        )
+        right_struct = Symbol(
+            id="go:right.go:1-5:RightHealth:struct",
+            name="RightHealth", kind="struct", language="go",
+            path="right.go", span=Span(1, 5, 0, 0),
+            origin="go-v1", origin_run_id="test",
+            meta={"base_classes": ["BaseHealth"]},
+        )
+        leaf_struct = Symbol(
+            id="go:leaf.go:1-5:UserHealth:struct",
+            name="UserHealth", kind="struct", language="go",
+            path="leaf.go", span=Span(1, 5, 0, 0),
+            origin="go-v1", origin_run_id="test",
+            meta={"base_classes": ["LeftHealth", "RightHealth"]},
+        )
+        check = Symbol(
+            id="go:leaf.go:10-12:UserHealth.Check:method",
+            name="UserHealth.Check", kind="method", language="go",
+            path="leaf.go", span=Span(10, 12, 0, 0),
+            origin="go-v1", origin_run_id="test",
+        )
+        edges = [
+            Edge.create(src=leaf_struct.id, dst=left_struct.id, edge_type="extends", line=1),
+            Edge.create(src=leaf_struct.id, dst=right_struct.id, edge_type="extends", line=1),
+            Edge.create(src=left_struct.id, dst=base_struct.id, edge_type="extends", line=1),
+            Edge.create(src=right_struct.id, dst=base_struct.id, edge_type="extends", line=1),
+        ]
+        result = link_grpc(
+            tmp_path,
+            existing_symbols=[base_struct, left_struct, right_struct, leaf_struct, check],
+            existing_edges=edges,
+        )
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        # Exactly one edge from UserHealth.Check (no double-emit through diamond).
+        edges_from_check = [e for e in impl_edges if e.src == check.id]
+        assert len(edges_from_check) == 1
+
+    def test_direct_embedding_regression_unaffected(self, tmp_path: Path) -> None:
+        """Direct ttrpc HealthService embedding still works without edges."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "health.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package grpc;\n"
+            "service Health {\n"
+            "    rpc Check(HealthCheckRequest) returns (HealthCheckResponse);\n"
+            "}\n"
+        )
+        leaf_struct = Symbol(
+            id="go:leaf.go:1-5:UserHealth:struct",
+            name="UserHealth", kind="struct", language="go",
+            path="leaf.go", span=Span(1, 5, 0, 0),
+            origin="go-v1", origin_run_id="test",
+            meta={"base_classes": ["HealthService"]},
+        )
+        check = Symbol(
+            id="go:leaf.go:10-12:UserHealth.Check:method",
+            name="UserHealth.Check", kind="method", language="go",
+            path="leaf.go", span=Span(10, 12, 0, 0),
+            origin="go-v1", origin_run_id="test",
+        )
+        result = link_grpc(tmp_path, existing_symbols=[leaf_struct, check])
+        impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
+        assert any(check.id == e.src for e in impl_edges)

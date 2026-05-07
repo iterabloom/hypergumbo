@@ -65,6 +65,10 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ._transitive_bases import (
+    build_inheritance_index,
+    collect_transitive_base_names,
+)
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -470,6 +474,7 @@ def _link_go_methods_to_rpc_routes(
     existing_symbols: list[Symbol],
     route_symbols: list[Symbol],
     run: AnalysisRun,
+    existing_edges: list[Edge] | None = None,
 ) -> list[Edge]:
     """Create implements_rpc edges from Go methods to proto RPC routes.
 
@@ -516,13 +521,22 @@ def _link_go_methods_to_rpc_routes(
     # - ttrpc: interfaces like AgentServiceService, HealthService
     # - CSI: interfaces like IdentityServer, ControllerServer, NodeServer
     # The Go analyzer records implemented interfaces in base_classes metadata.
+    #
+    # WI-pogus: walk the transitive base-class chain so a struct that embeds
+    # an in-tree intermediate (e.g. `BaseFooImpl` extending
+    # `UnimplementedFooServer`) is detected the same as a direct embedder.
+    # Go uses struct embedding rather than class inheritance, but the Go
+    # analyzer encodes embedded structs / implemented interfaces in the
+    # same `meta.base_classes` metadata, so the WI-halat helper applies.
+    inheritance_index = build_inheritance_index(existing_edges or [])
+    symbol_by_id = {s.id: s for s in existing_symbols}
     for sym in existing_symbols:
         if sym.kind != "struct" or sym.language != "go":
             continue
         if sym.name in struct_to_service:
             continue  # already mapped via Unimplemented embedding
-        base_classes = (sym.meta or {}).get("base_classes", [])
-        for base in base_classes:
+        chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
+        for base in chain:
             if base.startswith("Unimplemented"):
                 continue
             # Match ttrpc patterns: XxxService or XxxServiceService
@@ -607,6 +621,7 @@ def _normalize_service_name(name: str) -> str:
 def link_grpc(
     root: Path,
     existing_symbols: list[Symbol] | None = None,
+    existing_edges: list[Edge] | None = None,
 ) -> GrpcLinkResult:
     """Link gRPC clients to servers across files.
 
@@ -615,6 +630,9 @@ def link_grpc(
         existing_symbols: Pre-existing symbols from language analyzers.
             When provided, enables linking Go methods on server structs
             to their corresponding proto RPC route symbols.
+        existing_edges: Pre-existing edges (extends/implements) used for
+            transitive base-name walks (WI-pogus). When omitted, only
+            direct embedding via ``meta.base_classes`` is consulted.
 
     Returns:
         GrpcLinkResult with symbols and edges.
@@ -835,6 +853,7 @@ def link_grpc(
         edges.extend(
             _link_go_methods_to_rpc_routes(
                 all_patterns, all_rpc_defs, existing_symbols, symbols, run,
+                existing_edges=existing_edges,
             )
         )
 
@@ -983,7 +1002,11 @@ def grpc_linker(ctx: LinkerContext) -> LinkerResult:
     This wraps link_grpc() and adds unresolved edge resolution.
     """
     # Run the core linking logic
-    result = link_grpc(ctx.repo_root, existing_symbols=ctx.symbols)
+    result = link_grpc(
+        ctx.repo_root,
+        existing_symbols=ctx.symbols,
+        existing_edges=ctx.edges,
+    )
 
     # Resolve unresolved edges from analyzers
     resolved_edges = _resolve_unresolved_grpc_edges(
