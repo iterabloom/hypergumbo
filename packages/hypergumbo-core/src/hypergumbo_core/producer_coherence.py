@@ -463,3 +463,102 @@ def find_edge_type_producer_violations(
         keyword_arg="edge_type",
         registry_names=all_edge_type_names(),
     )
+
+
+def find_emitted_literal_values(
+    repo_root: Path,
+    *,
+    constructor_names: frozenset[str],
+    keyword_arg: str,
+    search_roots: Iterable[str] = DEFAULT_SEARCH_ROOTS,
+    excluded_path_substrings: Iterable[str] = DEFAULT_EXCLUDED_PATH_SUBSTRINGS,
+) -> dict[str, tuple[str, ...]]:
+    """Collect every literal value emitted at producer call sites.
+
+    Returns a mapping ``{literal_value: (file:line, ...)}`` indexing all
+    sites under *search_roots* where a ``constructor_names`` call carries
+    *keyword_arg* with a statically-resolvable literal string. The
+    classification reuses :func:`_classify_value` so the emit set covers
+    both the literal-kwarg shape and the assignment-form-to-Name shape
+    (function-local single literal, ternary, if/else chain via
+    :func:`_resolve_function_local`; module-level constants via
+    :func:`_resolve_module_constant`).
+
+    Distinct from :func:`find_producer_coherence_violations`: that function
+    *gates* — given a registry, it returns the values that escape it. This
+    function *enumerates* — it returns every emitted value regardless of
+    registry membership. Audit-findings consumers (the
+    DEPRECATE-NO-FOLD-zero-producer property test) need the enumeration
+    so they can assert "no producer emits this value", which is the
+    inverse of the gate predicate.
+
+    **Coverage gap.** The four indirection shapes catalogued in the
+    Fundamental Concept Audit playbook §"Step 4.5" are partially covered:
+    literal kwarg (yes), assignment-form to Name (yes — extension A
+    scope), helper-call positional/kwarg (no — the walker only descends
+    *constructor_names*, not arbitrary helpers like ``add_symbol``),
+    f-string interpolation (no — surfaced as advisory by the gate
+    function, not enumerated here), dict-subscript-target (no — WI-nubuv
+    ext C scope). Any DEPRECATE-NO-FOLD verdict that ships through one of
+    the uncovered shapes will not be flagged by callers using this map;
+    the playbook's per-value manual grep at audit-write time is the
+    compensating control until WI-nubuv ext B/C land.
+    """
+    excluded_tuple = tuple(excluded_path_substrings)
+    emit_sites: dict[str, list[str]] = {}
+
+    for root_name in search_roots:
+        root = repo_root / root_name
+        if not root.is_dir():
+            continue
+        for py_file in root.rglob("*.py"):
+            py_str = str(py_file)
+            if any(sub in py_str for sub in excluded_tuple):
+                continue
+            for lineno, value_node, tree, func_scope in _iter_producer_call_sites(
+                py_file,
+                constructor_names=constructor_names,
+                keyword_arg=keyword_arg,
+            ):
+                try:
+                    rel = py_file.relative_to(repo_root)
+                except ValueError:  # pragma: no cover
+                    rel = py_file
+                category, payload = _classify_value(value_node, tree, func_scope)
+                if category == "literal":
+                    assert isinstance(payload, str)
+                    emit_sites.setdefault(payload, []).append(f"{rel}:{lineno}")
+                elif category == "literals":
+                    assert isinstance(payload, frozenset)
+                    for v in payload:
+                        emit_sites.setdefault(v, []).append(f"{rel}:{lineno}")
+                # fstring + unresolvable: do not contribute literal values.
+
+    return {k: tuple(v) for k, v in emit_sites.items()}
+
+
+def find_emitted_symbol_kinds(repo_root: Path) -> dict[str, tuple[str, ...]]:
+    """Enumerate ``Symbol.kind`` literal emit sites; see :func:`find_emitted_literal_values`."""
+    return find_emitted_literal_values(
+        repo_root,
+        constructor_names=frozenset({"Symbol", "Symbol.create"}),
+        keyword_arg="kind",
+    )
+
+
+def find_emitted_evidence_types(repo_root: Path) -> dict[str, tuple[str, ...]]:
+    """Enumerate ``Edge.evidence_type`` literal emit sites; see :func:`find_emitted_literal_values`."""
+    return find_emitted_literal_values(
+        repo_root,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+    )
+
+
+def find_emitted_edge_types(repo_root: Path) -> dict[str, tuple[str, ...]]:
+    """Enumerate ``Edge.edge_type`` literal emit sites; see :func:`find_emitted_literal_values`."""
+    return find_emitted_literal_values(
+        repo_root,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+    )

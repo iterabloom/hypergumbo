@@ -30,6 +30,7 @@ from hypergumbo_core.audit_findings import (
     VerdictRow,
     _is_valid_expect,
     find_audit_findings_docs,
+    find_zero_producer_violations,
     parse_audit_findings,
     validate_against_registry,
 )
@@ -856,3 +857,238 @@ def test_live_tree_audit_findings_docs_parse_and_validate():
         "Audit-findings docs disagree with the live registry:\n"
         + "\n".join(all_errors)
     )
+
+
+# --- DEPRECATE-NO-FOLD-zero-producer regression guard ---
+
+
+def _write_audit_with_deprecate_row(
+    tmp_path: Path, value: str, axis: str = AXIS_SYMBOL_KIND,
+) -> Path:
+    audits = tmp_path / "docs" / "audits"
+    audits.mkdir(parents=True)
+    md = audits / "0099-test.md"
+    md.write_text(f"""# Test audit
+
+## Verdicts
+
+```yaml
+kind: audit_verdicts
+axis: {axis}
+verdicts:
+  - value: {value}
+    verdict: DEPRECATE-NO-FOLD
+    fold_target: null
+    status: PRELIM_RESOLVED
+    diagnostic_test:
+      cmd: "true"
+      expect: exit_code:0
+    rationale: "Dead vocabulary, no producer."
+```
+""")
+    return md
+
+
+def test_zero_producer_violations_clean_when_no_emits(tmp_path: Path):
+    """A DEPRECATE-NO-FOLD row whose value no producer emits returns no
+    violation. The fixture ships an empty packages/ tree so the literal-
+    kwarg + assignment-form trace finds zero emit sites for the
+    deprecated value."""
+    md = _write_audit_with_deprecate_row(tmp_path, "obviously_unused_kind_xyzqq")
+    findings = parse_audit_findings(md)
+
+    pkg_dir = tmp_path / "packages" / "fake" / "src"
+    pkg_dir.mkdir(parents=True)
+    (pkg_dir / "noop.py").write_text("# no producer emits anything here\n")
+
+    errors = find_zero_producer_violations(tmp_path, [findings])
+    assert errors == []
+
+
+def test_zero_producer_violations_flags_literal_kwarg_emit(tmp_path: Path):
+    """A DEPRECATE-NO-FOLD row whose value a producer emits via literal
+    kwarg returns a violation entry naming the file:line. This is
+    Step 4.5 producer-shape #1 (literal kwarg)."""
+    md = _write_audit_with_deprecate_row(tmp_path, "leaked_kind_alpha")
+    findings = parse_audit_findings(md)
+
+    pkg_dir = tmp_path / "packages" / "fake" / "src"
+    pkg_dir.mkdir(parents=True)
+    (pkg_dir / "leak.py").write_text(
+        'from foo import Symbol\n'
+        'def emit():\n'
+        '    return Symbol(kind="leaked_kind_alpha", id="x")\n'
+    )
+
+    errors = find_zero_producer_violations(tmp_path, [findings])
+    assert len(errors) == 1
+    assert "leaked_kind_alpha" in errors[0]
+    assert "DEPRECATE-NO-FOLD" in errors[0]
+    assert "leak.py:3" in errors[0]
+
+
+def test_zero_producer_violations_flags_assignment_form_emit(tmp_path: Path):
+    """A DEPRECATE-NO-FOLD row whose value a producer emits via
+    function-local assignment-form-to-Name returns a violation. This is
+    Step 4.5 producer-shape #3 (assignment-form to Name) — exactly the
+    shape that the Wave 6 PR 4 reclassification surfaced as a literal-grep
+    blind spot."""
+    md = _write_audit_with_deprecate_row(tmp_path, "leaked_kind_beta")
+    findings = parse_audit_findings(md)
+
+    pkg_dir = tmp_path / "packages" / "fake" / "src"
+    pkg_dir.mkdir(parents=True)
+    (pkg_dir / "leak.py").write_text(
+        'from foo import Symbol\n'
+        'def emit():\n'
+        '    k = "leaked_kind_beta"\n'
+        '    return Symbol(kind=k, id="x")\n'
+    )
+
+    errors = find_zero_producer_violations(tmp_path, [findings])
+    assert len(errors) == 1
+    assert "leaked_kind_beta" in errors[0]
+    assert "leak.py:4" in errors[0]
+
+
+def test_zero_producer_violations_ignores_non_deprecate_rows(tmp_path: Path):
+    """CANONICAL and FOLD verdicts are out of scope; the regression guard
+    does not flag producers for those rows even when the producer exists.
+    Their lifecycle is enforced by ``validate_against_registry``."""
+    audits = tmp_path / "docs" / "audits"
+    audits.mkdir(parents=True)
+    md = audits / "0098-test.md"
+    md.write_text(f"""# Test audit
+
+## Verdicts
+
+```yaml
+kind: audit_verdicts
+axis: {AXIS_SYMBOL_KIND}
+verdicts:
+  - value: function
+    verdict: CANONICAL
+    fold_target: null
+    status: RESOLVED
+    diagnostic_test:
+      cmd: "true"
+      expect: exit_code:0
+    rationale: "Canonical language construct."
+```
+""")
+    findings = parse_audit_findings(md)
+
+    pkg_dir = tmp_path / "packages" / "fake" / "src"
+    pkg_dir.mkdir(parents=True)
+    (pkg_dir / "emit.py").write_text(
+        'from foo import Symbol\n'
+        'def f(): return Symbol(kind="function", id="x")\n'
+    )
+
+    errors = find_zero_producer_violations(tmp_path, [findings])
+    assert errors == []
+
+
+def test_zero_producer_violations_ignores_unknown_axes(tmp_path: Path):
+    """Audit docs declaring an axis without a registry binding contribute
+    no violations — the regression guard is silent for axes outside the
+    three currently-registered ones (Symbol.kind / Edge.edge_type /
+    Edge.evidence_type), since enumerating producers requires per-axis
+    knowledge."""
+    audits = tmp_path / "docs" / "audits"
+    audits.mkdir(parents=True)
+    md = audits / "0097-test.md"
+    md.write_text("""# Test audit
+
+## Verdicts
+
+```yaml
+kind: audit_verdicts
+axis: SomeFutureAxis.field
+verdicts:
+  - value: anything
+    verdict: DEPRECATE-NO-FOLD
+    fold_target: null
+    status: PRELIM_RESOLVED
+    diagnostic_test:
+      cmd: "true"
+      expect: exit_code:0
+    rationale: "Future axis."
+```
+""")
+    findings = parse_audit_findings(md)
+    errors = find_zero_producer_violations(tmp_path, [findings])
+    assert errors == []
+
+
+def test_zero_producer_violations_handles_empty_findings(tmp_path: Path):
+    """No findings → no violations, no producer scan triggered. Guards
+    against the regression where the empty-input path crashes on the
+    later axis-emitter dispatch."""
+    errors = find_zero_producer_violations(tmp_path, [])
+    assert errors == []
+
+
+def test_zero_producer_violations_distinguishes_axes(tmp_path: Path):
+    """A DEPRECATE-NO-FOLD on Symbol.kind axis must not flag an
+    Edge.evidence_type producer that happens to use the same string,
+    and vice versa. This catches the cross-axis false-positive class."""
+    audits = tmp_path / "docs" / "audits"
+    audits.mkdir(parents=True)
+    md = audits / "0096-test.md"
+    md.write_text(f"""# Test audit
+
+## Verdicts
+
+```yaml
+kind: audit_verdicts
+axis: {AXIS_SYMBOL_KIND}
+verdicts:
+  - value: same_string_xyz
+    verdict: DEPRECATE-NO-FOLD
+    fold_target: null
+    status: PRELIM_RESOLVED
+    diagnostic_test:
+      cmd: "true"
+      expect: exit_code:0
+    rationale: "Dead Symbol.kind vocabulary."
+```
+""")
+    findings = parse_audit_findings(md)
+
+    pkg_dir = tmp_path / "packages" / "fake" / "src"
+    pkg_dir.mkdir(parents=True)
+    (pkg_dir / "leak.py").write_text(
+        'from foo import Edge\n'
+        'def emit():\n'
+        '    return Edge(evidence_type="same_string_xyz", id="x")\n'
+    )
+
+    errors = find_zero_producer_violations(tmp_path, [findings])
+    assert errors == []
+
+
+def test_live_tree_deprecate_no_fold_function_runs_without_crashing():
+    """Walks the live ``docs/audits/`` tree and confirms
+    ``find_zero_producer_violations`` runs end-to-end against the live
+    registry without raising.
+
+    Distinct from the live-tree *regression* assertion (which would also
+    require ``len(errors) == 0``): this minimal smoke check ships the
+    machinery in this PR, leaving the strict assertion for the verdict-
+    correctness re-audit PR that absorbs whatever leak set the function
+    surfaces. Splitting the work prevents the test infrastructure from
+    being held hostage to the (separate) re-audit deliverable.
+
+    Skips when ``docs/audits/`` is absent (isolated package run).
+    """
+    repo_root = Path(__file__).resolve().parents[3]
+    docs = find_audit_findings_docs(repo_root)
+    if not docs:
+        pytest.skip("docs/audits/ not present (isolated package run)")
+
+    findings_list = [parse_audit_findings(md) for md in docs]
+    errors = find_zero_producer_violations(repo_root, findings_list)
+    assert isinstance(errors, list)
+    for entry in errors:
+        assert isinstance(entry, str) and entry

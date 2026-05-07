@@ -31,7 +31,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final, Protocol
+from typing import Any, Final, Iterable, Protocol
 
 import yaml
 
@@ -412,6 +412,75 @@ def _describe_state(spec: _AxisSpec | None) -> str:
     if spec is None:
         return "absent from registry"
     return f"present on axis {spec.axis!r}"
+
+
+# --- DEPRECATE-NO-FOLD producer-existence regression guard ---
+
+def find_zero_producer_violations(
+    repo_root: Path,
+    findings_list: Iterable[AuditFindings],
+) -> list[str]:
+    """For every DEPRECATE-NO-FOLD verdict, assert no producer emits the value.
+
+    The Fundamental Concept Audit playbook §"Step 4.5 — Indirection-aware
+    producer trace" requires that any verdict claiming "no producer"
+    (DEPRECATE-NO-FOLD) be backed by an indirection-aware grep at audit-
+    write time. This function is the corresponding **regression guard** at
+    every-commit time: if a producer is added later for a value flagged
+    DEPRECATE-NO-FOLD without updating the verdict, this function returns
+    a violation entry naming the file:line emit sites.
+
+    The producer enumeration covers the literal-kwarg + assignment-form-to-
+    Name shapes (Step 4.5 shapes #1 and #3). The remaining shapes — helper-
+    call indirection (#2), f-string interpolation (#4), and dict-subscript-
+    target assignment (#5) — are not enumerated here; the playbook's
+    per-value manual grep at audit-write time is the compensating control
+    for those, with WI-nubuv ext B / ext C planned as the structural
+    backstops.
+
+    Returns a list of human-readable error strings (one entry per
+    DEPRECATE-NO-FOLD value that has at least one producer emit site).
+    Empty list means all DEPRECATE-NO-FOLD verdicts are intact for the
+    shapes this guard covers.
+    """
+    from hypergumbo_core.producer_coherence import (
+        find_emitted_edge_types,
+        find_emitted_evidence_types,
+        find_emitted_symbol_kinds,
+    )
+
+    deprecate_by_axis: dict[str, dict[str, Path]] = {}
+    for findings in findings_list:
+        if findings.axis not in _REGISTRIES:
+            continue
+        for row in findings.verdicts:
+            if row.verdict != VERDICT_DEPRECATE_NO_FOLD:
+                continue
+            deprecate_by_axis.setdefault(findings.axis, {})[row.value] = findings.path
+
+    if not deprecate_by_axis:
+        return []
+
+    axis_emitters = {
+        AXIS_SYMBOL_KIND: find_emitted_symbol_kinds,
+        AXIS_EDGE_EVIDENCE_TYPE: find_emitted_evidence_types,
+        AXIS_EDGE_EDGE_TYPE: find_emitted_edge_types,
+    }
+
+    errors: list[str] = []
+    for axis, deprecated_values in deprecate_by_axis.items():
+        emit_sites = axis_emitters[axis](repo_root)
+        for value, source_doc in sorted(deprecated_values.items()):
+            sites = emit_sites.get(value)
+            if sites:
+                errors.append(
+                    f"{source_doc}: row {value!r} verdict DEPRECATE-NO-FOLD "
+                    f"on axis {axis} contradicts {len(sites)} producer "
+                    f"emit site(s) found via literal-kwarg / assignment-form "
+                    f"trace: {', '.join(sites)}",
+                )
+
+    return errors
 
 
 # --- Tree walker ---
