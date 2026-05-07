@@ -185,6 +185,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`id`** — Id symbol (k8s / DSL). CANONICAL per audit-findings 0007.
 - **`id_selector`** — CSS id selector symbol. CANONICAL per audit-findings 0007.
 - **`index`** — Index symbol (SQL / DSL). CANONICAL per audit-findings 0007.
+- **`inductive`** — Lean ``inductive`` type declaration (``lean.py:247``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``lean.py`` emits via ``add_symbol(..., 'inductive')`` indirection).
 - **`input`** — Input symbol (Terraform / shader). CANONICAL per audit-findings 0007.
 - **`instance`** — Typeclass / interface instance declaration.
 - **`interface`** — Interface declaration.
@@ -196,6 +197,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`local`** — Local symbol (Terraform local). CANONICAL per audit-findings 0007.
 - **`macro`** — Macro definition (Rust / C / Scheme).
 - **`media`** — CSS @media symbol. CANONICAL per audit-findings 0007.
+- **`message`** — Protobuf ``message`` declaration (``proto.py:260``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``proto.py`` emits via ``_make_proto_symbol(..., 'message', ...)`` indirection).
 - **`method`** — Method on a class / struct / interface.
 - **`mixin`** — Mixin declaration (Ruby / Sass).
 - **`module`** — Module declaration (the source-level construct).
@@ -247,6 +249,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`task`** — Generic task symbol. CANONICAL per audit-findings 0006.
 - **`template`** — Template declaration (C++ / Vue / Handlebars).
 - **`test`** — Test-case symbol. CANONICAL per audit-findings 0006.
+- **`theorem`** — Theorem-prover top-level construct (Lean theorems and lemmas at ``lean.py:222,231``; TLA+ theorems at ``tlaplus.py:207``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; both producers emit via ``add_symbol(..., 'theorem')`` indirection).
 - **`trait`** — Trait declaration (Rust / Scala / Groovy).
 - **`trigger`** — Pipeline / DB trigger symbol. CANONICAL per audit-findings 0006.
 - **`type`** — Type declaration (TypeScript type, Haskell type, etc.).
@@ -263,13 +266,16 @@ Values that name the source-language syntactic construct the symbol represents. 
 Values whose meaning is leaked into the kind label even though it is captured by `Symbol.meta` (framework participation), `Edge` relationships (edge labels masquerading as kinds), or `dst.kind` queries (component refs). Migration plan in ADR-0027 §"Detailed analysis: per-cluster fold targets" folds these back into the canonical Cluster-A construct + `meta["framework_role"]` or drops them entirely as edge-only.
 
 - **`abi_call`** — Cluster E sub-case (a) FOLD per audit-findings 0010 (reclassified from Cluster D in this PR — the Solidity ABI emit site names a call expression, not a framework role): the solidity_abi linker was reclassified to kind='call_site' + meta['call_kind']='abi'. Registry entry stays through the Phase 4a deprecation window.
+- **`build-dependency`** — DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: dead vocabulary — no producer emits this kind. Registry entry stays through the Phase 4a deprecation window.
 - **`call`** — Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: zero Symbol.kind=call producers (the value lives only on UsageContext.kind, a different field). Registry entry stays through the Phase 4a deprecation window.
 - **`component_file`** — FOLDed to ``file`` + ``meta['component_framework']`` ('vue', 'svelte', 'astro', etc.) per audit-findings 0005, Wave 6 PR 3. Producer (``vue_component.py``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`component_ref`** — Cluster F dst-kind leakage per audit-findings 0011: DEPRECATE-NO-FOLD (PRELIM_RESOLVED). Three producers (vue.py / svelte.py / astro.py) drop the per-reference Symbol; the companion imports Edge re-routes src to make_file_id and carries component_name + source_path in meta. Registry entry stays through the Phase 4a deprecation window.
 - **`composer_package`** — FOLDed to ``package`` + ``meta['package_ecosystem']='composer'`` per audit-findings 0005, Wave 6 PR 3. Producer (``json_config.py``) migrated; registry entry stays through the Phase 4a deprecation window.
+- **`config`** — DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: Prisma generic block placeholder where the real construct (``datasource`` / ``generator``) lives in ``meta['block_type']``. Producer (``prisma.py:179``) drops the kind specialisation and emits ``kind='block'`` instead. Registry entry stays through the Phase 4a deprecation window.
 - **`crypto_consumer`** — Crypto-flow consumer. Fold to function/method + meta['framework_role']='crypto_consumer'.
 - **`crypto_producer`** — Crypto-flow producer. Fold to function/method + meta['framework_role']='crypto_producer'.
 - **`db_query`** — Cluster E sub-case (a) FOLD per audit-findings 0010: the database_query linker was reclassified to kind='call_site' + meta['call_kind']='db_query'. Registry entry stays through the Phase 4a deprecation window.
+- **`dev-dependency`** — DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: dead vocabulary — no producer emits this kind. Registry entry stays through the Phase 4a deprecation window.
 - **`dispatcher`** — Generic dispatcher symbol. Fold to function/method + meta['framework_role']='dispatcher'.
 - **`event_publisher`** — Symbol that publishes events. Fold to function/method + meta['framework_role']='event_publisher'.
 - **`event_subscriber`** — Symbol that subscribes to events. Fold to function/method + meta['framework_role']='event_subscriber'.
@@ -284,6 +290,7 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`grpc_service`** — gRPC `service Foo {...}` proto declaration. Fold to interface + meta['framework_role']='grpc_service'. Added 2026-05-06 (WI-nitil) — assignment-form producer at linkers/grpc.py:655 was missed by the original literal-grep audit. Registry entry stays through the Phase 4a deprecation window.
 - **`grpc_servicer`** — gRPC servicer class. Fold to class + meta['framework_role']='grpc_servicer'. Added 2026-05-06 (WI-nitil) — assignment-form producer at linkers/grpc.py:657 was missed by the original literal-grep audit. Registry entry stays through the Phase 4a deprecation window.
 - **`grpc_stub`** — gRPC stub call site. Fold to function + meta['framework_role']='grpc_stub'.
+- **`heading`** — DEPRECATE-NO-FOLD per audit-findings 0007, Wave 6 PR 4: dead vocabulary — markdown emits ``kind='section'`` (``markdown.py:198``); no producer emits ``kind='heading'``. Registry entry stays through the Phase 4a deprecation window.
 - **`http_client`** — HTTP client call site. Fold to function/method + meta['framework_role']='http_client'.
 - **`import`** — Cluster E sub-case (b) DEPRECATE-NO-FOLD per audit-findings 0010: the imports Edge captures the relationship; no replacement Symbol kind. Four producers (css.py, jsonnet.py, astro.py, r_lang.py) dropped across PRs 1, 2, and WI-kunag. Registry entry stays through the Phase 4a deprecation window.
 - **`include`** — Cluster E sub-case (b) DEPRECATE-NO-FOLD per audit-findings 0010: the include-family Edges capture the relationship; no replacement Symbol kind. Five producers (puppet.py, scss.py, twig.py x2, make.py) dropped across PRs 1, 2, and WI-kunag. Registry entry stays through the Phase 4a deprecation window.
@@ -297,6 +304,7 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`main_entry`** — FOLDed to ``file`` + ``meta['entry_role']='main'`` per audit-findings 0005, Wave 6 PR 3. Producer (``json_config.py``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`message_handler`** — Message-bus handler. Fold to function/method + meta['framework_role']='message_handler'.
 - **`message_sender`** — Message-bus sender. Fold to function/method + meta['framework_role']='message_sender'.
+- **`model`** — DEPRECATE-NO-FOLD per audit-findings 0007, Wave 6 PR 4: ID-string-only synthetic — only appears in ``prisma.py:120``'s ``compute_stable_id`` / ``make_symbol_id`` arguments. The actual emitted Symbol for a Prisma ``model`` block is ``kind='class'``. Registry entry stays through the Phase 4a deprecation window.
 - **`module_file`** — FOLDed to ``file`` + ``meta['module_system']`` ('esm' / 'commonjs') per audit-findings 0005, Wave 6 PR 3. Producer (``js_module.py``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`mq_publisher`** — Message-queue publisher. Fold to function/method + meta['framework_role']='mq_publisher'.
 - **`mq_subscriber`** — Message-queue subscriber. Fold to function/method + meta['framework_role']='mq_subscriber'.
@@ -322,6 +330,7 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`websocket_emitter`** — WebSocket emitter. Fold to function/method + meta['framework_role']='websocket_emitter'.
 - **`websocket_endpoint`** — WebSocket endpoint. Fold to function/method + meta['framework_role']='websocket_endpoint'.
 - **`websocket_listener`** — WebSocket listener. Fold to function/method + meta['framework_role']='websocket_listener'.
+- **`work_item`** — DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: tracker `Item.kind` value mistakenly registered against `Symbol.kind`. No producer emits this kind. Registry entry stays through the Phase 4a deprecation window.
 - **`write`** — Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: symmetric counterpart of read; zero Symbol.kind=write producers. Registry entry stays through the Phase 4a deprecation window.
 
 ### `pending_classification` — per-cluster audit pending per ADR-0027 §"Migration"
@@ -331,30 +340,21 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`benchmark`** — Cargo `[[bench]]` target kind. Pending cluster-G audit.
 - **`bin`** — Binary executable symbol. Pending cluster-B audit.
 - **`binary`** — Cargo `[[bin]]` target kind. Pending cluster-G audit.
-- **`build-dependency`** — Build-dependency entry. Pending cluster-G audit.
-- **`config`** — Config symbol. Pending cluster-G audit.
-- **`dev-dependency`** — Dev-dependency entry. Pending cluster-G audit.
 - **`devDependency`** — JS devDependency entry. Pending cluster-G audit.
 - **`editable`** — Editable install symbol. Pending cluster-G audit.
 - **`example`** — Cargo `[[example]]` target kind. Pending cluster-G audit.
 - **`external_symbol`** — External-symbol pseudo-node. Pending cluster-H audit.
 - **`handler`** — Ansible playbook handler. Pending cluster-G audit.
-- **`heading`** — Heading symbol (markdown / docs). Pending cluster-H audit.
 - **`helper`** — Handlebars block helper (non-builtin). Pending cluster-H audit.
-- **`inductive`** — Inductive type (Coq / Lean). Pending cluster-H audit.
-- **`message`** — Message symbol (proto / DSL). Pending cluster-H audit.
-- **`model`** — Model symbol (DSL). Pending cluster-H audit.
 - **`pattern_rule`** — Make pattern-rule target. Pending cluster-G audit.
 - **`private`** — WGSL `var<private>` address space. Pending cluster-H audit.
 - **`python_task`** — BitBake Python task symbol. Pending cluster-G audit.
 - **`storage`** — WGSL `var<storage>` address space. Pending cluster-H audit.
 - **`test_case`** — Test-case symbol (alternate label). Pending cluster-G audit.
-- **`theorem`** — Theorem symbol (Coq / Lean). Pending cluster-H audit.
 - **`uniform`** — Shader uniform binding (GLSL / WGSL). Pending cluster-H audit.
 - **`unresolved`** — Unresolved-symbol pseudo-node. Pending cluster-H audit.
 - **`url_requirement`** — URL-requirement install symbol. Pending cluster-G audit.
 - **`varying`** — GLSL varying qualifier (legacy interpolation). Pending cluster-H audit.
-- **`work_item`** — Work-item symbol. Pending cluster-G audit.
 - **`workgroup`** — WGSL `var<workgroup>` address space. Pending cluster-H audit.
 - **`workspace`** — Cargo `[workspace]` table kind. Pending cluster-G audit.
 

@@ -30,8 +30,8 @@ write an ADR vs an audit-findings document."
 | [0003](0003-symbol-kind-cluster-a-language-constructs.md) | Symbol.kind Cluster A — Canonical Language Constructs | `Symbol.kind` | All RESOLVED |
 | [0004](0004-evidence-type-cluster-a-canonical-inference.md) | Edge.evidence_type Cluster A — Canonical Inference Pathways | `Edge.evidence_type` | All RESOLVED |
 | [0005](0005-symbol-kind-cluster-b-file-shape.md) | Symbol.kind Cluster B — File-Shape and Package-Shape Entities | `Symbol.kind` | Mixed (6 RESOLVED, 11 PRELIM_RESOLVED) |
-| [0006](0006-symbol-kind-cluster-g-build-config-shape.md) | Symbol.kind Cluster G — Build / Config-Shape Entities | `Symbol.kind` | Mixed (15 RESOLVED, 9 UNRESOLVED) |
-| [0007](0007-symbol-kind-cluster-h-long-tail.md) | Symbol.kind Cluster H — Domain-Specific Long Tail | `Symbol.kind` | Mixed (53 RESOLVED, 7 UNRESOLVED) |
+| [0006](0006-symbol-kind-cluster-g-build-config-shape.md) | Symbol.kind Cluster G — Build / Config-Shape Entities | `Symbol.kind` | Mixed (15 RESOLVED, 4 PRELIM_RESOLVED, 5 UNRESOLVED) |
+| [0007](0007-symbol-kind-cluster-h-long-tail.md) | Symbol.kind Cluster H — Domain-Specific Long Tail | `Symbol.kind` | Mixed (56 RESOLVED, 2 PRELIM_RESOLVED, 2 UNRESOLVED) |
 | [0008](0008-evidence-type-cluster-b-resolution-status.md) | Edge.evidence_type Cluster B — Resolution-Status Leakage | `Edge.evidence_type` | All PRELIM_RESOLVED |
 | [0009](0009-symbol-kind-cluster-c-apex-peer.md) | Symbol.kind Cluster C — Apex/Peer Overloads | `Symbol.kind` | All PRELIM_RESOLVED |
 | [0010](0010-symbol-kind-cluster-e-edge-label-kinds.md) | Symbol.kind Cluster E — Edge Labels Masquerading as Kinds | `Symbol.kind` | Mixed (9 PRELIM_RESOLVED, 3 UNRESOLVED) |

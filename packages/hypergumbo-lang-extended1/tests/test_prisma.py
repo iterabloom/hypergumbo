@@ -163,7 +163,7 @@ class TestAnalyzePrisma:
         """Should extract datasource block."""
         result = analyze_prisma(prisma_repo)
 
-        configs = [s for s in result.symbols if s.kind == "config"]
+        configs = [s for s in result.symbols if s.kind == "block" and s.meta and s.meta.get("block_type") in ("datasource", "generator")]
         config_names = {s.name for s in configs}
 
         assert "db" in config_names
@@ -172,7 +172,7 @@ class TestAnalyzePrisma:
         """Should extract generator block."""
         result = analyze_prisma(prisma_repo)
 
-        configs = [s for s in result.symbols if s.kind == "config"]
+        configs = [s for s in result.symbols if s.kind == "block" and s.meta and s.meta.get("block_type") in ("datasource", "generator")]
         generators = [c for c in configs if c.meta and c.meta.get("block_type") == "generator"]
 
         assert len(generators) == 1

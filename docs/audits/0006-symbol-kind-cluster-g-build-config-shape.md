@@ -248,33 +248,33 @@ verdicts:
   - value: config
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"config\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"config\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Prisma analyzer emits kind='config' for ALL Prisma schema blocks (generator, datasource, model, enum, view, type) with the real construct in meta['block_type']. Producer rewrites to emit kind=block_type directly; consumers query language='prisma' or the per-block-type kind."
   - value: dev-dependency
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"dev-dependency\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"dev-dependency\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Dead vocabulary — present in the registry but no analyzer or linker emits it. Drop the SymbolKindSpec entry; simplify defensive consumer enumerations (cli.py:6066) accordingly."
   - value: build-dependency
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"build-dependency\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"build-dependency\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Dead vocabulary — present in the registry but no analyzer or linker emits it. Drop the SymbolKindSpec entry; simplify defensive consumer enumerations (cli.py:6066) accordingly."
   - value: work_item
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"work_item\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"work_item\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Tracker's Item.kind value, not a Symbol.kind. Emitted by hypergumbo_tracker.migration / screenshot_save on Item rows, never on Symbol. Drop the SymbolKindSpec entry; tracker continues using Item.kind='work_item' on its own schema unchanged."
 ```

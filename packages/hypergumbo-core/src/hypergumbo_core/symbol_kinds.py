@@ -456,8 +456,11 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Test-case symbol. CANONICAL per audit-findings 0006."),
     SymbolKindSpec("test_case", AXIS_PENDING,
                    "Test-case symbol (alternate label). Pending cluster-G audit."),
-    SymbolKindSpec("work_item", AXIS_PENDING,
-                   "Work-item symbol. Pending cluster-G audit."),
+    SymbolKindSpec("work_item", AXIS_ENDPOINT_SHAPE,
+                   "DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: "
+                   "tracker `Item.kind` value mistakenly registered against "
+                   "`Symbol.kind`. No producer emits this kind. Registry "
+                   "entry stays through the Phase 4a deprecation window."),
     SymbolKindSpec("target", AXIS_LANGUAGE_CONSTRUCT,
                    "Build-target symbol. CANONICAL per audit-findings 0006."),
     SymbolKindSpec("special_target", AXIS_LANGUAGE_CONSTRUCT,
@@ -480,18 +483,28 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "URL-requirement install symbol. Pending cluster-G audit."),
     SymbolKindSpec("setting", AXIS_LANGUAGE_CONSTRUCT,
                    "Setting / option symbol. CANONICAL per audit-findings 0006."),
-    SymbolKindSpec("config", AXIS_PENDING,
-                   "Config symbol. Pending cluster-G audit."),
+    SymbolKindSpec("config", AXIS_ENDPOINT_SHAPE,
+                   "DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: "
+                   "Prisma generic block placeholder where the real construct "
+                   "(``datasource`` / ``generator``) lives in "
+                   "``meta['block_type']``. Producer (``prisma.py:179``) "
+                   "drops the kind specialisation and emits ``kind='block'`` "
+                   "instead. Registry entry stays through the Phase 4a "
+                   "deprecation window."),
     SymbolKindSpec("derivation", AXIS_LANGUAGE_CONSTRUCT,
                    "Nix derivation symbol. CANONICAL per audit-findings 0006."),
     SymbolKindSpec("dependency", AXIS_LANGUAGE_CONSTRUCT,
                    "Dependency entry. CANONICAL per audit-findings 0006."),
     SymbolKindSpec("devDependency", AXIS_PENDING,
                    "JS devDependency entry. Pending cluster-G audit."),
-    SymbolKindSpec("dev-dependency", AXIS_PENDING,
-                   "Dev-dependency entry. Pending cluster-G audit."),
-    SymbolKindSpec("build-dependency", AXIS_PENDING,
-                   "Build-dependency entry. Pending cluster-G audit."),
+    SymbolKindSpec("dev-dependency", AXIS_ENDPOINT_SHAPE,
+                   "DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: "
+                   "dead vocabulary — no producer emits this kind. Registry "
+                   "entry stays through the Phase 4a deprecation window."),
+    SymbolKindSpec("build-dependency", AXIS_ENDPOINT_SHAPE,
+                   "DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: "
+                   "dead vocabulary — no producer emits this kind. Registry "
+                   "entry stays through the Phase 4a deprecation window."),
     SymbolKindSpec("addtask", AXIS_LANGUAGE_CONSTRUCT,
                    "BitBake addtask symbol. CANONICAL per audit-findings 0006."),
     SymbolKindSpec("python_task", AXIS_PENDING,
@@ -509,8 +522,12 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Section symbol (markdown / config). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("paragraph", AXIS_LANGUAGE_CONSTRUCT,
                    "Paragraph symbol (markdown / docs). CANONICAL per audit-findings 0007."),
-    SymbolKindSpec("heading", AXIS_PENDING,
-                   "Heading symbol (markdown / docs). Pending cluster-H audit."),
+    SymbolKindSpec("heading", AXIS_ENDPOINT_SHAPE,
+                   "DEPRECATE-NO-FOLD per audit-findings 0007, Wave 6 PR 4: "
+                   "dead vocabulary — markdown emits ``kind='section'`` "
+                   "(``markdown.py:198``); no producer emits ``kind='heading'``. "
+                   "Registry entry stays through the Phase 4a deprecation "
+                   "window."),
     SymbolKindSpec("code_block", AXIS_LANGUAGE_CONSTRUCT,
                    "Code-block symbol (markdown). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("diagram", AXIS_LANGUAGE_CONSTRUCT,
@@ -541,8 +558,14 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Participant symbol (mermaid). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("state", AXIS_LANGUAGE_CONSTRUCT,
                    "State symbol (state-machine DSL). CANONICAL per audit-findings 0007."),
-    SymbolKindSpec("model", AXIS_PENDING,
-                   "Model symbol (DSL). Pending cluster-H audit."),
+    SymbolKindSpec("model", AXIS_ENDPOINT_SHAPE,
+                   "DEPRECATE-NO-FOLD per audit-findings 0007, Wave 6 PR 4: "
+                   "ID-string-only synthetic — only appears in "
+                   "``prisma.py:120``'s ``compute_stable_id`` / "
+                   "``make_symbol_id`` arguments. The actual emitted Symbol "
+                   "for a Prisma ``model`` block is ``kind='class'``. "
+                   "Registry entry stays through the Phase 4a deprecation "
+                   "window."),
     SymbolKindSpec("fragment", AXIS_LANGUAGE_CONSTRUCT,
                    "Fragment symbol (GraphQL / template). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("partial", AXIS_LANGUAGE_CONSTRUCT,
@@ -601,8 +624,12 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Subscript symbol (Swift / Python __getitem__). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("signal", AXIS_LANGUAGE_CONSTRUCT,
                    "Signal symbol (VHDL / Verilog / Qt). CANONICAL per audit-findings 0007."),
-    SymbolKindSpec("message", AXIS_PENDING,
-                   "Message symbol (proto / DSL). Pending cluster-H audit."),
+    SymbolKindSpec("message", AXIS_LANGUAGE_CONSTRUCT,
+                   "Protobuf ``message`` declaration (``proto.py:260``). "
+                   "CANONICAL per audit-findings 0007 (reclassified Wave 6 "
+                   "PR 4 — the original DEPRECATE-NO-FOLD verdict was a "
+                   "literal-grep blind-spot miss; ``proto.py`` emits via "
+                   "``_make_proto_symbol(..., 'message', ...)`` indirection)."),
     SymbolKindSpec("data", AXIS_LANGUAGE_CONSTRUCT,
                    "Data symbol (Terraform data block). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("resource", AXIS_LANGUAGE_CONSTRUCT,
@@ -615,10 +642,19 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Index symbol (SQL / DSL). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("node", AXIS_LANGUAGE_CONSTRUCT,
                    "Node symbol (k8s / DSL). CANONICAL per audit-findings 0007."),
-    SymbolKindSpec("inductive", AXIS_PENDING,
-                   "Inductive type (Coq / Lean). Pending cluster-H audit."),
-    SymbolKindSpec("theorem", AXIS_PENDING,
-                   "Theorem symbol (Coq / Lean). Pending cluster-H audit."),
+    SymbolKindSpec("inductive", AXIS_LANGUAGE_CONSTRUCT,
+                   "Lean ``inductive`` type declaration (``lean.py:247``). "
+                   "CANONICAL per audit-findings 0007 (reclassified Wave 6 "
+                   "PR 4 — the original DEPRECATE-NO-FOLD verdict was a "
+                   "literal-grep blind-spot miss; ``lean.py`` emits via "
+                   "``add_symbol(..., 'inductive')`` indirection)."),
+    SymbolKindSpec("theorem", AXIS_LANGUAGE_CONSTRUCT,
+                   "Theorem-prover top-level construct (Lean theorems and "
+                   "lemmas at ``lean.py:222,231``; TLA+ theorems at "
+                   "``tlaplus.py:207``). CANONICAL per audit-findings 0007 "
+                   "(reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD "
+                   "verdict was a literal-grep blind-spot miss; both producers "
+                   "emit via ``add_symbol(..., 'theorem')`` indirection)."),
     SymbolKindSpec("playbook", AXIS_LANGUAGE_CONSTRUCT,
                    "Ansible playbook symbol. CANONICAL per audit-findings 0007."),
     SymbolKindSpec("structure", AXIS_ENDPOINT_SHAPE,

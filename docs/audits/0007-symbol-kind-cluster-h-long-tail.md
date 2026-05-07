@@ -2,7 +2,7 @@
 # Audit-findings 0007: Symbol.kind Cluster H — Domain-Specific Long Tail
 
 - Date: 2026-05-05
-- Status: Mixed — 53 CANONICAL rows RESOLVED via WI-runod Wave 6 PR 2 registry promotion; 7 DEPRECATE-NO-FOLD rows remain UNRESOLVED pending subsequent Wave 6 PRs (`heading`, `inductive`, `theorem`, `message`, `model`, `external_symbol`, `unresolved`).
+- Status: Mixed — 56 CANONICAL rows RESOLVED (53 via Wave 6 PR 2 registry promotion + 3 via Wave 6 PR 4 reclassification: `theorem`, `inductive`, `message`); 2 DEPRECATE-NO-FOLD rows now PRELIM_RESOLVED via Wave 6 PR 4 (`heading`, `model`); 2 boundary-pseudo-symbol DEPRECATE-NO-FOLD rows remain UNRESOLVED pending the parallel `Symbol.is_resolved` ADR decision (`external_symbol`, `unresolved`).
 - Closes: WI-nupus-fovor-rataf-momub-natit-hihir-bufas-bukih (Cluster H domain long-tail per-value audit, ADR-0027 Phase 3)
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Fourth audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical), 0005 (Cluster B file-shape), and 0006 (Cluster G build/config-shape).
 
@@ -14,7 +14,7 @@ The registry's Cluster H section seeds 61 values. One of them — `structure` �
 
 The cluster-H framing question (per WI-nupus and ADR-0027 §"Risks"): are these *language constructs* in their respective DSLs (CSS, SQL, HCL/Terraform, Mermaid, GraphQL, LaTeX, Markdown, BibTeX, gnuplot, Vue, Svelte, Twig, Handlebars, Blade, QML, VHDL, SPARQL, Nix, COBOL, Swift, Objective-C, Elm, F#, R, Ansible YAML, gitignore, …), or do a non-trivial subset leak Cluster D / E shape (`*_handler` framework qualifiers, `*_call` relationship-shaped kinds), warranting per-value FOLD verdicts or a separate axis ADR?
 
-This audit answers: **53 CANONICAL** (each is a top-level construct in the source language at hand — the cross-DSL overload pattern reads like `function` or `package` across general-purpose languages, not as a leak), **0 FOLD** (no sub-mode/scope qualifier shapes surfaced once Cluster G's audit absorbed the `task`/`python_task`/`addtask` scope-qualifier shape), and **7 DEPRECATE-NO-FOLD** (4 dead vocabulary with no producer at all — `heading`, `inductive`, `theorem`, `message`; 1 ID-string-only synthetic — `model`; 2 boundary-pseudo-symbol kinds flagged for an ADR-0028-adjacent re-examination — see §"Diagnostic findings" #3: `unresolved` and `external_symbol`).
+This audit answers (post Wave 6 PR 4 reclassification — see §"Diagnostic findings" #4): **56 CANONICAL** (each is a top-level construct in the source language at hand — the cross-DSL overload pattern reads like `function` or `package` across general-purpose languages, not as a leak), **0 FOLD** (no sub-mode/scope qualifier shapes surfaced once Cluster G's audit absorbed the `task`/`python_task`/`addtask` scope-qualifier shape), and **4 DEPRECATE-NO-FOLD** (1 dead vocabulary with no producer at all — `heading`; 1 ID-string-only synthetic — `model`; 2 boundary-pseudo-symbol kinds flagged for an ADR-0028-adjacent re-examination — see §"Diagnostic findings" #3: `unresolved` and `external_symbol`).
 
 All rows ship at `UNRESOLVED` status because Phase 3 producer migrations + registry updates have not landed. Wave 6 of the WI-runod cross-axis schedule covers the migration; this document is the precondition for that wave.
 
@@ -96,17 +96,29 @@ Verdict for this audit: **DEPRECATE-NO-FOLD**, with the migration deferred. The 
 
 ### 4. Dead vocabulary
 
-Four values (`heading`, `inductive`, `theorem`, `message`) are present in the `SymbolKindSpec` registry but **no analyzer or linker emits them** as Symbol.kind — placeholder vocabulary that never landed a producer:
+One value (`heading`) is present in the `SymbolKindSpec` registry but **no analyzer or linker emits it** as Symbol.kind — placeholder vocabulary that never landed a producer:
 
-- `heading` is presumably for Markdown headings, but Markdown emits `section` (not `heading`) for those.
-- `inductive` and `theorem` are presumably for Coq / Lean theorem-prover constructs, but the Coq / Lean analyzers do not emit them as Symbol.kind values today (they may emit different kinds, or skip the constructs entirely).
-- `message` is presumably for Protobuf `message` / proto-DSL declarations or for message-bus DSLs, but the message-dispatch surface has been absorbed by `message_handler` / `message_sender` (Cluster D, on `endpoint_shape`); no producer emits `kind="message"` on a Symbol today.
+- `heading` is presumably for Markdown headings, but Markdown emits `section` (not `heading`) at `markdown.py:198` for those.
 
 (`model` joins this group via a slightly different shape — see #5 below.)
 
-Test 1-4 are vacuous because there is no producer to test against. The values are pure registry-clutter.
+Test 1-4 are vacuous because there is no producer to test against. The value is pure registry-clutter.
 
-Verdict: **DEPRECATE-NO-FOLD**. The registry entries are removed in the Wave 6 registry-cleanup PR; no producer change required. Should a Coq / Lean / Protobuf / message-DSL analyzer later need to emit one of these kinds, it can re-introduce the value through the standard registry-add workflow per ADR-0027 §"Phase 1".
+Verdict: **DEPRECATE-NO-FOLD**. The registry entry advances to `endpoint_shape` (Wave 6 PR 4) and stays through the Phase 4a deprecation window. Pruning ships in the Phase 4b registry-cleanup PR.
+
+#### Reclassification correction (Wave 6 PR 4)
+
+The original audit listed `inductive`, `theorem`, and `message` alongside `heading` as "dead vocabulary." This was a literal-grep blind-spot miss: the Coq / Lean / TLA+ / Protobuf analyzers emit these kinds, but via an indirection (helper `add_symbol(node, name, "<kind>")` or `_make_proto_symbol(..., "<kind>", ...)`) that the original audit's `grep -rn 'kind=["\047]<value>["\047]'` pattern did not catch. This is the same blind-spot family as WI-nubuv extension A surfaced for assignment-form / f-string producers in 2026-05.
+
+Wave 6 PR 4 reclassifies all three values as **CANONICAL** — top-level constructs in their respective DSLs:
+
+- `inductive` — Lean inductive type declaration (`lean.py:247`)
+- `theorem` — Lean theorems / lemmas (`lean.py:222,231`) + TLA+ theorems (`tlaplus.py:207`)
+- `message` — Protobuf `message` declaration (`proto.py:260` via `_make_proto_symbol`)
+
+The cross-DSL overload pattern (Lean `theorem` vs TLA+ `theorem`) reads like the cross-language `function` overload — same general concept across multiple theorem-prover tongues, not a leak. Promoted to `language_construct` in `symbol_kinds.py`.
+
+The `message_handler` / `message_sender` peer endpoint_shape kinds remain on a separate surface (Cluster D framework_role fold per audit-findings 0013); promoting `message` does not affect them.
 
 ### 5. ID-string-only synthetic kinds
 
@@ -551,43 +563,43 @@ verdicts:
   - value: heading
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"heading\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"heading\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "Dead vocabulary — registry-present but no producer emits kind='heading' (Markdown headings emit as kind='section'). Drop the SymbolKindSpec entry."
+    rationale: "Dead vocabulary — registry-present but no producer emits kind='heading' (Markdown headings emit as kind='section' at markdown.py:198). Registry entry advanced to endpoint_shape in Wave 6 PR 4."
   - value: inductive
-    verdict: DEPRECATE-NO-FOLD
+    verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"inductive\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"inductive\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "Dead vocabulary — registry-present but no producer emits kind='inductive' (Coq / Lean analyzers do not emit this Symbol.kind today). Drop the SymbolKindSpec entry; re-add via standard registry workflow if a future analyzer needs it."
+    rationale: "Lean ``inductive`` type declaration is a top-level Lean-language construct. Reclassified Wave 6 PR 4 — original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss. lean.py:247 emits via add_symbol(child, name, 'inductive') indirection. Promoted to language_construct."
   - value: theorem
-    verdict: DEPRECATE-NO-FOLD
+    verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"theorem\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"theorem\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "Dead vocabulary — registry-present but no producer emits kind='theorem'. Drop the SymbolKindSpec entry; re-add via standard registry workflow if a future analyzer needs it."
+    rationale: "Theorem-prover top-level construct: Lean theorems and lemmas at lean.py:222,231 plus TLA+ theorems at tlaplus.py:207. Reclassified Wave 6 PR 4 — original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss. Both producers emit via add_symbol(..., 'theorem') indirection. Promoted to language_construct."
   - value: message
-    verdict: DEPRECATE-NO-FOLD
+    verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"message\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"message\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "Dead vocabulary — registry-present but no producer emits kind='message' on a Symbol (the message-dispatch surface is on endpoint_shape via message_handler / message_sender). Drop the SymbolKindSpec entry."
+    rationale: "Protobuf ``message`` declaration is a top-level Protobuf-language construct. Reclassified Wave 6 PR 4 — original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss. proto.py:260 emits via _make_proto_symbol(..., 'message', ...) indirection. The peer message-dispatch endpoint_shape kinds (message_handler / message_sender) cover a different surface and are unaffected. Promoted to language_construct."
   - value: model
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"model\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"model\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "ID-string-only synthetic — prisma.py:120 passes kind='model' to compute_stable_id / make_symbol_id but emits the actual Symbol with kind='class' at line 122. No Symbol.kind='model' is ever emitted. Drop the SymbolKindSpec entry; the symbol_id format string contract is unchanged."
+    rationale: "ID-string-only synthetic — prisma.py:120 passes kind='model' to compute_stable_id / make_symbol_id but emits the actual Symbol with kind='class' at line 122. No Symbol.kind='model' is ever emitted. Registry entry advanced to endpoint_shape in Wave 6 PR 4."
   - value: external_symbol
     verdict: DEPRECATE-NO-FOLD
     fold_target: null

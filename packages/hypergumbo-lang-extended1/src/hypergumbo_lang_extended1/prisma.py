@@ -172,11 +172,17 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
             if block_type:
                 name = _get_identifier(node)
                 if name:
+                    # Wave 6 PR 4 DEPRECATE-NO-FOLD per audit-findings 0006:
+                    # the kind="config" specialisation is redundant — the real
+                    # construct (``datasource`` / ``generator``) lives in
+                    # ``meta["block_type"]``. Emit ``kind="block"`` (canonical
+                    # AXIS_LANGUAGE_CONSTRUCT) instead. The ID component
+                    # retains ``block_type`` for stable_id continuity.
                     sym = Symbol(
                         id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, block_type),
                         stable_id=self.compute_stable_id(node, kind=block_type),
                         name=name,
-                        kind="config",
+                        kind="block",
                         language="prisma",
                         path=rel_path,
                         span=Span(
