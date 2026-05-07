@@ -112,3 +112,25 @@
   set: {}  # 29da
   add:  # 29da
     tags: [for-deep-bakeoff]  # 29da
+- op: update  # cdc2
+  at: '2026-05-07T18:05:11Z'  # cdc2
+  by: agent  # cdc2
+  actor: jgstern_agent  # cdc2
+  clock: 14  # cdc2
+  nonce: cdc2  # cdc2
+  set: {}  # cdc2
+  add:  # cdc2
+    tags: [for_deep_bakeoff]  # cdc2
+  remove:  # cdc2
+    tags: [for-deep-bakeoff]  # cdc2
+- op: update  # e06a
+  at: '2026-05-07T18:09:41Z'  # e06a
+  by: agent  # e06a
+  actor: jgstern_agent  # e06a
+  clock: 15  # e06a
+  nonce: e06a  # e06a
+  set: {}  # e06a
+  add:  # e06a
+    tags: [for_deep_bakeoff]  # e06a
+  remove:  # e06a
+    tags: [for-deep-bakeoff]  # e06a

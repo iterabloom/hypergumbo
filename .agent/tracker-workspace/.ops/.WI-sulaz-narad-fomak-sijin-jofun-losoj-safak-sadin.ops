@@ -46,3 +46,25 @@
   set: {}  # 5287
   add:  # 5287
     tags: [for-uat-bakeoff]  # 5287
+- op: update  # 0fb6
+  at: '2026-05-07T18:05:16Z'  # 0fb6
+  by: agent  # 0fb6
+  actor: jgstern_agent  # 0fb6
+  clock: 5  # 0fb6
+  nonce: 0fb6  # 0fb6
+  set: {}  # 0fb6
+  add:  # 0fb6
+    tags: [for_uat_bakeoff]  # 0fb6
+  remove:  # 0fb6
+    tags: [for-uat-bakeoff]  # 0fb6
+- op: update  # b704
+  at: '2026-05-07T18:09:43Z'  # b704
+  by: agent  # b704
+  actor: jgstern_agent  # b704
+  clock: 6  # b704
+  nonce: b704  # b704
+  set: {}  # b704
+  add:  # b704
+    tags: [for_uat_bakeoff]  # b704
+  remove:  # b704
+    tags: [for-uat-bakeoff]  # b704

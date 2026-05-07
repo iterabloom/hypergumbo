@@ -18,3 +18,31 @@
     pr_ref:  # 9924
     description: "Per audit-findings 0010 §'Diagnostic findings' #2, four producers emit a use-site Symbol with no companion Edge. Dropping the Symbol would erase the language-level construct (the import / extends / include directive) from the behaviour map. Each needs a redesign decision: (a) introduce a companion Edge (e.g., emit an 'imports' Edge for r_lang library() calls), or (b) accept loss of representation. Affected sites: r_lang.py:215 (library() / require() imports — no companion Edge), astro.py:209 (frontmatter import statements — the imports Edge nearby in astro.py:332 belongs to the separate component_ref Symbol, not the import Symbol; corrected from shape-2 to shape-3 in PR 2 of WI-zarov), make.py:282 (makefile include directives — no companion Edge), blade.py:265 (Blade @extends directives — no companion Edge). After resolution, audit-findings 0010 statuses for import / include / extends advance from UNRESOLVED to PRELIM_RESOLVED. Reference: docs/audits/0010-symbol-kind-cluster-e-edge-label-kinds.md."  # 9924
     fields: {}  # 9924
+- op: update  # be35
+  at: '2026-05-07T17:58:29Z'  # be35
+  by: agent  # be35
+  actor: jgstern_agent  # be35
+  clock: 2  # be35
+  nonce: be35  # be35
+  set:  # be35
+    status: done  # be35
+  add:  # be35
+    tags: [awaits_bakeoff_validation, for-deep-bakeoff]  # be35
+- op: update  # a1a5
+  at: '2026-05-07T18:05:11Z'  # a1a5
+  by: agent  # a1a5
+  actor: jgstern_agent  # a1a5
+  clock: 3  # a1a5
+  nonce: a1a5  # a1a5
+  set: {}  # a1a5
+  add:  # a1a5
+    tags: [for_deep_bakeoff]  # a1a5
+  remove:  # a1a5
+    tags: [for-deep-bakeoff]  # a1a5
+- op: discuss  # 0666
+  at: '2026-05-07T18:13:41Z'  # 0666
+  by: agent  # 0666
+  actor: jgstern_agent  # 0666
+  clock: 4  # 0666
+  nonce: '0666'  # 0666
+  message: "Shipped in commit b2048af7d (in [Unreleased] of CHANGELOG, will land in v4.1.0). Producer migration for the four shape-3 edge-absent producers complete: r_lang.py:215 emits an imports Edge for library()/require() with src=make_file_id; astro.py:209 emits an imports Edge for frontmatter import statements (distinct from the existing component_ref imports Edge); make.py:282 emits an includes Edge for makefile include directives; blade.py emits an extends_template Edge for Blade @extends directives. All four producers' per-import / per-include / per-extends Symbols dropped. Audit-findings 0010 import / include / extends rows advance UNRESOLVED → PRELIM_RESOLVED. Tagging awaits_bakeoff_validation + for_deep_bakeoff per BVT discipline — the shape-3 redesign carries the same kind of structural-fold producer-migration claim as WI-zarov's Wave 4 PRs (the parent WI). Validation cohort design overlaps WI-zarov's: r_lang/astro/make/blade repos in DEEP Bundle 1 cover both items at once. Tracker hygiene correction: this item should have been advanced to done with these tags at PR-merge time per BVT discipline; the tags-and-status update was missed and is being applied retroactively as part of the 2026-05-07 sequence-planning audit."  # 0666

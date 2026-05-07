@@ -61,3 +61,25 @@
   set: {}  # bcca
   add:  # bcca
     tags: [for-uat-bakeoff]  # bcca
+- op: update  # 616e
+  at: '2026-05-07T18:05:16Z'  # 616e
+  by: agent  # 616e
+  actor: jgstern_agent  # 616e
+  clock: 7  # 616e
+  nonce: 616e  # 616e
+  set: {}  # 616e
+  add:  # 616e
+    tags: [for_uat_bakeoff]  # 616e
+  remove:  # 616e
+    tags: [for-uat-bakeoff]  # 616e
+- op: update  # 2a50
+  at: '2026-05-07T18:09:43Z'  # 2a50
+  by: agent  # 2a50
+  actor: jgstern_agent  # 2a50
+  clock: 8  # 2a50
+  nonce: 2a50  # 2a50
+  set: {}  # 2a50
+  add:  # 2a50
+    tags: [for_uat_bakeoff]  # 2a50
+  remove:  # 2a50
+    tags: [for-uat-bakeoff]  # 2a50

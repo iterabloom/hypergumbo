@@ -105,3 +105,25 @@
   set: {}  # 1b4c
   add:  # 1b4c
     tags: [for-uat-bakeoff]  # 1b4c
+- op: update  # 277b
+  at: '2026-05-07T18:05:16Z'  # 277b
+  by: agent  # 277b
+  actor: jgstern_agent  # 277b
+  clock: 13  # 277b
+  nonce: 277b  # 277b
+  set: {}  # 277b
+  add:  # 277b
+    tags: [for_uat_bakeoff]  # 277b
+  remove:  # 277b
+    tags: [for-uat-bakeoff]  # 277b
+- op: update  # 9a4a
+  at: '2026-05-07T18:09:43Z'  # 9a4a
+  by: agent  # 9a4a
+  actor: jgstern_agent  # 9a4a
+  clock: 14  # 9a4a
+  nonce: 9a4a  # 9a4a
+  set: {}  # 9a4a
+  add:  # 9a4a
+    tags: [for_uat_bakeoff]  # 9a4a
+  remove:  # 9a4a
+    tags: [for-uat-bakeoff]  # 9a4a

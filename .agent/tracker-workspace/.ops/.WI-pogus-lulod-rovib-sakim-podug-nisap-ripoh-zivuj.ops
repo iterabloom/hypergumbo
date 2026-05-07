@@ -1,0 +1,19 @@
+- op: create  # 13a5
+  at: '2026-05-07T17:29:43Z'  # 13a5
+  by: agent  # 13a5
+  actor: jgstern_agent  # 13a5
+  clock: 1  # 13a5
+  nonce: 13a5  # 13a5
+  data:  # 13a5
+    kind: work_item  # 13a5
+    title: "grpc.py Go ttrpc detection must walk transitive struct embedding via base_classes"  # 13a5
+    status: todo_hard  # 13a5
+    priority: 3  # 13a5
+    parent:  # 13a5
+    tags: []  # 13a5
+    isbefore: []  # 13a5
+    duplicate_of: []  # 13a5
+    not_duplicate_of: []  # 13a5
+    pr_ref:  # 13a5
+    description: "## Origin\n\nCross-language framework-dispatch linker survey 2026-05-07, conducted as a structural-fix scope-expansion question following WI-halat (PR #3539). Companion to the broader four-linker item filed in the same survey; this one captures a Go-specific narrow case.\n\n## Symptom\n\n`packages/hypergumbo-core/src/hypergumbo_core/linkers/grpc.py:524` walks `meta.base_classes` for `Unimplemented*` / `*Service` direct names only when detecting Go gRPC ttrpc service implementations. Go struct embedding chains through intermediate types — e.g. `UnimplementedFooServer` → custom intermediate struct → user struct — never match the framework base.\n\n## Distinction from the four-linker item\n\nThis is a Go-specific structural variant of the same gap pattern that the broader item addresses for Python (already fixed by WI-halat) and Java/Kotlin/Scala/Ruby/JS (the four-linker item). The grpc.py Go branch is filed separately because:\n\n1. The broader item is scoped to within-language framework-dispatch linkers in non-Python languages with class-based inheritance idioms (Java/Kotlin/Scala/Ruby/JS).\n2. Go uses struct embedding rather than class inheritance, and the linker's `meta.base_classes` consumption pattern at line 524 is structurally analogous but mechanically distinct.\n3. The expected real-world incidence is lower than the broader item's targets — Go gRPC service codebases tend to embed `UnimplementedFooServer` directly without an intermediate layer, but the gap exists structurally.\n\n## Fix scope\n\nWire `grpc.py:524` through `linkers/_transitive_bases.collect_transitive_base_names()` to walk transitive embedded-struct chains before short-name match. Mechanical change — ~5 LOC plus tests.\n\n## Acceptance\n\n- Property test: a two-level embedding chain (`UnimplementedFooServer` → `BaseFooImpl` → `UserFooImpl`) detects `UserFooImpl` as a gRPC service implementation.\n- Direct-embedding regression guard: existing single-level cases continue to work.\n- 100% coverage on the changed source.\n\n## Cross-references\n\n- WI-halat (done, P2): the original Python-only fix introducing `_transitive_bases.py`.\n- The broader four-linker item (jackson/kafka_streams/view_template/react_component): same gap shape, different languages.\n- WI-likab linkage **refuted**: Go calls-edge access_mode 58.9% cap on alertmanager is a Tier 1 dataflow propagation issue, not a base-class traversal gap (per WI-halat author note). Closing this grpc.py gap will not move the WI-likab metric.\n\n## Out of scope\n\n- The four within-language framework-dispatch linker fixes (jackson/kafka_streams/view_template/react_component) — separate item.\n- The type_hierarchy.py skip-level dispatches_to gap — different shape, separate item."  # 13a5
+    fields: {}  # 13a5

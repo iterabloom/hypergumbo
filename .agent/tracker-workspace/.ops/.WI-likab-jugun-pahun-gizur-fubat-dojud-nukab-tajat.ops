@@ -60,3 +60,25 @@
   set: {}  # 5037
   add:  # 5037
     tags: [for-deep-bakeoff]  # 5037
+- op: update  # 1f4f
+  at: '2026-05-07T18:05:11Z'  # 1f4f
+  by: agent  # 1f4f
+  actor: jgstern_agent  # 1f4f
+  clock: 7  # 1f4f
+  nonce: 1f4f  # 1f4f
+  set: {}  # 1f4f
+  add:  # 1f4f
+    tags: [for_deep_bakeoff]  # 1f4f
+  remove:  # 1f4f
+    tags: [for-deep-bakeoff]  # 1f4f
+- op: update  # 7068
+  at: '2026-05-07T18:09:39Z'  # 7068
+  by: agent  # 7068
+  actor: jgstern_agent  # 7068
+  clock: 8  # 7068
+  nonce: '7068'  # 7068
+  set: {}  # 7068
+  add:  # 7068
+    tags: [for_deep_bakeoff]  # 7068
+  remove:  # 7068
+    tags: [for-deep-bakeoff]  # 7068

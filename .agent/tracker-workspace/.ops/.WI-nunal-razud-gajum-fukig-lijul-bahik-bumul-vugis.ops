@@ -62,3 +62,25 @@
   set: {}  # be79
   add:  # be79
     tags: [for-deep-bakeoff]  # be79
+- op: update  # 10da
+  at: '2026-05-07T18:05:11Z'  # 10da
+  by: agent  # 10da
+  actor: jgstern_agent  # 10da
+  clock: 7  # 10da
+  nonce: 10da  # 10da
+  set: {}  # 10da
+  add:  # 10da
+    tags: [for_deep_bakeoff]  # 10da
+  remove:  # 10da
+    tags: [for-deep-bakeoff]  # 10da
+- op: update  # 221e
+  at: '2026-05-07T18:09:42Z'  # 221e
+  by: agent  # 221e
+  actor: jgstern_agent  # 221e
+  clock: 8  # 221e
+  nonce: 221e  # 221e
+  set: {}  # 221e
+  add:  # 221e
+    tags: [for_deep_bakeoff]  # 221e
+  remove:  # 221e
+    tags: [for-deep-bakeoff]  # 221e
