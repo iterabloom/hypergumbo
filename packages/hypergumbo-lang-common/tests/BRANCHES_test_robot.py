@@ -100,7 +100,7 @@ Valid Login
     Log    Testing valid login
 """)
         result = analyze_robot(tmp_path)
-        test_cases = [s for s in result.symbols if s.kind == "test_case"]
+        test_cases = [s for s in result.symbols if s.kind == "test" and s.meta and s.meta.get("test_dialect") == "robot"]
         assert len(test_cases) >= 1
         assert any(t.name == "Valid Login" for t in test_cases)
 
@@ -112,7 +112,7 @@ My Test
     Log    Testing
 """)
         result = analyze_robot(tmp_path)
-        test_cases = [s for s in result.symbols if s.kind == "test_case"]
+        test_cases = [s for s in result.symbols if s.kind == "test" and s.meta and s.meta.get("test_dialect") == "robot"]
         assert len(test_cases) >= 1
 
     def test_test_case_with_tags(self, tmp_path: Path) -> None:
@@ -123,7 +123,7 @@ Tagged Test
     Log    Tagged test
 """)
         result = analyze_robot(tmp_path)
-        test_cases = [s for s in result.symbols if s.kind == "test_case"]
+        test_cases = [s for s in result.symbols if s.kind == "test" and s.meta and s.meta.get("test_dialect") == "robot"]
         assert len(test_cases) >= 1
 
 

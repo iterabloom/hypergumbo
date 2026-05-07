@@ -111,7 +111,7 @@ class TestPackageJsonProcessing:
 }
 """)
         result = analyze_json_files(tmp_path)
-        dev_deps = [s for s in result.symbols if s.kind == "devDependency"]
+        dev_deps = [s for s in result.symbols if s.kind == "dependency" and s.meta and s.meta.get("dependency_scope") == "dev"]
 
         assert len(dev_deps) >= 2
         assert any(d.name == "jest" for d in dev_deps)
@@ -259,7 +259,7 @@ class TestComposerJsonProcessing:
 }
 """)
         result = analyze_json_files(tmp_path)
-        dev_deps = [s for s in result.symbols if s.kind == "devDependency"]
+        dev_deps = [s for s in result.symbols if s.kind == "dependency" and s.meta and s.meta.get("dependency_scope") == "dev"]
 
         assert len(dev_deps) >= 1
 

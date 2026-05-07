@@ -104,7 +104,7 @@ class TestURLRequirements:
 git+https://github.com/user/repo.git#egg=mypackage
 """)
         result = analyze_requirements(tmp_path)
-        url_reqs = [s for s in result.symbols if s.kind == "url_requirement"]
+        url_reqs = [s for s in result.symbols if s.kind == "requirement" and s.meta and s.meta.get("install_source") == "url"]
 
         assert len(url_reqs) >= 1
         url_req = url_reqs[0]
@@ -117,7 +117,7 @@ git+https://github.com/user/repo.git#egg=mypackage
 git+https://github.com/user/repo.git@v1.0.0#egg=mypackage
 """)
         result = analyze_requirements(tmp_path)
-        url_reqs = [s for s in result.symbols if s.kind == "url_requirement"]
+        url_reqs = [s for s in result.symbols if s.kind == "requirement" and s.meta and s.meta.get("install_source") == "url"]
 
         assert len(url_reqs) >= 1
 
@@ -153,7 +153,7 @@ requests
 -e ./local_package
 """)
         result = analyze_requirements(tmp_path)
-        editables = [s for s in result.symbols if s.kind == "editable"]
+        editables = [s for s in result.symbols if s.kind == "requirement" and s.meta and s.meta.get("install_mode") == "editable"]
 
         assert len(editables) >= 1
         assert editables[0].meta is not None

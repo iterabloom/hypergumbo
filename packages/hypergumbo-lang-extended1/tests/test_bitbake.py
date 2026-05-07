@@ -342,7 +342,7 @@ python do_custom_task() {
 }
 """)
         result = analyze_bitbake(tmp_path)
-        task = next((s for s in result.symbols if s.kind == "python_task"), None)
+        task = next((s for s in result.symbols if s.kind == "task" and s.meta and s.meta.get("task_implementation") == "python"), None)
         assert task is not None
         assert task.name == "do_custom_task"
         assert "python" in task.signature

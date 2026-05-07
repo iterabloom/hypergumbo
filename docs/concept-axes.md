@@ -276,7 +276,9 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`crypto_producer`** — Crypto-flow producer. Fold to function/method + meta['framework_role']='crypto_producer'.
 - **`db_query`** — Cluster E sub-case (a) FOLD per audit-findings 0010: the database_query linker was reclassified to kind='call_site' + meta['call_kind']='db_query'. Registry entry stays through the Phase 4a deprecation window.
 - **`dev-dependency`** — DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: dead vocabulary — no producer emits this kind. Registry entry stays through the Phase 4a deprecation window.
+- **`devDependency`** — FOLDed to ``dependency`` + ``meta['dependency_scope']='dev'`` per audit-findings 0006, Wave 6 PR 5. Producers (``json_config.py:_process_dependencies`` for package.json devDependencies and Composer require-dev) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`dispatcher`** — Generic dispatcher symbol. Fold to function/method + meta['framework_role']='dispatcher'.
+- **`editable`** — FOLDed to ``requirement`` + ``meta['install_mode']='editable'`` per audit-findings 0006, Wave 6 PR 5. Producer (``requirements.py:362``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`event_publisher`** — Symbol that publishes events. Fold to function/method + meta['framework_role']='event_publisher'.
 - **`event_subscriber`** — Symbol that subscribes to events. Fold to function/method + meta['framework_role']='event_subscriber'.
 - **`export_entry`** — FOLDed to ``export`` + ``meta['export_source']='package_exports_map'`` per audit-findings 0005, Wave 6 PR 3. Producer (``json_config.py``) migrated; registry entry stays through the Phase 4a deprecation window.
@@ -312,6 +314,7 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`objc_bridge`** — Objective-C bridge call. Fold to function/method + meta['framework_role']='objc_bridge'.
 - **`openapi_operation`** — OpenAPI operation. Fold to function/method + meta['framework_role']='openapi_operation'.
 - **`proc`** — Cluster C apex/peer: deprecated peer of `procedure`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: procedure.
+- **`python_task`** — FOLDed to ``task`` + ``meta['task_implementation']='python'`` per audit-findings 0006, Wave 6 PR 5. Producer (``bitbake.py:346``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`read`** — Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: zero Symbol.kind=read producers (matches in pub/sub linkers are on internal dataclass fields YjsSite.kind / CryptoSite.kind / DispatchSite.kind, not Symbol.kind). Registry entry stays through the Phase 4a deprecation window.
 - **`reference`** — Cluster E sub-case (b) per audit-findings 0010: UNRESOLVED — sole producer (json_config.py) is shape-2 edge-endpoint-dependent (references Edge has dst=symbol_id). Drop deferred to follow-on PR.
 - **`route`** — Route declaration. Fold to function/method + meta['framework_role']='route'.
@@ -323,7 +326,9 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`service`** — Service declaration (gRPC service, k8s service). Fold to interface/class + meta['framework_role']='service'.
 - **`structure`** — Cluster C apex/peer: deprecated peer of `struct`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: struct.
 - **`subprocess_call`** — Cluster E sub-case (a) FOLD per audit-findings 0010: the subprocess_cli linker was reclassified to kind='call_site' + meta['call_kind']='subprocess'. Registry entry stays through the Phase 4a deprecation window.
+- **`test_case`** — FOLDed to ``test`` + ``meta['test_dialect']='robot'`` per audit-findings 0006, Wave 6 PR 5. Producer (``robot.py:314``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`tsconfig`** — DEPRECATE-NO-FOLD per audit-findings 0005, Wave 6 PR 3: producer (``json_config.py``) drops the kind specialisation and emits ``kind='file'`` + ``is_config_file=True`` + ``meta['config_format']='tsconfig'`` instead. Registry entry stays through the Phase 4a deprecation window.
+- **`url_requirement`** — FOLDed to ``requirement`` + ``meta['install_source']='url'`` per audit-findings 0006, Wave 6 PR 5. Producer (``requirements.py:281``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`var`** — Cluster C apex/peer: deprecated peer of `variable`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: variable.
 - **`wasm_import`** — FOLDed to ``import`` + ``meta['compilation_target']='wasm'`` per audit-findings 0005, Wave 6 PR 3. Note: the fold target ``import`` is itself on AXIS_ENDPOINT_SHAPE per audit-findings 0010 — wasm_bindgen requires the synthetic node for slicer BFS continuity, so this is the one Cluster B FOLD where the target is a deprecation-window kind. Producer (``wasm_bindgen.py``) migrated.
 - **`wasm_module`** — FOLDed to ``module`` + ``meta['compilation_target']='wasm'`` per audit-findings 0005, Wave 6 PR 3. Producer (``wasm_bindgen.py``) migrated; registry entry stays through the Phase 4a deprecation window.
@@ -340,20 +345,15 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`benchmark`** — Cargo `[[bench]]` target kind. Pending cluster-G audit.
 - **`bin`** — Binary executable symbol. Pending cluster-B audit.
 - **`binary`** — Cargo `[[bin]]` target kind. Pending cluster-G audit.
-- **`devDependency`** — JS devDependency entry. Pending cluster-G audit.
-- **`editable`** — Editable install symbol. Pending cluster-G audit.
 - **`example`** — Cargo `[[example]]` target kind. Pending cluster-G audit.
 - **`external_symbol`** — External-symbol pseudo-node. Pending cluster-H audit.
 - **`handler`** — Ansible playbook handler. Pending cluster-G audit.
 - **`helper`** — Handlebars block helper (non-builtin). Pending cluster-H audit.
 - **`pattern_rule`** — Make pattern-rule target. Pending cluster-G audit.
 - **`private`** — WGSL `var<private>` address space. Pending cluster-H audit.
-- **`python_task`** — BitBake Python task symbol. Pending cluster-G audit.
 - **`storage`** — WGSL `var<storage>` address space. Pending cluster-H audit.
-- **`test_case`** — Test-case symbol (alternate label). Pending cluster-G audit.
 - **`uniform`** — Shader uniform binding (GLSL / WGSL). Pending cluster-H audit.
 - **`unresolved`** — Unresolved-symbol pseudo-node. Pending cluster-H audit.
-- **`url_requirement`** — URL-requirement install symbol. Pending cluster-G audit.
 - **`varying`** — GLSL varying qualifier (legacy interpolation). Pending cluster-H audit.
 - **`workgroup`** — WGSL `var<workgroup>` address space. Pending cluster-H audit.
 - **`workspace`** — Cargo `[workspace]` table kind. Pending cluster-G audit.

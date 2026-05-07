@@ -301,7 +301,7 @@ class _RobotExtractor:
             end_col=node.end_point[1],
         )
 
-        meta: dict = {}
+        meta: dict = {"test_dialect": "robot"}
         if documentation:
             meta["documentation"] = documentation
         if tags:
@@ -311,7 +311,7 @@ class _RobotExtractor:
             id=symbol_id,
             stable_id=symbol_id,
             name=name,
-            kind="test_case",
+            kind="test",
             language="robot",
             path=str(rel_path),
             span=span,

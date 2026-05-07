@@ -178,6 +178,13 @@ def _process_dependencies(
                 meta: dict = {"package": pkg_name}
                 if version:
                     meta["version"] = version
+                # Wave 6 PR 5 fold per audit-findings 0006: devDependency
+                # → kind="dependency" + meta["dependency_scope"]="dev".
+                # The ID component retains the legacy dep_type literal for
+                # stable_id continuity.
+                if dep_type == "devDependency":
+                    meta["dependency_scope"] = "dev"
+                kind_value = "dependency" if dep_type == "devDependency" else dep_type
 
                 sym = Symbol(
                     id=symbol_id,
@@ -185,7 +192,7 @@ def _process_dependencies(
                     shape_id=None,
                     canonical_name=pkg_name,
                     fingerprint=hashlib.sha256(source[child.start_byte:child.end_byte]).hexdigest()[:16],
-                    kind=dep_type,
+                    kind=kind_value,
                     name=pkg_name,
                     path=rel_path,
                     language="json",

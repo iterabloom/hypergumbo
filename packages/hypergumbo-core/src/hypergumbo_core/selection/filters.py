@@ -45,12 +45,22 @@ from ..paths import is_test_file
 #   the legacy label so the predicate's ``meta`` lookup has a
 #   reference vocabulary and so any unmigrated producer continues to
 #   match.
-# - AXIS_PENDING (Clusters B/G/H residue): ``dependency``,
-#   ``devDependency``, ``target``, ``special_target``, ``section``,
-#   ``code_block``, ``link``, ``class_selector``, ``id_selector``,
-#   ``keyframes``, ``media``, ``font_face``. Forward-compatibility
-#   verdict gates on per-cluster audit-findings outcomes (filed as
-#   Wave 6 follow-through in WI-runod).
+# - AXIS_PENDING (Clusters B/G/H residue): ``target``,
+#   ``special_target``, ``section``, ``code_block``, ``link``,
+#   ``class_selector``, ``id_selector``, ``keyframes``, ``media``,
+#   ``font_face``. Forward-compatibility verdict gates on per-cluster
+#   audit-findings outcomes (filed as Wave 6 follow-through in
+#   WI-runod).
+# - AXIS_LANGUAGE_CONSTRUCT post-promotion (Wave 6 PR 2, audit-findings
+#   0006): ``dependency``. The set keeps the canonical name because
+#   the policy excludes both production and dev dependencies from
+#   centrality tables.
+# - AXIS_ENDPOINT_SHAPE post-fold (Wave 6 PR 5, audit-findings 0006):
+#   ``devDependency``. Producer now emits ``kind="dependency"`` +
+#   ``meta["dependency_scope"]="dev"``; the post-fold shape is
+#   excluded automatically because the fold target (``dependency``)
+#   is already in the set; the legacy literal stays through the
+#   Phase 4a deprecation window.
 # - AXIS_LANGUAGE_CONSTRUCT post-promotion (Wave 6 PR 1, audit-findings
 #   0005): ``file``, ``project``, ``package``. The set keeps these
 #   names because the policy is "synthetic file/package-shape nodes

@@ -454,8 +454,11 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     # ----------------------------------------------------------------
     SymbolKindSpec("test", AXIS_LANGUAGE_CONSTRUCT,
                    "Test-case symbol. CANONICAL per audit-findings 0006."),
-    SymbolKindSpec("test_case", AXIS_PENDING,
-                   "Test-case symbol (alternate label). Pending cluster-G audit."),
+    SymbolKindSpec("test_case", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``test`` + ``meta['test_dialect']='robot'`` "
+                   "per audit-findings 0006, Wave 6 PR 5. Producer "
+                   "(``robot.py:314``) migrated; registry entry stays "
+                   "through the Phase 4a deprecation window."),
     SymbolKindSpec("work_item", AXIS_ENDPOINT_SHAPE,
                    "DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: "
                    "tracker `Item.kind` value mistakenly registered against "
@@ -477,10 +480,16 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Build / pipeline stage. CANONICAL per audit-findings 0006."),
     SymbolKindSpec("requirement", AXIS_LANGUAGE_CONSTRUCT,
                    "Requirement / pip requirement. CANONICAL per audit-findings 0006."),
-    SymbolKindSpec("editable", AXIS_PENDING,
-                   "Editable install symbol. Pending cluster-G audit."),
-    SymbolKindSpec("url_requirement", AXIS_PENDING,
-                   "URL-requirement install symbol. Pending cluster-G audit."),
+    SymbolKindSpec("editable", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``requirement`` + ``meta['install_mode']="
+                   "'editable'`` per audit-findings 0006, Wave 6 PR 5. "
+                   "Producer (``requirements.py:362``) migrated; registry "
+                   "entry stays through the Phase 4a deprecation window."),
+    SymbolKindSpec("url_requirement", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``requirement`` + ``meta['install_source']="
+                   "'url'`` per audit-findings 0006, Wave 6 PR 5. Producer "
+                   "(``requirements.py:281``) migrated; registry entry stays "
+                   "through the Phase 4a deprecation window."),
     SymbolKindSpec("setting", AXIS_LANGUAGE_CONSTRUCT,
                    "Setting / option symbol. CANONICAL per audit-findings 0006."),
     SymbolKindSpec("config", AXIS_ENDPOINT_SHAPE,
@@ -495,8 +504,13 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Nix derivation symbol. CANONICAL per audit-findings 0006."),
     SymbolKindSpec("dependency", AXIS_LANGUAGE_CONSTRUCT,
                    "Dependency entry. CANONICAL per audit-findings 0006."),
-    SymbolKindSpec("devDependency", AXIS_PENDING,
-                   "JS devDependency entry. Pending cluster-G audit."),
+    SymbolKindSpec("devDependency", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``dependency`` + ``meta['dependency_scope']="
+                   "'dev'`` per audit-findings 0006, Wave 6 PR 5. Producers "
+                   "(``json_config.py:_process_dependencies`` for "
+                   "package.json devDependencies and Composer require-dev) "
+                   "migrated; registry entry stays through the Phase 4a "
+                   "deprecation window."),
     SymbolKindSpec("dev-dependency", AXIS_ENDPOINT_SHAPE,
                    "DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: "
                    "dead vocabulary — no producer emits this kind. Registry "
@@ -507,8 +521,11 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "entry stays through the Phase 4a deprecation window."),
     SymbolKindSpec("addtask", AXIS_LANGUAGE_CONSTRUCT,
                    "BitBake addtask symbol. CANONICAL per audit-findings 0006."),
-    SymbolKindSpec("python_task", AXIS_PENDING,
-                   "BitBake Python task symbol. Pending cluster-G audit."),
+    SymbolKindSpec("python_task", AXIS_ENDPOINT_SHAPE,
+                   "FOLDed to ``task`` + ``meta['task_implementation']="
+                   "'python'`` per audit-findings 0006, Wave 6 PR 5. "
+                   "Producer (``bitbake.py:346``) migrated; registry entry "
+                   "stays through the Phase 4a deprecation window."),
     SymbolKindSpec("task", AXIS_LANGUAGE_CONSTRUCT,
                    "Generic task symbol. CANONICAL per audit-findings 0006."),
     SymbolKindSpec("trigger", AXIS_LANGUAGE_CONSTRUCT,

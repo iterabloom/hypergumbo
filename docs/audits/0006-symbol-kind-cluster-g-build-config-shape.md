@@ -2,7 +2,7 @@
 # Audit-findings 0006: Symbol.kind Cluster G — Build / Config-Shape Entities
 
 - Date: 2026-05-05
-- Status: Mixed — 15 CANONICAL rows RESOLVED via WI-runod Wave 6 PR 2 registry promotion; 9 FOLD/DEPRECATE-NO-FOLD rows remain UNRESOLVED pending subsequent Wave 6 PRs (5 FOLD producer migrations: `test_case`/`editable`/`url_requirement`/`devDependency`/`python_task`; 4 DEPRECATE-NO-FOLD: `config`/`dev-dependency`/`build-dependency`/`work_item`).
+- Status: Mixed — 15 CANONICAL rows RESOLVED via WI-runod Wave 6 PR 2 registry promotion; 4 DEPRECATE-NO-FOLD rows now PRELIM_RESOLVED via Wave 6 PR 4 (`config`/`dev-dependency`/`build-dependency`/`work_item`); 5 FOLD rows now PRELIM_RESOLVED via Wave 6 PR 5 (`test_case`/`editable`/`url_requirement`/`devDependency`/`python_task` — producer migrations + registry move from `pending_classification` to `endpoint_shape`).
 - Closes: WI-dubab-karur-vihak-majiv-dijug-pafot-vipuk-holod (Cluster G build/config-shape entities: separate-axis or demote, ADR-0027 Phase 3)
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Third audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical) and 0005 (Cluster B file-shape).
 
@@ -208,41 +208,41 @@ verdicts:
   - value: test_case
     verdict: FOLD
     fold_target: test
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"test_case\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"test_case\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Robot Framework *** Test Cases *** entries name the same concept as Zig/Cargo 'test' under a different DSL vocabulary. Apex selection: 'test'. Fold to test + meta['test_dialect']='robot'."
   - value: editable
     verdict: FOLD
     fold_target: requirement
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"editable\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"editable\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "pip install -e form. Same construct as a plain requirement entry, with editable install mode. Fold to requirement + meta['install_mode']='editable'."
   - value: url_requirement
     verdict: FOLD
     fold_target: requirement
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"url_requirement\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"url_requirement\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "URL-form requirement (git+https://..., direct URL). Same construct as a plain requirement entry, with URL install source. Fold to requirement + meta['install_source']='url'."
   - value: devDependency
     verdict: FOLD
     fold_target: dependency
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"devDependency\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"devDependency\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "package.json devDependencies + Composer require-dev. Same construct as a production dependency, with dev scope qualifier. Fold to dependency + meta['dependency_scope']='dev'."
   - value: python_task
     verdict: FOLD
     fold_target: task
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"python_task\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"python_task\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "BitBake 'python foo() { ... }' task. Same construct as a shell-style task, with Python implementation. Fold to task + meta['task_implementation']='python'."
   - value: config

@@ -147,7 +147,7 @@ requests
 git+https://github.com/user/repo.git@v1.0.0#egg=mypackage
 """)
         result = analyze_requirements(tmp_path)
-        url_req = next((s for s in result.symbols if s.kind == "url_requirement"), None)
+        url_req = next((s for s in result.symbols if s.kind == "requirement" and s.meta and s.meta.get("install_source") == "url"), None)
         assert url_req is not None
         assert url_req.meta.get("source_type") == "git"
         assert url_req.meta.get("package_name") == "mypackage"
@@ -157,7 +157,7 @@ git+https://github.com/user/repo.git@v1.0.0#egg=mypackage
 git+https://github.com/user/myrepo.git
 """)
         result = analyze_requirements(tmp_path)
-        url_req = next((s for s in result.symbols if s.kind == "url_requirement"), None)
+        url_req = next((s for s in result.symbols if s.kind == "requirement" and s.meta and s.meta.get("install_source") == "url"), None)
         assert url_req is not None
         assert url_req.meta.get("package_name") == "myrepo"
 
@@ -166,7 +166,7 @@ git+https://github.com/user/myrepo.git
 git+https://github.com/user/repo.git@main
 """)
         result = analyze_requirements(tmp_path)
-        url_req = next((s for s in result.symbols if s.kind == "url_requirement"), None)
+        url_req = next((s for s in result.symbols if s.kind == "requirement" and s.meta and s.meta.get("install_source") == "url"), None)
         assert url_req is not None
         assert url_req.meta.get("package_name") == "repo"
 
@@ -193,7 +193,7 @@ git+https://github.com/user/repo.git@main
 -e ./local_package
 """)
         result = analyze_requirements(tmp_path)
-        editable = next((s for s in result.symbols if s.kind == "editable"), None)
+        editable = next((s for s in result.symbols if s.kind == "requirement" and s.meta and s.meta.get("install_mode") == "editable"), None)
         assert editable is not None
         assert editable.name == "./local_package"
         assert editable.meta.get("editable") is True
@@ -260,7 +260,7 @@ git+https://github.com/user/repo.git@main
         long_url = "git+https://github.com/user/" + "x" * 100 + ".git"
         make_requirements_file(tmp_path, "requirements.txt", long_url)
         result = analyze_requirements(tmp_path)
-        url_req = next((s for s in result.symbols if s.kind == "url_requirement"), None)
+        url_req = next((s for s in result.symbols if s.kind == "requirement" and s.meta and s.meta.get("install_source") == "url"), None)
         assert url_req is not None
         assert len(url_req.signature) < len(long_url)
         assert "..." in url_req.signature
@@ -291,11 +291,11 @@ git+https://github.com/user/repo.git#egg=mypackage
         assert len(reqs) >= 4
 
         # Check URL requirement
-        url_reqs = [s for s in result.symbols if s.kind == "url_requirement"]
+        url_reqs = [s for s in result.symbols if s.kind == "requirement" and s.meta and s.meta.get("install_source") == "url"]
         assert len(url_reqs) == 1
 
         # Check editable
-        editables = [s for s in result.symbols if s.kind == "editable"]
+        editables = [s for s in result.symbols if s.kind == "requirement" and s.meta and s.meta.get("install_mode") == "editable"]
         assert len(editables) == 1
 
         # Check edges
@@ -333,7 +333,7 @@ git+https://github.com/user/repo.git#egg=mypackage
 hg+https://bitbucket.org/user/repo#egg=mypackage
 """)
         result = analyze_requirements(tmp_path)
-        url_req = next((s for s in result.symbols if s.kind == "url_requirement"), None)
+        url_req = next((s for s in result.symbols if s.kind == "requirement" and s.meta and s.meta.get("install_source") == "url"), None)
         assert url_req is not None
         assert url_req.meta.get("source_type") == "mercurial"
 
@@ -342,6 +342,6 @@ hg+https://bitbucket.org/user/repo#egg=mypackage
 svn+https://svn.example.com/repo/trunk#egg=mypackage
 """)
         result = analyze_requirements(tmp_path)
-        url_req = next((s for s in result.symbols if s.kind == "url_requirement"), None)
+        url_req = next((s for s in result.symbols if s.kind == "requirement" and s.meta and s.meta.get("install_source") == "url"), None)
         assert url_req is not None
         assert url_req.meta.get("source_type") == "svn"

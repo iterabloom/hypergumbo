@@ -98,7 +98,7 @@ Valid Login Test
     Login With Credentials    admin    secret123
 """)
         result = analyze_robot(tmp_path)
-        test_case = next((s for s in result.symbols if s.kind == "test_case"), None)
+        test_case = next((s for s in result.symbols if s.kind == "test" and s.meta and s.meta.get("test_dialect") == "robot"), None)
         assert test_case is not None
         assert test_case.name == "Valid Login Test"
         assert test_case.language == "robot"
@@ -390,7 +390,7 @@ Valid Login
         assert "Enter Credentials" in keyword_names
 
         # Check test cases
-        test_cases = [s for s in result.symbols if s.kind == "test_case"]
+        test_cases = [s for s in result.symbols if s.kind == "test" and s.meta and s.meta.get("test_dialect") == "robot"]
         assert len(test_cases) == 1
         assert test_cases[0].name == "Valid Login"
         assert "smoke" in test_cases[0].meta.get("tags", [])

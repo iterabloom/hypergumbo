@@ -343,14 +343,14 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
             id=symbol_id,
             stable_id=symbol_id,
             name=func_name,
-            kind="python_task",
+            kind="task",
             language="bitbake",
             path=str(rel_p),
             span=span,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             signature=f"python {func_name}()",
-            meta={"language": "python"},
+            meta={"language": "python", "task_implementation": "python"},
         )
         analysis.symbols.append(symbol)
 

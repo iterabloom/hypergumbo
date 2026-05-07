@@ -278,7 +278,7 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
             id=symbol_id,
             stable_id=symbol_id,
             name=package_name or url_text[:40],
-            kind="url_requirement",
+            kind="requirement",
             language="requirements",
             path=str(rel_path),
             span=span,
@@ -289,6 +289,7 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
                 "url": url_text,
                 "source_type": source_type,
                 "package_name": package_name,
+                "install_source": "url",
             },
         )
         analysis.symbols.append(symbol)
@@ -359,14 +360,18 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
                 id=symbol_id,
                 stable_id=symbol_id,
                 name=option_path,
-                kind="editable",
+                kind="requirement",
                 language="requirements",
                 path=str(rel_path),
                 span=span,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 signature=f"-e {option_path}",
-                meta={"path": option_path, "editable": True},
+                meta={
+                    "path": option_path,
+                    "editable": True,
+                    "install_mode": "editable",
+                },
             )
             analysis.symbols.append(symbol)
 

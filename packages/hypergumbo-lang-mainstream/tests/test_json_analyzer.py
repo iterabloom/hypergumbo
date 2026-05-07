@@ -58,7 +58,7 @@ def test_analyze_package_json(tmp_path):
     assert express_dep.meta.get("version") == "^4.17.1"
 
     # Find devDependencies
-    dev_deps = [s for s in result.symbols if s.kind == "devDependency"]
+    dev_deps = [s for s in result.symbols if s.kind == "dependency" and s.meta and s.meta.get("dependency_scope") == "dev"]
     assert len(dev_deps) >= 2
 
     jest_dep = next((d for d in dev_deps if d.name == "jest"), None)
@@ -273,7 +273,7 @@ def test_analyze_composer_json(tmp_path):
     assert laravel_dep is not None
 
     # Find dev dependencies
-    dev_deps = [s for s in result.symbols if s.kind == "devDependency"]
+    dev_deps = [s for s in result.symbols if s.kind == "dependency" and s.meta and s.meta.get("dependency_scope") == "dev"]
     assert len(dev_deps) >= 1
 
 def test_find_json_files(tmp_path):
