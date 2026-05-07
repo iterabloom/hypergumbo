@@ -36,3 +36,12 @@
   clock: 3  # 134d
   nonce: 134d  # 134d
   message: "Fixed in PR #3539 (commit 0553b699f). Added shared helper linkers/_transitive_bases.py (BFS walk over extends/implements edges with cycle guard) and wired it into airflow_framework_dispatch and django_orm_dispatch. Both linkers now match against the union of {self.meta.base_classes} ∪ {ancestor.meta.base_classes for every in-tree ancestor}. Direct-base detection unchanged. Property tests cover one- and two-intermediate transitive chains plus diamond-inheritance cycle protection. Expected to flip UAT v4.0.0 rounds 04 (WI-nutav, currently 5/15 inconclusive) and 05 (WI-nosug, currently 8/15 inconclusive) toward 'moved' on re-run; round 02 (WI-likab) Go path is unaffected by this Python-only change. Tagging awaits_bakeoff_validation per the BVT discipline."  # 134d
+- op: update  # bdf7
+  at: '2026-05-07T07:24:05Z'  # bdf7
+  by: agent  # bdf7
+  actor: jgstern_agent  # bdf7
+  clock: 4  # bdf7
+  nonce: bdf7  # bdf7
+  set: {}  # bdf7
+  add:  # bdf7
+    tags: [for-uat-bakeoff]  # bdf7

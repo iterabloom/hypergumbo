@@ -42,3 +42,28 @@
   clock: 4  # e5c3
   nonce: e5c3  # e5c3
   message: "Closed by PR. Refactored 3 producers (vue/svelte/astro) to drop component_ref Symbol; Edge src moved to make_file_id with fallback dangling component dst for unresolved refs. Audit-findings 0011 filed. Disposition: DEPRECATE-NO-FOLD (parallel to audit-findings 0010 sub-case (b) for shape-2 edge-endpoint sites; original ADR-0027 fold target reference was already deprecated)."  # e5c3
+- op: update  # 4023
+  at: '2026-05-07T07:12:47Z'  # 4023
+  by: agent  # 4023
+  actor: jgstern_agent  # 4023
+  clock: 5  # 4023
+  nonce: '4023'  # 4023
+  set: {}  # 4023
+  add:  # 4023
+    tags: [awaits_bakeoff_validation]  # 4023
+- op: discuss  # c244
+  at: '2026-05-07T07:13:09Z'  # c244
+  by: agent  # c244
+  actor: jgstern_agent  # c244
+  clock: 6  # c244
+  nonce: c244  # c244
+  message: "Tag added 2026-05-07 per validation-modality-mapping conversation (extension to consideration-leftovers). The Wave 4 Cluster F dst-kind leakage fold (commit 689744022) shipped the producer migration without the awaits_bakeoff_validation tag. This entry retroactively establishes the queue claim.\n\nValidation modality:\n\nDEEP (primary): cohort comparing pre-Wave-4 to post-Wave-6 behavior maps. Expected metric movements: (1) component_ref values fold from kind='component_ref' to kind='reference' with the dst-side discrimination (dst.kind=='component') carrying the framework-component identification per audit-findings 0011; (2) consumer query patterns at component-resolution surfaces (route_handler, framework-pattern matchers) — the dual representation (Symbol-side reference + Edge-side relationship) preserves component-resolution semantics; (3) edge graph reachability and slice membership for component declarations vs component usages.\n\nUAT (supplementary, per-framework spot-checks): Vue SFC monorepo (component_ref imports across .vue files); Svelte 4/5 repo (component imports); Astro repo (.astro frontmatter component_ref imports — note this is a separate concern from astro.py's separate import-edge work in WI-kunag); React/JSX repo with hand-rolled component-import-tracking. The fold is structural — UAT spot-checks confirm consumer behavior is preserved; aggregate metric movement may be small if the consumer query was already through the dst.kind discrimination.\n\nCoverage overlap with WI-gajob (Cluster B FOLDs, particularly component_file→file): the post-fold consumer at route_handler.is_component reads kind='file' + meta['module_system'] OR meta['component_framework']. WI-mihiz validates the component-ref Symbol's resolution-path side; WI-gajob validates the component-file Symbol's file-shape side. Both folds together are exercised by the same Vue monorepo UAT target."  # c244
+- op: update  # b5a9
+  at: '2026-05-07T07:24:04Z'  # b5a9
+  by: agent  # b5a9
+  actor: jgstern_agent  # b5a9
+  clock: 7  # b5a9
+  nonce: b5a9  # b5a9
+  set: {}  # b5a9
+  add:  # b5a9
+    tags: [for-deep-bakeoff]  # b5a9

@@ -51,3 +51,19 @@
   set: {}  # 6179
   add:  # 6179
     tags: [awaits_bakeoff_validation]  # 6179
+- op: discuss  # 5384
+  at: '2026-05-07T07:12:11Z'  # 5384
+  by: agent  # 5384
+  actor: jgstern_agent  # 5384
+  clock: 6  # 5384
+  nonce: '5384'  # 5384
+  message: "Tag added 2026-05-07 per validation-modality-mapping conversation (extension to consideration-leftovers). The Wave 4 Cluster D evidence_type call-construct apex/peer fold (commit 0dae2af80) shipped the producer migration without the awaits_bakeoff_validation tag. This entry retroactively establishes the queue claim.\n\nValidation modality:\n\nDEEP (primary): cohort comparing pre-Wave-4 to post-Wave-6 behavior maps. Expected metric movements: (1) Edge.evidence_type distribution shift — call-construct peers (method_call, attribute_access, etc.) collapse to canonical apex (ast_call_direct or similar) + meta['call_construct']=<peer> per audit-findings 0012; (2) edge dedup behavior with the apex collapse (per-call-site granularity preserved by the meta key); (3) consumer query patterns that use evidence_type for inference-pathway reasoning continue to work via the apex label.\n\nUAT (supplementary, per-construct spot-checks): Python repo with mixed call-construct shapes (direct calls + method calls + attribute access + dynamic dispatch); Ruby method dispatch (meta-programming with send/define_method); JavaScript prototype/method/arrow-fn call shapes; Java method invocation across reflective and direct paths.\n\nCoverage overlap with WI-kagik (Cluster C framework_dispatch): shares the same DEEP cohort. WI-nibis is the apex/peer fold within the canonical inference axis; WI-kagik is the framework-dispatch fold off that axis. Both should validate together — separate cohort runs would be wasteful."  # 5384
+- op: update  # f622
+  at: '2026-05-07T07:24:05Z'  # f622
+  by: agent  # f622
+  actor: jgstern_agent  # f622
+  clock: 7  # f622
+  nonce: f622  # f622
+  set: {}  # f622
+  add:  # f622
+    tags: [for-deep-bakeoff]  # f622

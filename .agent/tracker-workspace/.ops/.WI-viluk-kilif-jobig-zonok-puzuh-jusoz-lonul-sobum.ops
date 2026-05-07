@@ -1,0 +1,20 @@
+- op: create  # e3de
+  at: '2026-05-07T07:53:18Z'  # e3de
+  by: agent  # e3de
+  actor: jgstern_agent  # e3de
+  clock: 1  # e3de
+  nonce: e3de  # e3de
+  data:  # e3de
+    kind: work_item  # e3de
+    title: "Execute DEPRECATE-NO-FOLD diagnostic_test.cmd at CI time as regression guard"  # e3de
+    status: todo_soft  # e3de
+    priority: 1  # e3de
+    parent:  # e3de
+    tags:  # e3de
+    - analysis_quality  # e3de
+    isbefore: []  # e3de
+    duplicate_of: []  # e3de
+    not_duplicate_of: []  # e3de
+    pr_ref:  # e3de
+    description: "Audit-findings property test (packages/hypergumbo-core/tests/test_audit_findings.py) currently validates the structural shape of each row's diagnostic_test field but does not execute the cmd. Extend the test so that for every verdict with verdict=DEPRECATE-NO-FOLD, the diagnostic_test.cmd is executed and its stdout matches the expect field (typically 'empty', meaning no producer emits the value). This catches the regression class where a producer is added later for a value flagged DEPRECATE-NO-FOLD without updating the verdict. Per the Fundamental Concept Audit playbook §'Step 4.5 — Indirection-aware producer trace' as amended on 2026-05-07. Per ~/hypergumbo_lab_notebook/notebookjournal_05072026_0316.md §'High-value (file as tracker items) #3'."  # e3de
+    fields: {}  # e3de

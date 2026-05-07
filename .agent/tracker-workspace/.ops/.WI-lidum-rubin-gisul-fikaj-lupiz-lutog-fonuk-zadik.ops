@@ -45,3 +45,12 @@
   clock: 4  # b5cd
   nonce: b5cd  # b5cd
   message: "Phase B complete. Three patches landed:\n- PR #152 (commit 6647758cc): sketch._format_symbols dampener stack\n- PR #153 (commit 33f5c0b3d): compact.select_by_coverage dampener stack\n- PR #154 (commit ddea7f824): compact.select_by_connectivity dampener stack (also covers format_tiered_behavior_map's selection step transparently)\n\nSibling WI-dohaf PR #155 (compute_centrality parameter alignment across all 4 surfaces) also merged.\n\nAll 4 PRs tagged awaits_bakeoff_validation. Next DEEP cycle's reflect-aggregate cross-references the per-surface top-N drops.\n\nOpen follow-up: sibling_impl produced 0 behavioral movement on the 6-repo corpus (24 of 24 surface×repo combinations). Filing as a separate todo_soft to investigate whether apply_sibling_impl_weights is structurally observable post-Phase-B or is dead code in rank_symbols too."  # b5cd
+- op: update  # 469b
+  at: '2026-05-07T07:24:03Z'  # 469b
+  by: agent  # 469b
+  actor: jgstern_agent  # 469b
+  clock: 5  # 469b
+  nonce: 469b  # 469b
+  set: {}  # 469b
+  add:  # 469b
+    tags: [for-deep-bakeoff]  # 469b

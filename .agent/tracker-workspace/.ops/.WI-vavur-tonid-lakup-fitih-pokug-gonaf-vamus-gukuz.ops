@@ -52,3 +52,12 @@
   set: {}  # 9d4a
   add:  # 9d4a
     tags: [awaits_bakeoff_validation]  # 9d4a
+- op: update  # 4aa9
+  at: '2026-05-07T07:24:04Z'  # 4aa9
+  by: agent  # 4aa9
+  actor: jgstern_agent  # 4aa9
+  clock: 6  # 4aa9
+  nonce: 4aa9  # 4aa9
+  set: {}  # 4aa9
+  add:  # 4aa9
+    tags: [for-deep-bakeoff]  # 4aa9

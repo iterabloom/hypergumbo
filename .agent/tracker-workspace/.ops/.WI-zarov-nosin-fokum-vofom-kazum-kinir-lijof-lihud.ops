@@ -41,3 +41,28 @@
   clock: 4  # 1927
   nonce: '1927'  # 1927
   message: "PR 2 of WI-zarov Wave 4 ships sub-case (b) shape-2 edge-endpoint redesign for the 4 remaining shape-2 producers (6 sites). Each producer's Edge has its src/dst re-routed off the dropped Symbol id to a containing-scope id (file id via make_file_id, or 5-part dangling target id for unresolved cases): json_config.py references (dst → tsconfig file id), puppet.py includes_class (src → manifest file id, dst → dangling class id when unresolved), scss.py uses_mixin (src → stylesheet file id, dst → dangling mixin id when unresolved), twig.py extends_template + 2× includes_template (src → twig template file id, dst preserves existing twig:template:{name} format). Edges are emitted unconditionally now — unresolved cases keep representation via dangling targets handled by IR boundary materialization. PR 2 re-inspection also corrected an audit doc misclassification: astro.py:209 import was originally shape-2 in the doc; closer inspection found the imports Edge nearby belongs to the separate component_ref Symbol (Cluster F), not the import Symbol. Astro is shape-3 (no companion edge for import); reclassification noted in audit-findings 0010 §3. After PR 2: 9 of 12 Cluster E values at PRELIM_RESOLVED; 3 (import, include, extends) remain UNRESOLVED with one residual shape-3 producer each (r_lang.py / make.py / blade.py) deferred to a separate follow-on item. Local pytest 16633 passed, 7 skipped, 100% coverage on changed files."  # 1927
+- op: update  # aa11
+  at: '2026-05-07T07:13:30Z'  # aa11
+  by: agent  # aa11
+  actor: jgstern_agent  # aa11
+  clock: 5  # aa11
+  nonce: aa11  # aa11
+  set: {}  # aa11
+  add:  # aa11
+    tags: [awaits_bakeoff_validation]  # aa11
+- op: discuss  # 2974
+  at: '2026-05-07T07:14:11Z'  # 2974
+  by: agent  # 2974
+  actor: jgstern_agent  # 2974
+  clock: 6  # 2974
+  nonce: '2974'  # 2974
+  message: "Tag added 2026-05-07 per validation-modality-mapping conversation (extension to consideration-leftovers). The Wave 4 Cluster E call_site reclassification + clean drops (commits 9c96fa3c6 and 79f8e8fd9 — Wave 4 PR + Wave 4 PR 2 / shape-2 edge-endpoint redesign) shipped substantive producer migrations. The item remains todo_soft because the shape-3 follow-on (WI-kunag — r_lang/astro/make/blade edge-absent producers) is still in-progress, but the SHIPPED Wave 4 PRs have bakeoff claims that the validation queue should track. The item-level status (todo_soft) and the per-PR tag application are orthogonal — the tag is per-claim, not per-item-completion.\n\nValidation modality:\n\nDEEP (primary): cohort comparing pre-Wave-4 to post-Wave-6 behavior maps. Expected metric movements: (1) sub-case (a) values (call, function_call, subprocess_call, db_query, abi_call) reclassify from edge-label kinds to canonical 'call_site' kind — Symbol-side now has a queryable 'call sites in this file' shape distinct from edge traversal, per audit-findings 0010; (2) sub-case (b) values that drop without fold target (DEPRECATE-NO-FOLD-zero-producer rows) — edge graph reachability preserved by the existing edge-side label; (3) shape-2 edge-endpoint redesign — synthetic Symbol-side nodes consolidated to 5-part well-formed dangling IDs that IR boundary materialization handles correctly.\n\nUAT (supplementary, per-construct spot-checks): Python repo with hand-rolled subprocess.run() + db_query patterns (covers sub-case a); SQL-heavy app (db_query reclassification); Solidity / abi_call repo (cross-language ABI dispatch); template engine apps (Twig, Blade, Handlebars) for the shape-2 redesign of inherits_template / extends_template synthetics; markdown-heavy doc repo for any documentation-language Symbol-side changes.\n\nNote on todo_soft status: WI-kunag (the explicit shape-3 follow-on) is its own item and not currently tagged. Once WI-kunag's producer migration ships (4 edge-absent producers: r_lang.py / astro.py / make.py / blade.py), it should also receive the tag. The bakeoff cohort designed to validate WI-zarov should include r_lang/astro/make/blade repos to set up that future validation in the same target set."  # 2974
+- op: update  # 7639
+  at: '2026-05-07T07:24:04Z'  # 7639
+  by: agent  # 7639
+  actor: jgstern_agent  # 7639
+  clock: 7  # 7639
+  nonce: '7639'  # 7639
+  set: {}  # 7639
+  add:  # 7639
+    tags: [for-deep-bakeoff]  # 7639

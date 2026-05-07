@@ -103,3 +103,12 @@
   clock: 12  # c9db
   nonce: c9db  # c9db
   message: "Tag added 2026-05-07 per validation-modality-mapping conversation. The Wave 5 framework_role fold was never explicitly tagged at merge time; this entry establishes the validation queue claim retroactively.\n\nValidation modality:\n\nDEEP (primary): cohort comparing pre-Wave-5 to post-Wave-6 behavior maps. Expected metric movements: (1) framework-handler centrality — route/event/IPC/RPC handlers fold to function/method canonical kinds, no longer over-counted as their own kind; (2) YAML pattern match counts via Pattern.framework_role field (WI-fojun-shipped backward-compat shim removal increases relevance); (3) slice membership shifts as post-fold canonical kinds participate in callable slices that pre-fold endpoint_shape kinds were excluded from; (4) supply-chain tier classification stability for framework-emitted synthetics.\n\nUAT (supplementary, per-framework spot-checks where ground-truth is more persuasive than aggregate): Phoenix Channels app (event_subscriber→method+role); Tauri IPC app (ipc_caller→function+role + the WI-nibis call_construct fold); Django signal receiver app; gRPC server / stub repo (grpc_server→class+role per WI-nitil correction); WebSocket emitter/listener app (Socket.IO or similar); GraphQL resolver app."  # c9db
+- op: update  # 29da
+  at: '2026-05-07T07:24:04Z'  # 29da
+  by: agent  # 29da
+  actor: jgstern_agent  # 29da
+  clock: 13  # 29da
+  nonce: 29da  # 29da
+  set: {}  # 29da
+  add:  # 29da
+    tags: [for-deep-bakeoff]  # 29da

@@ -36,3 +36,12 @@
   clock: 3  # efbf
   nonce: efbf  # efbf
   message: "Fixed in PR #3543 (commit 2fd1f6f5b). Two structural guards added to packages/hypergumbo-core/src/hypergumbo_core/linkers/inheritance.py:\n\n1. **Cross-language gating** (_resolve_target_symbol): drops candidates whose .language differs from the child symbol's before resolution. Eliminates the 31 spurious Python class -> Rust trait 'implements' edges in candle (Python class FooModule(nn.Module) no longer matches the Rust Module trait). Bridge linkers (PyO3, cffi, wasm_bindgen, jni) remain the sanctioned path for genuine FFI conformance — they emit their own edges and don't go through inheritance.py.\n\n2. **Rust kind discipline** (_create_inheritance_edges): when the child is a Rust struct or enum, the resolver no longer falls back to the class_by_name lookup. Rust permits no struct->struct inheritance, so a struct/enum target is structurally bogus; only trait targets are valid. Eliminates the LayerNorm -> Module-struct (in candle-kernels) misresolution; in cases where no Module trait is present, the linker now correctly emits no edge rather than a spurious extends.\n\nProperty tests in packages/hypergumbo-core/tests/test_inheritance_linker.py cover both layers (test_rust_struct_resolves_to_trait_when_struct_collision_exists, test_rust_struct_no_edge_when_only_struct_target_exists, test_python_class_does_not_implement_rust_trait) plus a regression guard (test_same_language_match_still_works_when_other_language_collides). 100% coverage on inheritance.py.\n\nTagging awaits_bakeoff_validation per BVT discipline. Validation pending: re-run on candle should show zero implements edges from LayerNorm (or other Rust structs) to a struct-kind Module, zero from Python nn.Module subclasses to any Rust trait, and the canonical Module-trait population reflecting the real Rust struct implementers."  # efbf
+- op: update  # d4cc
+  at: '2026-05-07T07:24:06Z'  # d4cc
+  by: agent  # d4cc
+  actor: jgstern_agent  # d4cc
+  clock: 4  # d4cc
+  nonce: d4cc  # d4cc
+  set: {}  # d4cc
+  add:  # d4cc
+    tags: [for-uat-bakeoff]  # d4cc

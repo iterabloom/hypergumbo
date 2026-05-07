@@ -41,3 +41,12 @@
   clock: 4  # 931d
   nonce: 931d  # 931d
   message: "Fix landed in PR #3535 (commit on dev). awaits_bakeoff_validation tag stays — next DEEP cycle should confirm seed-selection shift away from interface stubs."  # 931d
+- op: update  # 43a1
+  at: '2026-05-07T07:24:04Z'  # 43a1
+  by: agent  # 43a1
+  actor: jgstern_agent  # 43a1
+  clock: 5  # 43a1
+  nonce: 43a1  # 43a1
+  set: {}  # 43a1
+  add:  # 43a1
+    tags: [for-deep-bakeoff]  # 43a1

@@ -57,3 +57,12 @@
   clock: 6  # 7717
   nonce: '7717'  # 7717
   message: "Validation **inconclusive** in hg-uat-v4.0.0 round 05 (target: ~/ALL_REPOS/repos_Apr12_2026/pretix).\n\n**Result:** 8/15 ground-truth pass. Between no_move (<3) and moved (≥10).\n\n**Two issues** caused the cap:\n\n1. **Same direct-only base-class matcher as airflow** — transitive subclass cases (`LoggedModel(models.Model)` → `OrderPosition(LoggedModel)`, `HierarkeyForm(forms.Form)` → custom subclass) miss; direct cases pass 8/8 where method is in scope. Filed as UAT BUG-01 / **WI-halat** (cross-linker root cause).\n\n2. **`dispatch` missing from View per-base method map** — despite the round-05 plan explicitly listing `dispatch` as expected (Django's `View.dispatch` is the framework-called router that fans out to `get`/`post`/etc.), the linker emits 0 `dispatches_to` edges to any `*.dispatch` method anywhere in pretix's graph. Filed as UAT DQ-02 / **WI-nipan** (todo_soft, P4 — narrow per-base-map fix).\n\n**Caveat (master report § 8):** pretix doesn't use `django.contrib.admin.ModelAdmin`, so the round-05 plan couldn't sample the ≥2 Admin overrides it called for. A future Wagtail-or-similar follow-up campaign could close that coverage gap.\n\n**What would unblock:** ship WI-halat + WI-nipan; re-run round 05 against pretix (Admin gap remains until a different target is chosen).\n\nTag retained per `inconclusive` lifecycle.\n\nCampaign master report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.0.0/lab-notebook/master-report.md."  # 7717
+- op: update  # a2ea
+  at: '2026-05-07T07:24:06Z'  # a2ea
+  by: agent  # a2ea
+  actor: jgstern_agent  # a2ea
+  clock: 7  # a2ea
+  nonce: a2ea  # a2ea
+  set: {}  # a2ea
+  add:  # a2ea
+    tags: [for-uat-bakeoff]  # a2ea

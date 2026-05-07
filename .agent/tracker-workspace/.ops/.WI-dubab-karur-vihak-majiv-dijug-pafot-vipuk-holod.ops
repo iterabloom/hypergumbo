@@ -56,3 +56,12 @@
   clock: 6  # 506a
   nonce: 506a  # 506a
   message: "Tag added 2026-05-07 per validation-modality-mapping conversation. WI-dubab's audit (audit-findings 0006) plus the Wave 6 PR 5 producer migration (selfh #183, 5 producer sites: robot.py / requirements.py / json_config.py / bitbake.py) shipped without an explicit bakeoff-validation tag. This entry establishes the validation queue claim retroactively.\n\nValidation modality:\n\nDEEP (primary): cohort comparing pre-Wave-6-PR-5 to post-Wave-6-PR-5 behavior maps. Expected metric movements: (1) Robot Framework test extraction — kind='test_case' → kind='test'+meta['test_dialect']='robot'; YAML pattern matchers that select on kind='^test$' now match Robot tests too; (2) pip requirements -e and url forms — kind='editable'/'url_requirement' → kind='requirement' + meta['install_mode']='editable' or meta['install_source']='url'; supply-chain tier classification stability across requirement variants; (3) npm devDependencies — kind='devDependency' → kind='dependency'+meta['dependency_scope']='dev'; EXCLUDED_KINDS already contained 'dependency' so devDependencies remain excluded from centrality table post-fold; (4) BitBake python tasks — kind='python_task' → kind='task'+meta['task_implementation']='python'; (5) YAML pattern matching with framework_role/framework_dispatch combined with these G FOLDs.\n\nUAT (supplementary): Robot Framework test repo (test_case→test fold; verify test extraction count is preserved); requirements.txt with -e and git+ URLs (editable/url_requirement→requirement folds; verify supply-chain edges are still emitted); package.json with both dependencies and devDependencies (devDependency→dependency+scope=dev fold; verify centrality table excludes dev deps); BitBake recipe with python {} blocks (python_task→task+impl=python; verify task graph reachability); Composer require-dev (covers the same _process_dependencies path as npm devDependencies)."  # 506a
+- op: update  # 119d
+  at: '2026-05-07T07:24:05Z'  # 119d
+  by: agent  # 119d
+  actor: jgstern_agent  # 119d
+  clock: 7  # 119d
+  nonce: 119d  # 119d
+  set: {}  # 119d
+  add:  # 119d
+    tags: [for-deep-bakeoff]  # 119d

@@ -52,3 +52,12 @@
   clock: 5  # 9470
   nonce: '9470'  # 9470
   message: "Done. PR #155 (commit 1819d8bb8). All 4 selection surfaces — sketch._format_symbols, compact.select_by_coverage, compact.select_by_connectivity, format_tiered_behavior_map's post-selection victim removal — now pass rank_symbols' tuned compute_centrality kwargs (hub_threshold=100, within_file_weight=0.3, max_per_file_in=5, edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS) via the shared _RANK_CENTRALITY_KWARGS constant in compact.py (sketch reuses inline). Tagged awaits_bakeoff_validation; next DEEP cycle confirms the 50-70% top-100 churn hypothesis is real FP reduction not real-symbol demotion."  # 9470
+- op: update  # 2fff
+  at: '2026-05-07T07:24:03Z'  # 2fff
+  by: agent  # 2fff
+  actor: jgstern_agent  # 2fff
+  clock: 6  # 2fff
+  nonce: 2fff  # 2fff
+  set: {}  # 2fff
+  add:  # 2fff
+    tags: [for-deep-bakeoff]  # 2fff

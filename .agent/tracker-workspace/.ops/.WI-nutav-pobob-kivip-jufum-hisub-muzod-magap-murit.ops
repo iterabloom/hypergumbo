@@ -96,3 +96,12 @@
   clock: 11  # 0e01
   nonce: '0e01'  # 0e01
   message: "Validation **inconclusive** in hg-uat-v4.0.0 round 04 (target: ~/ALL_REPOS/whole_bunch_of_repos/airflow).\n\n**Result:** 5/15 ground-truth pass. Between no_move (<3) and moved (≥10).\n\n**Decomposition by sample shape:**\n- **Direct subclass** of BaseOperator/BaseHook/BaseSensor/BaseTrigger (e.g. `class FooOperator(BaseOperator)`): pass = **5/5**.\n- **Transitive subclass** via an intermediate (e.g. `AlloyDBWriteBaseOperator(BaseOperator)` → `AlloyDBWriteFooOperator(AlloyDBWriteBaseOperator)`): pass = **0/9**.\n\n**Root cause:** the linker matches `meta.base_classes` on direct-base-name only and does not walk the class hierarchy. Since real airflow provider code is shot through with intermediate base classes (`GoogleBaseHook`, `AlloyDBWriteBaseOperator`, etc.), the transitive case is the dominant case — which is what caps the pass rate at 5/15.\n\nFiled root cause as UAT BUG-01 / **WI-halat** (todo_hard, P2: \"Framework-dispatch linkers must traverse transitive base-class hierarchy\"). Verdict-level impact projected: flips this item to `moved` once WI-halat lands.\n\n**What would unblock:** ship WI-halat (either (a) per-linker hierarchy walk, or (b) transitively close `meta.base_classes` in Python analyzer); re-run round 04.\n\nTag retained per `inconclusive` lifecycle.\n\nCampaign master report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.0.0/lab-notebook/master-report.md (BUG-01 § 2)."  # 0e01
+- op: update  # 1b4c
+  at: '2026-05-07T07:24:05Z'  # 1b4c
+  by: agent  # 1b4c
+  actor: jgstern_agent  # 1b4c
+  clock: 12  # 1b4c
+  nonce: 1b4c  # 1b4c
+  set: {}  # 1b4c
+  add:  # 1b4c
+    tags: [for-uat-bakeoff]  # 1b4c

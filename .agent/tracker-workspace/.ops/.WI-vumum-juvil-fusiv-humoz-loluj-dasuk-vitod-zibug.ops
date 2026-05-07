@@ -36,3 +36,12 @@
   clock: 3  # e741
   nonce: e741  # e741
   message: "Shipped in commit fe233fb4e / PR #3516. Producer migration: linkers/{http,grpc,graphql}.py emit canonical 'calls' + meta['protocol']. Consumer cleanup: dropped http_calls from compact.CROSS_CUTTING_EDGE_TYPES, grpc_calls from taint.TAINT_CALL_EDGE_TYPES + io_boundary._TRACEABLE_EDGE_TYPES, dead grpc_calls weight from ranking.DEFAULT_EDGE_TYPE_WEIGHTS. Registry: PROTOCOL_KINDS = frozenset({'ipc','http','grpc','graphql'}) added per ADR-0015 access_mode pattern. Strict-mode drift linter now reports zero off-axis consumer references — this fold cleared the last load-bearing endpoint_shape consumer reference, removing the immediate-next blocker for WI-mumok. Phase 4b' (deprecated registry pruning + SCHEMA_VERSION bump) gated on bakeoff validation cycle."  # e741
+- op: update  # 7c18
+  at: '2026-05-07T07:24:04Z'  # 7c18
+  by: agent  # 7c18
+  actor: jgstern_agent  # 7c18
+  clock: 4  # 7c18
+  nonce: 7c18  # 7c18
+  set: {}  # 7c18
+  add:  # 7c18
+    tags: [for-deep-bakeoff]  # 7c18

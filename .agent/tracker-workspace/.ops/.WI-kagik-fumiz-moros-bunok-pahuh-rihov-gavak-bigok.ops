@@ -96,3 +96,12 @@
   clock: 11  # 11d8
   nonce: 11d8  # 11d8
   message: "Tag added 2026-05-07 per validation-modality-mapping conversation. WI-kagik's description always anticipated the tag (\"Per-framework sub-PRs each ship as their own awaits_bakeoff_validation PR\"); this entry retroactively establishes the queue claim for the parent item now that all sub-PR migrations have shipped.\n\nValidation modality:\n\nDEEP (primary): cohort comparing pre-Wave-5 to post-Wave-6 behavior maps. Expected metric movements: (1) Edge.evidence_type distribution shift — ~65 framework-prefixed values collapse to canonical inference labels (ast_call_direct / ast_decorator / ast_import / naming_convention) + meta['framework_dispatch']=<framework_name> per audit-findings 0014; (2) edge match counts in YAML pattern matching as patterns migrate to query the canonical inference label + meta filter; (3) is_resolved sibling field consumption (paired with WI-nunal Cluster B fold) — slice / centrality / orphan-rate shifts when consumers query is_resolved; (4) producer-coherence linter L3 sees zero post-fold framework-prefixed evidence_type emit sites (already empirically verified, but DEEP confirms the absence is preserved across cohort).\n\nUAT (supplementary, per-framework spot-checks): Django ORM app (django_orm_dispatch → ast_call_direct + meta); Phoenix Channels app (phoenix_event_match); NestJS module-registration app; Vue event handler / component import app; Kafka Streams consumer/producer app; Airflow DAG app (covers WI-nutav linker addition too); FastAPI app (fastapi_emit/fastapi_endpoint).\n\nNote: also covers the WI-nibis Cluster D evidence_type call-construct apex/peer fold (which inherited the same migration shape per ADR-0028 §'Phase 3' Cluster D). If WI-nibis is separately tagged later, drop the redundancy in the cohort design rather than re-running both."  # 11d8
+- op: update  # a506
+  at: '2026-05-07T07:24:04Z'  # a506
+  by: agent  # a506
+  actor: jgstern_agent  # a506
+  clock: 12  # a506
+  nonce: a506  # a506
+  set: {}  # a506
+  add:  # a506
+    tags: [for-deep-bakeoff]  # a506

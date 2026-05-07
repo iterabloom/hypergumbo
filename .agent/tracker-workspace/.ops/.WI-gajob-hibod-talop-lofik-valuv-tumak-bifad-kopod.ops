@@ -56,3 +56,12 @@
   clock: 6  # 0bc8
   nonce: 0bc8  # 0bc8
   message: "Tag added 2026-05-07 per validation-modality-mapping conversation. WI-gajob's audit (audit-findings 0005) plus the Wave 6 PR 3 producer migration (selfh #181, 10 producer sites: js_module / vue_component / json_config / wasm_bindgen / toml_config) shipped without an explicit bakeoff-validation tag. This entry establishes the validation queue claim retroactively.\n\nValidation modality:\n\nDEEP (primary): cohort comparing pre-Wave-6-PR-3 to post-Wave-6-PR-3 behavior maps. Expected metric movements: (1) edge graph reachability — module_file/component_file/script symbols now emit kind='file' so EXCLUDED_KINDS (which contains 'file') excludes them automatically, and module_file/component_file/main_entry/composer_package/wasm_module symbols that were NOT excluded pre-fold (because their old kinds weren't in the set) ARE excluded post-fold; this is a meaningful behavior change worth confirming; (2) npm_package/composer_package centrality (now kind='package'+ecosystem meta) — supply-chain tier classification stability; (3) compact view exclusion behavior survives the fold (Vue SFC component_file→file dual-shape, etc.); (4) tsconfig is_config_file=True correctness post-DEPRECATE-NO-FOLD; (5) consumer dual-shape predicate behavior at route_handler.is_component (kind='file'+module_system) and cli._is_noise (kind='file'+entry_role).\n\nUAT (supplementary): JS/TS monorepo with Vite aliases + Vue SFC components (verify route_handler.is_component dual-shape resolves; module_file→file fold preserves component-route linking); npm package install (npm_package→package fold preserves dependency tracking); Composer-based PHP repo (composer_package→package); package.json with main field + scripts array; tsconfig.json (verify is_config_file boolean is set; meta['config_format']='tsconfig' present); pyproject.toml [project.scripts] entry; wasm-bindgen Rust+TS interop repo (wasm_module/wasm_import folds — note wasm_import folds to 'import' which is itself on AXIS_ENDPOINT_SHAPE per audit-findings 0010, so this is the one row where the fold target is also a deprecation-window kind)."  # 0bc8
+- op: update  # e4e0
+  at: '2026-05-07T07:24:05Z'  # e4e0
+  by: agent  # e4e0
+  actor: jgstern_agent  # e4e0
+  clock: 7  # e4e0
+  nonce: e4e0  # e4e0
+  set: {}  # e4e0
+  add:  # e4e0
+    tags: [for-deep-bakeoff]  # e4e0
