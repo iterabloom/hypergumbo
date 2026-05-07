@@ -429,3 +429,70 @@ class TestTransitiveSubclassWalk:
         save = _method_sym("User.save")
         ctx = _ctx([c, save], edges=[])
         assert {e.dst for e in link_django_orm_dispatch(ctx).edges} == {save.id}
+
+
+class TestGenericCBVViewLifecycle:
+    """WI-nipan / UAT DQ-02: generic CBVs (ListView, DetailView, …) inherit
+    View's lifecycle methods (dispatch, setup, options, http_method_not_allowed),
+    but Django's class hierarchy is external — so a project class
+    `class Foo(ListView)` never reaches the bare ``View`` entry via the
+    transitive base walk. The fix folds View's lifecycle into each generic
+    CBV's frozenset.
+    """
+
+    def test_listview_subclass_emits_dispatch_edge(self) -> None:
+        view = _class_sym("UserListView", base_classes=["ListView"])
+        dispatch = _method_sym("UserListView.dispatch")
+        result = link_django_orm_dispatch(_ctx([view, dispatch]))
+        assert dispatch.id in {e.dst for e in result.edges}
+
+    def test_detailview_subclass_emits_dispatch_edge(self) -> None:
+        view = _class_sym("UserDetailView", base_classes=["DetailView"])
+        dispatch = _method_sym("UserDetailView.dispatch")
+        result = link_django_orm_dispatch(_ctx([view, dispatch]))
+        assert dispatch.id in {e.dst for e in result.edges}
+
+    def test_createview_subclass_emits_dispatch_edge(self) -> None:
+        view = _class_sym("UserCreateView", base_classes=["CreateView"])
+        dispatch = _method_sym("UserCreateView.dispatch")
+        result = link_django_orm_dispatch(_ctx([view, dispatch]))
+        assert dispatch.id in {e.dst for e in result.edges}
+
+    def test_updateview_subclass_emits_dispatch_edge(self) -> None:
+        view = _class_sym("UserUpdateView", base_classes=["UpdateView"])
+        dispatch = _method_sym("UserUpdateView.dispatch")
+        result = link_django_orm_dispatch(_ctx([view, dispatch]))
+        assert dispatch.id in {e.dst for e in result.edges}
+
+    def test_deleteview_subclass_emits_dispatch_edge(self) -> None:
+        view = _class_sym("UserDeleteView", base_classes=["DeleteView"])
+        dispatch = _method_sym("UserDeleteView.dispatch")
+        result = link_django_orm_dispatch(_ctx([view, dispatch]))
+        assert dispatch.id in {e.dst for e in result.edges}
+
+    def test_templateview_subclass_emits_dispatch_edge(self) -> None:
+        view = _class_sym("UserTemplateView", base_classes=["TemplateView"])
+        dispatch = _method_sym("UserTemplateView.dispatch")
+        result = link_django_orm_dispatch(_ctx([view, dispatch]))
+        assert dispatch.id in {e.dst for e in result.edges}
+
+    def test_listview_subclass_emits_setup_options_http_not_allowed(self) -> None:
+        """Lifecycle methods other than dispatch are also picked up."""
+        view = _class_sym("UserListView", base_classes=["ListView"])
+        setup = _method_sym("UserListView.setup", span=(2, 4))
+        options = _method_sym("UserListView.options", span=(5, 7))
+        not_allowed = _method_sym(
+            "UserListView.http_method_not_allowed", span=(8, 10),
+        )
+        result = link_django_orm_dispatch(_ctx([view, setup, options, not_allowed]))
+        dsts = {e.dst for e in result.edges}
+        assert setup.id in dsts
+        assert options.id in dsts
+        assert not_allowed.id in dsts
+
+    def test_listview_subclass_still_emits_specific_methods(self) -> None:
+        """ListView-specific methods aren't lost when View-lifecycle is folded in."""
+        view = _class_sym("UserListView", base_classes=["ListView"])
+        gq = _method_sym("UserListView.get_queryset", span=(2, 4))
+        result = link_django_orm_dispatch(_ctx([view, gq]))
+        assert gq.id in {e.dst for e in result.edges}

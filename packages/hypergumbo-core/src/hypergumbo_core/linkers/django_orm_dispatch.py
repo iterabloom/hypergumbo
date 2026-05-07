@@ -54,6 +54,18 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("django-orm-dispatch-linker")
 
+# Methods Django's `View.dispatch()` calls on every CBV subclass at
+# request time, plus the dispatch chain itself. Generic CBVs all
+# inherit these via class-based view's MRO; the table below folds them
+# into each generic CBV's frozenset because Django's hierarchy is
+# external to the project (so the transitive base walk never reaches
+# the bare "View" entry from a `class Foo(ListView)` declaration).
+_VIEW_LIFECYCLE: frozenset[str] = frozenset({
+    "dispatch", "http_method_not_allowed", "options",
+    "get", "post", "put", "patch", "delete", "head", "trace",
+    "setup",
+})
+
 # Map of Django base class name -> framework-called method names on that
 # base. A subclass of ``Model`` only has Model-lifecycle methods called on
 # it; Manager / QuerySet territory is separate. Keeping the mapping
@@ -130,34 +142,39 @@ DJANGO_BASE_METHODS: dict[str, frozenset[str]] = {
         "_post_clean", "_clean_form", "_clean_fields",
     }),
     # View hierarchy — HTTP methods dispatched by the view's dispatch().
-    "View": frozenset({
-        "dispatch", "http_method_not_allowed", "options",
-        "get", "post", "put", "patch", "delete", "head", "trace",
-        "setup",
-    }),
-    "TemplateView": frozenset({
-        "get", "post", "get_context_data", "get_template_names",
+    # Generic CBVs (TemplateView, ListView, DetailView, …) all inherit
+    # from View, so they ALSO carry the View-lifecycle methods. Project
+    # classes typically subclass a generic CBV, not View itself, and
+    # Django's class hierarchy is external to the project — so the
+    # transitive base walk never reaches the View entry. Folding the
+    # View lifecycle into each generic CBV's frozenset (via _VIEW_LIFECYCLE
+    # below) closes the gap called out in WI-nipan / UAT DQ-02 (pretix's
+    # `dispatch` overrides received zero `dispatches_to` edges before
+    # this change).
+    "View": _VIEW_LIFECYCLE,
+    "TemplateView": _VIEW_LIFECYCLE | frozenset({
+        "get_context_data", "get_template_names",
         "render_to_response",
     }),
-    "ListView": frozenset({
-        "get", "get_queryset", "get_context_data",
+    "ListView": _VIEW_LIFECYCLE | frozenset({
+        "get_queryset", "get_context_data",
         "get_paginate_by", "get_ordering",
     }),
-    "DetailView": frozenset({
-        "get", "get_object", "get_context_data",
+    "DetailView": _VIEW_LIFECYCLE | frozenset({
+        "get_object", "get_context_data",
     }),
-    "CreateView": frozenset({
-        "get", "post", "form_valid", "form_invalid",
+    "CreateView": _VIEW_LIFECYCLE | frozenset({
+        "form_valid", "form_invalid",
         "get_form_class", "get_form_kwargs", "get_success_url",
         "get_initial", "get_context_data",
     }),
-    "UpdateView": frozenset({
-        "get", "post", "form_valid", "form_invalid",
+    "UpdateView": _VIEW_LIFECYCLE | frozenset({
+        "form_valid", "form_invalid",
         "get_form_class", "get_object", "get_success_url",
         "get_initial", "get_context_data",
     }),
-    "DeleteView": frozenset({
-        "get", "post", "delete", "get_object", "get_success_url",
+    "DeleteView": _VIEW_LIFECYCLE | frozenset({
+        "delete", "get_object", "get_success_url",
     }),
     # Migration Operation subclasses — called by the migration runner.
     "Migration": frozenset({
