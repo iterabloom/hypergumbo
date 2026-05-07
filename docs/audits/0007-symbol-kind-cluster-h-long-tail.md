@@ -2,7 +2,7 @@
 # Audit-findings 0007: Symbol.kind Cluster H — Domain-Specific Long Tail
 
 - Date: 2026-05-05
-- Status: Mixed — 56 CANONICAL rows RESOLVED (53 via Wave 6 PR 2 registry promotion + 3 via Wave 6 PR 4 reclassification: `theorem`, `inductive`, `message`); 2 DEPRECATE-NO-FOLD rows now PRELIM_RESOLVED via Wave 6 PR 4 (`heading`, `model`); 2 boundary-pseudo-symbol DEPRECATE-NO-FOLD rows remain UNRESOLVED pending the parallel `Symbol.is_resolved` ADR decision (`external_symbol`, `unresolved`).
+- Status: All rows resolved — 57 CANONICAL rows RESOLVED (53 via Wave 6 PR 2 registry promotion + 3 via Wave 6 PR 4 reclassification of `theorem`/`inductive`/`message` + 1 via Wave 6 PR 6 reclassification of `external_symbol`); 3 DEPRECATE-NO-FOLD rows PRELIM_RESOLVED (`heading`, `model` via Wave 6 PR 4; `unresolved` via Wave 6 PR 6).
 - Closes: WI-nupus-fovor-rataf-momub-natit-hihir-bufas-bukih (Cluster H domain long-tail per-value audit, ADR-0027 Phase 3)
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Fourth audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster A canonical), 0005 (Cluster B file-shape), and 0006 (Cluster G build/config-shape).
 
@@ -14,7 +14,7 @@ The registry's Cluster H section seeds 61 values. One of them — `structure` �
 
 The cluster-H framing question (per WI-nupus and ADR-0027 §"Risks"): are these *language constructs* in their respective DSLs (CSS, SQL, HCL/Terraform, Mermaid, GraphQL, LaTeX, Markdown, BibTeX, gnuplot, Vue, Svelte, Twig, Handlebars, Blade, QML, VHDL, SPARQL, Nix, COBOL, Swift, Objective-C, Elm, F#, R, Ansible YAML, gitignore, …), or do a non-trivial subset leak Cluster D / E shape (`*_handler` framework qualifiers, `*_call` relationship-shaped kinds), warranting per-value FOLD verdicts or a separate axis ADR?
 
-This audit answers (post Wave 6 PR 4 reclassification — see §"Diagnostic findings" #4): **56 CANONICAL** (each is a top-level construct in the source language at hand — the cross-DSL overload pattern reads like `function` or `package` across general-purpose languages, not as a leak), **0 FOLD** (no sub-mode/scope qualifier shapes surfaced once Cluster G's audit absorbed the `task`/`python_task`/`addtask` scope-qualifier shape), and **4 DEPRECATE-NO-FOLD** (1 dead vocabulary with no producer at all — `heading`; 1 ID-string-only synthetic — `model`; 2 boundary-pseudo-symbol kinds flagged for an ADR-0028-adjacent re-examination — see §"Diagnostic findings" #3: `unresolved` and `external_symbol`).
+This audit answers (post Wave 6 PR 4 + PR 6 reclassifications — see §"Diagnostic findings" #3 and #4): **57 CANONICAL** (each is a top-level construct in the source language at hand, including the IR pipeline's own pseudo-DSL — the cross-DSL overload pattern reads like `function` or `package` across general-purpose languages, not as a leak), **0 FOLD** (no sub-mode/scope qualifier shapes surfaced once Cluster G's audit absorbed the `task`/`python_task`/`addtask` scope-qualifier shape), and **3 DEPRECATE-NO-FOLD** (1 dead vocabulary with no producer at all — `heading`; 1 ID-string-only synthetic — `model`; 1 registry seed error — `unresolved`, where the producer-side trace at Wave 6 PR 6 showed no `Symbol(kind='unresolved')` emission exists).
 
 All rows ship at `UNRESOLVED` status because Phase 3 producer migrations + registry updates have not landed. Wave 6 of the WI-runod cross-axis schedule covers the migration; this document is the precondition for that wave.
 
@@ -86,13 +86,19 @@ These 41 values get verdict **CANONICAL**.
 
 ### 3. Boundary-pseudo-symbol kinds
 
-Two values (`external_symbol`, `unresolved`) are emitted by the IR layer (`packages/hypergumbo-core/src/hypergumbo_core/ir.py`) and the analyze base (`analyze/base.py:401`) plus the cgo / lua_ffi / napi linkers, for *boundary pseudo-symbols* — Symbol nodes that represent references *out of* the analyzed scope. `external_symbol` is the catch-all for non-standard boundary IDs (`ir.py:805`, `:959`); `unresolved` is the kind suffix used in symbol IDs when an analyzer references a callee whose definition can't be resolved (`analyze/base.py:401`'s `f"{lang}:{module_hint}:0-0:{callee_name}:unresolved"`).
+Two values (`external_symbol`, `unresolved`) appear in the registry as pipeline-layer pseudo-categories. Wave 6 PR 6 traced both end-to-end through producers and consumers, and the trace produced a different verdict than the original audit predicted. The corrected trace:
 
-These are not source-language constructs; they're **pipeline-layer pseudo-categories** that mark the boundary between analyzed and unanalyzed scope. The four leakage tests fire ambiguously: Test 4 is the closest fit ("are these categories or mechanisms?"), and they read as *categories* — `external_symbol` and `unresolved` are distinct shapes of "this Symbol exists at the boundary."
+- `external_symbol` — single producer at `ir.py:959` (`create_boundary_nodes`). Materializes one boundary Symbol per (language, key_path, name, kind) group of dangling edge endpoints. The kind is hardcoded to `"external_symbol"` regardless of what `_parse_dangling_id` extracts from the trailing slot of the dangling IDs.
+- `unresolved` — **no producer.** The string `"unresolved"` appears only as: (1) a trailing token in dangling-edge dst IDs created by `make_unresolved_call_edge` at `analyze/base.py:401` (format: `{lang}:{module_hint}:0-0:{callee_name}:unresolved`); (2) a `_parse_dangling_id` fallback at `ir.py:805` for malformed IDs (defensive code, never reaches the materializer's kind slot); (3) the path-slot sentinel in rust.py's trait dangling IDs (`make_symbol_id("rust", "unresolved", ...)` — `"unresolved"` is in the path slot, not the kind slot). The IR boundary materializer always emits `kind="external_symbol"`, never `kind="unresolved"`.
 
-**ADR-0028 adjacency note (DEPRECATE-NO-FOLD verdict, advisory).** ADR-0028 introduced `Edge.is_resolved: bool` precisely because the resolution-status property previously leaked into evidence_type values like `*_unresolved`. The same shape is potentially present here: `kind="unresolved"` smuggles a resolution-status property onto Symbol.kind. But unlike Edge.evidence_type, `Symbol.kind` does not have a `Symbol.is_resolved` sibling field today — the resolution status of a *referenced symbol* (the callee) is recorded on the Edge, not on the Symbol itself. Whether the boundary Symbol's own resolution status deserves a `Symbol.is_resolved` sibling field is a follow-on question for a future ADR, not for this audit's verdict.
+**Consumer query pattern.** No consumer in the codebase reads `Symbol.kind == "external_symbol"` (or `"unresolved"`) as a discriminator. The boundary-status check is centralized in `is_external_boundary(sym)` (`ir.py:657`) which reads `meta["external_boundary"]=True`. Compact and CLI noise filters use that helper; runtime-coherence partitioning includes the kind in a tuple key but doesn't condition on the literal value. The kind values are labels, not load-bearing classifiers.
 
-Verdict for this audit: **DEPRECATE-NO-FOLD**, with the migration deferred. The producer-side effect is *no change* in the Wave 6 PR series — both values continue to be emitted as today. The registry rows are flagged for removal pending the follow-on ADR. If that follow-on ADR adds `Symbol.is_resolved`, the producers fold to a canonical kind (perhaps `boundary` or the actual referenced kind) plus `is_resolved=False`. If not, the rows promote back to `language_construct` as pipeline-layer pseudo-constructs. Either path closes the row; this audit declines to pre-decide between them.
+**ADR-0028 adjacency: not applicable.** ADR-0028 introduced `Edge.is_resolved` because the resolution-status property leaked into ~10 paired `*_resolved` / `*_unresolved` evidence types across 4+ producer modules. That accumulation pressure motivated promotion to a sibling field per ADR-0024 §"Fold-residue discipline" rule 3 (recurrence threshold: ≥3 distinct values OR ≥2 producer modules). The Symbol.kind situation does not meet that threshold: 1 producer, 0 consumer reads, 0 paired-suffix variants. The original audit's framing ("`kind="unresolved"` smuggles resolution-status onto Symbol.kind") was wrong on the facts — `Symbol(kind="unresolved")` has no producer. A `Symbol.is_resolved` sibling field would also be semantically distinct from `Edge.is_resolved` (the former asks "is this Symbol record a placeholder?"; the latter asks "did the dst lookup succeed?") — sharing a name without sharing semantics would be more confusing than clarifying.
+
+**Verdict (Wave 6 PR 6, replacing the original deferred verdict):**
+
+- `external_symbol` — **CANONICAL**, status RESOLVED. Promoted to `language_construct` in `symbol_kinds.py` as a pipeline-DSL top-level construct, parallel to other Cluster H domain-DSL constructs (`playbook`, `participant`, `fragment`). Consumer behavior is unchanged because consumers never queried the kind value.
+- `unresolved` — **DEPRECATE-NO-FOLD**, status PRELIM_RESOLVED. Registry seed error (no producer); advanced to `endpoint_shape` for symmetry with the rest of Cluster H's vacuous DEPRECATE-NO-FOLD entries. The previously-anticipated `Symbol.is_resolved` follow-on ADR is **withdrawn** — the trace showed there is no leak to absorb. If a future situation surfaces multiple Symbol-side resolution-status producers, that's the signal to revisit; until then, ADR-0028's `Edge.is_resolved` covers the only resolution-status surface that exists.
 
 ### 4. Dead vocabulary
 
@@ -601,21 +607,21 @@ verdicts:
       expect: exit_code:0
     rationale: "ID-string-only synthetic — prisma.py:120 passes kind='model' to compute_stable_id / make_symbol_id but emits the actual Symbol with kind='class' at line 122. No Symbol.kind='model' is ever emitted. Registry entry advanced to endpoint_shape in Wave 6 PR 4."
   - value: external_symbol
-    verdict: DEPRECATE-NO-FOLD
+    verdict: CANONICAL
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"external_symbol\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"external_symbol\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "Pipeline-layer pseudo-category for catch-all boundary nodes (ir.py:805, :959). Producer continues unchanged; registry row deferred pending follow-on ADR on Symbol-side resolution-status (potential Symbol.is_resolved sibling field, mirroring ADR-0028's Edge.is_resolved). Migration outcome: either fold to a canonical 'boundary' construct + is_resolved=True, or promote back to language_construct as a pipeline-layer pseudo-construct."
+    rationale: "IR-pipeline boundary pseudo-symbol (single producer at ir.py:959 via create_boundary_nodes). Reclassified Wave 6 PR 6 — re-trace showed (1) no consumer reads kind=='external_symbol' as a discriminator (consumers query is_external_boundary(sym) which checks meta['external_boundary']), (2) the kind is a label not a load-bearing classifier, and (3) ADR-0024 §'Fold-residue discipline' rule 3's recurrence threshold (≥3 distinct values OR ≥2 producer modules) is not met (1 producer, 0 consumer reads). Promoted to language_construct as a pipeline-DSL top-level construct, parallel to other Cluster H domain-DSL constructs (playbook, participant, fragment)."
   - value: unresolved
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: PRELIM_RESOLVED
     diagnostic_test:
-      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"unresolved\" and s.axis == \"pending_classification\" for s in SYMBOL_KINDS)'"
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"unresolved\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
-    rationale: "Pipeline-layer pseudo-category for unresolved-callee boundary nodes (analyze/base.py:401 plus cgo/lua_ffi/napi linkers). Smuggles a resolution-status property onto Symbol.kind, mirroring the Cluster B *_unresolved evidence_type pattern that ADR-0028 absorbed via Edge.is_resolved. Producer continues unchanged; registry row deferred pending follow-on ADR on a Symbol.is_resolved sibling field. Migration outcome: either fold to canonical kind + is_resolved=False, or promote back to language_construct as a pipeline-layer pseudo-construct."
+    rationale: "Registry seed error per Wave 6 PR 6 trace — no Symbol(kind='unresolved') producer exists. The string 'unresolved' appears only as a trailing token in dangling-edge dst IDs created by analyze/base.py:make_unresolved_call_edge ({lang}:{module_hint}:0-0:{name}:unresolved); that attribute is captured by Edge.is_resolved=False per ADR-0028, not as a Symbol.kind value. The IR boundary materializer (ir.py:954-967) always emits kind='external_symbol' regardless of what _parse_dangling_id extracts from the trailing slot. Registry entry advanced to endpoint_shape in Wave 6 PR 6 (vacuous producer migration — no producer to drop)."
 ```
 
 ## Migration impact

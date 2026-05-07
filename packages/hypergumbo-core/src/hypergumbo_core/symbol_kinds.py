@@ -679,10 +679,30 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "No producer emits this kind (verified WI-rusit Wave 4); "
                    "registry entry remains through the Phase 4a deprecation "
                    "window per ADR-0027. Fold target: struct."),
-    SymbolKindSpec("external_symbol", AXIS_PENDING,
-                   "External-symbol pseudo-node. Pending cluster-H audit."),
-    SymbolKindSpec("unresolved", AXIS_PENDING,
-                   "Unresolved-symbol pseudo-node. Pending cluster-H audit."),
+    SymbolKindSpec("external_symbol", AXIS_LANGUAGE_CONSTRUCT,
+                   "IR-pipeline boundary pseudo-symbol — emitted by "
+                   "``create_boundary_nodes`` (``ir.py:959``) for every "
+                   "edge endpoint that doesn't resolve to a real Symbol "
+                   "(stdlib calls, npm imports, third-party constructors). "
+                   "CANONICAL per audit-findings 0007 §\"Diagnostic findings "
+                   "#3\" (Wave 6 PR 6 reclassification): structurally a "
+                   "top-level construct in the IR pipeline's own DSL, "
+                   "parallel to other Cluster H domain-DSL constructs "
+                   "(``playbook``, ``participant``, …). Consumers query "
+                   "boundary status via ``is_external_boundary(sym)`` "
+                   "(meta-key based), so this kind is a label not a "
+                   "discriminator — promotion does not change consumer "
+                   "behavior."),
+    SymbolKindSpec("unresolved", AXIS_ENDPOINT_SHAPE,
+                   "DEPRECATE-NO-FOLD per audit-findings 0007 §\"Diagnostic "
+                   "findings #3\" (Wave 6 PR 6 — registry seed error). The "
+                   "string ``'unresolved'`` appears only as a trailing token "
+                   "in dangling-edge dst IDs created by "
+                   "``analyze/base.py:make_unresolved_call_edge`` — that "
+                   "attribute is captured by ``Edge.is_resolved=False`` per "
+                   "ADR-0028, not as a Symbol.kind value. No Symbol(kind="
+                   "'unresolved') producer exists. Registry entry stays "
+                   "through the Phase 4a deprecation window."),
 
     # ----------------------------------------------------------------
     # WI-nubuv ext A discoveries — assignment-form producer leaks

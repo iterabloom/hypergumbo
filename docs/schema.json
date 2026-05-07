@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.5.6"
+      "const": "0.5.7"
     },
     "confidence_model": {
       "type": "string",
@@ -382,8 +382,8 @@
             "theorem": "language_construct",
             "playbook": "language_construct",
             "structure": "endpoint_shape",
-            "external_symbol": "pending_classification",
-            "unresolved": "pending_classification",
+            "external_symbol": "language_construct",
+            "unresolved": "endpoint_shape",
             "binary": "pending_classification",
             "benchmark": "pending_classification",
             "example": "pending_classification",
@@ -469,7 +469,8 @@
             "python_task",
             "heading",
             "model",
-            "structure"
+            "structure",
+            "unresolved"
           ]
         },
         "language": {

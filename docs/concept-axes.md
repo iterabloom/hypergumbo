@@ -175,6 +175,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`executable`** — Executable declaration (CMake `add_executable`, Meson `executable`). CANONICAL per audit-findings 0005.
 - **`export`** — Export declaration (JS / TS / TOML / Rust).
 - **`exposed_port`** — Container exposed-port symbol. CANONICAL per audit-findings 0006.
+- **`external_symbol`** — IR-pipeline boundary pseudo-symbol — emitted by ``create_boundary_nodes`` (``ir.py:959``) for every edge endpoint that doesn't resolve to a real Symbol (stdlib calls, npm imports, third-party constructors). CANONICAL per audit-findings 0007 §"Diagnostic findings #3" (Wave 6 PR 6 reclassification): structurally a top-level construct in the IR pipeline's own DSL, parallel to other Cluster H domain-DSL constructs (``playbook``, ``participant``, …). Consumers query boundary status via ``is_external_boundary(sym)`` (meta-key based), so this kind is a label not a discriminator — promotion does not change consumer behavior.
 - **`field`** — Field declaration on a struct / class / record.
 - **`file`** — File-shape symbol — top-level file declaration in build / source DSLs. CANONICAL per audit-findings 0005.
 - **`font_face`** — CSS @font-face symbol. CANONICAL per audit-findings 0007.
@@ -328,6 +329,7 @@ Values whose meaning is leaked into the kind label even though it is captured by
 - **`subprocess_call`** — Cluster E sub-case (a) FOLD per audit-findings 0010: the subprocess_cli linker was reclassified to kind='call_site' + meta['call_kind']='subprocess'. Registry entry stays through the Phase 4a deprecation window.
 - **`test_case`** — FOLDed to ``test`` + ``meta['test_dialect']='robot'`` per audit-findings 0006, Wave 6 PR 5. Producer (``robot.py:314``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`tsconfig`** — DEPRECATE-NO-FOLD per audit-findings 0005, Wave 6 PR 3: producer (``json_config.py``) drops the kind specialisation and emits ``kind='file'`` + ``is_config_file=True`` + ``meta['config_format']='tsconfig'`` instead. Registry entry stays through the Phase 4a deprecation window.
+- **`unresolved`** — DEPRECATE-NO-FOLD per audit-findings 0007 §"Diagnostic findings #3" (Wave 6 PR 6 — registry seed error). The string ``'unresolved'`` appears only as a trailing token in dangling-edge dst IDs created by ``analyze/base.py:make_unresolved_call_edge`` — that attribute is captured by ``Edge.is_resolved=False`` per ADR-0028, not as a Symbol.kind value. No Symbol(kind='unresolved') producer exists. Registry entry stays through the Phase 4a deprecation window.
 - **`url_requirement`** — FOLDed to ``requirement`` + ``meta['install_source']='url'`` per audit-findings 0006, Wave 6 PR 5. Producer (``requirements.py:281``) migrated; registry entry stays through the Phase 4a deprecation window.
 - **`var`** — Cluster C apex/peer: deprecated peer of `variable`. No producer emits this kind (verified WI-rusit Wave 4); registry entry remains through the Phase 4a deprecation window per ADR-0027. Fold target: variable.
 - **`wasm_import`** — FOLDed to ``import`` + ``meta['compilation_target']='wasm'`` per audit-findings 0005, Wave 6 PR 3. Note: the fold target ``import`` is itself on AXIS_ENDPOINT_SHAPE per audit-findings 0010 — wasm_bindgen requires the synthetic node for slicer BFS continuity, so this is the one Cluster B FOLD where the target is a deprecation-window kind. Producer (``wasm_bindgen.py``) migrated.
@@ -346,14 +348,12 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`bin`** — Binary executable symbol. Pending cluster-B audit.
 - **`binary`** — Cargo `[[bin]]` target kind. Pending cluster-G audit.
 - **`example`** — Cargo `[[example]]` target kind. Pending cluster-G audit.
-- **`external_symbol`** — External-symbol pseudo-node. Pending cluster-H audit.
 - **`handler`** — Ansible playbook handler. Pending cluster-G audit.
 - **`helper`** — Handlebars block helper (non-builtin). Pending cluster-H audit.
 - **`pattern_rule`** — Make pattern-rule target. Pending cluster-G audit.
 - **`private`** — WGSL `var<private>` address space. Pending cluster-H audit.
 - **`storage`** — WGSL `var<storage>` address space. Pending cluster-H audit.
 - **`uniform`** — Shader uniform binding (GLSL / WGSL). Pending cluster-H audit.
-- **`unresolved`** — Unresolved-symbol pseudo-node. Pending cluster-H audit.
 - **`varying`** — GLSL varying qualifier (legacy interpolation). Pending cluster-H audit.
 - **`workgroup`** — WGSL `var<workgroup>` address space. Pending cluster-H audit.
 - **`workspace`** — Cargo `[workspace]` table kind. Pending cluster-G audit.
