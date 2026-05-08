@@ -19,29 +19,29 @@ This is the **largest concept-axis migration on the project's roadmap**: ~140 pr
 
 Cluster taxonomy from the WI-turin-pajuk audit (210 values; sub-counts approximate):
 
-- **Cluster A — Inference pathway (~75-90 values; the documented purpose of the field).** Values that genuinely answer *"how did the analyzer conclude this edge exists?"*: `ast_call_direct`, `ast_import`, `ast_extends`, `ast_new`, `ast_attribute`, `ast_implements`, `ast_decorator`, `ast_annotation`, `ast_call_static`, `ast_call_type_inferred`, `ast_method_this`, `ast_method_inferred`, `ast_type_ref`, `tree_sitter`, `naming_convention`, `scip_occurrence_ref`, `function_call`, `method_call`, `import_statement`, `import_declaration`, `include`, `require`, `constructor_call`, `object_creation`, `function_reference`, `function_reference_arg`, `callable_reference`, `function_pointer`, `function_pointer_arg`, `dispatch_table_initializer`, `dispatch_table_reference`, `struct_field_reference`, `object_field_reference`, `module_attribute_reference`, `method_reference`, `function_application`, `typed_receiver_call`, `typed_field_call`, `receiver_call`, `bare_method_call`, `pipe_call`, `ambiguous_method_call`, `method_call_type_inferred`, `method_call_field_chain`, `stdlib_method_call`, `method_call_recovery`, `span_overlap`, `canonical_name`, `alias_resolution`, `import_resolution`, `hg_annotation`, `type_hierarchy`, `behaviour_callback`, `closure_wrapper`, `build_target_main`, `import_to_manifest`, `bridging_header_import`, … This is the canonical seed (after the apex/peer collapse described in Cluster D below).
+- **Cluster 28A — Inference pathway (~75-90 values; the documented purpose of the field).** Values that genuinely answer *"how did the analyzer conclude this edge exists?"*: `ast_call_direct`, `ast_import`, `ast_extends`, `ast_new`, `ast_attribute`, `ast_implements`, `ast_decorator`, `ast_annotation`, `ast_call_static`, `ast_call_type_inferred`, `ast_method_this`, `ast_method_inferred`, `ast_type_ref`, `tree_sitter`, `naming_convention`, `scip_occurrence_ref`, `function_call`, `method_call`, `import_statement`, `import_declaration`, `include`, `require`, `constructor_call`, `object_creation`, `function_reference`, `function_reference_arg`, `callable_reference`, `function_pointer`, `function_pointer_arg`, `dispatch_table_initializer`, `dispatch_table_reference`, `struct_field_reference`, `object_field_reference`, `module_attribute_reference`, `method_reference`, `function_application`, `typed_receiver_call`, `typed_field_call`, `receiver_call`, `bare_method_call`, `pipe_call`, `ambiguous_method_call`, `method_call_type_inferred`, `method_call_field_chain`, `stdlib_method_call`, `method_call_recovery`, `span_overlap`, `canonical_name`, `alias_resolution`, `import_resolution`, `hg_annotation`, `type_hierarchy`, `behaviour_callback`, `closure_wrapper`, `build_target_main`, `import_to_manifest`, `bridging_header_import`, … This is the canonical seed (after the apex/peer collapse described in Cluster 28D below).
 
-- **Cluster B — Resolution status smuggled in (~6+ values).** Every `*_unresolved` / `unresolved_*` variant doubles as a resolution-status flag squeezed into the inference label. `ast_annotation` vs `ast_annotation_unresolved` answers BOTH "inference pathway" AND "did we resolve the target?" in the same field. Values: `unresolved_external_call`, `unresolved_method_call`, `ast_annotation_unresolved`, `ast_decorator_unresolved`, `luajit_ffi_unresolved`, `grpc_unresolved_resolution`. **This is the canonical Test 4 (mechanism vs category) failure: a flag dimension squeezed into a label.**
+- **Cluster 28B — Resolution status smuggled in (~6+ values).** Every `*_unresolved` / `unresolved_*` variant doubles as a resolution-status flag squeezed into the inference label. `ast_annotation` vs `ast_annotation_unresolved` answers BOTH "inference pathway" AND "did we resolve the target?" in the same field. Values: `unresolved_external_call`, `unresolved_method_call`, `ast_annotation_unresolved`, `ast_decorator_unresolved`, `luajit_ffi_unresolved`, `grpc_unresolved_resolution`. **This is the canonical Test 4 (mechanism vs category) failure: a flag dimension squeezed into a label.**
 
-- **Cluster C — Framework-specific dispatch conventions (~30+ values).** A third axis: which framework-detection pattern fired. Values: `django_orm_dispatch`, `airflow_framework_dispatch`, `jackson_bean_dispatch`, `kafka_streams_dispatch`, `otp_genserver_dispatch`, `rust_trait_dispatch`, `go_cobra_dispatch`, `dispatch_pattern`, `nestjs_module_registration`, `controller_routes`, `router_routes`, `middleware_chain`, `ruby_delegate`, `activerecord_association`, `orm_accessor_pattern`, `phoenix_event_match`, `resolver_field_match`, `resolver_type_match`, `graphql_operation_match`, `openapi_path_match`, `openapi_operation_id_match`, `vue_event_handler`, `vue_component_import`, `yjs_crdt_pattern`, `implicit_convention`, `registry_dispatch`, `job_enqueue`, `signal_receiver_match`, `http_url_match`, `table_name_match`, `crypto_api_pattern`, `subprocess_cli_match`, `tauri_invoke`, `tauri_emit_listen`, `event_name_match`, `specta_wrapper_import`, `jni_naming_convention`, `abi_name_match`. These name **how the framework dispatched / which detection pattern recognized it**, not the analyzer's inference pathway in the Cluster-A sense.
+- **Cluster 28C — Framework-specific dispatch conventions (~30+ values).** A third axis: which framework-detection pattern fired. Values: `django_orm_dispatch`, `airflow_framework_dispatch`, `jackson_bean_dispatch`, `kafka_streams_dispatch`, `otp_genserver_dispatch`, `rust_trait_dispatch`, `go_cobra_dispatch`, `dispatch_pattern`, `nestjs_module_registration`, `controller_routes`, `router_routes`, `middleware_chain`, `ruby_delegate`, `activerecord_association`, `orm_accessor_pattern`, `phoenix_event_match`, `resolver_field_match`, `resolver_type_match`, `graphql_operation_match`, `openapi_path_match`, `openapi_operation_id_match`, `vue_event_handler`, `vue_component_import`, `yjs_crdt_pattern`, `implicit_convention`, `registry_dispatch`, `job_enqueue`, `signal_receiver_match`, `http_url_match`, `table_name_match`, `crypto_api_pattern`, `subprocess_cli_match`, `tauri_invoke`, `tauri_emit_listen`, `event_name_match`, `specta_wrapper_import`, `jni_naming_convention`, `abi_name_match`. These name **how the framework dispatched / which detection pattern recognized it**, not the analyzer's inference pathway in the Cluster-28A sense.
 
-- **Cluster D — Apex/peer overloads (Test 2 fires).** `function_call` (38 occurrences), `method_call` (6), `function_application` (3), `local_call`, `remote_call`, `typed_receiver_call`, `ambiguous_method_call`, `bare_method_call`, `method_call_type_inferred`, `method_call_field_chain`, `pipe_call`, `receiver_call`, `typed_field_call`, … — multiple "flavors" of *a call happened* in the same field, distinguished only by an inference-path detail that should be a `meta` key. `function_call` is sometimes apex (the generic top type), sometimes peer of `method_call` — the same string playing both roles depending on the analyzer.
+- **Cluster 28D — Apex/peer overloads (Test 2 fires).** `function_call` (38 occurrences), `method_call` (6), `function_application` (3), `local_call`, `remote_call`, `typed_receiver_call`, `ambiguous_method_call`, `bare_method_call`, `method_call_type_inferred`, `method_call_field_chain`, `pipe_call`, `receiver_call`, `typed_field_call`, … — multiple "flavors" of *a call happened* in the same field, distinguished only by an inference-path detail that should be a `meta` key. `function_call` is sometimes apex (the generic top type), sometimes peer of `method_call` — the same string playing both roles depending on the analyzer.
 
 ### Four leakage tests (cluster-level)
 
-- **Test 1 (Property derivability).** Cluster B values (resolution status) are derivable from a separate boolean — *is the dst symbol resolved?* — easily a sibling `Edge` field. Cluster C values (framework conventions) duplicate information that `Edge.meta["framework"]` / `meta["protocol"]` already carries (or could carry, with negligible producer change). **Massive leakage.**
+- **Test 1 (Property derivability).** Cluster 28B values (resolution status) are derivable from a separate boolean — *is the dst symbol resolved?* — easily a sibling `Edge` field. Cluster 28C values (framework conventions) duplicate information that `Edge.meta["framework"]` / `meta["protocol"]` already carries (or could carry, with negligible producer change). **Massive leakage.**
 
 - **Test 2 (Apex/peer overloading).** `function_call` vs `method_call` vs `function_application` vs `typed_receiver_call` vs `ambiguous_method_call` — same fundamental relationship (a call), split across N variants by inference-path detail. The apex (`function_call` or arguably `ast_call`) coexists with the specialized peers, and the analyzer-emit-site decides which to use. **Fires.**
 
-- **Test 3 (Construct vs relationship).** Cluster A members like `ast_extends` name a syntactic construct ("an extends keyword was lexed and matched"); Cluster B members like `unresolved` name a *resolution outcome* (a property of the dst, not of the inference); Cluster C members like `django_orm_dispatch` name a *detection pattern firing on producer side*. Three different categories of question. **Fires.**
+- **Test 3 (Construct vs relationship).** Cluster 28A members like `ast_extends` name a syntactic construct ("an extends keyword was lexed and matched"); Cluster 28B members like `unresolved` name a *resolution outcome* (a property of the dst, not of the inference); Cluster 28C members like `django_orm_dispatch` name a *detection pattern firing on producer side*. Three different categories of question. **Fires.**
 
-- **Test 4 (Mechanism vs category).** Cluster C — `django_orm_dispatch` is a mechanism (HOW the framework dispatched); the analyzer's category-question is just "a call edge with framework context." The mechanism deserves a `meta` key, not a labeled-value of the inference axis. **Fires.**
+- **Test 4 (Mechanism vs category).** Cluster 28C — `django_orm_dispatch` is a mechanism (HOW the framework dispatched); the analyzer's category-question is just "a call edge with framework context." The mechanism deserves a `meta` key, not a labeled-value of the inference axis. **Fires.**
 
 ### Why this matters now
 
 The ADR-0023 lesson scales here: hardcoded `evidence_type` enumerations in consumers (taint analysis, IO boundary detection, slice membership, ranking weights) drift in both directions silently — missing emitted values when a new framework adds its own `*_dispatch` variant, and including never-emitted values when a producer is renamed without coordinating consumer cleanup. The fact that ADR-0023 §1 already documented one such cross-field leak (`unresolved_external_call` in `taint.TAINT_CALL_EDGE_TYPES` was an `evidence_type` value being filtered against `edge_type`, a membership test that never matched at runtime) is the canonical proof: 210 distinct `evidence_type` values + zero typing discipline + ~140 producer files = the conditions for that bug class to recur indefinitely.
 
-This ADR is the structural fix. Catching the pattern at 210 values is significantly cheaper than catching it at 300+; new analyzers (especially every framework-detection linker) add Cluster-C values at a steady rate.
+This ADR is the structural fix. Catching the pattern at 210 values is significantly cheaper than catching it at 300+; new analyzers (especially every framework-detection linker) add Cluster-28C values at a steady rate.
 
 ## Decision
 
@@ -53,9 +53,9 @@ Three operational corollaries:
 
 1. **No new `evidence_type` value may encode a non-inference axis.** If a proposed new value would record resolution status, framework convention, or call-construct flavor, the right answer is to use the canonical inference label and route the additional fact to its proper home (sibling field for resolution; `meta` for framework / construct).
 
-2. **Resolution status promotes to a sibling field per ADR-0024 §"Fold-residue discipline" rule 3.** Cluster B's six values fail the recurrence-promotion threshold (≥3 distinct axis values OR ≥2 producer modules emit it) trivially: resolution status is mentioned in 6 inference-axis values across at least 4 producer modules. The right home is `Edge.is_resolved: bool` (or, if downstream needs richer states, `Edge.resolution_status: Literal["resolved", "unresolved", "stub"]`). The choice between bool and enum is delegated to the cluster-B audit-findings doc.
+2. **Resolution status promotes to a sibling field per ADR-0024 §"Fold-residue discipline" rule 3.** Cluster 28B's six values fail the recurrence-promotion threshold (≥3 distinct axis values OR ≥2 producer modules emit it) trivially: resolution status is mentioned in 6 inference-axis values across at least 4 producer modules. The right home is `Edge.is_resolved: bool` (or, if downstream needs richer states, `Edge.resolution_status: Literal["resolved", "unresolved", "stub"]`). The choice between bool and enum is delegated to the cluster-28B audit-findings doc.
 
-3. **Framework-specific conventions move to `Edge.meta["framework_dispatch"]` (or `meta["detection_pattern"]`).** Cluster C's ~37 values fold to canonical inference labels plus structured meta — the same shape ADR-0026 / audit-findings 0002 used for IPC mechanisms and ADR-0025 / audit-findings 0001 used for dispatch-and-publish patterns on `Edge.edge_type`.
+3. **Framework-specific conventions move to `Edge.meta["framework_dispatch"]` (or `meta["detection_pattern"]`).** Cluster 28C's ~37 values fold to canonical inference labels plus structured meta — the same shape ADR-0026 / audit-findings 0002 used for IPC mechanisms and ADR-0025 / audit-findings 0001 used for dispatch-and-publish patterns on `Edge.edge_type`.
 
 Following [ADR-0024](0024-axis-declaration-template.md)'s four-part template:
 
@@ -67,7 +67,7 @@ The **evidence-type axis** (with sections `inference_pathway`, `endpoint_shape` 
 - The by-axis view's section headings (`docs/concept-axes.md`).
 - This ADR's title and first paragraph.
 
-The `endpoint_shape` section name is reused from ADR-0023 and ADR-0027 even though Cluster B's leakage shape is "resolution-status leakage" rather than "endpoint leakage" in the strict sense. The name composes; the reuse is a feature. (An alternative — `endpoint_shape_or_resolution_status_or_framework_convention` — would be clearer at the cost of section-vocabulary fragmentation across axes.)
+The `endpoint_shape` section name is reused from ADR-0023 and ADR-0027 even though Cluster 28B's leakage shape is "resolution-status leakage" rather than "endpoint leakage" in the strict sense. The name composes; the reuse is a feature. (An alternative — `endpoint_shape_or_resolution_status_or_framework_convention` — would be clearer at the cost of section-vocabulary fragmentation across axes.)
 
 ### 2. Axiom
 
@@ -77,7 +77,7 @@ Properties of this axiom:
 
 - **Falsifiable** — given a candidate value, the axiom either accepts it or rejects it. `ast_annotation_unresolved` is rejected (the `_unresolved` suffix encodes resolution status, which lives on the sibling field). `django_orm_dispatch` is rejected (the `django_orm` portion encodes a framework-specific detection pattern, which lives in `meta`). `ast_call_direct` is accepted (a pure inference pathway).
 - **One sentence long** (with a dependent clause; arguably two semicolons but one sentence-shape).
-- **Distinguishes the canonical section from the rest** — Cluster A members are `inference_pathway`; Cluster B / C members are `endpoint_shape` deprecation candidates; Cluster D's apex collapses to canonical and the peers fold via `meta["call_construct"]`.
+- **Distinguishes the canonical section from the rest** — Cluster 28A members are `inference_pathway`; Cluster 28B / 28C members are `endpoint_shape` deprecation candidates; Cluster 28D's apex collapses to canonical and the peers fold via `meta["call_construct"]`.
 
 ### 3. Consumer pattern
 
@@ -141,9 +141,9 @@ Per ADR-0024 §"Family-audit verdict methodology" + the audit-findings filing co
 
 The high-level cluster taxonomy and fold targets are this section's responsibility:
 
-- **Cluster A (~75-90 values; canonical seed).** All values keep their existing form on the `inference_pathway` section. Per-value rationale (no deprecations expected; some apex/peer overloads in Cluster D fold across) goes into the cluster-A audit-findings doc.
+- **Cluster 28A (~75-90 values; canonical seed).** All values keep their existing form on the `inference_pathway` section. Per-value rationale (no deprecations expected; some apex/peer overloads in Cluster 28D fold across) goes into the cluster-28A audit-findings doc.
 
-- **Cluster B (~6 values; resolution-status fold).** Each value folds to its sibling-stripped form on the `inference_pathway` section + `Edge.is_resolved=False`:
+- **Cluster 28B (~6 values; resolution-status fold).** Each value folds to its sibling-stripped form on the `inference_pathway` section + `Edge.is_resolved=False`:
   - `unresolved_external_call` → `ast_call_direct` (or producer-specific equivalent) + `is_resolved=False`.
   - `unresolved_method_call` → `method_call` (or post-collapse `ast_call` + `meta["call_construct"]="method"`) + `is_resolved=False`.
   - `ast_annotation_unresolved` → `ast_annotation` + `is_resolved=False`.
@@ -151,39 +151,39 @@ The high-level cluster taxonomy and fold targets are this section's responsibili
   - `luajit_ffi_unresolved` → an inference-pathway value naming the FFI inference (`luajit_ffi_lookup` or similar) + `is_resolved=False`.
   - `grpc_unresolved_resolution` → an inference-pathway value naming the gRPC stub-resolution attempt (`grpc_stub_resolution`) + `is_resolved=False`.
 
-  The exact canonical-form choice for the `_unresolved` strip per row goes in the cluster-B audit-findings doc. **Sibling-field design** (boolean vs. enum) is the ADR-0028-internal decision recorded here per ADR-0024 §"Fold-residue discipline" rule 3 (recurrence-promotion to dedicated field): see the design call-out below.
+  The exact canonical-form choice for the `_unresolved` strip per row goes in the cluster-28B audit-findings doc. **Sibling-field design** (boolean vs. enum) is the ADR-0028-internal decision recorded here per ADR-0024 §"Fold-residue discipline" rule 3 (recurrence-promotion to dedicated field): see the design call-out below.
 
-- **Cluster C (~37 values; framework-convention fold).** Each value folds to a canonical inference label + `meta["framework_dispatch"]=<value>` (or `meta["detection_pattern"]=<value>`, depending on per-row semantics; the cluster-C audit-findings doc decides per row). Worked examples:
+- **Cluster 28C (~37 values; framework-convention fold).** Each value folds to a canonical inference label + `meta["framework_dispatch"]=<value>` (or `meta["detection_pattern"]=<value>`, depending on per-row semantics; the cluster-28C audit-findings doc decides per row). Worked examples:
   - `django_orm_dispatch` → `ast_call_direct` (or `dispatches_to_inferred`) + `meta["framework_dispatch"]="django_orm"`.
   - `kafka_streams_dispatch` → an inference-pathway value naming how the dispatch was inferred + `meta["framework_dispatch"]="kafka_streams"`.
   - `nestjs_module_registration` → `ast_decorator` + `meta["framework_dispatch"]="nestjs_module_registration"`.
   - `phoenix_event_match` → `naming_convention` + `meta["detection_pattern"]="phoenix_event_match"`.
 
-  After the fold, `meta["framework_dispatch"]` would have ~30 distinct values across ~30 producer modules — a heavy meta key that may itself trip ADR-0024 §"Fold-residue discipline" rule 3's recurrence-promotion threshold. The cluster-C audit-findings doc records the per-row mapping; the question of whether `framework_dispatch` should subsequently promote to a dedicated `Edge.framework: str | None` field is filed as a Phase-3 follow-on decision (after producer migration ships and meta-key emission stabilizes).
+  After the fold, `meta["framework_dispatch"]` would have ~30 distinct values across ~30 producer modules — a heavy meta key that may itself trip ADR-0024 §"Fold-residue discipline" rule 3's recurrence-promotion threshold. The cluster-28C audit-findings doc records the per-row mapping; the question of whether `framework_dispatch` should subsequently promote to a dedicated `Edge.framework: str | None` field is filed as a Phase-3 follow-on decision (after producer migration ships and meta-key emission stabilizes).
 
-- **Cluster D (~13 values; apex/peer collapse).** All call-construct flavors collapse to a canonical apex (`ast_call`) plus `meta["call_construct"]` taking one of a small enumerated set of values:
+- **Cluster 28D (~13 values; apex/peer collapse).** All call-construct flavors collapse to a canonical apex (`ast_call`) plus `meta["call_construct"]` taking one of a small enumerated set of values:
   - `function_call` → `ast_call` + `meta["call_construct"]="function"`.
   - `method_call` → `ast_call` + `meta["call_construct"]="method"`.
   - `function_application` → `ast_call` + `meta["call_construct"]="application"`.
   - `typed_receiver_call`, `bare_method_call`, `pipe_call`, `receiver_call`, `typed_field_call` → `ast_call` + `meta["call_construct"]` distinguishing each.
   - `ambiguous_method_call`, `method_call_type_inferred`, `method_call_field_chain`, `method_call_recovery`, `stdlib_method_call` → `ast_call` + `meta["call_construct"]="method"` + per-row `meta["resolution_quality"]` or similar.
 
-  The choice of apex name (`ast_call` vs `function_call` as the canonical apex) follows ADR-0023's heuristic ("most-frequent emitter wins"); per the WI-turin-pajuk audit, `function_call` is the high-frequency emitter (38 occurrences). The cluster-D audit-findings doc decides apex selection and the per-row `call_construct` enumeration; the apex name may end up `ast_call` if the audit prefers it for symmetry with `ast_*` companions.
+  The choice of apex name (`ast_call` vs `function_call` as the canonical apex) follows ADR-0023's heuristic ("most-frequent emitter wins"); per the WI-turin-pajuk audit, `function_call` is the high-frequency emitter (38 occurrences). The cluster-28D audit-findings doc decides apex selection and the per-row `call_construct` enumeration; the apex name may end up `ast_call` if the audit prefers it for symmetry with `ast_*` companions.
 
-Estimated emit-site distribution: ~140 production files have `evidence_type` literals. Cluster A is ~110 of those; Cluster B ~6 producer modules; Cluster C ~30 producer modules; Cluster D ~25 producer modules. Total Phase 3 producer edits substantially larger than ADR-0023's, hence the larger Phase 3 wall-clock estimate (7-12 days vs ADR-0023's 3-5).
+Estimated emit-site distribution: ~140 production files have `evidence_type` literals. Cluster 28A is ~110 of those; Cluster 28B ~6 producer modules; Cluster 28C ~30 producer modules; Cluster 28D ~25 producer modules. Total Phase 3 producer edits substantially larger than ADR-0023's, hence the larger Phase 3 wall-clock estimate (7-12 days vs ADR-0023's 3-5).
 
 ### Sibling-field design call-out (`Edge.is_resolved`)
 
-Per ADR-0024 §"Fold-residue discipline" rule 3, Cluster B's "resolution status" property meets the recurrence-promotion threshold (≥3 distinct axis values; ≥2 producer modules). The fold target is therefore a dedicated `Edge` field, not a `meta` key.
+Per ADR-0024 §"Fold-residue discipline" rule 3, Cluster 28B's "resolution status" property meets the recurrence-promotion threshold (≥3 distinct axis values; ≥2 producer modules). The fold target is therefore a dedicated `Edge` field, not a `meta` key.
 
 Two options for the field shape, decided here:
 
-- **Option 1 — `Edge.is_resolved: bool` (default `True`).** Producer marks `is_resolved=False` whenever the dst symbol couldn't be resolved at analysis time. Simplest possible API. Captures the binary distinction Cluster B's `_unresolved` values already encode.
+- **Option 1 — `Edge.is_resolved: bool` (default `True`).** Producer marks `is_resolved=False` whenever the dst symbol couldn't be resolved at analysis time. Simplest possible API. Captures the binary distinction Cluster 28B's `_unresolved` values already encode.
 
 - **Option 2 — `Edge.resolution_status: Literal["resolved", "unresolved", "stub", "ambiguous"]`.** Richer state. `stub` for gRPC-stub edges where the dst is known to exist but its symbol record isn't in scope; `ambiguous` for edges where multiple candidate dsts exist and the analyzer didn't pick one.
 
 **Decision: Option 1 (`Edge.is_resolved: bool`).** Rationale:
-- The Cluster B values empirically encode a binary distinction (resolved vs not); the richer states in Option 2 are speculative.
+- The Cluster 28B values empirically encode a binary distinction (resolved vs not); the richer states in Option 2 are speculative.
 - Bool is JSON-stable across schema versions; enum changes require coordinated bumps.
 - If a producer subsequently needs to record stub or ambiguous state, the existing `meta` is the right home for that distinction (per ADR-0024 §"Fold-residue discipline" rule 3 — promote *only* when the recurrence threshold fires; speculative fields rot).
 
@@ -199,7 +199,7 @@ Mirrors ADR-0023's four-phase shape; consumers can keep working throughout. JSON
 
 Mirrors ADR-0023 Phase 1 but with one extra artifact (the new sibling field). Land:
 
-1. The registry module at `packages/hypergumbo-core/src/hypergumbo_core/evidence_types.py` with `AXIS_*` constants, `EvidenceTypeSpec` frozen dataclass, the `EVIDENCE_TYPES` tuple-of-specs (seeded with Cluster A on `inference_pathway`, Clusters B / C on `endpoint_shape`, Cluster D apex+peers split between `inference_pathway` and `endpoint_shape` per the audit), and the accessors.
+1. The registry module at `packages/hypergumbo-core/src/hypergumbo_core/evidence_types.py` with `AXIS_*` constants, `EvidenceTypeSpec` frozen dataclass, the `EVIDENCE_TYPES` tuple-of-specs (seeded with Cluster 28A on `inference_pathway`, Clusters 28B / 28C on `endpoint_shape`, Cluster 28D apex+peers split between `inference_pathway` and `endpoint_shape` per the audit), and the accessors.
 2. The `Edge.is_resolved: bool = True` field on the `Edge` dataclass at `ir.py:368-410` (the field block where `evidence_type` lives), plus serialization round-trips in `to_dict` / `from_dict`. Schema regeneration adds the new key.
 3. The drift-coherence linter at `scripts/check-evidence-type-drift`, wiring into `.githooks/pre-commit`.
 4. The property test in `tests/test_evidence_types.py`: registry invariants + drift-detection test + `Edge.is_resolved` round-trip + `is_resolved` defaults to `True` invariant.
@@ -226,13 +226,13 @@ Estimated effort: ~1-2 days, comparable to ADR-0023 Phase 2.
 
 Sweep the producer sites that emit deprecation-list `evidence_type` values. Migration order, lowest-risk-first:
 
-1. **Cluster B** (resolution-status fold; ~6 values, ~6 producer modules): purely additive on consumer side (`is_resolved=False` default fail-safe is correct for any consumer that hasn't migrated). Smallest blast radius — the natural first subset.
-2. **Cluster D** (apex/peer collapse; ~13 values, ~25 producer modules): per-language sub-PRs, each with its own `awaits_bakeoff_validation` tag. The apex `ast_call` (or `function_call`) was already in the registry, so consumer-side enumerations don't need to change.
-3. **Cluster C** (framework-convention fold; ~37 values, ~30 producer modules): largest single subset; the heaviest Phase 3 work. Per-framework sub-PRs (django, kafka, phoenix, nestjs, …) each ship as their own `awaits_bakeoff_validation` PR. Estimated 5-8 days alone.
+1. **Cluster 28B** (resolution-status fold; ~6 values, ~6 producer modules): purely additive on consumer side (`is_resolved=False` default fail-safe is correct for any consumer that hasn't migrated). Smallest blast radius — the natural first subset.
+2. **Cluster 28D** (apex/peer collapse; ~13 values, ~25 producer modules): per-language sub-PRs, each with its own `awaits_bakeoff_validation` tag. The apex `ast_call` (or `function_call`) was already in the registry, so consumer-side enumerations don't need to change.
+3. **Cluster 28C** (framework-convention fold; ~37 values, ~30 producer modules): largest single subset; the heaviest Phase 3 work. Per-framework sub-PRs (django, kafka, phoenix, nestjs, …) each ship as their own `awaits_bakeoff_validation` PR. Estimated 5-8 days alone.
 
 Per producer subset:
 1. Replace the specialized `evidence_type` with the canonical equivalent.
-2. Set `is_resolved=False` (Cluster B) or populate `meta["framework_dispatch"]` / `meta["detection_pattern"]` / `meta["call_construct"]` (Clusters C / D) as appropriate.
+2. Set `is_resolved=False` (Cluster 28B) or populate `meta["framework_dispatch"]` / `meta["detection_pattern"]` / `meta["call_construct"]` (Clusters 28C / 28D) as appropriate.
 3. Re-run the drift property test; the offender set strictly shrinks each migration.
 
 Estimated effort: ~7-12 days plus per-subset bakeoff validation. This is the largest concept-axis migration on the project's roadmap.
@@ -241,7 +241,7 @@ Estimated effort: ~7-12 days plus per-subset bakeoff validation. This is the lar
 
 Mirrors ADR-0023 Phase 4's split shape, scaled up for the larger value count:
 
-- **Phase 4a (additive).** Each `endpoint_shape` value (Cluster B / C / D peers) gets an `x-deprecated` annotation in `docs/schema.json`. Values stay valid in the enum during the deprecation window. `SCHEMA_VERSION` minor bump. Per-value migration guidance lives in the registry's `EvidenceTypeSpec.description`.
+- **Phase 4a (additive).** Each `endpoint_shape` value (Clusters 28B / 28C / 28D peers) gets an `x-deprecated` annotation in `docs/schema.json`. Values stay valid in the enum during the deprecation window. `SCHEMA_VERSION` minor bump. Per-value migration guidance lives in the registry's `EvidenceTypeSpec.description`.
 
 - **Phase 4b (hard-fail; piecewise).** Remove deprecated values from `EVIDENCE_TYPES` once the corresponding Phase 3 producer subset's `awaits_bakeoff_validation` tag clears. Schema enum values disappear for removed entries piecewise, mirroring the ADR-0023 §6 Phase 4b "many-small-ships" shape. Each Phase 4b sub-ship gets its own `SCHEMA_VERSION` minor bump (likely 5-7 sub-ships across the family clusters).
 
@@ -274,11 +274,11 @@ Estimated effort: Phase 4a ~1 day; per-subset Phase 4b ~0.5 day each, gated on b
 
 ### Risks
 
-- **Cluster C is the long tail.** ~37 framework-specific values across many frameworks (Django, Kafka, Phoenix, NestJS, Vue, OpenAPI, gRPC, Tauri, JNI, …). Per-framework sub-PRs let migration interleave with feature work, but the cumulative producer churn is substantial. Mitigation: schedule Cluster C as several Phase 3 sub-PRs over multiple weeks rather than as a single large change.
+- **Cluster 28C is the long tail.** ~37 framework-specific values across many frameworks (Django, Kafka, Phoenix, NestJS, Vue, OpenAPI, gRPC, Tauri, JNI, …). Per-framework sub-PRs let migration interleave with feature work, but the cumulative producer churn is substantial. Mitigation: schedule Cluster 28C as several Phase 3 sub-PRs over multiple weeks rather than as a single large change.
 - **`framework_dispatch` meta-key promotion.** If Phase 3 reveals that `meta["framework_dispatch"]` is consistently emitted across many producers and consumed by many consumers, the recurrence-promotion threshold fires and a dedicated `Edge.framework` field is the right answer. This is a follow-on ADR (or follow-on §6 amendment to this ADR), not in scope here. Mitigation: track the meta-key emission count during Phase 3; file the follow-on once the threshold trips.
-- **Apex selection ambiguity in Cluster D.** Choice between `ast_call` (symmetry with `ast_*` companions) and `function_call` (most-frequent emitter heuristic) is a coin flip. The cluster-D audit-findings doc decides; either choice is recoverable but the wrong choice creates churn during Phase 3.
-- **Cluster B fold-target ambiguity.** Some `_unresolved` values fold to a clear canonical (`ast_annotation_unresolved` → `ast_annotation`); others (`grpc_unresolved_resolution`, `luajit_ffi_unresolved`) imply a producer-specific inference-path label that may not yet exist in Cluster A. The cluster-B audit-findings doc may identify ~2-3 new canonical inference labels to add.
-- **Producer-migration coordination.** ~25-30 producer modules touch Cluster D (call-construct fold). The fold pattern is uniform but the per-language emit sites are diverse. Mitigation: per-language sub-PRs; smart-test ensures each PR's coverage is intact.
+- **Apex selection ambiguity in Cluster 28D.** Choice between `ast_call` (symmetry with `ast_*` companions) and `function_call` (most-frequent emitter heuristic) is a coin flip. The cluster-28D audit-findings doc decides; either choice is recoverable but the wrong choice creates churn during Phase 3.
+- **Cluster 28B fold-target ambiguity.** Some `_unresolved` values fold to a clear canonical (`ast_annotation_unresolved` → `ast_annotation`); others (`grpc_unresolved_resolution`, `luajit_ffi_unresolved`) imply a producer-specific inference-path label that may not yet exist in Cluster 28A. The cluster-28B audit-findings doc may identify ~2-3 new canonical inference labels to add.
+- **Producer-migration coordination.** ~25-30 producer modules touch Cluster 28D (call-construct fold). The fold pattern is uniform but the per-language emit sites are diverse. Mitigation: per-language sub-PRs; smart-test ensures each PR's coverage is intact.
 
 ## Alternatives considered
 
@@ -304,13 +304,13 @@ Sequence the migrations: ship ADR-0027's Phase 1 first, then ADR-0028's Phase 1.
 
 ## Open questions
 
-1. **Exact apex name in Cluster D.** `ast_call` or `function_call`? Decision deferred to the cluster-D audit-findings doc. Either choice is recoverable.
+1. **Exact apex name in Cluster 28D.** `ast_call` or `function_call`? Decision deferred to the cluster-28D audit-findings doc. Either choice is recoverable.
 
 2. **`framework_dispatch` meta-key promotion.** Will `meta["framework_dispatch"]` itself trip ADR-0024 §"Fold-residue discipline" rule 3's recurrence-promotion threshold during or after Phase 3? Tracking: monitor the meta-key emission count during Phase 3; file a follow-on tracker item if the threshold fires (likely 2-3 weeks into Phase 3 wall-clock).
 
-3. **Cluster B canonical-form additions.** Some `_unresolved` values may need new Cluster A canonical inference labels (`grpc_stub_resolution`, `luajit_ffi_lookup`, …). Decision deferred to the cluster-B audit-findings doc, which lists the new canonical labels per row.
+3. **Cluster 28B canonical-form additions.** Some `_unresolved` values may need new Cluster 28A canonical inference labels (`grpc_stub_resolution`, `luajit_ffi_lookup`, …). Decision deferred to the cluster-28B audit-findings doc, which lists the new canonical labels per row.
 
-4. **`is_resolved` semantics for stub edges.** Some gRPC / FFI edges have a known-existing dst whose symbol record is out of scope (the dst is in a generated stub the analyzer doesn't see). Should these be `is_resolved=True` or `is_resolved=False`? Empirically the simpler answer is `is_resolved=False` because the dst is unrecovered for the analysis pass; consumers can disambiguate via `meta["resolution_method"]="stub"` if needed. Deferred to the cluster-B audit-findings doc; the chosen rule applies uniformly to all 6 Cluster B values.
+4. **`is_resolved` semantics for stub edges.** Some gRPC / FFI edges have a known-existing dst whose symbol record is out of scope (the dst is in a generated stub the analyzer doesn't see). Should these be `is_resolved=True` or `is_resolved=False`? Empirically the simpler answer is `is_resolved=False` because the dst is unrecovered for the analysis pass; consumers can disambiguate via `meta["resolution_method"]="stub"` if needed. Deferred to the cluster-28B audit-findings doc; the chosen rule applies uniformly to all 6 Cluster 28B values.
 
 5. **Coordination with ADR-0027.** Both ADRs depend on `axis_drift.find_drift` and the audit-findings filing convention. Phasing: Phase 1 of either can land independently (no merge-conflict surface beyond `concept-axes.md` regeneration); subsequent phases proceed independently per ADR. Tracked at the parent items WI-dahim and WI-pilit.
 

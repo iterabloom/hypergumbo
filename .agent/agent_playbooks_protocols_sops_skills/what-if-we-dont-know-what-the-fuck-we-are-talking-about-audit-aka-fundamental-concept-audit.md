@@ -11,6 +11,16 @@ The discipline this audit teaches: distinguish "we are saying different
 things with the same word" from "we are saying the same thing with
 different words." Both are confusions; they need different fixes.
 
+## Why this exists in this codebase
+
+Three concrete leaks motivated this playbook and shape its running examples:
+
+- **`Edge.edge_type`** had ~80 values smuggling endpoint properties (`imports_component`, `native_bridge`) into a field that should have named the relationship. [ADR-0023](../../docs/adr/0023-edge-type-relationship-not-endpoints.md) declared the relationship-axis and folded the leakers.
+- **`Symbol.kind`** had 192 values silently encoding language constructs (`function`), framework roles (`event_publisher`), edge labels (`call`), and file shapes (`module_file`) in one field. [ADR-0027](../../docs/adr/0027-symbol-kind-language-construct-only.md) declared the language-construct axis; the eight resulting clusters (`27A`–`27H`) carry per-group verdicts in [`docs/audits/`](../../docs/audits/).
+- **`Edge.evidence_type`** had 218 values mixing inference pathway (`ast_call_direct`), resolution status (`*_unresolved`), and framework dispatch (`django_orm_dispatch`) — three different questions in one field. [ADR-0028](../../docs/adr/0028-evidence-type-inference-pathway-only.md) declared the inference-pathway axis (clusters `28A`–`28D`).
+
+If "axis" / "cluster" / "audit-findings" don't yet feel concrete, read [`docs/audits/README.md`](../../docs/audits/README.md) §"Concepts" first. The playbook below is what produced those audits and what the next one will follow.
+
 ## When to run
 
 Six signals, any of which is sufficient:

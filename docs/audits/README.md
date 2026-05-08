@@ -7,6 +7,43 @@ tables produced by applying an existing methodology (typically the
 playbook](../../.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md))
 to a specific scope.
 
+## Concepts
+
+If you've arrived here trying to figure out what `Cluster 27D` or `Edge.evidence_type Cluster 28A` means in a commit message or changelog entry, start here.
+
+### Concept-axis
+
+A **concept-axis** (or just **axis**) is a typing dimension along which every value of a multi-value field must be classified. The hypergumbo IR has three:
+
+- **`Edge.edge_type`** — names the *relationship* between an edge's src and dst (`calls`, `imports`, `extends`, …). Declared by [ADR-0023](../adr/0023-edge-type-relationship-not-endpoints.md).
+- **`Symbol.kind`** — names the *source-language syntactic construct* the symbol represents (`function`, `class`, `module`, …). Declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md).
+- **`Edge.evidence_type`** — names *how the analyzer concluded the edge exists* (`ast_call_direct`, `tree_sitter`, `naming_convention`, …). Declared by [ADR-0028](../adr/0028-evidence-type-inference-pathway-only.md).
+
+Each axis has an axiom (a one-sentence rule for what belongs), a registry module under `packages/hypergumbo-core/src/hypergumbo_core/` (`edge_types.py` / `symbol_kinds.py` / `evidence_types.py`), and a drift linter that catches values which violate the axiom. The abstract framework for declaring an axis is [ADR-0024](../adr/0024-axis-declaration-template.md).
+
+### Cluster
+
+When an axis-declaration audit finds the field has accumulated more values than fit in one verdict pass (`Symbol.kind` reached 192 values; `Edge.evidence_type` reached 218), those values are grouped into **clusters** for per-group resolution. Each cluster ships its own audit-findings document and is migrated as its own work unit.
+
+Cluster identifiers use the form `<ADR-number><letter>`:
+
+- `27A`, `27B`, …, `27H` are the eight clusters of `Symbol.kind` (defined in ADR-0027 §3).
+- `28A`, `28B`, `28C`, `28D` are the four clusters of `Edge.evidence_type` (defined in ADR-0028 §3).
+
+The ADR-number prefix disambiguates across axes: `Cluster 27D` (Symbol.kind framework roles) is structurally different from `Cluster 28D` (Edge.evidence_type apex/peer call-construct). Bare-letter forms (`Cluster D`) appear in older commits and lab notes that predate this convention.
+
+### Audit-findings document
+
+An audit-findings document — the files indexed below — records the **per-value verdicts** for one cluster. Every distinct value the field takes within that cluster gets one of three verdicts:
+
+- **CANONICAL** — the value belongs on the axis as-is. Keep it.
+- **FOLD** — the value is real data but should be expressed as a canonical form plus a `meta[…]` qualifier. (E.g. `kind="event_publisher"` becomes `kind="function"` + `meta["framework_role"]="event_publisher"`.)
+- **DEPRECATE-NO-FOLD** — dead vocabulary, no producer (or never had one). Remove.
+
+Each row also carries a status (`UNRESOLVED` → `PRELIM_RESOLVED` → `RESOLVED`) tracking how far through the migration it is. The verdict trichotomy is defined in [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md); the audit procedure that produces these documents is the [Fundamental Concept Audit playbook](../../.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md).
+
+## Filing convention
+
 Audit-findings documents are **filed separately from ADRs** because
 they record **case rulings under existing law** (the law being a
 prior axis-declaration ADR), not new principles. The boundary is

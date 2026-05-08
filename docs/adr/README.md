@@ -50,6 +50,12 @@ Three buckets, each with its own home:
 
 **Bucket-1 self-justification guard.** Bucket 1 requires a load-bearing decision (a principle adopted, a template defined, an architectural change committed to). Context may be substantial in service of the decision, but the decision is the deliverable. If the deliverable is fundamentally a description with a "we should..." paragraph at the end, that's bucket 3 with weak decision content, not bucket 1.
 
+## Common terms
+
+- **Axis** (or **concept-axis**) — a typing dimension along which every value of a multi-value field must be classified, governed by a one-sentence axiom. The hypergumbo IR has three (`Edge.edge_type`, `Symbol.kind`, `Edge.evidence_type`); the abstract framework for declaring one is [ADR-0024](0024-axis-declaration-template.md).
+- **Cluster** — a sub-group of values within one axis, used to scope per-value audit and migration work. Identified as `<ADR-number><letter>` (e.g. `27A`, `28D`); the ADR-number prefix disambiguates clusters across axes (`Cluster 27D` and `Cluster 28D` are different things).
+- **Audit-findings document** — a per-cluster verdict table filed at [`docs/audits/<NN>-<topic>.md`](../audits/), produced by applying the [Fundamental Concept Audit](../../.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md) methodology. Records case rulings under existing law, not new principles. See [`docs/audits/README.md`](../audits/README.md) §"Concepts" for the longer treatment.
+
 ## Thematic grouping
 
 **Analysis pipeline:** 0003, 0004, 0005, 0006, 0007, 0012, 0014, 0015, 0016, 0017, 0022, 0023, 0024

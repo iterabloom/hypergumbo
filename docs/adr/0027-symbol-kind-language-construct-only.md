@@ -19,33 +19,33 @@ This ADR is the next-stage deliverable. It instantiates [ADR-0024](0024-axis-dec
 
 Cluster taxonomy from the WI-dumiz-bikul audit (192 values; sub-counts approximate):
 
-- **Cluster A — Pure language constructs (~30 values):** `function`, `class`, `method`, `struct`, `interface`, `enum`, `module`, `variable`, `property`, `constructor`, `namespace`, `attribute`, `field`, `trait`, `type`, `type_alias`, `alias`, `macro`, `fn`, `var`, `proc`, `procedure`, `subroutine`, `getter`, `setter`, `mixin`, `record`, `union`, `typedef`, `simple_type`, `defined_type`, `abstract`, `const`, `constant`, `instance`. These are the canonical seed: each value names a source-language syntactic construct and reads cleanly across analyzers.
+- **Cluster 27A — Pure language constructs (~30 values):** `function`, `class`, `method`, `struct`, `interface`, `enum`, `module`, `variable`, `property`, `constructor`, `namespace`, `attribute`, `field`, `trait`, `type`, `type_alias`, `alias`, `macro`, `fn`, `var`, `proc`, `procedure`, `subroutine`, `getter`, `setter`, `mixin`, `record`, `union`, `typedef`, `simple_type`, `defined_type`, `abstract`, `const`, `constant`, `instance`. These are the canonical seed: each value names a source-language syntactic construct and reads cleanly across analyzers.
 
-- **Cluster B — File-shape entities (~12 values):** `file`, `library`, `dependency`, `package`, `executable`, `program`, `project`, `module_file`, `component_file`, `npm_package`, `composer_package`, `main_entry`, `bin`, `binary`, `library_export`, `export_entry`, `wasm_module`, `tsconfig`. These name *files or build-system artifacts*, which is arguably a separate axis (a Symbol-as-file is structurally different from a Symbol-as-construct).
+- **Cluster 27B — File-shape entities (~12 values):** `file`, `library`, `dependency`, `package`, `executable`, `program`, `project`, `module_file`, `component_file`, `npm_package`, `composer_package`, `main_entry`, `bin`, `binary`, `library_export`, `export_entry`, `wasm_module`, `tsconfig`. These name *files or build-system artifacts*, which is arguably a separate axis (a Symbol-as-file is structurally different from a Symbol-as-construct).
 
-- **Cluster C — Apex/peer overloads (~6 distinguishing pairs):** `function` vs `fn` (apex/peer); `variable` vs `var`; `procedure` vs `proc`; `struct` vs `structure`; `call` as apex of every `*_call` peer (see Cluster E). The same string sometimes plays "top type" and sometimes "language-specific short alias" — a pure naming-discipline failure that ADR-0024 §"Fold-residue discipline" rule 3's recurrence-promotion threshold catches.
+- **Cluster 27C — Apex/peer overloads (~6 distinguishing pairs):** `function` vs `fn` (apex/peer); `variable` vs `var`; `procedure` vs `proc`; `struct` vs `structure`; `call` as apex of every `*_call` peer (see Cluster 27E). The same string sometimes plays "top type" and sometimes "language-specific short alias" — a pure naming-discipline failure that ADR-0024 §"Fold-residue discipline" rule 3's recurrence-promotion threshold catches.
 
-- **Cluster D — Framework roles / dispatch participation (~25 values):** `event_publisher`, `event_subscriber`, `ipc_publisher`, `ipc_caller`, `ipc_bridge_caller`, `objc_bridge`, `crypto_producer`, `crypto_consumer`, `message_sender`, `message_handler`, `mq_publisher`, `grpc_service`, `grpc_servicer`, `grpc_stub`, `grpc_server`, `websocket_endpoint`, `dispatcher`, `graphql_resolver`, `http_client`, `graphql_client`, `route_mount`, `route`, `route_include`, `openapi_operation`, `abi_call`, `selector_ref`. These values encode the symbol's **participation in a framework pattern**, not what the symbol *is*. This is the same axis confusion ADR-0023 caught for `Edge.edge_type` (cf. its dispatch / publish / IPC / bridge family deprecations).
+- **Cluster 27D — Framework roles / dispatch participation (~25 values):** `event_publisher`, `event_subscriber`, `ipc_publisher`, `ipc_caller`, `ipc_bridge_caller`, `objc_bridge`, `crypto_producer`, `crypto_consumer`, `message_sender`, `message_handler`, `mq_publisher`, `grpc_service`, `grpc_servicer`, `grpc_stub`, `grpc_server`, `websocket_endpoint`, `dispatcher`, `graphql_resolver`, `http_client`, `graphql_client`, `route_mount`, `route`, `route_include`, `openapi_operation`, `abi_call`, `selector_ref`. These values encode the symbol's **participation in a framework pattern**, not what the symbol *is*. This is the same axis confusion ADR-0023 caught for `Edge.edge_type` (cf. its dispatch / publish / IPC / bridge family deprecations).
 
-- **Cluster E — Edge labels masquerading as Symbol kinds (~10 values):** `call`, `function_call`, `subprocess_call`, `db_query`, `abi_call`, `import`, `inherit`, `reference`, `write`, `read`, `include`, `extends`, `route_mount`. These name *relationships*, not symbol categories. A `Symbol.kind == "call"` site is structurally different from an `Edge` whose `edge_type == "calls"`; putting both vocabularies in the same field forces consumers to guess which question they're asking.
+- **Cluster 27E — Edge labels masquerading as Symbol kinds (~10 values):** `call`, `function_call`, `subprocess_call`, `db_query`, `abi_call`, `import`, `inherit`, `reference`, `write`, `read`, `include`, `extends`, `route_mount`. These name *relationships*, not symbol categories. A `Symbol.kind == "call"` site is structurally different from an `Edge` whose `edge_type == "calls"`; putting both vocabularies in the same field forces consumers to guess which question they're asking.
 
-- **Cluster F — Component / UI references (~6 values):** `component`, `component_ref`, `component_file`, `slot`, `prop`, `view`. Overlaps with the `imports_component` value ADR-0023 already deprecated for `Edge.edge_type`; `kind=component_ref` is dst-kind leakage of the same shape on the symbol side.
+- **Cluster 27F — Component / UI references (~6 values):** `component`, `component_ref`, `component_file`, `slot`, `prop`, `view`. Overlaps with the `imports_component` value ADR-0023 already deprecated for `Edge.edge_type`; `kind=component_ref` is dst-kind leakage of the same shape on the symbol side.
 
-- **Cluster G — Build / config-shape (~10 values):** `test`, `work_item`, `target`, `recipe`, `env_var`, `build_arg`, `exposed_port`, `stage`, `requirement`, `editable`, `url_requirement`, `setting`, `config`, `derivation`. Arguably a separate axis (build-system or config-system entities, not language constructs).
+- **Cluster 27G — Build / config-shape (~10 values):** `test`, `work_item`, `target`, `recipe`, `env_var`, `build_arg`, `exposed_port`, `stage`, `requirement`, `editable`, `url_requirement`, `setting`, `config`, `derivation`. Arguably a separate axis (build-system or config-system entities, not language constructs).
 
-- **Cluster H — Domain-specific long tail (~70+ values):** `section`, `paragraph`, `code_block`, `diagram`, `plot`, `yield`, `for_loop`, `conditional`, `declaration`, `prefix`, `base`, `query`, `entry`, `task`, `python_task`, `addtask`, `entity`, `architecture`, `error_set`, `participant`, `state`, `model`, `fragment`, `partial`, `provider`, `local`, `style_block`, `permission`, `keyframes`, `media`, `font_face`, `class_selector`, `id_selector`, `filter`, `workflow`, `subdirectory`, `workspace`, `table_array`, `link`, `pattern_rule`, `special_target`, `table`, `label`, `command`, `environment`, `binding`, `varying`, `id`, `storage`, `private`, `workgroup`, `source`, `port`, `uniform`, `output`, `input`, `value`, `pattern`, `handler`, `subscript`, `signal`, … The mixture includes domain-vocabulary nouns (graph / DB / template / config / shader), control-flow constructs (`for_loop`, `conditional`), and per-language synthetic kinds. A per-value audit will sort these (see Migration §3 below); the four leakage tests below catch the family-level structure.
+- **Cluster 27H — Domain-specific long tail (~70+ values):** `section`, `paragraph`, `code_block`, `diagram`, `plot`, `yield`, `for_loop`, `conditional`, `declaration`, `prefix`, `base`, `query`, `entry`, `task`, `python_task`, `addtask`, `entity`, `architecture`, `error_set`, `participant`, `state`, `model`, `fragment`, `partial`, `provider`, `local`, `style_block`, `permission`, `keyframes`, `media`, `font_face`, `class_selector`, `id_selector`, `filter`, `workflow`, `subdirectory`, `workspace`, `table_array`, `link`, `pattern_rule`, `special_target`, `table`, `label`, `command`, `environment`, `binding`, `varying`, `id`, `storage`, `private`, `workgroup`, `source`, `port`, `uniform`, `output`, `input`, `value`, `pattern`, `handler`, `subscript`, `signal`, … The mixture includes domain-vocabulary nouns (graph / DB / template / config / shader), control-flow constructs (`for_loop`, `conditional`), and per-language synthetic kinds. A per-value audit will sort these (see Migration §3 below); the four leakage tests below catch the family-level structure.
 
 ### Four leakage tests (cluster-level)
 
 The Fundamental Concept Audit playbook's four leakage tests fire as follows on the cluster taxonomy. Each test that fires is a deprecation candidate for at least the values in the named cluster.
 
-- **Test 1 (Property derivability):** Cluster D values are uniformly derivable from `(edge_type, dst.kind)` queries per ADR-0023's pattern. `event_publisher` = a symbol with an outgoing `event_publishes` edge; `graphql_resolver` = a method on a class with `dst.kind == "graphql_schema"`; `route_mount` = a symbol with an outgoing `dispatches_to` edge with `meta["dispatch_kind"] == "route"`. **Massive leakage in Cluster D.**
+- **Test 1 (Property derivability):** Cluster 27D values are uniformly derivable from `(edge_type, dst.kind)` queries per ADR-0023's pattern. `event_publisher` = a symbol with an outgoing `event_publishes` edge; `graphql_resolver` = a method on a class with `dst.kind == "graphql_schema"`; `route_mount` = a symbol with an outgoing `dispatches_to` edge with `meta["dispatch_kind"] == "route"`. **Massive leakage in Cluster 27D.**
 
-- **Test 2 (Apex/peer overloading):** Cluster C explicitly. `function`/`fn`, `variable`/`var`, `procedure`/`proc`, `struct`/`structure` — same source-language construct under multiple labels because language analyzers each chose their own. The detector must consume the union, the consumer must enumerate it, and the registry never converges. **Fires.**
+- **Test 2 (Apex/peer overloading):** Cluster 27C explicitly. `function`/`fn`, `variable`/`var`, `procedure`/`proc`, `struct`/`structure` — same source-language construct under multiple labels because language analyzers each chose their own. The detector must consume the union, the consumer must enumerate it, and the registry never converges. **Fires.**
 
-- **Test 3 (Construct vs relationship):** Cluster E values are *relationships*, not symbol categories. `call` is what an `Edge` does; `Symbol.kind == "call"` either means "this is a call site" (which deserves its own canonical name like `call_site`, distinct from the edge's `calls`) or is a duplicate-of-Edge that should be eliminated at the producer. **Fires.**
+- **Test 3 (Construct vs relationship):** Cluster 27E values are *relationships*, not symbol categories. `call` is what an `Edge` does; `Symbol.kind == "call"` either means "this is a call site" (which deserves its own canonical name like `call_site`, distinct from the edge's `calls`) or is a duplicate-of-Edge that should be eliminated at the producer. **Fires.**
 
-- **Test 4 (Mechanism vs category):** Cluster D again — `*_publisher` / `*_subscriber` / `*_caller` / `*_consumer` suffixes encode mechanism (HOW the symbol participates in a pattern), not category (WHAT it is). Already flagged by ADR-0023 Open Question #6 as the natural follow-up to `Edge.edge_type`'s Cluster-D deprecation. **Fires.**
+- **Test 4 (Mechanism vs category):** Cluster 27D again — `*_publisher` / `*_subscriber` / `*_caller` / `*_consumer` suffixes encode mechanism (HOW the symbol participates in a pattern), not category (WHAT it is). Already flagged by ADR-0023 Open Question #6 as the natural follow-up to `Edge.edge_type`'s Cluster-27D deprecation. **Fires.**
 
 ### Concrete cost
 
@@ -63,7 +63,7 @@ Three operational corollaries:
 
 1. **No new `kind` value may encode information already on an `Edge` or in framework metadata.** If a proposed new kind would only differ from an existing one based on what edges the symbol participates in or what framework context surrounds it, the right answer is to reuse the existing kind and let consumers query the edges or `meta["framework_role"]`.
 
-2. **Mechanism / role / framework-participation metadata goes in `Symbol.meta`, not in a new `kind`.** ADR-0023's resolution for `Edge.edge_type` (Cluster D framework-roles fold to `meta["framework_dispatch"]` and `meta["channel_kind"]`) generalizes to `Symbol`: `kind="event_publisher"` becomes `kind="function"` (or `"method"`) plus `meta["framework_role"]="event_publisher"`.
+2. **Mechanism / role / framework-participation metadata goes in `Symbol.meta`, not in a new `kind`.** ADR-0023's resolution for `Edge.edge_type` (Cluster 27D framework-roles fold to `meta["framework_dispatch"]` and `meta["channel_kind"]`) generalizes to `Symbol`: `kind="event_publisher"` becomes `kind="function"` (or `"method"`) plus `meta["framework_role"]="event_publisher"`.
 
 3. **Deprecate the existing leaky kinds** in a controlled migration (see "Migration" below). The deprecation set is enumerated as a *first cut* below; per-cluster verdicts are deferred to audit-findings documents per ADR-0024 §"Family-audit verdict methodology".
 
@@ -87,7 +87,7 @@ Properties of this axiom:
 
 - **Falsifiable** — given a candidate value, the axiom either accepts it or rejects it. `event_publisher` is rejected (the `_publisher` suffix encodes participation in a publish pattern; the symbol *itself* is a function or method). `function` is accepted (a syntactic construct named directly).
 - **One sentence long.**
-- **Distinguishes the canonical section from the rest** — Cluster A members are `language_construct`; Cluster D / E members are `endpoint_shape` deprecation candidates; Clusters B / G / H pieces are `pending_classification` until the per-value audit settles them.
+- **Distinguishes the canonical section from the rest** — Cluster 27A members are `language_construct`; Cluster 27D / 27E members are `endpoint_shape` deprecation candidates; Clusters 27B / 27G / 27H pieces are `pending_classification` until the per-value audit settles them.
 
 ### 3. Consumer pattern
 
@@ -148,23 +148,23 @@ Per ADR-0024 §"Family-audit verdict methodology" + the audit-findings filing co
 
 The high-level cluster taxonomy and fold targets are this section's responsibility:
 
-- **Cluster A (~30 values):** Canonical seed. All values keep their existing form on the `language_construct` section. Per-value rationale (none expected to deprecate; some apex/peer overloads in Cluster C will be folded to a single canonical form per language family) goes into the cluster-A audit-findings doc.
+- **Cluster 27A (~30 values):** Canonical seed. All values keep their existing form on the `language_construct` section. Per-value rationale (none expected to deprecate; some apex/peer overloads in Cluster 27C will be folded to a single canonical form per language family) goes into the cluster-27A audit-findings doc.
 
-- **Cluster B (~12 values; arguably a separate axis):** File-shape entities are NOT language constructs in the same sense as Cluster A. Two options for resolution: (a) park them on `pending_classification` and file a follow-on ADR declaring a `Symbol.shape` or `Symbol.role` axis for file-shape entities; (b) fold them into Cluster A by treating `file` as a language construct in its own right (the file is a syntactic unit at the document level). The fold-residue discipline (ADR-0024 §"Fold-residue discipline" rule 2) suggests option (a) — a property describing a different axis routes to that axis, not into `meta`. Decision deferred to the cluster-B audit-findings doc.
+- **Cluster 27B (~12 values; arguably a separate axis):** File-shape entities are NOT language constructs in the same sense as Cluster 27A. Two options for resolution: (a) park them on `pending_classification` and file a follow-on ADR declaring a `Symbol.shape` or `Symbol.role` axis for file-shape entities; (b) fold them into Cluster 27A by treating `file` as a language construct in its own right (the file is a syntactic unit at the document level). The fold-residue discipline (ADR-0024 §"Fold-residue discipline" rule 2) suggests option (a) — a property describing a different axis routes to that axis, not into `meta`. Decision deferred to the cluster-27B audit-findings doc.
 
-- **Cluster C (~6 distinguishing pairs):** Apex/peer overloads collapse to a single canonical per pair. `fn` → `function`, `var` → `variable`, `proc` → `procedure`, `structure` → `struct`. The choice of apex follows ADR-0023's pattern (most-frequent emitting language wins). This is Phase 3 producer migration; consumer-side enumerations don't need to change because the apex was already in the registry.
+- **Cluster 27C (~6 distinguishing pairs):** Apex/peer overloads collapse to a single canonical per pair. `fn` → `function`, `var` → `variable`, `proc` → `procedure`, `structure` → `struct`. The choice of apex follows ADR-0023's pattern (most-frequent emitting language wins). This is Phase 3 producer migration; consumer-side enumerations don't need to change because the apex was already in the registry.
 
-- **Cluster D (~25 values):** Fold to Cluster A canonical + `meta["framework_role"]`. Worked example: `event_publisher` → `kind="function"` (or `"method"`, depending on the symbol's actual construct) + `meta["framework_role"]="event_publisher"`. The 25 values map to ~5 distinct meta key/value pairs after deduplication; exact mapping in the cluster-D audit-findings doc.
+- **Cluster 27D (~25 values):** Fold to Cluster 27A canonical + `meta["framework_role"]`. Worked example: `event_publisher` → `kind="function"` (or `"method"`, depending on the symbol's actual construct) + `meta["framework_role"]="event_publisher"`. The 25 values map to ~5 distinct meta key/value pairs after deduplication; exact mapping in the cluster-27D audit-findings doc.
 
-- **Cluster E (~10 values):** Two sub-cases. (a) Values that name *a call site or use site* (e.g., `call`, `function_call`, `subprocess_call`, `db_query`, `abi_call`) reclassify as `call_site` — a new canonical kind distinct from the edge's `calls`. The producer emits a Symbol-of-kind-`call_site` plus an Edge-of-edge_type-`calls`; the dual representation lets consumers query "list all call sites in this file" without having to traverse edges. (b) Values that *duplicate an edge* (`import`, `inherit`, `reference`, `write`, `read`, `include`, `extends`) drop entirely at the producer — the relationship was already captured by the corresponding `Edge`. Per-value sub-case assignment in the cluster-E audit-findings doc.
+- **Cluster 27E (~10 values):** Two sub-cases. (a) Values that name *a call site or use site* (e.g., `call`, `function_call`, `subprocess_call`, `db_query`, `abi_call`) reclassify as `call_site` — a new canonical kind distinct from the edge's `calls`. The producer emits a Symbol-of-kind-`call_site` plus an Edge-of-edge_type-`calls`; the dual representation lets consumers query "list all call sites in this file" without having to traverse edges. (b) Values that *duplicate an edge* (`import`, `inherit`, `reference`, `write`, `read`, `include`, `extends`) drop entirely at the producer — the relationship was already captured by the corresponding `Edge`. Per-value sub-case assignment in the cluster-27E audit-findings doc.
 
-- **Cluster F (~6 values):** `component_ref` is the same dst-kind leakage shape ADR-0023 caught for `imports_component`. Fold: `component_ref` → `reference` (the syntactic construct; an inline component-name token is a reference to a name) + `dst.kind == "component"`. `component_file` is Cluster B (file-shape). `slot` / `prop` may be language-construct-genuine for Vue / Svelte / Astro and stay on `language_construct`. Per-value assignment in the cluster-F audit-findings doc.
+- **Cluster 27F (~6 values):** `component_ref` is the same dst-kind leakage shape ADR-0023 caught for `imports_component`. Fold: `component_ref` → `reference` (the syntactic construct; an inline component-name token is a reference to a name) + `dst.kind == "component"`. `component_file` is Cluster 27B (file-shape). `slot` / `prop` may be language-construct-genuine for Vue / Svelte / Astro and stay on `language_construct`. Per-value assignment in the cluster-27F audit-findings doc.
 
-- **Cluster G (~10 values):** Build / config-shape. Almost certainly a separate axis (a Makefile target is structurally different from a Python function). Park on `pending_classification`; cluster-G audit-findings doc decides between (a) declare a `Symbol.role` or `Symbol.config_shape` sibling axis vs. (b) demote these entirely (e.g., a Makefile target may be better represented as a SymbolID with no language-level kind, depending on whether downstream consumers ever query it as a language construct).
+- **Cluster 27G (~10 values):** Build / config-shape. Almost certainly a separate axis (a Makefile target is structurally different from a Python function). Park on `pending_classification`; cluster-27G audit-findings doc decides between (a) declare a `Symbol.role` or `Symbol.config_shape` sibling axis vs. (b) demote these entirely (e.g., a Makefile target may be better represented as a SymbolID with no language-level kind, depending on whether downstream consumers ever query it as a language construct).
 
-- **Cluster H (~70+ values):** Per-value audit. The cluster-H audit-findings doc is expected to be the longest of the series; many values are domain-vocabulary nouns that read fine as `language_construct` (`code_block`, `paragraph`, `diagram` for documentation languages) but a non-trivial subset are leakage of the Cluster-D / -E shape (`handler`, `signal`, `model`, `entity`).
+- **Cluster 27H (~70+ values):** Per-value audit. The cluster-27H audit-findings doc is expected to be the longest of the series; many values are domain-vocabulary nouns that read fine as `language_construct` (`code_block`, `paragraph`, `diagram` for documentation languages) but a non-trivial subset are leakage of the Cluster-27D / -27E shape (`handler`, `signal`, `model`, `entity`).
 
-Estimated emit-site distribution: Cluster D has ~25 values across ~15-20 producer linkers; Cluster E has ~10 values more diffusely scattered; Cluster H is per-value. Total Phase 3 producer edits ~50-70 across ~30-40 files, comparable to ADR-0023 Phase 3 scope.
+Estimated emit-site distribution: Cluster 27D has ~25 values across ~15-20 producer linkers; Cluster 27E has ~10 values more diffusely scattered; Cluster 27H is per-value. Total Phase 3 producer edits ~50-70 across ~30-40 files, comparable to ADR-0023 Phase 3 scope.
 
 ## Migration
 
@@ -174,7 +174,7 @@ Mirrors ADR-0023's four-phase shape; consumers can keep working throughout. JSON
 
 Mirrors ADR-0023 Phase 1. Land:
 
-1. The registry module at `packages/hypergumbo-core/src/hypergumbo_core/symbol_kinds.py` with `AXIS_*` constants, `SymbolKindSpec` frozen dataclass, the `SYMBOL_KINDS` tuple-of-specs (seeded with Cluster A on `language_construct`, Clusters D / E on `endpoint_shape`, Clusters B / G / H on `pending_classification`), and the accessors (`all_symbol_kind_names()`, `symbol_kinds_on_axis(axis)`, `find_symbol_kind(name)`).
+1. The registry module at `packages/hypergumbo-core/src/hypergumbo_core/symbol_kinds.py` with `AXIS_*` constants, `SymbolKindSpec` frozen dataclass, the `SYMBOL_KINDS` tuple-of-specs (seeded with Cluster 27A on `language_construct`, Clusters 27D / 27E on `endpoint_shape`, Clusters 27B / 27G / 27H on `pending_classification`), and the accessors (`all_symbol_kind_names()`, `symbol_kinds_on_axis(axis)`, `find_symbol_kind(name)`).
 2. The drift-coherence linter at `scripts/check-symbol-kind-drift`, wiring into `.githooks/pre-commit` skipping when no `packages/*.py` files are staged.
 3. The property test in `tests/test_symbol_kinds.py`: registry invariants (no duplicates, every spec has a valid axis, every axis section is non-empty) plus a drift-detection test calling the linter's underlying function on the live tree.
 4. By-axis view extension: add the `Symbol.kind` axis's three sections to `scripts/generate-concept-axes`'s `_SECTIONS` table; regenerate `docs/concept-axes.md`.
@@ -201,17 +201,17 @@ Estimated effort: ~1-2 days, comparable to ADR-0023 Phase 2.
 
 Sweep the producer sites that emit deprecation-list `kind` values. For each:
 
-1. Replace the specialized `kind` with the canonical (Cluster A) equivalent.
+1. Replace the specialized `kind` with the canonical (Cluster 27A) equivalent.
 2. If the specialization carried a fact not derivable from edges or already-existing meta, move it to `Symbol.meta` (e.g., `meta["framework_role"]`).
 3. Re-run the drift property test; the offender set strictly shrinks each migration.
 
 Producer migration order, lowest-risk-first:
 
-1. **Cluster C** (apex/peer collapse): purely additive on consumer side; canonical was already in the registry.
-2. **Cluster D** (framework roles → `meta["framework_role"]`): largest single subset (~25 values across ~15-20 producer linkers); each producer subset can ship as its own PR with its own `awaits_bakeoff_validation` tag.
-3. **Cluster E** (edge-label kinds): per-value sub-case (call_site reclassification vs producer drop) per the cluster-E audit-findings doc.
-4. **Cluster F** (component refs): aligns with the imports_component fold ADR-0023 already shipped; small subset.
-5. **Cluster B / G / H** (pending_classification long tail): per-cluster audit-findings doc resolution before Phase 3 ships for that cluster.
+1. **Cluster 27C** (apex/peer collapse): purely additive on consumer side; canonical was already in the registry.
+2. **Cluster 27D** (framework roles → `meta["framework_role"]`): largest single subset (~25 values across ~15-20 producer linkers); each producer subset can ship as its own PR with its own `awaits_bakeoff_validation` tag.
+3. **Cluster 27E** (edge-label kinds): per-value sub-case (call_site reclassification vs producer drop) per the cluster-27E audit-findings doc.
+4. **Cluster 27F** (component refs): aligns with the imports_component fold ADR-0023 already shipped; small subset.
+5. **Clusters 27B / 27G / 27H** (pending_classification long tail): per-cluster audit-findings doc resolution before Phase 3 ships for that cluster.
 
 Estimated effort: ~5-10 days plus bakeoff validation per phase, comparable to ADR-0023 Phase 3.
 
@@ -235,11 +235,11 @@ Estimated effort: ~1-2 days for the additive 4a; per-cluster 4b ships piecewise 
 
 ### Positive
 
-- **Cuts the `Symbol.kind` vocabulary** from 192 to a manageable canonical set (~30 in Cluster A plus the cluster-H survivors after audit), making the IR easier to reason about.
+- **Cuts the `Symbol.kind` vocabulary** from 192 to a manageable canonical set (~30 in Cluster 27A plus the cluster-27H survivors after audit), making the IR easier to reason about.
 - **Eliminates a structural class of silent bugs**: the same hardcoded-set drift pattern ADR-0023 caught for `Edge.edge_type` was poised to recur as more frameworks get analyzers (any new framework was likely to add a `kind="<framework>_handler"` value, fragmenting the vocabulary further). The drift linter blocks the recurrence.
 - **Reuses ADR-0024's tooling**: registry shape, `axis_drift.find_drift`, by-axis view aggregator, JSON Schema extension all transfer one-for-one. The ADR-0027 implementation is mostly fill-in-the-template plus per-cluster verdict work.
 - **Aligns Symbol with Edge**: ADR-0023's lesson — "the type field names the relationship/construct, properties of the participants are queried from the participants" — generalizes to symbols. Both core dataclasses now follow the same discipline.
-- **Surfaces the file-shape question** (Cluster B) and the build/config-shape question (Cluster G) as concrete follow-on work rather than ambient confusion.
+- **Surfaces the file-shape question** (Cluster 27B) and the build/config-shape question (Cluster 27G) as concrete follow-on work rather than ambient confusion.
 
 ### Negative
 
@@ -250,10 +250,10 @@ Estimated effort: ~1-2 days for the additive 4a; per-cluster 4b ships piecewise 
 
 ### Risks
 
-- **Cluster H is the long tail.** ~70+ values across many domain languages (CSS, SQL, Makefile, build configs, documentation, shaders, …). The per-value audit will be tedious and may surface several additional sub-axes (e.g., a CSS-specific axis distinct from a SQL-specific axis). Mitigation: file each cluster's audit-findings doc as a separate work item; don't try to settle Cluster H in a single pass.
-- **File-shape question (Cluster B) may need its own ADR.** If the per-cluster audit decides Cluster B values are a separate axis (a `Symbol.shape` or `Symbol.entity_kind` axis), that axis declaration is itself a follow-on ADR per ADR-0024's seven-step workflow. This is anticipated, not regrettable.
+- **Cluster 27H is the long tail.** ~70+ values across many domain languages (CSS, SQL, Makefile, build configs, documentation, shaders, …). The per-value audit will be tedious and may surface several additional sub-axes (e.g., a CSS-specific axis distinct from a SQL-specific axis). Mitigation: file each cluster's audit-findings doc as a separate work item; don't try to settle Cluster 27H in a single pass.
+- **File-shape question (Cluster 27B) may need its own ADR.** If the per-cluster audit decides Cluster 27B values are a separate axis (a `Symbol.shape` or `Symbol.entity_kind` axis), that axis declaration is itself a follow-on ADR per ADR-0024's seven-step workflow. This is anticipated, not regrettable.
 - **Producer migration is wider-spread than ADR-0023's.** `Edge.edge_type` was concentrated in linker code; `Symbol.kind` is emitted by every language analyzer and several linkers. Phase 3 will touch more files than ADR-0023's did. Mitigation: per-cluster sub-PRs let migration interleave with feature work; the per-cluster `awaits_bakeoff_validation` tag isolates regressions to single clusters.
-- **`Symbol.meta` doesn't yet have an established schema for `framework_role` keys.** The Cluster D fold target depends on `meta["framework_role"]` being a recognized convention. If this doesn't exist today, Phase 1 implicitly establishes it (with the recurrence-promotion threshold per ADR-0024 §"Fold-residue discipline" rule 3 watching the meta key for promotion to a dedicated field).
+- **`Symbol.meta` doesn't yet have an established schema for `framework_role` keys.** The Cluster 27D fold target depends on `meta["framework_role"]` being a recognized convention. If this doesn't exist today, Phase 1 implicitly establishes it (with the recurrence-promotion threshold per ADR-0024 §"Fold-residue discipline" rule 3 watching the meta key for promotion to a dedicated field).
 
 ## Alternatives considered
 
@@ -275,13 +275,13 @@ Both axes were flagged by the same Adjacent Concept Sweep; both have DEPRECATE v
 
 ## Open questions
 
-1. **Cluster B (file-shape) resolution.** Is `file` a language construct, a separate axis, or something else? Decision deferred to the cluster-B audit-findings doc; this ADR parks Cluster B values on `pending_classification`.
+1. **Cluster 27B (file-shape) resolution.** Is `file` a language construct, a separate axis, or something else? Decision deferred to the cluster-27B audit-findings doc; this ADR parks Cluster 27B values on `pending_classification`.
 
-2. **Cluster G (build/config) resolution.** Same shape as Cluster B but for build-system / config-system entities. Likely a separate `Symbol.role` or `Symbol.config_shape` axis. Decision deferred to the cluster-G audit-findings doc.
+2. **Cluster 27G (build/config) resolution.** Same shape as Cluster 27B but for build-system / config-system entities. Likely a separate `Symbol.role` or `Symbol.config_shape` axis. Decision deferred to the cluster-27G audit-findings doc.
 
-3. **Apex selection in Cluster C.** When two language-specific labels coexist (`fn` vs `function`, `proc` vs `procedure`), which is the apex? The ADR-0023 heuristic was "most-frequent emitter wins"; the ADR-0027 default is the same. Per-pair confirmation in the cluster-C audit-findings doc.
+3. **Apex selection in Cluster 27C.** When two language-specific labels coexist (`fn` vs `function`, `proc` vs `procedure`), which is the apex? The ADR-0023 heuristic was "most-frequent emitter wins"; the ADR-0027 default is the same. Per-pair confirmation in the cluster-27C audit-findings doc.
 
-4. **Coordination with `Symbol.meta` schema.** The Cluster D fold target depends on `meta["framework_role"]` becoming a recognized convention. Should there be a parallel registry of meta keys (an `axis_meta_keys.py`)? Probably yes once the recurrence-promotion threshold per ADR-0024 §"Fold-residue discipline" rule 3 fires for the second time (the first being whatever this ADR introduces). Defer to a follow-on tracker item.
+4. **Coordination with `Symbol.meta` schema.** The Cluster 27D fold target depends on `meta["framework_role"]` becoming a recognized convention. Should there be a parallel registry of meta keys (an `axis_meta_keys.py`)? Probably yes once the recurrence-promotion threshold per ADR-0024 §"Fold-residue discipline" rule 3 fires for the second time (the first being whatever this ADR introduces). Defer to a follow-on tracker item.
 
 5. **Coordination with ADR-0028 (evidence_type axis).** Both ADRs depend on `axis_drift.find_drift` and the audit-findings filing convention; both will land registries that share the JSON Schema extension. Phasing: Phase 1 of either can land independently; Phase 3 producer migrations may benefit from sequencing (do the cluster with the smallest blast radius first across both axes). Tracked at the parent items WI-dahim and WI-pilit; the work-item chain for each axis's migration phases is filed once Phase 1 lands.
 
