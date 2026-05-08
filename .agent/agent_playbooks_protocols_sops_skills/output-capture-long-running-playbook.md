@@ -32,22 +32,23 @@ The shape to avoid is `<long-running-command> | tail -N` (or `| head -N`) as the
 
 (Note: `| tail -N` on a *cheap* command like `git log --oneline | tail -5` is fine — the rule is about long-running commands where re-running is expensive.)
 
-## Background + Monitor for very long commands
+## Anti-pattern: polling for process state
 
-`./scripts/auto-pr` and bakeoff subcommands can run for many minutes. Start them in the background, then point a `Monitor` at the output file with an alternation that covers *every terminal state*, not just the happy path:
+A reflex when waiting for a long-running command to finish:
 
 ```bash
-./scripts/auto-pr > /tmp/auto-pr.log 2>&1 &
-# Wait for notifications; the Monitor will fire on success OR failure OR timeout signatures.
+while pgrep -f "python -m pytest" > /dev/null; do sleep 30; done
 ```
 
-```
-Monitor:
-  tail -f /tmp/auto-pr.log | grep --line-buffered \
-      -E "merged|Merged|FAIL|failed|Error|ERROR|SUCCESS|TIMEOUT|Cannot|blocked|Exit code|Recovery:"
-```
+This loop **never exits** — `pgrep -f` matches against the full command line of every process, and the bash running the wait-loop has the literal string `python -m pytest` in its own argv. The loop self-matches and waits for itself forever. Same trap class as `ps aux | grep foo` (the `grep` self-matches in its own output).
 
-The `|Recovery:` alternation is load-bearing: `scripts/auto-pr` emits `Recovery: ...` hints when the final merge did not actually complete but the script exited 0 anyway. Without that pattern in the Monitor alternation, the script appears to succeed silently.
+**Standard workarounds:**
+
+- **Match by PID.** Capture `$!` when starting the command, then poll `kill -0 $PID 2>/dev/null` (returns nonzero when the PID is gone). PIDs can't be self-matched.
+- **The `[p]ytest` regex trick.** Write `pgrep -f "[p]ython -m pytest"`. The bracket-`p`-bracket is a regex character class matching `p`; the literal `[p]` in the wait-loop's argv has the brackets, which don't match the regex.
+
+**Doctrine:** if you're reaching for `pgrep`, `ps | grep`, or any while-loop that polls process state, consider first that you might have other tools readily available that would do it without the trap.
+
 
 ## Reading the captured log
 

@@ -234,7 +234,14 @@ PLAYBOOKS = [
      "alternation covering every terminal state, not just the happy path. Hazard: auto-pr's "
      ".ops backup/restore cycle can overwrite tracker discuss/add/update operations made "
      "during the run — avoid tracker writes while auto-pr is in flight. Recovery procedure "
-     "(including the pre-pop stash verification step) lives in the playbook itself."),
+     "(including the pre-pop stash verification step) lives in the playbook itself. "
+     "Anti-pattern for waiting on a process to finish: a while-loop calling pgrep -f \"X\" "
+     "self-matches because the wait-loop's own shell process has the literal string X in "
+     "its argv, so the loop never exits — same trap class as ps aux | grep foo. Before "
+     "reaching for pgrep, ps | grep, or any process-state polling loop, consider whether "
+     "your harness already provides a way to be notified when a backgrounded command "
+     "finishes. If pgrep is unavoidable, capture $! and poll kill -0 $PID, or use the "
+     "[p]attern regex trick to avoid self-matching."),
     ("bakeoff-validation-tagging-discipline",
      ".agent/agent_playbooks_protocols_sops_skills/bakeoff-validation-tagging-discipline.md",
      "Tagging discipline for the awaits_bakeoff_validation queue: applied at "
