@@ -1,0 +1,21 @@
+- op: create  # a065
+  at: '2026-05-08T23:43:51Z'  # a065
+  by: agent  # a065
+  actor: jgstern_agent  # a065
+  clock: 1  # a065
+  nonce: a065  # a065
+  data:  # a065
+    kind: work_item  # a065
+    title: "DQ-1: Should _transitive_bases BFS gain a third-party allow-list for well-known framework bases (HierarkeyForm, Wagtail Page, FilterSet, ApplicationRecord, ModelAdmin, etc.)?"  # a065
+    status: needs_human_review  # a065
+    priority: 3  # a065
+    parent:  # a065
+    tags:  # a065
+    - framework_dispatch_linkers  # a065
+    - analysis_quality  # a065
+    isbefore: []  # a065
+    duplicate_of: []  # a065
+    not_duplicate_of: []  # a065
+    pr_ref:  # a065
+    description: "## Origin\n\nFiled per hg-uat-v4.1.0 Round 03 incidental finding (master report §4 DQ-1). Surfaced when WI-halat's transitive-base BFS in django_orm_dispatch did not match pretix's HierarkeyForm-rooted Form chains because HierarkeyForm is a third-party class whose meta.base_classes is unknown to the in-tree analysis.\n\n## Behavior\n\nForms / models whose only base classes are third-party (e.g. `SettingsForm(I18nFormMixin, HierarkeyForm)`) receive no django_orm_dispatch edges. The BFS terminates because the third-party class's meta.base_classes is unknown.\n\nWI-halat scope: the claim text explicitly limits the BFS to in-tree ancestors. This is documented behavior, not a bug.\n\n## Open question\n\nShould _transitive_bases gain a small allow-list of well-known third-party Django/Rails/etc. bases? Examples to consider:\n- Django: HierarkeyForm, FilterSet (django-filter), Serializer (DRF), ModelAdmin (admin)\n- Rails: ApplicationRecord (rails 5+), the Administrate::ApplicationController (admin gem)\n- Wagtail: Page, Site, Block (CMS framework)\n- Flask: MethodView (Flask-RESTful)\n- FastAPI: BaseModel (pydantic via fastapi)\n\n## Trade-off\n\n- **Pro**: more coverage on real-world apps that commonly mix in third-party bases. Pretix, Wagtail, DRF projects all hit this gap. The blast radius is non-trivial — many real-world apps fall through.\n- **Con**: maintenance burden of the allow-list (which third-party classes count as 'well-known'? when do new ones get added? how to deprecate stale entries?). Risk of allow-list-creep where the list grows to track every framework's base hierarchy.\n- **Asymmetry consideration**: view-template-linker-v1 handles this orthogonally via Rails filename convention (DQ-3) and consequently DOES cover Administrate chains. The two linkers' opposite behaviors are themselves worth discussing.\n\n## Why needs_human_review\n\nValue judgment about scope/maintenance trade-off, not a defect to fix.\n\n## References\n\n- Round 03 report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-03-WI-nosug-django-transitive-and-dispatch-revalidation/report.md\n- Master report §4 DQ-1: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/master-report.md\n- Producer: packages/hypergumbo-core/src/hypergumbo_core/linkers/_transitive_bases.py"  # a065
+    fields: {}  # a065

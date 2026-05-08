@@ -1,0 +1,20 @@
+- op: create  # f462
+  at: '2026-05-08T23:43:52Z'  # f462
+  by: agent  # f462
+  actor: jgstern_agent  # f462
+  clock: 1  # f462
+  nonce: f462  # f462
+  data:  # f462
+    kind: work_item  # f462
+    title: "DQ-2: Rust analyzer misclassifies Clone as struct in candle-core/cuda_backend/mod.rs:85 (parser artifact)"  # f462
+    status: todo_soft  # f462
+    priority: 4  # f462
+    parent:  # f462
+    tags:  # f462
+    - analysis_quality  # f462
+    isbefore: []  # f462
+    duplicate_of: []  # f462
+    not_duplicate_of: []  # f462
+    pr_ref:  # f462
+    description: "## Origin\n\nFiled per hg-uat-v4.1.0 Round 04 incidental finding (master report §4 DQ-2). Single edge affected in candle.\n\n## Symptom\n\nThe candle artifact contains a node `rust:candle-core/src/cuda_backend/mod.rs:85-85:Clone:struct` in the node table, receiving one `implements` edge from `VarBuilderArgs`. There is no Rust `struct Clone` definition in candle's source — line 85 of that file is presumably a `#[derive(Clone)]` attribute or a `: Clone` trait bound that the Rust analyzer misclassified as a struct definition.\n\n## Severity\n\nLow (only one edge affected on candle; no observed cross-repo amplification). Worth investigating but not a verdict-affecting issue.\n\n## Likely cause\n\nrust.py's tree-sitter struct-definition extractor is matching too broadly — likely picking up either:\n- `#[derive(Clone)]` attribute syntax (where 'Clone' is an attribute argument, not a struct name), OR\n- `: Clone` trait-bound syntax in a generic constraint (where 'Clone' is a trait reference, not a struct).\n\n## Fix scope\n\nTighten the struct-extraction tree-sitter query to exclude the offending parent node types. Likely 1-2 LOC in rust.py's struct-extraction path.\n\n## Acceptance\n\n- Property test: a Rust file containing `#[derive(Clone, Debug)]` and a `fn foo<T: Clone>(t: T)` does NOT produce `Clone:struct` or `Debug:struct` symbol nodes.\n- Re-run on candle: zero `Clone:struct` nodes in the artifact.\n\n## References\n\n- Round 04 report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-04-WI-zozuz-rust-impl-cross-language-gating/report.md\n- Master report §4 DQ-2: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/master-report.md\n- Suspected source: candle-core/src/cuda_backend/mod.rs:85\n- Likely producer: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py"  # f462
+    fields: {}  # f462
