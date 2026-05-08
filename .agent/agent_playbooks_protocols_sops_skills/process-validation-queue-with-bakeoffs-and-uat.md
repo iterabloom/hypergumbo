@@ -233,6 +233,11 @@ The plan must be **self-contained** because the UAT agent cannot read the tracke
   - `moved` if <concrete threshold, e.g., "≥5 edges from <construct> to <impl> in `hg.json`, AND ≥4/5 ground-truthed correct against target source">.
   - `no_move` if <concrete failure threshold, e.g., "0 edges of the expected shape despite ≥3 instances of the construct in target source">.
   - `inconclusive` if <ambiguous-result threshold, e.g., "edges present but no clean ground-truth target found in this repo — re-route to <alternate>">.
+**Mechanism check** (optional, pre-committed by orchestrator): If the claim text identifies a specific mechanism (e.g., "transitive base-class walk", "embedded-signal consultation", "name-collision tie-breaker") that the verdict criteria above do not uniquely identify, pre-commit one or two falsification probes here so the UAT agent can independently verdict whether the observable signal is produced by the claimed mechanism.
+  - **Mechanism observable from**: <one or two probes, e.g.: "edges land on classes whose in-tree base chain reaches BaseX in >1 hop"; "edges DON'T land when only the filename-convention path exists"; "edges DON'T land when third-party intermediates break the in-tree chain">.
+  - **Mechanism check verdict**: `matches` / `mismatch` / `n/a — not separable from observable signal`.
+
+  The mechanism check is **independent** of the verdict criteria. A round can resolve `moved` (verdict criteria met) while the mechanism check resolves `mismatch` (criteria met for reasons unrelated to the claimed mechanism). When that happens, see Phase U4's fourth verdict bullet for the strip-with-caveat lifecycle. Omit this section if the claim text doesn't identify a mechanism, or if the mechanism is not separable from the observable signal.
 **Ground-truth sample size**: N candidates, sampled by <strategy: e.g., "first N edges of the expected shape" or "N random calls of the dispatch construct in target source">.
 **Ground-truth instructions for the UAT agent**: For each sampled candidate, open the target repo's source at the `file:line` reported by hypergumbo and confirm that the relationship hypergumbo claims (call edge / dispatch / boundary / etc.) actually exists. Verdict per candidate: pass / fail / ambiguous. Roll up to the per-item verdict per the criteria above.
 ```
@@ -277,18 +282,27 @@ Expected report.md shape:
 ```markdown
 # Round NN — Validation Verdicts
 
-| Item | Verdict | Evidence |
-|---|---|---|
-| WI-... | moved | data/<artifact>: 12 edges of expected shape, ground-truth 5/5 correct (file:line refs in subsection). |
-| WI-... | no_move | data/<artifact>: 0 expected edges despite 3 dispatch sites observed in target source. |
-| WI-... | inconclusive | data/<artifact>: edges present but target lacks the construct cleanly; suggest re-target on <alternate>. |
+| Item | Verdict | Mechanism | Evidence |
+|---|---|---|---|
+| WI-... | moved | matches | data/<artifact>: 12 edges of expected shape, ground-truth 5/5 correct (file:line refs in subsection). Mechanism check: in-tree transitive chain >1 hop confirmed on 4/5 sampled cases. |
+| WI-... | moved | mismatch | data/<artifact>: 12 edges, ground-truth 5/5. Mechanism check: forward-direction falsification — N cases where claimed mechanism would emit but linker emits zero, AND M cases where claimed mechanism would skip but linker emits — observably different mechanisms in operation. See per-item subsection. |
+| WI-... | no_move | n/a | data/<artifact>: 0 expected edges despite 3 dispatch sites observed in target source. |
+| WI-... | inconclusive | n/a | data/<artifact>: edges present but target lacks the construct cleanly; suggest re-target on <alternate>. |
 
 ## WI-... — <title>
-<ground-truth narrative: file:line references in target repo, observed-vs-expected delta, incidental observations>
+<ground-truth narrative: file:line references in target repo, observed-vs-expected delta, incidental observations.>
+
+If the verdict is `moved` with `Mechanism: mismatch`, this subsection MUST
+include: (a) what the claim text described, (b) what the linker
+observably does instead, (c) the falsification probes from plan.md and
+their outcomes. The orchestrator uses this to file the claim-vs-behavior
+follow-up in Phase U4.
 
 ## Incidental findings
 <bugs / DQs / UX issues surfaced during validation, classified per the campaign's standards>
 ```
+
+The `Mechanism` column is `n/a` whenever plan.md omitted the Mechanism check section, or whenever the mechanism is not separable from the observable signal. It's `matches` or `mismatch` when plan.md pre-committed falsification probes and the UAT agent ran them.
 
 When the round concludes, the human signals to the orchestrator (typically by ending the UAT agent session and saying so explicitly).
 
@@ -320,6 +334,22 @@ After the human signals the round complete, the orchestrator reads `~/hypergumbo
   scripts/tracker discuss <ID> "UAT round-NN verdict: inconclusive. <reason>. Re-route to <suggested alternate target> in next round, or wait for <dependent change>."
   ```
 
+- **`moved` verdict with `Mechanism: mismatch` flagged in report.md** — strip the tag (the public-facing claim is satisfied) AND file a follow-up tracker item to either revise the claim text or change the linker behavior. The strip is correct because the pre-committed verdict criteria were met; the follow-up captures the orchestrator's decision about claim-text-vs-behavior reconciliation. Two operations:
+  ```bash
+  # 1. Strip the tag with a longer caveat note
+  scripts/tracker update <ID> --remove-tag awaits_bakeoff_validation \
+    --note "Validated via UAT round-NN: moved (N/M ground-truth). NOTE: report.md flagged Mechanism: mismatch — claim text describes <X> but linker uses <Y>. Falsification: <one-sentence summary of the probes>. Follow-up filed: <FOLLOWUP-ID>."
+
+  # 2. File the follow-up (NOT parented; it's a fresh decision item)
+  FOLLOWUP_ID=$(scripts/tracker add \
+    --kind work_item \
+    --title "Reconcile <ID> claim text vs <linker> behavior: <X> vs <Y>" \
+    --priority 3 \
+    --status needs_human_review \
+    --description "UAT round-NN at ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v<release>/lab-notebook/round-NN-<batch>/ verdicted moved-with-mechanism-mismatch. Claim text: <X>. Observed behavior: <Y>. Decision: (a) update claim text to describe path-convention/whatever-the-real-mechanism-is, OR (b) change linker behavior to actually use the claimed mechanism. Both are valid; this is a value judgment about what the linker should do.")
+  ```
+  The follow-up is `needs_human_review` rather than `todo_*` because the claim-vs-behavior choice is a value judgment, not a defect to fix. Use `todo_hard` only if the report's narrative makes one resolution clearly correct (rare).
+
 The orchestrator also files tracker items for any incidental findings the UAT agent recorded under "Incidental findings" — bugs as `kind=work_item` `status=todo_hard` (or `todo_soft` if minor), DQs and UX issues per their normal classification.
 
 **Anti-patterns specific to UAT tag management:**
@@ -328,6 +358,7 @@ The orchestrator also files tracker items for any incidental findings the UAT ag
 - *Inheriting the tag onto regression sub-items*. Regression items track a fresh problem; they earn `awaits_bakeoff_validation` only after their own fix ships with a fresh quantitative claim. Tagging them at filing time pollutes the queue.
 - *Using `tracker update --remove-tag` without a paired discussion entry*. The audit trail is the entire point of the tag discipline — the resolution rationale must be reconstructable without context-window archaeology. `--note` collapses the two operations and is preferred.
 - *Re-running plan.md verdict criteria post-hoc when the report.md verdict feels wrong.* If the orchestrator disagrees with a UAT verdict, the right path is to file a tracker observation and let the next round re-validate — not to override the UAT agent's verdict from outside the firewall. Override-from-outside is exactly the cheating modality the firewall prevents.
+- *Withholding a strip on `moved` because the mechanism doesn't match claim text.* The pre-committed verdict criteria were met; the strip is correct. Mechanism mismatch is a separate concern (claim-text vs. behavior reconciliation) that gets a follow-up item, not tag retention. Withholding conflates two different problems and leaves the tag in the queue indefinitely while the user-observable claim already holds. The fourth verdict bullet above (`moved` + `Mechanism: mismatch`) is the correct lifecycle.
 
 ### Phase U5 — Orchestrator agent: round close-out and master-report synthesis
 
