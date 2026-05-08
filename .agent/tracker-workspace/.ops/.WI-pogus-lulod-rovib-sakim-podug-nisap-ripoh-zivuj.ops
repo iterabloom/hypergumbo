@@ -17,3 +17,20 @@
     pr_ref:  # 13a5
     description: "## Origin\n\nCross-language framework-dispatch linker survey 2026-05-07, conducted as a structural-fix scope-expansion question following WI-halat (PR #3539). Companion to the broader four-linker item filed in the same survey; this one captures a Go-specific narrow case.\n\n## Symptom\n\n`packages/hypergumbo-core/src/hypergumbo_core/linkers/grpc.py:524` walks `meta.base_classes` for `Unimplemented*` / `*Service` direct names only when detecting Go gRPC ttrpc service implementations. Go struct embedding chains through intermediate types — e.g. `UnimplementedFooServer` → custom intermediate struct → user struct — never match the framework base.\n\n## Distinction from the four-linker item\n\nThis is a Go-specific structural variant of the same gap pattern that the broader item addresses for Python (already fixed by WI-halat) and Java/Kotlin/Scala/Ruby/JS (the four-linker item). The grpc.py Go branch is filed separately because:\n\n1. The broader item is scoped to within-language framework-dispatch linkers in non-Python languages with class-based inheritance idioms (Java/Kotlin/Scala/Ruby/JS).\n2. Go uses struct embedding rather than class inheritance, and the linker's `meta.base_classes` consumption pattern at line 524 is structurally analogous but mechanically distinct.\n3. The expected real-world incidence is lower than the broader item's targets — Go gRPC service codebases tend to embed `UnimplementedFooServer` directly without an intermediate layer, but the gap exists structurally.\n\n## Fix scope\n\nWire `grpc.py:524` through `linkers/_transitive_bases.collect_transitive_base_names()` to walk transitive embedded-struct chains before short-name match. Mechanical change — ~5 LOC plus tests.\n\n## Acceptance\n\n- Property test: a two-level embedding chain (`UnimplementedFooServer` → `BaseFooImpl` → `UserFooImpl`) detects `UserFooImpl` as a gRPC service implementation.\n- Direct-embedding regression guard: existing single-level cases continue to work.\n- 100% coverage on the changed source.\n\n## Cross-references\n\n- WI-halat (done, P2): the original Python-only fix introducing `_transitive_bases.py`.\n- The broader four-linker item (jackson/kafka_streams/view_template/react_component): same gap shape, different languages.\n- WI-likab linkage **refuted**: Go calls-edge access_mode 58.9% cap on alertmanager is a Tier 1 dataflow propagation issue, not a base-class traversal gap (per WI-halat author note). Closing this grpc.py gap will not move the WI-likab metric.\n\n## Out of scope\n\n- The four within-language framework-dispatch linker fixes (jackson/kafka_streams/view_template/react_component) — separate item.\n- The type_hierarchy.py skip-level dispatches_to gap — different shape, separate item."  # 13a5
     fields: {}  # 13a5
+- op: update  # 50a4
+  at: '2026-05-07T20:36:34Z'  # 50a4
+  by: agent  # 50a4
+  actor: jgstern_agent  # 50a4
+  clock: 2  # 50a4
+  nonce: 50a4  # 50a4
+  set:  # 50a4
+    status: done  # 50a4
+  add:  # 50a4
+    tags: [awaits_bakeoff_validation, for_uat_bakeoff, framework_dispatch_linkers]  # 50a4
+- op: discuss  # d178
+  at: '2026-05-07T20:36:34Z'  # d178
+  by: agent  # d178
+  actor: jgstern_agent  # d178
+  clock: 3  # d178
+  nonce: d178  # d178
+  message: "Shipped via PR #197. Closes the Go grpc.py struct embedding traversal gap by wiring _link_go_methods_to_rpc_routes through the WI-halat _transitive_bases helper. link_grpc accepts existing_edges; the registry entrypoint threads ctx.edges through. 4 new property tests; 100% coverage. Per BVT discipline: tagging awaits_bakeoff_validation + for_uat_bakeoff (UAT cycle: a Go gRPC ttrpc / CSI codebase like containerd or kata-containers protects this verdict)."  # d178

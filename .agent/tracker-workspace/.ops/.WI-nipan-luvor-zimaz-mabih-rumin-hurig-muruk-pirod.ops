@@ -19,3 +19,36 @@
     pr_ref:  # 893d
     description: "From hg-uat-v4.0.0 directed-validation campaign (2026-05-03), master report\n§ DQ-02.\nMaster report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.0.0/lab-notebook/master-report.md\n\n## Symptom\n\n`django_orm_dispatch` emits `dispatches_to` edges for View base-class methods\n`get`, `post`, etc. — but **not** for `dispatch`, despite `dispatch` being\nlisted in the round-05 plan's expected method surface (Django's `View.dispatch`\nis the framework-called router that dispatches to `get`/`post`/etc.).\n\nIn pretix, the linker emits **0** `dispatches_to` edges to any `*.dispatch`\nmethod anywhere in the graph. This is one of the contributors (alongside\nBUG-01) that left WI-nosug at an inconclusive 8/15.\n\n## Fix scope\n\nAdd `dispatch` to the View per-base method map in\n`django_orm_dispatch` (alongside any other generic-CBV lifecycle method\nthat's currently missing — e.g. spot-check `setup`, `http_method_not_allowed`,\n`options`).\n\nTrivial change. Filed separately from BUG-01 to keep the commit narrow.\n\n## Acceptance\n\nAfter the fix, a class subclassing `View` (or any generic-CBV) with a\n`dispatch` override emits a `dispatches_to` edge from class to `dispatch`\nwith provenance attributable to `django_orm_dispatch`."  # 893d
     fields: {}  # 893d
+- op: update  # 4e45
+  at: '2026-05-07T19:43:20Z'  # 4e45
+  by: agent  # 4e45
+  actor: jgstern_agent  # 4e45
+  clock: 2  # 4e45
+  nonce: '4e45'  # 4e45
+  set:  # 4e45
+    status: todo_hard  # 4e45
+    priority: 3  # 4e45
+- op: discuss  # cff1
+  at: '2026-05-07T19:43:20Z'  # cff1
+  by: agent  # cff1
+  actor: jgstern_agent  # cff1
+  clock: 3  # cff1
+  nonce: cff1  # cff1
+  message: "Promoted P4 todo_soft → P3 todo_hard for v4.1.0 inclusion. Phase 2 of drain plan: dispatch missing from generic-CBV entries (ListView/DetailView/CreateView/UpdateView/DeleteView/TemplateView) — those subclasses never reach the View entry's frozenset because Django's class hierarchy is external to the project. Fix: extend each generic-CBV entry with the View-inherited lifecycle methods (dispatch, setup, http_method_not_allowed, options)."  # cff1
+- op: update  # 1682
+  at: '2026-05-07T20:07:10Z'  # 1682
+  by: agent  # 1682
+  actor: jgstern_agent  # 1682
+  clock: 4  # 1682
+  nonce: '1682'  # 1682
+  set:  # 1682
+    status: done  # 1682
+  add:  # 1682
+    tags: [awaits_bakeoff_validation, for_uat_bakeoff]  # 1682
+- op: discuss  # 17d0
+  at: '2026-05-07T20:07:10Z'  # 17d0
+  by: agent  # 17d0
+  actor: jgstern_agent  # 17d0
+  clock: 5  # 17d0
+  nonce: 17d0  # 17d0
+  message: "Shipped via PR #196. Generic CBVs (ListView/DetailView/CreateView/UpdateView/DeleteView/TemplateView) now fold the View lifecycle (dispatch/setup/options/http_method_not_allowed/HTTP-verbs/head/trace) into their per-base method sets. New _VIEW_LIFECYCLE module-level constant. 7 new property tests. Per BVT discipline: tagging awaits_bakeoff_validation + for_uat_bakeoff (UAT cycle: pretix re-run will protect WI-nosug verdict)."  # 17d0

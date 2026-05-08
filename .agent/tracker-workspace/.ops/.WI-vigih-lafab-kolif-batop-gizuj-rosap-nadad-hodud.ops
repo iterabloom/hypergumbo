@@ -32,3 +32,12 @@
   clock: 3  # 431f
   nonce: 431f  # 431f
   message: "Shipped via PR #194. Closes the cross-language framework-dispatch traversal gap in jackson_dispatch / kafka_streams_dispatch / view_template / react_component. 16 new property tests + 4 helper-extension tests; 100% coverage on changed sources. Helper extension: collect_transitive_base_names accepts meta_keys for kafka_streams's interfaces metadata key. Per BVT discipline, tagging awaits_bakeoff_validation + for_uat_bakeoff (UAT signal: spring-petclinic re-run protects WI-sokaz verdict; pretix Rails-ish corpus tests view_template; the JS/Kafka/Jackson real-world impact is best surfaced via the Phase 4 UAT cycle)."  # 431f
+- op: update  # 0dcd
+  at: '2026-05-07T19:42:42Z'  # 0dcd
+  by: agent  # 0dcd
+  actor: jgstern_agent  # 0dcd
+  clock: 4  # 0dcd
+  nonce: 0dcd  # 0dcd
+  set: {}  # 0dcd
+  add:  # 0dcd
+    tags: [awaits_bakeoff_validation, for_uat_bakeoff, framework_dispatch_linkers]  # 0dcd
