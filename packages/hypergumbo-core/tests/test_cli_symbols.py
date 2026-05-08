@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from hypergumbo_core.schema import SCHEMA_VERSION
-from hypergumbo_core.cli import cmd_symbols, main
+from hypergumbo_core.cli import cmd_symbols, main, _symbols_column_config
 
 
 class FakeArgs:
@@ -1601,3 +1601,237 @@ def test_cmd_symbols_low_confidence_edges_excluded_from_ranking(
         "FalsePositive (50 low-confidence in-edges). "
         "Ranking must filter low-confidence edges (conf < 0.5)."
     )
+
+
+# ---------------------------------------------------------------------------
+# Column-width controls (Symbol / File)
+# ---------------------------------------------------------------------------
+
+def _stub_terminal_size(monkeypatch, width: int) -> None:
+    """Pin the detected terminal width so column-width assertions are stable.
+
+    ``cmd_symbols`` reads ``shutil.get_terminal_size()`` to size the Rich
+    console. Under capsys the underlying handle is not a TTY, so the
+    detected width depends on the runner's environment. Tests stub the
+    function to a fixed value so they don't drift between hosts.
+    """
+    import os
+
+    fake = os.terminal_size((width, 24))
+    monkeypatch.setattr(
+        "hypergumbo_core.cli.shutil.get_terminal_size",
+        lambda *a, **kw: fake,
+    )
+
+
+def _build_long_path_behavior_map(long_path: str, long_name: str = "f") -> dict:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": f"python:{long_path}:1-5:{long_name}:function",
+                "name": long_name,
+                "kind": "function",
+                "language": "python",
+                "path": long_path,
+                "span": {
+                    "start_line": 1, "end_line": 5,
+                    "start_col": 0, "end_col": 10,
+                },
+            },
+        ],
+        "edges": [],
+    }
+
+
+def test_symbols_column_config_defaults() -> None:
+    """Default config: Symbol min_width=60, File min_width=80, ellipsis truncation."""
+    symbol_w, file_w, overflow, no_wrap = _symbols_column_config(
+        col_width=None, wrap=False,
+    )
+    assert symbol_w == 60
+    assert file_w == 80
+    assert overflow == "ellipsis"
+    assert no_wrap is True
+
+
+def test_symbols_column_config_wrap_flag() -> None:
+    """--wrap selects fold-overflow with no_wrap=False."""
+    _, _, overflow, no_wrap = _symbols_column_config(col_width=None, wrap=True)
+    assert overflow == "fold"
+    assert no_wrap is False
+
+
+def test_symbols_column_config_col_width_applies_to_both_columns() -> None:
+    """--col-width N sets both Symbol and File to N (within bounds)."""
+    symbol_w, file_w, _, _ = _symbols_column_config(col_width=200, wrap=False)
+    assert symbol_w == 200
+    assert file_w == 200
+
+
+def test_symbols_column_config_col_width_capped_at_1000() -> None:
+    """Values above 1000 are clamped to 1000 (sanity bound)."""
+    symbol_w, file_w, _, _ = _symbols_column_config(col_width=99999, wrap=False)
+    assert symbol_w == 1000
+    assert file_w == 1000
+
+
+def test_symbols_column_config_col_width_floor_at_one() -> None:
+    """Zero / negative column widths are clamped to 1 (Rich requires positive)."""
+    symbol_w, file_w, _, _ = _symbols_column_config(col_width=0, wrap=False)
+    assert symbol_w == 1
+    assert file_w == 1
+    symbol_w, file_w, _, _ = _symbols_column_config(col_width=-50, wrap=False)
+    assert symbol_w == 1
+    assert file_w == 1
+
+
+def test_symbols_column_config_col_width_with_wrap() -> None:
+    """--col-width and --wrap can combine."""
+    symbol_w, file_w, overflow, no_wrap = _symbols_column_config(
+        col_width=300, wrap=True,
+    )
+    assert symbol_w == 300
+    assert file_w == 300
+    assert overflow == "fold"
+    assert no_wrap is False
+
+
+def test_cmd_symbols_default_truncates_long_path(
+    tmp_path: Path, capsys, monkeypatch,
+) -> None:
+    """Default rendering truncates a path that exceeds the column with ``…``."""
+    _stub_terminal_size(monkeypatch, 80)
+    long_path = "src/" + "/".join(f"deep_segment_{i}" for i in range(20)) + "/main.py"
+    behavior_map = _build_long_path_behavior_map(long_path)
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+
+    result = cmd_symbols(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "…" in out, "Expected ellipsis truncation marker in default output"
+    assert long_path not in out, (
+        "Full long path should not appear by default (truncated)."
+    )
+
+
+def test_cmd_symbols_wrap_flag_renders_full_long_path(
+    tmp_path: Path, capsys, monkeypatch,
+) -> None:
+    """--wrap folds the path across lines so every character is rendered."""
+    _stub_terminal_size(monkeypatch, 80)
+    long_path = "src/" + "/".join(f"seg_{i}" for i in range(15)) + "/file.py"
+    behavior_map = _build_long_path_behavior_map(long_path)
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+    args.wrap = True
+
+    result = cmd_symbols(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "…" not in out, "Wrap mode should not produce ellipsis truncation"
+    # Fold-wrap can split a segment at the column boundary
+    # (`seg_11/se` ends one line, `g_12/...` begins the next), so the path
+    # is not a contiguous substring of `out`. After stripping whitespace
+    # the wrapped fragments rejoin and the full path reappears.
+    flattened = "".join(out.split())
+    assert long_path in flattened, (
+        f"Wrapped path not fully recoverable from output. "
+        f"Expected {long_path!r} after whitespace strip."
+    )
+
+
+def test_cmd_symbols_col_width_widens_both_columns(
+    tmp_path: Path, capsys, monkeypatch,
+) -> None:
+    """--col-width N renders longer content fully without ellipsis."""
+    _stub_terminal_size(monkeypatch, 80)
+    # A path ~140 chars: would be truncated under default 80-wide File column,
+    # but fits cleanly when --col-width pushes it to 200.
+    long_path = "src/" + "/".join(f"segment_{i:02d}" for i in range(12)) + "/main.py"
+    assert len(long_path) > 80
+    behavior_map = _build_long_path_behavior_map(long_path)
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+    args.col_width = 200
+
+    result = cmd_symbols(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert long_path in out, (
+        "Full path should be visible at --col-width 200; got truncated output."
+    )
+    assert "…" not in out
+
+
+def test_cmd_symbols_col_width_clamped_at_1000(
+    tmp_path: Path, capsys, monkeypatch,
+) -> None:
+    """--col-width above 1000 is silently clamped (no crash, content visible)."""
+    _stub_terminal_size(monkeypatch, 80)
+    behavior_map = _build_long_path_behavior_map("src/short.py")
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+    args.col_width = 99999
+
+    result = cmd_symbols(args)
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "src/short.py" in out
+
+
+def test_main_symbols_col_width_and_wrap_args(
+    tmp_path: Path, capsys, monkeypatch,
+) -> None:
+    """``--col-width`` and ``--wrap`` parse cleanly through the top-level CLI."""
+    _stub_terminal_size(monkeypatch, 80)
+    behavior_map = _build_long_path_behavior_map("src/a.py", long_name="my_func")
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    result = main([
+        "symbols", "--path", str(tmp_path),
+        "--col-width", "150", "--wrap",
+    ])
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "my_func" in out

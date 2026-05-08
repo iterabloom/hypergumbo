@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **`hypergumbo symbols` column-width controls.** The Symbol and File columns now default to 60 / 80 characters wide — roughly twice the width Rich picked under narrow auto-fit (e.g. Google Colab, where stdout is non-TTY and Rich falls back to ~80 cols, squeezing those columns to ~25–30 chars each). Two new flags: `--col-width N` sets both columns to N (clamped to `[1, 1000]`), and `--wrap` switches the overflow strategy from ellipsis truncation to character-level fold-wrap so long identifiers / paths break across lines instead of getting cut. The console width is auto-extended to fit when the requested column widths exceed the detected terminal — narrow hosts get a horizontally-scrolling table rather than collapsed columns.
+
 ## [4.1.0] - 2026-05-08
 
 ### Summary

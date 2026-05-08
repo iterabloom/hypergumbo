@@ -38,6 +38,7 @@ import json
 import math
 import os
 import resource
+import shutil
 import subprocess  # nosec B404 - subprocess needed for pip commands
 import sys
 from pathlib import Path
@@ -2915,6 +2916,46 @@ def cmd_remove_extras(args: argparse.Namespace) -> int:
     return exit_code
 
 
+# Default minimum widths for the Symbol and File columns in `cmd_symbols`.
+# Roughly twice what Rich's auto-fit picks in narrow (~80-col) hosts like
+# Google Colab — wide enough to show full identifiers and short paths
+# without ellipsis on common-case content.
+_SYMBOLS_DEFAULT_SYMBOL_WIDTH = 60
+_SYMBOLS_DEFAULT_FILE_WIDTH = 80
+_SYMBOLS_MAX_COL_WIDTH = 1000
+# Reserved console width for the four inner narrow columns (Kind / In /
+# Out / Deg) plus Rich's per-column padding. Empirical: a normal
+# `cmd_symbols` row needs ~30 chars beyond Symbol + File.
+_SYMBOLS_INNER_COLUMNS_OVERHEAD = 30
+
+
+def _symbols_column_config(
+    *, col_width: int | None, wrap: bool,
+) -> tuple[int, int, str, bool]:
+    """Resolve Symbol/File column widths and overflow strategy for ``cmd_symbols``.
+
+    Returns ``(symbol_width, file_width, overflow, no_wrap)``:
+
+    - When ``col_width`` is ``None`` the columns use the wider-than-default
+      minimums (60/80) so output stays readable in narrow hosts (Colab).
+    - When ``col_width`` is set both columns use it, clamped to
+      ``[1, _SYMBOLS_MAX_COL_WIDTH]`` (1000-char sanity bound).
+    - ``wrap=True`` switches the overflow strategy to ``"fold"`` (mid-token
+      wrap) and disables ``no_wrap``; otherwise content is truncated with
+      ``"ellipsis"``.
+    """
+    if col_width is None:
+        symbol_w = _SYMBOLS_DEFAULT_SYMBOL_WIDTH
+        file_w = _SYMBOLS_DEFAULT_FILE_WIDTH
+    else:
+        bounded = max(1, min(col_width, _SYMBOLS_MAX_COL_WIDTH))
+        symbol_w = bounded
+        file_w = bounded
+    overflow = "fold" if wrap else "ellipsis"
+    no_wrap = not wrap
+    return symbol_w, file_w, overflow, no_wrap
+
+
 def cmd_symbols(args: argparse.Namespace) -> int:
     """Display symbol catalog with connectivity information.
 
@@ -3070,17 +3111,38 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         )
         return 0
 
-    # Create Rich table with auto-adjusting columns
-    console = Console()
+    # Resolve Symbol/File column-width controls. Defaults widen the two
+    # text columns so narrow hosts (e.g. Google Colab, where Rich detects
+    # ~80 cols) don't squeeze them into ellipsized stubs.
+    symbol_width, file_width, overflow, no_wrap_flag = _symbols_column_config(
+        col_width=getattr(args, "col_width", None),
+        wrap=getattr(args, "wrap", False),
+    )
+
+    # Force the console width wide enough to fit Symbol + File at their
+    # requested widths plus the four narrow inner columns (Kind / In / Out
+    # / Deg) and Rich's per-column padding. In a wider terminal we honor
+    # that, so the table can grow naturally; in a narrow terminal (Colab,
+    # CI logs) the table overflows the viewport — a horizontal scroll is
+    # the correct trade-off when the user has explicitly asked for wide
+    # columns.
+    detected_width = shutil.get_terminal_size(fallback=(120, 24)).columns
+    required_width = symbol_width + file_width + _SYMBOLS_INNER_COLUMNS_OVERHEAD
+    console = Console(width=max(detected_width, required_width))
     table = Table(show_header=True, header_style="bold", box=None)
 
-    # Add columns - Rich handles width automatically
-    table.add_column("Symbol", style="cyan", no_wrap=False)
+    table.add_column(
+        "Symbol", style="cyan",
+        width=symbol_width, no_wrap=no_wrap_flag, overflow=overflow,
+    )
     table.add_column("Kind", style="green")
     table.add_column("In", justify="right", style="yellow")
     table.add_column("Out", justify="right", style="yellow")
     table.add_column("Deg", justify="right", style="bold yellow")
-    table.add_column("File", style="dim", no_wrap=False)
+    table.add_column(
+        "File", style="dim",
+        width=file_width, no_wrap=no_wrap_flag, overflow=overflow,
+    )
 
     # Add rows
     for name, kind, ind, outd, degree, path, _nid in display_rows:
@@ -5778,9 +5840,12 @@ Examples:
   hypergumbo symbols --max-per-file 3 --all # All files, 3 symbols each
   hypergumbo symbols --kind function        # Only functions
   hypergumbo symbols --language python      # Only Python symbols
+  hypergumbo symbols --col-width 200        # Wider Symbol/File columns
+  hypergumbo symbols --wrap                 # Wrap long names instead of truncating
 
 Output: Rich table with columns Symbol, Kind, In (in-degree), Out (out-degree),
-Deg (total degree), File. Auto-adjusts column widths and wraps long text.
+Deg (total degree), File. Symbol and File columns default to 60 / 80 chars
+(use --col-width to override, --wrap to fold long content across lines).
 Sorted by file connectivity (hottest files first), then filename, then degree.
 
 Auto-discovers cached results from 'hypergumbo run', or specify --input."""
@@ -5832,6 +5897,26 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         action="store_true",
         dest="all",
         help="Show all symbols (ignore --limit)",
+    )
+    p_symbols.add_argument(
+        "--col-width",
+        type=int,
+        default=None,
+        dest="col_width",
+        metavar="N",
+        help=(
+            "Width (chars) for Symbol and File columns. Default: 60 / 80. "
+            "Capped at 1000."
+        ),
+    )
+    p_symbols.add_argument(
+        "--wrap",
+        action="store_true",
+        dest="wrap",
+        help=(
+            "Wrap long names/paths across lines instead of truncating "
+            "with an ellipsis."
+        ),
     )
     p_symbols.set_defaults(func=cmd_symbols)
 
