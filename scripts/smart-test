@@ -657,6 +657,28 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
     fi
 fi
 
+# Per-package coverage fallback: CI runs each packages/<P>/ in isolation and
+# its manifest sanity check requires ≥1 test under packages/<P>/tests/ for
+# every package whose source changed. The reverse-slice resolves tests via
+# transitive imports, so when a package's only changed source is __init__.py
+# (the version bump pattern at every release) and no test imports __init__
+# directly, the slice correctly returns zero matches for that package — but
+# the sanity check still expects ≥1. The helper below appends the
+# alphabetically-first test from any unrepresented affected package's
+# tests/ directory. Same lightweight-test rule the version-only branch
+# above already uses.
+PER_PKG_HELPER="$REPO_ROOT/scripts/per_package_fallback.py"
+if [[ -f "$PER_PKG_HELPER" ]] && command -v python3 &>/dev/null && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
+    PER_PKG_TESTS_FILE=$(mktemp)
+    echo "$AFFECTED_TESTS" > "$PER_PKG_TESTS_FILE"
+    PER_PKG_FALLBACKS=$(echo "$CHANGED_SOURCE_FILES" | python3 "$PER_PKG_HELPER" "$REPO_ROOT" --tests-file "$PER_PKG_TESTS_FILE" 2>/dev/null || echo "")
+    rm -f "$PER_PKG_TESTS_FILE"
+    if [[ -n "$PER_PKG_FALLBACKS" ]]; then
+        log "Per-package coverage fallback adding: $(echo "$PER_PKG_FALLBACKS" | tr '\n' ' ')"
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$PER_PKG_FALLBACKS" | sed '/^$/d' | sort -u)
+    fi
+fi
+
 # Count affected tests
 TEST_COUNT=$(echo "$AFFECTED_TESTS" | wc -l)
 log "Found $TEST_COUNT affected test files"
