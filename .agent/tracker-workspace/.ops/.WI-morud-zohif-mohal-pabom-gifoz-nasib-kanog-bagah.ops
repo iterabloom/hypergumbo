@@ -1,0 +1,21 @@
+- op: create  # 88db
+  at: '2026-05-08T23:42:59Z'  # 88db
+  by: agent  # 88db
+  actor: jgstern_agent  # 88db
+  clock: 1  # 88db
+  nonce: 88db  # 88db
+  data:  # 88db
+    kind: work_item  # 88db
+    title: "vhdl.py architecture-of-entity lookup uses single-value kind-blind dict (sibling to BUG-04)"  # 88db
+    status: todo_soft  # 88db
+    priority: 3  # 88db
+    parent:  # 88db
+    tags:  # 88db
+    - analysis_quality  # 88db
+    - infrastructure_linkers  # 88db
+    isbefore: []  # 88db
+    duplicate_of: []  # 88db
+    not_duplicate_of: []  # 88db
+    pr_ref:  # 88db
+    description: "## Origin\n\nFiled during BUG-04 cross-language scope-expansion survey (per Structural Fix Protocol). The VHDL analyzer exhibits the same single-value dict collision shape as rust.py:1097, with smaller blast radius.\n\n## Symptom\n\n`packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/vhdl.py` indexes four kinds together into a single dict:\n\n```python\n# vhdl.py:233 — single-value dict, name normalized to lowercase\nglobal_symbols[symbol.name.lower()] = symbol\n```\n\nInserted kinds: `entity`, `architecture`, `package`, `component`. The architecture-of-entity lookup at line 255 expects an entity (because `architecture X of Y` requires Y to be an entity), but the dict can have collided.\n\n```python\n# vhdl.py:255 — kind-blind lookup\ndst_id = global_symbols[entity_name.lower()].id\n```\n\nWhen a VHDL design contains a package and an entity sharing a name (common in IP-block libraries where the package-of-types and the entity-using-those-types are conventionally named after the same module), whichever was inserted last wins, and the architecture's implements edge can land on a kind-incoherent target.\n\n## Distinction from BUG-04\n\nSame root-cause shape (single-value dict + kind-blind lookup + collision possible in real code) but different language and different blast radius.\n\n- **Smaller blast radius**: VHDL is a less common analysis target; the package-vs-entity-vs-component collision is less idiomatic than Rust's trait-vs-struct (which is *the* dominant pattern for impl Trait for Struct).\n- **Silent failure mode**: vhdl.py:255 falls back to a synthetic `vhdl:external:{entity_name}:entity` ID with confidence=0.70 when not found. The bug surface is 'wrong dst when collision exists,' not 'missing dst entirely.'\n\n## Fix scope\n\nSame shape as BUG-04 option (B): kind-prefer at lookup time. For `architecture X of Y`, look up Y in an entity-only sub-dict first; fall back to the general dict only if no entity matches. ~5-10 LOC.\n\nIf a third analogous bug surfaces in a third analyzer, escalate to a refactor that introduces a shared kind-segregated multi-value dict utility (cf. inheritance.py:51-67's class_by_name / interface_by_name pattern). Until then, per-analyzer targeted fixes are cheaper.\n\n## Acceptance\n\n- Property test: a VHDL file containing both a package `Foo` and an entity `Foo`, with an architecture `Bar of Foo`, emits the implements edge to the entity, not the package.\n- Direct-base regression guard: existing single-Foo-only cases continue to resolve correctly.\n- 100% coverage on changed source.\n\n## References\n\n- Producer: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/vhdl.py:233 (insert), :255 (lookup)\n- Companion bug: BUG-04 in rust.py — same shape, larger blast radius, WI-milak-dogut-bosif-pifab-busuz-pugov-bibus-hagor"  # 88db
+    fields: {}  # 88db
