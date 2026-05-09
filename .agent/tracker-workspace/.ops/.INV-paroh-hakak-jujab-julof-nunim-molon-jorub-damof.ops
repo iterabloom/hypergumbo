@@ -1,0 +1,23 @@
+- op: create  # 384e
+  at: '2026-05-09T06:05:07Z'  # 384e
+  by: agent  # 384e
+  actor: jgstern_agent  # 384e
+  clock: 1  # 384e
+  nonce: 384e  # 384e
+  data:  # 384e
+    kind: invariant  # 384e
+    title: "verilog.py module-instantiation lookup uses single-value kind-blind dict (third sibling to BUG-04 / WI-morud)"  # 384e
+    status: violated  # 384e
+    priority: 3  # 384e
+    parent:  # 384e
+    tags:  # 384e
+    - analysis_quality  # 384e
+    - infrastructure_linkers  # 384e
+    isbefore: []  # 384e
+    duplicate_of: []  # 384e
+    not_duplicate_of: []  # 384e
+    pr_ref:  # 384e
+    description: "## Origin\n\nSurfaced during WI-morud (vhdl architecture-of-entity sibling) implementation (PR #3591). With this third occurrence of the same shape (rust BUG-04 / WI-milak; vhdl WI-morud; verilog), the WI-morud tracker description's escalation rule fires: 'If a third analogous bug surfaces in a third analyzer, escalate to a refactor that introduces a shared kind-segregated multi-value dict utility (cf. inheritance.py:51-67). Until then, per-analyzer targeted fixes are cheaper.'\n\n## Symptom\n\n`packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/verilog.py` has the identical shape as pre-fix vhdl.py:\n\n- :211 (insert): `global_symbols[symbol.name.lower()] = symbol` — single-value, kind-blind\n- :243 (lookup): `dst_id = global_symbols[module_type.lower()].id` — kind-blind\n\nVerilog 'module' is the analogue of VHDL 'entity'. A project with both `module Foo` and a same-named non-module symbol (Verilog has packages, primitives, programs, interfaces, classes, etc., depending on dialect) could mis-resolve a module instantiation's destination depending on insertion order.\n\n## Two paths forward (record decision, do not pre-decide)\n\n(A) Targeted fix mirroring WI-morud. Multi-value list registry + kind-prefer lookup for module. ~10 LOC. Cheapest ship.\n\n(B) Refactor escalation (per WI-morud spec). Extract a shared `KindSegregatedRegistry` utility used by rust.py (BUG-04), vhdl.py (re-applied), verilog.py, and possibly more. Probably ~50-80 LOC of utility + per-analyzer wire-up. Pays for itself only if a fourth case shows up; otherwise it's over-abstraction.\n\nDecision pending: probably (A) is right unless the Rust BUG-04 fix in WI-milak ends up looking like a clean utility candidate. The shared-utility decision is best made WITH the WI-milak implementation, not before it.\n\n## Acceptance\n\n- Property test: a Verilog file with both a `module Foo` and a same-named non-module symbol, plus a `module Bar; Foo inst(); endmodule` instantiation, emits the instantiation's destination edge to the module, not the non-module sibling.\n- 100% coverage on changed source.\n\n## References\n\n- Sibling fix WI-morud: PR #3591 (vhdl, merged)\n- Companion Rust bug: WI-milak (BUG-04, P1)\n- Producer: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/verilog.py:211 (insert), :243 (lookup)\n- Inspiration for refactor (path B): packages/hypergumbo-core/src/hypergumbo_core/linkers/inheritance.py:51-67 (class_by_name / interface_by_name split)"  # 384e
+    fields:  # 384e
+      statement: "Any analyzer that maintains a single name-keyed registry over multiple kinds (entity vs. package vs. component, trait vs. struct vs. enum, module vs. package vs. interface, etc.) must filter by kind at lookup time when the lookup semantically requires a specific kind. A kind-blind single-value dict + last-write-wins insertion races on collisions and emits kind-incoherent edges."  # 384e
+      root_cause: "verilog.py:211 inserts into global_symbols by lowercased name without kind segregation; verilog.py:243 looks up module_type by name without kind filter. When two symbols share a name (e.g. module Foo + a same-named non-module sibling), whichever was inserted last wins, and a module-instantiation destination edge can land on a non-module symbol."  # 384e

@@ -18,3 +18,25 @@
     pr_ref:  # f462
     description: "## Origin\n\nFiled per hg-uat-v4.1.0 Round 04 incidental finding (master report §4 DQ-2). Single edge affected in candle.\n\n## Symptom\n\nThe candle artifact contains a node `rust:candle-core/src/cuda_backend/mod.rs:85-85:Clone:struct` in the node table, receiving one `implements` edge from `VarBuilderArgs`. There is no Rust `struct Clone` definition in candle's source — line 85 of that file is presumably a `#[derive(Clone)]` attribute or a `: Clone` trait bound that the Rust analyzer misclassified as a struct definition.\n\n## Severity\n\nLow (only one edge affected on candle; no observed cross-repo amplification). Worth investigating but not a verdict-affecting issue.\n\n## Likely cause\n\nrust.py's tree-sitter struct-definition extractor is matching too broadly — likely picking up either:\n- `#[derive(Clone)]` attribute syntax (where 'Clone' is an attribute argument, not a struct name), OR\n- `: Clone` trait-bound syntax in a generic constraint (where 'Clone' is a trait reference, not a struct).\n\n## Fix scope\n\nTighten the struct-extraction tree-sitter query to exclude the offending parent node types. Likely 1-2 LOC in rust.py's struct-extraction path.\n\n## Acceptance\n\n- Property test: a Rust file containing `#[derive(Clone, Debug)]` and a `fn foo<T: Clone>(t: T)` does NOT produce `Clone:struct` or `Debug:struct` symbol nodes.\n- Re-run on candle: zero `Clone:struct` nodes in the artifact.\n\n## References\n\n- Round 04 report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-04-WI-zozuz-rust-impl-cross-language-gating/report.md\n- Master report §4 DQ-2: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/master-report.md\n- Suspected source: candle-core/src/cuda_backend/mod.rs:85\n- Likely producer: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py"  # f462
     fields: {}  # f462
+- op: discuss  # 0d97
+  at: '2026-05-09T04:27:19Z'  # 0d97
+  by: agent  # 0d97
+  actor: jgstern_agent  # 0d97
+  clock: 2  # 0d97
+  nonce: 0d97  # 0d97
+  message: "Diagnosis correction: the original 'rust.py struct-extractor misclassifies derive/trait-bound' hypothesis is wrong. Verified two ways: (1) candle-core/src/cuda_backend/mod.rs:85 actually contains a literal 'struct Clone;' — a real, intentional unit struct used as a marker for 'impl Map1 for Clone'. Tree-sitter is correctly extracting it. (2) Parser probes against #[derive(Clone)], where T: Clone, trait bounds, type aliases, use statements, generic impls, and macro bodies all confirm tree-sitter-rust 0.24.0 does NOT produce struct_item nodes for any of those shapes. Real root cause: candle-nn/src/var_builder.rs:23 has a manual 'impl<B: Backend> Clone for VarBuilderArgs<'_, B> { ... }'. The impl_item handler at rust.py:1090-1113 resolves trait_name='Clone' against local_symbols/global_symbols and accepts ANY symbol with that name — without checking kind=='trait'. So it binds to the candle-local 'struct Clone' and emits the spurious implements edge VarBuilderArgs → struct-Clone at confidence 0.95. Same structural class as WI-zozuz BUG-03 (which fixed the analogous issue in the inheritance.py linker via 'Rust kind discipline' at lines 197-206); rust.py's impl_item handler needs the same discipline. Fix: in rust.py:1090-1113, require trait_sym.kind=='trait' (or treat as unresolved otherwise — Clone is blocklisted in _RUST_STD_TRAIT_NAMES so the unresolved branch will correctly suppress)."  # 0d97
+- op: update  # 5f4d
+  at: '2026-05-09T04:49:50Z'  # 5f4d
+  by: agent  # 5f4d
+  actor: jgstern_agent  # 5f4d
+  clock: 3  # 5f4d
+  nonce: 5f4d  # 5f4d
+  set:  # 5f4d
+    status: done  # 5f4d
+- op: discuss  # 908a
+  at: '2026-05-09T04:49:50Z'  # 908a
+  by: agent  # 908a
+  actor: jgstern_agent  # 908a
+  clock: 4  # 908a
+  nonce: 908a  # 908a
+  message: "Fixed in PR #3589 (merged). Root cause was NOT a struct-extractor parser misclassification (verified: tree-sitter-rust 0.24.0 does not produce struct_item for #[derive(...)] or trait-bound positions, and candle-core/cuda_backend/mod.rs:85 literally is 'struct Clone;' — a real, intentional unit struct). Real root cause: rust.py's impl_item handler at lines 1090-1117 resolved trait_name without checking kind, so the LHS of 'impl Clone for VarBuilderArgs' (in candle-nn/var_builder.rs:23) bound to the candle-local 'struct Clone' instead of being treated as unresolved. Fix: require trait_sym.kind=='trait'; non-trait matches now fall through to the unresolved-trait branch (which suppresses Clone via _RUST_STD_TRAIT_NAMES). Test: test_impl_for_struct_does_not_resolve_to_struct_named_like_trait in TestRustTraitImplEdges. Same structural class as WI-zozuz BUG-03 (the inheritance-linker analogue, already fixed via Rust kind discipline at linkers/inheritance.py:197-206)."  # 908a

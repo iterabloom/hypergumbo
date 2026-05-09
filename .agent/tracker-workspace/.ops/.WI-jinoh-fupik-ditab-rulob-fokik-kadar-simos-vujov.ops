@@ -35,3 +35,18 @@
   clock: 3  # 3734
   nonce: '3734'  # 3734
   message: "REVISED 2026-05-08: Master report §3 BUG-06 + Round 10 retroactively reframe this item. Original filing (P3 todo_hard, title about argparse silent-accept of misplaced top-level flag) was based on a hypothesis Round 10 falsified. The actual root cause of Rounds 09 and 10's null engagement is the missing hypergumbo-lang-rust-analyzer Python integration package in the published v4.1.0 distribution — Round 10 confirmed via process-tree, distribution-metadata, and PyPI probes. Item retitled and bumped P3→P2 to match the master report's MED–HIGH severity. The argparse silent-accept observation is preserved as a secondary observation in the description for completeness, but is not the causal issue here."  # 3734
+- op: update  # 2ca4
+  at: '2026-05-09T07:34:46Z'  # 2ca4
+  by: agent  # 2ca4
+  actor: jgstern_agent  # 2ca4
+  clock: 4  # 2ca4
+  nonce: 2ca4  # 2ca4
+  set:  # 2ca4
+    status: done  # 2ca4
+- op: discuss  # 787b
+  at: '2026-05-09T07:34:46Z'  # 787b
+  by: agent  # 787b
+  actor: jgstern_agent  # 787b
+  clock: 5  # 787b
+  nonce: 787b  # 787b
+  message: "Fixed in PR #3595 (merged). Acceptance path (b) from the tracker spec — runtime gate that detects the missing import and raises a clear error rather than silently falling through. Implementation: new is_rust_analyzer_integration_installed() in rust_analyzer_install.py uses importlib.util.find_spec for side-effect-free detection; new _ensure_rust_analyzer_integration_or_exit() in cli.py wires into the --backend parsing loop (both --backend rust-analyzer and --backend=rust-analyzer forms) and exits with code 2 + a stderr message naming the missing package and pointing at BUG-06 BEFORE setting HYPERGUMBO_RUST_ANALYZER. cmd_install_rust_analyzer refuses to install the rustup binary alone when integration is missing (returns 2). install-rust-analyzer --check now reports both binary AND integration status, exiting 1 if either is missing. 9 new tests, 100% coverage on cli.py and rust_analyzer_install.py. Tracker spec said either acceptance path (a) or (b) suffices — closing as done. The structural fix (path (a): publish hypergumbo-lang-rust-analyzer to PyPI as a [rust-analyzer] extra so --backend rust-analyzer actually engages SCIP) is separate follow-up work — file as a new tracker item if/when it becomes a priority. Carry-forward note from the tracker description (BUG-06 unblocks empirical re-confirmation of BUG-04's producer-locus claim) still stands and is gated on path (a), not path (b)."  # 787b

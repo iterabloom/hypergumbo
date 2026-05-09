@@ -1,0 +1,21 @@
+- op: create  # e472
+  at: '2026-05-09T03:48:05Z'  # e472
+  by: agent  # e472
+  actor: jgstern_agent  # e472
+  clock: 1  # e472
+  nonce: e472  # e472
+  data:  # e472
+    kind: work_item  # e472
+    title: "Convention-based view-template linker for Laravel Blade"  # e472
+    status: needs_human_review  # e472
+    priority: 3  # e472
+    parent:  # e472
+    tags:  # e472
+    - framework_dispatch_linkers  # e472
+    - analysis_quality  # e472
+    isbefore: []  # e472
+    duplicate_of: []  # e472
+    not_duplicate_of: []  # e472
+    pr_ref:  # e472
+    description: "## Origin\n\nFiled per discussion surrounding WI-votut. See sister item `WI-mifif` (Django).\n\n## Gap\n\n`hypergumbo run` on a Laravel app produces no `renders` edge connecting a controller method to its Blade template. The implicit `view('users.show', $data)` → `resources/views/users/show.blade.php` relationship is not captured.\n\n## Laravel convention to model\n\n- **Action detection**: methods on classes that extend `Illuminate\\Routing\\Controller` or `App\\Http\\Controllers\\Controller` (the app's base controller, which itself extends Illuminate's).\n- **View name source**: the **string argument** to a `view(...)` helper call (or `View::make(...)` facade). Like Spring, this is explicit, not method-name-based.\n  - `view('users.show', $data)` → `resources/views/users/show.blade.php` (dots = directory separators).\n  - `view('users.show')` (no second arg) → same.\n  - `View::make('users.show')` → same.\n- **Template path derivation**: replace dots with `/` in the view name; resolve under `resources/views/`.\n- **Extensions**: `.blade.php` (Blade — primary), `.php` (raw PHP fallback).\n\n## Implementation note\n\nLike Spring, Laravel's view binding is **explicit string argument** to a function call, not method-name convention. Need to capture string-arg-of-`view()`-call sites in PHP analysis. The shared core extracted during the first non-Rails PR likely needs the same explicit-string-argument hook Spring needs — they may share an \"explicit-name strategy\" base, distinct from the Rails/Phoenix/Django method-name strategy.\n\n## Build against shared core\n\nThis linker should be built after the first non-Rails view-template linker has extracted the shared probe-and-emit core.\n\n## Acceptance\n\n- A Laravel fixture with `class UserController extends Controller { function show($id) { return view('users.show', ['user' => ...]); } }` and `resources/views/users/show.blade.php` produces a `renders` edge.\n- Dotted view names map to nested directories.\n- 100% coverage on changed source."  # e472
+    fields: {}  # e472
