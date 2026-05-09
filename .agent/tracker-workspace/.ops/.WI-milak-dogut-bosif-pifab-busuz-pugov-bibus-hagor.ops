@@ -19,3 +19,35 @@
     pr_ref:  # 80bd
     description: "## Origin\n\nFiled per hg-uat-v4.1.0 Round 04 verdict (no_move, 0/15 ground-truth on candle's impl Module for X blocks). Parent: WI-zozuz (Rust impl + cross-language gating). The cross-language gate (one of WI-zozuz's two layers) works correctly — 0 spurious Python→Rust trait edges, vs 31 in v4.0.0. The Rust kind-discipline guard (the second layer) does not catch the same-language same-name trait-vs-struct collision case.\n\n## Mechanism (sharpened by orchestrator source-read + Rounds 04 + 08)\n\n- The buggy producer is rust.py:1097 (verified by source read), not inheritance.py. inheritance.py's kind-discipline guard at lines 197-228 is dead code for Rust — Rust symbols don't carry meta.base_classes (verified by grep across analyzers; Scala/C#/Swift/Java/PHP populate it, Rust does not).\n- rust.py:1097 emits implements edges directly via single-value dict lookup: `trait_sym = local_symbols.get(trait_name) or global_symbols.get(trait_name)`. global_symbols is declared dict[str, Symbol] (rust.py:1827); when multiple symbols share a name, the dict overwrites and a single Symbol wins by insertion-order race.\n- Round 08 §8.2 census: candle has exactly 4 short-name trait/struct collisions (Module, SchedulerConfig, Task, Model). Only Module and SchedulerConfig misresolve. The differentiating factor is that both sides are top-level pub library_export symbols of their respective crates — those are the symbols that get registered into global_symbols, so name collisions can only occur in cases where both sides registered.\n- Task and Model resolve correctly because only one side of those collisions is library-exported (Round 08 §8.2 verification).\n- Same-shape collision is acknowledged elsewhere in rust.py: line 887 warns 'symbol_by_name[\"compute\"] is overwritten by whichever impl block is processed last' for the call-graph path, which was upgraded to use a span-based index. The impl_item path was simply never upgraded.\n- rust-analyzer-backend status is irrelevant to this bug. The published v4.1.0 distribution does not include the rust-analyzer integration package (BUG-06, WI-jinoh), so the SCIP backend cannot engage on the release. By elimination, rust-v1 (rust.py) is the only Rust-edge producer in v4.1.0; all 559 candle implements edges carry origin='rust-v1'. Once BUG-06 ships, an empirical re-confirmation becomes possible; until then, the producer-locus claim stands by elimination.\n\n## Scale (from Round 04 + Round 08)\n\n- 350 of 559 candle implements edges (~63%) misresolve to candle-kernels::Module struct instead of candle-core::Module trait. 0 correct trait-impl edges to the canonical Module trait.\n- 3 additional misresolutions on a SchedulerConfig collision in stable_diffusion / z_image area.\n- 185 of 559 implements edges DO correctly resolve to traits (Map1, Map2, GgmlType, CustomOp1, etc.) — kind-discipline guard fires correctly when there's no same-named struct competitor.\n\n## Fix scope (three options, in order of minimality)\n\n(B) **Targeted fix in rust.py:1097.** Multi-value lookup with kind preference (trait > struct/enum). ~5 LOC. Doesn't touch architecture. RECOMMENDED FIRST PASS.\n\n(A) **Architectural fix.** Have rust.py populate meta.base_classes = [trait_name] on impl-block's struct symbol and DEFER edge emission to inheritance.py. The kind discipline + multi-value lookup already in inheritance.py would handle disambiguation correctly. ~20 LOC + behavioral change to verify. More aligned with the 'centralized linker for inheritance' architecture comment in inheritance.py:7-21.\n\n(C) **Mirror inheritance.py's split-dict pattern in rust.py.** Maintain kind-segregated multi-value dicts (global_traits / global_types / global_callables). Bigger refactor; touches many call sites; public-method signature change for register_global. Defer unless a third analogous bug surfaces.\n\n## Pre-fix fixture spec\n\nTwo crates A and B; A defines `pub trait Foo;` (top-level pub export of A's lib.rs), B defines `pub struct Foo;` (top-level pub export of B's lib.rs); a third crate C contains `impl Foo for Bar;` where Bar is a struct in C. Expected emitted edge: `(Bar, Foo-trait-in-A, 'implements')`. Actual on v4.1.0: `(Bar, Foo-struct-in-B, 'implements')` (or vice versa, depending on global_symbols insertion order).\n\n## Acceptance\n\n- New regression test in packages/hypergumbo-lang-mainstream/tests/test_rust.py covers the trait-vs-struct same-name collision: emits implements edge to trait, not to struct.\n- Existing 185 trait-resolved implements edges in candle continue to resolve correctly (regression guard).\n- Module + SchedulerConfig misresolutions on candle drop to 0 / 0 (verifiable by re-running the candle ground-truth on a post-fix build).\n- 100% coverage on changed sources.\n\n## References\n\n- Round 04 report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-04-WI-zozuz-rust-impl-cross-language-gating/report.md\n- Round 08 §8.1 + §8.2: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-08-followup-discriminators/report.md\n- Master report §3 BUG-04: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/master-report.md\n- Producer source: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py:1090-1113 (impl_item handler), :1827 (global_symbols register), :887 (known-collision comment)\n- Companion sibling: see VHDL-shape sibling item filed in same campaign drain"  # 80bd
     fields: {}  # 80bd
+- op: update  # 8284
+  at: '2026-05-09T08:17:34Z'  # 8284
+  by: agent  # 8284
+  actor: jgstern_agent  # 8284
+  clock: 2  # 8284
+  nonce: '8284'  # 8284
+  set:  # 8284
+    status: in_progress  # 8284
+- op: update  # 4ed4
+  at: '2026-05-09T08:41:20Z'  # 4ed4
+  by: agent  # 4ed4
+  actor: jgstern_agent  # 4ed4
+  clock: 3  # 4ed4
+  nonce: 4ed4  # 4ed4
+  set:  # 4ed4
+    status: done  # 4ed4
+- op: discuss  # 5fa2
+  at: '2026-05-09T08:41:20Z'  # 5fa2
+  by: agent  # 5fa2
+  actor: jgstern_agent  # 5fa2
+  clock: 4  # 5fa2
+  nonce: 5fa2  # 5fa2
+  message: "Fixed in PR #3597 (commit e7bac33ee5). Acceptance path (B) per the WI-milak tracker spec: kind-segregated multi-value index populated by RustAnalyzer.register_symbol, consulted by impl_item lookup with trait > struct/enum kind preference. Same-file tie-break + stable-id deterministic fallback. WI-kahaz behavior preserved (no fall-through to non-trait). 3 new regression tests cover trait-first / struct-first / same-file orderings; full smart-test green (3048 tests). Path (A) — populate meta.base_classes and defer to linkers/inheritance.py — and path (C) — kind-segregated multi-value global_symbols mirroring go.py:3998 — remain follow-up work. Empirical re-confirmation on candle is gated on BUG-06 path (a) shipping (so a SCIP comparator is available); no candle bakeoff was run as part of this PR."  # 5fa2
+- op: update  # 1106
+  at: '2026-05-09T08:41:52Z'  # 1106
+  by: agent  # 1106
+  actor: jgstern_agent  # 1106
+  clock: 5  # 1106
+  nonce: '1106'  # 1106
+  set: {}  # 1106
+  add:  # 1106
+    tags: [awaits_bakeoff_validation]  # 1106

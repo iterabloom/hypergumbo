@@ -1,0 +1,22 @@
+- op: create  # ff84
+  at: '2026-05-09T09:20:06Z'  # ff84
+  by: agent  # ff84
+  actor: jgstern_agent  # ff84
+  clock: 1  # ff84
+  nonce: ff84  # ff84
+  data:  # ff84
+    kind: work_item  # ff84
+    title: "Audit: subprocess_cli linker single-value command_by_name dict (BUG-04/05 shape)"  # ff84
+    status: todo_hard  # ff84
+    priority: 2  # ff84
+    parent:  # ff84
+    tags:  # ff84
+    - analysis_quality  # ff84
+    - protocol_linkers  # ff84
+    - scope_expansion_audit  # ff84
+    isbefore: []  # ff84
+    duplicate_of: []  # ff84
+    not_duplicate_of: []  # ff84
+    pr_ref:  # ff84
+    description: "Scope-expansion candidate surfaced from BUG-04 / BUG-05 fixes (WI-milak / WI-kunoz). \n\n## Surface\n\n`packages/hypergumbo-core/src/hypergumbo_core/linkers/subprocess_cli.py:366-369`:\n\n```python\ncommand_by_name: dict[str, Symbol] = {}\nfor sym in cli_command_symbols:\n    if ...:\n        command_by_name[sym.name] = sym\n```\n\nThen at line 392-393: `target_symbol = command_by_name[call.subcommand]`.\n\n## Hypothesis\n\nSame structural class as WI-milak / WI-kunoz — a single-value dict keyed by short identifier overwrites cross-file. If two CLI tools in the same repo each register a subcommand with the same short name (e.g., two `build`, two `init`, two `serve`), the dict overwrites and every `subprocess.run(\"build\", ...)` resolves to whichever CLI was scanned last. Symptom: `dispatches_to` / `references` edges from subprocess invocations land on the wrong `cli_command` symbol.\n\n## Investigation steps\n\n1. Confirm scope: read `_link_subprocess_cli` (or whatever owns the dict) end-to-end. What populates `cli_command_symbols`? Is `sym.name` already qualified (Cobra/Click typically use the binary name as a prefix), or is it short?\n2. Quick scan of the prospector corpus for repos that register multiple `cli_command` symbols with the same short name. Likely candidates: monorepos with multiple Cobra/Click/Clap binaries (kubernetes/kubernetes, hashicorp/vault, helm/helm).\n3. If empirically present: file the fix as a follow-up WI with the same shape as WI-kunoz (key by `(file_path, sym.name)` or `(binary_name, sym.name)`).\n4. If empirically absent (e.g., names are always qualified upstream): close `wont_do` with evidence (a one-line note that all observed symbols carry distinct qualified names).\n\n## Acceptance\n\nEither: (a) a regression test that two CLI tools each registering the same short subcommand emit `dispatches_to` edges to the right command, with the producer fix; or (b) a closure note documenting that the dict is in practice collision-free with reproducible evidence.\n\n## Background\n\nSame shape as:\n- WI-milak / BUG-04 (rust.py impl_item trait/struct collision, fixed in PR #3597 via kind-segregated multi-value index)\n- WI-kunoz / BUG-05 (grpc.py struct→service map, fixed in PR #3598 via file-scoped (path, name) key)\n\nThe fix-pattern catalog is converging: prefer multi-value or scoped keys over short-name single-value dicts in linker symbol indexes."  # ff84
+    fields: {}  # ff84
