@@ -296,6 +296,80 @@ def test_emit_handler_slices_no_handlers_still_writes_empty_index(tmp_path: Path
     assert idx["handlers"] == []
 
 
+def test_run_behavior_map_writes_slices_to_stem_slices_subdir(tmp_path: Path) -> None:
+    """WI-rimos / UX-A: ``run_behavior_map`` must place handler-slice fan-out
+    inside ``<out-stem>.slices/`` next to the --out target, NOT spread the
+    slice files alongside the main behavior-map JSON.
+
+    Pre-fix, the caller passed ``out_path.parent`` to ``_emit_handler_slices``,
+    so a ``--out /foo/bar/result.json`` invocation deposited 20-30
+    ``slice.handler.*.json`` files directly in ``/foo/bar/``. The bakeoff
+    campaign that surfaced this used ``--out /tmp/round-NN.json``, so the
+    fan-out ended up in ``/tmp/`` and successive rounds clobbered each
+    other's slices. Co-locating the fan-out under ``<stem>.slices/`` keeps
+    the user's --out directory tidy and gives each invocation its own
+    namespace.
+    """
+    from hypergumbo_core.cli import run_behavior_map
+
+    # Repo root with a Flask-style route handler so the slice-emission
+    # path actually fires (the cmd_routes detector matches concept=route
+    # symbols, which the Python analyzer materialises from
+    # ``@app.route(...)`` decorators).
+    (tmp_path / "app.py").write_text(
+        "from flask import Flask\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "@app.route('/users/<int:user_id>', methods=['GET'])\n"
+        "def get_user(user_id):\n"
+        "    return {'id': user_id}\n"
+        "\n"
+        "@app.route('/users', methods=['POST'])\n"
+        "def create_user():\n"
+        "    return {'ok': True}\n"
+    )
+
+    out_dir = tmp_path / "artifacts"
+    out_path = out_dir / "result.json"
+
+    run_behavior_map(
+        repo_root=tmp_path,
+        out_path=out_path,
+        include_sketch_precomputed=False,
+        progress=False,
+    )
+
+    # Main result lands at the requested path.
+    assert out_path.exists(), out_path
+
+    # The slice fan-out subdirectory is derived from the --out file's stem.
+    slices_dir = out_dir / "result.slices"
+    assert slices_dir.is_dir(), (
+        f"Expected slice fan-out at {slices_dir}; out_dir contents: "
+        f"{sorted(p.name for p in out_dir.iterdir())}"
+    )
+
+    # The companion index always exists, even when no handlers were
+    # detected; here we expect at least one detected route.
+    index_path = slices_dir / "slice.handler.index.json"
+    assert index_path.is_file(), index_path
+    index = json.loads(index_path.read_text())
+    assert index["view"] == "handler_slice_index"
+
+    # Crucially: NO slice.handler.* file leaks into the parent --out
+    # directory. The only entries there are the main result, any tier
+    # / sketch / supply-chain artifacts, and the slices subdirectory
+    # itself.
+    leaked = sorted(
+        p.name for p in out_dir.iterdir()
+        if p.is_file() and p.name.startswith("slice.handler.")
+    )
+    assert leaked == [], (
+        f"Slice fan-out leaked into {out_dir} instead of {slices_dir}: "
+        f"{leaked}"
+    )
+
+
 def test_default_max_handler_slices_is_25() -> None:
     """Documented contract: default cap is 25 handlers."""
     assert _DEFAULT_MAX_HANDLER_SLICES == 25

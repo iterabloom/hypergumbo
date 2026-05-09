@@ -5225,8 +5225,9 @@ Cache location:
         dest="no_handler_slices",
         help="Disable per-route-handler forward slices (WI-sihok). By default "
              "`run` emits slice.handler.<METHOD>.<path>.json for each "
-             "detected handler, capped at --max-handler-slices. Use this "
-             "flag to skip the extra files entirely.",
+             "detected handler into a ``<out-stem>.slices/`` subdirectory next "
+             "to --out (capped at --max-handler-slices). Use this flag to "
+             "skip the extra files entirely.",
     )
     p_run.add_argument(
         "--max-handler-slices",
@@ -5235,7 +5236,8 @@ Cache location:
         metavar="N",
         help=f"Maximum per-handler forward slices to emit (default: "
              f"{_DEFAULT_MAX_HANDLER_SLICES}). Overflow handlers are listed in "
-             f"slice.handler.index.json with pointers to re-derive on demand.",
+             f"the ``<out-stem>.slices/slice.handler.index.json`` companion "
+             f"file with pointers to re-derive on demand.",
     )
     p_run.set_defaults(func=cmd_run)
 
@@ -7044,12 +7046,21 @@ def run_behavior_map(
     # "what does this handler touch?" is answerable without a follow-up
     # `hypergumbo slice --entry <handler>` invocation. Uses behavior_map's
     # in-memory node/edge dicts (already ranked) for inlined slice payloads.
+    #
+    # WI-rimos / UX-A: write the fan-out into ``<stem>.slices/`` next to the
+    # ``--out`` target instead of spreading 20-30 ``slice.handler.*.json``
+    # files alongside the main result. Co-locating in a stem-derived
+    # subdirectory keeps the user's --out directory tidy and prevents
+    # successive runs from clobbering each other's slices when --out
+    # changes between invocations (e.g. ``--out /tmp/round-01.json`` then
+    # ``--out /tmp/round-02.json`` no longer share a slice namespace).
+    slice_dir = out_path.parent / f"{out_path.stem}.slices"
     handler_slice_files = _emit_handler_slices(
         behavior_map,
         all_symbols,
         all_edges,
         repo_root,
-        out_path.parent,
+        slice_dir,
         max_handler_slices=max_handler_slices,
         enabled=enable_handler_slices,
     )
