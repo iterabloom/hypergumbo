@@ -443,6 +443,161 @@ class TestCheckPartialLinkerRequirements:
         assert "5 Met requirement" in warning.message
         assert "Unmet requirement" in warning.message
 
+    @staticmethod
+    def _make_cgo_diag_and_spec():
+        """Helper for the WI-zamoz gate tests.
+
+        Returns ``(mock_diag, fake_spec)`` shaped like the real CGO linker:
+        ``language_pairs=[("go", "c"), ("go", "cpp")]`` activation, one met
+        ``c_cpp_functions`` requirement and one unmet ``go_cgo_calls``
+        requirement (the candle-shaped partial diagnostic).
+        """
+        from unittest.mock import MagicMock
+
+        from hypergumbo_core.linkers.registry import LinkerActivation
+
+        mock_diag = MagicMock()
+        mock_diag.linker_name = "cgo"
+        mock_diag.linker_description = "CGO linker"
+        go_req = MagicMock()
+        go_req.name = "go_cgo_calls"
+        go_req.description = "Go cgo calls (C.funcName() via import \"C\")"
+        go_req.count = 0
+        go_req.met = False
+        c_req = MagicMock()
+        c_req.name = "c_cpp_functions"
+        c_req.description = "C/C++ function implementations"
+        c_req.count = 151
+        c_req.met = True
+        mock_diag.requirements = [go_req, c_req]
+
+        fake_spec = MagicMock()
+        fake_spec.name = "cgo"
+        fake_spec.activation = LinkerActivation(
+            language_pairs=[("go", "c"), ("go", "cpp")]
+        )
+        return mock_diag, fake_spec
+
+    def test_cgo_warning_suppressed_when_go_absent_in_tree(self) -> None:
+        """WI-zamoz: suppress partial-install warning when the linker's
+        activation conditions wouldn't trigger it on the detected tree.
+
+        The CGO linker activates on
+        ``language_pairs=[("go", "c"), ("go", "cpp")]``. A repo with
+        C/C++ symbols but no Go (e.g. candle: Rust + Python + C/CUDA
+        bindings) produces a CGO diagnostic with met=c_cpp_functions
+        and unmet=go_cgo_calls. Without the gate, this fires
+        ``CGO linker found N C/C++ implementations but 0 Go cgo
+        calls`` — unactionable because the user has no Go in tree.
+        """
+        from unittest.mock import patch
+
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        mock_diag, fake_spec = self._make_cgo_diag_and_spec()
+
+        ctx = LinkerContext(
+            repo_root=None,  # type: ignore[arg-type]
+            symbols=[],
+            edges=[],
+            detected_languages={"rust", "python", "c"},
+        )
+
+        with patch(
+            "hypergumbo_core.linkers.registry.check_linker_requirements",
+            return_value=[mock_diag],
+        ), patch(
+            "hypergumbo_core.linkers.registry.get_all_linkers",
+            return_value=iter([fake_spec]),
+        ):
+            warnings_list = check_partial_linker_requirements(ctx)
+
+        assert all(w.linker != "cgo" for w in warnings_list), (
+            "Partial warning must be suppressed when the linker's "
+            "activation conditions wouldn't fire on the detected tree."
+        )
+
+    def test_cgo_warning_fires_when_go_present_in_tree(self) -> None:
+        """Regression guard for the WI-zamoz gate.
+
+        When the CGO linker activation conditions ARE met (Go + C in
+        ``detected_languages``), a partial diagnostic must still emit
+        a warning. Distinguishes "linker would have run, requirements
+        partially met" (real signal — emit) from "linker wouldn't have
+        run, requirements look partial as artefact" (noise — suppress).
+        """
+        from unittest.mock import patch
+
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        mock_diag, fake_spec = self._make_cgo_diag_and_spec()
+
+        ctx = LinkerContext(
+            repo_root=None,  # type: ignore[arg-type]
+            symbols=[],
+            edges=[],
+            detected_languages={"go", "c"},
+        )
+
+        with patch(
+            "hypergumbo_core.linkers.registry.check_linker_requirements",
+            return_value=[mock_diag],
+        ), patch(
+            "hypergumbo_core.linkers.registry.get_all_linkers",
+            return_value=iter([fake_spec]),
+        ):
+            warnings_list = check_partial_linker_requirements(ctx)
+
+        cgo_warnings = [w for w in warnings_list if w.linker == "cgo"]
+        assert len(cgo_warnings) == 1, (
+            "Partial warning must still fire when the linker would "
+            "have activated on the detected tree."
+        )
+
+    def test_activation_gate_no_op_when_detection_info_empty(self) -> None:
+        """Backward-compat: existing tests pass empty detection info.
+
+        The WI-zamoz gate is a noise-reducer for real CLI runs (where
+        the profile always populates ``detected_languages`` /
+        ``detected_frameworks``). Test fixtures that skip detection —
+        e.g. crafted-diagnostic mocks with the default empty sets —
+        must keep their existing behavior.
+        """
+        from unittest.mock import MagicMock, patch
+
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        mock_diag = MagicMock()
+        mock_diag.linker_name = "cgo"
+        mock_diag.linker_description = "CGO linker"
+        go_req = MagicMock()
+        go_req.name = "go_cgo_calls"
+        go_req.description = "Go cgo calls"
+        go_req.count = 0
+        go_req.met = False
+        c_req = MagicMock()
+        c_req.name = "c_cpp_functions"
+        c_req.description = "C/C++ function implementations"
+        c_req.count = 151
+        c_req.met = True
+        mock_diag.requirements = [go_req, c_req]
+
+        ctx = LinkerContext(
+            repo_root=None,  # type: ignore[arg-type]
+            symbols=[],
+            edges=[],
+            # detected_languages and detected_frameworks default to empty
+        )
+
+        with patch(
+            "hypergumbo_core.linkers.registry.check_linker_requirements",
+            return_value=[mock_diag],
+        ):
+            warnings_list = check_partial_linker_requirements(ctx)
+
+        cgo_warnings = [w for w in warnings_list if w.linker == "cgo"]
+        assert len(cgo_warnings) == 1
+
 
 class TestCheckPartialInstallWarnings:
     """Tests for the combined check function."""

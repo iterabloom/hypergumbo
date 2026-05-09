@@ -272,16 +272,42 @@ def check_partial_linker_requirements(
     Returns:
         List of warnings for linkers with partial requirements.
     """
-    from .linkers.registry import check_linker_requirements
+    from .linkers.registry import check_linker_requirements, get_all_linkers
 
     warnings: list[PartialInstallWarning] = []
     diagnostics = check_linker_requirements(linker_ctx)
+
+    # WI-zamoz: skip linkers that wouldn't have activated on this tree.
+    # check_linker_requirements iterates ALL registered linkers, so e.g.
+    # the cgo linker (language_pairs=[("go", "c"), ("go", "cpp")]) still
+    # produces a "151 C/C++ implementations / 0 Go cgo calls" diagnostic
+    # on a Rust + Python repo. Without the gate, that becomes an
+    # unactionable partial-install warning. Build the lookup only when
+    # the caller passed real detection info — empty defaults (test
+    # fixtures, headless contexts) bypass the gate to preserve existing
+    # crafted-diagnostic test behavior.
+    has_detection = bool(
+        linker_ctx.detected_languages or linker_ctx.detected_frameworks
+    )
+    linker_specs_by_name = (
+        {linker.name: linker for linker in get_all_linkers()}
+        if has_detection
+        else {}
+    )
 
     for diag in diagnostics:
         # Skip if all requirements met or none met
         # We only warn about partial requirements (indicates partial install)
         met_count = sum(1 for r in diag.requirements if r.met)
         if met_count == 0 or met_count == len(diag.requirements):
+            continue
+
+        # WI-zamoz: skip if the linker's activation conditions wouldn't
+        # have triggered it on this tree.
+        spec = linker_specs_by_name.get(diag.linker_name)
+        if spec is not None and not spec.activation.should_run(
+            linker_ctx.detected_frameworks, linker_ctx.detected_languages
+        ):
             continue
 
         # Build warning message

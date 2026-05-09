@@ -18,6 +18,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **`hypergumbo build-grammars` now actually builds Circom.** The user-facing CLI builder iterated `SOURCE_GRAMMARS`, which only listed Lean and Wolfram, so a `pipx`-installed `hypergumbo` user who hit `"Circom analysis skipped: tree-sitter-circom grammar not available. Run \`hypergumbo build-grammars\` to build it."` would run the suggested command and see the warning persist on the next run. The shell-script CI/dev path (`scripts/build-source-grammars`) had been building Circom all along; the Python module had not. Added `tree_sitter_circom` (Decurity/tree-sitter-circom, no scanner) to `SOURCE_GRAMMARS`, and updated the subcommand help and module docstrings accordingly.
 
+- **Partial-install warnings now respect linker activation conditions.** `check_partial_install_warnings` (`partial_install_warnings.py`) iterated diagnostics from every registered linker and emitted partial-pattern warnings unconditionally, so e.g. a Rust + Python repo with C/C++ symbols got `"CGO linker found 151 C/C++ implementations but 0 Go cgo calls"` even though the CGO linker (`language_pairs=[("go", "c"), ("go", "cpp")]`) wouldn't have run on that tree. Confirmed across all seven v4.1.0 UAT rounds for CGO, LUA_FFI, and RUBY_FFI on candle. Added a per-warning gate that consults the linker's `LinkerActivation.should_run(detected_frameworks, detected_languages)` and skips warnings whose linker wouldn't have activated. The gate is bypassed when both detection sets are empty (preserves crafted-diagnostic test fixtures). The dependency linker (always-on activation) is unaffected — its TOML-only manifest gap is a separate issue.
+
 ## [4.1.0] - 2026-05-08
 
 ### Summary
