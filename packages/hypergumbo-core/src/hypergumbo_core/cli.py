@@ -2432,33 +2432,32 @@ def cmd_uninstall_rust_analyzer(args: argparse.Namespace) -> int:
     return 0 if success else 1
 
 
-# WI-huham: install-extras / uninstall-extras umbrella over the three
-# per-component installers (gitleaks, embeddings, rust-analyzer). Each
-# row is (component_name, is_available, install_fn, uninstall_fn). The
-# table is the single source of truth for the umbrella so adding a
-# fourth component later is a one-line change.
+# WI-josif consolidation: add-extras / remove-extras umbrella over the four
+# per-component paths (grammars, gitleaks, embeddings, rust-analyzer). Each
+# row is (component_name, is_available, install_fn, uninstall_fn). The table
+# is the single source of truth — adding a fifth component is a one-line
+# change in `_extras_components`. WI-huham's separate install-extras /
+# uninstall-extras umbrella was hard-removed in favor of this single table.
 def _extras_components() -> list[tuple[str, callable, callable, callable]]:
-    """Return the rows the install-extras umbrella iterates over.
+    """Return the rows the add-extras / remove-extras umbrella iterates over.
 
-    Factored into a function so imports are lazy (``install_gitleaks``
-    touches urllib / tarfile modules that would otherwise load at
-    ``hypergumbo --help`` time just to print an unrelated subcommand
-    list).
+    Names are stable identifiers consumed by ``--skip``; their pretty
+    display form (used for ``=== Section ===`` headers) is derived via
+    ``_pretty_extras_name``.
     """
-    from .gitleaks import install_gitleaks, uninstall_gitleaks
-    from .rust_analyzer_install import (
-        install_rust_analyzer,
-        is_rust_analyzer_available,
-        uninstall_rust_analyzer,
-    )
-
-    # _is_embeddings_available + install_embeddings + uninstall_embeddings
-    # are module-local helpers; reference them via module lookup so the
-    # table rows stay declarative.
+    # _is_embeddings_available, _install_embeddings_impl, etc. are
+    # module-local helpers; reference via sys.modules so test-patches at
+    # ``hypergumbo_core.cli.<name>`` apply during table construction.
     import sys
     cli_mod = sys.modules[__name__]
 
     return [
+        (
+            "grammars",
+            cli_mod._is_grammars_available,
+            cli_mod._install_grammars,
+            cli_mod._uninstall_grammars,
+        ),
         (
             "gitleaks",
             is_gitleaks_available,
@@ -2473,11 +2472,92 @@ def _extras_components() -> list[tuple[str, callable, callable, callable]]:
         ),
         (
             "rust-analyzer",
-            is_rust_analyzer_available,
-            install_rust_analyzer,
+            cli_mod._is_rust_analyzer_fully_available,
+            cli_mod._install_rust_analyzer_with_bug06_gate,
             uninstall_rust_analyzer,
         ),
     ]
+
+
+def _pretty_extras_name(name: str) -> str:
+    """Convert a row name to the display form used in section headers.
+
+    e.g. ``"grammars"`` -> ``"Grammars"``,
+         ``"rust-analyzer"`` -> ``"Rust analyzer"``.
+    """
+    return name.replace("-", " ").capitalize()
+
+
+def _is_grammars_available() -> bool:
+    """All hypergumbo build-from-source grammars present and loadable."""
+    return all(check_grammar_availability().values())
+
+
+def _install_grammars(quiet: bool = False) -> bool:
+    """Build all hypergumbo grammars; return True iff every grammar built.
+
+    Preserves the per-grammar failure warning that the pre-consolidation
+    ``cmd_add_extras`` printed inline — failures still go to stderr even
+    in ``--quiet`` mode so partial-build state is observable.
+    """
+    results = build_all_grammars(quiet=quiet)
+    failed = [name for name, ok in results.items() if not ok]
+    if failed:
+        print(
+            f"Warning: Failed to build grammars: {', '.join(failed)}",
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
+def _uninstall_grammars(quiet: bool = False) -> bool:
+    """No-op uninstall — grammars are shared libraries we do not remove."""
+    _ = quiet  # signature uniformity with the other extras-row uninstall callables
+    return True
+
+
+def _is_rust_analyzer_fully_available() -> bool:
+    """Holistic SCIP-backend readiness check: both the rustup binary AND the
+    ``hypergumbo-lang-rust-analyzer`` Python integration package present.
+
+    Used as the rust-analyzer row's ``is_available`` predicate so
+    ``add-extras --check`` reports ``rust-analyzer: ✗ not installed`` in
+    the edge case where the rustup binary is on PATH but the integration
+    package is missing — e.g., a user installed ``rust-analyzer`` via a
+    system package manager, or pipx-uninstalled the ``[rust-analyzer]``
+    extra after a prior install left the rustup binary behind. Without
+    this holistic check, ``--check`` would report ``✓ installed`` on the
+    binary alone while ``--backend rust-analyzer`` would still hit the
+    BUG-06 runtime gate at use time. The dedicated
+    ``install-rust-analyzer --check`` subcommand prints both lines
+    separately for richer diagnostics; this predicate collapses them
+    into a single boolean for the umbrella's status table.
+    """
+    return is_rust_analyzer_available() and is_rust_analyzer_integration_installed()
+
+
+def _install_rust_analyzer_with_bug06_gate(quiet: bool = False) -> bool:
+    """Install the rust-analyzer rustup component, gated on BUG-06 / WI-jinoh.
+
+    Mirrors ``cmd_install_rust_analyzer``'s gate: refuses to install the
+    rustup binary alone when the ``hypergumbo-lang-rust-analyzer`` Python
+    integration package is missing — installing the binary alone would
+    leave ``--backend rust-analyzer`` a silent no-op. Returns True on
+    soft-skip so ``cmd_add_extras`` doesn't report it as a failure (the
+    user got a clear pointer to ``pipx install 'hypergumbo[rust-analyzer]'``
+    and there is nothing useful for the umbrella to install in this state).
+    """
+    if not is_rust_analyzer_integration_installed():
+        if not quiet:
+            print(
+                "hypergumbo-lang-rust-analyzer Python integration package is "
+                "not installed; skipping rust-analyzer rustup binary install. "
+                "Install via: pipx install 'hypergumbo[rust-analyzer]'. "
+                "Tracked as BUG-06.",
+            )
+        return True
+    return install_rust_analyzer(quiet=quiet)
 
 
 def _install_embeddings_impl(quiet: bool = False) -> bool:
@@ -2540,70 +2620,6 @@ def _uninstall_embeddings_impl(quiet: bool = False) -> bool:
     if not quiet:
         print("  Done!")
     return True
-
-
-def cmd_install_extras(args: argparse.Namespace) -> int:
-    """Install (or check) every optional component in one call (WI-huham).
-
-    ``--check`` prints a status table and exits 0 iff every component
-    is present; exit 1 otherwise so scripts can gate on it.
-
-    The default action runs each installer in sequence. A failure in
-    one installer does not abort the rest — the umbrella is best-
-    effort, and the final exit code reflects whether any component
-    failed.
-
-    ``--skip gitleaks,embeddings`` omits the named components from the
-    run (and from the status table).
-    """
-    skip = set()
-    if getattr(args, "skip", None):
-        skip = {s.strip() for s in args.skip.split(",") if s.strip()}
-
-    rows = [
-        row for row in _extras_components() if row[0] not in skip
-    ]
-
-    if getattr(args, "check", False):
-        all_present = True
-        for name, is_available, _install, _uninstall in rows:
-            available = is_available()
-            symbol = "\u2713" if available else "\u2717"
-            print(
-                f"{name}: {symbol} "
-                f"{'installed' if available else 'not installed'}",
-            )
-            if not available:
-                all_present = False
-        return 0 if all_present else 1
-
-    any_failed = False
-    for name, is_available, install, _uninstall in rows:
-        if is_available():
-            if not args.quiet:
-                print(f"{name}: already installed, skipping")
-            continue
-        if not install(quiet=args.quiet):
-            print(f"{name}: install failed", file=sys.stderr)
-            any_failed = True
-    return 1 if any_failed else 0
-
-
-def cmd_uninstall_extras(args: argparse.Namespace) -> int:
-    """Mirror of install-extras for removal (WI-huham)."""
-    skip = set()
-    if getattr(args, "skip", None):
-        skip = {s.strip() for s in args.skip.split(",") if s.strip()}
-
-    rows = [
-        row for row in _extras_components() if row[0] not in skip
-    ]
-
-    any_failed = False
-    for _name, _is_available, _install, uninstall in rows:
-        if not uninstall(quiet=args.quiet):
-            any_failed = True
-    return 1 if any_failed else 0
 
 
 def _get_cache_base() -> Path:
@@ -2863,100 +2879,54 @@ def cmd_uninstall_embeddings(args: argparse.Namespace) -> int:
 
 
 def cmd_add_extras(args: argparse.Namespace) -> int:
-    """Install all optional extras (grammars, gitleaks, embeddings, rust-analyzer).
+    """Install (or check) every optional extras component in one call.
 
-    Skips components that are already installed, showing a message for each.
-    The rust-analyzer step gates on the SCIP integration package the same way
-    ``install-rust-analyzer`` does (BUG-06 / WI-jinoh): if the integration
-    package is missing, the rustup binary install is skipped with a pointer
-    to ``pipx install 'hypergumbo[rust-analyzer]'`` rather than installing
-    the binary alone (which would leave ``--backend rust-analyzer`` a no-op).
+    By default builds grammars and installs gitleaks, embeddings, and the
+    rust-analyzer rustup component. Components already installed are
+    skipped with a message. The rust-analyzer step gates on the SCIP
+    integration package (BUG-06 / WI-jinoh) via
+    ``_install_rust_analyzer_with_bug06_gate`` so the rustup binary is
+    not installed alone when the integration is missing — the user
+    gets a pointer to ``pipx install 'hypergumbo[rust-analyzer]'`` instead.
+
+    ``--check`` prints a status table and exits 0 iff every component is
+    installed; exit 1 otherwise so scripts can gate on it.
+
+    ``--skip COMPONENT[,COMPONENT...]`` omits the named components from
+    both the status table and the install loop.
     """
-    exit_code = 0
+    skip = set()
+    if getattr(args, "skip", None):
+        skip = {s.strip() for s in args.skip.split(",") if s.strip()}
 
-    # 1. Build grammars
-    if not args.quiet:
-        print("=== Grammars ===")
-    status = check_grammar_availability()
-    all_grammars_available = all(status.values())
+    rows = [row for row in _extras_components() if row[0] not in skip]
 
-    if all_grammars_available:
-        if not args.quiet:
-            print("All grammars already built. Skipping.")
-    else:
-        results = build_all_grammars(quiet=args.quiet)
-        if not all(results.values()):
-            failed = [name for name, ok in results.items() if not ok]
-            print(f"Warning: Failed to build grammars: {', '.join(failed)}", file=sys.stderr)
-            exit_code = 1
-
-    if not args.quiet:
-        print()
-
-    # 2. Install gitleaks
-    if not args.quiet:
-        print("=== Gitleaks ===")
-    if is_gitleaks_available():
-        if not args.quiet:
-            print("gitleaks already installed. Skipping.")
-    else:
-        success = install_gitleaks(quiet=args.quiet)
-        if not success:
-            exit_code = 1
-
-    if not args.quiet:
-        print()
-
-    # 3. Install embeddings
-    if not args.quiet:
-        print("=== Embeddings ===")
-    if _is_embeddings_available():
-        if not args.quiet:
-            print(f"Embeddings already installed (sentence-transformers {_get_embeddings_version()}). Skipping.")
-    else:
-        if not args.quiet:
-            print("Installing embeddings...")
-            print("Note: This pulls in PyTorch (~2GB download)")
-            print()
-        try:
-            cmd = [sys.executable, "-m", "pip", "install", "sentence-transformers~=5.2.2"]
-            if args.quiet:
-                cmd.append("-q")
-            result = subprocess.run(cmd, check=False)  # noqa: S603 # nosec B603
-            if result.returncode != 0:
-                print("Warning: Failed to install embeddings", file=sys.stderr)
-                exit_code = 1
-        except (subprocess.SubprocessError, OSError) as e:
-            print(f"Warning: Failed to install embeddings: {e}", file=sys.stderr)
-            exit_code = 1
-
-    if not args.quiet:
-        print()
-
-    # 4. Install rust-analyzer (gated on integration package, BUG-06).
-    if not args.quiet:
-        print("=== Rust analyzer ===")
-    if is_rust_analyzer_available():
-        if not args.quiet:
-            print("rust-analyzer already installed. Skipping.")
-    elif not is_rust_analyzer_integration_installed():
-        # Match cmd_install_rust_analyzer's BUG-06 gate: refuse to install
-        # the rustup binary alone when the SCIP integration package is
-        # missing — it would leave --backend rust-analyzer a silent no-op.
-        if not args.quiet:
+    if getattr(args, "check", False):
+        all_present = True
+        for name, row_available, _install, _uninstall in rows:
+            available = row_available()
+            symbol = "\u2713" if available else "\u2717"
             print(
-                "hypergumbo-lang-rust-analyzer Python integration package is "
-                "not installed; skipping rust-analyzer rustup binary install. "
-                "Install via: pipx install 'hypergumbo[rust-analyzer]'. "
-                "Tracked as BUG-06.",
+                f"{name}: {symbol} "
+                f"{'installed' if available else 'not installed'}",
             )
-    else:
-        success = install_rust_analyzer(quiet=args.quiet)
-        if not success:
+            if not available:
+                all_present = False
+        return 0 if all_present else 1
+
+    exit_code = 0
+    for name, row_available, install, _uninstall in rows:
+        if not args.quiet:
+            print(f"=== {_pretty_extras_name(name)} ===")
+        if row_available():
+            if not args.quiet:
+                print(f"{name} already installed. Skipping.")
+        elif not install(quiet=args.quiet):
             exit_code = 1
+        if not args.quiet:
+            print()
 
     if not args.quiet:
-        print()
         print("=== Summary ===")
         print("All extras installed. Run 'hypergumbo remove-extras' to uninstall.")
 
@@ -2964,63 +2934,41 @@ def cmd_add_extras(args: argparse.Namespace) -> int:
 
 
 def cmd_remove_extras(args: argparse.Namespace) -> int:
-    """Uninstall optional extras (gitleaks, embeddings, rust-analyzer rustup binary).
+    """Uninstall every optional extras component in one call.
 
-    Note: Grammars are not removed as they're just shared libraries.
-    The rust-analyzer step removes only the rustup-managed binary; the
-    SCIP integration package (``hypergumbo-lang-rust-analyzer``) is
-    pipx-extra-managed and removed via
-    ``pipx uninstall-injected hypergumbo hypergumbo-lang-rust-analyzer``.
+    Grammars are not removed (they are shared libraries; the row's
+    uninstall is a no-op success). The rust-analyzer step removes only
+    the rustup-managed binary; the SCIP integration package
+    (``hypergumbo-lang-rust-analyzer``) is pipx-extra-managed and removed
+    via ``pipx uninstall-injected hypergumbo hypergumbo-lang-rust-analyzer``.
+
+    ``--skip COMPONENT[,COMPONENT...]`` omits the named components.
     """
+    skip = set()
+    if getattr(args, "skip", None):
+        skip = {s.strip() for s in args.skip.split(",") if s.strip()}
+
+    rows = [row for row in _extras_components() if row[0] not in skip]
+
     exit_code = 0
-
-    # 1. Uninstall gitleaks
-    if not args.quiet:
-        print("=== Gitleaks ===")
-    success = uninstall_gitleaks(quiet=args.quiet)
-    if not success:
-        exit_code = 1
-
-    if not args.quiet:
-        print()
-
-    # 2. Uninstall embeddings
-    if not args.quiet:
-        print("=== Embeddings ===")
-    if not _is_embeddings_available():
+    for name, row_available, _install, uninstall in rows:
         if not args.quiet:
-            print("Embeddings not installed. Skipping.")
-    else:
-        if not args.quiet:
-            print("Uninstalling sentence-transformers...")
-        try:
-            cmd = [sys.executable, "-m", "pip", "uninstall", "-y", "sentence-transformers"]
-            if args.quiet:
-                cmd.append("-q")
-            result = subprocess.run(cmd, check=False)  # noqa: S603 # nosec B603
-            if result.returncode != 0:
-                print("Warning: Failed to uninstall embeddings", file=sys.stderr)
-                exit_code = 1
-        except (subprocess.SubprocessError, OSError) as e:
-            print(f"Warning: Failed to uninstall embeddings: {e}", file=sys.stderr)
+            print(f"=== {_pretty_extras_name(name)} ===")
+        if not row_available():
+            if not args.quiet:
+                print(f"{name} not installed. Skipping.")
+        elif not uninstall(quiet=args.quiet):
             exit_code = 1
+        if not args.quiet:
+            print()
 
     if not args.quiet:
-        print()
-
-    # 3. Uninstall rust-analyzer (rustup binary only; integration package is pipx-managed).
-    if not args.quiet:
-        print("=== Rust analyzer ===")
-    if not uninstall_rust_analyzer(quiet=args.quiet):
-        exit_code = 1
-
-    if not args.quiet:
-        print()
         print("=== Summary ===")
         print("Extras removed. hypergumbo will continue to work with core features.")
         print("Run 'hypergumbo add-extras' to reinstall.")
 
     return exit_code
+
 
 
 # Default minimum widths for the Symbol and File columns in `cmd_symbols`.
@@ -5692,50 +5640,6 @@ The output begins with passes suggested for your current directory."""
     )
     p_uninstall_ra.set_defaults(func=cmd_uninstall_rust_analyzer)
 
-    # hypergumbo install-extras (umbrella over gitleaks + embeddings + rust-analyzer)
-    p_install_extras = sub.add_parser(
-        "install-extras",
-        help="Install every optional component in one call (gitleaks, embeddings, rust-analyzer)",
-    )
-    p_install_extras.add_argument(
-        "--check",
-        action="store_true",
-        help="Print availability table and exit; exit 1 iff any component is missing",
-    )
-    p_install_extras.add_argument(
-        "--skip",
-        default=None,
-        metavar="COMPONENTS",
-        help=(
-            "Comma-separated list of components to skip "
-            "(gitleaks,embeddings,rust-analyzer)"
-        ),
-    )
-    p_install_extras.add_argument(
-        "--quiet",
-        action="store_true",
-        help="Suppress output",
-    )
-    p_install_extras.set_defaults(func=cmd_install_extras)
-
-    # hypergumbo uninstall-extras
-    p_uninstall_extras = sub.add_parser(
-        "uninstall-extras",
-        help="Uninstall every optional component in one call",
-    )
-    p_uninstall_extras.add_argument(
-        "--skip",
-        default=None,
-        metavar="COMPONENTS",
-        help="Comma-separated list of components to skip",
-    )
-    p_uninstall_extras.add_argument(
-        "--quiet",
-        action="store_true",
-        help="Suppress output",
-    )
-    p_uninstall_extras.set_defaults(func=cmd_uninstall_extras)
-
     # hypergumbo cache-status
     p_cache_status = sub.add_parser(
         "cache-status",
@@ -5816,10 +5720,25 @@ Clearing it forces re-analysis on next run (slower but ensures fresh results).""
     )
     p_uninstall_embeddings.set_defaults(func=cmd_uninstall_embeddings)
 
-    # hypergumbo add-extras
+    # hypergumbo add-extras (single umbrella; consolidated from former
+    # install-extras umbrella per WI-josif).
     p_add_extras = sub.add_parser(
         "add-extras",
         help="Install all optional extras (grammars, gitleaks, embeddings, rust-analyzer)",
+    )
+    p_add_extras.add_argument(
+        "--check",
+        action="store_true",
+        help="Print availability table and exit; exit 1 iff any component is missing",
+    )
+    p_add_extras.add_argument(
+        "--skip",
+        default=None,
+        metavar="COMPONENTS",
+        help=(
+            "Comma-separated list of components to skip "
+            "(grammars,gitleaks,embeddings,rust-analyzer)"
+        ),
     )
     p_add_extras.add_argument(
         "--quiet",
@@ -5832,6 +5751,15 @@ Clearing it forces re-analysis on next run (slower but ensures fresh results).""
     p_remove_extras = sub.add_parser(
         "remove-extras",
         help="Uninstall optional extras (gitleaks, embeddings, rust-analyzer)",
+    )
+    p_remove_extras.add_argument(
+        "--skip",
+        default=None,
+        metavar="COMPONENTS",
+        help=(
+            "Comma-separated list of components to skip "
+            "(grammars,gitleaks,embeddings,rust-analyzer)"
+        ),
     )
     p_remove_extras.add_argument(
         "--quiet",
@@ -6253,8 +6181,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
     extras_cmds = ["add-extras", "remove-extras", "build-grammars",
                    "install-gitleaks", "uninstall-gitleaks",
                    "install-embeddings", "uninstall-embeddings",
-                   "install-rust-analyzer", "uninstall-rust-analyzer",
-                   "install-extras", "uninstall-extras"]
+                   "install-rust-analyzer", "uninstall-rust-analyzer"]
     for i, cmd in enumerate(extras_cmds):
         _set_subparser_group(sub, cmd, "extras", 1, suborder=i)
 
@@ -7346,7 +7273,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "install-extras", "uninstall-extras", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "symbols", "compact", "io-boundaries", "verify-claims"}
 
     # WI-balij (UAT UX-04): accept --debug in any position. Strip it here so
     # `hypergumbo sketch . --debug` and `hypergumbo --debug sketch .` both

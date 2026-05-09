@@ -38,9 +38,9 @@ Availability check
 ------------------
 :func:`is_rust_analyzer_available` is the single source of truth for
 "can the rust-analyzer backend activate?" — it's called by the
-``--check`` flag, by the ``hypergumbo install-extras --check`` umbrella
-(WI-huham), and by WI-nohah's graceful-degrade fall-through logic when
-WI-duzul's registry wiring lands.
+``--check`` flag, by the ``hypergumbo add-extras --check`` umbrella
+(WI-huham → WI-josif), and by WI-nohah's graceful-degrade fall-through
+logic when WI-duzul's registry wiring lands.
 """
 from __future__ import annotations
 
