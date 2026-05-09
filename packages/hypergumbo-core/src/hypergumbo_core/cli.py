@@ -2337,12 +2337,48 @@ def cmd_uninstall_gitleaks(args: argparse.Namespace) -> int:
     return 0 if success else 1
 
 
+def _ensure_rust_analyzer_integration_or_exit() -> None:
+    """Exit with a clear error when the SCIP integration package is missing.
+
+    WI-jinoh / BUG-06: in the published v4.1.0 ``hypergumbo`` distribution,
+    ``hypergumbo-lang-rust-analyzer`` is not in ``Requires-Dist`` and is
+    not on PyPI, so ``--backend rust-analyzer`` silently no-ops. This
+    helper is the single choke point that turns the silent fall-through
+    into a non-zero exit with a message naming the missing package.
+    """
+    from .rust_analyzer_install import is_rust_analyzer_integration_installed
+
+    if is_rust_analyzer_integration_installed():
+        return
+    print(
+        "hypergumbo: error: --backend rust-analyzer requested but the "
+        "hypergumbo-lang-rust-analyzer Python integration package is "
+        "not installed.\n"
+        "\n"
+        "The rustup binary alone is not enough \u2014 the SCIP backend also "
+        "needs the Python wrapper, which is not yet shipped in this "
+        "hypergumbo distribution. Tracked as BUG-06.",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
 def cmd_install_rust_analyzer(args: argparse.Namespace) -> int:
-    """Install rust-analyzer (WI-dotud) or report availability via ``--check``."""
+    """Install rust-analyzer (WI-dotud) or report availability via ``--check``.
+
+    WI-jinoh / BUG-06: ``--check`` reports the status of *both* the rustup
+    binary and the ``hypergumbo-lang-rust-analyzer`` Python integration
+    package, and the bare ``install-rust-analyzer`` invocation refuses
+    to install the binary when the integration package is missing \u2014
+    installing the binary alone leaves the SCIP backend a silent no-op.
+    """
     from .rust_analyzer_install import (
         install_rust_analyzer,
         is_rust_analyzer_available,
+        is_rust_analyzer_integration_installed,
     )
+
+    integration_installed = is_rust_analyzer_integration_installed()
 
     if args.check:
         available = is_rust_analyzer_available()
@@ -2351,10 +2387,32 @@ def cmd_install_rust_analyzer(args: argparse.Namespace) -> int:
             f"rust-analyzer: {symbol} "
             f"{'installed' if available else 'not installed'}",
         )
+        ipkg_symbol = "\u2713" if integration_installed else "\u2717"
+        print(
+            f"hypergumbo-lang-rust-analyzer: {ipkg_symbol} "
+            f"{'installed' if integration_installed else 'not installed'}",
+        )
         if not available:
             print("\nRun 'hypergumbo install-rust-analyzer' to install.")
-            return 1
-        return 0
+        if not integration_installed:
+            print(
+                "\nThe SCIP backend also requires the "
+                "hypergumbo-lang-rust-analyzer Python integration package, "
+                "which is not yet shipped in this hypergumbo distribution. "
+                "Tracked as BUG-06.",
+            )
+        return 0 if (available and integration_installed) else 1
+
+    if not integration_installed:
+        print(
+            "hypergumbo: error: cannot enable the SCIP backend \u2014 the "
+            "hypergumbo-lang-rust-analyzer Python integration package is "
+            "not installed in this hypergumbo distribution. Installing "
+            "the rustup binary alone would leave --backend rust-analyzer "
+            "as a silent no-op. Tracked as BUG-06.",
+            file=sys.stderr,
+        )
+        return 2
 
     success = install_rust_analyzer(quiet=args.quiet)
     return 0 if success else 1
@@ -7246,16 +7304,27 @@ def main(argv=None) -> int:
     # `HYPERGUMBO_RUST_ANALYZER=1 hypergumbo run .`. Matches the --debug
     # stripping pattern so the flag works in any position relative to the
     # subcommand.
+    #
+    # WI-jinoh / BUG-06: before setting the env var, gate on whether the
+    # ``hypergumbo-lang-rust-analyzer`` Python integration package is
+    # importable. The published v4.1.0 distribution does not include
+    # it; without this gate the SCIP backend silently falls through to
+    # tree-sitter and the user has no surface signal. We exit with a
+    # clear error here rather than at first-engagement so the user's
+    # mental model ("--backend rust-analyzer ran, so the SCIP backend
+    # ran") is corrected immediately at parse time.
     for idx in range(len(argv) - 1):
         if argv[idx] == "--backend":
             choice = argv[idx + 1]
             if choice == "rust-analyzer":
+                _ensure_rust_analyzer_integration_or_exit()
                 os.environ["HYPERGUMBO_RUST_ANALYZER"] = "1"
             argv = argv[:idx] + argv[idx + 2:]
             break
         if argv[idx].startswith("--backend="):
             choice = argv[idx].split("=", 1)[1]
             if choice == "rust-analyzer":
+                _ensure_rust_analyzer_integration_or_exit()
                 os.environ["HYPERGUMBO_RUST_ANALYZER"] = "1"
             argv = argv[:idx] + argv[idx + 1:]
             break

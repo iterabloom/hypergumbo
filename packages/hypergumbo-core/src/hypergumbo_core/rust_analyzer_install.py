@@ -44,10 +44,34 @@ WI-duzul's registry wiring lands.
 """
 from __future__ import annotations
 
+import importlib.util
 import shutil
 import subprocess  # nosec B404 — required for rustup invocations
 import sys
 from typing import Callable, Optional
+
+
+def is_rust_analyzer_integration_installed() -> bool:
+    """Return True iff the ``hypergumbo-lang-rust-analyzer`` Python wrapper imports.
+
+    Distinct from :func:`is_rust_analyzer_available`, which only checks the
+    rustup-installed binary on ``PATH``. The SCIP backend needs both —
+    the binary to invoke and the Python integration package to drive it.
+
+    BUG-06 (WI-jinoh): the published v4.1.0 ``hypergumbo`` distribution
+    has the binary installer but does not ship the integration package
+    in ``Requires-Dist``, so ``--backend rust-analyzer`` silently
+    no-ops. Callers gate on this helper to surface the structural
+    absence at CLI parse time rather than letting the user think they
+    engaged the SCIP backend when they didn't.
+
+    Uses :func:`importlib.util.find_spec` rather than a real ``import``
+    so the check is side-effect-free even when the package is present —
+    we don't want to load the integration's import-time module-level
+    code as a side effect of every CLI invocation that happens to pass
+    ``--backend``.
+    """
+    return importlib.util.find_spec("hypergumbo_lang_rust_analyzer") is not None
 
 
 def is_rust_analyzer_available(

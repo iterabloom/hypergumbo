@@ -112,3 +112,76 @@ class TestMainStripping:
         """
         with pytest.raises(SystemExit):
             main(["cache-status", "--quiet", "--backend"])
+
+
+class TestBackendIntegrationGate:
+    """WI-jinoh / BUG-06: --backend rust-analyzer must error clearly when
+    the hypergumbo-lang-rust-analyzer Python integration package is not
+    importable. Without this gate the published v4.1.0 distribution
+    silently falls through to the tree-sitter backend and the user has
+    no surface signal that the SCIP backend never engaged.
+    """
+
+    def test_backend_rust_analyzer_errors_when_integration_missing(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        with patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
+            return_value=False,
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main(["--backend", "rust-analyzer", "cache-status", "--quiet"])
+        assert exc_info.value.code != 0
+        # Must NOT have set the env var — otherwise downstream code might
+        # still try to engage SCIP and fail less clearly.
+        assert ENV_VAR not in os.environ
+        err = capsys.readouterr().err
+        assert "hypergumbo-lang-rust-analyzer" in err
+        assert "not installed" in err
+
+    def test_backend_equals_rust_analyzer_errors_when_integration_missing(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--backend=rust-analyzer form also gates."""
+        with patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
+            return_value=False,
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main(["--backend=rust-analyzer", "cache-status", "--quiet"])
+        assert exc_info.value.code != 0
+        assert ENV_VAR not in os.environ
+
+    def test_backend_tree_sitter_does_not_check_integration(self) -> None:
+        """--backend tree-sitter never touches the integration gate."""
+        with patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
+            return_value=False,
+        ):
+            with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
+                rc = main([
+                    "--backend", "tree-sitter", "cache-status", "--quiet",
+                ])
+        assert rc == 0
+        assert ENV_VAR not in os.environ
+
+    def test_backend_rust_analyzer_passes_when_integration_present(
+        self,
+    ) -> None:
+        """Happy path: with the integration package importable, the env
+        var is set and the subcommand runs without error.
+        """
+        with patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
+            return_value=True,
+        ):
+            with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
+                rc = main([
+                    "--backend", "rust-analyzer", "cache-status", "--quiet",
+                ])
+        assert rc == 0
+        assert os.environ.get(ENV_VAR) == "1"

@@ -312,6 +312,109 @@ class TestCmdInstallRustAnalyzer:
             rc = cmd_install_rust_analyzer(args)
         assert rc == 1
 
+    # WI-jinoh / BUG-06: install-rust-analyzer must surface the
+    # integration-package-missing case rather than installing the rustup
+    # binary into a SCIP-backend-can-never-engage state.
+
+    def test_check_reports_integration_status_when_present(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from argparse import Namespace
+        from unittest.mock import patch
+
+        from hypergumbo_core.cli import cmd_install_rust_analyzer
+
+        args = Namespace(check=True, quiet=False)
+        with patch(
+            "hypergumbo_core.rust_analyzer_install.is_rust_analyzer_available",
+            return_value=True,
+        ), patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
+            return_value=True,
+        ):
+            rc = cmd_install_rust_analyzer(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "rust-analyzer:" in out
+        assert "hypergumbo-lang-rust-analyzer:" in out
+        # When both are present, no troubleshooting hint should appear.
+        assert "BUG-06" not in out
+
+    def test_check_returns_one_and_flags_bug06_when_integration_missing(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from argparse import Namespace
+        from unittest.mock import patch
+
+        from hypergumbo_core.cli import cmd_install_rust_analyzer
+
+        args = Namespace(check=True, quiet=False)
+        with patch(
+            "hypergumbo_core.rust_analyzer_install.is_rust_analyzer_available",
+            return_value=True,
+        ), patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
+            return_value=False,
+        ):
+            rc = cmd_install_rust_analyzer(args)
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "hypergumbo-lang-rust-analyzer:" in out
+        assert "not installed" in out
+        assert "BUG-06" in out
+
+    def test_install_errors_when_integration_missing(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from argparse import Namespace
+        from unittest.mock import patch
+
+        from hypergumbo_core.cli import cmd_install_rust_analyzer
+
+        args = Namespace(check=False, quiet=True)
+        with patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
+            return_value=False,
+        ), patch(
+            "hypergumbo_core.rust_analyzer_install.install_rust_analyzer",
+        ) as mock_install:
+            rc = cmd_install_rust_analyzer(args)
+        # Refuse to install the binary alone — it would leave the SCIP
+        # backend a silent no-op. install_rust_analyzer must NOT be called.
+        assert rc == 2
+        mock_install.assert_not_called()
+        err = capsys.readouterr().err
+        assert "hypergumbo-lang-rust-analyzer" in err
+        assert "BUG-06" in err
+
+
+class TestIsRustAnalyzerIntegrationInstalled:
+    """WI-jinoh / BUG-06: helper that distinguishes the rustup-binary
+    availability check from the Python-wrapper-importability check.
+    """
+
+    def test_returns_true_when_package_importable(self) -> None:
+        from hypergumbo_core.rust_analyzer_install import (
+            is_rust_analyzer_integration_installed,
+        )
+
+        # The dev environment has hypergumbo-lang-rust-analyzer installed,
+        # so the unmocked helper should report True.
+        assert is_rust_analyzer_integration_installed() is True
+
+    def test_returns_false_when_package_missing(self) -> None:
+        from unittest.mock import patch
+
+        from hypergumbo_core.rust_analyzer_install import (
+            is_rust_analyzer_integration_installed,
+        )
+
+        with patch("importlib.util.find_spec", return_value=None):
+            assert is_rust_analyzer_integration_installed() is False
+
 
 class TestCmdUninstallRustAnalyzer:
     def test_uninstall_success_returns_zero(self) -> None:
