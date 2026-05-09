@@ -166,6 +166,69 @@ log() {
     fi
 }
 
+# WI-morud follow-up: write a self-contained diagnostic bundle when the
+# slice path falls back to full-suite. Captures the data we lose on the
+# happy path (slice command line, exit code, duration, stdout summary,
+# stderr) so the next time fallback fires organically we can see what
+# went wrong without having to repro. Overwrites each fallback (no ring
+# buffer); intentional to keep the file path stable for grep / `cat`.
+write_fallback_diagnostic() {
+    local reason="$1"
+    local slice_cmd="${2:-<not captured>}"
+    local slice_exit="${3:-<not captured>}"
+    local slice_duration_s="${4:-<not captured>}"
+    local slice_stdout_path="${5:-}"
+    local slice_stderr_path="${6:-}"
+    local changed_files_path="${7:-}"
+    local diag_file="$MANIFEST_DIR/smart-test-fallback.log"
+
+    mkdir -p "$MANIFEST_DIR" 2>/dev/null || return 0
+    {
+        echo "# smart-test slice fallback diagnostic"
+        echo "# timestamp: $(date -Iseconds 2>/dev/null || echo unknown)"
+        echo "# reason: $reason"
+        echo "# stable_hg_path: ${STABLE_HG:-<unset>}"
+        if [[ -n "${STABLE_HG:-}" ]] && command -v "$STABLE_HG" >/dev/null 2>&1; then
+            echo "# stable_hg_version: $($STABLE_HG --version 2>&1 | head -1)"
+        else
+            echo "# stable_hg_version: <not invokable>"
+        fi
+        echo "# slice_cmd: $slice_cmd"
+        echo "# slice_exit_code: $slice_exit"
+        echo "# slice_duration_s: $slice_duration_s"
+        if [[ -n "$slice_stdout_path" && -f "$slice_stdout_path" ]]; then
+            local stdout_lines
+            stdout_lines=$(wc -l < "$slice_stdout_path" 2>/dev/null || echo "?")
+            echo "# slice_stdout_lines: $stdout_lines"
+        else
+            echo "# slice_stdout_lines: <not captured>"
+        fi
+        echo ""
+        echo "## changed_files"
+        if [[ -n "$changed_files_path" && -f "$changed_files_path" ]]; then
+            cat "$changed_files_path"
+        else
+            echo "<not captured>"
+        fi
+        echo ""
+        echo "## slice_stdout (first 50 lines)"
+        if [[ -n "$slice_stdout_path" && -f "$slice_stdout_path" ]]; then
+            head -50 "$slice_stdout_path"
+        else
+            echo "<not captured>"
+        fi
+        echo ""
+        echo "## slice_stderr (full)"
+        if [[ -n "$slice_stderr_path" && -f "$slice_stderr_path" ]]; then
+            cat "$slice_stderr_path"
+        else
+            echo "<not captured>"
+        fi
+    } > "$diag_file" 2>/dev/null || return 0
+
+    echo "[smart-test] slice fallback — diagnostic: $diag_file" >&2
+}
+
 # Get baseline commit for comparison
 # Tries to fetch last-green-sha from badges branch (last CI run at 100%)
 # Falls back to merge-base with dev if unavailable
@@ -492,10 +555,20 @@ SLICE_OUTPUT=$(mktemp)
 SLICE_STDERR=$(mktemp)
 trap "rm -f $CHANGED_FILE_LIST $SLICE_OUTPUT $SLICE_STDERR" EXIT
 
-if ! $STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>"$SLICE_STDERR"; then
+# WI-morud follow-up: capture slice timing + exit code so write_fallback_diagnostic
+# can record them on either fallback path.
+SLICE_CMD="$STABLE_HG slice --files $CHANGED_FILE_LIST --output $SLICE_OUTPUT"
+SLICE_START_S=$SECONDS
+$STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>"$SLICE_STDERR"
+SLICE_EXIT=$?
+SLICE_DURATION_S=$((SECONDS - SLICE_START_S))
+
+if [[ $SLICE_EXIT -ne 0 ]]; then
     if [[ -s "$SLICE_STDERR" ]]; then
         log "Slice stderr: $(cat "$SLICE_STDERR")"
     fi
+    write_fallback_diagnostic "slice command failed" "$SLICE_CMD" "$SLICE_EXIT" \
+        "$SLICE_DURATION_S" "$SLICE_OUTPUT" "$SLICE_STDERR" "$CHANGED_FILE_LIST"
     run_full_suite "slice command failed" "$CHANGED_FILES"
 fi
 
@@ -652,6 +725,9 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
         else
             # Non-trivial source changes but slice found no dependent tests
             # This is unusual - fall back to full suite
+            write_fallback_diagnostic "no test files in slice result" "$SLICE_CMD" \
+                "$SLICE_EXIT" "$SLICE_DURATION_S" "$SLICE_OUTPUT" "$SLICE_STDERR" \
+                "$CHANGED_FILE_LIST"
             run_full_suite "no test files in slice result" "$CHANGED_FILES"
         fi
     fi

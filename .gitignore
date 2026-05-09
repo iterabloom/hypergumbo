@@ -82,6 +82,7 @@ package-lock.json
 .hypergumbo_cache/
 .ci/pytest-output.log
 .ci/pytest-results.xml
+.ci/smart-test-fallback.log
 
 # Tracker
 **/config.yaml
