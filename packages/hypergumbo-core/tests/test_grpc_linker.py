@@ -1384,6 +1384,110 @@ class TestGrpcProtoToGoImplementation:
         impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]
         assert len(impl_edges) == 0
 
+    def test_same_struct_name_in_multiple_files_resolves_per_file(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-kunoz / BUG-05: two Go files each defining ``type service struct``
+        embedding different ``UnimplementedXxxServer`` types must each resolve
+        their methods to their own service's RPCs.
+
+        On containerd, eight plugin packages (containers, content, diff,
+        images, leases, mounts, namespaces, snapshots, tasks) each declare a
+        struct literally named ``service`` that embeds the corresponding
+        ``UnimplementedXxxServer``. Pre-fix, ``struct_to_service`` was keyed
+        by short struct name, so all eight collapsed onto whichever file the
+        ``go_server_files`` set happened to iterate last — every
+        ``service.Create`` ended up routed to the same wrong RPC family
+        (Round 08 §8.3 of hg-uat-v4.1.0). Distinctive struct names
+        (controllerService, sandboxService, server) escaped the collision
+        because they were unique across files.
+
+        Files are written in two subdirectories so the file paths are clearly
+        distinct, mirroring the containerd layout.
+        """
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "all.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package containerd.services;\n"
+            "service Containers {\n"
+            "    rpc Create(CreateContainerRequest) returns (Container);\n"
+            "}\n"
+            "service Leases {\n"
+            "    rpc Create(CreateLeaseRequest) returns (Lease);\n"
+            "}\n"
+        )
+
+        containers_file = tmp_path / "plugins" / "containers" / "service.go"
+        containers_file.parent.mkdir(parents=True)
+        containers_file.write_text(
+            "package containers\n\n"
+            "type service struct {\n"
+            "    api.UnimplementedContainersServer\n"
+            "}\n\n"
+            "func (s *service) Create(ctx context.Context, req *CreateContainerRequest) (*Container, error) {\n"
+            "    return nil, nil\n"
+            "}\n"
+        )
+
+        leases_file = tmp_path / "plugins" / "leases" / "service.go"
+        leases_file.parent.mkdir(parents=True)
+        leases_file.write_text(
+            "package leases\n\n"
+            "type service struct {\n"
+            "    api.UnimplementedLeasesServer\n"
+            "}\n\n"
+            "func (s *service) Create(ctx context.Context, req *CreateLeaseRequest) (*Lease, error) {\n"
+            "    return nil, nil\n"
+            "}\n"
+        )
+
+        go_method_syms = [
+            Symbol(
+                id=f"go:{containers_file}:6-8:service.Create:method",
+                name="service.Create",
+                kind="method",
+                language="go",
+                path=str(containers_file),
+                span=Span(6, 8, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{leases_file}:6-8:service.Create:method",
+                name="service.Create",
+                kind="method",
+                language="go",
+                path=str(leases_file),
+                span=Span(6, 8, 0, 0),
+                origin="go-v1",
+                origin_run_id="test",
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_method_syms)
+
+        impl_edges = [
+            e for e in result.edges if e.edge_type == "implements_rpc"
+        ]
+        # Each method should produce exactly one edge to its own service's
+        # Create RPC route (not to the unrelated service's Create).
+        assert len(impl_edges) == 2, impl_edges
+
+        route_by_id = {s.id: s for s in result.symbols}
+        edges_by_src = {e.src: e for e in impl_edges}
+
+        containers_method_id = go_method_syms[0].id
+        leases_method_id = go_method_syms[1].id
+
+        containers_route = route_by_id[edges_by_src[containers_method_id].dst]
+        leases_route = route_by_id[edges_by_src[leases_method_id].dst]
+
+        assert (containers_route.meta or {}).get("rpc_service") == "Containers"
+        assert (leases_route.meta or {}).get("rpc_service") == "Leases"
+
     def test_no_link_when_proto_has_no_rpc_methods(self, tmp_path: Path) -> None:
         """No implements_rpc when proto service has no RPC methods."""
         from hypergumbo_core.ir import Span, Symbol

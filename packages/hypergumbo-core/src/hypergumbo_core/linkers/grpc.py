@@ -502,11 +502,20 @@ def _link_go_methods_to_rpc_routes(
         if pattern.language == "go" and pattern.type == "server":
             go_server_files.add(pattern.file_path)
 
-    # Build struct_type → service_name mapping by re-scanning Go files.
+    # Build (file, struct_type) → service_name mapping by re-scanning Go files.
+    # WI-kunoz / BUG-05: keyed by (file_path, struct_name) rather than the
+    # short struct name alone, because multiple Go files commonly declare a
+    # struct with the same conventional name (e.g. eight containerd plugin
+    # packages each define ``type service struct { ... UnimplementedXxxServer
+    # ... }``). The previous short-name dict overwrote on registration order
+    # so all eight collapsed onto whichever ``go_server_files`` set iteration
+    # processed last — every ``service.Create`` edge landed on the wrong
+    # service's RPC family. File-scoped keys decouple them.
+    #
     # Uses brace-depth tracking to handle structs with nested braces
     # (e.g., chan struct{}) and supports package-prefixed embeddings
     # (e.g., pb.UnimplementedXxxServer).
-    struct_to_service: dict[str, str] = {}
+    struct_to_service: dict[tuple[str, str], str] = {}
     for file_path_str in go_server_files:
         try:
             content = Path(file_path_str).read_text(
@@ -514,7 +523,10 @@ def _link_go_methods_to_rpc_routes(
             )
         except OSError:  # pragma: no cover
             continue
-        struct_to_service.update(_find_struct_unimplemented_embeddings(content))
+        for struct_name, service_name in _find_struct_unimplemented_embeddings(
+            content,
+        ).items():
+            struct_to_service[(file_path_str, struct_name)] = service_name
 
     # Also check Go struct symbols for interface implementations that don't
     # use UnimplementedXxxServer embedding. Covers:
@@ -533,7 +545,8 @@ def _link_go_methods_to_rpc_routes(
     for sym in existing_symbols:
         if sym.kind != "struct" or sym.language != "go":
             continue
-        if sym.name in struct_to_service:
+        struct_key = (sym.path, sym.name)
+        if struct_key in struct_to_service:
             continue  # already mapped via Unimplemented embedding
         chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
         for base in chain:
@@ -545,12 +558,12 @@ def _link_go_methods_to_rpc_routes(
                     service_name = base[:-len("Service")]
                 else:
                     service_name = base[:-len("Service")]
-                struct_to_service[sym.name] = service_name
+                struct_to_service[struct_key] = service_name
             # Match CSI / external library patterns: XxxServer
             # e.g., IdentityServer → Identity, ControllerServer → Controller
             elif base.endswith("Server"):
                 service_name = base[:-len("Server")]
-                struct_to_service[sym.name] = service_name
+                struct_to_service[struct_key] = service_name
 
     if not struct_to_service:
         return edges
@@ -579,7 +592,13 @@ def _link_go_methods_to_rpc_routes(
             continue
         struct_name, method_name = parts
 
-        service_name = struct_to_service.get(struct_name)
+        # WI-kunoz / BUG-05: file-scoped (path, struct_name) key so a method
+        # on ``service`` in ``plugins/containers/service.go`` doesn't pick
+        # up the Leases mapping from ``plugins/leases/service.go``. The
+        # short-name dict that this replaced collapsed all eight containerd
+        # plugin services onto whichever file ``go_server_files`` iteration
+        # processed last.
+        service_name = struct_to_service.get((sym.path, struct_name))
         if not service_name:
             continue
 
