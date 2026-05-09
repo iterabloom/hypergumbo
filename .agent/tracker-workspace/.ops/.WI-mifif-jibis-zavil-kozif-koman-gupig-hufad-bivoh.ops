@@ -1,0 +1,21 @@
+- op: create  # 8ec0
+  at: '2026-05-09T03:44:49Z'  # 8ec0
+  by: agent  # 8ec0
+  actor: jgstern_agent  # 8ec0
+  clock: 1  # 8ec0
+  nonce: 8ec0  # 8ec0
+  data:  # 8ec0
+    kind: work_item  # 8ec0
+    title: "Convention-based view-template linker for Django"  # 8ec0
+    status: needs_human_review  # 8ec0
+    priority: 3  # 8ec0
+    parent:  # 8ec0
+    tags:  # 8ec0
+    - framework_dispatch_linkers  # 8ec0
+    - analysis_quality  # 8ec0
+    isbefore: []  # 8ec0
+    duplicate_of: []  # 8ec0
+    not_duplicate_of: []  # 8ec0
+    pr_ref:  # 8ec0
+    description: "## Origin\n\nFiled per discussion in conversation surrounding WI-votut (`.csv.erb` extension fix). The docstring of `packages/hypergumbo-core/src/hypergumbo_core/linkers/view_template.py:30` claims `Future: Django, Laravel, Phoenix, Spring`, but no convention-based template-binding linker exists for any framework other than Rails. `view_template.py:279` is the only producer of `renders` edges in the entire codebase.\n\n## Gap\n\n`hypergumbo run` on a Django app produces no `renders` edge connecting a view function/class to its template file. The implicit `render(request, \"<template>.html\", ctx)` → `<app>/templates/<app>/<template>.html` relationship is not captured.\n\n## Django convention to model\n\n- **Action detection**: function-based views (FBVs — any function on `urls.py`-imported module that takes `(request, ...)`) and class-based views (CBVs — methods `get`/`post`/`put`/`delete`/`patch`/`head`/`options` on subclasses of `View` and friends).\n- **Base classes**: `View`, `TemplateView`, `ListView`, `DetailView`, `CreateView`, `UpdateView`, `DeleteView`, `RedirectView`, plus DRF's `APIView`, `GenericAPIView`, `ViewSet`, `ModelViewSet`.\n- **Template path derivation**:\n  - Explicit: `render(request, \"users/show.html\", ctx)` → `templates/users/show.html` or `<app>/templates/users/show.html`.\n  - CBV-implicit: `TemplateView.template_name = \"users/show.html\"` → same.\n  - DetailView/ListView default: `<app>/<model>_detail.html` / `<app>/<model>_list.html`.\n- **Extensions**: `.html`, `.jinja`, `.j2`, `.html.djinja`.\n\n## First-framework note (extract-shared-core during this PR)\n\nIf this is the first non-Rails view-template linker to land, this PR is also responsible for extracting the probe-and-emit core from `view_template.py` into a shared module (suggested name: `view_template_core.py` or `_view_template_core.py`). The Rails-specific code becomes a thin strategy that supplies base-class allowlist, action detection, and directory derivation. The shared core handles the filesystem probe loop, `renders` edge emission (`evidence_type=naming_convention`, `confidence=0.85`, `detection_pattern=implicit_convention`), and template Symbol creation.\n\nThe other three sister items — Phoenix, Spring, Laravel — should be implemented after this one and build against the extracted core.\n\n## Acceptance\n\n- A Django fixture with `urls.py` → `views.py` → `templates/<app>/<name>.html` produces a `renders` edge from the view function to the template file.\n- DRF ViewSets with `action = \"list\"` / `template_name = \"...\"` are handled.\n- 100% coverage on changed source; existing 43 Rails tests still pass; existing test_view_template_linker.py refactored against the new shared core."  # 8ec0
+    fields: {}  # 8ec0

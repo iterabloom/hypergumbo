@@ -19,3 +19,20 @@
     pr_ref:  # a24c
     description: "## Origin\n\nFiled per hg-uat-v4.1.0 Round 08 §8.4 inverse-direction finding (master report §4 DQ-5).\n\n## Symptom\n\n11 chatwoot Api::V2::Accounts::ReportsController actions (`inboxes`, `labels`, `agents`, `conversation_traffic`, `teams`, etc.) have view files at the conventional path with `.csv.erb` extension and receive no `renders` edge from view-template-linker-v1. The linker recognizes `.html.erb`, `.json.jbuilder`, and plain `.erb` per the 204 emitted edges in chatwoot, but does not pick up `.csv.erb`.\n\n## Why it matters\n\n`.csv.erb` is a non-default but legitimate Rails template format used for CSV-export endpoints. Any Rails app that exports CSV will hit this gap. Trivial to fix once located.\n\n## Fix scope\n\nAdd `.csv.erb` to the recognized template-extension list in view-template-linker-v1 (likely a constant or regex in view_template.py). 1-2 LOC change. Spot-check whether other domain-specific Rails template extensions exist (`.xml.builder`, `.atom.builder`, `.text.erb`) and fold them in if they're similarly common.\n\n## Acceptance\n\n- Property test: a Rails controller action with a `.csv.erb` view at the conventional path emits a `renders` edge.\n- Re-run on chatwoot: the 11 Api::V2::Accounts::ReportsController CSV-export actions now emit edges.\n- 100% coverage on changed source.\n\n## References\n\n- Round 08 report §8.4: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-08-followup-discriminators/report.md\n- Master report §4 DQ-5: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/master-report.md\n- Producer: packages/hypergumbo-core/src/hypergumbo_core/linkers/view_template.py"  # a24c
     fields: {}  # a24c
+- op: update  # a31d
+  at: '2026-05-09T03:26:32Z'  # a31d
+  by: agent  # a31d
+  actor: jgstern_agent  # a31d
+  clock: 2  # a31d
+  nonce: a31d  # a31d
+  set:  # a31d
+    status: done  # a31d
+  add:  # a31d
+    tags: [awaits_bakeoff_validation]  # a31d
+- op: discuss  # 9702
+  at: '2026-05-09T03:26:32Z'  # 9702
+  by: agent  # 9702
+  actor: jgstern_agent  # 9702
+  clock: 3  # 9702
+  nonce: '9702'  # 9702
+  message: "Fixed in PR #3587 (commit 24bd7c4b0f). Added `.csv.erb` to `_TEMPLATE_EXTENSIONS` and `_EXTENSION_LANGUAGE` (mapped to language `erb`) in `packages/hypergumbo-core/src/hypergumbo_core/linkers/view_template.py`. Two new tests cover probe-level discovery and chatwoot-shaped end-to-end edge emission.\n\nQuantitative claim awaiting bakeoff validation: 11 `Api::V2::Accounts::ReportsController` actions in chatwoot should now receive `renders` edges to their `.csv.erb` view files, raising the chatwoot `view-template-linker-v1` edge count by ~11. Tag stays until a DEEP cycle running chatwoot reproduces the count delta.\n\nOut of scope: other domain-specific Rails template extensions (`.xml.builder`, `.atom.builder`, `.js.erb`) — no UAT evidence they were missed; can be added if a future bakeoff surfaces a similar gap."  # 9702

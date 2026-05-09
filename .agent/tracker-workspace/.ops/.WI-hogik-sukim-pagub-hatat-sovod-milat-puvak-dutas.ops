@@ -1,0 +1,21 @@
+- op: create  # c083
+  at: '2026-05-09T03:46:45Z'  # c083
+  by: agent  # c083
+  actor: jgstern_agent  # c083
+  clock: 1  # c083
+  nonce: c083  # c083
+  data:  # c083
+    kind: work_item  # c083
+    title: "Convention-based view-template linker for Spring MVC"  # c083
+    status: needs_human_review  # c083
+    priority: 3  # c083
+    parent:  # c083
+    tags:  # c083
+    - framework_dispatch_linkers  # c083
+    - analysis_quality  # c083
+    isbefore: []  # c083
+    duplicate_of: []  # c083
+    not_duplicate_of: []  # c083
+    pr_ref:  # c083
+    description: "## Origin\n\nFiled per discussion surrounding WI-votut. See sister item `WI-mifif` (Django).\n\n## Gap\n\n`hypergumbo run` on a Spring MVC app produces no `renders` edge connecting a controller method to its view file. The relationship is currently uncovered: a `@Controller`-annotated method that does `return \"users/show\"` resolves to `src/main/resources/templates/users/show.html` (Thymeleaf default) under Spring's view resolver, but no edge captures that link.\n\n## Spring convention to model\n\n- **Action detection**: methods on `@Controller`-annotated classes (NOT `@RestController` — those return JSON, not view names) annotated with `@RequestMapping` or its variants `@GetMapping` / `@PostMapping` / `@PutMapping` / `@DeleteMapping` / `@PatchMapping`.\n- **View name source**: the method's return value is the view name. This is **explicit** (string return), not derived from method name — distinct from Rails/Phoenix/Django where the convention is method-name-based.\n  - `return \"users/show\"` → resolve under templates root.\n  - `return \"redirect:/foo\"` → not a view, skip.\n  - `return new ModelAndView(\"users/show\", model)` → first arg is the view name.\n- **Template path derivation**: `<src/main/resources/>templates/<view-name><ext>` for Thymeleaf; `<src/main/webapp/>WEB-INF/views/<view-name>.jsp` for JSP.\n- **Extensions**: `.html` (Thymeleaf), `.jsp`, `.ftl` / `.ftlh` (FreeMarker), `.vm` (Velocity).\n\n## Implementation note\n\nSpring's view binding requires capturing the **string return value** of the controller method, which is a different signal than the Rails/Phoenix/Django method-name convention. The shared core extracted from view_template.py during the first non-Rails framework's PR may need an extension hook for \"view name comes from explicit string, not method name.\" Plan accordingly.\n\n## Build against shared core\n\nThis linker should be built after the first non-Rails view-template linker has extracted the shared probe-and-emit core. The string-return-value detection is Spring-specific.\n\n## Acceptance\n\n- A Spring fixture with `@Controller class UserController { @GetMapping(\"/users/{id}\") String show(...) { return \"users/show\"; } }` and `templates/users/show.html` produces a `renders` edge.\n- Method returning `\"redirect:...\"` does not produce a `renders` edge.\n- `@RestController` classes are skipped.\n- 100% coverage on changed source."  # c083
+    fields: {}  # c083

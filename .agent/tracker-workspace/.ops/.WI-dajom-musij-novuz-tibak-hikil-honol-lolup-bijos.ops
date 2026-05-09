@@ -1,0 +1,21 @@
+- op: create  # 4f3e
+  at: '2026-05-09T03:45:15Z'  # 4f3e
+  by: agent  # 4f3e
+  actor: jgstern_agent  # 4f3e
+  clock: 1  # 4f3e
+  nonce: 4f3e  # 4f3e
+  data:  # 4f3e
+    kind: work_item  # 4f3e
+    title: "Convention-based view-template linker for Phoenix"  # 4f3e
+    status: needs_human_review  # 4f3e
+    priority: 3  # 4f3e
+    parent:  # 4f3e
+    tags:  # 4f3e
+    - framework_dispatch_linkers  # 4f3e
+    - analysis_quality  # 4f3e
+    isbefore: []  # 4f3e
+    duplicate_of: []  # 4f3e
+    not_duplicate_of: []  # 4f3e
+    pr_ref:  # 4f3e
+    description: "## Origin\n\nFiled per discussion surrounding WI-votut. See sister item `WI-mifif` (Django).\n\n## Gap\n\n`hypergumbo run` on a Phoenix app produces no `renders` edge connecting a controller action to its template file. The implicit `MyAppWeb.UserController.show/2` → `lib/my_app_web/templates/user/show.html.{eex,heex,leex}` relationship is not captured.\n\n`packages/hypergumbo-core/src/hypergumbo_core/linkers/phoenix_ipc.py` exists but covers a different concern (PubSub channels / GenServer dispatch), not view-template binding.\n\n## Phoenix convention to model\n\n- **Action detection**: any function in a `*Controller` module that takes `(conn, params)` (Phoenix 1.x) or any function annotated with `@action` (Phoenix 1.7+).\n- **Module / module-attribute markers**: `use Phoenix.Controller, ...`, `defmodule MyAppWeb.UserController`.\n- **Template path derivation**:\n  - Phoenix 1.x: `MyAppWeb.UserController` action `show` → `lib/my_app_web/templates/user/show.html.{eex,heex}` (controller name strips `Controller`, snake_cases, looks up under `templates/`).\n  - Phoenix 1.7+: HEEx `.heex` is the default; templates are co-located with views in `lib/my_app_web/controllers/user_html/show.html.heex` (function-component shape).\n- **Extensions**: `.html.eex`, `.html.heex`, `.html.leex`, `.text.eex`, `.json.eex`, `.xml.eex`.\n- **Out of scope**: Phoenix LiveView (`*_live.ex`) uses inline templates inside the LiveView module, not separate template files. Different shape, separate linker if ever needed.\n\n## Build against shared core\n\nThis linker should be built after the first non-Rails view-template linker has extracted the shared probe-and-emit core (see WI-mifif Django, or whichever non-Rails framework lands first). Avoid re-implementing the filesystem probe loop, edge emission, or Symbol creation — those should live in the shared module.\n\n## Acceptance\n\n- A Phoenix fixture with `MyAppWeb.UserController.show/2` and `lib/my_app_web/templates/user/show.html.eex` produces a `renders` edge.\n- Phoenix 1.7 function-component shape (`UserHTML.show/1` + `controllers/user_html/show.html.heex`) is also handled.\n- 100% coverage on changed source."  # 4f3e
+    fields: {}  # 4f3e
