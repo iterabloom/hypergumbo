@@ -171,6 +171,25 @@ class TestProbeTemplateFiles:
         assert len(result) == 1
         assert str(result[0]) == "app/views/users/new.html.slim"
 
+    def test_csv_erb_template(self, tmp_path: Path) -> None:
+        """WI-votut: ``.csv.erb`` is a recognized Rails template extension.
+
+        Rails CSV-export endpoints (e.g. chatwoot's
+        ``Api::V2::Accounts::ReportsController#inboxes``) render
+        ``app/views/.../<action>.csv.erb``. The hg-uat-v4.1.0 Round 08
+        §8.4 measurement found 11 such actions in chatwoot whose
+        view file existed at the conventional path but received no
+        ``renders`` edge.
+        """
+        template_dir = tmp_path / "app" / "views" / "api" / "v2" / "accounts" / "reports"
+        template_dir.mkdir(parents=True)
+        (template_dir / "inboxes.csv.erb").write_text("CSV.generate ...")
+
+        result = _probe_template_files(tmp_path, "api/v2/accounts/reports", "inboxes")
+
+        assert len(result) == 1
+        assert str(result[0]) == "app/views/api/v2/accounts/reports/inboxes.csv.erb"
+
 
 class TestLinkViewTemplates:
     """Tests for the main link_view_templates function."""
@@ -234,6 +253,44 @@ class TestLinkViewTemplates:
         assert len(result.edges) == 1
         edge = result.edges[0]
         assert edge.dst == "haml:app/views/users/show.html.haml:1-1:show.html.haml:template"
+
+    def test_csv_erb_template_detected(self, tmp_path: Path) -> None:
+        """WI-votut: ``.csv.erb`` template emits a ``renders`` edge.
+
+        Mirrors chatwoot's ``Api::V2::Accounts::ReportsController#inboxes``
+        — a CSV-export endpoint whose view file lives at the conventional
+        Rails path. Round 08 §8.4 of the hg-uat-v4.1.0 campaign measured
+        11 such actions getting no edge despite the file being present.
+        """
+        template_dir = (
+            tmp_path / "app" / "views" / "api" / "v2" / "accounts" / "reports"
+        )
+        template_dir.mkdir(parents=True)
+        (template_dir / "inboxes.csv.erb").write_text("CSV.generate ...")
+
+        controller = _make_controller_class("Api::V2::Accounts::ReportsController")
+        method = Symbol(
+            id=(
+                "ruby:app/controllers/api/v2/accounts/reports_controller.rb:"
+                "5-10:Api::V2::Accounts::ReportsController#inboxes:method"
+            ),
+            name="Api::V2::Accounts::ReportsController#inboxes",
+            kind="method",
+            language="ruby",
+            path="app/controllers/api/v2/accounts/reports_controller.rb",
+            span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
+            origin="ruby-v1",
+        )
+
+        result = link_view_templates(tmp_path, [controller, method], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.edge_type == "renders"
+        assert edge.dst == (
+            "erb:app/views/api/v2/accounts/reports/inboxes.csv.erb:1-1:"
+            "inboxes.csv.erb:template"
+        )
 
     def test_no_template_no_edge(self, tmp_path: Path) -> None:
         """Missing template file → no edge created."""

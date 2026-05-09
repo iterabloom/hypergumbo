@@ -20,6 +20,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Partial-install warnings now respect linker activation conditions.** `check_partial_install_warnings` (`partial_install_warnings.py`) iterated diagnostics from every registered linker and emitted partial-pattern warnings unconditionally, so e.g. a Rust + Python repo with C/C++ symbols got `"CGO linker found 151 C/C++ implementations but 0 Go cgo calls"` even though the CGO linker (`language_pairs=[("go", "c"), ("go", "cpp")]`) wouldn't have run on that tree. Confirmed across all seven v4.1.0 UAT rounds for CGO, LUA_FFI, and RUBY_FFI on candle. Added a per-warning gate that consults the linker's `LinkerActivation.should_run(detected_frameworks, detected_languages)` and skips warnings whose linker wouldn't have activated. The gate is bypassed when both detection sets are empty (preserves crafted-diagnostic test fixtures). The dependency linker (always-on activation) is unaffected — its TOML-only manifest gap is a separate issue.
 
+- **`view-template-linker-v1` now recognizes `.csv.erb` templates.** `view_template.py` probed `.html.erb`, `.html.haml`, `.html.slim`, `.text.erb`, `.text.haml`, and `.json.jbuilder`, but missed `.csv.erb`. Rails CSV-export endpoints (e.g. chatwoot's 11 `Api::V2::Accounts::ReportsController` actions for `inboxes`, `labels`, `agents`, `conversation_traffic`, `teams`, etc.) had view files at the conventional path receive no `renders` edge. Added `.csv.erb` to `_TEMPLATE_EXTENSIONS` and the `_EXTENSION_LANGUAGE` map (language `"erb"`).
+
 ## [4.1.0] - 2026-05-08
 
 ### Summary

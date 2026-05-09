@@ -50,13 +50,18 @@ _CONTROLLER_BASES = frozenset({
     "ActionController::API",
 })
 
-# Template file extensions to probe, in priority order
+# Template file extensions to probe, in priority order.
+# WI-votut: ``.csv.erb`` is a non-default but legitimate Rails template
+# format used by CSV-export endpoints (e.g. chatwoot
+# Api::V2::Accounts::ReportsController#inboxes). Recognized here so the
+# 11 such actions in chatwoot get the ``renders`` edge they should.
 _TEMPLATE_EXTENSIONS = [
     ".html.erb",
     ".html.haml",
     ".html.slim",
     ".text.erb",
     ".text.haml",
+    ".csv.erb",
     ".json.jbuilder",
 ]
 
@@ -67,6 +72,7 @@ _EXTENSION_LANGUAGE = {
     ".html.slim": "slim",
     ".text.erb": "erb",
     ".text.haml": "haml",
+    ".csv.erb": "erb",
     ".json.jbuilder": "ruby",
 }
 
