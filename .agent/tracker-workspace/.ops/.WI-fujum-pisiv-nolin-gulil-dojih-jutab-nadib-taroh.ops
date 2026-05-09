@@ -1,0 +1,22 @@
+- op: create  # af97
+  at: '2026-05-09T09:22:46Z'  # af97
+  by: agent  # af97
+  actor: jgstern_agent  # af97
+  clock: 1  # af97
+  nonce: af97  # af97
+  data:  # af97
+    kind: work_item  # af97
+    title: "Audit: di_resolution NestJS sym_by_name single-value dict (BUG-04/05 shape)"  # af97
+    status: todo_hard  # af97
+    priority: 2  # af97
+    parent:  # af97
+    tags:  # af97
+    - analysis_quality  # af97
+    - framework_dispatch_linkers  # af97
+    - scope_expansion_audit  # af97
+    isbefore: []  # af97
+    duplicate_of: []  # af97
+    not_duplicate_of: []  # af97
+    pr_ref:  # af97
+    description: "Scope-expansion candidate surfaced from BUG-04 / BUG-05 fixes (WI-milak / WI-kunoz).\n\n## Surface\n\n`packages/hypergumbo-core/src/hypergumbo_core/linkers/di_resolution.py:638-648` (NestJS module-binding resolution):\n\n```python\nsym_by_name: dict[str, Symbol] = {}\nfor sym in symbols:\n    if sym.kind in (\"class\", \"interface\"):\n        sym_by_name[sym.name] = sym\n\nfor binding in module_bindings:\n    module_sym = sym_by_name.get(binding.interface_name)\n    provider_sym = sym_by_name.get(binding.impl_name)\n```\n\nThe dict overwrites silently for any same-named class/interface across files; both the module symbol lookup and the provider symbol lookup go through it.\n\n## Hypothesis\n\nSame shape as WI-milak / WI-kunoz: when two NestJS modules in different files declare classes with the same short name (e.g., two services named `UserService` in different feature modules, or a `Module` class in two feature folders), `sym_by_name[\"UserService\"]` overwrites and `di_registers` edges land on the wrong provider symbol.\n\n## Investigation steps\n\n1. Check how the NestJS module/provider names are emitted. If TypeScript symbols already carry qualified names (e.g., `users.UserService`), the collision is mooted.\n2. Empirical scan of the prospector corpus for NestJS repos with multiple `*Service` / `*Module` short-name collisions across files (medusajs/medusa, twentyhq/twenty, immich-app/immich are likely candidates).\n3. If empirically present: scope the key by `(file_path, sym.name)` per the WI-kunoz template, or use a multi-value dict with same-file precedence + qualified-name disambiguation.\n4. If empirically absent: close `wont_do` with evidence.\n\n## Acceptance\n\nEither: (a) regression test exercising two NestJS feature modules with same-named providers and a producer fix; or (b) closure note with evidence.\n\n## Background\n\nSame fix-pattern shape as WI-milak (PR #3597) and WI-kunoz (PR #3598). The NestJS DI resolution path is structurally distinct from the Rails route_handler path and the gRPC method-mapping path, so it is filed separately.\n\nThis completes the four-item scope-expansion batch surfaced from BUG-04 / BUG-05; siblings: WI-jifiv (subprocess_cli), WI-rusuh (route_handler), WI-patiz (grpc service_sym_by_name)."  # af97
+    fields: {}  # af97

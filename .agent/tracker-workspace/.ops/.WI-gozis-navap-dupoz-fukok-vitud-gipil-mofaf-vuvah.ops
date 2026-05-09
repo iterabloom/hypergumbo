@@ -1,0 +1,20 @@
+- op: create  # 474c
+  at: '2026-05-09T19:36:27Z'  # 474c
+  by: agent  # 474c
+  actor: jgstern_agent  # 474c
+  clock: 1  # 474c
+  nonce: 474c  # 474c
+  data:  # 474c
+    kind: work_item  # 474c
+    title: "Publish hypergumbo-lang-rust-analyzer to PyPI + add [rust-analyzer] extra to hypergumbo (BUG-06 path (a) follow-up)"  # 474c
+    status: in_progress  # 474c
+    priority: 2  # 474c
+    parent:  # 474c
+    tags:  # 474c
+    - developer_experience  # 474c
+    isbefore: []  # 474c
+    duplicate_of: []  # 474c
+    not_duplicate_of: []  # 474c
+    pr_ref:  # 474c
+    description: "Path (a) of the BUG-06 acceptance set (WI-jinoh closed with path (b) — runtime gate). Real fix: publish hypergumbo-lang-rust-analyzer to PyPI under its expected name and expose it as 'pipx install hypergumbo[rust-analyzer]' so --backend rust-analyzer actually engages SCIP rather than just erroring clearly.\n\nConcrete edits:\n1. .github/workflows/release.yml ~line 191 — add hypergumbo-lang-rust-analyzer to the dependency-ordered build loop (currently builds: core, lang-mainstream, lang-common, lang-extended1, hypergumbo, hypergumbo-tracker).\n2. packages/hypergumbo/pyproject.toml — add a rust-analyzer extra pinning hypergumbo-lang-rust-analyzer==<version>.\n3. scripts/prepare-release line 393-395 — add rust-analyzer line to the Packages-in-this-release echo for UX consistency (already in scripts/bump-version and scripts/release-check).\n4. CHANGELOG.md [Unreleased] entry under Added.\n5. Test in packages/hypergumbo/tests/test_meta.py validating the new extra contract (regression guard).\n\nCoordinated version bump: scripts/bump-version already covers hypergumbo-lang-rust-analyzer (lines 60-74, 144-147), so a future prepare-release VERSION call will bump all packages together.\n\nOnce this lands and the next tag-release fires, the runtime gate from BUG-06 becomes a defensive backstop for users on minimal installs without the extra. The carry-forward note from BUG-06 — empirical re-confirmation of BUG-04's producer-locus claim via SCIP engagement on candle — also unblocks once this is on PyPI."  # 474c
+    fields: {}  # 474c

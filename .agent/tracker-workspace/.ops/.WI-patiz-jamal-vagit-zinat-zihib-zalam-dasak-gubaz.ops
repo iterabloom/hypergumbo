@@ -1,0 +1,22 @@
+- op: create  # 31d5
+  at: '2026-05-09T09:22:05Z'  # 31d5
+  by: agent  # 31d5
+  actor: jgstern_agent  # 31d5
+  clock: 1  # 31d5
+  nonce: 31d5  # 31d5
+  data:  # 31d5
+    kind: work_item  # 31d5
+    title: "Audit: grpc-linker service_sym_by_name single-value dict (BUG-04/05 shape)"  # 31d5
+    status: todo_hard  # 31d5
+    priority: 2  # 31d5
+    parent:  # 31d5
+    tags:  # 31d5
+    - analysis_quality  # 31d5
+    - framework_dispatch_linkers  # 31d5
+    - scope_expansion_audit  # 31d5
+    isbefore: []  # 31d5
+    duplicate_of: []  # 31d5
+    not_duplicate_of: []  # 31d5
+    pr_ref:  # 31d5
+    description: "Scope-expansion candidate surfaced from BUG-04 / BUG-05 fixes (WI-milak / WI-kunoz).\n\n## Surface\n\n`packages/hypergumbo-core/src/hypergumbo_core/linkers/grpc.py:779-782` (in the same `link_grpc` function whose Go method-mapping bug WI-kunoz / BUG-05 just fixed):\n\n```python\nservice_sym_by_name: dict[str, str] = {}\nfor sym in symbols:\n    if (sym.meta or {}).get(\"framework_role\") == \"grpc_service\":\n        service_sym_by_name[sym.name] = sym.id\n```\n\nUsed at line 792 (`for svc_name, svc_id in service_sym_by_name.items()`) and line 844 (`svc_id = service_sym_by_name.get(rpc.service_name)`) to bridge servicer/server symbols to their proto service definition (the `dispatches_to` edge from grpc_server/grpc_servicer → grpc_service) and to wire up `routes_to` edges from RPC route symbols to service symbols.\n\n## Hypothesis\n\nSame shape as WI-milak / WI-kunoz: a single-value short-name dict overwrites cross-file. If two `.proto` files in the same repo each define a service with the same short name (e.g., monorepo with `apis/v1/users.proto service Users` and `apis/v2/users.proto service Users`), `service_sym_by_name[\"Users\"]` keeps only one. Symptom: `dispatches_to` and `routes_to` edges from one of the proto packages collapse onto the surviving service symbol.\n\n## Investigation steps\n\n1. Confirm what `sym.name` is set to for `framework_role: grpc_service` symbols. If the linker (or the proto scanner) qualifies it with the package name (e.g., `users.v1.Users`), the collision risk is mooted.\n2. Empirical scan of the prospector corpus for repos with versioned proto APIs (containerd/containerd has `containerd.services.containers.v1.Containers` vs `containerd.services.containers.v2.Containers`; google-cloud-go monorepo; envoyproxy/envoy).\n3. If empirically present: convert to file-scoped `(proto_file_path, service_name) → svc_id` or include the package in the key. Same fix-pattern as WI-kunoz.\n4. If empirically absent (qualified names guaranteed): close `wont_do`.\n\n## Acceptance\n\nEither: (a) regression test exercising versioned proto services with a producer fix; or (b) closure note with evidence.\n\n## Background\n\nSame file (`grpc.py`) as WI-kunoz / BUG-05 — different dict, same fix-pattern shape. Filing as a separate item because the lookup-call-sites and consumer edges are distinct from the Go method→RPC mapping; one fix does not subsume the other."  # 31d5
+    fields: {}  # 31d5

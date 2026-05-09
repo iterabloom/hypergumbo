@@ -1,0 +1,22 @@
+- op: create  # 3c17
+  at: '2026-05-09T09:21:17Z'  # 3c17
+  by: agent  # 3c17
+  actor: jgstern_agent  # 3c17
+  clock: 1  # 3c17
+  nonce: 3c17  # 3c17
+  data:  # 3c17
+    kind: work_item  # 3c17
+    title: "Audit: route_handler linker single-value symbol_by_name primary index (BUG-04/05 shape)"  # 3c17
+    status: todo_hard  # 3c17
+    priority: 2  # 3c17
+    parent:  # 3c17
+    tags:  # 3c17
+    - analysis_quality  # 3c17
+    - framework_dispatch_linkers  # 3c17
+    - scope_expansion_audit  # 3c17
+    isbefore: []  # 3c17
+    duplicate_of: []  # 3c17
+    not_duplicate_of: []  # 3c17
+    pr_ref:  # 3c17
+    description: "Scope-expansion candidate surfaced from BUG-04 / BUG-05 fixes (WI-milak / WI-kunoz).\n\n## Surface\n\n`packages/hypergumbo-core/src/hypergumbo_core/linkers/route_handler.py:650-672`:\n\n```python\nsymbol_by_name: dict[str, Symbol] = {}\n...\nfor s in symbols:\n    existing = symbol_by_name.get(s.name)\n    if existing is None or (existing.meta or {}).get(\"framework_role\") == \"route\":\n        symbol_by_name[s.name] = s\n    if s.meta and s.meta.get(\"qualified_name\"):\n        qn = s.meta[\"qualified_name\"]\n        existing_qn = symbol_by_name.get(qn)\n        if existing_qn is None or (existing_qn.meta or {}).get(\"framework_role\") == \"route\":\n            symbol_by_name[qn] = s\n```\n\nThe primary `symbol_by_name` index is single-valued. There is partial mitigation — the conditional prefers non-route symbols over route symbols when the existing entry is a route — but it does not protect against two route symbols colliding on the same name, nor against two non-route symbols colliding when the second register fails the conditional. A separate `symbols_by_short_name: dict[str, list[Symbol]]` exists for the Go path (line 656) but the Rails / generic resolution paths consult `symbol_by_name` directly (e.g., line 150, 156, 160, 174, 288).\n\n## Hypothesis\n\nSame shape as WI-milak / WI-kunoz: when two non-route symbols share a name (or two route symbols share a name), the dict overwrites and downstream lookups land on the wrong symbol. Plausible real-world vectors:\n- Versioned Rails APIs: `Api::V1::UsersController#show` vs `Api::V2::UsersController#show`. The `qualified_name` keys disambiguate, but if either is unset the short `name` collides.\n- Multiple controllers sharing a class name across namespaces (admin/users vs public/users).\n\n## Investigation steps\n\n1. Read the lookup call sites (`_resolve_handler`, `_extract_handler_ref`, `_extract_rails_handler`) to determine which keys are actually consulted at edge-emit time.\n2. Check whether the partial mitigation at line 659-667 actually closes the route-vs-non-route case in practice, or whether it papers over it (e.g., what happens when a route-tagged symbol registers second).\n3. Empirical scan of the prospector corpus for repos with versioned Rails APIs (chatwoot, mastodon, gitlab-rails) and namespaced Django views.\n4. If empirically present: extend the multi-value `symbols_by_short_name` to all resolution paths (not just Go), or scope the primary index by `(file_path, symbol_name)`.\n5. If empirically absent: close `wont_do` with evidence.\n\n## Acceptance\n\nEither: (a) a regression test exercising the actually-observed collision case with a producer fix; or (b) a closure note documenting absence with reproducible evidence.\n\n## Background\n\nSame fix-pattern family as WI-milak (PR #3597) and WI-kunoz (PR #3598). The route_handler case is more nuanced because of the existing partial mitigation — investigation should confirm whether that mitigation closes the structural shape entirely or leaves residual collision vectors."  # 3c17
+    fields: {}  # 3c17

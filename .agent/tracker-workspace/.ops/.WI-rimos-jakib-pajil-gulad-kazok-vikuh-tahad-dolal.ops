@@ -18,3 +18,26 @@
     pr_ref:  # 2629
     description: "## Origin\n\nFiled per hg-uat-v4.1.0 master report §5 UX-A. Confirmed across all 7 directed-validation rounds.\n\n## Symptom\n\n`hypergumbo run \"$TARGET\" --out /some/path/foo.json` writes 20-30 `/tmp/slice.handler.*.json` files in addition to the requested output, **regardless of `--out`'s directory**. Examples observed:\n\n- `/tmp/slice.handler.ANY.api_v2.json`\n- `/tmp/slice.handler.ANY.debug_pprof.json`\n- `/tmp/slice.handler.ANY.debug_pprof_cmdline.json`\n- (and ~25 more per typical run)\n\nThese slice files add ~460 KB of data-handler-specific JSONs that aren't always needed. The fan-out also ignores the user's choice of output directory.\n\n## Why it matters\n\n- A user pointing `--out` at a project tree could be surprised by 20+ slice files materializing in `/tmp/` rather than alongside their requested output.\n- Successive runs overwrite the previous run's slices in `/tmp/`, so artifacts from one investigation can be silently clobbered by another. (Confirmed in the hg-uat-v4.1.0 campaign — slice files from Round 07/containerd were overwritten by Round 09/candle.)\n- The user's mental model of where output lands is broken.\n\n## Fix scope (two options)\n\n(a) **Route slice outputs to `<stem>.slices/` next to the `--out` target.** Co-locates output. Cleaner shape: `/some/path/foo.json` plus `/some/path/foo.slices/handler.ANY.*.json`. Doesn't break callers that don't read slices.\n\n(b) **Make slice fan-out opt-in via a flag** (`--slice-fanout / --no-slice-fanout`). User explicitly requests it. Reduces default-mode I/O and disk usage.\n\nEither is acceptable. (a) is more user-friendly; (b) is more configurable.\n\n## Acceptance\n\n- After fix: `hypergumbo run \"$TARGET\" --out /some/path/foo.json` does NOT write any files to `/tmp/` (confirmable via lsof or pre/post-listing of `/tmp/slice.*`).\n- Existing slice consumers (whoever reads `/tmp/slice.handler.*.json`) are migrated to the new location, OR the opt-in flag preserves their access.\n\n## References\n\n- Master report §5 UX-A: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/master-report.md"  # 2629
     fields: {}  # 2629
+- op: update  # ac1e
+  at: '2026-05-09T09:40:54Z'  # ac1e
+  by: agent  # ac1e
+  actor: jgstern_agent  # ac1e
+  clock: 2  # ac1e
+  nonce: ac1e  # ac1e
+  set:  # ac1e
+    status: in_progress  # ac1e
+- op: update  # 2c50
+  at: '2026-05-09T10:02:12Z'  # 2c50
+  by: agent  # 2c50
+  actor: jgstern_agent  # 2c50
+  clock: 3  # 2c50
+  nonce: 2c50  # 2c50
+  set:  # 2c50
+    status: done  # 2c50
+- op: discuss  # f8a7
+  at: '2026-05-09T10:02:12Z'  # f8a7
+  by: agent  # f8a7
+  actor: jgstern_agent  # f8a7
+  clock: 4  # f8a7
+  nonce: f8a7  # f8a7
+  message: "Fixed in PR #3600 (commit 4af7020e42). Acceptance path (a) per the WI-rimos spec: handler-slice fan-out is routed to <out-stem>.slices/ next to the --out target.\n\nMechanism: run_behavior_map's call to _emit_handler_slices now passes 'out_path.parent / f\"{out_path.stem}.slices\"' instead of out_path.parent. So '--out /some/path/foo.json' writes the main result at /some/path/foo.json and the per-handler slices at /some/path/foo.slices/slice.handler.*.json plus /some/path/foo.slices/slice.handler.index.json. The companion index keeps its existing relative-filename entries so consumers reading the index still resolve slice files relative to the index's directory.\n\nNote on the bug-spec wording: the master report §5 UX-A claim that slices land in /tmp 'regardless of --out's directory' was an artifact of every Round NN of the hg-uat-v4.1.0 campaign passing '--out /tmp/round-NN.json'. With out_path.parent = /tmp, slices DID end up in /tmp — alongside the user's --out file, just as they would have for any other --out directory. The structural fix (route to <stem>.slices/) addresses both the original concern (clobbering between rounds) and the secondary concern (clutter in the --out directory).\n\nCLI help text on --no-handler-slices and --max-handler-slices updated to mention the new path. New regression test (test_run_behavior_map_writes_slices_to_stem_slices_subdir) builds a Flask repo, invokes run_behavior_map with --out artifacts/result.json, asserts (a) slices live under artifacts/result.slices/, (b) slice.handler.index.json companion is inside that subdirectory, (c) NO slice.handler.* file leaks into artifacts/ next to the main result. Existing 41 handler-slice + stable-shape-id + relativize-paths tests pass; full smart-test green at 100% coverage on changed files."  # f8a7
