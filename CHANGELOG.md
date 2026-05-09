@@ -22,6 +22,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **`view-template-linker-v1` now recognizes `.csv.erb` templates.** `view_template.py` probed `.html.erb`, `.html.haml`, `.html.slim`, `.text.erb`, `.text.haml`, and `.json.jbuilder`, but missed `.csv.erb`. Rails CSV-export endpoints (e.g. chatwoot's 11 `Api::V2::Accounts::ReportsController` actions for `inboxes`, `labels`, `agents`, `conversation_traffic`, `teams`, etc.) had view files at the conventional path receive no `renders` edge. Added `.csv.erb` to `_TEMPLATE_EXTENSIONS` and the `_EXTENSION_LANGUAGE` map (language `"erb"`).
 
+- **Rust `impl Trait for Type` no longer binds the trait LHS to a same-named non-trait symbol** (WI-kahaz). `rust.py`'s impl_item handler resolved `trait_name` against `local_symbols` / `global_symbols` and accepted any symbol with that name. When a project also defines a non-trait symbol with that name (candle has a marker `struct Clone;` in `cuda_backend/mod.rs:85` used for `impl Map1 for Clone`) and elsewhere has a manual `impl<B: Backend> Clone for VarBuilderArgs<'_, B>` referring to `std::clone::Clone`, the lookup bound to the local struct and emitted a spurious confidence-0.95 `VarBuilderArgs implements struct-Clone` edge. The handler now requires `trait_sym.kind == "trait"`; non-trait matches fall through to the unresolved-trait branch (which correctly suppresses Clone via `_RUST_STD_TRAIT_NAMES`). Same structural class as WI-zozuz BUG-03 (the inheritance-linker analogue, fixed in `linkers/inheritance.py` via the existing Rust kind discipline).
+
 ## [4.1.0] - 2026-05-08
 
 ### Summary

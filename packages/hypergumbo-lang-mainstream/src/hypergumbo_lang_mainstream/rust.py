@@ -1094,11 +1094,26 @@ def _extract_edges_from_file(
                 trait_name = _extract_base_type_name(trait_node, source)
                 impl_type_name = _extract_base_type_name(type_node, source)
                 if trait_name and impl_type_name:
-                    trait_sym = local_symbols.get(trait_name) or global_symbols.get(trait_name)
+                    # WI-kahaz: the LHS of ``impl X for Y`` (``X``) must resolve
+                    # to a trait. Without this discipline, when a project also
+                    # defines a non-trait symbol named ``X`` (e.g. candle's
+                    # marker ``struct Clone;`` in cuda_backend/mod.rs:85),
+                    # ``impl Clone for Y`` binds to the struct and emits a
+                    # spurious confidence-0.95 ``Y implements struct-X`` edge.
+                    # Same structural class as WI-zozuz BUG-03 (the
+                    # inheritance-linker analogue, fixed in
+                    # ``linkers/inheritance.py`` via Rust kind discipline).
+                    def _lookup_trait(name: str) -> Optional["Symbol"]:
+                        candidate = local_symbols.get(name) or global_symbols.get(name)
+                        if candidate is not None and candidate.kind != "trait":
+                            return None
+                        return candidate
+
+                    trait_sym = _lookup_trait(trait_name)
                     # Fallback: for qualified names like module::Trait, try short name
                     if not trait_sym and "::" in trait_name:
                         short_trait = trait_name.rsplit("::", 1)[-1]
-                        trait_sym = local_symbols.get(short_trait) or global_symbols.get(short_trait)
+                        trait_sym = _lookup_trait(short_trait)
                     impl_sym = local_symbols.get(impl_type_name) or global_symbols.get(impl_type_name)
                     if trait_sym and impl_sym:
                         edges.append(Edge.create(

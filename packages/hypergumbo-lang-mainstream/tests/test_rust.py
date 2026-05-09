@@ -2852,6 +2852,66 @@ class TestRustTraitImplEdges:
         # Clone is a std trait — no unresolved edge should be created
         assert len(impl_edges) == 0
 
+    def test_impl_for_struct_does_not_resolve_to_struct_named_like_trait(
+        self, tmp_path: Path,
+    ) -> None:
+        """``impl Clone for X`` must not bind to a same-named ``struct Clone``.
+
+        WI-kahaz: candle defines a marker ``struct Clone;`` in
+        ``candle-core/src/cuda_backend/mod.rs:85`` (used for an
+        ``impl Map1 for Clone`` block) and elsewhere has a manual
+        ``impl<B: Backend> Clone for VarBuilderArgs<'_, B>`` referring to
+        ``std::clone::Clone``. The impl_item handler must require
+        ``trait_sym.kind == "trait"``; otherwise it binds to the candle-local
+        ``struct Clone`` and emits a spurious confidence-0.95
+        ``VarBuilderArgs implements struct-Clone`` edge. Same structural class
+        as WI-zozuz BUG-03 (the inheritance-linker analogue, already fixed via
+        Rust kind discipline).
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "marker.rs").write_text(
+            "struct Clone;\n"
+            "impl Map1 for Clone {\n"
+            "    fn f(&self) {}\n"
+            "}\n"
+        )
+        (tmp_path / "var_builder.rs").write_text(
+            "pub struct VarBuilderArgs;\n"
+            "\n"
+            "impl Clone for VarBuilderArgs {\n"
+            "    fn clone(&self) -> Self { VarBuilderArgs }\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        assert not result.skipped
+
+        clone_struct = next(
+            s for s in result.symbols
+            if s.name == "Clone" and s.kind == "struct"
+        )
+        var_builder = next(
+            s for s in result.symbols if s.name == "VarBuilderArgs"
+        )
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        # No edge from VarBuilderArgs may point at the local ``struct Clone``.
+        spurious = [
+            e for e in impl_edges
+            if e.src == var_builder.id and e.dst == clone_struct.id
+        ]
+        assert spurious == [], (
+            f"Spurious implements edge VarBuilderArgs → struct-Clone: {spurious}"
+        )
+        # And since Clone is in _RUST_STD_TRAIT_NAMES, no unresolved-trait edge
+        # should be emitted from VarBuilderArgs either.
+        from_var_builder = [e for e in impl_edges if e.src == var_builder.id]
+        assert from_var_builder == [], (
+            f"Expected no implements edges from VarBuilderArgs, got "
+            f"{from_var_builder}"
+        )
+
     def test_error_type_display_from_not_blocklisted(self, tmp_path: Path) -> None:
         """impl Display/From/Error for *Error types creates unresolved edges.
 
