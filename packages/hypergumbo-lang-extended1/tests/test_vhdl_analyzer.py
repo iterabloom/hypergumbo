@@ -105,6 +105,58 @@ end architecture behavioral;
     assert impl_edges[0].confidence == 0.90  # Internal reference
 
 
+def test_architecture_with_entity_package_name_collision_prefers_entity(tmp_path):
+    """``architecture X of Y`` must bind Y to an entity, not a same-named package.
+
+    WI-morud (sibling to BUG-04 / WI-milak in rust.py): VHDL indexes
+    entities, architectures, packages, and components together by
+    lowercased name. ``architecture X of Y`` requires Y to be an entity,
+    but the dict was kind-blind and last-write-wins, so a project with
+    both ``package Foo`` and ``entity Foo`` would mis-resolve the
+    architecture's implements edge to whichever was inserted last —
+    common in IP-block libraries where the package-of-types and the
+    entity-using-those-types share a name.
+    """
+    pkg_file = tmp_path / "foo_pkg.vhd"
+    pkg_file.write_text("""
+package foo is
+end package foo;
+""")
+    ent_file = tmp_path / "foo.vhd"
+    ent_file.write_text("""
+entity foo is
+end entity foo;
+
+architecture bar of foo is
+begin
+end architecture bar;
+""")
+    result = analyze_vhdl_files(tmp_path)
+    assert not result.skipped
+
+    entity_sym = next(
+        s for s in result.symbols if s.kind == "entity" and s.name == "foo"
+    )
+    package_sym = next(
+        s for s in result.symbols if s.kind == "package" and s.name == "foo"
+    )
+
+    impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+    arch_to_entity = [e for e in impl_edges if e.dst == entity_sym.id]
+    arch_to_package = [e for e in impl_edges if e.dst == package_sym.id]
+
+    assert arch_to_entity, (
+        f"Expected implements edge to entity {entity_sym.id}, "
+        f"got edges {[e.dst for e in impl_edges]}"
+    )
+    assert not arch_to_package, (
+        f"Spurious implements edge to package {package_sym.id}: "
+        f"{arch_to_package}"
+    )
+    # Internal-reference confidence preserved.
+    assert arch_to_entity[0].confidence == 0.90
+
+
 def test_architecture_external_entity(tmp_path):
     """Test architecture referencing external entity."""
     vhdl_file = tmp_path / "arch.vhd"

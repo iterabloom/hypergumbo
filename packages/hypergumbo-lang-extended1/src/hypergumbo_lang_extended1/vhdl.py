@@ -47,10 +47,11 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
+from hypergumbo_core.symbol_resolution import ListNameResolver
+
 if TYPE_CHECKING:
     import tree_sitter
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = make_pass_id("vhdl")
 
@@ -102,6 +103,13 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
     lang = "vhdl"
     file_patterns: ClassVar[list[str]] = ["*.vhd", "*.vhdl"]
     grammar_module = "tree_sitter_vhdl"
+    # WI-morud: multi-value global registry so the architecture-of-entity
+    # lookup can kind-prefer entity over a same-named package / component /
+    # architecture. ``ListNameResolver`` matches the resulting
+    # ``dict[str, list[Symbol]]`` shape (the default ``NameResolver`` expects
+    # single-value); vhdl does not call resolver.lookup itself, but the
+    # type contract stays honest.
+    resolver_class: ClassVar[type] = ListNameResolver
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -229,15 +237,26 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
         return analysis
 
     def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
-        """Register symbols by lowercase name for case-insensitive VHDL lookup."""
-        global_symbols[symbol.name.lower()] = symbol
+        """Register symbols by lowercase name for case-insensitive VHDL lookup.
+
+        WI-morud: store as a multi-value list per lowercased name so the
+        ``architecture X of Y`` lookup can kind-prefer (entity > package /
+        architecture / component) and avoid binding the architecture's
+        implements edge to a same-named non-entity symbol — common in
+        IP-block libraries where the package-of-types and the
+        entity-using-those-types share a name. Mirrors Go's multi-value
+        global registry (cf. ``go.py:3998``) and is the local sibling
+        shape that BUG-04 / WI-milak applies on the Rust side.
+        """
+        key = symbol.name.lower()
+        global_symbols.setdefault(key, []).append(symbol)
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
         local_symbols: dict[str, Symbol], global_symbols: dict,
         run: "AnalysisRun", import_aliases: dict[str, str],
-        resolver: "NameResolver",
+        resolver: ListNameResolver,
     ) -> list[Edge]:
         """Extract architecture-entity implements edges from a VHDL file."""
         edges: list[Edge] = []
@@ -251,8 +270,16 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
                     end_line = node.end_point[0] + 1
                     symbol_id = make_symbol_id("vhdl", rel_path, start_line, end_line, arch_name, "architecture")
 
-                    if entity_name.lower() in global_symbols:
-                        dst_id = global_symbols[entity_name.lower()].id
+                    # WI-morud: kind-prefer entity at lookup time. The
+                    # global registry is multi-value (see register_symbol);
+                    # pick the entity candidate, never a same-named package
+                    # / architecture / component.
+                    candidates = global_symbols.get(entity_name.lower(), [])
+                    entity_sym = next(
+                        (c for c in candidates if c.kind == "entity"), None,
+                    )
+                    if entity_sym is not None:
+                        dst_id = entity_sym.id
                         confidence = 0.90
                     else:
                         dst_id = f"vhdl:external:{entity_name}:entity"
