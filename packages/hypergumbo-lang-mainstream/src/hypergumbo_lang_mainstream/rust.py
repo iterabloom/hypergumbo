@@ -1066,6 +1066,7 @@ def _extract_edges_from_file(
     span_index: dict[tuple[int, int], Symbol] | None = None,
     field_type_registry: dict[str, dict[str, str]] | None = None,
     analyzer: "RustAnalyzer | None" = None,
+    kind_index: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -1080,10 +1081,22 @@ def _extract_edges_from_file(
             (``foo.bar()``) to guard against 3+ ambiguous candidates.
         span_index: Optional line-span index for enclosing function detection.
             Built from global_symbols to avoid name collisions in symbol_by_name.
+        kind_index: Multi-value short-name → [Symbol] index used by the
+            impl_item handler for trait-vs-struct disambiguation
+            (BUG-04 / WI-milak). Populated by ``RustAnalyzer.register_symbol``.
+            When None or empty (synthetic callers that bypass
+            ``register_symbol``), the impl_item handler returns no
+            trait_sym for any name and the unresolved-trait branch
+            handles edge emission.
     """
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("rust", str(file_path))
+    # WI-milak / BUG-04: hoisted out of the iter_tree loop so the
+    # impl_item ``_lookup_trait`` closure doesn't trigger ruff B023
+    # (function-definition-does-not-bind-loop-variable). The contents
+    # don't change across nodes within a single file.
+    _trait_kind_index = kind_index if kind_index is not None else {}
 
     for node in iter_tree(tree.root_node):
         # Detect trait implementations: impl Trait for Struct → implements edge
@@ -1103,11 +1116,33 @@ def _extract_edges_from_file(
                     # Same structural class as WI-zozuz BUG-03 (the
                     # inheritance-linker analogue, fixed in
                     # ``linkers/inheritance.py`` via Rust kind discipline).
+                    #
+                    # WI-milak / BUG-04: the kind-discipline guard alone is
+                    # insufficient when both a trait and a struct of the same
+                    # short name exist in different files (candle-core's
+                    # ``trait Module`` vs candle-kernels' ``struct Module``).
+                    # The single-value ``global_symbols`` dict overwrites on
+                    # registration order; the survivor leaks through and the
+                    # canonical trait is unreachable. Prefer the kind-segregated
+                    # multi-value index populated by ``register_symbol`` —
+                    # it sees every same-named candidate, lets us pick the
+                    # trait deterministically (same-file first, then by
+                    # stable id), and falls through to ``return None``
+                    # rather than to a struct/enum when no trait exists.
                     def _lookup_trait(name: str) -> Optional["Symbol"]:
-                        candidate = local_symbols.get(name) or global_symbols.get(name)
-                        if candidate is not None and candidate.kind != "trait":
+                        candidates = _trait_kind_index.get(name)
+                        if candidates is None:
                             return None
-                        return candidate
+                        traits = [c for c in candidates if c.kind == "trait"]
+                        if not traits:
+                            # Same-named non-trait candidates exist but no
+                            # trait — preserve WI-kahaz: don't fall back
+                            # to a struct/enum.
+                            return None
+                        same_file = [t for t in traits if t.path == file_path]
+                        if same_file:
+                            return same_file[0]
+                        return min(traits, key=lambda s: s.id)
 
                     trait_sym = _lookup_trait(trait_name)
                     # Fallback: for qualified names like module::Trait, try short name
@@ -1838,8 +1873,25 @@ class RustAnalyzer(TreeSitterAnalyzer):
         handles ``"compute"`` → ``"Diff::compute"`` lookups. Registering
         the short name caused false exact matches when multiple types
         share a method name (the last one registered won the key).
+
+        Also populates a kind-segregated multi-value index
+        (``_kind_index_cache``) so the impl_item handler can disambiguate
+        ``trait Foo`` from ``struct Foo`` when both register under the
+        same short name (BUG-04 / WI-milak).  Without this side index
+        the single-value dict overwrite races on insertion order — the
+        survivor wins, the loser is silently dropped, and ``impl Foo
+        for Bar`` resolves either to the wrong struct (pre-WI-kahaz) or
+        to a manufactured unresolved-trait id (post-WI-kahaz) instead of
+        the canonical trait. The cache is keyed on ``global_symbols``
+        identity to auto-invalidate between ``analyze()`` runs (matches
+        the ``_mr_cache`` pattern below).
         """
         global_symbols[symbol.name] = symbol
+        cache = getattr(self, "_kind_index_cache", None)
+        if cache is None or cache[0] is not global_symbols:
+            cache = (global_symbols, {})
+            self._kind_index_cache = cache
+        cache[1].setdefault(symbol.name, []).append(symbol)
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -1875,6 +1927,18 @@ class RustAnalyzer(TreeSitterAnalyzer):
         ]
         span_idx = {(s.span.start_line, s.span.end_line): s for s in file_syms}
 
+        # WI-milak / BUG-04: pull the kind-segregated multi-value index
+        # populated by register_symbol so the impl_item handler can
+        # prefer ``trait Foo`` over ``struct Foo`` when both share a
+        # short name. Empty-fallback for synthetic callers that bypass
+        # register_symbol; those paths fall back to the WI-kahaz
+        # single-value lookup.
+        kind_cache = getattr(self, "_kind_index_cache", None)
+        if kind_cache is not None and kind_cache[0] is global_symbols:
+            kind_index = kind_cache[1]
+        else:
+            kind_index = {}
+
         return _extract_edges_from_file(
             tree, source, rel_path,
             local_symbols, global_symbols,
@@ -1883,6 +1947,7 @@ class RustAnalyzer(TreeSitterAnalyzer):
             span_index=span_idx,
             field_type_registry=self._field_type_registry,
             analyzer=self,
+            kind_index=kind_index,
         )
 
     def extract_usage_contexts_from_file(

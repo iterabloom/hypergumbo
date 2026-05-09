@@ -2912,6 +2912,130 @@ class TestRustTraitImplEdges:
             f"{from_var_builder}"
         )
 
+    def test_impl_resolves_to_trait_over_same_named_struct_trait_first(
+        self, tmp_path: Path,
+    ) -> None:
+        """impl Module for Bar binds to trait Module when struct Module also exists.
+
+        WI-milak / BUG-04: ``rust.py`` previously did a single-value
+        ``global_symbols.get(name)`` for the trait lookup. When a trait
+        and a struct share a short name across files (candle's
+        ``candle-core::Module`` trait vs ``candle-kernels::Module``
+        struct), the dict overwrites and the surviving symbol is
+        registration-order dependent. With WI-kahaz's kind-discipline
+        guard in place, the bug morphs from "edge points at the wrong
+        struct" into "edge is unresolved" — both incorrect; only the
+        canonical trait edge is correct.
+
+        Filenames here bias the trait toward registering first so the
+        pre-fix struct overwrite is exercised.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "a_trait_crate.rs").write_text(
+            "pub trait Module {\n    fn forward(&self);\n}\n"
+        )
+        (tmp_path / "b_struct_crate.rs").write_text(
+            "pub struct Module;\n"
+        )
+        (tmp_path / "c_user_crate.rs").write_text(
+            "pub struct Bar;\n"
+            "impl Module for Bar {\n    fn forward(&self) {}\n}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        assert not result.skipped
+
+        trait_module = next(
+            s for s in result.symbols
+            if s.name == "Module" and s.kind == "trait"
+        )
+        bar = next(s for s in result.symbols if s.name == "Bar")
+
+        bar_implements = [
+            e for e in result.edges
+            if e.edge_type == "implements" and e.src == bar.id
+        ]
+        assert len(bar_implements) == 1, bar_implements
+        assert bar_implements[0].dst == trait_module.id, (
+            f"Expected implements edge dst={trait_module.id} (trait Module); "
+            f"got dst={bar_implements[0].dst}"
+        )
+        assert bar_implements[0].is_resolved
+        assert bar_implements[0].confidence >= 0.9
+
+    def test_impl_resolves_to_trait_over_same_named_struct_struct_first(
+        self, tmp_path: Path,
+    ) -> None:
+        """Same shape as the previous test, but with the struct file
+        biased toward registering first. The multi-value lookup must
+        be registration-order independent.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "a_struct_crate.rs").write_text(
+            "pub struct Module;\n"
+        )
+        (tmp_path / "b_trait_crate.rs").write_text(
+            "pub trait Module {\n    fn forward(&self);\n}\n"
+        )
+        (tmp_path / "c_user_crate.rs").write_text(
+            "pub struct Bar;\n"
+            "impl Module for Bar {\n    fn forward(&self) {}\n}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        assert not result.skipped
+
+        trait_module = next(
+            s for s in result.symbols
+            if s.name == "Module" and s.kind == "trait"
+        )
+        bar = next(s for s in result.symbols if s.name == "Bar")
+
+        bar_implements = [
+            e for e in result.edges
+            if e.edge_type == "implements" and e.src == bar.id
+        ]
+        assert len(bar_implements) == 1, bar_implements
+        assert bar_implements[0].dst == trait_module.id
+
+    def test_impl_resolves_to_same_file_trait_when_multiple_traits_share_name(
+        self, tmp_path: Path,
+    ) -> None:
+        """When two crates each define a trait named ``Module`` and the
+        impl block sits in one of those crates' files, prefer the
+        same-file trait. This guards against tie-break drift in the
+        multi-value lookup.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "crate_a.rs").write_text(
+            "pub trait Module {\n    fn a(&self);\n}\n"
+            "pub struct Bar;\n"
+            "impl Module for Bar {\n    fn a(&self) {}\n}\n"
+        )
+        (tmp_path / "crate_b.rs").write_text(
+            "pub trait Module {\n    fn b(&self);\n}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        assert not result.skipped
+
+        trait_a = next(
+            s for s in result.symbols
+            if s.name == "Module"
+            and s.kind == "trait"
+            and s.path.endswith("crate_a.rs")
+        )
+        bar = next(s for s in result.symbols if s.name == "Bar")
+        bar_implements = [
+            e for e in result.edges
+            if e.edge_type == "implements" and e.src == bar.id
+        ]
+        assert len(bar_implements) == 1
+        assert bar_implements[0].dst == trait_a.id
+
     def test_error_type_display_from_not_blocklisted(self, tmp_path: Path) -> None:
         """impl Display/From/Error for *Error types creates unresolved edges.
 
