@@ -88,3 +88,19 @@
     tags: [for_uat_bakeoff]  # b35f
   remove:  # b35f
     tags: [for-uat-bakeoff]  # b35f
+- op: update  # 4878
+  at: '2026-05-08T23:48:54Z'  # 4878
+  by: agent  # 4878
+  actor: jgstern_agent  # 4878
+  clock: 10  # 4878
+  nonce: '4878'  # 4878
+  set: {}  # 4878
+  remove:  # 4878
+    tags: [awaits_bakeoff_validation, for_uat_bakeoff]  # 4878
+- op: discuss  # 9877
+  at: '2026-05-08T23:48:54Z'  # 9877
+  by: agent  # 9877
+  actor: jgstern_agent  # 9877
+  clock: 11  # 9877
+  nonce: '9877'  # 9877
+  message: "Validated via UAT round 03 of hg-uat-v4.1.0 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-03-WI-nosug-django-transitive-and-dispatch-revalidation/). Verdict: moved. Lifts v4.0.0 round 05's 8/15 inconclusive to 15/15 on pretix. 861 django-orm-dispatch-linker-v1 edges including 40 dispatch edges on generic CBVs (vs 0 in v4.0.0). 6/6 transitive Model/Form, 5/5 generic-CBV dispatch, 4/4 direct-Model regression guard. HierarkeyForm gap (third-party Form base outside the in-tree BFS) recorded separately as DQ-1 (WI-jusih-navod-mogib-disot-busub-rapof-susol-baniv); pretix lacks ModelAdmin coverage (carry-forward note from v4.0.0 master report)."  # 9877

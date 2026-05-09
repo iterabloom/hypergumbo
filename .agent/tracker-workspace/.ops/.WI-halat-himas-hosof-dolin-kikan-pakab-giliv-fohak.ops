@@ -67,3 +67,19 @@
     tags: [for_uat_bakeoff]  # 1443
   remove:  # 1443
     tags: [for-uat-bakeoff]  # 1443
+- op: update  # 59fb
+  at: '2026-05-08T23:48:23Z'  # 59fb
+  by: agent  # 59fb
+  actor: jgstern_agent  # 59fb
+  clock: 7  # 59fb
+  nonce: 59fb  # 59fb
+  set: {}  # 59fb
+  remove:  # 59fb
+    tags: [awaits_bakeoff_validation, for_uat_bakeoff]  # 59fb
+- op: discuss  # b5e7
+  at: '2026-05-08T23:48:23Z'  # b5e7
+  by: agent  # b5e7
+  actor: jgstern_agent  # b5e7
+  clock: 8  # b5e7
+  nonce: b5e7  # b5e7
+  message: "Validated via two UAT rounds in hg-uat-v4.1.0. Verdict: moved on both legs. Round 02 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-02-WI-nutav-airflow-transitive-revalidation/) — airflow path: 1836 airflow-framework-dispatch-linker-v1 edges across 1508 src classes; ground-truth 15/15 with 8/8 transitive cases passing (4-hop AlloyDB chain + 2-hop GoogleBaseHook chain). Round 03 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-03-WI-nosug-django-transitive-and-dispatch-revalidation/) — django path: 6/6 transitive Model/Form cases pass (vs 0/6 in v4.0.0 round 05). The transitive base-class BFS helper (linkers/_transitive_bases.py from PR #3539) works as advertised on both Python framework-dispatch linkers."  # b5e7

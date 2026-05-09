@@ -52,3 +52,19 @@
   clock: 5  # 17d0
   nonce: 17d0  # 17d0
   message: "Shipped via PR #196. Generic CBVs (ListView/DetailView/CreateView/UpdateView/DeleteView/TemplateView) now fold the View lifecycle (dispatch/setup/options/http_method_not_allowed/HTTP-verbs/head/trace) into their per-base method sets. New _VIEW_LIFECYCLE module-level constant. 7 new property tests. Per BVT discipline: tagging awaits_bakeoff_validation + for_uat_bakeoff (UAT cycle: pretix re-run will protect WI-nosug verdict)."  # 17d0
+- op: update  # bcc1
+  at: '2026-05-08T23:48:54Z'  # bcc1
+  by: agent  # bcc1
+  actor: jgstern_agent  # bcc1
+  clock: 6  # bcc1
+  nonce: bcc1  # bcc1
+  set: {}  # bcc1
+  remove:  # bcc1
+    tags: [awaits_bakeoff_validation, for_uat_bakeoff]  # bcc1
+- op: discuss  # 76ba
+  at: '2026-05-08T23:48:54Z'  # 76ba
+  by: agent  # 76ba
+  actor: jgstern_agent  # 76ba
+  clock: 7  # 76ba
+  nonce: 76ba  # 76ba
+  message: "Validated via UAT round 03 of hg-uat-v4.1.0 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-03-WI-nosug-django-transitive-and-dispatch-revalidation/). Verdict: moved. The _VIEW_LIFECYCLE constant added in PR #196 produces 40 dispatch edges on pretix's generic CBVs (vs 0 in v4.0.0). Round 03 ground-truth 5/5 on dispatch overrides. setup/options/http_method_not_allowed/head/trace from the same _VIEW_LIFECYCLE were not separately quantified in the plan (only dispatch was) — recorded as a coverage gap, not a regression."  # 76ba

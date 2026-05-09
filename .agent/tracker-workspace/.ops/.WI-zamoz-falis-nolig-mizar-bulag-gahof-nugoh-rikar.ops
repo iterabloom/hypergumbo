@@ -1,0 +1,35 @@
+- op: create  # 1db5
+  at: '2026-05-08T23:46:46Z'  # 1db5
+  by: agent  # 1db5
+  actor: jgstern_agent  # 1db5
+  clock: 1  # 1db5
+  nonce: 1db5  # 1db5
+  data:  # 1db5
+    kind: work_item  # 1db5
+    title: "UX-B: language-availability warnings fire unconditionally regardless of whether target tree contains files for that language"  # 1db5
+    status: todo_soft  # 1db5
+    priority: 3  # 1db5
+    parent:  # 1db5
+    tags:  # 1db5
+    - developer_experience  # 1db5
+    isbefore: []  # 1db5
+    duplicate_of: []  # 1db5
+    not_duplicate_of: []  # 1db5
+    pr_ref:  # 1db5
+    description: "## Origin\n\nFiled per hg-uat-v4.1.0 master report §5 UX-B. Observed on Rounds 01, 04, 05, 06, 07.\n\n## Symptom\n\n`hypergumbo run` emits partial-install / language-availability warnings unconditionally, regardless of whether the target tree contains files for the language/ecosystem in question.\n\nExamples confirmed across the campaign:\n\n- `Circom analysis skipped: tree-sitter-circom grammar not available` — every run, even on Java-only or Rust-only targets.\n- `CGO linker found 151 C/C++ function implementations but 0 Go cgo calls (C.funcName() via import \"C\")` — on candle (Rust + a few Python files, no Go).\n- `LUA_FFI linker found 233 C/C++ function implementations (FFI targets) but 0 Lua files` — on candle.\n- `RUBY_FFI linker found 151 C/C++ function implementations but 0 Ruby files` — on candle.\n- `DEPENDENCY linker found N Import edges from code analyzers but 0 TOML dependency declarations (Cargo.toml, pyproject.toml)` — on kafka (Gradle), chatwoot (Bundler), containerd (Go modules).\n\n## Why it matters\n\nThe warning text reads as 'you might have callers we couldn't find', which is implausible on a target where the calling-language source isn't even in the tree. The warnings produce noise that obscures genuine warnings — a user seeing 5+ partial-install warnings on every run learns to ignore them, including when one IS actionable.\n\n## Fix scope\n\nGate each warning on whether at least one source file in the calling language was discovered in the target. The check is cheap (the file walk has already happened by the time the warning fires) and can be expressed as 'count of files of language X > 0' before emitting the X-specific warning.\n\nProducer: `packages/hypergumbo-core/src/hypergumbo_core/cli.py:6709` (`check_partial_install_warnings`).\n\n## Acceptance\n\n- After fix: `hypergumbo run` on candle (Rust + small Python) emits CGO/LUA_FFI/RUBY_FFI warnings only if those languages are actually present.\n- Property test: a Java-only fixture target does not emit Circom / CGO / LUA_FFI / RUBY_FFI warnings.\n- Regression guard: a target that DOES contain the relevant language continues to emit the warning when partial-install conditions are met.\n\n## References\n\n- Master report §5 UX-B: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/master-report.md\n- Producer: packages/hypergumbo-core/src/hypergumbo_core/cli.py:6709 (check_partial_install_warnings)"  # 1db5
+    fields: {}  # 1db5
+- op: update  # 1466
+  at: '2026-05-09T02:30:36Z'  # 1466
+  by: agent  # 1466
+  actor: jgstern_agent  # 1466
+  clock: 2  # 1466
+  nonce: '1466'  # 1466
+  set:  # 1466
+    status: done  # 1466
+- op: discuss  # 3b93
+  at: '2026-05-09T02:30:36Z'  # 3b93
+  by: agent  # 3b93
+  actor: jgstern_agent  # 3b93
+  clock: 3  # 3b93
+  nonce: 3b93  # 3b93
+  message: "Fixed in PR #3584 (commit ac21209c66). Added per-warning activation gate in check_partial_linker_requirements: looks up the linker spec by name and skips diagnostics whose linker.activation.should_run(detected_frameworks, detected_languages) returns False. Bypassed when both detection sets are empty so crafted-diagnostic test fixtures keep working unchanged. Three new tests cover suppress / regression-guard / no-op-on-empty paths.\n\nCoverage: addresses CGO, LUA_FFI, RUBY_FFI, and any other linker with framework or language_pairs activation. Does NOT address DEPENDENCY linker (always-on activation, no calling-language signal) — that's a separate issue (TOML-only manifest gap on Gradle/Bundler/go.mod targets) and continues to fire."  # 3b93

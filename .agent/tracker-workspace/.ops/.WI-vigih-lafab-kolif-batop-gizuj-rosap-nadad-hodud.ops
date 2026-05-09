@@ -41,3 +41,19 @@
   set: {}  # 0dcd
   add:  # 0dcd
     tags: [awaits_bakeoff_validation, for_uat_bakeoff, framework_dispatch_linkers]  # 0dcd
+- op: update  # d351
+  at: '2026-05-08T23:48:54Z'  # d351
+  by: agent  # d351
+  actor: jgstern_agent  # d351
+  clock: 5  # d351
+  nonce: d351  # d351
+  set: {}  # d351
+  remove:  # d351
+    tags: [awaits_bakeoff_validation, for_uat_bakeoff]  # d351
+- op: discuss  # d87f
+  at: '2026-05-08T23:48:55Z'  # d87f
+  by: agent  # d87f
+  actor: jgstern_agent  # d87f
+  clock: 6  # d87f
+  nonce: d87f  # d87f
+  message: "Validated via three UAT rounds in hg-uat-v4.1.0. Composite verdict per the just-merged playbook §Phase U4 fourth bullet (process-validation-queue-with-bakeoffs-and-uat.md, PR #3580):\n\n(1) jackson_dispatch sub-claim — Round 01 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-01-WI-sokaz-jackson-jpa-revalidation/): moved (rider). 3-level chain Owner → Person (@MappedSuperclass) → BaseEntity (@MappedSuperclass) fully covered.\n\n(2) kafka_streams_dispatch sub-claim — Round 05 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-05-WI-vigih-kafka-streams-transitive/): moved. 254 kafka-streams-dispatch-linker-v1 edges across 169 src classes; 7/7 in-scope ground-truth (4 direct + 3 transitive via ContextualProcessor). The transitive walk is what makes the linker non-empty on Kafka's production-path code.\n\n(3) view_template sub-claim — Round 06 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-06-WI-vigih-view-template-transitive/): moved with Mechanism: mismatch flagged. 204 view-template-linker-v1 'renders' edges (note: edge type is 'renders', not 'dispatches_to' as plan said). Ground-truth 12/12 transitive-Rails cases on chatwoot. BUT Round 08 §8.4 falsified the inheritance-walk mechanism the claim text describes: 92 transitive-Rails actions in chatwoot with no view file emit 0 edges, AND 4 SuperAdmin actions whose chain leaves the codebase mid-walk via the third-party Administrate gem still receive correct edges. Two modalities yield observably DIFFERENT results — Rails filename convention is the operative resolution, not transitive base-class walk.\n\nPer playbook §Phase U4 4th bullet, the strip is correct (public-facing claim 'transitive-Rails actions emit renders edges' holds on chatwoot 12/12) AND a follow-up tracker item is filed to reconcile the claim text vs. linker behavior: WI-furap-pulin-ratis-rikak-lahov-nujis-favub-gonod (status: needs_human_review). The choice between (a) update WI-vigih's claim text or (b) change view_template.py's behavior is a value judgment beyond the scope of this strip.\n\n(4) react_component sub-claim — deferred to B-shape spot-check per WI-vigih's own 'real-world impact is mild' note; not validated in this campaign. Out of scope per the campaign's prelude in ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/index.md."  # d87f

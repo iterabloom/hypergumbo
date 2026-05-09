@@ -1,0 +1,20 @@
+- op: create  # d806
+  at: '2026-05-08T23:46:47Z'  # d806
+  by: agent  # d806
+  actor: jgstern_agent  # d806
+  clock: 1  # d806
+  nonce: d806  # d806
+  data:  # d806
+    kind: work_item  # d806
+    title: "UX-C: hypergumbo run produces enormous raw JSON outputs on large repos (90-95% gzip-reducible)"  # d806
+    status: todo_soft  # d806
+    priority: 3  # d806
+    parent:  # d806
+    tags:  # d806
+    - developer_experience  # d806
+    isbefore: []  # d806
+    duplicate_of: []  # d806
+    not_duplicate_of: []  # d806
+    pr_ref:  # d806
+    description: "## Origin\n\nFiled per hg-uat-v4.1.0 master report §5 UX-C. Severity MED. Observed prominently on Rounds 02 (airflow) and 05 (kafka).\n\n## Symptom\n\nRaw JSON output sizes on large repos:\n\n| Round | Target | Raw JSON | Gzipped | Reduction |\n|---|---|---|---|---|\n| 02 | airflow | 320 MB | 18 MB | 95% |\n| 05 | kafka | 572 MB | 34 MB | 94% |\n| 06 | chatwoot | 81 MB | 4.5 MB | 95% |\n| 07 | containerd | 53 MB | 3.7 MB | 93% |\n\nMost of the bulk is repeated structural keys (`id`, `edge_key`, `origin_run_id`, etc.). Gzip reduces 30-40 GB to 30-35 MB across the campaign's targets. The precomputed sketch files (`<stem>.{4k,16k,64k}.json`) add another ~460 KB each and run an extra precomputation pass.\n\n## Why it matters\n\nFor an LLM agent or downstream tool consuming the JSON, a half-gigabyte payload is awkward. A gzipped output is 5-10× faster to read and 90-95% smaller on disk. Many downstream tools (jq, Python json.load, ripgrep on the output) work fine with gzipped or compact JSON.\n\n## Fix scope (two options, can be additive)\n\n(a) **`--gzip` flag**: writes `<stem>.json.gz` directly. The simplest user-facing fix — they explicitly request gzip.\n\n(b) **`--no-sketch-fan-out` flag**: skip the precomputed sketch tiers (`<stem>.{4k,16k,64k}.json`). Useful when the user pipes the JSON into a tool that doesn't read sketches.\n\nBoth can ship together. Default behavior unchanged — existing callers who depend on uncompressed JSON or sketch fan-out aren't affected.\n\n## Acceptance\n\n- After (a): `hypergumbo run \"$TARGET\" --out foo.json.gz --gzip` produces a valid gzipped JSON. `zcat foo.json.gz | jq .` round-trips.\n- After (b): `hypergumbo run \"$TARGET\" --out foo.json --no-sketch-fan-out` produces only `foo.json`, no `foo.{4k,16k,64k}.json` and no /tmp/slice files (UX-A fix interacts here).\n- Property test for each flag.\n\n## References\n\n- Master report §5 UX-C: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/master-report.md"  # d806
+    fields: {}  # d806

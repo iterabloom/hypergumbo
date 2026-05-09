@@ -83,3 +83,19 @@
     tags: [for_uat_bakeoff]  # 2a50
   remove:  # 2a50
     tags: [for-uat-bakeoff]  # 2a50
+- op: update  # a007
+  at: '2026-05-08T23:48:22Z'  # a007
+  by: agent  # a007
+  actor: jgstern_agent  # a007
+  clock: 9  # a007
+  nonce: a007  # a007
+  set: {}  # a007
+  remove:  # a007
+    tags: [awaits_bakeoff_validation, for_uat_bakeoff]  # a007
+- op: discuss  # d5c5
+  at: '2026-05-08T23:48:22Z'  # d5c5
+  by: agent  # d5c5
+  actor: jgstern_agent  # d5c5
+  clock: 10  # d5c5
+  nonce: d5c5  # d5c5
+  message: "Validated via UAT round 01 of hg-uat-v4.1.0 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-01-WI-sokaz-jackson-jpa-revalidation/). Verdict: moved. Ground-truth 15/15 on spring-petclinic accessor methods (≥6/15 on @Entity classes per criterion 2). Clean reversal of v4.0.0 BUG-02 zero-recall (0/15 → 15/15). Jackson @Entity / @MappedSuperclass / @Embeddable trigger annotations now produce dispatches_to edges as documented in WI-sokaz's PR #3544 description."  # d5c5

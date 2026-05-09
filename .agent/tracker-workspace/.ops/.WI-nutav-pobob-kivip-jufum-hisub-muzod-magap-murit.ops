@@ -127,3 +127,19 @@
     tags: [for_uat_bakeoff]  # 9a4a
   remove:  # 9a4a
     tags: [for-uat-bakeoff]  # 9a4a
+- op: update  # 2c73
+  at: '2026-05-08T23:48:54Z'  # 2c73
+  by: agent  # 2c73
+  actor: jgstern_agent  # 2c73
+  clock: 15  # 2c73
+  nonce: 2c73  # 2c73
+  set: {}  # 2c73
+  remove:  # 2c73
+    tags: [awaits_bakeoff_validation, for_uat_bakeoff]  # 2c73
+- op: discuss  # 6f98
+  at: '2026-05-08T23:48:54Z'  # 6f98
+  by: agent  # 6f98
+  actor: jgstern_agent  # 6f98
+  clock: 16  # 6f98
+  nonce: 6f98  # 6f98
+  message: "Validated via UAT round 02 of hg-uat-v4.1.0 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-02-WI-nutav-airflow-transitive-revalidation/). Verdict: moved. Lifts v4.0.0 round 04's 5/15 inconclusive to 15/15 on airflow. 1836 airflow-framework-dispatch-linker-v1 edges across 1508 unique src classes. The 4-hop AlloyDB chain (AlloyDBCreateClusterOperator → AlloyDBWriteBaseOperator → AlloyDBBaseOperator → GoogleCloudBaseOperator → BaseOperator) and 2-hop BigQueryHook → GoogleBaseHook → BaseHook chain both produce dispatches_to edges as expected. Cycle-guard sub-claim not directly observable on this target (Python forbids inheritance cycles at class-def time)."  # 6f98

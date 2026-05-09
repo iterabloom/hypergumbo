@@ -1,0 +1,20 @@
+- op: create  # 2629
+  at: '2026-05-08T23:46:44Z'  # 2629
+  by: agent  # 2629
+  actor: jgstern_agent  # 2629
+  clock: 1  # 2629
+  nonce: '2629'  # 2629
+  data:  # 2629
+    kind: work_item  # 2629
+    title: "UX-A: hypergumbo run --out writes uninvited /tmp/slice.handler.*.json files regardless of --out path"  # 2629
+    status: todo_soft  # 2629
+    priority: 3  # 2629
+    parent:  # 2629
+    tags:  # 2629
+    - developer_experience  # 2629
+    isbefore: []  # 2629
+    duplicate_of: []  # 2629
+    not_duplicate_of: []  # 2629
+    pr_ref:  # 2629
+    description: "## Origin\n\nFiled per hg-uat-v4.1.0 master report §5 UX-A. Confirmed across all 7 directed-validation rounds.\n\n## Symptom\n\n`hypergumbo run \"$TARGET\" --out /some/path/foo.json` writes 20-30 `/tmp/slice.handler.*.json` files in addition to the requested output, **regardless of `--out`'s directory**. Examples observed:\n\n- `/tmp/slice.handler.ANY.api_v2.json`\n- `/tmp/slice.handler.ANY.debug_pprof.json`\n- `/tmp/slice.handler.ANY.debug_pprof_cmdline.json`\n- (and ~25 more per typical run)\n\nThese slice files add ~460 KB of data-handler-specific JSONs that aren't always needed. The fan-out also ignores the user's choice of output directory.\n\n## Why it matters\n\n- A user pointing `--out` at a project tree could be surprised by 20+ slice files materializing in `/tmp/` rather than alongside their requested output.\n- Successive runs overwrite the previous run's slices in `/tmp/`, so artifacts from one investigation can be silently clobbered by another. (Confirmed in the hg-uat-v4.1.0 campaign — slice files from Round 07/containerd were overwritten by Round 09/candle.)\n- The user's mental model of where output lands is broken.\n\n## Fix scope (two options)\n\n(a) **Route slice outputs to `<stem>.slices/` next to the `--out` target.** Co-locates output. Cleaner shape: `/some/path/foo.json` plus `/some/path/foo.slices/handler.ANY.*.json`. Doesn't break callers that don't read slices.\n\n(b) **Make slice fan-out opt-in via a flag** (`--slice-fanout / --no-slice-fanout`). User explicitly requests it. Reduces default-mode I/O and disk usage.\n\nEither is acceptable. (a) is more user-friendly; (b) is more configurable.\n\n## Acceptance\n\n- After fix: `hypergumbo run \"$TARGET\" --out /some/path/foo.json` does NOT write any files to `/tmp/` (confirmable via lsof or pre/post-listing of `/tmp/slice.*`).\n- Existing slice consumers (whoever reads `/tmp/slice.handler.*.json`) are migrated to the new location, OR the opt-in flag preserves their access.\n\n## References\n\n- Master report §5 UX-A: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/master-report.md"  # 2629
+    fields: {}  # 2629

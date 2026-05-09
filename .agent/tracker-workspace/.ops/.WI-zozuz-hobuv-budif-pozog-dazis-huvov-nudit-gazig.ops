@@ -67,3 +67,10 @@
     tags: [for_uat_bakeoff]  # 4a2f
   remove:  # 4a2f
     tags: [for-uat-bakeoff]  # 4a2f
+- op: discuss  # 8913
+  at: '2026-05-08T23:48:55Z'  # 8913
+  by: agent  # 8913
+  actor: jgstern_agent  # 8913
+  clock: 7  # 8913
+  nonce: '8913'  # 8913
+  message: "UAT round 04 of hg-uat-v4.1.0 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-04-WI-zozuz-rust-impl-cross-language-gating/) verdict: no_move. Ground-truth 0/15 on candle's impl Module for X blocks; 350 implements edges misresolve to candle-kernels::Module struct instead of candle-core::Module trait, 0 correct trait-impl edges. Cross-language gate (one of the two layers) works correctly (0 spurious Python→Rust trait edges, vs 31 in v4.0.0). Rust kind-discipline guard (the other layer) does NOT catch the same-language same-name trait-vs-struct collision case.\n\nTag retained per no_move lifecycle. Regression sub-item filed: WI-milak-dogut-bosif-pifab-busuz-pugov-bibus-hagor (P1 todo_soft, parented to this item, no awaits_bakeoff_validation tag — regression items earn the tag only when their own fix produces a fresh quantitative claim). Sharpened mechanism: the buggy producer is rust.py:1097 (single-value global_symbols.get) per orchestrator source-read, NOT inheritance.py. Round 08 §8.2 narrowed the trigger to library_export-vs-library_export collisions. See WI-milak-dogut-bosif-pifab-busuz-pugov-bibus-hagor for full fix scope, pre-fix fixture, and acceptance criteria.\n\nNote: rust-analyzer-backend status is irrelevant to BUG-04. Rounds 09 and 10 (both deprecated) attempted empirical confirmation but neither engaged the SCIP backend — the published v4.1.0 distribution is missing the hypergumbo-lang-rust-analyzer integration package (BUG-06 / WI-jinoh, P2). Empirical confirmation of producer locus stands by elimination of alternatives until BUG-06 ships."  # 8913
