@@ -188,7 +188,7 @@ jobs:
             mkdir -p dist
 
             # Build in dependency order
-            for pkg in hypergumbo-core hypergumbo-lang-mainstream hypergumbo-lang-common hypergumbo-lang-extended1 hypergumbo hypergumbo-tracker; do
+            for pkg in hypergumbo-core hypergumbo-lang-mainstream hypergumbo-lang-common hypergumbo-lang-extended1 hypergumbo-lang-rust-analyzer hypergumbo hypergumbo-tracker; do
               echo "Building packages/$pkg..."
               python -m build "packages/$pkg" --outdir dist/
             done

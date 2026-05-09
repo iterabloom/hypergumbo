@@ -140,6 +140,12 @@ from .gitleaks import (
     format_secret_warning,
     get_install_nag,
 )
+from .rust_analyzer_install import (
+    install_rust_analyzer,
+    is_rust_analyzer_available,
+    is_rust_analyzer_integration_installed,
+    uninstall_rust_analyzer,
+)
 from .framework_patterns import (
     enrich_symbols,
     get_frameworks_dir,
@@ -2857,9 +2863,14 @@ def cmd_uninstall_embeddings(args: argparse.Namespace) -> int:
 
 
 def cmd_add_extras(args: argparse.Namespace) -> int:
-    """Install all optional extras (grammars, gitleaks, embeddings).
+    """Install all optional extras (grammars, gitleaks, embeddings, rust-analyzer).
 
     Skips components that are already installed, showing a message for each.
+    The rust-analyzer step gates on the SCIP integration package the same way
+    ``install-rust-analyzer`` does (BUG-06 / WI-jinoh): if the integration
+    package is missing, the rustup binary install is skipped with a pointer
+    to ``pipx install 'hypergumbo[rust-analyzer]'`` rather than installing
+    the binary alone (which would leave ``--backend rust-analyzer`` a no-op).
     """
     exit_code = 0
 
@@ -2921,6 +2932,31 @@ def cmd_add_extras(args: argparse.Namespace) -> int:
 
     if not args.quiet:
         print()
+
+    # 4. Install rust-analyzer (gated on integration package, BUG-06).
+    if not args.quiet:
+        print("=== Rust analyzer ===")
+    if is_rust_analyzer_available():
+        if not args.quiet:
+            print("rust-analyzer already installed. Skipping.")
+    elif not is_rust_analyzer_integration_installed():
+        # Match cmd_install_rust_analyzer's BUG-06 gate: refuse to install
+        # the rustup binary alone when the SCIP integration package is
+        # missing — it would leave --backend rust-analyzer a silent no-op.
+        if not args.quiet:
+            print(
+                "hypergumbo-lang-rust-analyzer Python integration package is "
+                "not installed; skipping rust-analyzer rustup binary install. "
+                "Install via: pipx install 'hypergumbo[rust-analyzer]'. "
+                "Tracked as BUG-06.",
+            )
+    else:
+        success = install_rust_analyzer(quiet=args.quiet)
+        if not success:
+            exit_code = 1
+
+    if not args.quiet:
+        print()
         print("=== Summary ===")
         print("All extras installed. Run 'hypergumbo remove-extras' to uninstall.")
 
@@ -2928,9 +2964,13 @@ def cmd_add_extras(args: argparse.Namespace) -> int:
 
 
 def cmd_remove_extras(args: argparse.Namespace) -> int:
-    """Uninstall optional extras (gitleaks, embeddings).
+    """Uninstall optional extras (gitleaks, embeddings, rust-analyzer rustup binary).
 
     Note: Grammars are not removed as they're just shared libraries.
+    The rust-analyzer step removes only the rustup-managed binary; the
+    SCIP integration package (``hypergumbo-lang-rust-analyzer``) is
+    pipx-extra-managed and removed via
+    ``pipx uninstall-injected hypergumbo hypergumbo-lang-rust-analyzer``.
     """
     exit_code = 0
 
@@ -2964,6 +3004,15 @@ def cmd_remove_extras(args: argparse.Namespace) -> int:
         except (subprocess.SubprocessError, OSError) as e:
             print(f"Warning: Failed to uninstall embeddings: {e}", file=sys.stderr)
             exit_code = 1
+
+    if not args.quiet:
+        print()
+
+    # 3. Uninstall rust-analyzer (rustup binary only; integration package is pipx-managed).
+    if not args.quiet:
+        print("=== Rust analyzer ===")
+    if not uninstall_rust_analyzer(quiet=args.quiet):
+        exit_code = 1
 
     if not args.quiet:
         print()
@@ -5770,7 +5819,7 @@ Clearing it forces re-analysis on next run (slower but ensures fresh results).""
     # hypergumbo add-extras
     p_add_extras = sub.add_parser(
         "add-extras",
-        help="Install all optional extras (grammars, gitleaks, embeddings)",
+        help="Install all optional extras (grammars, gitleaks, embeddings, rust-analyzer)",
     )
     p_add_extras.add_argument(
         "--quiet",
@@ -5782,7 +5831,7 @@ Clearing it forces re-analysis on next run (slower but ensures fresh results).""
     # hypergumbo remove-extras
     p_remove_extras = sub.add_parser(
         "remove-extras",
-        help="Uninstall optional extras (gitleaks, embeddings)",
+        help="Uninstall optional extras (gitleaks, embeddings, rust-analyzer)",
     )
     p_remove_extras.add_argument(
         "--quiet",

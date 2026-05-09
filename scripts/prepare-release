@@ -393,6 +393,7 @@ echo "  - hypergumbo-core $VERSION"
 echo "  - hypergumbo-lang-mainstream $VERSION"
 echo "  - hypergumbo-lang-common $VERSION"
 echo "  - hypergumbo-lang-extended1 $VERSION"
+echo "  - hypergumbo-lang-rust-analyzer $VERSION"
 echo "  - hypergumbo (meta-package) $VERSION"
 
 if [[ -n "$TRACKER_VERSION" ]]; then

@@ -995,7 +995,8 @@ class TestAddExtrasCLI:
             with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
                 with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
                     with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
-                        result = cmd_add_extras(args)
+                        with patch("hypergumbo_core.cli.is_rust_analyzer_available", return_value=True):
+                            result = cmd_add_extras(args)
 
         assert result == 0
 
@@ -1015,7 +1016,10 @@ class TestAddExtrasCLI:
                     with patch("hypergumbo_core.cli.install_gitleaks", return_value=True):
                         with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
                             with patch("subprocess.run", return_value=mock_result):
-                                result = cmd_add_extras(args)
+                                with patch("hypergumbo_core.cli.is_rust_analyzer_available", return_value=False):
+                                    with patch("hypergumbo_core.cli.is_rust_analyzer_integration_installed", return_value=True):
+                                        with patch("hypergumbo_core.cli.install_rust_analyzer", return_value=True):
+                                            result = cmd_add_extras(args)
 
         assert result == 0
 
@@ -1031,7 +1035,8 @@ class TestAddExtrasCLI:
                 with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
                     with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
                         with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
-                            result = cmd_add_extras(args)
+                            with patch("hypergumbo_core.cli.is_rust_analyzer_available", return_value=True):
+                                result = cmd_add_extras(args)
 
         assert result == 1
 
@@ -1047,7 +1052,8 @@ class TestAddExtrasCLI:
                 with patch("hypergumbo_core.cli.install_gitleaks", return_value=False):
                     with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
                         with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
-                            result = cmd_add_extras(args)
+                            with patch("hypergumbo_core.cli.is_rust_analyzer_available", return_value=True):
+                                result = cmd_add_extras(args)
 
         assert result == 1
 
@@ -1065,7 +1071,8 @@ class TestAddExtrasCLI:
             with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
                 with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
                     with patch("subprocess.run", return_value=mock_result):
-                        result = cmd_add_extras(args)
+                        with patch("hypergumbo_core.cli.is_rust_analyzer_available", return_value=True):
+                            result = cmd_add_extras(args)
 
         assert result == 1
 
@@ -1080,7 +1087,51 @@ class TestAddExtrasCLI:
             with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
                 with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
                     with patch("subprocess.run", side_effect=subprocess.SubprocessError("error")):
-                        result = cmd_add_extras(args)
+                        with patch("hypergumbo_core.cli.is_rust_analyzer_available", return_value=True):
+                            result = cmd_add_extras(args)
+
+        assert result == 1
+
+    def test_cmd_add_extras_rust_analyzer_skipped_when_integration_missing(self, capsys) -> None:
+        """cmd_add_extras refuses to install rust-analyzer rustup binary when the
+        SCIP integration package is missing — same gate as cmd_install_rust_analyzer
+        per BUG-06. The user gets a clear pointer to 'pipx install hypergumbo[rust-analyzer]'."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_add_extras
+
+        args = Namespace(quiet=False)
+
+        with patch("hypergumbo_core.cli.check_grammar_availability", return_value={"lean": True, "wolfram": True}):
+            with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
+                with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+                    with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
+                        with patch("hypergumbo_core.cli.is_rust_analyzer_available", return_value=False):
+                            with patch("hypergumbo_core.cli.is_rust_analyzer_integration_installed", return_value=False):
+                                with patch("hypergumbo_core.cli.install_rust_analyzer") as mock_install:
+                                    result = cmd_add_extras(args)
+
+        # Gate fired: integration absent, so we did NOT call the rustup installer.
+        mock_install.assert_not_called()
+        assert result == 0  # gate is a skip, not a failure
+        captured = capsys.readouterr()
+        assert "BUG-06" in captured.out
+        assert "hypergumbo[rust-analyzer]" in captured.out
+
+    def test_cmd_add_extras_rust_analyzer_install_failure(self) -> None:
+        """cmd_add_extras returns 1 when the rust-analyzer rustup-binary install fails."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_add_extras
+
+        args = Namespace(quiet=True)
+
+        with patch("hypergumbo_core.cli.check_grammar_availability", return_value={"lean": True, "wolfram": True}):
+            with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
+                with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+                    with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
+                        with patch("hypergumbo_core.cli.is_rust_analyzer_available", return_value=False):
+                            with patch("hypergumbo_core.cli.is_rust_analyzer_integration_installed", return_value=True):
+                                with patch("hypergumbo_core.cli.install_rust_analyzer", return_value=False):
+                                    result = cmd_add_extras(args)
 
         assert result == 1
 
@@ -1101,7 +1152,8 @@ class TestRemoveExtrasCLI:
         with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
             with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
                 with patch("subprocess.run", return_value=mock_result):
-                    result = cmd_remove_extras(args)
+                    with patch("hypergumbo_core.cli.uninstall_rust_analyzer", return_value=True):
+                        result = cmd_remove_extras(args)
 
         assert result == 0
 
@@ -1114,7 +1166,8 @@ class TestRemoveExtrasCLI:
 
         with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
             with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
-                result = cmd_remove_extras(args)
+                with patch("hypergumbo_core.cli.uninstall_rust_analyzer", return_value=True):
+                    result = cmd_remove_extras(args)
 
         assert result == 0
 
@@ -1127,7 +1180,8 @@ class TestRemoveExtrasCLI:
 
         with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=False):
             with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
-                result = cmd_remove_extras(args)
+                with patch("hypergumbo_core.cli.uninstall_rust_analyzer", return_value=True):
+                    result = cmd_remove_extras(args)
 
         assert result == 1
 
@@ -1144,7 +1198,8 @@ class TestRemoveExtrasCLI:
         with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
             with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
                 with patch("subprocess.run", return_value=mock_result):
-                    result = cmd_remove_extras(args)
+                    with patch("hypergumbo_core.cli.uninstall_rust_analyzer", return_value=True):
+                        result = cmd_remove_extras(args)
 
         assert result == 1
 
@@ -1158,6 +1213,21 @@ class TestRemoveExtrasCLI:
         with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
             with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
                 with patch("subprocess.run", side_effect=subprocess.SubprocessError("error")):
+                    with patch("hypergumbo_core.cli.uninstall_rust_analyzer", return_value=True):
+                        result = cmd_remove_extras(args)
+
+        assert result == 1
+
+    def test_cmd_remove_extras_rust_analyzer_failure(self) -> None:
+        """cmd_remove_extras returns 1 when rust-analyzer uninstall fails."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_remove_extras
+
+        args = Namespace(quiet=True)
+
+        with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
+            with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+                with patch("hypergumbo_core.cli.uninstall_rust_analyzer", return_value=False):
                     result = cmd_remove_extras(args)
 
         assert result == 1
@@ -1323,13 +1393,15 @@ class TestVerboseOutput:
             with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
                 with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
                     with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
-                        result = cmd_add_extras(args)
+                        with patch("hypergumbo_core.cli.is_rust_analyzer_available", return_value=True):
+                            result = cmd_add_extras(args)
 
         assert result == 0
         captured = capsys.readouterr()
         assert "=== Grammars ===" in captured.out
         assert "=== Gitleaks ===" in captured.out
         assert "=== Embeddings ===" in captured.out
+        assert "=== Rust analyzer ===" in captured.out
         assert "=== Summary ===" in captured.out
 
     def test_cmd_add_extras_installs_embeddings_verbose(self, capsys) -> None:
@@ -1346,7 +1418,8 @@ class TestVerboseOutput:
             with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
                 with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
                     with patch("subprocess.run", return_value=mock_result):
-                        result = cmd_add_extras(args)
+                        with patch("hypergumbo_core.cli.is_rust_analyzer_available", return_value=True):
+                            result = cmd_add_extras(args)
 
         assert result == 0
         captured = capsys.readouterr()
@@ -1365,7 +1438,8 @@ class TestVerboseOutput:
                 with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
                     with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
                         with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
-                            result = cmd_add_extras(args)
+                            with patch("hypergumbo_core.cli.is_rust_analyzer_available", return_value=True):
+                                result = cmd_add_extras(args)
 
         assert result == 1
         captured = capsys.readouterr()
@@ -1385,12 +1459,14 @@ class TestVerboseOutput:
         with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
             with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
                 with patch("subprocess.run", return_value=mock_result):
-                    result = cmd_remove_extras(args)
+                    with patch("hypergumbo_core.cli.uninstall_rust_analyzer", return_value=True):
+                        result = cmd_remove_extras(args)
 
         assert result == 0
         captured = capsys.readouterr()
         assert "=== Gitleaks ===" in captured.out
         assert "=== Embeddings ===" in captured.out
+        assert "=== Rust analyzer ===" in captured.out
         assert "=== Summary ===" in captured.out
         assert "Extras removed" in captured.out
 
@@ -1403,7 +1479,8 @@ class TestVerboseOutput:
 
         with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
             with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
-                result = cmd_remove_extras(args)
+                with patch("hypergumbo_core.cli.uninstall_rust_analyzer", return_value=True):
+                    result = cmd_remove_extras(args)
 
         assert result == 0
         captured = capsys.readouterr()

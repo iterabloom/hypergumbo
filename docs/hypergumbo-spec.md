@@ -75,6 +75,7 @@ For goals that were considered and rejected, see [Appendix D](#appendix-d-capsul
 * `pipx install hypergumbo` (primary, includes all language analyzers)
 * `pip install hypergumbo` (secondary)
 * `pip install hypergumbo[embeddings]` (optional embedding-based config extraction)
+* `pipx install 'hypergumbo[rust-analyzer]'` (optional SCIP-backed Rust analysis via rust-analyzer; required for `--backend rust-analyzer` to actually engage)
 
 ### Commands
 

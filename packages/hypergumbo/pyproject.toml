@@ -43,6 +43,12 @@ dev = [
 embeddings = [
   "sentence-transformers~=5.2.2",
 ]
+# SCIP-backed Rust analysis via rust-analyzer (BUG-06 path (a)).
+# Without this extra, --backend rust-analyzer hits the BUG-06 runtime gate.
+# Install with: pipx install 'hypergumbo[rust-analyzer]'
+rust-analyzer = [
+  "hypergumbo-lang-rust-analyzer==4.1.0",
+]
 
 [project.scripts]
 hypergumbo = "hypergumbo_core.cli:main"
