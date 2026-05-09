@@ -2,7 +2,7 @@
 """Tests for the build_grammars module.
 
 This module tests the functionality for building tree-sitter grammars
-from source (Lean, Wolfram).
+from source (Lean, Wolfram, Circom).
 """
 from __future__ import annotations
 
@@ -41,11 +41,32 @@ class TestGrammarSpec:
         assert spec.function_name == "tree_sitter_test"
         assert spec.scanner_type == "c"
 
-    def test_source_grammars_contains_lean_and_wolfram(self) -> None:
-        """Test that SOURCE_GRAMMARS contains expected grammars."""
+    def test_source_grammars_contains_lean_wolfram_and_circom(self) -> None:
+        """Test that SOURCE_GRAMMARS contains all three source-built grammars.
+
+        scripts/build-source-grammars (the CI/dev path) builds Lean, Wolfram,
+        and Circom. The user-facing `hypergumbo build-grammars` command must
+        match — otherwise users running it from the published wheel still see
+        a "Circom analysis skipped" warning that the warning's own remediation
+        message tells them to fix with this command.
+        """
         names = [g.name for g in SOURCE_GRAMMARS]
         assert "lean" in names
         assert "wolfram" in names
+        assert "circom" in names
+
+    def test_circom_grammar_spec_matches_shell_script(self) -> None:
+        """Circom GrammarSpec must match scripts/build-source-grammars:279.
+
+        Locks in the same repo URL, binding function name, and scanner type
+        the shell script uses, so the two build paths produce equivalent
+        installed packages.
+        """
+        by_name = {g.name: g for g in SOURCE_GRAMMARS}
+        circom = by_name["circom"]
+        assert circom.repo_url == "https://github.com/Decurity/tree-sitter-circom.git"
+        assert circom.function_name == "tree_sitter_circom"
+        assert circom.scanner_type == "none"
 
 
 class TestCodeGeneration:
@@ -276,6 +297,7 @@ class TestBuildAllGrammars:
 
         assert "lean" in results
         assert "wolfram" in results
+        assert "circom" in results
         assert all(results.values())
 
     def test_build_all_grammars_partial_failure(self, tmp_path: Path) -> None:
@@ -307,9 +329,11 @@ class TestCheckGrammarAvailability:
         results = check_grammar_availability()
         assert "lean" in results
         assert "wolfram" in results
+        assert "circom" in results
         # They should be available since we built them earlier
         assert results["lean"] is True
         assert results["wolfram"] is True
+        assert results["circom"] is True
 
     def test_check_grammar_availability_some_missing(self) -> None:
         """Test when some grammars are missing."""

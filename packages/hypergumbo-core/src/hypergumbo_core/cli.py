@@ -12,7 +12,7 @@ The CLI uses argparse with subcommands for different operations:
 - **run**: Execute full analysis and output behavior map JSON
 - **slice**: Extract subgraph from an entry point
 - **catalog**: List available analysis passes
-- **build-grammars**: Build Lean/Wolfram tree-sitter grammars from source
+- **build-grammars**: Build Lean/Wolfram/Circom tree-sitter grammars from source
 - **install-gitleaks**: Install gitleaks for secret scanning
 - **install-rust-analyzer**: Install rust-analyzer via rustup for the SCIP-backed Rust analyzer (WI-dotud)
 
@@ -2286,7 +2286,7 @@ def cmd_catalog(args: argparse.Namespace) -> int:
 
 
 def cmd_build_grammars(args: argparse.Namespace) -> int:
-    """Build tree-sitter grammars from source (Lean, Wolfram)."""
+    """Build tree-sitter grammars from source (Lean, Wolfram, Circom)."""
     if args.check:
         # Just check availability
         status = check_grammar_availability()
@@ -5511,7 +5511,7 @@ The output begins with passes suggested for your current directory."""
     # hypergumbo build-grammars
     p_build = sub.add_parser(
         "build-grammars",
-        help="Build tree-sitter grammars from source (Lean, Wolfram)",
+        help="Build tree-sitter grammars from source (Lean, Wolfram, Circom)",
     )
     p_build.add_argument(
         "--check",

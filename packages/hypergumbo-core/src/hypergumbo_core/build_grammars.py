@@ -2,9 +2,10 @@
 """
 Build tree-sitter grammars from source for languages not available on PyPI.
 
-This module provides functionality to build tree-sitter-lean and tree-sitter-wolfram
-from their source repositories. These grammars are not published to PyPI and must
-be compiled from source.
+This module provides functionality to build tree-sitter-lean, tree-sitter-wolfram,
+and tree-sitter-circom from their source repositories. These grammars are not
+published to PyPI and must be compiled from source. The set must stay in sync
+with `scripts/build-source-grammars` (the CI/dev path).
 
 Requirements:
 - git (to clone repos)
@@ -50,6 +51,12 @@ SOURCE_GRAMMARS = [
         repo_url="https://github.com/bostick/tree-sitter-wolfram.git",
         function_name="tree_sitter_wolfram",
         scanner_type="cc",
+    ),
+    GrammarSpec(
+        name="circom",
+        repo_url="https://github.com/Decurity/tree-sitter-circom.git",
+        function_name="tree_sitter_circom",
+        scanner_type="none",
     ),
 ]
 

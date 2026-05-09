@@ -14,6 +14,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **`hypergumbo symbols` column-width controls.** The Symbol and File columns now default to 60 / 80 characters wide — roughly twice the width Rich picked under narrow auto-fit (e.g. Google Colab, where stdout is non-TTY and Rich falls back to ~80 cols, squeezing those columns to ~25–30 chars each). Two new flags: `--col-width N` sets both columns to N (clamped to `[1, 1000]`), and `--wrap` switches the overflow strategy from ellipsis truncation to character-level fold-wrap so long identifiers / paths break across lines instead of getting cut. The console width is auto-extended to fit when the requested column widths exceed the detected terminal — narrow hosts get a horizontally-scrolling table rather than collapsed columns.
 
+### Fixed
+
+- **`hypergumbo build-grammars` now actually builds Circom.** The user-facing CLI builder iterated `SOURCE_GRAMMARS`, which only listed Lean and Wolfram, so a `pipx`-installed `hypergumbo` user who hit `"Circom analysis skipped: tree-sitter-circom grammar not available. Run \`hypergumbo build-grammars\` to build it."` would run the suggested command and see the warning persist on the next run. The shell-script CI/dev path (`scripts/build-source-grammars`) had been building Circom all along; the Python module had not. Added `tree_sitter_circom` (Decurity/tree-sitter-circom, no scanner) to `SOURCE_GRAMMARS`, and updated the subcommand help and module docstrings accordingly.
+
 ## [4.1.0] - 2026-05-08
 
 ### Summary
