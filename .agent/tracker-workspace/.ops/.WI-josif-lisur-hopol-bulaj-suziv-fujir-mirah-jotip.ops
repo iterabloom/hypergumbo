@@ -1,0 +1,35 @@
+- op: create  # ae22
+  at: '2026-05-09T21:39:10Z'  # ae22
+  by: agent  # ae22
+  actor: jgstern_agent  # ae22
+  clock: 1  # ae22
+  nonce: ae22  # ae22
+  data:  # ae22
+    kind: work_item  # ae22
+    title: "Consolidate add-extras / install-extras into one umbrella (kill duplicate sprawl)"  # ae22
+    status: in_progress  # ae22
+    priority: 2  # ae22
+    parent:  # ae22
+    tags:  # ae22
+    - developer_experience  # ae22
+    isbefore: []  # ae22
+    duplicate_of: []  # ae22
+    not_duplicate_of: []  # ae22
+    pr_ref:  # ae22
+    description: "Hypergumbo currently ships four umbrella subcommands that overlap in purpose: `add-extras` / `remove-extras` (hand-coded sequential prints, covers grammars+gitleaks+embeddings+rust-analyzer, has the BUG-06 gate after PR #3603) and `install-extras` / `uninstall-extras` (declarative `_extras_components()` table, covers gitleaks+embeddings+rust-analyzer, has `--check` and `--skip` flags, but no BUG-06 gate). The overlap is tech debt — every new component has to be registered in both places, and drift caused rust-analyzer to silently fall off `add-extras` for some unknown stretch (surfaced today). The `install-extras` BUG-06 gap also produces a contradictory 'rust-analyzer ✓ installed' + BUG-06-runtime-error sequence, exactly the fragmented-investigation shape BUG-06 was filed to prevent.\n\nConsolidation:\n1. Extend `_extras_components()` to four rows (add grammars row at front; gate the rust-analyzer row's install with `is_rust_analyzer_integration_installed` so the table-driven path matches `cmd_install_rust_analyzer`).\n2. Rewrite `cmd_add_extras` table-driven; gain `--check` and `--skip` flags from install-extras.\n3. Rewrite `cmd_remove_extras` table-driven; gain `--skip`.\n4. Hard-remove `cmd_install_extras` / `cmd_uninstall_extras` and their argparse registrations. `hypergumbo install-extras` becomes 'invalid choice' (alpha-stage CLI breakage approved by user).\n5. Migrate test_install_extras.py cases into test_gitleaks.py; delete the file. Update test_help_output_order.\n6. CHANGELOG entry under Changed.\n\nSurface area inventory in plan file at /home/jgstern_agent/.claude/plans/spicy-snuggling-panda.md. Approved by user 2026-05-09."  # ae22
+    fields: {}  # ae22
+- op: update  # cc2f
+  at: '2026-05-09T22:55:39Z'  # cc2f
+  by: agent  # cc2f
+  actor: jgstern_agent  # cc2f
+  clock: 2  # cc2f
+  nonce: cc2f  # cc2f
+  set:  # cc2f
+    status: done  # cc2f
+- op: discuss  # 1edb
+  at: '2026-05-09T22:55:40Z'  # 1edb
+  by: agent  # 1edb
+  actor: jgstern_agent  # 1edb
+  clock: 3  # 1edb
+  nonce: 1edb  # 1edb
+  message: "Closed by PR #3604 (merged). Consolidation landed: _extras_components is the single source of truth (4 rows: grammars + gitleaks + embeddings + rust-analyzer). cmd_add_extras / cmd_remove_extras rewritten as thin loops over the table; --check and --skip migrate to add-extras (and --skip to remove-extras). cmd_install_extras / cmd_uninstall_extras and their argparse parsers are deleted; invoking either now exits 2. The rust-analyzer row's install function is wrapped through _install_rust_analyzer_with_bug06_gate (matches install-rust-analyzer's BUG-06 gate); its is_available predicate is _is_rust_analyzer_fully_available (binary AND integration package, so add-extras --check doesn't show misleading green ✓ when the binary is on PATH but integration is missing). test_install_extras.py renamed to test_extras_umbrella.py with rewritten table-driven test classes; test_gitleaks.py loses ~356 redundant lines of TestAddExtrasCLI / TestRemoveExtrasCLI / cmd_*_extras-in-TestVerboseOutput. Plan file: /home/jgstern_agent/.claude/plans/spicy-snuggling-panda.md"  # 1edb

@@ -18,3 +18,18 @@
     pr_ref:  # 474c
     description: "Path (a) of the BUG-06 acceptance set (WI-jinoh closed with path (b) — runtime gate). Real fix: publish hypergumbo-lang-rust-analyzer to PyPI under its expected name and expose it as 'pipx install hypergumbo[rust-analyzer]' so --backend rust-analyzer actually engages SCIP rather than just erroring clearly.\n\nConcrete edits:\n1. .github/workflows/release.yml ~line 191 — add hypergumbo-lang-rust-analyzer to the dependency-ordered build loop (currently builds: core, lang-mainstream, lang-common, lang-extended1, hypergumbo, hypergumbo-tracker).\n2. packages/hypergumbo/pyproject.toml — add a rust-analyzer extra pinning hypergumbo-lang-rust-analyzer==<version>.\n3. scripts/prepare-release line 393-395 — add rust-analyzer line to the Packages-in-this-release echo for UX consistency (already in scripts/bump-version and scripts/release-check).\n4. CHANGELOG.md [Unreleased] entry under Added.\n5. Test in packages/hypergumbo/tests/test_meta.py validating the new extra contract (regression guard).\n\nCoordinated version bump: scripts/bump-version already covers hypergumbo-lang-rust-analyzer (lines 60-74, 144-147), so a future prepare-release VERSION call will bump all packages together.\n\nOnce this lands and the next tag-release fires, the runtime gate from BUG-06 becomes a defensive backstop for users on minimal installs without the extra. The carry-forward note from BUG-06 — empirical re-confirmation of BUG-04's producer-locus claim via SCIP engagement on candle — also unblocks once this is on PyPI."  # 474c
     fields: {}  # 474c
+- op: update  # 1689
+  at: '2026-05-09T21:17:13Z'  # 1689
+  by: agent  # 1689
+  actor: jgstern_agent  # 1689
+  clock: 2  # 1689
+  nonce: '1689'  # 1689
+  set:  # 1689
+    status: done  # 1689
+- op: discuss  # b3c8
+  at: '2026-05-09T21:17:13Z'  # b3c8
+  by: agent  # b3c8
+  actor: jgstern_agent  # b3c8
+  clock: 3  # b3c8
+  nonce: b3c8  # b3c8
+  message: "Closed by PR #3603 (merged). Landed all five concrete edits from the spec: .github/workflows/release.yml build loop now includes hypergumbo-lang-rust-analyzer; packages/hypergumbo/pyproject.toml gained a [rust-analyzer] extra pinned to ==<meta_version>; scripts/prepare-release echoes the rust-analyzer line; CHANGELOG.md got an [Unreleased] entry; packages/hypergumbo/tests/test_meta.py got two regression-guard tests (extra defined + version pin matches project.version). Scope-expanded mid-PR per user follow-up: cmd_add_extras / cmd_remove_extras now cover rust-analyzer too (the hand-coded umbrella had drifted from the WI-huham declarative table) — add-extras gates on the BUG-06 SCIP integration package the same way cmd_install_rust_analyzer does, and remove-extras uninstalls the rustup binary via uninstall_rust_analyzer. Help strings on both subparsers updated. The actual PyPI publish is gated on the next human-driven tag-release VERSION; until then, config is prepared. Out-of-scope follow-up: cmd_install_extras (WI-huham) calls install_rust_analyzer directly via _extras_components, bypassing the BUG-06 gate — same class of gap as add-extras had, separate code path."  # b3c8

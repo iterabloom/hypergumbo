@@ -21,3 +21,11 @@
     fields:  # 384e
       statement: "Any analyzer that maintains a single name-keyed registry over multiple kinds (entity vs. package vs. component, trait vs. struct vs. enum, module vs. package vs. interface, etc.) must filter by kind at lookup time when the lookup semantically requires a specific kind. A kind-blind single-value dict + last-write-wins insertion races on collisions and emits kind-incoherent edges."  # 384e
       root_cause: "verilog.py:211 inserts into global_symbols by lowercased name without kind segregation; verilog.py:243 looks up module_type by name without kind filter. When two symbols share a name (e.g. module Foo + a same-named non-module sibling), whichever was inserted last wins, and a module-instantiation destination edge can land on a non-module symbol."  # 384e
+- op: update  # 1898
+  at: '2026-05-09T19:57:26Z'  # 1898
+  by: human  # 1898
+  actor: jgstern  # 1898
+  clock: 2  # 1898
+  nonce: '1898'  # 1898
+  set:  # 1898
+    priority: 4  # 1898
