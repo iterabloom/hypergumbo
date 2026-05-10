@@ -74,3 +74,19 @@
   clock: 7  # 8913
   nonce: '8913'  # 8913
   message: "UAT round 04 of hg-uat-v4.1.0 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.1.0/lab-notebook/round-04-WI-zozuz-rust-impl-cross-language-gating/) verdict: no_move. Ground-truth 0/15 on candle's impl Module for X blocks; 350 implements edges misresolve to candle-kernels::Module struct instead of candle-core::Module trait, 0 correct trait-impl edges. Cross-language gate (one of the two layers) works correctly (0 spurious Python→Rust trait edges, vs 31 in v4.0.0). Rust kind-discipline guard (the other layer) does NOT catch the same-language same-name trait-vs-struct collision case.\n\nTag retained per no_move lifecycle. Regression sub-item filed: WI-milak-dogut-bosif-pifab-busuz-pugov-bibus-hagor (P1 todo_soft, parented to this item, no awaits_bakeoff_validation tag — regression items earn the tag only when their own fix produces a fresh quantitative claim). Sharpened mechanism: the buggy producer is rust.py:1097 (single-value global_symbols.get) per orchestrator source-read, NOT inheritance.py. Round 08 §8.2 narrowed the trigger to library_export-vs-library_export collisions. See WI-milak-dogut-bosif-pifab-busuz-pugov-bibus-hagor for full fix scope, pre-fix fixture, and acceptance criteria.\n\nNote: rust-analyzer-backend status is irrelevant to BUG-04. Rounds 09 and 10 (both deprecated) attempted empirical confirmation but neither engaged the SCIP backend — the published v4.1.0 distribution is missing the hypergumbo-lang-rust-analyzer integration package (BUG-06 / WI-jinoh, P2). Empirical confirmation of producer locus stands by elimination of alternatives until BUG-06 ships."  # 8913
+- op: update  # 8f31
+  at: '2026-05-10T08:35:08Z'  # 8f31
+  by: agent  # 8f31
+  actor: jgstern_agent  # 8f31
+  clock: 8  # 8f31
+  nonce: 8f31  # 8f31
+  set: {}  # 8f31
+  remove:  # 8f31
+    tags: [awaits_bakeoff_validation, for_uat_bakeoff]  # 8f31
+- op: discuss  # 126b
+  at: '2026-05-10T08:35:08Z'  # 126b
+  by: agent  # 126b
+  actor: jgstern_agent  # 126b
+  clock: 9  # 126b
+  nonce: 126b  # 126b
+  message: "Validated via UAT round-01 of hg-uat-v5.0.1 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v5.0.1/lab-notebook/round-01-candle/). Verdict: moved. Mechanism: matches.\n\nRegression-guard re-validation on candle: zero Python→Rust-trait implements edges, zero struct→struct implements/extends edges, 350 implementers on the Module trait. Backward probe (no spurious edges to same-named struct in absence of trait disambiguation) confirmed both globally (0 struct/enum→struct/enum edges across 52,417-edge graph) and specifically for candle-kernels::Module struct. v4.1.0 round-04 had also moved this claim; v5.0.1's adjacent code-path changes did not regress it. See master-report §3.1."  # 126b

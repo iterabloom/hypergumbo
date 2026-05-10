@@ -36,3 +36,19 @@
   clock: 3  # 9702
   nonce: '9702'  # 9702
   message: "Fixed in PR #3587 (commit 24bd7c4b0f). Added `.csv.erb` to `_TEMPLATE_EXTENSIONS` and `_EXTENSION_LANGUAGE` (mapped to language `erb`) in `packages/hypergumbo-core/src/hypergumbo_core/linkers/view_template.py`. Two new tests cover probe-level discovery and chatwoot-shaped end-to-end edge emission.\n\nQuantitative claim awaiting bakeoff validation: 11 `Api::V2::Accounts::ReportsController` actions in chatwoot should now receive `renders` edges to their `.csv.erb` view files, raising the chatwoot `view-template-linker-v1` edge count by ~11. Tag stays until a DEEP cycle running chatwoot reproduces the count delta.\n\nOut of scope: other domain-specific Rails template extensions (`.xml.builder`, `.atom.builder`, `.js.erb`) — no UAT evidence they were missed; can be added if a future bakeoff surfaces a similar gap."  # 9702
+- op: update  # c766
+  at: '2026-05-10T08:35:09Z'  # c766
+  by: agent  # c766
+  actor: jgstern_agent  # c766
+  clock: 4  # c766
+  nonce: c766  # c766
+  set: {}  # c766
+  remove:  # c766
+    tags: [awaits_bakeoff_validation]  # c766
+- op: discuss  # 8cff
+  at: '2026-05-10T08:35:09Z'  # 8cff
+  by: agent  # 8cff
+  actor: jgstern_agent  # 8cff
+  clock: 5  # 8cff
+  nonce: 8cff  # 8cff
+  message: "Hand-corrected strip on saturation-bounded inconclusive verdict per process-validation-queue-with-bakeoffs-and-uat.md Phase 6.\n\nUAT round-03 of hg-uat-v5.0.1 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v5.0.1/lab-notebook/round-03-chatwoot/) returned literal verdict 'inconclusive' because the plan's quantitative thresholds (≥10 csv.erb edges, ≥5/8 ground-truth, +8…+14 baseline delta) were calibrated against a v4.1.0-era chatwoot snapshot (~11 .csv.erb files / 8 ReportsController CSV actions). The current chatwoot working tree (HEAD 8b230c6) contains 6 .csv.erb files / 5 CSV actions — fewer total available targets than the pre-committed thresholds.\n\nMechanism observably moved: 5 .csv.erb renders edges (vs 0 in v4.1.0 baseline). Every app/views/api/v2/accounts/reports/*.csv.erb in the OSS chatwoot tree is bound to its corresponding controller action; plus Api::V1::Accounts::CsatSurveyResponsesController#download. Ground-truth: 4/4 corpus-resident ReportsController CSV actions linked correctly (the 5th, conversation_traffic, points to a missing view file in chatwoot itself — unrelated to hypergumbo). Edge metadata names the binding mechanism explicitly (evidence_type: 'naming_convention', detection_pattern: 'implicit_convention').\n\nStrip rationale: 100% recall on every corpus-resident target. The 'inconclusive' is plurality-shaped exactly like the cohort-path saturation-bounded niche-claim case the playbook §Phase 6 prescribes hand-correction for. The PR #3587 fix is observably effective; the corpus drifted, not the implementation.\n\nOne enterprise/app/views/ implicit-convention gap surfaced separately as DQ-01 (filing pending). See master-report §3.3 + §6.1."  # 8cff

@@ -51,3 +51,19 @@
   set: {}  # afcd
   add:  # afcd
     tags: [awaits_bakeoff_validation]  # afcd
+- op: update  # 86e1
+  at: '2026-05-10T08:35:09Z'  # 86e1
+  by: agent  # 86e1
+  actor: jgstern_agent  # 86e1
+  clock: 6  # 86e1
+  nonce: '86e1'  # 86e1
+  set: {}  # 86e1
+  remove:  # 86e1
+    tags: [awaits_bakeoff_validation]  # 86e1
+- op: discuss  # a33e
+  at: '2026-05-10T08:35:09Z'  # a33e
+  by: agent  # a33e
+  actor: jgstern_agent  # a33e
+  clock: 7  # a33e
+  nonce: a33e  # a33e
+  message: "Validated via UAT round-02 of hg-uat-v5.0.1 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v5.0.1/lab-notebook/round-02-containerd/). Verdict: moved. Mechanism: matches.\n\nAll 36 framework_dispatch=='grpc_server_to_service' edges fan out across 17 distinct service families (Containers, Content, Controller, Diff, Events, Images, Introspection, Leases, Mounts, Namespaces, Snapshots, Store, Streaming, Task, Tasks, Transfer, Version) — clean reversal of v4.1.0 round-07 'Leases-only' collapse. 15/15 service-struct files ground-truthed with edges only to their own family. Both same-name Unimplemented<X>Server cross-file pairs (Snapshots in plugins+contrib; Diff in plugins+contrib) emit edges independently from BOTH files. Total 1,417 dispatches_to edges (≥350 threshold cleared 4×). The fix mechanism (file-scoped (path, struct_name) keying) is observable from the artifact: synthetic grpc:<absolute_path>:LINE:<Family>:grpc_server URIs make file-scoping intrinsic to the URI shape. See master-report §3.2."  # a33e
