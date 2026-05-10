@@ -36,11 +36,19 @@ def _which_found(name: str) -> str:
 
 
 class TestIsAvailable:
-    def test_resolves_when_binary_on_path(self) -> None:
-        assert is_rust_analyzer_available(which=_which_found) is True
-
     def test_returns_false_when_missing(self) -> None:
-        assert is_rust_analyzer_available(which=_which_missing) is False
+        """which() returns None → False without invoking runner.
+
+        The smoke-test runner must not be called when the binary is
+        not even resolvable; otherwise we'd waste a subprocess on a
+        path we know doesn't exist.
+        """
+        def _runner(*_a, **_kw):  # pragma: no cover — must not fire
+            raise AssertionError("runner called when which returned None")
+
+        assert is_rust_analyzer_available(
+            which=_which_missing, runner=_runner,
+        ) is False
 
     def test_default_which_is_shutil(self) -> None:
         """Without an override, the resolver is shutil.which.
@@ -51,6 +59,66 @@ class TestIsAvailable:
         """
         result = is_rust_analyzer_available()
         assert isinstance(result, bool)
+
+    def test_smoke_test_passes_when_binary_works(self) -> None:
+        """Binary resolves AND ``--version`` exits 0 → available.
+
+        Captures the happy path: rust-analyzer is installed via
+        ``rustup component add rust-analyzer``, the proxy resolves to
+        a real binary that prints its version and exits 0.
+        """
+        def _runner(cmd, *, capture_output, timeout):
+            assert cmd == ["/fake/bin/rust-analyzer", "--version"]
+            assert capture_output is True
+            assert timeout == 5.0
+            return _Completed(returncode=0, stdout=b"rust-analyzer 1.83.0\n")
+
+        assert is_rust_analyzer_available(
+            which=_which_found, runner=_runner,
+        ) is True
+
+    def test_smoke_test_fails_when_binary_exits_nonzero(self) -> None:
+        """Binary resolves but ``--version`` exits nonzero → unavailable.
+
+        Captures the broken-rustup-proxy case. ``~/.cargo/bin/rust-
+        analyzer`` is a rustup shim that errors when the actual
+        ``rust-analyzer`` rustup component is not installed: the shim
+        exits 1 with stderr ``error: Unknown binary 'rust-analyzer'
+        in official toolchain ...``. Existence-only detection (the
+        prior shape) returned True; the smoke test correctly returns
+        False, closing the v5.0.0 silent-fallthrough gap.
+        """
+        def _runner(cmd, *, capture_output, timeout):
+            return _Completed(
+                returncode=1,
+                stderr=(
+                    b"error: Unknown binary 'rust-analyzer' in "
+                    b"official toolchain "
+                    b"'stable-x86_64-unknown-linux-gnu'.\n"
+                ),
+            )
+
+        assert is_rust_analyzer_available(
+            which=_which_found, runner=_runner,
+        ) is False
+
+    def test_smoke_test_fails_on_timeout(self) -> None:
+        """Subprocess timeout → unavailable (defensive)."""
+        def _runner(cmd, *, capture_output, timeout):
+            raise subprocess.TimeoutExpired(cmd=cmd, timeout=timeout)
+
+        assert is_rust_analyzer_available(
+            which=_which_found, runner=_runner,
+        ) is False
+
+    def test_smoke_test_fails_on_oserror(self) -> None:
+        """Subprocess OSError → unavailable (defensive)."""
+        def _runner(cmd, *, capture_output, timeout):
+            raise OSError("permission denied")
+
+        assert is_rust_analyzer_available(
+            which=_which_found, runner=_runner,
+        ) is False
 
 
 # ---------------------------------------------------------------------------

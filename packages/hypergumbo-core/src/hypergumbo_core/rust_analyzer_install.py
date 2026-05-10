@@ -77,19 +77,47 @@ def is_rust_analyzer_integration_installed() -> bool:
 def is_rust_analyzer_available(
     *,
     which: Optional[Callable[[str], Optional[str]]] = None,
+    runner: Optional[Callable[..., subprocess.CompletedProcess]] = None,
 ) -> bool:
-    """Return True when the ``rust-analyzer`` binary is resolvable.
+    """Return True when the ``rust-analyzer`` binary is functional.
 
-    The ``which`` kwarg is injectable (defaults to :func:`shutil.which`)
-    so callers can stub the check in tests without mutating ``PATH``.
-    Any non-None return from the resolver counts as "available" — we
-    don't try to invoke the binary because a ``rust-analyzer --version``
-    round-trip is slow enough to be user-visible and the shell-out
-    wrapper (:mod:`hypergumbo_lang_rust_analyzer.invoke`) catches the
-    "binary present but broken" case at first use.
+    Two-step check. First, ``shutil.which("rust-analyzer")`` resolves to
+    a binary path. Second, the binary actually runs: ``<binary>
+    --version`` with a 5-second timeout, exit code 0.
+
+    Step 2 catches the rustup-proxy-without-component edge case —
+    ``~/.cargo/bin/rust-analyzer`` exists and is executable (rustup
+    ships a proxy for every Rust binary), but the proxy errors out
+    (``error: Unknown binary 'rust-analyzer' in official toolchain
+    ...``) when the matching ``rust-analyzer`` rustup component has
+    not been added. Existence-only detection passed; the smoke test
+    fails. This closes a v5.0.0 partial-fix gap where ``--backend
+    rust-analyzer`` silently fell through to tree-sitter on machines
+    in this rustup state, with no user-visible signal.
+
+    The earlier shape skipped the smoke test on the assumption that a
+    ``--version`` round-trip is "slow enough to be user-visible" — in
+    practice it is sub-100ms, well below the threshold for any caller
+    we have, so the cost no longer outweighs the correctness gain.
+
+    The ``which`` and ``runner`` kwargs are injectable so tests can
+    exercise every branch without mutating ``PATH`` or shelling out.
     """
     resolve = which if which is not None else shutil.which
-    return resolve("rust-analyzer") is not None
+    resolved = resolve("rust-analyzer")
+    if resolved is None:
+        return False
+
+    run = runner if runner is not None else subprocess.run
+    try:
+        completed = run(  # nosec B603
+            [resolved, "--version"],
+            capture_output=True,
+            timeout=5.0,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    return completed.returncode == 0
 
 
 def install_rust_analyzer(

@@ -60,11 +60,17 @@ class TestMainStripping:
         assert ENV_VAR not in os.environ
 
         # Use a command that bails quickly (cache-status on an empty cache).
-        # Mock the BUG-06 integration gate so test-core's isolated CI job
-        # (no hypergumbo-lang-rust-analyzer installed) doesn't trip sys.exit(2).
+        # Mock both v5.0.0 / WI-jinoh parse-time gates so test-core's
+        # isolated CI job (no integration package, no rust-analyzer binary
+        # functional) doesn't trip sys.exit(2). The first gate covers
+        # BUG-06; the second covers the broken-rustup-proxy class fixed
+        # in the post-v5.0.0 smoke-test patch.
         with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0), patch(
             "hypergumbo_core.rust_analyzer_install."
             "is_rust_analyzer_integration_installed",
+            return_value=True,
+        ), patch(
+            "hypergumbo_core.rust_analyzer_install.is_rust_analyzer_available",
             return_value=True,
         ):
             rc = main([
@@ -85,6 +91,9 @@ class TestMainStripping:
             "hypergumbo_core.rust_analyzer_install."
             "is_rust_analyzer_integration_installed",
             return_value=True,
+        ), patch(
+            "hypergumbo_core.rust_analyzer_install.is_rust_analyzer_available",
+            return_value=True,
         ):
             rc = main([
                 "cache-status", "--backend", "rust-analyzer", "--quiet",
@@ -97,6 +106,9 @@ class TestMainStripping:
         with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0), patch(
             "hypergumbo_core.rust_analyzer_install."
             "is_rust_analyzer_integration_installed",
+            return_value=True,
+        ), patch(
+            "hypergumbo_core.rust_analyzer_install.is_rust_analyzer_available",
             return_value=True,
         ):
             rc = main([
@@ -180,17 +192,71 @@ class TestBackendIntegrationGate:
                     "--backend", "tree-sitter", "cache-status", "--quiet",
                 ])
         assert rc == 0
+
+
+class TestBackendBinaryGate:
+    """``--backend rust-analyzer`` must error clearly when the rust-analyzer
+    binary path resolves but the binary is not actually functional — the
+    rustup-proxy-without-component class. Closes the v5.0.0 partial-fix
+    gap where engagement silently degraded to tree-sitter without any
+    user-visible signal.
+    """
+
+    def test_backend_rust_analyzer_errors_when_binary_smoke_fails(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Integration package present, binary smoke-test fails → exit 2."""
+        with patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
+            return_value=True,
+        ), patch(
+            "hypergumbo_core.rust_analyzer_install.is_rust_analyzer_available",
+            return_value=False,
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main(["--backend", "rust-analyzer", "cache-status", "--quiet"])
+        assert exc_info.value.code != 0
+        # Must NOT have set the env var — otherwise downstream code might
+        # still try to engage SCIP and fail less clearly.
+        assert ENV_VAR not in os.environ
+        err = capsys.readouterr().err
+        assert "rust-analyzer binary is not functional" in err
+        assert "rustup component add rust-analyzer" in err
+
+    def test_backend_equals_form_also_gates_on_binary(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--backend=rust-analyzer form also checks the binary smoke-test."""
+        with patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
+            return_value=True,
+        ), patch(
+            "hypergumbo_core.rust_analyzer_install.is_rust_analyzer_available",
+            return_value=False,
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main(["--backend=rust-analyzer", "cache-status", "--quiet"])
+        assert exc_info.value.code != 0
+        assert ENV_VAR not in os.environ
+        err = capsys.readouterr().err
+        assert "rust-analyzer binary is not functional" in err
         assert ENV_VAR not in os.environ
 
     def test_backend_rust_analyzer_passes_when_integration_present(
         self,
     ) -> None:
-        """Happy path: with the integration package importable, the env
-        var is set and the subcommand runs without error.
+        """Happy path: with the integration package importable AND the
+        binary smoke-test passing, the env var is set and the subcommand
+        runs without error.
         """
         with patch(
             "hypergumbo_core.rust_analyzer_install."
             "is_rust_analyzer_integration_installed",
+            return_value=True,
+        ), patch(
+            "hypergumbo_core.rust_analyzer_install.is_rust_analyzer_available",
             return_value=True,
         ):
             with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):

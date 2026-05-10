@@ -2369,6 +2369,41 @@ def _ensure_rust_analyzer_integration_or_exit() -> None:
     sys.exit(2)
 
 
+def _ensure_rust_analyzer_binary_or_exit() -> None:
+    """Exit with a clear error when the rust-analyzer binary is non-functional.
+
+    Companion gate to :func:`_ensure_rust_analyzer_integration_or_exit`.
+    Both fire from the ``--backend rust-analyzer`` parse path so the
+    user finds out about engagement-blockers at parse time rather than
+    after a full analysis silently produces tree-sitter output.
+
+    Failure mode this catches: ``shutil.which("rust-analyzer")`` resolves
+    a rustup proxy at ``~/.cargo/bin/rust-analyzer``, but the proxy
+    errors with ``error: Unknown binary 'rust-analyzer' in official
+    toolchain ...`` because the matching rustup component is not
+    installed. The integration-package check passes, the existence
+    check passes \u2014 only an actual ``--version`` smoke test surfaces
+    the brokenness. Without this gate, ``--backend rust-analyzer``
+    silently degraded to tree-sitter and the user thought they got
+    SCIP analysis when they didn't.
+    """
+    from .rust_analyzer_install import is_rust_analyzer_available
+
+    if is_rust_analyzer_available():
+        return
+    print(
+        "hypergumbo: error: --backend rust-analyzer requested but the "
+        "rust-analyzer binary is not functional on PATH.\n"
+        "\n"
+        "A binary path resolves but invoking it with --version fails. "
+        "The most common cause is a rustup proxy whose component is "
+        "not installed: run 'rustup component add rust-analyzer', or "
+        "'hypergumbo install-rust-analyzer'.",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
 def cmd_install_rust_analyzer(args: argparse.Namespace) -> int:
     """Install rust-analyzer (WI-dotud) or report availability via ``--check``.
 
@@ -7305,6 +7340,7 @@ def main(argv=None) -> int:
             choice = argv[idx + 1]
             if choice == "rust-analyzer":
                 _ensure_rust_analyzer_integration_or_exit()
+                _ensure_rust_analyzer_binary_or_exit()
                 os.environ["HYPERGUMBO_RUST_ANALYZER"] = "1"
             argv = argv[:idx] + argv[idx + 2:]
             break
@@ -7312,6 +7348,7 @@ def main(argv=None) -> int:
             choice = argv[idx].split("=", 1)[1]
             if choice == "rust-analyzer":
                 _ensure_rust_analyzer_integration_or_exit()
+                _ensure_rust_analyzer_binary_or_exit()
                 os.environ["HYPERGUMBO_RUST_ANALYZER"] = "1"
             argv = argv[:idx] + argv[idx + 1:]
             break
