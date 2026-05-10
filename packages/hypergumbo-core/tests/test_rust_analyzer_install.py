@@ -257,8 +257,15 @@ class TestCmdInstallRustAnalyzer:
         from hypergumbo_core.cli import cmd_install_rust_analyzer
 
         args = Namespace(check=True, quiet=False)
+        # Also mock the BUG-06 integration check — without this, test-core's
+        # isolated CI job (no hypergumbo-lang-rust-analyzer installed) would
+        # report rc==1 because the integration row reports "not installed".
         with patch(
             "hypergumbo_core.rust_analyzer_install.is_rust_analyzer_available",
+            return_value=True,
+        ), patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
             return_value=True,
         ):
             rc = cmd_install_rust_analyzer(args)
@@ -291,8 +298,14 @@ class TestCmdInstallRustAnalyzer:
         from hypergumbo_core.cli import cmd_install_rust_analyzer
 
         args = Namespace(check=False, quiet=True)
+        # Without the integration mock, the BUG-06 gate refuses to install
+        # the binary alone (rc=2) — exercise the post-gate success path.
         with patch(
             "hypergumbo_core.rust_analyzer_install.install_rust_analyzer",
+            return_value=True,
+        ), patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
             return_value=True,
         ):
             rc = cmd_install_rust_analyzer(args)
@@ -308,6 +321,10 @@ class TestCmdInstallRustAnalyzer:
         with patch(
             "hypergumbo_core.rust_analyzer_install.install_rust_analyzer",
             return_value=False,
+        ), patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
+            return_value=True,
         ):
             rc = cmd_install_rust_analyzer(args)
         assert rc == 1
@@ -397,13 +414,20 @@ class TestIsRustAnalyzerIntegrationInstalled:
     """
 
     def test_returns_true_when_package_importable(self) -> None:
+        from importlib.machinery import ModuleSpec
+        from unittest.mock import patch
+
         from hypergumbo_core.rust_analyzer_install import (
             is_rust_analyzer_integration_installed,
         )
 
-        # The dev environment has hypergumbo-lang-rust-analyzer installed,
-        # so the unmocked helper should report True.
-        assert is_rust_analyzer_integration_installed() is True
+        # Mock find_spec to return a non-None ModuleSpec, simulating an
+        # importable package without depending on the optional integration
+        # package being installed in the test environment (test-core's
+        # isolated CI job has hypergumbo-core only).
+        fake_spec = ModuleSpec("hypergumbo_lang_rust_analyzer", loader=None)
+        with patch("importlib.util.find_spec", return_value=fake_spec):
+            assert is_rust_analyzer_integration_installed() is True
 
     def test_returns_false_when_package_missing(self) -> None:
         from unittest.mock import patch

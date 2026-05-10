@@ -60,7 +60,13 @@ class TestMainStripping:
         assert ENV_VAR not in os.environ
 
         # Use a command that bails quickly (cache-status on an empty cache).
-        with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
+        # Mock the BUG-06 integration gate so test-core's isolated CI job
+        # (no hypergumbo-lang-rust-analyzer installed) doesn't trip sys.exit(2).
+        with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0), patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
+            return_value=True,
+        ):
             rc = main([
                 "--backend", "rust-analyzer", "cache-status", "--quiet",
             ])
@@ -75,7 +81,11 @@ class TestMainStripping:
 
     def test_backend_flag_in_post_subcommand_position(self) -> None:
         """`hypergumbo cache-status --backend rust-analyzer --quiet` works too."""
-        with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
+        with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0), patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
+            return_value=True,
+        ):
             rc = main([
                 "cache-status", "--backend", "rust-analyzer", "--quiet",
             ])
@@ -84,7 +94,11 @@ class TestMainStripping:
 
     def test_backend_equals_form_supported(self) -> None:
         """argparse-style --backend=rust-analyzer is also stripped."""
-        with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
+        with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0), patch(
+            "hypergumbo_core.rust_analyzer_install."
+            "is_rust_analyzer_integration_installed",
+            return_value=True,
+        ):
             rc = main([
                 "--backend=rust-analyzer", "cache-status", "--quiet",
             ])
