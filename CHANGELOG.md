@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+
+- **`--backend rust-analyzer` install advice now mentions `--force` and `pipx inject` so it's actionable on existing pipx installs.** The three integration-missing user-facing messages (the `add-extras` skip, the `--backend rust-analyzer` parse-time error, and the `install-rust-analyzer` integration-missing error) previously pointed users at `pipx install 'hypergumbo[rust-analyzer]'`. On a system where pipx already had bare `hypergumbo` installed — the common case — pipx no-ops with `'hypergumbo' already seems to be installed. Not modifying existing installation`, and the user is stuck. The new messages call out `pipx install 'hypergumbo[rust-analyzer]' --force` (overwrites the install) or `pipx inject hypergumbo hypergumbo-lang-rust-analyzer` (adds the wrapper to an existing install without reinstalling). Also drops the stale "not yet shipped in this hypergumbo distribution" framing from the parse-time and `--check` paths — as of v5.0.0 the package ships behind the `[rust-analyzer]` extra; the messages now say so explicitly. Also strips the internal `BUG-06` tracker marker from user-facing output — internal IDs are noise to anyone who isn't reading the codebase.
+
 ## [5.0.1] - 2026-05-09
 
 ### Fixed

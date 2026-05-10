@@ -541,8 +541,15 @@ class TestRustAnalyzerInstallGate:
                 assert _install_rust_analyzer_with_bug06_gate(quiet=False) is True
         mock_install.assert_not_called()
         out = capsys.readouterr().out
-        assert "BUG-06" in out
         assert "hypergumbo[rust-analyzer]" in out
+        # The skip message must include `--force` so the user can
+        # actually unblock themselves on an existing pipx install
+        # (without --force, pipx silently no-ops "already installed",
+        # and the install pointer becomes a dead end).
+        assert "--force" in out
+        # And it should mention `pipx inject` as an alternative for
+        # users who want to keep their current install pinned.
+        assert "pipx inject" in out
 
     def test_skip_message_suppressed_in_quiet_mode(
         self, capsys: pytest.CaptureFixture[str],

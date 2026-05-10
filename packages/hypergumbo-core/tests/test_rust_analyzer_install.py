@@ -424,9 +424,9 @@ class TestCmdInstallRustAnalyzer:
         assert "rust-analyzer:" in out
         assert "hypergumbo-lang-rust-analyzer:" in out
         # When both are present, no troubleshooting hint should appear.
-        assert "BUG-06" not in out
+        assert "pipx install" not in out
 
-    def test_check_returns_one_and_flags_bug06_when_integration_missing(
+    def test_check_returns_one_and_flags_install_advice_when_integration_missing(
         self, capsys: pytest.CaptureFixture[str],
     ) -> None:
         from argparse import Namespace
@@ -448,7 +448,11 @@ class TestCmdInstallRustAnalyzer:
         out = capsys.readouterr().out
         assert "hypergumbo-lang-rust-analyzer:" in out
         assert "not installed" in out
-        assert "BUG-06" in out
+        # Install advice must be actionable on existing pipx installs:
+        # bare `pipx install 'hypergumbo[rust-analyzer]'` no-ops with
+        # "already installed" — needs --force or pipx inject.
+        assert "--force" in out
+        assert "pipx inject" in out
 
     def test_install_errors_when_integration_missing(
         self, capsys: pytest.CaptureFixture[str],
@@ -473,7 +477,8 @@ class TestCmdInstallRustAnalyzer:
         mock_install.assert_not_called()
         err = capsys.readouterr().err
         assert "hypergumbo-lang-rust-analyzer" in err
-        assert "BUG-06" in err
+        assert "--force" in err
+        assert "pipx inject" in err
 
 
 class TestIsRustAnalyzerIntegrationInstalled:

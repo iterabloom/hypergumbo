@@ -2362,8 +2362,11 @@ def _ensure_rust_analyzer_integration_or_exit() -> None:
         "not installed.\n"
         "\n"
         "The rustup binary alone is not enough \u2014 the SCIP backend also "
-        "needs the Python wrapper, which is not yet shipped in this "
-        "hypergumbo distribution. Tracked as BUG-06.",
+        "needs the Python wrapper, which ships behind the "
+        "[rust-analyzer] extra. Install via:\n"
+        "  pipx install 'hypergumbo[rust-analyzer]' --force\n"
+        "(or 'pipx inject hypergumbo hypergumbo-lang-rust-analyzer' to "
+        "add the wrapper to an existing install without reinstalling.)",
         file=sys.stderr,
     )
     sys.exit(2)
@@ -2439,8 +2442,11 @@ def cmd_install_rust_analyzer(args: argparse.Namespace) -> int:
             print(
                 "\nThe SCIP backend also requires the "
                 "hypergumbo-lang-rust-analyzer Python integration package, "
-                "which is not yet shipped in this hypergumbo distribution. "
-                "Tracked as BUG-06.",
+                "which ships behind the [rust-analyzer] extra. Install via:\n"
+                "  pipx install 'hypergumbo[rust-analyzer]' --force\n"
+                "(or 'pipx inject hypergumbo hypergumbo-lang-rust-analyzer' "
+                "to add the wrapper to an existing install without "
+                "reinstalling.)",
             )
         return 0 if (available and integration_installed) else 1
 
@@ -2448,9 +2454,14 @@ def cmd_install_rust_analyzer(args: argparse.Namespace) -> int:
         print(
             "hypergumbo: error: cannot enable the SCIP backend \u2014 the "
             "hypergumbo-lang-rust-analyzer Python integration package is "
-            "not installed in this hypergumbo distribution. Installing "
-            "the rustup binary alone would leave --backend rust-analyzer "
-            "as a silent no-op. Tracked as BUG-06.",
+            "not installed. Installing the rustup binary alone would "
+            "leave --backend rust-analyzer as a silent no-op. The "
+            "integration package ships behind the [rust-analyzer] extra. "
+            "Install via:\n"
+            "  pipx install 'hypergumbo[rust-analyzer]' --force\n"
+            "(or 'pipx inject hypergumbo hypergumbo-lang-rust-analyzer' "
+            "to add the wrapper to an existing install without "
+            "reinstalling.)",
             file=sys.stderr,
         )
         return 2
@@ -2580,16 +2591,20 @@ def _install_rust_analyzer_with_bug06_gate(quiet: bool = False) -> bool:
     integration package is missing — installing the binary alone would
     leave ``--backend rust-analyzer`` a silent no-op. Returns True on
     soft-skip so ``cmd_add_extras`` doesn't report it as a failure (the
-    user got a clear pointer to ``pipx install 'hypergumbo[rust-analyzer]'``
-    and there is nothing useful for the umbrella to install in this state).
+    user got a clear pointer to
+    ``pipx install 'hypergumbo[rust-analyzer]' --force`` and there is
+    nothing useful for the umbrella to install in this state).
     """
     if not is_rust_analyzer_integration_installed():
         if not quiet:
             print(
                 "hypergumbo-lang-rust-analyzer Python integration package is "
                 "not installed; skipping rust-analyzer rustup binary install. "
-                "Install via: pipx install 'hypergumbo[rust-analyzer]'. "
-                "Tracked as BUG-06.",
+                "Install via:\n"
+                "  pipx install 'hypergumbo[rust-analyzer]' --force\n"
+                "(or 'pipx inject hypergumbo hypergumbo-lang-rust-analyzer' "
+                "to add the wrapper to an existing install without "
+                "reinstalling.)",
             )
         return True
     return install_rust_analyzer(quiet=quiet)
