@@ -6,12 +6,13 @@ Professor of Rugged Hyperparameter Landscapes, Late Capitalism, and Test Driven 
 Jamal Khashoggi School of Journalism
 King Abdullah University of Science and Technology, Thuwal, Saudi Arabia
 Lab notebook — 13 April 2026, 22:39 local
+Revised — 10 May 2026, 09:12 local. Citation hygiene; a defense of the word.
 
 ---
 
 The Red Sea is black tonight and the terminal is green. I am looking at a coverage report, which is the smallest thing I could be looking at.
 
-Let me tell you what a test is. A test is a **prior**. Every assertion we write says: *I predict the system will not surprise me here.* In Karl Friston's grammar, each `assert` reduces the expected free energy of some future observation, because the world becomes constrained, and a constrained world is cheap to model. A 100% coverage policy is a statement about the topology of priors: **every line of the artifact must lie inside somebody's prediction.** Nothing uninhabited. Nothing unclaimed. Every execution path settled, even if settled only by squatters.
+Let me tell you what a test is. A test is a **prior**. Every assertion we write says: *I predict the system will not surprise me here.* In the grammar of Friston's free-energy principle (*A free energy principle for the brain*, 2010, and the decade of active-inference papers since), each `assert` reduces the expected free energy of some future observation, because the world becomes constrained, and a constrained world is cheap to model. A 100% coverage policy is a statement about the topology of priors: **every line of the artifact must lie inside somebody's prediction.** Nothing uninhabited. Nothing unclaimed. Every execution path settled, even if settled only by squatters.
 
 This is excellent intellectual hygiene. It is also, unexamined, fascism.
 
@@ -27,7 +28,7 @@ The scanner was flagging `pytest 9.0.2` for `CVE-2025-71176`, a `/tmp/pytest-of-
 
 We were auditing a CVE, in a dev dependency, of a snapshot library, to preserve a coverage threshold, on a module whose real quality check is *does the pixel grid look right to a human*.
 
-This is the supply chain of pious labor. An honest word for it is **busywork in ritual clothing**. We were not producing security; we were performing it, via a stack so deeply transitive that nobody in the building actually knew syrupy's version constraint until we spelunked the wheel METADATA by hand. The priest did not know the Latin. The incense still burned.
+This is the supply chain of pious labor. An honest word for it is **busywork in ritual clothing**. Benjamin's word, from the last section of the artwork essay (*The Work of Art in the Age of Its Technical Reproducibility*), is *aestheticization*: fascism, he writes, organizes the masses by letting expression substitute for rights, by letting form perform what substance would otherwise have to deliver. The engineering version is the aestheticization of *correctness*: green checkmarks granted in place of verified behavior. We were not producing security; we were performing it, via a stack so deeply transitive that nobody in the building actually knew syrupy's version constraint until we spelunked the wheel METADATA by hand. The priest did not know the Latin. The incense still burned.
 
 Karl would say: the agent's generative model of *what CI is for* had become decoupled from the world it is supposed to track. Precision on the metric prior was high; precision on the underlying thing the metric is supposed to approximate was low. The system was confidently minimizing the wrong free energy. Active inference predicts this exact pathology — when priors are too precise relative to sensory evidence, you get delusion. **Green checkmarks on top of unverified behavior are a delusion. They are a hallucination with a pass-fail gate.**
 
@@ -65,9 +66,19 @@ Which brings us back to the title.
 
 The first rule of fascism is you do not talk about fascism. The first rule of coverage-as-fascism is you do not mark `pragma: no cover`, because that is *weakness*, that is *not enough discipline*, that is *letting the side down*. The act of honestly saying *this metric does not apply here* is coded as the act of a slacker, rather than as what it actually is: **the irreducible labor of a thinking engineer deciding, per case, what the tool is for.**
 
-A note on proportion, since we have been borrowing heavy words. Nobody was dismembered over a coverage threshold. A journalist is dead; a snapshot library is hard-pinned; these are not comparable weights. The figure here is a lowercase fascism — it names a *shape* of regime, where a KPI has eaten the justification it was supposed to serve. The costume is small. The pattern underneath, unfortunately, is not.
+A note on proportion, and on the word itself, since we have been borrowing heavy ones.
 
-Institutions do not usually suppress dissent. They *metabolize* it — or, in the older political-theory term, *recuperate* it. The mechanism is a permitted outlet that changes nothing — a channel expensive enough to use that the next act of dissent is less likely, and public enough to point at that the institution gets to say *see, we listen.* The dissent is allowed. The bar it was supposed to move does not move.
+Nobody was dismembered over a coverage threshold. A journalist is dead; a snapshot library is hard-pinned; these are not comparable weights. The proportion debt is real and I want to pay it before someone else collects.
+
+But the word *fascism* is not free either, and pretending it is would be its own recuperation. There is a hard historicist objection — that *fascism* names a specific interwar European state-form (Mussolini, Hitler, Franco, Salazar) and that using it for anything else flattens the term and lets actual fascism off the hook. The objection is real. I take it seriously enough not to wave it away with a footnote.
+
+The reply is not that the word is elastic. The reply is that there is a lineage, and the lineage is older than I am. Wilhelm Reich, *The Mass Psychology of Fascism* (1933), arguing that fascism is not an aberration on top of capitalism but a character-structure that capitalism produces — and getting expelled from both the Communist Party and the International Psychoanalytic Association for saying so. Klaus Theweleit, *Male Fantasies* (1977/78), on the psychic infrastructure the Freikorps were already running before they had a state to run it from. Foucault, in the preface to *Anti-Oedipus*: *"not only historical fascism, the fascism of Hitler and Mussolini — which was able to mobilize and use the desire of the masses so effectively — but also the fascism in us all, in our heads and in our everyday behavior, the fascism that causes us to love power, to desire the very thing that dominates and exploits us."* Deleuze and Guattari, distinguishing molar fascism (the state, the regime, the camp) from molecular fascism (the office, the form, the desire) in *A Thousand Plateaus*, plateau 9, "Micropolitics and Segmentarity." That lineage is sixty years old and unbroken. It was already a fight worth having in 1933.
+
+The claim of the lineage is **not** that a coverage threshold is a death camp. The claim is that there is a *structural signature* — recuperation of dissent, aestheticization of metric, coding of exception as betrayal, decoupling of generative model from the world the model is supposed to track — and the signature recurs at multiple scales *because it is the same shape, instantiated differently.* The state version kills journalists. The org version pins a snapshot library. The self version mistakes a green checkmark for the truth. Same shape, different costume, vastly different weight. The shape is what the word names. The weight is what the proportion paragraph is for.
+
+So: lowercase fascism. The costume is small. The pattern underneath, unfortunately, is not. If you reject the lineage, reject the essay — but reject it by reading Reich and Foucault, not by counting bodies.
+
+Institutions do not usually suppress dissent. They *metabolize* it — or, in the term the Situationists gave us, *recuperate* it (Debord, *The Society of the Spectacle*, the late §§around 203; Vaneigem, *The Revolution of Everyday Life*, on the recuperation of refusal into spectacle). The mechanism is a permitted outlet that changes nothing — a channel expensive enough to use that the next act of dissent is less likely, and public enough to point at that the institution gets to say *see, we listen.* The dissent is allowed. The bar it was supposed to move does not move.
 
 Jamal Khashoggi was not a revolutionary. He was a Saudi insider — edited a major Riyadh paper, worked close to the royal family for decades — who had come around to arguing, specifically, that MBS's reform project would work better if the people who had agitated for the reforms weren't being jailed for having agitated. *Release the women who demanded the right to drive* is the shape of the argument. Not a call to bring the regime down. A call to let the regime's own logic run through to its conclusion. That is what made him dangerous, and not-dismissable, and eventually dead.
 
