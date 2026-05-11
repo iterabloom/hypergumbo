@@ -87,3 +87,19 @@
     tags: [for_deep_bakeoff]  # 9553
   remove:  # 9553
     tags: [for-deep-bakeoff]  # 9553
+- op: update  # c76c
+  at: '2026-05-11T04:33:07Z'  # c76c
+  by: agent  # c76c
+  actor: jgstern_agent  # c76c
+  clock: 10  # c76c
+  nonce: c76c  # c76c
+  set: {}  # c76c
+  remove:  # c76c
+    tags: [awaits_bakeoff_validation, for_deep_bakeoff]  # c76c
+- op: discuss  # 07ad
+  at: '2026-05-11T04:33:07Z'  # 07ad
+  by: agent  # 07ad
+  actor: jgstern_agent  # 07ad
+  clock: 11  # 07ad
+  nonce: 07ad  # 07ad
+  message: "MOVED on re-audit at the correct surface (same shape as sibling WI-gajob). Reflect agents on the DEEP cycle (session deep-20260510-054430) checked the kinds vocabulary in symbol_kinds.py rather than emitted nodes. Re-audit script loaded all 12 cohort hg.json files and counted nodes carrying any of the 9 disputed Cluster G kinds (test_case, editable, url_requirement, devDependency, python_task, config, dev-dependency, build-dependency, work_item). Result: 0 across all 12 repos. Wave 6 PR 5 producer migration (selfh #183) is complete; residual presence in symbol_kinds.py is Phase 4a deprecation-window state. Stripping awaits_bakeoff_validation and for_deep_bakeoff."  # 07ad

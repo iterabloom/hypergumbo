@@ -34,3 +34,19 @@
   clock: 3  # 72bc
   nonce: 72bc  # 72bc
   message: "Shipped via PR #198. type_hierarchy linker now closes parent_to_children transitively via new close_parent_to_children_transitively helper (BFS with cycle guard) before edge emission, so skip-level grandparent overrides are emitted (Grandparent.foo → Grandchild.foo when intermediate Parent doesn't override). 6 closure-helper unit tests + 4 link_type_hierarchy property tests; 100% coverage. Per BVT discipline: tagging awaits_bakeoff_validation + for_deep_bakeoff (DEEP signal: dispatches_to edge count delta on real-world repos with deep inheritance hierarchies; this is a coverage-breadth claim that fits DEEP rather than UAT)."  # 72bc
+- op: update  # 941c
+  at: '2026-05-11T14:49:02Z'  # 941c
+  by: agent  # 941c
+  actor: jgstern_agent  # 941c
+  clock: 4  # 941c
+  nonce: 941c  # 941c
+  set: {}  # 941c
+  remove:  # 941c
+    tags: [awaits_bakeoff_validation, for_deep_bakeoff]  # 941c
+- op: discuss  # 6c2a
+  at: '2026-05-11T14:49:02Z'  # 6c2a
+  by: agent  # 6c2a
+  actor: jgstern_agent  # 6c2a
+  clock: 5  # 6c2a
+  nonce: 6c2a  # 6c2a
+  message: "MOVED — and the cross-language hedge revealed (and fixed) a previously-undetected correctness gap. The DEEP cycle on session deep-20260510-054430 returned 1 moved (django) / 11 inconclusive across the 12-repo cohort. Per the property-test framing, validation modality switched to unit tests at the linker surface. Added two cross-language skip-level tests to TestSkipLevelDispatch: test_go_interface_embedding_skip_level (Go: BarImpl --implements--> IBar; IBar --extends--> IFoo) and test_typescript_interface_chain_skip_level (TS: Impl --implements--> IBar; IBar --extends--> IFoo).\n\nThe Go test FAILED on the existing code: 'dispatches=set()'. Root cause was a separate-but-adjacent gap in the WI-sukav A1 per-language gate at type_hierarchy._extends_admits_dispatch — the deny-list (Go, C++, Rust, C#) filtered ALL extends edges in those languages including interface-extends-interface, which IS virtual dispatch via interface satisfaction in Go (interface embedding) and C# (interface inheritance). Result: parent_to_children never bridged the interface-chain hop on Go/C# repos, so close_parent_to_children_transitively had nothing to close.\n\nFix shipped in PR #3624: gate now accepts a child_kind parameter and overrides the deny-list when child kind == 'interface'. Concrete-extends suppression for class/struct children in deny-listed languages is unaffected. 46 type_hierarchy tests pass; 2483 package tests pass; 100% coverage on changed files.\n\nNet result: WI-firuj transitive-closure behavior is now validated by a cross-language unit-test set (Java extends-chain + Go interface-embedding + TS interface-chain + diamond + direct-override regression). Stripping awaits_bakeoff_validation and for_deep_bakeoff. The original DEEP-cycle modality framing was wrong for this claim shape; the right modality is per-edge-shape property tests, which now cover the three IR shapes (extends-only chain in virtual-extends languages, mixed implements+extends chain in deny-listed languages with interface child, mixed implements+extends chain in TS)."  # 6c2a

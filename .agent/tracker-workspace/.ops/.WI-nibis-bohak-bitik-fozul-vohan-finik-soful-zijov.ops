@@ -121,3 +121,19 @@
   clock: 13  # d00e
   nonce: d00e  # d00e
   message: "Bakeoff validation: MOVED (cohort cohort-002/iter-001). Plurality verdict across repos: moved=3 no_move=0 inconclusive=1. Evidence: alertmanager=moved: meta.call_construct populated with canonical apex distribution: method 6184, function 1811, chained_return_type 3; no pe…; kafka=inconclusive: meta['call_construct'] is populated (function=21753, method=5721, cross_file=2), but evidence_type still includes peer v…; kserve=moved: No Cluster D peer evidence types (function_call/method_call/function_application/typed_receiver_call/ambiguous_method_ca…; +1 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # d00e
+- op: update  # 28f2
+  at: '2026-05-11T04:05:03Z'  # 28f2
+  by: agent  # 28f2
+  actor: jgstern_agent  # 28f2
+  clock: 14  # 28f2
+  nonce: 28f2  # 28f2
+  set: {}  # 28f2
+  remove:  # 28f2
+    tags: [awaits_bakeoff_validation]  # 28f2
+- op: discuss  # fd19
+  at: '2026-05-11T04:05:03Z'  # fd19
+  by: agent  # fd19
+  actor: jgstern_agent  # fd19
+  clock: 15  # fd19
+  nonce: fd19  # fd19
+  message: "Bakeoff validation: MOVED (cohort cohort-003/iter-001). Plurality verdict across repos: moved=2 no_move=0 inconclusive=0. Evidence: airflow=moved: meta['call_construct'] populated with method:49123, function:147, cross_file:43; legacy peer evidence_types like functio…; ansible=moved: meta.call_construct is populated on 906 edges (870 'method' + 36 'function') across 'calls' edges in hg.json; evidence_t… — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # fd19

@@ -150,3 +150,10 @@
   clock: 17  # 4dac
   nonce: 4dac  # 4dac
   message: "Bakeoff validation: MOVED (cohort cohort-002/iter-001). Plurality verdict across repos: moved=3 no_move=1 inconclusive=0. Evidence: alertmanager=moved: 222 nodes carry meta.framework_role, and the legacy Cluster D kinds (event_publisher, dispatcher, grpc_server, route_mou…; kafka=no_move: hg.json edge meta has zero framework_role values across 579124 edges, yet event_publishes (240 edges) still exists as a…; kserve=moved: Node meta.framework_role is populated (event_subscriber:57, event_publisher:44, http_client:33, route:29, grpc_client:20…; +1 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 4dac
+- op: discuss  # 606d
+  at: '2026-05-11T04:19:51Z'  # 606d
+  by: agent  # 606d
+  actor: jgstern_agent  # 606d
+  clock: 18  # 606d
+  nonce: 606d  # 606d
+  message: "Regression sub-item filed as WI-dodom-ginoz-tamij-didom-tuzak-botah-diral-hokor — four cohort-1 repos (chatwoot, containerd, kafka, apollo-server) showed framework_role meta absent on edges (and 150 nodes still kind='graphql_resolver' on apollo-server) despite the parent's MOVED plurality verdict in cohort 2. Likely a producer the Wave 5 migration didn't catch, or an audit-modality issue conflating node-meta with edge-meta. Per BVT lifecycle the sub-item does NOT carry awaits_bakeoff_validation."  # 606d

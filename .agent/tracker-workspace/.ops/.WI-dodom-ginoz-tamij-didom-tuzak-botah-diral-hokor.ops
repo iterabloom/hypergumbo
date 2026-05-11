@@ -1,0 +1,31 @@
+- op: create  # 224f
+  at: '2026-05-11T04:18:59Z'  # 224f
+  by: agent  # 224f
+  actor: jgstern_agent  # 224f
+  clock: 1  # 224f
+  nonce: 224f  # 224f
+  data:  # 224f
+    kind: work_item  # 224f
+    title: "Cluster D framework_role fold incomplete: 4 cohort-1 repos show framework_role meta absent (regression of WI-habut)"  # 224f
+    status: todo_soft  # 224f
+    priority: 3  # 224f
+    parent: WI-habut-diziv-jahuv-gimub-kipus-rosaj-nukol-gujil  # 224f
+    tags:  # 224f
+    - regression  # 224f
+    - analysis_quality  # 224f
+    - framework_dispatch_linkers  # 224f
+    isbefore: []  # 224f
+    duplicate_of: []  # 224f
+    not_duplicate_of: []  # 224f
+    pr_ref:  # 224f
+    description: "Regression sub-item for the parent WI-habut Cluster D framework_role fold (Phase 3 of ADR-0027, Wave 5 of WI-runod, shipped 2026-05-06). Filed 2026-05-11 after the DEEP cycle on session `deep-20260510-054430` aggregated a `MOVED` plurality verdict in cohort 2 (3 moved / 1 no_move) but four cohort-1 repos returned `no_move` signals that the cohort 2 plurality masked.\n\n## Observations from the bakeoff\n\nSix cohort-1 repos audited the fold. Verdict split was 2 moved / 2 no_move / 2 inconclusive — tied at the cohort level, plurality at the cross-cohort level only because cohort 2's 3-moved vote dominated. The split tracks repo language/topology more than fold completeness:\n\n| Repo | Verdict | Evidence |\n|---|---|---|\n| phoenix | moved | 448 nodes carry meta['framework_role'] with route / ipc_send / event_subscriber / ipc_receive / http_client values |\n| django | moved | Cluster D framework roles folded; 0 legacy kinds |\n| chatwoot | inconclusive | partial migration |\n| containerd | **no_move** | meta.framework_role has 0 occurrences across all 56794 edges despite presence of grpc dispatch shapes that should carry roles |\n| kafka | **no_move** | event_publishes (240 edges) still exists as an edge type; 0 framework_role meta across 579124 edges |\n| apollo-server | **no_move** | framework_role meta absent on all 7329 edges; 150 graphql_resolver nodes still carry `kind='graphql_resolver'` rather than `kind='function'` + meta['framework_role']='graphql_resolver' |\n\nCohort 2 evidence corroborates the split: alertmanager (222 nodes carry meta.framework_role) and kserve (event_subscriber:57, event_publisher:44, http_client:33, route:29, grpc_client:20) and prometheus all moved, but kafka explicitly no_move.\n\n## Hypothesis: producer migration missed some framework producers\n\nThe Wave 5 migration touched 6 PRs (Codeberg #3572 + selfh #162-#166) covering websocket/tauri/grpc/openapi/graphql/http/crypto/ipc/objc/event-dispatch/yjs/message_dispatch/annotation_convention/Go-route_mount/Ruby/Django/single-row dispatch modules/Symbol.kind=route. The four no_move repos (containerd, kafka, apollo-server) and the chatwoot inconclusive evidence suggest at least one producer surface remained un-migrated:\n\n- **apollo-server**: 150 nodes still kind='graphql_resolver'. The graphql_resolver producer was supposed to fold in selfh PR #162 (graphql_resolver.py: graphql_resolver → function), but apollo-server's resolver detection appears to come from a different producer (possibly graphql.py's `graphql_resolver` value or a JS/TS-side producer not covered by the migration).\n- **kafka**: event_publishes still emits as an edge type at 240 edges. This may be Edge.type (edge classification axis) rather than Symbol.kind, in which case it's out of scope for WI-habut — but the BVT reflect-agent verdict still flagged it as a no_move signal, so the audit modality needs to distinguish \"node kind folded\" from \"edge type folded\".\n- **containerd**: 0 framework_role on edges despite grpc shapes. Grpc Symbol.kind=route was held for selfh PR #166; this may be the route consumer-coupled fold tail.\n\n## Scope expansion\n\n1. **Identify which producers emit framework-role values in the four no_move repos.** Run `hypergumbo run <repo>` and grep `--json` output for `kind in (graphql_resolver, event_publisher, route, etc.)`. Trace each surviving instance back to its producer.\n2. **Distinguish \"node kind not folded\" from \"edge type not folded\".** The fold is Symbol.kind → Symbol.meta; Edge.type is a separate axis (ADR-0028 Cluster C). The BVT reflect agents conflated them. Either document the distinction in the audit-findings doc or fold the edge-type producers under a separate item.\n3. **Bakeoff modality fix.** The validation methodology should check `Symbol.meta['framework_role']` on nodes whose `kind` was *previously* in the Cluster D set, not check Edge meta. Update the WI-habut audit query, or add a producer-coherence test that enforces \"for every node where the legacy producer would have emitted kind=X (X in Cluster D), the post-fold node has kind in {function, method, interface, reference} and meta['framework_role']=X\".\n\n## Validation\n\nAfter fix: `hypergumbo run <repo>` on apollo-server, containerd, kafka should show 0 nodes with `kind in Cluster D set` for any producer the migration was supposed to cover. Audit query that returned 0 framework_role on 56794 containerd edges should be re-evaluated: if it's edge-level by design, the test is wrong; if it's node-level, fix the producers.\n\n## Not awaits_bakeoff_validation\n\nPer BVT lifecycle (`bakeoff-validation-tagging-discipline.md`): regression sub-items DO NOT inherit `awaits_bakeoff_validation` — they are their own work. The DEEP cycle that validates the fix can either re-tag the parent (if the regression is truly a partial-migration follow-up) or tag this sub-item independently with a fresh quantitative claim."  # 224f
+    fields: {}  # 224f
+- op: update  # 355a
+  at: '2026-05-11T04:20:22Z'  # 355a
+  by: agent  # 355a
+  actor: jgstern_agent  # 355a
+  clock: 2  # 355a
+  nonce: 355a  # 355a
+  set: {}  # 355a
+  add:  # 355a
+    not_duplicate_of: [WI-zitiv-haroh-jatun-fatat-pojan-jurus-jibuz-fibig]  # 355a

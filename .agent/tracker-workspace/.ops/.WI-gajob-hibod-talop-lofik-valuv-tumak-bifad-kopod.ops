@@ -87,3 +87,19 @@
     tags: [for_deep_bakeoff]  # 2621
   remove:  # 2621
     tags: [for-deep-bakeoff]  # 2621
+- op: update  # f456
+  at: '2026-05-11T04:33:06Z'  # f456
+  by: agent  # f456
+  actor: jgstern_agent  # f456
+  clock: 10  # f456
+  nonce: f456  # f456
+  set: {}  # f456
+  remove:  # f456
+    tags: [awaits_bakeoff_validation, for_deep_bakeoff]  # f456
+- op: discuss  # ae1f
+  at: '2026-05-11T04:33:06Z'  # ae1f
+  by: agent  # ae1f
+  actor: jgstern_agent  # ae1f
+  clock: 11  # ae1f
+  nonce: ae1f  # ae1f
+  message: "MOVED on re-audit at the correct surface. The DEEP cycle on session deep-20260510-054430 returned no_move signals from agents who checked the Symbol.kind *vocabulary* (still listed in symbol_kinds.py per Phase 4a deprecation-window) rather than the *actual nodes* emitted into hg.json. Re-audit script (`/tmp/audit-cluster-bg.py`) loaded all 12 cohort hg.json files and counted nodes carrying any of the 11 disputed Cluster B kinds (module_file, component_file, npm_package, composer_package, main_entry, bin, library_export, export_entry, wasm_module, script, tsconfig). Result: 0 across all 12 repos. Wave 6 PR 3 producer migration (selfh #181) is complete; the residual presence in the registry is by-design Phase 4a state pending WI-butol Phase 4b pruning. Stripping awaits_bakeoff_validation and for_deep_bakeoff."  # ae1f

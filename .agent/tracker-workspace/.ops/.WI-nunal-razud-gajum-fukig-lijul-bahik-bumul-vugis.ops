@@ -109,3 +109,26 @@
   set: {}  # c694
   remove:  # c694
     tags: [awaits_bakeoff_validation]  # c694
+- op: discuss  # bc83
+  at: '2026-05-11T04:05:02Z'  # bc83
+  by: agent  # bc83
+  actor: jgstern_agent  # bc83
+  clock: 12  # bc83
+  nonce: bc83  # bc83
+  message: "Bakeoff validation: MOVED (cohort cohort-002/iter-001). Plurality verdict across repos: moved=4 no_move=0 inconclusive=0. Evidence: alertmanager=moved: 0 edges with evidence_type containing 'unresolved' across 12932 edges; instead 4299 edges carry is_resolved=False, match…; kafka=moved: Zero evidence_type values in hg.json contain 'unresolved' across 579124 edges; is_resolved=False is set on 283173 edges…; kserve=moved: Zero edges have a meta.evidence_type containing 'unresolved' (no ast_annotation_unresolved, unresolved_method_call, etc.…; +1 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # bc83
+- op: update  # f0fd
+  at: '2026-05-11T04:05:03Z'  # f0fd
+  by: agent  # f0fd
+  actor: jgstern_agent  # f0fd
+  clock: 13  # f0fd
+  nonce: f0fd  # f0fd
+  set: {}  # f0fd
+  remove:  # f0fd
+    tags: [awaits_bakeoff_validation]  # f0fd
+- op: discuss  # d3d0
+  at: '2026-05-11T04:05:36Z'  # d3d0
+  by: agent  # d3d0
+  actor: jgstern_agent  # d3d0
+  clock: 14  # d3d0
+  nonce: d3d0  # d3d0
+  message: "Bakeoff validation: MOVED (cohort cohort-003/iter-001). Plurality verdict across repos: moved=2 no_move=0 inconclusive=0. Evidence: airflow=moved: Zero edges in hg.json have an evidence_type containing 'unresolved' (no ast_annotation_unresolved, unresolved_method_cal…; ansible=moved: Zero edge.meta.evidence_type values contain 'unresolved' across all 3097 edges in hg.json (Counter on substring 'unresol… — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # d3d0

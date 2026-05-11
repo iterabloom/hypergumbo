@@ -89,3 +89,19 @@
     tags: [for_deep_bakeoff]  # 036c
   remove:  # 036c
     tags: [for-deep-bakeoff]  # 036c
+- op: update  # b9b7
+  at: '2026-05-11T04:52:37Z'  # b9b7
+  by: agent  # b9b7
+  actor: jgstern_agent  # b9b7
+  clock: 10  # b9b7
+  nonce: b9b7  # b9b7
+  set: {}  # b9b7
+  remove:  # b9b7
+    tags: [awaits_bakeoff_validation, for_deep_bakeoff]  # b9b7
+- op: discuss  # 37f6
+  at: '2026-05-11T04:52:37Z'  # 37f6
+  by: agent  # 37f6
+  actor: jgstern_agent  # 37f6
+  clock: 11  # 37f6
+  nonce: 37f6  # 37f6
+  message: "MOVED on re-audit at the correct edge surface. The DEEP cycle on session deep-20260510-054430 returned 6 tied / 6 inconclusive verdicts (and 0 moved nodes when initially audited) because both my audit script and the reflect agents checked for an emitted Symbol with kind='component' as the dst — but the post-fold shape per audit-findings 0011 / vue.py:544-575 / svelte.py / astro.py emits an 'imports' Edge with dst id ending in ':component' (path-encoded), NOT a separate component Symbol. The component identity moves to dst-id structure and Edge.meta carries component_name / directives / import_path / source_path; no component Symbol is emitted.\n\nRe-audit on existing artifacts (script: /tmp/audit-mihiz-v2.py): chatwoot emits 2428 post-fold imports-edges with dst.id ending in ':component' (1995 resolved + 433 unresolved). Sample edge from chatwoot/iter-001 confirms the shape:\n  src=vue:app/javascript/dashboard/App.vue:1-1:file:file\n  dst=vue:./components/app/UpdateBanner.vue:0-0:UpdateBanner:component\n  meta={component_name:'UpdateBanner', directives:[...], source_path:'app/javascript/dashboard/App.vue', import_path:'./components/app/UpdateBanner.vue'}\n\nProducer-side mechanical claim (drop component_ref Symbol) was already verified earlier: 0 surviving component_ref nodes or edges across all 12 cohort repos. Both halves of the fold confirmed. Stripping awaits_bakeoff_validation and for_deep_bakeoff."  # 37f6

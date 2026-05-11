@@ -119,3 +119,19 @@
   clock: 13  # 5f4d
   nonce: 5f4d  # 5f4d
   message: "Bakeoff validation: MOVED (cohort cohort-001/iter-001). Plurality verdict across repos: moved=3 no_move=1 inconclusive=2. Evidence: apollo-server=moved: Cluster E call_site kind reclassify/drop; node-kind histogram shows 0 call_site nodes and 0 call_site edges, consistent…; chatwoot=moved: 0 edges of type 'call_site' in hg.json despite 12,338 'calls' edges and 8,516 ast_call_direct evidence rows — Cluster E…; containerd=inconclusive: Cluster E call_site reclassification targets edge-label kinds primarily emitted by web-framework analyzers; containerd's…; +3 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 5f4d
+- op: update  # cc0e
+  at: '2026-05-11T04:05:03Z'  # cc0e
+  by: agent  # cc0e
+  actor: jgstern_agent  # cc0e
+  clock: 14  # cc0e
+  nonce: cc0e  # cc0e
+  set: {}  # cc0e
+  remove:  # cc0e
+    tags: [awaits_bakeoff_validation]  # cc0e
+- op: discuss  # f560
+  at: '2026-05-11T04:05:03Z'  # f560
+  by: agent  # f560
+  actor: jgstern_agent  # f560
+  clock: 15  # f560
+  nonce: f560  # f560
+  message: "Bakeoff validation: MOVED (cohort cohort-002/iter-001). Plurality verdict across repos: moved=3 no_move=1 inconclusive=0. Evidence: alertmanager=moved: 0 edges with type='call_site' in hg.json (12932 edges total, top kinds are calls/imports/contains/module_attr_ref/uses/d…; kafka=no_move: node_kinds still includes 'call_site' (9 instances) in hg.json — Cluster E edge-label kind has not been reclassified or…; kserve=moved: Only 1 node remains with kind='call_site' across 16009 nodes (other Cluster E candidates method_call/function_call as no…; +1 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # f560

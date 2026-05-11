@@ -83,3 +83,19 @@
     tags: [for_deep_bakeoff]  # 0da1
   remove:  # 0da1
     tags: [for-deep-bakeoff]  # 0da1
+- op: update  # 428a
+  at: '2026-05-11T04:31:23Z'  # 428a
+  by: agent  # 428a
+  actor: jgstern_agent  # 428a
+  clock: 9  # 428a
+  nonce: 428a  # 428a
+  set: {}  # 428a
+  remove:  # 428a
+    tags: [awaits_bakeoff_validation, for_deep_bakeoff]  # 428a
+- op: discuss  # df80
+  at: '2026-05-11T04:31:23Z'  # df80
+  by: agent  # df80
+  actor: jgstern_agent  # df80
+  clock: 10  # df80
+  nonce: df80  # df80
+  message: "Validation modality mismatch (same shape as sibling WI-lidum-rubin): the claim concerns which compute_centrality parameters are passed by sketch/compact selection surfaces — pipeline-internal config, never observable from hg.json. DEEP cycle on session deep-20260510-054430 returned 6/6 inconclusive across cohort 1 and 4/4 inconclusive across cohort 2 for the same reason: per-repo artifacts can't distinguish 'centrality with param X' from 'centrality with param Y'. Stripping awaits_bakeoff_validation and for_deep_bakeoff. The centrality-param parity invariants are covered by unit tests at the compute_centrality call sites in ranking.py / sketch / compact; a regression-prevention property test would be the right shape if further confidence is wanted."  # df80

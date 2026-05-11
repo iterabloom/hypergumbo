@@ -88,3 +88,19 @@
   clock: 9  # ce2c
   nonce: ce2c  # ce2c
   message: "Bakeoff validation: MOVED (cohort cohort-001/iter-001). Plurality verdict across repos: moved=4 no_move=0 inconclusive=2. Evidence: apollo-server=moved: rslice_seeds.json picks 3 real domain functions (ApolloServer.addDefaultPlugins, runHttpQuery, ApolloServer.executeHTTPG…; chatwoot=moved: rslice_seeds.json shows method='domain_score' and the 3 picked seeds are real domain functions (useUISettings, useAccoun…; containerd=inconclusive: rslice_seeds.json (0KB in prompt manifest) was inspected only indirectly; this Go repo lacks the prometheus-style interf…; +3 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # ce2c
+- op: update  # 219e
+  at: '2026-05-11T04:05:02Z'  # 219e
+  by: agent  # 219e
+  actor: jgstern_agent  # 219e
+  clock: 10  # 219e
+  nonce: 219e  # 219e
+  set: {}  # 219e
+  remove:  # 219e
+    tags: [awaits_bakeoff_validation]  # 219e
+- op: discuss  # 8948
+  at: '2026-05-11T04:05:02Z'  # 8948
+  by: agent  # 8948
+  actor: jgstern_agent  # 8948
+  clock: 11  # 8948
+  nonce: '8948'  # 8948
+  message: "Bakeoff validation: MOVED (cohort cohort-002/iter-001). Plurality verdict across repos: moved=3 no_move=0 inconclusive=1. Evidence: alertmanager=inconclusive: rslice_seeds.json picked HTTP handlers (getAlertsHandler/postAlertsHandler) and Elm view — no interface stubs in the see…; kafka=moved: rslice_seeds.json shows seeds=[Sensor.add, KafkaAdminClient.AdminClientRunnable.call, Utils.closeQuietly] — all real dom…; kserve=moved: rslice_seeds.json shows method='domain_score' and picks real domain functions (HuggingfaceGenerativeModel.create_complet…; +1 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 8948

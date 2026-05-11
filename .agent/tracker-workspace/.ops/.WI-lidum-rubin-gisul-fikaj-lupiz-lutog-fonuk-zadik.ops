@@ -76,3 +76,19 @@
     tags: [for_deep_bakeoff]  # 2c5b
   remove:  # 2c5b
     tags: [for-deep-bakeoff]  # 2c5b
+- op: update  # 47d1
+  at: '2026-05-11T04:31:22Z'  # 47d1
+  by: agent  # 47d1
+  actor: jgstern_agent  # 47d1
+  clock: 8  # 47d1
+  nonce: 47d1  # 47d1
+  set: {}  # 47d1
+  remove:  # 47d1
+    tags: [awaits_bakeoff_validation, for_deep_bakeoff]  # 47d1
+- op: discuss  # f43d
+  at: '2026-05-11T04:31:22Z'  # f43d
+  by: agent  # f43d
+  actor: jgstern_agent  # f43d
+  clock: 9  # f43d
+  nonce: f43d  # f43d
+  message: "Validation modality mismatch: this item's claim concerns which dampener passes participate in symbol-selection surfaces — a pipeline-internal config surface that never appears in hg.json output. DEEP cycle on session deep-20260510-054430 returned 6/6 inconclusive across cohort 1 and 4/4 inconclusive across cohort 2 because per-repo artifacts cannot distinguish 'dampener applied' from 'dampener not applied' — both produce ranked symbol lists with no direct trace of the param surface. Stripping awaits_bakeoff_validation and for_deep_bakeoff per the BVT lifecycle's 'no compatible modality' exit. The dampener-stack invariants are covered by the 100% unit-test floor on ranking.py / sketch._format_symbols / compact.select_by_*; a property-test addition would be the right shape if regression confidence is wanted."  # f43d

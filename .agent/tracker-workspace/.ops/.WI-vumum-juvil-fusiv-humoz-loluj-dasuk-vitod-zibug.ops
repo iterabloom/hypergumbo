@@ -67,3 +67,19 @@
     tags: [for_deep_bakeoff]  # 31d8
   remove:  # 31d8
     tags: [for-deep-bakeoff]  # 31d8
+- op: update  # 1072
+  at: '2026-05-11T04:05:02Z'  # 1072
+  by: agent  # 1072
+  actor: jgstern_agent  # 1072
+  clock: 7  # 1072
+  nonce: '1072'  # 1072
+  set: {}  # 1072
+  remove:  # 1072
+    tags: [awaits_bakeoff_validation]  # 1072
+- op: discuss  # 5368
+  at: '2026-05-11T04:05:03Z'  # 5368
+  by: agent  # 5368
+  actor: jgstern_agent  # 5368
+  clock: 8  # 5368
+  nonce: '5368'  # 5368
+  message: "Bakeoff validation: MOVED (cohort cohort-002/iter-001). Plurality verdict across repos: moved=3 no_move=0 inconclusive=1. Evidence: alertmanager=moved: meta.protocol='http' appears on 8 edges; no edges have type http_calls/grpc_calls/graphql_calls in the edge-type histogr…; kafka=inconclusive: kafka edge types include no http_calls/grpc_calls/graphql_calls (the pre-fold set is absent), and meta['protocol'] count…; kserve=moved: hg.json contains 0 edges of type http_calls/grpc_calls/graphql_calls; meta.protocol is populated on calls edges (http:4,…; +1 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 5368
