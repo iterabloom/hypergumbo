@@ -19,3 +19,18 @@
     pr_ref:  # 1a44
     description: "Audit-findings 0013 §'Diagnostic findings' #3 lists grpc_server, grpc_stub, ipc_subscriber, mq_publisher, mq_subscriber, websocket_emitter, websocket_listener, rpc, service as 'registry placeholders with no producers' (PRELIM_RESOLVED at filing). The diagnostic-test literal grep used kwarg-form (kind=\"<value>\") and missed assignment-form producers. grpc.py:657 emits kind = \"grpc_stub\" if pattern.type == \"stub\" else \"grpc_client\" and grpc.py:660 emits kind = \"grpc_server\" — both via assignment, not kwarg. These rows should be reclassified UNRESOLVED in audit-findings 0013, and gRPC server/stub/service/servicer/client kinds should be migrated as part of a follow-on Wave 5 sub-PR (likely combined with the grpc framework_dispatch evidence_type fold already shipped in PR #3572). Also check whether the other 7 'no producer' rows (ipc_subscriber, mq_publisher, mq_subscriber, websocket_emitter, websocket_listener, rpc, service) have similar assignment-form producers that the literal-grep missed. Found while shipping Wave 5 PR #1."  # 1a44
     fields: {}  # 1a44
+- op: update  # e041
+  at: '2026-05-10T09:04:23Z'  # e041
+  by: agent  # e041
+  actor: jgstern_agent  # e041
+  clock: 2  # e041
+  nonce: e041  # e041
+  set:  # e041
+    status: done  # e041
+- op: discuss  # 1693
+  at: '2026-05-10T09:04:23Z'  # 1693
+  by: agent  # 1693
+  actor: jgstern_agent  # 1693
+  clock: 3  # 1693
+  nonce: '1693'  # 1693
+  message: "Stale at filing — work shipped before the tracker item was closed. Producer migration: commit 9071f774 (refactor(symbol_kinds): WI-nitil — grpc + mq Cluster D fold + audit-findings 0013 correction) folded all five gRPC kinds (grpc_server/stub/service/servicer/client) and both MQ kinds (mq_publisher/mq_subscriber) to canonical Cluster A constructs + meta['framework_role']; added the three previously-unregistered values (grpc_service/grpc_servicer/grpc_client) to symbol_kinds.py AXIS_ENDPOINT_SHAPE. Audit-findings 0013 advance: commit 6d6fc8df (docs(audits): advance 0013 + 0014 rows UNRESOLVED -> PRELIM_RESOLVED) flipped all 28 advancing rows once empirical re-grep confirmed zero live producers. The five remaining zero-producer placeholders (ipc_subscriber, websocket_emitter, websocket_listener, rpc, service) re-verified clean. The structural fix to the diagnostic-test blind spot itself (assignment-form trace in producer-coherence linter) shipped at commit c4cc2d5d (WI-nubuv ext A)."  # 1693

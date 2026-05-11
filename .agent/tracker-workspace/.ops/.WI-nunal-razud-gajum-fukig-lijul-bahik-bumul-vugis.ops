@@ -84,3 +84,19 @@
     tags: [for_deep_bakeoff]  # 221e
   remove:  # 221e
     tags: [for-deep-bakeoff]  # 221e
+- op: update  # e567
+  at: '2026-05-11T04:03:12Z'  # e567
+  by: agent  # e567
+  actor: jgstern_agent  # e567
+  clock: 9  # e567
+  nonce: e567  # e567
+  set: {}  # e567
+  remove:  # e567
+    tags: [awaits_bakeoff_validation]  # e567
+- op: discuss  # 2ae5
+  at: '2026-05-11T04:03:12Z'  # 2ae5
+  by: agent  # 2ae5
+  actor: jgstern_agent  # 2ae5
+  clock: 10  # 2ae5
+  nonce: 2ae5  # 2ae5
+  message: "Bakeoff validation: MOVED (cohort cohort-001/iter-001). Plurality verdict across repos: moved=6 no_move=0 inconclusive=0. Evidence: apollo-server=moved: Cluster B *_unresolved evidence types fold to canonical + is_resolved=False; in hg.json no evidence_type contains substr…; chatwoot=moved: 0 evidence_types containing 'unresolved' across 48,562 edges, yet 2,554 edges carry is_resolved=False with canonical evi…; containerd=moved: evidence_type Counter over all 56794 edges shows zero entries containing '_unresolved' or 'unresolved_' substring; canon…; +3 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 2ae5

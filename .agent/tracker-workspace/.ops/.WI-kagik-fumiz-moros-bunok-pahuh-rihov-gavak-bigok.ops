@@ -127,3 +127,19 @@
     tags: [for_deep_bakeoff]  # bbd2
   remove:  # bbd2
     tags: [for-deep-bakeoff]  # bbd2
+- op: update  # ad33
+  at: '2026-05-11T04:03:12Z'  # ad33
+  by: agent  # ad33
+  actor: jgstern_agent  # ad33
+  clock: 15  # ad33
+  nonce: ad33  # ad33
+  set: {}  # ad33
+  remove:  # ad33
+    tags: [awaits_bakeoff_validation]  # ad33
+- op: discuss  # 460e
+  at: '2026-05-11T04:03:12Z'  # 460e
+  by: agent  # 460e
+  actor: jgstern_agent  # 460e
+  clock: 16  # 460e
+  nonce: 460e  # 460e
+  message: "Bakeoff validation: MOVED (cohort cohort-001/iter-001). Plurality verdict across repos: moved=5 no_move=0 inconclusive=1. Evidence: apollo-server=inconclusive: Cluster C framework-dispatch fold targets framework-specific (django/kafka/phoenix/nestjs/vue) evidence types; hg.json s…; chatwoot=moved: 0 framework-prefixed evidence_types (no django_orm_dispatch / kafka_streams_dispatch / vue_event_handler / nestjs_module…; containerd=moved: meta['framework_dispatch'] populated on edges (grpc_rpc_definition=132, grpc_service_match=36, grpc_server_to_service=36…; +3 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 460e

@@ -18,3 +18,18 @@
     pr_ref:  # 5adc
     description: "Wave 5 of WI-runod cross-axis schedule shipped 6 PRs in 2026-05-06 session: Codeberg #3572 (PR #1: websocket / tauri / grpc / openapi) + selfh #162-166 (PRs #2-6, via failover). Folded ~75 evidence_type + ~28 Symbol.kind values across audit-findings 0013 (Cluster D framework roles) and 0014 (Cluster C framework dispatch). framework_patterns.py Pattern.matches() extended with framework_role meta fallback for backward-compat with existing YAML rules.\n\nCHANGELOG.md [Unreleased] currently documents Phase 1/2 (registry + consumer migration prep) but not the Wave 5 producer-migration completion. Add entries summarising:\n- Per-PR scope (commit SHA + brief description per Wave 5 PR)\n- Aggregate values folded\n- Pattern.matches() backward-compat note\n- Pointer to audit-findings 0013/0014\n\nThis is a routine documentation task; should land before next release (per Pre-Commit playbook §3 'feature status changed: Update CHANGELOG.md')."  # 5adc
     fields: {}  # 5adc
+- op: update  # 2d6c
+  at: '2026-05-10T09:34:59Z'  # 2d6c
+  by: agent  # 2d6c
+  actor: jgstern_agent  # 2d6c
+  clock: 2  # 2d6c
+  nonce: 2d6c  # 2d6c
+  set:  # 2d6c
+    status: done  # 2d6c
+- op: discuss  # 074e
+  at: '2026-05-10T09:34:59Z'  # 074e
+  by: agent  # 074e
+  actor: jgstern_agent  # 074e
+  clock: 3  # 074e
+  nonce: 074e  # 074e
+  message: "Shipped via PR #3618 (commit a4f06ed418). Added one sentence to v4.1.0 CHANGELOG entry covering the Pattern.matches() framework_role meta fallback (framework_patterns.py:396-401 + 423-428) — the backward-compat shim that lets unmigrated YAML rules (phoenix.yaml, falcon.yaml, yesod.yaml, library-exports.yaml, etc.) continue to match post-fold symbols. Forward-references WI-fojun-vokat as the planned shim removal. The other content WI-kinib-fopil originally asked for (per-PR commit SHAs for Wave 5, aggregate values folded, audit-findings 0013/0014 pointers, family detail) was already covered by the existing v4.1.0 entry — no duplication needed. WI-nitil-sobos was concurrently closed out (already-shipped at commits 9071f774 + 6d6fc8df, just stale in the tracker)."  # 074e
