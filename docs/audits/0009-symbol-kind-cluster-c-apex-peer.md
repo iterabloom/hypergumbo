@@ -61,7 +61,7 @@ verdicts:
   - value: fn
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]fn[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py\\|compute_stable_id\\|make_symbol_id'"
       expect: empty
@@ -69,7 +69,7 @@ verdicts:
   - value: var
     verdict: FOLD
     fold_target: variable
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]var[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py\\|compute_stable_id\\|make_symbol_id'"
       expect: empty
@@ -77,7 +77,7 @@ verdicts:
   - value: proc
     verdict: FOLD
     fold_target: procedure
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]proc[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py\\|compute_stable_id\\|make_symbol_id'"
       expect: empty
@@ -85,7 +85,7 @@ verdicts:
   - value: structure
     verdict: FOLD
     fold_target: struct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]structure[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py\\|compute_stable_id\\|make_symbol_id'"
       expect: empty

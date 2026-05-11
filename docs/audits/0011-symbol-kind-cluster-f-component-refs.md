@@ -42,7 +42,7 @@ Each is an AST-level declarative form in its source language. The four leakage t
 
 ### 4. `component_file` is governed by audit-findings 0005
 
-`component_file` was filed in audit-findings 0005 Cluster 27B (file-shape entries) as `verdict: FOLD, fold_target: file, status: PRELIM_RESOLVED` with the rationale "Vue / Svelte / Astro single-file component. Structurally a kind=file with framework metadata. Fold to file + meta['component_framework']='vue' (or 'svelte', etc.)." The Cluster 27B Wave 6 PR group (per audit-findings 0005 §"Migration impact") will execute the producer-side fold. This audit-findings doc only notes the cross-cluster reference and does not introduce a separate verdict row.
+`component_file` was filed in audit-findings 0005 Cluster 27B (file-shape entries) as `verdict: FOLD, fold_target: file, status: RESOLVED` with the rationale "Vue / Svelte / Astro single-file component. Structurally a kind=file with framework metadata. Fold to file + meta['component_framework']='vue' (or 'svelte', etc.)." The Cluster 27B Wave 6 PR group (per audit-findings 0005 §"Migration impact") will execute the producer-side fold. This audit-findings doc only notes the cross-cluster reference and does not introduce a separate verdict row.
 
 ## Verdicts
 
@@ -53,7 +53,7 @@ verdicts:
   - value: component_ref
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]component_ref[\"\\047]' packages/ scripts/ | grep -v 'test_\\|BRANCHES_test\\|symbol_kinds.py'"
       expect: empty

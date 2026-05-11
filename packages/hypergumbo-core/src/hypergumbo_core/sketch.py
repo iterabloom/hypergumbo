@@ -5497,7 +5497,7 @@ def _format_symbols(
         # OOP languages
         "function", "class", "method", "constructor",
         # Structs and data types
-        "struct", "structure", "enum", "type", "record", "union", "abstract",
+        "struct", "enum", "type", "record", "union", "abstract",
         # Interfaces and traits
         "interface", "trait", "protocol",
         # Modules and namespaces

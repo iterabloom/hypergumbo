@@ -1085,9 +1085,10 @@ class TestExcludedKinds:
     """Tests for EXCLUDED_KINDS constant."""
 
     def test_dependency_excluded(self):
-        """Dependency kinds are excluded."""
+        """Dependency kinds are excluded. Post-Phase-4b: dev-dependency
+        is the ``dependency`` canonical + ``meta['dependency_scope']``
+        rather than a separate kind."""
         assert "dependency" in EXCLUDED_KINDS
-        assert "devDependency" in EXCLUDED_KINDS
 
     def test_file_excluded(self):
         """File-level nodes are excluded."""

@@ -17,7 +17,6 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.symbol_kinds import (
-    AXIS_ENDPOINT_SHAPE,
     AXIS_LANGUAGE_CONSTRUCT,
     AXIS_PENDING,
     SYMBOL_KINDS,
@@ -55,8 +54,22 @@ def test_specs_are_frozen():
 
 def test_valid_axes_constant_matches_module_constants():
     assert VALID_AXES == frozenset(
-        {AXIS_LANGUAGE_CONSTRUCT, AXIS_ENDPOINT_SHAPE, AXIS_PENDING},
+        {AXIS_LANGUAGE_CONSTRUCT, AXIS_PENDING},
     )
+
+
+def test_endpoint_shape_axis_is_retired():
+    """Phase 4b: the ``endpoint_shape`` axis was retired in PR #3633.
+    The axis literal must not be re-introduced as a live spec
+    classification, and the retired constant must remain ABSENT from
+    :data:`VALID_AXES`. The constant itself stays defined as a
+    backwards-compat import target for
+    :mod:`hypergumbo_core.audit_findings`'s per-axis validator
+    binding."""
+    import hypergumbo_core.symbol_kinds as sk
+    assert sk.AXIS_ENDPOINT_SHAPE == "endpoint_shape"
+    assert sk.AXIS_ENDPOINT_SHAPE not in VALID_AXES
+    assert sk.AXIS_ENDPOINT_SHAPE not in {spec.axis for spec in SYMBOL_KINDS}
 
 
 def test_every_axis_has_at_least_one_spec():
@@ -86,14 +99,25 @@ def test_symbol_kinds_on_axis_returns_only_matching():
     assert {"function", "class", "method", "struct", "interface"} <= names
 
 
-def test_symbol_kinds_on_axis_endpoint_shape_includes_known_deprecation_candidates():
-    endpoints = {spec.name for spec in symbol_kinds_on_axis(AXIS_ENDPOINT_SHAPE)}
-    # Cluster D (framework roles) and Cluster E (edge labels masquerading
-    # as kinds) are the deprecation candidates per ADR-0027.
-    assert {
+def test_symbol_kinds_on_axis_endpoint_shape_removed_after_phase_4b():
+    """Phase 4b complement of the prior 'includes deprecation
+    candidates' assertion: every value that occupied
+    ``AXIS_ENDPOINT_SHAPE`` during the Phase 4a window must be absent
+    from the registry. Cluster D framework_role values folded to
+    canonical + ``meta['framework_role']``; Cluster E call_construct
+    / edge-label values folded to ``call_site`` + ``meta['call_kind']``
+    or shipped as DEPRECATE-NO-FOLD; Cluster B/G/H file-shape /
+    build-config / long-tail values folded to canonical + the
+    relevant meta key."""
+    names = all_symbol_kind_names()
+    retired = {
         "event_publisher", "graphql_resolver", "route_mount",
         "call", "function_call", "subprocess_call",
-    } <= endpoints
+    }
+    assert not (retired & names), (
+        f"Retired Phase-4b values reappeared in registry: "
+        f"{sorted(retired & names)}"
+    )
 
 
 def test_symbol_kinds_on_axis_unknown_returns_empty():

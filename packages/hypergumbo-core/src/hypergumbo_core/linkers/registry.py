@@ -652,15 +652,20 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
 
 # Synthetic node kinds that should be connected to enclosing functions.
 #
-# Every value here is a Cluster D framework_role per ADR-0027 (axis =
-# ``endpoint_shape``). When ADR-0027 §"Phase 3 — Cluster D" Wave 5 lands
-# (WI-habut), these will be folded to ``Symbol.kind="function"|"method"``
-# + ``Symbol.meta["framework_role"]=<value>``. To stay forward-compatible
-# across that fold without requiring a coordinated consumer/producer cut,
-# call ``_is_synthetic_node(sym)`` rather than testing
-# ``sym.kind in SYNTHETIC_KINDS`` directly — the predicate matches both
-# pre- and post-Wave-5 emit shapes.
-SYNTHETIC_KINDS = frozenset({
+# Cluster D framework_role values per ADR-0027 — post-Phase-4b
+# (PR #3633, WI-butol). These names are now exclusively
+# ``Symbol.meta["framework_role"]`` values; producers emit
+# ``Symbol.kind="function"|"method"`` and the role qualifier lives on
+# meta. The set is canonical for the *framework_role* vocabulary used
+# by ``_is_synthetic_node`` below, not for ``Symbol.kind`` (so the L1
+# drift linter at ``scripts/check-symbol-kind-drift`` treats this
+# target name as out-of-scope via its ``excluded_target_names``).
+#
+# Why kept under the ``KINDS`` name: changing the public symbol would
+# ripple through ~12 consumer call sites for no behavioural gain. The
+# set's *role* (a slice of the framework_role meta-key vocabulary)
+# matters; its name is incidental.
+SYNTHETIC_FRAMEWORK_ROLES = frozenset({
     "grpc_stub",
     "grpc_server",
     "mq_publisher",
@@ -682,23 +687,17 @@ SYNTHETIC_KINDS = frozenset({
 def _is_synthetic_node(sym: "Symbol") -> bool:
     """True if *sym* is a linker-synthesized framework-role node.
 
-    Forward-compatible across ADR-0027 §"Phase 3" Wave 5 (the Cluster D
-    fold tracked by WI-habut): matches both the pre-Wave-5 emit shape
-    (``Symbol.kind`` directly carries the framework-role label) and the
-    post-Wave-5 shape (``Symbol.kind`` is the canonical language
-    construct ``"function"`` or ``"method"`` and the role moves to
-    ``Symbol.meta["framework_role"]``).
-
-    Per ADR-0027 §"Phase 2", consumer migration is reversible: the old
-    semantics still produce the right answer with the new query shape,
-    so this Phase-2 dual-shape check can ship before any producer
-    migration begins.
+    Post-Phase-4b (ADR-0027 §6, PR #3633): the dual-shape predicate
+    collapsed to its post-fold branch. Producers emit
+    ``Symbol.kind="function"|"method"`` with the role qualifier on
+    ``Symbol.meta["framework_role"]``; the pre-Phase-4b legacy branch
+    (``sym.kind in <role-name>``) is structurally impossible now that
+    the role-name vocabulary is no longer in the ``Symbol.kind``
+    registry.
     """
-    if sym.kind in SYNTHETIC_KINDS:
-        return True
     if sym.kind in {"function", "method"}:
         meta = getattr(sym, "meta", None) or {}
-        return meta.get("framework_role") in SYNTHETIC_KINDS
+        return meta.get("framework_role") in SYNTHETIC_FRAMEWORK_ROLES
     return False
 
 

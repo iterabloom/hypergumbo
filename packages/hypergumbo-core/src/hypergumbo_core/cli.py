@@ -6254,9 +6254,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
 # axis-update is Wave 6 follow-through per WI-runod). Until that
 # registry update lands, this set is forward-compatible by virtue of
 # none of its values being scheduled for fold/rename in Phase 3.
-_DEPENDENCY_KINDS = frozenset({
-    "dependency", "devDependency", "dev-dependency", "build-dependency",
-})
+_DEPENDENCY_KINDS = frozenset({"dependency"})
 
 
 def _classify_symbols(
@@ -6988,14 +6986,13 @@ def run_behavior_map(
         _NOISE_KINDS = frozenset({
             # Documentation / config
             "section", "table", "table_array", "code_block",
-            "link", "paragraph", "label", "heading",
-            "setting", "config",
+            "link", "paragraph", "label",
+            "setting",
             # CSS structural (degree-0 in behavior maps)
             "class_selector", "id_selector", "rule_set",
             "property", "media", "keyframes", "font_face",
             # Config metadata (degree-0 across all tested repos)
             "pattern",      # .gitignore entries
-            "script",       # npm scripts / pyproject.toml entry points
             "requirement",  # pip requirements.txt entries
         })
         # CSS-family `variable` (custom properties, SCSS / Sass variables) is

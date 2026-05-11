@@ -839,13 +839,13 @@ class TestSpanBasedContainment:
     def test_span_containment_rpc_with_unqualified_name(self) -> None:
         """Proto RPCs with unqualified names should be linked to services via span fallback."""
         svc = _sym(
-            "proto:hello.proto:3-15:HelloService:service",
-            "HelloService", "service", language="proto", path="hello.proto",
+            "proto:hello.proto:3-15:HelloService:interface",
+            "HelloService", "interface", language="proto", path="hello.proto",
             start=3, end=15,
         )
         rpc = _sym(
-            "proto:hello.proto:5-5:BidiHello:rpc",
-            "BidiHello", "rpc", language="proto", path="hello.proto",
+            "proto:hello.proto:5-5:BidiHello:method",
+            "BidiHello", "method", language="proto", path="hello.proto",
             start=5, end=5,
         )
 
@@ -899,14 +899,14 @@ class TestCanonicalNameContainment:
     def test_proto_service_contains_rpc_via_canonical_name(self) -> None:
         """Proto service contains its RPCs via canonical_name fallback."""
         svc = _sym(
-            "proto:hello.proto:3-15:HelloService:service",
-            "HelloService", "service", language="proto", path="hello.proto",
+            "proto:hello.proto:3-15:HelloService:interface",
+            "HelloService", "interface", language="proto", path="hello.proto",
             start=3, end=15,
             canonical_name="hello.HelloService",
         )
         rpc = _sym(
-            "proto:hello.proto:5-5:BidiHello:rpc",
-            "BidiHello", "rpc", language="proto", path="hello.proto",
+            "proto:hello.proto:5-5:BidiHello:method",
+            "BidiHello", "method", language="proto", path="hello.proto",
             start=5, end=5,
             canonical_name="hello.HelloService.BidiHello",
         )
@@ -951,20 +951,20 @@ class TestCanonicalNameContainment:
     def test_canonical_name_prefers_same_file(self) -> None:
         """When multiple containers share canonical_name, prefer same-file."""
         svc_a = _sym(
-            "proto:a.proto:1-20:HelloService:service",
-            "HelloService", "service", language="proto", path="a.proto",
+            "proto:a.proto:1-20:HelloService:interface",
+            "HelloService", "interface", language="proto", path="a.proto",
             start=1, end=20,
             canonical_name="hello.HelloService",
         )
         svc_b = _sym(
-            "proto:b.proto:1-20:HelloService:service",
-            "HelloService", "service", language="proto", path="b.proto",
+            "proto:b.proto:1-20:HelloService:interface",
+            "HelloService", "interface", language="proto", path="b.proto",
             start=1, end=20,
             canonical_name="hello.HelloService",
         )
         rpc = _sym(
-            "proto:b.proto:5-5:BidiHello:rpc",
-            "BidiHello", "rpc", language="proto", path="b.proto",
+            "proto:b.proto:5-5:BidiHello:method",
+            "BidiHello", "method", language="proto", path="b.proto",
             start=5, end=5,
             canonical_name="hello.HelloService.BidiHello",
         )
@@ -981,8 +981,8 @@ class TestCanonicalNameContainment:
     def test_canonical_name_no_match_when_parent_missing(self) -> None:
         """No edge when canonical_name parent doesn't exist as a symbol."""
         rpc = _sym(
-            "proto:hello.proto:5-5:BidiHello:rpc",
-            "BidiHello", "rpc", language="proto", path="hello.proto",
+            "proto:hello.proto:5-5:BidiHello:method",
+            "BidiHello", "method", language="proto", path="hello.proto",
             start=5, end=5,
             canonical_name="hello.MissingService.BidiHello",
         )
@@ -998,14 +998,14 @@ class TestCanonicalNameContainment:
     def test_canonical_name_skips_when_name_has_separator(self) -> None:
         """canonical_name fallback is only used when name has no separator."""
         svc = _sym(
-            "proto:hello.proto:3-15:hello.HelloService:service",
-            "hello.HelloService", "service", language="proto", path="hello.proto",
+            "proto:hello.proto:3-15:hello.HelloService:interface",
+            "hello.HelloService", "interface", language="proto", path="hello.proto",
             start=3, end=15,
             canonical_name="hello.HelloService",
         )
         rpc = _sym(
-            "proto:hello.proto:5-5:hello.HelloService.BidiHello:rpc",
-            "hello.HelloService.BidiHello", "rpc", language="proto",
+            "proto:hello.proto:5-5:hello.HelloService.BidiHello:method",
+            "hello.HelloService.BidiHello", "method", language="proto",
             path="hello.proto", start=5, end=5,
             canonical_name="hello.HelloService.BidiHello",
         )
@@ -1023,20 +1023,20 @@ class TestCanonicalNameContainment:
     def test_multiple_rpcs_in_service(self) -> None:
         """All RPCs in a service should be contained."""
         svc = _sym(
-            "proto:plugin.proto:1-50:Kong:service",
-            "Kong", "service", language="proto", path="plugin.proto",
+            "proto:plugin.proto:1-50:Kong:interface",
+            "Kong", "interface", language="proto", path="plugin.proto",
             start=1, end=50,
             canonical_name="kong_plugin_protocol.Kong",
         )
         rpc1 = _sym(
-            "proto:plugin.proto:5-5:Client_Authenticate:rpc",
-            "Client_Authenticate", "rpc", language="proto", path="plugin.proto",
+            "proto:plugin.proto:5-5:Client_Authenticate:method",
+            "Client_Authenticate", "method", language="proto", path="plugin.proto",
             start=5, end=5,
             canonical_name="kong_plugin_protocol.Kong.Client_Authenticate",
         )
         rpc2 = _sym(
-            "proto:plugin.proto:8-8:Client_GetConsumer:rpc",
-            "Client_GetConsumer", "rpc", language="proto", path="plugin.proto",
+            "proto:plugin.proto:8-8:Client_GetConsumer:method",
+            "Client_GetConsumer", "method", language="proto", path="plugin.proto",
             start=8, end=8,
             canonical_name="kong_plugin_protocol.Kong.Client_GetConsumer",
         )
@@ -1055,8 +1055,8 @@ class TestCanonicalNameContainment:
     def test_canonical_name_no_separator_skipped(self) -> None:
         """canonical_name without separator is skipped (no parent extractable)."""
         rpc = _sym(
-            "proto:hello.proto:5-5:BidiHello:rpc",
-            "BidiHello", "rpc", language="proto", path="hello.proto",
+            "proto:hello.proto:5-5:BidiHello:method",
+            "BidiHello", "method", language="proto", path="hello.proto",
             start=5, end=5,
             canonical_name="BidiHello",  # No separator
         )
@@ -1072,21 +1072,21 @@ class TestCanonicalNameContainment:
     def test_canonical_name_fallback_no_same_file_match(self) -> None:
         """Falls back to first candidate when no same-file match exists."""
         svc_a = _sym(
-            "proto:a.proto:1-20:HelloService:service",
-            "HelloService", "service", language="proto", path="a.proto",
+            "proto:a.proto:1-20:HelloService:interface",
+            "HelloService", "interface", language="proto", path="a.proto",
             start=1, end=20,
             canonical_name="hello.HelloService",
         )
         svc_b = _sym(
-            "proto:b.proto:1-20:HelloService:service",
-            "HelloService", "service", language="proto", path="b.proto",
+            "proto:b.proto:1-20:HelloService:interface",
+            "HelloService", "interface", language="proto", path="b.proto",
             start=1, end=20,
             canonical_name="hello.HelloService",
         )
         # RPC is in a THIRD file — no same-file match
         rpc = _sym(
-            "proto:c.proto:5-5:BidiHello:rpc",
-            "BidiHello", "rpc", language="proto", path="c.proto",
+            "proto:c.proto:5-5:BidiHello:method",
+            "BidiHello", "method", language="proto", path="c.proto",
             start=5, end=5,
             canonical_name="hello.HelloService.BidiHello",
         )
@@ -1104,14 +1104,14 @@ class TestCanonicalNameContainment:
     def test_canonical_name_dedup_with_existing_edges(self) -> None:
         """canonical_name containment doesn't duplicate existing edges."""
         svc = _sym(
-            "proto:hello.proto:3-15:HelloService:service",
-            "HelloService", "service", language="proto", path="hello.proto",
+            "proto:hello.proto:3-15:HelloService:interface",
+            "HelloService", "interface", language="proto", path="hello.proto",
             start=3, end=15,
             canonical_name="hello.HelloService",
         )
         rpc = _sym(
-            "proto:hello.proto:5-5:BidiHello:rpc",
-            "BidiHello", "rpc", language="proto", path="hello.proto",
+            "proto:hello.proto:5-5:BidiHello:method",
+            "BidiHello", "method", language="proto", path="hello.proto",
             start=5, end=5,
             canonical_name="hello.HelloService.BidiHello",
         )

@@ -20,18 +20,19 @@ Axis taxonomy (per ADR-0027 §1):
 
 - ``language_construct`` — ADR-0027 compliant. The value names the
   source-language syntactic construct the symbol represents (Cluster A
-  in the WI-dumiz audit).
-- ``endpoint_shape`` — deprecation candidate per ADR-0027 §"Detailed
-  analysis: per-cluster fold targets". The value's meaning is captured
-  by edges (Cluster E) or framework metadata (Cluster D), or is
-  dst-kind leakage (Cluster F's ``component_ref``); migration plan
-  folds these back into the canonical Cluster-A construct + meta key
-  or drops them entirely as edge-only.
-- ``pending_classification`` — deferred to per-cluster audit-findings
-  doc per ADR-0027 §"Migration" Phase 3 (the file-shape / build-config
-  / domain long-tail clusters contain a mix of genuinely distinct
-  constructs and possible separate-axis candidates; per-value verdicts
-  arrive with each cluster's audit).
+  in the WI-dumiz audit, plus the Cluster B/G/H promotions per the
+  per-cluster audit-findings docs).
+- ``pending_classification`` — deferred for the residual Cluster B / G
+  values still on the registry; per-value verdicts arrive with each
+  cluster's audit-findings doc.
+
+The ``endpoint_shape`` axis was retired in PR #3633 (Phase 4b enum
+closure / WI-butol). All 71 deprecated values that occupied that axis
+during the Phase 4a deprecation window are now removed from the
+registry; their fold targets live as ``Symbol.kind`` canonical values
+plus ``Symbol.meta`` keys (see :mod:`hypergumbo_core.axis_meta_keys`).
+Consult the per-cluster audit-findings docs (0009 / 0010 / 0011 / 0013
+/ 0005-0008) for the per-value canonical / fold-target map.
 """
 
 from __future__ import annotations
@@ -42,12 +43,18 @@ from typing import Final
 
 
 AXIS_LANGUAGE_CONSTRUCT: Final[str] = "language_construct"
-AXIS_ENDPOINT_SHAPE: Final[str] = "endpoint_shape"
 AXIS_PENDING: Final[str] = "pending_classification"
+
+# Retired axis name kept as a public constant for audit-findings
+# validation (``hypergumbo_core.audit_findings._REGISTRIES``) and for
+# downstream readers comparing schema versions across the Phase 4a
+# deprecation window. Not in :data:`VALID_AXES` — no live spec may
+# carry this axis; the property test in
+# ``tests/test_symbol_kinds.py`` enforces the empty-axis invariant.
+AXIS_ENDPOINT_SHAPE: Final[str] = "endpoint_shape"
 
 VALID_AXES: Final[frozenset[str]] = frozenset({
     AXIS_LANGUAGE_CONSTRUCT,
-    AXIS_ENDPOINT_SHAPE,
     AXIS_PENDING,
 })
 
@@ -138,21 +145,6 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "emitted kind='function_call' / 'subprocess_call' / 'db_query' / "
                    "'abi_call' now emit kind='call_site' with the prior specialisation "
                    "moved to meta['call_kind']."),
-    SymbolKindSpec("proc", AXIS_ENDPOINT_SHAPE,
-                   "Cluster C apex/peer: deprecated peer of `procedure`. "
-                   "No producer emits this kind (verified WI-rusit Wave 4); "
-                   "registry entry remains through the Phase 4a deprecation "
-                   "window per ADR-0027. Fold target: procedure."),
-    SymbolKindSpec("fn", AXIS_ENDPOINT_SHAPE,
-                   "Cluster C apex/peer: deprecated peer of `function`. "
-                   "No producer emits this kind (verified WI-rusit Wave 4); "
-                   "registry entry remains through the Phase 4a deprecation "
-                   "window per ADR-0027. Fold target: function."),
-    SymbolKindSpec("var", AXIS_ENDPOINT_SHAPE,
-                   "Cluster C apex/peer: deprecated peer of `variable`. "
-                   "No producer emits this kind (verified WI-rusit Wave 4); "
-                   "registry entry remains through the Phase 4a deprecation "
-                   "window per ADR-0027. Fold target: variable."),
     SymbolKindSpec("arrow_function", AXIS_LANGUAGE_CONSTRUCT,
                    "Arrow-function expression (JS / TS)."),
     SymbolKindSpec("object", AXIS_LANGUAGE_CONSTRUCT,
@@ -182,147 +174,26 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "purpose — a synthetic boundary node the slicer BFS needs for "
                    "continuity. The wasm-bindgen `import` is a real top-level "
                    "construct in its source DSL, not a relabel of the imports Edge."),
-    SymbolKindSpec("include", AXIS_ENDPOINT_SHAPE,
-                   "Cluster E sub-case (b) DEPRECATE-NO-FOLD per audit-findings 0010: "
-                   "the include-family Edges capture the relationship; no replacement "
-                   "Symbol kind. Five producers (puppet.py, scss.py, twig.py x2, make.py) "
-                   "dropped across PRs 1, 2, and WI-kunag. Registry entry stays through "
-                   "the Phase 4a deprecation window."),
-    SymbolKindSpec("extends", AXIS_ENDPOINT_SHAPE,
-                   "Cluster E sub-case (b) DEPRECATE-NO-FOLD per audit-findings 0010: "
-                   "the extends_template Edge captures the relationship; no replacement "
-                   "Symbol kind. Two producers (twig.py, blade.py) dropped across PRs 2 "
-                   "and WI-kunag. Registry entry stays through the Phase 4a deprecation "
-                   "window."),
 
     # ----------------------------------------------------------------
-    # Cluster D — Framework roles / dispatch participation.
-    # AXIS_ENDPOINT_SHAPE: deprecation candidates per ADR-0027.
-    # Fold target: kind=<canonical> + meta["framework_role"]=<value>.
+    # Cluster D (framework roles) — Phase 4b removal complete.
+    # Producer migration folded all 29 values to canonical kind +
+    # ``meta['framework_role']=<role>`` per audit-findings 0013 /
+    # WI-habut Wave 5; deprecated registry entries removed in
+    # PR #3633 (WI-butol). Consult audit-findings 0013 for the
+    # per-value canonical / fold-target map.
     # ----------------------------------------------------------------
-    SymbolKindSpec("event_publisher", AXIS_ENDPOINT_SHAPE,
-                   "Symbol that publishes events. Fold to function/method + meta['framework_role']='event_publisher'."),
-    SymbolKindSpec("event_subscriber", AXIS_ENDPOINT_SHAPE,
-                   "Symbol that subscribes to events. Fold to function/method + meta['framework_role']='event_subscriber'."),
-    SymbolKindSpec("ipc_publisher", AXIS_ENDPOINT_SHAPE,
-                   "IPC publish endpoint. Fold to function/method + meta['framework_role']='ipc_publisher'."),
-    SymbolKindSpec("ipc_subscriber", AXIS_ENDPOINT_SHAPE,
-                   "IPC subscribe endpoint. Fold to function/method + meta['framework_role']='ipc_subscriber'."),
-    SymbolKindSpec("ipc_caller", AXIS_ENDPOINT_SHAPE,
-                   "IPC call endpoint. Fold to function/method + meta['framework_role']='ipc_caller'."),
-    SymbolKindSpec("ipc_bridge_caller", AXIS_ENDPOINT_SHAPE,
-                   "IPC bridge call endpoint. Fold to function/method + meta['framework_role']='ipc_bridge_caller'."),
-    SymbolKindSpec("ipc", AXIS_ENDPOINT_SHAPE,
-                   "Generic IPC endpoint. Fold to function/method + meta['framework_role']='ipc'."),
-    SymbolKindSpec("objc_bridge", AXIS_ENDPOINT_SHAPE,
-                   "Objective-C bridge call. Fold to function/method + meta['framework_role']='objc_bridge'."),
-    SymbolKindSpec("crypto_producer", AXIS_ENDPOINT_SHAPE,
-                   "Crypto-flow producer. Fold to function/method + meta['framework_role']='crypto_producer'."),
-    SymbolKindSpec("crypto_consumer", AXIS_ENDPOINT_SHAPE,
-                   "Crypto-flow consumer. Fold to function/method + meta['framework_role']='crypto_consumer'."),
-    SymbolKindSpec("message_sender", AXIS_ENDPOINT_SHAPE,
-                   "Message-bus sender. Fold to function/method + meta['framework_role']='message_sender'."),
-    SymbolKindSpec("message_handler", AXIS_ENDPOINT_SHAPE,
-                   "Message-bus handler. Fold to function/method + meta['framework_role']='message_handler'."),
-    SymbolKindSpec("mq_publisher", AXIS_ENDPOINT_SHAPE,
-                   "Message-queue publisher. Fold to function/method + meta['framework_role']='mq_publisher'."),
-    SymbolKindSpec("mq_subscriber", AXIS_ENDPOINT_SHAPE,
-                   "Message-queue subscriber. Fold to function/method + meta['framework_role']='mq_subscriber'."),
-    SymbolKindSpec("grpc_server", AXIS_ENDPOINT_SHAPE,
-                   "gRPC server class. Fold to class + meta['framework_role']='grpc_server'."),
-    SymbolKindSpec("grpc_stub", AXIS_ENDPOINT_SHAPE,
-                   "gRPC stub call site. Fold to function + meta['framework_role']='grpc_stub'."),
-    SymbolKindSpec("grpc_service", AXIS_ENDPOINT_SHAPE,
-                   "gRPC `service Foo {...}` proto declaration. Fold to interface "
-                   "+ meta['framework_role']='grpc_service'. Added 2026-05-06 (WI-nitil) — "
-                   "assignment-form producer at linkers/grpc.py:655 was missed by the "
-                   "original literal-grep audit. Registry entry stays through the Phase 4a "
-                   "deprecation window."),
-    SymbolKindSpec("grpc_servicer", AXIS_ENDPOINT_SHAPE,
-                   "gRPC servicer class. Fold to class + meta['framework_role']='grpc_servicer'. "
-                   "Added 2026-05-06 (WI-nitil) — assignment-form producer at linkers/grpc.py:657 "
-                   "was missed by the original literal-grep audit. Registry entry stays through "
-                   "the Phase 4a deprecation window."),
-    SymbolKindSpec("grpc_client", AXIS_ENDPOINT_SHAPE,
-                   "gRPC client call site (sibling of grpc_stub). Fold to function "
-                   "+ meta['framework_role']='grpc_client'. Added 2026-05-06 (WI-nitil) — "
-                   "assignment-form producer at linkers/grpc.py:660 was missed by the original "
-                   "literal-grep audit. Registry entry stays through the Phase 4a deprecation "
-                   "window."),
-    SymbolKindSpec("websocket_endpoint", AXIS_ENDPOINT_SHAPE,
-                   "WebSocket endpoint. Fold to function/method + meta['framework_role']='websocket_endpoint'."),
-    SymbolKindSpec("websocket_emitter", AXIS_ENDPOINT_SHAPE,
-                   "WebSocket emitter. Fold to function/method + meta['framework_role']='websocket_emitter'."),
-    SymbolKindSpec("websocket_listener", AXIS_ENDPOINT_SHAPE,
-                   "WebSocket listener. Fold to function/method + meta['framework_role']='websocket_listener'."),
-    SymbolKindSpec("dispatcher", AXIS_ENDPOINT_SHAPE,
-                   "Generic dispatcher symbol. Fold to function/method + meta['framework_role']='dispatcher'."),
-    SymbolKindSpec("graphql_resolver", AXIS_ENDPOINT_SHAPE,
-                   "GraphQL resolver. Fold to function/method + meta['framework_role']='graphql_resolver'."),
-    SymbolKindSpec("graphql_client", AXIS_ENDPOINT_SHAPE,
-                   "GraphQL client call site. Fold to function/method + meta['framework_role']='graphql_client'."),
-    SymbolKindSpec("http_client", AXIS_ENDPOINT_SHAPE,
-                   "HTTP client call site. Fold to function/method + meta['framework_role']='http_client'."),
-    SymbolKindSpec("route_mount", AXIS_ENDPOINT_SHAPE,
-                   "Route mount declaration. Fold to function/method + meta['framework_role']='route_mount'."),
-    SymbolKindSpec("route", AXIS_ENDPOINT_SHAPE,
-                   "Route declaration. Fold to function/method + meta['framework_role']='route'."),
-    SymbolKindSpec("route_include", AXIS_ENDPOINT_SHAPE,
-                   "Route include declaration. Fold to function/method + meta['framework_role']='route_include'."),
-    SymbolKindSpec("openapi_operation", AXIS_ENDPOINT_SHAPE,
-                   "OpenAPI operation. Fold to function/method + meta['framework_role']='openapi_operation'."),
-    SymbolKindSpec("abi_call", AXIS_ENDPOINT_SHAPE,
-                   "Cluster E sub-case (a) FOLD per audit-findings 0010 (reclassified "
-                   "from Cluster D in this PR — the Solidity ABI emit site names a "
-                   "call expression, not a framework role): the solidity_abi linker "
-                   "was reclassified to kind='call_site' + meta['call_kind']='abi'. "
-                   "Registry entry stays through the Phase 4a deprecation window."),
-    SymbolKindSpec("selector_ref", AXIS_ENDPOINT_SHAPE,
-                   "ObjC selector reference. Fold to reference + meta['framework_role']='selector_ref'."),
-    SymbolKindSpec("rpc", AXIS_ENDPOINT_SHAPE,
-                   "RPC method declaration. Fold to function/method + meta['framework_role']='rpc'."),
-    SymbolKindSpec("service", AXIS_ENDPOINT_SHAPE,
-                   "Service declaration (gRPC service, k8s service). Fold to interface/class + meta['framework_role']='service'."),
 
     # ----------------------------------------------------------------
     # Cluster E — Edge labels masquerading as Symbol kinds.
-    # AXIS_ENDPOINT_SHAPE: per-value sub-case in cluster-E audit.
+    # Phase 4b removal complete: ``call`` / ``inherit`` / ``include`` /
+    # ``extends`` / ``read`` / ``write`` shipped as DEPRECATE-NO-FOLD
+    # (relationship lives on the Edge), ``function_call`` /
+    # ``subprocess_call`` / ``db_query`` / ``abi_call`` folded to
+    # ``call_site`` + ``meta['call_kind']`` per audit-findings 0010 /
+    # WI-zarov Wave 4. ``reference`` remains canonical below as the
+    # ObjC selector-ref / generic-use-site Symbol kind.
     # ----------------------------------------------------------------
-    SymbolKindSpec("call", AXIS_ENDPOINT_SHAPE,
-                   "Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: zero "
-                   "Symbol.kind=call producers (the value lives only on UsageContext.kind, "
-                   "a different field). Registry entry stays through the Phase 4a "
-                   "deprecation window."),
-    SymbolKindSpec("inherit", AXIS_ENDPOINT_SHAPE,
-                   "Cluster E sub-case (b) FOLD-clean-drop per audit-findings 0010: the "
-                   "BitBake inherit-clause Symbol was dropped (relationship captured by "
-                   "the inherits Edge with src=bitbake:{file}, dst=bitbake:class:{cls}). "
-                   "Registry entry stays through the Phase 4a deprecation window."),
-    SymbolKindSpec("function_call", AXIS_ENDPOINT_SHAPE,
-                   "Cluster E sub-case (a) FOLD per audit-findings 0010: the Twig "
-                   "function-call producer (twig.py) was reclassified to "
-                   "kind='call_site'. Registry entry stays through the Phase 4a "
-                   "deprecation window."),
-    SymbolKindSpec("subprocess_call", AXIS_ENDPOINT_SHAPE,
-                   "Cluster E sub-case (a) FOLD per audit-findings 0010: the "
-                   "subprocess_cli linker was reclassified to kind='call_site' + "
-                   "meta['call_kind']='subprocess'. Registry entry stays through the "
-                   "Phase 4a deprecation window."),
-    SymbolKindSpec("db_query", AXIS_ENDPOINT_SHAPE,
-                   "Cluster E sub-case (a) FOLD per audit-findings 0010: the "
-                   "database_query linker was reclassified to kind='call_site' + "
-                   "meta['call_kind']='db_query'. Registry entry stays through the "
-                   "Phase 4a deprecation window."),
-    SymbolKindSpec("read", AXIS_ENDPOINT_SHAPE,
-                   "Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: zero "
-                   "Symbol.kind=read producers (matches in pub/sub linkers are on "
-                   "internal dataclass fields YjsSite.kind / CryptoSite.kind / "
-                   "DispatchSite.kind, not Symbol.kind). Registry entry stays through "
-                   "the Phase 4a deprecation window."),
-    SymbolKindSpec("write", AXIS_ENDPOINT_SHAPE,
-                   "Cluster E DEPRECATE-NO-FOLD per audit-findings 0010: symmetric "
-                   "counterpart of read; zero Symbol.kind=write producers. Registry "
-                   "entry stays through the Phase 4a deprecation window."),
     SymbolKindSpec("reference", AXIS_LANGUAGE_CONSTRUCT,
                    "Use-site reference (Objective-C selector_ref shape; possibly "
                    "other _ref folds). Reclassified DEPRECATE-NO-FOLD → CANONICAL "
@@ -337,19 +208,13 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
 
     # ----------------------------------------------------------------
     # Cluster F — Component / UI references.
-    # component_ref → AXIS_ENDPOINT_SHAPE (dst-kind leakage).
-    # component itself stays AXIS_LANGUAGE_CONSTRUCT.
+    # ``component_ref`` shipped as DEPRECATE-NO-FOLD per audit-findings
+    # 0011 / WI-mihiz Wave 4 (the relationship is captured by the
+    # imports Edge with the file-shape Symbol as src; no replacement
+    # Symbol kind). ``component`` remains canonical below.
     # ----------------------------------------------------------------
     SymbolKindSpec("component", AXIS_LANGUAGE_CONSTRUCT,
                    "Component declaration (Vue / Svelte / Astro / React)."),
-    SymbolKindSpec("component_ref", AXIS_ENDPOINT_SHAPE,
-                   "Cluster F dst-kind leakage per audit-findings 0011: "
-                   "DEPRECATE-NO-FOLD (PRELIM_RESOLVED). Three producers "
-                   "(vue.py / svelte.py / astro.py) drop the per-reference "
-                   "Symbol; the companion imports Edge re-routes src to "
-                   "make_file_id and carries component_name + source_path "
-                   "in meta. Registry entry stays through the Phase 4a "
-                   "deprecation window."),
     SymbolKindSpec("view", AXIS_LANGUAGE_CONSTRUCT,
                    "View declaration (MVC / template languages)."),
 
@@ -388,76 +253,16 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Project declaration (Meson `project()`, .csproj root, "
                    "etc.). CANONICAL per audit-findings 0005."),
     # Wave 6 PR 3 FOLDs per audit-findings 0005 — producer migration
-    # shipped, registry entries kept on AXIS_ENDPOINT_SHAPE through the
-    # Phase 4a deprecation window. Each fold target is the canonical
-    # Cluster A construct above; the framework / ecosystem qualifier
-    # moves to ``Symbol.meta`` under the named axis key.
-    SymbolKindSpec("module_file", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``file`` + ``meta['module_system']`` ('esm' / "
-                   "'commonjs') per audit-findings 0005, Wave 6 PR 3. Producer "
-                   "(``js_module.py``) migrated; registry entry stays through "
-                   "the Phase 4a deprecation window."),
-    SymbolKindSpec("component_file", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``file`` + ``meta['component_framework']`` ('vue', "
-                   "'svelte', 'astro', etc.) per audit-findings 0005, Wave 6 "
-                   "PR 3. Producer (``vue_component.py``) migrated; registry "
-                   "entry stays through the Phase 4a deprecation window."),
-    SymbolKindSpec("npm_package", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``package`` + ``meta['package_ecosystem']='npm'`` "
-                   "per audit-findings 0005, Wave 6 PR 3. Producer "
-                   "(``js_module.py``) migrated; registry entry stays through "
-                   "the Phase 4a deprecation window."),
-    SymbolKindSpec("composer_package", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``package`` + ``meta['package_ecosystem']="
-                   "'composer'`` per audit-findings 0005, Wave 6 PR 3. Producer "
-                   "(``json_config.py``) migrated; registry entry stays through "
-                   "the Phase 4a deprecation window."),
-    SymbolKindSpec("main_entry", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``file`` + ``meta['entry_role']='main'`` per "
-                   "audit-findings 0005, Wave 6 PR 3. Producer "
-                   "(``json_config.py``) migrated; registry entry stays through "
-                   "the Phase 4a deprecation window."),
+    # complete, deprecated entries (``module_file``, ``component_file``,
+    # ``npm_package``, ``composer_package``, ``main_entry``,
+    # ``library_export``, ``export_entry``, ``wasm_module``,
+    # ``wasm_import``, ``tsconfig``, ``script``) removed in PR #3633.
+    # Each fold target is the canonical Cluster A construct above; the
+    # framework / ecosystem qualifier moves to ``Symbol.meta`` under
+    # the named axis key (``module_system``, ``component_framework``,
+    # ``package_ecosystem``, ``entry_role``, etc.).
     SymbolKindSpec("bin", AXIS_PENDING,
                    "Binary executable symbol. Pending cluster-B audit."),
-    SymbolKindSpec("library_export", AXIS_ENDPOINT_SHAPE,
-                   "Audit-findings 0005 verdict FOLD to ``export`` + "
-                   "``meta['export_scope']='library'``. Migration is vacuous "
-                   "on the Symbol.kind axis: the value is only emitted as "
-                   "``UsageContext.kind`` (``js_ts.py``), which is a separate "
-                   "axis. The Symbol.kind registry entry was a Phase-1 seed "
-                   "error; this entry stays on AXIS_ENDPOINT_SHAPE through "
-                   "the Phase 4a deprecation window for symmetry with the "
-                   "rest of the Cluster B fold cohort."),
-    SymbolKindSpec("export_entry", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``export`` + ``meta['export_source']="
-                   "'package_exports_map'`` per audit-findings 0005, Wave 6 "
-                   "PR 3. Producer (``json_config.py``) migrated; registry "
-                   "entry stays through the Phase 4a deprecation window."),
-    SymbolKindSpec("wasm_module", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``module`` + ``meta['compilation_target']='wasm'`` "
-                   "per audit-findings 0005, Wave 6 PR 3. Producer "
-                   "(``wasm_bindgen.py``) migrated; registry entry stays "
-                   "through the Phase 4a deprecation window."),
-    SymbolKindSpec("wasm_import", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``import`` + ``meta['compilation_target']='wasm'`` "
-                   "per audit-findings 0005, Wave 6 PR 3. Note: the fold "
-                   "target ``import`` is itself on AXIS_ENDPOINT_SHAPE per "
-                   "audit-findings 0010 — wasm_bindgen requires the synthetic "
-                   "node for slicer BFS continuity, so this is the one Cluster "
-                   "B FOLD where the target is a deprecation-window kind. "
-                   "Producer (``wasm_bindgen.py``) migrated."),
-    SymbolKindSpec("tsconfig", AXIS_ENDPOINT_SHAPE,
-                   "DEPRECATE-NO-FOLD per audit-findings 0005, Wave 6 PR 3: "
-                   "producer (``json_config.py``) drops the kind specialisation "
-                   "and emits ``kind='file'`` + ``is_config_file=True`` + "
-                   "``meta['config_format']='tsconfig'`` instead. Registry "
-                   "entry stays through the Phase 4a deprecation window."),
-    SymbolKindSpec("script", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``file`` + ``meta['entry_role']='script'`` per "
-                   "audit-findings 0005, Wave 6 PR 3. Producers "
-                   "(``json_config.py`` for npm scripts, ``toml_config.py`` "
-                   "for ``[project.scripts]``) migrated; registry entry stays "
-                   "through the Phase 4a deprecation window."),
 
     # ----------------------------------------------------------------
     # Cluster G — Build / config-shape.
@@ -466,16 +271,6 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     # ----------------------------------------------------------------
     SymbolKindSpec("test", AXIS_LANGUAGE_CONSTRUCT,
                    "Test-case symbol. CANONICAL per audit-findings 0006."),
-    SymbolKindSpec("test_case", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``test`` + ``meta['test_dialect']='robot'`` "
-                   "per audit-findings 0006, Wave 6 PR 5. Producer "
-                   "(``robot.py:314``) migrated; registry entry stays "
-                   "through the Phase 4a deprecation window."),
-    SymbolKindSpec("work_item", AXIS_ENDPOINT_SHAPE,
-                   "DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: "
-                   "tracker `Item.kind` value mistakenly registered against "
-                   "`Symbol.kind`. No producer emits this kind. Registry "
-                   "entry stays through the Phase 4a deprecation window."),
     SymbolKindSpec("target", AXIS_LANGUAGE_CONSTRUCT,
                    "Build-target symbol. CANONICAL per audit-findings 0006."),
     SymbolKindSpec("special_target", AXIS_LANGUAGE_CONSTRUCT,
@@ -492,52 +287,14 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Build / pipeline stage. CANONICAL per audit-findings 0006."),
     SymbolKindSpec("requirement", AXIS_LANGUAGE_CONSTRUCT,
                    "Requirement / pip requirement. CANONICAL per audit-findings 0006."),
-    SymbolKindSpec("editable", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``requirement`` + ``meta['install_mode']="
-                   "'editable'`` per audit-findings 0006, Wave 6 PR 5. "
-                   "Producer (``requirements.py:362``) migrated; registry "
-                   "entry stays through the Phase 4a deprecation window."),
-    SymbolKindSpec("url_requirement", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``requirement`` + ``meta['install_source']="
-                   "'url'`` per audit-findings 0006, Wave 6 PR 5. Producer "
-                   "(``requirements.py:281``) migrated; registry entry stays "
-                   "through the Phase 4a deprecation window."),
     SymbolKindSpec("setting", AXIS_LANGUAGE_CONSTRUCT,
                    "Setting / option symbol. CANONICAL per audit-findings 0006."),
-    SymbolKindSpec("config", AXIS_ENDPOINT_SHAPE,
-                   "DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: "
-                   "Prisma generic block placeholder where the real construct "
-                   "(``datasource`` / ``generator``) lives in "
-                   "``meta['block_type']``. Producer (``prisma.py:179``) "
-                   "drops the kind specialisation and emits ``kind='block'`` "
-                   "instead. Registry entry stays through the Phase 4a "
-                   "deprecation window."),
     SymbolKindSpec("derivation", AXIS_LANGUAGE_CONSTRUCT,
                    "Nix derivation symbol. CANONICAL per audit-findings 0006."),
     SymbolKindSpec("dependency", AXIS_LANGUAGE_CONSTRUCT,
                    "Dependency entry. CANONICAL per audit-findings 0006."),
-    SymbolKindSpec("devDependency", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``dependency`` + ``meta['dependency_scope']="
-                   "'dev'`` per audit-findings 0006, Wave 6 PR 5. Producers "
-                   "(``json_config.py:_process_dependencies`` for "
-                   "package.json devDependencies and Composer require-dev) "
-                   "migrated; registry entry stays through the Phase 4a "
-                   "deprecation window."),
-    SymbolKindSpec("dev-dependency", AXIS_ENDPOINT_SHAPE,
-                   "DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: "
-                   "dead vocabulary — no producer emits this kind. Registry "
-                   "entry stays through the Phase 4a deprecation window."),
-    SymbolKindSpec("build-dependency", AXIS_ENDPOINT_SHAPE,
-                   "DEPRECATE-NO-FOLD per audit-findings 0006, Wave 6 PR 4: "
-                   "dead vocabulary — no producer emits this kind. Registry "
-                   "entry stays through the Phase 4a deprecation window."),
     SymbolKindSpec("addtask", AXIS_LANGUAGE_CONSTRUCT,
                    "BitBake addtask symbol. CANONICAL per audit-findings 0006."),
-    SymbolKindSpec("python_task", AXIS_ENDPOINT_SHAPE,
-                   "FOLDed to ``task`` + ``meta['task_implementation']="
-                   "'python'`` per audit-findings 0006, Wave 6 PR 5. "
-                   "Producer (``bitbake.py:346``) migrated; registry entry "
-                   "stays through the Phase 4a deprecation window."),
     SymbolKindSpec("task", AXIS_LANGUAGE_CONSTRUCT,
                    "Generic task symbol. CANONICAL per audit-findings 0006."),
     SymbolKindSpec("trigger", AXIS_LANGUAGE_CONSTRUCT,
@@ -551,12 +308,6 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Section symbol (markdown / config). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("paragraph", AXIS_LANGUAGE_CONSTRUCT,
                    "Paragraph symbol (markdown / docs). CANONICAL per audit-findings 0007."),
-    SymbolKindSpec("heading", AXIS_ENDPOINT_SHAPE,
-                   "DEPRECATE-NO-FOLD per audit-findings 0007, Wave 6 PR 4: "
-                   "dead vocabulary — markdown emits ``kind='section'`` "
-                   "(``markdown.py:198``); no producer emits ``kind='heading'``. "
-                   "Registry entry stays through the Phase 4a deprecation "
-                   "window."),
     SymbolKindSpec("code_block", AXIS_LANGUAGE_CONSTRUCT,
                    "Code-block symbol (markdown). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("diagram", AXIS_LANGUAGE_CONSTRUCT,
@@ -587,14 +338,6 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Participant symbol (mermaid). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("state", AXIS_LANGUAGE_CONSTRUCT,
                    "State symbol (state-machine DSL). CANONICAL per audit-findings 0007."),
-    SymbolKindSpec("model", AXIS_ENDPOINT_SHAPE,
-                   "DEPRECATE-NO-FOLD per audit-findings 0007, Wave 6 PR 4: "
-                   "ID-string-only synthetic — only appears in "
-                   "``prisma.py:120``'s ``compute_stable_id`` / "
-                   "``make_symbol_id`` arguments. The actual emitted Symbol "
-                   "for a Prisma ``model`` block is ``kind='class'``. "
-                   "Registry entry stays through the Phase 4a deprecation "
-                   "window."),
     SymbolKindSpec("fragment", AXIS_LANGUAGE_CONSTRUCT,
                    "Fragment symbol (GraphQL / template). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("partial", AXIS_LANGUAGE_CONSTRUCT,
@@ -686,11 +429,6 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "emit via ``add_symbol(..., 'theorem')`` indirection)."),
     SymbolKindSpec("playbook", AXIS_LANGUAGE_CONSTRUCT,
                    "Ansible playbook symbol. CANONICAL per audit-findings 0007."),
-    SymbolKindSpec("structure", AXIS_ENDPOINT_SHAPE,
-                   "Cluster C apex/peer: deprecated peer of `struct`. "
-                   "No producer emits this kind (verified WI-rusit Wave 4); "
-                   "registry entry remains through the Phase 4a deprecation "
-                   "window per ADR-0027. Fold target: struct."),
     SymbolKindSpec("external_symbol", AXIS_LANGUAGE_CONSTRUCT,
                    "IR-pipeline boundary pseudo-symbol — emitted by "
                    "``create_boundary_nodes`` (``ir.py:959``) for every "
@@ -705,16 +443,6 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "(meta-key based), so this kind is a label not a "
                    "discriminator — promotion does not change consumer "
                    "behavior."),
-    SymbolKindSpec("unresolved", AXIS_ENDPOINT_SHAPE,
-                   "DEPRECATE-NO-FOLD per audit-findings 0007 §\"Diagnostic "
-                   "findings #3\" (Wave 6 PR 6 — registry seed error). The "
-                   "string ``'unresolved'`` appears only as a trailing token "
-                   "in dangling-edge dst IDs created by "
-                   "``analyze/base.py:make_unresolved_call_edge`` — that "
-                   "attribute is captured by ``Edge.is_resolved=False`` per "
-                   "ADR-0028, not as a Symbol.kind value. No Symbol(kind="
-                   "'unresolved') producer exists. Registry entry stays "
-                   "through the Phase 4a deprecation window."),
 
     # ----------------------------------------------------------------
     # WI-nubuv ext A discoveries — assignment-form producer leaks

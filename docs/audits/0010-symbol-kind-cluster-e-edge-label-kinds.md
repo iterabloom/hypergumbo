@@ -62,7 +62,7 @@ verdicts:
   - value: call
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'Symbol(' packages/ --include='*.py' -A 8 | grep -E 'kind=\"call\"' | grep -v 'test_\\|symbol_kinds.py\\|UsageContext\\|YjsSite\\|CryptoSite\\|DispatchSite'"
       expect: empty
@@ -70,7 +70,7 @@ verdicts:
   - value: function_call
     verdict: FOLD
     fold_target: call_site
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]function_call[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -78,7 +78,7 @@ verdicts:
   - value: subprocess_call
     verdict: FOLD
     fold_target: call_site
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]subprocess_call[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -86,7 +86,7 @@ verdicts:
   - value: db_query
     verdict: FOLD
     fold_target: call_site
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]db_query[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -94,7 +94,7 @@ verdicts:
   - value: abi_call
     verdict: FOLD
     fold_target: call_site
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]abi_call[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -102,7 +102,7 @@ verdicts:
   - value: read
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'Symbol(' packages/ --include='*.py' -A 8 | grep -E 'kind=\"read\"' | grep -v 'test_\\|symbol_kinds.py\\|YjsSite\\|CryptoSite\\|DispatchSite'"
       expect: empty
@@ -110,7 +110,7 @@ verdicts:
   - value: write
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'Symbol(' packages/ --include='*.py' -A 8 | grep -E 'kind=\"write\"' | grep -v 'test_\\|symbol_kinds.py\\|YjsSite\\|CryptoSite\\|DispatchSite'"
       expect: empty
@@ -134,7 +134,7 @@ verdicts:
   - value: inherit
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]inherit[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -142,7 +142,7 @@ verdicts:
   - value: include
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]include[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -150,7 +150,7 @@ verdicts:
   - value: extends
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]extends[\"\\047]' packages/ scripts/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty

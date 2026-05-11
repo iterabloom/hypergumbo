@@ -1123,20 +1123,26 @@ def test_cmd_symbols_excludes_excluded_kinds(tmp_path: Path, capsys) -> None:
                 "span": {"start_line": 40, "end_line": 45, "start_col": 0, "end_col": 10},
             },
             {
-                "id": "javascript:npm:vue:npm_package",
+                # Post-Phase-4b (ADR-0027 §6, PR #3633): npm packages
+                # are emitted as kind=package + meta.package_ecosystem.
+                "id": "javascript:npm:vue:package",
                 "name": "vue",
-                "kind": "npm_package",
+                "kind": "package",
                 "language": "javascript",
                 "path": "",
                 "span": {"start_line": 0, "end_line": 0, "start_col": 0, "end_col": 0},
+                "meta": {"package_ecosystem": "npm"},
             },
             {
-                "id": "javascript:src/utils.js:module_file:1:utils",
+                # Post-Phase-4b: synthetic module-file nodes are emitted
+                # as kind=file + meta.module_system.
+                "id": "javascript:src/utils.js:file:1:utils",
                 "name": "utils",
-                "kind": "module_file",
+                "kind": "file",
                 "language": "javascript",
                 "path": "src/utils.js",
                 "span": {"start_line": 0, "end_line": 0, "start_col": 0, "end_col": 0},
+                "meta": {"module_system": "esm"},
             },
         ],
         "edges": [],

@@ -569,7 +569,7 @@ verdicts:
   - value: heading
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"heading\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
@@ -601,7 +601,7 @@ verdicts:
   - value: model
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"model\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
@@ -617,7 +617,7 @@ verdicts:
   - value: unresolved
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"unresolved\" and s.axis == \"endpoint_shape\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0

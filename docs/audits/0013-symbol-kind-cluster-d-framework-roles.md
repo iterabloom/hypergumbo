@@ -96,7 +96,7 @@ verdicts:
   - value: event_publisher
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]event_publisher[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -104,7 +104,7 @@ verdicts:
   - value: event_subscriber
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]event_subscriber[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -112,7 +112,7 @@ verdicts:
   - value: ipc_publisher
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]ipc_publisher[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -120,7 +120,7 @@ verdicts:
   - value: ipc_subscriber
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]ipc_subscriber[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -128,7 +128,7 @@ verdicts:
   - value: ipc_caller
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]ipc_caller[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -136,7 +136,7 @@ verdicts:
   - value: ipc_bridge_caller
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]ipc_bridge_caller[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -144,7 +144,7 @@ verdicts:
   - value: ipc
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]ipc[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -152,7 +152,7 @@ verdicts:
   - value: objc_bridge
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]objc_bridge[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -160,7 +160,7 @@ verdicts:
   - value: crypto_producer
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]crypto_producer[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -168,7 +168,7 @@ verdicts:
   - value: crypto_consumer
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]crypto_consumer[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -176,7 +176,7 @@ verdicts:
   - value: message_sender
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]message_sender[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -184,7 +184,7 @@ verdicts:
   - value: message_handler
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]message_handler[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -192,7 +192,7 @@ verdicts:
   - value: mq_publisher
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]mq_publisher[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -200,7 +200,7 @@ verdicts:
   - value: mq_subscriber
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]mq_subscriber[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -208,7 +208,7 @@ verdicts:
   - value: grpc_server
     verdict: FOLD
     fold_target: class
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]grpc_server[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -216,7 +216,7 @@ verdicts:
   - value: grpc_stub
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]grpc_stub[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -224,7 +224,7 @@ verdicts:
   - value: grpc_service
     verdict: FOLD
     fold_target: interface
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]grpc_service[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -232,7 +232,7 @@ verdicts:
   - value: grpc_servicer
     verdict: FOLD
     fold_target: class
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]grpc_servicer[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -240,7 +240,7 @@ verdicts:
   - value: grpc_client
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'kind\\s*=\\s*[\"\\047]grpc_client[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -248,7 +248,7 @@ verdicts:
   - value: websocket_endpoint
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]websocket_endpoint[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -256,7 +256,7 @@ verdicts:
   - value: websocket_emitter
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]websocket_emitter[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -264,7 +264,7 @@ verdicts:
   - value: websocket_listener
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]websocket_listener[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -272,7 +272,7 @@ verdicts:
   - value: dispatcher
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]dispatcher[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -280,7 +280,7 @@ verdicts:
   - value: graphql_resolver
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]graphql_resolver[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -288,7 +288,7 @@ verdicts:
   - value: graphql_client
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]graphql_client[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -296,7 +296,7 @@ verdicts:
   - value: http_client
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]http_client[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -304,7 +304,7 @@ verdicts:
   - value: route_mount
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]route_mount[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -312,7 +312,7 @@ verdicts:
   - value: route
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]route[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -320,7 +320,7 @@ verdicts:
   - value: route_include
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]route_include[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -328,7 +328,7 @@ verdicts:
   - value: openapi_operation
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]openapi_operation[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -336,7 +336,7 @@ verdicts:
   - value: selector_ref
     verdict: FOLD
     fold_target: reference
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]selector_ref[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -344,7 +344,7 @@ verdicts:
   - value: rpc
     verdict: FOLD
     fold_target: function
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]rpc[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
@@ -352,7 +352,7 @@ verdicts:
   - value: service
     verdict: FOLD
     fold_target: interface
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]service[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty

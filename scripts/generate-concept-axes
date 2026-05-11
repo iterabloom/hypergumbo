@@ -43,7 +43,6 @@ from hypergumbo_core.edge_types import (  # noqa: E402
     EdgeTypeSpec,
 )
 from hypergumbo_core.symbol_kinds import (  # noqa: E402
-    AXIS_ENDPOINT_SHAPE as KIND_AXIS_ENDPOINT_SHAPE,
     AXIS_LANGUAGE_CONSTRUCT,
     AXIS_PENDING as KIND_AXIS_PENDING,
     SYMBOL_KINDS,
@@ -132,17 +131,6 @@ _KIND_SECTIONS: tuple[tuple[str, str, str], ...] = (
         "Values that name the source-language syntactic construct the "
         "symbol represents. Per ADR-0027, this is the only axis a new "
         "`Symbol.kind` value should occupy.",
-    ),
-    (
-        KIND_AXIS_ENDPOINT_SHAPE,
-        "`endpoint_shape` — deprecation candidates per ADR-0027",
-        "Values whose meaning is leaked into the kind label even though "
-        "it is captured by `Symbol.meta` (framework participation), "
-        "`Edge` relationships (edge labels masquerading as kinds), or "
-        "`dst.kind` queries (component refs). Migration plan in "
-        "ADR-0027 §\"Detailed analysis: per-cluster fold targets\" "
-        "folds these back into the canonical Cluster-A construct + "
-        "`meta[\"framework_role\"]` or drops them entirely as edge-only.",
     ),
     (
         KIND_AXIS_PENDING,

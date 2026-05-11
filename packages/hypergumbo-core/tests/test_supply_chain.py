@@ -1658,7 +1658,11 @@ class TestClassifySymbolsDependencyTier:
         assert "dependency declaration" in sym.supply_chain_reason
 
     def test_dev_dependency_gets_tier3(self, tmp_path: Path) -> None:
-        """devDependency kind symbols should be tier 3."""
+        """Dev-scoped dependency symbols should be tier 3.
+
+        Post-Phase-4b (ADR-0027 §6, PR #3633): producers emit
+        ``kind="dependency"`` + ``meta["dependency_scope"]="dev"``
+        rather than the deprecated ``kind="devDependency"``."""
         from hypergumbo_core.cli import _classify_symbols
         from hypergumbo_core.ir import Symbol, Span
 
@@ -1667,10 +1671,11 @@ class TestClassifySymbolsDependencyTier:
         sym = Symbol(
             id="json:dep:jest",
             name="jest",
-            kind="devDependency",
+            kind="dependency",
             language="json",
             path="package.json",
             span=Span(1, 0, 1, 20),
+            meta={"dependency_scope": "dev"},
         )
 
         _classify_symbols([sym], tmp_path, set())

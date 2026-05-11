@@ -155,9 +155,14 @@ class TestExcludedKinds:
     """Tests for EXCLUDED_KINDS constant."""
 
     def test_dependency_excluded(self):
-        """Dependency kinds are in the set."""
+        """Dependency kinds are in the set.
+
+        Post-Phase-4b (ADR-0027 §6, PR #3633): ``devDependency`` no
+        longer carries Symbol.kind status — producers emit
+        ``kind="dependency"`` + ``meta["dependency_scope"]="dev"``.
+        The dev case is excluded by virtue of the ``dependency``
+        fold target already being in this set."""
         assert "dependency" in EXCLUDED_KINDS
-        assert "devDependency" in EXCLUDED_KINDS
 
     def test_file_excluded(self):
         """File-level kinds are in the set."""
@@ -174,10 +179,15 @@ class TestExcludedKinds:
         assert "media" in EXCLUDED_KINDS
         assert "font_face" in EXCLUDED_KINDS
 
-    def test_npm_and_module_file_excluded(self):
-        """npm_package and module_file kinds are in the set."""
-        assert "npm_package" in EXCLUDED_KINDS
-        assert "module_file" in EXCLUDED_KINDS
+    def test_npm_and_module_file_fold_targets_excluded(self):
+        """Post-Phase-4b (ADR-0027 §6, PR #3633): ``npm_package`` /
+        ``module_file`` no longer carry Symbol.kind status — producers
+        emit ``kind="package"`` + ``meta["package_ecosystem"]="npm"``
+        and ``kind="file"`` + ``meta["module_system"]`` respectively.
+        The fold targets ``package`` and ``file`` are already in the
+        set, so the post-fold shapes are excluded automatically."""
+        assert "package" in EXCLUDED_KINDS
+        assert "file" in EXCLUDED_KINDS
 
     def test_documentation_kinds_excluded(self):
         """Markdown documentation kinds are in the set."""
@@ -195,14 +205,25 @@ class TestExcludedKinds:
 class TestIsExcludedKind:
     """Tests for is_excluded_kind dual-shape predicate (WI-jukav slice 2).
 
-    Forward-compatible across ADR-0027 §"Phase 3" Wave 5 framework_role
-    fold: matches both pre-fold (Symbol.kind == legacy_role) and post-fold
-    (Symbol.kind in {function, method} + Symbol.meta["framework_role"] ==
-    legacy_role) emit shapes."""
+    Post-Phase-4b (ADR-0027 §6, PR #3633) the predicate has two layers:
 
-    def test_legacy_kind_in_set_is_excluded(self):
-        """Pre-fold shape: legacy framework-role kind directly in set."""
-        assert is_excluded_kind("event_subscriber") is True
+    1. Direct exclusion via :data:`EXCLUDED_KINDS` for canonical
+       Symbol.kind values (``dependency``, ``file``, ``target``, CSS
+       structural kinds, etc.).
+    2. Post-fold exclusion via :data:`EXCLUDED_FRAMEWORK_ROLES` for
+       symbols whose canonical ``Symbol.kind`` is ``function`` or
+       ``method`` but whose ``Symbol.meta["framework_role"]`` is a
+       framework role we want to suppress (``event_subscriber``).
+
+    Pre-Phase-4b, both layers collapsed into ``EXCLUDED_KINDS`` because
+    framework-role labels were still on ``Symbol.kind``. After Phase 4b
+    removed those kinds, the meta-key vocabulary needed its own home."""
+
+    def test_canonical_kind_in_set_is_excluded(self):
+        """Direct exclusion: canonical Symbol.kind is in
+        :data:`EXCLUDED_KINDS`."""
+        assert is_excluded_kind("dependency") is True
+        assert is_excluded_kind("file") is True
 
     def test_legacy_kind_not_in_set_is_not_excluded(self):
         """A kind not in the set is not excluded regardless of meta."""

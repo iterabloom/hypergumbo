@@ -73,7 +73,7 @@ PASS_ID = make_pass_id("containment-linker")
 # synthetic-node names lack class-qualifier separators, so the
 # parent-extraction step in :func:`link_containment` skips them
 # before kind matters).
-CONTAINABLE_KINDS = frozenset({"method", "getter", "setter", "rpc", "message"})
+CONTAINABLE_KINDS = frozenset({"method", "getter", "setter", "message"})
 
 # Symbol kinds that can "contain" other symbols.
 # Includes struct/trait/enum for Rust (and Go/C/Zig structs),
@@ -87,7 +87,7 @@ CONTAINABLE_KINDS = frozenset({"method", "getter", "setter", "rpc", "message"})
 # above (synthetic-node names lack class-qualifier separators).
 CONTAINER_KINDS = frozenset({
     "class", "interface", "struct", "trait", "enum", "module",
-    "service", "message",
+    "message",
 })
 
 # Separators used in method names, ordered by specificity

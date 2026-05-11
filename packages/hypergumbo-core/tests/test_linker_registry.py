@@ -836,7 +836,14 @@ class TestEnclosureLinker:
     """Tests for enclosure post-processing in run_all_linkers."""
 
     def test_creates_uses_edges_for_synthetic_nodes(self):
-        """Creates 'uses' edges from enclosing functions to synthetic nodes."""
+        """Creates 'uses' edges from enclosing functions to synthetic nodes.
+
+        Synthetic node uses the post-Phase-4b shape (ADR-0027 §6,
+        PR #3633): canonical ``kind="function"`` plus framework role on
+        ``Symbol.meta["framework_role"]``. The pre-Phase-4b legacy
+        shape (``kind="grpc_stub"`` etc.) is structurally impossible
+        — that vocabulary is no longer in the Symbol.kind registry.
+        """
         from hypergumbo_core.ir import Symbol, Span
 
         # A function in the analyzer output
@@ -851,16 +858,17 @@ class TestEnclosureLinker:
             origin_run_id="test",
         )
 
-        # A synthetic gRPC stub created by a linker
+        # A synthetic gRPC stub created by a linker (post-Phase-4b shape).
         stub = Symbol(
-            id="grpc:test.py:15:EmailService:grpc_stub",
+            id="grpc:test.py:15:EmailService:function",
             name="EmailService",
-            kind="grpc_stub",
+            kind="function",
             language="python",
             path="test.py",
             span=Span(start_line=15, end_line=15, start_col=0, end_col=0),
             origin="grpc-linker-v1",
             origin_run_id="test",
+            meta={"framework_role": "grpc_stub"},
         )
 
         @register_linker("synthetic-test", priority=50)
@@ -903,7 +911,7 @@ class TestEnclosureLinker:
         other = Symbol(
             id="python:test.py:15:x:variable",
             name="x",
-            kind="variable",  # Not in SYNTHETIC_KINDS
+            kind="variable",  # Not in SYNTHETIC_FRAMEWORK_ROLES
             language="python",
             path="test.py",
             span=Span(start_line=15, end_line=15, start_col=0, end_col=0),
@@ -926,16 +934,18 @@ class TestEnclosureLinker:
         """Gracefully handles synthetic nodes with no enclosing function."""
         from hypergumbo_core.ir import Symbol, Span
 
-        # Synthetic node at module level (no enclosing function)
+        # Synthetic node at module level (no enclosing function).
+        # Post-Phase-4b shape: kind=function + meta['framework_role'].
         stub = Symbol(
-            id="grpc:test.py:5:Service:grpc_stub",
+            id="grpc:test.py:5:Service:function",
             name="Service",
-            kind="grpc_stub",
+            kind="function",
             language="python",
             path="test.py",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
             origin="grpc-linker-v1",
             origin_run_id="test",
+            meta={"framework_role": "grpc_stub"},
         )
 
         @register_linker("no-enclosing-test", priority=50)
@@ -1003,7 +1013,7 @@ class TestEnclosureLinker:
         assert edge.edge_type == "uses"
 
     def test_post_phase3_shape_skipped_when_framework_role_unknown(self):
-        """A method with meta['framework_role'] outside SYNTHETIC_KINDS does
+        """A method with meta['framework_role'] outside SYNTHETIC_FRAMEWORK_ROLES does
         not get an enclosure edge — guards against leakage of unrelated
         framework_role values into the synthetic-node pipeline.
         """

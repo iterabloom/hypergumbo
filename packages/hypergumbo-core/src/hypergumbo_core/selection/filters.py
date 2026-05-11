@@ -77,25 +77,34 @@ from ..paths import is_test_file
 #   deprecation window for any unmigrated producer.
 EXCLUDED_KINDS = frozenset({
     "dependency",       # package.json, pyproject.toml dependencies
-    "devDependency",    # package.json dev dependencies
     "file",             # file-level nodes (import targets)
     "target",           # Makefile targets
     "special_target",   # .PHONY and other special targets
     "project",          # project-level nodes
     "package",          # package.json package name
-    "script",           # package.json scripts
-    "event_subscriber", # CSS/JS event handlers (less useful in isolation)
     "class_selector",   # CSS class selectors
     "id_selector",      # CSS id selectors
     "variable",         # CSS custom properties / SCSS variables (zero edges)
     "keyframes",        # CSS @keyframes animation definitions
     "media",            # CSS @media query blocks
     "font_face",        # CSS @font-face declarations
-    "npm_package",      # external npm dependencies (inflate centrality)
-    "module_file",      # synthetic JS/TS module resolution nodes
     "section",          # markdown headings (inflate centrality over code)
     "code_block",       # markdown fenced code blocks
     "link",             # markdown links
+})
+
+# ``meta["framework_role"]`` values that the dual-shape predicate
+# below treats as excluded. Distinct from ``EXCLUDED_KINDS`` because
+# these values live on ``Symbol.meta`` post-Wave-5 framework-role
+# fold, not on ``Symbol.kind`` — so the L1 drift linter must not
+# enforce them against ``SYMBOL_KINDS`` (their canonical home is
+# :mod:`hypergumbo_core.axis_meta_keys`'s ``framework_role`` meta
+# key vocabulary, not the Symbol.kind registry). The dual predicate
+# previously folded both layers into ``EXCLUDED_KINDS``; after
+# Phase 4b (ADR-0027 §6) removed the Symbol.kind legacy literals,
+# the framework_role layer needs its own home.
+EXCLUDED_FRAMEWORK_ROLES = frozenset({
+    "event_subscriber",  # CSS/JS event handlers (less useful in isolation)
 })
 
 
@@ -127,13 +136,13 @@ def is_excluded_kind(kind: str, meta: Optional[Dict[str, Any]] = None) -> bool:
         compact filters.
 
     Mirrors :func:`hypergumbo_core.linkers.registry._is_synthetic_node`
-    in shape — the slice 1 idiom for SYNTHETIC_KINDS — applied here to
+    in shape — the slice 1 idiom for SYNTHETIC_FRAMEWORK_ROLES — applied here to
     the slice 2 at-risk surface.
     """
     if kind in EXCLUDED_KINDS:
         return True
     if kind in {"function", "method"} and meta:
-        return meta.get("framework_role") in EXCLUDED_KINDS
+        return meta.get("framework_role") in EXCLUDED_FRAMEWORK_ROLES
     return False
 
 # Path patterns indicating example/demo code
