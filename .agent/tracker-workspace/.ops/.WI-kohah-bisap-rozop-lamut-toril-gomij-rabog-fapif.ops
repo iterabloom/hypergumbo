@@ -1,0 +1,20 @@
+- op: create  # 130e
+  at: '2026-05-11T17:46:12Z'  # 130e
+  by: agent  # 130e
+  actor: jgstern_agent  # 130e
+  clock: 1  # 130e
+  nonce: 130e  # 130e
+  data:  # 130e
+    kind: work_item  # 130e
+    title: "Dataflow access_mode coverage gap on TS/JS analyzers (0/80, 0/61 sampled)"  # 130e
+    status: todo_soft  # 130e
+    priority: 2  # 130e
+    parent:  # 130e
+    tags:  # 130e
+    - analysis_quality  # 130e
+    isbefore: []  # 130e
+    duplicate_of: []  # 130e
+    not_duplicate_of: []  # 130e
+    pr_ref:  # 130e
+    description: "Source: DEEP cohort 1 reflect on deep-20260510-054430 (apollo-server, nestjs, chatwoot reflect agents). Sample stats: apollo-server 0/80 calls edges carry access_mode != 'none'; nestjs 0/61. By contrast Go and Python sit at roughly 50-60% coverage. Field is uniformly 'none' on TypeScript and JavaScript output, which makes the --dataflow slice flag useless on the language stack that dominates the prospector corpus. Related background invariant INV-jahov-minur-bogul-mijul-kutig-viral-potil-kuviv (satisfied) requires the read/write distinction to be carried; this finding is that the TS/JS analyzers don't classify at all (the 'none' default propagates everywhere). Fix direction: implement parameter-flow access_mode classification in the TS/JS analyzer for primitives like assignment, augmented assignment, .push/.pop/.shift, get/set property accessors. Evidence files: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430/reflect/cohort-001/iter-001/{apollo-server,nestjs,chatwoot}.assessment.yaml."  # 130e
+    fields: {}  # 130e

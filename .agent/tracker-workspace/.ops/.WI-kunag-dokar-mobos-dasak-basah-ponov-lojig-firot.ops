@@ -46,3 +46,19 @@
   clock: 4  # 0666
   nonce: '0666'  # 0666
   message: "Shipped in commit b2048af7d (in [Unreleased] of CHANGELOG, will land in v4.1.0). Producer migration for the four shape-3 edge-absent producers complete: r_lang.py:215 emits an imports Edge for library()/require() with src=make_file_id; astro.py:209 emits an imports Edge for frontmatter import statements (distinct from the existing component_ref imports Edge); make.py:282 emits an includes Edge for makefile include directives; blade.py emits an extends_template Edge for Blade @extends directives. All four producers' per-import / per-include / per-extends Symbols dropped. Audit-findings 0010 import / include / extends rows advance UNRESOLVED → PRELIM_RESOLVED. Tagging awaits_bakeoff_validation + for_deep_bakeoff per BVT discipline — the shape-3 redesign carries the same kind of structural-fold producer-migration claim as WI-zarov's Wave 4 PRs (the parent WI). Validation cohort design overlaps WI-zarov's: r_lang/astro/make/blade repos in DEEP Bundle 1 cover both items at once. Tracker hygiene correction: this item should have been advanced to done with these tags at PR-merge time per BVT discipline; the tags-and-status update was missed and is being applied retroactively as part of the 2026-05-07 sequence-planning audit."  # 0666
+- op: update  # f805
+  at: '2026-05-11T17:14:13Z'  # f805
+  by: agent  # f805
+  actor: jgstern_agent  # f805
+  clock: 5  # f805
+  nonce: f805  # f805
+  set: {}  # f805
+  remove:  # f805
+    tags: [awaits_bakeoff_validation, for_deep_bakeoff]  # f805
+- op: discuss  # 373a
+  at: '2026-05-11T17:14:13Z'  # 373a
+  by: agent  # 373a
+  actor: jgstern_agent  # 373a
+  clock: 6  # 373a
+  nonce: 373a  # 373a
+  message: "Validated 2026-05-11 via targeted cohort (spark/nuclear/git/koel) + direct-call backstop for blade.\n\nVERDICT: moved — all 4 shape-3 producers emit companion edges as designed.\n\nPer-claim results (audit: /tmp/audit-kunag.py, full hg.json: /tmp/kunag-{spark,nuclear,git,koel}.json):\n- R (spark, 98 .R files, 47 library/require call-sites): 52 imports edges from 45 .R files. PASS.\n  Sample: R/pkg/inst/worker/daemon.R:27 -> r:SparkR:0-0:SparkR:package (ev=import)\n- Astro (nuclear, 10 .astro files): 9 frontmatter imports edges from 4 .astro files (dst pattern astro:<path>:1-1:file:file, distinct from Cluster F component_ref imports). PASS.\n  Sample: nuclear/packages/website/src/components/Downloads.astro:3 -> astro:./Badge.astro:1-1:file:file (ev=import)\n- Make (git, 11 include directives in Makefiles): 40 includes edges from 15 Makefile-ish files (Documentation/Makefile, contrib/, etc.). PASS.\n  Sample: Documentation/Makefile:5 -> make:../shared.mak:1-1:file:file (ev=include)\n- Blade (koel, 4 @extends directives): Cohort showed 0 extends_template edges, BUT direct-call validation via analyze_blade(koel) returns 4 extends_template edges matching the 4 @extends in resources/views/*.blade.php. Producer correct. Cohort failure root-caused to upstream profile-enrollment bug (blade-v1 pass never enrolls because profile.py classifies .blade.php as language='php' only — see WI-navaf regression sub-item).\n\nStripping awaits_bakeoff_validation + for_deep_bakeoff per BVT 'moved' lifecycle. WI-navaf-zapag-pobop-pohap-sirul-bujal-losal-rikun filed as parent-linked regression sub-item (untagged per BVT rules)."  # 373a

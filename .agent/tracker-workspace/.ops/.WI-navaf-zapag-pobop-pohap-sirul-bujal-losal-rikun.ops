@@ -1,0 +1,21 @@
+- op: create  # f80b
+  at: '2026-05-11T17:13:20Z'  # f80b
+  by: agent  # f80b
+  actor: jgstern_agent  # f80b
+  clock: 1  # f80b
+  nonce: f80b  # f80b
+  data:  # f80b
+    kind: work_item  # f80b
+    title: "Blade analyzer not enrolled: profile detects .blade.php as language=php only"  # f80b
+    status: todo_soft  # f80b
+    priority: 2  # f80b
+    parent: WI-kunag-dokar-mobos-dasak-basah-ponov-lojig-firot  # f80b
+    tags:  # f80b
+    - analysis_quality  # f80b
+    - language_additions  # f80b
+    isbefore: []  # f80b
+    duplicate_of: []  # f80b
+    not_duplicate_of: []  # f80b
+    pr_ref:  # f80b
+    description: "Discovered during WI-kunag validation (bakeoff on koel, 2026-05-11). The blade analyzer (blade-v1) is correctly registered with languages=[\"blade\"] and the producer emits 4 expected extends_template edges when called directly on koel (4 .blade.php files with @extends). However, blade-v1 NEVER enrolls in the pipeline because the profile detector classifies .blade.php files as language='php' only (does not add 'blade' to detected languages). Evidence: koel run shows 'frameworks: [laravel, vue]' but 'languages' includes 'php' (1054 files) and no 'blade' entry. As a result, all 9 .blade.php files in koel get analyzed by php-v1 only, and no extends_template edges appear in hg.json (count = 0). taxonomy.py:402 has the blade LanguageSpec with extensions=['*.blade.php'], so the wiring exists; the issue is profile.py's per-file extension matching — likely *.php matches before *.blade.php, or the detector picks the first match. Direct-call validation confirms blade producer is correct: analyze_blade(koel) emits 4 extends_template edges matching the @extends directives. Fix direction: make extension matching longest-suffix or specifically check for compound extensions like .blade.php before .php."  # f80b
+    fields: {}  # f80b

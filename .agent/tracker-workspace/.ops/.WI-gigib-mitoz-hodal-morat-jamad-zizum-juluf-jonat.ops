@@ -1,0 +1,20 @@
+- op: create  # 74e2
+  at: '2026-05-11T17:46:49Z'  # 74e2
+  by: agent  # 74e2
+  actor: jgstern_agent  # 74e2
+  clock: 1  # 74e2
+  nonce: '74e2'  # 74e2
+  data:  # 74e2
+    kind: work_item  # 74e2
+    title: "rslice prod-filter leaks: django rslice.1.prod empty despite 51 callers; chatwoot 8/10 test refs unfiltered"  # 74e2
+    status: todo_soft  # 74e2
+    priority: 2  # 74e2
+    parent:  # 74e2
+    tags:  # 74e2
+    - analysis_quality  # 74e2
+    isbefore: []  # 74e2
+    duplicate_of: []  # 74e2
+    not_duplicate_of: []  # 74e2
+    pr_ref:  # 74e2
+    description: "Source: DEEP cohort 1 reflect on deep-20260510-054430 (django, chatwoot, nestjs reflect agents).\n\nThree distinct prod-filter symptoms:\n- django: rslice.1 has 51 first_party callers but rslice.1.prod is EMPTY. This is a likely filter bug — the prod filter is supposed to be a subset that excludes tests, not produce empty output when first_party callers exist.\n- chatwoot: 8 of 10 inbound test-file references in rslice are not filtered out (test fixtures and spec files leak into the 'production' rslice).\n- nestjs: 5 test edges leak into prod rslice.\n\nDistinct from WI-kivah-ligol-povim-puviv-kobol-kugof-tuhas-liduz (done) which fixed test seeds picking; this is about the prod-filter pass that runs *after* seeding. Distinct from WI-bamif-lujas-hulin-funof-zivab-bomaz-disuj-dotif (wont_do, tier-filtered slice empty case) which was a separate symptom.\n\nFix direction: audit the prod-filter pass in slice.py for (a) empty-output edge case when first_party callers exist, (b) why test-file paths under specific repo layouts (chatwoot Ruby spec/, nestjs *.spec.ts, django tests/) leak through.\n\nEvidence files: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430/reflect/cohort-001/iter-001/{django,chatwoot,nestjs}.assessment.yaml."  # 74e2
+    fields: {}  # 74e2
