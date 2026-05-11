@@ -89,15 +89,30 @@ NO_VIRTUAL_EXTENDS_LANGUAGES: frozenset[str] = frozenset({
 })
 
 
-def _extends_admits_dispatch(language: str | None) -> bool:
+def _extends_admits_dispatch(
+    language: str | None, child_kind: str | None = None
+) -> bool:
     """Return True if `extends` edges in this language imply virtual dispatch.
 
     A None or empty language is treated as default-allow (the conservative
     choice for unknown analyzers).
+
+    Override for interface-extends-interface: even in languages without
+    virtual dispatch through concrete extends (Go, C++, Rust, C#), interface
+    inheritance IS virtual dispatch via interface satisfaction. Go interface
+    embedding (`type Bar interface { Foo; ... }`) and C# interface
+    inheritance both produce extends edges between interface symbols, and
+    callers of the parent interface's method dispatch to any concrete
+    implementation that satisfies the embedded/extended interface. The
+    deny-list applies only when the child is a concrete class/struct.
     """
     if not language:
         return True
-    return language not in NO_VIRTUAL_EXTENDS_LANGUAGES
+    if language not in NO_VIRTUAL_EXTENDS_LANGUAGES:
+        return True
+    if child_kind == "interface":
+        return True
+    return False
 
 
 def build_inheritance_maps(
@@ -131,7 +146,8 @@ def build_inheritance_maps(
             # edge: child --extends--> parent
             child_sym = symbol_by_id.get(edge.src)
             child_lang = child_sym.language if child_sym else None
-            if not _extends_admits_dispatch(child_lang):
+            child_kind = child_sym.kind if child_sym else None
+            if not _extends_admits_dispatch(child_lang, child_kind):
                 continue
             parent_id = edge.dst
             child_id = edge.src

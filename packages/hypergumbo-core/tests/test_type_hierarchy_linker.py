@@ -1548,3 +1548,113 @@ class TestSkipLevelDispatch:
         )
         result = link_type_hierarchy(ctx)
         assert any(e.src == a_foo.id and e.dst == b_foo.id for e in result.edges)
+
+    def test_go_interface_embedding_skip_level(self) -> None:
+        """Go interface embedding: IFoo, IBar embeds IFoo, BarImpl implements IBar.
+
+        IR shape: BarImpl --implements--> IBar; IBar --extends--> IFoo.
+        IBar does not override Foo (it only embeds it). BarImpl provides Foo.
+        IFoo.Foo should dispatch to BarImpl.Foo through the transitive closure.
+        """
+        ifoo = Symbol(
+            id="go:/app/foo.go:1-5:IFoo:interface",
+            name="IFoo", kind="interface", language="go",
+            path="/app/foo.go", span=Span(1, 5, 0, 1),
+            origin="go-v1", origin_run_id="test",
+        )
+        ifoo_method = Symbol(
+            id="go:/app/foo.go:2-3:IFoo.Foo:method",
+            name="IFoo.Foo", kind="method", language="go",
+            path="/app/foo.go", span=Span(2, 3, 4, 5),
+            origin="go-v1", origin_run_id="test",
+        )
+        ibar = Symbol(
+            id="go:/app/bar.go:1-5:IBar:interface",
+            name="IBar", kind="interface", language="go",
+            path="/app/bar.go", span=Span(1, 5, 0, 1),
+            origin="go-v1", origin_run_id="test",
+        )
+        # IBar does NOT define Foo — only embeds IFoo.
+        bar_impl = Symbol(
+            id="go:/app/impl.go:1-10:BarImpl:struct",
+            name="BarImpl", kind="struct", language="go",
+            path="/app/impl.go", span=Span(1, 10, 0, 1),
+            origin="go-v1", origin_run_id="test",
+        )
+        bar_impl_foo = Symbol(
+            id="go:/app/impl.go:3-5:BarImpl.Foo:method",
+            name="BarImpl.Foo", kind="method", language="go",
+            path="/app/impl.go", span=Span(3, 5, 4, 5),
+            origin="go-v1", origin_run_id="test",
+        )
+        edges = [
+            Edge.create(src=bar_impl.id, dst=ibar.id, edge_type="implements", line=1),
+            Edge.create(src=ibar.id, dst=ifoo.id, edge_type="extends", line=1),
+        ]
+        ctx = LinkerContext(
+            repo_root="/app",
+            symbols=[ifoo, ifoo_method, ibar, bar_impl, bar_impl_foo],
+            edges=edges,
+        )
+        result = link_type_hierarchy(ctx)
+        dispatch_dsts = {e.dst for e in result.edges if e.src == ifoo_method.id}
+        assert bar_impl_foo.id in dispatch_dsts, (
+            f"Expected IFoo.Foo to dispatch transitively to BarImpl.Foo via "
+            f"IBar interface embedding; got dispatches={dispatch_dsts}"
+        )
+
+    def test_typescript_interface_chain_skip_level(self) -> None:
+        """TypeScript: IFoo, IBar extends IFoo, Impl implements IBar.
+
+        IR shape: Impl --implements--> IBar; IBar --extends--> IFoo.
+        IBar declares no body for foo (inherits the contract). Impl provides foo.
+        IFoo.foo should dispatch to Impl.foo through the transitive closure —
+        validating that the linker handles implements+extends chained across
+        the TypeScript language tag, not just Java extends-only chains.
+        """
+        ifoo = Symbol(
+            id="typescript:/app/IFoo.ts:1-5:IFoo:interface",
+            name="IFoo", kind="interface", language="typescript",
+            path="/app/IFoo.ts", span=Span(1, 5, 0, 1),
+            origin="typescript-v1", origin_run_id="test",
+        )
+        ifoo_foo = Symbol(
+            id="typescript:/app/IFoo.ts:2-3:IFoo.foo:method",
+            name="IFoo.foo", kind="method", language="typescript",
+            path="/app/IFoo.ts", span=Span(2, 3, 4, 5),
+            origin="typescript-v1", origin_run_id="test",
+        )
+        ibar = Symbol(
+            id="typescript:/app/IBar.ts:1-5:IBar:interface",
+            name="IBar", kind="interface", language="typescript",
+            path="/app/IBar.ts", span=Span(1, 5, 0, 1),
+            origin="typescript-v1", origin_run_id="test",
+        )
+        # IBar does not redefine foo — it inherits IFoo.foo via extends.
+        impl = Symbol(
+            id="typescript:/app/Impl.ts:1-10:Impl:class",
+            name="Impl", kind="class", language="typescript",
+            path="/app/Impl.ts", span=Span(1, 10, 0, 1),
+            origin="typescript-v1", origin_run_id="test",
+        )
+        impl_foo = Symbol(
+            id="typescript:/app/Impl.ts:3-5:Impl.foo:method",
+            name="Impl.foo", kind="method", language="typescript",
+            path="/app/Impl.ts", span=Span(3, 5, 4, 5),
+            origin="typescript-v1", origin_run_id="test",
+        )
+        edges = [
+            Edge.create(src=impl.id, dst=ibar.id, edge_type="implements", line=1),
+            Edge.create(src=ibar.id, dst=ifoo.id, edge_type="extends", line=1),
+        ]
+        ctx = LinkerContext(
+            repo_root="/app",
+            symbols=[ifoo, ifoo_foo, ibar, impl, impl_foo],
+            edges=edges,
+        )
+        result = link_type_hierarchy(ctx)
+        dispatch_dsts = {e.dst for e in result.edges if e.src == ifoo_foo.id}
+        assert impl_foo.id in dispatch_dsts, (
+            f"Expected IFoo.foo to dispatch transitively to Impl.foo via "
+            f"IBar interface inheritance; got dispatches={dispatch_dsts}"
+        )
