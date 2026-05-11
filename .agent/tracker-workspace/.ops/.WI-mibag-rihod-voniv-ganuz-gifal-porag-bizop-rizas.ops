@@ -1,0 +1,21 @@
+- op: create  # 48f0
+  at: '2026-05-11T17:48:33Z'  # 48f0
+  by: agent  # 48f0
+  actor: jgstern_agent  # 48f0
+  clock: 1  # 48f0
+  nonce: 48f0  # 48f0
+  data:  # 48f0
+    kind: work_item  # 48f0
+    title: "external_potential IO bucket dominates io-boundaries output (28K-76K of total across 6 repos)"  # 48f0
+    status: todo_soft  # 48f0
+    priority: 3  # 48f0
+    parent:  # 48f0
+    tags:  # 48f0
+    - analysis_quality  # 48f0
+    - developer_experience  # 48f0
+    isbefore: []  # 48f0
+    duplicate_of: []  # 48f0
+    not_duplicate_of: []  # 48f0
+    pr_ref:  # 48f0
+    description: "Source: DEEP reflect on deep-20260510-054430 across multiple cohorts.\n\nCounts of external_potential in io-boundaries.txt:\n- kafka: 76,015 of total\n- airflow: 28,912 of ~30,000 chains\n- prometheus: 9,464 (~93% of total)\n- containerd: 12,343\n- kserve: 6,397\n- nestjs: 94% of total\n\nThe external_potential bucket drowns all other primitives (net_send, net_recv, file_read, etc.) in the default io-boundaries.txt output, making the per-primitive view hard to read. WI-tanas-matig-fipuv-pozah-hirid-nigav-lojol-jolor (done) shipped the bucket itself in Plan C, PR C; the present finding is about its DISPLAY DOMINANCE: in practice it ends up as a catch-all that hides the signal in other buckets.\n\nFix direction (per reflect agents): either fold external_potential into the per-primitive buckets when any hint can be extracted, or hide it from the default io-boundaries.txt output behind a verbose flag (--show-external-potential). Distinct from INV-tapat (bare-method name collisions) — that's a classification correctness concern; this is a presentational concern about bucket-balance.\n\nEvidence files: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430/reflect/cohort-{001,002,003}/iter-001/*.assessment.yaml."  # 48f0
+    fields: {}  # 48f0

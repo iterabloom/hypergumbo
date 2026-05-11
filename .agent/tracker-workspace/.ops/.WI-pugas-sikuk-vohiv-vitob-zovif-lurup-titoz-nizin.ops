@@ -1,0 +1,20 @@
+- op: create  # 7261
+  at: '2026-05-11T17:48:58Z'  # 7261
+  by: agent  # 7261
+  actor: jgstern_agent  # 7261
+  clock: 1  # 7261
+  nonce: '7261'  # 7261
+  data:  # 7261
+    kind: work_item  # 7261
+    title: "Phoenix supply_chain.tier=2 is 1328/1328 tests, 0 vendored — concept leak between tier axis and test detection"  # 7261
+    status: todo_soft  # 7261
+    priority: 2  # 7261
+    parent:  # 7261
+    tags:  # 7261
+    - analysis_quality  # 7261
+    isbefore: []  # 7261
+    duplicate_of: []  # 7261
+    not_duplicate_of: []  # 7261
+    pr_ref:  # 7261
+    description: "Source: DEEP cohort 1 reflect on deep-20260510-054430 (phoenix).\n\nPhoenix shows 1328 nodes classified as supply_chain.tier=2 ('internal_dep' in the axis vocabulary), of which 1328/1328 are test files and 0 are vendored / private-package nodes. This is the same conceptual leak called out for Go in WI-gifuz-zizup-kuvuv-tirid-mikot-gutoh-dozaj-potov (done, Go-specific via go.mod), but for Elixir: the test-vs-vendored boundary is being smuggled through tier classification rather than represented on its own axis.\n\nThis is a Fundamental Concept Audit (FCA) finding per the playbook — two unrelated properties (is-test vs is-internal-dependency) are being silently encoded in one field (supply_chain.tier=2). Per FCA methodology this calls for either splitting test code into its own tier (e.g. tier-4 'test') or moving test detection off the supply-chain axis entirely.\n\nFix direction: extend the detect_package_roots / supply_chain classifier with Elixir-aware test detection (matches WI-gifuz's Go shape) — Elixir test files live at test/ at the project root by convention. Longer-term consider whether tests should ever appear on the tier axis at all.\n\nAdjacent: WI-kodas (chatwoot tier1 anomaly, done) addressed the inverse problem (tests landing in tier-1).\n\nEvidence files: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430/reflect/cohort-001/iter-001/phoenix.assessment.yaml."  # 7261
+    fields: {}  # 7261

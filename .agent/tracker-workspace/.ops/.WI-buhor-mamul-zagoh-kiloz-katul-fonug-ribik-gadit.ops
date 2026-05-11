@@ -1,0 +1,20 @@
+- op: create  # 0430
+  at: '2026-05-11T17:50:17Z'  # 0430
+  by: agent  # 0430
+  actor: jgstern_agent  # 0430
+  clock: 1  # 0430
+  nonce: '0430'  # 0430
+  data:  # 0430
+    kind: work_item  # 0430
+    title: "nestjs slice.tier1 byte-identical to slice.tier2 (37/37 nodes) — tier filter inert on TS/JS repo"  # 0430
+    status: todo_soft  # 0430
+    priority: 2  # 0430
+    parent:  # 0430
+    tags:  # 0430
+    - analysis_quality  # 0430
+    isbefore: []  # 0430
+    duplicate_of: []  # 0430
+    not_duplicate_of: []  # 0430
+    pr_ref:  # 0430
+    description: "Source: DEEP cohort 1 reflect on deep-20260510-054430 (nestjs).\n\nnestjs slice.tier1.json and slice.tier2.json are byte-identical (both 37 nodes / 37 entries), making the tier filter inert on this repo. WI-munim-vupas-lovol-samuz-tigoz-zurig-jobaj-lilat (wont_do, alertmanager) closed the analogous Go-test-dominated case as 'not a slicing bug, tests excluded before tier filtering'. The nestjs evidence is genuinely different shape: nestjs is TypeScript with the .spec.ts naming convention and does NOT exhibit the test-dominated tier-2 layout that alertmanager did.\n\nWI-puvab tracks the BAKEOFF diagnostic fix (per WI-munim discussion 2026-04-07). This new item tracks the underlying SLICE behavior in TS/JS repos where tests live in src/**/*.spec.ts colocated with code rather than under tests/ or _test.go.\n\nInvestigation path: hypergumbo slice --entry <entry> --max-tier {1,2} on nestjs with exclude_tests both True and False. If the tier-2 set is non-empty under exclude_tests=False but empty under exclude_tests=True, the symptom matches WI-munim (test-dominated tier-2 + BFS exclusion ordering). If both are 37 nodes, this is a fresh tier-filtering bug specific to TS/JS supply-chain classification.\n\nLikely related to colocated test files (foo.spec.ts next to foo.ts) — the supply_chain classifier may need a Phoenix/Elixir-style test detector for the .spec.ts and .test.ts naming convention.\n\nEvidence file: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430/reflect/cohort-001/iter-001/nestjs.assessment.yaml."  # 0430
+    fields: {}  # 0430

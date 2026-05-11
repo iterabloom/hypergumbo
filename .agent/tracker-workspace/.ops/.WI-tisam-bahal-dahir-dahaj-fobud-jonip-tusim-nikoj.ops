@@ -1,0 +1,21 @@
+- op: create  # 3239
+  at: '2026-05-11T17:49:37Z'  # 3239
+  by: agent  # 3239
+  actor: jgstern_agent  # 3239
+  clock: 1  # 3239
+  nonce: '3239'  # 3239
+  data:  # 3239
+    kind: work_item  # 3239
+    title: "Apollo GraphQL HTTP endpoint not classified as http_handler/http_route (routes.txt empty on apollo-server)"  # 3239
+    status: todo_soft  # 3239
+    priority: 3  # 3239
+    parent:  # 3239
+    tags:  # 3239
+    - protocol_linkers  # 3239
+    - analysis_quality  # 3239
+    isbefore: []  # 3239
+    duplicate_of: []  # 3239
+    not_duplicate_of: []  # 3239
+    pr_ref:  # 3239
+    description: "Source: DEEP cohort 1 reflect on deep-20260510-054430 (apollo-server).\n\napollo-server's runHttpQuery / executeHTTPGraphQLRequest / startStandaloneServer are the framework-level HTTP entrypoints for the GraphQL server, but routes.txt reports 'No API routes found'. The graph correctly identifies 150 graphql_resolver, 14 event_subscriber, 1 mq_publisher, and 7 http_client nodes, but the actual HTTP entry points are not labeled with the http_handler / http_route classification.\n\nPattern: GraphQL-over-plain-HTTP (http.createServer + Apollo's startStandaloneServer pattern, no Express/Fastify framework). The reflect agent's question 'where do HTTP requests enter?' is answerable from rslice seeds + slice.0 but not from the route-handler-linker output.\n\nFix direction: add a route-handler-linker matcher for the Apollo / GraphQL-on-bare-Node pattern (http.createServer → request callback that delegates to runHttpQuery). Sibling work in WI-danoz-bimos-vumog-gujik-hajal-foram-momaz-zanug (done, Phoenix route_handler Elixir alias resolution) shows the model — extend to GraphQL-on-HTTP.\n\nDistinct from the standard apollo-as-middleware patterns that already work. This is specifically about the standalone http.createServer + startStandaloneServer codepath. Probably affects other GraphQL servers (Mercurius on Fastify is similar shape but Fastify is detected; bare-Node deployments are the gap).\n\nEvidence file: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430/reflect/cohort-001/iter-001/apollo-server.assessment.yaml."  # 3239
+    fields: {}  # 3239
