@@ -271,6 +271,10 @@ jobs:
           # pygments. Mirror our pyproject.toml pin here so the audit scans
           # the same version our packages install at runtime.
           pip install "pygments~=2.20.0"
+          # CVE-2026-44431 / CVE-2026-44432: urllib3 — fix in 2.7.0. Both
+          # are transitive through requests; pinning here keeps the audit
+          # step scanning a fixed version regardless of runner baseline.
+          pip install "urllib3>=2.7.0"
       - name: Run pip-audit (dependency vulnerabilities)
         run: |
           # CVE-2025-71176: pytest /tmp/pytest-of-{user} TOCTOU on UNIX.
