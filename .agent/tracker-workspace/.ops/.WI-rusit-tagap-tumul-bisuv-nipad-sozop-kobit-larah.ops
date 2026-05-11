@@ -54,3 +54,18 @@
   set: {}  # cbc5
   add:  # cbc5
     isbefore: [WI-tikuh-runip-bibub-safof-favov-sijih-buran-fosad]  # cbc5
+- op: update  # b3f7
+  at: '2026-05-11T19:44:05Z'  # b3f7
+  by: agent  # b3f7
+  actor: jgstern_agent  # b3f7
+  clock: 6  # b3f7
+  nonce: b3f7  # b3f7
+  set:  # b3f7
+    status: done  # b3f7
+- op: discuss  # 28e0
+  at: '2026-05-11T19:44:05Z'  # 28e0
+  by: agent  # 28e0
+  actor: jgstern_agent  # 28e0
+  clock: 7  # 28e0
+  nonce: '28e0'  # 28e0
+  message: "Shipped in commit c968aebf2c (refactor(symbol_kinds): WI-rusit Wave 4 — Cluster C apex/peer registry classification). Four apex/peer entries (fn/var/proc/structure) reclassified to endpoint_shape; audit-findings 0009 records FOLD verdicts at PRELIM_RESOLVED. No awaits_bakeoff_validation tag — producer fold was already in place at merge time, so the validation question is degenerate. Status update lag."  # 28e0

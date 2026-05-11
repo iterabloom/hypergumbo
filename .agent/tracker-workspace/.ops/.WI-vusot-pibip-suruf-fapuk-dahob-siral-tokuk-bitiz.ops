@@ -39,3 +39,18 @@
   clock: 4  # c79d
   nonce: c79d  # c79d
   message: "## Addendum: standard agent autonomy applies — no needs_human_review at any stage\n\nThe Option-C recommendation in the framing post (open ADR-0029 + amend ADR-0024) and the resolutions in the follow-up post are the agent's call to make and ratify. ADRs are not on AGENTS.md's governance file list (governance is `.githooks/**`, `.agent/**`, specific scripts, CODEOWNERS, AUTONOMOUS_MODE, ALLOWED_WEBSITES, AGENTS.md); `docs/adr/` is editorial. ADR-0028 was filed Draft → Accepted by an agent (the WI-turin-pajuk audit close-out) without human pre-approval; ADR-0029 follows the same lifecycle.\n\n**Implication:** when this item's wave comes up, the agent files ADR-0029 draft + amends ADR-0024 + lands axis_meta_keys.py + drift linter + producer_coherence.py extension + by-axis view extension + property test in one PR-group, marks ADR-0029 Accepted on land (mirroring ADR-0028 Phase 1's posture), and proceeds to Phases 2-4 as scheduled. Human review at PR-merge is the standard checkpoint — no pre-flagging needed."  # c79d
+- op: update  # 3f3a
+  at: '2026-05-11T20:44:10Z'  # 3f3a
+  by: agent  # 3f3a
+  actor: jgstern_agent  # 3f3a
+  clock: 5  # 3f3a
+  nonce: 3f3a  # 3f3a
+  set:  # 3f3a
+    status: done  # 3f3a
+- op: discuss  # c1c0
+  at: '2026-05-11T20:44:10Z'  # c1c0
+  by: agent  # c1c0
+  actor: jgstern_agent  # c1c0
+  clock: 6  # c1c0
+  nonce: c1c0  # c1c0
+  message: "Shipped in PR #3632 (commit 77a6a896d6) — axis_meta_keys.py parallel registry with 56 seeded entries (17 Edge.meta + 39 Symbol.meta), 15 invariant + accessor tests at 100% coverage. Drift detection (subscript-access AST walker, distinct from axis_drift.find_drift's set-literal shape) deferred as a separate follow-on per the module docstring rationale. Closes WI-runod Wave 9."  # c1c0

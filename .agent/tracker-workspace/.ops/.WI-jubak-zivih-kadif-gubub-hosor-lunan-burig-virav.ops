@@ -27,3 +27,18 @@
   set: {}  # 6012
   add:  # 6012
     isbefore: [WI-porim-guzis-kirid-fikoh-labal-rufol-hojip-zajus]  # 6012
+- op: update  # 679f
+  at: '2026-05-11T19:44:05Z'  # 679f
+  by: agent  # 679f
+  actor: jgstern_agent  # 679f
+  clock: 3  # 679f
+  nonce: 679f  # 679f
+  set:  # 679f
+    status: done  # 679f
+- op: discuss  # ce28
+  at: '2026-05-11T19:44:05Z'  # ce28
+  by: agent  # ce28
+  actor: jgstern_agent  # ce28
+  clock: 4  # ce28
+  nonce: ce28  # ce28
+  message: "Shipped in commit bf34b47aa2 (feat(schema): Phase 4a x-deprecated for Symbol.kind and Edge.evidence_type). Endpoint_shape evidence_type values now carry x-deprecated marks on the schema. Status update lag — WI-kagik's 2026-05-06T20:44 discussion entry already named this PR; tracker state was stale."  # ce28

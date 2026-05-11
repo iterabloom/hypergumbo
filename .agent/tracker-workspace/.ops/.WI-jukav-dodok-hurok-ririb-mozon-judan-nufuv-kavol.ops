@@ -104,3 +104,18 @@
   clock: 11  # b75b
   nonce: b75b  # b75b
   message: "Slice 2+ scope (post-Wave-5 dual-shape migration of at-risk Symbol.kind consumer surfaces flagged in slice 1's audit comments):\n\n- linkers/containment.CONTAINABLE_KINDS / CONTAINER_KINDS — values still emitted by live producers (proto.py, thrift.py, capnp.py for service/rpc/message; framework linkers for event_subscriber-shaped roles).\n- selection.EXCLUDED_KINDS — same shape; consumes the post-fold kind=function|method + meta.framework_role pattern.\n\nMigration shape: replace hard-coded *KIND* sets with symbol_kinds_on_axis(...) queries (or the dual-shape predicate idiom slice 1 introduced for SYNTHETIC_KINDS). After Wave 5 completed (Codeberg #3572 + selfh #162-#166) and the WI-nitil + phoenix_ipc.py f-string-form follow-ons closed the framework_role producer-side leak, these surfaces' producers now emit the post-fold shape consistently — slice 2 is unblocked."  # b75b
+- op: update  # b99f
+  at: '2026-05-11T20:02:57Z'  # b99f
+  by: agent  # b99f
+  actor: jgstern_agent  # b99f
+  clock: 12  # b99f
+  nonce: b99f  # b99f
+  set:  # b99f
+    status: done  # b99f
+- op: discuss  # 0b88
+  at: '2026-05-11T20:02:57Z'  # 0b88
+  by: agent  # 0b88
+  actor: jgstern_agent  # 0b88
+  clock: 13  # 0b88
+  nonce: 0b88  # 0b88
+  message: "WI-jukav slice 2 verification complete; no code PR required.\n\nVerification per the swift-jingling-pearl PR-1 plan:\n- `is_excluded_kind()` at selection/filters.py:102-137 is already on the slice-1 dual-predicate shape (shipped in commit d518994f3a).\n- CONTAINABLE_KINDS / CONTAINER_KINDS at linkers/containment.py:76,88-91 carry audit comments documenting the ADR-0027 Phase-2 verdict 'no dual-shape predicate needed' (post-fold canonicals already in both sets).\n- Sweep of other hardcoded kind sets:\n  * entrypoints.py:992 `_CALLABLE_KINDS = {function, method, constructor}` — canonical-only, no Wave 8 impact.\n  * ranking.py:888,953 `_CALLABLE_KINDS = {function, method}` — canonical-only, no Wave 8 impact.\n  * slice.py:533 `_CONTAINER_KINDS` — canonical-only with intentional narrowness audit comment.\n  * sketch.py:5496-5525 `KEY_SYMBOL_KINDS` — curated cross-language declaration set (not a registry-axis query); contains `structure` (Cluster C peer) and `stage` (Cluster G), which Wave 8 PR 3 will drop via the EXCLUDED_KINDS-style sweep.\n\nEXCLUDED_KINDS at selection/filters.py:78-99 keeps the legacy literals through the Phase 4a deprecation window per its top-of-set comment; PR 3 (Symbol.kind Phase 4b) drops them alongside the SYMBOL_KINDS removals.\n\nStatus update lag — closing in support of WI-runod Wave 2 cleanup."  # 0b88

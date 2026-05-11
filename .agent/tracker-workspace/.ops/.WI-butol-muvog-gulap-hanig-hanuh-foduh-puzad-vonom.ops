@@ -18,3 +18,18 @@
     pr_ref:  # 57a9
     description: "Phase 4b of ADR-0027. Remove deprecated values (endpoint_shape axis with completed Phase 3 cluster migration) from packages/hypergumbo-core/src/hypergumbo_core/symbol_kinds.py::SYMBOL_KINDS. Schema enum values disappear for removed entries. Drift property test treats any remaining consumer-side reference as a regression. Second SCHEMA_VERSION minor bump.\n\nThis item ships piecewise per-cluster as each Phase 3 cluster's awaits_bakeoff_validation tag clears, mirroring ADR-0023 Phase 4b's piecewise pattern. Do NOT remove all endpoint_shape values in one PR — that would break cross-validation against the corresponding Phase 3 producer migration's bakeoff window.\n\nMirrors ADR-0023's Phase 4b hard-fail shape.\n\nReference: docs/adr/0027-symbol-kind-language-construct-only.md §\"Phase 4 — schema bump and deprecation removal\"."  # 57a9
     fields: {}  # 57a9
+- op: update  # bc0f
+  at: '2026-05-11T22:37:49Z'  # bc0f
+  by: agent  # bc0f
+  actor: jgstern_agent  # bc0f
+  clock: 2  # bc0f
+  nonce: bc0f  # bc0f
+  set:  # bc0f
+    status: done  # bc0f
+- op: discuss  # c14c
+  at: '2026-05-11T22:37:50Z'  # c14c
+  by: agent  # c14c
+  actor: jgstern_agent  # c14c
+  clock: 3  # c14c
+  nonce: c14c  # c14c
+  message: "Shipped in PR (merged via fast-forward, commit c59dbd8160) — ADR-0027 §6 Phase 4b Symbol.kind enum closure. 71 endpoint_shape values removed; SCHEMA_VERSION 0.5.8 → 0.6.0; 72 audit-findings rows advanced PRELIM_RESOLVED → RESOLVED across docs 0005-0011 / 0013; consumer-side drift-linter clean. Closes WI-runod Wave 8 on the Symbol.kind axis. 16,800 passed on hypergumbo-core --full."  # c14c
