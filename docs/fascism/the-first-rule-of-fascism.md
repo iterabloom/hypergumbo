@@ -7,6 +7,8 @@ Jamal Khashoggi School of Journalism
 King Abdullah University of Science and Technology, Thuwal, Saudi Arabia
 Lab notebook — 13 April 2026, 22:39 local
 Revised — 10 May 2026, 09:12 local. Citation hygiene; a defense of the word.
+Re-revised — 10 May 2026, 15:48 local. Detection → drift; the slope, not the level.
+Further revised — 10 May 2026, 17:22 local. Tool precision shapes institutional precision; the pragma is doing two jobs.
 
 ---
 
@@ -58,6 +60,8 @@ Hypergumbo's reason to exist is to reduce the surprise of an unfamiliar codebase
 
 **Third.** Do not rip out the TUI snapshot machinery today. Trust in invariants is costly to rebuild. Absorb the occasional tax, note it, survive it.
 
+**A footnote to First.** The floor here is doing a second job I did not name the first time around. A human team at 90% has implicit, mostly-trustworthy intuitions about which 10% got skipped — defensive branches, the `__main__` block, OS-version forks. The residual is implicitly typed by social convention. The engineer doing the typing in *this* repo is an LLM, and *which 90%?* is the question this engineer cannot reliably answer. 100% removes the question; the pragma re-introduces the residual one case at a time, *visibly*, in a form a human can audit. The threshold is not primarily a discipline here. It is a defense against an unreliable selection function, with the pragma doing the typing the threshold no longer does silently. Write that down, because the artifact (`fail_under = 100`) is invariant under transplant and the reason is not — a human-only fork of this repo three years on will inherit the number and lose the rationale, and the policy will start doing the disciplinary work I diagnosed two sections up. That is the recuperation pattern operating one level higher, on the policy itself. **The pragma is load-bearing for two jobs at once: dissent, and offloaded cognition becoming legible. Make it expensive and you have closed the only window the institution had into the engineer's selection function. The metric will still read green; the selection will still happen, where you cannot see it.**
+
 ---
 
 ## The first-rule problem
@@ -90,6 +94,8 @@ The engineering analog is a prediction, not a diagnosis. If `# pragma: no cover`
 
 One sharpening, since *cheap vs. expensive* is not quite the right axis. The real question is **who decides where the cost of dissent sits.** If the people who gate the exception are the same people who set the target, the exception is recuperation regardless of how many forms are involved, because the object of dissent gets to price the dissent. Keep those two authorities separate, or the predicate collapses.
 
+A second sharpening, more reluctant, since it concedes ground the first one tried to hold. *The moment it requires justification* is detection language, and detection is the wrong genre. Recuperation is not a moment; recuperation is the equilibrium. Any team larger than two people has some overlap between the authority that sets the target and the authority that gates the exception, and `# pragma: no cover` is almost always at least slightly more expensive to write than to skip. The threshold was crossed before the repo was initialized. The right question is which way the gradient points — is the cost of dissent rising year over year, are the gating roles migrating toward the target-setting roles, is the justification text in the diff getting longer. The state-form analog reads the same: the Saudi process did not fail at one moment. It drifted, across the years of state visits that followed, in the direction it was always going to drift. **The level will lie to you. The slope is harder to fake.**
+
 And still you must speak. Mark the `pragma`. Name the metric. Say what the bar is for, and what it is not for, and which cases are which. Put it in the `pyproject.toml`. Put it in the commit message. Put it — and this is the crucial part — **in writing**. Writing is the commitment device, but only if the commitment is cheap to make.
 
 ---
@@ -98,7 +104,7 @@ And still you must speak. Mark the `pragma`. Name the metric. Say what the bar i
 
 1. **Core scope, coverage stays at 100%.** Analyzers, IR, linkers, store, slice, CLI plumbing. Coverage is a real floor here because the other layers of the portfolio (property tests, bakeoff, dogfooding, self-analysis) are present to catch its Goodhart failure mode. The ensemble, not any single measure, carries the epistemic load.
 2. **TUI scope, coverage is theatrical.** The syrupy incident is the empirical proof. A future refactor should carve visual modules out of the coverage target with `# pragma: no cover` and an explicit rationale comment, replaced by manual dogfooding. Not today.
-3. **Self-review rotation should include two questions.** *Does any part of the test suite require the test suite to be defended?* If yes, the suite owns you. *And: is `# pragma: no cover` cheap to write in this repo, or has it grown gatekeepers?* If the latter, the inversion has already happened — the dissent mechanism is doing recuperation work, not epistemic work. Name both inversions in the commit, not just the notebook.
+3. **Self-review rotation should include two questions.** *Does any part of the test suite require the test suite to be defended?* If yes, the suite owns you. *And: is the cost of writing `# pragma: no cover` rising year over year — more justification text, more approvers, gating roles drifting toward floor-setting roles — without the underlying risk going up?* If the slope is up and the underlying risk is flat, the dissent mechanism is doing recuperation work, not epistemic work. The level was always nonzero; the slope is the signal. Name both inversions in the commit, not just the notebook.
 4. **Exit trigger on file.** `WI-zokan-zitub-lajoh-pabig-muzig-zalip-bisim-pulum` holds the revert plan for `CVE-2025-71176` when upstream `pytest-textual-snapshot` PR #24 lands. The item names the workaround as a workaround. That is the whole job.
 5. **No single metric survives Goodhart on its own.** Only portfolios do — and the portfolio survives only as long as someone is willing to be annoying about which layer is doing real work and which is performing. Keep all four layers alive: property tests, bakeoff, dogfooding, self-analysis. Keep alive, also, the floor below the portfolio — the engineer in review who will say *this is theater* without paying for it. The portfolio is not the bottom of the stack. They are.
 
