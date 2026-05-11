@@ -78,7 +78,7 @@ verdicts:
   - value: ambiguous_method_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"ambiguous_method_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -86,7 +86,7 @@ verdicts:
   - value: bare_method_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"bare_method_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -94,7 +94,7 @@ verdicts:
   - value: call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -102,7 +102,7 @@ verdicts:
   - value: chained_return_type_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"chained_return_type_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -110,7 +110,7 @@ verdicts:
   - value: constructor_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"constructor_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -118,7 +118,7 @@ verdicts:
   - value: cross_file_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"cross_file_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -126,7 +126,7 @@ verdicts:
   - value: cross_file_message_send
     verdict: FOLD
     fold_target: message_send
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"cross_file_message_send\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -134,7 +134,7 @@ verdicts:
   - value: external_receiver_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"external_receiver_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -142,7 +142,7 @@ verdicts:
   - value: function_application
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"function_application\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -150,7 +150,7 @@ verdicts:
   - value: function_application_external
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"function_application_external\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -158,7 +158,7 @@ verdicts:
   - value: function_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"function_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -166,7 +166,7 @@ verdicts:
   - value: local_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"local_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -174,7 +174,7 @@ verdicts:
   - value: macro_body_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"macro_body_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -182,7 +182,7 @@ verdicts:
   - value: method_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"method_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -190,7 +190,7 @@ verdicts:
   - value: method_call_field_chain
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"method_call_field_chain\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -198,7 +198,7 @@ verdicts:
   - value: method_call_recovery
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"method_call_recovery\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -206,7 +206,7 @@ verdicts:
   - value: method_call_typed
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"method_call_typed\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -214,7 +214,7 @@ verdicts:
   - value: method_call_type_inferred
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"method_call_type_inferred\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -222,7 +222,7 @@ verdicts:
   - value: method_group
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"method_group\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -230,7 +230,7 @@ verdicts:
   - value: object_creation
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"object_creation\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -238,7 +238,7 @@ verdicts:
   - value: pipe_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"pipe_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -246,7 +246,7 @@ verdicts:
   - value: receiver_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"receiver_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -254,7 +254,7 @@ verdicts:
   - value: remote_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"remote_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -262,7 +262,7 @@ verdicts:
   - value: remote_call_external
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"remote_call_external\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -270,7 +270,7 @@ verdicts:
   - value: stdlib_method_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"stdlib_method_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -278,7 +278,7 @@ verdicts:
   - value: typed_field_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"typed_field_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -286,7 +286,7 @@ verdicts:
   - value: typed_receiver_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"typed_receiver_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -294,7 +294,7 @@ verdicts:
   - value: unexported_method_call
     verdict: FOLD
     fold_target: ast_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"unexported_method_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty

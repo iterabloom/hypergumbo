@@ -26,15 +26,21 @@ Axis taxonomy (per ADR-0028 §1):
 
 - ``inference_pathway`` — ADR-0028 compliant. The value names how the
   analyzer concluded this edge exists (Cluster A in the WI-turin-pajuk
-  audit).
-- ``endpoint_shape`` — deprecation candidate per ADR-0028 §"Detailed
-  analysis: per-cluster fold targets". The value's meaning is captured
-  by ``Edge.is_resolved`` (Cluster B's ``*_unresolved`` resolution
-  status), by ``Edge.meta`` keys (Cluster C's framework dispatch
-  conventions; Cluster D's call-construct surface forms), and folds
-  back into the canonical inference label plus the appropriate sibling.
-- ``pending_classification`` — deferred to per-cluster audit-findings
-  doc per ADR-0028 §"Migration".
+  audit, plus the canonical promotions per audit-findings 0004 / 0008
+  / 0012 / 0014).
+- ``pending_classification`` — deferred follow-on long-tail rows
+  pending per-cluster audit; see audit-findings 0004 §"Diagnostic
+  findings" and the WI-nubuv ext A assignment-form discovery
+  section below for the current Pending set.
+
+The ``endpoint_shape`` axis was retired in PR #3635 (Phase 4b enum
+closure / WI-porim). All 111 deprecated values that occupied that axis
+during the Phase 4a deprecation window are now removed from the
+registry; their fold targets live as canonical inference values plus
+``Edge.is_resolved`` (Cluster B) and ``Edge.meta`` keys (Cluster C
+framework dispatch, Cluster D call construct). See
+:mod:`hypergumbo_core.axis_meta_keys` for the meta-key vocabulary and
+audit-findings 0008 / 0012 / 0014 for per-value fold targets.
 
 Seeding completeness (per the Phase 1 plan file):
 
@@ -61,12 +67,18 @@ from typing import Final
 
 
 AXIS_INFERENCE_PATHWAY: Final[str] = "inference_pathway"
-AXIS_ENDPOINT_SHAPE: Final[str] = "endpoint_shape"
 AXIS_PENDING: Final[str] = "pending_classification"
+
+# Retired axis name kept as a public constant for audit-findings
+# validation (``hypergumbo_core.audit_findings._REGISTRIES``) and for
+# downstream readers comparing schema versions across the Phase 4a
+# deprecation window. Not in :data:`VALID_AXES` — no live spec may
+# carry this axis; the property test in
+# ``tests/test_evidence_types.py`` enforces the empty-axis invariant.
+AXIS_ENDPOINT_SHAPE: Final[str] = "endpoint_shape"
 
 VALID_AXES: Final[frozenset[str]] = frozenset({
     AXIS_INFERENCE_PATHWAY,
-    AXIS_ENDPOINT_SHAPE,
     AXIS_PENDING,
 })
 
@@ -317,245 +329,29 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
                      "Edge inferred from a VHDL architecture declaration."),
 
     # ----------------------------------------------------------------
-    # Cluster B — Resolution-status leakage (AXIS_ENDPOINT_SHAPE).
-    # Every *_unresolved / unresolved_* variant doubles as a flag
-    # squeezed into the inference label. Phase 3 strips the suffix and
-    # sets Edge.is_resolved=False.
+    # Cluster B (resolution-status leakage) — Phase 4b removal complete.
+    # Wave 3 (WI-nunal, PR #3564) folded all 18 ``*_unresolved`` /
+    # ``unresolved_*`` variants to canonical inference + ``is_resolved=False``
+    # per audit-findings 0008; deprecated registry entries removed in
+    # PR #3635 (WI-porim).
     # ----------------------------------------------------------------
-    EvidenceTypeSpec("ast_annotation_unresolved", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: `ast_annotation` + `is_resolved=False`."),
-    EvidenceTypeSpec("ast_attribute_unresolved", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: `ast_attribute` + `is_resolved=False`."),
-    EvidenceTypeSpec("ast_call_unresolved_import", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: `ast_call_direct` (or producer-specific) + `is_resolved=False`."),
-    EvidenceTypeSpec("ast_decorator_unresolved", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: `ast_decorator` + `is_resolved=False`."),
-    EvidenceTypeSpec("ast_method_unresolved_global", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: `ast_method_inferred` + `is_resolved=False`."),
-    EvidenceTypeSpec("ast_method_unresolved_namespace", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: `ast_method_inferred` + `is_resolved=False`."),
-    EvidenceTypeSpec("chained_call_unresolved", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: `method_call_field_chain` apex + `is_resolved=False`."),
-    EvidenceTypeSpec("django_signal_receiver_unresolved", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B+C fold: canonical inference + `meta['framework_dispatch']='django_signal'` + `is_resolved=False`."),
-    EvidenceTypeSpec("grpc_unresolved_resolution", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: new canonical (e.g. `grpc_stub_resolution`) + `is_resolved=False`."),
-    EvidenceTypeSpec("luajit_ffi_unresolved", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: new canonical (e.g. `luajit_ffi_lookup`) + `is_resolved=False`."),
-    EvidenceTypeSpec("ruby_ffi_attach_unresolved", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: `ruby_ffi_attach` canonical + `is_resolved=False`."),
-    EvidenceTypeSpec("trait_impl_unresolved", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: `trait_impl` canonical + `is_resolved=False`."),
-    EvidenceTypeSpec("unresolved_dotted_submodule_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: canonical call inference + `is_resolved=False`."),
-    EvidenceTypeSpec("unresolved_external_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: `ast_call_direct` + `is_resolved=False`."),
-    EvidenceTypeSpec("unresolved_imported_name_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: `ast_call_direct` + `is_resolved=False`."),
-    EvidenceTypeSpec("unresolved_method_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: `method_call` (post-collapse `ast_call`) + `is_resolved=False`."),
-    EvidenceTypeSpec("unresolved_module_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: canonical call inference + `is_resolved=False`."),
-    EvidenceTypeSpec("unresolved_variable_method_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster B fold: `method_call_type_inferred` apex + `is_resolved=False`."),
 
     # ----------------------------------------------------------------
-    # Cluster C — Framework-specific dispatch conventions
-    # (AXIS_ENDPOINT_SHAPE). Phase 3 folds each to a canonical
-    # inference label + meta['framework_dispatch'] / meta['detection_pattern'].
+    # Cluster C (framework-specific dispatch conventions) — Phase 4b
+    # removal complete. Wave 5 (WI-kagik, PRs #3572 + selfh #162-166)
+    # folded all 65 framework-prefixed values to canonical inference +
+    # ``meta['framework_dispatch']`` / ``meta['detection_pattern']`` per
+    # audit-findings 0014; deprecated registry entries removed in
+    # PR #3635 (WI-porim).
     # ----------------------------------------------------------------
-    EvidenceTypeSpec("abi_name_match", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical inference + `meta['detection_pattern']='abi_name_match'`."),
-    EvidenceTypeSpec("activerecord_association", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical inference + `meta['framework_dispatch']='activerecord_association'`."),
-    EvidenceTypeSpec("airflow_framework_dispatch", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical inference + `meta['framework_dispatch']='airflow'`."),
-    EvidenceTypeSpec("context_bridge_wrapper", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical inference + `meta['framework_dispatch']='electron_context_bridge'`."),
-    EvidenceTypeSpec("controller_routes", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical inference + `meta['framework_dispatch']='controller_routes'`."),
-    EvidenceTypeSpec("crypto_api_pattern", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical inference + `meta['detection_pattern']='crypto_api'`."),
-    EvidenceTypeSpec("cuda_kernel_launch", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical inference + `meta['framework_dispatch']='cuda_kernel_launch'`."),
-    EvidenceTypeSpec("di_binding", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C placeholder for `f\"di_binding:{source}\"` colon-form emits at di_resolution.py:608. Phase 3 folds to canonical + `meta['framework_dispatch']` per binding source."),
-    EvidenceTypeSpec("django_orm_dispatch", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical inference + `meta['framework_dispatch']='django_orm'`."),
-    EvidenceTypeSpec("django_signal_receiver", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical inference + `meta['framework_dispatch']='django_signal'`."),
-    EvidenceTypeSpec("django_channels_emit", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C dynamic emit (websocket.py:572): `f\"{pattern_type}_emit\"`. Fold: canonical + `meta['framework_dispatch']='django_channels'`."),
-    EvidenceTypeSpec("django_channels_endpoint", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C dynamic emit (websocket.py:613): `f\"{pattern_type}_endpoint\"`. Fold: canonical + `meta['framework_dispatch']='django_channels'`."),
-    EvidenceTypeSpec("event_name_match", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical inference + `meta['detection_pattern']='event_name'`."),
-    EvidenceTypeSpec("fastapi_emit", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C dynamic emit (websocket.py:572). Fold: canonical + `meta['framework_dispatch']='fastapi'`."),
-    EvidenceTypeSpec("fastapi_endpoint", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C dynamic emit (websocket.py:613). Fold: canonical + `meta['framework_dispatch']='fastapi'`."),
-    EvidenceTypeSpec("go_cobra_dispatch", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='cobra'`."),
-    EvidenceTypeSpec("go_memberlist_delegate", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='memberlist'`."),
-    EvidenceTypeSpec("graphql_operation_match", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='graphql_operation'`."),
-    EvidenceTypeSpec("grpc_go_server_method", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='grpc_go_server'`."),
-    EvidenceTypeSpec("grpc_rpc_definition", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='grpc_rpc_definition'`."),
-    EvidenceTypeSpec("grpc_server_to_service", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='grpc_server_to_service'`."),
-    EvidenceTypeSpec("grpc_service_match", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='grpc_service_match'`."),
-    EvidenceTypeSpec("http_url_match", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['detection_pattern']='http_url'`."),
-    EvidenceTypeSpec("implicit_convention", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['detection_pattern']='implicit_convention'`."),
-    EvidenceTypeSpec("jackson_bean_dispatch", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='jackson_bean'`."),
-    EvidenceTypeSpec("jni_naming_convention", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['detection_pattern']='jni_naming_convention'`."),
-    EvidenceTypeSpec("job_enqueue", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='job_enqueue'`."),
-    EvidenceTypeSpec("kafka_streams_dispatch", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='kafka_streams'`."),
-    EvidenceTypeSpec("middleware_chain", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='middleware_chain'`."),
-    EvidenceTypeSpec("native_emit", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C dynamic emit (websocket.py:572). Fold: canonical + `meta['framework_dispatch']='native_websocket'`."),
-    EvidenceTypeSpec("native_endpoint", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C dynamic emit (websocket.py:613). Fold: canonical + `meta['framework_dispatch']='native_websocket'`."),
-    EvidenceTypeSpec("nestjs_module_registration", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: `ast_decorator` + `meta['framework_dispatch']='nestjs_module'`."),
-    EvidenceTypeSpec("npm_package_import", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical import inference + `meta['framework_dispatch']='npm_package'`."),
-    EvidenceTypeSpec("openapi_operation_id_match", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='openapi_operation_id'`."),
-    EvidenceTypeSpec("openapi_path_match", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='openapi_path'`."),
-    EvidenceTypeSpec("orm_accessor_pattern", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='orm_accessor'`."),
-    EvidenceTypeSpec("otp_genserver_dispatch", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='otp_genserver'`."),
-    EvidenceTypeSpec("phoenix_event_match", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: `naming_convention` + `meta['detection_pattern']='phoenix_event'`."),
-    EvidenceTypeSpec("pyo3_bridge", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='pyo3_bridge'`."),
-    EvidenceTypeSpec("rails_block_callback", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='rails_block_callback'`."),
-    EvidenceTypeSpec("rails_callback", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='rails_callback'`."),
-    EvidenceTypeSpec("registry_dispatch", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='registry_dispatch'`."),
-    EvidenceTypeSpec("resolver_field_match", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='graphql_resolver_field'`."),
-    EvidenceTypeSpec("resolver_type_match", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='graphql_resolver_type'`."),
-    EvidenceTypeSpec("route_mount", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='route_mount'`."),
-    EvidenceTypeSpec("router_routes", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='router_routes'`."),
-    EvidenceTypeSpec("ruby_c_extension", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='ruby_c_extension'`."),
-    EvidenceTypeSpec("ruby_delegate", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='ruby_delegate'`."),
-    EvidenceTypeSpec("ruby_ffi_attach", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='ruby_ffi_attach'`."),
-    EvidenceTypeSpec("rust_trait_dispatch", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='rust_trait_dispatch'`."),
-    EvidenceTypeSpec("script_src", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='html_script_src'`."),
-    EvidenceTypeSpec("socketio_emit", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C dynamic emit (websocket.py:572). Fold: canonical + `meta['framework_dispatch']='socketio'`."),
-    EvidenceTypeSpec("socketio_endpoint", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C dynamic emit (websocket.py:613). Fold: canonical + `meta['framework_dispatch']='socketio'`."),
-    EvidenceTypeSpec("specta_wrapper_import", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='specta_wrapper'`."),
-    EvidenceTypeSpec("subprocess_cli_match", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['detection_pattern']='subprocess_cli'`."),
-    EvidenceTypeSpec("table_name_match", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['detection_pattern']='table_name'`."),
-    EvidenceTypeSpec("tauri_emit_listen", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='tauri_emit_listen'`."),
-    EvidenceTypeSpec("tauri_invoke", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='tauri_invoke'`."),
-    EvidenceTypeSpec("vue_component_import", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='vue_component'`."),
-    EvidenceTypeSpec("vue_event_handler", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='vue_event_handler'`."),
-    EvidenceTypeSpec("wasm_bindgen_import", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='wasm_bindgen_import'`."),
-    EvidenceTypeSpec("wasm_instantiate", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='wasm_instantiate'`."),
-    EvidenceTypeSpec("ws_emit", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C dynamic emit (websocket.py:572). Fold: canonical + `meta['framework_dispatch']='ws'`."),
-    EvidenceTypeSpec("ws_endpoint", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C dynamic emit (websocket.py:613). Fold: canonical + `meta['framework_dispatch']='ws'`."),
-    EvidenceTypeSpec("yjs_crdt_pattern", AXIS_ENDPOINT_SHAPE,
-                     "Cluster C fold: canonical + `meta['framework_dispatch']='yjs_crdt'`."),
 
     # ----------------------------------------------------------------
-    # Cluster D — Apex/peer call-construct overloads
-    # (AXIS_ENDPOINT_SHAPE). Phase 3 collapses to canonical apex (likely
-    # `ast_call`) plus meta['call_construct'].
+    # Cluster D (apex/peer call-construct overloads) — Phase 4b removal
+    # complete. Wave 4 (WI-nibis, PR #3570) collapsed all 28 call-
+    # construct peers to ``ast_call`` apex + ``meta['call_construct']``
+    # per audit-findings 0012; deprecated registry entries removed in
+    # PR #3635 (WI-porim).
     # ----------------------------------------------------------------
-    EvidenceTypeSpec("ambiguous_method_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['resolution_quality']='ambiguous'`."),
-    EvidenceTypeSpec("bare_method_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['receiver']='bare'`."),
-    EvidenceTypeSpec("call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` (the apex; `call` is the generic peer)."),
-    EvidenceTypeSpec("chained_return_type_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='chained_return_type'`."),
-    EvidenceTypeSpec("constructor_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='constructor'`."),
-    EvidenceTypeSpec("cross_file_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='cross_file'`."),
-    EvidenceTypeSpec("cross_file_message_send", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `message_send` + `meta['call_construct']='cross_file'`."),
-    EvidenceTypeSpec("external_receiver_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['receiver']='external'`."),
-    EvidenceTypeSpec("function_application", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='application'`."),
-    EvidenceTypeSpec("function_application_external", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='application_external'`."),
-    EvidenceTypeSpec("function_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` apex (the high-frequency emitter)."),
-    EvidenceTypeSpec("local_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='local'`."),
-    EvidenceTypeSpec("macro_body_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='macro_body'`."),
-    EvidenceTypeSpec("method_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method'`."),
-    EvidenceTypeSpec("method_call_field_chain", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['receiver']='field_chain'`."),
-    EvidenceTypeSpec("method_call_recovery", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['resolution_quality']='recovery'`."),
-    EvidenceTypeSpec("method_call_typed", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['resolution_quality']='typed'`."),
-    EvidenceTypeSpec("method_call_type_inferred", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['resolution_quality']='type_inferred'`."),
-    EvidenceTypeSpec("method_group", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method_group'` (C# delegate group)."),
-    EvidenceTypeSpec("object_creation", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='constructor'` (peer of constructor_call)."),
-    EvidenceTypeSpec("pipe_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='pipe'` (Elixir / F# pipe)."),
-    EvidenceTypeSpec("receiver_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['receiver']='generic'`."),
-    EvidenceTypeSpec("remote_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='remote'`."),
-    EvidenceTypeSpec("remote_call_external", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='remote_external'`."),
-    EvidenceTypeSpec("stdlib_method_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['receiver']='stdlib'`."),
-    EvidenceTypeSpec("typed_field_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['receiver']='typed_field'`."),
-    EvidenceTypeSpec("typed_receiver_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['resolution_quality']='typed_receiver'`."),
-    EvidenceTypeSpec("unexported_method_call", AXIS_ENDPOINT_SHAPE,
-                     "Cluster D fold: `ast_call` + `meta['call_construct']='method'` + `meta['visibility']='unexported'` (Go)."),
 
     # ----------------------------------------------------------------
     # WI-nubuv ext A discoveries — assignment-form producer leaks

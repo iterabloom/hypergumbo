@@ -118,7 +118,7 @@ verdicts:
   - value: abi_name_match
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"abi_name_match\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -126,7 +126,7 @@ verdicts:
   - value: activerecord_association
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"activerecord_association\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -134,7 +134,7 @@ verdicts:
   - value: airflow_framework_dispatch
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"airflow_framework_dispatch\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -142,7 +142,7 @@ verdicts:
   - value: context_bridge_wrapper
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"context_bridge_wrapper\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -150,7 +150,7 @@ verdicts:
   - value: controller_routes
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"controller_routes\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -158,7 +158,7 @@ verdicts:
   - value: crypto_api_pattern
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"crypto_api_pattern\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -166,7 +166,7 @@ verdicts:
   - value: cuda_kernel_launch
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"cuda_kernel_launch\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -174,7 +174,7 @@ verdicts:
   - value: di_binding
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=[\"\\047]di_binding[\"\\047:]' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -182,7 +182,7 @@ verdicts:
   - value: django_orm_dispatch
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"django_orm_dispatch\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -190,7 +190,7 @@ verdicts:
   - value: django_signal_receiver
     verdict: FOLD
     fold_target: ast_decorator
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"django_signal_receiver\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -198,7 +198,7 @@ verdicts:
   - value: django_channels_emit
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -n 'pattern_type}_emit' packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py"
       expect: empty
@@ -206,7 +206,7 @@ verdicts:
   - value: django_channels_endpoint
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -n 'pattern_type}_endpoint' packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py"
       expect: empty
@@ -214,7 +214,7 @@ verdicts:
   - value: event_name_match
     verdict: FOLD
     fold_target: naming_convention
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"event_name_match\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -222,7 +222,7 @@ verdicts:
   - value: fastapi_emit
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -n 'pattern_type}_emit' packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py"
       expect: empty
@@ -230,7 +230,7 @@ verdicts:
   - value: fastapi_endpoint
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -n 'pattern_type}_endpoint' packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py"
       expect: empty
@@ -238,7 +238,7 @@ verdicts:
   - value: go_cobra_dispatch
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"go_cobra_dispatch\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -246,7 +246,7 @@ verdicts:
   - value: go_memberlist_delegate
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"go_memberlist_delegate\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -254,7 +254,7 @@ verdicts:
   - value: graphql_operation_match
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"graphql_operation_match\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -262,7 +262,7 @@ verdicts:
   - value: grpc_go_server_method
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"grpc_go_server_method\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -270,7 +270,7 @@ verdicts:
   - value: grpc_rpc_definition
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"grpc_rpc_definition\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -278,7 +278,7 @@ verdicts:
   - value: grpc_server_to_service
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"grpc_server_to_service\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -286,7 +286,7 @@ verdicts:
   - value: grpc_service_match
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"grpc_service_match\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -294,7 +294,7 @@ verdicts:
   - value: http_url_match
     verdict: FOLD
     fold_target: naming_convention
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"http_url_match\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -302,7 +302,7 @@ verdicts:
   - value: implicit_convention
     verdict: FOLD
     fold_target: naming_convention
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"implicit_convention\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -310,7 +310,7 @@ verdicts:
   - value: jackson_bean_dispatch
     verdict: FOLD
     fold_target: ast_decorator
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"jackson_bean_dispatch\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -318,7 +318,7 @@ verdicts:
   - value: jni_naming_convention
     verdict: FOLD
     fold_target: naming_convention
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"jni_naming_convention\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -326,7 +326,7 @@ verdicts:
   - value: job_enqueue
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"job_enqueue\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -334,7 +334,7 @@ verdicts:
   - value: kafka_streams_dispatch
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"kafka_streams_dispatch\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -342,7 +342,7 @@ verdicts:
   - value: middleware_chain
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"middleware_chain\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -350,7 +350,7 @@ verdicts:
   - value: native_emit
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -n 'pattern_type}_emit' packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py"
       expect: empty
@@ -358,7 +358,7 @@ verdicts:
   - value: native_endpoint
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -n 'pattern_type}_endpoint' packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py"
       expect: empty
@@ -366,7 +366,7 @@ verdicts:
   - value: nestjs_module_registration
     verdict: FOLD
     fold_target: ast_decorator
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"nestjs_module_registration\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -374,7 +374,7 @@ verdicts:
   - value: npm_package_import
     verdict: FOLD
     fold_target: ast_import
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"npm_package_import\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -382,7 +382,7 @@ verdicts:
   - value: openapi_operation_id_match
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"openapi_operation_id_match\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -390,7 +390,7 @@ verdicts:
   - value: openapi_path_match
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"openapi_path_match\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -398,7 +398,7 @@ verdicts:
   - value: orm_accessor_pattern
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"orm_accessor_pattern\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -406,7 +406,7 @@ verdicts:
   - value: otp_genserver_dispatch
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"otp_genserver_dispatch\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -414,7 +414,7 @@ verdicts:
   - value: phoenix_event_match
     verdict: FOLD
     fold_target: naming_convention
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"phoenix_event_match\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -422,7 +422,7 @@ verdicts:
   - value: pyo3_bridge
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"pyo3_bridge\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -430,7 +430,7 @@ verdicts:
   - value: rails_block_callback
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"rails_block_callback\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -438,7 +438,7 @@ verdicts:
   - value: rails_callback
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"rails_callback\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -446,7 +446,7 @@ verdicts:
   - value: registry_dispatch
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"registry_dispatch\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -454,7 +454,7 @@ verdicts:
   - value: resolver_field_match
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"resolver_field_match\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -462,7 +462,7 @@ verdicts:
   - value: resolver_type_match
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"resolver_type_match\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -470,7 +470,7 @@ verdicts:
   - value: route_mount
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"route_mount\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -478,7 +478,7 @@ verdicts:
   - value: router_routes
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"router_routes\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -486,7 +486,7 @@ verdicts:
   - value: ruby_c_extension
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"ruby_c_extension\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -494,7 +494,7 @@ verdicts:
   - value: ruby_delegate
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"ruby_delegate\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -502,7 +502,7 @@ verdicts:
   - value: ruby_ffi_attach
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"ruby_ffi_attach\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -510,7 +510,7 @@ verdicts:
   - value: rust_trait_dispatch
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"rust_trait_dispatch\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -518,7 +518,7 @@ verdicts:
   - value: script_src
     verdict: FOLD
     fold_target: ast_import
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"script_src\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -526,7 +526,7 @@ verdicts:
   - value: socketio_emit
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -n 'pattern_type}_emit' packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py"
       expect: empty
@@ -534,7 +534,7 @@ verdicts:
   - value: socketio_endpoint
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -n 'pattern_type}_endpoint' packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py"
       expect: empty
@@ -542,7 +542,7 @@ verdicts:
   - value: specta_wrapper_import
     verdict: FOLD
     fold_target: ast_import
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"specta_wrapper_import\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -550,7 +550,7 @@ verdicts:
   - value: subprocess_cli_match
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"subprocess_cli_match\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -558,7 +558,7 @@ verdicts:
   - value: table_name_match
     verdict: FOLD
     fold_target: naming_convention
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"table_name_match\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -566,7 +566,7 @@ verdicts:
   - value: tauri_emit_listen
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"tauri_emit_listen\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -574,7 +574,7 @@ verdicts:
   - value: tauri_invoke
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"tauri_invoke\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -582,7 +582,7 @@ verdicts:
   - value: vue_component_import
     verdict: FOLD
     fold_target: ast_import
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"vue_component_import\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -590,7 +590,7 @@ verdicts:
   - value: vue_event_handler
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"vue_event_handler\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -598,7 +598,7 @@ verdicts:
   - value: wasm_bindgen_import
     verdict: FOLD
     fold_target: ast_import
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"wasm_bindgen_import\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -606,7 +606,7 @@ verdicts:
   - value: wasm_instantiate
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"wasm_instantiate\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -614,7 +614,7 @@ verdicts:
   - value: ws_emit
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -n 'pattern_type}_emit' packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py"
       expect: empty
@@ -622,7 +622,7 @@ verdicts:
   - value: ws_endpoint
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -n 'pattern_type}_endpoint' packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py"
       expect: empty
@@ -630,7 +630,7 @@ verdicts:
   - value: yjs_crdt_pattern
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"yjs_crdt_pattern\"' packages/ --include='*.py' | grep -v test_"
       expect: empty

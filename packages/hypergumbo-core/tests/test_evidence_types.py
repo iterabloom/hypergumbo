@@ -22,7 +22,6 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.evidence_types import (
-    AXIS_ENDPOINT_SHAPE,
     AXIS_INFERENCE_PATHWAY,
     AXIS_PENDING,
     EVIDENCE_TYPES,
@@ -61,7 +60,7 @@ def test_specs_are_frozen():
 
 def test_valid_axes_constant_matches_module_constants():
     assert VALID_AXES == frozenset(
-        {AXIS_INFERENCE_PATHWAY, AXIS_ENDPOINT_SHAPE, AXIS_PENDING},
+        {AXIS_INFERENCE_PATHWAY, AXIS_PENDING},
     )
 
 
@@ -72,11 +71,18 @@ def test_inference_pathway_axis_is_non_empty():
     assert evidence_types_on_axis(AXIS_INFERENCE_PATHWAY)
 
 
-def test_endpoint_shape_axis_is_non_empty():
-    """Cluster B / C / D values populate the deprecation-candidate
-    section. An empty endpoint_shape section means the registry is
-    missing every deprecation candidate the audit identified."""
-    assert evidence_types_on_axis(AXIS_ENDPOINT_SHAPE)
+def test_endpoint_shape_axis_is_retired():
+    """Phase 4b: the ``endpoint_shape`` axis was retired in PR #3635.
+    The axis literal must not be re-introduced as a live spec
+    classification, and the retired constant must remain ABSENT from
+    :data:`VALID_AXES`. The constant itself stays defined as a
+    backwards-compat import target for
+    :mod:`hypergumbo_core.audit_findings`'s per-axis validator
+    binding."""
+    import hypergumbo_core.evidence_types as et
+    assert et.AXIS_ENDPOINT_SHAPE == "endpoint_shape"
+    assert et.AXIS_ENDPOINT_SHAPE not in VALID_AXES
+    assert et.AXIS_ENDPOINT_SHAPE not in {spec.axis for spec in EVIDENCE_TYPES}
 
 
 # --- Accessors ---
@@ -97,15 +103,26 @@ def test_evidence_types_on_axis_returns_only_matching():
             "naming_convention", "scip_occurrence_ref"} <= names
 
 
-def test_evidence_types_on_axis_endpoint_shape_includes_known_deprecation_candidates():
-    endpoints = {spec.name for spec in evidence_types_on_axis(AXIS_ENDPOINT_SHAPE)}
-    # Cluster B (resolution status leakage), Cluster C (framework
-    # dispatch), Cluster D (call-construct surface form).
-    assert {
+def test_evidence_types_on_axis_endpoint_shape_removed_after_phase_4b():
+    """Phase 4b complement of the prior 'includes deprecation
+    candidates' assertion: every value that occupied
+    ``AXIS_ENDPOINT_SHAPE`` during the Phase 4a window must be absent
+    from the registry. Cluster B (resolution-status) values folded to
+    canonical inference + ``Edge.is_resolved=False``; Cluster C
+    (framework-dispatch) values folded to canonical inference +
+    ``meta['framework_dispatch']`` / ``meta['detection_pattern']``;
+    Cluster D (call-construct) values folded to ``ast_call`` apex +
+    ``meta['call_construct']``."""
+    names = all_evidence_type_names()
+    retired = {
         "ast_annotation_unresolved", "unresolved_external_call",  # B
         "django_orm_dispatch", "kafka_streams_dispatch",  # C
         "function_call", "method_call",  # D
-    } <= endpoints
+    }
+    assert not (retired & names), (
+        f"Retired Phase-4b evidence types reappeared in registry: "
+        f"{sorted(retired & names)}"
+    )
 
 
 def test_evidence_types_on_axis_unknown_returns_empty():

@@ -49,7 +49,6 @@ from hypergumbo_core.symbol_kinds import (  # noqa: E402
     SymbolKindSpec,
 )
 from hypergumbo_core.evidence_types import (  # noqa: E402
-    AXIS_ENDPOINT_SHAPE as EVIDENCE_AXIS_ENDPOINT_SHAPE,
     AXIS_INFERENCE_PATHWAY,
     AXIS_PENDING as EVIDENCE_AXIS_PENDING,
     EVIDENCE_TYPES,
@@ -98,18 +97,6 @@ _EVIDENCE_SECTIONS: tuple[tuple[str, str, str], ...] = (
         "a new `Edge.evidence_type` value should occupy. Resolution "
         "status moves to the new sibling `Edge.is_resolved`; framework-"
         "specific dispatch conventions move to `Edge.meta`.",
-    ),
-    (
-        EVIDENCE_AXIS_ENDPOINT_SHAPE,
-        "`endpoint_shape` — deprecation candidates per ADR-0028",
-        "Values whose meaning is leaked into the evidence label even "
-        "though it is captured by `Edge.is_resolved` (Cluster B "
-        "`*_unresolved` resolution-status leakage), `Edge.meta` "
-        "(Cluster C framework-dispatch conventions; Cluster D call-"
-        "construct surface forms). Migration plan in ADR-0028 §"
-        "\"Detailed analysis: per-cluster fold targets\" folds these "
-        "back into a canonical inference label plus the appropriate "
-        "sibling.",
     ),
     (
         EVIDENCE_AXIS_PENDING,

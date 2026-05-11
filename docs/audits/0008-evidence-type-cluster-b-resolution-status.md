@@ -69,7 +69,7 @@ verdicts:
   - value: ast_annotation_unresolved
     verdict: FOLD
     fold_target: ast_annotation
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"ast_annotation_unresolved\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -77,7 +77,7 @@ verdicts:
   - value: ast_attribute_unresolved
     verdict: FOLD
     fold_target: ast_attribute
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"ast_attribute_unresolved\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -85,7 +85,7 @@ verdicts:
   - value: ast_call_unresolved_import
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"ast_call_unresolved_import\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -93,7 +93,7 @@ verdicts:
   - value: ast_decorator_unresolved
     verdict: FOLD
     fold_target: ast_decorator
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"ast_decorator_unresolved\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -101,7 +101,7 @@ verdicts:
   - value: ast_method_unresolved_global
     verdict: FOLD
     fold_target: ast_method_inferred
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"ast_method_unresolved_global\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -109,7 +109,7 @@ verdicts:
   - value: ast_method_unresolved_namespace
     verdict: FOLD
     fold_target: ast_method_inferred
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"ast_method_unresolved_namespace\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -117,7 +117,7 @@ verdicts:
   - value: chained_call_unresolved
     verdict: FOLD
     fold_target: method_call_field_chain
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"chained_call_unresolved\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -125,7 +125,7 @@ verdicts:
   - value: django_signal_receiver_unresolved
     verdict: FOLD
     fold_target: django_signal_receiver
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"django_signal_receiver_unresolved\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -133,7 +133,7 @@ verdicts:
   - value: grpc_unresolved_resolution
     verdict: FOLD
     fold_target: grpc_stub_resolution
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"grpc_unresolved_resolution\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -141,7 +141,7 @@ verdicts:
   - value: luajit_ffi_unresolved
     verdict: FOLD
     fold_target: luajit_ffi_lookup
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"luajit_ffi_unresolved\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -149,7 +149,7 @@ verdicts:
   - value: ruby_ffi_attach_unresolved
     verdict: FOLD
     fold_target: ruby_ffi_attach
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"ruby_ffi_attach_unresolved\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -157,7 +157,7 @@ verdicts:
   - value: trait_impl_unresolved
     verdict: FOLD
     fold_target: trait_impl
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"trait_impl_unresolved\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -165,7 +165,7 @@ verdicts:
   - value: unresolved_dotted_submodule_call
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"unresolved_dotted_submodule_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -173,7 +173,7 @@ verdicts:
   - value: unresolved_external_call
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"unresolved_external_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -181,7 +181,7 @@ verdicts:
   - value: unresolved_imported_name_call
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"unresolved_imported_name_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -189,7 +189,7 @@ verdicts:
   - value: unresolved_method_call
     verdict: FOLD
     fold_target: method_call
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"unresolved_method_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -197,7 +197,7 @@ verdicts:
   - value: unresolved_module_call
     verdict: FOLD
     fold_target: ast_call_direct
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"unresolved_module_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
@@ -205,7 +205,7 @@ verdicts:
   - value: unresolved_variable_method_call
     verdict: FOLD
     fold_target: method_call_type_inferred
-    status: PRELIM_RESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn 'evidence_type=\"unresolved_variable_method_call\"' packages/ --include='*.py' | grep -v test_"
       expect: empty
