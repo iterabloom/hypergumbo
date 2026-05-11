@@ -19,6 +19,7 @@ Two-pass analysis:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
@@ -303,9 +304,11 @@ def _resolve_ansible_path(
     3. Role name resolution ("name=rolename" → roles/rolename/tasks/main.yml)
 
     Returns the file node ID if resolved, None otherwise. Jinja2 template
-    expressions (containing "{{") are always unresolvable.
+    expressions (containing "{{") are deferred to ``_jinja_fanout_candidates``
+    in the caller — this function only handles literal paths.
     """
-    # Jinja2 templates are unresolvable at parse time
+    # Jinja2 templates are handled by the fan-out path; this function only
+    # resolves literal paths.
     if "{{" in raw_dst:
         return None
 
@@ -341,6 +344,94 @@ def _resolve_ansible_path(
         return file_node_ids[candidates[0]]
 
     return None
+
+
+_JINJA_RE = re.compile(r"\{\{.*?\}\}")
+
+# Confidence assigned to each fan-out edge produced from a Jinja-templated
+# include_tasks/import_tasks directive. The Jinja variable is only resolvable
+# at runtime, so we emit one edge per candidate file matching the literal
+# portions of the pattern, with reduced confidence to reflect the uncertainty.
+_JINJA_FANOUT_CONFIDENCE = 0.30
+
+
+def _jinja_fanout_candidates(
+    raw_dst: str,
+    src_file_id: str,
+    file_basename_map: dict[str, list[str]],
+    file_node_ids: dict[str, str],
+) -> list[str]:
+    """For a Jinja-templated include path, return candidate file node IDs.
+
+    Two shapes of Jinja-templated path are recognized:
+
+    1. **Basename Jinja** (e.g. ``{{ ansible_os_family }}.yml``): only the
+       basename contains a template expression. We treat the ``{{ ... }}``
+       as a wildcard and regex-match against sibling files in the source's
+       directory. Cross-directory candidates are excluded because role-style
+       OS-family dispatch is conventionally co-located.
+
+    2. **Path-prefix Jinja** (e.g. ``{{ tasks_path }}/yumrepos.yml``): the
+       basename is literal but the directory portion is templated. We
+       fan out to every file in the repo whose basename matches, since
+       the templated prefix could resolve to any location at runtime.
+       Sorted by repo-relative path for determinism.
+
+    Returns candidate node IDs (possibly empty). The source file itself
+    is excluded.
+    """
+    cleaned = raw_dst.strip("'\"")
+    if "{{" not in cleaned:
+        return []
+
+    basename = cleaned.rsplit("/", 1)[-1] if "/" in cleaned else cleaned
+    # src_file_id format: ansible:{path}:1-1:file:file
+    parts = src_file_id.split(":")
+    if len(parts) < 2:
+        return []  # pragma: no cover — defensive; file IDs always have a path
+    src_path = parts[1]
+
+    if "{{" in basename:
+        return _basename_jinja_fanout(basename, src_path, file_node_ids)
+    # Path-prefix Jinja with literal basename: fan out by basename across repo.
+    if basename in file_basename_map:
+        matches = [p for p in file_basename_map[basename] if p != src_path]
+        matches.sort()
+        return [file_node_ids[p] for p in matches]
+    return []
+
+
+def _basename_jinja_fanout(
+    basename_pattern: str,
+    src_path: str,
+    file_node_ids: dict[str, str],
+) -> list[str]:
+    """Match a Jinja basename pattern against sibling files in src's directory.
+
+    Each ``{{ ... }}`` becomes ``.+`` (must consume at least one char; a
+    Jinja var that expands to the empty string would be useless here).
+    """
+    literals = _JINJA_RE.split(basename_pattern)
+    pattern = "^" + ".+".join(re.escape(lit) for lit in literals) + "$"
+    matcher = re.compile(pattern)
+
+    src_dir = src_path.rsplit("/", 1)[0] if "/" in src_path else ""
+    src_basename = src_path.rsplit("/", 1)[-1]
+
+    matches: list[str] = []
+    for rel_path in file_node_ids:
+        if rel_path == src_path:
+            continue
+        cand_basename = rel_path.rsplit("/", 1)[-1]
+        cand_dir = rel_path.rsplit("/", 1)[0] if "/" in rel_path else ""
+        if cand_dir != src_dir:
+            continue
+        if cand_basename == src_basename:
+            continue  # pragma: no cover — same path was already filtered
+        if matcher.match(cand_basename):
+            matches.append(rel_path)
+    matches.sort()
+    return [file_node_ids[p] for p in matches]
 
 
 class AnsibleAnalyzer(TreeSitterAnalyzer):
@@ -435,6 +526,7 @@ class AnsibleAnalyzer(TreeSitterAnalyzer):
         # Resolve edge destinations: convert raw filenames to file node IDs.
         # include_tasks/import_tasks use relative filenames; try to match
         # them against known Ansible files by basename or relative path.
+        extra_edges: list[Edge] = []
         for edge in all_edges:
             if edge.edge_type != "imports":
                 continue  # pragma: no cover — all current edges are imports
@@ -447,9 +539,32 @@ class AnsibleAnalyzer(TreeSitterAnalyzer):
             )
             if resolved is not None:
                 edge.dst = resolved
+                continue
+            # Unresolved by literal-path strategies. If the destination is a
+            # Jinja template like "{{ ansible_os_family }}.yml", fan out to
+            # sibling files matching the literal portions.
+            candidates = _jinja_fanout_candidates(
+                raw_dst, edge.src, file_basename_map, file_node_ids,
+            )
+            if candidates:
+                edge.dst = candidates[0]
+                edge.confidence = _JINJA_FANOUT_CONFIDENCE
+                for extra_dst in candidates[1:]:
+                    extra_edges.append(Edge.create(
+                        src=edge.src,
+                        dst=extra_dst,
+                        edge_type=edge.edge_type,
+                        line=edge.line,
+                        evidence_type=edge.evidence_type,
+                        confidence=_JINJA_FANOUT_CONFIDENCE,
+                        origin=edge.origin,
+                        origin_run_id=edge.origin_run_id,
+                    ))
             else:
-                # Unresolvable (Jinja2 template, missing file, etc.)
+                # Unresolvable (Jinja2 template with no matching siblings,
+                # missing file, etc.)
                 edge.confidence = 0.50
+        all_edges.extend(extra_edges)
 
         run.duration_ms = int((_time.time() - start_time) * 1000)
 

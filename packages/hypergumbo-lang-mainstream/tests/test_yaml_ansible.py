@@ -360,6 +360,154 @@ class TestAnsibleFileNodes:
         node_ids = {s.id for s in result.symbols}
         assert import_edges[0].dst in node_ids
 
+    def test_jinja_include_fans_out_to_role_tasks_dir(self, tmp_path: Path) -> None:
+        """Jinja-templated include_tasks fans out to matching files in same role tasks/.
+
+        Pattern from real-world ansible playbooks:
+            - include_tasks: "{{ ansible_os_family }}.yml"
+        in roles/foo/tasks/main.yml should produce edges to every sibling
+        .yml file (Debian.yml, RedHat.yml), each at reduced confidence (0.30).
+        """
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        tasks = tmp_path / "roles" / "foo" / "tasks"
+        tasks.mkdir(parents=True)
+        (tasks / "main.yml").write_text(
+            '- include_tasks: "{{ ansible_os_family }}.yml"\n'
+        )
+        (tasks / "Debian.yml").write_text("- name: Debian\n  debug: msg=d\n")
+        (tasks / "RedHat.yml").write_text("- name: RedHat\n  debug: msg=r\n")
+
+        result = analyze_ansible(tmp_path)
+        node_ids = {s.id for s in result.symbols}
+        fanout_edges = [
+            e for e in result.edges
+            if e.edge_type == "imports" and e.evidence_type == "include_tasks"
+            and "roles/foo/tasks/main.yml" in e.src
+        ]
+        # Two candidates (Debian.yml, RedHat.yml); main.yml itself excluded.
+        assert len(fanout_edges) == 2, [e.dst for e in fanout_edges]
+        for edge in fanout_edges:
+            assert edge.dst in node_ids
+            assert abs(edge.confidence - 0.30) < 1e-6
+        resolved_basenames = {e.dst.split(":")[1].rsplit("/", 1)[-1] for e in fanout_edges}
+        assert resolved_basenames == {"Debian.yml", "RedHat.yml"}
+
+    def test_jinja_include_with_literal_suffix_matches(self, tmp_path: Path) -> None:
+        """Jinja pattern with literal suffix matches only files ending in that suffix."""
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        tasks = tmp_path / "roles" / "bar" / "tasks"
+        tasks.mkdir(parents=True)
+        (tasks / "main.yml").write_text(
+            '- include_tasks: "configure_{{ stage }}.yml"\n'
+        )
+        (tasks / "configure_dev.yml").write_text("- debug: msg=dev\n")
+        (tasks / "configure_prod.yml").write_text("- debug: msg=prod\n")
+        (tasks / "unrelated.yml").write_text("- debug: msg=other\n")
+        # Distractor in a *different* role's tasks/ that matches the regex
+        # but must not be picked up (fan-out is scoped to same directory).
+        other = tmp_path / "roles" / "baz" / "tasks"
+        other.mkdir(parents=True)
+        (other / "configure_other.yml").write_text("- debug: msg=baz\n")
+
+        result = analyze_ansible(tmp_path)
+        fanout_edges = [
+            e for e in result.edges
+            if e.edge_type == "imports" and e.evidence_type == "include_tasks"
+            and "roles/bar/tasks/main.yml" in e.src
+        ]
+        # Only the two configure_*.yml files; unrelated.yml must not match.
+        resolved_basenames = {e.dst.split(":")[1].rsplit("/", 1)[-1] for e in fanout_edges}
+        assert resolved_basenames == {"configure_dev.yml", "configure_prod.yml"}, resolved_basenames
+        for edge in fanout_edges:
+            assert abs(edge.confidence - 0.30) < 1e-6
+
+    def test_jinja_path_prefix_fans_out_by_basename(self, tmp_path: Path) -> None:
+        """Path-prefix Jinja with literal basename fans out across the repo.
+
+        Pattern from real playbooks:
+            - import_tasks: "{{ tasks_path }}/yumrepos.yml"
+        The basename is literal but the directory is templated. Fan out to
+        every yumrepos.yml in the repo. With one match, produce one edge
+        at fan-out confidence (best-guess given the templated prefix).
+        """
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        playbook_dir = tmp_path / "playbooks" / "groups"
+        playbook_dir.mkdir(parents=True)
+        (playbook_dir / "backup-server.yml").write_text(
+            '- import_tasks: "{{ tasks_path }}/yumrepos.yml"\n'
+        )
+        tasks_dir = tmp_path / "tasks"
+        tasks_dir.mkdir()
+        (tasks_dir / "yumrepos.yml").write_text("- debug: msg=yum\n")
+
+        result = analyze_ansible(tmp_path)
+        node_ids = {s.id for s in result.symbols}
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "imports" and e.evidence_type == "import_tasks"
+            and "backup-server.yml" in e.src
+        ]
+        assert len(edges) == 1
+        assert edges[0].dst in node_ids
+        assert "tasks/yumrepos.yml" in edges[0].dst
+        assert abs(edges[0].confidence - 0.30) < 1e-6
+
+    def test_jinja_path_prefix_fans_out_to_multiple_basename_matches(
+        self, tmp_path: Path
+    ) -> None:
+        """Path-prefix Jinja with multiple basename matches fans out to all."""
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        playbook_dir = tmp_path / "playbooks"
+        playbook_dir.mkdir()
+        (playbook_dir / "site.yml").write_text(
+            '- import_tasks: "{{ tasks_path }}/setup.yml"\n'
+        )
+        # Two setup.yml in different directories.
+        a = tmp_path / "roles" / "a" / "tasks"
+        a.mkdir(parents=True)
+        b = tmp_path / "roles" / "b" / "tasks"
+        b.mkdir(parents=True)
+        (a / "setup.yml").write_text("- debug: msg=a\n")
+        (b / "setup.yml").write_text("- debug: msg=b\n")
+
+        result = analyze_ansible(tmp_path)
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "imports" and e.evidence_type == "import_tasks"
+            and "playbooks/site.yml" in e.src
+        ]
+        # Two basename matches → two fan-out edges, each at 0.30.
+        assert len(edges) == 2
+        for edge in edges:
+            assert abs(edge.confidence - 0.30) < 1e-6
+        dst_paths = {e.dst.split(":")[1] for e in edges}
+        assert any("roles/a/tasks/setup.yml" in p for p in dst_paths)
+        assert any("roles/b/tasks/setup.yml" in p for p in dst_paths)
+
+    def test_jinja_include_no_candidates_falls_back_to_unresolvable(self, tmp_path: Path) -> None:
+        """Jinja pattern with no matching siblings keeps the unresolved edge at 0.50."""
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        tasks = tmp_path / "roles" / "lonely" / "tasks"
+        tasks.mkdir(parents=True)
+        (tasks / "main.yml").write_text(
+            '- include_tasks: "{{ missing_var }}.yml"\n'
+        )
+        # No sibling .yml files exist.
+
+        result = analyze_ansible(tmp_path)
+        import_edges = [
+            e for e in result.edges
+            if e.edge_type == "imports" and e.evidence_type == "include_tasks"
+            and "roles/lonely/tasks/main.yml" in e.src
+        ]
+        assert len(import_edges) == 1
+        assert abs(import_edges[0].confidence - 0.50) < 1e-6
+
     def test_no_ansible_files_returns_empty(self, tmp_path: Path) -> None:
         """Empty directory with no Ansible files returns empty result."""
         from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
