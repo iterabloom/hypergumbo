@@ -1603,6 +1603,140 @@ class TestSkipLevelDispatch:
             f"IBar interface embedding; got dispatches={dispatch_dsts}"
         )
 
+    def test_go_struct_embedding_chain_still_suppressed(self) -> None:
+        """Carve-out narrowness regression: Go struct-extends-struct chain
+        (3 hops, kind='struct' throughout) must NOT produce dispatches_to.
+
+        The interface carve-out at _extends_admits_dispatch fires only when
+        child_kind == 'interface'. A struct chain in Go remains under the
+        WI-sukav A1 deny-list: struct embedding is composition, not virtual
+        dispatch. This test pairs with test_go_interface_embedding_skip_level
+        — same chain topology, different child kind, opposite expected
+        behavior — so any future broadening of the carve-out (e.g. adding
+        'struct' to the override set) trips this regression.
+        """
+        a = Symbol(
+            id="go:/app/a.go:1-5:A:struct",
+            name="A", kind="struct", language="go",
+            path="/app/a.go", span=Span(1, 5, 0, 1),
+            origin="go-v1", origin_run_id="test",
+        )
+        a_foo = Symbol(
+            id="go:/app/a.go:2-3:A.Foo:method",
+            name="A.Foo", kind="method", language="go",
+            path="/app/a.go", span=Span(2, 3, 4, 5),
+            origin="go-v1", origin_run_id="test",
+        )
+        b = Symbol(
+            id="go:/app/b.go:1-5:B:struct",
+            name="B", kind="struct", language="go",
+            path="/app/b.go", span=Span(1, 5, 0, 1),
+            origin="go-v1", origin_run_id="test",
+        )
+        # B does NOT define Foo — Go method-on-embedded-A would still resolve to A.Foo.
+        c = Symbol(
+            id="go:/app/c.go:1-10:C:struct",
+            name="C", kind="struct", language="go",
+            path="/app/c.go", span=Span(1, 10, 0, 1),
+            origin="go-v1", origin_run_id="test",
+        )
+        c_foo = Symbol(
+            id="go:/app/c.go:3-5:C.Foo:method",
+            name="C.Foo", kind="method", language="go",
+            path="/app/c.go", span=Span(3, 5, 4, 5),
+            origin="go-v1", origin_run_id="test",
+        )
+        edges = [
+            Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1),
+            Edge.create(src=c.id, dst=b.id, edge_type="extends", line=1),
+        ]
+        ctx = LinkerContext(
+            repo_root="/app", symbols=[a, a_foo, b, c, c_foo], edges=edges,
+        )
+        result = link_type_hierarchy(ctx)
+        dispatch_dsts = {e.dst for e in result.edges if e.src == a_foo.id}
+        assert c_foo.id not in dispatch_dsts, (
+            f"Go struct-extends-struct chain must remain suppressed under "
+            f"WI-sukav A1; carve-out fires only for child_kind=='interface'. "
+            f"Got A.Foo dispatches={dispatch_dsts}"
+        )
+
+    def test_deep_interface_chain_three_hops(self) -> None:
+        """Transitive closure must bridge 3-hop interface chains end-to-end.
+
+        Tests the link_type_hierarchy + close_parent_to_children_transitively
+        pipeline at depth 3 (the closure helper itself is unit-tested at
+        depth 3 by test_three_hop_chain, but the end-to-end linker behavior
+        across 3 hops is not exercised by the existing SkipLevel tests,
+        which all top out at depth 2).
+
+        IR shape: Impl --implements--> I3; I3 --extends--> I2;
+                  I2 --extends--> I1; I1 --extends--> I0.
+        I0 defines foo; I1, I2, I3 do not override; Impl provides foo.
+        I0.foo must dispatch to Impl.foo through 3 hops of interface
+        inheritance plus the final implements edge.
+        """
+        i0 = Symbol(
+            id="typescript:/app/I0.ts:1-5:I0:interface",
+            name="I0", kind="interface", language="typescript",
+            path="/app/I0.ts", span=Span(1, 5, 0, 1),
+            origin="typescript-v1", origin_run_id="test",
+        )
+        i0_foo = Symbol(
+            id="typescript:/app/I0.ts:2-3:I0.foo:method",
+            name="I0.foo", kind="method", language="typescript",
+            path="/app/I0.ts", span=Span(2, 3, 4, 5),
+            origin="typescript-v1", origin_run_id="test",
+        )
+        i1 = Symbol(
+            id="typescript:/app/I1.ts:1-5:I1:interface",
+            name="I1", kind="interface", language="typescript",
+            path="/app/I1.ts", span=Span(1, 5, 0, 1),
+            origin="typescript-v1", origin_run_id="test",
+        )
+        i2 = Symbol(
+            id="typescript:/app/I2.ts:1-5:I2:interface",
+            name="I2", kind="interface", language="typescript",
+            path="/app/I2.ts", span=Span(1, 5, 0, 1),
+            origin="typescript-v1", origin_run_id="test",
+        )
+        i3 = Symbol(
+            id="typescript:/app/I3.ts:1-5:I3:interface",
+            name="I3", kind="interface", language="typescript",
+            path="/app/I3.ts", span=Span(1, 5, 0, 1),
+            origin="typescript-v1", origin_run_id="test",
+        )
+        impl = Symbol(
+            id="typescript:/app/Impl.ts:1-10:Impl:class",
+            name="Impl", kind="class", language="typescript",
+            path="/app/Impl.ts", span=Span(1, 10, 0, 1),
+            origin="typescript-v1", origin_run_id="test",
+        )
+        impl_foo = Symbol(
+            id="typescript:/app/Impl.ts:3-5:Impl.foo:method",
+            name="Impl.foo", kind="method", language="typescript",
+            path="/app/Impl.ts", span=Span(3, 5, 4, 5),
+            origin="typescript-v1", origin_run_id="test",
+        )
+        edges = [
+            Edge.create(src=impl.id, dst=i3.id, edge_type="implements", line=1),
+            Edge.create(src=i3.id, dst=i2.id, edge_type="extends", line=1),
+            Edge.create(src=i2.id, dst=i1.id, edge_type="extends", line=1),
+            Edge.create(src=i1.id, dst=i0.id, edge_type="extends", line=1),
+        ]
+        ctx = LinkerContext(
+            repo_root="/app",
+            symbols=[i0, i0_foo, i1, i2, i3, impl, impl_foo],
+            edges=edges,
+        )
+        result = link_type_hierarchy(ctx)
+        dispatch_dsts = {e.dst for e in result.edges if e.src == i0_foo.id}
+        assert impl_foo.id in dispatch_dsts, (
+            f"Expected I0.foo to dispatch to Impl.foo through 3 hops of "
+            f"interface inheritance (I0 → I1 → I2 → I3 → implements → Impl); "
+            f"got dispatches={dispatch_dsts}"
+        )
+
     def test_typescript_interface_chain_skip_level(self) -> None:
         """TypeScript: IFoo, IBar extends IFoo, Impl implements IBar.
 
