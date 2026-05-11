@@ -82,3 +82,19 @@
     tags: [for_deep_bakeoff]  # 7068
   remove:  # 7068
     tags: [for-deep-bakeoff]  # 7068
+- op: update  # bae6
+  at: '2026-05-11T04:04:02Z'  # bae6
+  by: agent  # bae6
+  actor: jgstern_agent  # bae6
+  clock: 9  # bae6
+  nonce: bae6  # bae6
+  set: {}  # bae6
+  remove:  # bae6
+    tags: [awaits_bakeoff_validation]  # bae6
+- op: discuss  # 405f
+  at: '2026-05-11T04:04:03Z'  # 405f
+  by: agent  # 405f
+  actor: jgstern_agent  # 405f
+  clock: 10  # 405f
+  nonce: 405f  # 405f
+  message: "Bakeoff validation: MOVED (cohort cohort-002/iter-001). Plurality verdict across repos: moved=3 no_move=0 inconclusive=1. Evidence: alertmanager=moved: Go calls edges carry meta.access_mode: 4351 read / 271 write / 3213 unset out of 7835 go: calls — Tier 1 dataflow path i…; kafka=inconclusive: kafka has zero Go code — Go analyzer access_mode improvements cannot be observed here.; kserve=moved: Go calls in hg.json have access_mode populated on 5670/9762 edges (58%); read=11151 / write=2579 / mutate=41 across all…; +1 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 405f

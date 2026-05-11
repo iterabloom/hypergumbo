@@ -105,3 +105,19 @@
   clock: 11  # ad36
   nonce: ad36  # ad36
   message: "Bakeoff validation: MOVED (cohort cohort-001/iter-001). Plurality verdict across repos: moved=4 no_move=1 inconclusive=1. Evidence: apollo-server=no_move: Cluster D call_construct collapse to apex (ast_call) + meta['call_construct']; on this repo evidence_type histogram stil…; chatwoot=moved: 0 evidence_types named function_call / method_call / pipe_call / typed_receiver_call across 12,338 calls edges; instead…; containerd=moved: meta['call_construct'] populated with collapsed peers: method=21414, function=8168, chained_return_type=13, cross_file=2…; +3 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # ad36
+- op: update  # 3b48
+  at: '2026-05-11T04:04:03Z'  # 3b48
+  by: agent  # 3b48
+  actor: jgstern_agent  # 3b48
+  clock: 12  # 3b48
+  nonce: 3b48  # 3b48
+  set: {}  # 3b48
+  remove:  # 3b48
+    tags: [awaits_bakeoff_validation]  # 3b48
+- op: discuss  # d00e
+  at: '2026-05-11T04:04:03Z'  # d00e
+  by: agent  # d00e
+  actor: jgstern_agent  # d00e
+  clock: 13  # d00e
+  nonce: d00e  # d00e
+  message: "Bakeoff validation: MOVED (cohort cohort-002/iter-001). Plurality verdict across repos: moved=3 no_move=0 inconclusive=1. Evidence: alertmanager=moved: meta.call_construct populated with canonical apex distribution: method 6184, function 1811, chained_return_type 3; no pe…; kafka=inconclusive: meta['call_construct'] is populated (function=21753, method=5721, cross_file=2), but evidence_type still includes peer v…; kserve=moved: No Cluster D peer evidence types (function_call/method_call/function_application/typed_receiver_call/ambiguous_method_ca…; +1 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # d00e

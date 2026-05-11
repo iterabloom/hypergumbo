@@ -134,3 +134,19 @@
     tags: [for_deep_bakeoff]  # e06a
   remove:  # e06a
     tags: [for-deep-bakeoff]  # e06a
+- op: update  # f9c9
+  at: '2026-05-11T04:04:02Z'  # f9c9
+  by: agent  # f9c9
+  actor: jgstern_agent  # f9c9
+  clock: 16  # f9c9
+  nonce: f9c9  # f9c9
+  set: {}  # f9c9
+  remove:  # f9c9
+    tags: [awaits_bakeoff_validation]  # f9c9
+- op: discuss  # 4dac
+  at: '2026-05-11T04:04:02Z'  # 4dac
+  by: agent  # 4dac
+  actor: jgstern_agent  # 4dac
+  clock: 17  # 4dac
+  nonce: 4dac  # 4dac
+  message: "Bakeoff validation: MOVED (cohort cohort-002/iter-001). Plurality verdict across repos: moved=3 no_move=1 inconclusive=0. Evidence: alertmanager=moved: 222 nodes carry meta.framework_role, and the legacy Cluster D kinds (event_publisher, dispatcher, grpc_server, route_mou…; kafka=no_move: hg.json edge meta has zero framework_role values across 579124 edges, yet event_publishes (240 edges) still exists as a…; kserve=moved: Node meta.framework_role is populated (event_subscriber:57, event_publisher:44, http_client:33, route:29, grpc_client:20…; +1 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 4dac

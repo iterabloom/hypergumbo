@@ -81,3 +81,10 @@
   set: {}  # e151
   remove:  # e151
     tags: [awaits_bakeoff_validation]  # e151
+- op: discuss  # ce2c
+  at: '2026-05-11T04:04:02Z'  # ce2c
+  by: agent  # ce2c
+  actor: jgstern_agent  # ce2c
+  clock: 9  # ce2c
+  nonce: ce2c  # ce2c
+  message: "Bakeoff validation: MOVED (cohort cohort-001/iter-001). Plurality verdict across repos: moved=4 no_move=0 inconclusive=2. Evidence: apollo-server=moved: rslice_seeds.json picks 3 real domain functions (ApolloServer.addDefaultPlugins, runHttpQuery, ApolloServer.executeHTTPG…; chatwoot=moved: rslice_seeds.json shows method='domain_score' and the 3 picked seeds are real domain functions (useUISettings, useAccoun…; containerd=inconclusive: rslice_seeds.json (0KB in prompt manifest) was inspected only indirectly; this Go repo lacks the prometheus-style interf…; +3 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # ce2c

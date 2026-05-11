@@ -100,3 +100,12 @@
   clock: 10  # 2ae5
   nonce: 2ae5  # 2ae5
   message: "Bakeoff validation: MOVED (cohort cohort-001/iter-001). Plurality verdict across repos: moved=6 no_move=0 inconclusive=0. Evidence: apollo-server=moved: Cluster B *_unresolved evidence types fold to canonical + is_resolved=False; in hg.json no evidence_type contains substr…; chatwoot=moved: 0 evidence_types containing 'unresolved' across 48,562 edges, yet 2,554 edges carry is_resolved=False with canonical evi…; containerd=moved: evidence_type Counter over all 56794 edges shows zero entries containing '_unresolved' or 'unresolved_' substring; canon…; +3 more — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # 2ae5
+- op: update  # c694
+  at: '2026-05-11T04:04:03Z'  # c694
+  by: agent  # c694
+  actor: jgstern_agent  # c694
+  clock: 11  # c694
+  nonce: c694  # c694
+  set: {}  # c694
+  remove:  # c694
+    tags: [awaits_bakeoff_validation]  # c694
