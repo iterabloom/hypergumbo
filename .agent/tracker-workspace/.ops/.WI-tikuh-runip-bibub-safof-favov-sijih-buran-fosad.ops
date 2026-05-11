@@ -27,3 +27,18 @@
   set: {}  # daf5
   add:  # daf5
     isbefore: [WI-butol-muvog-gulap-hanig-hanuh-foduh-puzad-vonom]  # daf5
+- op: update  # 88f9
+  at: '2026-05-11T19:43:02Z'  # 88f9
+  by: agent  # 88f9
+  actor: jgstern_agent  # 88f9
+  clock: 3  # 88f9
+  nonce: 88f9  # 88f9
+  set:  # 88f9
+    status: done  # 88f9
+- op: discuss  # 410a
+  at: '2026-05-11T19:43:02Z'  # 410a
+  by: agent  # 410a
+  actor: jgstern_agent  # 410a
+  clock: 4  # 410a
+  nonce: 410a  # 410a
+  message: "Shipped in commit bf34b47aa2 (feat(schema): Phase 4a x-deprecated for Symbol.kind and Edge.evidence_type). Endpoint_shape values now carry x-deprecated marks on the schema. Status update lag — WI-habut's 2026-05-06T20:44 discussion entry already named this PR; tracker state was stale."  # 410a

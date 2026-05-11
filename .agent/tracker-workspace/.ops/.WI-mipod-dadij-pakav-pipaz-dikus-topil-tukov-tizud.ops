@@ -1,0 +1,38 @@
+- op: create  # 6e63
+  at: '2026-05-11T17:52:03Z'  # 6e63
+  by: agent  # 6e63
+  actor: jgstern_agent  # 6e63
+  clock: 1  # 6e63
+  nonce: '6e63'  # 6e63
+  data:  # 6e63
+    kind: work_item  # 6e63
+    title: "Ansible Jinja-template import_tasks/include_tasks destinations unresolved (~180 cross-language edges in ansible cohort)"  # 6e63
+    status: todo_soft  # 6e63
+    priority: 3  # 6e63
+    parent:  # 6e63
+    tags:  # 6e63
+    - cross_language_linkers  # 6e63
+    - analysis_quality  # 6e63
+    isbefore: []  # 6e63
+    duplicate_of: []  # 6e63
+    not_duplicate_of: []  # 6e63
+    pr_ref:  # 6e63
+    description: "Source: DEEP cohort 3 reflect on deep-20260510-054430 (ansible).\n\nansible playbooks use Jinja-templated import_tasks and include_tasks directives to compose task files. The bakeoff reflect saw ~180 cross-language edges where the destination resolves to 'unresolved:' because the Jinja template expression isn't being statically evaluated. Examples include {{ ansible_os_family }}.yml dispatched include_tasks patterns where the template variable is determined by inventory facts at runtime.\n\nPattern: jinja-template-as-import-string is unresolvable in general (the variable comes from runtime fact gathering), but a meaningful subset is resolvable as 'one of N candidate files matching the pattern in the same role's tasks/ directory'. Treating these as fan-out edges to all candidate files (with confidence reflecting the uncertainty) preserves more information than collapsing to 'unresolved:'.\n\nFix direction: in the ansible analyzer's import_tasks/include_tasks handler, when the import string contains a Jinja expression like {{ ... }}, scan the role's tasks/ for files matching the literal portions and emit fan-out edges with reduced confidence (e.g., 0.3). When no Jinja expression is present, the literal-path resolution already works.\n\nCohort 3 contains airflow + ansible; ansible scored 28/35 (well below cohort mean), and this finding is part of why. Sister observation in agent notes' 'cohort 3 REGRESSING (-14.4)' — this isn't the only cause but is the most actionable.\n\nEvidence file: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430/reflect/cohort-003/iter-001/ansible.assessment.yaml."  # 6e63
+    fields: {}  # 6e63
+- op: update  # 94b3
+  at: '2026-05-11T19:25:41Z'  # 94b3
+  by: agent  # 94b3
+  actor: jgstern_agent  # 94b3
+  clock: 2  # 94b3
+  nonce: 94b3  # 94b3
+  set:  # 94b3
+    status: done  # 94b3
+  add:  # 94b3
+    tags: [awaits_bakeoff_validation]  # 94b3
+- op: discuss  # 1b69
+  at: '2026-05-11T19:25:41Z'  # 1b69
+  by: agent  # 1b69
+  actor: jgstern_agent  # 1b69
+  clock: 3  # 1b69
+  nonce: 1b69  # 1b69
+  message: "Closed in PR #3630 (commit 312a081352). Implementation broader than original WI scope: handles BOTH basename-Jinja (role-style {{ ansible_os_family }}.yml) AND path-prefix-Jinja ({{ tasks_path }}/yumrepos.yml) shapes. Empirical: fedora-infra/ansible has 192 Jinja-unresolved edges, all path-prefix; the fix resolves 191/192 (the remaining 1 has no matching basename in the repo and is genuinely unresolvable). Tagged awaits_bakeoff_validation; expected to lift cohort-3 ansible score (28/35 baseline) by reducing unresolved imports edges that fed the slice/rslice/dataflow gaps."  # 1b69

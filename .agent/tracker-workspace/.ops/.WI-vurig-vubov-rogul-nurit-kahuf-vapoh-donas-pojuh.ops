@@ -1,0 +1,21 @@
+- op: create  # 3048
+  at: '2026-05-11T17:51:31Z'  # 3048
+  by: agent  # 3048
+  actor: jgstern_agent  # 3048
+  clock: 1  # 3048
+  nonce: '3048'  # 3048
+  data:  # 3048
+    kind: work_item  # 3048
+    title: "yjs_crdt linker not gated by dep-presence: 68 false-positive event_publishes edges on chatwoot (no yjs dependency)"  # 3048
+    status: todo_soft  # 3048
+    priority: 2  # 3048
+    parent:  # 3048
+    tags:  # 3048
+    - framework_dispatch_linkers  # 3048
+    - analysis_quality  # 3048
+    isbefore: []  # 3048
+    duplicate_of: []  # 3048
+    not_duplicate_of: []  # 3048
+    pr_ref:  # 3048
+    description: "Source: DEEP cohort 1 reflect on deep-20260510-054430 (chatwoot).\n\nchatwoot is a Rails + Vue customer-engagement app with no Yjs CRDT dependency, but hypergumbo emits 68 false-positive event_publishes edges from the yjs_crdt linker. The linker runs unconditionally based on text patterns rather than first verifying that the repo declares yjs (or y-protocols, y-websocket, etc.) in its dependency manifest.\n\nPattern: framework_dispatch_linkers like yjs_crdt, gRPC, NestJS, etc. should gate on manifest-detected presence of their target framework (similar to how route-handler-linker gates on framework detection). The yjs_crdt linker was added in PR work tracked by WI-tarar-tikul-hidoh-lihus-mugud-bagab-rafib-jolop (PlazaFlow curriculum, done) and WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam (Yjs sub-document tracing, done); both assumed the linker runs on yjs-positive repos.\n\nFix direction: add a manifest-presence gate to yjs_crdt and audit other framework linkers (NestJS, gRPC-TS, etc.) for the same anti-pattern. Concrete: check package.json dependencies / devDependencies for /^y(js|-protocols|-websocket)$/ before running. Adjacent: WI-ropoz-bufoj-givoz-higil-sojap-sihut-navon-zabat (gRPC↔TS cross-language linker, todo_soft) should be designed with this gate from the start.\n\nEvidence file: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430/reflect/cohort-001/iter-001/chatwoot.assessment.yaml."  # 3048
+    fields: {}  # 3048
