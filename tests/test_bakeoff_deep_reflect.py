@@ -1298,6 +1298,22 @@ class TestAwaitsBakeoffValidationLoading:
             items = bakeoff_features_reflect.load_awaits_bakeoff_validation_items()
         assert items == []
 
+    def test_load_status_filter_includes_done(self, bakeoff_features_reflect):
+        completed = mock.Mock(returncode=0, stdout="[]", stderr="")
+        with mock.patch.object(
+            bakeoff_features_reflect.subprocess, "run", return_value=completed
+        ) as mock_run:
+            bakeoff_features_reflect.load_awaits_bakeoff_validation_items()
+        cmd = mock_run.call_args.args[0]
+        status_values = [
+            cmd[i + 1] for i, arg in enumerate(cmd) if arg == "--status"
+        ]
+        assert "done" in status_values, (
+            f"BVT items are tagged at PR-merge time when work has shipped "
+            f"(status=done); the queue won't drain unless 'done' is in the "
+            f"filter. Got: {status_values}"
+        )
+
 
 class TestValidationClaimsSection:
     """Format the awaits_bakeoff_validation prompt section."""

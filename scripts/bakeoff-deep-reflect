@@ -508,13 +508,17 @@ def load_awaits_bakeoff_validation_items(
 ) -> list[dict]:
     """Load active awaits_bakeoff_validation items via the tracker CLI.
 
-    "Active" means status is todo_soft or in_progress — items that have
-    shipped with a quantitative bakeoff claim but have not yet been
-    validated (or explicitly closed). Returns a list of item dicts with
-    at least id, title, description, status, tags; empty list on any
-    failure so the reflect pipeline degrades gracefully in environments
-    where the tracker is unavailable (e.g. a fresh clone without the
-    auto-sync infrastructure).
+    "Active" means the item is awaiting empirical validation by a DEEP
+    bakeoff cycle. The BVT tag is applied at PR-merge time when the
+    work has shipped, so the canonical status is ``done`` — items only
+    revert to ``todo_soft`` / ``in_progress`` when a verdict has
+    spawned follow-up work that itself ships separately. All three
+    statuses are queried so the queue drains regardless of which
+    lifecycle stage filed the validation claim. Returns a list of item
+    dicts with at least id, title, description, status, tags; empty
+    list on any failure so the reflect pipeline degrades gracefully in
+    environments where the tracker is unavailable (e.g. a fresh clone
+    without the auto-sync infrastructure).
     """
     if repo_root is None:
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -523,6 +527,7 @@ def load_awaits_bakeoff_validation_items(
         "--json",
         "list",
         "--tag", "awaits_bakeoff_validation",
+        "--status", "done",
         "--status", "todo_soft",
         "--status", "in_progress",
         "--limit", "200",
