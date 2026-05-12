@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Pre-commit lint: INV-zuhub fallback-coherence at Edge.create call sites.
+
+Every ``Edge.create(...)`` / ``Edge(...)`` call site under
+``packages/.../linkers/`` that statically declares
+``meta["disambiguation_fallback"] = True`` must also set
+``confidence`` to a statically-resolvable value <= 0.5.
+
+This is INV-zuhub item 3: the pre-commit drift linter that fails on
+violations of the L4 fallback-coherence discipline, parallel to:
+
+- L1 axis-drift linters: ``check-edge-type-drift``,
+  ``check-symbol-kind-drift``, ``check-evidence-type-drift``.
+- L3 producer-coherence linter: ``check-producer-axis-coherence``.
+
+Exit codes:
+    0 — no violations.
+    1 — at least one violation; fix before committing.
+    2 — could not import the finder (likely a packaging /
+        editable-install problem; do not block commits on this).
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Add the core package's src to sys.path so we can import the finder
+# without requiring an editable install (matches the L3 linter's
+# bootstrap pattern at ``scripts/check-producer-axis-coherence``).
+sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
+
+try:
+    from hypergumbo_core.fallback_coherence import (
+        find_fallback_coherence_violations,
+    )
+except ImportError as exc:  # pragma: no cover — defensive
+    print(
+        f"check-fallback-coherence: cannot import linter: {exc}",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+def main() -> int:
+    violations = find_fallback_coherence_violations(REPO_ROOT)
+    if not violations:
+        return 0
+    print(
+        "INV-zuhub fallback-coherence violations:",
+        file=sys.stderr,
+    )
+    for v in violations:
+        print(f"  {v.format()}", file=sys.stderr)
+    print(
+        "\nINV-zuhub statement: linker-emitted edges resolved via "
+        "simple-name fallback must carry BOTH confidence <= 0.5 AND "
+        "meta['disambiguation_fallback'] = True. Either set the "
+        "confidence to <= 0.5 on the offending call(s), or remove "
+        "the disambiguation_fallback flag if the resolution was "
+        "actually precise.",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())

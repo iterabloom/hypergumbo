@@ -190,6 +190,21 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Sibling of ``access_mode``; populated when the "
                 "destination's mode is distinct from the source's."),
     # ------------------------------------------------------------------
+    # Edge.meta — INV-zuhub resolution-precision provenance.
+    # ------------------------------------------------------------------
+    MetaKeySpec("disambiguation_fallback", AXIS_EDGE_META,
+                "True when the edge's destination was resolved by "
+                "simple-name fallback (no fully-qualified module / "
+                "namespace / kind disambiguator available). Carries "
+                "with it the contract that ``confidence <= 0.5`` on "
+                "the same edge — see INV-zuhub. Consumers filter the "
+                "fallback population from the precision-resolved one "
+                "by checking this flag. Currently set by "
+                "``linkers/inheritance.py``; per-linker conformance "
+                "for the four remaining edge-type families "
+                "(calls / dispatches_to / references / module_exports) "
+                "tracked under INV-zuhub items 1-3."),
+    # ------------------------------------------------------------------
     # Symbol.meta — Wave 5 framework-role fold residue (ADR-0027).
     # Audit-findings 0013 folded 29 framework-role Symbol.kind values
     # to canonical + this key.
