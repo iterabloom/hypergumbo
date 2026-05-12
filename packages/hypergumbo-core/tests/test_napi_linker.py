@@ -899,6 +899,33 @@ class TestInvZuhubNapiFallback:
         assert edge.confidence == 0.85
         assert (edge.meta or {}).get("disambiguation_fallback") is not True
 
+    def test_export_with_no_matching_c_symbol_skipped(self, tmp_path: Path) -> None:
+        """When a napi_export macro references a C function name that has no
+        in-tree symbol, the export is silently skipped (no edge emitted).
+        Covers the ``if not candidates: continue`` defensive branch.
+        """
+        from hypergumbo_core.linkers.napi import link_napi
+
+        c_file = tmp_path / "addon.c"
+        c_file.write_text(
+            '#include <node_api.h>\n'
+            'napi_value Init(napi_env env, napi_value exports) {\n'
+            '    napi_value fn;\n'
+            '    napi_create_function(env, "missing", NAPI_AUTO_LENGTH, MissingFn, NULL, &fn);\n'
+            '    return exports;\n'
+            '}\n'
+        )
+        # Only Init has a symbol; MissingFn is not in the symbol table.
+        c_init = _make_c_symbol(
+            "Init", path=str(c_file), start_line=2, end_line=6,
+        )
+        js_sym = _make_js_symbol("app", kind="module", path="index.js")
+        result = link_napi(
+            repo_root=tmp_path,
+            js_symbols=[js_sym], c_cpp_symbols=[c_init], edges=[],
+        )
+        assert result.edges == []
+
     def test_multiple_c_matches_emit_fallback_edge(self, tmp_path: Path) -> None:
         from hypergumbo_core.linkers.napi import link_napi
 

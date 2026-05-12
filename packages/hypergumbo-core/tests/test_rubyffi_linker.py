@@ -889,3 +889,77 @@ class TestInvZuhubRubyFfiFallback:
         assert edge.meta is not None
         assert edge.meta.get("disambiguation_fallback") is True
         assert edge.meta.get("bridge_kind") == "ffi"
+
+    def test_rb_define_with_no_matching_c_symbol_skipped(
+        self, tmp_path: Path,
+    ) -> None:
+        """When a C file's rb_define_method references a C function name
+        that has no in-tree symbol, the registration is silently skipped.
+        Covers the ``if not candidates: continue`` defensive branch in
+        ``_scan_c_file_for_rb_define``.
+        """
+        from hypergumbo_core.linkers.ruby_ffi import link_ruby_ffi
+
+        c_file = tmp_path / "ext" / "native.c"
+        c_file.parent.mkdir(parents=True, exist_ok=True)
+        c_file.write_text(
+            '#include <ruby.h>\n'
+            'void Init_native(void) {\n'
+            '    rb_define_method(rb_cObject, "missing_method", missing_fn, 0);\n'
+            '}\n'
+        )
+        # Init_native has a symbol; missing_fn does NOT.
+        c_init = _make_c_symbol(
+            "Init_native", path=str(c_file), start_line=2, end_line=4,
+        )
+        result = link_ruby_ffi(
+            repo_root=tmp_path,
+            ruby_symbols=[],
+            c_symbols=[c_init], edges=[],
+        )
+        # No edge for missing_fn since it's not in the symbol table.
+        rb_define_edges = [
+            e for e in result.edges
+            if (e.meta or {}).get("framework_dispatch") == "ruby_c_extension"
+        ]
+        assert rb_define_edges == []
+
+    def test_rb_define_multi_candidate_fallback(self, tmp_path: Path) -> None:
+        """Phase 2 (C-extension path): ``rb_define_method(rb_cFoo, "bar", impl, …)``
+        where ``impl`` resolves to multiple in-tree C functions emits a
+        single edge with ``confidence <= 0.5`` + fallback flag.
+        """
+        from hypergumbo_core.linkers.ruby_ffi import link_ruby_ffi
+
+        c_file = tmp_path / "ext" / "native.c"
+        c_file.parent.mkdir(parents=True, exist_ok=True)
+        c_file.write_text(
+            '#include <ruby.h>\n'
+            'static VALUE shared_impl(VALUE self) { return Qnil; }\n'
+            'void Init_native(void) {\n'
+            '    rb_define_method(rb_cObject, "do_thing", shared_impl, 0);\n'
+            '}\n'
+        )
+        # Two C functions both named ``shared_impl`` across separate files.
+        c_func_a = _make_c_symbol(
+            "shared_impl", path=str(c_file), start_line=2, end_line=2,
+        )
+        c_func_b = _make_c_symbol(
+            "shared_impl", path="ext/other.c", start_line=1, end_line=1,
+        )
+        result = link_ruby_ffi(
+            repo_root=tmp_path,
+            ruby_symbols=[],
+            c_symbols=[c_func_a, c_func_b],
+            edges=[],
+        )
+        rb_define_edges = [
+            e for e in result.edges
+            if (e.meta or {}).get("framework_dispatch") == "ruby_c_extension"
+        ]
+        assert len(rb_define_edges) == 1
+        edge = rb_define_edges[0]
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+        assert edge.meta.get("bridge_kind") == "ffi"

@@ -789,6 +789,40 @@ class TestInvZuhubLuaFfiFallback:
         assert edge.confidence == 0.85
         assert (edge.meta or {}).get("disambiguation_fallback") is not True
 
+    def test_phase2_unresolved_multi_candidate_fallback(
+        self, tmp_path: Path,
+    ) -> None:
+        """Phase 2: an unresolved Lua call edge whose target name has
+        multiple in-tree C candidates emits an edge to the deterministic-
+        by-id candidate with the fallback flag.
+        """
+        from hypergumbo_core.linkers.lua_ffi import link_lua_ffi
+
+        lua_file = tmp_path / "init.lua"
+        lua_file.write_text("-- no ffi.cdef in source\n")
+        lua_sym = _make_lua_symbol("init", path=str(lua_file))
+        unresolved = _make_unresolved_edge(lua_sym.id, "my_func")
+        c_func_a = _make_c_symbol(
+            "my_func", path="native_a.c", start_line=1, end_line=5,
+        )
+        c_func_b = _make_c_symbol(
+            "my_func", path="native_b.c", start_line=1, end_line=5,
+        )
+        result = link_lua_ffi(
+            repo_root=tmp_path,
+            lua_symbols=[lua_sym],
+            c_symbols=[c_func_a, c_func_b],
+            edges=[unresolved],
+        )
+        # Phase 2 emits one edge to the deterministic-by-id pick.
+        phase2 = [e for e in result.edges if e.src == lua_sym.id]
+        assert len(phase2) == 1
+        edge = phase2[0]
+        assert edge.dst in {c_func_a.id, c_func_b.id}
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+
     def test_multiple_c_matches_emit_fallback_edge(self, tmp_path: Path) -> None:
         from hypergumbo_core.linkers.lua_ffi import link_lua_ffi
 
