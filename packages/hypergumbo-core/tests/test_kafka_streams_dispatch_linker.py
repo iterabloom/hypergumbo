@@ -14,8 +14,11 @@ from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.linkers.kafka_streams_dispatch import (
     KAFKA_STREAMS_CALLBACKS,
     _build_class_method_index,
+    _build_in_tree_callback_name_collisions,
+    _callback_interface_matches,
     _callback_interfaces_on,
     _expected_method_names,
+    _is_fallback_match,
     _short_type_name,
     link_kafka_streams_dispatch,
 )
@@ -471,3 +474,227 @@ class TestTransitiveCallbackInterface:
         )
         result_edges = self._link([leaf, apply])
         assert apply.id in {e.dst for e in result_edges}
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: INV-zuhub disambiguation helpers
+# ---------------------------------------------------------------------------
+
+
+class TestCallbackInterfaceMatches:
+    def test_preserves_raw_entry(self) -> None:
+        sym = _class_sym("C", interfaces=["ValueMapper"])
+        assert _callback_interface_matches(sym) == [("ValueMapper", "ValueMapper")]
+
+    def test_preserves_fqn_raw_entry(self) -> None:
+        raw = "org.apache.kafka.streams.kstream.ValueMapper<K, V, VR>"
+        sym = _class_sym("C", interfaces=[raw])
+        assert _callback_interface_matches(sym) == [("ValueMapper", raw)]
+
+    def test_skips_non_dict_meta(self) -> None:
+        sym = Symbol(
+            id="java:p:1-2:C:class", name="C", kind="class", language="java",
+            path="p", span=Span(1, 2, 0, 0), meta=None,
+        )
+        assert _callback_interface_matches(sym) == []
+
+
+class TestBuildInTreeCallbackNameCollisions:
+    def test_in_tree_jvm_collision_recorded(self) -> None:
+        cls = _class_sym("Transformer", path="src/main/java/Transformer.java")
+        assert _build_in_tree_callback_name_collisions([cls]) == frozenset(
+            {"Transformer"},
+        )
+
+    def test_non_callback_name_ignored(self) -> None:
+        cls = _class_sym("UnrelatedName", path="src/main/java/Other.java")
+        assert _build_in_tree_callback_name_collisions([cls]) == frozenset()
+
+    def test_non_jvm_language_ignored(self) -> None:
+        cls = _class_sym(
+            "Transformer", path="src/lib.py", language="python",
+        )
+        assert _build_in_tree_callback_name_collisions([cls]) == frozenset()
+
+    def test_method_kind_ignored(self) -> None:
+        # methods don't introduce class-name collisions
+        meth = _method_sym("Foo.Transformer")
+        assert _build_in_tree_callback_name_collisions([meth]) == frozenset()
+
+    def test_struct_kind_counted(self) -> None:
+        # Scala case-class / object can come through as 'struct' kind in some analyzers
+        sym = _class_sym(
+            "Reducer", path="src/main/scala/Reducer.scala",
+            language="scala", kind="struct",
+        )
+        assert _build_in_tree_callback_name_collisions([sym]) == frozenset(
+            {"Reducer"},
+        )
+
+
+class TestIsFallbackMatch:
+    def test_fqn_raw_entry_never_fallback(self) -> None:
+        raw = "org.apache.kafka.streams.kstream.Transformer<K, V, V2>"
+        # Even with an in-tree collision, the FQN qualifier is unambiguous.
+        assert _is_fallback_match(
+            raw, "Transformer", frozenset({"Transformer"}),
+        ) is False
+
+    def test_unqualified_with_collision_is_fallback(self) -> None:
+        assert _is_fallback_match(
+            "Transformer", "Transformer", frozenset({"Transformer"}),
+        ) is True
+
+    def test_unqualified_without_collision_is_precision(self) -> None:
+        assert _is_fallback_match(
+            "Transformer", "Transformer", frozenset(),
+        ) is False
+
+
+# ---------------------------------------------------------------------------
+# INV-zuhub property tests: dispatches_to fallback discipline (WI-bojok)
+# ---------------------------------------------------------------------------
+
+
+class TestInvZuhubDispatchesToFallback:
+    """INV-zuhub item 1, dispatches_to family — kafka_streams_dispatch shape.
+
+    Three property tests mirroring the inheritance-linker shape from
+    PR #3545:
+
+    1. ``test_dispatches_to_prefers_fqn_over_in_tree_collision``: FQN-
+       qualified raw entries are precision matches even when the short
+       name has an in-tree collision.
+    2. ``test_dispatches_to_no_in_tree_collision_keeps_high_confidence``:
+       short-name matches with no in-tree collision are precision by
+       elimination.
+    3. ``test_dispatches_to_deterministic_fallback_when_ambiguous``:
+       unqualified short-name matches that collide with an in-tree JVM
+       type downgrade to ``confidence <= 0.5`` and
+       ``meta["disambiguation_fallback"] = True``.
+    """
+
+    def test_dispatches_to_prefers_fqn_over_in_tree_collision(self) -> None:
+        """Even with an in-tree class named ``Transformer``, an FQN-qualified
+        base resolves precisely to kafka's interface and keeps high confidence.
+        """
+        # In-tree ``Transformer`` class (oauthbearer-style collision).
+        in_tree = _class_sym(
+            "Transformer", path="src/main/java/com/example/oauth/Transformer.java",
+            span=(1, 100),
+        )
+        # User class declaring kafka's FQN base.
+        user_cls = _class_sym(
+            "UpperTransformer",
+            path="src/main/java/com/example/stream/UpperTransformer.java",
+            interfaces=["org.apache.kafka.streams.kstream.Transformer<K, V, V2>"],
+            span=(1, 50),
+        )
+        transform = _method_sym(
+            "UpperTransformer.transform",
+            path="src/main/java/com/example/stream/UpperTransformer.java",
+            span=(20, 25),
+        )
+        result = link_kafka_streams_dispatch(_ctx([in_tree, user_cls, transform]))
+        edges = [e for e in result.edges if e.dst == transform.id]
+        assert len(edges) == 1
+        edge = edges[0]
+        assert edge.confidence == 0.90
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+        assert (edge.meta or {}).get("framework_dispatch") == "kafka_streams"
+
+    def test_dispatches_to_no_in_tree_collision_keeps_high_confidence(self) -> None:
+        """Short-name match with no in-tree collision is precision by elimination."""
+        # No in-tree ``Transformer`` exists, so the unqualified declaration
+        # can only mean kafka's external interface.
+        user_cls = _class_sym(
+            "UpperTransformer",
+            path="src/main/java/com/example/stream/UpperTransformer.java",
+            interfaces=["Transformer<K, V, V2>"],
+            span=(1, 50),
+        )
+        transform = _method_sym(
+            "UpperTransformer.transform",
+            path="src/main/java/com/example/stream/UpperTransformer.java",
+            span=(20, 25),
+        )
+        result = link_kafka_streams_dispatch(_ctx([user_cls, transform]))
+        edges = [e for e in result.edges if e.dst == transform.id]
+        assert len(edges) == 1
+        edge = edges[0]
+        assert edge.confidence == 0.90
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+
+    def test_dispatches_to_deterministic_fallback_when_ambiguous(self) -> None:
+        """The named INV-zuhub violation (kafka Transformer<T> simple-name match):
+        an in-tree ``Transformer`` class collides with kafka's interface
+        short-name and the user class's base is unqualified. The dispatch
+        edge must carry ``confidence <= 0.5`` and
+        ``meta["disambiguation_fallback"] = True``.
+        """
+        # In-tree ``Transformer`` class — the oauthbearer-style collision
+        # from the INV-zuhub statement.
+        in_tree = _class_sym(
+            "Transformer", path="src/main/java/com/example/oauth/Transformer.java",
+            span=(1, 100),
+        )
+        # User class with an unqualified base of ``Transformer<T>`` — the
+        # static analysis cannot tell whether this means kafka's interface
+        # or the in-tree class.
+        user_cls = _class_sym(
+            "UpperTransformer",
+            path="src/main/java/com/example/stream/UpperTransformer.java",
+            interfaces=["Transformer<K, V, V2>"],
+            span=(1, 50),
+        )
+        transform = _method_sym(
+            "UpperTransformer.transform",
+            path="src/main/java/com/example/stream/UpperTransformer.java",
+            span=(20, 25),
+        )
+        init = _method_sym(
+            "UpperTransformer.init",
+            path="src/main/java/com/example/stream/UpperTransformer.java",
+            span=(15, 17),
+        )
+        result = link_kafka_streams_dispatch(_ctx([in_tree, user_cls, transform, init]))
+        relevant = [e for e in result.edges if e.src == user_cls.id]
+        # Every fallback edge carries the contract — both the lifecycle init
+        # and the transform method get the downgraded edge because the
+        # ambiguity is class-level (any interface match on the same class is
+        # fallback).
+        assert len(relevant) == 2
+        for edge in relevant:
+            assert edge.confidence <= 0.5
+            assert edge.meta is not None
+            assert edge.meta.get("disambiguation_fallback") is True
+            assert edge.meta.get("framework_dispatch") == "kafka_streams"
+
+    def test_qualified_partial_prefix_still_fallback(self) -> None:
+        """Partial qualification (``kstream.Transformer``) without the full
+        ``org.apache.kafka.`` prefix doesn't qualify for precision — it could
+        be a relative reference to an in-tree ``kstream`` subpackage.
+        """
+        in_tree = _class_sym(
+            "Transformer", path="src/main/java/com/example/oauth/Transformer.java",
+            span=(1, 100),
+        )
+        user_cls = _class_sym(
+            "UpperTransformer",
+            path="src/main/java/com/example/stream/UpperTransformer.java",
+            interfaces=["kstream.Transformer<K, V, V2>"],
+            span=(1, 50),
+        )
+        transform = _method_sym(
+            "UpperTransformer.transform",
+            path="src/main/java/com/example/stream/UpperTransformer.java",
+            span=(20, 25),
+        )
+        result = link_kafka_streams_dispatch(_ctx([in_tree, user_cls, transform]))
+        edges = [e for e in result.edges if e.src == user_cls.id]
+        assert len(edges) == 1
+        # The short-name resolution still applies (``Transformer`` is in the
+        # callback set) but the resolution is ambiguous against the in-tree
+        # class.
+        assert edges[0].confidence <= 0.5
+        assert (edges[0].meta or {}).get("disambiguation_fallback") is True

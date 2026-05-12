@@ -48,6 +48,24 @@ name is listed for that interface in :data:`KAFKA_STREAMS_CALLBACKS`
 receives a ``dispatches_to`` edge from ``C`` with confidence 0.90 and
 evidence ``kafka_streams_dispatch``.
 
+INV-zuhub disambiguation
+~~~~~~~~~~~~~~~~~~~~~~~~
+The short-name match against :data:`KAFKA_STREAMS_CALLBACKS` cannot
+distinguish kafka's external interface from an in-tree JVM class that
+happens to share the short name (e.g. a user-defined
+``Transformer<T>`` in oauthbearer code that has no relation to
+``org.apache.kafka.streams.kstream.Transformer``). Per INV-zuhub item 1,
+such ambiguous matches downgrade:
+
+- Raw entry FQN-prefixed with ``org.apache.kafka.*`` → precision match;
+  the in-tree collision (if any) is irrelevant. ``confidence=0.90``.
+- No in-tree JVM type shares the matched short name → precision match
+  by elimination. ``confidence=0.90``.
+- Unqualified raw entry whose short name collides with an in-tree JVM
+  class / interface / struct → simple-name fallback. ``confidence=0.5``
+  and ``meta["disambiguation_fallback"] = True`` so downstream
+  consumers can filter the fallback population.
+
 Multiple interfaces can resolve to overlapping method sets
 (``ValueTransformer``, ``Transformer``, and ``Processor`` all declare
 ``init`` and ``close``; ``Aggregator``, ``Reducer``, ``Initializer``,
@@ -90,6 +108,15 @@ if TYPE_CHECKING:
     from ..ir import Symbol
 
 PASS_ID = make_pass_id("kafka-streams-dispatch-linker")
+
+# Kafka FQN prefix used by every package under
+# ``org.apache.kafka.streams.{kstream,processor,scala}.*``. A raw entry that
+# starts with this prefix is unambiguously the external interface — never an
+# in-tree class — and qualifies for the precision branch even when the short
+# name has an in-tree collision. Anything shorter (bare or partially
+# qualified) is treated as the fallback branch under the INV-zuhub
+# disambiguation contract.
+_KAFKA_FQN_PREFIX = "org.apache.kafka."
 
 # Kafka Streams callback interface → framework-called method names.
 # Sources:
@@ -135,6 +162,39 @@ def _short_type_name(raw: str) -> str:
     return name
 
 
+def _callback_interface_matches(
+    sym: "Symbol",
+    symbol_by_id: dict[str, "Symbol"] | None = None,
+    inheritance_index: dict[str, list[str]] | None = None,
+) -> list[tuple[str, str]]:
+    """Return ``(short_interface_name, raw_entry)`` pairs the class declares.
+
+    Same shape as :func:`_callback_interfaces_on` but preserves the raw
+    base-class string the analyzer recorded, so the caller can apply the
+    INV-zuhub disambiguation rule (precise when the raw entry is
+    FQN-qualified with the kafka namespace; fallback when an unqualified
+    short name collides with an in-tree class).
+    """
+    if not isinstance(sym.meta, dict):
+        return []
+    if symbol_by_id is None:
+        symbol_by_id = {sym.id: sym}
+    if inheritance_index is None:
+        inheritance_index = {}
+    chain = collect_transitive_base_names(
+        sym, symbol_by_id, inheritance_index,
+        meta_keys=("base_classes", "interfaces"),
+    )
+    seen: set[str] = set()
+    found: list[tuple[str, str]] = []
+    for entry in chain:
+        short = _short_type_name(entry)
+        if short in KAFKA_STREAMS_CALLBACKS and short not in seen:
+            seen.add(short)
+            found.append((short, entry))
+    return found
+
+
 def _callback_interfaces_on(
     sym: "Symbol",
     symbol_by_id: dict[str, "Symbol"] | None = None,
@@ -154,25 +214,69 @@ def _callback_interfaces_on(
     ``symbol_by_id`` and ``inheritance_index`` are optional for
     backward compatibility — when omitted, only the class's own
     ``meta.base_classes`` and ``meta.interfaces`` are consulted.
+
+    This is a short-name-only projection of
+    :func:`_callback_interface_matches`; new callers that need the raw
+    entry (e.g. for disambiguation decisions) should call the underlying
+    helper directly.
     """
-    if not isinstance(sym.meta, dict):
-        return []
-    if symbol_by_id is None:
-        symbol_by_id = {sym.id: sym}
-    if inheritance_index is None:
-        inheritance_index = {}
-    chain = collect_transitive_base_names(
+    return [short for short, _raw in _callback_interface_matches(
         sym, symbol_by_id, inheritance_index,
-        meta_keys=("base_classes", "interfaces"),
-    )
-    seen: set[str] = set()
-    found: list[str] = []
-    for entry in chain:
-        short = _short_type_name(entry)
-        if short in KAFKA_STREAMS_CALLBACKS and short not in seen:
-            seen.add(short)
-            found.append(short)
-    return found
+    )]
+
+
+def _build_in_tree_callback_name_collisions(
+    symbols: list["Symbol"],
+) -> frozenset[str]:
+    """Return short names of in-tree JVM types that collide with kafka callback interfaces.
+
+    A class / interface / struct on the JVM (java / kotlin / scala) whose
+    short name matches a key in :data:`KAFKA_STREAMS_CALLBACKS` creates
+    a structural ambiguity: a class declaring an unqualified base of
+    ``Transformer`` could mean either the in-tree ``Transformer`` or
+    kafka's external one, and the static analysis cannot tell them
+    apart without import-context resolution (which this linker does
+    not have).
+
+    Per INV-zuhub, the dispatch edge in such cases must carry
+    ``confidence <= 0.5`` and ``meta["disambiguation_fallback"] = True``.
+    Edges whose declaring base was FQN-qualified with the kafka
+    namespace are unambiguously precision matches regardless of the
+    in-tree collision set.
+    """
+    collisions: set[str] = set()
+    for sym in symbols:
+        if sym.kind not in {"class", "interface", "struct"}:
+            continue
+        if sym.language not in {"java", "kotlin", "scala"}:
+            continue
+        if sym.name in KAFKA_STREAMS_CALLBACKS:
+            collisions.add(sym.name)
+    return frozenset(collisions)
+
+
+def _is_fallback_match(
+    raw_entry: str, short_name: str, in_tree_collisions: frozenset[str],
+) -> bool:
+    """Whether ``(raw_entry → short_name)`` is a simple-name fallback under INV-zuhub.
+
+    A match is precise (not fallback) when either:
+
+    - The raw entry is FQN-qualified with ``org.apache.kafka.*`` — the
+      external interface is named in full, so the in-tree collision
+      (if any) is irrelevant.
+    - There is no in-tree JVM type whose short name matches — the
+      unqualified ``Transformer`` cannot mean anything else, so the
+      external interface is the only candidate.
+
+    A match is fallback when an unqualified raw entry's short name
+    has an in-tree collision: kafka's ``Transformer`` and the in-tree
+    ``Transformer`` are both candidates and the static analysis cannot
+    disambiguate them.
+    """
+    if raw_entry.startswith(_KAFKA_FQN_PREFIX):
+        return False
+    return short_name in in_tree_collisions
 
 
 def _build_class_method_index(
@@ -227,6 +331,7 @@ def link_kafka_streams_dispatch(ctx: LinkerContext) -> LinkerResult:
     method_index = _build_class_method_index(ctx.symbols)
     inheritance_index = build_inheritance_index(ctx.edges)
     symbol_by_id = {sym.id: sym for sym in ctx.symbols}
+    in_tree_collisions = _build_in_tree_callback_name_collisions(ctx.symbols)
     existing_keys: set[tuple[str, str, str]] = {
         (e.src, e.dst, e.edge_type)
         for e in ctx.edges
@@ -239,9 +344,20 @@ def link_kafka_streams_dispatch(ctx: LinkerContext) -> LinkerResult:
             continue
         if sym.language not in {"java", "kotlin", "scala"}:
             continue
-        interfaces = _callback_interfaces_on(sym, symbol_by_id, inheritance_index)
-        if not interfaces:
+        interface_matches = _callback_interface_matches(
+            sym, symbol_by_id, inheritance_index,
+        )
+        if not interface_matches:
             continue
+        # Per INV-zuhub: when any matched interface short-name collides with
+        # an in-tree JVM type and the raw declaration was unqualified, the
+        # static resolution is a simple-name fallback and the resulting
+        # edges must downgrade.
+        is_fallback = any(
+            _is_fallback_match(raw, short, in_tree_collisions)
+            for short, raw in interface_matches
+        )
+        interfaces = [short for short, _raw in interface_matches]
         expected = _expected_method_names(interfaces)
         class_methods = method_index.get((sym.path or "", sym.name), [])
         for method in class_methods:
@@ -252,17 +368,24 @@ def link_kafka_streams_dispatch(ctx: LinkerContext) -> LinkerResult:
             if edge_key in existing_keys:
                 continue
             existing_keys.add(edge_key)
+            confidence = 0.5 if is_fallback else 0.90
+            edge_meta = (
+                {"framework_dispatch": "kafka_streams",
+                 "disambiguation_fallback": True}
+                if is_fallback
+                else {"framework_dispatch": "kafka_streams"}
+            )
             edges.append(
                 Edge.create(
                     src=sym.id,
                     dst=method.id,
                     edge_type="dispatches_to",
                     line=sym.span.start_line if sym.span else 0,
-                    confidence=0.90,
+                    confidence=confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
-                    meta={"framework_dispatch": "kafka_streams"},
+                    meta=edge_meta,
                 ),
             )
 
