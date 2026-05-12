@@ -4,7 +4,7 @@ from pathlib import Path
 
 from hypergumbo_core.ir import (
     VALID_ACCESS_MODES,
-    AnalysisRun, Edge, Span, Symbol, UsageContext, create_boundary_nodes,
+    AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext, create_boundary_nodes,
     is_external_boundary, validate_symbol_id_format,
 )
 from hypergumbo_lang_mainstream.py import analyze_python
@@ -1856,3 +1856,128 @@ def test_python_analyzer_emits_only_well_formed_ids_on_monorepo(
         f"packages/<pkg>/src/<mod>/ monorepo (WI-davan regression). First "
         f"few:\n  " + "\n  ".join(violations[:5])
     )
+
+
+# ---------------------------------------------------------------------------
+# WI-tihup: ExternalRef + Edge.dst_ref sibling-field tests (PR1 foundation)
+# ---------------------------------------------------------------------------
+
+
+def test_external_ref_constructs_and_is_frozen() -> None:
+    """ExternalRef holds (lang, module_path, name) and is hashable."""
+    a = ExternalRef(lang="python", module_path="urllib.request", name="urlopen")
+    b = ExternalRef(lang="python", module_path="urllib.request", name="urlopen")
+    c = ExternalRef(lang="python", module_path="urllib.request", name="Request")
+    assert a == b
+    assert a != c
+    # Hashable (frozen dataclass).
+    assert {a, b, c} == {a, c}
+
+
+def test_external_ref_to_dict_round_trip() -> None:
+    """to_dict / from_dict preserve all three fields."""
+    ref = ExternalRef(lang="rust", module_path="std::fs", name="read_to_string")
+    d = ref.to_dict()
+    assert d == {"lang": "rust", "module_path": "std::fs", "name": "read_to_string"}
+    assert ExternalRef.from_dict(d) == ref
+
+
+def test_edge_dst_ref_defaults_to_none() -> None:
+    """Edge.dst_ref defaults to None when not provided (~90% case)."""
+    e = Edge.create(src="s", dst="d", edge_type="calls", line=1)
+    assert e.dst_ref is None
+    # Serialized form omits the key when None (additive schema, back-compat).
+    assert "dst_ref" not in e.to_dict()
+
+
+def test_edge_dst_ref_serializes_when_present() -> None:
+    """Populated dst_ref serializes as nested dict."""
+    ref = ExternalRef(lang="python", module_path="urllib.request", name="urlopen")
+    e = Edge.create(src="s", dst="d", edge_type="calls", line=1, dst_ref=ref)
+    d = e.to_dict()
+    assert d["dst_ref"] == {
+        "lang": "python",
+        "module_path": "urllib.request",
+        "name": "urlopen",
+    }
+    # Round-trip via from_dict reconstructs the ExternalRef.
+    e2 = Edge.from_dict(d)
+    assert e2.dst_ref == ref
+
+
+def test_edge_from_dict_handles_missing_dst_ref_key() -> None:
+    """Pre-0.7.2 cached JSON without 'dst_ref' key deserializes with dst_ref=None.
+
+    The defensive ``d.get("dst_ref")`` keeps old behavior maps loadable
+    after the additive schema bump. This is the same backward-compat
+    pattern ADR-0028 used for ``is_resolved``.
+    """
+    legacy_dict = {
+        "id": "edge:sha256:abc",
+        "src": "s",
+        "dst": "d",
+        "type": "calls",
+        "line": 1,
+        "meta": {"evidence_type": "ast_call_direct"},
+        # Note: no 'dst_ref' key — represents a behavior map dumped before
+        # SCHEMA_VERSION 0.7.2.
+    }
+    e = Edge.from_dict(legacy_dict)
+    assert e.dst_ref is None
+
+
+def test_edge_from_dict_handles_null_dst_ref() -> None:
+    """Explicit dst_ref=None in JSON deserializes to dst_ref=None."""
+    d = {
+        "id": "edge:sha256:abc",
+        "src": "s", "dst": "d", "type": "calls", "line": 1,
+        "meta": {"evidence_type": "ast_call_direct"},
+        "dst_ref": None,
+    }
+    e = Edge.from_dict(d)
+    assert e.dst_ref is None
+
+
+def test_py_analyzer_populates_dst_ref_on_polyglot_imports(tmp_path: Path) -> None:
+    """PR1 reference adoption: Python emits ExternalRef on import + call edges.
+
+    The polyglot fixture's Python source exercises the 4 import shapes
+    WI-zigah Level 1 fixed; PR1 of WI-tihup requires each emitted
+    external-target edge to carry a structured ExternalRef alongside the
+    legacy dst string. This is the worked example for the 7 PR2
+    retrofits.
+
+    Uses the full pipeline (run_behavior_map) because call-edge emission
+    depends on global symbol context that the standalone ``analyze_python``
+    entry point doesn't synthesize from a single file.
+    """
+    import json
+
+    from hypergumbo_core.cli import run_behavior_map
+
+    src = (
+        "import urllib.request\n"
+        "from urllib.request import urlopen\n"
+        "\n"
+        "def f(url):\n"
+        "    urllib.request.urlopen(url)\n"
+        "    urlopen(url)\n"
+    )
+    (tmp_path / "poly.py").write_text(src)
+    out = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out, include_sketch_precomputed=False,
+    )
+    data = json.loads(out.read_text())
+    refs = [
+        (e["dst_ref"]["lang"], e["dst_ref"]["module_path"], e["dst_ref"]["name"])
+        for e in data["edges"]
+        if e.get("dst_ref") is not None
+    ]
+    # At least one external-target edge must carry a populated dst_ref
+    # pointing at urllib.request.urlopen — the canonical WI-zigah Case A.
+    assert (
+        "python",
+        "urllib.request",
+        "urlopen",
+    ) in refs, f"Expected an ExternalRef to urllib.request:urlopen, got {refs!r}"

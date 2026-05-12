@@ -91,7 +91,7 @@ from typing import TYPE_CHECKING, Iterator
 
 from hypergumbo_core.dataflow import annotate_dataflow_ast, get_dataflow_config
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     make_route_stable_id,
@@ -1895,11 +1895,19 @@ def _extract_import_edges(
                     symbol = _lookup_symbol_by_module(
                         global_symbols, resolved_module, alias.name, resolver=resolver
                     )
+                    dst_ref: ExternalRef | None
                     if symbol:
                         dst_id = symbol.id
+                        # Internal target — Symbol ID is the canonical id; no ExternalRef.
+                        dst_ref = None
                     else:
                         # External symbol - create a reference ID
                         dst_id = f"python:{resolved_module}:0-0:{alias.name}:symbol"
+                        dst_ref = ExternalRef(
+                            lang="python",
+                            module_path=resolved_module,
+                            name=alias.name,
+                        )
 
                     edges.append(Edge.create(
                         src=file_id,
@@ -1908,6 +1916,7 @@ def _extract_import_edges(
                         line=node.lineno,
                         evidence_type="ast_import",
                         confidence=0.95,
+                        dst_ref=dst_ref,
                     ))
 
         # Handle 'import X' and 'import X as Y' style imports
@@ -1922,6 +1931,11 @@ def _extract_import_edges(
                     line=node.lineno,
                     evidence_type="ast_import",
                     confidence=0.95,
+                    dst_ref=ExternalRef(
+                        lang="python",
+                        module_path=module_name,
+                        name=module_name,
+                    ),
                 ))
 
     return edges
@@ -3238,6 +3252,9 @@ def _process_call(
                     is_resolved=False,
                     confidence=0.50,  # Lower confidence for unresolved
                     meta={"call_construct": "method"},
+                    dst_ref=ExternalRef(
+                        lang="python", module_path=module_name, name=attr_name
+                    ),
                 ))
             # Case: imported_name.method() where imported_name not resolved
             elif receiver_name in imports:
@@ -3252,6 +3269,11 @@ def _process_call(
                     is_resolved=False,
                     confidence=0.50,
                     meta={"call_construct": "method"},
+                    dst_ref=ExternalRef(
+                        lang="python",
+                        module_path=module_name,
+                        name=f"{original_name}.{attr_name}",
+                    ),
                 ))
             # Case: local_var.method() where type cannot be inferred.
             # Emit unresolved edge using the attribute name so that IO
@@ -3292,6 +3314,9 @@ def _process_call(
                         evidence_type="ast_call_direct",
                         is_resolved=False,
                         confidence=0.50,
+                        dst_ref=ExternalRef(
+                            lang="python", module_path=submodule, name=callee
+                        ),
                     ))
         elif isinstance(func, ast.Name):
             # WI-zigah: bare call like `urlopen(x)` after
@@ -3311,6 +3336,9 @@ def _process_call(
                     evidence_type="ast_call_direct",
                     is_resolved=False,
                     confidence=0.50,
+                    dst_ref=ExternalRef(
+                        lang="python", module_path=module_name, name=original_name
+                    ),
                 ))
 
 

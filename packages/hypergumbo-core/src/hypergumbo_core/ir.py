@@ -360,6 +360,48 @@ def _compute_edge_key(src: str, dst: str, edge_type: str) -> str:
     return f"edgekey:sha256:{hashlib.sha256(data.encode()).hexdigest()[:16]}"
 
 
+@dataclass(frozen=True)
+class ExternalRef:
+    """Structured identity for an external-target edge endpoint (WI-tihup).
+
+    Replaces the per-analyzer string-formatted ``Edge.dst`` for edges that
+    point at symbols outside the analyzed repo (stdlib, dependencies,
+    unresolved externals). Each analyzer composes one of these directly
+    rather than building a colon-delimited identity string with its own
+    convention; consumers query the structured fields rather than parsing
+    the legacy string. The legacy ``Edge.dst`` string is still populated
+    alongside ``Edge.dst_ref`` for back-compat with the ~34 consumer
+    sites that haven't migrated.
+
+    Fields:
+        lang: Language identifier (``"python"``, ``"rust"``, ``"go"``, ...).
+        module_path: Canonical module path in the language's import
+            vocabulary (e.g. ``"urllib.request"``, ``"std::fs"``,
+            ``"node:fs/promises"``, ``"java.util.Collections"``). Use
+            the value that would appear in a clean ``from X import Y``
+            (or equivalent) statement — NOT the in-scope alias.
+        name: Canonical name of the imported symbol AT ITS DEFINITION
+            site (e.g. ``"urlopen"``, ``"read_to_string"``,
+            ``"singletonList"``). For aliased imports
+            (``from X import Y as Z`` or ``use ... as alias``), this is
+            ``Y``, not ``Z`` — the alias is a property of the call site,
+            not of the target.
+    """
+
+    lang: str
+    module_path: str
+    name: str
+
+    def to_dict(self) -> Dict[str, str]:
+        """Nested-dict form for JSON serialization."""
+        return {"lang": self.lang, "module_path": self.module_path, "name": self.name}
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, str]) -> "ExternalRef":
+        """Reconstruct from the nested-dict form."""
+        return cls(lang=d["lang"], module_path=d["module_path"], name=d["name"])
+
+
 @dataclass
 class Edge:
     """A relationship between two symbols (e.g., function calls).
@@ -379,6 +421,7 @@ class Edge:
         evidence_lang: Language for confidence scoring
         evidence_spans: Structured locations of evidence
         is_resolved: Whether the dst symbol was resolved at analysis time. Default True (the ~90% case); per ADR-0028, Cluster B `*_unresolved` evidence_type producers will set this to False during Phase 3 once their canonical-form fold target is decided.
+        dst_ref: Structured identity for the dst endpoint, populated when the dst points at an external symbol (stdlib / dependency / unresolved external). Per WI-tihup, this is the canonical source of truth — the legacy `dst` string is built from the same `ExternalRef` for back-compat and stays populated alongside. None for in-repo dsts whose `dst` is a real Symbol ID.
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
     """
@@ -397,6 +440,7 @@ class Edge:
     evidence_lang: Optional[str] = None
     evidence_spans: Optional[List[Dict[str, Any]]] = None
     is_resolved: bool = True
+    dst_ref: Optional[ExternalRef] = None
     quality: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
 
@@ -414,6 +458,7 @@ class Edge:
         evidence_lang: Optional[str] = None,
         evidence_spans: Optional[List[Dict[str, Any]]] = None,
         is_resolved: bool = True,
+        dst_ref: Optional[ExternalRef] = None,
         meta: Optional[Dict[str, Any]] = None,
         access_mode: Optional[str] = None,
         dest_access_mode: Optional[str] = None,
@@ -466,6 +511,7 @@ class Edge:
             evidence_lang=evidence_lang,
             evidence_spans=evidence_spans,
             is_resolved=is_resolved,
+            dst_ref=dst_ref,
             meta=meta,
         )
 
@@ -482,7 +528,7 @@ class Edge:
         if self.meta is not None:
             meta.update(self.meta)
 
-        return {
+        out: Dict[str, Any] = {
             "id": self.id,
             "edge_key": self.edge_key,
             "src": self.src,
@@ -497,11 +543,15 @@ class Edge:
             "quality": self.quality,
             "meta": meta,
         }
+        if self.dst_ref is not None:
+            out["dst_ref"] = self.dst_ref.to_dict()
+        return out
 
     @classmethod
     def from_dict(cls, d: dict) -> "Edge":
         """Reconstruct an Edge from its dict representation (e.g., from cached results)."""
         meta = d.get("meta", {})
+        dst_ref_raw = d.get("dst_ref")
         return cls(
             id=d.get("id", ""),
             src=d.get("src", ""),
@@ -517,6 +567,7 @@ class Edge:
             evidence_lang=meta.get("evidence_lang"),
             evidence_spans=meta.get("evidence_spans"),
             is_resolved=d.get("is_resolved", True),
+            dst_ref=ExternalRef.from_dict(dst_ref_raw) if dst_ref_raw else None,
             quality=d.get("quality"),
             meta=meta,
         )

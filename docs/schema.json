@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.7.1"
+      "const": "0.7.2"
     },
     "confidence_model": {
       "type": "string",
@@ -726,6 +726,35 @@
           "type": "boolean",
           "default": true,
           "description": "Whether the dst symbol was resolved at analysis time. Per ADR-0028, this sibling field captures what the Cluster B `*_unresolved` evidence_type values previously smuggled into the inference label. Default True (the ~90% case); Phase 3 producers explicitly set False for the Cluster B fold targets."
+        },
+        "dst_ref": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "lang": {
+                  "type": "string"
+                },
+                "module_path": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "lang",
+                "module_path",
+                "name"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Structured identity for the dst endpoint when it points at an external symbol (stdlib, dependency, unresolved external). Per WI-tihup, this is the canonical source of truth for external-target identity \u2014 the legacy `dst` string field is built from the same ExternalRef and stays populated alongside for back-compat with consumers that haven't migrated. None when dst points at an in-repo Symbol (whose `dst` field is a real Symbol ID)."
         },
         "quality": {
           "oneOf": [
