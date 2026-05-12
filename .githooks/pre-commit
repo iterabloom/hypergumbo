@@ -348,6 +348,30 @@ else
     echo -e "${YELLOW}skipped (no packages/*.py staged)${NC}"
 fi
 
+# Fallback-coherence (L4 / INV-zuhub) — gates the intra-call kwarg
+# coherence between confidence and meta['disambiguation_fallback'] at
+# Edge.create call sites under packages/.../linkers/. Catches the "set
+# the flag but forgot to lower confidence" failure mode that the L1
+# (axis-drift) and L3 (producer-axis) linters don't see. Companion to
+# the property test in
+# packages/hypergumbo-core/tests/test_fallback_coherence.py.
+echo -n "  Fallback coherence (L4 / INV-zuhub)... "
+if git diff --cached --name-only | grep -qE "^packages/hypergumbo-core/src/hypergumbo_core/linkers/.*\.py$"; then
+    L4_LOG="/tmp/.fallback-coherence.$$"
+    if scripts/check-fallback-coherence > "$L4_LOG" 2>&1; then
+        echo -e "${GREEN}✓${NC}"
+        rm -f "$L4_LOG"
+    else
+        echo -e "${RED}✗${NC}"
+        echo ""
+        cat "$L4_LOG"
+        rm -f "$L4_LOG"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}skipped (no linker .py staged)${NC}"
+fi
+
 # Audit-findings format check — fires when docs/audits/*.md OR the
 # canonical registry OR producer source files change. Validates that
 # every audit-findings doc parses cleanly and every verdict row's
