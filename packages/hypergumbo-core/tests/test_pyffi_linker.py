@@ -1357,3 +1357,165 @@ class TestPyO3CrateNameAnnotation:
         assert len(result.edges) >= 1
         ffi_edge = next(e for e in result.edges if e.edge_type == "calls")
         assert "process" in ffi_edge.dst
+
+
+class TestInvZuhubPyFFIFallback:
+    """INV-zuhub item 1, calls family — PyFFI cross-file collisions.
+
+    Two distinct lookups, both subject to short-name collisions:
+
+    1. ``c_lookup`` (ctypes / cffi): keyed by bare C function name. Two C
+       files defining the same function (per-file static helpers, or
+       duplicate forward-declared shims) collide.
+    2. ``pyo3_lookup`` (Rust PyO3): each symbol is indexed under three
+       keys (full, short, py-style). Two PyO3 functions in different
+       impl blocks sharing a short name collide on the short key; a
+       bare-function symbol where ``full_name == short_name`` must
+       de-duplicate so it appears once per key (not twice).
+
+    All collision cases pick the deterministic-by-id candidate and emit
+    ``confidence <= 0.5`` + ``meta["disambiguation_fallback"] = True``.
+    """
+
+    def test_single_c_match_keeps_high_confidence(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.pyffi import link_pyffi
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text(
+            "import ctypes\n"
+            "lib = ctypes.CDLL('./libmath.so')\n"
+            "lib.compute(1)\n"
+        )
+        py_func = _make_python_symbol(
+            "app", kind="module", path=str(py_file), start_line=1, end_line=3
+        )
+        c_func = _make_c_symbol("compute", path="math.c")
+
+        result = link_pyffi(tmp_path, [py_func], [c_func], [], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.confidence == 0.85
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+
+    def test_multi_c_collision_emits_fallback(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.pyffi import link_pyffi
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text(
+            "import ctypes\n"
+            "lib = ctypes.CDLL('./libmath.so')\n"
+            "lib.compute(1)\n"
+        )
+        py_func = _make_python_symbol(
+            "app", kind="module", path=str(py_file), start_line=1, end_line=3
+        )
+        # Two distinct C symbols sharing the bare name.
+        c_func_a = _make_c_symbol(
+            "compute", path="math_a.c", start_line=1, end_line=5
+        )
+        c_func_b = _make_c_symbol(
+            "compute", path="math_b.c", start_line=1, end_line=5
+        )
+
+        result = link_pyffi(tmp_path, [py_func], [c_func_a, c_func_b], [], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst in {c_func_a.id, c_func_b.id}
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+        assert edge.meta.get("bridge_kind") == "ffi"
+
+    def test_single_pyo3_match_keeps_high_confidence(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.pyffi import link_pyffi
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text(
+            "from mymod import encode\n"
+            "result = encode('x')\n"
+        )
+        py_func = _make_python_symbol(
+            "app", kind="module", path=str(py_file), start_line=1, end_line=2
+        )
+        # Bare-function PyO3: full_name == short_name. The de-dup
+        # logic in _find_pyo3_symbols must keep this at len == 1 per key.
+        rust_func = _make_rust_symbol(
+            "encode",
+            path="src/lib.rs",
+            annotations=[{"name": "pyfunction", "args": [], "kwargs": {}}],
+        )
+        call_edge = Edge.create(
+            src=py_func.id,
+            dst=f"python:{py_file}:0-0:encode:unresolved",
+            edge_type="calls",
+            line=2,
+            evidence_type="function_call",
+            confidence=0.50,
+            origin="python-v1",
+        )
+
+        result = link_pyffi(tmp_path, [py_func], [], [rust_func], [call_edge])
+
+        ffi_edges = [e for e in result.edges if e.dst == rust_func.id]
+        assert len(ffi_edges) == 1
+        edge = ffi_edges[0]
+        assert edge.confidence == 0.85
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+
+    def test_multi_pyo3_short_name_collision_emits_fallback(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_core.linkers.pyffi import link_pyffi
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text(
+            "from mymod import encode\n"
+            "result = encode('x')\n"
+        )
+        py_func = _make_python_symbol(
+            "app", kind="module", path=str(py_file), start_line=1, end_line=2
+        )
+        # Two PyO3-annotated Rust functions sharing the short name 'encode'
+        # across impl blocks. Their full names ``PyTokenizer::encode`` and
+        # ``PyParser::encode`` differ, but the Python side calls by the
+        # short name, so the lookup collides.
+        rust_a = _make_rust_symbol(
+            "PyTokenizer::encode",
+            path="src/tokenizer.rs",
+            start_line=1,
+            end_line=5,
+            annotations=[{"name": "pymethods", "args": [], "kwargs": {}}],
+        )
+        rust_b = _make_rust_symbol(
+            "PyParser::encode",
+            path="src/parser.rs",
+            start_line=1,
+            end_line=5,
+            annotations=[{"name": "pymethods", "args": [], "kwargs": {}}],
+        )
+        call_edge = Edge.create(
+            src=py_func.id,
+            dst=f"python:{py_file}:0-0:encode:unresolved",
+            edge_type="calls",
+            line=2,
+            evidence_type="function_call",
+            confidence=0.50,
+            origin="python-v1",
+        )
+
+        result = link_pyffi(tmp_path, [py_func], [], [rust_a, rust_b], [call_edge])
+
+        # Only one ffi_bridge edge should be emitted (dedup by call_name).
+        ffi_edges = [
+            e for e in result.edges
+            if (e.meta or {}).get("framework_dispatch") == "pyo3_bridge"
+        ]
+        assert len(ffi_edges) == 1
+        edge = ffi_edges[0]
+        assert edge.dst in {rust_a.id, rust_b.id}
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+        assert edge.meta.get("bridge_kind") == "ffi"

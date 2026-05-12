@@ -888,3 +888,102 @@ class TestJniLinkerEdgeCases:
 
         count = _count_c_cpp_jni_functions(ctx)
         assert count == 1
+
+
+class TestInvZuhubJniFallback:
+    """INV-zuhub item 1, calls family — JNI cross-package short-name collision.
+
+    The JNI lookup keys each native symbol under both its short form
+    (``ClassName.method``) and its fully-qualified form
+    (``package.ClassName.method``). When the Java analyzer emits a method
+    by short name only, and two native files implement matching JNI
+    functions in different packages (e.g. ``Java_pkg1_MyClass_processData``
+    and ``Java_pkg2_MyClass_processData``), the short-form lookup
+    collides — the deterministic-by-id candidate is picked and the edge
+    downgrades to ``confidence <= 0.5`` with the disambiguation_fallback
+    flag.
+    """
+
+    def _make_java_method(self, name: str) -> Symbol:
+        run = AnalysisRun.create(pass_id="test", version="test")
+        return Symbol(
+            id=f"java:Test.java:1-10:{name}:method",
+            name=name,
+            kind="method",
+            language="java",
+            path="Test.java",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="java-v1",
+            origin_run_id=run.execution_id,
+            modifiers=["native"],
+        )
+
+    def _make_jni_c(self, name: str, path: str) -> Symbol:
+        run = AnalysisRun.create(pass_id="test", version="test")
+        return Symbol(
+            id=f"c:{path}:1-10:{name}:function",
+            name=name,
+            kind="function",
+            language="c",
+            path=path,
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="c-v1",
+            origin_run_id=run.execution_id,
+        )
+
+    def test_single_native_match_keeps_high_confidence(self) -> None:
+        from hypergumbo_core.linkers.jni import link_jni
+
+        java_method = self._make_java_method("MyClass.processData")
+        c_func = self._make_jni_c("Java_pkg1_MyClass_processData", "pkg1/native.c")
+
+        result = link_jni([java_method], [c_func])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.confidence == 0.95
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+        assert (edge.meta or {}).get("bridge_kind") == "native"
+
+    def test_multi_package_short_name_collision_emits_fallback(self) -> None:
+        from hypergumbo_core.linkers.jni import link_jni
+
+        # Java side has only the short form; two native files supply
+        # matching JNI functions in different packages.
+        java_method = self._make_java_method("MyClass.processData")
+        c_func_a = self._make_jni_c(
+            "Java_pkg1_MyClass_processData", "pkg1/native_a.c",
+        )
+        c_func_b = self._make_jni_c(
+            "Java_pkg2_MyClass_processData", "pkg2/native_b.c",
+        )
+
+        result = link_jni([java_method], [c_func_a, c_func_b])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst in {c_func_a.id, c_func_b.id}
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+        assert edge.meta.get("bridge_kind") == "native"
+
+    def test_fq_form_resolves_to_precision_despite_short_collision(self) -> None:
+        """When the Java analyzer emits the FQ form, lookup is unambiguous."""
+        from hypergumbo_core.linkers.jni import link_jni
+
+        java_method = self._make_java_method("pkg1.MyClass.processData")
+        c_func_a = self._make_jni_c(
+            "Java_pkg1_MyClass_processData", "pkg1/native_a.c",
+        )
+        c_func_b = self._make_jni_c(
+            "Java_pkg2_MyClass_processData", "pkg2/native_b.c",
+        )
+
+        result = link_jni([java_method], [c_func_a, c_func_b])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst == c_func_a.id
+        assert edge.confidence == 0.95
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True

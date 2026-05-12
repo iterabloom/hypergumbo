@@ -178,15 +178,29 @@ def _scan_python_file_for_ffi_calls(
     return results
 
 
-def _find_pyo3_symbols(rust_symbols: list[Symbol]) -> dict[str, Symbol]:
+def _find_pyo3_symbols(rust_symbols: list[Symbol]) -> dict[str, list[Symbol]]:
     """Find Rust symbols annotated with PyO3 attributes (#[pyfunction], #[pymethods]).
 
     The Rust analyzer stores attributes in meta["annotations"] as a list of dicts
     with "name", "args", "kwargs" keys (matching tree-sitter extraction format).
 
-    Returns a dict mapping function name (last component) to Symbol.
+    Returns a multi-value dict mapping function name (last component, full name,
+    or python-style name) to all matching Symbols. Each Symbol is indexed under
+    up to three keys (full, short, py_style); de-duplication per key handles
+    bare-function symbols where ``full_name == short_name`` so they appear at
+    most once per key. Cross-symbol collisions on the short key (two PyO3
+    functions named ``encode`` in different impl blocks) surface as
+    ``len > 1`` so INV-zuhub fallback annotation can downgrade the edge.
     """
-    pyo3_lookup: dict[str, Symbol] = {}
+    pyo3_lookup: dict[str, list[Symbol]] = {}
+    seen_per_key: dict[str, set[str]] = {}
+
+    def _add(key: str, sym: Symbol) -> None:
+        seen = seen_per_key.setdefault(key, set())
+        if sym.id in seen:
+            return
+        seen.add(sym.id)
+        pyo3_lookup.setdefault(key, []).append(sym)
 
     for sym in rust_symbols:
         if sym.kind not in ("function", "method"):
@@ -211,8 +225,8 @@ def _find_pyo3_symbols(rust_symbols: list[Symbol]) -> dict[str, Symbol]:
                 short_name = full_name.rsplit(".", 1)[-1]
             else:
                 short_name = full_name
-            pyo3_lookup[full_name] = sym
-            pyo3_lookup[short_name] = sym
+            _add(full_name, sym)
+            _add(short_name, sym)
             # Python-style: strip Py prefix from class, use .method
             # PyTokenizer::encode → Tokenizer.encode
             if "::" in full_name:
@@ -221,7 +235,7 @@ def _find_pyo3_symbols(rust_symbols: list[Symbol]) -> dict[str, Symbol]:
                 if cls.startswith("Py"):
                     cls = cls[2:]
                 py_style = f"{cls}.{parts[-1]}" if len(parts) > 1 else cls
-                pyo3_lookup[py_style] = sym
+                _add(py_style, sym)
 
     return pyo3_lookup
 
@@ -251,11 +265,14 @@ def link_pyffi(
     result_edges: list[Edge] = []
     seen_edges: set[tuple[str, str]] = set()  # (src_path, func_name) dedup
 
-    # Build lookup for C/C++ functions by name
-    c_lookup: dict[str, Symbol] = {}
+    # Build multi-value lookup for C/C++ functions by name.
+    # Multi-value indexing surfaces cross-file collisions (per-file static
+    # helpers, duplicate forward decls) so INV-zuhub fallback annotation
+    # can downgrade ambiguous ctypes/cffi resolutions.
+    c_lookup: dict[str, list[Symbol]] = {}
     for sym in c_symbols:
         if sym.kind == "function":
-            c_lookup[sym.name] = sym
+            c_lookup.setdefault(sym.name, []).append(sym)
 
     # --- Phase 1: Scan Python files for ctypes/cffi calls ---
     python_files: set[str] = set()
@@ -308,25 +325,35 @@ def link_pyffi(
             seen_edges.add(dedup_key)
 
             if is_stdlib and func_name in c_lookup:
-                # Stdlib loader but function exists repo-locally — prefer resolved
-                dst = c_lookup[func_name].id
+                # Stdlib loader but function exists repo-locally — prefer resolved.
+                # INV-zuhub: when multiple in-tree C/C++ symbols share the name,
+                # pick deterministic-by-id and downgrade to ``confidence <= 0.5``.
+                c_candidates = c_lookup[func_name]
+                is_fallback = len(c_candidates) > 1
+                c_sym = (
+                    c_candidates[0] if len(c_candidates) == 1
+                    else min(c_candidates, key=lambda s: s.id)
+                )
                 # Remap evidence_type to non-stdlib variant for resolved edges
                 resolved_evidence = (
                     "ctypes_call" if evidence_type == "ctypes_stdlib_call"
                     else "cffi_call"
                 )
+                edge_meta: dict[str, object] = {"bridge_kind": "ffi"}
+                if is_fallback:
+                    edge_meta["disambiguation_fallback"] = True
                 result_edges.append(Edge.create(
                     src=src_sym.id,
-                    dst=dst,
+                    dst=c_sym.id,
                     edge_type="calls",
                     line=line_num,
-                    confidence=0.85,
+                    confidence=0.5 if is_fallback else 0.85,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type=resolved_evidence,
                     access_mode="write",
                     dest_access_mode="read",
-                    meta={"bridge_kind": "ffi"},
+                    meta=edge_meta,
                 ))
             elif is_stdlib:
                 # Stdlib call with no repo-local match — emit unresolved edge
@@ -345,20 +372,29 @@ def link_pyffi(
                     meta={"bridge_kind": "ffi"},
                 ))
             else:
-                # Non-stdlib call with repo-local C symbol
-                c_sym = c_lookup[func_name]
+                # Non-stdlib call with repo-local C symbol. INV-zuhub: multi-value
+                # candidate pool downgrades to fallback on collision.
+                c_candidates = c_lookup[func_name]
+                is_fallback = len(c_candidates) > 1
+                c_sym = (
+                    c_candidates[0] if len(c_candidates) == 1
+                    else min(c_candidates, key=lambda s: s.id)
+                )
+                edge_meta = {"bridge_kind": "ffi"}
+                if is_fallback:
+                    edge_meta["disambiguation_fallback"] = True
                 result_edges.append(Edge.create(
                     src=src_sym.id,
                     dst=c_sym.id,
                     edge_type="calls",
                     line=line_num,
-                    confidence=0.85,
+                    confidence=0.5 if is_fallback else 0.85,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type=evidence_type,
                     access_mode="write",
                     dest_access_mode="read",
-                    meta={"bridge_kind": "ffi"},
+                    meta=edge_meta,
                 ))
 
     # --- Phase 2: Match PyO3 Rust symbols to Python unresolved calls ---
@@ -378,8 +414,8 @@ def link_pyffi(
             # Check both the full name and the short name
             short_name = call_name.split(".")[-1] if "." in call_name else call_name
 
-            rust_sym = pyo3_lookup.get(call_name) or pyo3_lookup.get(short_name)
-            if rust_sym is None:
+            candidates = pyo3_lookup.get(call_name) or pyo3_lookup.get(short_name)
+            if not candidates:
                 continue
 
             dedup_key = (edge.src, call_name)
@@ -387,18 +423,32 @@ def link_pyffi(
                 continue
             seen_edges.add(dedup_key)
 
+            # INV-zuhub: multi-value PyO3 lookup collisions (two #[pyfunction]
+            # exports sharing a short name in different impl blocks / crates)
+            # pick deterministic-by-id and downgrade.
+            is_fallback = len(candidates) > 1
+            rust_sym = (
+                candidates[0] if len(candidates) == 1
+                else min(candidates, key=lambda s: s.id)
+            )
+            pyo3_meta: dict[str, object] = {
+                "bridge_kind": "ffi",
+                "framework_dispatch": "pyo3_bridge",
+            }
+            if is_fallback:
+                pyo3_meta["disambiguation_fallback"] = True
             result_edges.append(Edge.create(
                 src=edge.src,
                 dst=rust_sym.id,
                 edge_type="calls",
                 line=edge.line,
-                confidence=0.85,
+                confidence=0.5 if is_fallback else 0.85,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 access_mode="write",
                 dest_access_mode="read",
-                meta={"bridge_kind": "ffi", "framework_dispatch": "pyo3_bridge"},
+                meta=pyo3_meta,
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

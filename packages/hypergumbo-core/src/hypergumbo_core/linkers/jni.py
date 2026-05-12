@@ -179,17 +179,23 @@ def parse_jni_function_name(name: str) -> Optional[dict[str, str]]:
     }
 
 
-def _build_jni_lookup(native_symbols: list[Symbol]) -> dict[str, Symbol]:
-    """Build a lookup table from JNI-style names to C/C++ symbols.
+def _build_jni_lookup(native_symbols: list[Symbol]) -> dict[str, list[Symbol]]:
+    """Build a multi-value lookup table from JNI-style names to C/C++ symbols.
 
-    Maps Java method names to their C/C++/Rust implementations. Creates entries
-    for both fully qualified names (com.example.MyClass.method) and short names
-    (MyClass.method) to support matching regardless of whether the Java analyzer
-    includes package information.
+    Maps Java method names to all matching C/C++/Rust implementations. Each
+    native symbol is indexed under both the short form (``MyClass.method``)
+    and the fully-qualified form (``com.example.MyClass.method``) when the
+    package is present, so a Java-side lookup that emits either form can
+    resolve.
+
+    Multi-value indexing surfaces cross-package short-name collisions
+    (e.g. ``Java_pkg1_MyClass_method`` and ``Java_pkg2_MyClass_method``
+    both share the short key ``MyClass.method``) so INV-zuhub fallback
+    annotation can downgrade the resulting native_bridge edges.
 
     JNI implementations can be in .c, .cpp, or .rs files.
     """
-    lookup: dict[str, Symbol] = {}
+    lookup: dict[str, list[Symbol]] = {}
 
     for sym in native_symbols:
         if sym.language not in _JNI_IMPL_LANGUAGES or sym.kind != "function":
@@ -201,12 +207,12 @@ def _build_jni_lookup(native_symbols: list[Symbol]) -> dict[str, Symbol]:
 
         # Build the short name (ClassName.method)
         short_name = f"{parsed['class']}.{parsed['method']}"
-        lookup[short_name] = sym
+        lookup.setdefault(short_name, []).append(sym)
 
         # Also add fully qualified name if package is present
         if parsed["package"]:
             fq_name = f"{parsed['package']}.{parsed['class']}.{parsed['method']}"
-            lookup[fq_name] = sym
+            lookup.setdefault(fq_name, []).append(sym)
 
     return lookup
 
@@ -243,26 +249,43 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
         if not (is_native_via_modifiers or is_native_via_meta):
             continue
 
-        # Look up the corresponding C/C++/Rust function
-        # sym.name is like "MyClass.processData" or "com.example.MyClass.processData"
-        if sym.name in jni_lookup:
-            native_sym = jni_lookup[sym.name]
-            # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
-            # + meta['bridge_kind']='native'.
-            edge = Edge.create(
-                src=sym.id,
-                dst=native_sym.id,
-                edge_type="calls",
-                line=sym.span.start_line if sym.span else 0,
-                confidence=0.95,
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-                evidence_type="naming_convention",
-                access_mode="write",
-                dest_access_mode="read",
-                meta={"bridge_kind": "native", "detection_pattern": "jni_naming_convention"},
-            )
-            edges.append(edge)
+        # Look up the corresponding C/C++/Rust function.
+        # sym.name is like "MyClass.processData" or "com.example.MyClass.processData".
+        # When the Java side emits the short form and multiple native files
+        # define matching JNI functions across packages, pick the
+        # deterministic-by-id candidate and downgrade the edge to
+        # ``confidence <= 0.5`` with the disambiguation_fallback flag.
+        candidates = jni_lookup.get(sym.name)
+        if not candidates:
+            continue
+        is_fallback = len(candidates) > 1
+        native_sym = (
+            candidates[0] if len(candidates) == 1
+            else min(candidates, key=lambda s: s.id)
+        )
+        confidence = 0.5 if is_fallback else 0.95
+        edge_meta: dict[str, object] = {
+            "bridge_kind": "native",
+            "detection_pattern": "jni_naming_convention",
+        }
+        if is_fallback:
+            edge_meta["disambiguation_fallback"] = True
+        # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
+        # + meta['bridge_kind']='native'.
+        edge = Edge.create(
+            src=sym.id,
+            dst=native_sym.id,
+            edge_type="calls",
+            line=sym.span.start_line if sym.span else 0,
+            confidence=confidence,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type="naming_convention",
+            access_mode="write",
+            dest_access_mode="read",
+            meta=edge_meta,
+        )
+        edges.append(edge)
 
     run.duration_ms = int((time.time() - start_time) * 1000)
 
