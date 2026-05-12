@@ -2,14 +2,21 @@
 # ADR-0023: Edge Type Names the Relationship, Not the Endpoints
 
 Date: 2026-04-29
-Status: Accepted (§6 migration in progress)
+Status: Accepted (§6 framework complete; 25 endpoint_shape values pending per-pattern micro-phase fold)
 
 > The decision is in force as of the canonical-registry landing
 > (commit `3b60ba3dd` — `EDGE_TYPES` is the source of truth) and the
 > drift-linter landing (commit `f722374da` — `scripts/check-edge-type-drift`
-> blocks new violations in pre-commit). Phase 1 of §6 is complete.
-> Phases 2-4 are tracked as `WI-sahab-fatoz`, `WI-mokam-jalig`, and
-> `WI-vomoj-suhaz` and proceed independently of this status flip.
+> blocks new violations in pre-commit). Phases 1–3 are complete and
+> Phase 4b has shipped the dst-kind, bridge, IPC, publish/dispatch,
+> and protocol-call family closures (WI-vomoj-suhaz at 0.4.0; protocol
+> family via WI-vumum-juvil). 25 endpoint_shape registry entries
+> remain — the long-tail individual values (`abi_call`, `extends_template`,
+> `notifies_resource`, …) — on a per-pattern micro-phase schedule;
+> each subset ships its own Phase 3 / 4b cycle with bakeoff validation.
+> Strict-mode pre-commit drift linter is on (WI-mumok). The companion
+> ADR-0027 (Symbol.kind) and ADR-0028 (Edge.evidence_type) endpoint_shape
+> registries are fully closed.
 
 ## Context
 

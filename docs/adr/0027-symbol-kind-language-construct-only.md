@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0027: Symbol.kind Names the Source-Language Syntactic Construct
 
-- Status: Accepted (Phase 1 landed in PR #ADR-0027-phase-1)
+- Status: Accepted (Phases 1–4 complete through `SCHEMA_VERSION` 0.6.0; endpoint_shape closure shipped per Wave 8 — all 71 endpoint_shape values removed from `SYMBOL_KINDS` per audit-findings 0005/0006/0007/0009/0010/0011/0013)
 - Date: 2026-05-02
 - Supersedes: —
 - Superseded by: —

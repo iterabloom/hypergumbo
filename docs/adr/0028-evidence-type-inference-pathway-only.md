@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0028: Edge.evidence_type Names the Inference Pathway
 
-- Status: Accepted (Phase 1 landed at `SCHEMA_VERSION` 0.4.2)
+- Status: Accepted (Phases 1–4 complete through `SCHEMA_VERSION` 0.7.0; endpoint_shape closure shipped per Wave 8 — all 111 endpoint_shape values removed from `EVIDENCE_TYPES` per audit-findings 0008/0012/0014, including the `Edge.is_resolved: bool` sibling field at `ir.py:399`)
 - Date: 2026-05-02
 - Supersedes: —
 - Superseded by: —
