@@ -1,0 +1,21 @@
+- op: create  # 7e41
+  at: '2026-05-12T20:54:42Z'  # 7e41
+  by: agent  # 7e41
+  actor: jgstern_agent  # 7e41
+  clock: 1  # 7e41
+  nonce: '7e41'  # 7e41
+  data:  # 7e41
+    kind: work_item  # 7e41
+    title: "WI-mafik Level 1b — Go: dot imports emit no calls edge for bare-name uses"  # 7e41
+    status: todo_soft  # 7e41
+    priority: 4  # 7e41
+    parent: WI-mafik-pokud-monom-munuf-gaduv-domos-tuhal-julif  # 7e41
+    tags:  # 7e41
+    - analysis_quality  # 7e41
+    - go  # 7e41
+    isbefore: []  # 7e41
+    duplicate_of: []  # 7e41
+    not_duplicate_of: []  # 7e41
+    pr_ref:  # 7e41
+    description: "WI-mafik Level 1b child. Go dot imports (`import . \"strings\"`) emit no calls edge when the dot-imported symbol is used bare (`Contains(...)`). Repro in packages/hypergumbo-lang-mainstream/tests/test_polyglot_call_site_coverage.py::test_polyglot_call_site_coverage[go]. Expected: a calls edge whose dst contains `strings` + `Contains`. Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go.py — dot-import bookkeeping plus call-site name resolution against the dot-imported package's exports. Acceptance: remove xfail_reason for go in the polyglot fixture without other test changes."  # 7e41
+    fields: {}  # 7e41

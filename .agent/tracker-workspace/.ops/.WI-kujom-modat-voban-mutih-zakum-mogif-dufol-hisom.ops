@@ -1,0 +1,21 @@
+- op: create  # bb85
+  at: '2026-05-12T20:54:33Z'  # bb85
+  by: agent  # bb85
+  actor: jgstern_agent  # bb85
+  clock: 1  # bb85
+  nonce: bb85  # bb85
+  data:  # bb85
+    kind: work_item  # bb85
+    title: "WI-mafik Level 1b — JS/TS: aliased named imports preserve alias at call site"  # bb85
+    status: todo_soft  # bb85
+    priority: 4  # bb85
+    parent: WI-mafik-pokud-monom-munuf-gaduv-domos-tuhal-julif  # bb85
+    tags:  # bb85
+    - analysis_quality  # bb85
+    - js_ts  # bb85
+    isbefore: []  # bb85
+    duplicate_of: []  # bb85
+    not_duplicate_of: []  # bb85
+    pr_ref:  # bb85
+    description: "WI-mafik Level 1b child. Aliased named imports in js_ts.py emit calls edges whose callable is the alias, not the underlying name. Repro: `import { writeFile as wf } from \"node:fs/promises\"` + `wf(p, content)` emits dst `typescript:fs/promises:0-0:wf:unresolved`. Expected: dst contains `writeFile`. Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py — import-alias resolution at the call-site lookup. Acceptance: remove the xfail_reason for js_ts in packages/hypergumbo-lang-mainstream/tests/test_polyglot_call_site_coverage.py without other test changes."  # bb85
+    fields: {}  # bb85

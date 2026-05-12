@@ -25,3 +25,11 @@
   clock: 2  # f131
   nonce: f131  # f131
   message: "Per ADR-0028 (fully landed, Edge.is_resolved at ir.py:399): the polyglot-fixture audit's pass criterion per call site is edge.is_resolved == True with an evidence_type drawn from evidence_types_on_axis(AXIS_INFERENCE_PATHWAY) — NOT membership in a hardcoded *_resolved evidence-type set. The endpoint_shape section of EVIDENCE_TYPES is empty after Phase 4b closure (audit-findings 0008/0012/0014). This unblocks the audit: the property test shape is now stable and language-agnostic, so the audit fixture (WI-pisab-furis Level 2) can land without further axis-vocabulary work."  # f131
+- op: update  # 79e2
+  at: '2026-05-12T20:48:24Z'  # 79e2
+  by: human  # 79e2
+  actor: jgstern  # 79e2
+  clock: 3  # 79e2
+  nonce: '79e2'  # 79e2
+  set:  # 79e2
+    status: todo_soft  # 79e2

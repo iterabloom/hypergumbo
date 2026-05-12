@@ -20,3 +20,25 @@
     fields:  # 60dd
       statement: "When choosing which linker to build next, priority is set by how many dead-code false positives closing the linker gap would eliminate on a representative polyglot corpus — not by how novel or exotic the language pair is. Cross-language pairs should be evaluated on the same volume axis as within-language framework-dispatch linkers."  # 60dd
       root_cause: "Hypergumbo's linker roadmap historically leaned toward novel cross-language pairings (Elm→Go, TS→Rust, Lua FFI, etc.). The WI-tubot 2026-04-11 prospector run revealed that the dominant dead-code-FP signal is language-internal framework dispatch, not cross-language misses: Java bean/reflection (8.3%), Python Airflow framework (4.9%), Kafka Streams topology (2.6%), Django ORM internals (2.6%), Rust trait impls (2.3%) each exceed every cross-language category in the corpus. Treating 'novelty of language pair' as a proxy for 'value of closing the gap' led us to underinvest in the highest-volume within-language dispatch linkers relative to lower-volume cross-language ones."  # 60dd
+- op: discuss  # d355
+  at: '2026-05-12T20:39:48Z'  # d355
+  by: agent  # d355
+  actor: jgstern_agent  # d355
+  clock: 2  # d355
+  nonce: d355  # d355
+  message: "Tier 2 verification: all three named instance items have shipped — WI-gupah (Jackson/JavaBean, 7614 candidates), WI-nutav (Airflow framework-dispatch, 4511 candidates), WI-lisov (Kafka Streams topology, 2386 candidates) — combined 14,511 candidates worth of within-language framework-dispatch FP-reduction. The roadmap-prioritization principle was applied with positive results for one cycle. Cross-language items the description compared against (WI-tinip Elm→Go umbrella, WI-ropoz gRPC↔TS) remain in flight or open, consistent with the rank-by-volume principle. Recommend human flip to status=satisfied with this evidence; alternatively keep at needs_human_review if the human wants to see another cycle of prioritization before declaring the principle held."  # d355
+- op: update  # 254a
+  at: '2026-05-12T20:44:52Z'  # 254a
+  by: agent  # 254a
+  actor: jgstern_agent  # 254a
+  clock: 3  # 254a
+  nonce: 254a  # 254a
+  set:  # 254a
+    status: satisfied  # 254a
+- op: discuss  # db73
+  at: '2026-05-12T20:44:52Z'  # db73
+  by: agent  # db73
+  actor: jgstern_agent  # db73
+  clock: 4  # db73
+  nonce: db73  # db73
+  message: "Status flipped to satisfied per human approval 2026-05-12. Positive evidence (also captured in prior discussion note): the three top-FP-volume instance items the invariant surfaced — WI-gupah (Jackson 7614), WI-nutav (Airflow 4511), WI-lisov (Kafka Streams 2386) — have all shipped, totaling 14,511 within-language framework-dispatch candidates worth of FP-reduction. The roadmap-prioritization principle (rank by FP-volume on the prospector corpus, not language-pair novelty) was honored for the WI-tubot aggregate-v5 cycle. Tripwire remains in place — future cycles that deviate will surface here."  # db73

@@ -1,0 +1,21 @@
+- op: create  # d956
+  at: '2026-05-12T20:54:51Z'  # d956
+  by: agent  # d956
+  actor: jgstern_agent  # d956
+  clock: 1  # d956
+  nonce: d956  # d956
+  data:  # d956
+    kind: work_item  # d956
+    title: "WI-mafik Level 1b — Rust: multi-gap dotted-submodule resolution against use declarations"  # d956
+    status: todo_soft  # d956
+    priority: 4  # d956
+    parent: WI-mafik-pokud-monom-munuf-gaduv-domos-tuhal-julif  # d956
+    tags:  # d956
+    - analysis_quality  # d956
+    - rust  # d956
+    isbefore: []  # d956
+    duplicate_of: []  # d956
+    not_duplicate_of: []  # d956
+    pr_ref:  # d956
+    description: "WI-mafik Level 1b child (multi-gap). The Rust analyzer fails three import-times-call shapes: (1) `use std::fs::write` + bare `write(...)` emits no calls edge at all; (2) aliased name (`use std::fs::create_dir as mkdir` + `mkdir(...)`) preserves the alias rather than resolving to `create_dir`; (3) qualified call after `use std::fs;` (`fs::read_to_string(...)`) emits dst missing the `std::` prefix (analyzer doesn't connect `fs` back to `std::fs`). Repro in polyglot fixture::rust. All three are Rust analogs of the WI-zigah dotted-submodule resolution that landed for Python. Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py (may also touch rust_def_use.py) — call-site resolution against `use` declarations. Acceptance: remove xfail_reason for rust in the polyglot fixture without other test changes."  # d956
+    fields: {}  # d956

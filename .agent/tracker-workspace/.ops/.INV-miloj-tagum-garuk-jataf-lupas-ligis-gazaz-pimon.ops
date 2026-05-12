@@ -21,3 +21,10 @@
     fields:  # a93b
       statement: "The cross-language HTTP linker's URL extraction stage recovers the literal skeleton of a composed URL — regardless of how that URL is built in the source language — and passes that skeleton to the route-matcher. Variable segments may remain as holes (matched against parameterised routes); literal segments must be folded through constants, let-bindings, template literals, f-strings, sprintf-class formatters, and string-composition expressions so that route-identity fragments are visible."  # a93b
       root_cause: "Every source language composes URLs via a different syntactic mechanism (JS/TS template literals, Python f-strings, Go fmt.Sprintf, Kotlin/Ruby/Scala interpolation, Elm ++ and String.join, Java String.format / StringBuilder, etc.). The current scanners extract URLs only when they appear as a bare string literal or bare identifier at the call site. Any language whose idiomatic URL-composition form differs from that is silently invisible to the HTTP linker even though the route matcher itself could handle the folded output."  # a93b
+- op: discuss  # a75c
+  at: '2026-05-12T20:39:48Z'  # a75c
+  by: agent  # a75c
+  actor: jgstern_agent  # a75c
+  clock: 2  # a75c
+  nonce: a75c  # a75c
+  message: "Tier 2 verification: both currently-filed instance items (WI-rosan Elm let-bound + String.join, WI-sijoh JS/TS template literals) are shipped and bakeoff-validated. However, the invariant's closure criterion ('every language whose route-detector is active also has a URL-folding extractor that passes a corpus-wide composed-URL recovery test') is NOT met — this item's description explicitly anticipates Python f-strings, Go fmt.Sprintf, Kotlin/Ruby/Scala interpolation, and Java String.format/StringBuilder as 'future instances (not filed; no signal yet)'. Status correctly remains needs_human_review until either (a) sibling items are filed for those languages and resolved, or (b) a deliberate scope decision is recorded documenting which languages are intentionally left at literal-only extraction."  # a75c
