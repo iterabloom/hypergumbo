@@ -682,3 +682,554 @@ def test_assignment_form_module_constant_still_takes_precedence(tmp_path: Path):
     )
     assert len(result.strict_violations) == 1
     assert "brand_new_label" in result.strict_violations[0]
+
+
+# --- WI-nubuv: inline IfExp + non-string-constant skip ---
+#
+# The pre-ext-B classifier only recognized inline ternary at the
+# function-local-assignment path, not at the kwarg site itself. And the
+# function-local walker poisoned on ``= None`` sentinels even when the
+# real string assignments followed (the ``edge_type = None`` shape at
+# linkers/inheritance.py:209 vs the resolvable string assignments at
+# :218 / :227). Both gaps closed in this PR.
+
+
+def test_inline_ternary_resolves_when_both_branches_in_registry(tmp_path: Path):
+    """Inline ``evidence_type="a" if cond else "b"`` at the kwarg site
+    resolves to the union of both branches via _resolve_simple_rhs.
+    Pre-fix, this was classified ``unresolvable=IfExp`` and silently
+    skipped — a real producer-side leak shape (ipc.py:546,
+    message_queue.py:516)."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(cond):\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type="ast_call_direct" if cond else "naming_convention")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct", "naming_convention"}),
+    )
+    assert result.strict_violations == ()
+
+
+def test_inline_ternary_one_branch_outside_registry_is_strict(tmp_path: Path):
+    """Inline ternary with one branch missing from registry → strict per
+    offending branch."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(cond):\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type="ast_call_direct" if cond else "brand_new_label")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert len(result.strict_violations) == 1
+    assert "brand_new_label" in result.strict_violations[0]
+
+
+def test_inline_ternary_both_branches_same_literal_resolves_as_literal(tmp_path: Path):
+    """Edge case: ``f(kind="x" if cond else "x")`` collapses to a single
+    literal via the union-of-frozensets path."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(cond):\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type="ast_call_direct" if cond else "ast_call_direct")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_emitted_literal_values_excludes_test_files(tmp_path: Path):
+    """The emit enumerator must skip ``/tests/`` paths by default — same
+    posture as the gate function — so synthetic kwargs in test fixtures
+    don't pollute the emit map."""
+    from hypergumbo_core.producer_coherence import find_emitted_literal_values
+    _write(
+        tmp_path / "packages" / "demo" / "tests" / "test_demo.py",
+        'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
+        'evidence_type="test_only_value")\n',
+    )
+    sites = find_emitted_literal_values(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+    )
+    assert sites == {}
+
+
+def test_inline_ternary_one_branch_unresolvable_falls_to_unresolvable(tmp_path: Path):
+    """Conservative: if either branch is unresolvable (function call),
+    classifier returns ``unresolvable=IfExp`` and the kwarg is silently
+    skipped (variable_form_mode default)."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(cond):\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type="ast_call_direct" if cond else helper())\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_assignment_form_none_sentinel_then_literal_resolves(tmp_path: Path):
+    """The inheritance.py:209 shape: ``edge_type = None`` sentinel before
+    real string assignments. Pre-fix, _resolve_simple_rhs returned None
+    for ``= None`` and poisoned the whole resolution; now non-string
+    Constants contribute empty set, letting the real string assignments
+    populate candidates normally."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(cond):\n'
+        '    label = None\n'
+        '    if cond:\n'
+        '        label = "ast_call_direct"\n'
+        '    else:\n'
+        '        label = "naming_convention"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct", "naming_convention"}),
+    )
+    assert result.strict_violations == ()
+
+
+def test_assignment_form_only_non_string_constants_falls_to_unresolvable(tmp_path: Path):
+    """If every assignment to the name is a non-string Constant (None,
+    int, bool), _resolve_function_local returns the empty frozenset and
+    _classify_value falls through to module-constant lookup, then to
+    unresolvable. Silent under default variable_form_mode='silent'."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make():\n'
+        '    label = None\n'
+        '    label = 42\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+# --- WI-nubuv extension B: f-string expansion via function-local trace ---
+
+
+def test_fstring_expand_mode_silently_accepts_resolvable(tmp_path: Path):
+    """The acceptance criterion from the WI: an f-string with a literal
+    prefix concatenated with a function-locally-resolvable Name expands
+    to the prefix-concatenated set of candidates; if every candidate is
+    in the registry, the site is silently accepted (no advisory)."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(cond):\n'
+        '    edge_type = "extends" if cond else "implements"\n'
+        '    return Edge.create(src="a", dst="b", edge_type=edge_type, '
+        'line=1, evidence_type=f"ast_{edge_type}")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_extends", "ast_implements"}),
+        fstring_mode="expand",
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_fstring_expand_mode_strict_when_expansion_outside_registry(tmp_path: Path):
+    """In expand mode, an f-string whose expansion includes a value
+    outside the registry should fail strictly per offending expansion."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(cond):\n'
+        '    edge_type = "extends" if cond else "brand_new_relation"\n'
+        '    return Edge.create(src="a", dst="b", edge_type=edge_type, '
+        'line=1, evidence_type=f"ast_{edge_type}")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_extends"}),
+        fstring_mode="expand",
+    )
+    assert len(result.strict_violations) == 1
+    assert "ast_brand_new_relation" in result.strict_violations[0]
+
+
+def test_fstring_expand_mode_falls_back_to_advisory_when_unexpandable(tmp_path: Path):
+    """If any FormattedValue segment can't be resolved (function param,
+    for-loop unpack, function call), expand mode falls back to the
+    advisory path rather than failing strictly. Strict mode is the
+    aggressive alternative — see next test."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(prefix):\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=f"{prefix}_call")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+        fstring_mode="expand",
+    )
+    assert result.strict_violations == ()
+    assert len(result.advisory_dynamic_emits) == 1
+    assert "f-string" in result.advisory_dynamic_emits[0]
+
+
+def test_fstring_strict_mode_flags_unexpandable_as_strict(tmp_path: Path):
+    """Strict mode promotes unexpandable f-strings to strict violations.
+    For axes where every producer should be either a literal or a fully
+    enumerable f-string."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(prefix):\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=f"{prefix}_call")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+        fstring_mode="strict",
+    )
+    assert len(result.strict_violations) == 1
+    assert "unexpandable" in result.strict_violations[0]
+
+
+def test_fstring_strict_mode_silently_accepts_resolvable_in_registry(tmp_path: Path):
+    """Strict mode still silently accepts f-strings whose expansion is
+    fully resolvable and all in registry."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make():\n'
+        '    edge_type = "extends"\n'
+        '    return Edge.create(src="a", dst="b", edge_type=edge_type, '
+        'line=1, evidence_type=f"ast_{edge_type}")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_extends"}),
+        fstring_mode="strict",
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_fstring_expand_with_format_spec_falls_through(tmp_path: Path):
+    """``f"{x:>5}"`` (format spec) is treated as unexpandable because
+    formatting mutates the string. Expand mode falls back to advisory."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make():\n'
+        '    x = "foo"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=f"{x:>5}")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+        fstring_mode="expand",
+    )
+    assert result.strict_violations == ()
+    assert len(result.advisory_dynamic_emits) == 1
+
+
+def test_fstring_expand_with_conversion_falls_through(tmp_path: Path):
+    """``f"{x!r}"`` (repr conversion) is treated as unexpandable."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make():\n'
+        '    x = "foo"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=f"{x!r}")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+        fstring_mode="expand",
+    )
+    assert result.strict_violations == ()
+    assert len(result.advisory_dynamic_emits) == 1
+
+
+def test_fstring_expand_cartesian_cap_bails_to_advisory(tmp_path: Path):
+    """When the Cartesian product of segment candidates would exceed the
+    expansion cap, expand mode bails to advisory rather than materializing
+    a huge set."""
+    # Two segments x 8 candidates each = 64 expansions > _FSTRING_EXPANSION_CAP=32.
+    branches_a = "\n    ".join(
+        f'if cond == {i}: a = "v{i}"' for i in range(8)
+    )
+    branches_b = "\n    ".join(
+        f'if cond == {i}: b = "w{i}"' for i in range(8)
+    )
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(cond):\n'
+        f'    {branches_a}\n'
+        f'    {branches_b}\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=f"{a}_{b}")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+        fstring_mode="expand",
+    )
+    # Cap exceeded → fallback to advisory, not strict.
+    assert result.strict_violations == ()
+    assert len(result.advisory_dynamic_emits) == 1
+
+
+def test_fstring_advisory_mode_preserves_pre_ext_b_behavior(tmp_path: Path):
+    """In advisory mode (the base-function default), f-strings still
+    surface as advisories regardless of expandability — preserves the
+    pre-WI-nubuv-ext-B contract."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make():\n'
+        '    edge_type = "extends"\n'
+        '    return Edge.create(src="a", dst="b", edge_type=edge_type, '
+        'line=1, evidence_type=f"ast_{edge_type}")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_extends"}),
+        fstring_mode="advisory",
+    )
+    assert result.strict_violations == ()
+    assert len(result.advisory_dynamic_emits) == 1
+
+
+def test_fstring_expand_with_constant_inner_resolves(tmp_path: Path):
+    """An f-string with a literal-Constant FormattedValue
+    (``f"{1}_call"``) resolves to a single expansion via
+    _resolve_simple_rhs's non-string-Constant handling (empty frozenset)
+    — which makes the whole f-string unexpandable. Expand mode falls
+    back to advisory."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make():\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=f"{1}_call")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+        fstring_mode="expand",
+    )
+    # Constant(1) is non-string → empty frozenset → unexpandable.
+    assert result.strict_violations == ()
+    assert len(result.advisory_dynamic_emits) == 1
+
+
+# --- WI-nubuv extension C: variable-form structural backstop ---
+
+
+def test_variable_form_silent_default_preserves_existing_behavior(tmp_path: Path):
+    """Default ``variable_form_mode='silent'`` keeps the pre-ext-C
+    contract: unresolvable Names (function params, for-loop unpacks,
+    function calls) surface as neither strict nor advisory."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(label):\n'  # function param — unresolvable
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_variable_form_advisory_mode_surfaces_function_param(tmp_path: Path):
+    """Advisory mode reports unresolvable Names as advisories — visible
+    audit signal without blocking the commit."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(label):\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+        variable_form_mode="advisory",
+    )
+    assert result.strict_violations == ()
+    assert len(result.advisory_dynamic_emits) == 1
+    assert "variable-form producer" in result.advisory_dynamic_emits[0]
+    assert "Name(label)" in result.advisory_dynamic_emits[0]
+
+
+def test_variable_form_strict_mode_flags_function_param(tmp_path: Path):
+    """Strict mode bans the variable form: every unresolvable Name
+    becomes a strict violation. This is the structural backstop for the
+    four blind-spot shapes (literal-kwarg, assignment-form, f-string,
+    dict-subscript-target) — when the value can't be statically gated,
+    refuse to ship rather than rely on runtime checks."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(label):\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+        variable_form_mode="strict",
+    )
+    assert len(result.strict_violations) == 1
+    assert "variable form banned" in result.strict_violations[0]
+    assert "Name(label)" in result.strict_violations[0]
+
+
+def test_variable_form_strict_mode_flags_function_call_result(tmp_path: Path):
+    """Strict mode also flags ``evidence_type=compute()`` — a function
+    call return is one of the four blind-spot shapes the ext-C backstop
+    is designed to ban."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make():\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=compute())\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+        variable_form_mode="strict",
+    )
+    assert len(result.strict_violations) == 1
+    assert "variable form banned" in result.strict_violations[0]
+    assert "Call" in result.strict_violations[0]
+
+
+def test_variable_form_strict_mode_does_not_flag_literal(tmp_path: Path):
+    """Strict mode must not false-positive on literal kwargs — those
+    have nothing to ban."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
+        'evidence_type="ast_call_direct")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+        variable_form_mode="strict",
+    )
+    assert result.strict_violations == ()
+
+
+def test_variable_form_strict_does_not_flag_resolvable_assignment(tmp_path: Path):
+    """Strict mode must not false-positive on assignment-form Names
+    that ext A resolves — those aren't 'variable form', they're
+    statically gated."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make():\n'
+        '    label = "ast_call_direct"\n'
+        '    return Edge.create(src="a", dst="b", edge_type="calls", '
+        'line=1, evidence_type=label)\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="evidence_type",
+        registry_names=frozenset({"ast_call_direct"}),
+        variable_form_mode="strict",
+    )
+    assert result.strict_violations == ()
+
+
+# --- Wrapper signature: per-axis opt-in flags ---
+
+
+def test_evidence_type_wrapper_accepts_mode_kwargs():
+    """The per-axis wrappers expose fstring_mode and variable_form_mode
+    so callers can opt into stricter gates without rebuilding the
+    constructor_names / keyword_arg / registry_names triple by hand."""
+    # We use a tmp_path that doesn't exist to keep the result trivially
+    # empty — the relevant test is that the kwargs are accepted.
+    from pathlib import Path as _P
+    nonexistent = _P("/nonexistent-for-wrapper-signature-test")
+    r = find_evidence_type_producer_violations(
+        nonexistent, fstring_mode="strict", variable_form_mode="strict",
+    )
+    assert r.strict_violations == ()
+
+
+def test_symbol_kind_wrapper_accepts_mode_kwargs():
+    from pathlib import Path as _P
+    nonexistent = _P("/nonexistent-for-wrapper-signature-test")
+    r = find_symbol_kind_producer_violations(
+        nonexistent, fstring_mode="strict", variable_form_mode="strict",
+    )
+    assert r.strict_violations == ()
+
+
+def test_edge_type_wrapper_accepts_mode_kwargs():
+    from pathlib import Path as _P
+    nonexistent = _P("/nonexistent-for-wrapper-signature-test")
+    r = find_edge_type_producer_violations(
+        nonexistent, fstring_mode="strict", variable_form_mode="strict",
+    )
+    assert r.strict_violations == ()

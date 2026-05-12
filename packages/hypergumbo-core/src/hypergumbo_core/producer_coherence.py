@@ -37,7 +37,47 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Iterable, Iterator
+from typing import Final, Iterable, Iterator, Literal
+
+
+FStringMode = Literal["advisory", "expand", "strict"]
+"""How the linter treats f-string producer call sites.
+
+- ``"advisory"`` (default for the base function) — surface every f-string
+  emit as an advisory, never as a strict violation. The current behaviour
+  before WI-nubuv ext B.
+- ``"expand"`` — try to expand each f-string into a candidate frozenset by
+  resolving every ``FormattedValue`` segment through the existing
+  function-local Name walker. If expansion succeeds, classify the
+  candidates exactly like a literal/literals branch (silent if all are
+  registry members, strict per offending value otherwise). If any segment
+  can't be statically resolved, fall back to the advisory path.
+- ``"strict"`` — same expansion attempt, but unexpandable f-strings are
+  promoted to strict violations rather than advisories. Use for axes where
+  every producer should be either a literal kwarg or an enumerable
+  combination.
+"""
+
+
+VariableFormMode = Literal["silent", "advisory", "strict"]
+"""How the linter treats unresolvable Name / call-result kwargs (ext C).
+
+- ``"silent"`` (default) — current behaviour: a kwarg whose value can't
+  be statically resolved (function parameter, for-loop unpack target,
+  function-call return, dict-subscript lookup, etc.) is silently skipped
+  on the assumption that a runtime-coherence check will catch it later.
+- ``"advisory"`` — same as silent for gating purposes, but the unresolved
+  site is surfaced as an advisory so reviewers can audit producer-side
+  hygiene without blocking the commit.
+- ``"strict"`` — every unresolvable Name promotes to a strict violation.
+  Banning the variable-form structurally per ADR-0028 §"Phase 1" eliminates
+  the four blind-spot shapes catalogued in WI-nubuv (literal-kwarg,
+  assignment-form-to-Name, f-string, dict-subscript-target). Opt-in
+  per-axis; the wrappers in this module default to ``"silent"`` because
+  the live tree still has legitimate dynamic emits (for-loop unpacks,
+  dict-derived values) that would need refactor before strict can land
+  axis-wide.
+"""
 
 
 DEFAULT_SEARCH_ROOTS: Final[tuple[str, ...]] = (
@@ -133,18 +173,30 @@ def _iter_same_scope_assignments(node: ast.AST) -> Iterator[ast.Assign | ast.Ann
 def _resolve_simple_rhs(value: ast.expr) -> frozenset[str] | None:
     """Try to resolve a RHS expression to a frozenset of string literals.
 
-    Recognized shapes (extension A scope):
+    Recognized shapes (extension A scope, refined by WI-nubuv):
 
     - ``"literal"`` — single string constant.
+    - Non-string ``ast.Constant`` (``None``, integer, bool, …) — returns
+      an **empty frozenset**, NOT ``None``. The assignment binds a
+      non-string value to the name, so it contributes no string
+      candidate, but it must not poison the walker the way a truly
+      unresolvable RHS does. This fix lets ``edge_type = None`` (the
+      sentinel pre-assignment before real string assignments at e.g.
+      ``linkers/inheritance.py:209``) coexist with later
+      ``edge_type = "implements" / "extends"`` assignments without the
+      None sentinel masking the resolvable string set.
     - ``"a" if cond else "b"`` — ternary with both branches resolvable
-      to literals (recursively, so nested ternaries also work).
+      (recursively, so nested ternaries also work). Now also handles
+      inline ternaries at the kwarg site itself via :func:`_classify_value`.
 
     Returns ``None`` for any other shape (function call, arithmetic,
     Name reference, dict subscript, etc.). Conservative on purpose: a
     later extension B/C can broaden this without changing the contract.
     """
-    if isinstance(value, ast.Constant) and isinstance(value.value, str):
-        return frozenset({value.value})
+    if isinstance(value, ast.Constant):
+        if isinstance(value.value, str):
+            return frozenset({value.value})
+        return frozenset()
     if isinstance(value, ast.IfExp):
         body_set = _resolve_simple_rhs(value.body)
         else_set = _resolve_simple_rhs(value.orelse)
@@ -223,8 +275,97 @@ def _find_keyword(call_node: ast.Call, keyword_arg: str) -> ast.keyword | None:
     return None
 
 
+_FSTRING_EXPANSION_CAP: Final[int] = 32
+"""Maximum number of candidate strings :func:`_expand_fstring` will materialize.
+
+Guards against combinatorial explosion when an f-string has multiple
+FormattedValue segments whose Name resolutions produce large sets. If
+the Cartesian product would exceed this cap mid-expansion, expansion
+returns ``None`` (treated as unexpandable for the chosen f-string mode).
+"""
+
+
+def _fstring_literal_prefix(value: ast.JoinedStr) -> str:
+    """Return the contiguous literal-prefix portion of an f-string.
+
+    Stops at the first non-Constant segment so the prefix reflects the
+    static portion of the format spec. Used both by the advisory branch
+    (so reviewers can see which Phase-3 cluster the site belongs to) and
+    by the strict-mode unexpandable-violation message.
+    """
+    prefix_parts: list[str] = []
+    for v in value.values:
+        if isinstance(v, ast.Constant) and isinstance(v.value, str):
+            prefix_parts.append(v.value)
+        else:
+            break
+    return "".join(prefix_parts)
+
+
+def _expand_fstring(
+    value: ast.JoinedStr, func_scope: _FuncScope | None,
+) -> frozenset[str] | None:
+    """WI-nubuv ext B: try to expand an f-string to candidate strings.
+
+    Walks ``value.values`` (alternating ``ast.Constant`` literal segments
+    and ``ast.FormattedValue`` interpolation segments) and tries to
+    resolve every FormattedValue's inner expression via
+    :func:`_resolve_function_local` (Name) or :func:`_resolve_simple_rhs`
+    (inline ternary / non-string-constant). The Cartesian product of all
+    segment candidate sets is the expansion result.
+
+    Returns ``None`` if:
+
+    - Any FormattedValue's inner expression is not a Name with a
+      function-local resolution to a non-empty set of string literals.
+    - The combinatorial product would exceed :data:`_FSTRING_EXPANSION_CAP`.
+    - A FormattedValue carries a format-spec (``f"{x:>5}"``) or
+      conversion (``f"{x!r}"``) — those mutate the string in ways the
+      walker does not model.
+
+    Callers handle ``None`` based on their :class:`FStringMode` choice:
+    advisory path falls through to the existing advisory advisory branch;
+    expand path falls back to advisory; strict path promotes to a strict
+    violation flagged as ``"fstring_unexpandable"``.
+    """
+    parts: list[frozenset[str]] = []
+    for seg in value.values:
+        if isinstance(seg, ast.Constant) and isinstance(seg.value, str):
+            parts.append(frozenset({seg.value}))
+            continue
+        if isinstance(seg, ast.FormattedValue):
+            if seg.format_spec is not None or seg.conversion != -1:
+                return None
+            inner = seg.value
+            resolved: frozenset[str] | None = None
+            if isinstance(inner, ast.Name) and func_scope is not None:
+                resolved = _resolve_function_local(inner.id, func_scope)
+            elif isinstance(inner, (ast.Constant, ast.IfExp)):
+                resolved = _resolve_simple_rhs(inner)
+            if resolved is None or not resolved:
+                return None
+            parts.append(resolved)
+            continue
+        return None  # pragma: no cover - defensive (only Constant/FormattedValue appear in JoinedStr.values)
+
+    candidates: set[str] = {""}
+    for part in parts:
+        new_cands: set[str] = set()
+        for c in candidates:
+            for p in part:
+                new_cands.add(c + p)
+                if len(new_cands) > _FSTRING_EXPANSION_CAP:
+                    return None
+        candidates = new_cands
+    return frozenset(candidates)
+
+
 def _classify_value(
-    value: ast.expr, tree: ast.Module, func_scope: _FuncScope | None,
+    value: ast.expr,
+    tree: ast.Module,
+    func_scope: _FuncScope | None,
+    *,
+    fstring_mode: FStringMode = "advisory",
 ) -> tuple[str, str | frozenset[str] | None]:
     """Classify a keyword argument's value expression.
 
@@ -233,9 +374,13 @@ def _classify_value(
     - ``"literal"`` — payload is the resolved literal string.
     - ``"literals"`` — payload is a frozenset of candidate literal
       strings (WI-nubuv ext A: function-local single-literal,
-      ternary, and if/else assignment chains).
+      ternary, and if/else assignment chains; ext B: f-string
+      expansion in ``"expand"`` / ``"strict"`` mode).
     - ``"fstring"`` — payload is the literal-prefix portion of the
-      f-string when one exists, else ``""``.
+      f-string when one exists, else ``""`` (advisory mode, or
+      expand-mode fallback when expansion fails).
+    - ``"fstring_unexpandable"`` — payload is the literal prefix.
+      ONLY emitted in ``fstring_mode="strict"`` when expansion fails.
     - ``"unresolvable"`` — payload is a short description (e.g.
       ``"Name(other_var)"``) for the advisory.
 
@@ -243,21 +388,37 @@ def _classify_value(
     first (Python LEGB scoping), then module-level constants. This
     matches Python's runtime behaviour — a function-local rebinding
     shadows the module-level constant.
+
+    WI-nubuv refinements:
+
+    - Inline ``ast.IfExp`` ternaries (``kind="a" if cond else "b"``) at
+      the kwarg site itself now resolve via :func:`_resolve_simple_rhs`,
+      not just when bound to a function-local name.
+    - F-string handling forks on *fstring_mode* (see :class:`FStringMode`).
     """
     if isinstance(value, ast.Constant) and isinstance(value.value, str):
         return ("literal", value.value)
     if isinstance(value, ast.JoinedStr):
-        prefix_parts: list[str] = []
-        for v in value.values:
-            if isinstance(v, ast.Constant) and isinstance(v.value, str):
-                prefix_parts.append(v.value)
-            else:
-                break
-        return ("fstring", "".join(prefix_parts))
+        if fstring_mode in ("expand", "strict"):
+            expanded = _expand_fstring(value, func_scope)
+            if expanded is not None:
+                if len(expanded) == 1:
+                    return ("literal", next(iter(expanded)))
+                return ("literals", expanded)
+            if fstring_mode == "strict":
+                return ("fstring_unexpandable", _fstring_literal_prefix(value))
+        return ("fstring", _fstring_literal_prefix(value))
+    if isinstance(value, ast.IfExp):
+        resolved = _resolve_simple_rhs(value)
+        if resolved is not None and resolved:
+            if len(resolved) == 1:
+                return ("literal", next(iter(resolved)))
+            return ("literals", resolved)
+        return ("unresolvable", "IfExp")
     if isinstance(value, ast.Name):
         if func_scope is not None:
             local = _resolve_function_local(value.id, func_scope)
-            if local is not None:
+            if local is not None and local:
                 if len(local) == 1:
                     return ("literal", next(iter(local)))
                 return ("literals", local)
@@ -347,6 +508,8 @@ def find_producer_coherence_violations(
     registry_names: frozenset[str],
     search_roots: Iterable[str] = DEFAULT_SEARCH_ROOTS,
     excluded_path_substrings: Iterable[str] = DEFAULT_EXCLUDED_PATH_SUBSTRINGS,
+    fstring_mode: FStringMode = "advisory",
+    variable_form_mode: VariableFormMode = "silent",
 ) -> ProducerCoherenceResult:
     """Scan producer call sites; return strict and advisory entries.
 
@@ -357,15 +520,14 @@ def find_producer_coherence_violations(
     - **Literal value not in registry** → strict violation. The PR
       cannot ship until the value is registered in the canonical axis
       list (or removed from the producer site).
-    - **F-string value** → advisory. The producer is smuggling an axis
-      shape through an f-string concatenation; Phase 3's per-cluster
-      migration folds it to canonical-label + ``meta`` payload. Reported
-      so the discipline is visible without blocking.
-    - **Unresolvable name** (function param, local computation) →
-      silently skipped. The L3 linter's job is to gate the *static*
-      surface; runtime values can only be checked dynamically (a
-      future runtime-coherence check, planned per ADR-0023 §3 /
-      ADR-0028 §"Phase 1 — Enforcement").
+    - **F-string value** → advisory (default), expanded-and-checked
+      (``fstring_mode="expand"``), or strict-if-unexpandable
+      (``fstring_mode="strict"``). See :class:`FStringMode`.
+    - **Unresolvable name** (function param, for-loop unpack, dict
+      lookup, function-call return, …) → silent by default. With
+      ``variable_form_mode="advisory"`` or ``"strict"``, every
+      unresolvable site surfaces as an advisory or strict violation
+      respectively (ext C structural backstop).
 
     *excluded_path_substrings* defaults to ``("/tests/",)`` because
     test files legitimately construct synthetic axis values to exercise
@@ -392,7 +554,10 @@ def find_producer_coherence_violations(
                     rel = py_file.relative_to(repo_root)
                 except ValueError:  # pragma: no cover
                     rel = py_file
-                category, payload = _classify_value(value_node, tree, func_scope)
+                category, payload = _classify_value(
+                    value_node, tree, func_scope,
+                    fstring_mode=fstring_mode,
+                )
                 if category == "literal":
                     if payload not in registry_names:
                         strict.append(
@@ -403,14 +568,15 @@ def find_producer_coherence_violations(
                     # WI-nubuv ext A: multi-literal candidate set
                     # (ternary, if/else chain). Flag every offending
                     # literal so the operator sees which branch is
-                    # the unregistered one.
+                    # the unregistered one. WI-nubuv ext B: f-string
+                    # expansions route through the same handler.
                     assert isinstance(payload, frozenset)
                     bad = sorted(v for v in payload if v not in registry_names)
                     for v in bad:
                         strict.append(
                             f"{rel}:{lineno} ({keyword_arg}={v!r} via "
-                            f"function-local assignment): "
-                            f"not in canonical registry"
+                            f"function-local assignment or f-string "
+                            f"expansion): not in canonical registry"
                         )
                 elif category == "fstring":
                     advisory.append(
@@ -418,7 +584,29 @@ def find_producer_coherence_violations(
                         f"{f' prefix={payload!r}' if payload else ''}): "
                         f"Phase-3 fold candidate"
                     )
-                # unresolvable: skip silently per docstring contract.
+                elif category == "fstring_unexpandable":
+                    # WI-nubuv ext B strict mode: f-string couldn't be
+                    # expanded statically and the axis opts into strict
+                    # gating. Report as a strict violation.
+                    strict.append(
+                        f"{rel}:{lineno} ({keyword_arg}=f-string"
+                        f"{f' prefix={payload!r}' if payload else ''}): "
+                        f"unexpandable in fstring_mode='strict'"
+                    )
+                elif category == "unresolvable":
+                    # WI-nubuv ext C: opt-in variable-form gate.
+                    if variable_form_mode == "strict":
+                        strict.append(
+                            f"{rel}:{lineno} ({keyword_arg}=<{payload}>): "
+                            f"variable form banned in "
+                            f"variable_form_mode='strict'"
+                        )
+                    elif variable_form_mode == "advisory":
+                        advisory.append(
+                            f"{rel}:{lineno} ({keyword_arg}=<{payload}>): "
+                            f"variable-form producer (ext C advisory)"
+                        )
+                    # "silent" → skip per docstring contract.
 
     return ProducerCoherenceResult(
         strict_violations=tuple(strict),
@@ -428,40 +616,66 @@ def find_producer_coherence_violations(
 
 def find_evidence_type_producer_violations(
     repo_root: Path,
+    *,
+    fstring_mode: FStringMode = "expand",
+    variable_form_mode: VariableFormMode = "silent",
 ) -> ProducerCoherenceResult:
-    """L3 wrapper for ``Edge.evidence_type``."""
+    """L3 wrapper for ``Edge.evidence_type``.
+
+    Defaults to ``fstring_mode="expand"`` per WI-nubuv ext B: the only
+    live producer f-string for this axis is
+    ``linkers/inheritance.py:258`` (``f"ast_{edge_type}"``), and the
+    expansion via function-local ``edge_type`` resolution yields
+    ``{ast_extends, ast_implements}`` — both canonical members of the
+    AXIS_INFERENCE_PATHWAY registry. Expansion mode silently accepts the
+    benign site without forcing every f-string axis-wide to strict.
+    """
     from hypergumbo_core.evidence_types import all_evidence_type_names
     return find_producer_coherence_violations(
         repo_root,
         constructor_names=frozenset({"Edge", "Edge.create"}),
         keyword_arg="evidence_type",
         registry_names=all_evidence_type_names(),
+        fstring_mode=fstring_mode,
+        variable_form_mode=variable_form_mode,
     )
 
 
 def find_symbol_kind_producer_violations(
     repo_root: Path,
+    *,
+    fstring_mode: FStringMode = "expand",
+    variable_form_mode: VariableFormMode = "silent",
 ) -> ProducerCoherenceResult:
-    """L3 wrapper for ``Symbol.kind``."""
+    """L3 wrapper for ``Symbol.kind``. Defaults match
+    :func:`find_evidence_type_producer_violations`."""
     from hypergumbo_core.symbol_kinds import all_symbol_kind_names
     return find_producer_coherence_violations(
         repo_root,
         constructor_names=frozenset({"Symbol", "Symbol.create"}),
         keyword_arg="kind",
         registry_names=all_symbol_kind_names(),
+        fstring_mode=fstring_mode,
+        variable_form_mode=variable_form_mode,
     )
 
 
 def find_edge_type_producer_violations(
     repo_root: Path,
+    *,
+    fstring_mode: FStringMode = "expand",
+    variable_form_mode: VariableFormMode = "silent",
 ) -> ProducerCoherenceResult:
-    """L3 wrapper for ``Edge.edge_type``."""
+    """L3 wrapper for ``Edge.edge_type``. Defaults match
+    :func:`find_evidence_type_producer_violations`."""
     from hypergumbo_core.edge_types import all_edge_type_names
     return find_producer_coherence_violations(
         repo_root,
         constructor_names=frozenset({"Edge", "Edge.create"}),
         keyword_arg="edge_type",
         registry_names=all_edge_type_names(),
+        fstring_mode=fstring_mode,
+        variable_form_mode=variable_form_mode,
     )
 
 
@@ -492,17 +706,25 @@ def find_emitted_literal_values(
     so they can assert "no producer emits this value", which is the
     inverse of the gate predicate.
 
-    **Coverage gap.** The four indirection shapes catalogued in the
-    Fundamental Concept Audit playbook §"Step 4.5" are partially covered:
-    literal kwarg (yes), assignment-form to Name (yes — extension A
-    scope), helper-call positional/kwarg (no — the walker only descends
-    *constructor_names*, not arbitrary helpers like ``add_symbol``),
-    f-string interpolation (no — surfaced as advisory by the gate
-    function, not enumerated here), dict-subscript-target (no — WI-nubuv
-    ext C scope). Any DEPRECATE-NO-FOLD verdict that ships through one of
-    the uncovered shapes will not be flagged by callers using this map;
-    the playbook's per-value manual grep at audit-write time is the
-    compensating control until WI-nubuv ext B/C land.
+    **Coverage gap.** Four indirection shapes catalogued in the
+    Fundamental Concept Audit playbook §"Step 4.5":
+
+    - literal kwarg: covered.
+    - assignment-form to Name: covered (extension A — function-local
+      single literal, ternary, if/else chain).
+    - f-string interpolation: covered when the f-string's
+      FormattedValue segments resolve via extension A's walker
+      (WI-nubuv ext B; uses ``fstring_mode="expand"``). Unexpandable
+      f-strings still don't contribute literal candidates.
+    - helper-call positional/kwarg (no — the walker only descends
+      *constructor_names*, not arbitrary helpers like ``add_symbol``).
+    - dict-subscript-target (no — ext C scope; banning the variable
+      form structurally is the corresponding gate, not enumeration).
+
+    Any DEPRECATE-NO-FOLD verdict that ships through one of the
+    uncovered shapes will not be flagged by callers using this map; the
+    playbook's per-value manual grep at audit-write time is the
+    compensating control.
     """
     excluded_tuple = tuple(excluded_path_substrings)
     emit_sites: dict[str, list[str]] = {}
@@ -524,7 +746,9 @@ def find_emitted_literal_values(
                     rel = py_file.relative_to(repo_root)
                 except ValueError:  # pragma: no cover
                     rel = py_file
-                category, payload = _classify_value(value_node, tree, func_scope)
+                category, payload = _classify_value(
+                    value_node, tree, func_scope, fstring_mode="expand",
+                )
                 if category == "literal":
                     assert isinstance(payload, str)
                     emit_sites.setdefault(payload, []).append(f"{rel}:{lineno}")
@@ -532,7 +756,8 @@ def find_emitted_literal_values(
                     assert isinstance(payload, frozenset)
                     for v in payload:
                         emit_sites.setdefault(v, []).append(f"{rel}:{lineno}")
-                # fstring + unresolvable: do not contribute literal values.
+                # fstring (advisory fallback) + unresolvable: do not
+                # contribute literal values.
 
     return {k: tuple(v) for k, v in emit_sites.items()}
 

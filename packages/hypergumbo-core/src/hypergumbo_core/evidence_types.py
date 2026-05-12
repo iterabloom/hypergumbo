@@ -30,8 +30,8 @@ Axis taxonomy (per ADR-0028 §1):
   / 0012 / 0014).
 - ``pending_classification`` — deferred follow-on long-tail rows
   pending per-cluster audit; see audit-findings 0004 §"Diagnostic
-  findings" and the WI-nubuv ext A assignment-form discovery
-  section below for the current Pending set.
+  findings" and the WI-nubuv ext A / ext B discovery sections below
+  for the current Pending set.
 
 The ``endpoint_shape`` axis was retired in PR #3635 (Phase 4b enum
 closure / WI-porim). All 111 deprecated values that occupied that axis
@@ -383,6 +383,76 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
                      "Python AST method-call inference (py.py). At-risk "
                      "Cluster D peer of `ast_call_direct`: fold candidate "
                      "to `ast_call_direct` + `meta['call_construct']='method'`. "
+                     "Pending cluster-D audit."),
+
+    # ----------------------------------------------------------------
+    # WI-nubuv ext B + IfExp-classifier discoveries — leak shapes that
+    # the literal-kwarg-only matcher (plus poison-on-non-string-Constant
+    # walker) silently hid.
+    # ----------------------------------------------------------------
+    # The inline-ternary classifier fix (`evidence_type="a" if cond else
+    # "b"`) and the empirical addendum from WI-nubuv ext A's tracker
+    # discussion (dict-subscript-target ⟶ for-loop unpack producers in
+    # `linkers/pyffi.py`) surfaced four pre-existing producer-emitted
+    # values that were never registered. Registered AXIS_PENDING per the
+    # follow-on-cluster discipline used for the prior ext-A discoveries.
+    EvidenceTypeSpec("ipc_channel_match", AXIS_PENDING,
+                     "Electron IPC channel-name matching inference "
+                     "(linkers/ipc.py:546). Emitted in the canonical-"
+                     "`event_publishes` fold for the Electron renderer→"
+                     "main exchange when the publisher's channel name "
+                     "matches the subscriber's pattern. Sibling of "
+                     "`variable_match` (already canonical). At-risk "
+                     "Cluster A: candidate for promotion to "
+                     "AXIS_INFERENCE_PATHWAY or fold to "
+                     "`naming_convention` + "
+                     "`meta['detection_pattern']='ipc_channel'`. "
+                     "Pending cluster-A/C audit."),
+    EvidenceTypeSpec("topic_match", AXIS_PENDING,
+                     "Message-queue topic-name matching inference "
+                     "(linkers/message_queue.py:516). Emitted in the "
+                     "canonical-`event_publishes` fold for MQ publisher→"
+                     "subscriber via topic when the publisher's topic "
+                     "matches the subscriber's pattern. Sibling of "
+                     "`variable_match`. At-risk Cluster A: candidate "
+                     "for promotion or fold to `naming_convention` + "
+                     "`meta['detection_pattern']='mq_topic'`. "
+                     "Pending cluster-A/C audit."),
+    EvidenceTypeSpec("ctypes_stdlib_call", AXIS_PENDING,
+                     "Python ctypes FFI call against the stdlib variant "
+                     "(linkers/pyffi.py; `lib_vars[var_name] = "
+                     "\"ctypes_stdlib_call\"` then for-loop unpack into "
+                     "Edge.create). Distinguishes stdlib-loader scope "
+                     "from the repo-local-loaded `ctypes_call`. At-risk "
+                     "Cluster C peer: fold candidate to `ctypes_call` + "
+                     "`meta['ffi_scope']='stdlib'`. Pending cluster-C "
+                     "audit (see WI-nubuv tracker discussion 2026-05-06)."),
+    EvidenceTypeSpec("cffi_stdlib_call", AXIS_PENDING,
+                     "Python cffi FFI call against the stdlib variant "
+                     "(linkers/pyffi.py; same dict-subscript-target "
+                     "leak shape as `ctypes_stdlib_call`). At-risk "
+                     "Cluster C peer: fold candidate to `cffi_call` + "
+                     "`meta['ffi_scope']='stdlib'`. Pending cluster-C "
+                     "audit."),
+    EvidenceTypeSpec("qualified_call", AXIS_PENDING,
+                     "R qualified function call via `pkg::fn` "
+                     "(hypergumbo-lang-common/r_lang.py:385). Sibling of "
+                     "the canonical `static` inference label; emitted "
+                     "from the inline ternary "
+                     "``'static' if not path_hint else 'qualified_call'`` "
+                     "that the pre-WI-nubuv classifier silently skipped. "
+                     "At-risk Cluster D call-construct: fold candidate "
+                     "to `static` + `meta['call_construct']='qualified'`. "
+                     "Pending cluster-D audit."),
+    EvidenceTypeSpec("ast_call_namespace", AXIS_PENDING,
+                     "JS/TS namespace-import call inference "
+                     "(hypergumbo-lang-mainstream/js_ts.py:3858; "
+                     "``import * as obj; obj.method()``). Sibling of "
+                     "the canonical `ast_call_direct` / `ast_new` peers; "
+                     "emitted from the inline ternary "
+                     "``'ast_new' if is_class else 'ast_call_namespace'``. "
+                     "At-risk Cluster D call-construct: fold candidate "
+                     "to `ast_call_direct` + `meta['call_construct']='namespace'`. "
                      "Pending cluster-D audit."),
 )
 

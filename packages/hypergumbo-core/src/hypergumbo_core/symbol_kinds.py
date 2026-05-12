@@ -87,6 +87,13 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Enum declaration."),
     SymbolKindSpec("union", AXIS_LANGUAGE_CONSTRUCT,
                    "Union / sum-type declaration."),
+    SymbolKindSpec("error_set", AXIS_LANGUAGE_CONSTRUCT,
+                   "Zig error-set declaration. Surfaced by WI-nubuv's "
+                   "inline-IfExp / non-string-Constant classifier fixes "
+                   "from the function-local kind union in "
+                   "hypergumbo-lang-extended1/zig.py:259. Zig errors are "
+                   "a first-class language construct sibling to "
+                   "`struct` / `enum` / `union`."),
     SymbolKindSpec("trait", AXIS_LANGUAGE_CONSTRUCT,
                    "Trait declaration (Rust / Scala / Groovy)."),
     SymbolKindSpec("module", AXIS_LANGUAGE_CONSTRUCT,

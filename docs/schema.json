@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.7.0"
+      "const": "0.7.1"
     },
     "confidence_model": {
       "type": "string",
@@ -195,6 +195,7 @@
             "struct": "language_construct",
             "enum": "language_construct",
             "union": "language_construct",
+            "error_set": "language_construct",
             "trait": "language_construct",
             "module": "language_construct",
             "namespace": "language_construct",
@@ -861,7 +862,13 @@
                 "ctypes_call": "pending_classification",
                 "alias_resolution": "pending_classification",
                 "import_resolution": "pending_classification",
-                "ast_call_method": "pending_classification"
+                "ast_call_method": "pending_classification",
+                "ipc_channel_match": "pending_classification",
+                "topic_match": "pending_classification",
+                "ctypes_stdlib_call": "pending_classification",
+                "cffi_stdlib_call": "pending_classification",
+                "qualified_call": "pending_classification",
+                "ast_call_namespace": "pending_classification"
               },
               "x-deprecated": []
             },
