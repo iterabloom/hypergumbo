@@ -17,6 +17,12 @@ other than Python).
 - **Python** — 8 distinct import-times-call styles, including the two WI-zigah
   fix cases (multi-segment attribute chain and dotted-submodule bare
   name) plus aliased / deep-nested / multi-name-import variants.
+- **JS/TS, Go, Rust, Java, C++, Ruby, Elixir** — WI-mafik audit fixtures
+  covering the canonical import-times-call constructs per language.
+  Each is initially loaded without ``xfail_reason``; the WI-mafik audit
+  set the ``xfail_reason`` for any language whose analyzer fails to emit
+  the expected edges, capturing the gap-state at audit time as a
+  CI-visible regression marker.
 
 ## Adding a new language
 
@@ -30,13 +36,11 @@ other than Python).
    substring-based so the fixture is not coupled to the analyzer's
    exact qualified-name format (``:``-delimited vs ``.``-delimited vs
    ``::``-delimited for Rust/C++).
-
-Do NOT add a language until its analyzer handles dotted-submodule
-resolution (the WI-zigah Level 1 analog for that language). Adding a
-language with a broken analyzer fails CI with a known-bad state — which
-is precisely what this fixture exists to surface — but the fix must
-land first, or the fixture must be gated behind an ``@pytest.mark.xfail``
-that documents the pending fix.
+4. If the analyzer doesn't yet handle one or more of the constructs,
+   set ``xfail_reason`` to a short message naming the gap and the
+   tracker WI that will fix it. The test will run, expect failure, and
+   surface a regression if the analyzer is later improved without
+   updating this fixture.
 """
 
 from __future__ import annotations
@@ -58,6 +62,7 @@ class PolyglotFixture:
     filename: str
     source: str
     expected_targets: tuple[tuple[str, str], ...]
+    xfail_reason: str | None = None
 
 
 POLYGLOT_FIXTURES: list[PolyglotFixture] = [
@@ -103,12 +108,268 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             ("os.path", "dirname"),
         ),
     ),
+    PolyglotFixture(
+        language="js_ts",
+        filename="polyglot_js_ts_fixture.ts",
+        source=(
+            "// SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "// WI-mafik JS/TS import-times-call coverage fixture.\n"
+            'import { readFile } from "node:fs/promises";\n'
+            'import * as fs from "node:fs";\n'
+            'import { writeFile as wf } from "node:fs/promises";\n'
+            'import path from "node:path";\n'
+            "\n"
+            "async function exerciseAllStyles(p: string) {\n"
+            "  // Named import + bare call.\n"
+            "  await readFile(p);\n"
+            "  // Namespace import + member call.\n"
+            "  fs.readFileSync(p);\n"
+            "  // Aliased named import + bare call.\n"
+            '  await wf(p, "content");\n'
+            "  // Default import + member call.\n"
+            '  path.join("a", "b");\n'
+            "}\n"
+        ),
+        expected_targets=(
+            # Analyzer drops the ``node:`` scheme prefix when emitting dsts
+            # (cf. ``typescript:fs/promises:0-0:readFile:unresolved``). The
+            # module-spec normalization is a separate concern from the
+            # call-site coverage axis WI-mafik is auditing.
+            ("fs/promises", "readFile"),
+            ("fs", "readFileSync"),
+            ("fs/promises", "writeFile"),
+            ("path", "join"),
+        ),
+        xfail_reason=(
+            "WI-mafik Level 1b: aliased named imports "
+            "(``import { writeFile as wf }`` + ``wf(...)``) emit a calls "
+            "edge whose callable is the alias (``wf``), not the underlying "
+            "name (``writeFile``). Affects "
+            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py."
+        ),
+    ),
+    PolyglotFixture(
+        language="go",
+        filename="polyglot_go_fixture.go",
+        source=(
+            "// SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "// WI-mafik Go import-times-call coverage fixture.\n"
+            "package main\n"
+            "\n"
+            "import (\n"
+            '\t"fmt"\n'
+            '\tf "fmt"\n'
+            '\t. "strings"\n'
+            ")\n"
+            "\n"
+            "func exerciseAllStyles() {\n"
+            "\t// Standard import + member call.\n"
+            '\tfmt.Println("hi")\n'
+            "\t// Aliased import + member call.\n"
+            '\tf.Sprintf("hi %d", 1)\n'
+            "\t// Dot import + bare call.\n"
+            '\t_ = Contains("haystack", "needle")\n'
+            "}\n"
+        ),
+        expected_targets=(
+            ("fmt", "Println"),
+            ("fmt", "Sprintf"),
+            ("strings", "Contains"),
+        ),
+        xfail_reason=(
+            "WI-mafik Level 1b: dot imports (``import . \"strings\"`` + "
+            "bare ``Contains(...)``) emit no calls edge — the analyzer "
+            "doesn't track which package's symbols are dot-imported into "
+            "the current scope. Affects "
+            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go.py."
+        ),
+    ),
+    PolyglotFixture(
+        language="rust",
+        filename="polyglot_rust_fixture.rs",
+        source=(
+            "// SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "// WI-mafik Rust import-times-call coverage fixture.\n"
+            "use std::fs;\n"
+            "use std::fs::write;\n"
+            "use std::fs::create_dir as mkdir;\n"
+            "\n"
+            "fn exercise_all_styles() {\n"
+            "    // Qualified call through module alias.\n"
+            '    let _ = fs::read_to_string("path");\n'
+            "    // Bare call from ``use std::fs::write``.\n"
+            '    let _ = write("path", "content");\n'
+            "    // Aliased terminal name + bare call.\n"
+            '    let _ = mkdir("path");\n'
+            "}\n"
+        ),
+        expected_targets=(
+            ("std::fs", "read_to_string"),
+            ("std::fs", "write"),
+            ("std::fs", "create_dir"),
+        ),
+        xfail_reason=(
+            "WI-mafik Level 1b (multi-gap): (1) ``use std::fs::write`` + "
+            "bare ``write(...)`` emits no calls edge; (2) aliased terminal "
+            "name (``use ... as mkdir``) preserves the alias rather than "
+            "resolving to ``create_dir``; (3) qualified call through module "
+            "alias (``fs::read_to_string``) emits a dst missing the "
+            "``std::`` prefix (analyzer doesn't connect ``fs`` back to "
+            "``std::fs`` via the ``use std::fs;`` declaration). Affects "
+            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py."
+        ),
+    ),
+    PolyglotFixture(
+        language="java",
+        filename="Fixture.java",
+        source=(
+            "// SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "// WI-mafik Java import-times-call coverage fixture.\n"
+            "import java.util.Arrays;\n"
+            "import java.util.Collections;\n"
+            "import static java.util.Collections.singletonList;\n"
+            "\n"
+            "public class Fixture {\n"
+            "    public static void exerciseAllStyles() {\n"
+            "        // Standard class import + static method call.\n"
+            "        Arrays.asList(1, 2, 3);\n"
+            "        // Another standard import.\n"
+            "        Collections.emptyList();\n"
+            "        // Static import + bare call.\n"
+            "        singletonList(1);\n"
+            "    }\n"
+            "}\n"
+        ),
+        expected_targets=(
+            ("java.util", "asList"),
+            ("java.util", "emptyList"),
+            ("java.util", "singletonList"),
+        ),
+        xfail_reason=(
+            "WI-mafik Level 1b: static-import + bare-call "
+            "(``import static java.util.Collections.singletonList`` + "
+            "``singletonList(...)``) emits an unresolved edge with no "
+            "module info — the analyzer doesn't propagate the static "
+            "import's source module onto the bare call. Affects "
+            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py."
+        ),
+    ),
+    PolyglotFixture(
+        language="cpp",
+        filename="polyglot_cpp_fixture.cpp",
+        source=(
+            "// SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "// WI-mafik C++ import-times-call coverage fixture.\n"
+            "#include <cstdio>\n"
+            "#include <cstring>\n"
+            "#include <cstdlib>\n"
+            "\n"
+            "using namespace std;\n"
+            "using std::strlen;\n"
+            "\n"
+            "int exercise_all_styles() {\n"
+            "    // Qualified call (no using).\n"
+            '    std::printf("hi\\n");\n'
+            "    // using-namespace + bare call.\n"
+            "    abort();\n"
+            "    // using std::name + bare call.\n"
+            '    return strlen("hi");\n'
+            "}\n"
+        ),
+        expected_targets=(
+            ("cstdio", "printf"),
+            ("cstdlib", "abort"),
+            ("cstring", "strlen"),
+        ),
+        xfail_reason=(
+            "WI-mafik Level 1b: ``#include <cstdio>`` + ``std::printf(...)`` "
+            "(or ``using namespace std;`` + bare call, or "
+            "``using std::name;`` + bare call) emits calls edges whose dst "
+            "contains no header/module info — the analyzer doesn't "
+            "associate include directives with subsequent calls. Affects "
+            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/cpp.py."
+        ),
+    ),
+    PolyglotFixture(
+        language="ruby",
+        filename="polyglot_ruby_fixture.rb",
+        source=(
+            "# SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "# WI-mafik Ruby import-times-call coverage fixture.\n"
+            'require "json"\n'
+            'require "set"\n'
+            "\n"
+            "def exercise_all_styles\n"
+            "  # require + namespaced class-method call.\n"
+            '  JSON.parse("{}")\n'
+            "  # Same shape.\n"
+            "  Set.new([1, 2, 3])\n"
+            "  # Fully qualified with leading ::.\n"
+            "  ::JSON.generate({})\n"
+            "end\n"
+        ),
+        expected_targets=(
+            ("json", "parse"),
+            ("set", "new"),
+            ("json", "generate"),
+        ),
+        xfail_reason=(
+            "WI-mafik Level 1b (catastrophic): ``require \"json\"`` + "
+            "``JSON.parse(...)`` emits ZERO calls edges. The Ruby analyzer "
+            "doesn't recognize the require-then-call pattern at all on the "
+            "fixture inputs. Affects "
+            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ruby.py."
+        ),
+    ),
+    PolyglotFixture(
+        language="elixir",
+        filename="polyglot_elixir_fixture.ex",
+        source=(
+            "# SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "# WI-mafik Elixir import-times-call coverage fixture.\n"
+            "defmodule Fixture do\n"
+            "  alias String, as: S\n"
+            "  import Enum, only: [count: 1]\n"
+            "\n"
+            "  def exercise_all_styles do\n"
+            "    # Fully qualified.\n"
+            '    String.length("hi")\n'
+            "    # Aliased module + member call.\n"
+            '    S.upcase("hi")\n'
+            "    # import only: + bare call.\n"
+            "    count([1, 2, 3])\n"
+            "  end\n"
+            "end\n"
+        ),
+        expected_targets=(
+            ("String", "length"),
+            ("String", "upcase"),
+            ("Enum", "count"),
+        ),
+        xfail_reason=(
+            "WI-mafik Level 1b: (1) aliased module + member call "
+            "(``alias String, as: S`` + ``S.upcase(...)``) preserves the "
+            "alias ``S`` rather than resolving to ``String``; "
+            "(2) ``import Enum, only: [count: 1]`` + bare ``count(...)`` "
+            "emits no calls edge. Affects "
+            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/elixir.py."
+        ),
+    ),
 ]
 
 
-@pytest.mark.parametrize(
-    "fixture", POLYGLOT_FIXTURES, ids=lambda f: f.language,
-)
+def _polyglot_params() -> list:
+    """Wrap each fixture as a parametrize entry, marking xfail when set."""
+    params = []
+    for fixture in POLYGLOT_FIXTURES:
+        marks: list = []
+        if fixture.xfail_reason is not None:
+            marks.append(pytest.mark.xfail(reason=fixture.xfail_reason, strict=True))
+        params.append(pytest.param(fixture, id=fixture.language, marks=marks))
+    return params
+
+
+@pytest.mark.parametrize("fixture", _polyglot_params())
 def test_polyglot_call_site_coverage(
     tmp_path: Path, fixture: PolyglotFixture,
 ) -> None:
