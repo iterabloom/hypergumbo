@@ -169,8 +169,6 @@ def is_utility_file(path: str) -> bool:
         "examples", "example", "samples", "sample", "demos", "demo",
         # Scripts
         "scripts",
-        # Contrib (e.g., Kubernetes contrib/ dirs)
-        "contrib", "hack",
         # Build systems
         "vcbuild", "cmake",
         # Benchmarks
@@ -181,23 +179,36 @@ def is_utility_file(path: str) -> bool:
     }
 
     # Ambiguous names: at the project root these are tooling directories
-    # (e.g., dev/check_providers.py, tools/build.py, bin/run.sh), but
-    # inside source roots they are legitimate modules (e.g.,
-    # src/dev/gates.rs, src/utils/helpers.py, src/bin/main.rs).
-    _AMBIGUOUS_UTILITY_DIRS = {"dev", "tools", "bin", "utils", "utilities"}
-    _SOURCE_ROOTS = {"src", "lib", "app", "crates", "packages"}
-    seen_source_root = False
+    # (e.g., dev/check_providers.py, tools/build.py, bin/run.sh,
+    # contrib/foo.py, hack/release.sh), but inside a package they are
+    # legitimate modules: django/utils/html.py is core HTML rendering,
+    # django/contrib/admin/ is the bundled admin app, requests/utils.py
+    # is the canonical HTTP utility module, etc. WI-gigib (2026-05-12)
+    # closed a class of false-positive prod-rslice emptiness on Django
+    # by tightening this check to root-only.
+    _AMBIGUOUS_UTILITY_DIRS = {
+        "dev", "tools", "bin", "utils", "utilities",
+        "contrib", "hack",
+    }
 
-    for part in path_parts[:-1]:  # Exclude filename
+    for i, part in enumerate(path_parts[:-1]):  # Exclude filename
         lower = part.lower()
-        if lower in _SOURCE_ROOTS:
-            seen_source_root = True
         if lower in utility_dirs:
             return True
-        # Ambiguous dirs are utility only at project root
-        if lower in _AMBIGUOUS_UTILITY_DIRS and not seen_source_root:
+        # Ambiguous dirs are utility only at the repo root (depth 0).
+        # WI-gigib: previously the check was "ambiguous AND haven't seen
+        # a known source root yet", which falsely flagged any path whose
+        # top-level dir wasn't one of {src, lib, app, crates, packages}
+        # — e.g. django/utils/html.py, django/contrib/admin/options.py,
+        # requests/utils.py, urllib3/contrib/socks.py. Root-only is a
+        # tighter rule that matches the Kubernetes-style "contrib/ at
+        # the repo root means community add-ons" convention while keeping
+        # nested same-named directories as production code.
+        if lower in _AMBIGUOUS_UTILITY_DIRS and i == 0:
             return True
-        # devel-common/, devel-tools/, etc. — CI/dev tooling directories
+        # devel-common/, devel-tools/, etc. — CI/dev tooling directories.
+        # These are universally root-level by convention so we keep the
+        # broader prefix check.
         if lower.startswith("devel"):
             return True
 

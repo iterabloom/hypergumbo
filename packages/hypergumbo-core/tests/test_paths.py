@@ -388,6 +388,39 @@ class TestIsUtilityFile:
         assert is_utility_file("src/lib.rs") is False
         assert is_utility_file("src/main.rs") is False
 
+    def test_ambiguous_dirs_under_named_package_root_not_utility(self) -> None:
+        """WI-gigib: ambiguous directory names nested under a package-name
+        top-level directory must NOT be flagged as utility. Django's
+        ``django/utils/html.py`` is core HTML rendering, not tooling;
+        ``django/contrib/admin/options.py`` is the bundled admin app,
+        not community contributions; ``requests/utils.py`` is the
+        canonical HTTP utility module; ``urllib3/contrib/socks.py``
+        is the SOCKS proxy backend. Pre-fix all of these were flagged
+        as utility because their top-level directory wasn't in
+        {src, lib, app, crates, packages} (the hardcoded
+        ``_SOURCE_ROOTS`` set), so the "ambiguous AND haven't seen a
+        source root yet" rule fired at every depth. The reproduction
+        was django's rslice.1.prod.json: 141 edges in non-prod rslice
+        collapsed to 0 edges in prod rslice because the seed
+        ``format_html`` at ``django/utils/html.py`` was misclassified
+        as utility and the BFS could not extend past similarly
+        flagged nodes.
+        """
+        # Django
+        assert is_utility_file("django/utils/html.py") is False
+        assert is_utility_file("django/contrib/admin/options.py") is False
+        assert is_utility_file("django/contrib/auth/password_validation.py") is False
+        assert is_utility_file("django/forms/utils.py") is False
+        assert is_utility_file("django/template/backends/utils.py") is False
+        # Other popular pip packages
+        assert is_utility_file("requests/utils.py") is False
+        assert is_utility_file("urllib3/contrib/socks.py") is False
+        assert is_utility_file("flask/cli/utils.py") is False
+        # Root-level still flagged
+        assert is_utility_file("contrib/nginx.conf") is True
+        assert is_utility_file("hack/release.sh") is True
+        assert is_utility_file("utils/foo.py") is True
+
     def test_ambiguous_dirs_inside_source_root_not_utility(self) -> None:
         """dev/, utils/, tools/, bin/ inside source roots are modules (WI-kafif).
 
