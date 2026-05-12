@@ -36,3 +36,10 @@
   nonce: 2fb1  # 2fb1
   set:  # 2fb1
     status: done  # 2fb1
+- op: discuss  # 3d3c
+  at: '2026-05-12T05:06:59Z'  # 3d3c
+  by: agent  # 3d3c
+  actor: jgstern_agent  # 3d3c
+  clock: 4  # 3d3c
+  nonce: 3d3c  # 3d3c
+  message: "WI-ruzin shipped with the highest-ROI calls-family linkers covered across 2 PRs (#3647, #3648). The structurally significant fallback emitters have INV-zuhub item 1 conformance:\n\n**Shipped per-linker conformance:**\n- `cgo.py` (PR #3647) — Go cgo cross-file C function collision.\n- `napi.py` (PR #3647) — N-API export cross-file C function collision.\n- `lua_ffi.py` (PR #3647) — LuaJIT FFI both phases (cdef and unresolved-call).\n- `ruby_ffi.py` (PR #3647) — Ruby FFI both phases (`attach_function` and C `rb_define_method`).\n- `method_call_recovery.py` (PR #3648) — Path B' chained-method recovery line-proximity tiebreaker.\n\n**Vacuous closures (no short-name fallback path; documented here):**\n- `http.py` — URL/path matching, not name matching.\n- `graphql.py` — schema-resolver pairing by schema path, not short-name.\n- `tauri_ipc.py` — Rust command name matching (analyzer-side resolved precisely).\n- `build_target.py` — build-config name precise.\n- `wasm_bindgen.py` — Rust ↔ JS via wasm_bindgen-emitted FQN.\n\n**Deferred to follow-on WIs:**\n- JNI linker (`jni.py`) dual-key (short + FQN) indexing — filed as a new WI under INV-zuhub.\n- PyFFI linker (`pyffi.py`) three-key PyO3 indexing + ctypes/cffi — filed as a new WI under INV-zuhub.\n- Go analyzer `interface_dispatch` residual (`go.py:2397`, WI-likab named instance) — language-analyzer fix outside the L4 walker scope; filed as a new WI under INV-zuhub.\n- `grpc.py` calls portion — single-value dicts (BUG-04 shape); tracked separately under WI-patiz.\n- `ipc.py` calls portion — needs separate audit (channel-match shape).\n\nStatus: done. The calls family is structurally covered modulo the four follow-on WIs filed above. INV-zuhub item 1 has substantive evidence across both edge-type families; pending_validation transition can proceed."  # 3d3c
