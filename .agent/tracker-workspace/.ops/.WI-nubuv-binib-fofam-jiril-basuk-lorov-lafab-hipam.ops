@@ -40,3 +40,19 @@
   clock: 4  # 47ee
   nonce: 47ee  # 47ee
   message: "Empirical addendum to ext A scope: WI-fukol survey (2026-05-06) discovered a third producer-leak shape that ext A doesn't catch — DICT-INDEX assignment.\n\nlinkers/pyffi.py:142,157 emits evidence_type values via:\n\n    lib_vars[var_name] = 'ctypes_stdlib_call'  # line 142\n    lib_vars[var_name] = 'cffi_stdlib_call'    # line 157\n\nThen later: evidence_type = lib_vars[var_name]; Edge.create(... evidence_type=evidence_type, ...).\n\next A's _resolve_function_local walks back assignments where target is an ast.Name (kind = 'literal'). It does not handle ast.Subscript targets (lib_vars[var_name] = '...'). The conservative posture (dict-derived RHS = unresolvable, silent skip) means ext A correctly skips this without false-positive — but the leak is real: ctypes_stdlib_call / cffi_stdlib_call are emitted today and were never registered in evidence_types.py until this finding (will register in next PR).\n\nThis adds a fourth blind-spot category to the catalog:\n  1. Literal-kwarg form (caught by original linter)\n  2. Assignment-form to Name (caught by ext A)\n  3. F-string form (advisory only; ext B target)\n  4. Dict-subscript-target assignment-form (NEW; ext C target — the structural-backstop ban-the-variable-form rule covers this)\n\nReinforces the ext B/C value proposition: ext C in particular (banning Symbol(kind=variable, ...) / Edge.create(...=variable, ...) producer shapes) eliminates ALL three remaining blind spots structurally rather than playing whack-a-mole."  # 47ee
+- op: update  # 9e48
+  at: '2026-05-12T00:52:02Z'  # 9e48
+  by: agent  # 9e48
+  actor: jgstern_agent  # 9e48
+  clock: 5  # 9e48
+  nonce: '9e48'  # 9e48
+  set:  # 9e48
+    status: done  # 9e48
+    pr_ref: '3636'  # 9e48
+- op: discuss  # bebe
+  at: '2026-05-12T00:52:02Z'  # bebe
+  by: agent  # bebe
+  actor: jgstern_agent  # bebe
+  clock: 6  # bebe
+  nonce: bebe  # bebe
+  message: "Extensions B (f-string expansion via function-local Name resolution; capped at 32 expansions, format-spec/conversion treated as unexpandable) and C (variable-form structural backstop, silent/advisory/strict per-axis opt-in) shipped via PR #3636 (commit f3704a2076). Both wrappers default to fstring_mode='expand' / variable_form_mode='silent' so the live tree's only advisory (inheritance.py:250 'ast_{edge_type}') silently expands to {ast_extends, ast_implements} without surfacing as an advisory.\n\nTwo precursor classifier fixes that the WI's own discussion described as latent shipped in the same PR:\n- Inline IfExp at the kwarg site now resolves through _resolve_simple_rhs (previously only function-local assignments did).\n- Non-string Constant assignments (None/int/bool sentinels) now skip-not-poison the function-local walker.\n\nThese surfaced 7 pre-existing producer-side leaks that were silently hidden by the classifier gaps: ipc_channel_match, topic_match, qualified_call, ast_call_namespace (inline IfExp); error_set (None-sentinel + if/elif chain); ctypes_stdlib_call, cffi_stdlib_call (registered defensively per the WI-nubuv tracker's 2026-05-06 empirical addendum which had identified them but never landed registry entries). All 7 registered AXIS_PENDING for follow-on cluster audit; SCHEMA_VERSION 0.7.0 -> 0.7.1 (additive enum widening). 28 new synthetic-fixture tests; 100% coverage on producer_coherence.py preserved."  # bebe

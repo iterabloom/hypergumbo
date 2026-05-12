@@ -19,3 +19,19 @@
     pr_ref:  # 37eb
     description: "Wave 5 PR #6 (selfh #166, commit 2c6f57dc6) folded Symbol.kind=route to kind=function + meta['framework_role']='route'. To keep existing framework YAMLs (phoenix.yaml, falcon.yaml, yesod.yaml, library-exports.yaml, …) working without forcing each to migrate, framework_patterns.py Pattern.matches() was extended at lines 396-401 (combined name+kind path, marked '# pragma: no cover' as no test exercises it) and 423-428 (kind-only path, covered by test_pattern_matches_symbol_kind) to fall back to meta['framework_role'] when symbol_kind regex doesn't match symbol.kind.\n\nThis is backward-compat technical debt. To remove the shim:\n\n1. Audit packages/hypergumbo-core/src/hypergumbo_core/frameworks/*.yaml for 'symbol_kind: ' rules that historically targeted folded role names (route, event_publisher, ipc_caller, websocket_endpoint, graphql_resolver, http_client, etc.).\n2. Add a 'framework_role:' Pattern field; migrate matching YAML rules.\n3. After all YAMLs migrate, remove the backward-compat fallback in framework_patterns.py:396-401 and :423-428. Drop the # pragma: no cover. Update test_pattern_matches_symbol_kind to use framework_role.\n\nRefs: ADR-0027 Phase 3 §'Resolution', audit-findings 0013, WI-runod schedule, WI-habut. Phase 4b registry cleanup (WI-butol) cannot fully complete until the YAMLs no longer reference deprecated symbol_kind values."  # 37eb
     fields: {}  # 37eb
+- op: update  # 7bd7
+  at: '2026-05-12T00:55:49Z'  # 7bd7
+  by: agent  # 7bd7
+  actor: jgstern_agent  # 7bd7
+  clock: 2  # 7bd7
+  nonce: 7bd7  # 7bd7
+  set:  # 7bd7
+    status: done  # 7bd7
+    pr_ref: 4fc0cff999  # 7bd7
+- op: discuss  # 80cc
+  at: '2026-05-12T00:55:49Z'  # 80cc
+  by: agent  # 80cc
+  actor: jgstern_agent  # 80cc
+  clock: 3  # 80cc
+  nonce: 80cc  # 80cc
+  message: "Closing as done. The work was completed in commit 4fc0cff999 (refactor(framework_patterns): WI-fojun — Pattern.framework_role field + shim removal, 2026-05-06):\n\n1. Added `Pattern.framework_role` field with its own `_framework_role_re` matcher (parallel to `symbol_kind`).\n2. `Pattern.matches()` updated to AND `symbol_kind:` and `framework_role:` when both are specified; either can be specified independently.\n3. Backward-compat fall-back-to-meta['framework_role']-when-symbol_kind-regex-doesn't-match shim REMOVED. The 'fall back to meta when symbol.kind doesn't match' branch at the former lines 396-401 and 423-428 no longer exists.\n4. Four YAMLs migrated to use `framework_role:` field: laravel.yaml, phoenix.yaml, rails.yaml, sinatra.yaml.\n5. `test_pattern_matches_symbol_kind` updated to exercise the new field. 100% coverage on framework_patterns.py preserved.\n\nTracker drift caused this item to remain todo_soft for 5 days — the commit closed the work but the tracker update was missed.\n\nResidual gap (filed as a NEW item if not already): 18 unfolded `symbol_kind:` references remain in config-conventions.yaml (13), language-conventions.yaml (4), library-exports.yaml (1). These reference kinds that were folded in Wave 6 (Cluster B/G) but to non-framework_role meta keys (`config_format`, `dependency_scope`, `package_ecosystem`, `entry_role`) rather than framework_role. The Pattern matcher currently only supports `symbol_kind:`, `framework_role:`, `decorator:`, `base_class:`, etc. — not general meta-key matching. Migrating these YAMLs needs Pattern to grow new meta-key fields (or a generalized meta query mechanism). Out of scope for WI-fojun (which was specifically about the framework_role fold residue from Cluster D and the WI-habut Wave 5 PRs). Filing separately."  # 80cc

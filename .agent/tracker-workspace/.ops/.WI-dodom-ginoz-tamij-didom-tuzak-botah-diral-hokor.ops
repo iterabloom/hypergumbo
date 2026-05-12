@@ -29,3 +29,18 @@
   set: {}  # 355a
   add:  # 355a
     not_duplicate_of: [WI-zitiv-haroh-jatun-fatat-pojan-jurus-jibuz-fibig]  # 355a
+- op: update  # cac0
+  at: '2026-05-12T00:52:22Z'  # cac0
+  by: agent  # cac0
+  actor: jgstern_agent  # cac0
+  clock: 3  # cac0
+  nonce: cac0  # cac0
+  set:  # cac0
+    status: done  # cac0
+- op: discuss  # 6a76
+  at: '2026-05-12T00:52:22Z'  # 6a76
+  by: agent  # 6a76
+  actor: jgstern_agent  # 6a76
+  clock: 4  # 6a76
+  nonce: 6a76  # 6a76
+  message: "Closing as done with audit evidence. Investigation of the cohort-1 hg.json artifacts at ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430 shows the Wave 5 framework_role producer fold IS complete on all 4 supposedly-no_move repos. The verdict methodology error was item §2 in this WI's own diagnostic note: 'distinguish node kind not folded from edge type not folded' — the BVT reflect agents queried framework_role on EDGES, where it doesn't belong (it is a Symbol.meta key on nodes per the Cluster D fold target).\n\nConcrete per-repo measurements from cohort-1/iter-001 (and cohort-2 for kafka):\n\n| repo | total nodes | nodes w/ meta.framework_role | edges w/ meta.framework_role | legacy Cluster D kinds (graphql_resolver / route / event_publisher / etc) |\n|---|---|---|---|---|\n| apollo-server | 3862 | 210 (150 graphql_resolver + 38 graphql_client + 14 event_subscriber + 7 http_client + 1 mq_publisher) | 0 | 0 |\n| containerd | 15535 | 1193 (514 event_subscriber + 401 event_publisher + 145 route + 54 grpc_client + 48 grpc_server) | 0 | 0 |\n| chatwoot | 40258 | 1507 (623 route + 420 message_sender + 290 http_client + 77 message_handler + 56 event_publisher) | 0 | 0 |\n| kafka | 136173 | 1145 | 0 | 0 (canonical 240 event_publishes edges as expected per Cluster A fold) |\n\nEvery node that previously would have carried kind='graphql_resolver' / 'route' / etc now correctly carries the canonical Symbol.kind ('function' / 'method' / 'interface' / 'class') plus meta['framework_role'] with the legacy value. Zero legacy Cluster D kinds across all 4 repos. The fold is complete on the producer side; the WI-habut verdict that should have shipped is 'moved' on all 4, not 'no_move'.\n\nResolution: this is a reflect-agent BVT methodology bug, not a producer-side leak. The BVT query for the parent WI-habut should check Symbol.meta['framework_role'] presence on nodes whose pre-fold kind was in the Cluster D set, not check Edge meta. The bakeoff-deep-reflect agent's query for framework_role coverage needs the corresponding methodology fix (separate item if/when the same shape recurs). The WI-nubuv ext B+C linter that just shipped (PR #3636) catches the *static* producer-side surface for ext-A-shaped leaks but does not address the BVT-methodology-error class — that's a separate diagnostic path.\n\nNo code change needed. The audit-findings 0013 row map (29 expected role values across 6 framework families) is satisfied on the cohort-1 artifact set."  # 6a76

@@ -18,3 +18,18 @@
     pr_ref:  # d9ca
     description: "Per ADR-0028 Phase 4 hard-fail. Ships piecewise per-cluster as each Phase 3 cluster's awaits_bakeoff_validation tag clears. Per-ship: remove the cluster's endpoint_shape values from EVIDENCE_TYPES in evidence_types.py; SCHEMA_VERSION minor bump; regenerate schema.json + concept-axes.md. Phase 4b prerequisites match ADR-0023's: bakeoff validation must clear for the corresponding Phase 3 subset before its 4b ships. Expect 5-7 sub-ships across the four clusters; each gets its own SCHEMA_VERSION bump. Predecessors: Phase 4a additive deprecation, plus the relevant Phase 3 cluster cleared bakeoff validation. Tag: analysis_quality."  # d9ca
     fields: {}  # d9ca
+- op: update  # c88e
+  at: '2026-05-11T23:23:56Z'  # c88e
+  by: agent  # c88e
+  actor: jgstern_agent  # c88e
+  clock: 2  # c88e
+  nonce: c88e  # c88e
+  set:  # c88e
+    status: done  # c88e
+- op: discuss  # 6d80
+  at: '2026-05-11T23:23:56Z'  # 6d80
+  by: agent  # 6d80
+  actor: jgstern_agent  # 6d80
+  clock: 3  # 6d80
+  nonce: 6d80  # 6d80
+  message: "Shipped in PR (merged via fast-forward, commit 0a3b70fbc4) — ADR-0028 §6 Phase 4b Edge.evidence_type enum closure. 111 endpoint_shape values removed; SCHEMA_VERSION 0.6.0 → 0.7.0; 91 audit-findings rows advanced PRELIM_RESOLVED → RESOLVED across docs 0008 / 0012 / 0014; consumer-side drift-linter clean. 16,801 passed on hypergumbo-core --full. Closes WI-runod Wave 8 on the Edge.evidence_type axis — the underlying WI-runod program (Waves 0-9) is now complete."  # 6d80
