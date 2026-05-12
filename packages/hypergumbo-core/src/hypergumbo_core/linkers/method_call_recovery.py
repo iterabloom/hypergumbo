@@ -172,6 +172,23 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
             )
             if chosen_method.id in already_resolved:
                 continue  # avoid duplicating an existing direct edge
+            # INV-zuhub: when multiple class hints each have a method
+            # matching ``name``, the line-proximity tiebreaker is a
+            # heuristic — the chosen method may not be the one the
+            # runtime actually dispatches to. Mark such resolutions
+            # as fallback so downstream consumers can filter the
+            # heuristic population from the precision-resolved one.
+            is_fallback = len(candidates) > 1
+            base_confidence = min(chosen_hint.confidence, ucall.confidence)
+            confidence = (
+                min(base_confidence, 0.5) if is_fallback else base_confidence
+            )
+            edge_meta: dict[str, object] = {
+                "call_construct": "method",
+                "resolution_quality": "recovery",
+            }
+            if is_fallback:
+                edge_meta["disambiguation_fallback"] = True
             new_edges.append(Edge.create(
                 src=caller_id,
                 dst=chosen_method.id,
@@ -180,8 +197,8 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call",
-                confidence=min(chosen_hint.confidence, ucall.confidence),
-                meta={"call_construct": "method", "resolution_quality": "recovery"},
+                confidence=confidence,
+                meta=edge_meta,
             ))
             # Mark resolved so a second unresolved sibling on the same
             # method doesn't double-emit.

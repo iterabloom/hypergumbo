@@ -292,3 +292,90 @@ class TestHelpers:
 
     def test_parse_unresolved_name_too_few_parts(self) -> None:
         assert _parse_unresolved_name("garbled:unresolved") is None
+
+
+# ---------------------------------------------------------------------------
+# INV-zuhub property tests: method_call_recovery fallback (WI-ruzin)
+# ---------------------------------------------------------------------------
+
+
+class TestInvZuhubMethodCallRecoveryFallback:
+    """INV-zuhub item 1, calls family — method_call_recovery line-proximity pick.
+
+    When more than one class hint each contains a method matching the
+    unresolved name, the line-proximity tiebreaker is a heuristic — the
+    chosen method may not be the runtime dispatch target. Such
+    resolutions are simple-name fallbacks per INV-zuhub.
+    """
+
+    def test_single_class_hint_keeps_high_confidence(self) -> None:
+        main = _sym(
+            "k:App.kt:5-9:main:function", "main", "function", start=5, end=9,
+        )
+        cls = _sym(
+            "k:CliRunner.kt:1-30:CliRunner:class", "CliRunner", "class",
+            path="CliRunner.kt", start=1, end=30,
+        )
+        run_method = _sym(
+            "k:CliRunner.kt:10-20:CliRunner.run:method",
+            "CliRunner.run", "method", path="CliRunner.kt",
+            start=10, end=20,
+        )
+        edges = [
+            _edge(main.id, cls.id, "calls", line=7),
+            _edge(cls.id, run_method.id, "contains", line=10),
+            _edge(main.id, "kotlin:external:0-0:run:unresolved",
+                  "calls", line=7, evidence_type="ast_method_unresolved"),
+        ]
+        result = link_method_call_recovery(_ctx([main, cls, run_method], edges))
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+        # base confidence preserved
+        assert edge.confidence > 0.5
+
+    def test_multiple_class_hints_resolve_as_fallback(self) -> None:
+        """Two class hints (e.g. ``Foo()`` and ``Bar()`` both have a
+        ``run`` method) — the line-proximity pick is heuristic and the
+        edge downgrades to ``confidence <= 0.5`` + fallback flag.
+        """
+        main = _sym(
+            "k:App.kt:5-9:main:function", "main", "function", start=5, end=9,
+        )
+        cls_a = _sym(
+            "k:FooRunner.kt:1-30:FooRunner:class", "FooRunner", "class",
+            path="FooRunner.kt", start=1, end=30,
+        )
+        cls_b = _sym(
+            "k:BarRunner.kt:1-30:BarRunner:class", "BarRunner", "class",
+            path="BarRunner.kt", start=1, end=30,
+        )
+        run_a = _sym(
+            "k:FooRunner.kt:10-20:FooRunner.run:method",
+            "FooRunner.run", "method", path="FooRunner.kt",
+            start=10, end=20,
+        )
+        run_b = _sym(
+            "k:BarRunner.kt:10-20:BarRunner.run:method",
+            "BarRunner.run", "method", path="BarRunner.kt",
+            start=10, end=20,
+        )
+        edges = [
+            # Two class hints from the same caller.
+            _edge(main.id, cls_a.id, "calls", line=6),
+            _edge(main.id, cls_b.id, "calls", line=8),
+            _edge(cls_a.id, run_a.id, "contains", line=10),
+            _edge(cls_b.id, run_b.id, "contains", line=10),
+            _edge(main.id, "kotlin:external:0-0:run:unresolved",
+                  "calls", line=7, evidence_type="ast_method_unresolved"),
+        ]
+        result = link_method_call_recovery(
+            _ctx([main, cls_a, cls_b, run_a, run_b], edges),
+        )
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst in {run_a.id, run_b.id}
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+        assert edge.meta.get("resolution_quality") == "recovery"
