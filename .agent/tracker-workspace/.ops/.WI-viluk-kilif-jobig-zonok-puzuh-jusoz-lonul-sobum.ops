@@ -18,3 +18,18 @@
     pr_ref:  # e3de
     description: "Audit-findings property test (packages/hypergumbo-core/tests/test_audit_findings.py) currently validates the structural shape of each row's diagnostic_test field but does not execute the cmd. Extend the test so that for every verdict with verdict=DEPRECATE-NO-FOLD, the diagnostic_test.cmd is executed and its stdout matches the expect field (typically 'empty', meaning no producer emits the value). This catches the regression class where a producer is added later for a value flagged DEPRECATE-NO-FOLD without updating the verdict. Per the Fundamental Concept Audit playbook §'Step 4.5 — Indirection-aware producer trace' as amended on 2026-05-07. Per ~/hypergumbo_lab_notebook/notebookjournal_05072026_0316.md §'High-value (file as tracker items) #3'."  # e3de
     fields: {}  # e3de
+- op: update  # 0327
+  at: '2026-05-12T01:32:13Z'  # 0327
+  by: agent  # 0327
+  actor: jgstern_agent  # 0327
+  clock: 2  # 0327
+  nonce: '0327'  # 0327
+  set:  # 0327
+    status: wont_do  # 0327
+- op: discuss  # cd39
+  at: '2026-05-12T01:32:13Z'  # cd39
+  by: agent  # cd39
+  actor: jgstern_agent  # cd39
+  clock: 3  # cd39
+  nonce: cd39  # cd39
+  message: "Closing as wont_do — the intent is already implemented via a structurally stronger mechanism than executing the per-row diagnostic_test.cmd would have been.\n\nThe regression guard 'producer added for a DEPRECATE-NO-FOLD value' is enforced by:\n- audit_findings.find_zero_producer_violations() at packages/hypergumbo-core/src/hypergumbo_core/audit_findings.py:420.\n- Live-tree CI test test_live_tree_deprecate_no_fold_has_zero_producers() at packages/hypergumbo-core/tests/test_audit_findings.py:1072.\n\nFor every DEPRECATE-NO-FOLD verdict across docs/audits/*.md, the test runs the producer-coherence AST walker (find_emitted_symbol_kinds / find_emitted_evidence_types / find_emitted_edge_types) and fails on any producer emit site. The walker covers more shapes than executing diagnostic_test.cmd would have:\n\n- Literal-kwarg form: both grep and walker.\n- Assignment-form to Name (kind = '…'; Symbol(kind=kind)): walker only — WI-nubuv ext A landed 2026-05-06.\n- F-string expansion (f'ast_{x}' with x resolvable to a literal set): walker only — WI-nubuv ext B landed in PR #3636 (2026-05-11).\n- Module-level constant resolution: walker only.\n\nThe walker docstring explicitly cites the Fundamental Concept Audit playbook §'Step 4.5 — Indirection-aware producer trace' — the same source as this WI's description (2026-05-07 lab notebook §'High-value #3').\n\nOf the 17 DEPRECATE-NO-FOLD rows currently in the audit docs, only 2 have git-grep-style diagnostic_test.cmd (both subsumed by the walker). The other 15 are python3 registry-membership asserts for CANONICAL/FOLD verdicts, which are unrelated to producer existence and are already enforced by the L1 drift linters (check-symbol-kind-drift / check-evidence-type-drift / check-edge-type-drift) and the registry property tests in test_symbol_kinds.py / test_evidence_types.py / test_edge_types.py.\n\nExecuting diagnostic_test.cmd would be redundant for the git-grep rows and weaker (no indirection coverage), and orthogonal to producer-existence for the python3 rows. The diagnostic_test field itself remains useful documentation — 'here's the test the audit author ran when filing this verdict' — but doesn't need machine execution at CI time."  # cd39

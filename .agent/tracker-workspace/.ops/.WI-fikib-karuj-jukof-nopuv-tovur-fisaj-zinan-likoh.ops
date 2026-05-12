@@ -1,0 +1,29 @@
+- op: create  # c283
+  at: '2026-05-12T01:50:30Z'  # c283
+  by: agent  # c283
+  actor: jgstern_agent  # c283
+  clock: 1  # c283
+  nonce: c283  # c283
+  data:  # c283
+    kind: work_item  # c283
+    title: "Wire scripts/check-fallback-coherence into .githooks/pre-commit (governance approval needed)"  # c283
+    status: todo_hard  # c283
+    priority: 2  # c283
+    parent:  # c283
+    tags: []  # c283
+    isbefore: []  # c283
+    duplicate_of: []  # c283
+    not_duplicate_of: []  # c283
+    pr_ref:  # c283
+    description: "INV-zuhub item 3 partial follow-on. The CLI script scripts/check-fallback-coherence shipped in commit dd2a93550e but is NOT wired into the pre-commit hook because .githooks/pre-commit is a governance file requiring human approval (per AGENTS.md \"Security Boundaries\" / \"Governance Files\").\n\nProposed change: add a new pre-commit gate block parallel to the existing 'Producer-side axis coherence (L3)' block at .githooks/pre-commit lines ~325-349, after the L3 block and before the audit-findings format check. Block body:\n\n  echo -n \"  Fallback coherence (L4 / INV-zuhub)... \"\n  if git diff --cached --name-only | grep -qE \"^packages/hypergumbo-core/src/hypergumbo_core/linkers/.*\\.py$\"; then\n      L4_LOG=\"/tmp/.fallback-coherence.$$\"\n      if scripts/check-fallback-coherence > \"$L4_LOG\" 2>&1; then\n          echo -e \"${GREEN}✓${NC}\"\n          rm -f \"$L4_LOG\"\n      else\n          echo -e \"${RED}✗${NC}\"\n          echo \"\"\n          cat \"$L4_LOG\"\n          rm -f \"$L4_LOG\"\n          exit 1\n      fi\n  else\n      echo -e \"${YELLOW}skipped (no linker .py staged)${NC}\"\n  fi\n\nRationale: matches the existing pattern for the L3 (producer-coherence) and L1 (axis-drift) gates. Same file-path filter style. Same exit-on-failure semantics. The CI live-tree test test_no_fallback_coherence_violations_in_linkers already gates at test time; the pre-commit hook is the faster-feedback equivalent that catches violations before they enter the commit.\n\nPre-condition: commit dd2a93550e (foundation PR) merged.\nBlast radius: only linker-touching commits trigger the gate; non-linker commits skip silently. Currently 0 violations in the tree, so wiring the hook is a no-op for the existing surface — it only fires on FUTURE violations introduced by new linker patches."  # c283
+    fields: {}  # c283
+- op: update  # ed96
+  at: '2026-05-12T01:50:37Z'  # ed96
+  by: agent  # ed96
+  actor: jgstern_agent  # ed96
+  clock: 2  # ed96
+  nonce: ed96  # ed96
+  set:  # ed96
+    status: needs_human_review  # ed96
+  add:  # ed96
+    tags: [analysis_quality, governance]  # ed96

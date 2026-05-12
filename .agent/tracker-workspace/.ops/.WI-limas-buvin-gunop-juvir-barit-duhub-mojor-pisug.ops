@@ -1,0 +1,36 @@
+- op: create  # 2eb3
+  at: '2026-05-12T00:57:50Z'  # 2eb3
+  by: agent  # 2eb3
+  actor: jgstern_agent  # 2eb3
+  clock: 1  # 2eb3
+  nonce: 2eb3  # 2eb3
+  data:  # 2eb3
+    kind: work_item  # 2eb3
+    title: "Migrate config/language-convention YAML rules to post-Wave-6 meta-key shape (Cluster B/G residue)"  # 2eb3
+    status: todo_hard  # 2eb3
+    priority: 3  # 2eb3
+    parent:  # 2eb3
+    tags: []  # 2eb3
+    isbefore: []  # 2eb3
+    duplicate_of: []  # 2eb3
+    not_duplicate_of: []  # 2eb3
+    pr_ref:  # 2eb3
+    description: "Wave 6 Cluster B/G folds shipped via WI-butol (Phase 4b enum closure, 2026-05-11). 13 YAML rules in config-conventions.yaml, 4 in language-conventions.yaml, and 1 in library-exports.yaml still reference legacy symbol_kind values that the producers no longer emit.\n\nUnfolded references by YAML file:\n- config-conventions.yaml: devDependency, script, tsconfig, composer_package, activity, service, receiver, dev-dependency, build-dependency, workspace-member, lib, dev-dependency (toml), script (toml).\n- language-conventions.yaml: global, device, host (CUDA); rule (Starlark).\n- library-exports.yaml: contract.\n\nThese rules currently match NOTHING (silent no-op) because Pattern.matches() uses regex.match(symbol.kind) and the canonical Symbol.kind values do not include those legacy names. WI-fojun closed without addressing them because WI-fojun's scope was specifically the framework_role fold residue (Cluster D / WI-habut Wave 5 PRs).\n\nFixing this needs Pattern to grow general meta-key match fields (Pattern.dependency_scope / Pattern.config_format / Pattern.package_ecosystem / Pattern.entry_role / Pattern.install_source), OR a single Pattern.meta_match dict that handles arbitrary meta keys uniformly. Then each YAML rule migrates from 'symbol_kind: ^devDependency$' to 'symbol_kind: ^dependency$' + 'dependency_scope: ^dev$' etc.\n\nValidation: after migration, each previously-broken YAML rule should match at least one symbol on a representative repo (e.g. apollo-server for npm rules, kafka for cargo rules, fedora-infra for ansible/toml). Producer audit needed for CUDA / Starlark / library-exports rows — those may have been wrong pre-fold and the YAML should be updated to match what the producer actually emits, OR the producer should be fixed.\n\nSurfaced by WI-fojun audit when closing 2026-05-11. Pre-condition: ADR-0027 §6 Phase 4b complete (WI-butol shipped 2026-05-11)."  # 2eb3
+    fields: {}  # 2eb3
+- op: update  # c16f
+  at: '2026-05-12T00:57:57Z'  # c16f
+  by: agent  # c16f
+  actor: jgstern_agent  # c16f
+  clock: 2  # c16f
+  nonce: c16f  # c16f
+  set:  # c16f
+    status: todo_soft  # c16f
+- op: update  # b893
+  at: '2026-05-12T00:58:11Z'  # b893
+  by: agent  # b893
+  actor: jgstern_agent  # b893
+  clock: 3  # b893
+  nonce: b893  # b893
+  set: {}  # b893
+  add:  # b893
+    tags: [analysis_quality, framework_patterns]  # b893
