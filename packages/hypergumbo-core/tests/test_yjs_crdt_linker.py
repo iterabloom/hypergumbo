@@ -27,6 +27,23 @@ def _make_ts_sym(path: str) -> Symbol:
     )
 
 
+def _make_yjs_dep_sym(name: str = "yjs") -> Symbol:
+    """Create an npm package.json dependency Symbol for the manifest gate.
+
+    The WI-vurig manifest-presence gate fires when no Yjs ecosystem
+    dependency is declared. Existing yjs_crdt linker tests must include
+    one of these symbols so the linker body runs.
+    """
+    return Symbol(
+        id=f"json:package.json:1-1:{name}:dependency",
+        name=name, kind="dependency", language="json",
+        path="package.json",
+        span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        origin="json-v1", origin_run_id="uuid:test",
+        meta={"package": name},
+    )
+
+
 class TestScanFileForYjsPatterns:
     """Tests for Yjs pattern scanning."""
 
@@ -136,7 +153,7 @@ class TestLinkYjsCrdt:
         r = tmp_path / "src" / "reader.ts"
         r.write_text("yMap.observe(handler);\n")
 
-        syms = [_make_ts_sym("src/writer.ts"), _make_ts_sym("src/reader.ts")]
+        syms = [_make_ts_sym("src/writer.ts"), _make_ts_sym("src/reader.ts"), _make_yjs_dep_sym()]
         result = link_yjs_crdt(tmp_path, syms)
 
         assert len(result.edges) >= 1
@@ -155,7 +172,7 @@ class TestLinkYjsCrdt:
         r = tmp_path / "src" / "overlay.ts"
         r.write_text("awareness.on('change', handler);\n")
 
-        syms = [_make_ts_sym("src/cursor.ts"), _make_ts_sym("src/overlay.ts")]
+        syms = [_make_ts_sym("src/cursor.ts"), _make_ts_sym("src/overlay.ts"), _make_yjs_dep_sym()]
         result = link_yjs_crdt(tmp_path, syms)
 
         assert len(result.edges) >= 1
@@ -169,7 +186,7 @@ class TestLinkYjsCrdt:
         r = tmp_path / "src" / "awareness_reader.ts"
         r.write_text("awareness.on('change', handler);\n")
 
-        syms = [_make_ts_sym("src/yjs_writer.ts"), _make_ts_sym("src/awareness_reader.ts")]
+        syms = [_make_ts_sym("src/yjs_writer.ts"), _make_ts_sym("src/awareness_reader.ts"), _make_yjs_dep_sym()]
         result = link_yjs_crdt(tmp_path, syms)
 
         assert len(result.edges) == 0
@@ -180,7 +197,7 @@ class TestLinkYjsCrdt:
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text("yMap.set('x', 1);\nyMap.observe(cb);\n")
 
-        syms = [_make_ts_sym("src/self_contained.ts")]
+        syms = [_make_ts_sym("src/self_contained.ts"), _make_yjs_dep_sym()]
         result = link_yjs_crdt(tmp_path, syms)
 
         assert len(result.edges) == 0
@@ -191,7 +208,7 @@ class TestLinkYjsCrdt:
         w.parent.mkdir(parents=True, exist_ok=True)
         w.write_text("yMap.set('key', val);\n")
 
-        syms = [_make_ts_sym("src/writer.ts")]
+        syms = [_make_ts_sym("src/writer.ts"), _make_yjs_dep_sym()]
         result = link_yjs_crdt(tmp_path, syms)
         assert len(result.edges) == 0
 
@@ -201,7 +218,7 @@ class TestLinkYjsCrdt:
         r.parent.mkdir(parents=True, exist_ok=True)
         r.write_text("yMap.observe(handler);\n")
 
-        syms = [_make_ts_sym("src/reader.ts")]
+        syms = [_make_ts_sym("src/reader.ts"), _make_yjs_dep_sym()]
         result = link_yjs_crdt(tmp_path, syms)
         assert len(result.edges) == 0
 
@@ -214,7 +231,7 @@ class TestLinkYjsCrdt:
         r = tmp_path / "src" / "sub.ts"
         r.write_text("yMap.observe(handler);\n")
 
-        syms = [_make_ts_sym("src/pub.ts"), _make_ts_sym("src/sub.ts")]
+        syms = [_make_ts_sym("src/pub.ts"), _make_ts_sym("src/sub.ts"), _make_yjs_dep_sym()]
         result = link_yjs_crdt(tmp_path, syms)
 
         assert len(result.symbols) >= 2
@@ -242,12 +259,76 @@ class TestLinkYjsCrdt:
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
             origin="py-v1", origin_run_id="uuid:test",
         )
-        result = link_yjs_crdt(tmp_path, [py_sym])
+        result = link_yjs_crdt(tmp_path, [py_sym, _make_yjs_dep_sym()])
         assert len(result.edges) == 0
 
     def test_nonexistent_file_skipped(self, tmp_path: Path) -> None:
         """Symbols pointing to nonexistent files should be skipped."""
-        syms = [_make_ts_sym("src/gone.ts")]
+        syms = [_make_ts_sym("src/gone.ts"), _make_yjs_dep_sym()]
+        result = link_yjs_crdt(tmp_path, syms)
+        assert len(result.edges) == 0
+
+    def test_manifest_gate_no_yjs_dep_produces_no_edges(self, tmp_path: Path) -> None:
+        """WI-vurig: when package.json declares no yjs ecosystem dep, the
+        linker MUST early-exit and emit zero edges — even when the source
+        code looks like it has Yjs writers and readers (e.g., chatwoot,
+        a Rails+Vue app whose .vue files contain '.set(' / '.on(' /
+        '.observe(' patterns that the pattern scanner would otherwise
+        match). Reproduction shape: the 68 false-positive
+        event_publishes edges reported on chatwoot in DEEP cohort 1
+        reflect (2026-05-10).
+        """
+        w = tmp_path / "src" / "writer.ts"
+        w.parent.mkdir(parents=True, exist_ok=True)
+        w.write_text("yMap.set('cursor', pos);\n")
+
+        r = tmp_path / "src" / "reader.ts"
+        r.write_text("yMap.observe(handler);\n")
+
+        # No yjs dep symbol. Gate must fire.
+        syms = [_make_ts_sym("src/writer.ts"), _make_ts_sym("src/reader.ts")]
+        result = link_yjs_crdt(tmp_path, syms)
+        assert len(result.edges) == 0, (
+            f"Manifest gate must suppress all edges when no yjs ecosystem "
+            f"dep is declared; got {len(result.edges)} edges"
+        )
+
+    def test_manifest_gate_passes_with_y_protocols(self, tmp_path: Path) -> None:
+        """y-protocols dep is one of the three core Yjs ecosystem packages
+        recognized by the manifest gate."""
+        w = tmp_path / "src" / "w.ts"
+        w.parent.mkdir(parents=True, exist_ok=True)
+        w.write_text("yMap.set('k', v);\n")
+        r = tmp_path / "src" / "r.ts"
+        r.write_text("yMap.observe(handler);\n")
+
+        syms = [
+            _make_ts_sym("src/w.ts"),
+            _make_ts_sym("src/r.ts"),
+            _make_yjs_dep_sym("y-protocols"),
+        ]
+        result = link_yjs_crdt(tmp_path, syms)
+        assert len(result.edges) >= 1
+
+    def test_manifest_gate_rejects_unrelated_npm_dep(self, tmp_path: Path) -> None:
+        """A non-yjs npm dep (e.g., react, lodash, vue) must NOT satisfy
+        the manifest gate. This is the structural regression guard against
+        the gate being loosened to "any json dep" or "any package.json
+        present" later.
+        """
+        w = tmp_path / "src" / "w.ts"
+        w.parent.mkdir(parents=True, exist_ok=True)
+        w.write_text("yMap.set('k', v);\n")
+        r = tmp_path / "src" / "r.ts"
+        r.write_text("yMap.observe(handler);\n")
+
+        syms = [
+            _make_ts_sym("src/w.ts"),
+            _make_ts_sym("src/r.ts"),
+            _make_yjs_dep_sym("react"),
+            _make_yjs_dep_sym("lodash"),
+            _make_yjs_dep_sym("vue"),
+        ]
         result = link_yjs_crdt(tmp_path, syms)
         assert len(result.edges) == 0
 
@@ -310,7 +391,7 @@ class TestScanSubDocPatterns:
         r = tmp_path / "src" / "consumer.ts"
         r.write_text("yMap.observe(handler);\n")
 
-        syms = [_make_ts_sym("src/provider.ts"), _make_ts_sym("src/consumer.ts")]
+        syms = [_make_ts_sym("src/provider.ts"), _make_ts_sym("src/consumer.ts"), _make_yjs_dep_sym()]
         result = link_yjs_crdt(tmp_path, syms)
         assert len(result.edges) >= 1
 
@@ -379,7 +460,7 @@ class TestScanBlockSuitePatterns:
         r = tmp_path / "src" / "reactor.ts"
         r.write_text("store.slots.blockUpdated.subscribe(handler);\n")
 
-        syms = [_make_ts_sym("src/creator.ts"), _make_ts_sym("src/reactor.ts")]
+        syms = [_make_ts_sym("src/creator.ts"), _make_ts_sym("src/reactor.ts"), _make_yjs_dep_sym()]
         result = link_yjs_crdt(tmp_path, syms)
         assert len(result.edges) >= 1
         edge = result.edges[0]
@@ -394,7 +475,7 @@ class TestScanBlockSuitePatterns:
         r = tmp_path / "src" / "yjs_reader.ts"
         r.write_text("yMap.observe(handler);\n")
 
-        syms = [_make_ts_sym("src/bs_writer.ts"), _make_ts_sym("src/yjs_reader.ts")]
+        syms = [_make_ts_sym("src/bs_writer.ts"), _make_ts_sym("src/yjs_reader.ts"), _make_yjs_dep_sym()]
         result = link_yjs_crdt(tmp_path, syms)
         assert len(result.edges) == 0
 
@@ -453,7 +534,7 @@ class TestYjsCrdtRegistry:
         r = tmp_path / "src" / "reader.ts"
         r.write_text("yMap.observe(handler);\n")
 
-        syms = [_make_ts_sym("src/writer.ts"), _make_ts_sym("src/reader.ts")]
+        syms = [_make_ts_sym("src/writer.ts"), _make_ts_sym("src/reader.ts"), _make_yjs_dep_sym()]
         ctx = LinkerContext(
             repo_root=tmp_path,
             symbols=syms,

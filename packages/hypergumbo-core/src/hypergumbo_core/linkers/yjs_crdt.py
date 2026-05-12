@@ -269,6 +269,43 @@ def _scan_file_for_yjs_patterns(
     return sites
 
 
+YJS_DEPENDENCY_NAMES: frozenset[str] = frozenset({
+    "yjs", "y-protocols", "y-websocket",
+})
+"""Yjs ecosystem npm packages whose presence in package.json activates this
+linker. A repo using Yjs MUST depend on ``yjs`` (the core package); the
+other two are listed because they're the canonical standalone packages
+that drive Yjs awareness/networking, and a real-world Yjs setup commonly
+declares them directly. Other ``y-*`` ecosystem packages (y-monaco,
+y-prosemirror, y-quill, y-codemirror, …) transitively depend on yjs,
+so checking for yjs core is sufficient — but the additional two names
+are kept here to be explicit and to match the WI-vurig prescription."""
+
+
+def _repo_has_yjs_dependency(symbols: list[Symbol]) -> bool:
+    """Manifest-presence gate (WI-vurig). True iff at least one symbol
+    is an npm package.json dependency whose name is in
+    ``YJS_DEPENDENCY_NAMES``.
+
+    The json_config analyzer emits each package.json dependency as a
+    ``Symbol(kind="dependency", language="json", name=<pkg>)`` (see
+    ``hypergumbo_lang_mainstream.json_config._extract_dependencies``).
+    A Rails+Vue customer-engagement app like chatwoot has many
+    ``json`` symbols but none whose ``name`` matches the yjs ecosystem,
+    so the gate fires and the linker skips text-pattern scanning entirely
+    — eliminating the 68 false-positive crdt_publishes edges observed in
+    DEEP cohort 1 reflect (2026-05-10).
+    """
+    for sym in symbols:
+        if (
+            sym.kind == "dependency"
+            and sym.language == "json"
+            and sym.name in YJS_DEPENDENCY_NAMES
+        ):
+            return True
+    return False
+
+
 def link_yjs_crdt(
     repo_root: Path,
     symbols: list[Symbol],
@@ -287,6 +324,18 @@ def link_yjs_crdt(
 
     result_edges: list[Edge] = []
     result_symbols: list[Symbol] = []
+
+    # WI-vurig manifest-presence gate. Before the gate, the linker scanned
+    # every .js / .ts file in the repo for text patterns like ".set(" /
+    # ".observe(" / ".on(" and emitted crdt_publishes edges based on
+    # write/read API matching. Those patterns are common Vue/Rails/Express
+    # vocabulary; on chatwoot (no Yjs dependency) the scan produced 68
+    # false-positive edges. Gating on a real yjs npm dependency cuts the
+    # false positives to zero on non-Yjs repos while leaving Yjs repos
+    # unaffected.
+    if not _repo_has_yjs_dependency(symbols):
+        run.duration_ms = int((time.time() - start_time) * 1000)
+        return LinkerResult(edges=[], symbols=[], run=run)
 
     # Collect unique JS/TS file paths
     seen_paths: set[str] = set()
