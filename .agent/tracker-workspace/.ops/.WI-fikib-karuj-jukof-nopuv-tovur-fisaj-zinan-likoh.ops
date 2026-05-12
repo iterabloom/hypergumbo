@@ -27,3 +27,34 @@
     status: needs_human_review  # ed96
   add:  # ed96
     tags: [analysis_quality, governance]  # ed96
+- op: discuss  # 6086
+  at: '2026-05-12T02:00:36Z'  # 6086
+  by: human  # 6086
+  actor: jgstern  # 6086
+  clock: 3  # 6086
+  nonce: '6086'  # 6086
+  message: "I approve and I approve using auto-pr WITHOUT --gov"  # 6086
+- op: update  # 4789
+  at: '2026-05-12T02:01:07Z'  # 4789
+  by: human  # 4789
+  actor: jgstern  # 4789
+  clock: 4  # 4789
+  nonce: '4789'  # 4789
+  set:  # 4789
+    status: todo_soft  # 4789
+- op: update  # c86c
+  at: '2026-05-12T02:27:02Z'  # c86c
+  by: agent  # c86c
+  actor: jgstern_agent  # c86c
+  clock: 5  # c86c
+  nonce: c86c  # c86c
+  set:  # c86c
+    status: done  # c86c
+    pr_ref: 9037d637a4  # c86c
+- op: discuss  # 3c8a
+  at: '2026-05-12T02:27:02Z'  # 3c8a
+  by: agent  # 3c8a
+  actor: jgstern_agent  # 3c8a
+  clock: 6  # 3c8a
+  nonce: 3c8a  # 3c8a
+  message: "Hook wiring shipped: scripts/check-fallback-coherence now invoked from .githooks/pre-commit (lines 351-368, new gate block parallel to L1 axis-drift and L3 producer-axis blocks). Merged to dev as commit 9037d637a4 (2026-05-11). Currently 0 violations across the linker tree; the gate is armed for future linker patches that adopt the disambiguation_fallback meta-flag pattern. INV-zuhub item 3 now fully shipped (script + hook wiring)."  # 3c8a

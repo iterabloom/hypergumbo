@@ -1,0 +1,46 @@
+- op: create  # c0d9
+  at: '2026-05-12T01:52:55Z'  # c0d9
+  by: agent  # c0d9
+  actor: jgstern_agent  # c0d9
+  clock: 1  # c0d9
+  nonce: c0d9  # c0d9
+  data:  # c0d9
+    kind: work_item  # c0d9
+    title: "INV-zuhub item 1 — references family conformance"  # c0d9
+    status: todo_hard  # c0d9
+    priority: 3  # c0d9
+    parent:  # c0d9
+    tags: []  # c0d9
+    isbefore: []  # c0d9
+    duplicate_of: []  # c0d9
+    not_duplicate_of: []  # c0d9
+    pr_ref:  # c0d9
+    description: "INV-zuhub item 1, edge-type family 'references'. 7 linkers emit references edges. Preliminary audit shows three have short-name resolution patterns and likely need conformance work:\n\n- linkers/di_resolution.py: _get_method_short_name (line 537) + impl_by_short[_get_method_short_name(m.name)] (line 586) — DI method resolution by short name. Almost certainly has a fallback decision.\n- linkers/orm.py:89-91: short_name = sym.name.split('.')[-1]; lookup by short_name — ORM relationship resolution by short name.\n- linkers/react_component.py:213-214: simple_name from component_name; component_map.get(simple_name) — React component reference resolution.\n\nOther four (database_query, middleware_chain, router_routes, websocket) need detailed audit — preliminary grep showed no obvious short-name patterns but a full code read is needed before concluding vacuous.\n\nFor each linker with a fallback decision: thread is_fallback through the resolver, set conf<=0.5 + meta[disambiguation_fallback]=True at edge-creation, add the three property tests (test_references_prefers_imported_*, test_references_same_file_preferred_over_other_file, test_references_deterministic_fallback_when_ambiguous) — see linkers/inheritance.py:209-263 and tests/test_inheritance_linker.py:243-330 for the canonical conforming pattern.\n\nParent: INV-zuhub. Pre-condition: commit dd2a93550e."  # c0d9
+    fields: {}  # c0d9
+- op: update  # 1bed
+  at: '2026-05-12T01:53:37Z'  # 1bed
+  by: agent  # 1bed
+  actor: jgstern_agent  # 1bed
+  clock: 2  # 1bed
+  nonce: 1bed  # 1bed
+  set:  # 1bed
+    status: todo_soft  # 1bed
+    parent: INV-zuhub-takaf-jupiz-kumoh-modon-ralul-vunob-hisop  # 1bed
+  add:  # 1bed
+    tags: [analysis_quality]  # 1bed
+- op: update  # b1ac
+  at: '2026-05-12T02:22:07Z'  # b1ac
+  by: agent  # b1ac
+  actor: jgstern_agent  # b1ac
+  clock: 3  # b1ac
+  nonce: b1ac  # b1ac
+  set:  # b1ac
+    status: done  # b1ac
+    pr_ref: 320df36712  # b1ac
+- op: discuss  # d697
+  at: '2026-05-12T02:22:07Z'  # d697
+  by: agent  # d697
+  actor: jgstern_agent  # d697
+  clock: 4  # d697
+  nonce: d697  # d697
+  message: "Shipped via PR merged to commit 6199c54008 (2026-05-11). 4 linkers brought into INV-zuhub item 1 conformance: orm.py, database_query.py, di_resolution.py (di_registers), react_component.py. 12 new property tests across the four linkers (3 each: single-candidate-precision, same-file-preferred or no-same-file-branch, deterministic-fallback-with-flag). 223 existing + new tests passing. L4 fallback-coherence gate (PR dd2a93550e) continues to pass — every site that sets meta['disambiguation_fallback']=True also sets confidence <= 0.5 in the same Edge.create call.\n\n3 of the 7 references-emitting linkers were vacuous-conformance (middleware_chain: list-based direct refs; router_routes: span-enclosure based; websocket: file_id + synthetic id) — no short-name fallback paths to gate. Documented in the audit notes for completeness."  # d697

@@ -1,0 +1,30 @@
+- op: create  # dfa6
+  at: '2026-05-12T01:52:56Z'  # dfa6
+  by: agent  # dfa6
+  actor: jgstern_agent  # dfa6
+  clock: 1  # dfa6
+  nonce: dfa6  # dfa6
+  data:  # dfa6
+    kind: work_item  # dfa6
+    title: "INV-zuhub item 1 — dispatches_to family conformance (includes WI-lisov Transformer fix)"  # dfa6
+    status: todo_hard  # dfa6
+    priority: 2  # dfa6
+    parent:  # dfa6
+    tags: []  # dfa6
+    isbefore: []  # dfa6
+    duplicate_of: []  # dfa6
+    not_duplicate_of: []  # dfa6
+    pr_ref:  # dfa6
+    description: "INV-zuhub item 1, edge-type family 'dispatches_to'. 10+ linkers emit dispatches_to edges. Audit each for short-name fallback patterns and apply the canonical inheritance.py conformance pattern where applicable.\n\nLinkers in scope (grep packages/hypergumbo-core/src/hypergumbo_core/linkers/ for 'edge_type=\"dispatches_to\"'): airflow_framework_dispatch, annotation_convention, go_cobra, decorator_dispatch, django_orm_dispatch, di_resolution, go_memberlist, kafka_streams_dispatch, jackson_dispatch, grpc, plus others.\n\nKnown concrete violation from the INV-zuhub description: kafka_streams_dispatch.py Transformer<T> simple-name collision (WI-lisov discuss-note round 08 / DQ-14). Confidence is already 0.5 but the disambiguation_fallback meta flag is absent — the gate (foundation PR dd2a93550e) catches the symmetric 'set flag but forgot conf' shape but NOT 'set conf but forgot flag' which is the actual leak here. Add the flag at the kafka resolver call site, then add the three property tests.\n\nFor each fallback-emitting linker: thread is_fallback through resolver, set conf<=0.5 + meta[disambiguation_fallback]=True at edge-creation, add three property tests of shapes test_dispatches_to_prefers_*, test_dispatches_to_same_file_*, test_dispatches_to_deterministic_fallback_*.\n\nParent: INV-zuhub. Pre-condition: commit dd2a93550e."  # dfa6
+    fields: {}  # dfa6
+- op: update  # ab67
+  at: '2026-05-12T01:53:38Z'  # ab67
+  by: agent  # ab67
+  actor: jgstern_agent  # ab67
+  clock: 2  # ab67
+  nonce: ab67  # ab67
+  set:  # ab67
+    status: todo_soft  # ab67
+    parent: INV-zuhub-takaf-jupiz-kumoh-modon-ralul-vunob-hisop  # ab67
+  add:  # ab67
+    tags: [analysis_quality]  # ab67

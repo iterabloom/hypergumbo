@@ -1,0 +1,45 @@
+- op: create  # d0fd
+  at: '2026-05-12T01:52:53Z'  # d0fd
+  by: agent  # d0fd
+  actor: jgstern_agent  # d0fd
+  clock: 1  # d0fd
+  nonce: d0fd  # d0fd
+  data:  # d0fd
+    kind: work_item  # d0fd
+    title: "INV-zuhub item 1 — module_exports family conformance audit"  # d0fd
+    status: todo_hard  # d0fd
+    priority: 4  # d0fd
+    parent:  # d0fd
+    tags: []  # d0fd
+    isbefore: []  # d0fd
+    duplicate_of: []  # d0fd
+    not_duplicate_of: []  # d0fd
+    pr_ref:  # d0fd
+    description: "INV-zuhub item 1, edge-type family 'module_exports'. Audit the 1 linker that emits module_exports edges (linkers/js_module.py:807 Edge.create) to determine whether a simple-name fallback resolution path exists.\n\nPreliminary read: the module_exports edges at js_module.py:799-816 use symbols_by_file.get(resolved_str, ...) — symbols are filtered by file path with no short-name matching. The resolution is precision-only; no fallback decision happens. If this read is confirmed by deeper audit, this WI closes vacuously with documentation noting the family has no fallback shape to gate; the three property-test shapes (prefers_imported / same_file_preferred / deterministic_fallback) would have no behavior to exercise.\n\nIf the audit surfaces a hidden fallback path (e.g. a name-collision short-circuit not visible in the immediate call site), apply the canonical inheritance.py pattern (thread is_fallback bool through resolver; set conf<=0.5 + meta[disambiguation_fallback]=True at edge-creation) and add the three property tests.\n\nParent: INV-zuhub. Pre-condition: commit dd2a93550e (foundation PR) merged."  # d0fd
+    fields: {}  # d0fd
+- op: update  # 54b4
+  at: '2026-05-12T01:53:05Z'  # 54b4
+  by: agent  # 54b4
+  actor: jgstern_agent  # 54b4
+  clock: 2  # 54b4
+  nonce: 54b4  # 54b4
+  set:  # 54b4
+    status: todo_soft  # 54b4
+    parent: INV-zuhub-takaf-jupiz-kumoh-modon-ralul-vunob-hisop  # 54b4
+  add:  # 54b4
+    tags: [analysis_quality]  # 54b4
+- op: update  # c298
+  at: '2026-05-12T02:05:12Z'  # c298
+  by: agent  # c298
+  actor: jgstern_agent  # c298
+  clock: 3  # c298
+  nonce: c298  # c298
+  set:  # c298
+    status: done  # c298
+- op: discuss  # 9230
+  at: '2026-05-12T02:05:12Z'  # 9230
+  by: agent  # 9230
+  actor: jgstern_agent  # 9230
+  clock: 4  # 9230
+  nonce: '9230'  # 9230
+  message: "Closing as done with audit evidence. The module_exports edge family has no simple-name fallback resolution path — INV-zuhub item 1 is vacuous for this family.\n\nAudit findings (linkers/js_module.py):\n\n1. **module_exports emission (lines 799-816)**: dst is resolved by file-path keyed lookup (`symbols_by_file.get(resolved_str, ...)`). The resolution chain is:\n   - Earlier in the function, `resolved_str` is computed from `_resolve_relative_import` / `_resolve_alias_import` — both return concrete file paths.\n   - Symbol set comes from `symbols_by_file` indexed by full path.\n   - Edge.create at line 807 emits one edge per file_sym in the resolved file.\n   No short-name collision possibility — the keying dimension is file path, not symbol name.\n\n2. **Adjacent imports / imports_module emission (lines 788-797)**: dst is `mod_sym.id` from `module_file_cache[rel_path]` — keyed by file path. `import_confidence` is 0.90 (relative imports) or 0.85 (alias resolution); both above the 0.5 ceiling. The medium-high confidence reflects path-resolution reliability, not fallback decision.\n\n3. **npm_package imports (lines 818-857)**: dst is `pkg_sym.id` from `npm_package_cache[pkg_name]` — keyed by package name extracted from the import statement, not short-symbol-name matching across the symbol table.\n\nThe 0.75 confidence on module_exports (line 815) reflects the structural over-approximation 'every symbol in the imported file is exported from it' — a heuristic uncertainty, not a short-name disambiguation. INV-zuhub addresses a different failure class (cross-package short-name collisions), so the disambiguation_fallback meta flag would be semantically wrong to set here.\n\nConclusion: js_module.py is precision-only by construction; the three INV-zuhub property test shapes (test_module_exports_prefers_imported_*, test_module_exports_same_file_preferred_over_other_file, test_module_exports_deterministic_fallback_when_ambiguous) have no behavior to exercise — every module_exports edge is deterministically file-path-resolved. The flagless-fallback failure mode INV-zuhub addresses cannot occur in this linker.\n\nNo code change needed. Foundation gate (PR dd2a93550e) continues to enforce the contract for any future linker that DOES set the flag, including hypothetical future module_exports producers."  # 9230

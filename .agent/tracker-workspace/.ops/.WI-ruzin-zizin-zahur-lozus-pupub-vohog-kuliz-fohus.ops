@@ -1,0 +1,30 @@
+- op: create  # e9b8
+  at: '2026-05-12T01:52:57Z'  # e9b8
+  by: agent  # e9b8
+  actor: jgstern_agent  # e9b8
+  clock: 1  # e9b8
+  nonce: e9b8  # e9b8
+  data:  # e9b8
+    kind: work_item  # e9b8
+    title: "INV-zuhub item 1 — calls family conformance (includes WI-likab Go interface_dispatch residual)"  # e9b8
+    status: todo_hard  # e9b8
+    priority: 2  # e9b8
+    parent:  # e9b8
+    tags: []  # e9b8
+    isbefore: []  # e9b8
+    duplicate_of: []  # e9b8
+    not_duplicate_of: []  # e9b8
+    pr_ref:  # e9b8
+    description: "INV-zuhub item 1, edge-type family 'calls'. 10+ linkers emit calls edges. The largest family — likely the highest item 1 effort. Audit each for short-name fallback patterns.\n\nLinkers in scope (grep packages/hypergumbo-core/src/hypergumbo_core/linkers/ for 'edge_type=\"calls\"'): cgo, build_target, graphql, grpc, http, ipc, jni, napi, lua_ffi, method_call_recovery, plus others.\n\nKnown concrete violation from the INV-zuhub description: Go interface_dispatch residual cases the WI-jopar receiver-type guard doesn't cover (r.Close() / req.Header.Set(...) resolving to project-internal Alerts.Close/Set per UAT round 02 / DQ-2). See WI-likab discuss-note.\n\nmethod_call_recovery.py is a clear fallback-emit candidate by name — AST-based method-call resolution with collision potential. cgo/jni/napi/lua_ffi may also have C-symbol-name collisions across packages (the Notifier-collision shape from the Apr 2026 Go investigation).\n\nFor each fallback-emitting linker: thread is_fallback through resolver, set conf<=0.5 + meta[disambiguation_fallback]=True at edge-creation, add three property tests. Recommended to start with method_call_recovery.py (highest expected ROI) then work down the list.\n\nParent: INV-zuhub. Pre-condition: commit dd2a93550e."  # e9b8
+    fields: {}  # e9b8
+- op: update  # 05fa
+  at: '2026-05-12T01:53:38Z'  # 05fa
+  by: agent  # 05fa
+  actor: jgstern_agent  # 05fa
+  clock: 2  # 05fa
+  nonce: 05fa  # 05fa
+  set:  # 05fa
+    status: todo_soft  # 05fa
+    parent: INV-zuhub-takaf-jupiz-kumoh-modon-ralul-vunob-hisop  # 05fa
+  add:  # 05fa
+    tags: [analysis_quality]  # 05fa
