@@ -383,6 +383,24 @@ TEST_FILE_PATTERNS = [
     r"(?:^|/)testonly\.rs$",     # Rust: test-only helpers (src/vm_executor/testonly.rs)
 ]
 
+# File suffix patterns that take precedence over TEST_DIR_PATTERNS (tier 1).
+# The standard TEST_FILE_PATTERNS are checked AFTER the dir patterns — that's
+# correct for Go / JS / Ruby etc., where the dir pattern's "tests live in
+# tests/" is uncommon (Go has none, JS uses __tests__/ which IS the test
+# subtree, Ruby uses spec/). For Elixir + Phoenix, the conventional layout
+# puts `*_test.exs` files at `test/<context>/<thing>_test.exs` — they ARE
+# in a `test/` directory by convention, but they're still first-party
+# production-adjacent code (the dir is part of the project, not vendored).
+# WI-pugas (FCA finding on phoenix bakeoff 2026-05-10): 1328/1328 nodes
+# at supply_chain.tier=2 on phoenix were Elixir test files, none vendored
+# — tier 2 had become a synonym for "is_test" instead of "internal_dep".
+# Adding the Elixir test pattern HERE (override) routes Phoenix tests to
+# tier 1 with is_test=True, freeing tier 2 to mean what it should:
+# "in-repo non-test internal dependency / fuzz / example / etc."
+TEST_FILE_PATTERNS_DIR_OVERRIDE = [
+    r"_test\.exs$",              # Elixir/Phoenix: user_test.exs
+]
+
 # Simple first-party patterns to check within workspaces
 WORKSPACE_FIRST_PARTY_PATTERNS = [
     r"^src/",
@@ -624,6 +642,20 @@ def _classify_file_core(
                     )
             except (ValueError, TypeError):
                 continue
+
+    # 5b-pre. WI-pugas: language-specific test patterns that OVERRIDE
+    # the dir pattern. Phoenix/Elixir tests live at `test/<ctx>/foo_test.exs`
+    # by convention — they match both the dir pattern (test/) and the
+    # file pattern (_test.exs), and the right verdict is tier 1
+    # (first-party with is_test=True), not tier 2 (which conflates "is
+    # test" with "is vendored").
+    for pattern in TEST_FILE_PATTERNS_DIR_OVERRIDE:
+        if re.search(pattern, rel):
+            return FileClassification(
+                Tier.FIRST_PARTY,
+                f"co-located test file matches {pattern}",
+                is_test=True,
+            )
 
     # 5b. Check test directory patterns (dedicated test directories → tier 2)
     for pattern in TEST_DIR_PATTERNS:

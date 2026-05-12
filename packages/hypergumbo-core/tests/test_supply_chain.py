@@ -881,6 +881,89 @@ class TestTestFileClassification:
         assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
+    def test_elixir_test_exs_in_phoenix_test_dir_is_first_party(self, tmp_path):
+        """WI-pugas: Phoenix `test/<ctx>/foo_test.exs` files are tier 1
+        with is_test=True. The file lives in a `test/` directory AND
+        matches the `_test.exs$` co-located pattern, and the FILE pattern
+        wins (override) because the file is first-party Elixir code, not
+        a vendored dep.
+
+        Pre-fix on phoenix bakeoff 2026-05-10, all 1328 test files
+        classified as supply_chain.tier=2 (internal_dep), conflating
+        "is_test" with "is vendored" on the tier axis. This regression
+        guard ensures Elixir tests don't leak back into tier 2.
+        """
+        # Phoenix-style layout: test/ at repo root with mix.exs.
+        (tmp_path / "mix.exs").write_text(
+            "defmodule MyApp.MixProject do\n  use Mix.Project\nend\n"
+        )
+        test_dir = tmp_path / "test" / "my_app"
+        test_dir.mkdir(parents=True)
+        test_file = test_dir / "user_test.exs"
+        test_file.write_text(
+            "defmodule MyApp.UserTest do\n  use ExUnit.Case\nend\n"
+        )
+
+        result = classify_file(test_file, tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY, (
+            f"Phoenix test file `test/<ctx>/foo_test.exs` must be tier 1 "
+            f"(first-party, not vendored); got {result.tier}: {result.reason}"
+        )
+        assert result.is_test is True
+        assert "_test" in result.reason
+
+    def test_elixir_test_exs_at_test_root_is_first_party(self, tmp_path):
+        """Phoenix tests at the test/ root (no subdir) are also tier 1.
+        Common for small Phoenix apps where test_helper.exs +
+        a single user_test.exs both live at test/."""
+        (tmp_path / "mix.exs").write_text("defmodule X.MixProject do\nend\n")
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        (test_dir / "smoke_test.exs").write_text(
+            "defmodule SmokeTest do\n  use ExUnit.Case\nend\n"
+        )
+
+        result = classify_file(test_dir / "smoke_test.exs", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_test is True
+
+    def test_elixir_test_helper_in_test_dir_is_still_internal_dep(self, tmp_path):
+        """Non-`_test.exs` files in test/ (e.g., test_helper.exs without
+        the trailing `_test`) fall through to the dir pattern → tier 2.
+        This is the conservative half of the WI-pugas fix: only files
+        whose name carries the `_test.exs` suffix get the override;
+        other files in test/ keep their previous behavior. We can
+        revisit a broader "all of test/ is first-party" rule later if
+        warranted.
+        """
+        (tmp_path / "mix.exs").write_text("defmodule X.MixProject do\nend\n")
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        (test_dir / "test_helper.exs").write_text("ExUnit.start()\n")
+
+        result = classify_file(test_dir / "test_helper.exs", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP, (
+            f"`test_helper.exs` (lacking the `_test.exs` co-located suffix) "
+            f"should fall to the dir-pattern → tier 2; got {result.tier}: "
+            f"{result.reason}"
+        )
+        assert result.is_test is True
+
+    def test_elixir_test_exs_outside_test_dir_is_first_party(self, tmp_path):
+        """An Elixir `_test.exs` file co-located outside `test/` (e.g.
+        `lib/my_app/things/widget_test.exs`) was already tier 1 via the
+        existing TEST_FILE_PATTERNS check; the override list doesn't
+        regress that path."""
+        src_dir = tmp_path / "lib" / "my_app"
+        src_dir.mkdir(parents=True)
+        (src_dir / "widget_test.exs").write_text(
+            "defmodule MyApp.WidgetTest do\nend\n"
+        )
+
+        result = classify_file(src_dir / "widget_test.exs", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_test is True
+
     def test_unit_tests_dir_is_internal_dep(self, tmp_path):
         """C++ unit_tests/ directory is tier 2."""
         test_dir = tmp_path / "unit_tests" / "engine"
