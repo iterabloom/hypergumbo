@@ -8608,3 +8608,215 @@ console.log(env);
             f"Bare named-import identifier must not emit "
             f"module_attr_ref; got: {[e.dst for e in attr_edges]}"
         )
+
+
+class TestAccessModeClassificationOnCallEdges:
+    """WI-kohah: ADR-0015 dataflow annotation must classify call edges in
+    JS/TS so the --dataflow slice can answer "what writes vs reads this
+    value". Pre-WI-kohah coverage (the bakeoff-deep DEEP cohort 1 reflect
+    on 2026-05-10) showed 0/61 nestjs and 0/80 apollo-server sampled
+    calls edges had access_mode set in the MqttController dataflow slice,
+    even though the assignment-positional rules existed in the yaml — the
+    surviving edges were inside framework decorator calls / return
+    statements / RxJS publishers, none of which fit the assignment
+    schema. WI-kohah extends the JS/TS dataflow config with:
+
+    1. ``returns:`` positional rules for return_statement / throw_statement
+       / yield_expression / await_expression (call inside any of these →
+       read).
+    2. ``update_expression`` assignment rule (``a++`` / ``--a`` mutates).
+    3. An expanded library_patterns vocabulary for RxJS / EventEmitter /
+       pub-sub (``.emit``, ``.publish``, ``.send``, ``.dispatch``,
+       ``.next``, …), ORM/persistence verbs (``.save``, ``.persist``,
+       ``.insert``, ``.update``), in-place mutators (``.sort``,
+       ``.reverse``, ``.fill``, ``.copyWithin``), Promise/Observable
+       readers (``.subscribe``, ``.then``, ``.catch``, ``.finally``),
+       and iteration readers (``.map``, ``.filter``, ``.reduce``,
+       ``.forEach``, ``.every``, ``.some``, ``.values``, ``.keys``,
+       ``.entries``).
+    """
+
+    def _get_call_edge(self, edges, line: int):
+        """Helper: return the first calls edge at the given line."""
+        for e in edges:
+            if e.edge_type == "calls" and e.line == line:
+                return e
+        return None
+
+    def test_call_in_return_statement_gets_read(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.ts").write_text(
+            "function helper() { return 1; }\n"
+            "function api() {\n"
+            "  return helper();\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        edge = self._get_call_edge(result.edges, 3)
+        assert edge is not None, (
+            f"Expected a calls edge at line 3 (helper() inside return); "
+            f"got: {[(e.edge_type, e.line) for e in result.edges][:10]}"
+        )
+        assert (edge.meta or {}).get("access_mode") == "read", (
+            f"Call inside return_statement must be classified read; "
+            f"got meta={edge.meta}"
+        )
+
+    def test_call_in_throw_statement_gets_read(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.ts").write_text(
+            "function buildError() { return new Error('x'); }\n"
+            "function fail() {\n"
+            "  throw buildError();\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        edge = self._get_call_edge(result.edges, 3)
+        assert edge is not None
+        assert (edge.meta or {}).get("access_mode") == "read", (
+            f"Call inside throw_statement must be classified read; "
+            f"got meta={edge.meta}"
+        )
+
+    def test_await_call_classification_known_limitation(self, tmp_path: Path) -> None:
+        """Documents a known limitation that intersects WI-kohah and the
+        ``_build_line_index`` heuristic in dataflow.py.
+
+        ``const x = await fetcher();`` parses as
+        ``lexical_declaration > [const, variable_declarator > [x, =,
+        await_expression > [await, call_expression]], ;]``. The
+        line-index lookup picks the LAST visited node at the start
+        line — the trailing ``;`` token, which is a child of
+        ``lexical_declaration`` and a SIBLING of the
+        ``variable_declarator``. Walking up from ``;`` reaches
+        ``lexical_declaration`` (not in positional_map) and then the
+        outer ``statement_block`` — bypassing both the
+        ``variable_declarator`` (``write: name / read: value``) and the
+        ``await_expression`` (``_default: read``) rules entirely.
+
+        Fixing this requires teaching ``_build_line_index`` to prefer
+        deeper-by-depth non-punctuation tokens (or, more invasively,
+        teaching ``annotate_dataflow`` to look up by edge column not
+        just edge line). Both are out of scope for WI-kohah, which is
+        a JS/TS YAML enrichment WI, not a positional-walk rewrite WI.
+        Tracked separately if the bakeoff signal warrants it.
+
+        The 7 other tests in this class exercise the cases that DO
+        thread through the existing line-index machinery (top-level
+        return / throw / library-pattern method calls), which is where
+        the bulk of nestjs / apollo-server call edges live.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "main.ts").write_text(
+            "async function fetcher() { return Promise.resolve(1); }\n"
+            "async function consumer() {\n"
+            "  const x = await fetcher();\n"
+            "  return x;\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        edge = self._get_call_edge(result.edges, 3)
+        assert edge is not None
+        # Current actual behavior: access_mode stays unannotated for this
+        # shape. Documenting as the regression-aware baseline. A future
+        # _build_line_index fix should flip this expectation; when it
+        # does, this test should be inverted (assert == "read") so the
+        # walk-up reaches await_expression / variable_declarator.
+        assert (edge.meta or {}).get("access_mode") is None, (
+            f"Documented limitation: const-declarator + await + call "
+            f"currently does not classify access_mode (see test "
+            f"docstring). If this test starts failing because "
+            f"access_mode == 'read', that means _build_line_index was "
+            f"improved — flip the assertion. Got meta={edge.meta}"
+        )
+
+    def test_library_pattern_classifies_emit_as_write(self, tmp_path: Path) -> None:
+        """An in-tree class method named ``emit`` resolves via type-tracking
+        from ``new``, and the ``\\.emit\\(`` library_patterns regex
+        classifies the call line as write. Validates the full
+        annotate_dataflow → library_patterns pipeline on JS/TS source.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "bus.ts").write_text(
+            "class Bus { emit(event, payload) {} }\n"
+            "function publishChange() {\n"
+            "  const bus = new Bus();\n"
+            "  bus.emit('change', { value: 42 });\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        edge = self._get_call_edge(result.edges, 4)
+        assert edge is not None, (
+            f"Expected a calls edge at line 4 (bus.emit() call); got "
+            f"call edges: {[(e.dst, e.line) for e in result.edges if e.edge_type == 'calls']}"
+        )
+        assert (edge.meta or {}).get("access_mode") == "write", (
+            f"`.emit(` line should classify call as write via "
+            f"library_patterns regex; got meta={edge.meta}"
+        )
+
+    def test_library_pattern_classifies_save_as_write(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "repo.ts").write_text(
+            "class Repo { save(record) {} }\n"
+            "function persistUser(user) {\n"
+            "  const repo = new Repo();\n"
+            "  repo.save(user);\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        edge = self._get_call_edge(result.edges, 4)
+        assert edge is not None
+        assert (edge.meta or {}).get("access_mode") == "write"
+
+    def test_library_pattern_classifies_subscribe_as_read(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "obs.ts").write_text(
+            "class Observable { subscribe(handler) {} }\n"
+            "function attach() {\n"
+            "  const obs = new Observable();\n"
+            "  obs.subscribe(() => {});\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        edge = self._get_call_edge(result.edges, 4)
+        assert edge is not None
+        assert (edge.meta or {}).get("access_mode") == "read"
+
+    def test_library_pattern_classifies_forEach_as_read(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "iter.ts").write_text(
+            "class Collection { forEach(fn) {} }\n"
+            "function logAll() {\n"
+            "  const arr = new Collection();\n"
+            "  arr.forEach((x) => x);\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        edge = self._get_call_edge(result.edges, 4)
+        assert edge is not None
+        assert (edge.meta or {}).get("access_mode") == "read"
+
+    def test_library_pattern_classifies_sort_as_mutate(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "sort.ts").write_text(
+            "class List { sort(cmp) {} }\n"
+            "function rearrange() {\n"
+            "  const arr = new List();\n"
+            "  arr.sort((a, b) => a - b);\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        edge = self._get_call_edge(result.edges, 4)
+        assert edge is not None
+        assert (edge.meta or {}).get("access_mode") == "mutate", (
+            f"`.sort(` is in-place mutation; got meta={edge.meta}"
+        )

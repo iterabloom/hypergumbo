@@ -3,7 +3,8 @@
 #
 # TypeScript extends JavaScript's grammar. Assignment and call node types
 # are identical. This file exists so get_dataflow_config("typescript")
-# resolves without falling back to javascript.yaml.
+# resolves without falling back to javascript.yaml. Keep this in sync
+# with javascript.yaml.
 language: typescript
 
 assignments:
@@ -16,15 +17,34 @@ assignments:
   - node_type: variable_declarator
     write: name
     read: value
+  # WI-kohah: a++ / a-- / ++a / --a mutates the operand in place.
+  - node_type: update_expression
+    mutate: argument
+
+# WI-kohah: positional rules for control-flow statements whose only role
+# is to consume a value. The _default key (see dataflow.py
+# _classify_by_position) classifies any call edge whose AST node is
+# contained within the statement — no per-field walk needed. This is
+# the TS analogue of python.yaml's `returns:` and `yield` entries.
+returns:
+  - node_type: return_statement
+    _default: read
+  - node_type: throw_statement
+    _default: read
+  - node_type: yield_expression
+    _default: read
+  - node_type: await_expression
+    _default: read
 
 deletions:
   - node_type: delete_expression
     delete: argument
 
-# Name-based heuristics for TypeScript method calls (WI-vinub).
-# Same as JavaScript — TS extends JS grammar with identical method call shapes.
+# Name-based heuristics for TypeScript method calls (WI-vinub + WI-kohah).
+# Same vocabulary as JavaScript — TS extends JS grammar with identical
+# method call shapes.
 library_patterns:
-  # Write/mutate patterns
+  # === Mutating array / collection operations ===
   - match: '\.push\('
     access_mode: write
   - match: '\.unshift\('
@@ -59,7 +79,43 @@ library_patterns:
     access_mode: write
   - match: '\.end\('
     access_mode: write
-  # Read patterns
+  # WI-kohah: in-place mutations on collections + ORM persisters.
+  - match: '\.sort\('
+    access_mode: mutate
+  - match: '\.reverse\('
+    access_mode: mutate
+  - match: '\.fill\('
+    access_mode: mutate
+  - match: '\.copyWithin\('
+    access_mode: mutate
+  - match: '\.save\('
+    access_mode: write
+  - match: '\.persist\('
+    access_mode: write
+  - match: '\.insert\('
+    access_mode: write
+  - match: '\.update\('
+    access_mode: mutate
+  - match: '\.replace\('
+    access_mode: mutate
+  - match: '\.assign\('
+    access_mode: write
+  # WI-kohah: RxJS / EventEmitter / pub-sub vocabulary.
+  - match: '\.emit\('
+    access_mode: write
+  - match: '\.publish\('
+    access_mode: write
+  - match: '\.send\('
+    access_mode: write
+  - match: '\.dispatch\('
+    access_mode: write
+  - match: '\.next\('
+    access_mode: write
+  - match: '\.complete\('
+    access_mode: write
+  - match: '\.error\('
+    access_mode: write
+  # === Read patterns ===
   - match: '\.get\('
     access_mode: read
   - match: '\.has\('
@@ -71,4 +127,51 @@ library_patterns:
   - match: '\.find\('
     access_mode: read
   - match: '\.read\('
+    access_mode: read
+  # WI-kohah: more read vocabulary common in TS production code.
+  - match: '\.subscribe\('
+    access_mode: read
+  - match: '\.observe\('
+    access_mode: read
+  - match: '\.then\('
+    access_mode: read
+  - match: '\.catch\('
+    access_mode: read
+  - match: '\.finally\('
+    access_mode: read
+  - match: '\.fetch\('
+    access_mode: read
+  - match: '\.load\('
+    access_mode: read
+  - match: '\.query\('
+    access_mode: read
+  - match: '\.lookup\('
+    access_mode: read
+  - match: '\.findOne\('
+    access_mode: read
+  - match: '\.findMany\('
+    access_mode: read
+  - match: '\.exec\('
+    access_mode: read
+  - match: '\.toString\('
+    access_mode: read
+  - match: '\.toJSON\('
+    access_mode: read
+  - match: '\.map\('
+    access_mode: read
+  - match: '\.filter\('
+    access_mode: read
+  - match: '\.reduce\('
+    access_mode: read
+  - match: '\.forEach\('
+    access_mode: read
+  - match: '\.every\('
+    access_mode: read
+  - match: '\.some\('
+    access_mode: read
+  - match: '\.values\('
+    access_mode: read
+  - match: '\.keys\('
+    access_mode: read
+  - match: '\.entries\('
     access_mode: read

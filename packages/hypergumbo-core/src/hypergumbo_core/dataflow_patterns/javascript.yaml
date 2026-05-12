@@ -16,15 +16,37 @@ assignments:
   - node_type: variable_declarator
     write: name
     read: value
+  # WI-kohah: a++ / a-- / ++a / --a mutates the operand in place.
+  - node_type: update_expression
+    mutate: argument
+
+# WI-kohah: positional rules for control-flow statements whose only role
+# is to consume a value. These use the _default key (see dataflow.py
+# _classify_by_position) so any call edge whose AST node is contained
+# within the statement is classified — no per-field walk needed. This
+# is the JS/TS analogue of python.yaml's `returns:` and `yield` entries
+# (Python uses annotate_dataflow_ast which encodes these directly).
+returns:
+  - node_type: return_statement
+    _default: read
+  - node_type: throw_statement
+    _default: read
+  - node_type: yield_expression
+    _default: read
+  - node_type: await_expression
+    _default: read
 
 deletions:
   - node_type: delete_expression
     delete: argument
 
-# Name-based heuristics for JS/TS method calls (WI-vinub).
-# Covers Array, Map, Set, and common DOM/Node.js patterns.
+# Name-based heuristics for JS/TS method calls (WI-vinub + WI-kohah).
+# Covers Array, Map, Set, common DOM/Node.js, RxJS Observable/Subject,
+# Promise, and async iterator patterns. The list is intentionally
+# vocabulary-conservative — only methods whose name unambiguously
+# implies the access mode regardless of receiver type.
 library_patterns:
-  # Write/mutate patterns
+  # === Mutating array / collection operations ===
   - match: '\.push\('
     access_mode: write
   - match: '\.unshift\('
@@ -59,7 +81,47 @@ library_patterns:
     access_mode: write
   - match: '\.end\('
     access_mode: write
-  # Read patterns
+  # WI-kohah: in-place mutations on collections (array methods that
+  # mutate the receiver — sort/reverse/fill/copyWithin — and the
+  # canonical "save" terminology for ORM/Active Record persisters).
+  - match: '\.sort\('
+    access_mode: mutate
+  - match: '\.reverse\('
+    access_mode: mutate
+  - match: '\.fill\('
+    access_mode: mutate
+  - match: '\.copyWithin\('
+    access_mode: mutate
+  - match: '\.save\('
+    access_mode: write
+  - match: '\.persist\('
+    access_mode: write
+  - match: '\.insert\('
+    access_mode: write
+  - match: '\.update\('
+    access_mode: mutate
+  - match: '\.replace\('
+    access_mode: mutate
+  - match: '\.assign\('
+    access_mode: write
+  # WI-kohah: RxJS / EventEmitter / pub-sub vocabulary. emit/publish/
+  # send/dispatch all write to the channel; next is the canonical
+  # Subject/Observer push method.
+  - match: '\.emit\('
+    access_mode: write
+  - match: '\.publish\('
+    access_mode: write
+  - match: '\.send\('
+    access_mode: write
+  - match: '\.dispatch\('
+    access_mode: write
+  - match: '\.next\('
+    access_mode: write
+  - match: '\.complete\('
+    access_mode: write
+  - match: '\.error\('
+    access_mode: write
+  # === Read patterns ===
   - match: '\.get\('
     access_mode: read
   - match: '\.has\('
@@ -71,4 +133,54 @@ library_patterns:
   - match: '\.find\('
     access_mode: read
   - match: '\.read\('
+    access_mode: read
+  # WI-kohah: more read vocabulary common in JS/TS production code.
+  # subscribe/observe consume an Observable; then/catch/finally consume
+  # a Promise; fetch/load/query/lookup are read intent verbs;
+  # map/filter/reduce/forEach iterate a collection read-only.
+  - match: '\.subscribe\('
+    access_mode: read
+  - match: '\.observe\('
+    access_mode: read
+  - match: '\.then\('
+    access_mode: read
+  - match: '\.catch\('
+    access_mode: read
+  - match: '\.finally\('
+    access_mode: read
+  - match: '\.fetch\('
+    access_mode: read
+  - match: '\.load\('
+    access_mode: read
+  - match: '\.query\('
+    access_mode: read
+  - match: '\.lookup\('
+    access_mode: read
+  - match: '\.findOne\('
+    access_mode: read
+  - match: '\.findMany\('
+    access_mode: read
+  - match: '\.exec\('
+    access_mode: read
+  - match: '\.toString\('
+    access_mode: read
+  - match: '\.toJSON\('
+    access_mode: read
+  - match: '\.map\('
+    access_mode: read
+  - match: '\.filter\('
+    access_mode: read
+  - match: '\.reduce\('
+    access_mode: read
+  - match: '\.forEach\('
+    access_mode: read
+  - match: '\.every\('
+    access_mode: read
+  - match: '\.some\('
+    access_mode: read
+  - match: '\.values\('
+    access_mode: read
+  - match: '\.keys\('
+    access_mode: read
+  - match: '\.entries\('
     access_mode: read
