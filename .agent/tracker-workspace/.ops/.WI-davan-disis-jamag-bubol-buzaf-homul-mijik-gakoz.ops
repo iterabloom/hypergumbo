@@ -127,3 +127,18 @@
   clock: 14  # 1425
   nonce: '1425'  # 1425
   message: "Original claim (0 path-shape Python module qualifiers on hypergumbo self-analysis, the canonical pdm packages/<pkg>/src/<mod>/ layout) is VALIDATED 2026-05-11: dogfood run on dev tip c742c045a7 returns 0 bad qualifiers across 30543 python nodes. Stripping awaits_bakeoff_validation + for_deep_bakeoff.\n\nREOPENING as todo_soft for a follow-on shape the _detect_source_roots heuristic does not yet cover: airflow's 'shared/<topic>/src/airflow_shared/...' layout where multiple topic dirs each carry a 'src/airflow_shared/' subtree sharing the same logical package name.\n\n## Evidence (audit on cohort-003/iter-001/airflow/hg.json, same dev tip)\n\n8 bad qualifiers, all of shape 'shared.<topic>.src.airflow_shared.<module>'. Sample:\n  python:shared.plugins_manager.src.airflow_shared.module_loading:0-0:entry_points_with_dist:unresolved\n  python:shared.plugins_manager.src.airflow_shared.module_loading:0-0:find_path_from_directory:unresolved\n  python:shared.configuration.src.airflow_shared.module_loading:0-0:import_string:unresolved\n  python:shared.observability.src.airflow_shared.observability:0-0:Self:symbol\n  python:shared.plugins_manager.src.airflow_shared.module_loading:0-0:entry_points_with_dist:symbol\n\nHypergumbo self-analysis: 0 (regression baseline).\n\n## Root cause hypothesis\n\n_detect_source_roots either (a) finds one of the topic-level src/airflow_shared/ dirs and registers a single root, leaving files from other topic dirs to fall through to the path-shape qualifier; or (b) requires the importable dir to have its own __init__.py at the immediate src/ child level, missing PEP 420 namespace packages split across topics.\n\n## Fix direction\n\nExtend _detect_source_roots to build a name -> [root_paths] map (not name -> root_path), and have _module_name_from_path pick the deepest matching root for any file. Also handle PEP 420 namespace packages (treat any src/<name>/ as a candidate root regardless of __init__.py presence).\n\n## Validation\n\nAfter fix: re-run hypergumbo on airflow, expect 0 path-shape qualifiers under shared.*.src.airflow_shared.*. Regression-check hypergumbo self-analysis (still 0).\n\nAudit script: /tmp/audit-davan.py (kept locally for re-run)."  # 1425
+- op: update  # 4a9a
+  at: '2026-05-12T09:24:32Z'  # 4a9a
+  by: agent  # 4a9a
+  actor: jgstern_agent  # 4a9a
+  clock: 15  # 4a9a
+  nonce: 4a9a  # 4a9a
+  set:  # 4a9a
+    status: done  # 4a9a
+- op: discuss  # 6d7b
+  at: '2026-05-12T09:24:32Z'  # 6d7b
+  by: agent  # 6d7b
+  actor: jgstern_agent  # 6d7b
+  clock: 16  # 6d7b
+  nonce: 6d7b  # 6d7b
+  message: "Already fixed in commit 132cd23242 (Apr 24 2026): fix(py): detect monorepo packages/<pkg>/src/<mod>/ layouts (WI-davan E1). `_detect_src_layout` was replaced by `_detect_source_roots(repo_root) -> list[Path]` which scans for any `src/` dir that (a) is not itself a Python package and (b) contains at least one Python package. `_module_name_from_path` picks the most-specific (deepest) source root containing the file. Self-analysis dogfood verification 2026-05-12 on dev: 31515 nodes, 0 path-shaped IDs (no `packages.hypergumbo-*`, no `.src.hypergumbo*` qualifiers). The tracker item was filed at f7b3f3f87 before the fix landed and was never updated. WI-davan invariant enforcement was added in 8b61a681bd (May 4)."  # 6d7b

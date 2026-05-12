@@ -18,3 +18,18 @@
     pr_ref:  # 7261
     description: "Source: DEEP cohort 1 reflect on deep-20260510-054430 (phoenix).\n\nPhoenix shows 1328 nodes classified as supply_chain.tier=2 ('internal_dep' in the axis vocabulary), of which 1328/1328 are test files and 0 are vendored / private-package nodes. This is the same conceptual leak called out for Go in WI-gifuz-zizup-kuvuv-tirid-mikot-gutoh-dozaj-potov (done, Go-specific via go.mod), but for Elixir: the test-vs-vendored boundary is being smuggled through tier classification rather than represented on its own axis.\n\nThis is a Fundamental Concept Audit (FCA) finding per the playbook — two unrelated properties (is-test vs is-internal-dependency) are being silently encoded in one field (supply_chain.tier=2). Per FCA methodology this calls for either splitting test code into its own tier (e.g. tier-4 'test') or moving test detection off the supply-chain axis entirely.\n\nFix direction: extend the detect_package_roots / supply_chain classifier with Elixir-aware test detection (matches WI-gifuz's Go shape) — Elixir test files live at test/ at the project root by convention. Longer-term consider whether tests should ever appear on the tier axis at all.\n\nAdjacent: WI-kodas (chatwoot tier1 anomaly, done) addressed the inverse problem (tests landing in tier-1).\n\nEvidence files: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430/reflect/cohort-001/iter-001/phoenix.assessment.yaml."  # 7261
     fields: {}  # 7261
+- op: update  # b064
+  at: '2026-05-12T09:21:49Z'  # b064
+  by: agent  # b064
+  actor: jgstern_agent  # b064
+  clock: 2  # b064
+  nonce: b064  # b064
+  set:  # b064
+    status: done  # b064
+- op: discuss  # 75a0
+  at: '2026-05-12T09:21:49Z'  # 75a0
+  by: agent  # 75a0
+  actor: jgstern_agent  # 75a0
+  clock: 3  # 75a0
+  nonce: 75a0  # 75a0
+  message: "Fixed in PR #3658. New TEST_FILE_PATTERNS_DIR_OVERRIDE list in supply_chain.py checked BEFORE TEST_DIR_PATTERNS. Currently contains only `_test\\.exs$`; routes Phoenix/Elixir test files (test/<ctx>/<thing>_test.exs) to tier 1 (FIRST_PARTY) with is_test=True instead of tier 2 (INTERNAL_DEP). Resolves the bakeoff-deep cohort 1 reflect FCA concept leak (1328/1328 phoenix tier=2 nodes were tests, 0 vendored). +4 property tests covering Phoenix layout shapes and auxiliary-file fall-through guards. Narrow scope by design — broader 'should tests appear on tier axis at all' question deferred per WI."  # 75a0

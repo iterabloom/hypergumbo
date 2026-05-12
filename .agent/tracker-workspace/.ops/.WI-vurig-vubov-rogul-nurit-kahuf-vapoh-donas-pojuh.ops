@@ -19,3 +19,18 @@
     pr_ref:  # 3048
     description: "Source: DEEP cohort 1 reflect on deep-20260510-054430 (chatwoot).\n\nchatwoot is a Rails + Vue customer-engagement app with no Yjs CRDT dependency, but hypergumbo emits 68 false-positive event_publishes edges from the yjs_crdt linker. The linker runs unconditionally based on text patterns rather than first verifying that the repo declares yjs (or y-protocols, y-websocket, etc.) in its dependency manifest.\n\nPattern: framework_dispatch_linkers like yjs_crdt, gRPC, NestJS, etc. should gate on manifest-detected presence of their target framework (similar to how route-handler-linker gates on framework detection). The yjs_crdt linker was added in PR work tracked by WI-tarar-tikul-hidoh-lihus-mugud-bagab-rafib-jolop (PlazaFlow curriculum, done) and WI-mamuh-puduz-nufif-sujoh-sajal-dorig-favup-kafam (Yjs sub-document tracing, done); both assumed the linker runs on yjs-positive repos.\n\nFix direction: add a manifest-presence gate to yjs_crdt and audit other framework linkers (NestJS, gRPC-TS, etc.) for the same anti-pattern. Concrete: check package.json dependencies / devDependencies for /^y(js|-protocols|-websocket)$/ before running. Adjacent: WI-ropoz-bufoj-givoz-higil-sojap-sihut-navon-zabat (gRPC↔TS cross-language linker, todo_soft) should be designed with this gate from the start.\n\nEvidence file: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430/reflect/cohort-001/iter-001/chatwoot.assessment.yaml."  # 3048
     fields: {}  # 3048
+- op: update  # a820
+  at: '2026-05-12T08:57:51Z'  # a820
+  by: agent  # a820
+  actor: jgstern_agent  # a820
+  clock: 2  # a820
+  nonce: a820  # a820
+  set:  # a820
+    status: done  # a820
+- op: discuss  # d0b8
+  at: '2026-05-12T08:57:51Z'  # d0b8
+  by: agent  # d0b8
+  actor: jgstern_agent  # d0b8
+  clock: 3  # d0b8
+  nonce: d0b8  # d0b8
+  message: "Fixed in PR #3657. The yjs_crdt linker text-scans every JS/TS file for write/read patterns (.set, .observe, .on, .addBlock) that overlap generic Vue/Rails/Express vocabulary. On chatwoot (Rails+Vue, no yjs deps), 68 false-positive event_publishes edges resulted. Fix: link_yjs_crdt early-exits with empty LinkerResult unless package.json declares at least one of YJS_DEPENDENCY_NAMES = {yjs, y-protocols, y-websocket}. Real Yjs apps depend on yjs core directly (it's a runtime dep of y-monaco/y-prosemirror/y-quill/etc.), so the gate is structurally correct. +3 property tests; 38 existing tests gain a yjs dep symbol helper."  # d0b8

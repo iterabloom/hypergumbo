@@ -18,3 +18,18 @@
     pr_ref:  # 8612
     description: "INV-zuhub item 1 for the Go analyzer's `interface_dispatch` edge emission in `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go.py:2397`.\n\nWhen a Go method call's `callee_name` matches more than one in-tree symbol (`callee_name in global_symbols and len(global_symbols[callee_name]) >= 2`) and one of the candidates is an interface method (via `interface_method_sets`), the analyzer emits an edge with `evidence_type=\"interface_dispatch\"`, `confidence=0.75`. This is the WI-likab residual case named explicitly in INV-zuhub: `r.Close()` / `req.Header.Set(...)` resolving to project-internal `Alerts.Close` / `Alerts.Set` because Go's short-name resolution picks the in-tree interface method without receiver-type disambiguation.\n\nPer INV-zuhub, these short-name resolutions are simple-name fallbacks. The edge must downgrade to `confidence <= 0.5` and carry `meta[\"disambiguation_fallback\"] = True`.\n\nScope note: this is a LANGUAGE-ANALYZER fix, not a linker fix. The L4 fallback-coherence walker (PR dd2a93550e) is scoped to `packages/hypergumbo-core/src/hypergumbo_core/linkers/` by default and does not gate this site. The conformance is still required per the INV-zuhub statement (which spans all edge producers, not just linkers), but the static gate doesn't enforce it — runtime property tests are the verification mechanism.\n\nConformance: when the `len(global_symbols[callee_name]) >= 2` branch fires AND an interface-method candidate is picked, set `confidence=0.5` and add `meta[\"disambiguation_fallback\"] = True`. Add 2 property tests (single-interface-method-precision, multi-candidate-fallback).\n\nThis is a follow-on from WI-ruzin closure (the in-linker conformance is complete for the calls family modulo the deferrals tracked under INV-zuhub; the Go analyzer fix is outside the linker scope)."  # 8612
     fields: {}  # 8612
+- op: update  # 5d78
+  at: '2026-05-12T08:10:32Z'  # 5d78
+  by: agent  # 5d78
+  actor: jgstern_agent  # 5d78
+  clock: 2  # 5d78
+  nonce: 5d78  # 5d78
+  set:  # 5d78
+    status: done  # 5d78
+- op: discuss  # fc34
+  at: '2026-05-12T08:10:32Z'  # fc34
+  by: agent  # fc34
+  actor: jgstern_agent  # fc34
+  clock: 3  # fc34
+  nonce: fc34  # fc34
+  message: "Fixed in PR #3655 (commit 35888d7f98). Go analyzer interface_dispatch site at go.py:2370+ now collects all interface-method candidates from global_symbols[callee_name]. Single interface-method → precision (confidence=0.75, no flag). Multi interface-method → deterministic-by-id, confidence=0.5, meta[disambiguation_fallback]=True. Uses canonical IfExp pattern. +2 property tests under TestINVZuhubConformanceForInterfaceDispatch (single-interface-method-precision regression guard, multi-interface-method-fallback). One of three INV-zuhub item 1 follow-ons closed (WI-husor JNI and WI-sifiz PyFFI remain)."  # fc34

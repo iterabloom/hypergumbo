@@ -19,3 +19,18 @@
     pr_ref:  # f80b
     description: "Discovered during WI-kunag validation (bakeoff on koel, 2026-05-11). The blade analyzer (blade-v1) is correctly registered with languages=[\"blade\"] and the producer emits 4 expected extends_template edges when called directly on koel (4 .blade.php files with @extends). However, blade-v1 NEVER enrolls in the pipeline because the profile detector classifies .blade.php files as language='php' only (does not add 'blade' to detected languages). Evidence: koel run shows 'frameworks: [laravel, vue]' but 'languages' includes 'php' (1054 files) and no 'blade' entry. As a result, all 9 .blade.php files in koel get analyzed by php-v1 only, and no extends_template edges appear in hg.json (count = 0). taxonomy.py:402 has the blade LanguageSpec with extensions=['*.blade.php'], so the wiring exists; the issue is profile.py's per-file extension matching — likely *.php matches before *.blade.php, or the detector picks the first match. Direct-call validation confirms blade producer is correct: analyze_blade(koel) emits 4 extends_template edges matching the @extends directives. Fix direction: make extension matching longest-suffix or specifically check for compound extensions like .blade.php before .php."  # f80b
     fields: {}  # f80b
+- op: update  # edae
+  at: '2026-05-12T08:33:55Z'  # edae
+  by: agent  # edae
+  actor: jgstern_agent  # edae
+  clock: 2  # edae
+  nonce: edae  # edae
+  set:  # edae
+    status: done  # edae
+- op: discuss  # 0dd7
+  at: '2026-05-12T08:33:56Z'  # 0dd7
+  by: agent  # 0dd7
+  actor: jgstern_agent  # 0dd7
+  clock: 3  # 0dd7
+  nonce: 0dd7  # 0dd7
+  message: "Fixed in PR #3656. Root cause: FileIndex.match_pattern in discovery.py classified '*.blade.php' as pure-extension fast-path; lookup keys on Path.suffix.lower() which retains only the last segment ('.php' for 'foo.blade.php'), so _by_ext['.blade.php'] was always empty. Profile detector then saw 0 .blade.php files and dropped 'blade' from detected languages. Fix: tightened pure-extension branch to also require no '.' in pattern[2:], so compound suffixes (*.blade.php, *.d.ts, *.lagda.md) fall through to the general fnmatch branch. +3 tests (FileIndex compound-suffix blade/d_ts + profile-level blade detection)."  # 0dd7
