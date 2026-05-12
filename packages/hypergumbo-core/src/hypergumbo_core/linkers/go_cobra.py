@@ -223,26 +223,38 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
             if enclosing is None:
                 continue
 
+            # INV-zuhub: when ``find_symbols_by_name(handler_name)``
+            # yields more than one in-tree candidate (cross-package
+            # short-name collision — common in Go where multiple
+            # packages each declare a ``Run`` / ``Execute`` /
+            # ``Validate`` handler), the cobra dispatch target is
+            # unresolvable from the assignment alone. Every emitted
+            # edge in such a batch is a simple-name fallback.
+            is_fallback = len(candidates) > 1
             for handler_sym in candidates:
                 pair = (enclosing.id, handler_sym.id)
                 if pair in seen_pairs:
                     continue
                 seen_pairs.add(pair)
+                confidence = 0.5 if is_fallback else 0.85
+                edge_meta: dict[str, object] = {
+                    "cobra_field": field,
+                    "handler_name": handler_name,
+                    "framework_dispatch": "cobra",
+                }
+                if is_fallback:
+                    edge_meta["disambiguation_fallback"] = True
                 edges.append(
                     Edge.create(
                         src=enclosing.id,
                         dst=handler_sym.id,
                         edge_type="dispatches_to",
-                        confidence=0.85,
+                        confidence=confidence,
                         line=line,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="ast_call_direct",
-                        meta={
-                            "cobra_field": field,
-                            "handler_name": handler_name,
-                            "framework_dispatch": "cobra",
-                        },
+                        meta=edge_meta,
                     ),
                 )
 

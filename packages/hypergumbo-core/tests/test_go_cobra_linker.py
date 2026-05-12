@@ -506,3 +506,112 @@ class TestGoCobraLinkerIntegration:
         assert m is not None
         assert m.group("field") == b"RunE"
         assert m.group("handler") == b"myFn"
+
+
+# ---------------------------------------------------------------------------
+# INV-zuhub property tests: go_cobra dispatches_to fallback (WI-bojok PR4)
+# ---------------------------------------------------------------------------
+
+
+class TestInvZuhubGoCobraFallback:
+    """INV-zuhub item 1, dispatches_to family — go_cobra short-name shape.
+
+    ``find_symbols_by_name(handler_name)`` returns every in-tree
+    symbol whose short name matches. When the lookup yields more than
+    one candidate (cross-package collision — common in Go where each
+    package may declare its own ``Run`` / ``Execute`` / ``Validate``),
+    the dispatch target is unresolvable from the cobra assignment
+    alone and every emitted edge is a simple-name fallback per
+    INV-zuhub.
+    """
+
+    def _write_cobra_file(
+        self, tmp_path: Path, handler: str = "myRun",
+    ) -> Path:
+        p = tmp_path / "cmd" / "root.go"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(
+            'package cmd\n\n'
+            'import (\n'
+            '    "fmt"\n'
+            '    "github.com/spf13/cobra"\n'
+            ')\n\n'
+            'func init() {\n'
+            '    cmd := &cobra.Command{\n'
+            '        Use: "mycmd",\n'
+            f'        RunE: {handler},\n'
+            '    }\n'
+            '    _ = cmd\n'
+            '}\n',
+        )
+        return p
+
+    def test_dispatches_to_single_candidate_keeps_high_confidence(
+        self, tmp_path: Path,
+    ) -> None:
+        file_path = self._write_cobra_file(tmp_path)
+        init_sym = Symbol(
+            id=f"go:{file_path}:8-14:init:function",
+            name="init", kind="function", language="go",
+            path=str(file_path),
+            span=Span(start_line=8, end_line=14, start_col=0, end_col=0),
+        )
+        handler_sym = Symbol(
+            id=f"go:{file_path}:16-19:myRun:function",
+            name="myRun", kind="function", language="go",
+            path=str(file_path),
+            span=Span(start_line=16, end_line=19, start_col=0, end_col=0),
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[init_sym, handler_sym],
+            detected_languages={"go"},
+        )
+        result = go_cobra_linker(ctx)
+        edges = [e for e in result.edges if e.dst == handler_sym.id]
+        assert len(edges) == 1
+        assert edges[0].confidence == 0.85
+        assert (edges[0].meta or {}).get("disambiguation_fallback") is not True
+
+    def test_dispatches_to_multiple_candidates_emit_all_as_fallback(
+        self, tmp_path: Path,
+    ) -> None:
+        """Two in-tree Go functions named ``myRun`` across packages → every
+        emitted edge carries ``confidence <= 0.5`` and the fallback flag.
+        """
+        file_path = self._write_cobra_file(tmp_path)
+        init_sym = Symbol(
+            id=f"go:{file_path}:8-14:init:function",
+            name="init", kind="function", language="go",
+            path=str(file_path),
+            span=Span(start_line=8, end_line=14, start_col=0, end_col=0),
+        )
+        # Two functions sharing the short name myRun across different paths.
+        handler_a = Symbol(
+            id="go:cmd/sub/a.go:1-5:myRun:function",
+            name="myRun", kind="function", language="go",
+            path="cmd/sub/a.go",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        )
+        handler_b = Symbol(
+            id="go:cmd/sub/b.go:1-5:myRun:function",
+            name="myRun", kind="function", language="go",
+            path="cmd/sub/b.go",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[init_sym, handler_a, handler_b],
+            detected_languages={"go"},
+        )
+        result = go_cobra_linker(ctx)
+        edges = [
+            e for e in result.edges
+            if e.src == init_sym.id and e.edge_type == "dispatches_to"
+        ]
+        assert len(edges) == 2
+        for edge in edges:
+            assert edge.confidence <= 0.5
+            assert edge.meta is not None
+            assert edge.meta.get("disambiguation_fallback") is True
+            assert edge.meta.get("framework_dispatch") == "cobra"

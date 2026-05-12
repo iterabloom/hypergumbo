@@ -87,7 +87,9 @@ from typing import TYPE_CHECKING
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from ._transitive_bases import (
     build_inheritance_index,
+    build_short_name_collisions,
     collect_transitive_base_names,
+    short_name_fallback,
 )
 from .registry import LinkerContext, LinkerResult, register_linker
 
@@ -95,6 +97,20 @@ if TYPE_CHECKING:
     from ..ir import Symbol
 
 PASS_ID = make_pass_id("jackson-dispatch-linker")
+
+# FQN prefixes that unambiguously name Spring / Jakarta / Jackson framework
+# types whose short name appears in :data:`BEAN_MARKER_BASE_CLASSES`. An
+# unqualified short-name match against the bean-marker set whose raw base
+# entry starts with any of these is precision (not fallback) per
+# INV-zuhub. Spring's ``@ConfigurationProperties`` lives under
+# ``org.springframework.``; JPA `@Entity` / `@MappedSuperclass` /
+# `@Embeddable` live under ``jakarta.persistence.`` (newer) or
+# ``javax.persistence.`` (older).
+_JACKSON_BEAN_FQN_PREFIXES: tuple[str, ...] = (
+    "org.springframework.",
+    "jakarta.persistence.",
+    "javax.persistence.",
+)
 
 # Annotations at class level that designate the type as a serialization
 # target. Any one of these on the class declaration is sufficient.
@@ -315,8 +331,9 @@ def _find_bean_target_classes(
     symbols: list["Symbol"],
     method_index: dict[tuple[str, str], list["Symbol"]],
     edges: list[Edge] | None = None,
-) -> list["Symbol"]:
-    """Return the class symbols that should receive dispatch edges to accessors.
+    in_tree_collisions: frozenset[str] = frozenset(),
+) -> list[tuple["Symbol", bool]]:
+    """Return ``(class_sym, is_fallback)`` for each bean-dispatch target class.
 
     A class is a target when it carries a class-level serialization hint, or
     when any of its methods carries a method-level Jackson annotation. The
@@ -324,24 +341,52 @@ def _find_bean_target_classes(
     Java analyzer carries field-level annotations onto the paired accessor
     method's decorators, so a method sweep under the class finds the hint
     even if the class declaration itself is unannotated.
+
+    INV-zuhub: ``is_fallback`` is ``True`` iff the class qualified
+    **only** via a bean-marker base whose short name has an in-tree
+    collision and whose raw entry was unqualified. The class-level
+    annotation and method-level annotation paths are precision (the
+    Jackson / Spring annotation namespace is the canonical
+    disambiguator), and any FQN-qualified bean-marker base is also
+    precision. A class with mixed paths (one precision match + one
+    fallback match) resolves as precision.
     """
     edges = edges or []
     inheritance_index = build_inheritance_index(edges)
     symbol_by_id = {sym.id: sym for sym in symbols}
 
-    targets: list[Symbol] = []
+    targets: list[tuple[Symbol, bool]] = []
     for sym in symbols:
         if sym.kind not in {"class", "interface", "struct"}:
             continue
         if sym.language not in {"java", "kotlin", "scala"}:
             continue
-        if _class_has_serialization_hint(sym, symbol_by_id, inheritance_index):
-            targets.append(sym)
+        # Class-level annotation path — precision.
+        if _decorator_names(sym.meta) & CLASS_LEVEL_SERIALIZATION_ANNOTATIONS:
+            targets.append((sym, False))
             continue
+        # Bean-marker base path — INV-zuhub fallback risk. Track each
+        # base-marker match and resolve precision-wins-over-fallback.
+        chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
+        any_precision_base = False
+        any_fallback_base = False
+        for raw in chain:
+            short = _short_annotation_name(raw)
+            if short in BEAN_MARKER_BASE_CLASSES:
+                if short_name_fallback(
+                    raw, short, in_tree_collisions, _JACKSON_BEAN_FQN_PREFIXES,
+                ):
+                    any_fallback_base = True
+                else:
+                    any_precision_base = True
+        if any_precision_base or any_fallback_base:
+            targets.append((sym, any_fallback_base and not any_precision_base))
+            continue
+        # Method-level annotation path — precision.
         key = (sym.path or "", sym.name)
         class_methods = method_index.get(key, [])
         if any(_method_is_serialization_annotated(m) for m in class_methods):
-            targets.append(sym)
+            targets.append((sym, False))
     return targets
 
 
@@ -373,7 +418,17 @@ def link_jackson_dispatch(ctx: LinkerContext) -> LinkerResult:
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     method_index = _build_class_method_index(ctx.symbols)
-    targets = _find_bean_target_classes(ctx.symbols, method_index, ctx.edges)
+    # INV-zuhub: build the in-tree-collision set for bean-marker base
+    # short names so the target walker can flag short-name fallback matches.
+    in_tree_collisions = build_short_name_collisions(
+        ctx.symbols,
+        BEAN_MARKER_BASE_CLASSES,
+        kinds=frozenset({"class", "interface", "struct"}),
+        languages=frozenset({"java", "kotlin", "scala"}),
+    )
+    targets = _find_bean_target_classes(
+        ctx.symbols, method_index, ctx.edges, in_tree_collisions,
+    )
     if not targets:
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(symbols=[], edges=[], run=run)
@@ -385,7 +440,7 @@ def link_jackson_dispatch(ctx: LinkerContext) -> LinkerResult:
     }
 
     edges: list[Edge] = []
-    for class_sym in targets:
+    for class_sym, is_fallback in targets:
         key = (class_sym.path or "", class_sym.name)
         class_methods = method_index.get(key, [])
         for method in _select_dispatch_targets(class_methods):
@@ -393,17 +448,21 @@ def link_jackson_dispatch(ctx: LinkerContext) -> LinkerResult:
             if edge_key in existing_keys:
                 continue
             existing_keys.add(edge_key)
+            confidence = 0.5 if is_fallback else 0.90
+            edge_meta: dict[str, object] = {"framework_dispatch": "jackson_bean"}
+            if is_fallback:
+                edge_meta["disambiguation_fallback"] = True
             edges.append(
                 Edge.create(
                     src=class_sym.id,
                     dst=method.id,
                     edge_type="dispatches_to",
                     line=class_sym.span.start_line if class_sym.span else 0,
-                    confidence=0.90,
+                    confidence=confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_decorator",
-                    meta={"framework_dispatch": "jackson_bean"},
+                    meta=edge_meta,
                 ),
             )
 

@@ -360,13 +360,13 @@ class TestFindBeanTargetClasses:
     def test_class_level_annotation_marks_target(self) -> None:
         c = _class_sym("User", decorators=[{"name": "JsonSerialize"}])
         idx = _build_class_method_index([])
-        assert _find_bean_target_classes([c], idx) == [c]
+        assert _find_bean_target_classes([c], idx) == [(c, False)]
 
     def test_method_annotation_marks_class(self) -> None:
         c = _class_sym("User")
         m = _method_sym("User.getId", decorators=[{"name": "JsonProperty"}])
         idx = _build_class_method_index([m])
-        assert _find_bean_target_classes([c, m], idx) == [c]
+        assert _find_bean_target_classes([c, m], idx) == [(c, False)]
 
     def test_unmarked_class_skipped(self) -> None:
         c = _class_sym("User")
@@ -685,3 +685,133 @@ class TestTransitiveBeanMarkerBase:
         )
         result_edges = self._link([leaf, get_url])
         assert get_url.id in {e.dst for e in result_edges}
+
+
+# ---------------------------------------------------------------------------
+# INV-zuhub property tests: jackson bean-marker fallback (WI-bojok PR4)
+# ---------------------------------------------------------------------------
+
+
+class TestInvZuhubJacksonFallback:
+    """INV-zuhub item 1, dispatches_to family — jackson bean-marker shape.
+
+    The class-level / method-level Jackson annotation paths are
+    precision: the Jackson / JPA / Spring annotation namespaces are the
+    canonical disambiguators. The bean-marker base path
+    (``ConfigurationProperties`` short-name match) can collide with an
+    in-tree class of the same name. Per INV-zuhub, dispatch edges in
+    that case downgrade to ``confidence <= 0.5`` with the fallback flag.
+    """
+
+    def test_dispatches_to_class_level_annotation_keeps_high_confidence(
+        self,
+    ) -> None:
+        """Annotation-bearing class is precision regardless of an in-tree
+        bean-marker collision.
+        """
+        in_tree = _class_sym(
+            "ConfigurationProperties",
+            path="src/main/java/com/example/local/ConfigurationProperties.java",
+            span=(1, 80),
+        )
+        user_cls = _class_sym(
+            "User",
+            path="src/main/java/com/example/User.java",
+            decorators=[{"name": "JsonSerialize"}],
+            span=(1, 50),
+        )
+        getter = _method_sym(
+            "User.getId",
+            path="src/main/java/com/example/User.java",
+            span=(10, 12), signature="()",
+        )
+        ctx = _ctx([in_tree, user_cls, getter])
+        result = link_jackson_dispatch(ctx)
+        edges = [e for e in result.edges if e.src == user_cls.id]
+        assert len(edges) == 1
+        edge = edges[0]
+        assert edge.confidence == 0.90
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+
+    def test_dispatches_to_fqn_bean_marker_keeps_high_confidence(self) -> None:
+        """``org.springframework.boot.context.properties.ConfigurationProperties``
+        is the FQN, so the in-tree collision is irrelevant.
+        """
+        in_tree = _class_sym(
+            "ConfigurationProperties",
+            path="src/main/java/com/example/local/ConfigurationProperties.java",
+            span=(1, 80),
+        )
+        user_cls = _class_sym(
+            "AppConfig",
+            path="src/main/java/com/example/AppConfig.java",
+            base_classes=[
+                "org.springframework.boot.context.properties.ConfigurationProperties",
+            ],
+            span=(1, 50),
+        )
+        getter = _method_sym(
+            "AppConfig.getUrl",
+            path="src/main/java/com/example/AppConfig.java",
+            span=(10, 12), signature="()",
+        )
+        ctx = _ctx([in_tree, user_cls, getter])
+        result = link_jackson_dispatch(ctx)
+        edges = [e for e in result.edges if e.src == user_cls.id]
+        assert len(edges) == 1
+        edge = edges[0]
+        assert edge.confidence == 0.90
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+
+    def test_dispatches_to_no_in_tree_collision_keeps_high_confidence(
+        self,
+    ) -> None:
+        # No in-tree ``ConfigurationProperties`` exists, so an unqualified
+        # extension is precision by elimination.
+        user_cls = _class_sym(
+            "AppConfig",
+            path="src/main/java/com/example/AppConfig.java",
+            base_classes=["ConfigurationProperties"],
+            span=(1, 50),
+        )
+        getter = _method_sym(
+            "AppConfig.getUrl",
+            path="src/main/java/com/example/AppConfig.java",
+            span=(10, 12), signature="()",
+        )
+        ctx = _ctx([user_cls, getter])
+        result = link_jackson_dispatch(ctx)
+        edges = [e for e in result.edges if e.src == user_cls.id]
+        assert len(edges) == 1
+        assert edges[0].confidence == 0.90
+        assert (edges[0].meta or {}).get("disambiguation_fallback") is not True
+
+    def test_dispatches_to_deterministic_fallback_when_ambiguous(self) -> None:
+        # In-tree class named ``ConfigurationProperties`` collides with
+        # Spring's. A user class extending unqualified ``ConfigurationProperties``
+        # is ambiguous, so the edge downgrades.
+        in_tree = _class_sym(
+            "ConfigurationProperties",
+            path="src/main/java/com/example/local/ConfigurationProperties.java",
+            span=(1, 80),
+        )
+        user_cls = _class_sym(
+            "AppConfig",
+            path="src/main/java/com/example/AppConfig.java",
+            base_classes=["ConfigurationProperties"],
+            span=(1, 50),
+        )
+        getter = _method_sym(
+            "AppConfig.getUrl",
+            path="src/main/java/com/example/AppConfig.java",
+            span=(10, 12), signature="()",
+        )
+        ctx = _ctx([in_tree, user_cls, getter])
+        result = link_jackson_dispatch(ctx)
+        edges = [e for e in result.edges if e.src == user_cls.id]
+        assert len(edges) == 1
+        edge = edges[0]
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+        assert edge.meta.get("framework_dispatch") == "jackson_bean"
