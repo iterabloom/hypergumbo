@@ -634,20 +634,40 @@ def _create_di_registers_edges(
     if not module_bindings:
         return []
 
-    # Index: class name -> Symbol (prefer class kind)
-    sym_by_name: dict[str, Symbol] = {}
+    # Index: class name -> list of candidate Symbols. INV-zuhub: when
+    # multiple class/interface symbols share a short name (cross-package
+    # collision common in monorepos), all candidates are tracked; the
+    # fallback rule picks at edge-creation time.
+    syms_by_name: dict[str, list[Symbol]] = {}
     for sym in symbols:
         if sym.kind in ("class", "interface"):
-            sym_by_name[sym.name] = sym
+            syms_by_name.setdefault(sym.name, []).append(sym)
 
     edges: list[Edge] = []
     seen: set[tuple[str, str]] = set()
 
     for binding in module_bindings:
-        module_sym = sym_by_name.get(binding.interface_name)
-        provider_sym = sym_by_name.get(binding.impl_name)
-        if not module_sym or not provider_sym:
+        module_candidates = syms_by_name.get(binding.interface_name, [])
+        provider_candidates = syms_by_name.get(binding.impl_name, [])
+        if not module_candidates or not provider_candidates:
             continue
+
+        # INV-zuhub: NestJS module / provider bindings refer to classes
+        # across files; no same-file preference applies (a module
+        # declares providers, the provider is in a different file by
+        # convention). Use deterministic-by-id when multiple candidates;
+        # set is_fallback=True so the edge carries the provenance flag.
+        module_is_fallback = len(module_candidates) > 1
+        provider_is_fallback = len(provider_candidates) > 1
+        module_sym = (
+            module_candidates[0] if len(module_candidates) == 1
+            else min(module_candidates, key=lambda c: c.id)
+        )
+        provider_sym = (
+            provider_candidates[0] if len(provider_candidates) == 1
+            else min(provider_candidates, key=lambda c: c.id)
+        )
+        is_fallback = module_is_fallback or provider_is_fallback
 
         pair = (module_sym.id, provider_sym.id)
         if pair in seen:
@@ -658,16 +678,23 @@ def _create_di_registers_edges(
         # registration is a declaration-time binding, not runtime
         # dispatch. Canonical 'references' +
         # meta['mechanism']='di_registration'.
+        confidence = min(binding.confidence, 0.5) if is_fallback else binding.confidence
+        edge_meta: dict[str, object] = {
+            "mechanism": "di_registration",
+            "framework_dispatch": "nestjs_module",
+        }
+        if is_fallback:
+            edge_meta["disambiguation_fallback"] = True
         edges.append(Edge.create(
             src=module_sym.id,
             dst=provider_sym.id,
             edge_type="references",
             line=module_sym.span.start_line if module_sym.span else 0,
-            confidence=binding.confidence,
+            confidence=confidence,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="ast_decorator",
-            meta={"mechanism": "di_registration", "framework_dispatch": "nestjs_module"},
+            meta=edge_meta,
         ))
 
     return edges

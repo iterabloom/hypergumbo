@@ -395,11 +395,14 @@ def link_database_queries(root: Path, table_symbols: list[Symbol]) -> DatabaseQu
         except (OSError, IOError):  # pragma: no cover
             pass
 
-    # Build table lookup: table_name -> symbol
-    table_lookup: dict[str, Symbol] = {}
+    # Build table lookup: table_name -> list of candidate symbols.
+    # INV-zuhub: when multiple tables share a name (e.g., postgres and
+    # sqlite migration files both declaring "users"), all candidates
+    # are tracked; the fallback rule picks at edge-creation time.
+    table_lookup: dict[str, list[Symbol]] = {}
     for sym in table_symbols:
         if sym.kind == "table":
-            table_lookup[sym.name.lower()] = sym
+            table_lookup.setdefault(sym.name.lower(), []).append(sym)
 
     # Create symbols and edges
     symbols: list[Symbol] = []
@@ -413,27 +416,44 @@ def link_database_queries(root: Path, table_symbols: list[Symbol]) -> DatabaseQu
 
         # Link to each referenced table
         for table_name in pattern.tables:
-            if table_name in table_lookup:
-                table_sym = table_lookup[table_name]
-                is_cross_language = query_symbol.language != table_sym.language
+            candidates = table_lookup.get(table_name, [])
+            if not candidates:
+                continue
+            # INV-zuhub: single-candidate is precision; multi-candidate
+            # is short-name collision → deterministic-by-id fallback
+            # with confidence <= 0.5 and the disambiguation_fallback
+            # meta flag. SQL-DDL table symbols don't have a meaningful
+            # same-file relationship with query callers, so no
+            # same-file preference branch.
+            if len(candidates) == 1:
+                table_sym = candidates[0]
+                is_fallback = False
+            else:
+                table_sym = min(candidates, key=lambda c: c.id)
+                is_fallback = True
+            is_cross_language = query_symbol.language != table_sym.language
 
-                edge = Edge.create(
-                    src=query_symbol.id,
-                    dst=table_sym.id,
-                    edge_type="references",
-                    line=pattern.line,
-                    confidence=0.85,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    evidence_type="naming_convention",
-                )
-                edge.meta = {
-                    "table_name": table_name,
-                    "query_type": pattern.query_type,
-                    "cross_language": is_cross_language,
-                    "detection_pattern": "table_name",
-                }
-                edges.append(edge)
+            confidence = 0.5 if is_fallback else 0.85
+            edge_meta: dict[str, object] = {
+                "table_name": table_name,
+                "query_type": pattern.query_type,
+                "cross_language": is_cross_language,
+                "detection_pattern": "table_name",
+            }
+            if is_fallback:
+                edge_meta["disambiguation_fallback"] = True
+            edge = Edge.create(
+                src=query_symbol.id,
+                dst=table_sym.id,
+                edge_type="references",
+                line=pattern.line,
+                confidence=confidence,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="naming_convention",
+                meta=edge_meta,
+            )
+            edges.append(edge)
 
     run.duration_ms = int((time.time() - start_time) * 1000)
     run.files_analyzed = files_scanned

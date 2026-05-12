@@ -86,8 +86,13 @@ class TestBuildModelLookup:
         lookup = _build_model_lookup([model])
         assert "User" in lookup
 
-    def test_deduplicates_model_names(self) -> None:
-        """When multiple symbols have the same model name, first one wins."""
+    def test_collisions_accumulate_all_candidates(self) -> None:
+        """When multiple symbols share a short name, the lookup returns
+        all candidates (insertion order). The
+        :func:`_resolve_model_with_fallback` cascade picks the best one
+        at edge-creation time per INV-zuhub. Replaces the prior
+        first-wins assertion; the collision is no longer silently
+        resolved in the lookup itself."""
         user1 = _make_symbol(
             "User", path="app/models.py",
             concepts=[{"concept": "model", "framework": "django"}],
@@ -98,7 +103,9 @@ class TestBuildModelLookup:
         )
         lookup = _build_model_lookup([user1, user2])
         assert "User" in lookup
-        assert lookup["User"].path == "app/models.py"
+        assert len(lookup["User"]) == 2
+        paths = {c.path for c in lookup["User"]}
+        assert paths == {"app/models.py", "other/models.py"}
 
 
 class TestBuildOrmPattern:
@@ -394,6 +401,164 @@ class TestLinkOrmQueries:
         result = link_orm_queries(root=tmp_path, symbols=[user, view])
         # Two ORM calls in same function to same model → one edge
         assert len(result.edges) == 1
+
+
+class TestInvZuhubConformance:
+    """INV-zuhub item 1 conformance for the references-emitting ORM
+    linker. The contract: when a model reference resolves to a single
+    candidate, the edge stays at the default confidence (0.85) and no
+    ``meta['disambiguation_fallback']`` flag is set. When the short
+    name collides across multiple candidate files, the same-file
+    candidate (if exactly one exists) wins precision; otherwise the
+    deterministic-by-id fallback rule kicks in with confidence=0.5 and
+    the meta flag set. Mirrors the inheritance-linker conformance shape
+    from PR #3545."""
+
+    def _model(self, path: str) -> Symbol:
+        return _make_symbol(
+            "Account",
+            kind="class",
+            path=path,
+            concepts=[{"concept": "model", "framework": "django"}],
+        )
+
+    def test_references_single_candidate_keeps_high_confidence(
+        self, tmp_path: Path,
+    ) -> None:
+        """Single Account class across the repo → precision resolution;
+        confidence stays at 0.85 and no fallback flag is set."""
+        model = self._model(str(tmp_path / "models.py"))
+        view = _make_symbol(
+            "get_accounts",
+            kind="function",
+            path=str(tmp_path / "views.py"),
+            start_line=3,
+            end_line=5,
+        )
+        (tmp_path / "views.py").write_text(dedent("""\
+            from models import Account
+
+            def get_accounts():
+                return Account.objects.all()
+        """))
+        result = link_orm_queries(root=tmp_path, symbols=[model, view])
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.confidence == 0.85
+        assert "disambiguation_fallback" not in (edge.meta or {})
+
+    def test_references_same_file_preferred_over_other_file(
+        self, tmp_path: Path,
+    ) -> None:
+        """When two Account classes exist (one in views file's directory,
+        one elsewhere), the resolver prefers the same-file (or same-dir)
+        candidate. The edge stays at high confidence; no fallback flag."""
+        # Two Account classes: one in app/models.py (same dir as views),
+        # one in third_party/models.py (different dir)
+        app_dir = tmp_path / "app"
+        app_dir.mkdir()
+        third_dir = tmp_path / "third_party"
+        third_dir.mkdir()
+
+        account_app = _make_symbol(
+            "Account",
+            kind="class",
+            path=str(app_dir / "models.py"),
+            start_line=1,
+            end_line=10,
+            concepts=[{"concept": "model", "framework": "django"}],
+        )
+        # Same-file Account: views.py itself defines Account too (rare
+        # but it's the minimal shape that triggers same-file precision).
+        views_path = app_dir / "views.py"
+        account_views = _make_symbol(
+            "Account",
+            kind="class",
+            path=str(views_path),
+            start_line=1,
+            end_line=2,
+            concepts=[{"concept": "model", "framework": "django"}],
+        )
+        view = _make_symbol(
+            "get_accounts",
+            kind="function",
+            path=str(views_path),
+            start_line=4,
+            end_line=6,
+        )
+        views_path.write_text(dedent("""\
+            class Account: pass
+
+            def get_accounts():
+                return Account.objects.all()
+        """))
+        result = link_orm_queries(
+            root=tmp_path,
+            symbols=[account_app, account_views, view],
+        )
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        # Same-file Account wins — precision, not fallback.
+        assert edge.dst == account_views.id
+        assert edge.confidence == 0.85
+        assert "disambiguation_fallback" not in (edge.meta or {})
+
+    def test_references_deterministic_fallback_when_ambiguous(
+        self, tmp_path: Path,
+    ) -> None:
+        """When two Account classes exist in different files and neither
+        is the referring file, the resolver falls back to
+        deterministic-by-id (min sort). The edge carries
+        ``confidence <= 0.5`` and ``meta['disambiguation_fallback'] = True``
+        per INV-zuhub."""
+        # Two Account classes, both in app/ but in different files.
+        # views.py is a third file referencing Account — no same-file
+        # win possible.
+        app_dir = tmp_path / "app"
+        app_dir.mkdir()
+
+        account_a = _make_symbol(
+            "Account",
+            kind="class",
+            path=str(app_dir / "accounts_a.py"),
+            start_line=1,
+            end_line=10,
+            concepts=[{"concept": "model", "framework": "django"}],
+        )
+        account_b = _make_symbol(
+            "Account",
+            kind="class",
+            path=str(app_dir / "accounts_b.py"),
+            start_line=1,
+            end_line=10,
+            concepts=[{"concept": "model", "framework": "django"}],
+        )
+        views_path = app_dir / "views.py"
+        view = _make_symbol(
+            "get_accounts",
+            kind="function",
+            path=str(views_path),
+            start_line=3,
+            end_line=5,
+        )
+        views_path.write_text(dedent("""\
+            from accounts_a import Account
+
+            def get_accounts():
+                return Account.objects.all()
+        """))
+        result = link_orm_queries(
+            root=tmp_path,
+            symbols=[account_a, account_b, view],
+        )
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        # Deterministic-by-id: account_a's id sorts before account_b's
+        # ("accounts_a" < "accounts_b" in the path component).
+        assert edge.dst == account_a.id
+        assert edge.confidence == 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
 
 
 class TestLinkerRegistration:

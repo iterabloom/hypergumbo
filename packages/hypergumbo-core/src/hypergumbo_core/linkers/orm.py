@@ -69,27 +69,60 @@ class OrmLinkResult:
     run: AnalysisRun | None = None
 
 
-def _build_model_lookup(symbols: list[Symbol]) -> dict[str, Symbol]:
-    """Build a lookup from model class name to Symbol.
+def _build_model_lookup(symbols: list[Symbol]) -> dict[str, list[Symbol]]:
+    """Build a lookup from model class name to candidate Symbols.
 
     Finds all symbols with concept "model" in their metadata (set by YAML
-    framework patterns for Django, Flask-SQLAlchemy, etc.).
+    framework patterns for Django, Flask-SQLAlchemy, etc.). When multiple
+    symbols share the same short name (cross-package collision), all
+    candidates are returned in insertion order; :func:`_resolve_model_with_fallback`
+    applies the INV-zuhub same-file-preferred / deterministic-fallback
+    rule at edge-creation time.
 
     Args:
         symbols: All symbols from analysis.
 
     Returns:
-        Dict mapping model class name to Symbol. First symbol wins on duplicates.
+        Dict mapping model class name to list of candidate Symbols.
     """
-    lookup: dict[str, Symbol] = {}
+    lookup: dict[str, list[Symbol]] = {}
     for sym in symbols:
         if not has_concept(sym, "model"):
             continue
         # Use short name (last component after any dots)
         short_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
-        if short_name not in lookup:
-            lookup[short_name] = sym
+        lookup.setdefault(short_name, []).append(sym)
     return lookup
+
+
+def _resolve_model_with_fallback(
+    candidates: list[Symbol],
+    referring_file: str,
+) -> tuple[Symbol, bool] | None:
+    """Pick the best model Symbol for a reference site, with INV-zuhub provenance.
+
+    Resolution cascade per INV-zuhub:
+
+    1. Zero candidates → return ``None`` (no edge to emit).
+    2. Single candidate → precision resolution; return ``(sym, is_fallback=False)``.
+    3. Multiple candidates with exactly one in the referring file → same-file
+       precision win; return ``(same_file_sym, False)``.
+    4. Multiple candidates, none / multiple in the referring file →
+       deterministic-by-id fallback; return ``(min_by_id_sym, True)``.
+
+    The boolean is the *is_fallback* signal that the caller threads into
+    edge creation: when True, the edge carries ``confidence <= 0.5`` and
+    ``meta['disambiguation_fallback'] = True`` per INV-zuhub.
+    """
+    if not candidates:  # pragma: no cover - guarded by caller (ref.model_name from lookup keys)
+        return None
+    if len(candidates) == 1:
+        return (candidates[0], False)
+    same_file = [c for c in candidates if c.path == referring_file]
+    if len(same_file) == 1:
+        return (same_file[0], False)
+    pool = same_file if len(same_file) > 1 else candidates
+    return (min(pool, key=lambda c: c.id), True)
 
 
 def _build_orm_pattern(model_names: list[str]) -> re.Pattern | None:
@@ -212,9 +245,12 @@ def link_orm_queries(
     seen_pairs: set[tuple[str, str]] = set()  # (src_id, dst_id) for deduplication
 
     for ref in all_refs:
-        model_sym = model_lookup.get(ref.model_name)
-        if model_sym is None:
+        resolved = _resolve_model_with_fallback(
+            model_lookup.get(ref.model_name, []), ref.file_path,
+        )
+        if resolved is None:
             continue  # pragma: no cover — model_name came from model_lookup keys
+        model_sym, is_fallback = resolved
 
         # Find the enclosing function/method
         enclosing = ctx.find_enclosing_symbol(
@@ -231,21 +267,29 @@ def link_orm_queries(
             continue
         seen_pairs.add(pair)
 
+        # INV-zuhub: simple-name fallback edges carry conf <= 0.5 and
+        # the disambiguation_fallback flag so consumers can filter the
+        # fallback population from the precision-resolved one.
+        confidence = 0.5 if is_fallback else 0.85
+        edge_meta: dict[str, object] = {
+            "model_name": ref.model_name,
+            "accessor": ref.accessor,
+            "framework_dispatch": "orm_accessor",
+        }
+        if is_fallback:
+            edge_meta["disambiguation_fallback"] = True
+
         edge = Edge.create(
             src=enclosing.id,
             dst=model_sym.id,
             edge_type="references",
             line=ref.line,
-            confidence=0.85,
+            confidence=confidence,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="ast_call_direct",
+            meta=edge_meta,
         )
-        edge.meta = {
-            "model_name": ref.model_name,
-            "accessor": ref.accessor,
-            "framework_dispatch": "orm_accessor",
-        }
         edges.append(edge)
 
     run.duration_ms = int((time.time() - start_time) * 1000)

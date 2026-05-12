@@ -1190,6 +1190,78 @@ class TestNestJSModuleRegistrations:
         reg_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(reg_edges) == 1
 
+    def test_di_registers_single_candidate_keeps_high_confidence(
+        self, tmp_path: Path,
+    ) -> None:
+        """INV-zuhub conformance: a unique class symbol for the provider
+        name yields a precision di_registers edge with the binding's
+        original confidence and no fallback flag."""
+        src = tmp_path / "app.module.ts"
+        src.write_text(
+            "@Module({\n"
+            "  providers: [UserService],\n"
+            "})\n"
+            "export class AppModule {}\n"
+        )
+        module_sym = _make_class_symbol(
+            "AppModule", "typescript", path="app.module.ts", kind="class",
+        )
+        provider_sym = _make_class_symbol(
+            "UserService", "typescript", path="user.service.ts", kind="class",
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[module_sym, provider_sym],
+            edges=[],
+        )
+        result = link_di_resolution(ctx)
+        reg_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert len(reg_edges) == 1
+        edge = reg_edges[0]
+        assert edge.confidence > 0.5
+        assert "disambiguation_fallback" not in (edge.meta or {})
+
+    def test_di_registers_deterministic_fallback_when_ambiguous(
+        self, tmp_path: Path,
+    ) -> None:
+        """INV-zuhub conformance: two classes share the short name
+        ``UserService`` across packages → di_registers edge picks the
+        deterministic-by-id candidate and carries ``confidence <= 0.5``
+        + ``meta['disambiguation_fallback'] = True``."""
+        src = tmp_path / "app.module.ts"
+        src.write_text(
+            "@Module({\n"
+            "  providers: [UserService],\n"
+            "})\n"
+            "export class AppModule {}\n"
+        )
+        module_sym = _make_class_symbol(
+            "AppModule", "typescript", path="app.module.ts", kind="class",
+        )
+        # Two UserService classes: one in packages/a/, one in packages/b/.
+        provider_a = _make_class_symbol(
+            "UserService", "typescript",
+            path="packages/a/user.service.ts", kind="class",
+        )
+        provider_b = _make_class_symbol(
+            "UserService", "typescript",
+            path="packages/b/user.service.ts", kind="class",
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[module_sym, provider_a, provider_b],
+            edges=[],
+        )
+        result = link_di_resolution(ctx)
+        reg_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert len(reg_edges) == 1
+        edge = reg_edges[0]
+        # Deterministic-by-id: packages/a sorts before packages/b.
+        assert edge.dst == provider_a.id
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+
     def test_multiline_providers_array(self, tmp_path: Path) -> None:
         """Providers spread across multiple lines are detected."""
         src = tmp_path / "app.module.ts"

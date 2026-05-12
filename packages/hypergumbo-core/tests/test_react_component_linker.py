@@ -72,7 +72,7 @@ class TestBuildComponentMap:
         sym = _make_js_sym("Button", path="src/Button.tsx")
         result = _build_component_map([sym])
         assert "Button" in result
-        assert result["Button"] is sym
+        assert result["Button"] == [sym]
 
     def test_pascal_case_class(self) -> None:
         from hypergumbo_core.linkers.react_component import _build_component_map
@@ -604,3 +604,87 @@ class TestTransitiveReactBase:
         )
         result = _build_component_map([leaf])
         assert "my_view" in result
+
+
+class TestInvZuhubConformance:
+    """INV-zuhub item 1 conformance for the references-emitting React
+    component linker. JSX usage of ``<Foo />`` against multiple
+    Foo-named components across files triggers the same-file-preferred
+    / deterministic-by-id fallback rule."""
+
+    def test_references_single_candidate_keeps_high_confidence(
+        self, tmp_path: Path,
+    ) -> None:
+        """Unique Button component → precision; conf=0.80, no flag."""
+        from hypergumbo_core.linkers.react_component import link_react_components
+
+        button = _make_js_sym("Button", path="src/Button.tsx")
+        app_file = tmp_path / "App.tsx"
+        app_file.write_text("<Button />")
+        app = _make_js_sym("App", path=str(app_file))
+        result = link_react_components(tmp_path, [app, button])
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.confidence == 0.80
+        assert "disambiguation_fallback" not in (edge.meta or {})
+
+    def test_references_same_file_preferred_over_other_file(
+        self, tmp_path: Path,
+    ) -> None:
+        """Two Buttons across files; the JSX use site that's in the
+        same file as one of them prefers the same-file candidate
+        (precision, no fallback flag)."""
+        from hypergumbo_core.linkers.react_component import link_react_components
+
+        # Button defined in App.tsx (same file as the JSX use site)
+        app_file = tmp_path / "App.tsx"
+        app_file.write_text(
+            "function Button() { return null; }\n"
+            "<Button />"
+        )
+        button_app = _make_js_sym(
+            "Button", kind="function", path=str(app_file),
+        )
+        # Another Button in a different file
+        button_other = _make_js_sym(
+            "Button", kind="function", path="src/other/Button.tsx",
+        )
+        result = link_react_components(
+            tmp_path, [button_app, button_other],
+        )
+        # The same-file Button would be a self-reference and is excluded.
+        # In this test the same-file-preferred rule prevents
+        # falling to the cross-file Button (which would emit a fallback
+        # edge). With both candidates considered, the same-file one
+        # wins precision and the resulting self-reference is dropped.
+        # → zero edges, confirming the same-file path was taken.
+        assert len(result.edges) == 0
+
+    def test_references_deterministic_fallback_when_ambiguous(
+        self, tmp_path: Path,
+    ) -> None:
+        """Two Buttons across non-referring files → deterministic-by-id
+        fallback with conf<=0.5 and the meta flag set."""
+        from hypergumbo_core.linkers.react_component import link_react_components
+
+        # Two Buttons in different files
+        button_a = _make_js_sym(
+            "Button", kind="function", path="src/a/Button.tsx",
+        )
+        button_b = _make_js_sym(
+            "Button", kind="function", path="src/b/Button.tsx",
+        )
+        # JSX use site in a third file
+        app_file = tmp_path / "App.tsx"
+        app_file.write_text("<Button />")
+        app = _make_js_sym("App", path=str(app_file))
+        result = link_react_components(
+            tmp_path, [app, button_a, button_b],
+        )
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        # Deterministic-by-id: src/a sorts before src/b.
+        assert edge.dst == button_a.id
+        assert edge.confidence == 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True

@@ -616,3 +616,112 @@ class TestDatabaseQueryLinker:
         assert symbol.meta["query_type"] == "INSERT"
         assert symbol.meta["tables"] == ["users"]
         assert "INSERT INTO users" in symbol.meta["query_preview"]
+
+
+class TestInvZuhubConformance:
+    """INV-zuhub item 1 conformance for the references-emitting
+    database_query linker. SQL-DDL table symbols don't have a meaningful
+    same-file relationship with the query callers (queries live in
+    application code, tables in migration/DDL files), so this linker
+    has no same-file preference branch — the fallback is purely
+    deterministic-by-id when multiple table symbols share a name (e.g.,
+    a Postgres migration and a SQLite migration both declaring
+    ``users``)."""
+
+    def test_references_single_table_candidate_keeps_high_confidence(
+        self, tmp_path: Path,
+    ) -> None:
+        """Single table symbol named 'users' → precision; conf=0.85,
+        no fallback flag."""
+        py_file = tmp_path / "app.py"
+        py_file.write_text(dedent('''
+            cursor.execute("SELECT * FROM users")
+        '''))
+        table_symbols = [
+            Symbol(
+                id="sql:schema.sql:1-5:users:table",
+                name="users",
+                kind="table",
+                path="schema.sql",
+                span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+                language="sql",
+            ),
+        ]
+        result = link_database_queries(tmp_path, table_symbols)
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.confidence == 0.85
+        assert "disambiguation_fallback" not in (edge.meta or {})
+
+    def test_references_deterministic_fallback_when_ambiguous(
+        self, tmp_path: Path,
+    ) -> None:
+        """Two table symbols share the name 'users' (e.g. a Postgres
+        and a SQLite migration); the linker picks deterministically by
+        id and marks the edge as a fallback per INV-zuhub."""
+        py_file = tmp_path / "app.py"
+        py_file.write_text(dedent('''
+            cursor.execute("SELECT * FROM users")
+        '''))
+        users_postgres = Symbol(
+            id="sql:postgres_schema.sql:1-5:users:table",
+            name="users",
+            kind="table",
+            path="postgres_schema.sql",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            language="sql",
+        )
+        users_sqlite = Symbol(
+            id="sql:sqlite_schema.sql:1-5:users:table",
+            name="users",
+            kind="table",
+            path="sqlite_schema.sql",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            language="sql",
+        )
+        result = link_database_queries(
+            tmp_path, [users_postgres, users_sqlite],
+        )
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        # Deterministic-by-id min: postgres_schema's id sorts before
+        # sqlite_schema's.
+        assert edge.dst == users_postgres.id
+        assert edge.confidence == 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+
+    def test_references_case_insensitive_collision_treated_as_ambiguous(
+        self, tmp_path: Path,
+    ) -> None:
+        """Table-name lookup is case-insensitive
+        (``sym.name.lower()``); two symbols named 'Users' and 'users'
+        collide on the lower-cased key and trigger the same
+        deterministic-by-id fallback."""
+        py_file = tmp_path / "app.py"
+        py_file.write_text(dedent('''
+            cursor.execute("SELECT * FROM users")
+        '''))
+        users_lower = Symbol(
+            id="sql:schema_a.sql:1-5:users:table",
+            name="users",
+            kind="table",
+            path="schema_a.sql",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            language="sql",
+        )
+        users_caps = Symbol(
+            id="sql:schema_b.sql:1-5:Users:table",
+            name="Users",
+            kind="table",
+            path="schema_b.sql",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            language="sql",
+        )
+        result = link_database_queries(
+            tmp_path, [users_lower, users_caps],
+        )
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.confidence == 0.5
+        assert edge.meta.get("disambiguation_fallback") is True

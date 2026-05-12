@@ -101,8 +101,8 @@ def _is_pascal_case(name: str) -> bool:
 def _build_component_map(
     symbols: list[Symbol],
     edges: list[Edge] | None = None,
-) -> dict[str, Symbol]:
-    """Build component name -> Symbol map from JS/TS symbols.
+) -> dict[str, list[Symbol]]:
+    """Build component name -> list of candidate Symbols from JS/TS symbols.
 
     A symbol is considered a React component if:
     - It's a function/class in JS/TS, AND
@@ -111,12 +111,18 @@ def _build_component_map(
       (WI-vigih: walks in-tree intermediate base classes; closes the
       structural gap where the docstring previously claimed base-class
       detection but the code only matched on PascalCase).
+
+    INV-zuhub: when multiple component symbols share a short name
+    (cross-package or monorepo collision), all candidates are tracked;
+    :func:`_resolve_component_with_fallback` applies the
+    same-file-preferred / deterministic-fallback rule at edge-creation
+    time.
     """
     edges = edges or []
     inheritance_index = build_inheritance_index(edges)
     symbol_by_id = {sym.id: sym for sym in symbols}
 
-    component_map: dict[str, Symbol] = {}
+    component_map: dict[str, list[Symbol]] = {}
 
     for sym in symbols:
         if sym.language not in ("javascript", "typescript"):
@@ -125,7 +131,7 @@ def _build_component_map(
             continue
 
         if _is_pascal_case(sym.name):
-            component_map[sym.name] = sym
+            component_map.setdefault(sym.name, []).append(sym)
             continue
 
         if sym.kind == "class":
@@ -133,9 +139,32 @@ def _build_component_map(
                 sym, symbol_by_id, inheritance_index,
             )
             if any(_short_react_base(b) in _REACT_CLASS_BASES for b in chain):
-                component_map[sym.name] = sym
+                component_map.setdefault(sym.name, []).append(sym)
 
     return component_map
+
+
+def _resolve_component_with_fallback(
+    candidates: list[Symbol],
+    referring_file: str,
+) -> tuple[Symbol, bool] | None:
+    """Pick the best component Symbol for a JSX use site, with INV-zuhub provenance.
+
+    Same cascade as :func:`hypergumbo_core.linkers.orm._resolve_model_with_fallback`:
+    single-candidate is precision; same-file precedence on collisions;
+    cross-file collisions fall back to deterministic-by-id with the
+    is_fallback signal set so the caller emits ``confidence <= 0.5`` +
+    ``meta['disambiguation_fallback'] = True``.
+    """
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return (candidates[0], False)
+    same_file = [c for c in candidates if c.path == referring_file]
+    if len(same_file) == 1:
+        return (same_file[0], False)
+    pool = same_file if len(same_file) > 1 else candidates
+    return (min(pool, key=lambda c: c.id), True)
 
 
 def _scan_file_for_jsx_components(
@@ -211,9 +240,12 @@ def link_react_components(
         for comp_name in jsx_components:
             # Handle dotted names: <Ns.Component> → look up "Component"
             simple_name = comp_name.rsplit(".", 1)[-1] if "." in comp_name else comp_name
-            target_sym = component_map.get(simple_name)
-            if target_sym is None:
+            resolved = _resolve_component_with_fallback(
+                component_map.get(simple_name, []), str(file_path),
+            )
+            if resolved is None:
                 continue
+            target_sym, is_fallback = resolved
 
             # Don't create self-referential edges
             if target_sym.path == str(file_path) or (
@@ -235,6 +267,12 @@ def link_react_components(
 
             src_id = f"typescript:{rel_path}:0-0:{comp_name}:jsx_usage"
 
+            # INV-zuhub: simple-name fallback edges carry conf <= 0.5
+            # and the disambiguation_fallback flag.
+            confidence = 0.5 if is_fallback else 0.80
+            edge_meta: dict[str, object] = {"construct": "jsx"}
+            if is_fallback:
+                edge_meta["disambiguation_fallback"] = True
             # ADR-0023 §6 Phase 3 (WI-mokam-jalig): JSX renders fold to
             # 'references' + meta['construct']='jsx' — the construct
             # is the differentiating fact, not a separate relationship.
@@ -243,11 +281,11 @@ def link_react_components(
                 dst=target_sym.id,
                 edge_type="references",
                 line=0,
-                confidence=0.80,
+                confidence=confidence,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="jsx_element",
-                meta={"construct": "jsx"},
+                meta=edge_meta,
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
