@@ -12,7 +12,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Summary
 
-Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence_type` and 71 `Symbol.kind` endpoint_shape values are removed from their registries, completing the ADR-0027 / ADR-0028 program. Eleven linker slices adopt the INV-zuhub item 1 conformance contract (`confidence ≤ 0.5` + `meta["disambiguation_fallback"]=True` on ambiguous simple-name resolutions); only two follow-ons remain (JNI dual-key, PyFFI three-key). A new L4 fallback-coherence linter and pre-commit hook enforce the contract statically, and the L3 producer-coherence linter learns to see through inline ternaries, f-strings, and Constant sentinels. Nine bugfixes span release tooling, supply-chain tier classification, JS/TS access-mode coverage, framework-linker gating, and `--backend rust-analyzer` install advice.
+Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence_type` and 71 `Symbol.kind` endpoint_shape values are removed from their registries, completing the ADR-0027 / ADR-0028 program. Eleven linker slices adopt a new disambiguation-fallback contract (`confidence ≤ 0.5` + `meta["disambiguation_fallback"]=True` on ambiguous simple-name resolutions); only two follow-ons remain (JNI dual-key, PyFFI three-key). A new L4 fallback-coherence linter and pre-commit hook enforce the contract statically, and the L3 producer-coherence linter learns to see through inline ternaries, f-strings, and Constant sentinels. Nine bugfixes span release tooling, supply-chain tier classification, JS/TS access-mode coverage, framework-linker gating, and `--backend rust-analyzer` install advice.
 
 ### Changed
 
@@ -36,11 +36,9 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
   Consumer-side cleanup: `selection/filters.py` adds `EXCLUDED_FRAMEWORK_ROLES` and trims `EXCLUDED_KINDS`; `linkers/registry.py::SYNTHETIC_KINDS` renamed to `SYNTHETIC_FRAMEWORK_ROLES`; containment / dependency / noise / sketch sets purged of removed kinds. 72 audit-findings rows advance PRELIM_RESOLVED → RESOLVED. Closes Wave 8 on the Symbol.kind axis.
 
-### Added
+#### Disambiguation-fallback discipline across linkers
 
-#### INV-zuhub item 1 conformance — `disambiguation_fallback` discipline per linker
-
-Eleven linker slices adopt the contract `confidence ≤ 0.5` + `meta["disambiguation_fallback"]=True` when a simple-name resolution lands on a structurally ambiguous target. Combined they close INV-zuhub item 1 except for two named follow-ons (JNI dual-key, PyFFI three-key). All sites are written in the canonical IfExp / mutation-form shape that the L4 walker accepts.
+Eleven linker slices adopt the contract `confidence ≤ 0.5` + `meta["disambiguation_fallback"]=True` when a simple-name resolution lands on a structurally ambiguous target — extending the inheritance-linker pattern introduced in v4.1.0. Two named follow-ons remain (JNI dual-key, PyFFI three-key). All sites are written in the canonical IfExp / mutation-form shape that the L4 walker accepts.
 
 - **Go `interface_dispatch` short-name resolution.** Collects all interface-method candidates rather than breaking on the first; single match stays at `confidence=0.75`, multi-candidate drops to fallback. +2 property tests.
 - **`route_handler.py` primary index.** Builds a `name_collisions` frozenset of names (and `meta["qualified_name"]` keys) shared by 2+ non-route symbols; main `dispatches_to` and React Router loader/action edges drop to fallback on hit. +5 property tests covering Django / Express / Rails / React Router.
@@ -51,25 +49,39 @@ Eleven linker slices adopt the contract `confidence ≤ 0.5` + `meta["disambigua
 - **Framework-base-class `dispatches_to`.** Two new shared helpers at `hypergumbo_core.linkers._transitive_bases`: `build_short_name_collisions` and `short_name_fallback` capture the precision-via-FQN-prefix contract once for every dispatch linker. `django_orm_dispatch` (`django.` prefix) and `airflow_framework_dispatch` (`airflow.` prefix) adopt the helpers and switch to a 3-tuple `(class_sym, methods, is_fallback)` return. +14 tests (7 helper, 4 django, 3 airflow).
 - **`jackson_dispatch` + `go_cobra`.** Jackson stays precision on `org.springframework.` / `jakarta.persistence.` / `javax.persistence.` qualifiers; unqualified bean-marker matches that collide with in-tree JVM types drop to fallback (mixed paths resolve to precision). `go_cobra` emits the entire candidate batch as fallback when `find_symbols_by_name` returns >1. +6 property tests.
 - **Emit-all-matches `dispatches_to`.** `annotation_convention` (`@hg:dispatches X`) and `di_resolution._create_di_edges` (Java/Kotlin/Scala interface→impl overloads) drop the whole candidate batch when the short name has multiple matches. +6 property tests.
-- **`kafka_streams_dispatch`.** The named concrete violation in INV-zuhub's statement table. Class transitive-base matches against `KAFKA_STREAMS_CALLBACKS` stay precision when the raw entry is `org.apache.kafka.*`-qualified or when no in-tree collision exists; unqualified raw entries colliding with an in-tree JVM type (oauthbearer-side `Transformer<T>` etc.) drop. +8 tests.
+- **`kafka_streams_dispatch`.** Class transitive-base matches against `KAFKA_STREAMS_CALLBACKS` stay precision when the raw entry is `org.apache.kafka.*`-qualified or when no in-tree collision exists; unqualified raw entries colliding with an in-tree JVM type (oauthbearer-side `Transformer<T>` etc.) drop. +8 tests.
 - **`references` edge-type family — 4 linkers.** `orm` (model lookup), `database_query` (SQL table lookup), `di_resolution._create_di_registers_edges` (NestJS providers), `react_component` (JSX use sites) switch to multi-value with the same-file-preferred / deterministic-by-id cascade established for `inheritance` in PR #3545. +12 property tests (3 each).
 
-#### Axis-discipline gates (L3 / L4)
+#### L3 producer-coherence linter — ternary, f-string, and Constant sentinel handling
 
-- **L4 fallback-coherence linter (`hypergumbo_core.fallback_coherence`, `scripts/check-fallback-coherence`).** Closes INV-zuhub item 2. AST-walks every `Edge.create(...)` / `Edge(...)` site under `linkers/` and requires that any site declaring `meta["disambiguation_fallback"]=True` (inline dict, IfExp with flag-bearing True branch, or single function-local Name assignment to either shape) also bind `confidence ≤ 0.5` on the same call. Predicate-aware: when both fields are IfExp ternaries on the same predicate, only the True branch of confidence is checked. The companion `disambiguation_fallback` spec lives in `axis_meta_keys.AXIS_EDGE_META`. Live-tree property test runs on every commit. Rounds out the L1 (axis-drift) → L3 (producer-coherence) → L4 (fallback-coherence) ladder.
-- **Pre-commit wiring for the L4 gate.** `.githooks/pre-commit` runs `scripts/check-fallback-coherence` whenever a `linkers/*.py` file is staged — faster-feedback parallel to the L1 / L3 hook blocks. Closes INV-zuhub item 3.
-- **L3 producer-coherence linter handles ternaries, f-strings, and Constant sentinels.** Three coordinated extensions:
-  - **Inline ternary at the kwarg site** resolves via `_resolve_simple_rhs` (was only resolved when bound to a function-local name). Surfaced two pre-existing leaks: `ipc.py:546` (`ipc_channel_match`), `message_queue.py:516` (`topic_match`).
-  - **Non-string Constant assignments** (`= None` / `= 42` / `= True`) return an empty frozenset instead of poisoning the walker (`inheritance.py:209` shape).
-  - **F-string expansion:** new `fstring_mode: "advisory" | "expand" | "strict"` parameter. `expand` (the new wrapper default) resolves each `FormattedValue` through the function-local walker and checks the Cartesian product against the registry, capped at 32 expansions. `inheritance.py:250`'s `f"ast_{edge_type}"` now silently expands to `{ast_extends, ast_implements}`.
-  - **Variable-form structural backstop:** opt-in `variable_form_mode: "silent" | "advisory" | "strict"` surfaces or blocks producers whose `evidence_type` / `kind` comes from a function param, for-loop unpack, function-call return, or dict-subscript-target lookup.
+Three coordinated extensions to the producer-coherence linter (added in v4.1.0):
 
-  Registry adds 6 AXIS_PENDING values (`ipc_channel_match`, `topic_match`, `qualified_call`, `ast_call_namespace`, `ctypes_stdlib_call`, `cffi_stdlib_call`) and `error_set` on Symbol.kind AXIS_LANGUAGE_CONSTRUCT (Zig). `SCHEMA_VERSION` 0.7.0 → 0.7.1 (additive).
+- **Inline ternary at the kwarg site** resolves via `_resolve_simple_rhs` (was only resolved when bound to a function-local name). Surfaced two pre-existing leaks: `ipc.py:546` (`ipc_channel_match`), `message_queue.py:516` (`topic_match`).
+- **Non-string Constant assignments** (`= None` / `= 42` / `= True`) return an empty frozenset instead of poisoning the walker (`inheritance.py:209` shape).
+- **F-string expansion:** new `fstring_mode: "advisory" | "expand" | "strict"` parameter. `expand` (the new wrapper default) resolves each `FormattedValue` through the function-local walker and checks the Cartesian product against the registry, capped at 32 expansions. `inheritance.py:250`'s `f"ast_{edge_type}"` now silently expands to `{ast_extends, ast_implements}`.
+- **Variable-form structural backstop:** opt-in `variable_form_mode: "silent" | "advisory" | "strict"` surfaces or blocks producers whose `evidence_type` / `kind` comes from a function param, for-loop unpack, function-call return, or dict-subscript-target lookup.
+
+Registry adds 6 AXIS_PENDING values (`ipc_channel_match`, `topic_match`, `qualified_call`, `ast_call_namespace`, `ctypes_stdlib_call`, `cffi_stdlib_call`) and `error_set` on Symbol.kind AXIS_LANGUAGE_CONSTRUCT (Zig). `SCHEMA_VERSION` 0.7.0 → 0.7.1 (additive).
+
+#### Ansible `include_tasks` / `import_tasks` Jinja-templated fan-out
+
+Two shapes are now recognised instead of emitting a single unresolved `dst='{{ ... }}'` edge:
+
+- **Basename-Jinja** (`include_tasks: "{{ ansible_os_family }}.yml"`) emits one `imports` edge per sibling `.yml` whose basename matches the literal portion, scoped to the source's directory.
+- **Path-prefix-Jinja** (`import_tasks: "{{ tasks_path }}/yumrepos.yml"`) emits one edge per repo file whose basename matches the literal portion.
+
+Each fan-out edge carries `confidence=0.30` (was a single edge at 0.50). On fedora-infra/ansible, 191/192 unresolved `imports` now fan out to real targets.
+
+### Added
+
+#### Axis-discipline gate — L4 fallback-coherence linter
+
+- **L4 fallback-coherence linter (`hypergumbo_core.fallback_coherence`, `scripts/check-fallback-coherence`).** AST-walks every `Edge.create(...)` / `Edge(...)` site under `linkers/` and requires that any site declaring `meta["disambiguation_fallback"]=True` (inline dict, IfExp with flag-bearing True branch, or single function-local Name assignment to either shape) also bind `confidence ≤ 0.5` on the same call. Predicate-aware: when both fields are IfExp ternaries on the same predicate, only the True branch of confidence is checked. The companion `disambiguation_fallback` spec lives in `axis_meta_keys.AXIS_EDGE_META`. Live-tree property test runs on every commit. Rounds out the L1 (axis-drift) → L3 (producer-coherence) → L4 (fallback-coherence) ladder.
+- **Pre-commit wiring for the L4 gate.** `.githooks/pre-commit` runs `scripts/check-fallback-coherence` whenever a `linkers/*.py` file is staged — faster-feedback parallel to the L1 / L3 hook blocks.
 
 #### Other additions
 
 - **`hypergumbo_core.axis_meta_keys` — canonical registry for `Symbol.meta` / `Edge.meta` keys.** Structural sibling of `symbol_kinds.py` / `evidence_types.py`: tuple of `MetaKeySpec(name, axis, description)` entries with axis constants (`symbol_meta`, `edge_meta`) plus accessors (`all_meta_key_names`, `meta_keys_on_axis`, `find_meta_key`). Seeded with the keys empirically observed across producer code — Wave 5/6 fold residues, ADR-0023 protocol / bridge / dispatch vocabularies, dataflow access modes, and common Symbol.meta annotations. Property test enforces no duplicates, valid axes, no name collisions with typed fields. Drift detection (subscript-access AST walker) is a separate follow-on.
-- **Ansible `include_tasks` / `import_tasks` with Jinja templates fan out to candidate targets.** Two shapes recognised: (a) **basename-Jinja** (`include_tasks: "{{ ansible_os_family }}.yml"`) emits one `imports` edge per sibling `.yml` whose basename matches the literal portion, scoped to the source's directory; (b) **path-prefix-Jinja** (`import_tasks: "{{ tasks_path }}/yumrepos.yml"`) emits one edge per repo file whose basename matches the literal portion. Each fan-out edge carries `confidence=0.30` (was a single `dst='{{ ... }}'` edge at 0.50). On fedora-infra/ansible, 191/192 unresolved `imports` now fan out to real targets.
 
 ### Fixed
 
