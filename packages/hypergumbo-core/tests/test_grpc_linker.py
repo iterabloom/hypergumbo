@@ -1137,6 +1137,217 @@ class TestGrpcServerToServiceBridge:
         assert len(dispatches) == 0
 
 
+class TestINVZuhubConformanceForServiceLookup:
+    """INV-zuhub item 1: cross-package short-name collisions on grpc_service.
+
+    Two .proto files in different packages can each declare a service with
+    the same short name (the containerd-style versioned-monorepo shape:
+    ``services/containers/v1/containers.proto`` and
+    ``services/containers/v2/containers.proto`` both declare
+    ``service Containers``). The pre-fix single-value
+    ``service_sym_by_name: dict[str, str]`` lookup collapsed them onto
+    whichever file iteration processed last — both routes_to and the
+    server-to-service bridge then pointed every cross-package edge at one
+    surviving service symbol.
+
+    Per INV-zuhub item 1:
+
+    - The routes_to lookup has ``rpc.package`` available — when exactly one
+      candidate service symbol carries ``meta["proto_package"]`` matching
+      the RPC's package, the edge is a precision resolution (no flag).
+    - When the package match is ambiguous (no match, multiple matches),
+      the edge drops to ``confidence=0.5`` + ``meta["disambiguation_fallback"]=True``.
+    - The server-to-service bridge consults impl-side symbols (Go struct
+      embedding ``UnimplementedXxxServer``, Python servicer class) that
+      carry no proto package metadata; multi-candidate normalized matches
+      always drop to the fallback flag because the impl alone cannot
+      disambiguate.
+    """
+
+    def test_cross_package_routes_resolve_via_package_preference(self, tmp_path: Path) -> None:
+        """Two protos, different packages, same service name. Each package's RPC routes_to its own service at precision."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        (tmp_path / "a.proto").write_text(
+            'syntax = "proto3";\n'
+            "package pkg_a;\n"
+            "service Foo {\n"
+            "    rpc GetA(GetARequest) returns (Result);\n"
+            "}\n"
+        )
+        (tmp_path / "b.proto").write_text(
+            'syntax = "proto3";\n'
+            "package pkg_b;\n"
+            "service Foo {\n"
+            "    rpc GetB(GetBRequest) returns (Result);\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        services = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_service"]
+        assert len(services) == 2
+        svc_a = next(s for s in services if (s.meta or {}).get("proto_package") == "pkg_a")
+        svc_b = next(s for s in services if (s.meta or {}).get("proto_package") == "pkg_b")
+
+        routes_a = [s for s in result.symbols if (s.meta or {}).get("route_path") == "/pkg_a.Foo/GetA"]
+        routes_b = [s for s in result.symbols if (s.meta or {}).get("route_path") == "/pkg_b.Foo/GetB"]
+        assert len(routes_a) == 1 and len(routes_b) == 1
+
+        routes_to_edges = [
+            e for e in result.edges
+            if e.edge_type == "dispatches_to"
+            and (e.meta or {}).get("framework_dispatch") == "grpc_rpc_definition"
+        ]
+        a_edge = next(e for e in routes_to_edges if e.src == routes_a[0].id)
+        b_edge = next(e for e in routes_to_edges if e.src == routes_b[0].id)
+
+        assert a_edge.dst == svc_a.id
+        assert b_edge.dst == svc_b.id
+        # Each RPC's package uniquely matched one service candidate — precision.
+        assert (a_edge.meta or {}).get("disambiguation_fallback") is None
+        assert (b_edge.meta or {}).get("disambiguation_fallback") is None
+        assert a_edge.confidence == 0.90
+        assert b_edge.confidence == 0.90
+
+    def test_cross_package_bridge_drops_to_fallback(self, tmp_path: Path) -> None:
+        """Go impl with no proto package metadata + cross-package service collision = fallback flag."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        (tmp_path / "a.proto").write_text(
+            'syntax = "proto3";\n'
+            "package pkg_a;\n"
+            "service UserService {\n"
+            "    rpc Get(R) returns (R);\n"
+            "}\n"
+        )
+        (tmp_path / "b.proto").write_text(
+            'syntax = "proto3";\n'
+            "package pkg_b;\n"
+            "service UserService {\n"
+            "    rpc Get(R) returns (R);\n"
+            "}\n"
+        )
+        (tmp_path / "server.go").write_text(
+            "package main\n\n"
+            "type server struct {\n"
+            "    pb.UnimplementedUserServiceServer\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        bridge_edges = [
+            e for e in result.edges
+            if e.edge_type == "dispatches_to"
+            and (e.meta or {}).get("framework_dispatch") == "grpc_server_to_service"
+        ]
+        assert len(bridge_edges) == 1
+        bridge = bridge_edges[0]
+        assert bridge.confidence == 0.5
+        assert (bridge.meta or {}).get("disambiguation_fallback") is True
+
+    def test_single_service_bridge_precision(self, tmp_path: Path) -> None:
+        """Single .proto + single Go impl: no collision, bridge precision (regression guard)."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        (tmp_path / "user.proto").write_text(
+            'syntax = "proto3";\n'
+            "package example;\n"
+            "service UserService {\n"
+            "    rpc Get(R) returns (R);\n"
+            "}\n"
+        )
+        (tmp_path / "server.go").write_text(
+            "package main\n\n"
+            "type server struct {\n"
+            "    pb.UnimplementedUserServiceServer\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        bridge_edges = [
+            e for e in result.edges
+            if e.edge_type == "dispatches_to"
+            and (e.meta or {}).get("framework_dispatch") == "grpc_server_to_service"
+        ]
+        assert len(bridge_edges) == 1
+        bridge = bridge_edges[0]
+        assert bridge.confidence == 0.90
+        assert (bridge.meta or {}).get("disambiguation_fallback") is None
+
+    def test_grpc_service_symbol_carries_proto_package_meta(self, tmp_path: Path) -> None:
+        """grpc_service Symbols emit ``meta["proto_package"]`` when the .proto declares a package."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        (tmp_path / "user.proto").write_text(
+            'syntax = "proto3";\n'
+            "package shop.v1;\n"
+            "service UserService {\n"
+            "    rpc Get(R) returns (R);\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        services = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_service"]
+        assert len(services) == 1
+        assert services[0].meta.get("proto_package") == "shop.v1"
+
+    def test_routes_to_falls_back_when_no_package_disambiguator(self, tmp_path: Path) -> None:
+        """Two package-less .proto files with same service name → both routes_to fall back.
+
+        Without a proto ``package`` declaration, the routes_to lookup has no
+        precision disambiguator and must drop to the INV-zuhub fallback
+        shape. Covers the multi-candidate-no-package-match branch.
+        """
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        (tmp_path / "a.proto").write_text(
+            'syntax = "proto3";\n'
+            "service Foo {\n"
+            "    rpc GetA(R) returns (R);\n"
+            "}\n"
+        )
+        (tmp_path / "b.proto").write_text(
+            'syntax = "proto3";\n'
+            "service Foo {\n"
+            "    rpc GetB(R) returns (R);\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        routes_to_edges = [
+            e for e in result.edges
+            if e.edge_type == "dispatches_to"
+            and (e.meta or {}).get("framework_dispatch") == "grpc_rpc_definition"
+        ]
+        assert len(routes_to_edges) == 2
+        for e in routes_to_edges:
+            assert e.confidence == 0.5
+            assert (e.meta or {}).get("disambiguation_fallback") is True
+
+    def test_grpc_service_without_package_omits_meta(self, tmp_path: Path) -> None:
+        """grpc_service Symbols from .proto files without a package declaration omit proto_package meta."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        (tmp_path / "echo.proto").write_text(
+            'syntax = "proto3";\n'
+            "service EchoService {\n"
+            "    rpc Echo(R) returns (R);\n"
+            "}\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        services = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "grpc_service"]
+        assert len(services) == 1
+        # No proto_package key when .proto omits package
+        assert "proto_package" not in (services[0].meta or {})
+
+
 class TestGrpcProtoToGoImplementation:
     """Tests for linking proto RPC definitions to Go implementation methods.
 

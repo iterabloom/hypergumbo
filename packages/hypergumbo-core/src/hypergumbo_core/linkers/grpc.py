@@ -90,6 +90,10 @@ class GrpcPattern:
     line: int  # Line number in source
     file_path: str  # Source file path
     language: str  # Source language
+    # Proto package (only set on type='service' patterns from .proto files).
+    # Used by the routes_to lookup to disambiguate cross-package short-name
+    # collisions per WI-patiz (INV-zuhub item 1).
+    package: str = ""
 
 
 @dataclass
@@ -224,6 +228,7 @@ def _scan_proto_file(
                 line=i,
                 file_path=str(file_path),
                 language="protobuf",
+                package=package,
             ))
 
         # Rough brace tracking to know when we leave a service block.
@@ -716,6 +721,15 @@ def link_grpc(
         symbol_id = _make_symbol_id(
             pattern.file_path, pattern.line, pattern.service_name, framework_role
         )
+        sym_meta: dict[str, object] = {"framework_role": framework_role}
+        # WI-patiz: grpc_service symbols carry proto_package so the
+        # routes_to lookup can disambiguate cross-package short-name
+        # collisions at precision when each RPC's package picks out a
+        # unique service candidate. Non-proto patterns (Go/Python/Java
+        # impl-side) carry no package — their disambiguation must rely
+        # on the bridge's deterministic-by-id fallback.
+        if framework_role == "grpc_service" and pattern.package:
+            sym_meta["proto_package"] = pattern.package
         symbols.append(Symbol(
             id=symbol_id,
             name=pattern.service_name,
@@ -725,7 +739,7 @@ def link_grpc(
             span=Span(pattern.line, pattern.line, 0, 0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            meta={"framework_role": framework_role},
+            meta=sym_meta,
         ))
 
     # Create edges linking clients/stubs to servicers/servers
@@ -776,10 +790,14 @@ def link_grpc(
     # Create route symbols for proto RPC definitions.
     # gRPC RPCs are accessed via HTTP/2 at /<package>.<Service>/<Method>.
     # Build a lookup for service symbols to create routes_to edges.
-    service_sym_by_name: dict[str, str] = {}
+    # WI-patiz (INV-zuhub item 1): multi-value index. Two .proto files
+    # in different packages can each declare ``service Foo`` — pre-fix
+    # single-value dict overwrote silently and pointed every cross-
+    # package edge at one surviving service symbol.
+    service_sym_by_name: dict[str, list[Symbol]] = {}
     for sym in symbols:
         if (sym.meta or {}).get("framework_role") == "grpc_service":
-            service_sym_by_name[sym.name] = sym.id
+            service_sym_by_name.setdefault(sym.name, []).append(sym)
 
     # Bridge servicer/server symbols to their proto service definition.
     # The client-side 'calls' edges (with meta['protocol']='grpc')
@@ -788,27 +806,52 @@ def link_grpc(
     # this bridge, the call chain is disconnected: the client-side graph
     # (stub → server) and the handler-side graph (route → service → method)
     # are separate components. This dispatches_to edge connects them.
-    service_by_normalized: dict[str, str] = {}
-    for svc_name, svc_id in service_sym_by_name.items():
-        service_by_normalized[_normalize_service_name(svc_name)] = svc_id
+    # Multi-value index keyed by normalized service short name.
+    service_by_normalized: dict[str, list[Symbol]] = {}
+    for svc_list in service_sym_by_name.values():
+        for svc in svc_list:
+            service_by_normalized.setdefault(
+                _normalize_service_name(svc.name), [],
+            ).append(svc)
 
     for sym in symbols:
         if (sym.meta or {}).get("framework_role") in ("grpc_server", "grpc_servicer"):
             normalized = _normalize_service_name(sym.name)
-            svc_id = service_by_normalized.get(normalized)
-            if svc_id and svc_id != sym.id:
-                # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
-                edges.append(Edge.create(
-                    src=sym.id,
-                    dst=svc_id,
-                    edge_type="dispatches_to",
-                    line=sym.span.start_line,
-                    confidence=0.90,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    evidence_type="ast_call_direct",
-                    meta={"framework_dispatch": "grpc_server_to_service"},
-                ))
+            candidates = [
+                c for c in service_by_normalized.get(normalized, [])
+                if c.id != sym.id
+            ]
+            if not candidates:
+                continue
+            # Impl-side (Go struct embedding UnimplementedXxxServer,
+            # Python servicer class, etc.) carries no proto package
+            # metadata, so when multiple proto services share the
+            # normalized short name the impl alone cannot disambiguate.
+            # Deterministic-by-id pick + fallback flag per INV-zuhub.
+            is_fallback = len(candidates) > 1
+            target_svc = (
+                candidates[0] if not is_fallback
+                else min(candidates, key=lambda c: c.id)
+            )
+            confidence = 0.5 if is_fallback else 0.90
+            bridge_meta = (
+                {"framework_dispatch": "grpc_server_to_service",
+                 "disambiguation_fallback": True}
+                if is_fallback
+                else {"framework_dispatch": "grpc_server_to_service"}
+            )
+            # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
+            edges.append(Edge.create(
+                src=sym.id,
+                dst=target_svc.id,
+                edge_type="dispatches_to",
+                line=sym.span.start_line,
+                confidence=confidence,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="ast_call_direct",
+                meta=bridge_meta,
+            ))
 
     for rpc in all_rpc_defs:
         prefix = f"{rpc.package}.{rpc.service_name}" if rpc.package else rpc.service_name
@@ -841,8 +884,26 @@ def link_grpc(
         ))
 
         # Create routes_to edge from route to the service symbol.
-        svc_id = service_sym_by_name.get(rpc.service_name)
-        if svc_id:
+        # WI-patiz: when multiple .proto files declare the same service
+        # short name across packages, prefer the candidate whose
+        # ``meta["proto_package"]`` matches this RPC's package. A
+        # unique package match is precision; a missing or ambiguous
+        # match drops to the INV-zuhub fallback shape.
+        svc_candidates = service_sym_by_name.get(rpc.service_name, [])
+        if svc_candidates:
+            same_pkg = [
+                c for c in svc_candidates
+                if (c.meta or {}).get("proto_package") == rpc.package
+            ]
+            if len(same_pkg) == 1:
+                target_svc = same_pkg[0]
+                route_is_fallback = False
+            elif len(svc_candidates) == 1:
+                target_svc = svc_candidates[0]
+                route_is_fallback = False
+            else:
+                target_svc = min(svc_candidates, key=lambda c: c.id)
+                route_is_fallback = True
             # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
             # gRPC RPC definition routes a route → service; "route"
             # is the dispatch mechanism. Canonical 'dispatches_to'
@@ -850,19 +911,29 @@ def link_grpc(
             #
             # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
             # Fold evidence_type to ast_call_direct + meta key.
+            route_confidence = 0.5 if route_is_fallback else 0.90
+            route_meta = (
+                {
+                    "dispatch_kind": "route",
+                    "framework_dispatch": "grpc_rpc_definition",
+                    "disambiguation_fallback": True,
+                }
+                if route_is_fallback
+                else {
+                    "dispatch_kind": "route",
+                    "framework_dispatch": "grpc_rpc_definition",
+                }
+            )
             edges.append(Edge.create(
                 src=route_id,
-                dst=svc_id,
+                dst=target_svc.id,
                 edge_type="dispatches_to",
                 line=rpc.line,
-                confidence=0.90,
+                confidence=route_confidence,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
-                meta={
-                    "dispatch_kind": "route",
-                    "framework_dispatch": "grpc_rpc_definition",
-                },
+                meta=route_meta,
             ))
 
     # Link Go implementation methods to proto RPC route symbols.
