@@ -837,6 +837,70 @@ class TestFileIndex:
         result = list(idx.match_pattern("**/*.py"))
         assert {f.name for f in result} == {"app.py", "utils.py"}
 
+    def test_match_pattern_compound_suffix_blade_php(self, tmp_path: Path) -> None:
+        """WI-navaf: match_pattern must yield files for '*.blade.php' (compound
+        suffix) via the general-glob fnmatch branch — NOT the pure-extension
+        fast path, which keys on Path.suffix (the LAST segment) and would
+        return an empty result.
+
+        Before this fix the Blade analyzer never enrolled in the pipeline on
+        Laravel repos (koel reproduction): the profile detector iterates
+        LANGUAGE_EXTENSIONS and asks FileIndex.match_pattern('*.blade.php'),
+        which silently matched zero files because '_by_ext[".blade.php"]'
+        does not exist (the suffix table only stores '.php' for
+        'index.blade.php'). The detector then dropped 'blade' from
+        languages, the producer-routing layer never invoked analyze_blade,
+        and all .blade.php files were analyzed by php-v1 only.
+        """
+        from hypergumbo_core.discovery import FileIndex
+
+        (tmp_path / "views").mkdir()
+        (tmp_path / "views" / "home.blade.php").write_text("@extends('layouts.app')")
+        (tmp_path / "views" / "about.blade.php").write_text("@extends('layouts.app')")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "Kernel.php").write_text("<?php\n")
+
+        idx = FileIndex.build(tmp_path)
+
+        blade_matches = list(idx.match_pattern("*.blade.php"))
+        assert {f.name for f in blade_matches} == {"home.blade.php", "about.blade.php"}, (
+            f"Compound-suffix pattern '*.blade.php' must yield only the "
+            f"two .blade.php views (not the plain .php file). Got: "
+            f"{[f.name for f in blade_matches]}"
+        )
+
+        php_matches = list(idx.match_pattern("*.php"))
+        assert {f.name for f in php_matches} == {
+            "home.blade.php",
+            "about.blade.php",
+            "Kernel.php",
+        }, (
+            f"Single-extension pattern '*.php' must keep matching all "
+            f".php files (including .blade.php, by Path.suffix='.php'). "
+            f"Got: {[f.name for f in php_matches]}"
+        )
+
+    def test_match_pattern_compound_suffix_d_ts(self, tmp_path: Path) -> None:
+        """WI-navaf: '*.d.ts' must match TypeScript declaration files via the
+        general-glob branch. Same compound-suffix shape as '*.blade.php'.
+        """
+        from hypergumbo_core.discovery import FileIndex
+
+        (tmp_path / "types").mkdir()
+        (tmp_path / "types" / "global.d.ts").write_text("declare const X: any;")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.ts").write_text("export const x = 1;")
+
+        idx = FileIndex.build(tmp_path)
+
+        d_ts_matches = list(idx.match_pattern("*.d.ts"))
+        assert {f.name for f in d_ts_matches} == {"global.d.ts"}
+
+        ts_matches = list(idx.match_pattern("*.ts"))
+        # *.ts matches both (Path.suffix==".ts") — this is the de-dup
+        # behavior the profile detector explicitly comments on.
+        assert {f.name for f in ts_matches} == {"global.d.ts", "app.ts"}
+
     def test_len(self, tmp_path: Path) -> None:
         """__len__ should return total file count."""
         from hypergumbo_core.discovery import FileIndex

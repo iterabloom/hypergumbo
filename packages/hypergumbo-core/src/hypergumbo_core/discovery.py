@@ -837,12 +837,21 @@ class FileIndex:
         if not _has_glob_chars(pattern):
             # Exact filename: 'Makefile', 'justfile', etc.
             yield from self._by_name.get(pattern, [])
-        elif pattern.startswith("*.") and not _has_glob_chars(pattern[2:]):
-            # Pure extension: '*.py', '*.tsx'
+        elif (
+            pattern.startswith("*.")
+            and not _has_glob_chars(pattern[2:])
+            and "." not in pattern[2:]
+        ):
+            # Pure single-extension: '*.py', '*.tsx'.
+            # Compound suffixes like '*.blade.php', '*.d.ts', '*.lagda.md'
+            # MUST NOT take this path — Path.suffix only retains the last
+            # segment, so '_by_ext[".blade.php"]' would be empty and the
+            # pattern would silently match zero files (WI-navaf: blade
+            # analyzer was never enrolling on koel because of this).
             ext = pattern[1:]  # '.py', '.tsx'
             yield from self._by_ext.get(ext.lower(), [])
         else:
-            # General glob: 'Dockerfile*', '*.gradle.kts', etc.
+            # General glob: 'Dockerfile*', '*.gradle.kts', '*.blade.php', etc.
             for fpath in self._all_files:
                 if fnmatch(fpath.name, pattern):
                     yield fpath

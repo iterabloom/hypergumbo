@@ -76,6 +76,39 @@ def test_detects_html_language(tmp_path: Path) -> None:
     assert data["profile"]["languages"]["html"]["files"] == 1
 
 
+def test_detects_blade_language(tmp_path: Path) -> None:
+    """WI-navaf: .blade.php files should enrol both 'blade' and 'php' in
+    detected languages.
+
+    Pre-fix, FileIndex.match_pattern misclassified '*.blade.php' as a
+    pure-extension lookup (keyed by Path.suffix which only retains '.php')
+    so the 'blade' entry had zero files and was dropped, causing the
+    blade analyzer to never enroll in the producer-routing layer.
+    """
+    (tmp_path / "resources").mkdir()
+    (tmp_path / "resources" / "views").mkdir()
+    (tmp_path / "resources" / "views" / "home.blade.php").write_text(
+        "@extends('layouts.app')\n"
+        "@section('content')\nHello\n@endsection\n"
+    )
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "Kernel.php").write_text("<?php\nnamespace App;\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    assert "blade" in data["profile"]["languages"], (
+        f"Expected 'blade' in detected languages; got: "
+        f"{sorted(data['profile']['languages'].keys())}"
+    )
+    assert data["profile"]["languages"]["blade"]["files"] == 1
+    assert "php" in data["profile"]["languages"]
+    # *.php matches both .blade.php and the plain .php file.
+    assert data["profile"]["languages"]["php"]["files"] == 2
+
+
 def test_detects_multiple_languages(tmp_path: Path) -> None:
     """Should detect all languages in a mixed repo."""
     (tmp_path / "app.py").write_text("print('hi')\n")
