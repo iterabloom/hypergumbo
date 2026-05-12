@@ -1,0 +1,20 @@
+- op: create  # 2706
+  at: '2026-05-12T05:04:49Z'  # 2706
+  by: agent  # 2706
+  actor: jgstern_agent  # 2706
+  clock: 1  # 2706
+  nonce: '2706'  # 2706
+  data:  # 2706
+    kind: work_item  # 2706
+    title: "INV-zuhub item 1 — PyFFI linker dual-lookup conformance (WI-ruzin follow-on)"  # 2706
+    status: todo_hard  # 2706
+    priority: 3  # 2706
+    parent: INV-zuhub-takaf-jupiz-kumoh-modon-ralul-vunob-hisop  # 2706
+    tags:  # 2706
+    - analysis_quality  # 2706
+    isbefore: []  # 2706
+    duplicate_of: []  # 2706
+    not_duplicate_of: []  # 2706
+    pr_ref:  # 2706
+    description: "INV-zuhub item 1 for the PyFFI linker (`linkers/pyffi.py`). Two distinct single-value lookups:\n\n1. **`pyo3_lookup`** (Rust PyO3): keys each `pyo3` function by THREE name variants (`full_name`, `short_name`, `py_style`). Single-value last-writer-wins on each key — a name collision across crates collapses to one Symbol per key.\n2. **`c_lookup`** (ctypes / cffi): keys C functions by bare name. Same BUG-04 shape as cgo/napi/lua_ffi.\n\nFallback risk: same as the simple FFI bridges from WI-ruzin PR1 (commit 30df6bbe1d), but with PyO3's three-key indexing complicating the multi-value refactor — a single Symbol indexed under three keys becomes a list-of-Symbols under each key, and de-duplicating the candidate list at edge-creation time requires care.\n\nConformance: switch both lookups to `dict[str, list[Symbol]]`. For `pyo3_lookup`, de-dupe the candidate list (the same Symbol shows up under all three of its key variants; the candidate-pool size that matters for INV-zuhub is the count of DISTINCT symbols). For `c_lookup`, same mechanical change as cgo/napi/lua_ffi/ruby_ffi from PR1. Deterministic-by-id pick when `len > 1`; `confidence <= 0.5` + `meta[\"disambiguation_fallback\"] = True`. Add 4 property tests (single+multi for each lookup).\n\nThis is a follow-on from WI-ruzin closure (the core 4 simple FFI bridges shipped in PR1; PyFFI's three-key indexing was deferred to keep PR1 focused)."  # 2706
+    fields: {}  # 2706

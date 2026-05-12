@@ -28,3 +28,18 @@
     parent: INV-zuhub-takaf-jupiz-kumoh-modon-ralul-vunob-hisop  # ab67
   add:  # ab67
     tags: [analysis_quality]  # ab67
+- op: update  # 0531
+  at: '2026-05-12T05:05:22Z'  # 0531
+  by: agent  # 0531
+  actor: jgstern_agent  # 0531
+  clock: 3  # 0531
+  nonce: '0531'  # 0531
+  set:  # 0531
+    status: done  # 0531
+- op: discuss  # 87e5
+  at: '2026-05-12T05:05:22Z'  # 87e5
+  by: agent  # 87e5
+  actor: jgstern_agent  # 87e5
+  clock: 4  # 87e5
+  nonce: '87e5'  # 87e5
+  message: "WI-bojok shipped substantially complete across 4 PRs (#3643, #3644, #3645, #3646). The dispatches_to family now has INV-zuhub item 1 conformance across the canonical fallback shapes:\n\n**Shipped per-linker conformance:**\n- `kafka_streams_dispatch.py` (PR #3643, the named INV-zuhub violation from WI-lisov) — Transformer<T> in-tree collision detection.\n- `annotation_convention.py` (PR #3644) — `@hg:dispatches` emit-all-matches.\n- `di_resolution.py::_create_di_edges` (PR #3644) — interface-method overload emit-all-matches.\n- `django_orm_dispatch.py` (PR #3645) — framework-base-class collision via shared helper.\n- `airflow_framework_dispatch.py` (PR #3645) — same shape.\n- `jackson_dispatch.py` (PR #3646) — bean-marker base + JPA/Spring FQN disambiguation.\n- `go_cobra.py` (PR #3646) — `find_symbols_by_name` cross-package emit-all-matches.\n\n**Shared helper (PR #3645):** `hypergumbo_core.linkers._transitive_bases.build_short_name_collisions` and `short_name_fallback` capture the framework-base-class disambiguation contract once for every framework-dispatch linker.\n\n**Vacuous closures (no fallback path; documented here):**\n- `decorator_dispatch.py` — registry fan-out (`@register_analyzer` etc.); dispatch site → ALL registered handlers in family; not a short-name lookup.\n- `go_memberlist.py` — path-scoped delegate filtering inside a single memberlist-importing file; not a cross-file short-name fallback.\n- `rust_trait_dispatch.py` — operates on already-resolved `implements` edges (which carry their own INV-zuhub conformance from the inheritance linker shipped in PR #3545); doesn't introduce its own short-name fallback.\n- `type_hierarchy.py` — uses multi-value `class_ids_by_name` and `methods_by_short_name` already; confidence already scales as `0.85/sqrt(num_overrides)` for fan-out dampening. The structural shape doesn't introduce simple-name fallback in the INV-zuhub sense (all candidates are emitted with damped confidence; not a pick-one-and-flag pattern).\n\n**Deferred to follow-on WIs:**\n- `route_handler.py` — single-value `symbol_by_name` dict (BUG-04 shape); tracked separately under WI-rusuh.\n- `grpc.py` dispatches_to portion — single-value `service_sym_by_name` (BUG-04 shape); tracked separately under WI-patiz.\n\nStatus: done. The dispatches_to family conformance the L4 walker enforces at the static-gate level is structurally complete; the remaining linkers either don't introduce fallback (vacuous) or are tracked under separate audit WIs."  # 87e5

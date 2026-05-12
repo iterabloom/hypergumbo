@@ -1,0 +1,20 @@
+- op: create  # cce3
+  at: '2026-05-12T05:04:36Z'  # cce3
+  by: agent  # cce3
+  actor: jgstern_agent  # cce3
+  clock: 1  # cce3
+  nonce: cce3  # cce3
+  data:  # cce3
+    kind: work_item  # cce3
+    title: "INV-zuhub item 1 — JNI linker dual-key lookup conformance (WI-ruzin follow-on)"  # cce3
+    status: todo_hard  # cce3
+    priority: 3  # cce3
+    parent: INV-zuhub-takaf-jupiz-kumoh-modon-ralul-vunob-hisop  # cce3
+    tags:  # cce3
+    - analysis_quality  # cce3
+    isbefore: []  # cce3
+    duplicate_of: []  # cce3
+    not_duplicate_of: []  # cce3
+    pr_ref:  # cce3
+    description: "INV-zuhub item 1 for the JNI linker (`linkers/jni.py`). The `jni_lookup` dict keys C/C++/Rust JNI symbols by BOTH the short `ClassName.method` form AND the FQN `package.ClassName.method` form (when present). Single-value last-writer-wins on both keys.\n\nFallback risk: when a Java native method's `sym.name` is the SHORT form (`ClassName.method`), and the native side has multiple in-tree implementations across packages whose short form matches (e.g. two `MyClass.processData` in different package directories), the lookup silently picks one. The Java FQN-form key handles this when the Java analyzer emits the FQN; the short-form keying is the structural risk.\n\nConformance: switch `jni_lookup` to `dict[str, list[Symbol]]` keyed on both short and fq names; deterministic-by-id pick when `len > 1`; `confidence <= 0.5` + `meta[\"disambiguation_fallback\"] = True` for fallback edges. Add 2 property tests (single-match precision, multi-match fallback). The shape mirrors the WI-ruzin PR1 FFI-bridge conformance.\n\nThis is a follow-on from WI-ruzin closure (the core 4 simple FFI bridges shipped in PR1; jni's dual-key indexing was deferred to keep PR1 focused)."  # cce3
+    fields: {}  # cce3
