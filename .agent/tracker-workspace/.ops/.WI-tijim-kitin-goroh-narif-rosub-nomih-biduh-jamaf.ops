@@ -72,3 +72,10 @@
   clock: 8  # 9ed6
   nonce: 9ed6  # 9ed6
   message: "pf-prelim pivot: pf-prelim's Rust is not called from Python. Deferred P3→P4."  # 9ed6
+- op: discuss  # 610a
+  at: '2026-05-12T20:14:21Z'  # 610a
+  by: agent  # 610a
+  actor: jgstern_agent  # 610a
+  clock: 9  # 610a
+  nonce: 610a  # 610a
+  message: "Post-ADR-0023 reframe (Phase 4b, fully landed): ffi_bridge was removed from EDGE_TYPES in the bridge-family fold (WI-mifor-vabul cohort). PyO3 edges must be canonical edge_type='calls' + meta['bridge_kind']='pyo3'; the strict-mode drift linter would reject ffi_bridge in pre-commit. Per ADR-0028 (also fully landed): unresolved Rust-side targets should set Edge.is_resolved=False (ir.py:399) plus a canonical inference label from evidence_types_on_axis(AXIS_INFERENCE_PATHWAY), rather than an *_unresolved evidence_type. The implementation work (detect #[pyclass]/#[pymethods] patterns; link Python callers to Rust IO via the bridge) is unchanged; only the emit shape moves to the post-axis-closure vocabulary."  # 610a

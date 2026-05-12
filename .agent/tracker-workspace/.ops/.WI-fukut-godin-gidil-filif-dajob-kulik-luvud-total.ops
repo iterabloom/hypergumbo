@@ -37,3 +37,10 @@
   clock: 3  # cc98
   nonce: cc98  # cc98
   message: "Fix #1: remove inverted Phase 5→Phase 4 isbefore. Fix #2: add parent=INV-dihos for consistency with Phases 2/3/4."  # cc98
+- op: discuss  # ac39
+  at: '2026-05-12T20:14:47Z'  # ac39
+  by: agent  # ac39
+  actor: jgstern_agent  # ac39
+  clock: 4  # ac39
+  nonce: ac39  # ac39
+  message: "ADR-0028 (fully landed) shipped Edge.is_resolved at ir.py:399 with default True. Cross-linker integration consuming resolution state — the Phase 5 deliverable for the Return-Type Registry — is no longer gated on any ADR work. Deliverables (1) type_hierarchy fallback for ambiguous receivers and (2) dataflow refinement for chained call access_mode can both read edge.is_resolved directly rather than parsing *_unresolved evidence strings. The 'only after Phases 1-4 are validated against deep-bakeoff metrics' gate still applies (this item is OPTIONAL by design), but the ADR-side prerequisites are clear."  # ac39

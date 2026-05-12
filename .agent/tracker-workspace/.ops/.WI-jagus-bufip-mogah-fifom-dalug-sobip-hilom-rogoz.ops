@@ -33,3 +33,10 @@
   clock: 3  # 10f4
   nonce: 10f4  # 10f4
   message: "REVISED 2026-04-25 after empirical verification. Original framing was incorrect: cross-file 'from X import BAR' for variables already works via _extract_import_edges + _lookup_symbol_by_module (no kind filter). The 1,171 orphan variables on hypergumbo self-analysis are constants used only WITHIN their own module via bare-name reads inside function bodies — verified on ANDROID_MANIFEST (xml_config.py:58→474), APEX_BUILTINS (apex.py:55→658,695), PASS_ID (intra-file class methods). Real fix is intra-file ast.Name read resolution (Deliverable B, ~half day), not import-side changes. Description rewritten with the corrected analysis, two distinct deliverables identified with sequencing recommendation, deferred pending human prioritization."  # 10f4
+- op: discuss  # 4ad7
+  at: '2026-05-12T20:13:59Z'  # 4ad7
+  by: agent  # 4ad7
+  actor: jgstern_agent  # 4ad7
+  clock: 4  # 4ad7
+  nonce: 4ad7  # 4ad7
+  message: "ADR-0023 (fully landed) settles Deliverable A in the negative: 'imports' is a syntactic fact, and dst.kind == 'variable' is queryable on the endpoint — no new 'references'-from-import edge type is justified. Per Phase 4b closure, the strict-mode drift linter would reject the change in pre-commit anyway. Deliverable B (intra-file ast.Name reads emitting 'references' edges to module-level variable Symbols) is unaffected and remains the substantive work in this item; its acceptance criteria are unchanged. Recommend scoping this item to Deliverable B only when it's picked up."  # 4ad7

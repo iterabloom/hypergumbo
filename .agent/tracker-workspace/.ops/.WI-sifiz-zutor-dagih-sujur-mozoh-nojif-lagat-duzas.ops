@@ -18,3 +18,18 @@
     pr_ref:  # 2706
     description: "INV-zuhub item 1 for the PyFFI linker (`linkers/pyffi.py`). Two distinct single-value lookups:\n\n1. **`pyo3_lookup`** (Rust PyO3): keys each `pyo3` function by THREE name variants (`full_name`, `short_name`, `py_style`). Single-value last-writer-wins on each key — a name collision across crates collapses to one Symbol per key.\n2. **`c_lookup`** (ctypes / cffi): keys C functions by bare name. Same BUG-04 shape as cgo/napi/lua_ffi.\n\nFallback risk: same as the simple FFI bridges from WI-ruzin PR1 (commit 30df6bbe1d), but with PyO3's three-key indexing complicating the multi-value refactor — a single Symbol indexed under three keys becomes a list-of-Symbols under each key, and de-duplicating the candidate list at edge-creation time requires care.\n\nConformance: switch both lookups to `dict[str, list[Symbol]]`. For `pyo3_lookup`, de-dupe the candidate list (the same Symbol shows up under all three of its key variants; the candidate-pool size that matters for INV-zuhub is the count of DISTINCT symbols). For `c_lookup`, same mechanical change as cgo/napi/lua_ffi/ruby_ffi from PR1. Deterministic-by-id pick when `len > 1`; `confidence <= 0.5` + `meta[\"disambiguation_fallback\"] = True`. Add 4 property tests (single+multi for each lookup).\n\nThis is a follow-on from WI-ruzin closure (the core 4 simple FFI bridges shipped in PR1; PyFFI's three-key indexing was deferred to keep PR1 focused)."  # 2706
     fields: {}  # 2706
+- op: update  # 3331
+  at: '2026-05-12T18:56:59Z'  # 3331
+  by: agent  # 3331
+  actor: jgstern_agent  # 3331
+  clock: 2  # 3331
+  nonce: '3331'  # 3331
+  set:  # 3331
+    status: done  # 3331
+- op: discuss  # 6ae6
+  at: '2026-05-12T18:56:59Z'  # 6ae6
+  by: agent  # 6ae6
+  actor: jgstern_agent  # 6ae6
+  clock: 3  # 6ae6
+  nonce: 6ae6  # 6ae6
+  message: "Closed in PR #3667 (merged at bf761dbf35). c_lookup (ctypes/cffi) and pyo3_lookup both switched to multi-value. pyo3_lookup de-duplicates per key on sym.id so bare-function symbols (full_name == short_name) appear once per key; cross-impl short-name collisions (e.g. PyTokenizer::encode vs PyParser::encode both indexed under 'encode') drop to fallback. stdlib-then-resolved and non-stdlib c_lookup branches carry the fallback flag symmetrically. +4 property tests (c single, c multi, c stdlib+multi, pyo3 single bare-function, pyo3 multi-impl short collision). Coverage 100%, L4 gate clean."  # 6ae6

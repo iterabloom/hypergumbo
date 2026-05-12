@@ -34,3 +34,10 @@
   clock: 3  # 35c4
   nonce: 35c4  # 35c4
   message: "pf-prelim pivot: pf-prelim uses WebRTC+Yjs, no gRPC. Deferred P3→P4."  # 35c4
+- op: discuss  # 47d4
+  at: '2026-05-12T20:14:27Z'  # 47d4
+  by: agent  # 47d4
+  actor: jgstern_agent  # 47d4
+  clock: 4  # 47d4
+  nonce: 47d4  # 47d4
+  message: "Post-ADR-0023 reframe (Phase 4b protocol-call family fold under WI-vumum-juvil, fully landed): grpc_calls is gone. gRPC↔TS edges must be canonical edge_type='calls' + meta['protocol']='grpc'; strict-mode drift linter enforces in pre-commit. The implementation work (proto-service ↔ TS-class mapping, similar shape to pyffi/wasm_bindgen linkers) is unchanged; only the emit shape moves to canonical."  # 47d4
