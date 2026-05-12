@@ -362,11 +362,16 @@ def link_subprocess(root: Path, cli_symbols: list[Symbol]) -> SubprocessLinkResu
     # Detect this project's CLI names
     project_cli_names = _detect_project_cli_name(root)
 
-    # Build index of CLI commands by name
-    command_by_name: dict[str, Symbol] = {}
+    # Build index of CLI commands by name. INV-zuhub: when multiple
+    # commands share a short name (cross-binary collision in projects
+    # whose pyproject.toml declares multiple [project.scripts] entries,
+    # each with its own command tree), all candidates are tracked; the
+    # fallback rule picks at edge-creation time. Pre-fix single-value
+    # dict silently overwrote — see WI-jifiv (BUG-04/05 shape).
+    command_by_name: dict[str, list[Symbol]] = {}
     for sym in cli_symbols:
         if _has_command_concept(sym):
-            command_by_name[sym.name] = sym
+            command_by_name.setdefault(sym.name, []).append(sym)
 
     # Collect all subprocess calls
     all_calls: list[SubprocessCall] = []
@@ -390,17 +395,47 @@ def link_subprocess(root: Path, cli_symbols: list[Symbol]) -> SubprocessLinkResu
         if call.executable and call.executable in project_cli_names:
             # Try to match subcommand to a CLI command symbol
             if call.subcommand and call.subcommand in command_by_name:
-                target_symbol = command_by_name[call.subcommand]
+                candidates = command_by_name[call.subcommand]
+                # INV-zuhub: cross-binary subcommand collision is
+                # unresolvable from the subprocess invocation alone
+                # (the linker has no per-symbol binary attribution).
+                # Pick deterministic-by-id when ambiguous.
+                is_fallback = len(candidates) > 1
+                target_symbol = (
+                    candidates[0] if not is_fallback
+                    else min(candidates, key=lambda s: s.id)
+                )
 
                 # Determine confidence based on call type
                 if call.call_type == "variable":
-                    confidence = 0.70
+                    base_confidence = 0.70
                 elif call.is_python_m:
-                    confidence = 0.80
+                    base_confidence = 0.80
                 else:
-                    confidence = 0.85
-
-                edge = Edge.create(
+                    base_confidence = 0.85
+                # INV-zuhub: fallback caps at 0.5 (base_confidence is
+                # always >= 0.70 here, so the literal is equivalent to
+                # min(base_confidence, 0.5) but L4-walker-resolvable).
+                confidence = 0.5 if is_fallback else base_confidence
+                edge_meta = (
+                    {
+                        "executable": call.executable,
+                        "subcommand": call.subcommand,
+                        "call_type": call.call_type,
+                        "is_python_m": call.is_python_m,
+                        "detection_pattern": "subprocess_cli",
+                        "disambiguation_fallback": True,
+                    }
+                    if is_fallback
+                    else {
+                        "executable": call.executable,
+                        "subcommand": call.subcommand,
+                        "call_type": call.call_type,
+                        "is_python_m": call.is_python_m,
+                        "detection_pattern": "subprocess_cli",
+                    }
+                )
+                edges.append(Edge.create(
                     src=call_symbol.id,
                     dst=target_symbol.id,
                     edge_type="subprocess_calls",
@@ -409,15 +444,8 @@ def link_subprocess(root: Path, cli_symbols: list[Symbol]) -> SubprocessLinkResu
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
-                )
-                edge.meta = {
-                    "executable": call.executable,
-                    "subcommand": call.subcommand,
-                    "call_type": call.call_type,
-                    "is_python_m": call.is_python_m,
-                    "detection_pattern": "subprocess_cli",
-                }
-                edges.append(edge)
+                    meta=edge_meta,
+                ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
     run.files_analyzed = files_scanned

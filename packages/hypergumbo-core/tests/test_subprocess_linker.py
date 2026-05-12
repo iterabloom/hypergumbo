@@ -381,6 +381,97 @@ subprocess.run(cmd)
         if result.edges:
             assert result.edges[0].confidence < 0.8
 
+    def test_collision_drops_to_fallback(self, tmp_path: Path) -> None:
+        """INV-zuhub: two cli_command symbols with same short name → fallback flag + confidence == 0.5.
+
+        Multi-binary projects (multiple [project.scripts] entries) can each
+        declare a top-level subcommand with the same short name (e.g. both
+        ``myapp`` and ``myapp-helper`` define a ``list`` command). The pre-fix
+        single-value ``command_by_name`` dict overwrote silently and pointed
+        every ``["myapp", "list"]`` subprocess call at whichever symbol was
+        iterated last. Per INV-zuhub item 1, multi-candidate resolution drops
+        confidence to 0.5 and sets ``meta["disambiguation_fallback"] = True``.
+        Deterministic-by-id breaks the tie reproducibly.
+        """
+        (tmp_path / "pyproject.toml").write_text('''
+[project]
+name = "myapp"
+[project.scripts]
+myapp = "myapp.cli:main"
+myapp-helper = "myapp.helper:main"
+''')
+
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_cli.py").write_text('''
+import subprocess
+subprocess.run(["myapp", "list"])
+''')
+
+        cmd_a = Symbol(
+            id="python:src/myapp/cli.py:10-20:list:function",
+            name="list",
+            kind="function",
+            language="python",
+            path="src/myapp/cli.py",
+            span=Span(10, 20, 0, 0),
+            meta={"concepts": [{"concept": "command"}]},
+        )
+        cmd_b = Symbol(
+            id="python:src/myapp/helper.py:30-40:list:function",
+            name="list",
+            kind="function",
+            language="python",
+            path="src/myapp/helper.py",
+            span=Span(30, 40, 0, 0),
+            meta={"concepts": [{"concept": "command"}]},
+        )
+
+        result = link_subprocess(tmp_path, [cmd_a, cmd_b])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.confidence == 0.5
+        assert (edge.meta or {}).get("disambiguation_fallback") is True
+        # Deterministic-by-id: cmd_a (cli.py < helper.py lexicographically)
+        assert edge.dst == cmd_a.id
+
+    def test_no_collision_preserves_base_confidence(self, tmp_path: Path) -> None:
+        """INV-zuhub: single candidate → no fallback flag, base confidence preserved.
+
+        Regression guard for the precision branch: when ``command_by_name``
+        yields exactly one candidate, the edge keeps the literal-call
+        confidence (0.85) and carries no ``disambiguation_fallback`` flag.
+        """
+        (tmp_path / "pyproject.toml").write_text('''
+[project]
+name = "myapp"
+''')
+
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_cli.py").write_text('''
+import subprocess
+subprocess.run(["myapp", "uniquecmd"])
+''')
+
+        cli_symbol = Symbol(
+            id="python:src/myapp/cli.py:10-20:uniquecmd:function",
+            name="uniquecmd",
+            kind="function",
+            language="python",
+            path="src/myapp/cli.py",
+            span=Span(10, 20, 0, 0),
+            meta={"concepts": [{"concept": "command"}]},
+        )
+
+        result = link_subprocess(tmp_path, [cli_symbol])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.confidence == 0.85
+        assert (edge.meta or {}).get("disambiguation_fallback") is None
+
 
 class TestHasCommandConcept:
     """Tests for _has_command_concept helper."""
