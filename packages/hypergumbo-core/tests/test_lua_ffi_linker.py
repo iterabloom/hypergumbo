@@ -757,3 +757,64 @@ class TestLuaFFILinkerRegistry:
         )
 
         assert c_req.check(ctx) == 2  # function + method, not variable
+
+
+# ---------------------------------------------------------------------------
+# INV-zuhub property tests: lua_ffi cross-file collision fallback (WI-ruzin PR1)
+# ---------------------------------------------------------------------------
+
+
+class TestInvZuhubLuaFfiFallback:
+    """INV-zuhub item 1, calls family — lua_ffi cross-file C symbol collision."""
+
+    def test_single_c_match_keeps_high_confidence(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.lua_ffi import link_lua_ffi
+
+        lua_file = tmp_path / "init.lua"
+        lua_file.write_text(
+            'local ffi = require("ffi")\n'
+            'ffi.cdef[[ int my_func(int); ]]\n'
+            'ffi.C.my_func(42)\n'
+        )
+        lua_sym = _make_lua_symbol("init", path=str(lua_file))
+        c_func = _make_c_symbol(
+            "my_func", path="native.c", start_line=1, end_line=5,
+        )
+        result = link_lua_ffi(
+            repo_root=tmp_path,
+            lua_symbols=[lua_sym], c_symbols=[c_func], edges=[],
+        )
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.confidence == 0.85
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+
+    def test_multiple_c_matches_emit_fallback_edge(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.lua_ffi import link_lua_ffi
+
+        lua_file = tmp_path / "init.lua"
+        lua_file.write_text(
+            'local ffi = require("ffi")\n'
+            'ffi.cdef[[ int my_func(int); ]]\n'
+            'ffi.C.my_func(42)\n'
+        )
+        lua_sym = _make_lua_symbol("init", path=str(lua_file))
+        c_func_a = _make_c_symbol(
+            "my_func", path="native_a.c", start_line=1, end_line=5,
+        )
+        c_func_b = _make_c_symbol(
+            "my_func", path="native_b.c", start_line=1, end_line=5,
+        )
+        result = link_lua_ffi(
+            repo_root=tmp_path,
+            lua_symbols=[lua_sym],
+            c_symbols=[c_func_a, c_func_b],
+            edges=[],
+        )
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst in {c_func_a.id, c_func_b.id}
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+        assert edge.meta.get("bridge_kind") == "ffi"

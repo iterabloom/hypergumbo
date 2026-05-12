@@ -110,23 +110,26 @@ class CgoLinkResult:
     run: AnalysisRun | None = None
 
 
-def _build_c_function_lookup(c_symbols: list[Symbol]) -> dict[str, Symbol]:
-    """Build a lookup table from function name to C/C++ symbol.
+def _build_c_function_lookup(c_symbols: list[Symbol]) -> dict[str, list[Symbol]]:
+    """Build a multi-value lookup table from function name to C/C++ symbols.
 
-    Maps bare function names to their C/C++ symbol definitions.
-    For qualified names like ``MyStruct.method``, also indexes the last
-    component (``method``) for broader matching.
+    Maps bare function names to all matching C/C++ symbol definitions.
+    Multi-value indexing surfaces cross-file collisions (e.g. two C files
+    each declaring ``MyFunc`` — common with static / inline linkage or
+    duplicate-include compile-time errors that the static analyzer
+    happily indexes) so INV-zuhub fallback annotation can downgrade the
+    resulting cgo bridge edges.
 
     Cgo can call functions from both C (.c) and C++ (.cpp) files, as long
     as C++ functions use ``extern "C"`` linkage.
     """
-    lookup: dict[str, Symbol] = {}
+    lookup: dict[str, list[Symbol]] = {}
 
     for sym in c_symbols:
         if sym.language not in ("c", "cpp") or sym.kind != "function":
             continue
 
-        lookup[sym.name] = sym
+        lookup.setdefault(sym.name, []).append(sym)
 
     return lookup
 
@@ -169,26 +172,41 @@ def link_cgo(
         if not func_name:
             continue  # pragma: no cover - defensive for malformed edge
 
-        # Match to C/C++ function
-        if func_name in c_lookup:
-            c_sym = c_lookup[func_name]
-            # ADR-0023 §6 Phase 3 (WI-mifor-vabul): emit canonical
-            # 'calls' + meta['bridge_kind']='cgo'. The bridge mechanism
-            # is meta information; the language pair is recoverable
-            # from src.language='go' + dst.language='c'.
-            result_edges.append(Edge.create(
-                src=edge.src,
-                dst=c_sym.id,
-                edge_type="calls",
-                line=edge.line,
-                confidence=0.90,
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-                evidence_type="cgo_call",
-                access_mode="write",
-                dest_access_mode="read",
-                meta={"bridge_kind": "cgo"},
-            ))
+        # Match to C/C++ function. INV-zuhub: when multiple in-tree
+        # C/C++ symbols share the same name (cross-file collision —
+        # common pattern from per-file static helpers or duplicate
+        # forward-declared shims), pick the deterministic-by-id
+        # candidate and downgrade the edge to ``confidence <= 0.5``
+        # with the disambiguation_fallback flag.
+        candidates = c_lookup.get(func_name)
+        if not candidates:
+            continue
+        is_fallback = len(candidates) > 1
+        c_sym = (
+            candidates[0] if len(candidates) == 1
+            else min(candidates, key=lambda s: s.id)
+        )
+        confidence = 0.5 if is_fallback else 0.90
+        edge_meta: dict[str, object] = {"bridge_kind": "cgo"}
+        if is_fallback:
+            edge_meta["disambiguation_fallback"] = True
+        # ADR-0023 §6 Phase 3 (WI-mifor-vabul): emit canonical
+        # 'calls' + meta['bridge_kind']='cgo'. The bridge mechanism
+        # is meta information; the language pair is recoverable
+        # from src.language='go' + dst.language='c'.
+        result_edges.append(Edge.create(
+            src=edge.src,
+            dst=c_sym.id,
+            edge_type="calls",
+            line=edge.line,
+            confidence=confidence,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type="cgo_call",
+            access_mode="write",
+            dest_access_mode="read",
+            meta=edge_meta,
+        ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
 

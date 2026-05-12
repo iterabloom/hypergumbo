@@ -141,11 +141,28 @@ def link_lua_ffi(
     result_edges: list[Edge] = []
     seen_edges: set[tuple[str, str]] = set()  # (src_id, func_name) dedup
 
-    # Build lookup for C/C++ functions by name
-    c_lookup: dict[str, Symbol] = {}
+    # Build multi-value lookup for C/C++ functions by name. INV-zuhub:
+    # multi-value indexing surfaces cross-file short-name collisions so
+    # the FFI resolver can downgrade ambiguous edges.
+    c_lookup: dict[str, list[Symbol]] = {}
     for sym in c_symbols:
         if sym.kind in ("function", "method"):
-            c_lookup[sym.name] = sym
+            c_lookup.setdefault(sym.name, []).append(sym)
+
+    def _resolve(name: str) -> tuple[Symbol, bool] | None:
+        """Return ``(c_sym, is_fallback)`` for the C function ``name``,
+        or ``None`` when no in-tree match exists. Picks
+        deterministic-by-id when multiple candidates exist.
+        """
+        candidates = c_lookup.get(name)
+        if not candidates:
+            return None
+        is_fallback = len(candidates) > 1
+        c_sym = (
+            candidates[0] if len(candidates) == 1
+            else min(candidates, key=lambda s: s.id)
+        )
+        return (c_sym, is_fallback)
 
     # --- Phase 1: Scan Lua files for ffi.C / ffi.load calls ---
     lua_files: set[str] = set()
@@ -164,8 +181,10 @@ def link_lua_ffi(
         ffi_calls = _scan_lua_file_for_ffi_calls(lua_path)
 
         for func_name, evidence_type, line_num in ffi_calls:
-            if func_name not in c_lookup:
+            resolved = _resolve(func_name)
+            if resolved is None:
                 continue
+            c_sym, is_fallback = resolved
 
             # Find the enclosing Lua symbol for this file
             src_sym = None
@@ -194,21 +213,25 @@ def link_lua_ffi(
                 continue
             seen_edges.add(dedup_key)
 
-            c_sym = c_lookup[func_name]
             # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
-            # + meta['bridge_kind']='ffi'.
+            # + meta['bridge_kind']='ffi'. INV-zuhub: downgrade when
+            # the FFI symbol name had cross-file collisions.
+            confidence = 0.5 if is_fallback else 0.85
+            edge_meta: dict[str, object] = {"bridge_kind": "ffi"}
+            if is_fallback:
+                edge_meta["disambiguation_fallback"] = True
             result_edges.append(Edge.create(
                 src=src_sym.id,
                 dst=c_sym.id,
                 edge_type="calls",
                 line=line_num,
-                confidence=0.85,
+                confidence=confidence,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type=evidence_type,
                 access_mode="write",
                 dest_access_mode="read",
-                meta={"bridge_kind": "ffi"},
+                meta=edge_meta,
             ))
 
     # --- Phase 2: Match unresolved Lua call edges against C symbols ---
@@ -221,30 +244,36 @@ def link_lua_ffi(
             continue
         call_name = parts[-2]  # second to last
 
-        if call_name not in c_lookup:
+        resolved = _resolve(call_name)
+        if resolved is None:
             continue
+        c_sym, is_fallback = resolved
 
         dedup_key = (edge.src, call_name)
         if dedup_key in seen_edges:
             continue
         seen_edges.add(dedup_key)
 
-        c_sym = c_lookup[call_name]
         # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
-        # + meta['bridge_kind']='ffi'.
+        # + meta['bridge_kind']='ffi'. INV-zuhub: downgrade when the
+        # FFI symbol name had cross-file collisions.
+        confidence = 0.5 if is_fallback else 0.85
+        edge_meta: dict[str, object] = {"bridge_kind": "ffi"}
+        if is_fallback:
+            edge_meta["disambiguation_fallback"] = True
         result_edges.append(Edge.create(
             src=edge.src,
             dst=c_sym.id,
             edge_type="calls",
             line=edge.line,
-            confidence=0.85,
+            confidence=confidence,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="luajit_ffi_lookup",
             is_resolved=False,
             access_mode="write",
             dest_access_mode="read",
-            meta={"bridge_kind": "ffi"},
+            meta=edge_meta,
         ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

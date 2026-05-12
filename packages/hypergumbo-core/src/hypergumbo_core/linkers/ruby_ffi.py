@@ -119,25 +119,36 @@ def _scan_ruby_file_for_ffi(
 
 def _scan_c_file_for_rb_define(
     file_path: Path,
-    c_lookup: dict[str, Symbol],
-) -> list[tuple[Symbol, int]]:
+    c_lookup: dict[str, list[Symbol]],
+) -> list[tuple[Symbol, int, bool]]:
     """Scan a C file for rb_define_method/module_function/singleton_method calls.
 
-    Returns a list of (c_symbol, line_number) tuples for matched functions.
+    Returns a list of ``(c_symbol, line_number, is_fallback)`` tuples for
+    matched functions. ``is_fallback`` is ``True`` when the C function
+    short name had cross-file collisions in ``c_lookup`` and the
+    deterministic-by-id candidate was picked under the INV-zuhub
+    disambiguation contract.
     """
     try:
         content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except (OSError, UnicodeDecodeError):  # pragma: no cover - defensive for I/O errors
         return []
 
-    results: list[tuple[Symbol, int]] = []
+    results: list[tuple[Symbol, int, bool]] = []
 
     for line_num, line in enumerate(content.splitlines(), start=1):
         match = _RB_DEFINE_RE.search(line)
         if match:
             c_func_name = match.group(2)
-            if c_func_name in c_lookup:
-                results.append((c_lookup[c_func_name], line_num))
+            candidates = c_lookup.get(c_func_name)
+            if not candidates:
+                continue
+            is_fallback = len(candidates) > 1
+            c_sym = (
+                candidates[0] if len(candidates) == 1
+                else min(candidates, key=lambda s: s.id)
+            )
+            results.append((c_sym, line_num, is_fallback))
 
     return results
 
@@ -165,11 +176,13 @@ def link_ruby_ffi(
     result_edges: list[Edge] = []
     seen_edges: set[tuple[str, str]] = set()  # (src_id, func_name) dedup
 
-    # Build lookup for C/C++ functions by name
-    c_lookup: dict[str, Symbol] = {}
+    # Build multi-value lookup for C/C++ functions by name. INV-zuhub:
+    # multi-value indexing surfaces cross-file short-name collisions so
+    # the FFI resolver can downgrade ambiguous edges.
+    c_lookup: dict[str, list[Symbol]] = {}
     for sym in c_symbols:
         if sym.kind == "function":
-            c_lookup[sym.name] = sym
+            c_lookup.setdefault(sym.name, []).append(sym)
 
     # --- Phase 1: Scan Ruby files for FFI gem attach_function ---
     ruby_files: set[str] = set()
@@ -210,21 +223,35 @@ def link_ruby_ffi(
                 continue
             seen_edges.add(dedup_key)
 
-            if func_name in c_lookup:
-                # Resolved: repo-local C symbol
-                c_sym = c_lookup[func_name]
+            candidates = c_lookup.get(func_name)
+            if candidates:
+                # Resolved: repo-local C symbol. INV-zuhub: when multiple
+                # in-tree C symbols share the function name, pick
+                # deterministic-by-id and downgrade the edge.
+                is_fallback = len(candidates) > 1
+                c_sym = (
+                    candidates[0] if len(candidates) == 1
+                    else min(candidates, key=lambda s: s.id)
+                )
+                confidence = 0.5 if is_fallback else 0.90
+                edge_meta: dict[str, object] = {
+                    "bridge_kind": "ffi",
+                    "framework_dispatch": "ruby_ffi_attach",
+                }
+                if is_fallback:
+                    edge_meta["disambiguation_fallback"] = True
                 result_edges.append(Edge.create(
                     src=src_sym.id,
                     dst=c_sym.id,
                     edge_type="calls",
                     line=line_num,
-                    confidence=0.90,
+                    confidence=confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     access_mode="write",
                     dest_access_mode="read",
-                    meta={"bridge_kind": "ffi", "framework_dispatch": "ruby_ffi_attach"},
+                    meta=edge_meta,
                 ))
             else:
                 # Unresolved: external library (e.g., libzmq, libc)
@@ -262,7 +289,7 @@ def link_ruby_ffi(
 
         rb_defines = _scan_c_file_for_rb_define(c_path, c_lookup)
 
-        for c_sym, line_num in rb_defines:
+        for c_sym, line_num, is_fallback in rb_defines:
             dedup_key = ("rb_define", c_sym.name)
             if dedup_key in seen_edges:
                 continue  # pragma: no cover - rare dedup
@@ -270,19 +297,28 @@ def link_ruby_ffi(
 
             # For C extension patterns, the "src" is a synthetic registration
             # and the "dst" is the C function. We use the C function's own
-            # enclosing file as source context.
+            # enclosing file as source context. INV-zuhub: downgrade when
+            # the rb_define_method C function short name had cross-file
+            # collisions in the in-tree symbol table.
+            confidence = 0.5 if is_fallback else 0.85
+            edge_meta: dict[str, object] = {
+                "bridge_kind": "ffi",
+                "framework_dispatch": "ruby_c_extension",
+            }
+            if is_fallback:
+                edge_meta["disambiguation_fallback"] = True
             result_edges.append(Edge.create(
                 src=c_sym.id,
                 dst=c_sym.id,
                 edge_type="calls",
                 line=line_num,
-                confidence=0.85,
+                confidence=confidence,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 access_mode="write",
                 dest_access_mode="read",
-                meta={"bridge_kind": "ffi", "framework_dispatch": "ruby_c_extension"},
+                meta=edge_meta,
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

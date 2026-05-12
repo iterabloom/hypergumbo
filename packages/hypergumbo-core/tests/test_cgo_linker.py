@@ -461,3 +461,57 @@ class TestCgoLinkerRegistry:
         c_req = next((r for r in cgo_diag.requirements if r.name == "c_cpp_functions"), None)
         assert c_req is not None
         assert c_req.met is False
+
+
+# ---------------------------------------------------------------------------
+# INV-zuhub property tests: cgo cross-file collision fallback (WI-ruzin PR1)
+# ---------------------------------------------------------------------------
+
+
+class TestInvZuhubCgoFallback:
+    """INV-zuhub item 1, calls family — cgo cross-file symbol collision.
+
+    The C/C++ function lookup is by short name. When more than one
+    in-tree C/C++ symbol shares the name (common with per-file static
+    helpers, duplicate forward declarations, or platform-specific
+    shims that the analyzer indexes regardless of preprocessor gates),
+    the dispatch target is unresolvable from the cgo call alone — the
+    deterministic-by-id candidate is picked and the edge downgrades.
+    """
+
+    def test_single_c_match_keeps_high_confidence(self) -> None:
+        from hypergumbo_core.linkers.cgo import link_cgo
+
+        go_func = _make_go_symbol("caller", path="main.go")
+        c_func = _make_c_symbol(
+            "processData", path="native.c", start_line=10, end_line=20,
+        )
+        unresolved = _make_unresolved_edge(go_func.id, "processData")
+        result = link_cgo([go_func], [c_func], [unresolved])
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.confidence == 0.90
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+
+    def test_multiple_c_matches_emit_fallback_edge(self) -> None:
+        from hypergumbo_core.linkers.cgo import link_cgo
+
+        go_func = _make_go_symbol("caller", path="main.go")
+        # Two in-tree C functions with the same name across files —
+        # static helpers in two .c files for example.
+        c_func_a = _make_c_symbol(
+            "processData", path="native_a.c", start_line=1, end_line=5,
+        )
+        c_func_b = _make_c_symbol(
+            "processData", path="native_b.c", start_line=1, end_line=5,
+        )
+        unresolved = _make_unresolved_edge(go_func.id, "processData")
+        result = link_cgo([go_func], [c_func_a, c_func_b], [unresolved])
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        # deterministic-by-id pick of one candidate
+        assert edge.dst in {c_func_a.id, c_func_b.id}
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+        assert edge.meta.get("bridge_kind") == "cgo"

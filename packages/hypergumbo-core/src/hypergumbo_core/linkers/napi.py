@@ -157,15 +157,17 @@ def link_napi(
     result_edges: list[Edge] = []
     seen_edges: set[tuple[str, str]] = set()  # (src_id, js_name) dedup
 
-    # Build lookup for C/C++ functions by name
-    c_cpp_lookup: dict[str, Symbol] = {}
+    # Build multi-value lookup for C/C++ functions by name. INV-zuhub:
+    # multi-value indexing surfaces cross-file short-name collisions so
+    # the napi resolver can downgrade ambiguous edges.
+    c_cpp_lookup: dict[str, list[Symbol]] = {}
     for sym in c_cpp_symbols:
         if sym.kind in ("function", "method"):
-            c_cpp_lookup[sym.name] = sym
+            c_cpp_lookup.setdefault(sym.name, []).append(sym)
 
     # Scan C/C++ files for N-API export registrations
-    # Build map: js_export_name -> (c_cpp_symbol, evidence_type)
-    export_map: dict[str, tuple[Symbol, str]] = {}
+    # Build map: js_export_name -> (c_cpp_symbol, evidence_type, is_fallback)
+    export_map: dict[str, tuple[Symbol, str, bool]] = {}
 
     c_cpp_files: set[str] = set()
     for sym in c_cpp_symbols:
@@ -183,10 +185,18 @@ def link_napi(
         napi_exports = _scan_c_cpp_file_for_napi_exports(c_path)
 
         for js_name, c_cpp_name, evidence_type in napi_exports:
-            # Look up the C/C++ symbol by function name
-            target_sym = c_cpp_lookup.get(c_cpp_name)
-            if target_sym is not None:
-                export_map[js_name] = (target_sym, evidence_type)
+            # Look up the C/C++ symbol by function name. When more than
+            # one matches (cross-file collision), pick deterministic-by-id
+            # and flag the export as a fallback.
+            candidates = c_cpp_lookup.get(c_cpp_name)
+            if not candidates:
+                continue
+            is_fallback = len(candidates) > 1
+            target_sym = (
+                candidates[0] if len(candidates) == 1
+                else min(candidates, key=lambda s: s.id)
+            )
+            export_map[js_name] = (target_sym, evidence_type, is_fallback)
 
     # Match unresolved JS/TS edges against the export map
     for edge in edges:
@@ -203,7 +213,7 @@ def link_napi(
         if call_name not in export_map:
             continue
 
-        target_sym, evidence_type = export_map[call_name]
+        target_sym, evidence_type, is_fallback = export_map[call_name]
 
         dedup_key = (edge.src, call_name)
         if dedup_key in seen_edges:
@@ -211,19 +221,25 @@ def link_napi(
         seen_edges.add(dedup_key)
 
         # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
-        # + meta['bridge_kind']='napi'.
+        # + meta['bridge_kind']='napi'. INV-zuhub: downgrade when the
+        # C/C++ function name had cross-file collisions in the in-tree
+        # symbol table.
+        confidence = 0.5 if is_fallback else 0.85
+        edge_meta: dict[str, object] = {"bridge_kind": "napi"}
+        if is_fallback:
+            edge_meta["disambiguation_fallback"] = True
         result_edges.append(Edge.create(
             src=edge.src,
             dst=target_sym.id,
             edge_type="calls",
             line=edge.line,
-            confidence=0.85,
+            confidence=confidence,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type=evidence_type,
             access_mode="write",
             dest_access_mode="read",
-            meta={"bridge_kind": "napi"},
+            meta=edge_meta,
         ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

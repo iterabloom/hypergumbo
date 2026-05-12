@@ -856,3 +856,89 @@ class TestNAPILinkerRegistry:
 
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "calls"
+
+
+# ---------------------------------------------------------------------------
+# INV-zuhub property tests: napi cross-file collision fallback (WI-ruzin PR1)
+# ---------------------------------------------------------------------------
+
+
+class TestInvZuhubNapiFallback:
+    """INV-zuhub item 1, calls family — napi cross-file symbol collision."""
+
+    def test_single_c_match_keeps_high_confidence(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.napi import link_napi
+
+        c_file = tmp_path / "addon.c"
+        c_file.write_text(
+            '#include <node_api.h>\n'
+            'napi_value Add(napi_env env, napi_callback_info info) {\n'
+            '    return NULL;\n'
+            '}\n'
+            'napi_value Init(napi_env env, napi_value exports) {\n'
+            '    napi_value fn;\n'
+            '    napi_create_function(env, "add", NAPI_AUTO_LENGTH, Add, NULL, &fn);\n'
+            '    napi_set_named_property(env, exports, "add", fn);\n'
+            '    return exports;\n'
+            '}\n'
+        )
+        c_func = _make_c_symbol("Add", path=str(c_file), start_line=2, end_line=4)
+        js_sym = _make_js_symbol("app", kind="module", path="index.js")
+        call_edge = Edge.create(
+            src=js_sym.id,
+            dst="javascript:index.js:0-0:add:unresolved",
+            edge_type="calls", line=3, evidence_type="function_call",
+            confidence=0.50, origin="js-v1",
+        )
+        result = link_napi(
+            repo_root=tmp_path,
+            js_symbols=[js_sym], c_cpp_symbols=[c_func], edges=[call_edge],
+        )
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.confidence == 0.85
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+
+    def test_multiple_c_matches_emit_fallback_edge(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.napi import link_napi
+
+        c_file = tmp_path / "addon.c"
+        c_file.write_text(
+            '#include <node_api.h>\n'
+            'napi_value Add(napi_env env, napi_callback_info info) {\n'
+            '    return NULL;\n'
+            '}\n'
+            'napi_value Init(napi_env env, napi_value exports) {\n'
+            '    napi_value fn;\n'
+            '    napi_create_function(env, "add", NAPI_AUTO_LENGTH, Add, NULL, &fn);\n'
+            '    napi_set_named_property(env, exports, "add", fn);\n'
+            '    return exports;\n'
+            '}\n'
+        )
+        # Two C functions both named ``Add`` across separate files.
+        c_func_a = _make_c_symbol(
+            "Add", path=str(c_file), start_line=2, end_line=4,
+        )
+        c_func_b = _make_c_symbol(
+            "Add", path="other.c", start_line=10, end_line=15,
+        )
+        js_sym = _make_js_symbol("app", kind="module", path="index.js")
+        call_edge = Edge.create(
+            src=js_sym.id,
+            dst="javascript:index.js:0-0:add:unresolved",
+            edge_type="calls", line=3, evidence_type="function_call",
+            confidence=0.50, origin="js-v1",
+        )
+        result = link_napi(
+            repo_root=tmp_path,
+            js_symbols=[js_sym],
+            c_cpp_symbols=[c_func_a, c_func_b],
+            edges=[call_edge],
+        )
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst in {c_func_a.id, c_func_b.id}
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+        assert edge.meta.get("bridge_kind") == "napi"

@@ -817,3 +817,75 @@ class TestRubyFFIRegistry:
         diag = next((d for d in diagnostics if d.linker_name == "ruby_ffi"), None)
         assert diag is not None
         assert diag.all_met is False
+
+
+# ---------------------------------------------------------------------------
+# INV-zuhub property tests: ruby_ffi cross-file collision fallback (WI-ruzin PR1)
+# ---------------------------------------------------------------------------
+
+
+class TestInvZuhubRubyFfiFallback:
+    """INV-zuhub item 1, calls family — ruby_ffi cross-file C symbol collision."""
+
+    def _write_attach_function(self, tmp_path: Path, c_name: str = "fast_add") -> Path:
+        rb_file = tmp_path / "lib" / "mylib.rb"
+        rb_file.parent.mkdir(parents=True, exist_ok=True)
+        rb_file.write_text(
+            "require 'ffi'\n"
+            "module MyLib\n"
+            "  extend FFI::Library\n"
+            "  ffi_lib 'libmath'\n"
+            f"  attach_function :fast_add, :{c_name}, [:int, :int], :int\n"
+            "end\n"
+        )
+        return rb_file
+
+    def test_single_c_match_keeps_high_confidence(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.ruby_ffi import link_ruby_ffi
+
+        rb_file = self._write_attach_function(tmp_path)
+        rb_sym = _make_ruby_symbol(
+            "MyLib", kind="module", path=str(rb_file), start_line=2, end_line=6,
+        )
+        c_func = _make_c_symbol("fast_add", path="src/math.c")
+        result = link_ruby_ffi(
+            repo_root=tmp_path,
+            ruby_symbols=[rb_sym], c_symbols=[c_func], edges=[],
+        )
+        # The FFI-attach edge from the module to the resolved C function.
+        attach_edges = [
+            e for e in result.edges
+            if e.src == rb_sym.id and e.dst == c_func.id
+        ]
+        assert len(attach_edges) == 1
+        edge = attach_edges[0]
+        assert edge.confidence == 0.90
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+
+    def test_multiple_c_matches_emit_fallback_edge(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.ruby_ffi import link_ruby_ffi
+
+        rb_file = self._write_attach_function(tmp_path)
+        rb_sym = _make_ruby_symbol(
+            "MyLib", kind="module", path=str(rb_file), start_line=2, end_line=6,
+        )
+        # Two in-tree C functions both named ``fast_add``.
+        c_func_a = _make_c_symbol("fast_add", path="src/math_a.c")
+        c_func_b = _make_c_symbol("fast_add", path="src/math_b.c")
+        result = link_ruby_ffi(
+            repo_root=tmp_path,
+            ruby_symbols=[rb_sym],
+            c_symbols=[c_func_a, c_func_b],
+            edges=[],
+        )
+        # One resolved edge to deterministic-by-id pick, plus possibly an
+        # rb_define_method edge from the C-extension phase. Test only the
+        # FFI-attach edge from the Ruby module.
+        attach_edges = [e for e in result.edges if e.src == rb_sym.id]
+        assert len(attach_edges) == 1
+        edge = attach_edges[0]
+        assert edge.dst in {c_func_a.id, c_func_b.id}
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+        assert edge.meta.get("bridge_kind") == "ffi"
