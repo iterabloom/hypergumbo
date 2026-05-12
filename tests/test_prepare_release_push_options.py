@@ -54,6 +54,45 @@ def test_push_options_have_no_newlines() -> None:
     )
 
 
+def test_step7_push_does_not_swallow_errors() -> None:
+    """The Step 7 ``git push`` to ``refs/for/main`` must not be suffixed with
+    ``|| true`` (or any other unconditional error swallower).
+
+    The original WI-vurus failure mode was a multi-line description, but the
+    reason the failure was *invisible* — and shipped to v4.0.0 release prep —
+    was the ``2>&1) || true`` mask on the push command. With ``set -euo
+    pipefail`` active, any future push-time regression should propagate as a
+    non-zero exit so the script aborts loudly instead of falling through to
+    the "(check Codeberg for PR)" message.
+    """
+    text = PREPARE_RELEASE.read_text()
+    # Locate the line containing the dev->main push and capture everything
+    # through the matching closing `)` (the push is wrapped in a $(...)
+    # capture). Then check the trailing text for an error swallower.
+    start_re = re.compile(r'git\s+push\s+origin\s+"dev:refs/for/main/[^"]+"')
+    start = start_re.search(text)
+    assert start is not None, (
+        "Could not locate Step 7's `git push origin dev:refs/for/main/...` "
+        "command in scripts/prepare-release. Update the regex if Step 7 "
+        "moved or renamed."
+    )
+    # Read forward until the closing `)` that terminates the command
+    # substitution, plus the rest of that line.
+    tail = text[start.end():]
+    close_idx = tail.find(")")
+    assert close_idx != -1, "Unterminated command substitution at Step 7 push."
+    eol_idx = tail.find("\n", close_idx)
+    if eol_idx == -1:
+        eol_idx = len(tail)
+    push_trailer = tail[close_idx : eol_idx]
+    assert "|| true" not in push_trailer, (
+        "Step 7's push to refs/for/main is suffixed with `|| true`, which "
+        "swallows push failures and was the reason WI-vurus shipped invisibly "
+        "to v4.0.0 release prep. Capture the exit status explicitly instead. "
+        f"Offending trailer: {push_trailer!r}"
+    )
+
+
 def test_push_description_variables_are_single_line() -> None:
     """The variables interpolated into ``-o description=$VAR`` must themselves
     be single-line, otherwise the static check above is bypassed by indirection.

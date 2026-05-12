@@ -347,17 +347,29 @@ else
         # title and description MUST be single-line strings. The
         # tests/test_prepare_release_push_options.py regression test enforces
         # this invariant statically.
-        PR_OUTPUT=$(git push origin "dev:refs/for/main/release-$VERSION" \
+        #
+        # WI-vurus: the push must NOT be suffixed with `|| true`. Under
+        # `set -euo pipefail`, any push failure (newline-in-option, network,
+        # auth, refspec rejection) propagates as a non-zero exit so this
+        # script aborts loudly instead of falling through to a misleading
+        # "(check Codeberg for PR)" success message.
+        if ! PR_OUTPUT=$(git push origin "dev:refs/for/main/release-$VERSION" \
             -o title="$PR_TITLE" \
-            -o description="$PR_DESCRIPTION Reviewer checklist: version bumped correctly, CHANGELOG updated, CI passes." 2>&1) || true
+            -o description="$PR_DESCRIPTION Reviewer checklist: version bumped correctly, CHANGELOG updated, CI passes." 2>&1); then
+            echo -e "${RED}✗${NC} Step 7 failed: git push to refs/for/main exited non-zero"
+            echo "$PR_OUTPUT"
+            exit 1
+        fi
 
-        # Extract PR URL from output (Codeberg outputs it)
+        # Extract PR URL from output (Codeberg outputs it). The `|| echo ""`
+        # here is a grep-no-match fallback (parsing), not an error swallower
+        # — the push itself has already succeeded by this point.
         PR_URL=$(echo "$PR_OUTPUT" | grep -oE 'https://[^ ]+/pulls/[0-9]+' | head -1 || echo "")
 
         if [[ -n "$PR_URL" ]]; then
             echo -e "${GREEN}✓${NC} PR created: $PR_URL"
         else
-            echo -e "${GREEN}✓${NC} PR branch pushed (check Codeberg for PR)"
+            echo -e "${YELLOW}!${NC} Push succeeded but no PR URL in output (check Codeberg)"
             PR_URL="(check Codeberg)"
         fi
     else
