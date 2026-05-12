@@ -587,7 +587,15 @@ def _create_di_edges(
 
         for iface_m in iface_methods:
             short = _get_method_short_name(iface_m.name)
-            for impl_m in impl_by_short.get(short, []):
+            candidates = impl_by_short.get(short, [])
+            # INV-zuhub: when multiple impl methods share the short name
+            # (overloads), static analysis cannot tell which the framework
+            # will dispatch to. Emit an edge to every candidate (preserving
+            # the existing emit-all-matches behaviour) but downgrade each
+            # to ``confidence <= 0.5`` with the ``disambiguation_fallback``
+            # flag.
+            is_fallback = len(candidates) > 1
+            for impl_m in candidates:
                 pair = (iface_m.id, impl_m.id)
                 if pair in seen:
                     continue  # pragma: no cover - defensive dedup
@@ -597,16 +605,28 @@ def _create_di_edges(
                 # Runtime DI resolution dispatches an interface to its
                 # implementation; "di" is the mechanism. Canonical
                 # 'dispatches_to' + meta['mechanism']='di'.
+                #
+                # INV-zuhub: ``min(binding.confidence, 0.5)`` caps below the
+                # 0.5 ceiling without raising sub-0.5 confidences. The
+                # mutation form on ``edge_meta`` mirrors the shape used by
+                # the sibling ``_create_di_registers_edges`` (WI-harim).
+                confidence = min(binding.confidence, 0.5) if is_fallback else binding.confidence
+                edge_meta: dict[str, object] = {
+                    "mechanism": "di",
+                    "framework_dispatch": binding.source,
+                }
+                if is_fallback:
+                    edge_meta["disambiguation_fallback"] = True
                 edges.append(Edge.create(
                     src=iface_m.id,
                     dst=impl_m.id,
                     edge_type="dispatches_to",
                     line=iface_m.span.start_line if iface_m.span else 0,
-                    confidence=binding.confidence,
+                    confidence=confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
-                    meta={"mechanism": "di", "framework_dispatch": binding.source},
+                    meta=edge_meta,
                 ))
 
     return edges

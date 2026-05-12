@@ -479,3 +479,106 @@ class TestDirectiveFiltering:
         result = link_annotations(tmp_path, syms)
         assert len(result.symbols) == 1
         assert (result.symbols[0].meta or {}).get("framework_role") == "route"
+
+
+class TestInvZuhubAnnotationDispatchesFallback:
+    """INV-zuhub item 1 conformance for ``@hg:dispatches`` matching.
+
+    ``link_annotations`` matches the dispatch target by short symbol
+    name (``sym_by_name.get(target_name, [])``) and emits one edge per
+    candidate. When more than one in-tree symbol shares the target
+    short name, the directive's intended target is ambiguous from the
+    short name alone — every emitted edge is a simple-name fallback
+    per INV-zuhub.
+    """
+
+    def test_dispatches_single_target_keeps_high_confidence(
+        self, tmp_path: Path,
+    ) -> None:
+        """A unique target symbol keeps confidence=0.95 and has no flag."""
+        src = tmp_path / "src" / "router.ts"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text("// @hg:dispatches handle_join\nroute(msg);\n")
+
+        target_path = tmp_path / "src" / "handler.ts"
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text("function handle_join(msg) {}\n")
+
+        syms = [
+            _make_sym("src/router.ts"),
+            Symbol(
+                id="typescript:src/handler.ts:1-1:handle_join:function",
+                name="handle_join", kind="function", language="typescript",
+                path="src/handler.ts",
+                span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+                origin="test-v1", origin_run_id="uuid:test",
+            ),
+        ]
+        result = link_annotations(tmp_path, syms)
+
+        dispatch_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        assert len(dispatch_edges) == 1
+        edge = dispatch_edges[0]
+        assert edge.confidence > 0.5
+        assert "disambiguation_fallback" not in (edge.meta or {})
+        assert (edge.meta or {}).get("mechanism") == "annotation"
+
+    def test_dispatches_multiple_targets_emit_all_as_fallback(
+        self, tmp_path: Path,
+    ) -> None:
+        """Two in-tree symbols share the target short name → every
+        emitted edge carries ``confidence <= 0.5`` and
+        ``meta['disambiguation_fallback'] = True``.
+        """
+        src = tmp_path / "src" / "router.ts"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text("// @hg:dispatches handle_join\nroute(msg);\n")
+
+        # Two in-tree functions named ``handle_join`` across files.
+        path_a = tmp_path / "src" / "handler_a.ts"
+        path_a.parent.mkdir(parents=True, exist_ok=True)
+        path_a.write_text("function handle_join() {}\n")
+        path_b = tmp_path / "src" / "handler_b.ts"
+        path_b.write_text("function handle_join() {}\n")
+
+        syms = [
+            _make_sym("src/router.ts"),
+            Symbol(
+                id="typescript:src/handler_a.ts:1-1:handle_join:function",
+                name="handle_join", kind="function", language="typescript",
+                path="src/handler_a.ts",
+                span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+                origin="test-v1", origin_run_id="uuid:test",
+            ),
+            Symbol(
+                id="typescript:src/handler_b.ts:1-1:handle_join:function",
+                name="handle_join", kind="function", language="typescript",
+                path="src/handler_b.ts",
+                span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+                origin="test-v1", origin_run_id="uuid:test",
+            ),
+        ]
+        result = link_annotations(tmp_path, syms)
+
+        dispatch_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        assert len(dispatch_edges) == 2
+        for edge in dispatch_edges:
+            assert edge.confidence <= 0.5
+            assert edge.meta is not None
+            assert edge.meta.get("disambiguation_fallback") is True
+            assert edge.meta.get("mechanism") == "annotation"
+
+    def test_dispatches_no_target_still_no_edge(self, tmp_path: Path) -> None:
+        """Regression: when the target name has no in-tree symbol, no edge
+        is emitted (and no fallback flag is incorrectly applied to the
+        zero-edge case). The INV-zuhub patch must preserve the existing
+        no-target-no-edge contract.
+        """
+        f = tmp_path / "src" / "router.ts"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("// @hg:dispatches nonexistent_handler\n")
+
+        syms = [_make_sym("src/router.ts")]
+        result = link_annotations(tmp_path, syms)
+        dispatch_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        assert dispatch_edges == []

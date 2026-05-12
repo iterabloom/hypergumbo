@@ -295,6 +295,14 @@ def link_annotations(
         if not target_syms:
             continue
 
+        # INV-zuhub: when `@hg:dispatches X` matches more than one in-tree
+        # symbol with name X, the directive's intended target is ambiguous
+        # by short name alone — static analysis cannot pick the "right"
+        # one. Emit an edge to every candidate (preserving the existing
+        # emit-all-matches behaviour) but downgrade each to
+        # ``confidence <= 0.5`` with the ``disambiguation_fallback`` flag.
+        is_fallback = len(target_syms) > 1
+
         disp_id = f"{disp.file_path}:{disp.line}:{target_name}:annotated_dispatcher"
         if disp_id not in seen_sym_ids:
             seen_sym_ids.add(disp_id)
@@ -328,17 +336,23 @@ def link_annotations(
             # @hg:dispatches IS dispatch; "annotation" is the
             # mechanism. Canonical 'dispatches_to' +
             # meta['mechanism']='annotation'.
+            confidence = 0.5 if is_fallback else 0.95
+            edge_meta = (
+                {"mechanism": "annotation", "disambiguation_fallback": True}
+                if is_fallback
+                else {"mechanism": "annotation"}
+            )
             result_edges.append(Edge.create(
                 src=disp_id,
                 dst=target.id,
                 edge_type="dispatches_to",
                 line=disp.line,
-                confidence=0.95,
+                confidence=confidence,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="hg_annotation",
                 channel=target_name,
-                meta={"mechanism": "annotation"},
+                meta=edge_meta,
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
