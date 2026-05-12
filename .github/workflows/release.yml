@@ -122,14 +122,22 @@ jobs:
 
       - name: Security linting (Bandit)
         run: |
+          # --quiet suppresses Bandit's per-file "Test in comment: <word> is
+          # not a test name or id" parser noise on free-text after `# nosec`
+          # markers. The exit code and issue count (the actual gate) are
+          # unaffected. Mirrors `scripts/release-check` which already runs
+          # bandit --quiet locally; this brings CI to parity.
           if [ -d "packages/hypergumbo-core" ]; then
-            bandit -r packages/*/src/ -c pyproject.toml
+            bandit -r packages/*/src/ -c pyproject.toml --quiet
           else
-            bandit -r src/ -c pyproject.toml
+            bandit -r src/ -c pyproject.toml --quiet
           fi
 
-      - name: Dependency safety check
-        run: pipx run safety check || true  # Advisory; isolated to avoid polluting pip-audit's environment
+      # `safety` was previously wired here as `pipx run safety check || true`,
+      # but the self-hosted runner has no pipx (so the step always errored)
+      # and `|| true` swallowed the exit code, making the gate a no-op. Its
+      # CVE corpus overlaps with pip-audit (which IS gating), so the step was
+      # delivering zero signal — removed rather than re-plumbed.
 
       - name: License audit
         run: |

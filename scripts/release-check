@@ -195,17 +195,25 @@ fi
 section "3. Dependencies & Security"
 # ─────────────────────────────────────────────────────────────
 
-# Check for known vulnerabilities
+# Check for known vulnerabilities. Mirror the CI invocation
+# (.github/workflows/release.yml::security-audit::Vulnerability scan)
+# so a clean local run is a faithful preview of the release gate:
+#   --skip-editable        skip our own editable installs (audited at build)
+#   --ignore-vuln CVE-2025-71176  pytest TOCTOU (dev-only, single-tenant runner)
+#   --ignore-vuln CVE-2026-3219   pip ZIP confusion (AV:L+UI:A, ~0 exposure)
+# pip-audit's exit code is the gate: 0 = no vulnerabilities, 1 = found.
+# Anything else (network, parse, unsupported package) is a real failure
+# we want to surface, not paper over.
 echo "  Running pip-audit..."
-if pip-audit 2>/dev/null; then
+AUDIT_OUTPUT=$(pip-audit --skip-editable \
+    --ignore-vuln CVE-2025-71176 \
+    --ignore-vuln CVE-2026-3219 2>&1)
+AUDIT_EXIT=$?
+if [ $AUDIT_EXIT -eq 0 ]; then
     pass "No known vulnerabilities in dependencies"
 else
-    AUDIT_OUTPUT=$(pip-audit 2>&1 || true)
-    if echo "$AUDIT_OUTPUT" | grep -q "found [1-9]"; then
-        fail "Vulnerabilities detected (run 'pip-audit' for details)"
-    else
-        pass "No known vulnerabilities (some packages not on PyPI)"
-    fi
+    echo "$AUDIT_OUTPUT"
+    fail "Vulnerabilities detected (pip-audit exit $AUDIT_EXIT)"
 fi
 
 # Check for secrets
