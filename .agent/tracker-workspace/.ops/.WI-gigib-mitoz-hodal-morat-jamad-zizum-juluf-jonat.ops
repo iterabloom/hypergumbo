@@ -18,3 +18,18 @@
     pr_ref:  # 74e2
     description: "Source: DEEP cohort 1 reflect on deep-20260510-054430 (django, chatwoot, nestjs reflect agents).\n\nThree distinct prod-filter symptoms:\n- django: rslice.1 has 51 first_party callers but rslice.1.prod is EMPTY. This is a likely filter bug — the prod filter is supposed to be a subset that excludes tests, not produce empty output when first_party callers exist.\n- chatwoot: 8 of 10 inbound test-file references in rslice are not filtered out (test fixtures and spec files leak into the 'production' rslice).\n- nestjs: 5 test edges leak into prod rslice.\n\nDistinct from WI-kivah-ligol-povim-puviv-kobol-kugof-tuhas-liduz (done) which fixed test seeds picking; this is about the prod-filter pass that runs *after* seeding. Distinct from WI-bamif-lujas-hulin-funof-zivab-bomaz-disuj-dotif (wont_do, tier-filtered slice empty case) which was a separate symptom.\n\nFix direction: audit the prod-filter pass in slice.py for (a) empty-output edge case when first_party callers exist, (b) why test-file paths under specific repo layouts (chatwoot Ruby spec/, nestjs *.spec.ts, django tests/) leak through.\n\nEvidence files: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430/reflect/cohort-001/iter-001/{django,chatwoot,nestjs}.assessment.yaml."  # 74e2
     fields: {}  # 74e2
+- op: update  # 5efd
+  at: '2026-05-12T09:55:50Z'  # 5efd
+  by: agent  # 5efd
+  actor: jgstern_agent  # 5efd
+  clock: 2  # 5efd
+  nonce: 5efd  # 5efd
+  set:  # 5efd
+    status: done  # 5efd
+- op: discuss  # ff69
+  at: '2026-05-12T09:55:50Z'  # ff69
+  by: agent  # ff69
+  actor: jgstern_agent  # ff69
+  clock: 3  # ff69
+  nonce: ff69  # ff69
+  message: "Fixed in PR #3660. The dominant cause of django's empty rslice.1.prod.json was a structural bug in is_utility_file: the 'ambiguous dirs at any depth unless we've already passed a source root' rule false-positived on packages whose top-level directory isn't in the hardcoded _SOURCE_ROOTS set ({src, lib, app, crates, packages}). Django, requests, urllib3, flask, and similar pip-shipped packages use the package name itself as the top-level directory, so every nested utils/, contrib/, etc. was flagged. Fix: ambiguous dirs (now including contrib and hack) only match at path_parts[0] == 0 (the repo root). +1 regression test covering Django/requests/urllib3/flask + root-level guards. Chatwoot/nestjs sub-symptoms investigated and not currently reproducible — see PR body and CHANGELOG note."  # ff69

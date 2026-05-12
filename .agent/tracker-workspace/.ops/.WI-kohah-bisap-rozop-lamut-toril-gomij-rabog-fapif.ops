@@ -18,3 +18,18 @@
     pr_ref:  # 130e
     description: "Source: DEEP cohort 1 reflect on deep-20260510-054430 (apollo-server, nestjs, chatwoot reflect agents). Sample stats: apollo-server 0/80 calls edges carry access_mode != 'none'; nestjs 0/61. By contrast Go and Python sit at roughly 50-60% coverage. Field is uniformly 'none' on TypeScript and JavaScript output, which makes the --dataflow slice flag useless on the language stack that dominates the prospector corpus. Related background invariant INV-jahov-minur-bogul-mijul-kutig-viral-potil-kuviv (satisfied) requires the read/write distinction to be carried; this finding is that the TS/JS analyzers don't classify at all (the 'none' default propagates everywhere). Fix direction: implement parameter-flow access_mode classification in the TS/JS analyzer for primitives like assignment, augmented assignment, .push/.pop/.shift, get/set property accessors. Evidence files: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430/reflect/cohort-001/iter-001/{apollo-server,nestjs,chatwoot}.assessment.yaml."  # 130e
     fields: {}  # 130e
+- op: update  # 292f
+  at: '2026-05-12T10:29:59Z'  # 292f
+  by: agent  # 292f
+  actor: jgstern_agent  # 292f
+  clock: 2  # 292f
+  nonce: 292f  # 292f
+  set:  # 292f
+    status: done  # 292f
+- op: discuss  # 631e
+  at: '2026-05-12T10:29:59Z'  # 631e
+  by: agent  # 631e
+  actor: jgstern_agent  # 631e
+  clock: 3  # 631e
+  nonce: 631e  # 631e
+  message: "Fixed in PR #3661. JS/TS dataflow yaml extended with: (1) returns: positional rules for return_statement / throw_statement / yield_expression / await_expression (_default: read); (2) update_expression rule (a++/--a mutates); (3) expanded library_patterns vocabulary with in-place mutators (.sort/.reverse/.fill/.copyWithin), ORM verbs (.save/.persist/.insert/.update/.replace/.assign), pub-sub (.emit/.publish/.send/.dispatch/.next/.complete/.error), Promise readers (.subscribe/.observe/.then/.catch/.finally), iteration readers (.map/.filter/.reduce/.forEach/.every/.some/.values/.keys/.entries), additional read verbs (.fetch/.load/.query/.lookup/.findOne/.findMany/.exec/.toString/.toJSON). +8 property tests; one test documents a known _build_line_index limitation with const-declarator + await + call (out of scope, can be a separate WI if bakeoff signal warrants)."  # 631e
