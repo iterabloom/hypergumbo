@@ -2348,3 +2348,248 @@ class TestReactRouterLoaderActionLinking:
         assert result.edges[0].dst == loader.id
         assert result.edges[0].meta.get("role") == "loader"
 
+
+class TestINVZuhubConformanceForRouteHandler:
+    """INV-zuhub item 1: route-handler symbol_by_name primary index.
+
+    The pre-fix ``symbol_by_name: dict[str, Symbol]`` built in
+    ``link_routes_to_handlers`` is single-valued with a partial mitigation
+    that prefers non-route symbols over route symbols. The non-route vs
+    non-route case is unresolved — two handler symbols sharing a short
+    name (e.g. two Django views both named ``list_users``, two Express
+    functions both named ``list``) silently overwrite, and downstream
+    bare-name resolution lands on whichever symbol was inserted first.
+
+    Per INV-zuhub item 1 conformance the route → handler edge for any
+    resolved handler whose ``name`` (or ``meta["qualified_name"]``) is
+    in collision with another non-route symbol drops to
+    ``confidence=0.5`` + ``meta["disambiguation_fallback"]=True``.
+    Precision resolutions (handler name unique among non-routes) keep
+    the existing confidence (0.9 main / 0.85 loader+action).
+    """
+
+    def _make_django_route(self, view_name: str) -> Symbol:
+        return Symbol(
+            id=f"python:urls.py:1-1:{view_name}-route:route",
+            name=f"GET /{view_name}",
+            kind="function",
+            language="python",
+            path="urls.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=10),
+            meta={
+                "route_path": f"/{view_name}",
+                "http_method": "GET",
+                "view_name": view_name,
+                "framework_role": "route",
+            },
+            origin="py-v1",
+            origin_run_id="test-run",
+        )
+
+    def _make_django_view(self, name: str, file_path: str) -> Symbol:
+        return Symbol(
+            id=f"python:{file_path}:10-20:{name}:function",
+            name=name,
+            kind="function",
+            language="python",
+            path=file_path,
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="py-v1",
+            origin_run_id="test-run",
+        )
+
+    def test_django_bare_name_collision_drops_to_fallback(self) -> None:
+        """Two Django views sharing a bare name → resolved edge flagged as fallback."""
+        route = self._make_django_route("list_users")
+        view_a = self._make_django_view("list_users", "accounts/views.py")
+        view_b = self._make_django_view("list_users", "admin/views.py")
+
+        result = link_routes_to_handlers([route, view_a, view_b], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        # Dict overwrite semantics: first-inserted wins (the partial
+        # mitigation preserves the FIRST non-route on subsequent
+        # non-route inserts).
+        assert edge.dst == view_a.id
+        assert edge.confidence == 0.5
+        assert (edge.meta or {}).get("disambiguation_fallback") is True
+        assert (edge.meta or {}).get("dispatch_kind") == "route"
+
+    def test_django_unique_name_precision_preserved(self) -> None:
+        """Single Django view with unique name → no flag, confidence=0.9 (regression guard)."""
+        route = self._make_django_route("list_users")
+        view = self._make_django_view("list_users", "accounts/views.py")
+
+        result = link_routes_to_handlers([route, view], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst == view.id
+        assert edge.confidence == 0.9
+        assert (edge.meta or {}).get("disambiguation_fallback") is None
+
+    def test_express_bare_name_collision_drops_to_fallback(self) -> None:
+        """Two Express functions sharing a bare name → resolved edge flagged."""
+        route = Symbol(
+            id="javascript:routes.ts:1-1:GET /list:route",
+            name="GET /list",
+            kind="function",
+            language="javascript",
+            path="routes.ts",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=10),
+            meta={
+                "route_path": "/list",
+                "http_method": "GET",
+                "handler_ref": "userController.list",
+                "framework_role": "route",
+            },
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        fn_a = Symbol(
+            id="javascript:userController.js:10-20:list:function",
+            name="list",
+            kind="function",
+            language="javascript",
+            path="userController.js",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        fn_b = Symbol(
+            id="javascript:itemController.js:10-20:list:function",
+            name="list",
+            kind="function",
+            language="javascript",
+            path="itemController.js",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, fn_a, fn_b], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.confidence == 0.5
+        assert (edge.meta or {}).get("disambiguation_fallback") is True
+
+    def test_rails_qualified_handler_unaffected_by_bare_collision_elsewhere(self) -> None:
+        """Rails resolution via qualified ``Controller#action`` key is precision when the qualified name is unique.
+
+        Even if some unrelated bare ``index`` is also in the symbol pool,
+        the resolved handler's *own* name (``UsersController#index``)
+        does not collide — so no fallback flag. This is the precision
+        regression-guard for the post-resolution check.
+        """
+        route = Symbol(
+            id="ruby:routes.rb:1-1:GET /users:route",
+            name="GET /users",
+            kind="function",
+            language="ruby",
+            path="routes.rb",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=10),
+            meta={
+                "route_path": "/users",
+                "http_method": "GET",
+                "controller_action": "users#index",
+                "framework_role": "route",
+            },
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+        handler = Symbol(
+            id="ruby:users_controller.rb:5-10:UsersController#index:method",
+            name="UsersController#index",
+            kind="method",
+            language="ruby",
+            path="users_controller.rb",
+            span=Span(start_line=5, end_line=10, start_col=0, end_col=0),
+            meta={"class": "UsersController"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+        # Unrelated bare-name collision elsewhere in the codebase.
+        unrelated_a = Symbol(
+            id="python:helpers.py:1-1:index:function",
+            name="index",
+            kind="function",
+            language="python",
+            path="helpers.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        )
+        unrelated_b = Symbol(
+            id="python:utils.py:1-1:index:function",
+            name="index",
+            kind="function",
+            language="python",
+            path="utils.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        )
+
+        result = link_routes_to_handlers(
+            [route, handler, unrelated_a, unrelated_b], [],
+        )
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst == handler.id
+        assert edge.confidence == 0.9
+        # Handler.name is "UsersController#index", which is unique among
+        # non-routes — the unrelated "index" collisions in helpers.py /
+        # utils.py do not affect this resolution.
+        assert (edge.meta or {}).get("disambiguation_fallback") is None
+
+    def test_loader_action_collision_drops_to_fallback(self) -> None:
+        """React Router loader_ref / action_ref edges also honor INV-zuhub when the loader's name collides."""
+        route = Symbol(
+            id="javascript:routes.tsx:1-1:GET /dashboard:route",
+            name="GET /dashboard",
+            kind="function",
+            language="javascript",
+            path="routes.tsx",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=10),
+            meta={
+                "route_path": "/dashboard",
+                "http_method": "GET",
+                "handler_ref": "Dashboard",
+                "loader_ref": "loadData",
+                "framework_role": "route",
+            },
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        handler = Symbol(
+            id="javascript:Dashboard.tsx:1-50:Dashboard:function",
+            name="Dashboard",
+            kind="function",
+            language="javascript",
+            path="Dashboard.tsx",
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=0),
+        )
+        loader_a = Symbol(
+            id="javascript:dashboardLoaders.ts:5-10:loadData:function",
+            name="loadData",
+            kind="function",
+            language="javascript",
+            path="dashboardLoaders.ts",
+            span=Span(start_line=5, end_line=10, start_col=0, end_col=0),
+        )
+        loader_b = Symbol(
+            id="javascript:userLoaders.ts:20-30:loadData:function",
+            name="loadData",
+            kind="function",
+            language="javascript",
+            path="userLoaders.ts",
+            span=Span(start_line=20, end_line=30, start_col=0, end_col=0),
+        )
+
+        result = link_routes_to_handlers([route, handler, loader_a, loader_b], [])
+
+        loader_edges = [e for e in result.edges if e.meta and e.meta.get("role") == "loader"]
+        assert len(loader_edges) == 1
+        loader_edge = loader_edges[0]
+        assert loader_edge.confidence == 0.5
+        assert (loader_edge.meta or {}).get("disambiguation_fallback") is True
+

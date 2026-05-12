@@ -654,6 +654,26 @@ def link_routes_to_handlers(
     # ``query`` function and an ``API.query`` method) by preferring the candidate
     # in the same file as the route.
     symbols_by_short_name: dict[str, list[Symbol]] = {}
+    # WI-rusuh / INV-zuhub item 1: count non-route ``name`` and
+    # ``qualified_name`` occurrences. Names that appear >1 times among
+    # non-route symbols are unresolvable from the single-value
+    # ``symbol_by_name`` primary index alone — the dict overwrites
+    # silently (the partial route-vs-non-route mitigation below leaves
+    # non-route vs non-route collisions untouched). The post-resolution
+    # check downstream flags edges whose resolved handler carries a
+    # colliding name with ``disambiguation_fallback=True`` and drops
+    # confidence to 0.5.
+    non_route_name_count: dict[str, int] = {}
+    for s in symbols:
+        if (s.meta or {}).get("framework_role") == "route":
+            continue
+        non_route_name_count[s.name] = non_route_name_count.get(s.name, 0) + 1
+        if s.meta and s.meta.get("qualified_name"):
+            qn = s.meta["qualified_name"]
+            non_route_name_count[qn] = non_route_name_count.get(qn, 0) + 1
+    name_collisions: frozenset[str] = frozenset(
+        k for k, c in non_route_name_count.items() if c > 1
+    )
     for s in symbols:
         symbol_by_id[s.id] = s
         existing = symbol_by_name.get(s.name)
@@ -727,6 +747,20 @@ def link_routes_to_handlers(
             # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
             # Route → handler dispatch via path matching. Canonical
             # 'dispatches_to' + meta['dispatch_kind']='route'.
+            #
+            # WI-rusuh / INV-zuhub item 1: when the resolved handler's
+            # ``name`` (or ``meta['qualified_name']``) is in
+            # ``name_collisions`` (i.e. another non-route symbol in
+            # the codebase shares the same key), the single-value
+            # ``symbol_by_name`` primary index could have picked the
+            # wrong candidate at insertion time. Flag the edge and
+            # drop confidence per the INV-zuhub contract. Edges whose
+            # resolved name is unique stay at confidence=0.9.
+            handler_qn = (handler.meta or {}).get("qualified_name")
+            handler_is_fallback = (
+                handler.name in name_collisions
+                or (handler_qn is not None and handler_qn in name_collisions)
+            )
             handler_meta = {k: v for k, v in handler_ref.items() if k != "type"}
             handler_meta["dispatch_kind"] = "route"
             edge = Edge.create(
@@ -734,9 +768,13 @@ def link_routes_to_handlers(
                 dst=handler.id,
                 edge_type="dispatches_to",
                 line=route.span.start_line if route.span else 0,
-                confidence=0.9,
+                confidence=0.5 if handler_is_fallback else 0.9,
                 origin=PASS_ID,
-                meta=handler_meta,
+                meta=(
+                    {**handler_meta, "disambiguation_fallback": True}
+                    if handler_is_fallback
+                    else handler_meta
+                ),
             )
             new_edges.append(edge)
             routes_linked += 1
@@ -754,18 +792,31 @@ def link_routes_to_handlers(
                 # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
                 # React Router loader/action route. Canonical
                 # 'dispatches_to' + meta['dispatch_kind']='route'.
+                #
+                # WI-rusuh / INV-zuhub item 1: same fallback discipline
+                # as the main handler edge above.
+                target_qn = (target.meta or {}).get("qualified_name")
+                la_is_fallback = (
+                    target.name in name_collisions
+                    or (target_qn is not None and target_qn in name_collisions)
+                )
+                la_meta_base: dict[str, object] = {
+                    "dispatch_kind": "route",
+                    "role": role,
+                    ref_key: ref_name,
+                }
                 la_edge = Edge.create(
                     src=route.id,
                     dst=target.id,
                     edge_type="dispatches_to",
                     line=route_line,
-                    confidence=0.85,
+                    confidence=0.5 if la_is_fallback else 0.85,
                     origin=PASS_ID,
-                    meta={
-                        "dispatch_kind": "route",
-                        "role": role,
-                        ref_key: ref_name,
-                    },
+                    meta=(
+                        {**la_meta_base, "disambiguation_fallback": True}
+                        if la_is_fallback
+                        else la_meta_base
+                    ),
                 )
                 new_edges.append(la_edge)
 
