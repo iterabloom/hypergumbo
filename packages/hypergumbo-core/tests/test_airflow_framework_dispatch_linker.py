@@ -92,7 +92,7 @@ class TestFindAirflowSubclasses:
         c = _class_sym("MyOperator", base_classes=["BaseOperator"])
         result = _find_airflow_subclasses([c])
         assert len(result) == 1
-        sym, methods = result[0]
+        sym, methods, _is_fallback = result[0]
         assert sym.name == "MyOperator"
         assert methods == AIRFLOW_BASE_METHODS["BaseOperator"]
 
@@ -101,6 +101,7 @@ class TestFindAirflowSubclasses:
         result = _find_airflow_subclasses([c])
         assert len(result) == 1
         assert result[0][1] == AIRFLOW_BASE_METHODS["BaseHook"]
+        assert result[0][2] is False
 
     def test_base_sensor_operator_alias(self) -> None:
         c = _class_sym("S", base_classes=["BaseSensorOperator"])
@@ -344,3 +345,93 @@ class TestLinkAirflowFrameworkDispatch:
         assert (cls1.id, m.id) in pairs
         assert (cls2.id, m.id) in pairs
         assert len(result.edges) == 2
+
+
+# ---------------------------------------------------------------------------
+# INV-zuhub property tests: airflow framework-dispatch fallback (WI-bojok PR3)
+# ---------------------------------------------------------------------------
+
+
+class TestInvZuhubAirflowFallback:
+    """INV-zuhub item 1, dispatches_to family — airflow framework-base shape.
+
+    The short-base-name match against ``AIRFLOW_BASE_METHODS`` cannot
+    tell airflow's external framework type from an in-tree Python class
+    of the same name. Three property tests mirror the canonical
+    inheritance.py / kafka shape from earlier PRs:
+
+    1. ``test_dispatches_to_prefers_fqn_over_in_tree_collision``: FQN-
+       qualified raw entries (``airflow.models.BaseOperator``) are
+       precision matches even when the short name has an in-tree class
+       collision.
+    2. ``test_dispatches_to_no_in_tree_collision_keeps_high_confidence``:
+       short-name matches with no in-tree collision are precision by
+       elimination.
+    3. ``test_dispatches_to_deterministic_fallback_when_ambiguous``:
+       unqualified short-name matches that collide with an in-tree
+       Python class downgrade to ``confidence <= 0.5`` and
+       ``meta["disambiguation_fallback"] = True``.
+    """
+
+    def test_dispatches_to_prefers_fqn_over_in_tree_collision(self) -> None:
+        in_tree = _class_sym(
+            "BaseOperator", path="dags/internal/BaseOperator.py",
+        )
+        user_cls = _class_sym(
+            "MyOperator", path="dags/my_operator.py",
+            base_classes=["airflow.models.BaseOperator"],
+            span=(1, 30),
+        )
+        execute_m = _method_sym(
+            "MyOperator.execute", path="dags/my_operator.py", span=(10, 15),
+        )
+        ctx = _ctx([in_tree, user_cls, execute_m])
+        result = link_airflow_framework_dispatch(ctx)
+        edges = [e for e in result.edges if e.src == user_cls.id]
+        assert len(edges) == 1
+        edge = edges[0]
+        assert edge.confidence == 0.90
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+
+    def test_dispatches_to_no_in_tree_collision_keeps_high_confidence(
+        self,
+    ) -> None:
+        # No in-tree ``BaseOperator`` exists, so the unqualified base
+        # can only mean airflow's framework class.
+        user_cls = _class_sym(
+            "MyOperator", path="dags/my_operator.py",
+            base_classes=["BaseOperator"], span=(1, 30),
+        )
+        execute_m = _method_sym(
+            "MyOperator.execute", path="dags/my_operator.py", span=(10, 15),
+        )
+        ctx = _ctx([user_cls, execute_m])
+        result = link_airflow_framework_dispatch(ctx)
+        edges = [e for e in result.edges if e.src == user_cls.id]
+        assert len(edges) == 1
+        assert edges[0].confidence == 0.90
+        assert (edges[0].meta or {}).get("disambiguation_fallback") is not True
+
+    def test_dispatches_to_deterministic_fallback_when_ambiguous(self) -> None:
+        # An in-tree class named ``BaseOperator`` collides with airflow's
+        # framework class. A subclass declaring an unqualified
+        # ``BaseOperator`` base is ambiguous.
+        in_tree = _class_sym(
+            "BaseOperator", path="dags/internal/BaseOperator.py",
+        )
+        user_cls = _class_sym(
+            "MyOperator", path="dags/my_operator.py",
+            base_classes=["BaseOperator"], span=(1, 30),
+        )
+        execute_m = _method_sym(
+            "MyOperator.execute", path="dags/my_operator.py", span=(10, 15),
+        )
+        ctx = _ctx([in_tree, user_cls, execute_m])
+        result = link_airflow_framework_dispatch(ctx)
+        edges = [e for e in result.edges if e.src == user_cls.id]
+        assert len(edges) == 1
+        edge = edges[0]
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+        assert edge.meta.get("framework_dispatch") == "airflow"

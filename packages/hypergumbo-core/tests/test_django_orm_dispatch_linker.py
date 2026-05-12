@@ -496,3 +496,98 @@ class TestGenericCBVViewLifecycle:
         gq = _method_sym("UserListView.get_queryset", span=(2, 4))
         result = link_django_orm_dispatch(_ctx([view, gq]))
         assert gq.id in {e.dst for e in result.edges}
+
+
+# ---------------------------------------------------------------------------
+# INV-zuhub property tests: django_orm framework-dispatch fallback (WI-bojok PR3)
+# ---------------------------------------------------------------------------
+
+
+class TestInvZuhubDjangoOrmFallback:
+    """INV-zuhub item 1, dispatches_to family — django_orm framework-base shape.
+
+    Same structural pattern as the airflow / kafka conformance: short-
+    base-name lookup against ``DJANGO_BASE_METHODS`` cannot distinguish
+    Django's external framework type from an in-tree Python class of
+    the same name (e.g. an in-tree ``Model`` class unrelated to
+    ``django.db.models.Model``).
+    """
+
+    def test_dispatches_to_prefers_fqn_over_in_tree_collision(self) -> None:
+        in_tree = _class_sym(
+            "Model", path="app/internal/model.py",
+        )
+        user_cls = _class_sym(
+            "User", path="app/models.py",
+            base_classes=["django.db.models.Model"], span=(1, 30),
+        )
+        save_m = _method_sym(
+            "User.save", path="app/models.py", span=(10, 15),
+        )
+        ctx = _ctx([in_tree, user_cls, save_m])
+        result = link_django_orm_dispatch(ctx)
+        edges = [e for e in result.edges if e.src == user_cls.id]
+        assert len(edges) == 1
+        edge = edges[0]
+        assert edge.confidence == 0.90
+        assert (edge.meta or {}).get("disambiguation_fallback") is not True
+
+    def test_dispatches_to_no_in_tree_collision_keeps_high_confidence(
+        self,
+    ) -> None:
+        user_cls = _class_sym(
+            "User", path="app/models.py",
+            base_classes=["Model"], span=(1, 30),
+        )
+        save_m = _method_sym(
+            "User.save", path="app/models.py", span=(10, 15),
+        )
+        ctx = _ctx([user_cls, save_m])
+        result = link_django_orm_dispatch(ctx)
+        edges = [e for e in result.edges if e.src == user_cls.id]
+        assert len(edges) == 1
+        assert edges[0].confidence == 0.90
+        assert (edges[0].meta or {}).get("disambiguation_fallback") is not True
+
+    def test_dispatches_to_deterministic_fallback_when_ambiguous(self) -> None:
+        in_tree = _class_sym(
+            "Model", path="app/internal/model.py",
+        )
+        user_cls = _class_sym(
+            "User", path="app/models.py",
+            base_classes=["Model"], span=(1, 30),
+        )
+        save_m = _method_sym(
+            "User.save", path="app/models.py", span=(10, 15),
+        )
+        ctx = _ctx([in_tree, user_cls, save_m])
+        result = link_django_orm_dispatch(ctx)
+        edges = [e for e in result.edges if e.src == user_cls.id]
+        assert len(edges) == 1
+        edge = edges[0]
+        assert edge.confidence <= 0.5
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+        assert edge.meta.get("framework_dispatch") == "django_orm"
+
+    def test_in_tree_collision_in_other_language_does_not_trigger(self) -> None:
+        # A Java class named ``Model`` is not a Python collision — django
+        # is Python-only, so the language scoping must exclude it.
+        java_cls = _class_sym(
+            "Model", path="app/Model.java",
+            language="java", base_classes=None,
+        )
+        user_cls = _class_sym(
+            "User", path="app/models.py",
+            base_classes=["Model"], span=(1, 30),
+        )
+        save_m = _method_sym(
+            "User.save", path="app/models.py", span=(10, 15),
+        )
+        ctx = _ctx([java_cls, user_cls, save_m])
+        result = link_django_orm_dispatch(ctx)
+        edges = [e for e in result.edges if e.src == user_cls.id]
+        assert len(edges) == 1
+        # No Python in-tree collision → precision match.
+        assert edges[0].confidence == 0.90
+        assert (edges[0].meta or {}).get("disambiguation_fallback") is not True

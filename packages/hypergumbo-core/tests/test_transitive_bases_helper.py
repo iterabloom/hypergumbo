@@ -5,7 +5,9 @@ from __future__ import annotations
 from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.linkers._transitive_bases import (
     build_inheritance_index,
+    build_short_name_collisions,
     collect_transitive_base_names,
+    short_name_fallback,
 )
 
 
@@ -205,3 +207,98 @@ class TestCollectTransitiveBaseNames:
         )
         assert "ParentImpl" in names
         assert "Processor" in names
+
+
+class TestBuildShortNameCollisions:
+    def test_no_collision_when_no_in_tree_match(self) -> None:
+        c = _cls("UnrelatedName")
+        assert build_short_name_collisions(
+            [c], keys=frozenset({"Model", "View"}),
+        ) == frozenset()
+
+    def test_collision_recorded_for_matching_class(self) -> None:
+        c = _cls("Model")
+        assert build_short_name_collisions(
+            [c], keys=frozenset({"Model", "View"}),
+        ) == frozenset({"Model"})
+
+    def test_kind_filter_excludes_method(self) -> None:
+        # A method named ``Model`` is not a class collision.
+        meth = Symbol(
+            id="python:app.py:1-2:Model:method",
+            name="Model", kind="method", language="python",
+            path="app.py", span=Span(1, 2, 0, 0),
+        )
+        assert build_short_name_collisions(
+            [meth], keys=frozenset({"Model"}),
+        ) == frozenset()
+
+    def test_language_filter_scopes_collision_search(self) -> None:
+        py_cls = _cls("Model")
+        java_cls = Symbol(
+            id="java:app.java:1-2:Model:class",
+            name="Model", kind="class", language="java",
+            path="app.java", span=Span(1, 2, 0, 0),
+        )
+        # When restricting to Python, only the Python class counts.
+        py_only = build_short_name_collisions(
+            [py_cls, java_cls],
+            keys=frozenset({"Model"}),
+            languages=frozenset({"python"}),
+        )
+        assert py_only == frozenset({"Model"})
+        # When restricting to Java, only the Java class counts.
+        java_only = build_short_name_collisions(
+            [py_cls, java_cls],
+            keys=frozenset({"Model"}),
+            languages=frozenset({"java"}),
+        )
+        assert java_only == frozenset({"Model"})
+
+    def test_struct_kind_included_by_default(self) -> None:
+        s = Symbol(
+            id="rust:lib.rs:1-2:Model:struct",
+            name="Model", kind="struct", language="rust",
+            path="lib.rs", span=Span(1, 2, 0, 0),
+        )
+        assert build_short_name_collisions(
+            [s], keys=frozenset({"Model"}),
+        ) == frozenset({"Model"})
+
+
+class TestShortNameFallback:
+    def test_fqn_prefix_disables_fallback(self) -> None:
+        # FQN-qualified raw entries are precision matches even with a
+        # collision present.
+        assert short_name_fallback(
+            "airflow.models.BaseOperator",
+            "BaseOperator",
+            frozenset({"BaseOperator"}),
+            ("airflow.",),
+        ) is False
+
+    def test_unqualified_without_collision_is_precision(self) -> None:
+        assert short_name_fallback(
+            "BaseOperator",
+            "BaseOperator",
+            frozenset(),
+            ("airflow.",),
+        ) is False
+
+    def test_unqualified_with_collision_is_fallback(self) -> None:
+        assert short_name_fallback(
+            "BaseOperator",
+            "BaseOperator",
+            frozenset({"BaseOperator"}),
+            ("airflow.",),
+        ) is True
+
+    def test_multiple_prefixes_any_disables_fallback(self) -> None:
+        # A linker can pass multiple FQN prefixes (e.g. ``django.`` AND
+        # ``django_extensions.``); any matching prefix is precision.
+        assert short_name_fallback(
+            "django_extensions.db.models.TimeStampedModel",
+            "TimeStampedModel",
+            frozenset({"TimeStampedModel"}),
+            ("django.", "django_extensions."),
+        ) is False

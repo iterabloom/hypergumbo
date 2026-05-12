@@ -42,7 +42,9 @@ from typing import TYPE_CHECKING
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from ._transitive_bases import (
     build_inheritance_index,
+    build_short_name_collisions,
     collect_transitive_base_names,
+    short_name_fallback,
 )
 from .registry import LinkerContext, LinkerResult, register_linker
 
@@ -50,6 +52,13 @@ if TYPE_CHECKING:
     from ..ir import Symbol
 
 PASS_ID = make_pass_id("airflow-framework-dispatch-linker")
+
+# FQN prefixes that unambiguously name Airflow framework types. An
+# unqualified short-name match against ``AIRFLOW_BASE_METHODS`` whose
+# raw base entry starts with any of these is precision (not fallback)
+# per INV-zuhub, even when an in-tree class shares the matched short
+# name.
+_AIRFLOW_FQN_PREFIXES: tuple[str, ...] = ("airflow.",)
 
 # Map of Airflow base class name -> framework-called method names on that base.
 # A subclass of BaseOperator only has execute/pre_execute/... called on it;
@@ -86,8 +95,9 @@ def _short_base_name(raw: str) -> str:
 def _find_airflow_subclasses(
     symbols: list[Symbol],
     edges: list[Edge] | None = None,
-) -> list[tuple[Symbol, frozenset[str]]]:
-    """Return (class_symbol, framework_method_names) for every Airflow subclass.
+    in_tree_collisions: frozenset[str] = frozenset(),
+) -> list[tuple[Symbol, frozenset[str], bool]]:
+    """Return (class_symbol, framework_method_names, is_fallback) for every Airflow subclass.
 
     A class qualifies when **any** name in its transitive ``base_classes``
     chain — itself plus every in-tree ancestor reached via
@@ -100,12 +110,19 @@ def _find_airflow_subclasses(
     A class whose chain names more than one Airflow base (multi-inherit
     shim, or a chain that crosses base families) gets the union of all
     matched bases' method sets.
+
+    INV-zuhub: ``is_fallback`` is ``True`` iff **any** matching raw
+    entry on the chain was unqualified (no ``airflow.`` FQN prefix) and
+    its short name collides with an in-tree Python class — the static
+    analysis cannot tell whether the user meant Airflow's framework
+    type or the in-tree one. Edges produced for such classes downgrade
+    to ``confidence <= 0.5`` with the ``disambiguation_fallback`` flag.
     """
     edges = edges or []
     inheritance_index = build_inheritance_index(edges)
     symbol_by_id = {sym.id: sym for sym in symbols}
 
-    results: list[tuple[Symbol, frozenset[str]]] = []
+    results: list[tuple[Symbol, frozenset[str], bool]] = []
     for sym in symbols:
         if sym.kind not in ("class", "struct"):
             continue
@@ -113,12 +130,17 @@ def _find_airflow_subclasses(
             continue
         chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
         methods: set[str] = set()
+        is_fallback = False
         for raw in chain:
             short = _short_base_name(raw)
             if short in AIRFLOW_BASE_METHODS:
                 methods.update(AIRFLOW_BASE_METHODS[short])
+                if short_name_fallback(
+                    raw, short, in_tree_collisions, _AIRFLOW_FQN_PREFIXES,
+                ):
+                    is_fallback = True
         if methods:
-            results.append((sym, frozenset(methods)))
+            results.append((sym, frozenset(methods), is_fallback))
     return results
 
 
@@ -162,7 +184,17 @@ def link_airflow_framework_dispatch(ctx: LinkerContext) -> LinkerResult:
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
-    subclasses = _find_airflow_subclasses(ctx.symbols, ctx.edges)
+    # INV-zuhub: build the set of Airflow base-class short names that
+    # collide with in-tree Python classes/structs so the subclass walker
+    # can flag short-name fallback matches.
+    in_tree_collisions = build_short_name_collisions(
+        ctx.symbols,
+        frozenset(AIRFLOW_BASE_METHODS),
+        kinds=frozenset({"class", "struct"}),
+        languages=frozenset({"python"}),
+    )
+
+    subclasses = _find_airflow_subclasses(ctx.symbols, ctx.edges, in_tree_collisions)
     if not subclasses:
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(symbols=[], edges=[], run=run)
@@ -178,7 +210,7 @@ def link_airflow_framework_dispatch(ctx: LinkerContext) -> LinkerResult:
     }
 
     edges: list[Edge] = []
-    for class_sym, framework_methods in subclasses:
+    for class_sym, framework_methods, is_fallback in subclasses:
         for method_name in framework_methods:
             qualified = f"{class_sym.name}.{method_name}"
             target = method_index.get((class_sym.path or "", qualified))
@@ -188,17 +220,21 @@ def link_airflow_framework_dispatch(ctx: LinkerContext) -> LinkerResult:
             if key in existing_keys:
                 continue
             existing_keys.add(key)
+            confidence = 0.5 if is_fallback else 0.90
+            edge_meta: dict[str, object] = {"framework_dispatch": "airflow"}
+            if is_fallback:
+                edge_meta["disambiguation_fallback"] = True
             edges.append(
                 Edge.create(
                     src=class_sym.id,
                     dst=target.id,
                     edge_type="dispatches_to",
                     line=class_sym.span.start_line if class_sym.span else 0,
-                    confidence=0.90,
+                    confidence=confidence,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
-                    meta={"framework_dispatch": "airflow"},
+                    meta=edge_meta,
                 ),
             )
 

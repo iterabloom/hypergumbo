@@ -35,13 +35,79 @@ matcher.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
     from ..ir import Edge, Symbol
 
 
 _INHERITANCE_EDGE_TYPES = ("extends", "implements")
+
+
+def build_short_name_collisions(
+    symbols: list["Symbol"],
+    keys: frozenset[str] | set[str],
+    *,
+    kinds: frozenset[str] | set[str] = frozenset(
+        {"class", "interface", "struct", "trait"},
+    ),
+    languages: frozenset[str] | set[str] | None = None,
+) -> frozenset[str]:
+    """Return the subset of ``keys`` that collide with an in-tree symbol.
+
+    A *collision* is the existence of any in-tree ``Symbol`` whose
+    ``name`` is one of *keys*, ``kind`` is in *kinds*, and (if
+    *languages* is provided) ``language`` is in *languages*. The
+    returned frozenset is the keys for which a collision exists — i.e.
+    the names that cannot be presumed external by elimination.
+
+    Used by framework-dispatch linkers to flag short-name matches
+    against a literal external-API set as simple-name fallbacks under
+    INV-zuhub: a class extending an unqualified ``Transformer`` /
+    ``Model`` / ``ConfigurationProperties`` could be referring to the
+    external framework type *or* to an in-tree class of the same name,
+    and the static analysis cannot disambiguate.
+    """
+    collisions: set[str] = set()
+    for sym in symbols:
+        if sym.name not in keys:
+            continue
+        if sym.kind not in kinds:
+            continue
+        if languages is not None and sym.language not in languages:
+            continue
+        collisions.add(sym.name)
+    return frozenset(collisions)
+
+
+def short_name_fallback(
+    raw_entry: str,
+    short_name: str,
+    in_tree_collisions: frozenset[str],
+    fqn_prefixes: Iterable[str],
+) -> bool:
+    """Whether a ``(raw_entry → short_name)`` match is a simple-name fallback.
+
+    A match is precise (returns ``False``) when either:
+
+    - The raw entry is FQN-qualified — it starts with any string in
+      *fqn_prefixes* (e.g. ``"org.apache.kafka."``, ``"django."``,
+      ``"airflow."``). FQN qualifiers unambiguously name the external
+      framework type even when an in-tree collision exists.
+    - There is no in-tree symbol with the matched short name —
+      ``short_name not in in_tree_collisions``. The unqualified raw
+      entry cannot mean anything but the external framework type.
+
+    A match is fallback (returns ``True``) when an unqualified raw
+    entry's short name has an in-tree collision: the static analysis
+    cannot tell whether the user meant the framework type or the
+    in-tree one. Per INV-zuhub, edges built on such matches must carry
+    ``confidence <= 0.5`` and ``meta["disambiguation_fallback"] = True``.
+    """
+    for prefix in fqn_prefixes:
+        if raw_entry.startswith(prefix):
+            return False
+    return short_name in in_tree_collisions
 
 
 def build_inheritance_index(
