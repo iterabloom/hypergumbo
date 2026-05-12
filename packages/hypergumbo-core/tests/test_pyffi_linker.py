@@ -1428,6 +1428,42 @@ class TestInvZuhubPyFFIFallback:
         assert edge.meta.get("disambiguation_fallback") is True
         assert edge.meta.get("bridge_kind") == "ffi"
 
+    def test_stdlib_loader_with_multi_c_collision_emits_fallback(
+        self, tmp_path: Path,
+    ) -> None:
+        """``ctypes.CDLL(None)`` resolves to a repo-local symbol, but the
+        same name appears in multiple .c files — downgrade to fallback.
+        """
+        from hypergumbo_core.linkers.pyffi import link_pyffi
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text(
+            "import ctypes\n"
+            "libc = ctypes.CDLL(None)\n"
+            "libc.helper(1)\n"
+        )
+        py_func = _make_python_symbol(
+            "app", kind="module", path=str(py_file), start_line=1, end_line=3
+        )
+        c_func_a = _make_c_symbol(
+            "helper", path="util_a.c", start_line=1, end_line=5
+        )
+        c_func_b = _make_c_symbol(
+            "helper", path="util_b.c", start_line=1, end_line=5
+        )
+
+        result = link_pyffi(tmp_path, [py_func], [c_func_a, c_func_b], [], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst in {c_func_a.id, c_func_b.id}
+        assert edge.confidence <= 0.5
+        # The stdlib branch remaps the evidence_type to the non-stdlib form.
+        assert edge.evidence_type == "ctypes_call"
+        assert edge.meta is not None
+        assert edge.meta.get("disambiguation_fallback") is True
+        assert edge.meta.get("bridge_kind") == "ffi"
+
     def test_single_pyo3_match_keeps_high_confidence(self, tmp_path: Path) -> None:
         from hypergumbo_core.linkers.pyffi import link_pyffi
 
