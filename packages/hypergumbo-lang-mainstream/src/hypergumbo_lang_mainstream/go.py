@@ -2373,31 +2373,47 @@ def _extract_edges_from_file(
                             and callee_name in global_symbols
                             and len(global_symbols[callee_name]) >= 2
                         ):
-                            # Check if any candidate is an interface method
-                            _iface_candidate = None
-                            for _cand in global_symbols[callee_name]:
-                                # Interface method symbols are named
-                                # InterfaceName.MethodName; check if InterfaceName
-                                # is in interface_method_sets.
-                                if "." in _cand.name:
-                                    _iface_name = _cand.name.rsplit(".", 1)[0]
-                                    if _iface_name in interface_method_sets:
-                                        _iface_candidate = _cand
-                                        break
-
-                            if _iface_candidate is not None:
+                            # Collect all interface-method candidates. When
+                            # the short-name resolves to >=2 global symbols
+                            # and >=2 of them are interface methods, the
+                            # interface-method preference does not uniquely
+                            # disambiguate — pick deterministically by id and
+                            # flag the edge as INV-zuhub fallback (confidence
+                            # <=0.5 + meta["disambiguation_fallback"]=True).
+                            # When exactly one is an interface method, the
+                            # interface-method test IS the precision
+                            # disambiguator — keep confidence=0.75.
+                            _iface_candidates = [
+                                _cand for _cand in global_symbols[callee_name]
+                                if "." in _cand.name
+                                and _cand.name.rsplit(".", 1)[0] in interface_method_sets
+                            ]
+                            if _iface_candidates:
+                                _is_iface_fallback = len(_iface_candidates) > 1
+                                _iface_candidate = (
+                                    min(_iface_candidates, key=lambda s: s.id)
+                                    if _is_iface_fallback
+                                    else _iface_candidates[0]
+                                )
                                 # Resolve to the interface method instead of
                                 # unresolved — dispatches_to edges will route
                                 # the slice to concrete implementations.
+                                _iface_confidence = 0.5 if _is_iface_fallback else 0.75
+                                _iface_meta = (
+                                    {"call_construct": "interface_dispatch", "disambiguation_fallback": True}
+                                    if _is_iface_fallback
+                                    else {"call_construct": "interface_dispatch"}
+                                )
                                 edges.append(Edge.create(
                                     src=current_function.id,
                                     dst=_iface_candidate.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="interface_dispatch",
-                                    confidence=0.75,
+                                    confidence=_iface_confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
+                                    meta=_iface_meta,
                                 ))
                                 callee_name = None  # Already handled
                             else:

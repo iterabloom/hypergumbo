@@ -7828,3 +7828,122 @@ func main() {
             f"Expected a module_attr_ref edge to os.Stderr from the "
             f"top-level var initializer; got: {[e.dst for e in attr_edges]}"
         )
+
+
+class TestINVZuhubConformanceForInterfaceDispatch:
+    """WI-kogid: INV-zuhub item 1 conformance for the Go analyzer's
+    short-name interface_dispatch fallback in ``go.py``.
+
+    When ``x.Method()`` cannot be resolved to a typed receiver and the
+    short name resolves to >=2 global candidates, the analyzer preferentially
+    picks an interface-method candidate (so dispatches_to can route the
+    slice through concrete implementations). Per INV-zuhub item 1, when
+    the interface-method preference does NOT uniquely disambiguate
+    (>=2 interface-method candidates), the resulting edge must downgrade
+    to confidence <= 0.5 and carry meta["disambiguation_fallback"] = True.
+    When exactly one interface method is among the candidates, the
+    interface-method test IS the precision disambiguator and the edge
+    keeps its baseline confidence (0.75).
+    """
+
+    def test_single_interface_method_precision_preserved(
+        self, tmp_path: Path,
+    ) -> None:
+        """One interface-method candidate among >=2 short-name candidates →
+        precision: confidence=0.75, no disambiguation_fallback flag.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Worker interface {
+    Run()
+}
+
+type FooImpl struct{}
+type BarImpl struct{}
+
+func (f *FooImpl) Run() {}
+func (b *BarImpl) Run() {}
+
+var w Worker
+
+func main() {
+    w.Run()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        iface_edges = [
+            e for e in result.edges
+            if e.evidence_type == "interface_dispatch"
+        ]
+        assert len(iface_edges) >= 1, (
+            f"Expected at least one interface_dispatch edge; "
+            f"got edges: {[(e.evidence_type, e.dst) for e in result.edges if e.edge_type == 'calls']}"
+        )
+        for edge in iface_edges:
+            assert edge.confidence == 0.75, (
+                f"Single interface-method candidate is a precision "
+                f"disambiguator — confidence must be 0.75, got "
+                f"{edge.confidence} on edge {edge.dst}"
+            )
+            assert not (edge.meta or {}).get("disambiguation_fallback"), (
+                f"Precision edge must not carry disambiguation_fallback; "
+                f"got meta={edge.meta}"
+            )
+
+    def test_multi_interface_method_fallback(
+        self, tmp_path: Path,
+    ) -> None:
+        """Two+ interface-method candidates → INV-zuhub fallback:
+        confidence <= 0.5 and meta["disambiguation_fallback"] = True.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text("module example.com/test\ngo 1.21\n")
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Worker interface {
+    Run()
+}
+
+type Runner interface {
+    Run()
+}
+
+type FooImpl struct{}
+
+func (f *FooImpl) Run() {}
+
+var w Worker
+
+func main() {
+    w.Run()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        iface_edges = [
+            e for e in result.edges
+            if e.evidence_type == "interface_dispatch"
+        ]
+        assert len(iface_edges) >= 1, (
+            f"Expected at least one interface_dispatch edge; "
+            f"got edges: {[(e.evidence_type, e.dst) for e in result.edges if e.edge_type == 'calls']}"
+        )
+        for edge in iface_edges:
+            assert edge.confidence <= 0.5, (
+                f"Multi interface-method candidates must produce fallback "
+                f"edge with confidence <= 0.5, got {edge.confidence} on "
+                f"edge {edge.dst}"
+            )
+            assert (edge.meta or {}).get("disambiguation_fallback") is True, (
+                f"Fallback edge must carry meta['disambiguation_fallback']"
+                f"=True; got meta={edge.meta}"
+            )
