@@ -16,6 +16,10 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Changed
 
+#### gRPC cross-language coverage — TS client → proto fallback
+
+- **WI-ropoz — TS gRPC client → proto service binding when no impl is in-tree.** Workadventure-style cross-codebase setups (TS clients calling a gRPC server that lives in a separate language repo) lost the entire client side of the graph: the linker only emitted `calls` edges when both stub and servicer were detected in the analyzed tree. WI-ropoz adds a fallback pass — after the existing stub→servicer matching, any unmatched TS/JS stub now binds directly to the proto service Symbol via `calls` + `meta['protocol']='grpc'` + `Edge.is_resolved=False`. Confidence drops to 0.6 (or 0.5 with `meta['disambiguation_fallback']=True` per INV-zuhub when two `.proto` files declare the same short-name service across packages). 3 new tests covering: no-impl fallback, with-impl precision preserved, cross-package collision disambiguation. 100% coverage maintained.
+
 #### Receiver-type inference — Kotlin / C# (INV-dihos Phase 2)
 
 - **WI-jujup — Kotlin nullable strip + C# async unwrap.** Phase 2 of the ADR-0006 Return-Type Registry program (Phase 1 / WI-kuroj shipped Java + Go on 2026-04-09). Kotlin's `_extract_kotlin_return_type_name` now strips the nullable `?` suffix so methods returning `User?` propagate `User` into `var_types`; previously these were dropped, breaking chained-receiver resolution on every nullable getter. C#'s `_extract_csharp_return_type_name` now unwraps the async wrapper types `Task<T>` / `ValueTask<T>` / `IAsyncEnumerable<T>` to the inner `T` — the C# `await` operator dereferences the wrapper at the call site, so `var x = await SomeAsync()` should bind `x` to the awaited type, not to `Task`. Bare wrapper-only returns (`Task` without generic argument) stay None so we don't accidentally bind a variable to the wrapper name. 5 new Tier 2 escape-hatch tests across `test_kotlin.py` and `test_csharp.py`; 100% coverage maintained.

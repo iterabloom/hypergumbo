@@ -533,6 +533,144 @@ class TestTtrpcPatterns:
         )
 
 
+class TestGrpcTypescriptClientToProtoBinding:
+    """WI-ropoz: TS gRPC client → proto service binding.
+
+    When a TypeScript file uses ``new FooServiceClient(...)`` and the
+    repo contains a ``.proto`` declaring ``service FooService { ... }``
+    but no impl-side servicer in the analyzed tree (the impl may live
+    in a separate language repo, like workadventure where the server is
+    Go and lives in a different module), the linker must still emit a
+    binding edge from the TS client to the proto service Symbol —
+    otherwise the cross-language graph drops the entire client side.
+
+    Edit shape: ``edge_type='calls'`` + ``meta['protocol']='grpc'`` +
+    ``Edge.is_resolved=False`` (since no in-tree handler was located).
+    """
+
+    def test_ts_client_binds_to_proto_service_when_no_impl(self, tmp_path: Path) -> None:
+        """TS ``new FooServiceClient`` → proto ``service FooService`` edge.
+
+        With no impl-side servicer in the tree, the TS client gets an
+        edge directly to the proto-service Symbol so the cross-language
+        slice can reach the .proto contract.
+        """
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto = tmp_path / "service.proto"
+        proto.write_text(
+            'syntax = "proto3";\n'
+            'package example;\n'
+            'service FooService {\n'
+            '  rpc GetFoo (Req) returns (Resp);\n'
+            '}\n'
+        )
+
+        ts = tmp_path / "client.ts"
+        ts.write_text(
+            "import { FooServiceClient } from './generated/foo_grpc_web_pb';\n"
+            "const client = new FooServiceClient('http://localhost:8080');\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        # The TS client should be linked to the proto service. ``calls``
+        # + meta['protocol']='grpc' + is_resolved=False (no impl found).
+        binding_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and (e.meta or {}).get("protocol") == "grpc"
+            and not e.is_resolved
+        ]
+        assert len(binding_edges) >= 1, (
+            "Expected at least one TS→proto binding edge; got "
+            f"{[(e.edge_type, dict(e.meta or {})) for e in result.edges]}"
+        )
+
+    def test_ts_client_fallback_dedupes_cross_package_collision(self, tmp_path: Path) -> None:
+        """Two ``.proto`` files declaring the same short-name service
+        force INV-zuhub disambiguation_fallback on the no-impl fallback.
+
+        Edge gets ``meta['disambiguation_fallback']=True`` and lower
+        confidence; resolution stays deterministic-by-id.
+        """
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        (tmp_path / "pkg_a").mkdir()
+        (tmp_path / "pkg_b").mkdir()
+        (tmp_path / "pkg_a" / "svc.proto").write_text(
+            'syntax = "proto3";\n'
+            'package pkg_a;\n'
+            'service ShareName {\n'
+            '  rpc DoIt (R) returns (R);\n'
+            '}\n'
+        )
+        (tmp_path / "pkg_b" / "svc.proto").write_text(
+            'syntax = "proto3";\n'
+            'package pkg_b;\n'
+            'service ShareName {\n'
+            '  rpc DoIt (R) returns (R);\n'
+            '}\n'
+        )
+
+        ts = tmp_path / "client.ts"
+        ts.write_text(
+            "const c = new ShareNameClient('http://localhost:8080');\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        fallback_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and (e.meta or {}).get("protocol") == "grpc"
+            and (e.meta or {}).get("disambiguation_fallback") is True
+        ]
+        assert len(fallback_edges) >= 1, (
+            "Expected disambiguation_fallback edge for cross-package "
+            f"service-name collision; got {[dict(e.meta or {}) for e in result.edges]}"
+        )
+
+    def test_ts_client_still_prefers_servicer_when_impl_present(self, tmp_path: Path) -> None:
+        """When a servicer is also present, the TS client edge should
+        prefer the impl (precision over the proto fallback)."""
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto = tmp_path / "service.proto"
+        proto.write_text(
+            'syntax = "proto3";\n'
+            'package example;\n'
+            'service BarService {\n'
+            '  rpc GetBar (Req) returns (Resp);\n'
+            '}\n'
+        )
+
+        # Python servicer impl
+        py = tmp_path / "server.py"
+        py.write_text(
+            "class BarServiceServicer(bar_pb2_grpc.BarServiceServicer):\n"
+            "    pass\n"
+        )
+
+        # TS client
+        ts = tmp_path / "client.ts"
+        ts.write_text(
+            "import { BarServiceClient } from './generated/bar_grpc_web_pb';\n"
+            "const client = new BarServiceClient('http://localhost:8080');\n"
+        )
+
+        result = link_grpc(tmp_path)
+
+        # Precision edge to the servicer should exist.
+        precision_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and (e.meta or {}).get("protocol") == "grpc"
+            and e.is_resolved
+        ]
+        assert len(precision_edges) >= 1
+
+
 class TestGrpcEdgeCreation:
     """Tests for edge creation linking clients to servers."""
 

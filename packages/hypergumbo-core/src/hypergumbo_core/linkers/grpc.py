@@ -751,10 +751,28 @@ def link_grpc(
         normalized = _normalize_service_name(servicer.service_name)
         servicer_by_name[normalized] = servicer
 
+    # WI-ropoz: track which stubs got an impl-side match. Stubs/clients
+    # that match no servicer fall through to the proto-service fallback
+    # below — the cross-language case where the impl lives outside the
+    # analyzed tree (workadventure-style: TS client + Go server in
+    # separate repos) needs the client at least bound to the contract.
+    stubs_with_servicer: set[int] = set()
+
+    # Build the proto-side ``service`` symbol lookup once so the
+    # no-servicer fallback below can reach it. Indexed by normalized
+    # short name; cross-package collisions surface as multi-value.
+    proto_service_by_name: dict[str, list[Symbol]] = {}
+    for sym in symbols:
+        if (sym.meta or {}).get("framework_role") == "grpc_service":
+            proto_service_by_name.setdefault(
+                _normalize_service_name(sym.name), []
+            ).append(sym)
+
     # Match stubs to servicers
     for stub in stubs:
         normalized = _normalize_service_name(stub.service_name)
         if normalized in servicer_by_name:
+            stubs_with_servicer.add(id(stub))
             servicer = servicer_by_name[normalized]
 
             stub_id = _make_symbol_id(
@@ -786,6 +804,57 @@ def link_grpc(
                     "framework_dispatch": "grpc_service_match",
                 },
             ))
+
+    # WI-ropoz: fallback — stubs/clients without an in-tree servicer
+    # bind directly to the proto service Symbol. The impl lives outside
+    # the analyzed tree (e.g., workadventure's TS clients call a Go
+    # server in a separate repo; without this fallback the entire
+    # client side of the graph is disconnected from the proto contract).
+    # Edge shape: canonical ``calls`` + meta[protocol]=grpc + the
+    # ADR-0028 ``is_resolved=False`` flag because the actual receiver
+    # is unknown.
+    for stub in stubs:
+        if id(stub) in stubs_with_servicer:
+            continue
+        normalized = _normalize_service_name(stub.service_name)
+        proto_candidates = proto_service_by_name.get(normalized)
+        if not proto_candidates:
+            continue
+
+        stub_id = _make_symbol_id(
+            stub.file_path, stub.line, stub.service_name,
+            "grpc_stub" if stub.type == "stub" else "grpc_client",
+        )
+
+        # Cross-package short-name collisions (two .proto files declare
+        # ``service Foo`` in different packages) drop to disambiguation
+        # fallback per INV-zuhub. With one candidate, this is precision.
+        is_fallback = len(proto_candidates) > 1
+        target = (
+            proto_candidates[0]
+            if len(proto_candidates) == 1
+            else min(proto_candidates, key=lambda s: s.id)
+        )
+
+        edge_meta: dict[str, object] = {
+            "protocol": "grpc",
+            "framework_dispatch": "grpc_service_match",
+        }
+        if is_fallback:
+            edge_meta["disambiguation_fallback"] = True
+
+        edges.append(Edge.create(
+            src=stub_id,
+            dst=target.id,
+            edge_type="calls",
+            line=stub.line,
+            confidence=0.5 if is_fallback else 0.6,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type="ast_call_direct",
+            is_resolved=False,
+            meta=edge_meta,
+        ))
 
     # Create route symbols for proto RPC definitions.
     # gRPC RPCs are accessed via HTTP/2 at /<package>.<Service>/<Method>.
