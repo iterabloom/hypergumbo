@@ -3485,3 +3485,87 @@ class TestSwiftCatalog:
         assert edges[1].meta["io_boundary"] == "net_send"
         assert edges[2].meta["io_boundary"] == "fs_read"
         assert edges[3].meta["io_boundary"] == "logging"
+
+
+class TestDstRefPreferredOverDstString:
+    """WI-tihup PR2: io_boundary prefers ``Edge.dst_ref`` over the
+    legacy colon-split heuristic when present.
+
+    Exercises the dst_ref-prefer branches at io_boundary.py:828-830
+    (compute_boundary_map / _compose_primitive_chains) and 1199-1201
+    (_classify_call_edges via tag_io_boundaries).
+    """
+
+    def test_tag_io_boundaries_uses_dst_ref_module_and_name(self) -> None:
+        """Real Edge with dst_ref populated: tag_io_boundaries reads
+        module_hint and callee from the ref, not from the legacy dst
+        string."""
+        from hypergumbo_core.ir import Edge, ExternalRef
+
+        catalog = load_catalog("python")
+        # Build a legacy dst string with a deliberately misleading
+        # module_hint and name — if the implementation parses the
+        # string, primitive lookup would miss. The dst_ref carries the
+        # correct (urllib.request, urlopen) pair.
+        edge = Edge.create(
+            src="python:/app/main.py:1-1:fetch:function",
+            dst="python:WRONG_MODULE:0-0:wrong_name:unresolved",
+            edge_type="calls",
+            line=1,
+            is_resolved=False,
+            dst_ref=ExternalRef(
+                lang="python",
+                module_path="urllib.request",
+                name="urlopen",
+            ),
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_primitive"] == "urllib.request.urlopen"
+
+    def test_compute_external_potential_uses_dst_ref(self) -> None:
+        """``_compute_external_potential`` (reached via
+        ``compute_boundary_map`` when ``nodes_by_id`` is supplied) prefers
+        ``Edge.dst_ref`` over the colon-split heuristic for the
+        external-potential composition path."""
+        from hypergumbo_core.ir import Edge, ExternalRef
+
+        catalog = load_catalog("python")
+        # Use a callable name that is NOT in the python catalog so
+        # tag_io_boundaries leaves meta.io_boundary unset, falling
+        # through to the _compute_external_potential branch.
+        edge = Edge.create(
+            src="python:/app/main.py:1-1:caller:function",
+            dst="python:WRONG_MODULE:0-0:wrong_name:unresolved",
+            edge_type="calls",
+            line=1,
+            is_resolved=False,
+            dst_ref=ExternalRef(
+                lang="python",
+                module_path="custom_pkg.subpkg",
+                name="custom_func",
+            ),
+        )
+        # nodes_by_id must mark the dst as an external boundary node
+        # for _compute_external_potential to consider the edge. The
+        # name slot is what the dst_ref-prefer branch returns when the
+        # dst_node has no ``name`` field.
+        nodes_by_id = {
+            edge.dst: {
+                "id": edge.dst,
+                "name": None,
+                "meta": {"external_boundary": True},
+            }
+        }
+        bmap = compute_boundary_map(
+            [edge], {"python": catalog}, nodes_by_id=nodes_by_id,
+        )
+        # The external_potential entry surfaces the dst_ref-derived
+        # primitive (custom_pkg.subpkg.custom_func), not the legacy
+        # WRONG_MODULE.wrong_name from the colon-split.
+        assert "external_potential" in bmap.entries
+        primitives = bmap.entries["external_potential"].primitives_used
+        assert any(
+            "custom_pkg.subpkg" in p and "custom_func" in p
+            for p in primitives
+        )

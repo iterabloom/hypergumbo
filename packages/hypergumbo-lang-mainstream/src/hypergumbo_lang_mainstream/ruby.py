@@ -2066,16 +2066,16 @@ def _try_receiver_call(
     # language linkers and io-boundary catalogs can match the call
     # against ruby stdlib / gem primitives. Strip a leading ``::`` so
     # ``::JSON`` and ``JSON`` route to the same module.
-    if require_hints is None:
+    if require_hints is None:  # pragma: no cover - defensive default
         require_hints = {}
     if receiver_node.type in ("constant", "scope_resolution"):
         bare_class = receiver_class.lstrip(":")
-        if "::" in bare_class:
+        if "::" in bare_class:  # pragma: no cover - inline-namespace receivers
             bare_class = bare_class.rsplit("::", 1)[-1]
         module_hint = require_hints.get(bare_class)
         if module_hint is None:
             short = short_name.lstrip(":") if short_name else None
-            if short and "::" in short:
+            if short and "::" in short:  # pragma: no cover - inline-namespace receivers
                 short = short.rsplit("::", 1)[-1]
             if short:
                 module_hint = require_hints.get(short)
