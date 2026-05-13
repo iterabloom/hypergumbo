@@ -403,16 +403,18 @@ def _extract_kotlin_return_type_name(signature: str | None) -> str | None:
     """Extract the return type name from a Kotlin function signature.
 
     Kotlin signatures use the format ``(params): ReturnType``.
-    Returns the type name only if it is a simple identifier (no generics,
-    no nullable ``?`` suffix). Returns None for Unit return type (which is
-    already omitted from the signature by ``_extract_kotlin_signature``).
+    Returns the type name only if it is a simple identifier; Tier 2
+    (WI-jujup) strips the nullable ``?`` suffix so the underlying type
+    still drives ``var_types`` inference at call sites. Returns None
+    for ``Unit`` return type (which is already omitted from the
+    signature by ``_extract_kotlin_signature``).
 
     Examples:
         ``"(): ServiceClient"`` → ``"ServiceClient"``
         ``"(name: String): User"`` → ``"User"``
+        ``"(): User?"`` → ``"User"`` (WI-jujup nullable strip)
         ``"()"`` → ``None``
         ``"(): List<String>"`` → ``None``
-        ``"(): String?"`` → ``None``
     """
     if not signature:
         return None
@@ -423,6 +425,11 @@ def _extract_kotlin_return_type_name(signature: str | None) -> str | None:
     if not after_paren.startswith(":"):
         return None
     ret_part = after_paren[1:].strip()
+    # WI-jujup Tier 2 escape hatch: strip the nullable ``?`` suffix.
+    # ``Foo?`` is structurally ``Foo``; downstream ``class_symbols``
+    # lookup gates on the bare type anyway.
+    if ret_part.endswith("?"):
+        ret_part = ret_part[:-1].rstrip()
     if ret_part and ret_part.isidentifier():
         return ret_part
     return None

@@ -1268,11 +1268,24 @@ class TestKotlinReturnTypeExtraction:
 
         assert _extract_kotlin_return_type_name("(): List<String>") is None
 
-    def test_nullable_return_type(self) -> None:
-        """Returns None for nullable return types (String?)."""
+    def test_nullable_return_type_strips_question_mark(self) -> None:
+        """WI-jujup Tier 2: nullable suffix is stripped so the underlying
+        type still drives var_types inference. Pre-WI-jujup this returned
+        None, dropping the receiver type for any user-class return that
+        happened to be declared nullable.
+        """
         from hypergumbo_lang_mainstream.kotlin import _extract_kotlin_return_type_name
 
-        assert _extract_kotlin_return_type_name("(): String?") is None
+        # Nullable user class: ``Foo?`` → ``Foo`` (downstream var_types
+        # tracks the non-null type; null-handling is a separate concern).
+        assert _extract_kotlin_return_type_name("(): User?") == "User"
+
+        # Nullable still ignores primitive-looking lowercase names because
+        # those wouldn't appear in class_symbols anyway, but we should
+        # still strip the suffix so the value is at least an identifier.
+        # Kotlin convention: type names start with uppercase, so a
+        # lowercase result is filtered out via isidentifier()+title-check.
+        assert _extract_kotlin_return_type_name("(): Result?") == "Result"
 
 class TestKotlinThisMethodCalls:
     """Tests for this.method() call resolution."""

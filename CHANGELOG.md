@@ -16,6 +16,10 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Changed
 
+#### Receiver-type inference — Kotlin / C# (INV-dihos Phase 2)
+
+- **WI-jujup — Kotlin nullable strip + C# async unwrap.** Phase 2 of the ADR-0006 Return-Type Registry program (Phase 1 / WI-kuroj shipped Java + Go on 2026-04-09). Kotlin's `_extract_kotlin_return_type_name` now strips the nullable `?` suffix so methods returning `User?` propagate `User` into `var_types`; previously these were dropped, breaking chained-receiver resolution on every nullable getter. C#'s `_extract_csharp_return_type_name` now unwraps the async wrapper types `Task<T>` / `ValueTask<T>` / `IAsyncEnumerable<T>` to the inner `T` — the C# `await` operator dereferences the wrapper at the call site, so `var x = await SomeAsync()` should bind `x` to the awaited type, not to `Task`. Bare wrapper-only returns (`Task` without generic argument) stay None so we don't accidentally bind a variable to the wrapper name. 5 new Tier 2 escape-hatch tests across `test_kotlin.py` and `test_csharp.py`; 100% coverage maintained.
+
 #### FFI bridge coverage — N-API template forms
 
 - **WI-vozad — node-addon-api template-argument bindings.** The N-API linker (`linkers/napi.py`) only matched function-argument forms of `Napi::Function::New(env, F)`, `InstanceMethod("name", &C::M)`, and `StaticMethod("name", &C::M)`. Modern node-addon-api projects increasingly use the template-argument forms — `Napi::Function::New<F>(env)`, `InstanceMethod<&C::M>("name")`, `StaticMethod<&C::M>("name")` — and `InstanceAccessor("name", &Getter, &Setter)` for property bindings. Four new regex patterns + scanner integration; 4 new property tests; 100% coverage maintained. Caveat: the tracker filed this against `better-sqlite3` as the canonical fixture, but that project uses the legacy V8 direct API (`v8::FunctionTemplate::New`, not N-API at all); the template-form coverage gap is independent of that misdiagnosis and applies to genuine node-addon-api consumers (sharp, canvas, etc.). better-sqlite3's V8-direct bindings remain unbridged and would need a separate linker.

@@ -992,6 +992,35 @@ class TestCSharpReturnTypeExtraction:
 
         assert _extract_csharp_return_type_name("() List<string>") is None
 
+    def test_async_task_unwraps(self) -> None:
+        """WI-jujup Tier 2: ``Task<T>`` unwraps to ``T``.
+
+        C# async methods return ``Task<T>``/``ValueTask<T>``; the call
+        site's ``await`` operator dereferences to the inner ``T``. Without
+        unwrapping, the var_types entry was the bare ``Task`` which never
+        appears in ``class_symbols`` and so dropped the chain.
+        """
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        assert _extract_csharp_return_type_name("() Task<User>") == "User"
+        assert _extract_csharp_return_type_name("() ValueTask<Order>") == "Order"
+        assert _extract_csharp_return_type_name("() IAsyncEnumerable<Item>") == "Item"
+
+    def test_async_task_non_user_type_stays_filtered(self) -> None:
+        """``Task<string>`` unwraps to ``string`` which is then filtered."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        # Inner type is a primitive — extractor returns None per the
+        # uppercase-identifier filter that gates non-user-class types.
+        assert _extract_csharp_return_type_name("() Task<int>") is None
+
+    def test_bare_task_stays_none(self) -> None:
+        """``Task`` (non-generic) returns None — no inner type to unwrap."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        # ``Task`` alone is an async-void; no user-class type to bind.
+        assert _extract_csharp_return_type_name("() Task") is None
+
 
 class TestCSharpCrossFileResolution:
     """Tests for cross-file symbol resolution."""
