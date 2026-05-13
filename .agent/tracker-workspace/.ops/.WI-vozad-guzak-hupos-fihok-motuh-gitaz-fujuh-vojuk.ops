@@ -19,3 +19,20 @@
     pr_ref:  # 90a0
     description: "The Bridge-subcategory NAPI linker (packages/hypergumbo-core/src/hypergumbo_core/linkers/napi.py) recognizes napi-rs derive-macro style bindings (Rust → JS via the napi crate) but not the older / more common node-gyp + binding.gyp + manual N-API C++ pattern. Bakeoff cohort-002 in ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260501-125217 surfaced this: better-sqlite3 (12.5MB, the canonical N-API binding example for SQLite) produced 23,736 edges total but ZERO with meta['bridge_kind']='napi' or any other bridge_kind. By contrast, go-sqlite3 in the same cohort produced 116 edges of edge_type='calls' + meta['bridge_kind']='cgo' — so the cgo path is wired correctly; only the NAPI side has the gap.\n\nREPRO TARGET: ~/curriculum_repos/better-sqlite3 (or any node-gyp NAPI binding project). Look for cross-language calls between the JS layer (lib/, src/index.js) and the C++ layer (src/*.cc, *.h). Expected behavior: edges with edge_type='calls' + meta['bridge_kind']='napi' connecting the JS function calling into the C++ binding to the NAPI export function in the .cc file.\n\nTHE PATTERN TO ADD (based on better-sqlite3's structure):\n- binding.gyp at repo root declares C++ source files and exports\n- src/*.cc files use NAPI_MODULE_INIT() macro and napi_create_function() to expose C++ functions\n- lib/index.js does require('bindings')('better_sqlite3.node') to load the compiled addon\n- JS-side calls into the loaded module map to NAPI export names in the .cc files\n\nThe fold target per ADR-0023 §6 Phase 3 (WI-mifor-vabul, validated in cohort-20260501-125217) is canonical: edges should be edge_type='calls' + meta['bridge_kind']='napi'. The fold table is settled; this item is purely about teaching the linker to recognize the binding shape.\n\nDISCOVERY CONTEXT: surfaced as a coverage caveat during ADR-0023 §6 Phase 3 bakeoff validation (deep-20260501-125217). Both go-sqlite3 (cgo) and better-sqlite3 (NAPI) were chosen as bridge_kind targets to demonstrate the meta-key actually differentiates fold flavors; cgo confirmed cleanly (116 edges) but NAPI did not because the linker doesn't know this binding pattern. This is a pre-existing limitation, not a regression from Phase 3.\n\nACCEPTANCE:\n- Re-running hypergumbo on better-sqlite3 produces N>0 edges of type='calls' with meta['bridge_kind']='napi' connecting JS→C++ across the binding boundary.\n- Property test: a synthetic node-gyp project with 1 NAPI export produces at least 1 such edge.\n- The cgo path (go-sqlite3) continues to produce its 116 edges — no regression.\n- Tag awaits_bakeoff_validation per AGENTS.md §Bakeoff Validation Discipline if the implementation produces a quantitative claim.\n\nDEPENDENCIES: none. Independent of any in-flight ADR work.\n\nOUT OF SCOPE: napi-rs (already covered), Neon (separate Rust→Node binding ecosystem), N-API / Node-API on Windows-specific quirks."  # 90a0
     fields: {}  # 90a0
+- op: update  # 46f0
+  at: '2026-05-13T22:54:09Z'  # 46f0
+  by: agent  # 46f0
+  actor: jgstern_agent  # 46f0
+  clock: 2  # 46f0
+  nonce: 46f0  # 46f0
+  set:  # 46f0
+    status: done  # 46f0
+  add:  # 46f0
+    tags: [awaits_bakeoff_validation]  # 46f0
+- op: discuss  # 84c9
+  at: '2026-05-13T22:54:09Z'  # 84c9
+  by: agent  # 84c9
+  actor: jgstern_agent  # 84c9
+  clock: 3  # 84c9
+  nonce: 84c9  # 84c9
+  message: "Shipped via PR (merged via fast-forward, commit 1d24981). Added 4 template-form regexes (Napi::Function::New<F>, InstanceMethod<&C::M>, StaticMethod<&C::M>, InstanceAccessor) to napi.py. 4 new property tests; 100% coverage. CAVEAT: tracker's better-sqlite3 fixture is V8-direct (not N-API). Real N-API consumers (sharp, canvas, …) benefit. better-sqlite3's V8-direct bindings remain unbridged and would require a separate v8_bindings.py linker."  # 84c9

@@ -54,3 +54,20 @@
   clock: 5  # a1af
   nonce: a1af  # a1af
   message: "Fix inverted INV-dihos phase chain: Phase 2 (this) should block Phase 3 (titor), not Phase 1 (kuroj). Phase 1 is already done."  # a1af
+- op: update  # d82b
+  at: '2026-05-13T23:16:11Z'  # d82b
+  by: agent  # d82b
+  actor: jgstern_agent  # d82b
+  clock: 6  # d82b
+  nonce: d82b  # d82b
+  set:  # d82b
+    status: done  # d82b
+  add:  # d82b
+    tags: [awaits_bakeoff_validation]  # d82b
+- op: discuss  # 9998
+  at: '2026-05-13T23:16:11Z'  # 9998
+  by: agent  # 9998
+  actor: jgstern_agent  # 9998
+  clock: 7  # 9998
+  nonce: '9998'  # 9998
+  message: "Shipped via PR (commit 7fb80c3). Kotlin nullable suffix strip + C# async wrapper unwrap (Task<T>, ValueTask<T>, IAsyncEnumerable<T>). 5 new tests; 100% coverage. kserve/aspnet bakeoff validation pending."  # 9998

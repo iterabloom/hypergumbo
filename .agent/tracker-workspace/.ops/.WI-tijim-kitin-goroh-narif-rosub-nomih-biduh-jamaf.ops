@@ -79,3 +79,27 @@
   clock: 9  # 610a
   nonce: 610a  # 610a
   message: "Post-ADR-0023 reframe (Phase 4b, fully landed): ffi_bridge was removed from EDGE_TYPES in the bridge-family fold (WI-mifor-vabul cohort). PyO3 edges must be canonical edge_type='calls' + meta['bridge_kind']='pyo3'; the strict-mode drift linter would reject ffi_bridge in pre-commit. Per ADR-0028 (also fully landed): unresolved Rust-side targets should set Edge.is_resolved=False (ir.py:399) plus a canonical inference label from evidence_types_on_axis(AXIS_INFERENCE_PATHWAY), rather than an *_unresolved evidence_type. The implementation work (detect #[pyclass]/#[pymethods] patterns; link Python callers to Rust IO via the bridge) is unchanged; only the emit shape moves to the post-axis-closure vocabulary."  # 610a
+- op: update  # ac6f
+  at: '2026-05-13T22:26:09Z'  # ac6f
+  by: agent  # ac6f
+  actor: jgstern_agent  # ac6f
+  clock: 10  # ac6f
+  nonce: ac6f  # ac6f
+  set:  # ac6f
+    status: done  # ac6f
+- op: discuss  # 0a0d
+  at: '2026-05-13T22:26:10Z'  # 0a0d
+  by: agent  # 0a0d
+  actor: jgstern_agent  # 0a0d
+  clock: 11  # 0a0d
+  nonce: 0a0d  # 0a0d
+  message: "Shipped via PR #3692 (commit 580528c). Rust analyzer propagates impl-block annotations (e.g. #[pymethods]) to inner methods; pyffi.py recognizes both bare (#[pyfunction]) and path-qualified (#[pyo3::pyfunction]) marker spellings. 6 new tests; 100% coverage. Robyn pre→post coverage delta is bakeoff-validation pending — tagging awaits_bakeoff_validation."  # 0a0d
+- op: update  # 5059
+  at: '2026-05-13T22:26:18Z'  # 5059
+  by: agent  # 5059
+  actor: jgstern_agent  # 5059
+  clock: 12  # 5059
+  nonce: '5059'  # 5059
+  set: {}  # 5059
+  add:  # 5059
+    tags: [awaits_bakeoff_validation]  # 5059

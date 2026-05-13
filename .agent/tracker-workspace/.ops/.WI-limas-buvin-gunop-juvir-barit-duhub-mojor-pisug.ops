@@ -34,3 +34,18 @@
   set: {}  # b893
   add:  # b893
     tags: [analysis_quality, framework_patterns]  # b893
+- op: update  # de62
+  at: '2026-05-13T21:45:18Z'  # de62
+  by: agent  # de62
+  actor: jgstern_agent  # de62
+  clock: 4  # de62
+  nonce: de62  # de62
+  set:  # de62
+    status: done  # de62
+- op: discuss  # dabd
+  at: '2026-05-13T21:45:18Z'  # dabd
+  by: agent  # dabd
+  actor: jgstern_agent  # dabd
+  clock: 5  # dabd
+  nonce: dabd  # dabd
+  message: "Pattern.meta_match field shipped in PR #3691 (commit 2523cf0). 11 broken YAML rules migrated across config-conventions.yaml (npm_dev_dependency, npm_script, typescript_config, composer_dependency, cargo_dev_dependency, cargo_build_dependency, cargo_workspace_member, cargo_library, pyproject_script, poetry_dev_dependency) and language-conventions.yaml (build_rule). Producer toml_config.py emits meta[\"dependency_scope\"] for cargo dev/build deps. 18 unit + per-rule pinning tests; 100% coverage. Three producer-side folds deferred to follow-ups: WI-razus (Android activity/service/receiver/provider → component+meta), WI-vibaz (CUDA kernel/device_function/host_device_function → function+cuda_execution_space meta), WI-jujoj (Solidity contract — needs ADR-0027 verdict)."  # dabd

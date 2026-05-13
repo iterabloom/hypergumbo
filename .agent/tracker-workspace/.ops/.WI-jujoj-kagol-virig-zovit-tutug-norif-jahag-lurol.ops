@@ -1,0 +1,20 @@
+- op: create  # ae85
+  at: '2026-05-13T21:14:22Z'  # ae85
+  by: agent  # ae85
+  actor: jgstern_agent  # ae85
+  clock: 1  # ae85
+  nonce: ae85  # ae85
+  data:  # ae85
+    kind: work_item  # ae85
+    title: "Solidity kind=\"contract\" + interface canonicalization (ADR-0027 verdict needed)"  # ae85
+    status: todo_hard  # ae85
+    priority: 3  # ae85
+    parent:  # ae85
+    tags:  # ae85
+    - analysis_quality  # ae85
+    isbefore: []  # ae85
+    duplicate_of: []  # ae85
+    not_duplicate_of: []  # ae85
+    pr_ref:  # ae85
+    description: "WI-limas surfaced that solidity.py emits kind=\"contract\" (solidity.py:265) but \"contract\" is not in the canonical SYMBOL_KINDS registry post-ADR-0027 Phase 4b. The library-exports.yaml rule for Solidity contract was listed in the WI-limas description as broken.\n\nTwo paths:\n1. ADD \"contract\" to the canonical registry. Per ADR-0027 §1, Symbol.kind names a source-language syntactic construct — \"contract\" is exactly that for Solidity (sibling to \"class\" / \"interface\" / \"struct\"). The honest fix is to add SymbolKindSpec(\"contract\", AXIS_LANGUAGE_CONSTRUCT, \"Smart-contract declaration (Solidity / Vyper / Move).\") to symbol_kinds.py.\n2. FOLD \"contract\" onto an existing canonical kind (e.g., \"class\" + meta[\"contract_kind\"]=\"contract\"). Less honest — Solidity contracts are not classes.\n\nRecommend path 1 (canonical addition). Once added, the library-exports YAML rule 'symbol_kind: ^contract$' is no longer broken (matches the now-canonical kind).\n\nAlso note: solidity.py:272 emits kind=\"interface\" which IS canonical, so that rule is OK.\n\nFiled as follow-up to WI-limas. Bridges ADR-0027 territory — Symbol.kind canonical registry decisions belong in the ADR governance flow, not in a YAML migration PR."  # ae85
+    fields: {}  # ae85
