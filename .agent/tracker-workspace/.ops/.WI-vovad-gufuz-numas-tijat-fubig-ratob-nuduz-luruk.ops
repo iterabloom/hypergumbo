@@ -20,3 +20,19 @@
     pr_ref:  # 2cbf
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1407.md 'A plausible integration shape' §5: add a curated Rust-workspace cohort to BROAD-mode bakeoff to validate the rust-analyzer-backed analyzer against the tree-sitter baseline.\n\n**Candidate cohort** (suggested in the notebook, adjust as needed):\n- ripgrep\n- axum\n- swc\n- cargo (itself)\n\n**Metrics to compare** (same shape as other linker bakeoffs):\n- edge count delta (rust-analyzer vs rust.py tree-sitter)\n- confidence distribution shift\n- slice quality on known-good entry points\n- wall-clock time (first run and cached)\n- peak memory\n\n**Expected direction:** more edges, higher confidence, modest wall-clock penalty, higher memory. A large drop in edge count or confidence is a red flag that the SCIP translation is lossy.\n\nStore cohort under ~/hypergumbo_lab_notebook/curricula/rust-analyzer-validation.md.\n\nBlocked on the hypergumbo-lang-rust-analyzer package scaffold being runnable end-to-end."  # 2cbf
     fields: {}  # 2cbf
+- op: update  # 85ff
+  at: '2026-05-13T19:31:14Z'  # 85ff
+  by: agent  # 85ff
+  actor: jgstern_agent  # 85ff
+  clock: 2  # 85ff
+  nonce: 85ff  # 85ff
+  set: {}  # 85ff
+  add:  # 85ff
+    tags: [someday]  # 85ff
+- op: discuss  # 31a7
+  at: '2026-05-13T19:31:14Z'  # 31a7
+  by: agent  # 31a7
+  actor: jgstern_agent  # 31a7
+  clock: 3  # 31a7
+  nonce: 31a7  # 31a7
+  message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: bakeoff orchestration; out of plan scope."  # 31a7

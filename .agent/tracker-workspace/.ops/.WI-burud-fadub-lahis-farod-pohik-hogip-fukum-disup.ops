@@ -19,3 +19,19 @@
     pr_ref:  # bc6b
     description: "Per ~/hypergumbo_lab_notebook/notebookjournal_04072026_1407.md 'Concrete wins' §7 and 'A plausible integration shape' §4: update the five Rust-touching cross-language linkers to consume higher-fidelity symbols from the rust-analyzer backend when it has run, and fall back to their existing string-matching paths otherwise.\n\n**Linkers to update** (all under packages/hypergumbo-core/src/hypergumbo_core/linkers/):\n- tauri_ipc.py — invoke() ↔ #[tauri::command]\n- wasm_bindgen.py — #[wasm_bindgen] ↔ JS imports (mostly proc-macro, biggest win)\n- napi.py — N-API bindings (mostly proc-macro, biggest win)\n- jni.py — JNIEXPORT ↔ Java native methods\n- cgo.py — Go cgo ↔ C symbols\n\n**Join key:** when rust-analyzer is the analyzer, use the macro-expanded, mangling-aware symbol name from SCIP. When rust.py is the analyzer, keep existing string-join. The linker must not assume which backend ran — check for a backend marker on the Rust symbols.\n\n**Success criterion:** on repos with proc-macro-heavy Rust (Tauri apps, wasm-bindgen web apps, NAPI packages), edge counts for these linkers should increase and confidence should rise. Verify via the rust-analyzer bakeoff cohort.\n\nBlocked on the hypergumbo-lang-rust-analyzer package scaffold producing runnable output with SCIP symbol IDs on symbol nodes."  # bc6b
     fields: {}  # bc6b
+- op: update  # c68d
+  at: '2026-05-13T19:31:15Z'  # c68d
+  by: agent  # c68d
+  actor: jgstern_agent  # c68d
+  clock: 2  # c68d
+  nonce: c68d  # c68d
+  set: {}  # c68d
+  add:  # c68d
+    tags: [someday]  # c68d
+- op: discuss  # 3d2c
+  at: '2026-05-13T19:31:15Z'  # 3d2c
+  by: agent  # 3d2c
+  actor: jgstern_agent  # 3d2c
+  clock: 3  # 3d2c
+  nonce: 3d2c  # 3d2c
+  message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: blocked on hypergumbo-lang-rust-analyzer scaffold producing runnable output."  # 3d2c

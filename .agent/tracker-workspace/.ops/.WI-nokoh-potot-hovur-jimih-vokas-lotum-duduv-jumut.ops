@@ -64,3 +64,19 @@
   clock: 7  # e3bb
   nonce: e3bb  # e3bb
   message: "Acknowledged — good call. Current state of the four referenced items:\n\n- WI-zakub (SCIP feasibility spike): done (notebookjournal_04072026_1407.md + Phase-1 findings baked into the shim's scope notes)\n- WI-bajuz (SCIP→rust.py stable_id mapping helper): done, PR #3160 (commit ccf60c39f)\n- WI-duzul (rust-analyzer package scaffold): still todo_soft P2\n- WI-mafut (SCIP → hypergumbo IR translation shim): still todo_soft P2\n\nSo 2/4 done, 2/4 pending. I'll re-open this item for review once WI-duzul and WI-mafut land — at that point we'll have both a working per-language integration shape AND a runtime-proven shim design, which are the two things the generalization sketch needs to observe before recommending a unified vs. per-language approach. Keeping at P4 for now."  # e3bb
+- op: update  # 7500
+  at: '2026-05-13T19:31:14Z'  # 7500
+  by: agent  # 7500
+  actor: jgstern_agent  # 7500
+  clock: 8  # 7500
+  nonce: '7500'  # 7500
+  set: {}  # 7500
+  add:  # 7500
+    tags: [someday]  # 7500
+- op: discuss  # 8c03
+  at: '2026-05-13T19:31:14Z'  # 8c03
+  by: agent  # 8c03
+  actor: jgstern_agent  # 8c03
+  clock: 9  # 8c03
+  nonce: 8c03  # 8c03
+  message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: blocked on Rust-analyzer backend + SCIP shim being operational; investigative."  # 8c03

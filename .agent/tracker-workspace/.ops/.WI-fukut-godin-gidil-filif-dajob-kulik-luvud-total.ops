@@ -44,3 +44,19 @@
   clock: 4  # ac39
   nonce: ac39  # ac39
   message: "ADR-0028 (fully landed) shipped Edge.is_resolved at ir.py:399 with default True. Cross-linker integration consuming resolution state — the Phase 5 deliverable for the Return-Type Registry — is no longer gated on any ADR work. Deliverables (1) type_hierarchy fallback for ambiguous receivers and (2) dataflow refinement for chained call access_mode can both read edge.is_resolved directly rather than parsing *_unresolved evidence strings. The 'only after Phases 1-4 are validated against deep-bakeoff metrics' gate still applies (this item is OPTIONAL by design), but the ADR-side prerequisites are clear."  # ac39
+- op: update  # 1d48
+  at: '2026-05-13T19:31:14Z'  # 1d48
+  by: agent  # 1d48
+  actor: jgstern_agent  # 1d48
+  clock: 5  # 1d48
+  nonce: 1d48  # 1d48
+  set: {}  # 1d48
+  add:  # 1d48
+    tags: [someday]  # 1d48
+- op: discuss  # e025
+  at: '2026-05-13T19:31:14Z'  # e025
+  by: agent  # e025
+  actor: jgstern_agent  # e025
+  clock: 6  # e025
+  nonce: e025  # e025
+  message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: optional follow-on; Phase 4 prerequisite."  # e025

@@ -52,3 +52,19 @@
   clock: 5  # 822a
   nonce: 822a  # 822a
   message: "pf-prelim pivot: no Go in pf-prelim. Deferred P3→P4."  # 822a
+- op: update  # f3d7
+  at: '2026-05-13T19:31:15Z'  # f3d7
+  by: agent  # f3d7
+  actor: jgstern_agent  # f3d7
+  clock: 6  # f3d7
+  nonce: f3d7  # f3d7
+  set: {}  # f3d7
+  add:  # f3d7
+    tags: [someday]  # f3d7
+- op: discuss  # aae7
+  at: '2026-05-13T19:31:15Z'  # aae7
+  by: agent  # aae7
+  actor: jgstern_agent  # aae7
+  clock: 7  # aae7
+  nonce: aae7  # aae7
+  message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: author's framing is quality/precision improvement (not correctness fix); schedule when slice quality work resurfaces."  # aae7
