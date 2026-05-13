@@ -1,0 +1,20 @@
+- op: create  # c807
+  at: '2026-05-13T21:13:25Z'  # c807
+  by: agent  # c807
+  actor: jgstern_agent  # c807
+  clock: 1  # c807
+  nonce: c807  # c807
+  data:  # c807
+    kind: work_item  # c807
+    title: "CUDA kind fold: kernel/device_function/host_device_function to canonical kind"  # c807
+    status: todo_hard  # c807
+    priority: 3  # c807
+    parent:  # c807
+    tags:  # c807
+    - analysis_quality  # c807
+    isbefore: []  # c807
+    duplicate_of: []  # c807
+    not_duplicate_of: []  # c807
+    pr_ref:  # c807
+    description: "WI-limas surfaced that cuda.py emits kind=\"kernel\" / \"device_function\" / \"host_device_function\" (cuda.py:137-148, _determine_function_kind), but none of those values exist in the canonical SYMBOL_KINDS registry post-ADR-0027 Phase 4b. The corresponding YAML rules in language-conventions.yaml ('global', 'device', 'host') were broken pre-WI-limas and are still broken (WI-limas deferred them).\n\nProposed shape: kind=\"function\" + meta[\"cuda_execution_space\"]=\"global\"/\"device\"/\"host_device\"/\"host\". \"function\" IS canonical. Then YAML rules in language-conventions.yaml migrate from 'symbol_kind: ^global$' to 'symbol_kind: ^function$' + meta_match: {cuda_execution_space: ^global$} (now possible via WI-limas's meta_match field).\n\nProducer side: cuda.py:_determine_function_kind returns the kind; rewrite to return (\"function\", execution_space_meta_value) tuple and have the caller populate meta. The producer is fairly small.\n\nTests: existing test_cuda_analyzer.py tests assert kind values directly; those need updating. Plus 3 new YAML pinning tests in TestLanguageConventionsMigratedRules.\n\nFiled as follow-up to WI-limas's narrow YAML migration scope."  # c807
+    fields: {}  # c807
