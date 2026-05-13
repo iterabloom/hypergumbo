@@ -196,15 +196,26 @@ def _process_toml_tree(
                 )
             )
 
-            # Process dependencies if this is a dependency table
+            # Process dependencies if this is a dependency table.
+            # WI-limas: dev-dependencies and build-dependencies fold to
+            # kind="dependency" + meta["dependency_scope"] = "dev" / "build".
+            # The bare "dev-dependency" / "build-dependency" symbol_kind
+            # values never landed in the canonical registry post-ADR-0027.
             if is_cargo and table_name in (
                 "dependencies",
                 "dev-dependencies",
                 "build-dependencies",
             ):
-                _extract_cargo_dependencies(node, rel_path, symbols, content)
+                _DEP_SCOPE = {
+                    "dependencies": None,
+                    "dev-dependencies": "dev",
+                    "build-dependencies": "build",
+                }
+                _extract_cargo_dependencies(
+                    node, rel_path, symbols, content, _DEP_SCOPE[table_name],
+                )
             elif is_cargo and table_name.endswith(".dependencies"):  # pragma: no cover - nested deps
-                _extract_cargo_dependencies(node, rel_path, symbols, content)  # pragma: no cover
+                _extract_cargo_dependencies(node, rel_path, symbols, content, None)  # pragma: no cover
             elif is_pyproject and table_name == "project":
                 _extract_pyproject_dependencies(node, rel_path, symbols, content)
             # Process pyproject.toml [project.scripts] and [project.gui-scripts]
@@ -406,9 +417,19 @@ def analyze_toml_files(root: Path) -> AnalysisResult:
 
 
 def _extract_cargo_dependencies(
-    table_node, rel_path: str, symbols: list[Symbol], content: str
+    table_node, rel_path: str, symbols: list[Symbol], content: str,
+    scope: str | None = None,
 ):
-    """Extract dependencies from a Cargo.toml dependencies table."""
+    """Extract dependencies from a Cargo.toml dependencies table.
+
+    ``scope`` carries the axis-meta value that the YAML
+    ``config-conventions.yaml`` rules consume via ``meta_match`` — the
+    Wave 6 fold collapsed kind="dev-dependency" / "build-dependency" onto
+    a single canonical kind="dependency" with ``meta["dependency_scope"]``
+    naming the table the entry lives in (``dev``, ``build``, or absent
+    for production dependencies). WI-limas wired the producer side here
+    so the YAML side could migrate off the legacy bare-kind regexes.
+    """
     for child in table_node.children:
         if child.type == "pair":
             dep_name = None
@@ -423,6 +444,7 @@ def _extract_cargo_dependencies(
                 symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, dep_name, "dependency")
                 node_bytes = content[child.start_byte : child.end_byte].encode()
 
+                meta = {"dependency_scope": scope} if scope else None
                 symbols.append(
                     Symbol(
                         id=symbol_id,
@@ -441,6 +463,7 @@ def _extract_cargo_dependencies(
                             end_col=child.end_point[1],
                         ),
                         origin=PASS_ID,
+                        meta=meta,
                     )
                 )
 

@@ -170,6 +170,16 @@ class Pattern:
             (ADR-0027 Phase 3 fold residue — see audit-findings 0013). Use this
             field for framework-participation patterns (route, event_publisher,
             websocket_endpoint, …) instead of overloading ``symbol_kind``.
+        meta_match: Dict of ``Symbol.meta`` key → regex pattern. Each key must
+            be present in ``Symbol.meta`` and its string-coerced value must
+            match the regex. WI-limas wired this in to re-bind Wave 6 / ADR-0027
+            fold rules (devDependency → kind="dependency" + meta["dependency_scope"]="dev",
+            tsconfig → kind="file" + meta["config_format"]="tsconfig", etc.)
+            that previously hardcoded the post-fold meta value into ``symbol_kind``.
+            framework_role has its own dedicated field because the framework_role
+            axis predates this generic mechanism and has bespoke per-pattern-type
+            interaction with symbol_name; meta_match handles every other
+            ADR-0027 fold-residue axis uniformly.
         modifiers: Regex pattern requiring at least one modifier to match (positive filter)
         modifiers_exclude: Regex pattern to reject symbols with matching modifiers
         symbol_path: Regex pattern to match against symbol's file path (search, not match)
@@ -191,6 +201,7 @@ class Pattern:
     parameter_type: str | None = None
     symbol_kind: str | None = None
     framework_role: str | None = None
+    meta_match: dict[str, str] | None = None
     extract_path: str | None = None
     extract_method: str | None = None
     prefix_from_parent: str | None = None
@@ -260,6 +271,36 @@ class Pattern:
         self._symbol_path_re = (
             re.compile(self.symbol_path) if self.symbol_path else None
         )
+        # WI-limas: compile per-key meta_match regexes. Values that don't
+        # appear on Symbol.meta (or whose values fail to match) yield no
+        # match, mirroring framework_role semantics.
+        self._meta_match_re: dict[str, re.Pattern] | None = (
+            {key: re.compile(pat) for key, pat in self.meta_match.items()}
+            if self.meta_match
+            else None
+        )
+
+    def _meta_match_ok(self, symbol: Symbol) -> tuple[bool, dict[str, str]]:
+        """Check whether ``self.meta_match`` constraints all match.
+
+        Returns ``(ok, matched_pairs)``. When no meta_match is declared the
+        result is ``(True, {})`` (vacuously satisfied).
+        """
+        if not self._meta_match_re:
+            return True, {}
+        meta = symbol.meta or {}
+        matched: dict[str, str] = {}
+        for key, regex in self._meta_match_re.items():
+            if key not in meta:
+                return False, {}
+            value = meta[key]
+            if value is None:
+                return False, {}
+            value_str = str(value)
+            if not regex.match(value_str):
+                return False, {}
+            matched[key] = value_str
+        return True, matched
 
     def _check_filters(self, symbol: Symbol) -> bool:
         """Check language, path, and modifier filters.
@@ -422,14 +463,21 @@ class Pattern:
                     # Only symbol_name specified, and it matches
                     return [result]
 
-        # Try symbol_kind / framework_role match (alone, without any other
-        # specific match field). If decorator / base_class / annotation /
-        # param_type were specified but didn't match above, we must NOT fall
-        # through to symbol_kind-only matching — those fields are AND
-        # conditions, not independent alternatives. Both symbol_kind and
-        # framework_role can be specified together (AND).
+        # Try symbol_kind / framework_role / meta_match match (alone,
+        # without any other specific match field). If decorator / base_class
+        # / annotation / param_type were specified but didn't match above,
+        # we must NOT fall through to symbol_kind-only matching — those
+        # fields are AND conditions, not independent alternatives.
+        # symbol_kind / framework_role / meta_match can be specified
+        # together (AND). meta_match alone is also a valid match shape:
+        # WI-limas yaml rules of the form "all symbols with meta key X
+        # whose value matches /regex/" don't need a symbol_kind clause.
         if (
-            (self._symbol_kind_re or self._framework_role_re)
+            (
+                self._symbol_kind_re
+                or self._framework_role_re
+                or self._meta_match_re
+            )
             and not self._symbol_name_re
             and not self._parent_base_class_re
             and not self._method_name_re
@@ -448,11 +496,14 @@ class Pattern:
                 or (framework_role is not None
                     and self._framework_role_re.match(framework_role) is not None)
             )
-            if kind_ok and role_ok:
+            meta_ok, matched_meta = self._meta_match_ok(symbol)
+            if kind_ok and role_ok and meta_ok:
                 if self._symbol_kind_re:
                     result["matched_symbol_kind"] = symbol.kind
                 if self._framework_role_re:
                     result["matched_framework_role"] = framework_role
+                if self._meta_match_re:
+                    result["matched_meta"] = matched_meta
                 return [result]
 
         # Try parent_base_class + method_name combined match (for lifecycle hooks)
@@ -812,6 +863,7 @@ class FrameworkPatternDef:
                 parameter_type=p.get("parameter_type"),
                 symbol_kind=p.get("symbol_kind"),
                 framework_role=p.get("framework_role"),
+                meta_match=p.get("meta_match"),
                 modifiers=p.get("modifiers"),
                 modifiers_exclude=p.get("modifiers_exclude"),
                 symbol_path=p.get("symbol_path"),

@@ -18,15 +18,22 @@ patterns:
     symbol_kind: "^dependency$"
     language: "^json$"
 
-  # NPM dev dependencies
+  # NPM dev dependencies (WI-limas: Wave 6 fold — kind="dependency" +
+  # meta["dependency_scope"]="dev"; previously kind="devDependency")
   - concept: npm_dev_dependency
-    symbol_kind: "^devDependency$"
+    symbol_kind: "^dependency$"
     language: "^json$"
+    meta_match:
+      dependency_scope: "^dev$"
 
   # NPM scripts are potential entry points (npm run <script>)
+  # WI-limas: post-fold the json_config producer emits kind="file" +
+  # meta["entry_role"]="script"; the legacy "^script$" kind never landed.
   - concept: npm_script
-    symbol_kind: "^script$"
+    symbol_kind: "^file$"
     language: "^json$"
+    meta_match:
+      entry_role: "^script$"
 
   # NPM bin entries are CLI entry points (executables installed globally)
   - concept: npm_bin
@@ -44,14 +51,24 @@ patterns:
     language: "^json$"
 
   # TypeScript config
+  # WI-limas: post-fold producer emits kind="file" + meta["config_format"]="tsconfig"
+  # per audit-findings 0005 (composite-config DEPRECATE-NO-FOLD). The legacy
+  # "^tsconfig$" symbol_kind never landed in the canonical registry.
   - concept: typescript_config
-    symbol_kind: "^tsconfig$"
+    symbol_kind: "^file$"
     language: "^json$"
+    meta_match:
+      config_format: "^tsconfig$"
 
   # Composer (PHP) packages
+  # WI-limas: post-fold producer emits kind="package" + meta["package_ecosystem"]="composer"
+  # (json_config.py:837-848). The legacy "^composer_package$" symbol_kind never
+  # landed in the canonical registry.
   - concept: composer_dependency
-    symbol_kind: "^composer_package$"
+    symbol_kind: "^package$"
     language: "^json$"
+    meta_match:
+      package_ecosystem: "^composer$"
 
   # ====== Maven/Android (xml_config.py) ======
   # Maven dependencies
@@ -95,24 +112,32 @@ patterns:
     symbol_kind: "^dependency$"
     language: "^toml$"
 
-  # Cargo dev dependencies
+  # Cargo dev dependencies (WI-limas: producer toml_config.py emits
+  # kind="dependency" + meta["dependency_scope"]="dev" for [dev-dependencies];
+  # the bare "^dev-dependency$" kind was never canonical.)
   - concept: cargo_dev_dependency
-    symbol_kind: "^dev-dependency$"
+    symbol_kind: "^dependency$"
     language: "^toml$"
+    meta_match:
+      dependency_scope: "^dev$"
 
-  # Cargo build dependencies
+  # Cargo build dependencies (WI-limas: producer emits
+  # kind="dependency" + meta["dependency_scope"]="build" for [build-dependencies].)
   - concept: cargo_build_dependency
-    symbol_kind: "^build-dependency$"
+    symbol_kind: "^dependency$"
     language: "^toml$"
+    meta_match:
+      dependency_scope: "^build$"
 
   # Cargo package definition
   - concept: cargo_package
     symbol_kind: "^package$"
     language: "^toml$"
 
-  # Cargo workspace member
+  # Cargo workspace member (WI-limas: producer emits kind="workspace" for
+  # [workspace] tables — the legacy "^workspace-member$" kind never landed.)
   - concept: cargo_workspace_member
-    symbol_kind: "^workspace-member$"
+    symbol_kind: "^workspace$"
     language: "^toml$"
 
   # Cargo binary target (analyzer creates kind="binary" for [[bin]] sections)
@@ -120,26 +145,35 @@ patterns:
     symbol_kind: "^binary$"
     language: "^toml$"
 
-  # Cargo library target
+  # Cargo library target (WI-limas: producer toml_config.py:157 emits
+  # kind="library" for [lib] tables; the legacy "^lib$" kind never landed.)
   - concept: cargo_library
-    symbol_kind: "^lib$"
+    symbol_kind: "^library$"
     language: "^toml$"
 
   # Python (pyproject.toml) console scripts - CLI entry points
-  # [project.scripts] defines executables installed with the package
+  # [project.scripts] defines executables installed with the package.
+  # WI-limas: post-fold producer emits kind="file" + meta["entry_role"]="script"
+  # (toml_config.py:568-590), matching the same shape as npm scripts.
   - concept: pyproject_script
-    symbol_kind: "^script$"
+    symbol_kind: "^file$"
     language: "^toml$"
+    meta_match:
+      entry_role: "^script$"
 
   # Poetry (Python) dependencies
   - concept: poetry_dependency
     symbol_kind: "^dependency$"
     language: "^toml$"
 
-  # Poetry dev dependencies
+  # Poetry dev dependencies (WI-limas: see cargo_dev_dependency rationale —
+  # the toml_config producer routes both Cargo and Poetry dev tables through
+  # _extract_cargo_dependencies, so the same kind + dependency_scope shape applies.)
   - concept: poetry_dev_dependency
-    symbol_kind: "^dev-dependency$"
+    symbol_kind: "^dependency$"
     language: "^toml$"
+    meta_match:
+      dependency_scope: "^dev$"
 
 linkers:
   - dependency

@@ -81,9 +81,13 @@ patterns:
     language: "^latex$"
 
   # ====== Starlark (Build Systems) ======
-  # Starlark rules define build targets
+  # Starlark build targets (py_library, java_binary, …) — emitted by the
+  # Starlark analyzer with kind="target" + meta["rule_type"]=<rule name>
+  # (starlark.py:287). The legacy "^rule$" symbol_kind never landed in
+  # the canonical registry; WI-limas migrated this rule onto the
+  # producer-emitted kind.
   - concept: build_rule
-    symbol_kind: "^rule$"
+    symbol_kind: "^target$"
     language: "^starlark$"
 
   # Starlark macros generate build rules

@@ -815,6 +815,182 @@ class TestPattern:
         )
         assert pattern.matches(symbol) is None
 
+    def test_pattern_meta_match_single_key(self) -> None:
+        """Pattern matches symbol by a single meta key (WI-limas).
+
+        Post-Wave-6 ADR-0027 folds collapsed several legacy symbol_kind
+        values (devDependency, build-dependency, …) onto canonical kinds
+        plus per-axis ``Symbol.meta`` keys. Pattern.meta_match is the YAML
+        construct that re-binds those rules to the new emission shape.
+        """
+        pattern = Pattern(
+            concept="npm_dev_dependency",
+            symbol_kind=r"^dependency$",
+            language=r"^json$",
+            meta_match={"dependency_scope": r"^dev$"},
+        )
+
+        # Dev dependency: matches.
+        dev_dep = Symbol(
+            id="test:package.json:1:foo:dependency",
+            name="foo",
+            kind="dependency",
+            language="json",
+            path="package.json",
+            span=Span(1, 1, 0, 10),
+            meta={"dependency_scope": "dev"},
+        )
+        result = pattern.matches(dev_dep)
+        assert result is not None
+        assert result["concept"] == "npm_dev_dependency"
+        assert result["matched_symbol_kind"] == "dependency"
+        assert result["matched_meta"] == {"dependency_scope": "dev"}
+
+        # Prod dependency: same kind but missing the meta key value.
+        prod_dep = Symbol(
+            id="test:package.json:2:bar:dependency",
+            name="bar",
+            kind="dependency",
+            language="json",
+            path="package.json",
+            span=Span(2, 2, 0, 10),
+            meta={},
+        )
+        assert pattern.matches(prod_dep) is None
+
+    def test_pattern_meta_match_multiple_keys_anded(self) -> None:
+        """Multiple meta_match keys are AND'd together."""
+        pattern = Pattern(
+            concept="tsconfig_file",
+            symbol_kind=r"^file$",
+            language=r"^json$",
+            meta_match={
+                "config_format": r"^tsconfig$",
+                "entry_role": r"^config$",
+            },
+        )
+
+        # Both keys match.
+        match_sym = Symbol(
+            id="test:tsconfig.json:1:foo:file",
+            name="tsconfig.json",
+            kind="file",
+            language="json",
+            path="tsconfig.json",
+            span=Span(1, 1, 0, 10),
+            meta={"config_format": "tsconfig", "entry_role": "config"},
+        )
+        assert pattern.matches(match_sym) is not None
+
+        # Only one key matches.
+        partial_sym = Symbol(
+            id="test:tsconfig.json:2:bar:file",
+            name="tsconfig.json",
+            kind="file",
+            language="json",
+            path="tsconfig.json",
+            span=Span(2, 2, 0, 10),
+            meta={"config_format": "tsconfig"},
+        )
+        assert pattern.matches(partial_sym) is None
+
+    def test_pattern_meta_match_no_match_when_meta_absent(self) -> None:
+        """meta_match pattern does not match when meta is None or missing key."""
+        pattern = Pattern(
+            concept="cargo_dev_dependency",
+            symbol_kind=r"^dependency$",
+            language=r"^toml$",
+            meta_match={"dependency_scope": r"^dev$"},
+        )
+
+        # meta=None
+        sym_none = Symbol(
+            id="test:Cargo.toml:1:foo:dependency",
+            name="foo",
+            kind="dependency",
+            language="toml",
+            path="Cargo.toml",
+            span=Span(1, 1, 0, 10),
+            meta=None,
+        )
+        assert pattern.matches(sym_none) is None
+
+        # meta missing the required key
+        sym_missing = Symbol(
+            id="test:Cargo.toml:2:bar:dependency",
+            name="bar",
+            kind="dependency",
+            language="toml",
+            path="Cargo.toml",
+            span=Span(2, 2, 0, 10),
+            meta={"unrelated": "value"},
+        )
+        assert pattern.matches(sym_missing) is None
+
+    def test_pattern_meta_match_regex_mismatch(self) -> None:
+        """meta_match returns no match when key is present but regex misses."""
+        pattern = Pattern(
+            concept="x",
+            symbol_kind=r"^dependency$",
+            meta_match={"dependency_scope": r"^dev$"},
+        )
+        sym = Symbol(
+            id="t:p.json:1:f:dependency",
+            name="f",
+            kind="dependency",
+            language="json",
+            path="p.json",
+            span=Span(1, 1, 0, 0),
+            meta={"dependency_scope": "build"},  # wrong scope
+        )
+        assert pattern.matches(sym) is None
+
+    def test_pattern_meta_match_none_value_does_not_match(self) -> None:
+        """meta_match treats a None value as "key not present" — a
+        truthy match against ``str(None) == "None"`` would otherwise
+        silently fire on producer bugs that wrote None into meta.
+        """
+        pattern = Pattern(
+            concept="x",
+            symbol_kind=r"^dependency$",
+            meta_match={"dependency_scope": r"^dev$"},
+        )
+        sym = Symbol(
+            id="t:p.json:1:f:dependency",
+            name="f",
+            kind="dependency",
+            language="json",
+            path="p.json",
+            span=Span(1, 1, 0, 0),
+            meta={"dependency_scope": None},
+        )
+        assert pattern.matches(sym) is None
+
+    def test_pattern_meta_match_value_must_be_string(self) -> None:
+        """meta_match regex is compared against str() of the meta value.
+
+        Producers occasionally emit non-string meta values (numbers,
+        booleans). meta_match coerces to str for the regex comparison so a
+        ``"^true$"`` rule still matches ``True``.
+        """
+        pattern = Pattern(
+            concept="exported_component",
+            symbol_kind=r"^activity$",
+            language=r"^xml$",
+            meta_match={"exported": r"^True$"},
+        )
+
+        sym = Symbol(
+            id="test:AndroidManifest.xml:1:MainActivity:activity",
+            name="MainActivity",
+            kind="activity",
+            language="xml",
+            path="AndroidManifest.xml",
+            span=Span(1, 1, 0, 10),
+            meta={"exported": True},
+        )
+        assert pattern.matches(sym) is not None
+
     def test_pattern_symbol_kind_no_match(self) -> None:
         """Pattern does not match when symbol kind doesn't match."""
         pattern = Pattern(
@@ -1071,6 +1247,230 @@ class TestFrameworkPatternDef:
         assert pattern_def.language == "unknown"
         assert pattern_def.patterns == []
         assert pattern_def.linkers == []
+
+
+class TestConfigConventionsMigratedRules:
+    """Per-rule pinning tests for config-conventions.yaml after WI-limas.
+
+    Each test builds a synthetic Symbol matching what the relevant producer
+    emits today (post-Wave-6 ADR-0027 fold) and asserts that the
+    corresponding rule in config-conventions.yaml fires. If any of these
+    rules silently regresses to its pre-WI-limas bare-kind form, the
+    matching test will report no match and a future agent can recover
+    the producer→pattern coupling without re-deriving it.
+    """
+
+    @staticmethod
+    def _load_config_conventions() -> FrameworkPatternDef:
+        from hypergumbo_core.framework_patterns import (
+            clear_pattern_cache,
+            load_framework_patterns,
+        )
+        clear_pattern_cache()
+        pat = load_framework_patterns("config-conventions")
+        assert pat is not None, "config-conventions.yaml not found"
+        return pat
+
+    @staticmethod
+    def _concepts_for(pat: FrameworkPatternDef, symbol: Symbol) -> list[str]:
+        return [
+            r["concept"]
+            for p in pat.patterns
+            for r in p.matches_all(symbol)
+        ]
+
+    def test_npm_dev_dependency_post_fold(self) -> None:
+        """npm devDependency: kind="dependency" + meta["dependency_scope"]="dev"."""
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="json:package.json:5:lodash:dependency",
+            name="lodash",
+            kind="dependency",
+            language="json",
+            path="package.json",
+            span=Span(5, 5, 0, 10),
+            meta={"dependency_scope": "dev"},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "npm_dev_dependency" in concepts
+
+    def test_npm_dependency_not_dev(self) -> None:
+        """npm production dependency: kind="dependency" without dev scope.
+
+        Must match npm_dependency but NOT npm_dev_dependency.
+        """
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="json:package.json:3:react:dependency",
+            name="react",
+            kind="dependency",
+            language="json",
+            path="package.json",
+            span=Span(3, 3, 0, 10),
+            meta={},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "npm_dependency" in concepts
+        assert "npm_dev_dependency" not in concepts
+
+    def test_npm_script_post_fold(self) -> None:
+        """npm scripts: kind="file" + meta["entry_role"]="script"."""
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="json:package.json:10:build:file",
+            name="build",
+            kind="file",
+            language="json",
+            path="package.json",
+            span=Span(10, 10, 0, 10),
+            meta={"entry_role": "script", "script_name": "build"},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "npm_script" in concepts
+
+    def test_tsconfig_post_fold(self) -> None:
+        """tsconfig: kind="file" + meta["config_format"]="tsconfig"."""
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="json:tsconfig.json:1:tsconfig:file",
+            name="tsconfig.json",
+            kind="file",
+            language="json",
+            path="tsconfig.json",
+            span=Span(1, 50, 0, 0),
+            meta={"config_format": "tsconfig"},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "typescript_config" in concepts
+
+    def test_composer_package_post_fold(self) -> None:
+        """composer.json package: kind="package" + meta["package_ecosystem"]="composer"."""
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="json:composer.json:1:vendor/pkg:package",
+            name="vendor/pkg",
+            kind="package",
+            language="json",
+            path="composer.json",
+            span=Span(1, 30, 0, 0),
+            meta={"package_ecosystem": "composer"},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "composer_dependency" in concepts
+
+    def test_cargo_dev_dependency_post_fold(self) -> None:
+        """Cargo dev-dependency: kind="dependency" + meta["dependency_scope"]="dev"."""
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="toml:Cargo.toml:5:criterion:dependency",
+            name="criterion",
+            kind="dependency",
+            language="toml",
+            path="Cargo.toml",
+            span=Span(5, 5, 0, 10),
+            meta={"dependency_scope": "dev"},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "cargo_dev_dependency" in concepts
+
+    def test_cargo_build_dependency_post_fold(self) -> None:
+        """Cargo build-dependency: kind="dependency" + meta["dependency_scope"]="build"."""
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="toml:Cargo.toml:7:cc:dependency",
+            name="cc",
+            kind="dependency",
+            language="toml",
+            path="Cargo.toml",
+            span=Span(7, 7, 0, 10),
+            meta={"dependency_scope": "build"},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "cargo_build_dependency" in concepts
+
+    def test_cargo_workspace_post_fold(self) -> None:
+        """Cargo workspace: kind="workspace" (legacy 'workspace-member' never landed)."""
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="toml:Cargo.toml:1:workspace:workspace",
+            name="workspace",
+            kind="workspace",
+            language="toml",
+            path="Cargo.toml",
+            span=Span(1, 5, 0, 0),
+            meta={},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "cargo_workspace_member" in concepts
+
+    def test_cargo_library_post_fold(self) -> None:
+        """Cargo [lib]: kind="library" (legacy 'lib' never landed)."""
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="toml:Cargo.toml:1:mylib:library",
+            name="mylib",
+            kind="library",
+            language="toml",
+            path="Cargo.toml",
+            span=Span(1, 3, 0, 0),
+            meta={},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "cargo_library" in concepts
+
+    def test_pyproject_script_post_fold(self) -> None:
+        """pyproject scripts: kind="file" + meta["entry_role"]="script"."""
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="toml:pyproject.toml:5:my-cli:file",
+            name="my-cli",
+            kind="file",
+            language="toml",
+            path="pyproject.toml",
+            span=Span(5, 5, 0, 10),
+            meta={"entry_role": "script", "entry_point": "mypkg.cli:main"},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "pyproject_script" in concepts
+
+
+class TestLanguageConventionsMigratedRules:
+    """Per-rule pinning tests for language-conventions.yaml after WI-limas."""
+
+    @staticmethod
+    def _load() -> FrameworkPatternDef:
+        from hypergumbo_core.framework_patterns import (
+            clear_pattern_cache,
+            load_framework_patterns,
+        )
+        clear_pattern_cache()
+        pat = load_framework_patterns("language-conventions")
+        assert pat is not None
+        return pat
+
+    def test_starlark_build_rule_post_fold(self) -> None:
+        """Starlark build target: kind="target" (legacy 'rule' never landed).
+
+        starlark.py:287 emits kind="target" + meta["rule_type"]=<rule name>
+        (e.g. py_library, java_binary). The previous YAML rule keyed on
+        ``symbol_kind: ^rule$`` matched nothing.
+        """
+        pat = self._load()
+        sym = Symbol(
+            id="starlark:BUILD.bazel:5:my_lib:target",
+            name="my_lib",
+            kind="target",
+            language="starlark",
+            path="BUILD.bazel",
+            span=Span(5, 5, 0, 20),
+            meta={"rule_type": "py_library"},
+        )
+        concepts = [
+            r["concept"]
+            for p in pat.patterns
+            for r in p.matches_all(sym)
+        ]
+        assert "build_rule" in concepts
 
 
 class TestLoadFrameworkPatterns:

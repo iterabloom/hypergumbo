@@ -74,6 +74,46 @@ criterion = "0.5"
     assert any(d.name == "tokio" for d in deps)
     assert any(d.name == "criterion" for d in deps)
 
+
+def test_cargo_dev_and_build_deps_emit_dependency_scope_meta(tmp_path):
+    """WI-limas: cargo [dev-dependencies] and [build-dependencies] tables
+    should emit ``meta["dependency_scope"]`` so the post-Wave-6
+    config-conventions YAML rules can disambiguate them from production
+    dependencies via meta_match.
+    """
+    toml_file = tmp_path / "Cargo.toml"
+    toml_file.write_text("""
+[package]
+name = "mycrate"
+
+[dependencies]
+serde = "1.0"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[build-dependencies]
+cc = "1.0"
+""")
+    result = analyze_toml_files(tmp_path)
+
+    deps = [s for s in result.symbols if s.kind == "dependency"]
+    by_name = {d.name: d for d in deps}
+
+    # Production dependencies have NO dependency_scope meta (or scope=None).
+    serde = by_name["serde"]
+    assert serde.meta is None or serde.meta.get("dependency_scope") is None
+
+    # Dev dependencies emit dependency_scope=dev.
+    criterion = by_name["criterion"]
+    assert criterion.meta is not None
+    assert criterion.meta.get("dependency_scope") == "dev"
+
+    # Build dependencies emit dependency_scope=build.
+    cc = by_name["cc"]
+    assert cc.meta is not None
+    assert cc.meta.get("dependency_scope") == "build"
+
 def test_analyze_pyproject_dependencies(tmp_path):
     """Test detection of Python dependencies from pyproject.toml."""
     toml_file = tmp_path / "pyproject.toml"
