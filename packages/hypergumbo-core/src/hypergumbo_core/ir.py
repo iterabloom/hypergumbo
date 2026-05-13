@@ -209,9 +209,8 @@ class Symbol:
             synthesis-origin values (``inheritance``,
             ``orchestrator_file_symbol_synthesis``, ``scip``) currently coexist
             in this field as a documented exception pending a future split into
-            a sibling ``synthesis_mechanism`` field — see the WI-nusum-nukol
-            audit verdict. Do not extend the synthesis-shaped value set without
-            updating the audit thread.
+            a sibling ``synthesis_mechanism`` field. Do not extend the
+            synthesis-shaped value set without first revisiting that plan.
         origin_run_id: Unique execution ID of the analysis run
         origin_run_signature: Run signature for grouping by analyzer config
         stable_id: Semantic identity hash (survives renames/moves)
@@ -223,19 +222,17 @@ class Symbol:
         supply_chain_tier: Position in dependency graph (1=first_party, 2=internal_dep,
             3=external_dep, 4=derived). See §14 of spec.
         supply_chain_reason: Why this tier was assigned (e.g., "matches ^src/")
-        is_test_file: True if the file holds test code (WI-rigun). Independent
+        is_test_file: True if the file holds test code. Independent
             of tier — co-located test files can be tier 1.
-        is_example_file: True if the file is example/demo/sample/tutorial code
-            (WI-jobuj). Set when the path matches an EXAMPLE_PATTERN.
+        is_example_file: True if the file is example/demo/sample/tutorial code.
+            Set when the path matches an EXAMPLE_PATTERN.
         is_config_file: True if the file is a dependency/build manifest such as
-            ``pyproject.toml`` / ``package.json`` / ``Cargo.toml`` (WI-jobuj).
-            Within tier 2, ``is_test_file`` / ``is_example_file`` /
-            ``is_config_file`` are mutually exclusive — at most one is True
-            per Symbol.
-        is_generated_file: True if the file is generated code (WI-tizij).
-            Independent of the role flags above.
-        is_exported: True if the symbol is part of the package's public API
-            (WI-zimum).
+            ``pyproject.toml`` / ``package.json`` / ``Cargo.toml``. Within
+            tier 2, ``is_test_file`` / ``is_example_file`` / ``is_config_file``
+            are mutually exclusive — at most one is True per Symbol.
+        is_generated_file: True if the file is generated code. Independent of
+            the role flags above.
+        is_exported: True if the symbol is part of the package's public API.
         cyclomatic_complexity: McCabe cyclomatic complexity (decision points + 1).
             Counts if/elif/else, for, while, except, with, and/or, match/case.
         lines_of_code: Number of source lines in the symbol body (end_line - start_line + 1).
@@ -432,8 +429,8 @@ class Edge:
         evidence_type: Type of evidence (e.g., ast_call_direct)
         evidence_lang: Language for confidence scoring
         evidence_spans: Structured locations of evidence
-        is_resolved: Whether the dst symbol was resolved at analysis time. Default True (the ~90% case); per ADR-0028, Cluster B `*_unresolved` evidence_type producers will set this to False during Phase 3 once their canonical-form fold target is decided.
-        dst_ref: Structured identity for the dst endpoint, populated when the dst points at an external symbol (stdlib / dependency / unresolved external). Per WI-tihup, this is the canonical source of truth — the legacy `dst` string is built from the same `ExternalRef` for back-compat and stays populated alongside. None for in-repo dsts whose `dst` is a real Symbol ID.
+        is_resolved: Whether the dst symbol was resolved at analysis time. Default True (the ~90% case); set to False for unresolved external targets per ADR-0028.
+        dst_ref: Structured identity for the dst endpoint, populated when the dst points at an external symbol (stdlib / dependency / unresolved external). Canonical source of truth for external dsts — the legacy `dst` string is built from the same `ExternalRef` and stays populated alongside for back-compat. None for in-repo dsts whose `dst` is a real Symbol ID.
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
     """

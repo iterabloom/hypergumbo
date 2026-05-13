@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **235** Python modules (124 analyzers, 51 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 24, Infrastructure 6; 30 core, 4 CLI, 26 tracker)
-- **4182** symbols (functions, classes, methods)
-- **55402** edges by type:
-  - calls: 38164
-  - imports: 8511
-  - instantiates: 6211
-  - contains: 1198
-  - dispatches_to: 531
-  - decorated_by: 294
-  - other: 493
+- **260** Python modules (125 analyzers, 52 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 25, Infrastructure 6; 47 core, 4 CLI, 32 tracker)
+- **5908** symbols (functions, classes, methods)
+- **63387** edges by type:
+  - calls: 44006
+  - imports: 9316
+  - instantiates: 6680
+  - contains: 1264
+  - module_attr_ref: 965
+  - dispatches_to: 534
+  - other: 622
 
 ## Package Architecture
 
@@ -36,7 +36,7 @@ depend on core but not on each other, and the tracker is fully independent.
                     /       |       \
                    v        v        v
   lang-mainstream   lang-common   lang-extended1
-  (42 analyzers)   (38 analyzers)   (41 analyzers)
+  (43 analyzers)   (38 analyzers)   (41 analyzers)
                    \       |       /
                     v      v      v
                    hypergumbo-core
@@ -50,8 +50,8 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 51 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-0003-ext), 105 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
-| **hypergumbo-lang-mainstream** | 42 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 52 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-0003-ext), 106 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-lang-mainstream** | 43 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
 | **hypergumbo** | Meta-package that installs core + all language packages |
@@ -84,7 +84,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 4182 Symbols + 55402 Edges + UsageContexts             │
+│  Output: 5908 Symbols + 63387 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -92,7 +92,7 @@ Source Files
 │                     4. PATTERN ENRICHMENT                       │
 │  YAML-driven pattern matching (ADR-0003):                       │
 │  - 8 convention patterns (always loaded)                        │
-│  - 97 framework patterns (loaded when framework detected)       │
+│  - 98 framework patterns (loaded when framework detected)       │
 │  Output: Symbols enriched with meta.concepts                    │
 └─────────────────────────────────────────────────────────────────┘
      │
@@ -102,7 +102,7 @@ Source Files
 │  Tier 2 edge recovery (ADR-0003-ext — Protocol / Bridge /       │
 │  Framework / Infrastructure). Match via meta.concepts and       │
 │  symbol metadata across files and language boundaries.          │
-│  51 linkers: P11 / B10 / F24 / I6 (HTTP, JNI, gRPC, React, ...) │
+│  52 linkers: P11 / B10 / F25 / I6 (HTTP, JNI, gRPC, React, ...) │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -192,7 +192,7 @@ A code symbol (function, class, etc.) detected by analysis.
 - `language`: Programming language (python, javascript, etc.)
 - `path`: File path where the symbol is defined
 - `span`: Source location with lines and columns
-- `origin`: Which analysis pass created this symbol
+- `origin`: Provenance string. For analyzer-emitted symbols, this SHOULD be a versioned analyzer ID such as ``python-v1``, ``go-v1``, etc. (see the analyzer registry for the canonical list). A small set of synthesis-origin values (``inheritance``, ``orchestrator_file_symbol_synthesis``, ``scip``) currently coexist in this field as a documented exception pending a future split into a sibling ``synthesis_mechanism`` field. Do not extend the synthesis-shaped value set without first revisiting that plan.
 - `origin_run_id`: Unique execution ID of the analysis run
 - `origin_run_signature`: Run signature for grouping by analyzer config
 - `stable_id`: Semantic identity hash (survives renames/moves)
@@ -201,7 +201,18 @@ A code symbol (function, class, etc.) detected by analysis.
 - `fingerprint`: Content hash of source bytes (sha256)
 - `quality`: Score and reason dict for quality assessment
 - `meta`: Optional metadata dict for language-specific information
-- `supply_chain_tier`: Position in dependency graph (1=first_party, 2=internal_dep,
+- `supply_chain_tier`: Position in dependency graph (1=first_party, 2=internal_dep, 3=external_dep, 4=derived). See §14 of spec.
+- `supply_chain_reason`: Why this tier was assigned (e.g., "matches ^src/")
+- `is_test_file`: True if the file holds test code. Independent of tier — co-located test files can be tier 1.
+- `is_example_file`: True if the file is example/demo/sample/tutorial code. Set when the path matches an EXAMPLE_PATTERN.
+- `is_config_file`: True if the file is a dependency/build manifest such as ``pyproject.toml`` / ``package.json`` / ``Cargo.toml``. Within tier 2, ``is_test_file`` / ``is_example_file`` / ``is_config_file`` are mutually exclusive — at most one is True per Symbol.
+- `is_generated_file`: True if the file is generated code. Independent of the role flags above.
+- `is_exported`: True if the symbol is part of the package's public API.
+- `cyclomatic_complexity`: McCabe cyclomatic complexity (decision points + 1). Counts if/elif/else, for, while, except, with, and/or, match/case.
+- `lines_of_code`: Number of source lines in the symbol body (end_line - start_line + 1).
+- `signature`: Function/method signature string, e.g., "(x: int, y: str) -> bool". Only populated for callable symbols (functions, methods). None for classes, etc.
+- `docstring`: First-line summary of doc comment (truncated to 80 chars).
+- `modifiers`: List of semantic modifiers (e.g., ["native", "public", "static"]). Used by linkers for cross-language matching (e.g., JNI needs 'native').
 
 ### Edge (`ir.py`)
 A relationship between two symbols (e.g., function calls).
@@ -218,9 +229,32 @@ A relationship between two symbols (e.g., function calls).
 - `evidence_type`: Type of evidence (e.g., ast_call_direct)
 - `evidence_lang`: Language for confidence scoring
 - `evidence_spans`: Structured locations of evidence
+- `is_resolved`: Whether the dst symbol was resolved at analysis time. Default True (the ~90% case); set to False for unresolved external targets per ADR-0028.
+- `dst_ref`: Structured identity for the dst endpoint, populated when the dst points at an external symbol (stdlib / dependency / unresolved external). Canonical source of truth for external dsts — the legacy `dst` string is built from the same `ExternalRef` and stays populated alongside for back-compat. None for in-repo dsts whose `dst` is a real Symbol ID.
 - `quality`: Score and reason dict for quality assessment
 - `meta`: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
 
+
+## Canonical Vocabularies
+
+Three IR fields are typed by canonical registries with declared axes:
+
+| Field | Registry | Axis | ADR |
+|---|---|---|---|
+| `Edge.edge_type` | `edge_types.py` | relationship | [ADR-0023](adr/0023-edge-type-relationship-not-endpoints.md) |
+| `Symbol.kind` | `symbol_kinds.py` | language construct | [ADR-0027](adr/0027-symbol-kind-language-construct-only.md) |
+| `Edge.evidence_type` | `evidence_types.py` | inference pathway | [ADR-0028](adr/0028-evidence-type-inference-pathway-only.md) |
+
+Each axis is declared per [ADR-0024](adr/0024-axis-declaration-template.md)'s four-part template (axis name, axiom, consumer pattern, enforcement). Properties not intrinsic to the axis live elsewhere: endpoint kind on `dst.kind`, framework participation in `Symbol.meta` / `Edge.meta` (key vocabulary in `axis_meta_keys.py`), resolution status in the sibling `Edge.is_resolved` bool.
+
+Four drift linters enforce the discipline statically:
+
+- **L1 axis-drift** (`check-edge-type-drift`, `check-symbol-kind-drift`, `check-evidence-type-drift`) — every literal `*EDGE_TYPE* / *KIND* / *EVIDENCE_TYPE*` set in `packages/` must be a subset of the canonical registry. Runs in pre-commit.
+- **L3 producer-coherence** (`check-producer-axis-coherence`) — literal-string keyword arguments at `Edge.create` / `Symbol(...)` construction sites must match the registry; handles inline ternaries, f-strings, and locally-bound names.
+- **L4 fallback-coherence** (`check-fallback-coherence`) — any `Edge.create` site declaring `meta["disambiguation_fallback"]=True` must also bind `confidence ≤ 0.5` on the same call.
+- **Runtime coherence** (`check-edge-type-runtime-coherence`) — partitions emitted edges by `(src.kind, src.language, dst.kind, dst.language)` to surface producer-side endpoint-shape leakage.
+
+Live by-axis view: [`docs/concept-axes.md`](concept-axes.md). Downstream consumers of the behavior-map JSON: [`docs/migrating-edge-types.md`](migrating-edge-types.md).
 
 ## Most-Connected Symbols (auto)
 
@@ -229,27 +263,25 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 4441.3 | ir.py |
-| `Span` | class | 3783.8 | ir.py |
-| `run_behavior_map` | function | 2480.2 | cli.py |
-| `TrackerApp` | class | 1780.2 | tui.py |
+| `Symbol` | class | 4736.1 | ir.py |
+| `Span` | class | 4010.4 | ir.py |
+| `run_behavior_map` | function | 2678.1 | cli.py |
+| `TrackerApp` | class | 1866.8 | tui.py |
 | `load_framework_patterns` | function | 1546.6 | framework_patterns.py |
-| `LinkerContext` | class | 1414.0 | registry.py |
-| `main` | function | 1242.8 | cli.py |
+| `LinkerContext` | class | 1531.9 | registry.py |
+| `main` | function | 1427.1 | cli.py |
 | `clear_pattern_cache` | function | 1059.9 | framework_patterns.py |
 | `find_files` | function | 1013.9 | discovery.py |
 | `match_patterns` | function | 873.0 | framework_patterns.py |
 | `TreeSitterAnalyzer` | class | 859.1 | base.py |
-| `Store` | class | 778.5 | store.py |
-| `detect_entrypoints` | function | 641.3 | entrypoints.py |
-| `Edge` | class | 618.1 | ir.py |
+| `Store` | class | 792.1 | store.py |
 
 ## Pattern System
 
 ### Key Components
 
 - **`framework_patterns.py`**: Loads and applies YAML pattern files
-- **`frameworks/*.yaml`**: 105 pattern files (8 convention + 97 framework)
+- **`frameworks/*.yaml`**: 106 pattern files (8 convention + 98 framework)
 - **`meta.concepts`**: List of matched concepts (single source of truth)
 - **`meta.decorators`/`meta.annotations`**: Raw metadata for pattern matching
 
@@ -399,10 +431,21 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `audit-stale-timestamps` | Audit embedded timestamps in agent state files vs filesystem mtimes. |
 | `backfill-training-data-cohort-tags.py` | Backfill cohort metadata for v0 training corpus entries. |
 | `bakeoff-map` | bakeoff-map - Chronicle and map hypergumbo bakeoff artifacts. |
+| `build-scip-proto` | Regenerate packages/hypergumbo-core/src/hypergumbo_core/scip/_generated/scip_pb2.py |
+| `check-audit-findings` | Pre-commit lint: every audit-findings doc under ``docs/audits/`` parses |
+| `check-edge-type-drift` | Pre-commit lint: ``*EDGE_TYPE*`` sets in packages/ must be subsets |
+| `check-edge-type-runtime-coherence` | Runtime coherence check for the ADR-0023 edge-type axis. |
+| `check-evidence-type-drift` | Pre-commit lint: ``*EVIDENCE_TYPE*`` sets in packages/ must be |
+| `check-fallback-coherence` | Pre-commit lint: INV-zuhub fallback-coherence at Edge.create call sites. |
+| `check-producer-axis-coherence` | Pre-commit lint: literal-string keyword arguments to ``Edge.create``, |
+| `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
+| `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
 | `dead-code-prospector-run.py` | Lightweight one-shot dead-code-maybe prospecting run. |
 | `finetune-transcript-model` | G-Vendi-guided data selection and finetuning for the local transcript model. |
-| `generate-concepts` | Generate docs/CONCEPTS.md — the concept-vocabulary registry (WI-dajul). |
+| `generate-concept-axes` | Generate ``docs/concept-axes.md`` — a human-readable by-axis view |
+| `generate-concepts` | Generate docs/CONCEPTS.md — the concept-vocabulary registry. |
 | `measure-playbook-overlap.py` | Measure read-then-injected playbook overlap (waste signal). |
+| `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `tracker-path-linter` | Scan tracker items for stale file-path references. |
 | `verify-tracker-pr` | Check if a tracker sync PR's ops data is already |
 
@@ -440,6 +483,9 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 ### Core
 
+- **`hypergumbo_core.audit_findings`**: Parser and validator for the audit-findings document format.
+- **`hypergumbo_core.axis_drift`**: Field-agnostic AST drift detector for axis-bearing canonical regist...
+- **`hypergumbo_core.axis_meta_keys`**: Canonical registry of ``Symbol.meta`` and ``Edge.meta`` key names.
 - **`hypergumbo_core.build_grammars`**: Build tree-sitter grammars from source for languages not available ...
 - **`hypergumbo_core.catalog`**: Catalog of available analysis passes.
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
@@ -447,24 +493,38 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.dataflow`**: YAML-driven dataflow classification for edges (ADR-0015).
 - **`hypergumbo_core.datamodels`**: Data model detection for code analysis.
 - **`hypergumbo_core.discovery`**: File discovery with exclude patterns, locale handling, and extensio...
+- **`hypergumbo_core.edge_types`**: Canonical registry of edge types in hypergumbo's behavior map.
 - **`hypergumbo_core.entrypoints`**: Entrypoint detection for code analysis using YAML-driven pattern ma...
+- **`hypergumbo_core.evidence_types`**: Canonical registry of Edge.evidence_type values in hypergumbo's beh...
+- **`hypergumbo_core.fallback_coherence`**: INV-zuhub fallback-coherence linter.
 - **`hypergumbo_core.framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-0003).
 - **`hypergumbo_core.gitleaks`**: Gitleaks integration for secret scanning.
+- **`hypergumbo_core.import_scope`**: Per-file import-binding bookkeeping for language analyzers (WI-tihu...
 - **`hypergumbo_core.io_boundary`**: I/O boundary analysis — catalog loading and edge matching (ADR-0016).
 - **`hypergumbo_core.ir`**: Internal Representation (IR) for code analysis.
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
 - **`hypergumbo_core.linkers.registry`**: Linker registry for dynamic dispatch.
 - **`hypergumbo_core.metrics`**: Metrics computation for behavior map output.
+- **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
 - **`hypergumbo_core.partial_install_warnings`**: Runtime warnings for partial installations (ADR-0010 Item 8).
 - **`hypergumbo_core.paths`**: Centralized path handling utilities for hypergumbo.
+- **`hypergumbo_core.producer_coherence`**: Producer-side axis-coherence linter for Edge / Symbol constructors.
 - **`hypergumbo_core.profile`**: Repo profile detection - language and framework heuristics.
 - **`hypergumbo_core.ranking`**: Symbol and file ranking utilities for hypergumbo output.
+- **`hypergumbo_core.runtime_coherence`**: Runtime corpus-based coherence check for the ADR-0023 edge-type axis.
+- **`hypergumbo_core.rust_analyzer_install`**: Installer + availability helpers for the ``rust-analyzer`` binary (...
+- **`hypergumbo_core.scip._generated.scip_pb2`**: Generated protocol buffer code.
+- **`hypergumbo_core.scip.calls`**: SCIP ``Occurrence`` → hypergumbo call-edge translation shim (WI-maf...
+- **`hypergumbo_core.scip.descriptor`**: Parser for Sourcegraph SCIP symbol strings.
+- **`hypergumbo_core.scip.edges`**: SCIP ``Index`` → hypergumbo ``Edge`` translation shim (WI-mafut Pha...
+- **`hypergumbo_core.scip.index`**: SCIP ``Index`` → hypergumbo ``Symbol`` translation shim (WI-mafut P...
 - **`hypergumbo_core.selection.filters`**: Path classification and symbol kind filtering for selection.
 - **`hypergumbo_core.selection.language_proportional`**: Language-proportional symbol selection utilities.
 - **`hypergumbo_core.selection.token_budget`**: Token estimation and budget management for LLM-aware output.
 - **`hypergumbo_core.sketch_embeddings`**: Embedding-based utilities for sketch generation.
 - **`hypergumbo_core.slice`**: Graph slicing for LLM context extraction.
 - **`hypergumbo_core.supply_chain`**: Supply chain classification for code analysis.
+- **`hypergumbo_core.symbol_kinds`**: Canonical registry of Symbol.kind values in hypergumbo's behavior map.
 - **`hypergumbo_core.symbol_resolution`**: Unified symbol resolution with pluggable matching strategies.
 - **`hypergumbo_core.taint`**: Taint catalog loading and taint-flow propagation (ADR-0017 Phases 1...
 - **`hypergumbo_core.taxonomy`**: File taxonomy classification (ADR-0004).
@@ -506,6 +566,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_mainstream.properties`**: Java properties file analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.py`**: Python AST analysis pass.
 - **`hypergumbo_lang_mainstream.py_def_use`**: Python def/use extractor for intraprocedural dataflow analysis (ADR...
+- **`hypergumbo_lang_mainstream.py_deps`**: Python dependency manifest parsing for ``pyproject.toml`` projects.
 - **`hypergumbo_lang_mainstream.requirements`**: Python requirements.txt analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.ruby`**: Ruby analysis pass using tree-sitter-ruby.
 - **`hypergumbo_lang_mainstream.rust`**: Rust analysis pass using tree-sitter-rust.
@@ -624,6 +685,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.jackson_dispatch`**: Framework linker: Jackson / JavaBean serialization dispatch (WI-gup...
 - **`hypergumbo_core.linkers.jni`**: Bridge linker: JNI for connecting Java native methods to C/C++/Rust...
 - **`hypergumbo_core.linkers.js_module`**: Infrastructure linker: JS/TS module resolution for cross-file impor...
+- **`hypergumbo_core.linkers.kafka_streams_dispatch`**: Framework linker: Kafka Streams topology-builder dispatch (WI-lisov).
 - **`hypergumbo_core.linkers.lua_ffi`**: Bridge linker: Lua FFI for connecting LuaJIT FFI calls to C functio...
 - **`hypergumbo_core.linkers.message_dispatch`**: Protocol linker: message dispatch for typed wire protocol message p...
 - **`hypergumbo_core.linkers.message_queue`**: Protocol linker: message queue for detecting pub/sub communication ...
@@ -666,10 +728,15 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_tracker.cli`**: CLI entry points for hypergumbo-tracker.
 - **`hypergumbo_tracker.configure`**: Interactive CLI config editor for hypergumbo tracker.
 - **`hypergumbo_tracker.embeddings`**: Tier 2 embedding-based near-duplicate detection for the hypergumbo ...
+- **`hypergumbo_tracker.hotspot_markup`**: Wrap detected item IDs in Textual ``[@click=...]`` action markup.
+- **`hypergumbo_tracker.id_matching`**: Detect tracker item IDs embedded in free-text panes (descriptions, ...
+- **`hypergumbo_tracker.item_nav_render`**: Assemble the display content for the tracker TUI item-nav modal.
 - **`hypergumbo_tracker.migration`**: Migration from markdown governance files to YAML tracker ops.
 - **`hypergumbo_tracker.models`**: Data model for the hypergumbo tracker.
+- **`hypergumbo_tracker.nav_history`**: Browser-style navigation history for the tracker TUI's item-nav modal.
 - **`hypergumbo_tracker.preview`**: Inline SVG preview for TUI discussion threads (ADR-0020 Part 2).
 - **`hypergumbo_tracker.preview_pipeline`**: SVG→PNG→ANSI rendering pipeline with graceful degradation (ADR-0020).
+- **`hypergumbo_tracker.race_log`**: Forensic log for transient I/O races on tracker ``.ops`` files.
 - **`hypergumbo_tracker.screenshot_save`**: Screenshot save and auto-create tracker item (ADR-0020, WI-rujoz).
 - **`hypergumbo_tracker.serve`**: Starlette/uvicorn server for htrac serve (ADR-0019).
 - **`hypergumbo_tracker.serve_auth_config`**: Auth config schema for htrac serve (ADR-0019).
@@ -684,6 +751,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_tracker.svg_injection`**: Cell-to-SVG coordinate mapping and annotation injection (ADR-0020).
 - **`hypergumbo_tracker.sync`**: Streamlined PR workflow for tracker-only changes.
 - **`hypergumbo_tracker.sync_log`**: Always-on file logging for tracker sync operations.
+- **`hypergumbo_tracker.tag_catalog`**: Tag catalog: persistent metadata for tracker tags (WI-lifal).
 - **`hypergumbo_tracker.trackerset`**: TrackerSet: multi-tier unified view over canonical, workspace, and ...
 - **`hypergumbo_tracker.tui`**: Textual TUI for the hypergumbo tracker.
 - **`hypergumbo_tracker.validation`**: Op log and cross-file validation for the hypergumbo tracker.
@@ -692,7 +760,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 7e8f24114a40
-  hypergumbo: 2.6.0
+  commit: cc407fc2a371
+  hypergumbo: 5.0.1
   python: 3.12.3
 -->

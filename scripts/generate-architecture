@@ -538,8 +538,12 @@ def extract_ir_abstractions() -> str:
             if in_attrs:
                 if stripped.startswith("---"):
                     continue
-                # A new numpydoc section header (word followed by line of dashes)
-                if stripped and not stripped.startswith(" ") and ":" not in stripped:
+                # A new numpydoc/google-style section header sits at the same
+                # indent level as ``Attributes:`` — i.e., no leading whitespace
+                # in the cleaned docstring. Continuation lines under an
+                # attribute are indented further than the attribute-name lines,
+                # so check the raw ``line`` indent (not ``stripped``).
+                if stripped and not line.startswith(" "):
                     break
                 if ": " in stripped:
                     name, desc = stripped.split(": ", 1)
@@ -915,6 +919,7 @@ def generate_architecture_md() -> str:
     python_version = platform.python_version()
 
     lines = [
+        "<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->",
         "# Architecture",
         "",
         "> **Auto-generated** by running hypergumbo on itself.",
@@ -1163,6 +1168,52 @@ def generate_architecture_md() -> str:
     if ir_abstractions:
         lines.append(ir_abstractions)
     lines.append("")
+
+    # ── Canonical Vocabularies ────────────────────────────────────
+    lines.extend([
+        "## Canonical Vocabularies",
+        "",
+        "Three IR fields are typed by canonical registries with declared axes:",
+        "",
+        "| Field | Registry | Axis | ADR |",
+        "|---|---|---|---|",
+        "| `Edge.edge_type` | `edge_types.py` | relationship | "
+        "[ADR-0023](adr/0023-edge-type-relationship-not-endpoints.md) |",
+        "| `Symbol.kind` | `symbol_kinds.py` | language construct | "
+        "[ADR-0027](adr/0027-symbol-kind-language-construct-only.md) |",
+        "| `Edge.evidence_type` | `evidence_types.py` | inference pathway | "
+        "[ADR-0028](adr/0028-evidence-type-inference-pathway-only.md) |",
+        "",
+        "Each axis is declared per "
+        "[ADR-0024](adr/0024-axis-declaration-template.md)'s four-part template "
+        "(axis name, axiom, consumer pattern, enforcement). Properties not "
+        "intrinsic to the axis live elsewhere: endpoint kind on `dst.kind`, "
+        "framework participation in `Symbol.meta` / `Edge.meta` (key vocabulary "
+        "in `axis_meta_keys.py`), resolution status in the sibling "
+        "`Edge.is_resolved` bool.",
+        "",
+        "Four drift linters enforce the discipline statically:",
+        "",
+        "- **L1 axis-drift** (`check-edge-type-drift`, `check-symbol-kind-drift`, "
+        "`check-evidence-type-drift`) — every literal `*EDGE_TYPE* / *KIND* / "
+        "*EVIDENCE_TYPE*` set in `packages/` must be a subset of the canonical "
+        "registry. Runs in pre-commit.",
+        "- **L3 producer-coherence** (`check-producer-axis-coherence`) — "
+        "literal-string keyword arguments at `Edge.create` / `Symbol(...)` "
+        "construction sites must match the registry; handles inline ternaries, "
+        "f-strings, and locally-bound names.",
+        "- **L4 fallback-coherence** (`check-fallback-coherence`) — any "
+        "`Edge.create` site declaring `meta[\"disambiguation_fallback\"]=True` "
+        "must also bind `confidence ≤ 0.5` on the same call.",
+        "- **Runtime coherence** (`check-edge-type-runtime-coherence`) — "
+        "partitions emitted edges by `(src.kind, src.language, dst.kind, "
+        "dst.language)` to surface producer-side endpoint-shape leakage.",
+        "",
+        "Live by-axis view: [`docs/concept-axes.md`](concept-axes.md). "
+        "Downstream consumers of the behavior-map JSON: "
+        "[`docs/migrating-edge-types.md`](migrating-edge-types.md).",
+        "",
+    ])
 
     # ── Most-Connected Symbols ────────────────────────────────────
     if top_symbols:
