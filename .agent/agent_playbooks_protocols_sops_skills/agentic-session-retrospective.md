@@ -9,7 +9,7 @@ Structured post-hoc analysis of an agent's decision-making during an autonomous 
 
 ### Phase 0: Locate the Session Transcript
 
-The transcript sync pipeline (ADR-0018, per-session amendment 2026-04-08) keeps two parallel chains: the filtered transcript itself and the injection-history sidecar (the latter is what makes Phase 2d answerable — see below). Each session writes to its own per-session current files keyed by `session_id`. On session **end**, those per-session files are atomically promoted into the global `.last_*` slot via `rotate-on-session-end.sh` (with `flock` serialization for concurrent end events).
+The transcript sync pipeline keeps two parallel chains: the filtered transcript itself and the injection-history sidecar (the latter is what makes Phase 2d answerable — see below). Each session writes to its own per-session current files keyed by `session_id`. On session **end**, those per-session files are atomically promoted into the global `.last_*` slot via `rotate-on-session-end.sh` (with `flock` serialization for concurrent end events). "Last" in `.last_*.jsonl` always means "most recently *ended* session in this repo" — not "most recently started" — because the rotation fires at SessionEnd, not at SessionStart.
 
 | File | Contents |
 |------|----------|
@@ -127,12 +127,12 @@ Work through each category below. For each, note specific transcript evidence (t
 - Were tracker status updates timely and accurate?
 - Did the priority ordering match what a human would have chosen?
 
-#### 2d. Playbook Injection (ADR-0018)
+#### 2d. Playbook Injection
 
 Read `.agent/.last_injection_history.jsonl`. Each line is one LLM poll, recorded as a JSON object with these fields:
 
 - `timestamp` — when the poll fired
-- `session_id` — the session this event belongs to (per-session amendment 2026-04-08; replaces the prior global `session_token` mechanism)
+- `session_id` — the session this event belongs to (keyed per-session; sessions running concurrently in the same repo each get their own current-injection-history file)
 - `transcript_offset` — byte position in the transcript at poll time
 - `event_id` — unique ID per event
 - `agent_goals` — the distilled goal the selector LLM was given
@@ -157,7 +157,7 @@ Also ask:
 
 **Common misreadings of the injection log (read this before drawing conclusions).**
 
-1. **"High dedup rate = wasted selector calls."** Wrong. The pipeline writes every successful LLM input/output pair to `.agent/.training-data.jsonl` per **ADR-0018 §"Training data collection for local model replacement"**. That file is the SFT corpus for the planned Qwen2.5-0.5B-Instruct local-distillation replacement (see ADR-0018 lines 252–274 and §"G-Vendi-guided data selection and finetuning pipeline"). Subsampling for finetune uses **G-Vendi** (arXiv:2505.20161), which scores examples by gradient diversity in CountSketch-projected gradient space. Gradient diversity is the relevant signal *because* the natural distribution contains rich repeated structure — masking re-selections upstream would corrupt exactly the signal G-Vendi consumes downstream. The selector inference cost is the price of producing the training trace, not "waste".
+1. **"High dedup rate = wasted selector calls."** Wrong. The pipeline writes every successful LLM input/output pair to `.agent/.training-data.jsonl`. That file is the SFT corpus for a planned local-distillation replacement of the selector (Qwen2.5-0.5B-Instruct class). Subsampling for finetune uses **G-Vendi** (arXiv:2505.20161), which scores examples by gradient diversity in CountSketch-projected gradient space. Gradient diversity is the relevant signal *because* the natural distribution contains rich repeated structure — masking re-selections upstream would corrupt exactly the signal G-Vendi consumes downstream. The selector inference cost is the price of producing the training trace, not "waste".
 
 2. **"Selector should be given a forbidden-recently-injected list."** No. See (1). And separately: the dedup window is bounded (~recent-context); a playbook injected 100K tokens ago is functionally absent from the agent's working memory, so re-selecting it is *correct selector behavior* — dedup catching it is a separate protective layer, not evidence the selector misjudged. The two layers should not be conflated.
 

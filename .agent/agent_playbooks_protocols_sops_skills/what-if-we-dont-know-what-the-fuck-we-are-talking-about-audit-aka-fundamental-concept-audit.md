@@ -19,7 +19,13 @@ Three concrete leaks motivated this playbook and shape its running examples:
 - **`Symbol.kind`** had 192 values silently encoding language constructs (`function`), framework roles (`event_publisher`), edge labels (`call`), and file shapes (`module_file`) in one field. [ADR-0027](../../docs/adr/0027-symbol-kind-language-construct-only.md) declared the language-construct axis; the eight resulting clusters (`27A`–`27H`) carry per-group verdicts in [`docs/audits/`](../../docs/audits/).
 - **`Edge.evidence_type`** had 218 values mixing inference pathway (`ast_call_direct`), resolution status (`*_unresolved`), and framework dispatch (`django_orm_dispatch`) — three different questions in one field. [ADR-0028](../../docs/adr/0028-evidence-type-inference-pathway-only.md) declared the inference-pathway axis (clusters `28A`–`28D`).
 
-If "axis" / "cluster" / "audit-findings" don't yet feel concrete, read [`docs/audits/README.md`](../../docs/audits/README.md) §"Concepts" first. The playbook below is what produced those audits and what the next one will follow.
+Vocabulary used throughout:
+
+- **Axis** — a typing dimension for a multi-value field, defined by an axiom that every value on the axis must satisfy (e.g. for `Edge.edge_type`: "names the *relationship* between src and dst — not endpoint properties"). A field can be off-axis (multiple things at once), in which case the audit usually concludes with a *new axis declaration*.
+- **Cluster** — a thematically grouped family of values within one axis, audited together so verdicts come out comparable (e.g. cluster `27A` covered Symbol.kind's "apex/peer" family of generic-vs-specific value pairs).
+- **Audit-findings document** — the per-cluster verdict table that comes out of applying this playbook to a scope, filed at `docs/audits/<NN>-<topic>.md`. One row per audited value; CANONICAL / FOLD / DEPRECATE-NO-FOLD verdict (defined inline in Step 6 below) plus evidence.
+
+The playbook below is what produced the existing audits and what the next one will follow.
 
 ## When to run
 
@@ -274,9 +280,10 @@ regression guard so that if a producer is added later for a value
 currently flagged as DEPRECATE-NO-FOLD, CI fails and the verdict is
 forced back into the audit funnel. Until that extension lands, the
 Step 4.5 grep is the only trace; treat any DEPRECATE-NO-FOLD verdict
-shipped before the regression guard exists as needing a manual re-
-trace at the time of registry pruning (Phase 4b in the ADR-0027
-worked example).
+shipped before the regression guard exists as needing a manual re-trace
+**at the time the value is actually removed from the canonical
+registry** — not earlier, not later. This is the last window in which a
+silent producer can flip the verdict before the value disappears.
 
 ### Step 5 — Adjacent concept sweep
 
@@ -299,9 +306,8 @@ Adjacent fields don't have to all be confused — but they almost always
 share design history with the confused one, so they're the cheapest
 places to find the next instance. When a sweep surfaces a field that
 warrants a full axis declaration (rather than a single-pair verdict),
-ADR-0024 specifies the four-part declaration template (axis name,
-axiom, consumer pattern, enforcement) and the seven-step workflow for
-landing the artifacts.
+land the four artifacts described in "Axis declaration: the four-part
+template" below as part of Step 6's Deprecate path.
 
 ### Step 6 — Decide: deprecate, document, or keep
 
@@ -311,31 +317,37 @@ outcomes below:
 
 - **Deprecate** — the distinction is leakage; the resolution depends
   on whether you're declaring a new axis or applying an existing one:
-  - **New principle (declares an axis)**: open an ADR with a typing
-    principle and a migration plan. ADR-0023 is the worked example;
-    ADR-0024 is the abstract template (axis name, axiom, consumer
-    pattern, enforcement) for declaring the new axis the deprecation
-    reorganizes around.
+  - **New principle (declares an axis)**: the field is doing more
+    than one thing; reorganize it around an axiom. Open an ADR that
+    lands the four named artifacts described in "Axis declaration: the
+    four-part template" below, then run the per-value verdict step on
+    the existing values.
   - **Case ruling under existing law (audits values on a declared
-    axis)**: file an audit-findings document at
-    `docs/audits/<NN>-<topic>.md` per the format spec at
-    [`docs/audits/README.md`](../../docs/audits/README.md), applying
-    the CANONICAL / FOLD / DEPRECATE-NO-FOLD verdict trichotomy
-    defined in [ADR-0024 §"Family-audit verdict
-    methodology"](../../docs/adr/0024-axis-declaration-template.md).
-    Worked examples:
+    axis)**: the field's axiom is already declared; you're sorting
+    each value of a *family* against it. Apply the CANONICAL / FOLD /
+    DEPRECATE-NO-FOLD trichotomy described in "Verdict trichotomy for
+    value-level audits" below and file the output as an audit-findings
+    document at `docs/audits/<NN>-<topic>.md` (one row per audited
+    value, verdict + evidence). Worked examples:
     [audit-findings 0001](../../docs/audits/0001-dispatch-publish-family.md)
     (dispatch and publish families on `Edge.edge_type`) and
     [audit-findings 0002](../../docs/audits/0002-ipc-family.md)
     (IPC family on `Edge.edge_type`).
 - **Document** — the distinction is genuine but undocumented. The
-  artifact ranges from a short ADR addendum or module docstring (when
-  the suspect domain is conceptual) up to a structured registry module
-  with per-value metadata and a property test enforcing the boundary
-  going forward (when the suspect domain is a value-set in code — see
-  ADR-0024 for the template, ADR-0023 / `edge_types.py` for the worked
-  example). Either way, the artifact must state WHY the variants are
-  distinct and what query each is meant to answer.
+  right artifact scales with the suspect domain:
+  - **Conceptual scope.** A short addendum to the relevant ADR, an
+    expanded module docstring, or a paragraph in `docs/CONCEPTS.md`
+    naming the boundary. The artifact must state WHY the variants
+    are distinct and what query each is meant to answer.
+  - **Value-set in code.** A structured registry module
+    (frozen-dataclass spec list à la `edge_types.py`) with per-value
+    metadata, plus a drift property test that asserts the canonical
+    registry and any consumer hardcoded sets stay consistent. If the
+    boundary is between two values within the same field, the
+    registry's per-value metadata records which section they belong
+    to and the property test is the regression guard. The
+    `hypergumbo_core.edge_types` + `scripts/check-edge-type-drift`
+    pair is the closest worked example in this repo.
 - **Keep without action** — explicitly accept the apparent overlap
   as "not actually a problem at the scale we care about". This
   outcome is fine but must be **written down with rationale and a
@@ -345,6 +357,98 @@ outcomes below:
   audit to be re-run. A bare note saying "we decided this was fine"
   decays into folklore in two quarters; a written trigger gives the
   next auditor concrete grounds to re-open.
+
+#### Axis declaration: the four-part template
+
+When Step 6's Deprecate verdict is "declares a new axis", the resulting
+ADR must name four pieces. Each piece corresponds to a concrete artifact
+that ships with the ADR — without all four, the axiom decays into
+folklore and the next leak refills the field within months.
+
+1. **Axis name.** A short identifier (e.g. `AXIS_RELATIONSHIP` for
+   `Edge.edge_type`). Appears in code as the registry section key, in
+   ADRs as the name of the principle being introduced, and in audit-
+   findings tables as the column the verdict is applied to.
+
+2. **Axiom.** One sentence that defines what the axis classifies, in
+   a form that can be applied to a candidate value as accept-or-reject.
+   Properties of a good axiom:
+   - **Falsifiable** — given a value, the axiom either accepts it or
+     rejects it. "`edge_type` names the relationship that produced the
+     edge" rejects `native_bridge` (the `bridge` part is endpoint shape,
+     not the relationship).
+   - **One sentence long** — if it needs a paragraph, the axis is
+     doing too much; split it.
+   - **Distinguishes the canonical section from the rest** — the axiom
+     is what makes some values "on-axis" and others "deprecation
+     candidate" or "pending audit".
+
+3. **Consumer pattern.** A documented helper that consumers call instead
+   of hardcoding membership sets locally. Example shape for an
+   edge-shaped axis: `edge_types_on_axis(axis: str) -> tuple[Spec, ...]`,
+   so callers needing "all relationship-shaped edge types" call
+   `edge_types_on_axis(AXIS_RELATIONSHIP)` and stay in sync with the
+   canonical registry as it evolves. The point of the pattern is to make
+   the audit-detected hardcoded-set anti-pattern (Step 4 first bullet)
+   structurally hard to reintroduce.
+
+4. **Enforcement.** A drift-detection mechanism, mandatory. Two layers:
+   - **Static**: a drift linter that walks the consumer code and flags
+     any hardcoded set that diverges from `axis_values_for(...)`. The
+     pre-existing `scripts/check-edge-type-drift` is the template — copy
+     its shape for new axes by parameterizing on the field name.
+   - **Runtime**: a property test that asserts every emitted value lands
+     in the canonical section of the axis (no producer drift).
+
+Each axis declaration ships those four pieces in one PR: registry
+module (axis name + axiom in the docstring), consumer pattern (the
+helper API), drift linter (static enforcement), property test (runtime
+enforcement). Without all four the axis is incomplete.
+
+#### Verdict trichotomy for value-level audits
+
+When the audit's scope is a family of values on an already-declared
+axis (Step 6's "case ruling under existing law"), each value gets one
+of three verdicts:
+
+1. **CANONICAL.** The value names a genuinely distinct case on the
+   axis — what the axiom is asking the field to express, with no
+   endpoint / mechanism / protocol / framework leakage. The value
+   stays. Producers continue to emit it. Lands in the canonical section
+   of the registry (e.g. `AXIS_RELATIONSHIP` for `Edge.edge_type`).
+
+2. **FOLD.** The value is a protocol-conditional, framework-specific,
+   or mechanism-flavored alias of an existing canonical value. The
+   differentiating fact (which protocol, which framework, which
+   channel kind) is endpoint or meta information, not a separate axis
+   value. **Migration**: rename to the canonical at producer sites;
+   move the differentiating fact to the host dataclass's per-instance
+   metadata bag (e.g. `Edge.meta["protocol"]`, `Symbol.meta["framework_role"]`).
+   Example: `imports_component` folds into `imports` with the
+   component-shape kept in `meta["import_kind"]`.
+
+3. **DEPRECATE-NO-FOLD.** The value's emit shape doesn't fit the
+   axis's classification at all — the producer site is doing something
+   other than what the value name implies, OR the value is dead
+   vocabulary with no live producer. **Migration**: producer site
+   rewrites with a different label or stops emitting altogether. Before
+   shipping a DEPRECATE-NO-FOLD verdict, run the indirection-aware
+   producer trace (Step 4.5) — historically, ~40 % of initial
+   DEPRECATE-NO-FOLD verdicts have flipped to CANONICAL or FOLD once
+   producers via `add_symbol(...)` / `_make_*_symbol(...)` /
+   `kinds["k"]="v"` are found.
+
+Each verdict is justified by which of the four leakage tests (Step 3)
+fired most diagnostically. The audit-findings document records the
+fired test alongside the verdict.
+
+> **Refactor trigger.** If a future axis declaration reveals that the
+> verdict scheme genuinely varies per axis — i.e., a different host
+> dataclass needs a different trichotomy or a four-way split — promote
+> this subsection into a standalone `docs/family-audit-methodology.md`
+> at that point. Don't speculatively split now; the trichotomy has been
+> empirically general across the three audited axes (`Edge.edge_type`,
+> `Symbol.kind`, `Edge.evidence_type`).
 
 ### Step 7 — Record findings
 

@@ -37,8 +37,12 @@ When CI fails but tests pass locally, use `./scripts/ci-debug`:
 - Use `./scripts/ci-debug analyze-deps` to compare imports vs pyproject.toml
 - Use `pip index versions tree-sitter-<lang>` to verify package exists on PyPI
 
-**The escape hatch policy** (see ADR 0002):
-- Tests assume dependencies work; they do NOT skip when dependencies fail
-- If a dependency breaks upstream, pin to a known-good version in `pyproject.toml`
-- Document the pin with a comment
-- Never hide failures with pytest.skip() patterns
+**The escape-hatch policy** (no `skipif` / `pytest.skip()` patterns):
+- Tests assume dependencies work; they do **NOT** skip when dependencies fail. If a grammar package, tree-sitter wheel, or other runtime dep breaks upstream, CI must fail loudly rather than silently green.
+- Recovery procedure when an upstream dep breaks: pin to the last known-good version in `pyproject.toml` (e.g. `tree-sitter-language-pack==0.13.0`), add a comment naming the upstream issue or PR that motivated the pin, and ship the pin in its own PR so CI returns to green.
+- Graceful-degradation behavior (analyzers returning `skipped=True` when an optional grammar is unavailable) is tested via **mocking**, never by running the test suite with the grammar genuinely missing.
+- Three escape-hatch shapes that must not appear in test files:
+  - module-level `pytestmark = pytest.mark.skipif(not is_available(), ...)`
+  - per-test `@pytest.mark.skipif(not AVAILABLE, ...)`
+  - runtime `if result.skipped: pytest.skip(...)`
+- The same logic applies to optional dependency extras (`hypergumbo[rust-analyzer]`, etc.) — write real tests against the installed code path plus a separate mock test that exercises the "extra not installed" branch. Detail in the optional-dependency-testing playbook.

@@ -102,10 +102,13 @@ for k, count in node_kinds.most_common(15):
 top-level fields are `id`, `name`, `kind`, `language`, `path`, `span`, `origin`,
 `origin_run_id`, `origin_run_signature`, `stable_id`, `shape_id`, `canonical_name`,
 `fingerprint`, `quality`, `meta`, `supply_chain` (nested: `tier`, `tier_name`,
-`reason`, `is_test_file`, `is_generated_file`, `is_exported`),
+`reason`, `is_test_file`, `is_example_file`, `is_config_file`,
+`is_generated_file`, `is_exported`),
 `cyclomatic_complexity`, `lines_of_code`, `signature`, `docstring`, `modifiers`.
 Common mistakes: `lang` (use `language`), `type` on a node (use `kind`), `file`
 (use `path`), `source` / `target` on an edge (use `src` / `dst`).
+
+**Tier label trap.** On a workspace package, `supply_chain.tier_name=internal_dep` is the default for everything *outside* `src/`/`lib/`/`app/` — including tests. On a self-analysis where the codebase is mostly first-party, a "78 % internal_dep" summary stat is not anomalous; it is the documented classification algorithm (`supply_chain.py` step 4: src/lib/app → tier 1, otherwise tier 2). Use the role flags (`is_test_file`, `is_example_file`, `is_config_file`, `is_generated_file`) to recover what kind of code a tier-2 node holds — not the tier label alone.
 
 **Expected:** Orphan rate below 30%. If higher, the Python analyzer or linkers may be missing edges.
 Edge type distribution should include `calls`, `contains`, `imports`, `instantiates`, etc. If most edges show `MISSING`, the behavior map schema may have changed.
@@ -158,7 +161,25 @@ hypergumbo slice --entry link_middleware_chain
 hypergumbo slice --entry Symbol --reverse
 ```
 
-**Check:** Does the forward slice from `hypergumbo_core/cli.py` include `sketch.py`, `slice.py`, `ir.py`, and the analyzer modules? If major dependencies are missing, the call graph has gaps.
+The slice CLI prints `nodes: N · edges: N · limits_hit: [...]` and writes a JSON file alongside the analysis cache. **The slice JSON is referential, not standalone.** Its top-level keys are `feature`, `schema_version`, `view`; the slice contents live under `feature.node_ids[]` and `feature.edge_ids[]` as ID strings — not under `nodes` / `edges` like the behavior map. To answer "does the slice include file X?", join the IDs back against the parent behavior-map JSON:
+
+```python
+import json
+with open(slice_path) as f:
+    feature = json.load(f)["feature"]
+with open(behavior_map_path) as f:
+    node_by_id = {n["id"]: n for n in json.load(f)["nodes"]}
+
+paths = {node_by_id[i]["path"] for i in feature["node_ids"] if i in node_by_id}
+expected = {"sketch.py", "slice.py", "ir.py", "discovery.py", "paths.py",
+            "io_boundary.py", "analyze/registry.py", "linkers/registry.py"}
+missing = {e for e in expected if not any(p.endswith("/" + e) for p in paths)}
+print(f"slice covers {len(paths)} files; missing: {missing}")
+```
+
+If `limits_hit` contains `file_limit` or `hub_pruned`, the slice was truncated — the missing-set check is then upper-bounded by the limit; expand with `--max-files` / `--max-hub-degree` if needed.
+
+**Check:** Does the forward slice from `hypergumbo_core/cli.py` include `sketch.py`, `slice.py`, `ir.py`, and the analyzer modules? If major dependencies are missing *and* `limits_hit` is empty, the call graph has gaps.
 
 ### Explain validation
 
