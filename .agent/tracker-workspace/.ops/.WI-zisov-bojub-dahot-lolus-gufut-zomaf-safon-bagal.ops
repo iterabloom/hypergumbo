@@ -1,0 +1,23 @@
+- op: create  # a775
+  at: '2026-05-13T01:54:06Z'  # a775
+  by: agent  # a775
+  actor: jgstern_agent  # a775
+  clock: 1  # a775
+  nonce: a775  # a775
+  data:  # a775
+    kind: work_item  # a775
+    title: "Extend polyglot fixture to 5-10 additional languages (Phase 2 audit)"  # a775
+    status: needs_human_review  # a775
+    priority: 4  # a775
+    parent: WI-nigah-hubuj-mobuh-zurus-limab-sonol-jutiz-kumuh  # a775
+    tags:  # a775
+    - analysis_quality  # a775
+    - dst_ref  # a775
+    - polyglot  # a775
+    isbefore:  # a775
+    - WI-kaziv-tapol-golil-digib-divag-futog-nitir-tuvoz  # a775
+    duplicate_of: []  # a775
+    not_duplicate_of: []  # a775
+    pr_ref:  # a775
+    description: "Extend `packages/hypergumbo-lang-mainstream/tests/test_polyglot_call_site_coverage.py` to audit a wider set of analyzers. WI-mafik Level 1b audited 7 non-Python languages; Phase 2 picks 5-10 next-most-impactful candidates.\n\nCandidate set (initial — final list depends on bakeoff signal from WI-kaziv):\n- kotlin (Android, JVM ecosystem)\n- scala (JVM, common in Spark codebases)\n- php (Laravel / Symfony, heavy on autoload)\n- swift (iOS, has explicit module imports)\n- csharp (NuGet, using directives)\n- dart (Flutter, package: imports)\n- ocaml (Reason, opam packages)\n- solidity (smart contracts, import statements)\n- haskell (qualified imports, popular FP target)\n- erlang (-include, module-qualified calls)\n\nPer-language audit pattern (mirrors WI-mafik Level 1b):\n1. Build a fixture exercising the canonical import-times-call constructs for the language (start with: bare name from qualified-module import, multi-segment attribute chain, aliased root, aliased terminal name).\n2. Append a `PolyglotFixture` entry to `POLYGLOT_FIXTURES`.\n3. Each expected `(module_substring, callable_substring)` target must appear in some `calls` edge's dst — substring-based to stay decoupled from per-analyzer dst-format conventions.\n4. Initially load with `xfail_reason` (strict=True) describing the gap state at audit time. The strict-xfail surfaces analyzer improvements as `XPASSED` regressions, ensuring fix-side PRs must remove the xfail markers to ship.\n\nPer-language retrofit pattern (mirrors WI-mafik children in Phase 1):\n- Identify the analyzer's import-detection function and call-emit sites.\n- Decide whether to use the shared `ImportScope` utility or extend the analyzer's existing import-tracking dict.\n- Populate `dst_ref=ExternalRef(...)` at call-emit sites that have module + name info.\n- Verify the xfail-marker flip via `pytest packages/hypergumbo-lang-mainstream/tests/test_polyglot_call_site_coverage.py`.\n\nOut of scope:\n- Languages with no notion of \"external call\" in their primary edge family (CSS, INI, dockerfile, etc.) — see umbrella description.\n- Analyzers whose external-call coverage is already empirically near-zero (audit pre-flight: emit edge count on the prospector corpus before authoring a fixture)."  # a775
+    fields: {}  # a775

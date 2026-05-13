@@ -1,0 +1,23 @@
+- op: create  # 4d10
+  at: '2026-05-13T01:53:46Z'  # 4d10
+  by: agent  # 4d10
+  actor: jgstern_agent  # 4d10
+  clock: 1  # 4d10
+  nonce: 4d10  # 4d10
+  data:  # 4d10
+    kind: work_item  # 4d10
+    title: "Bakeoff-validate WI-tihup + WI-mafik via BROAD cycle"  # 4d10
+    status: needs_human_review  # 4d10
+    priority: 4  # 4d10
+    parent: WI-nigah-hubuj-mobuh-zurus-limab-sonol-jutiz-kumuh  # 4d10
+    tags:  # 4d10
+    - analysis_quality  # 4d10
+    - dst_ref  # 4d10
+    - bakeoff  # 4d10
+    - awaits_bakeoff_validation  # 4d10
+    isbefore: []  # 4d10
+    duplicate_of: []  # 4d10
+    not_duplicate_of: []  # 4d10
+    pr_ref:  # 4d10
+    description: "Clear the `awaits_bakeoff_validation` tags on WI-tihup and WI-mafik using `./scripts/bakeoff-broad cycle` on the prospector corpus.\n\nExpected signal:\n- Modest gains on Rust / JS-TS / Java repos as the closed import-resolution gaps unlock cross-language linker / io-boundary matches.\n- Reduced dead-code FP volume on repos that use static imports (Java), dot imports (Go), aliased named imports (JS/TS), or stdlib gems (Ruby).\n- New per-edge `dst_ref` field visible in behavior maps.\n\nWorkflow:\n1. Run `./scripts/bakeoff-broad cycle` (the run+diagnose+reflect cohort form).\n2. Aggregate via `./scripts/bakeoff-deep-reflect aggregate` — this also automatically strips the `awaits_bakeoff_validation` tag when results land.\n3. Capture verdict (moved / no_move / inconclusive) per the bakeoff-validation-tagging-discipline playbook.\n4. If `moved`: strip tag manually (auto-strip should handle it). If `no_move`: file an untagged regression sub-item. If `inconclusive`: keep tag and re-evaluate after the next cohort.\n\nBlocks the rest of Phase 2 because the bakeoff signal is the basis for prioritizing which un-audited languages to retrofit next.\n\nTrigger: when the user / human operator wants Phase 2 to proceed. Until then, this stays `needs_human_review` to avoid the agent burning bakeoff cycles speculatively."  # 4d10
+    fields: {}  # 4d10

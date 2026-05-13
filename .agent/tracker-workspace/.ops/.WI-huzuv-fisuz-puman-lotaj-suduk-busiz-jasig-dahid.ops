@@ -1,0 +1,23 @@
+- op: create  # 80cc
+  at: '2026-05-13T01:54:24Z'  # 80cc
+  by: agent  # 80cc
+  actor: jgstern_agent  # 80cc
+  clock: 1  # 80cc
+  nonce: 80cc  # 80cc
+  data:  # 80cc
+    kind: work_item  # 80cc
+    title: "Mechanical dst_ref sweep — analyzers using make_unresolved_edge with module hint"  # 80cc
+    status: needs_human_review  # 80cc
+    priority: 4  # 80cc
+    parent: WI-nigah-hubuj-mobuh-zurus-limab-sonol-jutiz-kumuh  # 80cc
+    tags:  # 80cc
+    - analysis_quality  # 80cc
+    - dst_ref  # 80cc
+    - mechanical_sweep  # 80cc
+    isbefore:  # 80cc
+    - WI-kaziv-tapol-golil-digib-divag-futog-nitir-tuvoz  # 80cc
+    duplicate_of: []  # 80cc
+    not_duplicate_of: []  # 80cc
+    pr_ref:  # 80cc
+    description: "Single sweep PR mechanically retrofitting analyzers that already call `make_unresolved_edge` with a clear `module_hint` argument. The change is one-line per call site: add `dst_ref=ExternalRef(lang=..., module_path=module_hint, name=callee_name)` alongside the existing `module_hint=` kwarg.\n\nThese analyzers don't need language-specific import-resolution logic — they already know the module at the emit site (typically because they emit during import-declaration walks rather than call-expression walks).\n\nTarget candidates (initial sketch — verify with `git grep \"make_unresolved_edge\"` before authoring):\n- `requirements.py` — Python `requirements.txt` lines have explicit module names.\n- `cmake.py` — `find_package(X)` / `include(X)` have module = X.\n- `py_deps.py` — pyproject.toml dependency edges.\n- `jvm_deps.py` — Gradle / Maven dependency edges.\n- `manifest_targets.py` — build manifest cross-refs.\n- Any analyzer where `git grep \"make_unresolved_edge\" <file>` shows module_hint != \"external\" and the callee name is structured.\n\nNON-target (excluded):\n- The 7 already-retrofitted analyzers from PR2 (java, go, elixir, js_ts, cpp, rust, ruby).\n- Python's py.py — already retrofitted in PR1.\n- Analyzers that emit `make_unresolved_edge` with `module_hint=\"external\"` (the literal sentinel) — these have no module info to attach to dst_ref, so the retrofit is a no-op.\n- Analyzers using ad-hoc `Edge.create(dst=f\"…\")` instead of `make_unresolved_edge` — those need per-analyzer audit, not a sweep.\n\nAcceptance:\n- Each retrofitted analyzer's tests stay green.\n- New unit test (parametric) verifies `dst_ref is not None` on emitted unresolved edges for at least one fixture per retrofitted analyzer.\n- No SCHEMA bump needed (dst_ref already in schema as of PR1's 0.7.1 → 0.7.2 patch).\n\nTrigger: after WI-kaziv (bakeoff validation) confirms Phase 1's value. If the bakeoff signal is muted, this sweep is still safe to do — it's purely additive — but lower priority.\n\nEstimate: probably <30 min per analyzer × 5-8 analyzers = <4 hours total. Could be a single PR."  # 80cc
+    fields: {}  # 80cc

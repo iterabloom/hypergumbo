@@ -1,0 +1,22 @@
+- op: create  # e9bd
+  at: '2026-05-13T01:53:32Z'  # e9bd
+  by: agent  # e9bd
+  actor: jgstern_agent  # e9bd
+  clock: 1  # e9bd
+  nonce: e9bd  # e9bd
+  data:  # e9bd
+    kind: work_item  # e9bd
+    title: "WI-mafik Phase 2 — long-tail analyzer dst_ref adoption (umbrella)"  # e9bd
+    status: needs_human_review  # e9bd
+    priority: 4  # e9bd
+    parent:  # e9bd
+    tags:  # e9bd
+    - analysis_quality  # e9bd
+    - dst_ref  # e9bd
+    - phase_2  # e9bd
+    isbefore: []  # e9bd
+    duplicate_of: []  # e9bd
+    not_duplicate_of: []  # e9bd
+    pr_ref:  # e9bd
+    description: "Umbrella for follow-on work after the WI-tihup + WI-mafik bundle (PRs #3674, #3677). PR1 + PR2 shipped the primitives (`ExternalRef`, `ImportScope`, `make_unresolved_edge(dst_ref=…)`, dst_ref-prefer consumer paths) and migrated 8 analyzers — Python + 7 non-Python (java, go, elixir, js_ts, cpp, rust, ruby).\n\nRoughly 90 other analyzers in `hypergumbo-lang-mainstream`, `hypergumbo-lang-common`, and `hypergumbo-lang-extended1` still emit legacy `Edge.dst` strings with `dst_ref = None`. No regression vs. pre-PR1; no benefit either. The structural parsing-bug fix in `ir.create_boundary_nodes` only helps edges that carry `dst_ref`.\n\nPhase 2 is **placeholder / needs_human_review** because:\n- The audit instrument (`test_polyglot_call_site_coverage.py`) only covers 8 fixtures — extending it is a design choice (which languages? prioritized how?), not a mechanical task.\n- The bakeoff signal for Phase 1's value (closing the 7 audited gaps) hasn't landed yet — the `awaits_bakeoff_validation` tags on WI-tihup / WI-mafik need a BROAD cycle to clear before Phase 2 prioritization is data-driven instead of speculative.\n- Many long-tail analyzers emit very few external-target call edges (CSS, INI, JSON, gitignore, dockerfile…), so a mechanical sweep should be scoped, not blanket.\n\nChildren (initially also `needs_human_review`):\n- Bakeoff-validate WI-tihup + WI-mafik via BROAD cycle (prerequisite — produces signal data for prioritization).\n- Extend polyglot fixture to 5-10 additional languages.\n- Sweep-style PR for analyzers that already use `make_unresolved_edge` with a clear module hint.\n\nTrigger condition: after the bakeoff-validation child closes, re-evaluate Phase 2 scope. If the bakeoff signal shows specific un-audited languages contributing FP volume in dead-code or io-boundary chains, those become high-priority retrofit candidates. If the bakeoff signal is muted, Phase 2 may be reduced to the mechanical-sweep child only or closed `wont_do`.\n\nOut of scope (call out, don't re-audit each time):\n- Tooling languages with no call-edge concept (gitignore, ini, properties, yaml_ansible, dockerfile, manifest_targets, json_config, xml_config, toml_config, requirements, jvm_deps) — dst_ref is N/A for their primary edge types (imports / contains, not calls).\n- def_use companion modules (py_def_use, rust_def_use, ts_def_use) — these emit reference edges, not external-target calls.\n- Pure SCIP / IR-backed analyzers (rust_scip) — already structured."  # e9bd
+    fields: {}  # e9bd
