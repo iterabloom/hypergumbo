@@ -19,3 +19,18 @@
     pr_ref:  # 48f2
     description: "WI-mafik Level 1b child. `import static java.util.Collections.singletonList;` + `singletonList(...)` emits a calls edge whose dst is `java:external:0-0:singletonList:unresolved` — the analyzer doesn't propagate the static import's source module (`java.util.Collections`) onto the bare call. Repro in polyglot fixture::java. Expected: dst contains `java.util` + `singletonList`. Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py — static-import propagation at the bare-call lookup. Acceptance: remove xfail_reason for java in the polyglot fixture without other test changes."  # 48f2
     fields: {}  # 48f2
+- op: update  # d2d5
+  at: '2026-05-13T19:41:33Z'  # d2d5
+  by: agent  # d2d5
+  actor: jgstern_agent  # d2d5
+  clock: 2  # d2d5
+  nonce: d2d5  # d2d5
+  set:  # d2d5
+    status: done  # d2d5
+- op: discuss  # ec9c
+  at: '2026-05-13T19:41:33Z'  # ec9c
+  by: agent  # ec9c
+  actor: jgstern_agent  # ec9c
+  clock: 3  # ec9c
+  nonce: ec9c  # ec9c
+  message: "Closed retroactively during Phase 0 execution (2026-05-13). Fix landed in commit be0ddcb8eb 2026-05-12 ('feat(analyzers): WI-tihup + WI-mafik PR2 — 7-language dst_ref adoption + consumer migration'). That commit's message explicitly listed this item among 'Seven WI-mafik children close done with rationale acceptance criterion met — xfail removed in this PR' but the tracker mutation was missed. Verified today: polyglot_call_site_coverage test passes for this language (8/8); direct probe confirms expected (module, callable) substrings appear in calls-edge dsts. The work is done; only the tracker state was stale. Probe evidence: java:java.util.Collections:0-0:singletonList:unresolved — static-import propagates source module."  # ec9c

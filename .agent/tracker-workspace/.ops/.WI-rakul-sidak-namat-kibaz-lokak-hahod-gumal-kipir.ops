@@ -19,3 +19,18 @@
     pr_ref:  # 2c40
     description: "WI-mafik Level 1b child (multi-gap). (1) `alias String, as: S` + `S.upcase(...)` preserves the alias `S` rather than resolving to `String` (dst emitted: `elixir:S:0-0:upcase:unresolved`). (2) `import Enum, only: [count: 1]` + bare `count(...)` emits no calls edge at all. Repro in polyglot fixture::elixir. Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/elixir.py — alias resolution + import-only name tracking. Acceptance: remove xfail_reason for elixir in the polyglot fixture without other test changes."  # 2c40
     fields: {}  # 2c40
+- op: update  # 5a3c
+  at: '2026-05-13T19:41:33Z'  # 5a3c
+  by: agent  # 5a3c
+  actor: jgstern_agent  # 5a3c
+  clock: 2  # 5a3c
+  nonce: 5a3c  # 5a3c
+  set:  # 5a3c
+    status: done  # 5a3c
+- op: discuss  # 6375
+  at: '2026-05-13T19:41:33Z'  # 6375
+  by: agent  # 6375
+  actor: jgstern_agent  # 6375
+  clock: 3  # 6375
+  nonce: '6375'  # 6375
+  message: "Closed retroactively during Phase 0 execution (2026-05-13). Fix landed in commit be0ddcb8eb 2026-05-12 ('feat(analyzers): WI-tihup + WI-mafik PR2 — 7-language dst_ref adoption + consumer migration'). That commit's message explicitly listed this item among 'Seven WI-mafik children close done with rationale acceptance criterion met — xfail removed in this PR' but the tracker mutation was missed. Verified today: polyglot_call_site_coverage test passes for this language (8/8); direct probe confirms expected (module, callable) substrings appear in calls-edge dsts. The work is done; only the tracker state was stale. Probe evidence: elixir:String:0-0:upcase:unresolved (alias resolved to String, not preserved as S); elixir:Enum:0-0:count:unresolved (bare-call from import-only no longer silently dropped)."  # 6375

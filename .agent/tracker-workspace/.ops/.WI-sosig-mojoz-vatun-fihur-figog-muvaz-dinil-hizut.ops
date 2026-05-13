@@ -1,0 +1,37 @@
+- op: create  # 8ee7
+  at: '2026-05-13T19:33:48Z'  # 8ee7
+  by: agent  # 8ee7
+  actor: jgstern_agent  # 8ee7
+  clock: 1  # 8ee7
+  nonce: 8ee7  # 8ee7
+  data:  # 8ee7
+    kind: work_item  # 8ee7
+    title: "Tracker tag hygiene: harmonize dash/underscore dupes + add missing concept tags"  # 8ee7
+    status: todo_hard  # 8ee7
+    priority: 4  # 8ee7
+    parent:  # 8ee7
+    tags:  # 8ee7
+    - tracker_hygiene  # 8ee7
+    - someday  # 8ee7
+    isbefore: []  # 8ee7
+    duplicate_of: []  # 8ee7
+    not_duplicate_of: []  # 8ee7
+    pr_ref:  # 8ee7
+    description: "Phase 0 (RCT pin-readiness) §0.6 followup. Two-part cleanup, file after Phase 5 lands.\n\nPART 1 — dash/underscore duplicates:\n- analysis-quality vs analysis_quality\n- ci-infrastructure vs ci_infrastructure\n- phase-2 vs phase_2\n- entrypoint vs entrypoints\n- tracker-hygiene vs tracker_hygiene (validator now rejects dash form for new use; underscore is canonical)\n\nPART 2 — missing concept tags (surfaced during Phase 0 substring search):\n- ranking\n- dampener\n- centrality\n- wheel\n- sha256\n- citation\n- span_construct\n\nFor each dupe: pick canonical form, rename usages, retire the other. For each missing tag: add to the tag catalog with a one-line definition. Validate by re-running scripts/tracker tags before/after.\n\nNote: plan §0.6 originally said 'reproducibility' was missing — it's not (line 131 of tag inventory captured at /tmp/tracker-tags.txt on 2026-05-13). Don't re-add.\n\nSource: ~/hypergumbo_lab_notebook/notebookjournal_05132026_1912.md"  # 8ee7
+    fields: {}  # 8ee7
+- op: update  # 7475
+  at: '2026-05-13T19:34:04Z'  # 7475
+  by: agent  # 7475
+  actor: jgstern_agent  # 7475
+  clock: 2  # 7475
+  nonce: '7475'  # 7475
+  set: {}  # 7475
+  add:  # 7475
+    duplicate_of: [WI-fanus-pakon-migiv-lotas-fifid-tikud-juzol-zubav]  # 7475
+- op: discuss  # 65fb
+  at: '2026-05-13T19:34:04Z'  # 65fb
+  by: agent  # 65fb
+  actor: jgstern_agent  # 65fb
+  clock: 3  # 65fb
+  nonce: 65fb  # 65fb
+  message: "Duplicate of WI-fanus (created moments earlier in the same Phase 0 §0.6 filing). The first attempt errored on the dash-form 'tracker-hygiene' tag, then I retried with underscore form, but WI-fanus had already persisted. Marking this one as the duplicate; WI-fanus stays canonical."  # 65fb

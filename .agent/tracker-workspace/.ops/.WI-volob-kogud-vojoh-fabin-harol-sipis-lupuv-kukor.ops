@@ -19,3 +19,18 @@
     pr_ref:  # d956
     description: "WI-mafik Level 1b child (multi-gap). The Rust analyzer fails three import-times-call shapes: (1) `use std::fs::write` + bare `write(...)` emits no calls edge at all; (2) aliased name (`use std::fs::create_dir as mkdir` + `mkdir(...)`) preserves the alias rather than resolving to `create_dir`; (3) qualified call after `use std::fs;` (`fs::read_to_string(...)`) emits dst missing the `std::` prefix (analyzer doesn't connect `fs` back to `std::fs`). Repro in polyglot fixture::rust. All three are Rust analogs of the WI-zigah dotted-submodule resolution that landed for Python. Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py (may also touch rust_def_use.py) — call-site resolution against `use` declarations. Acceptance: remove xfail_reason for rust in the polyglot fixture without other test changes."  # d956
     fields: {}  # d956
+- op: update  # 26f6
+  at: '2026-05-13T19:41:33Z'  # 26f6
+  by: agent  # 26f6
+  actor: jgstern_agent  # 26f6
+  clock: 2  # 26f6
+  nonce: 26f6  # 26f6
+  set:  # 26f6
+    status: done  # 26f6
+- op: discuss  # 9f06
+  at: '2026-05-13T19:41:33Z'  # 9f06
+  by: agent  # 9f06
+  actor: jgstern_agent  # 9f06
+  clock: 3  # 9f06
+  nonce: 9f06  # 9f06
+  message: "Closed retroactively during Phase 0 execution (2026-05-13). Fix landed in commit be0ddcb8eb 2026-05-12 ('feat(analyzers): WI-tihup + WI-mafik PR2 — 7-language dst_ref adoption + consumer migration'). That commit's message explicitly listed this item among 'Seven WI-mafik children close done with rationale acceptance criterion met — xfail removed in this PR' but the tracker mutation was missed. Verified today: polyglot_call_site_coverage test passes for this language (8/8); direct probe confirms expected (module, callable) substrings appear in calls-edge dsts. The work is done; only the tracker state was stale. Probe evidence: rust:std::fs:0-0:{read_to_string,write,create_dir}:unresolved — all three use-declaration shapes resolve to std::fs."  # 9f06

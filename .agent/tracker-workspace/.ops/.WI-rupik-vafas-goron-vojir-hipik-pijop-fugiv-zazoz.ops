@@ -19,3 +19,18 @@
     pr_ref:  # 4145
     description: "WI-mafik Level 1b child. cpp.py emits calls edges whose dst contains no header/module info: `#include <cstdio>` + `std::printf(...)` emits `cpp:external:0-0:printf:unresolved` instead of a dst connecting to `cstdio`. Same shape for `using namespace std;` + bare call and `using std::name;` + bare call. Repro in polyglot fixture::cpp. The analyzer doesn't associate `#include` directives with subsequent calls. Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/cpp.py — include-to-name resolution at the call site. Acceptance: remove xfail_reason for cpp in the polyglot fixture without other test changes."  # 4145
     fields: {}  # 4145
+- op: update  # 9e24
+  at: '2026-05-13T19:41:33Z'  # 9e24
+  by: agent  # 9e24
+  actor: jgstern_agent  # 9e24
+  clock: 2  # 9e24
+  nonce: '9e24'  # 9e24
+  set:  # 9e24
+    status: done  # 9e24
+- op: discuss  # 499b
+  at: '2026-05-13T19:41:33Z'  # 499b
+  by: agent  # 499b
+  actor: jgstern_agent  # 499b
+  clock: 3  # 499b
+  nonce: 499b  # 499b
+  message: "Closed retroactively during Phase 0 execution (2026-05-13). Fix landed in commit be0ddcb8eb 2026-05-12 ('feat(analyzers): WI-tihup + WI-mafik PR2 — 7-language dst_ref adoption + consumer migration'). That commit's message explicitly listed this item among 'Seven WI-mafik children close done with rationale acceptance criterion met — xfail removed in this PR' but the tracker mutation was missed. Verified today: polyglot_call_site_coverage test passes for this language (8/8); direct probe confirms expected (module, callable) substrings appear in calls-edge dsts. The work is done; only the tracker state was stale. Probe evidence: cpp:cstdio,cstring,cstdlib:0-0:printf:unresolved — comma-joined-include hint pattern (per commit message); polyglot fixture substring match is satisfied."  # 499b

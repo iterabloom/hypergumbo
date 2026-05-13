@@ -19,3 +19,18 @@
     pr_ref:  # 4a11
     description: "WI-mafik Level 1b child (catastrophic — bumped to P3). `require \"json\"` + `JSON.parse(...)` emits ZERO calls edges. The Ruby analyzer does not recognize the require-then-call pattern at all on stdlib targets. Repro in polyglot fixture::ruby. Expected: calls edges whose dsts contain (`json` + `parse`), (`set` + `new`), (`json` + `generate`). Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ruby.py — `require` tracking and namespaced-constant call resolution. Acceptance: remove xfail_reason for ruby in the polyglot fixture without other test changes."  # 4a11
     fields: {}  # 4a11
+- op: update  # 3164
+  at: '2026-05-13T19:41:33Z'  # 3164
+  by: agent  # 3164
+  actor: jgstern_agent  # 3164
+  clock: 2  # 3164
+  nonce: '3164'  # 3164
+  set:  # 3164
+    status: done  # 3164
+- op: discuss  # 9982
+  at: '2026-05-13T19:41:33Z'  # 9982
+  by: agent  # 9982
+  actor: jgstern_agent  # 9982
+  clock: 3  # 9982
+  nonce: '9982'  # 9982
+  message: "Closed retroactively during Phase 0 execution (2026-05-13). Fix landed in commit be0ddcb8eb 2026-05-12 ('feat(analyzers): WI-tihup + WI-mafik PR2 — 7-language dst_ref adoption + consumer migration'). That commit's message explicitly listed this item among 'Seven WI-mafik children close done with rationale acceptance criterion met — xfail removed in this PR' but the tracker mutation was missed. Verified today: polyglot_call_site_coverage test passes for this language (8/8); direct probe confirms expected (module, callable) substrings appear in calls-edge dsts. The work is done; only the tracker state was stale. Probe evidence: ruby:json:0-0:parse:unresolved (and parallel for set/generate)."  # 9982

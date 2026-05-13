@@ -18,3 +18,21 @@
     pr_ref:  # 4424
     description: "Per WI-tolif scope-expansion (Structural Fix Protocol). The 2026-04-23 audit moved Python sys.stdout/sys.stderr from ipc_send to logging. Same pattern lives in:\n- c.yaml line 85: stdout, stderr under ipc_send\n- javascript.yaml line 215: console (stdout, stderr) under ipc_send\n- rust.yaml lines 132-133: io::stdout / io::stderr functions\n- scala.yaml line 131: stdout / stdoutUtf8 / stderrUtf8 (in fs_write currently — different bucket but same threat-modeling distinction worth verifying)\n- elixir.yaml: IO.puts and friends (already labeled but verify boundary)\n- haskell.yaml: handle-based stderr writes\n\nFor each, the test pattern is the same as the Python case (test_python_catalog_stdio_is_logging_not_ipc_send): assert lookup_with_module returns boundary == 'logging'. Move the entries from ipc_send (or wherever they are) to a new 'logging' block in the YAML. stdio reads (stdin) stay in ipc_recv — they CAN carry untrusted piped input.\n\nAcceptance: 'hypergumbo io-boundaries' on a hypergumbo-style repo in each of these languages shows ipc_send chain count drop and a corresponding logging bucket appear. Tag awaits_bakeoff_validation if shipping under that policy."  # 4424
     fields: {}  # 4424
+- op: update  # e2f0
+  at: '2026-05-13T19:59:21Z'  # e2f0
+  by: agent  # e2f0
+  actor: jgstern_agent  # e2f0
+  clock: 2  # e2f0
+  nonce: e2f0  # e2f0
+  set:  # e2f0
+    status: done  # e2f0
+    pr_ref: https://codeberg.org/iterabloom/hypergumbo/pulls/3688  # e2f0
+  add:  # e2f0
+    tags: [awaits_bakeoff_validation]  # e2f0
+- op: discuss  # 0f3a
+  at: '2026-05-13T19:59:21Z'  # 0f3a
+  by: agent  # 0f3a
+  actor: jgstern_agent  # 0f3a
+  clock: 3  # 0f3a
+  nonce: 0f3a  # 0f3a
+  message: "Shipped in PR #3688 (commit 8de2f67015). Reclassified stdio→logging for c/rust/javascript/elixir catalogs per WI-tolif template. 4 new pin tests + downstream io_boundary suite green. Scala and Haskell were no-ops (scala has no stdio entries; haskell handle-based writes remain fs_write since the handle target can't be statically disambiguated). awaits_bakeoff_validation per AGENTS.md §Bakeoff Validation Discipline — the change reduces ipc_send false positives on non-Python repos and the magnitude is a quantitative bakeoff claim to validate."  # 0f3a

@@ -40,3 +40,19 @@
   clock: 4  # 4ad7
   nonce: 4ad7  # 4ad7
   message: "ADR-0023 (fully landed) settles Deliverable A in the negative: 'imports' is a syntactic fact, and dst.kind == 'variable' is queryable on the endpoint — no new 'references'-from-import edge type is justified. Per Phase 4b closure, the strict-mode drift linter would reject the change in pre-commit anyway. Deliverable B (intra-file ast.Name reads emitting 'references' edges to module-level variable Symbols) is unaffected and remains the substantive work in this item; its acceptance criteria are unchanged. Recommend scoping this item to Deliverable B only when it's picked up."  # 4ad7
+- op: update  # bbcd
+  at: '2026-05-13T19:32:23Z'  # bbcd
+  by: agent  # bbcd
+  actor: jgstern_agent  # bbcd
+  clock: 5  # bbcd
+  nonce: bbcd  # bbcd
+  set: {}  # bbcd
+  add:  # bbcd
+    tags: [someday]  # bbcd
+- op: discuss  # 0135
+  at: '2026-05-13T19:32:23Z'  # 0135
+  by: agent  # 0135
+  actor: jgstern_agent  # 0135
+  clock: 6  # 0135
+  nonce: '0135'  # 0135
+  message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: author's own framing is 'not worth doing in isolation; pair with WI-ramuv when that lands.'"  # 0135

@@ -1,0 +1,21 @@
+- op: create  # 4474
+  at: '2026-05-13T19:33:24Z'  # 4474
+  by: agent  # 4474
+  actor: jgstern_agent  # 4474
+  clock: 1  # 4474
+  nonce: '4474'  # 4474
+  data:  # 4474
+    kind: work_item  # 4474
+    title: "Tracker tag hygiene: harmonize dash/underscore dupes + add missing concept tags"  # 4474
+    status: todo_hard  # 4474
+    priority: 4  # 4474
+    parent:  # 4474
+    tags:  # 4474
+    - tracker-hygiene  # 4474
+    - someday  # 4474
+    isbefore: []  # 4474
+    duplicate_of: []  # 4474
+    not_duplicate_of: []  # 4474
+    pr_ref:  # 4474
+    description: "Phase 0 (RCT pin-readiness) §0.6 followup. Two-part cleanup, file after Phase 5 lands.\n\nPART 1 — dash/underscore duplicates:\n- analysis-quality (14 tags total this discipline) vs analysis_quality\n- ci-infrastructure vs ci_infrastructure\n- phase-2 vs phase_2\n- entrypoint vs entrypoints\n\nPART 2 — missing concept tags (surfaced during Phase 0 substring search):\n- ranking\n- dampener\n- centrality\n- wheel\n- sha256\n- citation\n- span_construct (currently must search title/description; substring works but a tag would be cleaner)\n\nFor each dupe: pick canonical form, rename usages, retire the other. For each missing tag: add to the tag catalog with a one-line definition. Validate by re-running scripts/tracker tags before/after.\n\nNote: plan §0.6 originally said 'reproducibility' was missing — it's not (line 131 of tag list). Don't re-add.\n\nSource: ~/hypergumbo_lab_notebook/notebookjournal_05132026_1912.md"  # 4474
+    fields: {}  # 4474

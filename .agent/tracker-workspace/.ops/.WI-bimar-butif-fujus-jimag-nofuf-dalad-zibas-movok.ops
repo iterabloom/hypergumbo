@@ -25,3 +25,19 @@
   clock: 2  # f7cf
   nonce: f7cf  # f7cf
   message: "Post-ADR-0023 / ADR-0028 reframe (both fully landed): emits for metatype-based dispatch must be canonical edge_type='calls' + meta['bridge_kind']='luajit_ffi' (no new edge_type peer; drift linter is strict in pre-commit). The luajit_ffi_unresolved evidence_type was folded in ADR-0028 audit-findings 0008 — for unresolved cases, set Edge.is_resolved=False (ir.py:399) plus a canonical inference label from evidence_types_on_axis(AXIS_INFERENCE_PATHWAY). The implementation work (recognize ffi.metatype(ctype, {...}) attachments and link struct_instance:method() calls to the bound Lua-side functions) is unchanged."  # f7cf
+- op: update  # e13e
+  at: '2026-05-13T19:32:10Z'  # e13e
+  by: agent  # e13e
+  actor: jgstern_agent  # e13e
+  clock: 3  # e13e
+  nonce: e13e  # e13e
+  set: {}  # e13e
+  add:  # e13e
+    tags: [someday]  # e13e
+- op: discuss  # 4529
+  at: '2026-05-13T19:32:10Z'  # 4529
+  by: agent  # 4529
+  actor: jgstern_agent  # 4529
+  clock: 4  # 4529
+  nonce: '4529'  # 4529
+  message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: author flagged no acute signal currently."  # 4529

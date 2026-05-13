@@ -1,0 +1,20 @@
+- op: create  # ca09
+  at: '2026-05-13T21:12:27Z'  # ca09
+  by: agent  # ca09
+  actor: jgstern_agent  # ca09
+  clock: 1  # ca09
+  nonce: ca09  # ca09
+  data:  # ca09
+    kind: work_item  # ca09
+    title: "Android XML component kinds: fold activity/service/receiver/provider to canonical kind"  # ca09
+    status: todo_hard  # ca09
+    priority: 3  # ca09
+    parent:  # ca09
+    tags:  # ca09
+    - analysis_quality  # ca09
+    isbefore: []  # ca09
+    duplicate_of: []  # ca09
+    not_duplicate_of: []  # ca09
+    pr_ref:  # ca09
+    description: "WI-limas surfaced that xml_config.py emits kind=\"activity\" / \"service\" / \"receiver\" / \"provider\" (literal element names from AndroidManifest.xml — xml_config.py:454), but none of those values exist in the canonical SYMBOL_KINDS registry post-ADR-0027 Phase 4b. WI-limas migrated the YAML side for what was migratable; these four producer-side folds remain.\n\nProposed shape: kind=\"component\" + meta[\"component_type\"]=\"activity\"/\"service\"/\"receiver\"/\"provider\". \"component\" IS in the canonical registry. The producer already builds meta[\"component_type\"]=elem_name at xml_config.py:425, so the producer fix is mostly switching kind= from elem_name to \"component\". \"provider\" is a complication — it's already in the canonical registry as a distinct value (Apex/Salesforce), so the fold could either route Android provider to kind=\"component\" + meta or leave it on the existing \"provider\" kind. Per audit-findings 0013 / WI-habut Wave 5, the pattern for these post-fold YAML rules is to add meta_match (now available — WI-limas) for the component_type axis.\n\nYAML side after producer fix: 4 rules in config-conventions.yaml under '====== Maven/Android' block migrate from 'symbol_kind: ^activity$' to 'symbol_kind: ^component$' + meta_match: {component_type: ^activity$}. Tests in test_xml_analyzer.py + a new test_config_conventions_android class.\n\nOut of scope for WI-limas's narrow remit; filed as follow-up."  # ca09
+    fields: {}  # ca09
