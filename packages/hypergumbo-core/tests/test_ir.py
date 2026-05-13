@@ -5,7 +5,7 @@ from pathlib import Path
 from hypergumbo_core.ir import (
     VALID_ACCESS_MODES,
     AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext, create_boundary_nodes,
-    is_external_boundary, validate_symbol_id_format,
+    format_legacy_dst, is_external_boundary, validate_symbol_id_format,
 )
 from hypergumbo_lang_mainstream.py import analyze_python
 
@@ -1872,6 +1872,19 @@ def test_external_ref_constructs_and_is_frozen() -> None:
     assert a != c
     # Hashable (frozen dataclass).
     assert {a, b, c} == {a, c}
+
+
+def test_format_legacy_dst_uniform_5seg_shape() -> None:
+    """``format_legacy_dst`` produces the 5-seg ``{lang}:{module}:0-0:{name}:unresolved`` shape.
+
+    This is the helper PR2's per-analyzer retrofits route their legacy
+    dst string through so the format is uniform across languages —
+    no more Rust 6-seg outlier or Java class-embedded-in-module variant.
+    """
+    py_ref = ExternalRef(lang="python", module_path="urllib.request", name="urlopen")
+    assert format_legacy_dst(py_ref) == "python:urllib.request:0-0:urlopen:unresolved"
+    rust_ref = ExternalRef(lang="rust", module_path="std::fs", name="read_to_string")
+    assert format_legacy_dst(rust_ref) == "rust:std::fs:0-0:read_to_string:unresolved"
 
 
 def test_external_ref_to_dict_round_trip() -> None:

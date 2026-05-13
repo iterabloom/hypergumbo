@@ -4774,10 +4774,12 @@ class CatsController {
         assert parser is not None
         source = b"import { CatsService as CS } from './cats.service';"
         tree = parser.parse(source)
-        imports = _extract_named_imports(tree, source)
+        imports, originals = _extract_named_imports(tree, source)
         # Alias should be the key, not the original name
         assert "CS" in imports
         assert imports["CS"] == "./cats.service"
+        # WI-kujom: originals dict preserves the underlying name.
+        assert originals["CS"] == "CatsService"
 
     def test_disambiguate_non_relative_import_falls_through(self, tmp_path: Path) -> None:
         """Non-relative imports (e.g., @nestjs/common) skip disambiguation."""

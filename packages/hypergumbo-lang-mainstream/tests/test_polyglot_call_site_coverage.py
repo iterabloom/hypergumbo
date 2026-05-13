@@ -19,10 +19,11 @@ other than Python).
   name) plus aliased / deep-nested / multi-name-import variants.
 - **JS/TS, Go, Rust, Java, C++, Ruby, Elixir** — WI-mafik audit fixtures
   covering the canonical import-times-call constructs per language.
-  Each is initially loaded without ``xfail_reason``; the WI-mafik audit
-  set the ``xfail_reason`` for any language whose analyzer fails to emit
-  the expected edges, capturing the gap-state at audit time as a
-  CI-visible regression marker.
+  All seven were initially loaded with ``xfail_reason`` capturing the
+  per-language gap discovered at audit time. WI-tihup / WI-mafik PR2
+  closed all seven gaps; the ``xfail_reason`` fields have been stripped
+  and the test now demands all 8 fixtures pass. Re-introducing an
+  ``xfail_reason`` later is a regression signal.
 
 ## Adding a new language
 
@@ -140,13 +141,6 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             ("fs/promises", "writeFile"),
             ("path", "join"),
         ),
-        xfail_reason=(
-            "WI-mafik Level 1b: aliased named imports "
-            "(``import { writeFile as wf }`` + ``wf(...)``) emit a calls "
-            "edge whose callable is the alias (``wf``), not the underlying "
-            "name (``writeFile``). Affects "
-            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py."
-        ),
     ),
     PolyglotFixture(
         language="go",
@@ -176,13 +170,6 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             ("fmt", "Sprintf"),
             ("strings", "Contains"),
         ),
-        xfail_reason=(
-            "WI-mafik Level 1b: dot imports (``import . \"strings\"`` + "
-            "bare ``Contains(...)``) emit no calls edge — the analyzer "
-            "doesn't track which package's symbols are dot-imported into "
-            "the current scope. Affects "
-            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go.py."
-        ),
     ),
     PolyglotFixture(
         language="rust",
@@ -207,16 +194,6 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             ("std::fs", "read_to_string"),
             ("std::fs", "write"),
             ("std::fs", "create_dir"),
-        ),
-        xfail_reason=(
-            "WI-mafik Level 1b (multi-gap): (1) ``use std::fs::write`` + "
-            "bare ``write(...)`` emits no calls edge; (2) aliased terminal "
-            "name (``use ... as mkdir``) preserves the alias rather than "
-            "resolving to ``create_dir``; (3) qualified call through module "
-            "alias (``fs::read_to_string``) emits a dst missing the "
-            "``std::`` prefix (analyzer doesn't connect ``fs`` back to "
-            "``std::fs`` via the ``use std::fs;`` declaration). Affects "
-            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py."
         ),
     ),
     PolyglotFixture(
@@ -244,14 +221,6 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             ("java.util", "asList"),
             ("java.util", "emptyList"),
             ("java.util", "singletonList"),
-        ),
-        xfail_reason=(
-            "WI-mafik Level 1b: static-import + bare-call "
-            "(``import static java.util.Collections.singletonList`` + "
-            "``singletonList(...)``) emits an unresolved edge with no "
-            "module info — the analyzer doesn't propagate the static "
-            "import's source module onto the bare call. Affects "
-            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py."
         ),
     ),
     PolyglotFixture(
@@ -281,14 +250,6 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             ("cstdlib", "abort"),
             ("cstring", "strlen"),
         ),
-        xfail_reason=(
-            "WI-mafik Level 1b: ``#include <cstdio>`` + ``std::printf(...)`` "
-            "(or ``using namespace std;`` + bare call, or "
-            "``using std::name;`` + bare call) emits calls edges whose dst "
-            "contains no header/module info — the analyzer doesn't "
-            "associate include directives with subsequent calls. Affects "
-            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/cpp.py."
-        ),
     ),
     PolyglotFixture(
         language="ruby",
@@ -312,13 +273,6 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             ("json", "parse"),
             ("set", "new"),
             ("json", "generate"),
-        ),
-        xfail_reason=(
-            "WI-mafik Level 1b (catastrophic): ``require \"json\"`` + "
-            "``JSON.parse(...)`` emits ZERO calls edges. The Ruby analyzer "
-            "doesn't recognize the require-then-call pattern at all on the "
-            "fixture inputs. Affects "
-            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ruby.py."
         ),
     ),
     PolyglotFixture(
@@ -345,14 +299,6 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             ("String", "length"),
             ("String", "upcase"),
             ("Enum", "count"),
-        ),
-        xfail_reason=(
-            "WI-mafik Level 1b: (1) aliased module + member call "
-            "(``alias String, as: S`` + ``S.upcase(...)``) preserves the "
-            "alias ``S`` rather than resolving to ``String``; "
-            "(2) ``import Enum, only: [count: 1]`` + bare ``count(...)`` "
-            "emits no calls edge. Affects "
-            "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/elixir.py."
         ),
     ),
 ]

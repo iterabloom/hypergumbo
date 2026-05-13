@@ -402,6 +402,18 @@ class ExternalRef:
         return cls(lang=d["lang"], module_path=d["module_path"], name=d["name"])
 
 
+def format_legacy_dst(ref: ExternalRef) -> str:
+    """Uniform 5-seg legacy ``Edge.dst`` string built from an ``ExternalRef``.
+
+    Shape: ``{lang}:{module_path}:0-0:{name}:unresolved``. Every analyzer
+    composes its external-target legacy dst from this helper so the
+    format is uniform across languages (closes the WI-mafik audit's
+    "Rust 6-seg outlier" and "Java class-embedded-in-module" anomalies
+    by routing every producer through one builder).
+    """
+    return f"{ref.lang}:{ref.module_path}:0-0:{ref.name}:unresolved"
+
+
 @dataclass
 class Edge:
     """A relationship between two symbols (e.g., function calls).
@@ -950,13 +962,25 @@ def create_boundary_nodes(
         Does NOT modify the input lists.
     """
     symbol_ids = {sym.id for sym in symbols}
-    # Collect unique dangling targets (both src and dst)
+    # Collect unique dangling targets (both src and dst). Also build a
+    # ``dangling_id → ExternalRef`` lookup so the parsing step below can
+    # prefer the WI-tihup structured form over the legacy colon-split
+    # heuristic. Producers that populate ``Edge.dst_ref`` short-circuit
+    # the parsing-bug class behind the historical 6-seg Rust outlier
+    # (``rust:external:0-0:fs::read_to_string:unresolved`` parsed as
+    # ``path="external:0-0:fs"`` and re-emitted with a fabricated extra
+    # ``0-0`` slot).
     dangling_ids: set = set()
+    dangling_refs: Dict[str, ExternalRef] = {}
     for edge in edges:
         if edge.src not in symbol_ids:
             dangling_ids.add(edge.src)
         if edge.dst not in symbol_ids:
             dangling_ids.add(edge.dst)
+            if edge.dst_ref is not None:
+                # First writer wins — multiple edges can share a dst id
+                # but the ref is identity, so any consistent ref is fine.
+                dangling_refs.setdefault(edge.dst, edge.dst_ref)
 
     if not dangling_ids:
         return [], {}
@@ -965,7 +989,17 @@ def create_boundary_nodes(
     # pseudo-symbols per language; other kinds keep full identity.
     groups: Dict[tuple[str, str, str, str], List[str]] = {}
     for dangling_id in dangling_ids:
-        language, path, name, kind = _parse_dangling_id(dangling_id)
+        ref = dangling_refs.get(dangling_id)
+        if ref is not None:
+            # WI-tihup: structured ref bypasses the colon-split heuristic.
+            # ``kind`` is fixed at "unresolved" for ExternalRef-bearing
+            # edges (the producer convention), which matches the dst's
+            # kind slot for the canonical 5-seg shape.
+            language, path, name, kind = (
+                ref.lang, ref.module_path, ref.name, "unresolved",
+            )
+        else:
+            language, path, name, kind = _parse_dangling_id(dangling_id)
         key = _dedupe_key(language, path, name, kind)
         groups.setdefault(key, []).append(dangling_id)
 

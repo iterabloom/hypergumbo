@@ -37,7 +37,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.ir import (
+    Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
+)
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -944,6 +946,38 @@ def _extract_edges_from_tree(
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
                             ))
+                        # WI-rakul: explicit ``import Mod, only: [name: N]``
+                        # + bare ``name(...)``. The auto-import skip below
+                        # would drop these silently, but the explicit import
+                        # directive establishes module context — surface an
+                        # unresolved edge keyed to the source module so
+                        # downstream linkers / io-boundaries can match.
+                        elif (
+                            target_name in _ELIXIR_STDLIB_FUNCTIONS
+                            and imported_modules
+                        ):
+                            source_module = next(iter(imported_modules))
+                            ext_ref = ExternalRef(
+                                lang="elixir",
+                                module_path=source_module,
+                                name=target_name,
+                            )
+                            dst_id = (
+                                f"elixir:{source_module}:0-0:{target_name}:unresolved"
+                            )
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=dst_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="ast_call_direct",
+                                is_resolved=False,
+                                confidence=0.55,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                meta={"call_construct": "function", "binding": "explicit_import"},
+                                dst_ref=ext_ref,
+                            ))
                         # Cross-file: multi-clause global lookup, then resolver.
                         # Skip for Kernel/stdlib names — bare ``inspect(x)`` is
                         # almost always Kernel.inspect, not a project function.
@@ -1151,8 +1185,13 @@ def _handle_dot_call(
             return
 
     # Fallback: create an unresolved edge for cross-module calls
-    # This allows linkers to match across files/languages
-    dst_id = f"elixir:{module_name}:0-0:{func_name}:unresolved"
+    # This allows linkers to match across files/languages.
+    # WI-rakul: when ``module_name`` is an alias (``alias String, as: S``
+    # → ``S.upcase``), surface the underlying module in the dst so
+    # downstream consumers see ``String`` not ``S``. Populate dst_ref
+    # with the canonical (module, name).
+    canonical_module = alias_hints.get(module_name, module_name)
+    dst_id = f"elixir:{canonical_module}:0-0:{func_name}:unresolved"
     edges.append(Edge.create(
         src=current_function.id,
         dst=dst_id,
@@ -1163,6 +1202,9 @@ def _handle_dot_call(
         confidence=0.50,
         origin=PASS_ID,
         origin_run_id=run_id,
+        dst_ref=ExternalRef(
+            lang="elixir", module_path=canonical_module, name=func_name,
+        ),
     ))
 
 

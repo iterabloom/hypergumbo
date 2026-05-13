@@ -819,8 +819,18 @@ def _compute_external_potential(
         # Compose primitive name from module hint + dst name. Module hint
         # is the most useful disambiguator (huggingface_hub.snapshot_download
         # vs anything.snapshot_download); name alone would collapse them.
-        module_hint = _extract_module_hint(edge.dst) or ""
-        dst_name = dst_node.get("name") or _extract_callee_name(edge.dst)
+        # WI-tihup: prefer the structured ExternalRef when present —
+        # it's the canonical source of truth for external-target edges
+        # and bypasses the legacy colon-split heuristic. Use getattr so
+        # MockEdge-style test doubles without the dst_ref attribute fall
+        # through cleanly.
+        edge_dst_ref = getattr(edge, "dst_ref", None)
+        if edge_dst_ref is not None:
+            module_hint = edge_dst_ref.module_path
+            dst_name = dst_node.get("name") or edge_dst_ref.name
+        else:
+            module_hint = _extract_module_hint(edge.dst) or ""
+            dst_name = dst_node.get("name") or _extract_callee_name(edge.dst)
         if module_hint and module_hint != "external":
             primitive = f"{module_hint}.{dst_name}"
         else:
@@ -1182,8 +1192,16 @@ def tag_io_boundaries(
         dst_parts = edge.dst.split(":")
         lang = dst_parts[0]
 
-        callee = _extract_callee_name(edge.dst)
-        module_hint = _extract_module_hint(edge.dst)
+        # WI-tihup: prefer the structured ExternalRef when present.
+        # ``getattr`` keeps MockEdge-style test doubles without the
+        # attribute working.
+        edge_dst_ref = getattr(edge, "dst_ref", None)
+        if edge_dst_ref is not None:
+            callee = edge_dst_ref.name
+            module_hint = edge_dst_ref.module_path
+        else:
+            callee = _extract_callee_name(edge.dst)
+            module_hint = _extract_module_hint(edge.dst)
 
         # Try FFI pseudo-namespace redirect first (e.g., go:C: → c catalog),
         # then fall back to the primary language catalog.

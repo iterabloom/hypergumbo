@@ -79,7 +79,10 @@ if TYPE_CHECKING:
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.ir import (
+    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
+    make_pass_id,
+)
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -345,12 +348,42 @@ def _extract_import_aliases(
     return aliases
 
 
+def _extract_dot_imports(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+) -> list[str]:
+    """Extract dot-imported package paths (``import . "strings"``).
+
+    Returns a list of package import paths brought into scope unprefixed.
+    Powers the WI-vovum / WI-mafik gap fix: a bare call whose name was
+    dot-imported gets an unresolved edge keyed to the source package.
+    """
+    dot_imports: list[str] = []
+    for node in iter_tree(root_node):
+        if node.type == "import_declaration":
+            for child in node.children:
+                if child.type == "import_spec":
+                    _process_import_spec(child, source, {}, dot_imports)
+                elif child.type == "import_spec_list":
+                    for spec in child.children:
+                        if spec.type == "import_spec":
+                            _process_import_spec(spec, source, {}, dot_imports)
+    return dot_imports
+
+
 def _process_import_spec(
     spec: "tree_sitter.Node",
     source: bytes,
     aliases: dict[str, str],
+    dot_imports: list[str] | None = None,
 ) -> None:
-    """Process a single import_spec node and add to aliases dict."""
+    """Process a single import_spec node and add to aliases dict.
+
+    When ``dot_imports`` is provided and the spec is a dot import
+    (``import . "strings"``), the import path is appended there
+    so dot-imported bare calls can be associated with the source
+    package downstream (WI-vovum).
+    """
     path_node = find_child_by_field(spec, "path")
     if not path_node:
         return  # pragma: no cover - defensive for malformed AST
@@ -361,8 +394,10 @@ def _process_import_spec(
     name_node = find_child_by_field(spec, "name")
     if name_node:
         alias = node_text(name_node, source)
-        if alias != "_" and alias != ".":  # Ignore blank and dot imports
+        if alias != "_" and alias != ".":  # Ignore blank imports
             aliases[alias] = import_path
+        elif alias == "." and dot_imports is not None:
+            dot_imports.append(import_path)
     else:
         # No explicit alias - use last component of path
         # e.g., "github.com/foo/bar" -> "bar"
@@ -955,6 +990,9 @@ def _extract_symbols_from_file(
 
     # Extract import aliases for this file (used later in edge extraction)
     analysis.import_aliases = _extract_import_aliases(tree.root_node, source)
+    # WI-vovum: dot-imported packages bring names into the file scope
+    # unprefixed; capture them so call-emit can attribute bare calls.
+    analysis.dot_imports = _extract_dot_imports(tree.root_node, source)
 
     # Collect interface-implementation assertions: struct_name -> [interface_names]
     # Populated during tree walk, applied to struct symbols after extraction.
@@ -1945,6 +1983,7 @@ def _extract_edges_from_file(
     field_type_registry: dict[str, dict[str, str]] | None = None,
     interface_method_sets: dict[str, set[tuple[str, int, int]]] | None = None,
     method_return_type_registry: dict[str, str] | None = None,
+    dot_imports: list[str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -2544,6 +2583,37 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "method"},
+                                ))
+                            # WI-vovum / WI-mafik: bare-identifier call whose
+                            # name was dot-imported (``import . "strings"`` +
+                            # ``Contains(...)``). Attribute it to the first
+                            # dot-imported package — we don't know which
+                            # specific package exported the symbol, but
+                            # surfacing one of the dot-import paths gives
+                            # downstream linkers the right place to look.
+                            elif (
+                                func_node.type == "identifier"
+                                and dot_imports
+                            ):
+                                source_pkg = dot_imports[0]
+                                ref = ExternalRef(
+                                    lang="go",
+                                    module_path=source_pkg,
+                                    name=callee_name,
+                                )
+                                dst_id = f"go:{source_pkg}:0-0:{callee_name}:unresolved"
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=dst_id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="ast_call",
+                                    is_resolved=False,
+                                    confidence=0.45,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    meta={"call_construct": "function", "binding": "dot_import"},
+                                    dst_ref=ref,
                                 ))
 
                 # Detect function references passed as arguments
@@ -4060,6 +4130,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             field_type_registry=field_type_registry,
             interface_method_sets=all_interface_method_sets,
             method_return_type_registry=method_return_type_registry,
+            dot_imports=analysis.dot_imports,
         )
 
         # ADR-0015 Tier 1: annotate call edges with dataflow access modes

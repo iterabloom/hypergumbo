@@ -37,7 +37,10 @@ from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
 from ..dataflow import annotate_dataflow, get_dataflow_config
 from ..discovery import find_files
-from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, UsageContext, make_pass_id
+from ..ir import (
+    PASS_VERSION, AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext,
+    make_pass_id,
+)
 from ..symbol_resolution import NameResolver
 
 # ---------------------------------------------------------------------------
@@ -169,6 +172,15 @@ class FileAnalysis:
 
     Used alongside ``interface_method_sets`` for cross-file structural
     interface matching in Go.
+    """
+
+    dot_imports: list[str] = field(default_factory=list)
+    """Package paths brought into scope unprefixed (Go ``import . "X"``).
+
+    Powers WI-vovum / WI-mafik dot-import gap fix: a bare-identifier call
+    whose name was dot-imported gets an unresolved edge keyed to the source
+    package. Populated during Pass 1 by analyzers that recognize dot
+    imports; consumed at call-emit time in Pass 2.
     """
 
     method_return_types: dict[str, str] = field(default_factory=dict)
@@ -382,6 +394,7 @@ def make_unresolved_edge(
     run_id: str,
     *,
     module_hint: str = "external",
+    dst_ref: Optional[ExternalRef] = None,
 ) -> Edge:
     """Create an unresolved-external call edge for a callee not in the project.
 
@@ -396,7 +409,13 @@ def make_unresolved_edge(
         line: Source line number of the call
         pass_id: Analyzer pass ID
         run_id: Execution run ID
-        module_hint: Module/package context when known (default "external")
+        module_hint: Module/package context when known (default "external").
+        dst_ref: Optional structured ``ExternalRef`` (WI-tihup). When
+            provided, attached as the Edge's ``dst_ref`` for downstream
+            consumers that prefer structured-axis lookups; the legacy
+            ``dst`` string remains keyed by ``module_hint`` and
+            ``callee_name``. Callers are responsible for keeping the
+            two coherent.
     """
     dst_id = f"{lang}:{module_hint}:0-0:{callee_name}:unresolved"
     return Edge.create(
@@ -409,6 +428,7 @@ def make_unresolved_edge(
         origin_run_id=run_id,
         evidence_type="ast_call_direct",
         is_resolved=False,
+        dst_ref=dst_ref,
     )
 
 

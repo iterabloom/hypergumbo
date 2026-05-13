@@ -45,7 +45,10 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.ir import (
+    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
+    make_pass_id,
+)
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -1906,6 +1909,7 @@ def _try_receiver_call(
     edges: list[Edge],
     run_id: str,
     method_resolver: ListNameResolver | None = None,
+    require_hints: dict[str, str] | None = None,
 ) -> bool:
     """Try to resolve a receiver-qualified method call.
 
@@ -1982,9 +1986,29 @@ def _try_receiver_call(
                         meta={"call_construct": "constructor"},
                     ))
                     return True
-        # No user-defined #initialize found — inherits Object#initialize (not
-        # in user code), so no edge to create.
-        return True
+        # When the receiver class IS a project symbol but has no
+        # user-defined ``#initialize`` (inherits Object#initialize),
+        # preserve the original "no edge" semantics: the call is
+        # intra-project; emitting a constant-external edge would be
+        # wrong and an edge to ``#new`` (the Rails-action collision)
+        # would be a false positive. Only fall through to the
+        # external fallback when the receiver is genuinely outside
+        # the project (no Pass-1 symbol).
+        receiver_is_project = any(
+            candidate in global_symbols
+            or any(
+                key.startswith(f"{candidate}#")
+                or key.startswith(f"{candidate}.")
+                for key in global_symbols
+            )
+            for candidate in candidates
+        )
+        if receiver_is_project:
+            return True
+        # WI-rijij / WI-mafik: ``Set.new(...)`` where the receiver is
+        # external (e.g. ``require "set"``). Fall through to the
+        # constant-external fallback so the call gets attributed to
+        # the require source module (``set``, ``json``, ...).
 
     # Build list of candidate class names to try
     # For scope_resolution: try full name first, then short name as fallback
@@ -2034,6 +2058,46 @@ def _try_receiver_call(
                 meta={"call_construct": "method", "receiver": "generic"},
             ))
             return True
+
+    # WI-rijij / WI-mafik: constant-receiver call (``JSON.parse``,
+    # ``Set.new``) that didn't resolve to a project symbol. Attribute
+    # the call to the source module via require_hints (or, failing
+    # that, the lowercased constant name as a heuristic) so cross-
+    # language linkers and io-boundary catalogs can match the call
+    # against ruby stdlib / gem primitives. Strip a leading ``::`` so
+    # ``::JSON`` and ``JSON`` route to the same module.
+    if require_hints is None:
+        require_hints = {}
+    if receiver_node.type in ("constant", "scope_resolution"):
+        bare_class = receiver_class.lstrip(":")
+        if "::" in bare_class:
+            bare_class = bare_class.rsplit("::", 1)[-1]
+        module_hint = require_hints.get(bare_class)
+        if module_hint is None:
+            short = short_name.lstrip(":") if short_name else None
+            if short and "::" in short:
+                short = short.rsplit("::", 1)[-1]
+            if short:
+                module_hint = require_hints.get(short)
+        if module_hint is None:
+            # Heuristic: ``JSON`` → ``json``, ``Set`` → ``set``.
+            module_hint = bare_class.lower()
+        edges.append(Edge.create(
+            src=current_method.id,
+            dst=f"ruby:{module_hint}:0-0:{method_name}:unresolved",
+            edge_type="calls",
+            line=line,
+            evidence_type="ast_call_direct",
+            is_resolved=False,
+            confidence=0.55,
+            origin=PASS_ID,
+            origin_run_id=run_id,
+            meta={"call_construct": "method", "receiver": "constant_external"},
+            dst_ref=ExternalRef(
+                lang="ruby", module_path=module_hint, name=method_name,
+            ),
+        ))
+        return True
 
     return False
 
@@ -2295,6 +2359,7 @@ def _extract_edges_from_file(
                             current_method, global_symbols, resolver,
                             node.start_point[0] + 1, edges, run_id,
                             method_resolver=method_resolver,
+                            require_hints=require_hints,
                         ):
                             pass  # Resolved via receiver
                         elif receiver_node is not None:

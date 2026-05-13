@@ -70,7 +70,9 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import (
+    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id,
+)
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -477,6 +479,10 @@ class _ParsedFile:
     source: bytes
     # Maps simple class name -> fully qualified name (from imports)
     imports: dict[str, str] | None = None
+    # Maps local-name -> source-module (from ``import static X.local_name``).
+    # Powers WI-tihup ExternalRef on bare-call sites whose callable came
+    # in via static import. WI-hudud / WI-mafik.
+    static_imports: dict[str, str] | None = None
 
 
 def _extract_imports(
@@ -487,7 +493,8 @@ def _extract_imports(
 
     Tracks:
     - import com.example.ClassName; -> ClassName: com.example.ClassName
-    - import static com.example.ClassName.method; -> (not tracked, static methods)
+    - import static com.example.ClassName.method; -> (not tracked here;
+      see :py:func:`_extract_static_imports`)
 
     Returns dict mapping simple class name -> fully qualified name.
     """
@@ -512,6 +519,37 @@ def _extract_imports(
                 break
 
     return imports
+
+
+def _extract_static_imports(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract ``import static`` mappings: local_name -> source_module (WI-hudud).
+
+    Pattern: ``import static java.util.Collections.singletonList;`` →
+    ``{"singletonList": "java.util.Collections"}``.
+
+    Powers the WI-tihup ExternalRef on bare-call sites whose callable
+    was brought into scope by a static import (the WI-mafik Java gap).
+    """
+    static_imports: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_declaration":
+            continue
+        is_static = any(c.type == "static" for c in node.children)
+        if not is_static:
+            continue
+        for child in node.children:
+            if child.type == "scoped_identifier":
+                full_name = _node_text(child, source)
+                parts = full_name.rsplit(".", 1)
+                if len(parts) == 2:
+                    source_module, local_name = parts
+                    static_imports[local_name] = source_module
+                break
+    return static_imports
 
 
 def _get_class_ancestors(
@@ -1143,6 +1181,7 @@ def _extract_edges(
     method_resolver: ListNameResolver | None = None,
     class_parents: dict[str, str] | None = None,
     class_fields: dict[str, dict[str, str]] | None = None,
+    static_imports: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
@@ -1554,12 +1593,51 @@ def _extract_edges(
                             if receiver_name and receiver_name != "this"
                             else method_name
                         )
-                        # Use import path as module hint when available
-                        module = imports.get(receiver_name, "external") if receiver_name else "external"
+                        # WI-hudud: bare call (no receiver) whose name was
+                        # brought into scope by ``import static X.method``.
+                        # Look up the static-import source module and emit
+                        # an unresolved edge with structured dst_ref so
+                        # consumers can match on (module_path, name).
+                        ext_ref: ExternalRef | None = None
+                        if (
+                            (receiver_name is None or receiver_name == "this")
+                            and static_imports is not None
+                            and method_name in static_imports
+                        ):
+                            ext_ref = ExternalRef(
+                                lang="java",
+                                module_path=static_imports[method_name],
+                                name=method_name,
+                            )
+                            module = static_imports[method_name]
+                            unresolved_name = method_name
+                        else:
+                            # Use import path as module hint when available
+                            module = (
+                                imports.get(receiver_name, "external")
+                                if receiver_name
+                                else "external"
+                            )
+                            # WI-tihup: populate dst_ref when the receiver
+                            # was imported (e.g. ``Arrays.asList`` after
+                            # ``import java.util.Arrays;``). The module
+                            # path is the receiver's fully qualified import
+                            # path; the name is just the method.
+                            if (
+                                receiver_name
+                                and receiver_name != "this"
+                                and receiver_name in imports
+                            ):
+                                ext_ref = ExternalRef(
+                                    lang="java",
+                                    module_path=imports[receiver_name],
+                                    name=method_name,
+                                )
                         edges.append(make_unresolved_edge(
                             "java", current_method.id, unresolved_name,
                             node.start_point[0] + 1, PASS_ID, run.execution_id,
                             module_hint=module,
+                            dst_ref=ext_ref,
                         ))
 
         # Object creation: new ClassName()
@@ -1881,8 +1959,10 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             source = file_path.read_bytes()
             tree = parser.parse(source)
             file_imports = _extract_imports(tree, source)
+            file_static_imports = _extract_static_imports(tree, source)
             parsed_files.append(_ParsedFile(
-                path=file_path, tree=tree, source=source, imports=file_imports
+                path=file_path, tree=tree, source=source,
+                imports=file_imports, static_imports=file_static_imports,
             ))
             symbols = _extract_symbols(tree, source, file_path, run)
             populate_docstrings_from_tree(tree.root_node, source, symbols)
@@ -2021,6 +2101,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             method_resolver=method_resolver,
             class_parents=global_class_parents,
             class_fields=global_class_fields,
+            static_imports=pf.static_imports or {},
         )
         # WI-lozug: emit module_attr_ref edges for field_access nodes
         # whose base resolves to an imported class or to ``System``

@@ -59,7 +59,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.ir import (
+    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
+    make_pass_id,
+)
 from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -262,8 +265,15 @@ class _ParsedFile:
     line_offset: int = 0  # For Svelte script blocks
     # Maps local alias -> module name for 'import * as alias' and 'import alias'
     namespace_imports: dict[str, str] | None = None
-    # Maps imported name -> module path for 'import { Foo } from "module"'
+    # Maps imported local-name (alias or original) -> module path for
+    # 'import { Foo as Bar } from "module"' (Bar -> module)
     named_imports: dict[str, str] | None = None
+    # WI-kujom: maps local-alias -> original imported name for
+    # 'import { Foo as Bar } from "module"' (Bar -> Foo). Powers
+    # dst_ref / dst-string population: at the call site, the analyzer
+    # sees ``Bar(...)`` but the canonical name for downstream
+    # consumers is ``Foo``. Same key set as named_imports.
+    named_import_originals: dict[str, str] | None = None
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str, lang: str) -> str:
@@ -378,23 +388,33 @@ def _extract_namespace_imports(
 def _extract_named_imports(
     tree: "tree_sitter.Tree",
     source: bytes,
-) -> dict[str, str]:
+) -> tuple[dict[str, str], dict[str, str]]:
     """Extract named imports from a parsed tree.
 
-    Tracks: import { Foo, Bar as Baz } from 'module' -> Foo: module, Baz: module
+    Tracks: ``import { Foo, Bar as Baz } from 'module'`` →
+    named_imports = {Foo: module, Baz: module},
+    originals = {Foo: Foo, Baz: Bar}.
 
-    Returns dict mapping imported name (or alias) -> module path.
-    Used to disambiguate type references when multiple files define
-    the same class name (e.g., monorepos with duplicate CatsService).
+    Returns a pair of dicts:
+    1. ``named_imports``: local-name → module path. Used to
+       disambiguate type references when multiple files define the
+       same class name (e.g., monorepos with duplicate CatsService).
+    2. ``named_import_originals``: local-name → original imported
+       name (the name in the exporting module). For unaliased
+       imports the value equals the key. WI-kujom: preserves the
+       underlying name so call-emit can attribute the call to the
+       canonical name, not the local alias.
     """
     named_imports: dict[str, str] = {}
+    named_import_originals: dict[str, str] = {}
 
     for node in iter_tree(tree.root_node):
         if node.type != "import_statement":
             continue
 
         module_name = None
-        import_names: list[str] = []
+        # Pairs of (local_name, original_name)
+        import_pairs: list[tuple[str, str]] = []
 
         for child in node.children:
             if child.type == "string":
@@ -414,16 +434,21 @@ def _extract_named_imports(
                                             original_node = sc
                                         else:
                                             alias_node = sc
-                                if alias_node:
-                                    import_names.append(_node_text(alias_node, source))
+                                if alias_node and original_node:
+                                    import_pairs.append((
+                                        _node_text(alias_node, source),
+                                        _node_text(original_node, source),
+                                    ))
                                 elif original_node:
-                                    import_names.append(_node_text(original_node, source))
+                                    orig = _node_text(original_node, source)
+                                    import_pairs.append((orig, orig))
 
         if module_name:
-            for name in import_names:
-                named_imports[name] = module_name
+            for local_name, original_name in import_pairs:
+                named_imports[local_name] = module_name
+                named_import_originals[local_name] = original_name
 
-    return named_imports
+    return named_imports, named_import_originals
 
 
 def _disambiguate_by_import(
@@ -3549,6 +3574,7 @@ def _extract_edges(
     named_imports: dict[str, str] | None = None,
     symbols_by_name: dict[str, list[Symbol]] | None = None,
     module_symbol: Symbol | None = None,
+    named_import_originals: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
@@ -3731,10 +3757,19 @@ def _extract_edges(
                             # path as the module hint. The io-boundaries
                             # layer matches the callee name against the
                             # JavaScript catalog and tags the edge.
+                            #
+                            # WI-kujom: prefer the original imported name
+                            # (``writeFile``) over the local alias (``wf``)
+                            # when ``import { writeFile as wf }`` was used.
+                            # Cross-language linkers and io-boundary catalogs
+                            # key on the canonical name, not the alias.
                             module_hint = _normalize_import_module_hint(
                                 named_imports[func_name]
                             )
-                            dst_id = f"{lang}:{module_hint}:0-0:{func_name}:unresolved"
+                            canonical_name = (
+                                named_import_originals or {}
+                            ).get(func_name, func_name)
+                            dst_id = f"{lang}:{module_hint}:0-0:{canonical_name}:unresolved"
                             edge = Edge.create(
                                 src=current_function.id,
                                 dst=dst_id,
@@ -3745,6 +3780,11 @@ def _extract_edges(
                                 evidence_type="ast_call_direct",
                                 is_resolved=False,
                                 confidence=0.70,
+                                dst_ref=ExternalRef(
+                                    lang=lang,
+                                    module_path=module_hint,
+                                    name=canonical_name,
+                                ),
                             )
                             edges.append(edge)
 
@@ -4506,10 +4546,11 @@ def _analyze_javascript_impl(
             tree = parser.parse(source)
             lang = _get_language_for_file(file_path)
             ns_imports = _extract_namespace_imports(tree, source)
-            nm_imports = _extract_named_imports(tree, source)
+            nm_imports, nm_originals = _extract_named_imports(tree, source)
             parsed_files.append(_ParsedFile(
                 path=file_path, tree=tree, source=source, lang=lang,
-                namespace_imports=ns_imports, named_imports=nm_imports
+                namespace_imports=ns_imports, named_imports=nm_imports,
+                named_import_originals=nm_originals,
             ))
             symbols = _extract_symbols(tree, source, file_path, lang, run)
             populate_docstrings_from_tree(tree.root_node, source, symbols)
@@ -4537,12 +4578,13 @@ def _analyze_javascript_impl(
                 lang = "typescript" if block.is_typescript else "javascript"
                 line_offset = block.start_line - 1
                 ns_imports = _extract_namespace_imports(tree, source_bytes)
-                nm_imports = _extract_named_imports(tree, source_bytes)
+                nm_imports, nm_originals = _extract_named_imports(tree, source_bytes)
 
                 parsed_files.append(_ParsedFile(
                     path=file_path, tree=tree, source=source_bytes,
                     lang=lang, line_offset=line_offset, namespace_imports=ns_imports,
-                    named_imports=nm_imports
+                    named_imports=nm_imports,
+                    named_import_originals=nm_originals,
                 ))
                 symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
                 populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
@@ -4571,12 +4613,13 @@ def _analyze_javascript_impl(
                 lang = "typescript" if block.is_typescript else "javascript"
                 line_offset = block.start_line - 1
                 ns_imports = _extract_namespace_imports(tree, source_bytes)
-                nm_imports = _extract_named_imports(tree, source_bytes)
+                nm_imports, nm_originals = _extract_named_imports(tree, source_bytes)
 
                 parsed_files.append(_ParsedFile(
                     path=file_path, tree=tree, source=source_bytes,
                     lang=lang, line_offset=line_offset, namespace_imports=ns_imports,
-                    named_imports=nm_imports
+                    named_imports=nm_imports,
+                    named_import_originals=nm_originals,
                 ))
                 symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
                 populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
@@ -4629,6 +4672,7 @@ def _analyze_javascript_impl(
             pf.named_imports or {},
             symbols_by_name,
             module_symbol=file_mod_sym,
+            named_import_originals=pf.named_import_originals or {},
         )
         # WI-lozug: emit module_attr_ref edges for attribute reads on
         # imported modules and well-known JS/Node globals (``process``,

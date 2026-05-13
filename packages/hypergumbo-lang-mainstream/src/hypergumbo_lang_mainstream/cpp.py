@@ -42,7 +42,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import (
+    AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id,
+)
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -693,6 +695,20 @@ def _extract_edges_from_tree(
     _caller_path = str(file_path)
     file_id = _make_file_id(str(file_path))
 
+    # WI-rupik / WI-mafik: pre-collect system #include headers so the
+    # unresolved-call emit path can attribute calls to the file's
+    # include set. Without this, ``std::printf(...)`` after
+    # ``#include <cstdio>`` produces a dst with no header context.
+    system_includes: list[str] = []
+    for _n in iter_tree(tree.root_node):
+        if _n.type == "preproc_include":
+            _sys_lib = _find_child_by_type(_n, "system_lib_string")
+            if _sys_lib:
+                # Strip surrounding angle brackets: ``<cstdio>`` → ``cstdio``.
+                _hdr = _node_text(_sys_lib, source).strip("<>")
+                if _hdr:
+                    system_includes.append(_hdr)
+
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the function name being called from a call_expression.
 
@@ -906,10 +922,33 @@ def _extract_edges_from_tree(
                                 meta={"call_construct": "function"},
                             ))
                         else:
-                            edges.append(make_unresolved_edge(
-                                "cpp", current_function.id, short_name,
-                                node.start_point[0] + 1, PASS_ID, run.execution_id,
-                            ))
+                            # WI-rupik / WI-mafik: associate the unresolved
+                            # call with the file's #include set so cross-
+                            # language linkers and io-boundaries see the
+                            # header context. The semantics is "this call
+                            # could be from any of the included headers";
+                            # downstream consumers may split the module_hint
+                            # on commas if they need per-header resolution.
+                            if system_includes:
+                                module_hint = ",".join(system_includes)
+                                ext_ref = ExternalRef(
+                                    lang="cpp",
+                                    module_path=module_hint,
+                                    name=short_name,
+                                )
+                                edges.append(make_unresolved_edge(
+                                    "cpp", current_function.id, short_name,
+                                    node.start_point[0] + 1, PASS_ID,
+                                    run.execution_id,
+                                    module_hint=module_hint,
+                                    dst_ref=ext_ref,
+                                ))
+                            else:
+                                edges.append(make_unresolved_edge(
+                                    "cpp", current_function.id, short_name,
+                                    node.start_point[0] + 1, PASS_ID,
+                                    run.execution_id,
+                                ))
 
                     # Callback argument detection: bare identifiers in the
                     # argument list that resolve to known functions are likely

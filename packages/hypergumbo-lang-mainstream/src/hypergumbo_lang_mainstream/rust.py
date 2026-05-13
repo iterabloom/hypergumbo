@@ -42,7 +42,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.ir import (
+    Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
+)
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -1508,13 +1510,64 @@ def _extract_edges_from_file(
                                         origin_run_id=run_id,
                                         meta={"call_construct": "function"},
                                     ))
-                                elif callee_name not in _RUST_GENERIC_TRAIT_METHODS:
-                                    # Use scoped name as callee for richer context
+                                else:
+                                    # WI-volob / WI-mafik: consult use_aliases
+                                    # to attribute the external call to its
+                                    # source module via the structured
+                                    # ExternalRef. Three cases:
+                                    # (1) qualified ``fs::read_to_string``:
+                                    #     ``fs`` is in use_aliases → resolve
+                                    #     to ``std::fs`` for the module slot.
+                                    # (2) bare ``write`` after ``use std::fs::write``:
+                                    #     ``write`` is in use_aliases → split
+                                    #     ``std::fs::write`` into module + name.
+                                    #     An explicit use binding takes
+                                    #     precedence over the generic-trait-
+                                    #     method guard — the binding tells
+                                    #     us exactly which module owns the
+                                    #     callable.
+                                    # (3) aliased terminal ``mkdir`` after
+                                    #     ``use ... as mkdir``: same as (2),
+                                    #     name field gets the underlying
+                                    #     ``create_dir``, not the alias.
+                                    # All three short-circuit the 6-seg dst
+                                    # rebuild path (the parsing-bug class
+                                    # documented in WI-tihup foundation).
+                                    ext_ref: ExternalRef | None = None
+                                    module_hint = "external"
                                     unresolved_name = full_scoped_name or callee_name
-                                    edges.append(make_unresolved_edge(
-                                        "rust", current_function.id, unresolved_name,
-                                        node.start_point[0] + 1, PASS_ID, run_id,
-                                    ))
+                                    has_explicit_binding = False
+                                    if full_scoped_name and "::" in full_scoped_name:
+                                        head, _, tail = full_scoped_name.partition("::")
+                                        if head in use_aliases:
+                                            full_head = use_aliases[head]
+                                            module_hint = full_head
+                                            unresolved_name = tail
+                                            ext_ref = ExternalRef(
+                                                lang="rust",
+                                                module_path=full_head,
+                                                name=tail,
+                                            )
+                                            has_explicit_binding = True
+                                    elif callee_name in use_aliases:
+                                        full_path = use_aliases[callee_name]
+                                        if "::" in full_path:
+                                            mod, _, name = full_path.rpartition("::")
+                                            module_hint = mod
+                                            unresolved_name = name
+                                            ext_ref = ExternalRef(
+                                                lang="rust",
+                                                module_path=mod,
+                                                name=name,
+                                            )
+                                            has_explicit_binding = True
+                                    if has_explicit_binding or callee_name not in _RUST_GENERIC_TRAIT_METHODS:
+                                        edges.append(make_unresolved_edge(
+                                            "rust", current_function.id, unresolved_name,
+                                            node.start_point[0] + 1, PASS_ID, run_id,
+                                            module_hint=module_hint,
+                                            dst_ref=ext_ref,
+                                        ))
 
         # Detect calls inside macro bodies (tokio::select!, assert!, etc.).
         # Tree-sitter parses macro bodies as flat token_tree, not structured
