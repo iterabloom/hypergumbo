@@ -2,7 +2,7 @@
 # ADR-0022: Per-Language Configuration Surface and Language Profile Registry
 
 Date: 2026-04-10
-Status: Proposed (exploratory — no implementation)
+Status: Proposed — by-category drift-detection half landed via c00ec84615 (`hypergumbo_core.yaml_catalogs` + `scripts/yaml-catalog-index`); by-language `LanguageProfile` runtime aggregation deferred pending consumer demand. See "Status Update (2026-05-13)" below.
 
 ## Context
 
@@ -17,13 +17,13 @@ hypergumbo has accumulated several per-language YAML configuration surfaces, eac
 | `function_summaries/<lang>.yaml` | `hypergumbo-core/src/hypergumbo_core/function_summaries/` | `taint.py`, analyzers | Function taint/summary rules |
 | `frameworks/<lang>.yaml` | `hypergumbo-core/src/hypergumbo_core/frameworks/` | `framework_patterns.py` | Framework detection patterns |
 
-In addition, INV-dihos (ADR-0006 §Return-Type Registry Pre-Pass) adds a `signatures/<lang>.yaml` surface, and WI-sukav raised the question of per-language discoverability for these rules.
+In addition, INV-dihos (ADR-0006 §Return-Type Registry Pre-Pass) adds a `signatures/<lang>.yaml` surface, and the proliferation raises the question of per-language discoverability for these rules.
 
 Each analyzer currently reads its own YAML directly. This creates a distributed contract: when a contributor wants to "add a new rule for Kotlin", they must figure out which YAML file in which directory is the right one, then verify that the analyzer actually loads it.
 
 ### The discoverability problem
 
-From WI-sukav (the item that motivated this ADR): a developer adding a new language or extending an existing one has no single place to learn "what config surfaces apply to this language?". The rules are scattered across four directories with no index.
+A developer adding a new language or extending an existing one has no single place to learn "what config surfaces apply to this language?". The rules are scattered across four directories with no index.
 
 For cross-cutting work like INV-dihos Phase 1-5 (return-type registry rollout across 8+ languages), the scatter is especially painful — each phase touches a different analyzer, each reading its YAML in a slightly different way.
 
@@ -75,20 +75,37 @@ The profile is computed once per analysis run and cached. Analyzers receive it v
 - Analyzers consuming INV-dihos signatures read `profile.signatures`
 
 **Build-time consumers (docs generation):**
-- A new `scripts/generate-language-reference` script walks the registry and emits one markdown page per language: "What does hypergumbo know about <language>?". This subsumes the WI-sukav P2 auto-generated reference page concern.
+- A new `scripts/generate-language-reference` script walks the registry and emits one markdown page per language: "What does hypergumbo know about <language>?". This addresses the auto-generated reference page concern that motivates the same registry from the contributor-onboarding side.
 
 **Contribution surface:**
 - Contributors add rules by editing the appropriate YAML file under `<section>/<language>.yaml`. They do not need to touch Python.
 - The ADR defines the schema for each section in a dedicated reference page (auto-generated from dataclass docstrings).
 
+## Status Update (2026-05-13)
+
+Commit c00ec84615 landed `hypergumbo_core.yaml_catalogs` + `scripts/yaml-catalog-index` + an auto-generated "YAML Catalogs" section in `docs/ARCHITECTURE.md`. This addresses the discoverability problem in §Context from a **perpendicular axis** to the original proposal:
+
+- **Landed (by-category).** One `CatalogSpec` per directory (`frameworks/`, `dataflow_patterns/`, `io_primitives/`, `cfg_nodes/`, `taint_sources/`, `taint_sanitizers/`, `function_summaries/`), each naming its loader module and governing ADR. `scripts/yaml-catalog-index --check` exits non-zero on registry-vs-filesystem drift. The architecture document picks up new catalogs automatically via the same registry.
+- **Still deferred (by-language).** The `LanguageProfile` dataclass, `load_profile(language)` registry, runtime analyzer migration, and `scripts/generate-language-reference` per-language markdown emitter described in §Decision and §Migration Path remain unimplemented.
+
+The two halves are complementary, not duplicate. yaml_catalogs.py answers "what catalog directories exist; who loads each; what ADR governs each?". LanguageProfile would answer "what rules apply to language X?". They index the same data along orthogonal axes.
+
+**Decision to defer (not decommission).** No analyzer currently has a concrete pain point that "merged per-language config object" would solve — each module loads its own YAML cleanly, and the by-category drift-detection covers the operational hazard the original ADR was responding to. The by-language registry remains a sensible addition if a future contributor onboarding workflow or analyzer integration concretely calls for it. Trigger conditions to revisit:
+
+1. A contributor adding a new language stalls because they cannot find which YAML files to author.
+2. An analyzer or other consumer wants a merged-config view that can't be cheaply assembled from the existing direct loaders.
+3. INV-dihos Phase 1+ (return-type signatures across languages) reaches a scale where ad-hoc per-language loading is repetitive enough to motivate a unified surface.
+
+Until one of those triggers fires, do not implement the runtime aggregation half — it would add a layer with no consumer demanding it.
+
 ## Consequences
 
 ### Positive
 
-- **Single discovery point.** `load_profile("kotlin")` returns everything hypergumbo knows about Kotlin. WI-sukav discoverability concern resolved.
+- **Single discovery point.** `load_profile("kotlin")` returns everything hypergumbo knows about Kotlin. The by-language discoverability concern is resolved.
 - **Contribution surface is pure YAML.** External contributors can add rules without understanding Python.
 - **Cross-cutting rollouts become tractable.** INV-dihos Phase 1-5 can be framed as "populate `profile.signatures` for each language" with one interface to implement per language.
-- **Docs generation becomes mechanical.** Auto-generated per-language reference subsumes the P2 concern from WI-sukav.
+- **Docs generation becomes mechanical.** Auto-generated per-language reference closes the contributor-onboarding gap independently of the runtime registry.
 
 ### Negative
 
@@ -109,7 +126,7 @@ Phase 2: Populate the remaining sections (`io_primitives`, `function_summaries`,
 
 Phase 3: Integrate INV-dihos `signatures` as a LanguageProfile section. This unblocks Phase 5 of INV-dihos (cross-linker integration).
 
-Phase 4: Write `scripts/generate-language-reference` to emit per-language markdown pages. Subsumes WI-sukav P2.
+Phase 4: Write `scripts/generate-language-reference` to emit per-language markdown pages.
 
 ## Alternatives Considered
 
@@ -143,7 +160,6 @@ Rejected because: YAML is explicitly designed for external contribution without 
 
 ## References
 
-- WI-sukav (original motivation for per-language discoverability)
 - WI-rumim (this ADR)
 - ADR-0006 (Variable Type Inference — §Return-Type Registry Pre-Pass is a future registry consumer)
 - ADR-0015 (Dataflow Access Modes — defines `dataflow_patterns` section)

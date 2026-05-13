@@ -25,9 +25,13 @@ def/use extractors.
 Catalog Format
 --------------
 Sources, sinks, and sanitizers use YAML files following patterns established
-by the IO primitive catalogs (ADR-0016). See ``taint_sources/``,
-``taint_sinks/``, and ``taint_sanitizers/`` directories alongside this module,
-or project-local catalogs provided via ``--taint-sources``, etc.
+by the IO primitive catalogs (ADR-0016). See ``taint_sources/`` and
+``taint_sanitizers/`` directories alongside this module, or project-local
+catalogs provided via ``--taint-sources``, etc. Built-in sinks are derived
+automatically from ``io_primitives/*.yaml`` — every write-side IO primitive
+becomes an ``untrusted`` sink in a zone determined by its boundary category
+(see :data:`AUTO_SINK_ZONE_MAP` below). Project-local sink overrides flow
+through the ``--taint-sinks`` CLI flag.
 """
 from __future__ import annotations
 
@@ -458,19 +462,26 @@ def load_taint_catalog(
 # ---------------------------------------------------------------------------
 #
 # ADR-0017 deliberately separates io_primitives (syscall-level IO boundary
-# classification) from taint_sinks/sources (trust-zone classification).  The
+# classification) from taint sources/sinks (trust-zone classification).  The
 # rationale holds for project-local extension — every project has its own
 # trust-zone structure — but the shipped *first-party* catalogs should not
 # drift: every io_primitives write-side primitive is, by construction, a
 # candidate sink for tainted data; every io_primitives read-side primitive
 # for a sensitive category is a candidate source.
 #
-# The mapping below encodes that default.  Auto-import is paranoid by
-# design ("reading A" in the WI-lokuv discussion): each auto-derived sink
-# is trust_level=untrusted and matches ANY taint label; each auto-derived
-# source carries the label indicated below.  Users narrow the default by
-# contributing overrides in taint_sources/ or taint_sinks/ that match by
-# (module, name, kind) — the user entry wins, the auto entry is dropped.
+# Since 2026-04 (commit 51e1d232f3) the shipped sink catalog no longer
+# exists as a separate ``taint_sinks/`` directory — sinks derive entirely
+# from io_primitives via the mapping below.  Sources still ship as YAML in
+# ``taint_sources/`` because their taint_label is project-meaningful
+# (host_secret vs untrusted_input vs ...) and not derivable from the
+# IO-boundary category alone.
+#
+# Auto-import is paranoid by design ("reading A" in the WI-lokuv discussion):
+# each auto-derived sink is trust_level=untrusted and matches ANY taint
+# label; each auto-derived source carries the label indicated below.  Users
+# narrow the default by contributing overrides via ``--taint-sources`` or
+# ``--taint-sinks`` whose entries match the auto-derived ``(module, name,
+# kind)`` triple — the user entry wins, the auto entry is dropped.
 #
 # `fs_read` is intentionally absent from the source map: reading a file
 # does not by itself make its contents sensitive; the label is project-
@@ -570,9 +581,12 @@ def _merge_with_user_override(
 # ---------------------------------------------------------------------------
 
 _TAINT_SOURCES_DIR = Path(__file__).parent / "taint_sources"
-_TAINT_SINKS_DIR = Path(__file__).parent / "taint_sinks"
 _TAINT_SANITIZERS_DIR = Path(__file__).parent / "taint_sanitizers"
 _IO_PRIMITIVES_DIR = Path(__file__).parent / "io_primitives"
+# Note: there is no ``_TAINT_SINKS_DIR``.  Commit 51e1d232f3 retired the
+# shipped ``taint_sinks/`` directory and derives all built-in sinks from
+# ``io_primitives/*.yaml`` via :func:`_derive_auto_imports_from_io_primitives`.
+# Project-local sinks still flow in via the ``--taint-sinks`` CLI flag.
 
 
 def _resolve_catalog_paths(paths: list[Path]) -> list[Path]:
@@ -610,8 +624,9 @@ def load_full_taint_catalog(
     1. Auto-derived taint entries from ``io_primitives/*.yaml`` (paranoid
        default: every write-side primitive is a sink, every read-side
        sensitive primitive is a source).
-    2. Built-in YAML under ``taint_sources/`` / ``taint_sinks/`` /
-       ``taint_sanitizers/`` alongside this module.
+    2. Built-in YAML under ``taint_sources/`` and ``taint_sanitizers/``
+       alongside this module.  (Built-in sinks come from layer 1 only;
+       the ``taint_sinks/`` directory was retired in 51e1d232f3.)
     3. User ``extra_*_paths`` passed by this call.
 
     Override semantics for sources and sinks: an entry in a higher layer
@@ -662,10 +677,10 @@ def load_builtin_taint_catalog() -> TaintCatalog:
 
     Two contributions merge into one catalog:
 
-    1. YAML-declared entries in ``taint_sources/``, ``taint_sinks/``, and
-       ``taint_sanitizers/``.  These cover project-agnostic domains the
-       core team maintains explicitly (crypto decryption labels, key
-       material generation, ...) and provide the project-local extension
+    1. YAML-declared entries in ``taint_sources/`` and ``taint_sanitizers/``.
+       These cover project-agnostic domains the core team maintains
+       explicitly (crypto decryption labels, key material generation,
+       sanitizer pairings, ...) and provide the project-local extension
        point described in ADR-0017.
     2. Auto-derived entries from ``io_primitives/*.yaml`` (WI-lokuv).
        Every write-side IO primitive becomes a TaintSink at
@@ -677,12 +692,14 @@ def load_builtin_taint_catalog() -> TaintCatalog:
     The merge makes io_primitives the single source of truth for primitive
     enumeration: adding a primitive there propagates into taint analysis
     automatically, which replaces the manual drift-guard previously shipped
-    under WI-hizik.
+    under WI-hizik.  Built-in sinks come entirely from layer 2 — the
+    shipped ``taint_sinks/`` directory was retired in 51e1d232f3.
     """
     source_paths = sorted(_TAINT_SOURCES_DIR.glob("*.yaml")) if _TAINT_SOURCES_DIR.exists() else []
-    sink_paths = sorted(_TAINT_SINKS_DIR.glob("*.yaml")) if _TAINT_SINKS_DIR.exists() else []
     sanitizer_paths = sorted(_TAINT_SANITIZERS_DIR.glob("*.yaml")) if _TAINT_SANITIZERS_DIR.exists() else []
-    user_catalog = load_taint_catalog(source_paths, sink_paths, sanitizer_paths)
+    # No built-in sinks: 51e1d232f3 retired the shipped ``taint_sinks/``
+    # directory and derives them from ``io_primitives/`` instead.
+    user_catalog = load_taint_catalog(source_paths, [], sanitizer_paths)
 
     auto_sources, auto_sinks = _derive_auto_imports_from_io_primitives(
         _IO_PRIMITIVES_DIR,

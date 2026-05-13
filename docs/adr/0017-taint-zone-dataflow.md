@@ -411,8 +411,10 @@ sources:
 
 #### 2b. Taint sink catalogs
 
+**Implementation note (2026-04, commit 51e1d232f3):** the `taint_sinks/` directory described below was retired during Phase 1 in favor of deriving sinks directly from `io_primitives/*.yaml`. Every IO primitive whose `boundary` is a write-side category (`fs_write`, `subprocess`, `net_send`, `env_write`, `ipc_send`, `browser_storage_write`) becomes a structural taint sink at `trust_level=untrusted` in a zone determined by `AUTO_SINK_ZONE_MAP` in `taint.py`. The YAML schemas shown below remain valid as a contract for **project-local** sink catalogs loaded via the `--taint-sinks` CLI flag (each can declare project-specific zones such as `relay`). What changed is only that hypergumbo no longer ships a built-in `taint_sinks/` directory — the auto-derivation from `io_primitives/` covers the built-in case, and project-specific zones (`relay`, `compute_host`, etc.) are by definition project-local. See `taint.py:load_builtin_taint_catalog` for the implementation and `AUTO_SINK_ZONE_MAP` for the boundary→zone mapping.
+
 ```yaml
-# taint_sinks/relay_communication.yaml
+# taint_sinks/relay_communication.yaml — project-local catalog passed via --taint-sinks
 description: "Data sent to untrusted relays"
 zone: relay
 trust_level: untrusted

@@ -87,7 +87,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         directory="function_summaries",
         purpose="Per-language function summaries (return-type and "
         "side-effect annotations consumed by language-config).",
-        loader="hypergumbo_core.cli",
+        loader="hypergumbo_core.function_summaries",
         adr="ADR-0017",
     ),
 )

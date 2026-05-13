@@ -3713,9 +3713,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     ``derived_key``. The source and sink catalogs are derived automatically
     from ``io_primitives/*.yaml`` (every write-side primitive is a sink at
     ``trust_level=untrusted``; ``env_read``, ``net_recv``, and ``ipc_recv``
-    primitives are sources). YAML files under ``taint_sources/``,
-    ``taint_sinks/``, ``taint_sanitizers/`` contribute cryptographic labels
-    and sanitizer transforms that the auto-layer cannot express.
+    primitives are sources). YAML files under ``taint_sources/`` and
+    ``taint_sanitizers/`` contribute cryptographic labels and sanitizer
+    transforms that the auto-layer cannot express.  (Built-in sinks come
+    only from the auto-layer above; ``taint_sinks/`` as a shipped
+    directory was retired in 51e1d232f3.)
 
     Project-local catalogs (WI-votan): the ``--taint-sources``,
     ``--taint-sinks``, and ``--taint-sanitizers`` flags each accept a YAML
@@ -7308,6 +7310,15 @@ def print_all_help(parser: argparse.ArgumentParser) -> None:
 
 def main(argv=None) -> int:
     import logging
+
+    # Restore default SIGPIPE behavior so commands like
+    # ``hypergumbo explain Symbol | head`` exit quietly when the downstream
+    # pipe closes, instead of producing a BrokenPipeError traceback after
+    # otherwise-correct output. POSIX-only: signal.SIGPIPE doesn't exist
+    # on Windows, where Python uses a different mechanism for closed pipes.
+    import signal
+    if hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
     parser = build_parser()
 

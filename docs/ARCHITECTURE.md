@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **266** Python modules (130 analyzers, 52 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 25, Infrastructure 6; 48 core, 4 CLI, 32 tracker)
-- **5916** symbols (functions, classes, methods)
-- **63423** edges by type:
-  - calls: 44027
-  - imports: 9328
+- **5915** symbols (functions, classes, methods)
+- **63429** edges by type:
+  - calls: 44029
+  - imports: 9330
   - instantiates: 6682
   - contains: 1265
-  - module_attr_ref: 965
+  - module_attr_ref: 967
   - dispatches_to: 534
   - other: 622
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 5916 Symbols + 63423 Edges + UsageContexts             │
+│  Output: 5915 Symbols + 63429 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -353,7 +353,7 @@ The `hypergumbo-core` package ships 150 YAML catalog files across 7 directories.
 | `cfg_nodes/` | 5 | ADR-0017 | `hypergumbo_core.cfg` | Per-language tree-sitter node mappings for the CFG builder. |
 | `taint_sources/` | 2 | ADR-0017 | `hypergumbo_core.taint` | Trust-zone source declarations for taint-flow analysis. |
 | `taint_sanitizers/` | 1 | ADR-0017 | `hypergumbo_core.taint` | Sanitizer declarations for taint-flow analysis. |
-| `function_summaries/` | 2 | ADR-0017 | `hypergumbo_core.cli` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
+| `function_summaries/` | 2 | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
 
 Adding a new catalog category: create the directory, write the loader (or extend an existing one), and register a `CatalogSpec` in `hypergumbo_core.yaml_catalogs.YAML_CATALOGS`. The drift check fails until the registry entry lands.
 
@@ -784,7 +784,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 4cdc50186da1
+  commit: c00ec8461569
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

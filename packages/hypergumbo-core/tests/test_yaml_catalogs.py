@@ -116,3 +116,26 @@ def test_catalog_spec_constructor_accepts_none_adr():
         directory="x", purpose="y", loader="z", adr=None
     )
     assert spec.adr is None
+
+
+def test_each_catalog_loader_module_is_importable():
+    """Every registered loader must name an importable module.
+
+    The CatalogSpec.loader field is a contract for documentation and tooling
+    (it tells operators where to look when a catalog directory changes shape).
+    A typo or a stale loader name silently degrades that contract — the
+    pre-fix registry shipped function_summaries with loader='hypergumbo_core.cli'
+    even though cli.py doesn't load function_summaries; the real loader is
+    hypergumbo_core.function_summaries.load_function_summaries. This test
+    enforces that whatever module name a spec carries, it at least exists.
+    """
+    import importlib
+
+    for spec in YAML_CATALOGS:
+        try:
+            importlib.import_module(spec.loader)
+        except ImportError as e:  # pragma: no cover - failure surfaces in assert
+            raise AssertionError(
+                f"CatalogSpec({spec.directory!r}).loader = {spec.loader!r} "
+                f"does not import: {e}"
+            ) from e
