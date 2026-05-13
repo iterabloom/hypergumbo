@@ -19,3 +19,18 @@
     pr_ref:  # 7e41
     description: "WI-mafik Level 1b child. Go dot imports (`import . \"strings\"`) emit no calls edge when the dot-imported symbol is used bare (`Contains(...)`). Repro in packages/hypergumbo-lang-mainstream/tests/test_polyglot_call_site_coverage.py::test_polyglot_call_site_coverage[go]. Expected: a calls edge whose dst contains `strings` + `Contains`. Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go.py — dot-import bookkeeping plus call-site name resolution against the dot-imported package's exports. Acceptance: remove xfail_reason for go in the polyglot fixture without other test changes."  # 7e41
     fields: {}  # 7e41
+- op: update  # 97eb
+  at: '2026-05-13T00:16:42Z'  # 97eb
+  by: agent  # 97eb
+  actor: jgstern_agent  # 97eb
+  clock: 2  # 97eb
+  nonce: 97eb  # 97eb
+  set:  # 97eb
+    status: done  # 97eb
+- op: discuss  # 7a1f
+  at: '2026-05-13T00:16:42Z'  # 7a1f
+  by: agent  # 7a1f
+  actor: jgstern_agent  # 7a1f
+  clock: 3  # 7a1f
+  nonce: 7a1f  # 7a1f
+  message: "Acceptance criterion met — polyglot xfail removed in PR2 of WI-tihup + WI-mafik bundle. Analyzer retrofit closes the gap documented in the original xfail_reason; per-language regression test now passes without xfail marker."  # 7a1f
