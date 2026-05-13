@@ -1,0 +1,19 @@
+- op: create  # 183f
+  at: '2026-05-13T07:17:53Z'  # 183f
+  by: agent  # 183f
+  actor: jgstern_agent  # 183f
+  clock: 1  # 183f
+  nonce: 183f  # 183f
+  data:  # 183f
+    kind: work_item  # 183f
+    title: "ADR-22 LanguageProfile (by-language runtime aggregation): deferred pending consumer demand"  # 183f
+    status: wont_do  # 183f
+    priority: 3  # 183f
+    parent:  # 183f
+    tags: []  # 183f
+    isbefore: []  # 183f
+    duplicate_of: []  # 183f
+    not_duplicate_of: []  # 183f
+    pr_ref:  # 183f
+    description: "ADR-22 (https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/adr/0022-language-profile-registry.md) proposed two complementary pieces: (1) a by-category drift-detection registry over the per-language YAML catalog directories, and (2) a by-language `LanguageProfile` dataclass + `load_profile(language)` registry + `scripts/generate-language-reference` per-language markdown emitter that would aggregate the same YAMLs by their other axis (Python's dataflow rules + Python's io_primitives + Python's frameworks + ... all unified into one object).\n\nPiece (1) landed in commit c00ec84615 (2026-05-13) as `hypergumbo_core.yaml_catalogs` + `scripts/yaml-catalog-index` + an auto-generated 'YAML Catalogs' section in `docs/ARCHITECTURE.md`. Piece (2) — the runtime aggregation half — remains unbuilt.\n\nDeferral rationale: no analyzer currently has a pain point that 'merged per-language config object' would solve. Each module (`dataflow.py`, `io_boundary.py`, `taint.py`, `framework_patterns.py`) loads its own YAML cleanly through its own loader, the by-category drift-detection covers the operational hazard, and adding a runtime layer without a consumer demanding it would be speculative abstraction.\n\nTrigger conditions to revisit (any of):\n\n(a) A contributor adding a new language stalls because they cannot find which YAML files to author — i.e. the by-category index doesn't suffice for onboarding and a `generate-language-reference` page would have unblocked them.\n\n(b) An analyzer or other consumer wants a merged-config view that can't be cheaply assembled from the existing direct loaders.\n\n(c) INV-dihos Phase 1+ (return-type signatures across languages, ADR-0006) reaches a scale where ad-hoc per-language loading becomes repetitive enough to motivate the unified surface.\n\nADR-22's Status header now records this deferral. The 'Status Update (2026-05-13)' section between Decision and Consequences carries the full rationale.\n\nReferences: ADR-22, ADR-17 (defines `function_summaries` section), ADR-16 (defines `io_primitives` section), ADR-15 (defines `dataflow_patterns` section)."  # 183f
+    fields: {}  # 183f

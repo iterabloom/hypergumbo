@@ -61,3 +61,19 @@
   clock: 6  # 2f6c
   nonce: 2f6c  # 2f6c
   message: "Demote P3->P4: parent INV-dihos already satisfied by Phase 1; Phases 2-5 are extensions, not requirements. Resolves priority inversion with Phase 2 (jujup, P4) which isbefore this item."  # 2f6c
+- op: update  # aef6
+  at: '2026-05-13T19:29:59Z'  # aef6
+  by: agent  # aef6
+  actor: jgstern_agent  # aef6
+  clock: 7  # aef6
+  nonce: aef6  # aef6
+  set: {}  # aef6
+  add:  # aef6
+    tags: [someday]  # aef6
+- op: discuss  # 906e
+  at: '2026-05-13T19:29:59Z'  # 906e
+  by: agent  # 906e
+  actor: jgstern_agent  # 906e
+  clock: 8  # 906e
+  nonce: 906e  # 906e
+  message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: largest delta of INV-dihos rollout (Rust/C++/Scala lack existing var_types infra) + Phase 2 prerequisite; >1 week."  # 906e

@@ -54,3 +54,19 @@
   clock: 5  # 30eb
   nonce: 30eb  # 30eb
   message: "Fix inverted INV-dihos phase chain: Phase 4 (this) should block Phase 5 (fukut), not Phase 3 (titor)."  # 30eb
+- op: update  # 64e4
+  at: '2026-05-13T19:29:59Z'  # 64e4
+  by: agent  # 64e4
+  actor: jgstern_agent  # 64e4
+  clock: 6  # 64e4
+  nonce: '64e4'  # 64e4
+  set: {}  # 64e4
+  add:  # 64e4
+    tags: [someday]  # 64e4
+- op: discuss  # 8a7b
+  at: '2026-05-13T19:29:59Z'  # 8a7b
+  by: agent  # 8a7b
+  actor: jgstern_agent  # 8a7b
+  clock: 7  # 8a7b
+  nonce: 8a7b  # 8a7b
+  message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: Phase 3 prerequisite chain blocks close-to-ready."  # 8a7b

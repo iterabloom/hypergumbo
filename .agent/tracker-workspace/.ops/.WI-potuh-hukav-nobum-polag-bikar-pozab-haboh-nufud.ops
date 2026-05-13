@@ -1,0 +1,20 @@
+- op: create  # 1482
+  at: '2026-05-13T07:09:24Z'  # 1482
+  by: agent  # 1482
+  actor: jgstern_agent  # 1482
+  clock: 1  # 1482
+  nonce: '1482'  # 1482
+  data:  # 1482
+    kind: work_item  # 1482
+    title: "io-boundaries external_potential bucket drowns actionable signal (6252 vs 533 fs_read)"  # 1482
+    status: todo_hard  # 1482
+    priority: 2  # 1482
+    parent:  # 1482
+    tags:  # 1482
+    - analysis_quality  # 1482
+    isbefore: []  # 1482
+    duplicate_of: []  # 1482
+    not_duplicate_of: []  # 1482
+    pr_ref:  # 1482
+    description: "Observed during self-analysis dogfooding 2026-05-13 on hypergumbo @ c00ec84615.\n\n`hypergumbo io-boundaries --json` returns:\n- external_potential: 6,252 chains\n- fs_read: 533 chains\n- fs_write: 100 chains\n- subprocess: 35 chains\n- net_send: 10 chains\n- env_read: 43 chains\n- logging: 83 chains\n- ipc_recv: 4 chains\n- net_recv: 1 chain\n\nThe external_potential category dominates the total by ~10×. Its top primitives are generic method names: `append` ×869, `get` ×505, `split` ×191, `add` ×189, `startswith` ×185, `items` ×176 — all instances where the IO catalog matcher saw a call with one of these names on an unresolved receiver and (conservatively) flagged it as potentially-IO.\n\nConsumer impact: any downstream user of the `--json` output has to either learn to filter this bucket out or invest in a receiver-type heuristic; the category currently makes the JSON noisy by default.\n\nInvestigation needed before fix: of the 6,252 chains, what fraction has a destination that's actually IO once receiver-type inference is applied? Measurement should be straightforward — apply a tighter receiver heuristic post-hoc and count how many `external_potential` chains survive vs collapse into a known category vs drop entirely.\n\nIf most are noise: hide the bucket from `--json` output by default behind a `--include-potential` flag.\nIf many are real: invest in tighter receiver-type heuristics in the IO catalog matcher.\n\nRepro: `hypergumbo io-boundaries --json | jq '.boundaries.external_potential.chain_count'` on hypergumbo's own repo."  # 1482
+    fields: {}  # 1482

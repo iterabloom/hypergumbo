@@ -1,0 +1,20 @@
+- op: create  # 7273
+  at: '2026-05-13T07:09:12Z'  # 7273
+  by: agent  # 7273
+  actor: jgstern_agent  # 7273
+  clock: 1  # 7273
+  nonce: '7273'  # 7273
+  data:  # 7273
+    kind: work_item  # 7273
+    title: "hypergumbo sketch slow on fully-warm cache (centrality + per-file embedding not cached at same level as analysis JSON)"  # 7273
+    status: todo_hard  # 7273
+    priority: 2  # 7273
+    parent:  # 7273
+    tags:  # 7273
+    - analysis_quality  # 7273
+    isbefore: []  # 7273
+    duplicate_of: []  # 7273
+    not_duplicate_of: []  # 7273
+    pr_ref:  # 7273
+    description: "Observed during self-analysis dogfooding 2026-05-13: `hypergumbo run .` took 83.0 s cold; immediately following `hypergumbo . -t 8000` on identical repo state took 202.5 s with all upstream caches loaded ('Loading cached analysis... ETA 53s' visible in progress log). Dominant cost: a steady-rate centrality pass ([95%] Computing centrality: 0/259..259/259) and a per-file embedding loop ([90%] Embedding files: 64/259..259/259) — neither appears to share the analysis JSON's caching layer.\n\nCounter-intuitive UX: the README's first interaction is sketch mode (`hypergumbo .`). Users expect `run` to be heavyweight and sketch to be cheap; on a fully cached repo the relationship is currently inverted.\n\nRepo: hypergumbo @ c00ec84615 (728 files, 320k LOC).\n\nNeeds reproduction on a second repo before fixing — could be self-analysis-specific (the codebase is large enough that centrality is genuinely expensive) or general. Likely root cause: cache key doesn't include the centrality and per-file embedding outputs, so they're recomputed on every sketch invocation.\n\nNext steps: (1) repro on a 50k-LOC and a 5k-LOC repo to characterize whether the symptom scales with file count or is constant overhead; (2) if it scales, extend the analysis JSON cache to cover the centrality + embedding outputs."  # 7273
+    fields: {}  # 7273
