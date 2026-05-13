@@ -16,6 +16,10 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Changed
 
+#### IO boundary catalogs
+
+- **WI-dutah — stdio→logging reclassification for non-Python catalogs.** Same threat-model logic as the Python `sys.{stdout,stderr}` migration (WI-tolif): stdio terminal writes are logging, not IPC. Migrated across `c.yaml` (`stdio.{stdout,stderr}`), `rust.yaml` (`std::io.{stdout,stderr}`), `javascript.yaml` (`process.{stdout,stderr}` — `process.send` stays in `ipc_send` as real fork-channel IPC), and `elixir.yaml` (`IO.{puts,write,binwrite}` — device writes, not path writes). Per-language tests pin the new classification; `*.stdin` stays in `ipc_recv` (can carry untrusted piped input). Cuts ipc_send false positives on non-Python codebases.
+
 #### Concept-axis migrations (ADR-0027 / ADR-0028 Phase 4b)
 
 - **`SCHEMA_VERSION` 0.6.0 → 0.7.0 — `Edge.evidence_type` endpoint_shape closure.** All 111 endpoint_shape values are removed from `EVIDENCE_TYPES` after Phase 3 producer migration completed across Waves 3-5 and per-cluster bakeoff validation cleared:

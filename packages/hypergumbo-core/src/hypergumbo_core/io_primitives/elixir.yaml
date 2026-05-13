@@ -151,9 +151,10 @@ fs_write:
       - chown
       - chown!
     notes: "Elixir stdlib filesystem writes"
-  - module: IO
-    functions: [write, binwrite, puts]
-    notes: "IO writes to devices / opened files / stdout"
+# WI-dutah: IO.{write,binwrite,puts} moved out of fs_write — IO module
+# takes a device, not a path. Real path-based writes go through
+# File.{write,write!,...} (above). The IO entries live in the logging
+# block below.
 
 # ---------------------------------------------------------------------------
 # Net send — HTTP clients and TCP
@@ -246,8 +247,8 @@ logging:
     functions: [debug, info, warn, warning, error, notice, critical, alert, emergency, log, metadata, configure]
     notes: "Elixir stdlib Logger — unified logging API"
   - module: IO
-    functions: [puts, warn, write]
-    notes: "IO-based ad-hoc logging (puts to :stdio)"
+    functions: [puts, warn, write, binwrite]
+    notes: "IO-based ad-hoc logging (puts/write to :stdio; binwrite same but bytes)"
 
 # ---------------------------------------------------------------------------
 # Database — Ecto + direct driver modules

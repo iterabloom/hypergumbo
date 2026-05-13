@@ -318,6 +318,54 @@ class TestLoadCatalog:
         assert "localStorage.getItem" not in by_boundary.get("fs_read", set())
         assert "indexedDB.open" not in by_boundary.get("fs_read", set())
 
+    def test_javascript_catalog_stdio_is_logging_not_ipc_send(self) -> None:
+        """WI-dutah: process.{stdout,stderr} are terminal output, not IPC.
+
+        Same threat-model logic as the Python sys.{stdout,stderr} migration
+        (WI-tolif): terminal writes inflate ipc_send false positives without
+        any real IPC threat. ``process.send`` stays in ``ipc_send`` (real
+        IPC to a forked child) and ``process.stdin`` stays in ``ipc_recv``
+        (can carry untrusted piped input).
+        """
+        catalog = load_catalog("javascript")
+        for attr in ("stdout", "stderr"):
+            hit = catalog.lookup_with_module(attr, "process")
+            assert hit is not None, (
+                f"process.{attr} should be in the JavaScript IO catalog"
+            )
+            assert hit.boundary == "logging", (
+                f"process.{attr} should be classified as logging, "
+                f"not {hit.boundary}"
+            )
+        # process.send is real IPC (child_process.fork message-passing).
+        hit = catalog.lookup_with_module("send", "process")
+        assert hit is not None
+        assert hit.boundary == "ipc_send"
+        # process.stdin can carry untrusted piped input — stays ipc_recv.
+        hit = catalog.lookup_with_module("stdin", "process")
+        assert hit is not None
+        assert hit.boundary == "ipc_recv"
+
+    def test_rust_catalog_stdio_is_logging_not_ipc_send(self) -> None:
+        """WI-dutah: std::io.{stdout,stderr} are logging, not ipc_send.
+
+        Mirrors the Python sys.{stdout,stderr} migration (WI-tolif).
+        std::io.stdin stays in ipc_recv (can carry untrusted piped input).
+        """
+        catalog = load_catalog("rust")
+        for attr in ("stdout", "stderr"):
+            hit = catalog.lookup_with_module(attr, "std::io")
+            assert hit is not None, (
+                f"std::io.{attr} should be in the Rust IO catalog"
+            )
+            assert hit.boundary == "logging", (
+                f"std::io.{attr} should be classified as logging, "
+                f"not {hit.boundary}"
+            )
+        hit = catalog.lookup_with_module("stdin", "std::io")
+        assert hit is not None
+        assert hit.boundary == "ipc_recv"
+
     def test_load_go_catalog(self) -> None:
         catalog = load_catalog("go")
         assert catalog.language == "go"
@@ -424,6 +472,26 @@ class TestLoadCatalog:
         assert len(catalog.primitives) > 0
         assert catalog.lookup("stdio.fopen").boundary == "fs_read"
         assert catalog.lookup("unistd.fork").boundary == "subprocess"
+
+    def test_c_catalog_stdio_is_logging_not_ipc_send(self) -> None:
+        """WI-dutah: C stdio.{stdout,stderr} are logging, not ipc_send.
+
+        Mirrors the Python sys.{stdout,stderr} migration (WI-tolif).
+        stdio.stdin stays in ipc_recv (can carry untrusted piped input).
+        """
+        catalog = load_catalog("c")
+        for attr in ("stdout", "stderr"):
+            hit = catalog.lookup_with_module(attr, "stdio")
+            assert hit is not None, (
+                f"stdio.{attr} should be in the C IO catalog"
+            )
+            assert hit.boundary == "logging", (
+                f"stdio.{attr} should be classified as logging, "
+                f"not {hit.boundary}"
+            )
+        hit = catalog.lookup_with_module("stdin", "stdio")
+        assert hit is not None
+        assert hit.boundary == "ipc_recv"
 
     def test_c_catalog_tmpfile(self) -> None:
         """C catalog includes tmpfile/mkstemp temp file creation."""
@@ -665,6 +733,32 @@ class TestLoadCatalog:
             assert expected in boundaries, (
                 f"Elixir catalog missing boundary kind: {expected}"
             )
+
+    def test_elixir_catalog_io_writes_are_logging(self) -> None:
+        """WI-dutah: IO.{puts,write,binwrite} are device-writes (logging).
+
+        IO module in Elixir takes a device, not a path. The 1-arity form
+        targets :stdio; the 2-arity form targets a Device (which can be a
+        file handle obtained via File.open, but the primitive itself is a
+        device write, not a path write). Real path-based file writes go
+        through ``File.write/2`` which stays in ``fs_write``.
+
+        Same threat-model logic as the Python sys.{stdout,stderr}
+        migration (WI-tolif): device writes are logging, not fs_write
+        — they don't reach the host filesystem by themselves.
+        """
+        catalog = load_catalog("elixir")
+        for fn in ("puts", "write", "binwrite"):
+            hit = catalog.lookup_with_module(fn, "IO")
+            assert hit is not None, f"IO.{fn} should be in the Elixir catalog"
+            assert hit.boundary == "logging", (
+                f"IO.{fn} should be classified as logging, "
+                f"not {hit.boundary}"
+            )
+        # File.write stays as fs_write — that's the real path-based write.
+        hit = catalog.lookup_with_module("write", "File")
+        assert hit is not None
+        assert hit.boundary == "fs_write"
 
     def test_erlang_catalog_loads(self) -> None:
         """Erlang I/O catalog covers OTP stdlib, networking, ETS/Mnesia, and process primitives."""

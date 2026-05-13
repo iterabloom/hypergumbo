@@ -85,8 +85,6 @@ env_read:
     functions: [getcwd, gethostname, getuid, getgid, getpid]
 
 ipc_send:
-  - module: stdio
-    attributes: [stdout, stderr]
   - module: unistd
     functions: [write]
     notes: "write(STDOUT_FILENO, ...) or write(STDERR_FILENO, ...)"
@@ -97,3 +95,13 @@ ipc_recv:
   - module: unistd
     functions: [read]
     notes: "read(STDIN_FILENO, ...)"
+
+logging:
+  # WI-dutah: stdio.{stdout,stderr} are terminal output, not IPC. Same
+  # threat-model logic as Python sys.{stdout,stderr} (WI-tolif) and Go
+  # log/slog/fmt: stdio writes inflate ipc_send false positives without
+  # corresponding IPC threat. stdio.stdin stays in ipc_recv because it
+  # can carry untrusted piped input from the parent process.
+  - module: stdio
+    attributes: [stdout, stderr]
+    notes: "Terminal / log output; redirectable but not an IPC channel"

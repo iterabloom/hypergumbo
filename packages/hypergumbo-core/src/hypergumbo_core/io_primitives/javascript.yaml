@@ -187,8 +187,6 @@ env_read:
 
 ipc_send:
   - module: process
-    attributes: [stdout, stderr]
-  - module: process
     methods: [send]
     notes: "IPC to parent process in child_process.fork()"
 
@@ -204,3 +202,10 @@ logging:
   - module: console
     methods: [log, info, warn, error, debug, trace, dir, table, group, groupEnd, time, timeEnd]
     notes: "Universal console logging (browser + Node)"
+  # WI-dutah: process.{stdout,stderr} are terminal output, not IPC.
+  # Same threat-model logic as Python sys.{stdout,stderr} (WI-tolif).
+  # process.send stays in ipc_send (real fork-channel) and process.stdin
+  # stays in ipc_recv (can carry untrusted piped input).
+  - module: process
+    attributes: [stdout, stderr]
+    notes: "Node stdio writes; terminal / log output, not an IPC channel"

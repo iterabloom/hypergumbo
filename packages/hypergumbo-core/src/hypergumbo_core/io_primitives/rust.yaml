@@ -100,11 +100,13 @@ env_read:
     attributes: [consts]
     notes: "std::env::consts::OS, ARCH, etc."
 
-ipc_send:
-  - module: std::io
-    functions: [stdout, stderr]
-    notes: "Writing to stdout/stderr"
-
 ipc_recv:
   - module: std::io
     functions: [stdin]
+
+logging:
+  # WI-dutah: std::io.{stdout,stderr} are terminal output, not IPC.
+  # Same threat-model logic as Python sys.{stdout,stderr} (WI-tolif).
+  - module: std::io
+    functions: [stdout, stderr]
+    notes: "Terminal / log output; redirectable but not an IPC channel"
