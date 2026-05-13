@@ -72,15 +72,43 @@ _NAPI_EXPORTS_SET_RE = re.compile(
     r'Napi::Function::New\s*\(\s*\w+\s*,\s*(\w+)',
 )
 
+# WI-vozad: template form, Napi::Function::New<MyFunc>(env)
+# Common idiomatic shape — the callback is a template argument rather than
+# a function-call argument. Captures: group(1)=JS name, group(2)=callback.
+_NAPI_EXPORTS_SET_TEMPLATE_RE = re.compile(
+    r'(?:exports|target)\s*\.\s*Set\s*\(\s*"(\w+)"\s*,\s*'
+    r'Napi::Function::New\s*<\s*&?\s*([\w:]+)\s*>\s*\(',
+)
+
 # InstanceMethod("jsName", &ClassName::MethodName)
 # Captures: group(1) = JS method name, group(2) = C++ class::method
 _INSTANCE_METHOD_RE = re.compile(
     r'InstanceMethod\s*\(\s*"(\w+)"\s*,\s*&(\w+::\w+)',
 )
 
+# WI-vozad: InstanceMethod<&ClassName::MethodName>("jsName")
+# Template-argument form, common in modern node-addon-api projects.
+# Captures: group(1) = C++ class::method, group(2) = JS method name.
+_INSTANCE_METHOD_TEMPLATE_RE = re.compile(
+    r'InstanceMethod\s*<\s*&\s*(\w+::\w+)\s*>\s*\(\s*"(\w+)"',
+)
+
 # StaticMethod("jsName", &ClassName::MethodName) — same pattern
 _STATIC_METHOD_RE = re.compile(
     r'StaticMethod\s*\(\s*"(\w+)"\s*,\s*&(\w+::\w+)',
+)
+
+# WI-vozad: StaticMethod<&ClassName::MethodName>("jsName") template form.
+_STATIC_METHOD_TEMPLATE_RE = re.compile(
+    r'StaticMethod\s*<\s*&\s*(\w+::\w+)\s*>\s*\(\s*"(\w+)"',
+)
+
+# WI-vozad: InstanceAccessor("jsName", &ClassName::Getter, &ClassName::Setter)
+# Property accessors exposed to JS. Captures: group(1)=JS name, group(2)=getter.
+# Setter is the third arg but we point the bridge at the getter; both share
+# the same JS attribute name from the consumer's perspective.
+_INSTANCE_ACCESSOR_RE = re.compile(
+    r'InstanceAccessor\s*\(\s*"(\w+)"\s*,\s*&(\w+::\w+)',
 )
 
 
@@ -121,12 +149,38 @@ def _scan_c_cpp_file_for_napi_exports(
         cpp_func = match.group(2)
         results.append((js_name, cpp_func, "napi_addon_api"))
 
+    # WI-vozad: template-form Napi::Function::New<F>(env)
+    for match in _NAPI_EXPORTS_SET_TEMPLATE_RE.finditer(content):
+        js_name = match.group(1)
+        cpp_func = match.group(2)
+        results.append((js_name, cpp_func, "napi_addon_api"))
+
     for match in _INSTANCE_METHOD_RE.finditer(content):
         js_name = match.group(1)
         cpp_method = match.group(2)
         results.append((js_name, cpp_method, "napi_addon_api"))
 
+    # WI-vozad: template-form InstanceMethod<&C::m>("name") — args swapped.
+    for match in _INSTANCE_METHOD_TEMPLATE_RE.finditer(content):
+        cpp_method = match.group(1)
+        js_name = match.group(2)
+        results.append((js_name, cpp_method, "napi_addon_api"))
+
     for match in _STATIC_METHOD_RE.finditer(content):
+        js_name = match.group(1)
+        cpp_method = match.group(2)
+        results.append((js_name, cpp_method, "napi_addon_api"))
+
+    # WI-vozad: template-form StaticMethod<&C::m>("name").
+    for match in _STATIC_METHOD_TEMPLATE_RE.finditer(content):
+        cpp_method = match.group(1)
+        js_name = match.group(2)
+        results.append((js_name, cpp_method, "napi_addon_api"))
+
+    # WI-vozad: InstanceAccessor("name", &C::Getter, &C::Setter) — point
+    # the bridge edge at the getter; that's the read path. The setter
+    # binding still happens but is rarely the documented JS API surface.
+    for match in _INSTANCE_ACCESSOR_RE.finditer(content):
         js_name = match.group(1)
         cpp_method = match.group(2)
         results.append((js_name, cpp_method, "napi_addon_api"))

@@ -322,6 +322,202 @@ class TestNAPILinkerNodeAddonAPI:
         assert result.edges[0].evidence_type == "napi_addon_api"
 
 
+class TestNAPILinkerTemplateForms:
+    """WI-vozad: template-argument forms of node-addon-api bindings.
+
+    Modern node-addon-api projects increasingly favour the template form
+    of ``Napi::Function::New<F>(env)``, ``InstanceMethod<&C::m>("name")``,
+    and ``StaticMethod<&C::m>("name")`` over the function-argument form.
+    The original linker regexes only matched the function-argument form,
+    so projects using the template idiom got no bridge edges.
+    """
+
+    def test_links_napi_function_new_template_form(self, tmp_path: Path) -> None:
+        """``exports.Set("name", Napi::Function::New<MyFunc>(env))`` links."""
+        from hypergumbo_core.linkers.napi import link_napi
+
+        cpp_file = tmp_path / "addon.cc"
+        cpp_file.write_text(
+            '#include <napi.h>\n'
+            'Napi::Value DoTheThing(const Napi::CallbackInfo& info) {\n'
+            '  return info.Env().Undefined();\n'
+            '}\n'
+            'Napi::Object Init(Napi::Env env, Napi::Object exports) {\n'
+            '  exports.Set("doTheThing", Napi::Function::New<DoTheThing>(env));\n'
+            '  return exports;\n'
+            '}\n'
+        )
+
+        cpp_func = _make_cpp_symbol(
+            "DoTheThing", kind="function", path=str(cpp_file),
+            start_line=2, end_line=4,
+        )
+        js_sym = _make_js_symbol("app", kind="module", path="index.js")
+
+        call_edge = Edge.create(
+            src=js_sym.id,
+            dst="javascript:index.js:0-0:doTheThing:unresolved",
+            edge_type="calls",
+            line=2,
+            evidence_type="function_call",
+            confidence=0.50,
+            origin="js-v1",
+        )
+
+        result = link_napi(
+            repo_root=tmp_path,
+            js_symbols=[js_sym],
+            c_cpp_symbols=[cpp_func],
+            edges=[call_edge],
+        )
+
+        assert len(result.edges) == 1
+        assert result.edges[0].evidence_type == "napi_addon_api"
+        assert (result.edges[0].meta or {}).get("bridge_kind") == "napi"
+
+    def test_links_instance_method_template_form(self, tmp_path: Path) -> None:
+        """``InstanceMethod<&Class::M>("name")`` (template form) links."""
+        from hypergumbo_core.linkers.napi import link_napi
+
+        cpp_file = tmp_path / "addon.cc"
+        cpp_file.write_text(
+            '#include <napi.h>\n'
+            'class Worker : public Napi::ObjectWrap<Worker> {\n'
+            '  Napi::Value Process(const Napi::CallbackInfo& info) {\n'
+            '    return info.Env().Undefined();\n'
+            '  }\n'
+            '  static Napi::Object Init(Napi::Env env, Napi::Object exports) {\n'
+            '    Napi::Function func = DefineClass(env, "Worker", {\n'
+            '      InstanceMethod<&Worker::Process>("process"),\n'
+            '    });\n'
+            '    exports.Set("Worker", func);\n'
+            '    return exports;\n'
+            '  }\n'
+            '};\n'
+        )
+
+        cpp_method = _make_cpp_symbol(
+            "Worker::Process", kind="method", path=str(cpp_file),
+            start_line=3, end_line=5,
+        )
+        js_sym = _make_js_symbol("app", kind="module", path="index.js")
+
+        call_edge = Edge.create(
+            src=js_sym.id,
+            dst="javascript:index.js:0-0:process:unresolved",
+            edge_type="calls",
+            line=4,
+            evidence_type="method_call",
+            confidence=0.50,
+            origin="js-v1",
+        )
+
+        result = link_napi(
+            repo_root=tmp_path,
+            js_symbols=[js_sym],
+            c_cpp_symbols=[cpp_method],
+            edges=[call_edge],
+        )
+
+        assert len(result.edges) == 1
+        assert result.edges[0].evidence_type == "napi_addon_api"
+
+    def test_links_static_method_template_form(self, tmp_path: Path) -> None:
+        """``StaticMethod<&Class::M>("name")`` (template form) links."""
+        from hypergumbo_core.linkers.napi import link_napi
+
+        cpp_file = tmp_path / "addon.cc"
+        cpp_file.write_text(
+            '#include <napi.h>\n'
+            'class MathLib : public Napi::ObjectWrap<MathLib> {\n'
+            '  static Napi::Value Add(const Napi::CallbackInfo& info) {\n'
+            '    return info.Env().Undefined();\n'
+            '  }\n'
+            '  static Napi::Object Init(Napi::Env env, Napi::Object exports) {\n'
+            '    Napi::Function func = DefineClass(env, "MathLib", {\n'
+            '      StaticMethod<&MathLib::Add>("add"),\n'
+            '    });\n'
+            '    exports.Set("MathLib", func);\n'
+            '    return exports;\n'
+            '  }\n'
+            '};\n'
+        )
+
+        cpp_method = _make_cpp_symbol(
+            "MathLib::Add", kind="method", path=str(cpp_file),
+            start_line=3, end_line=5,
+        )
+        js_sym = _make_js_symbol("app", kind="module", path="index.js")
+
+        call_edge = Edge.create(
+            src=js_sym.id,
+            dst="javascript:index.js:0-0:add:unresolved",
+            edge_type="calls",
+            line=4,
+            evidence_type="method_call",
+            confidence=0.50,
+            origin="js-v1",
+        )
+
+        result = link_napi(
+            repo_root=tmp_path,
+            js_symbols=[js_sym],
+            c_cpp_symbols=[cpp_method],
+            edges=[call_edge],
+        )
+
+        assert len(result.edges) == 1
+        assert result.edges[0].evidence_type == "napi_addon_api"
+
+    def test_links_instance_accessor(self, tmp_path: Path) -> None:
+        """``InstanceAccessor("name", &C::Getter, &C::Setter)`` links to the getter."""
+        from hypergumbo_core.linkers.napi import link_napi
+
+        cpp_file = tmp_path / "addon.cc"
+        cpp_file.write_text(
+            '#include <napi.h>\n'
+            'class Db : public Napi::ObjectWrap<Db> {\n'
+            '  Napi::Value GetVersion(const Napi::CallbackInfo& info) {\n'
+            '    return info.Env().Undefined();\n'
+            '  }\n'
+            '  void SetVersion(const Napi::CallbackInfo& info, const Napi::Value& v) {}\n'
+            '  static Napi::Object Init(Napi::Env env, Napi::Object exports) {\n'
+            '    Napi::Function func = DefineClass(env, "Db", {\n'
+            '      InstanceAccessor("version", &Db::GetVersion, &Db::SetVersion),\n'
+            '    });\n'
+            '    exports.Set("Db", func);\n'
+            '    return exports;\n'
+            '  }\n'
+            '};\n'
+        )
+
+        cpp_method = _make_cpp_symbol(
+            "Db::GetVersion", kind="method", path=str(cpp_file),
+            start_line=3, end_line=5,
+        )
+        js_sym = _make_js_symbol("app", kind="module", path="index.js")
+
+        call_edge = Edge.create(
+            src=js_sym.id,
+            dst="javascript:index.js:0-0:version:unresolved",
+            edge_type="calls",
+            line=4,
+            evidence_type="property_access",
+            confidence=0.50,
+            origin="js-v1",
+        )
+
+        result = link_napi(
+            repo_root=tmp_path,
+            js_symbols=[js_sym],
+            c_cpp_symbols=[cpp_method],
+            edges=[call_edge],
+        )
+
+        assert len(result.edges) == 1
+        assert result.edges[0].evidence_type == "napi_addon_api"
+
+
 class TestNAPILinkerEdgeCases:
     """Edge case tests for N-API linker."""
 

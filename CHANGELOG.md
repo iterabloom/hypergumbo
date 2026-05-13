@@ -16,6 +16,10 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Changed
 
+#### FFI bridge coverage — N-API template forms
+
+- **WI-vozad — node-addon-api template-argument bindings.** The N-API linker (`linkers/napi.py`) only matched function-argument forms of `Napi::Function::New(env, F)`, `InstanceMethod("name", &C::M)`, and `StaticMethod("name", &C::M)`. Modern node-addon-api projects increasingly use the template-argument forms — `Napi::Function::New<F>(env)`, `InstanceMethod<&C::M>("name")`, `StaticMethod<&C::M>("name")` — and `InstanceAccessor("name", &Getter, &Setter)` for property bindings. Four new regex patterns + scanner integration; 4 new property tests; 100% coverage maintained. Caveat: the tracker filed this against `better-sqlite3` as the canonical fixture, but that project uses the legacy V8 direct API (`v8::FunctionTemplate::New`, not N-API at all); the template-form coverage gap is independent of that misdiagnosis and applies to genuine node-addon-api consumers (sharp, canvas, etc.). better-sqlite3's V8-direct bindings remain unbridged and would need a separate linker.
+
 #### FFI bridge coverage — PyO3
 
 - **WI-tijim — `#[pymethods]` impl-block annotation inheritance + path-qualified PyO3 marker recognition.** Two coordinated fixes that re-enable Python→Rust FFI chain tracing on canonical PyO3 crates (Robyn measured 4/~100 methods detected pre-WI-tijim). (1) `rust.py` propagates annotations from the enclosing `impl` block to every method declared inside — `#[pymethods] impl Foo { fn bar() {} }` now puts `pymethods` into `bar`'s `Symbol.meta["annotations"]`. New `_enclosing_impl_block_annotations` helper mirrors `_is_inside_cfg_test`'s walk-up-to-container pattern. Inheritance preserves per-method attributes (`#[new]`, `#[getter]`) alongside the inherited annotation. (2) `pyffi.py`'s `_find_pyo3_symbols` now recognises path-qualified marker spellings — `#[pyo3::pyfunction]` (under explicit `use pyo3` without prelude glob) compares its terminal `::` segment against `_PYO3_ANNOTATIONS`. 6 new tests across `test_rust_attribute_edges.py` (3) and `test_pyffi_linker.py` (3); 100% coverage maintained.
