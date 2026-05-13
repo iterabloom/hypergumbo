@@ -405,6 +405,38 @@ def _extract_modifiers_rust(node: "tree_sitter.Node", source: bytes) -> list[str
     return modifiers
 
 
+def _enclosing_impl_block_annotations(
+    node: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, object]]:
+    """Collect annotations from the nearest enclosing ``impl_item`` block.
+
+    Rust attribute macros applied to an ``impl`` block (``#[pymethods]``,
+    ``#[async_trait]``, ``#[tonic::async_trait]``, ``#[wasm_bindgen]``,
+    …) carry semantics that the language inherits to every method
+    declared inside the block. Per-function attribute extraction
+    misses that inherited annotation (each method's preceding-sibling
+    chain only contains attributes immediately above the ``fn``).
+
+    WI-tijim wired this in for PyO3's ``#[pymethods]`` specifically —
+    without the propagation, the pyffi linker's PyO3 detector saw 4 of
+    ~100 methods on the canonical PyO3 crate (Robyn) and dropped the
+    rest, breaking Python→Rust FFI chain tracing through the bridge.
+
+    Mirrors :func:`_is_inside_cfg_test`'s walk-up-to-container pattern.
+    Returns annotations in source order from the nearest impl outward
+    (so a method inside ``impl<T> impl Outer { impl Inner { fn m() {} } }``
+    would pick up Inner's attributes first; in practice impl blocks
+    do not nest in Rust, so the loop runs at most once).
+    """
+    annotations: list[dict[str, object]] = []
+    ancestor = node.parent
+    while ancestor is not None:
+        if ancestor.type == "impl_item":
+            annotations.extend(_extract_rust_annotations(ancestor, source))
+        ancestor = ancestor.parent
+    return annotations
+
+
 def _is_inside_cfg_test(
     node: "tree_sitter.Node", source: bytes,
 ) -> bool:
@@ -568,6 +600,14 @@ def _extract_symbols_from_file(
 
                 # Extract annotations for YAML pattern matching
                 annotations = _extract_rust_annotations(node, source)
+
+                # WI-tijim: inherit annotations from the enclosing impl
+                # block. PyO3 attribute macros (``#[pymethods]``) and
+                # async-trait wrappers go on the impl, not on each method.
+                if impl_target:
+                    for ann in _enclosing_impl_block_annotations(node, source):
+                        if ann not in annotations:
+                            annotations.append(ann)
 
                 # Inherit #[cfg(test)] from enclosing module so slicer
                 # can exclude helper functions inside test modules.

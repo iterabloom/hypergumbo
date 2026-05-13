@@ -195,6 +195,113 @@ trait OldApi {
         assert len(decorated_by_edges) >= 1, "Expected decorated_by edge for custom attribute"
 
 
+class TestRustPyO3AttributeInheritance:
+    """WI-tijim: PyO3 attribute-macro annotations on an ``impl`` block
+    inherit semantically to every method inside.
+
+    Without per-method propagation, the pyffi linker's
+    ``_find_pyo3_symbols`` never sees the ``pymethods`` annotation on the
+    methods themselves (they have at most ``#[new]`` / ``#[getter]`` /
+    nothing in their immediate preceding-sibling attribute chain), and
+    the Python→Rust FFI edges fall to ~0 coverage on PyO3 crates
+    (4/100 methods on Robyn pre-WI-tijim).
+    """
+
+    def test_pymethods_annotation_inherits_to_inner_methods(self, tmp_path: Path) -> None:
+        """``#[pymethods] impl Foo { fn bar() {} }`` → ``bar`` Symbol.meta["annotations"] contains ``pymethods``."""
+        code = '''
+#[pyclass]
+struct Calculator {}
+
+#[pymethods]
+impl Calculator {
+    fn add(&self, a: i32, b: i32) -> i32 { a + b }
+    fn sub(&self, a: i32, b: i32) -> i32 { a - b }
+}
+'''
+        rs_file = tmp_path / "calc.rs"
+        rs_file.write_text(code)
+
+        result = analyze_rust(tmp_path)
+
+        methods = [
+            s for s in result.symbols
+            if s.kind == "method" and s.name in {"Calculator::add", "Calculator::sub"}
+        ]
+        assert len(methods) == 2, (
+            f"Expected 2 methods, got {len(methods)}: "
+            f"{[(s.name, s.kind) for s in result.symbols if s.kind in ('function','method')]}"
+        )
+
+        for method in methods:
+            anns = (method.meta or {}).get("annotations", [])
+            ann_names = {a.get("name") for a in anns if isinstance(a, dict)}
+            assert "pymethods" in ann_names, (
+                f"Expected method {method.name!r} to inherit 'pymethods' from "
+                f"the enclosing impl block; got annotations={anns}"
+            )
+
+    def test_pymethods_inheritance_preserves_inner_attrs(self, tmp_path: Path) -> None:
+        """Methods with their own per-attr (#[new], #[getter]) keep both."""
+        code = '''
+#[pymethods]
+impl Calculator {
+    #[new]
+    fn new() -> Self { Calculator {} }
+    #[getter]
+    fn value(&self) -> i32 { 42 }
+}
+'''
+        rs_file = tmp_path / "calc.rs"
+        rs_file.write_text(code)
+
+        result = analyze_rust(tmp_path)
+
+        new_method = next(
+            (s for s in result.symbols if s.name == "Calculator::new"),
+            None,
+        )
+        assert new_method is not None
+        anns = (new_method.meta or {}).get("annotations", [])
+        ann_names = {a.get("name") for a in anns if isinstance(a, dict)}
+        assert "new" in ann_names, f"Expected 'new' annotation, got {ann_names}"
+        assert "pymethods" in ann_names, (
+            f"Expected inherited 'pymethods' annotation alongside 'new', "
+            f"got {ann_names}"
+        )
+
+    def test_path_qualified_pyo3_attribute_name_normalizes(self, tmp_path: Path) -> None:
+        """``#[pyo3::pyfunction]`` extracts as a recognizable PyO3 marker.
+
+        PyO3 supports both bare ``#[pyfunction]`` (under ``use pyo3::prelude::*``)
+        and path-qualified ``#[pyo3::pyfunction]``. The Rust analyzer
+        records the literal source text, so the pyffi linker must
+        recognize both shapes. WI-tijim ensures the path-qualified
+        spelling is detectable as a PyO3 marker.
+        """
+        code = '''
+#[pyo3::pyfunction]
+fn add(a: i32, b: i32) -> i32 { a + b }
+'''
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text(code)
+
+        result = analyze_rust(tmp_path)
+
+        add_fn = next(
+            (s for s in result.symbols if s.name == "add" and s.kind == "function"),
+            None,
+        )
+        assert add_fn is not None
+        anns = (add_fn.meta or {}).get("annotations", [])
+        # The raw name is path-qualified; pyffi.py must accept both.
+        # Recorded name is the literal source spelling.
+        ann_names = {a.get("name") for a in anns if isinstance(a, dict)}
+        assert "pyo3::pyfunction" in ann_names, (
+            f"Expected 'pyo3::pyfunction' annotation, got {ann_names}"
+        )
+
+
 class TestRustBuiltinAttributeFalsePositives:
     """Tests that built-in Rust attributes don't create false edges to user functions.
 

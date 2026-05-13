@@ -96,9 +96,28 @@ _CFFI_STDLIB_RE = re.compile(
 _ATTR_CALL_RE_TEMPLATE = r'{var}\.(\w+)\s*\('
 
 # PyO3 attribute names that indicate Python-exposed Rust code.
-# The Rust analyzer stores the outer attribute crate name ("pyo3") rather
-# than the specific attribute ("pyfunction", "pymethods"), so we match both.
+# The Rust analyzer stores the literal source-spelling of the attribute,
+# so both bare (``#[pyfunction]`` after ``use pyo3::prelude::*``) and
+# path-qualified (``#[pyo3::pyfunction]``) shapes appear. WI-tijim added
+# the path-qualified shape to the recognised set; the matcher in
+# :func:`_find_pyo3_symbols` also compares against the last ``::``
+# segment so a future ``#[crate::sub::pyfunction]`` shape still resolves.
 _PYO3_ANNOTATIONS = frozenset({"pyfunction", "pymethods", "pyclass", "pyo3"})
+
+
+def _is_pyo3_annotation(name: object) -> bool:
+    """Match PyO3 attribute names in either bare or path-qualified form."""
+    if not isinstance(name, str):
+        return False
+    if name in _PYO3_ANNOTATIONS:
+        return True
+    # Path-qualified shapes like "pyo3::pyfunction" — compare the
+    # terminal segment, which is the actual macro name. Also catches
+    # ``mycrate::reexport::pyfunction`` if a project re-exports the
+    # macro through its own facade module.
+    if "::" in name:
+        return name.rsplit("::", 1)[-1] in _PYO3_ANNOTATIONS
+    return False
 
 
 @dataclass
@@ -211,7 +230,7 @@ def _find_pyo3_symbols(rust_symbols: list[Symbol]) -> dict[str, list[Symbol]]:
         if not isinstance(annotations, list):  # pragma: no cover - defensive for malformed meta
             continue
         if any(
-            isinstance(a, dict) and a.get("name") in _PYO3_ANNOTATIONS
+            isinstance(a, dict) and _is_pyo3_annotation(a.get("name"))
             for a in annotations
         ):
             # Register by multiple name variants for flexible matching:

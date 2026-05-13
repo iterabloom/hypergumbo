@@ -409,6 +409,76 @@ class TestPyFFILinkerPyO3:
         assert result.edges[0].evidence_type == "ast_call_direct"
         assert (result.edges[0].meta or {}).get("framework_dispatch") == "pyo3_bridge"
 
+    def test_is_pyo3_annotation_helper(self) -> None:
+        """Direct coverage for :func:`_is_pyo3_annotation` shape variants."""
+        from hypergumbo_core.linkers.pyffi import _is_pyo3_annotation
+
+        # Bare canonical names.
+        assert _is_pyo3_annotation("pyfunction") is True
+        assert _is_pyo3_annotation("pymethods") is True
+        assert _is_pyo3_annotation("pyclass") is True
+        assert _is_pyo3_annotation("pyo3") is True
+
+        # Path-qualified names — terminal segment in the canonical set.
+        assert _is_pyo3_annotation("pyo3::pyfunction") is True
+        assert _is_pyo3_annotation("mycrate::reexport::pymethods") is True
+
+        # Non-PyO3 names — bare and path-qualified.
+        assert _is_pyo3_annotation("derive") is False
+        assert _is_pyo3_annotation("actix_web::get") is False
+
+        # Non-string inputs (defensive — meta values can drift).
+        assert _is_pyo3_annotation(None) is False
+        assert _is_pyo3_annotation(123) is False
+
+    def test_links_path_qualified_pyfunction(self, tmp_path: Path) -> None:
+        """WI-tijim: #[pyo3::pyfunction] (path-qualified) is recognised."""
+        from hypergumbo_core.linkers.pyffi import link_pyffi
+
+        rs_file = tmp_path / "src" / "lib.rs"
+        rs_file.parent.mkdir(parents=True)
+        rs_file.write_text(
+            '#[pyo3::pyfunction]\n'
+            'fn add(a: i32, b: i32) -> i32 { a + b }\n'
+        )
+
+        rust_func = _make_rust_symbol(
+            "add",
+            kind="function",
+            path=str(rs_file),
+            start_line=2,
+            end_line=2,
+            # Path-qualified annotation as the Rust analyzer records it.
+            annotations=[{"name": "pyo3::pyfunction", "args": [], "kwargs": {}}],
+        )
+
+        py_file = tmp_path / "app.py"
+        py_file.write_text("import mymod\nmymod.add(1, 2)\n")
+        py_func = _make_python_symbol(
+            "app", kind="module", path=str(py_file), start_line=1, end_line=2
+        )
+
+        call_edge = Edge.create(
+            src=py_func.id,
+            dst=f"python:{py_file}:0-0:add:unresolved",
+            edge_type="calls",
+            line=2,
+            evidence_type="function_call",
+            confidence=0.50,
+            origin="python-v1",
+        )
+
+        result = link_pyffi(
+            repo_root=tmp_path,
+            python_symbols=[py_func],
+            c_symbols=[],
+            rust_symbols=[rust_func],
+            edges=[call_edge],
+        )
+
+        assert len(result.edges) == 1
+        assert (result.edges[0].meta or {}).get("framework_dispatch") == "pyo3_bridge"
+
     def test_no_link_without_pyfunction_decorator(self, tmp_path: Path) -> None:
         """Regular Rust functions without #[pyfunction] don't create edges."""
         from hypergumbo_core.linkers.pyffi import link_pyffi
