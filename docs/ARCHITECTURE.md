@@ -14,32 +14,32 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **260** Python modules (125 analyzers, 52 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 25, Infrastructure 6; 47 core, 4 CLI, 32 tracker)
-- **5908** symbols (functions, classes, methods)
-- **63387** edges by type:
-  - calls: 44006
-  - imports: 9316
-  - instantiates: 6680
-  - contains: 1264
+- **266** Python modules (130 analyzers, 52 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 25, Infrastructure 6; 48 core, 4 CLI, 32 tracker)
+- **5916** symbols (functions, classes, methods)
+- **63423** edges by type:
+  - calls: 44027
+  - imports: 9328
+  - instantiates: 6682
+  - contains: 1265
   - module_attr_ref: 965
   - dispatches_to: 534
   - other: 622
 
 ## Package Architecture
 
-The codebase is a Python monorepo with six packages arranged in a strict
+The codebase is a Python monorepo with seven packages arranged in a strict
 dependency hierarchy. The separation enforces layering: language analyzers
 depend on core but not on each other, and the tracker is fully independent.
 
 ```
-                      hypergumbo (meta-package)
-                    /       |       \
-                   v        v        v
-  lang-mainstream   lang-common   lang-extended1
-  (43 analyzers)   (38 analyzers)   (41 analyzers)
-                   \       |       /
-                    v      v      v
-                   hypergumbo-core
+                       hypergumbo (meta-package)
+                /       |       |        \
+               v        v       v         v
+  lang-mainstream  lang-common  lang-extended1  lang-rust-analyzer
+  (43 analyzers)  (38 analyzers)  (41 analyzers)   (5 SCIP backend)
+                   \      |      |       /
+                    v     v      v      v
+                       hypergumbo-core
            (IR, CLI, linkers, patterns,
             ranking, discovery, sketch)
 
@@ -54,6 +54,7 @@ depend on core but not on each other, and the tracker is fully independent.
 | **hypergumbo-lang-mainstream** | 43 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
+| **hypergumbo-lang-rust-analyzer** | SCIP-backed Rust analyzer (alternative to the tree-sitter Rust analyzer in `lang-mainstream`; activates with `--backend rust-analyzer`) |
 | **hypergumbo** | Meta-package that installs core + all language packages |
 | **hypergumbo-tracker** | Standalone governance tool with TUI, YAML-backed op-log store, Lamport-clock ordering, and optional embedding-based dedup |
 
@@ -84,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 5908 Symbols + 63387 Edges + UsageContexts             │
+│  Output: 5916 Symbols + 63423 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -340,6 +341,22 @@ patterns:
     language: "^python$"
 ```
 
+## YAML Catalogs (auto)
+
+The `hypergumbo-core` package ships 150 YAML catalog files across 7 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
+
+| Directory | Files | ADR | Loader | Purpose |
+|---|---:|---|---|---|
+| `frameworks/` | 106 | ADR-0003 | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
+| `dataflow_patterns/` | 20 | ADR-0015 | `hypergumbo_core.dataflow` | Per-language dataflow access-mode classification rules. |
+| `io_primitives/` | 14 | ADR-0016 | `hypergumbo_core.io_boundary` | Per-language I/O primitive catalog (filesystem, network, subprocess, env, IPC, browser storage). |
+| `cfg_nodes/` | 5 | ADR-0017 | `hypergumbo_core.cfg` | Per-language tree-sitter node mappings for the CFG builder. |
+| `taint_sources/` | 2 | ADR-0017 | `hypergumbo_core.taint` | Trust-zone source declarations for taint-flow analysis. |
+| `taint_sanitizers/` | 1 | ADR-0017 | `hypergumbo_core.taint` | Sanitizer declarations for taint-flow analysis. |
+| `function_summaries/` | 2 | ADR-0017 | `hypergumbo_core.cli` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
+
+Adding a new catalog category: create the directory, write the loader (or extend an existing one), and register a `CatalogSpec` in `hypergumbo_core.yaml_catalogs.YAML_CATALOGS`. The drift check fails until the registry entry lands.
+
 ## Tracker Subsystem
 
 The `hypergumbo-tracker` package is an independent governance tool for
@@ -448,6 +465,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `tracker-path-linter` | Scan tracker items for stale file-path references. |
 | `verify-tracker-pr` | Check if a tracker sync PR's ops data is already |
+| `yaml-catalog-index` | Index hypergumbo's YAML catalogs (canonical-registry view). |
 
 ## Adding a New Analyzer
 
@@ -530,6 +548,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.taxonomy`**: File taxonomy classification (ADR-0004).
 - **`hypergumbo_core.test_masking`**: Slow test masking for smart-test.
 - **`hypergumbo_core.verify_claims`**: Security claim verification against I/O boundary and taint-flow ana...
+- **`hypergumbo_core.yaml_catalogs`**: Canonical registry of YAML catalog directories shipped under hyperg...
 
 ### Analyzers
 
@@ -658,6 +677,11 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_extended1.vhdl`**: VHDL analysis pass using tree-sitter-vhdl.
 - **`hypergumbo_lang_extended1.wolfram`**: Wolfram Language analysis pass using tree-sitter-wolfram.
 - **`hypergumbo_lang_extended1.zig`**: Zig language analyzer using tree-sitter.
+- **`hypergumbo_lang_rust_analyzer.analyzer`**: Registered analyzer entry point for the SCIP-backed Rust backend (W...
+- **`hypergumbo_lang_rust_analyzer.gate`**: Opt-in gate for the SCIP-backed Rust analyzer (WI-duzul Slice C gate).
+- **`hypergumbo_lang_rust_analyzer.graceful_degrade`**: Graceful-degrade orchestrator for the SCIP-backed Rust analyzer (WI...
+- **`hypergumbo_lang_rust_analyzer.invoke`**: Shell-out wrapper for ``rust-analyzer scip`` (WI-duzul Slice B-first).
+- **`hypergumbo_lang_rust_analyzer.translate`**: SCIP bytes → hypergumbo ``(Symbol, Edge)`` translation with rust.py...
 
 ### Linkers
 
@@ -760,7 +784,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: cc407fc2a371
+  commit: 4cdc50186da1
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

@@ -364,6 +364,7 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
         ("hypergumbo_lang_mainstream", REPO_ROOT / "packages" / "hypergumbo-lang-mainstream" / "src" / "hypergumbo_lang_mainstream"),
         ("hypergumbo_lang_common", REPO_ROOT / "packages" / "hypergumbo-lang-common" / "src" / "hypergumbo_lang_common"),
         ("hypergumbo_lang_extended1", REPO_ROOT / "packages" / "hypergumbo-lang-extended1" / "src" / "hypergumbo_lang_extended1"),
+        ("hypergumbo_lang_rust_analyzer", REPO_ROOT / "packages" / "hypergumbo-lang-rust-analyzer" / "src" / "hypergumbo_lang_rust_analyzer"),
         ("hypergumbo_tracker", REPO_ROOT / "packages" / "hypergumbo-tracker" / "src" / "hypergumbo_tracker"),
     ]
 
@@ -637,6 +638,50 @@ def extract_linker_howto() -> str:
     )
 
 
+def _render_yaml_catalogs_section() -> list[str]:
+    """Render the YAML Catalogs section, sourced from yaml_catalogs registry.
+
+    The registry lives at ``hypergumbo_core.yaml_catalogs`` (canonical source
+    of truth). The companion ``scripts/yaml-catalog-index`` script offers the
+    same view from the command line plus a ``--check`` drift mode.
+    """
+    sys.path.insert(
+        0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src")
+    )
+    from hypergumbo_core.yaml_catalogs import enumerate_catalogs
+
+    rows = enumerate_catalogs()
+    total = sum(count for _, count in rows)
+    lines = [
+        "## YAML Catalogs (auto)",
+        "",
+        f"The `hypergumbo-core` package ships {total} YAML catalog files "
+        f"across {len(rows)} directories. Each directory holds a category "
+        "of analysis data consumed by a specific loader; the registry at "
+        "`hypergumbo_core.yaml_catalogs` is the canonical index. Run "
+        "`scripts/yaml-catalog-index` for the same view at the CLI, or "
+        "`scripts/yaml-catalog-index --check` to verify the registry "
+        "matches the filesystem.",
+        "",
+        "| Directory | Files | ADR | Loader | Purpose |",
+        "|---|---:|---|---|---|",
+    ]
+    for spec, count in rows:
+        lines.append(
+            f"| `{spec.directory}/` | {count} | "
+            f"{spec.adr or '—'} | `{spec.loader}` | {spec.purpose} |"
+        )
+    lines.append("")
+    lines.append(
+        "Adding a new catalog category: create the directory, write the "
+        "loader (or extend an existing one), and register a `CatalogSpec` "
+        "in `hypergumbo_core.yaml_catalogs.YAML_CATALOGS`. The drift check "
+        "fails until the registry entry lands."
+    )
+    lines.append("")
+    return lines
+
+
 def count_language_analyzers(categories: dict[str, list[tuple[str, str | None]]]) -> dict[str, int]:
     """Count analyzers per language package.
 
@@ -651,6 +696,8 @@ def count_language_analyzers(categories: dict[str, list[tuple[str, str | None]]]
             counts["common"] = counts.get("common", 0) + 1
         elif "hypergumbo_lang_extended1" in name:
             counts["extended1"] = counts.get("extended1", 0) + 1
+        elif "hypergumbo_lang_rust_analyzer" in name:
+            counts["rust_analyzer"] = counts.get("rust_analyzer", 0) + 1
         else:
             counts["core"] = counts.get("core", 0) + 1
     return counts
@@ -967,23 +1014,24 @@ def generate_architecture_md() -> str:
     mainstream_n = lang_counts.get("mainstream", 0)
     common_n = lang_counts.get("common", 0)
     extended1_n = lang_counts.get("extended1", 0)
+    rust_analyzer_n = lang_counts.get("rust_analyzer", 0)
     lines.extend([
         "",
         "## Package Architecture",
         "",
-        "The codebase is a Python monorepo with six packages arranged in a strict",
+        "The codebase is a Python monorepo with seven packages arranged in a strict",
         "dependency hierarchy. The separation enforces layering: language analyzers",
         "depend on core but not on each other, and the tracker is fully independent.",
         "",
         "```",
-        "                      hypergumbo (meta-package)",
-        "                    /       |       \\",
-        "                   v        v        v",
-        f"  lang-mainstream   lang-common   lang-extended1",
-        f"  ({mainstream_n} analyzers)   ({common_n} analyzers)   ({extended1_n} analyzers)",
-        "                   \\       |       /",
-        "                    v      v      v",
-        "                   hypergumbo-core",
+        "                       hypergumbo (meta-package)",
+        "                /       |       |        \\",
+        "               v        v       v         v",
+        "  lang-mainstream  lang-common  lang-extended1  lang-rust-analyzer",
+        f"  ({mainstream_n} analyzers)  ({common_n} analyzers)  ({extended1_n} analyzers)   ({rust_analyzer_n} SCIP backend)",
+        "                   \\      |      |       /",
+        "                    v     v      v      v",
+        "                       hypergumbo-core",
         "           (IR, CLI, linkers, patterns,",
         "            ranking, discovery, sketch)",
         "",
@@ -1004,6 +1052,8 @@ def generate_architecture_md() -> str:
         "(Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |",
         f"| **hypergumbo-lang-extended1** | {extended1_n} analyzers for specialized languages "
         "(Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |",
+        f"| **hypergumbo-lang-rust-analyzer** | SCIP-backed Rust analyzer "
+        "(alternative to the tree-sitter Rust analyzer in `lang-mainstream`; activates with `--backend rust-analyzer`) |",
         "| **hypergumbo** | Meta-package that installs core + all language packages |",
         "| **hypergumbo-tracker** | Standalone governance tool with TUI, YAML-backed op-log store, "
         "Lamport-clock ordering, and optional embedding-based dedup |",
@@ -1298,6 +1348,9 @@ def generate_architecture_md() -> str:
         "```",
         "",
     ])
+
+    # ── YAML Catalogs ─────────────────────────────────────────────
+    lines.extend(_render_yaml_catalogs_section())
 
     # ── Tracker Subsystem ─────────────────────────────────────────
     tracker_desc = extract_tracker_architecture()
