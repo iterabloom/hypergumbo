@@ -32,7 +32,7 @@ external consumers can adapt; they hard-fail in the version after.
 |----------------|-------------------------------------------------------|
 | 0.3.0          | Deprecation announcement: `x-deprecated` annotation lists every deprecation candidate; values still valid in the enum. Production analyzers no longer emit any of them. |
 | 0.3.1          | Registry-completeness sweep: 25 previously-emitted-but-unregistered values added to the schema enum (7 canonical, 18 endpoint_shape candidates). Same dual-validity rules apply. |
-| **0.4.0**      | **Phase 4b shipped — removal**: 33 deprecation candidates removed from the schema enum (the rename-table values listed below). Behavior maps emitted at 0.4.0+ never contain these; behavior maps containing them stop validating against the 0.4.0 schema. The 25 endpoint_shape values added in 0.3.1 all stay in the schema (under `x-deprecated`); 3 of them (the protocol-call family) had their producer migration land post-0.4.0 in `WI-vumum-juvil` but await a sibling Phase 4b' ship for schema removal, and the remaining 22 still emit pending per-family Phase 3. |
+| **0.4.0**      | **Phase 4b shipped — removal**: 33 deprecation candidates removed from the schema enum (the rename-table values listed below). Behavior maps emitted at 0.4.0+ never contain these; behavior maps containing them stop validating against the 0.4.0 schema. The 25 endpoint_shape values added in 0.3.1 all stay in the schema (under `x-deprecated`); 3 of them (the protocol-call family) had their producer migration land post-0.4.0 in a follow-on release but await a sibling Phase 4b' ship for schema removal, and the remaining 22 still emit pending per-family Phase 3. |
 
 If you read your behavior maps with a permissive parser (one that
 ignores the schema), nothing breaks at 0.4.0 — but your filters
@@ -73,7 +73,7 @@ exception: a file→module load is import-shaped, not call-shaped.
 | `bridge_invokes`    | `edge_type == "calls"` and `meta["bridge_kind"] == "context_bridge"` |
 | `wasm_load`         | `edge_type == "imports"` and `dst.kind == "wasm_module"`          |
 
-### IPC family (per audit-findings 0002)
+### IPC family
 
 Inter-process communication (Tauri, Electron, Phoenix Channels,
 WebSocket, message queues) folds to `calls` for invoke-shaped
@@ -95,7 +95,7 @@ exchanges and to `event_publishes` for publish-shaped ones. The
 Protocol-call edges fold to `calls` because every protocol invocation is,
 at runtime, a function call across a network or process boundary. The
 `protocol` meta key carries the wire protocol. Producer migration shipped
-in `WI-vumum-juvil`; the registry entries remain `x-deprecated` until a
+in a follow-on release; the registry entries remain `x-deprecated` until a
 sibling Phase 4b' ship prunes them.
 
 | Old `edge_type` | New query                                                   |
@@ -104,7 +104,7 @@ sibling Phase 4b' ship prunes them.
 | `grpc_calls`    | `edge_type == "calls"` and `meta["protocol"] == "grpc"`     |
 | `graphql_calls` | `edge_type == "calls"` and `meta["protocol"] == "graphql"`  |
 
-### Dispatch / publish family (per audit-findings 0001)
+### Dispatch / publish family
 
 | Old `edge_type`        | New query                                                                  |
 |------------------------|----------------------------------------------------------------------------|
@@ -256,16 +256,16 @@ delegates = [
 
 ## What's NOT migrated yet
 
-After the 0.4.0 ship plus the post-release `WI-vumum-juvil`
-protocol-call producer migration, **26 values still emit** under
-their current names — 22 in the `endpoint_shape` axis (deprecation
-candidates with fold targets named) and 4 in the
-`pending_classification` axis (awaiting per-family audit). They
-split into two groups by what clears the next ship. (The
-protocol-call family — `http_calls` / `grpc_calls` / `graphql_calls`
-— had its producers migrated in `WI-vumum-juvil`; its three registry
-entries stay `x-deprecated` until a sibling Phase 4b' prunes them,
-but they no longer emit. See the rename table above.)
+After the 0.4.0 ship plus the post-release protocol-call producer
+migration, **26 values still emit** under their current names — 22
+in the `endpoint_shape` axis (deprecation candidates with fold
+targets named) and 4 in the `pending_classification` axis (awaiting
+per-family audit). They split into two groups by what clears the
+next ship. (The protocol-call family — `http_calls` / `grpc_calls`
+/ `graphql_calls` — had its producers migrated in that follow-on
+release; its three registry entries stay `x-deprecated` until a
+sibling Phase 4b' prunes them, but they no longer emit. See the
+rename table above.)
 
 ### Pending-classification (awaits per-family audit)
 

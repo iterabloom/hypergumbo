@@ -12,7 +12,7 @@ Per [ADR-0003 §2.4](adr/0003-architectural-analysis-and-revision-plan.md) and t
 - **Framework** — framework-specific dispatch conventions (DI containers, decorator registries, ORM method dispatch, UI-component composition). Activates when the relevant framework is detected.
 - **Infrastructure** — graph-structural utilities that populate skeletal relationships (`contains`, `extends`, `depends_on_manifest`, module-import resolution) for other linkers and downstream queries to consume. Not dispatch recovery.
 
-Prioritisation of linker investment follows `INV-nimuj`: rank by expected false-positive reduction on the current prospector corpus, not by novelty of language pair.
+Prioritisation of linker investment ranks by expected false-positive reduction on the current prospector corpus, not by novelty of language pair.
 
 ## Linker Catalogue
 
@@ -80,7 +80,7 @@ Linkers operate on the combined output of all language analyzers:
 For example, the HTTP linker (Protocol subcategory):
 - Scans for `fetch("/api/users")` calls in JavaScript.
 - Scans for `@app.get("/api/users")` route handlers in Python (or equivalent in other languages via the YAML framework-pattern system).
-- Emits a canonical `calls` edge with `meta["protocol"] = "http"` from the client call site symbol to the server handler symbol (post WI-vumum-juvil; pre-fold edge_type was `http_calls`).
+- Emits a canonical `calls` edge with `meta["protocol"] = "http"` from the client call site symbol to the server handler symbol (post-migration; pre-fold edge_type was `http_calls`).
 
 ## Why Linkers Matter
 
@@ -90,7 +90,7 @@ Modern applications use dispatch mechanisms that analyzers cannot see statically
 - **Within-language framework dispatch** — a Spring controller resolved via `@Autowired` (DI Resolution — Framework subcategory), a Django URL configuration routing to a view (Route Handler — Framework subcategory), a React component mounted via JSX (React Component — Framework subcategory), a Kafka Streams topology dispatching to a `ValueMapper.apply` implementation at runtime.
 - **Graph-structural relationships** — class-to-method containment (Containment — Infrastructure), inheritance hierarchies (Inheritance — Infrastructure), module import resolution (js_module — Infrastructure).
 
-Without these edges, a slice or dead-code analysis sees isolated subgraphs (per language, per framework, per dispatch mechanism) and over-reports false-positive dead code. The within-language framework-dispatch subcategories are empirically the dominant false-positive driver — see WI-tubot's 2026-04-11 prospector run for the volume distribution, and INV-nimuj for the prioritisation implication.
+Without these edges, a slice or dead-code analysis sees isolated subgraphs (per language, per framework, per dispatch mechanism) and over-reports false-positive dead code. The within-language framework-dispatch subcategories are empirically the dominant false-positive driver, which is why linker investment is prioritised by expected false-positive-reduction volume on the current prospector corpus.
 
 ## Adding a New Linker
 
@@ -144,4 +144,4 @@ The transitive BFS for test coverage estimation currently builds an adjacency li
 
 ### Framework-Subcategory Linker Pipeline
 
-`INV-nimuj` ranks linker investment by false-positive-reduction volume. Current highest-value follow-ups in the Framework subcategory (see tracker): `WI-gupah` (Jackson / JavaBean serialisation reflection), `WI-nutav` (Airflow Hook / Sensor / Trigger / Operator dispatch), `WI-lisov` (Kafka Streams topology-builder). Each is a Framework-subcategory linker in the ADR-0003-ext sense — the dispatch is framework-injected within one language, even where the downstream effect crosses a language boundary.
+Linker investment is ranked by false-positive-reduction volume. Current highest-value follow-ups in the Framework subcategory: Jackson / JavaBean serialisation reflection, Airflow Hook / Sensor / Trigger / Operator dispatch, and Kafka Streams topology-builder. Each is a Framework-subcategory linker in the ADR-0003-ext sense — the dispatch is framework-injected within one language, even where the downstream effect crosses a language boundary.

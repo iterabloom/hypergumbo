@@ -127,7 +127,7 @@ hypergumbo slice --entry foo --reverse   # Reverse slice to entry point
 
 ## API Compatibility
 
-The output format (behavior map JSON) is unchanged. The schema version remains at 0.2.x.
+The output format (behavior map JSON) is unchanged across the 2.0 cut. Subsequent minor versions have evolved the schema (see `CHANGELOG.md` and `docs/schema.json`); the 2.0 migration itself does not require schema-side changes.
 
 ## Programmatic Usage
 

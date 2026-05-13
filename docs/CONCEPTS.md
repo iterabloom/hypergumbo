@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-<!-- GENERATED: scripts/generate-concepts (WI-dajul) — do not edit by hand. -->
+<!-- GENERATED: scripts/generate-concepts — do not edit by hand. -->
 # Concept Vocabulary Registry
 
 This file enumerates every concept string that the framework-YAML pattern layer emits into `symbol.meta.concepts` and pairs each one with the downstream code that reads it.

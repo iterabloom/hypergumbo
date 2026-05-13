@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Generate docs/CONCEPTS.md — the concept-vocabulary registry (WI-dajul).
+"""Generate docs/CONCEPTS.md — the concept-vocabulary registry.
 
 Scans all framework YAML pattern files for `concept: <name>` strings
 emitted to symbols' meta.concepts list, and scans the hypergumbo-core
@@ -227,7 +227,7 @@ def format_md(rows: list[tuple[str, set[str], set[str], str]]) -> str:
 
     lines = [
         "<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->",
-        "<!-- GENERATED: scripts/generate-concepts (WI-dajul) — do not edit by hand. -->",
+        "<!-- GENERATED: scripts/generate-concepts — do not edit by hand. -->",
         "# Concept Vocabulary Registry",
         "",
         "This file enumerates every concept string that the framework-YAML "

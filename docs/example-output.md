@@ -1,5 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# Example: hypergumbo 2.1.0 analyzing itself (run on Google Colab Terminal)
+# Example: hypergumbo analyzing itself (run on Google Colab Terminal)
+
+*Captured on v2.1.0; sketch structure remains current.*
 
 ```
 /content# pip install hypergumbo
