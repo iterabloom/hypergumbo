@@ -40,7 +40,7 @@ Friston would say: the agent's generative model of *what CI is for* had become d
 ---
 
 ## All metrics shall perish from under the sky / Superstructure alone shall live
-* — nach "Himmel und Erde müssen vergehn"*
+*— after the school-choir round “Music Alone Shall Live” / “Himmel und Erde müssen vergehn”*
 
 The Adornian move is to say: the metric has eaten the concept. More precisely: identity-thinking, in Negative Dialectics, is the operation by which whatever falls outside the concept is rendered ontologically inert — not refuted, not acknowledged-and-dismissed, simply un-named, as if the remainder were not a category of being at all. Coverage performs this exactly. Executed and verified collapse into a single predicate; executed-but-unverified, which is empirically where most production bugs live, is not a recognized state of the world. The line ran, therefore it works. The remainder is not in the ontology, and the bugs that live there arrive not as bugs but as surprises. True enough.
 
