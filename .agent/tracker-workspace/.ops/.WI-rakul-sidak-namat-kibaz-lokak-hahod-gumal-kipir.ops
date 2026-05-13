@@ -1,0 +1,21 @@
+- op: create  # 2c40
+  at: '2026-05-12T20:56:39Z'  # 2c40
+  by: agent  # 2c40
+  actor: jgstern_agent  # 2c40
+  clock: 1  # 2c40
+  nonce: 2c40  # 2c40
+  data:  # 2c40
+    kind: work_item  # 2c40
+    title: "WI-mafik Level 1b — Elixir: aliased modules and import-only resolution gaps"  # 2c40
+    status: todo_soft  # 2c40
+    priority: 4  # 2c40
+    parent: WI-mafik-pokud-monom-munuf-gaduv-domos-tuhal-julif  # 2c40
+    tags:  # 2c40
+    - analysis_quality  # 2c40
+    - elixir  # 2c40
+    isbefore: []  # 2c40
+    duplicate_of: []  # 2c40
+    not_duplicate_of: []  # 2c40
+    pr_ref:  # 2c40
+    description: "WI-mafik Level 1b child (multi-gap). (1) `alias String, as: S` + `S.upcase(...)` preserves the alias `S` rather than resolving to `String` (dst emitted: `elixir:S:0-0:upcase:unresolved`). (2) `import Enum, only: [count: 1]` + bare `count(...)` emits no calls edge at all. Repro in polyglot fixture::elixir. Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/elixir.py — alias resolution + import-only name tracking. Acceptance: remove xfail_reason for elixir in the polyglot fixture without other test changes."  # 2c40
+    fields: {}  # 2c40

@@ -1,0 +1,21 @@
+- op: create  # 48f2
+  at: '2026-05-12T20:55:48Z'  # 48f2
+  by: agent  # 48f2
+  actor: jgstern_agent  # 48f2
+  clock: 1  # 48f2
+  nonce: 48f2  # 48f2
+  data:  # 48f2
+    kind: work_item  # 48f2
+    title: "WI-mafik Level 1b — Java: static-import + bare-call emits unresolved edge with no module info"  # 48f2
+    status: todo_soft  # 48f2
+    priority: 4  # 48f2
+    parent: WI-mafik-pokud-monom-munuf-gaduv-domos-tuhal-julif  # 48f2
+    tags:  # 48f2
+    - analysis_quality  # 48f2
+    - java  # 48f2
+    isbefore: []  # 48f2
+    duplicate_of: []  # 48f2
+    not_duplicate_of: []  # 48f2
+    pr_ref:  # 48f2
+    description: "WI-mafik Level 1b child. `import static java.util.Collections.singletonList;` + `singletonList(...)` emits a calls edge whose dst is `java:external:0-0:singletonList:unresolved` — the analyzer doesn't propagate the static import's source module (`java.util.Collections`) onto the bare call. Repro in polyglot fixture::java. Expected: dst contains `java.util` + `singletonList`. Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py — static-import propagation at the bare-call lookup. Acceptance: remove xfail_reason for java in the polyglot fixture without other test changes."  # 48f2
+    fields: {}  # 48f2

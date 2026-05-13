@@ -19,3 +19,18 @@
     pr_ref:  # bb85
     description: "WI-mafik Level 1b child. Aliased named imports in js_ts.py emit calls edges whose callable is the alias, not the underlying name. Repro: `import { writeFile as wf } from \"node:fs/promises\"` + `wf(p, content)` emits dst `typescript:fs/promises:0-0:wf:unresolved`. Expected: dst contains `writeFile`. Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py — import-alias resolution at the call-site lookup. Acceptance: remove the xfail_reason for js_ts in packages/hypergumbo-lang-mainstream/tests/test_polyglot_call_site_coverage.py without other test changes."  # bb85
     fields: {}  # bb85
+- op: update  # 2c31
+  at: '2026-05-13T00:15:42Z'  # 2c31
+  by: agent  # 2c31
+  actor: jgstern_agent  # 2c31
+  clock: 2  # 2c31
+  nonce: 2c31  # 2c31
+  set:  # 2c31
+    status: done  # 2c31
+- op: discuss  # f3f8
+  at: '2026-05-13T00:15:42Z'  # f3f8
+  by: agent  # f3f8
+  actor: jgstern_agent  # f3f8
+  clock: 3  # f3f8
+  nonce: f3f8  # f3f8
+  message: "Acceptance criterion met — polyglot xfail removed in PR2 of WI-tihup + WI-mafik bundle. Analyzer retrofit closes the gap documented in the original xfail_reason; per-language regression test now passes without xfail marker."  # f3f8

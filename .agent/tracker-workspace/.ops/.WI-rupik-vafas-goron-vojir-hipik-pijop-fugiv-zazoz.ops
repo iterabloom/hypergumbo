@@ -1,0 +1,21 @@
+- op: create  # 4145
+  at: '2026-05-12T20:56:27Z'  # 4145
+  by: agent  # 4145
+  actor: jgstern_agent  # 4145
+  clock: 1  # 4145
+  nonce: '4145'  # 4145
+  data:  # 4145
+    kind: work_item  # 4145
+    title: "WI-mafik Level 1b — C++: include directives not associated with call sites"  # 4145
+    status: todo_soft  # 4145
+    priority: 4  # 4145
+    parent: WI-mafik-pokud-monom-munuf-gaduv-domos-tuhal-julif  # 4145
+    tags:  # 4145
+    - analysis_quality  # 4145
+    - cpp  # 4145
+    isbefore: []  # 4145
+    duplicate_of: []  # 4145
+    not_duplicate_of: []  # 4145
+    pr_ref:  # 4145
+    description: "WI-mafik Level 1b child. cpp.py emits calls edges whose dst contains no header/module info: `#include <cstdio>` + `std::printf(...)` emits `cpp:external:0-0:printf:unresolved` instead of a dst connecting to `cstdio`. Same shape for `using namespace std;` + bare call and `using std::name;` + bare call. Repro in polyglot fixture::cpp. The analyzer doesn't associate `#include` directives with subsequent calls. Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/cpp.py — include-to-name resolution at the call site. Acceptance: remove xfail_reason for cpp in the polyglot fixture without other test changes."  # 4145
+    fields: {}  # 4145

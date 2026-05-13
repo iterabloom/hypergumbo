@@ -1,0 +1,21 @@
+- op: create  # 4a11
+  at: '2026-05-12T20:56:37Z'  # 4a11
+  by: agent  # 4a11
+  actor: jgstern_agent  # 4a11
+  clock: 1  # 4a11
+  nonce: 4a11  # 4a11
+  data:  # 4a11
+    kind: work_item  # 4a11
+    title: "WI-mafik Level 1b — Ruby: require + namespaced-call pattern emits zero edges (catastrophic)"  # 4a11
+    status: todo_soft  # 4a11
+    priority: 3  # 4a11
+    parent: WI-mafik-pokud-monom-munuf-gaduv-domos-tuhal-julif  # 4a11
+    tags:  # 4a11
+    - analysis_quality  # 4a11
+    - ruby  # 4a11
+    isbefore: []  # 4a11
+    duplicate_of: []  # 4a11
+    not_duplicate_of: []  # 4a11
+    pr_ref:  # 4a11
+    description: "WI-mafik Level 1b child (catastrophic — bumped to P3). `require \"json\"` + `JSON.parse(...)` emits ZERO calls edges. The Ruby analyzer does not recognize the require-then-call pattern at all on stdlib targets. Repro in polyglot fixture::ruby. Expected: calls edges whose dsts contain (`json` + `parse`), (`set` + `new`), (`json` + `generate`). Fix lives in packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ruby.py — `require` tracking and namespaced-constant call resolution. Acceptance: remove xfail_reason for ruby in the polyglot fixture without other test changes."  # 4a11
+    fields: {}  # 4a11
