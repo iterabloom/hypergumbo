@@ -5390,9 +5390,21 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
     run_epilog = """\
 Examples:
   hypergumbo run .                      # Full analysis → cached in ~/.cache/hypergumbo/
-  hypergumbo run . --out analysis.json  # Custom output file (in cwd)
+  hypergumbo run . --out analysis.json  # Custom output file (plus side-outputs, see below)
+  hypergumbo run . --out analysis.json --budgets none --no-handler-slices
+                                        # Single output file (no side-outputs)
   hypergumbo run . --compact            # LLM-friendly: top symbols + summary
   hypergumbo run . --first-party-only   # Exclude vendored/external code
+
+Side-outputs alongside --out:
+  In addition to the path you pass, `run` writes:
+    <stem>.4k.json / .16k.json / .64k.json   compact-tier previews at the same
+                                              prefix as --out (see --budgets)
+    <stem>.slices/                            a subdirectory of per-route
+                                              handler slices and an index
+                                              (see --no-handler-slices,
+                                              --max-handler-slices)
+  Suppress everything with: --budgets none --no-handler-slices
 
 After running, use search/explain/slice to query the results:
   hypergumbo sketch .                   # Auto-discovers cached results
@@ -5414,7 +5426,13 @@ Cache location:
     p_run.add_argument(
         "--out",
         default=None,
-        help="Output JSON path (default: ~/.cache/hypergumbo/<repo>/<state>/)",
+        help="Output JSON path (default: ~/.cache/hypergumbo/<repo>/<state>/). "
+             "Side-outputs are written alongside: compact-tier previews "
+             "(<stem>.{4k,16k,64k}.json — see --budgets) at the same prefix, "
+             "and a <stem>.slices/ subdirectory of per-route handler slices "
+             "(see --no-handler-slices, --max-handler-slices). Pass "
+             "`--budgets none --no-handler-slices` to get exactly one output "
+             "file. See the epilog for the full layout.",
     )
     p_run.add_argument(
         "--max-tier",

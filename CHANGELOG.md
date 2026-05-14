@@ -16,6 +16,12 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Changed
 
+#### `hypergumbo run --out` help text surfaces side-output files at point of first contact (WI-pijal)
+
+UAT campaign 4.0.0 surfaced that contributors and agents are surprised when `hypergumbo run --out analysis.json` writes additional files at the same prefix beyond the requested path: compact-tier previews (`<stem>.{4k,16k,64k}.json` per `--budgets`) and a `<stem>.slices/` subdirectory of per-route handler slices (per `--no-handler-slices` / `--max-handler-slices`, written into a subdir post-WI-rimos). The capability to suppress both already existed; the `--out OUT` help line did not mention them, so the reader had to scroll to `--budgets` and `--no-handler-slices` to discover the opt-outs.
+
+The `--out` help string now lists the side-output paths up front and points at the suppression flags, and the `Examples:` epilog gains a `--budgets none --no-handler-slices` incantation that produces exactly one output file. A new `Side-outputs alongside --out:` epilog section documents the full layout (budgets at the same prefix vs slices in a subdirectory). No behavior change.
+
 #### ADR-0017 drift sync — Phase 3 substrate extensions integrated in-place
 
 ADR-0017 (Taint-Zone Dataflow Analysis) updated to reflect the six substrate extensions that landed during the safety-claim Phase 3 work (commits `834736591c`, `cd10f0bad9`, `cdca0840df`, `4d6c07c695`, `c08eebb2b2`) but were not previously reflected in the ADR text. Edits are integrated into the existing sections rather than appended as a chronological log — the document now reads as currently-true rather than as a sequence of "Status Update" patches.
