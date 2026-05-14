@@ -133,6 +133,18 @@ LINKER_LANGUAGE_REQUIREMENTS: dict[str, dict[str, list[str]]] = {
         "swift_functions": ["swift"],
         "objc_functions": ["objc"],
     },
+    # WI-ruman: the DEPENDENCY linker has ``always=True`` activation,
+    # so the WI-zamoz gate doesn't suppress its partial warnings. The
+    # ``toml_dependencies`` requirement is structurally satisfiable
+    # only when the tree contains a language that uses TOML manifests
+    # (Rust → Cargo.toml, Python → pyproject.toml). On a pure-Go /
+    # JVM / JS repo it can never reach >0 regardless of which
+    # hypergumbo packages are installed, so an unmet diagnostic is
+    # noise. The per-requirement relevance gate below uses this map
+    # to suppress in that case.
+    "dependency": {
+        "toml_dependencies": ["rust", "python"],
+    },
 }
 
 # Languages that don't have analyzers (config/markup only)
@@ -328,19 +340,41 @@ def check_partial_linker_requirements(
         if all(r.name.endswith("_files") for r in met_reqs):
             continue
 
-        met_str = ", ".join(
-            f"{r.count} {r.description}" for r in met_reqs
-        )
-        unmet_str = ", ".join(r.description for r in unmet_reqs)
-
-        # Find suggested packages for unmet requirements
+        # Find suggested packages for unmet requirements.
+        # Build the unmet-requirement → relevant-languages mapping in
+        # the same pass so the relevance gate below can consume it.
         suggested_packages: set[str] = set()
+        unmet_relevant_languages: set[str] = set()
         linker_reqs = LINKER_LANGUAGE_REQUIREMENTS.get(diag.linker_name, {})
         for unmet in unmet_reqs:
             if unmet.name in linker_reqs:
                 for lang in linker_reqs[unmet.name]:
+                    unmet_relevant_languages.add(lang)
                     if lang in LANGUAGE_PACKAGES:
                         suggested_packages.add(LANGUAGE_PACKAGES[lang])
+
+        # WI-ruman: relevance gate for `always=True` linkers whose
+        # unmet requirements are structurally tied to specific
+        # languages. If the tree contains none of the languages that
+        # could satisfy this requirement, the warning is unactionable
+        # (installing the suggested package wouldn't help — there's
+        # nothing in the tree for the analyzer to find). Skip the
+        # diagnostic. Only fires when (a) we have detection data
+        # (preserves test-fixture behavior), (b) the linker has a
+        # language-relevance map, and (c) the unmet requirements'
+        # relevant languages have zero overlap with detected
+        # languages.
+        if (
+            has_detection
+            and unmet_relevant_languages
+            and not (unmet_relevant_languages & linker_ctx.detected_languages)
+        ):
+            continue
+
+        met_str = ", ".join(
+            f"{r.count} {r.description}" for r in met_reqs
+        )
+        unmet_str = ", ".join(r.description for r in unmet_reqs)
 
         if suggested_packages:
             package_list = ", ".join(sorted(suggested_packages))

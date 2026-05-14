@@ -55,7 +55,7 @@ if TYPE_CHECKING:
 PASS_ID = make_pass_id("circom")
 
 
-def find_circom_files(repo_root: Path) -> Iterator[Path]:  # pragma: no cover
+def find_circom_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Circom files in the repository."""
     yield from find_files(repo_root, ["*.circom"])
 
@@ -453,15 +453,20 @@ def analyze_circom(repo_root: Path) -> AnalysisResult:
 
     Returns an AnalysisResult with symbols and edges extracted from
     .circom files. If tree-sitter-circom is not available, returns
-    a skipped result with a UserWarning.
+    a skipped result with a UserWarning — but only when the tree
+    actually contains .circom files (WI-ruman: don't pester users
+    whose Go / Java / Rust repos happen to share an analyzer
+    registry with the Circom backend).
     """
     if not is_circom_tree_sitter_available():
-        warnings.warn(
-            "Circom analysis skipped: tree-sitter-circom grammar not available. "
-            "Run `hypergumbo build-grammars` to build it.",
-            UserWarning,
-            stacklevel=2,
-        )
+        if any(find_circom_files(repo_root)):
+            warnings.warn(
+                "Circom analysis skipped: tree-sitter-circom grammar "
+                "not available. Run `hypergumbo build-grammars` to "
+                "build it.",
+                UserWarning,
+                stacklevel=2,
+            )
         from hypergumbo_core.ir import PASS_VERSION, AnalysisRun
 
         run = AnalysisRun(

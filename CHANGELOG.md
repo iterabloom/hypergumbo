@@ -16,6 +16,16 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Changed
 
+#### Language-gate Circom and DEPENDENCY/TOML partial-install warnings on irrelevant repos (WI-ruman)
+
+UAT campaign 4.0.0 observed two false-positive stderr warnings on every `hypergumbo run`:
+
+- **Circom skip warning.** `analyze_circom` warned on every invocation when `tree-sitter-circom` wasn't available, regardless of whether the target tree contained any `.circom` files. On a pure-Go / Java / Rust repo the warning was unactionable. Gated on `any(find_circom_files(repo_root))`; if the tree has no Circom files, the analyzer silently returns a skipped result without emitting the warning. The `find_circom_files` helper loses its `# pragma: no cover` since the empty-tree path is now under test.
+
+- **DEPENDENCY-linker TOML warning.** The `dependency` linker activates `always=True`, so the existing WI-zamoz gate didn't suppress its partial-install warning on Go / JVM repos that lack TOML manifests. The `toml_dependencies` requirement can only reach >0 when the tree contains a language that uses TOML manifests (Rust → Cargo.toml, Python → pyproject.toml); on any other language the warning suggests installing a package that wouldn't help. Extended `partial_install_warnings.py` with a per-requirement relevance gate: `LINKER_LANGUAGE_REQUIREMENTS` now records `dependency / toml_dependencies → [rust, python]`, and the warning loop suppresses any diagnostic whose unmet-requirement relevant-languages have zero overlap with `detected_languages`. Snake-case regression tests confirm Rust-only and Python-only trees still emit the legitimate warning.
+
+CGO / LUA_FFI / RUBY_FFI partial-install warnings were already gated correctly by WI-zamoz (their `language_pairs` activation suppresses on irrelevant trees).
+
 #### Harden remaining `git rev-parse <ref>` call-sites against unverified-ref stdout contamination (WI-sigob)
 
 `scripts/release-check:95` was previously fixed by switching from `git rev-parse <ref>` to `git rev-parse --verify <ref>^{commit}`. The underlying invariant — "`git rev-parse` without `--verify` echoes the input ref to stdout *and* returns non-zero when the ref is unresolvable, contaminating any command-substitution capture" — applies to ten other sites in `scripts/auto-pr`, `scripts/lib/forgejo-api.sh`, and `scripts/ci-failover` that didn't currently bite because their refs (`origin/dev`, local `dev`) were effectively always resolvable. They've now been hardened for consistency so a future contributor doesn't reintroduce the pattern by copy-paste. Each became `git rev-parse --verify <ref>^{commit} 2>/dev/null || <fallback>`. A short rationale header comment near the first site in each file points at the release-check long-form explanation.

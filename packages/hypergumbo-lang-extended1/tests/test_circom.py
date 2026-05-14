@@ -15,6 +15,7 @@ The unavailability path is tested with a mock.
 """
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from unittest.mock import patch
 
@@ -232,6 +233,35 @@ class TestCircomSkipped:
         ):
             with pytest.warns(UserWarning, match="Circom analysis skipped"):
                 result = circom_module.analyze_circom(tmp_path)
+        assert result.skipped is True
+        assert len(result.symbols) == 0
+
+    def test_skipped_silently_when_no_circom_files_in_tree(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-ruman: no .circom files → no warning, even if grammar absent.
+
+        The UAT campaign surfaced that the Circom skip warning fires on
+        every ``hypergumbo run``, including on pure-Go/Java/Rust repos
+        that don't contain any Circom files. The grammar's absence is
+        unactionable for those users — they have nothing to analyze.
+        Gate the warning on actual Circom file presence in the tree.
+        """
+        # tmp_path is empty — no .circom files anywhere.
+        with patch.object(
+            circom_module, "is_circom_tree_sitter_available", return_value=False
+        ):
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                result = circom_module.analyze_circom(tmp_path)
+        # No Circom-skip warning emitted.
+        circom_warnings = [
+            w for w in caught
+            if issubclass(w.category, UserWarning)
+            and "Circom analysis skipped" in str(w.message)
+        ]
+        assert circom_warnings == []
+        # Result is still a skipped result (linker context unchanged).
         assert result.skipped is True
         assert len(result.symbols) == 0
 

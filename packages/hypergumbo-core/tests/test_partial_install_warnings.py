@@ -598,6 +598,151 @@ class TestCheckPartialLinkerRequirements:
         cgo_warnings = [w for w in warnings_list if w.linker == "cgo"]
         assert len(cgo_warnings) == 1
 
+    @staticmethod
+    def _make_dependency_diag_and_spec():
+        """Helper for the WI-ruman gate tests.
+
+        Returns ``(mock_diag, fake_spec)`` shaped like the real DEPENDENCY
+        linker: ``always=True`` activation, one met ``import_edges``
+        requirement and one unmet ``toml_dependencies`` requirement.
+        """
+        from unittest.mock import MagicMock
+
+        from hypergumbo_core.linkers.registry import LinkerActivation
+
+        mock_diag = MagicMock()
+        mock_diag.linker_name = "dependency"
+        mock_diag.linker_description = "Dependency linker"
+        toml_req = MagicMock()
+        toml_req.name = "toml_dependencies"
+        toml_req.description = (
+            "TOML dependency declarations (Cargo.toml, pyproject.toml)"
+        )
+        toml_req.count = 0
+        toml_req.met = False
+        import_req = MagicMock()
+        import_req.name = "import_edges"
+        import_req.description = "Import edges from code analyzers"
+        import_req.count = 42
+        import_req.met = True
+        mock_diag.requirements = [toml_req, import_req]
+
+        fake_spec = MagicMock()
+        fake_spec.name = "dependency"
+        fake_spec.activation = LinkerActivation(always=True)
+        return mock_diag, fake_spec
+
+    def test_dependency_toml_warning_suppressed_on_go_only_tree(self) -> None:
+        """WI-ruman: suppress DEPENDENCY/toml partial-install warning when
+        the tree contains no TOML-using languages.
+
+        The DEPENDENCY linker has ``always=True`` activation, so the
+        WI-zamoz gate doesn't fire. But on a pure-Go repo the unmet
+        ``toml_dependencies`` requirement is structurally impossible to
+        satisfy — Go uses ``go.mod``, not TOML manifests. The warning
+        suggests installing ``hypergumbo-lang-mainstream`` to populate
+        TOML deps, but on a Go-only tree there are no TOML manifests to
+        parse regardless of which packages are installed. Suppress.
+        """
+        from unittest.mock import patch
+
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        mock_diag, fake_spec = self._make_dependency_diag_and_spec()
+
+        ctx = LinkerContext(
+            repo_root=None,  # type: ignore[arg-type]
+            symbols=[],
+            edges=[],
+            detected_languages={"go"},
+        )
+
+        with patch(
+            "hypergumbo_core.linkers.registry.check_linker_requirements",
+            return_value=[mock_diag],
+        ), patch(
+            "hypergumbo_core.linkers.registry.get_all_linkers",
+            return_value=iter([fake_spec]),
+        ):
+            warnings_list = check_partial_linker_requirements(ctx)
+
+        assert all(w.linker != "dependency" for w in warnings_list), (
+            "DEPENDENCY/toml_dependencies partial warning must be "
+            "suppressed when neither Rust nor Python is in the tree."
+        )
+
+    def test_dependency_toml_warning_fires_on_rust_tree(self) -> None:
+        """Regression guard for the WI-ruman gate.
+
+        When the tree DOES contain a TOML-using language (Rust here),
+        the partial DEPENDENCY/toml diagnostic remains a real signal —
+        the user has Rust code but no TOML deps were extracted, which
+        is the legitimate ``is hypergumbo-lang-mainstream installed?``
+        case. Distinguishes "no toml because tree doesn't use toml"
+        (suppress) from "no toml because the parser is missing"
+        (emit).
+        """
+        from unittest.mock import patch
+
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        mock_diag, fake_spec = self._make_dependency_diag_and_spec()
+
+        ctx = LinkerContext(
+            repo_root=None,  # type: ignore[arg-type]
+            symbols=[],
+            edges=[],
+            detected_languages={"rust", "c"},
+        )
+
+        with patch(
+            "hypergumbo_core.linkers.registry.check_linker_requirements",
+            return_value=[mock_diag],
+        ), patch(
+            "hypergumbo_core.linkers.registry.get_all_linkers",
+            return_value=iter([fake_spec]),
+        ):
+            warnings_list = check_partial_linker_requirements(ctx)
+
+        dependency_warnings = [
+            w for w in warnings_list if w.linker == "dependency"
+        ]
+        assert len(dependency_warnings) == 1
+
+    def test_dependency_toml_warning_fires_on_python_tree(self) -> None:
+        """Regression guard for the WI-ruman gate.
+
+        Python is the other TOML-using language. The partial warning
+        must still fire when Python is in the tree (pyproject.toml is
+        the expected manifest shape).
+        """
+        from unittest.mock import patch
+
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        mock_diag, fake_spec = self._make_dependency_diag_and_spec()
+
+        ctx = LinkerContext(
+            repo_root=None,  # type: ignore[arg-type]
+            symbols=[],
+            edges=[],
+            detected_languages={"python", "javascript"},
+        )
+
+        with patch(
+            "hypergumbo_core.linkers.registry.check_linker_requirements",
+            return_value=[mock_diag],
+        ), patch(
+            "hypergumbo_core.linkers.registry.get_all_linkers",
+            return_value=iter([fake_spec]),
+        ):
+            warnings_list = check_partial_linker_requirements(ctx)
+
+        dependency_warnings = [
+            w for w in warnings_list if w.linker == "dependency"
+        ]
+        assert len(dependency_warnings) == 1
+
 
 class TestCheckPartialInstallWarnings:
     """Tests for the combined check function."""
