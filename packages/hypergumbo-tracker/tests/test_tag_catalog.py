@@ -820,6 +820,81 @@ class TestTagsRename:
         assert data["renamed"] == 1
         assert data["new"] == "developer_experience"
 
+    def test_rename_from_legacy_format_old_tag(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, mock_agent_uid: None,
+    ) -> None:
+        """Renaming FROM a legacy-format (hyphenated) tag must complete cleanly.
+
+        Regression test for WI-hohov: the catalog-save step previously
+        rejected the old endpoint because its name violated
+        ``_TAG_NAME_RE``, so the rename verb could not migrate the very
+        tags it was meant to migrate. The fix treats legacy-format old
+        endpoints as a forward migration — no audit-trail entry under
+        the regex-violating name (the catalog can't legally hold one),
+        and the per-item ops still land.
+        """
+        from hypergumbo_tracker import tag_catalog
+
+        tracker_root = _setup_tracker(tmp_path)
+        ops = tracker_root / "tracker" / ".ops"
+        # Use the actual hyphenated tag shape the 21-item migration hit.
+        _write_item_with_tags(ops, "WI-aa", ["for-deep-bakeoff"])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "tags", "rename", "for-deep-bakeoff", "for_deep_bakeoff",
+            ])
+        # Clean exit, no regex error.
+        assert exc.value.code == EXIT_SUCCESS
+        err = capsys.readouterr().err
+        assert "does not match" not in err
+
+        # Catalog converges to a valid state with the snake_case entry only.
+        catalog = tag_catalog.load_catalog(
+            tag_catalog.catalog_path(tracker_root),
+        )
+        assert "for_deep_bakeoff" in catalog
+        assert "for-deep-bakeoff" not in catalog
+
+    def test_rename_from_legacy_pops_preexisting_catalog_entry(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, mock_agent_uid: None,
+    ) -> None:
+        """If a legacy entry is already in the catalog, the rename drops it.
+
+        Defends against the scenario where the catalog somehow already
+        carried a regex-violating entry: the rename must converge the
+        catalog to a valid state rather than leaving the legacy entry
+        in place (where the next save would fail).
+        """
+        from hypergumbo_tracker import tag_catalog
+
+        tracker_root = _setup_tracker(tmp_path)
+        ops = tracker_root / "tracker" / ".ops"
+        _write_item_with_tags(ops, "WI-aa", ["for-deep-bakeoff"])
+        # Inject a pre-existing legacy entry directly via YAML — bypassing
+        # save_catalog's validator (which the rename fix itself must now
+        # tolerate from a different angle).
+        catalog_file = tag_catalog.catalog_path(tracker_root)
+        catalog_file.parent.mkdir(parents=True, exist_ok=True)
+        catalog_file.write_text(
+            "for-deep-bakeoff:\n"
+            "  created_on: '2026-01-01T00:00:00Z'\n"
+            "  description: ''\n"
+            "  deprecated: false\n"
+            "  in_favor_of: null\n"
+            "  last_modified: '2026-01-01T00:00:00Z'\n"
+            "  last_used: '2026-01-01T00:00:00Z'\n",
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "tags", "rename", "for-deep-bakeoff", "for_deep_bakeoff",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        catalog = tag_catalog.load_catalog(catalog_file)
+        assert "for_deep_bakeoff" in catalog
+        assert "for-deep-bakeoff" not in catalog
+
 
 # ---------------------------------------------------------------------------
 # CLI: describe

@@ -7,6 +7,16 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Fixed
+
+#### `tracker tags rename` no longer rejects renames FROM legacy-format old tags (WI-hohov)
+
+`_cmd_tags_rename` (`cli.py:1283`) was structurally broken when the OLD endpoint violated `_TAG_NAME_RE` (the snake_case validator). The per-item update loop succeeded — every item got the new tag and lost the legacy one — but the trailing catalog edit called `setdefault(old, TagCatalogEntry(...))`, leaving a regex-violating key in the catalog dict. `save_catalog`'s validator then raised, the rename verb exited non-zero, and the catalog audit trail never landed. Users hitting this either abandoned the rename (legacy tags persist) or fell back to a per-item loop (no audit trail, 21× the error noise). Hit empirically during the BVT-discipline tag migration on 2026-05-07 when renaming `for-deep-bakeoff` → `for_deep_bakeoff` and `for-uat-bakeoff` → `for_uat_bakeoff` across 21 items.
+
+Fix: treat legacy-format old endpoints as a forward migration. When `old` violates the validator, drop any pre-existing catalog entry under that name and skip the audit-trail bump on the legacy half. The audit trail loses one record on a name that can't legally exist in the catalog anyway; the rename completes cleanly and the catalog converges to a valid state with the snake_case entry only. Snake_case → snake_case renames still record both endpoints unchanged.
+
+Two new tests cover the legacy-rename path and the pre-existing-legacy-entry case; the six existing rename tests continue to pass unchanged.
+
 ## [0.5.1] - 2026-05-08
 
 ### Fixed

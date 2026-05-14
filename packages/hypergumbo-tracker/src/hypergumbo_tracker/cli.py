@@ -1285,8 +1285,16 @@ def _cmd_tags_rename(args: argparse.Namespace, ts: TrackerSet) -> int:
 
     Idempotent (re-running after every item is migrated is a no-op) and
     de-duplicates when both names already coexist on the same item. The
-    catalog gets a ``last_modified`` bump on both entries so the audit
-    trail records both endpoints of the rename.
+    catalog normally gets a ``last_modified`` bump on both entries so
+    the audit trail records both endpoints of the rename.
+
+    Carve-out for legacy-format OLD endpoints (WI-hohov): when OLD
+    violates ``_TAG_NAME_RE``, this is treated as a forward migration —
+    no catalog entry is created under the regex-violating name, and any
+    pre-existing legacy entry is dropped from the catalog. Without this,
+    the catalog's save-time validator would reject the audit-trail bump
+    and the rename verb would close the very migration path it exists
+    to provide.
     """
     from hypergumbo_tracker import tag_catalog
 
@@ -1317,20 +1325,35 @@ def _cmd_tags_rename(args: argparse.Namespace, ts: TrackerSet) -> int:
             )
             items_changed += 1
 
-    # Catalog edit: bump last_modified on both endpoints. Always record
-    # the old endpoint in the catalog (even if it wasn't catalogued
-    # before) so the audit trail captures both halves of the rename;
-    # without this, a rename of an uncatalogued tag would silently leave
-    # the old name out of the post-rename catalog dump. Don't carry
-    # description / deprecated forward by default — that's the user's
-    # call via subsequent describe / deprecate verbs.
+    # Catalog edit: bump last_modified on both endpoints. Normally we
+    # record the old endpoint in the catalog (even if it wasn't
+    # catalogued before) so the audit trail captures both halves of the
+    # rename; without that, a rename of an uncatalogued tag would
+    # silently leave the old name out of the post-rename catalog dump.
+    #
+    # Legacy-format old endpoints (WI-hohov) get a forward-migration
+    # carve-out instead: the catalog's save-time validator rejects any
+    # entry whose name violates ``_TAG_NAME_RE``, so if we tried to
+    # retain the regex-violating old endpoint, the rename verb would
+    # fail at save time — closing the very migration path it exists to
+    # provide. For those, we drop any pre-existing catalog entry under
+    # the old name and skip the audit-trail bump on the legacy half.
+    # The audit trail loses one record on a name that can't legally
+    # exist in the catalog anyway; the rename completes cleanly and
+    # the catalog converges to a valid state.
+    #
+    # Don't carry description / deprecated forward by default — that's
+    # the user's call via subsequent describe / deprecate verbs.
     catalog = tag_catalog.load_catalog(tag_catalog.catalog_path(ts._tracker_root))
     when = tag_catalog.now_utc()
-    old_entry = catalog.setdefault(
-        old, tag_catalog.TagCatalogEntry(created_on=when),
-    )
-    old_entry.last_modified = when
-    old_entry.last_used = when
+    if tag_catalog._TAG_NAME_RE.match(old):
+        old_entry = catalog.setdefault(
+            old, tag_catalog.TagCatalogEntry(created_on=when),
+        )
+        old_entry.last_modified = when
+        old_entry.last_used = when
+    else:
+        catalog.pop(old, None)
     new_entry = catalog.setdefault(
         new, tag_catalog.TagCatalogEntry(created_on=when),
     )
