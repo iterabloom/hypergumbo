@@ -7,7 +7,7 @@ favor of the single ``add-extras`` / ``remove-extras`` umbrella driven by
 the ``_extras_components`` declarative table. Coverage:
 
 - ``cmd_add_extras`` (--check, --skip, install loop)
-- ``cmd_remove_extras`` (--skip, uninstall loop, no-op grammars row)
+- ``cmd_remove_extras`` (--skip, uninstall loop)
 - ``_extras_components`` table shape (rows, callable contract)
 - ``_pretty_extras_name`` display formatting
 - The grammars-row helpers (``_is_grammars_available``, ``_install_grammars``,
@@ -446,11 +446,47 @@ class TestGrammarsHelpers:
         assert "Failed to build grammars" in err
         assert "lean" in err
 
-    def test_uninstall_grammars_is_noop_success(self) -> None:
+    def test_uninstall_grammars_success(self) -> None:
         from hypergumbo_core.cli import _uninstall_grammars
-        # No mocks needed — it just returns True.
-        assert _uninstall_grammars(quiet=True) is True
-        assert _uninstall_grammars(quiet=False) is True
+
+        with patch("subprocess.run", return_value=_Completed()):
+            assert _uninstall_grammars(quiet=True) is True
+
+    def test_uninstall_grammars_success_emits_chatter(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from hypergumbo_core.cli import _uninstall_grammars
+
+        with patch("subprocess.run", return_value=_Completed()):
+            assert _uninstall_grammars() is True
+        out = capsys.readouterr().out
+        assert "Removing source-built grammars" in out
+        assert "Done" in out
+
+    def test_uninstall_grammars_targets_three_source_grammars(self) -> None:
+        from hypergumbo_core.cli import _uninstall_grammars
+
+        with patch("subprocess.run", return_value=_Completed()) as run:
+            _uninstall_grammars(quiet=True)
+        cmd = run.call_args.args[0]
+        assert "pip" in cmd
+        assert "uninstall" in cmd
+        assert "-y" in cmd
+        assert "tree-sitter-lean" in cmd
+        assert "tree-sitter-wolfram" in cmd
+        assert "tree-sitter-circom" in cmd
+
+    def test_uninstall_grammars_timeout(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from hypergumbo_core.cli import _uninstall_grammars
+
+        def _raise(*a, **kw):
+            raise subprocess.TimeoutExpired(cmd="pip", timeout=1)
+
+        with patch("subprocess.run", side_effect=_raise):
+            assert _uninstall_grammars(quiet=True) is False
+        assert "Error uninstalling grammars" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------

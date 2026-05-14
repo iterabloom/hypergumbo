@@ -2565,8 +2565,30 @@ def _install_grammars(quiet: bool = False) -> bool:
 
 
 def _uninstall_grammars(quiet: bool = False) -> bool:
-    """No-op uninstall — grammars are shared libraries we do not remove."""
-    _ = quiet  # signature uniformity with the other extras-row uninstall callables
+    """pip uninstall the three source-built tree-sitter grammars.
+
+    Targets the packages produced by ``_install_grammars`` /
+    ``build_all_grammars`` (lean, wolfram, circom). Mirrors the
+    ``_uninstall_embeddings_impl`` shape for table-row uniformity.
+    """
+    import subprocess  # nosec B404 — pip uninstall
+    import sys
+
+    if not quiet:
+        print("Removing source-built grammars...")
+    cmd = [sys.executable, "-m", "pip", "uninstall", "-y",
+           "tree-sitter-lean", "tree-sitter-wolfram", "tree-sitter-circom"]
+    try:
+        result = subprocess.run(  # nosec B603  # noqa: S603
+            cmd, capture_output=True, timeout=300.0,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        print(f"Error uninstalling grammars: {exc}", file=sys.stderr)
+        return False
+    if result.returncode != 0:  # pragma: no cover — pip rarely fails
+        return False
+    if not quiet:
+        print("  Done!")
     return True
 
 
@@ -2992,9 +3014,10 @@ def cmd_add_extras(args: argparse.Namespace) -> int:
 def cmd_remove_extras(args: argparse.Namespace) -> int:
     """Uninstall every optional extras component in one call.
 
-    Grammars are not removed (they are shared libraries; the row's
-    uninstall is a no-op success). The rust-analyzer step removes only
-    the rustup-managed binary; the SCIP integration package
+    The grammars row pip-uninstalls the three source-built tree-sitter
+    grammars (lean, wolfram, circom). Re-adding requires git + a C
+    compiler again. The rust-analyzer step removes only the
+    rustup-managed binary; the SCIP integration package
     (``hypergumbo-lang-rust-analyzer``) is pipx-extra-managed and removed
     via ``pipx uninstall-injected hypergumbo hypergumbo-lang-rust-analyzer``.
 

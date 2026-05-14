@@ -205,6 +205,10 @@ per-entry-point source declarations exercised the propagation path.
 
 ### Changed
 
+#### `remove-extras` now actually uninstalls source-built grammars
+
+`_uninstall_grammars` previously returned True without doing anything; the docstring claimed grammars "are shared libraries we do not remove," which was misleading. They are ordinary pip-installed C-extension packages (`tree-sitter-lean`, `tree-sitter-wolfram`, `tree-sitter-circom`) with no shared state, and `pip uninstall` works on them like any other package. The function now mirrors `_uninstall_embeddings_impl` and pip-uninstalls all three when `remove-extras` runs the grammars row. Re-adding requires git + a C compiler again, same as the initial `add-extras` install. `cmd_remove_extras` docstring updated to reflect the new behavior. Three new tests added; existing `test_uninstall_grammars_is_noop_success` removed.
+
 #### IO-boundary noise reduction — F3 Filters 1 + 3 (PR-A)
 
 - **F3 Filter 1 — skip unresolved edges in `external_potential`.** `_compute_external_potential` now skips edges whose `Edge.is_resolved` is False (per ADR-0028). The previous behavior synthesized `external_potential` chains for every edge whose dst was a synthetic external-boundary node, including the high-volume tail of unresolved-receiver call edges — these produce low-signal "we don't know what this is" rows that crowd out genuine first-party→audited-boundary signal. Filter 1 cuts ~4,521 chains on hypergumbo self-analysis. Uses `getattr` with default True so legacy edge constructors and test doubles without the field continue to be treated as resolved.
