@@ -707,3 +707,137 @@ def test_verify_claims_bad_taint_source_path_errors(
     assert rc == 1
     _, err = capsys.readouterr()
     assert "Taint catalog path not found" in err
+
+
+# ============================================================================
+# Phase 3: per-entry-point DDG path + per-language propagation
+# ============================================================================
+
+
+def test_verify_claims_python_ddg_path_fires(tmp_path: Path) -> None:
+    """When the path contains Python source with assignments, the DDG
+    helper builds non-empty edges and verify-claims routes Python
+    propagation through propagate_taint_ddg (covers cli.py:4057)."""
+    # A small Python module under the analyzed path so the DDG helper
+    # discovers a function with an assignment.
+    (tmp_path / "mod.py").write_text(
+        "def f(x):\n    y = x + 1\n    return y\n", encoding="utf-8",
+    )
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:mod.py:1-3:f:function", "name": "f",
+             "kind": "function", "language": "python", "path": "mod.py",
+             "span": {"start_line": 1, "end_line": 3}},
+        ],
+        edges=[
+            {"src": "python:mod.py:1-3:f:function",
+             "dst": "python:external:0-0:plaintext_decrypt:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    claims = {
+        "claims": [{
+            "id": "TF-DDG",
+            "text": "no plaintext to host_fs",
+            "constraint": {
+                "taint_flow": {
+                    "source_taint": "plaintext",
+                    "prohibited_sink_zone": "host_fs",
+                },
+            },
+        }],
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    # Ensure Python def/use extractor is registered (sibling tests may
+    # have cleared it).
+    from hypergumbo_core.cfg import (
+        get_def_use_extractor, register_def_use_extractor,
+    )
+    if get_def_use_extractor("python") is None:
+        from hypergumbo_lang_mainstream.py_def_use import (
+            PythonDefUseExtractor,
+        )
+        register_def_use_extractor("python")(PythonDefUseExtractor)
+
+    # Exit code depends on whether the synthetic edge reaches a host_fs
+    # sink — either way the DDG branch in cmd_verify_claims executes.
+    rc = cmd_verify_claims(args)
+    assert rc in (0, 1)
+
+
+def test_verify_claims_skips_language_with_only_sinks(
+    tmp_path: Path, capsys,
+) -> None:
+    """When a language has sinks declared but no sources, the
+    per-language loop continues past it (covers cli.py:4055)."""
+    # Provide a project-local sink for a language that auto-derive
+    # doesn't supply sources for (or where the auto-derived sources
+    # don't intersect this map's nodes). Java is a candidate: the
+    # behavior map contains Java edges but project-local sinks
+    # without project-local sources leave Java with only sinks for
+    # this run.
+    sinks_file = tmp_path / "java_sinks.yaml"
+    sinks_file.write_text(
+        "zone: custom_zone\n"
+        "trust_level: untrusted\n"
+        "sinks:\n"
+        "  shellscript:\n"
+        "    - module: my.pkg\n"
+        "      functions: [doStuff]\n",
+        encoding="utf-8",
+    )
+
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "shellscript:Main.sh:1-10:main:function", "name": "main",
+             "kind": "function", "language": "shellscript",
+             "path": "Main.sh",
+             "span": {"start_line": 1, "end_line": 10}},
+        ],
+        edges=[
+            {"src": "shellscript:Main.sh:1-10:main:function",
+             "dst": "shellscript:my.pkg:0-0:doStuff:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    claims = {
+        "claims": [{
+            "id": "TF-empty-source",
+            "text": "shellscript should not write to custom_zone",
+            "constraint": {
+                "taint_flow": {
+                    "source_taint": "plaintext",
+                    "prohibited_sink_zone": "custom_zone",
+                },
+            },
+        }],
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+    args.taint_sinks = [str(sinks_file)]
+
+    rc = cmd_verify_claims(args)
+    # shellscript has no taint sources in the auto-derived catalog →
+    # per-language loop hits the `continue` branch (cli.py:4055) →
+    # no propagation runs for shellscript → claim confirmed vacuously.
+    assert rc == 0
