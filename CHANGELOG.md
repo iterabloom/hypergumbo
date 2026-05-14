@@ -16,6 +16,19 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Added
 
+#### Safety-zone wrappers expanded to cover `rmtree` / `chmod` / `unlink` callsites
+
+Phase 3 / SECURITY.md documented that hypergumbo's structural taint analysis overapproximates short-name callees like `.rmtree`, `.chmod`, `.unlink` because the edge's dst resolves to `python:external:0-0:<name>:unresolved` and matches generically. The first concrete tightening: four new wrappers in `hypergumbo_core.safety_zones` give each of hypergumbo's own mutating callsites a distinct, zone-tagged callee.
+
+- `cache_rmtree(path)` — SAFETY ZONE: `user_cache`. Wraps `shutil.rmtree` for `cmd_cache_clear`'s eviction of stale cache entries (`cli.py:2807`).
+- `tmp_artifact_rmtree(path)` — SAFETY ZONE: `tmp_artifact`. Wraps `shutil.rmtree` for `build_grammars.py`'s scaffold-dir reset (`build_grammars.py:219`).
+- `install_artifact_chmod(path, mode)` — SAFETY ZONE: `install_artifact`. Wraps `Path.chmod` for the post-install `+x` step in `install-gitleaks` (`gitleaks.py:215`).
+- `install_artifact_unlink(path)` — SAFETY ZONE: `install_artifact`. Wraps `Path.unlink` for `uninstall-gitleaks` (`gitleaks.py:415`).
+
+Self-catalog YAMLs (`user_cache_sinks.yaml`, `tmp_artifact_sinks.yaml`, `install_artifact_sinks.yaml`) updated in lockstep. `build_grammars.py`'s now-unused top-level `import shutil` removed (all writes route through `safety_zones`). Test file gains 4 new wrapper tests (`test_cache_rmtree`, `test_tmp_artifact_rmtree`, `test_install_artifact_chmod`, `test_install_artifact_unlink`).
+
+**Not in scope for this PR:** dst-module resolution of unresolved externals (e.g., resolving `python:external:0-0:get:unresolved` to a specific module by typing the receiver expression). That's a substantial dataflow extension to the IR's external-edge construction; remains documented overapproximation in SECURITY.md.
+
 #### CUDA function kinds folded onto canonical `function` + execution-space meta (WI-vibaz)
 
 - `cuda.py:_determine_function_kind` now returns a `(kind, execution_space)` pair where `kind` is always canonical `"function"` and the GPU/CPU execution space (`"global"` / `"device"` / `"host_device"` / `"host"`) lives on `Symbol.meta["cuda_execution_space"]`. Pre-WI-vibaz it returned registry-absent bare strings (`"kernel"` / `"device_function"` / `"host_device_function"`) which broke the YAML rules in `language-conventions.yaml`.

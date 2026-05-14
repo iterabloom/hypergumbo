@@ -29,7 +29,9 @@ import zipfile
 
 from .safety_zones import (
     cache_write,
+    install_artifact_chmod,
     install_artifact_copy,
+    install_artifact_unlink,
     install_artifact_write_bytes,
 )
 from dataclasses import dataclass
@@ -212,7 +214,10 @@ def install_gitleaks(quiet: bool = False) -> bool:
 
             # Make executable on Unix
             if sys.platform != "win32":
-                GITLEAKS_PATH.chmod(GITLEAKS_PATH.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+                install_artifact_chmod(
+                    GITLEAKS_PATH,
+                    GITLEAKS_PATH.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
+                )
 
     except (OSError, tarfile.TarError, zipfile.BadZipFile) as e:  # pragma: no cover
         print(f"Error extracting gitleaks: {e}", file=sys.stderr)  # pragma: no cover
@@ -412,7 +417,7 @@ def uninstall_gitleaks(quiet: bool = False) -> bool:
         return True
 
     try:
-        GITLEAKS_PATH.unlink()
+        install_artifact_unlink(GITLEAKS_PATH)
         if not quiet:
             print(f"Removed gitleaks from {GITLEAKS_PATH}")
         return True

@@ -8,3 +8,4 @@ sinks:
     - module: hypergumbo_core.safety_zones
       functions:
         - tmp_artifact_write
+        - tmp_artifact_rmtree

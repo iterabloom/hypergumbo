@@ -21,11 +21,15 @@ import pytest
 
 from hypergumbo_core.safety_zones import (
     _safety_zone_barrier,
+    cache_rmtree,
     cache_save_npy,
     cache_write,
     cache_write_bytes,
+    install_artifact_chmod,
     install_artifact_copy,
+    install_artifact_unlink,
     install_artifact_write_bytes,
+    tmp_artifact_rmtree,
     tmp_artifact_write,
     user_out_open_json_dump,
     user_out_write,
@@ -101,3 +105,43 @@ def test_install_artifact_copy(tmp_path: Path) -> None:
     dst = tmp_path / "dst-bin"
     install_artifact_copy(src, dst)
     assert dst.read_bytes() == b"executable"
+
+
+def test_cache_rmtree(tmp_path: Path) -> None:
+    """``cache_rmtree`` recursively deletes a directory tree."""
+    d = tmp_path / "cache_dir"
+    d.mkdir()
+    (d / "a.txt").write_text("a")
+    (d / "sub").mkdir()
+    (d / "sub" / "b.txt").write_text("b")
+    cache_rmtree(d)
+    assert not d.exists()
+
+
+def test_tmp_artifact_rmtree(tmp_path: Path) -> None:
+    """``tmp_artifact_rmtree`` recursively deletes a tmp-scaffold directory."""
+    d = tmp_path / "scaffold"
+    d.mkdir()
+    (d / "setup.py").write_text("...")
+    tmp_artifact_rmtree(d)
+    assert not d.exists()
+
+
+def test_install_artifact_chmod(tmp_path: Path) -> None:
+    """``install_artifact_chmod`` sets the mode bits on an installed file."""
+    import stat
+    p = tmp_path / "binary"
+    p.write_bytes(b"binary")
+    # Start with a non-executable mode then chmod to executable
+    p.chmod(0o644)
+    install_artifact_chmod(p, p.stat().st_mode | stat.S_IXUSR)
+    assert p.stat().st_mode & stat.S_IXUSR
+
+
+def test_install_artifact_unlink(tmp_path: Path) -> None:
+    """``install_artifact_unlink`` removes a single installed file."""
+    p = tmp_path / "binary"
+    p.write_bytes(b"binary")
+    assert p.exists()
+    install_artifact_unlink(p)
+    assert not p.exists()

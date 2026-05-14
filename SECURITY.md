@@ -147,7 +147,9 @@ Each claim verifies that no unsanitized data from the source entry-point categor
 
 ### Known limitations
 
-The structural taint analysis cannot disambiguate every short-name callee — when an edge's dst is unresolved to a specific module (e.g., ``python:external:0-0:get:unresolved``), sink-matching is necessarily over-approximate. Verify-claims may report findings on common method names (``.get`` / ``.run`` / ``.replace`` / ``.write`` / ``.chmod``) that are real reachability through generic primitives the wrappers don't cover. Treat these as documented overapproximation rather than genuine safety regressions; the load-bearing claims (dev-zone unreachability from runtime CLI, install zones not reached from runtime CLI) verify cleanly.
+The structural taint analysis cannot disambiguate every short-name callee — when an edge's dst is unresolved to a specific module (e.g., ``python:external:0-0:get:unresolved``), sink-matching is necessarily over-approximate. Verify-claims may report findings on common method names (``.get`` / ``.run`` / ``.replace`` / ``.write``) that are real reachability through generic primitives the wrappers don't cover. Treat these as documented overapproximation rather than genuine safety regressions; the load-bearing claims (dev-zone unreachability from runtime CLI, install zones not reached from runtime CLI) verify cleanly.
+
+Hypergumbo's own mutating callsites (``shutil.rmtree`` for cache eviction and grammar-scaffold reset, ``Path.chmod`` for post-install ``+x``, ``Path.unlink`` for uninstall) route through tightening wrappers in ``hypergumbo_core.safety_zones`` (``cache_rmtree`` / ``tmp_artifact_rmtree`` / ``install_artifact_chmod`` / ``install_artifact_unlink``) so the structural pass gets a distinct, zone-tagged callee per site. Resolving short-name calls to specific modules (``dst-module resolution``) — the broader fix that would shrink the overapproximation surface generally — is a separate dataflow extension to the IR's external-edge construction and is not implemented.
 
 <!-- END generated -->
 

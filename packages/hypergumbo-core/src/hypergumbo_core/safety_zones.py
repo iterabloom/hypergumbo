@@ -89,6 +89,20 @@ def cache_write_bytes(path: Path, data: bytes) -> None:
     path.write_bytes(data)
 
 
+def cache_rmtree(path: Path) -> None:
+    """Recursively delete a cache directory under ``~/.cache/hypergumbo/``.
+
+    SAFETY ZONE: ``user_cache``. Used by ``cmd_cache_clear`` to evict
+    stale cache entries. Wrapping ``shutil.rmtree`` here gives the
+    structural-taint pass a distinct callee — verify-claims previously
+    flagged generic ``.rmtree`` reachability from runtime CLI as a
+    documented overapproximation because the bare callee match couldn't
+    tell cache-clear writes apart from arbitrary fs deletes.
+    """
+    _safety_zone_barrier()
+    shutil.rmtree(path)
+
+
 def cache_save_npy(path: Path, embedding: "np.ndarray") -> None:  # pragma: no cover - exercised by test_cache_save_npy with importorskip
     """Save a numpy array to a cache path via ``np.save``.
 
@@ -141,6 +155,18 @@ def tmp_artifact_write(path: Path, content: str) -> None:
     path.write_text(content)
 
 
+def tmp_artifact_rmtree(path: Path) -> None:
+    """Recursively delete an ephemeral build directory under ``/tmp/``.
+
+    SAFETY ZONE: ``tmp_artifact``. Used by ``build_grammars.py`` to
+    refresh the per-grammar scaffold directory before regenerating it.
+    Distinct wrapper from :func:`cache_rmtree` so verify-claims can
+    distinguish cache eviction from grammar-build scaffold reset.
+    """
+    _safety_zone_barrier()
+    shutil.rmtree(path)
+
+
 def install_artifact_write_bytes(path: Path, data: bytes) -> None:
     """Write a downloaded archive's bytes to disk during install flow.
 
@@ -162,3 +188,28 @@ def install_artifact_copy(src: Path, dst: Path) -> None:
     """
     _safety_zone_barrier()
     shutil.copy2(src, dst)
+
+
+def install_artifact_chmod(path: Path, mode: int) -> None:
+    """Set the mode bits on an installed binary (typically +x).
+
+    SAFETY ZONE: ``install_artifact``. Called immediately after
+    ``install_artifact_copy`` lands a binary, to make it executable.
+    Distinct wrapper so verify-claims can distinguish hypergumbo's own
+    post-install ``chmod`` from arbitrary mode-bit mutation on the
+    user's filesystem.
+    """
+    _safety_zone_barrier()
+    path.chmod(mode)
+
+
+def install_artifact_unlink(path: Path) -> None:
+    """Remove an installed binary (uninstall path).
+
+    SAFETY ZONE: ``install_artifact``. Used by ``cmd_uninstall_gitleaks``
+    to evict the hypergumbo-managed binary. Distinct wrapper so
+    verify-claims's overapproximate ``.unlink`` matches don't conflate
+    install/uninstall flows with arbitrary file removal.
+    """
+    _safety_zone_barrier()
+    path.unlink()

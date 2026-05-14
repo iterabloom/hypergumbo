@@ -19,7 +19,6 @@ The build process:
 """
 from __future__ import annotations
 
-import shutil
 import subprocess  # nosec B404 - required for git/pip commands
 import sys
 import tempfile
@@ -27,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .safety_zones import tmp_artifact_write
+from .safety_zones import tmp_artifact_rmtree, tmp_artifact_write
 
 
 @dataclass
@@ -216,7 +215,7 @@ def build_grammar(
 
     # Create Python package directory
     if pkg_dir.exists():
-        shutil.rmtree(pkg_dir)
+        tmp_artifact_rmtree(pkg_dir)
     pkg_dir.mkdir(parents=True)
     (pkg_dir / module_name).mkdir()
 

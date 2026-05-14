@@ -53,6 +53,7 @@ from .analyze.base import is_exported_from_modifiers
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 from .linkers.registry import LinkerContext, run_all_linkers
 from .safety_zones import (
+    cache_rmtree,
     cache_write,
     tmp_artifact_write,
     user_out_open_json_dump,
@@ -2765,7 +2766,6 @@ def cmd_cache_clear(args: argparse.Namespace) -> int:
     - --older-than N: Only remove entries older than N days
     - --dry-run: Show what would be deleted without deleting
     """
-    import shutil
     import time
 
     cache_dir = _get_cache_base()
@@ -2804,7 +2804,7 @@ def cmd_cache_clear(args: argparse.Namespace) -> int:
     deleted_count = 0
     for entry in entries:
         try:
-            shutil.rmtree(entry)
+            cache_rmtree(entry)
             deleted_count += 1
         except (OSError, PermissionError) as e:  # pragma: no cover
             if not args.quiet:  # pragma: no cover
