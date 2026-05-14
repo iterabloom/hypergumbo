@@ -159,6 +159,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`const`** — Const declaration (C / C++ / Rust / JS const).
 - **`constant`** — Constant / final / let-immutable binding.
 - **`constructor`** — Constructor / __init__ / init method.
+- **`contract`** — Smart-contract declaration (Solidity / Vyper / Move). Sibling to `class` / `interface` / `struct` — names the source-language top-level construct directly. Producers: `solidity.py:265` emits `add_symbol(name, "contract", ...)` for `contract_declaration` AST nodes. Consumed by `library-exports.yaml`'s `symbol_kind: ^contract$` rule that surfaces deployable Solidity contracts as library exports.
 - **`data`** — Data symbol (Terraform data block). CANONICAL per audit-findings 0007.
 - **`declaration`** — Generic declaration (catch-all for non-categorized syntactic forms).
 - **`defined_type`** — Defined / nominal type declaration (Puppet / Coq).

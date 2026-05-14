@@ -58,6 +58,14 @@ verdicts:
       cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"interface\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
       expect: exit_code:0
     rationale: "Cluster 27A language construct: Interface declaration."
+  - value: contract
+    verdict: CANONICAL
+    fold_target: null
+    status: RESOLVED
+    diagnostic_test:
+      cmd: "python3 -c 'from hypergumbo_core.symbol_kinds import SYMBOL_KINDS; assert any(s.name == \"contract\" and s.axis == \"language_construct\" for s in SYMBOL_KINDS)'"
+      expect: exit_code:0
+    rationale: "Cluster 27A language construct: Smart-contract declaration (Solidity / Vyper / Move). Sibling to class / interface / struct — names the source-language top-level construct directly. Added via WI-jujoj per the path-1 verdict (canonical addition rather than fold-onto-class), reflecting that Solidity contracts are not classes; the original cluster-A enumeration missed the value because the contributing producer (solidity.py) was added after Phase 1's registry seed."
   - value: struct
     verdict: CANONICAL
     fold_target: null

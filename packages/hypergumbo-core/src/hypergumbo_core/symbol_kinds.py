@@ -81,6 +81,15 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Class declaration."),
     SymbolKindSpec("interface", AXIS_LANGUAGE_CONSTRUCT,
                    "Interface declaration."),
+    SymbolKindSpec("contract", AXIS_LANGUAGE_CONSTRUCT,
+                   "Smart-contract declaration (Solidity / Vyper / Move). "
+                   "Sibling to `class` / `interface` / `struct` — names the "
+                   "source-language top-level construct directly. Producers: "
+                   "`solidity.py:265` emits `add_symbol(name, \"contract\", ...)` "
+                   "for `contract_declaration` AST nodes. Consumed by "
+                   "`library-exports.yaml`'s `symbol_kind: ^contract$` rule "
+                   "that surfaces deployable Solidity contracts as library "
+                   "exports."),
     SymbolKindSpec("struct", AXIS_LANGUAGE_CONSTRUCT,
                    "Struct / record-type declaration."),
     SymbolKindSpec("enum", AXIS_LANGUAGE_CONSTRUCT,

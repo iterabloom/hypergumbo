@@ -16,6 +16,13 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Added
 
+#### Solidity `contract` promoted to canonical `Symbol.kind` (WI-jujoj)
+
+- `symbol_kinds.SYMBOL_KINDS` gains `SymbolKindSpec("contract", AXIS_LANGUAGE_CONSTRUCT, ...)`. Path-1 verdict per WI-jujoj's tracker description: smart-contract declarations are a source-language top-level construct (sibling to `class` / `interface` / `struct`), not a relabel of an existing canonical kind — folding to `class + meta["contract_kind"]="contract"` would have been the less honest option since Solidity contracts are not classes.
+- `solidity.py:265` already emitted `kind="contract"` for `contract_declaration` AST nodes; this PR unbreaks the producer by registering the value canonically. `library-exports.yaml`'s `symbol_kind: ^contract$` rule (line 231) is now matching against a canonical kind rather than a registry-absent value.
+- `docs/audits/0003-symbol-kind-cluster-a-language-constructs.md` gains the `contract` verdict row (CANONICAL, RESOLVED), with rationale noting the original cluster-A enumeration missed the value because the contributing producer (solidity.py) was added after Phase 1's registry seed.
+- `docs/schema.json` regenerated — additive change to `Symbol.kind.x-axis-of-values`. No producer migration needed (solidity.py was already emitting the value); no consumer changes (library-exports.yaml's regex already references it).
+
 #### Per-entry-point safety claims + wrapper-function discipline (Phase 3)
 
 Phase 3 of the twin-goal cleanup plan. Lands the substrate for hypergumbo's
