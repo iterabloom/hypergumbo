@@ -41,3 +41,20 @@
   clock: 4  # 47d4
   nonce: 47d4  # 47d4
   message: "Post-ADR-0023 reframe (Phase 4b protocol-call family fold under WI-vumum-juvil, fully landed): grpc_calls is gone. gRPC↔TS edges must be canonical edge_type='calls' + meta['protocol']='grpc'; strict-mode drift linter enforces in pre-commit. The implementation work (proto-service ↔ TS-class mapping, similar shape to pyffi/wasm_bindgen linkers) is unchanged; only the emit shape moves to canonical."  # 47d4
+- op: update  # ec1f
+  at: '2026-05-13T23:52:41Z'  # ec1f
+  by: agent  # ec1f
+  actor: jgstern_agent  # ec1f
+  clock: 5  # ec1f
+  nonce: ec1f  # ec1f
+  set:  # ec1f
+    status: done  # ec1f
+  add:  # ec1f
+    tags: [awaits_bakeoff_validation]  # ec1f
+- op: discuss  # 650f
+  at: '2026-05-13T23:52:41Z'  # 650f
+  by: agent  # 650f
+  actor: jgstern_agent  # 650f
+  clock: 6  # 650f
+  nonce: 650f  # 650f
+  message: "Shipped via PR (commit 88e734f). TS gRPC client → proto service fallback when no in-tree impl. 3 new tests; 100% coverage. workadventure-on-deep-bakeoff validation pending."  # 650f

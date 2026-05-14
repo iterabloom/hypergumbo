@@ -18,3 +18,18 @@
     pr_ref:  # ca09
     description: "WI-limas surfaced that xml_config.py emits kind=\"activity\" / \"service\" / \"receiver\" / \"provider\" (literal element names from AndroidManifest.xml — xml_config.py:454), but none of those values exist in the canonical SYMBOL_KINDS registry post-ADR-0027 Phase 4b. WI-limas migrated the YAML side for what was migratable; these four producer-side folds remain.\n\nProposed shape: kind=\"component\" + meta[\"component_type\"]=\"activity\"/\"service\"/\"receiver\"/\"provider\". \"component\" IS in the canonical registry. The producer already builds meta[\"component_type\"]=elem_name at xml_config.py:425, so the producer fix is mostly switching kind= from elem_name to \"component\". \"provider\" is a complication — it's already in the canonical registry as a distinct value (Apex/Salesforce), so the fold could either route Android provider to kind=\"component\" + meta or leave it on the existing \"provider\" kind. Per audit-findings 0013 / WI-habut Wave 5, the pattern for these post-fold YAML rules is to add meta_match (now available — WI-limas) for the component_type axis.\n\nYAML side after producer fix: 4 rules in config-conventions.yaml under '====== Maven/Android' block migrate from 'symbol_kind: ^activity$' to 'symbol_kind: ^component$' + meta_match: {component_type: ^activity$}. Tests in test_xml_analyzer.py + a new test_config_conventions_android class.\n\nOut of scope for WI-limas's narrow remit; filed as follow-up."  # ca09
     fields: {}  # ca09
+- op: update  # 66b9
+  at: '2026-05-14T09:13:15Z'  # 66b9
+  by: agent  # 66b9
+  actor: jgstern_agent  # 66b9
+  clock: 2  # 66b9
+  nonce: 66b9  # 66b9
+  set:  # 66b9
+    status: done  # 66b9
+- op: discuss  # 60e4
+  at: '2026-05-14T09:13:15Z'  # 60e4
+  by: agent  # 60e4
+  actor: jgstern_agent  # 60e4
+  clock: 3  # 60e4
+  nonce: '60e4'  # 60e4
+  message: "Producer xml_config.py:_process_android_application now emits kind=\"component\" with meta[\"component_type\"] = activity/service/receiver/provider. config-conventions.yaml's 4 android_component rules migrated to ^component$ + meta_match. Provider routing: Android <provider> goes through component+meta to keep canonical \"provider\" kind (Apex/Salesforce) cleanly disjoint. Tests updated in lockstep: test_xml_analyzer.py, BRANCHES_test_xml_config.py, test_framework_patterns.py + 4 new TestConfigConventionsMigratedRules pinning tests. 10326 tests pass at 100% coverage. Merged in commit d6d8df52ae."  # 60e4

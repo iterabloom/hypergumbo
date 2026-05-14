@@ -18,3 +18,18 @@
     pr_ref:  # ae85
     description: "WI-limas surfaced that solidity.py emits kind=\"contract\" (solidity.py:265) but \"contract\" is not in the canonical SYMBOL_KINDS registry post-ADR-0027 Phase 4b. The library-exports.yaml rule for Solidity contract was listed in the WI-limas description as broken.\n\nTwo paths:\n1. ADD \"contract\" to the canonical registry. Per ADR-0027 §1, Symbol.kind names a source-language syntactic construct — \"contract\" is exactly that for Solidity (sibling to \"class\" / \"interface\" / \"struct\"). The honest fix is to add SymbolKindSpec(\"contract\", AXIS_LANGUAGE_CONSTRUCT, \"Smart-contract declaration (Solidity / Vyper / Move).\") to symbol_kinds.py.\n2. FOLD \"contract\" onto an existing canonical kind (e.g., \"class\" + meta[\"contract_kind\"]=\"contract\"). Less honest — Solidity contracts are not classes.\n\nRecommend path 1 (canonical addition). Once added, the library-exports YAML rule 'symbol_kind: ^contract$' is no longer broken (matches the now-canonical kind).\n\nAlso note: solidity.py:272 emits kind=\"interface\" which IS canonical, so that rule is OK.\n\nFiled as follow-up to WI-limas. Bridges ADR-0027 territory — Symbol.kind canonical registry decisions belong in the ADR governance flow, not in a YAML migration PR."  # ae85
     fields: {}  # ae85
+- op: update  # 42ab
+  at: '2026-05-14T08:48:44Z'  # 42ab
+  by: agent  # 42ab
+  actor: jgstern_agent  # 42ab
+  clock: 2  # 42ab
+  nonce: 42ab  # 42ab
+  set:  # 42ab
+    status: done  # 42ab
+- op: discuss  # d81c
+  at: '2026-05-14T08:48:45Z'  # d81c
+  by: agent  # d81c
+  actor: jgstern_agent  # d81c
+  clock: 3  # d81c
+  nonce: d81c  # d81c
+  message: "Path 1 verdict: added SymbolKindSpec(\"contract\", AXIS_LANGUAGE_CONSTRUCT, ...) to symbol_kinds.py. solidity.py:265 producer was already emitting kind=\"contract\"; library-exports.yaml's symbol_kind: ^contract$ rule now matches a canonical kind. Audit-findings 0003 gains the contract verdict row (CANONICAL, RESOLVED). Merged in commit 4adc298c59."  # d81c

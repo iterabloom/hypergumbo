@@ -26,3 +26,20 @@
   clock: 2  # 1249
   nonce: '1249'  # 1249
   message: "Post-ADR-0027 reframe (audit-findings 0013, fully landed): http_handler and http_route are no longer Symbol.kind values — the endpoint_shape section of SYMBOL_KINDS is empty. The kinds named in the original description (graphql_resolver, event_subscriber, mq_publisher, http_client) likewise no longer exist as kinds. Restated goal: the route-handler linker should emit Symbols with canonical kind=function|method plus meta['framework_role']='http_handler' (or 'http_route') for Apollo's http.createServer + startStandaloneServer codepath. The downstream routes.txt membership predicate is now meta['framework_role'] in {...} rather than kind in {...}. Note: the bakeoff observation cited (deep-20260510-054430) predates verification against the current registry; the actual count of relevant nodes should be re-derived from meta['framework_role'] when this item is picked up."  # 1249
+- op: update  # 8a83
+  at: '2026-05-14T00:15:38Z'  # 8a83
+  by: agent  # 8a83
+  actor: jgstern_agent  # 8a83
+  clock: 3  # 8a83
+  nonce: 8a83  # 8a83
+  set:  # 8a83
+    status: done  # 8a83
+  add:  # 8a83
+    tags: [awaits_bakeoff_validation]  # 8a83
+- op: discuss  # 5820
+  at: '2026-05-14T00:15:38Z'  # 5820
+  by: agent  # 5820
+  actor: jgstern_agent  # 5820
+  clock: 4  # 5820
+  nonce: '5820'  # 5820
+  message: "Shipped via PR (commit 44ca9f2). Added node-http.yaml (bare http.createServer / https / http2 / destructured) + Apollo startStandaloneServer/runHttpQuery/executeHTTPGraphQLRequest patterns to graphql.yaml. 6 new tests; 100% coverage. apollo-server routes.txt count delta pending bakeoff validation."  # 5820
