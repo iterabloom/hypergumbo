@@ -34,3 +34,11 @@
   clock: 3  # c752
   nonce: c752  # c752
   message: "Description revised: (1) added 'Strategy alignment with shared core' identifying this as an explicit-string strategy consumer; (2) added 'Coordination with WI-hogik' surfacing that Spring and Laravel share strategy work — whichever lands first does the extraction if WI-mifif didn't set it up; (3) added analyzer pre-req section flagging PHP analyzer capability for class-extends + string-arg-of-function-call (view() / View::make()) detection as a potential bottleneck."  # c752
+- op: update  # 8fba
+  at: '2026-05-14T21:27:07Z'  # 8fba
+  by: human  # 8fba
+  actor: jgstern  # 8fba
+  clock: 4  # 8fba
+  nonce: 8fba  # 8fba
+  set:  # 8fba
+    status: todo_soft  # 8fba

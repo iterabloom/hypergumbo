@@ -87,3 +87,10 @@
   clock: 10  # 9de3
   nonce: 9de3  # 9de3
   message: "I don't think this is blocked any more?"  # 9de3
+- op: discuss  # 443a
+  at: '2026-05-14T22:25:20Z'  # 443a
+  by: agent  # 443a
+  actor: jgstern_agent  # 443a
+  clock: 11  # 443a
+  nonce: 443a  # 443a
+  message: "You're right — same stale-framing issue as WI-burud. Verified 2026-05-14:\n\n- WI-duzul-dusad (rust-analyzer scaffold) is done. analyze_rust_with_scip runs end-to-end.\n- WI-mafut-hajah (SCIP→IR translation shim) is done. The shim was designed language-agnostic from the start; per WI-mafut's discussion thread, Rust-specific quirks (trait-suffix descriptor parsing, the proc-macro carve-out) live in the rust-analyzer package, not in the shim. So the shim's surface itself is ready for a second-language reuse experiment.\n\nWhat this item is now positioned to deliver: the design sketch in its description body (which emitters produce compatible SCIP, per-language quirks, single-vs-per-language-shim recommendation). The 2026-04-19 thread already called out reviewing WI-zakub/WI-bajuz/WI-duzul/WI-mafut once they landed — 4-for-4 done now, so the inputs for that review exist.\n\nStatus stays todo_soft P4 — investigative design sketch. Don't think it's urgent versus other P3/P2 work, but it's no longer gated on infrastructure."  # 443a

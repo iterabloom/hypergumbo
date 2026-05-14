@@ -18,3 +18,18 @@
     pr_ref:  # f152
     description: "scripts/release-check:95 was fixed in PR aa6d1c607's follow-up (release-check-remote-detection branch) by switching from 'git rev-parse <ref>' to 'git rev-parse --verify <ref>^{commit}'. The underlying invariant ('git rev-parse without --verify echoes the input ref to stdout AND returns non-zero when the ref is unresolvable, contaminating any command-substitution capture') applies to five other sites that use the same pattern but don't currently bite because their ref (origin/dev or origin/$BASE_BRANCH) is effectively always resolvable. They should be hardened for consistency so a future contributor doesn't reintroduce the pattern elsewhere by copy-paste. Sites: scripts/auto-pr:1135, scripts/auto-pr:1380, scripts/lib/forgejo-api.sh:1197, scripts/ci-failover:147, scripts/ci-failover:383, scripts/ci-failover:691, scripts/ci-failover:864. Each should become 'git rev-parse --verify <ref>^{commit} 2>/dev/null || <fallback>'. Keep the PR small and copy release-check's header comment explaining the rationale."  # f152
     fields: {}  # f152
+- op: update  # 0b95
+  at: '2026-05-14T22:35:07Z'  # 0b95
+  by: agent  # 0b95
+  actor: jgstern_agent  # 0b95
+  clock: 2  # 0b95
+  nonce: 0b95  # 0b95
+  set:  # 0b95
+    status: done  # 0b95
+- op: discuss  # 400d
+  at: '2026-05-14T22:35:07Z'  # 400d
+  by: agent  # 400d
+  actor: jgstern_agent  # 400d
+  clock: 3  # 400d
+  nonce: 400d  # 400d
+  message: "Shipped in PR #3718 (merged aa3802ed10). Found and hardened 10 vulnerable sites (tracker had cited 7 with stale line numbers, but principle applied broadly): 3 in scripts/auto-pr, 2 in scripts/lib/forgejo-api.sh, 5 in scripts/ci-failover. Each switched from `git rev-parse <ref>` to `git rev-parse --verify <ref>^{commit}` to eliminate stdout contamination on unresolvable refs. Short rationale header comment added near first occurrence in each file pointing at release-check:93-102 for the long-form explanation. 100% coverage, all 10385 tests pass."  # 400d

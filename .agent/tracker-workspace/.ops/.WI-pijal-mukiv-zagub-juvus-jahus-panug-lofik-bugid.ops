@@ -36,3 +36,18 @@
   clock: 3  # 2d72
   nonce: 2d72  # 2d72
   message: "Scope narrowed 2026-05-04 after inspecting hypergumbo run --help: opt-out flags --budgets and --no-handler-slices already exist; gap is purely documentation. New scope: rewrite --out OUT help line + Examples block. Status: needs_human_review → todo_soft. Priority: P3 → P4."  # 2d72
+- op: update  # 5545
+  at: '2026-05-14T22:01:17Z'  # 5545
+  by: agent  # 5545
+  actor: jgstern_agent  # 5545
+  clock: 4  # 5545
+  nonce: '5545'  # 5545
+  set:  # 5545
+    status: done  # 5545
+- op: discuss  # 0d2d
+  at: '2026-05-14T22:01:17Z'  # 0d2d
+  by: agent  # 0d2d
+  actor: jgstern_agent  # 0d2d
+  clock: 5  # 0d2d
+  nonce: 0d2d  # 0d2d
+  message: "Shipped in PR #3717 (merged dc11cb770b). Updated --out help string + Examples block + new Side-outputs alongside --out epilog section per the scoped-down acceptance (doc-only; opt-out flags already existed)."  # 0d2d

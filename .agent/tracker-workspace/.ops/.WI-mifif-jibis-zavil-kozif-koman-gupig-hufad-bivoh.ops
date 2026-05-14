@@ -43,3 +43,11 @@
   clock: 4  # a066
   nonce: a066  # a066
   message: "Description revised: (1) made the two-strategy requirement (method/class-name + explicit-string) load-bearing in the shared-core extraction so Spring/Laravel don't have to refactor it later; (2) softened the DRF ViewSet bullet from acceptance criterion to 'out of scope unless corpus demands' (DRF is JSON-first; template-rendering is rare); (3) reorganized the template-path-derivation bullets to label each path with its strategy class; (4) added a priority-calibration note pointing at the AGENTS.md prospector-corpus FP-volume rule."  # a066
+- op: update  # ffc7
+  at: '2026-05-14T21:26:27Z'  # ffc7
+  by: human  # ffc7
+  actor: jgstern  # ffc7
+  clock: 5  # ffc7
+  nonce: ffc7  # ffc7
+  set:  # ffc7
+    status: todo_soft  # ffc7

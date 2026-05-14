@@ -34,3 +34,11 @@
   clock: 3  # ab3f
   nonce: ab3f  # ab3f
   message: "Description revised: (1) added a 'Strategy alignment with shared core' section explicitly identifying Phoenix as a method/class-name strategy consumer (no new core-level work, just a thin PhoenixStrategy class); (2) added 'Build order' confirming this is implementable independently of WI-hogik/WI-hokaj once WI-mifif lands; (3) added an analyzer pre-req section flagging that Elixir analyzer capability for defmodule + function names + use Phoenix.Controller markers could bottleneck."  # ab3f
+- op: update  # 8a87
+  at: '2026-05-14T21:26:40Z'  # 8a87
+  by: human  # 8a87
+  actor: jgstern  # 8a87
+  clock: 4  # 8a87
+  nonce: 8a87  # 8a87
+  set:  # 8a87
+    status: todo_soft  # 8a87

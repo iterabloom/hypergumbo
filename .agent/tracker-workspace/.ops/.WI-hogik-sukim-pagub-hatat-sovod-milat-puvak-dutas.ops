@@ -34,3 +34,11 @@
   clock: 3  # c18b
   nonce: c18b  # c18b
   message: "Description revised: (1) added 'Strategy alignment with shared core' identifying this as an explicit-string strategy consumer; (2) added 'Coordination with WI-hokaj' surfacing that Spring and Laravel share strategy work — whichever lands first does the extraction if WI-mifif didn't set it up; (3) added analyzer pre-req section flagging Java analyzer capability for @Controller / @RequestMapping family annotations + string-return-value detection as a potential bottleneck; (4) added ModelAndView first-arg form to acceptance criteria."  # c18b
+- op: update  # fd4f
+  at: '2026-05-14T21:26:55Z'  # fd4f
+  by: human  # fd4f
+  actor: jgstern  # fd4f
+  clock: 4  # fd4f
+  nonce: fd4f  # fd4f
+  set:  # fd4f
+    status: todo_soft  # fd4f

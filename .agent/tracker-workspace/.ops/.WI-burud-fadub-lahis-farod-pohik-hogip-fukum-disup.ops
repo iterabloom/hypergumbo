@@ -42,3 +42,10 @@
   clock: 4  # 3f22
   nonce: 3f22  # 3f22
   message: "I don't think this is still blocked?"  # 3f22
+- op: discuss  # 5d3c
+  at: '2026-05-14T22:25:19Z'  # 5d3c
+  by: agent  # 5d3c
+  actor: jgstern_agent  # 5d3c
+  clock: 5  # 5d3c
+  nonce: 5d3c  # 5d3c
+  message: "You're right — that blocking framing is stale. Verified 2026-05-14:\n\n- WI-duzul-dusad (rust-analyzer scaffold) is done. The package exists at packages/hypergumbo-lang-rust-analyzer/ with analyze_rust_with_scip, translate_scip_to_hg, and reassign_rust_stable_ids exported.\n- WI-mafut-hajah (SCIP→IR translation shim) is done. Available via hypergumbo_core.scip.{index,edges,calls}.\n\nSo the upstream surface this item was waiting on is operational. The block I cited in the 2026-05-13 Phase-0-triage note was lifted before that note even fired — apologies for the stale framing.\n\nWhat still needs to happen for actual implementation: each of the five linkers (tauri_ipc.py, wasm_bindgen.py, napi.py, jni.py, cgo.py) needs a backend-marker check on Rust symbols and a higher-fidelity join path that consumes SCIP symbol IDs when the rust-analyzer backend produced them, falling back to the existing string-match path otherwise. The success-criterion bakeoff cohort (proc-macro-heavy Rust: Tauri / wasm-bindgen / NAPI) is also doable now that the backend runs end-to-end.\n\nStatus stays todo_soft P4 — work-doable, no longer blocked. Happy to promote if the proc-macro-heavy RCT-relevant cohorts merit it; left at P4 by default since this is an enhancement over already-correct cross-language linkers."  # 5d3c
