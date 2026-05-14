@@ -1,0 +1,24 @@
+- op: create  # 8a3b
+  at: '2026-05-14T19:29:53Z'  # 8a3b
+  by: agent  # 8a3b
+  actor: jgstern_agent  # 8a3b
+  clock: 1  # 8a3b
+  nonce: 8a3b  # 8a3b
+  data:  # 8a3b
+    kind: invariant  # 8a3b
+    title: "yjsDocId metadata in SpatialObjects must become document_references edges"  # 8a3b
+    status: violated  # 8a3b
+    priority: 4  # 8a3b
+    parent: META-sulor-nulit-birav-sikav-zihuh-povis-kavis-fojut  # 8a3b
+    tags:  # 8a3b
+    - plazaflow  # 8a3b
+    - yjs  # 8a3b
+    - linker  # 8a3b
+    isbefore: []  # 8a3b
+    duplicate_of: []  # 8a3b
+    not_duplicate_of: []  # 8a3b
+    pr_ref:  # 8a3b
+    description: "Filed as a fresh META-sulor-style invariant violation per META-sulor closure (2026-05-14): the 2026-03-17 discussion entry on META-sulor cross-referenced this as \"yjsDocId metadata in SpatialObjects must become document_references edges. See WI-mamuh (Yjs sub-document tracing).\" When META-sulor was satisfied, the five original violations were all resolved, but this SpatialObjects-specific instance was a fresh shape that hadn't been folded into META-sulor's scope — it deserves its own item rather than re-opening META-sulor.\n\n## Relation to WI-mamuh (done)\n\nWI-mamuh shipped (PR #2329, 2026-03-18) sub-document accessor detection for the general Yjs API surface: `getMap`, `getArray`, `getText`, `getXmlFragment`, plus field-level awareness matching. That work likely addresses *some* of the SpatialObjects-yjsDocId shape transitively (a SpatialObject accessing a sub-document via one of those accessors would now emit an edge), but it was not specifically validated against the PlazaFlow `SpatialObjects` data shape with `yjsDocId` as a metadata field, and the close note on WI-mamuh did not explicitly address the third scope bullet (Array/Text ops) or the SpatialObjects-shape variant.\n\nThis item therefore is **violated until empirically demonstrated otherwise** against the PlazaFlow corpus — not assumed-fixed-by-association.\n\n## Acceptance\n\n- Pick a PlazaFlow-shaped fixture (preferred: socketio-chat-example per the WI-mamuh discussion thread, or a minimal repro with a `SpatialObject`-style object carrying `yjsDocId` metadata pointing at another Yjs document).\n- Run hypergumbo and verify a `document_references` (or equivalently named) edge from the SpatialObject node to the referenced Yjs document node.\n- If the edge is already emitted: close as `satisfied` with the fixture run as evidence.\n- If it isn't: extend the Yjs/CRDT reactive linker to detect the SpatialObjects `yjsDocId` metadata pattern. Sibling work: WI-zusig (broader Yjs API surface, `todo_soft`).\n\n## Out of scope\n\n- The general \"metadata must become graph structure\" invariant — that's META-sulor, now satisfied for its original five violations.\n- General Yjs sub-document accessor detection — that's WI-mamuh, done.\n- Yjs/CRDT API surface beyond yjsDocId-in-SpatialObjects — that's WI-zusig."  # 8a3b
+    fields:  # 8a3b
+      statement: "When yjsDocId metadata is stored on SpatialObjects (PlazaFlow data shape) in Yjs documents, that reference must become a traversable document_references (or equivalently named) edge from the SpatialObject node to the referenced Yjs document node."  # 8a3b
+      root_cause: "Unknown pending empirical investigation. WI-mamuh (PR #2329) shipped general Yjs sub-document accessor detection (getMap/getArray/getText/getXmlFragment) and field-level awareness, but the SpatialObjects-with-yjsDocId-metadata shape was not specifically validated and is a PlazaFlow-specific data shape distinct from the accessor-call shape."  # 8a3b

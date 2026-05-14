@@ -67,3 +67,18 @@
   clock: 7  # 7e28
   nonce: '7e28'  # 7e28
   message: "Cross-ref: PlazaFlow readiness. yjsDocId metadata in SpatialObjects must become document_references edges. See WI-mamuh (Yjs sub-document tracing)."  # 7e28
+- op: update  # 68db
+  at: '2026-05-14T19:30:02Z'  # 68db
+  by: agent  # 68db
+  actor: jgstern_agent  # 68db
+  clock: 8  # 68db
+  nonce: 68db  # 68db
+  set:  # 68db
+    status: satisfied  # 68db
+- op: discuss  # f644
+  at: '2026-05-14T19:30:02Z'  # f644
+  by: agent  # f644
+  actor: jgstern_agent  # f644
+  clock: 9  # f644
+  nonce: f644  # f644
+  message: "Closing META-sulor: all 5 originally enumerated violations confirmed fixed (per 2026-02-25 discussion: Scala/Groovy base_classes via inheritance linker, Phoenix route alias resolution in elixir.py, OTP linker suffix-match in _resolve_handler_module, Go struct literal func refs via keyed_element — all with test coverage). The status was left at deprecated 'holding' since Feb; flipping to 'satisfied' per AGENTS.md tracker discipline (holding is no longer accepted). The 2026-03-17 Yjs cross-reference (yjsDocId in SpatialObjects → document_references edges) was a fresh shape outside the original five — filed as a separate child INV item (INV-munok) rather than re-opening this META."  # f644
